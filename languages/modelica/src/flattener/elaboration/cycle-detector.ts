@@ -81,6 +81,54 @@ export function checkCyclicConstantsAndParameters(
     return;
   }
 
+  if (!dae.extensionMetadata?.isOldFrontend) {
+    const children = db.childrenOf(rootClassId);
+    const paramNames = new Set<string>();
+    for (const ch of children) {
+      if (ch.kind === "Component") {
+        const ci = db.query<any>("componentInstance", ch.id);
+        if (ci?.variability === "parameter") {
+          paramNames.add(ch.name);
+        }
+      }
+    }
+    if (paramNames.size > 0) {
+      for (const ch of children) {
+        if (ch.kind === "Component") {
+          const ci = db.query<any>("componentInstance", ch.id);
+          const rawBind =
+            ci?.modification?.bindingExpression?.text ?? ci?.modification?.value?.text ?? ci?.bindingExpression?.text;
+          if (ci?.variability === "constant" && rawBind) {
+            const bText = rawBind.trim();
+            const ids = bText.match(/[a-zA-Z_]\w*/g) || [];
+            if (ids.some((id: string) => paramNames.has(id))) {
+              let clauseNode: any = db.cstNode(ch.id);
+              while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "element") {
+                clauseNode = clauseNode.parent;
+              }
+              const rNode = clauseNode ?? (db.cstNode(ch.id) as any);
+              const rangeObj = rNode
+                ? {
+                    startByte: rNode.startIndex ?? rNode.startByte,
+                    endByte: rNode.endIndex ?? rNode.endByte,
+                    startPosition: rNode.startPosition,
+                    endPosition: rNode.endPosition,
+                  }
+                : undefined;
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.CONSTANT_VARIABILITY_VIOLATION.code,
+                message: ModelicaErrorCode.CONSTANT_VARIABILITY_VIOLATION.message(ch.name, bText, "parameter"),
+                range: rangeObj,
+              });
+              return;
+            }
+          }
+        }
+      }
+    }
+  }
+
   const rootClassName = rootSym?.name ?? "Model";
 
   const scopeToVars = new Map<string, string[]>();

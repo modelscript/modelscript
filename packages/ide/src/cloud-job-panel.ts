@@ -88,6 +88,17 @@ export class CloudJobPanel {
     this.refresh();
   }
 
+  private _getApiConfig(extraHeaders?: Record<string, string>): { baseUrl: string; headers: Record<string, string> } {
+    const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
+    const baseUrl = (cfg.get<string>("apiBaseUrl") || this._apiBaseUrl).replace(/\/+$/, "");
+    const token = cfg.get<string>("authToken");
+    const headers: Record<string, string> = { ...extraHeaders };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return { baseUrl, headers };
+  }
+
   public async refresh(): Promise<void> {
     try {
       const activeDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === this._targetUri);
@@ -98,10 +109,12 @@ export class CloudJobPanel {
       if (ext === ".cfg") domain = "cfd";
       else if (ext === ".inp") domain = "fea";
 
+      const { baseUrl, headers } = this._getApiConfig();
+
       // Fetch profiles & balance
       const [profilesRes, balanceRes] = await Promise.all([
-        fetch(`${this._apiBaseUrl}/cloud/profiles`).catch(() => null),
-        fetch(`${this._apiBaseUrl}/cloud/balance`).catch(() => null),
+        fetch(`${baseUrl}/cloud/profiles`, { headers }).catch(() => null),
+        fetch(`${baseUrl}/cloud/balance`, { headers }).catch(() => null),
       ]);
 
       const profiles = profilesRes?.ok
@@ -161,9 +174,10 @@ export class CloudJobPanel {
     this._panel.webview.postMessage({ type: "dispatchStarted" });
 
     try {
-      const res = await fetch(`${this._apiBaseUrl}/cloud/dispatch`, {
+      const { baseUrl, headers } = this._getApiConfig({ "Content-Type": "application/json" });
+      const res = await fetch(`${baseUrl}/cloud/dispatch`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -191,7 +205,7 @@ export class CloudJobPanel {
         type: "jobDispatched",
         data: {
           jobId: data.jobId,
-          streamUrl: `${this._apiBaseUrl}/cloud/jobs/${data.jobId}/events`,
+          streamUrl: `${baseUrl}/cloud/jobs/${data.jobId}/events`,
         },
       });
     } catch (err: any) {
@@ -202,8 +216,10 @@ export class CloudJobPanel {
 
   private async cancelJob(jobId: string): Promise<void> {
     try {
-      const res = await fetch(`${this._apiBaseUrl}/cloud/jobs/${jobId}/cancel`, {
+      const { baseUrl, headers } = this._getApiConfig();
+      const res = await fetch(`${baseUrl}/cloud/jobs/${jobId}/cancel`, {
         method: "POST",
+        headers,
       });
       if (res.ok) {
         vscode.window.showInformationMessage(`Job #${jobId} cancelled.`);
@@ -216,13 +232,27 @@ export class CloudJobPanel {
 
   private async openSimulationResult(jobId: string): Promise<void> {
     try {
-      const res = await fetch(`${this._apiBaseUrl}/cloud/jobs/${jobId}/result`);
+      const { baseUrl, headers } = this._getApiConfig();
+      const res = await fetch(`${baseUrl}/cloud/jobs/${jobId}/result`, { headers });
       if (!res.ok) {
         vscode.window.showErrorMessage("Could not load simulation results.");
         return;
       }
-      const csvText = await res.text();
-      const lines = csvText.trim().split("\n");
+      const contentType = res.headers.get("content-type") || "";
+      const rawText = await res.text();
+      const trimmed = rawText.trim();
+
+      if (contentType.includes("application/json") || trimmed.startsWith("{")) {
+        const parsed = JSON.parse(trimmed);
+        const doc = await vscode.workspace.openTextDocument({
+          content: JSON.stringify(parsed, null, 2),
+          language: "json",
+        });
+        await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        return;
+      }
+
+      const lines = trimmed.split("\n");
       if (lines.length < 2) return;
 
       const header = lines[0]?.split(",") || [];
@@ -556,6 +586,15 @@ export class CloudJobPanel {
       }
     });
 
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     function renderProfiles() {
       const grid = document.getElementById("profileGrid");
       grid.innerHTML = "";
@@ -571,20 +610,35 @@ export class CloudJobPanel {
           renderProfiles();
         };
 
-        const gpus = p.gpus ? '<span class="tag">' + p.gpus + 'x GPU</span>' : '';
-        const ram = '<span class="tag">' + (p.memoryMb / 1024).toFixed(0) + ' GB RAM</span>';
-        const cpus = '<span class="tag">' + p.cpus + ' vCPUs</span>';
+        const gpus = p.gpus ? '<span class="tag">' + Number(p.gpus) + 'x GPU</span>' : '';
+        const ram = '<span class="tag">' + (Number(p.memoryMb) / 1024).toFixed(0) + ' GB RAM</span>';
+        const cpus = '<span class="tag">' + Number(p.cpus) + ' vCPUs</span>';
 
         card.innerHTML = \`
           <div>
-            <div class="profile-name">\${p.name}</div>
-            <div class="profile-desc">\${p.description}</div>
+            <div class="profile-name">\${escapeHtml(p.name)}</div>
+            <div class="profile-desc">\${escapeHtml(p.description)}</div>
             <div class="profile-specs">\${cpus}\${ram}\${gpus}</div>
           </div>
-          <div class="profile-cost">\${p.costCreditsPerHour.toFixed(1)} cr/hr</div>
+          <div class="profile-cost">\${Number(p.costCreditsPerHour).toFixed(1)} cr/hr</div>
         \`;
         grid.appendChild(card);
       });
+    }
+
+    function applyJobStatus(st) {
+      if (!st) return;
+      document.getElementById("jobStatusBadge").textContent = st;
+      if (st === "completed") {
+        document.getElementById("jobStatusBadge").className = "status-badge status-completed";
+        document.getElementById("btnDispatch").disabled = false;
+        document.getElementById("btnOpenResult").style.display = "inline-block";
+        if (eventSource) eventSource.close();
+      } else if (st === "failed" || st === "cancelled") {
+        document.getElementById("jobStatusBadge").className = "status-badge status-failed";
+        document.getElementById("btnDispatch").disabled = false;
+        if (eventSource) eventSource.close();
+      }
     }
 
     function connectTelemetryStream(streamUrl) {
@@ -603,19 +657,11 @@ export class CloudJobPanel {
             if (payload.logs) {
               logBox.textContent = payload.logs.join("\\n") + "\\n";
             }
-          } else if (payload.type === "status") {
-            const st = payload.data.status;
-            document.getElementById("jobStatusBadge").textContent = st;
-            if (st === "completed") {
-              document.getElementById("jobStatusBadge").className = "status-badge status-completed";
-              document.getElementById("btnDispatch").disabled = false;
-              document.getElementById("btnOpenResult").style.display = "inline-block";
-              eventSource.close();
-            } else if (st === "failed") {
-              document.getElementById("jobStatusBadge").className = "status-badge status-failed";
-              document.getElementById("btnDispatch").disabled = false;
-              eventSource.close();
+            if (payload.status) {
+              applyJobStatus(payload.status);
             }
+          } else if (payload.type === "status") {
+            applyJobStatus(payload.data.status);
           }
         } catch (err) {
           logBox.textContent += e.data + "\\n";

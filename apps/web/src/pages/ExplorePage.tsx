@@ -647,7 +647,7 @@ const ExplorePage: React.FC = () => {
               {openCompose && (
                 <button
                   type="button"
-                  onClick={() => openCompose({ defaultText: `#${topic} ` })}
+                  onClick={() => openCompose({ content: `#${topic} `, defaultText: `#${topic} ` })}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -760,7 +760,7 @@ const ExplorePage: React.FC = () => {
                 {openCompose && (
                   <button
                     type="button"
-                    onClick={() => openCompose({ defaultText: `#${topic} ` })}
+                    onClick={() => openCompose({ content: `#${topic} `, defaultText: `#${topic} ` })}
                     style={{
                       display: "inline-flex",
                       alignItems: "center",

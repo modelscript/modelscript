@@ -36,7 +36,17 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { bookmarkPost, followUser, getPostAnalytics, likePost, recordPostView, repostPost } from "../api";
+import {
+  blockUser,
+  bookmarkPost,
+  followUser,
+  getPostAnalytics,
+  likePost,
+  muteUser,
+  recordPostView,
+  reportUser,
+  repostPost,
+} from "../api";
 import { useAuth } from "../AuthContext";
 import { parseFederatedHandle } from "../util/federation";
 import AnimatedCount from "./AnimatedCount";
@@ -47,6 +57,7 @@ import ComposeModal from "./ComposeModal";
 import ErrorBoundary from "./ErrorBoundary";
 import FederatedDomainPill from "./FederatedDomainPill";
 import ProfileHoverCard from "./ProfileHoverCard";
+import { useToast } from "./ToastContext";
 import WorldMap from "./WorldMap";
 
 function formatRelativeTime(dateString: string): string {
@@ -712,6 +723,7 @@ const viewedPostIds = new Set<number>();
 const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const toast = useToast();
   const displayPost = post.repost_post || post;
 
   const [liked, setLiked] = useState(Boolean(displayPost.liked));
@@ -720,6 +732,23 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [repostCount, setRepostCount] = useState(displayPost.repost_count);
   const [bookmarked, setBookmarked] = useState(Boolean(displayPost.bookmarked));
   const [bookmarkCount, setBookmarkCount] = useState(displayPost.bookmark_count);
+
+  useEffect(() => {
+    setLiked(Boolean(displayPost.liked));
+    setLikeCount(displayPost.like_count);
+    setReposted(Boolean(displayPost.reposted));
+    setRepostCount(displayPost.repost_count);
+    setBookmarked(Boolean(displayPost.bookmarked));
+    setBookmarkCount(displayPost.bookmark_count);
+  }, [
+    displayPost.id,
+    displayPost.liked,
+    displayPost.like_count,
+    displayPost.reposted,
+    displayPost.repost_count,
+    displayPost.bookmarked,
+    displayPost.bookmark_count,
+  ]);
   const [showRepostMenu, setShowRepostMenu] = useState(false);
   const [showPostMenu, setShowPostMenu] = useState(false);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
@@ -758,13 +787,17 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const hasSignature = Boolean(
     displayPost.client_signature ||
     displayPost.metadata?.client_signature ||
+    displayPost.metadata?.clientSignature ||
     displayPost.metadata?.proof ||
-    displayPost.key_id_string,
+    displayPost.key_id_string ||
+    displayPost.metadata?.key_id_string ||
+    displayPost.metadata?.keyIdString,
   );
 
   const signatureDigest =
     displayPost.client_signature ||
     displayPost.metadata?.client_signature ||
+    displayPost.metadata?.clientSignature ||
     displayPost.metadata?.proof?.proofValue ||
     displayPost.metadata?.proof?.signature ||
     displayPost.metadata?.signature ||
@@ -772,12 +805,14 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
 
   const signatureScheme = displayPost.metadata?.proof?.cryptosuite
     ? `Data Integrity (${displayPost.metadata.proof.cryptosuite})`
-    : displayPost.client_signature || displayPost.metadata?.client_signature
+    : displayPost.client_signature || displayPost.metadata?.client_signature || displayPost.metadata?.clientSignature
       ? "WebCrypto RSASSA-PKCS1-v1_5 / SHA-256"
       : "ActivityPub RFC 9421 / Cavage HTTP Signatures";
 
   const keyIdentifier =
     displayPost.key_id_string ||
+    displayPost.metadata?.key_id_string ||
+    displayPost.metadata?.keyIdString ||
     displayPost.metadata?.proof?.verificationMethod ||
     (displayPost.ap_id ? `${displayPost.ap_id}#main-key` : `@${displayPost.username} device-key`);
 
@@ -851,7 +886,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     }
 
     try {
-      const data = await likePost(post.id);
+      const data = await likePost(displayPost.id);
       setLiked(data.liked);
       setLikeCount((prev: number) => prev + (data.liked ? 1 : -1));
     } catch (err) {
@@ -1040,28 +1075,58 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                       <PersonAddIcon size={16} /> Follow @{displayPost.username}
                     </MenuButton>
                     <MenuButton
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setShowPostMenu(false);
+                        if (!token) {
+                          setShowLoginModal(true);
+                          return;
+                        }
+                        try {
+                          await muteUser(displayPost.username);
+                          toast.info(`Muted @${displayPost.username}`);
+                        } catch (err) {
+                          console.error(err);
+                        }
                       }}
                     >
                       <MuteIcon size={16} /> Mute
                     </MenuButton>
                     <MenuButton
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setShowPostMenu(false);
+                        if (!token) {
+                          setShowLoginModal(true);
+                          return;
+                        }
+                        try {
+                          await muteUser(displayPost.username);
+                          toast.info(`Muted conversation from @${displayPost.username}`);
+                        } catch (err) {
+                          console.error(err);
+                        }
                       }}
                     >
                       <MuteIcon size={16} /> Mute this conversation
                     </MenuButton>
                     <MenuButton
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setShowPostMenu(false);
+                        if (!token) {
+                          setShowLoginModal(true);
+                          return;
+                        }
+                        try {
+                          await blockUser(displayPost.username);
+                          toast.info(`Blocked @${displayPost.username}`);
+                        } catch (err) {
+                          console.error(err);
+                        }
                       }}
                     >
                       <BlockedIcon size={16} /> Block @{displayPost.username}
@@ -1089,10 +1154,20 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                       </MenuButton>
                     )}
                     <MenuButton
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setShowPostMenu(false);
+                        if (!token) {
+                          setShowLoginModal(true);
+                          return;
+                        }
+                        try {
+                          await reportUser(displayPost.username, `Reported post #${displayPost.id}`);
+                          toast.info("Post reported to moderators.");
+                        } catch (err) {
+                          console.error(err);
+                        }
                       }}
                     >
                       <ReportIcon size={16} /> Report post
@@ -1148,6 +1223,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
               <ArtifactViewCard
                 artifactId={displayPost.artifact_view_id}
+                initialArtifactView={displayPost.artifact_view}
                 onPinCreated={(pin) => {
                   setPendingPin(pin);
                   setShowReplyModal(true);
@@ -1707,28 +1783,58 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                             <PersonAddIcon size={16} /> Follow @{displayPost.username}
                           </MenuButton>
                           <MenuButton
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               e.preventDefault();
                               setShowPostMenu(false);
+                              if (!token) {
+                                setShowLoginModal(true);
+                                return;
+                              }
+                              try {
+                                await muteUser(displayPost.username);
+                                toast.info(`Muted @${displayPost.username}`);
+                              } catch (err) {
+                                console.error(err);
+                              }
                             }}
                           >
                             <MuteIcon size={16} /> Mute
                           </MenuButton>
                           <MenuButton
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               e.preventDefault();
                               setShowPostMenu(false);
+                              if (!token) {
+                                setShowLoginModal(true);
+                                return;
+                              }
+                              try {
+                                await muteUser(displayPost.username);
+                                toast.info(`Muted conversation from @${displayPost.username}`);
+                              } catch (err) {
+                                console.error(err);
+                              }
                             }}
                           >
                             <MuteIcon size={16} /> Mute this conversation
                           </MenuButton>
                           <MenuButton
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               e.preventDefault();
                               setShowPostMenu(false);
+                              if (!token) {
+                                setShowLoginModal(true);
+                                return;
+                              }
+                              try {
+                                await blockUser(displayPost.username);
+                                toast.info(`Blocked @${displayPost.username}`);
+                              } catch (err) {
+                                console.error(err);
+                              }
                             }}
                           >
                             <BlockedIcon size={16} /> Block @{displayPost.username}
@@ -1756,10 +1862,20 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                             </MenuButton>
                           )}
                           <MenuButton
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               e.preventDefault();
                               setShowPostMenu(false);
+                              if (!token) {
+                                setShowLoginModal(true);
+                                return;
+                              }
+                              try {
+                                await reportUser(displayPost.username, `Reported post #${displayPost.id}`);
+                                toast.info("Post reported to moderators.");
+                              } catch (err) {
+                                console.error(err);
+                              }
                             }}
                           >
                             <ReportIcon size={16} /> Report post
@@ -1861,6 +1977,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                       <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
                         <ArtifactViewCard
                           artifactId={displayPost.artifact_view_id}
+                          initialArtifactView={displayPost.artifact_view}
                           onPinCreated={(pin) => {
                             setPendingPin(pin);
                             setShowReplyModal(true);

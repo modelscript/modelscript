@@ -190,182 +190,59 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 
   lexerCode += `export let inputEncoding: u8 = 1;
 `;
-  lexerCode += `export function setInputEncoding(enc: u8): void { inputEncoding = enc; }
+  lexerCode += `export function setInputEncoding(enc: u8): void { inputEncoding = 1; }
 
-// Internal decode helpers
+// Internal decode helpers (pos and inputLength are in UTF-16 code units, 1:1 with JS string indices)
+@inline
 export function peekChar(pos: u32): i32 {
     if (pos >= inputLength) return 0;
-    let buf: usize = getInputBuffer();
-    if (inputEncoding == 0) {
-        let b0: u32 = load<u8>(buf + pos);
-        if (b0 >= 0xC0) {
-            if (b0 >= 0xF0) {
-                if (pos + 3 < inputLength) {
-                    let b1: u32 = load<u8>(buf + pos + 1);
-                    let b2: u32 = load<u8>(buf + pos + 2);
-                    let b3: u32 = load<u8>(buf + pos + 3);
-                    if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80 && (b3 & 0xC0) == 0x80) {
-                        return ((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
-                    }
-                }
-                return 0xFFFD;
-            } else if (b0 >= 0xE0) {
-                if (pos + 2 < inputLength) {
-                    let b1: u32 = load<u8>(buf + pos + 1);
-                    let b2: u32 = load<u8>(buf + pos + 2);
-                    if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80) {
-                        return ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
-                    }
-                }
-                return 0xFFFD;
-            } else if (pos + 1 < inputLength) {
-                let b1: u32 = load<u8>(buf + pos + 1);
-                if ((b1 & 0xC0) == 0x80) {
-                    return ((b0 & 0x1F) << 6) | (b1 & 0x3F);
-                }
-                return 0xFFFD;
-            }
-            return 0xFFFD;
+    let buf: usize = getInputBuffer() + ((pos as usize) << 1);
+    let b0: u32 = load<u16>(buf);
+    if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 1 < inputLength) {
+        let b1: u32 = load<u16>(buf + 2);
+        if (b1 >= 0xDC00 && b1 <= 0xDFFF) {
+            return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
         }
-        if (b0 >= 0x80) return 0xFFFD;
-        return b0;
-    } else if (inputEncoding == 1) {
-        if (pos + 1 >= inputLength) return load<u8>(buf + pos);
-        let b0: u32 = load<u16>(buf + pos);
-        if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 3 < inputLength) {
-            let b1: u32 = load<u16>(buf + pos + 2);
-            if (b1 >= 0xDC00 && b1 <= 0xDFFF) {
-                return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
-            }
-        }
-        return b0;
-    } else if (inputEncoding == 2) {
-        if (pos + 1 >= inputLength) return load<u8>(buf + pos);
-        let b0: u32 = bswap<u16>(load<u16>(buf + pos));
-        if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 3 < inputLength) {
-            let b1: u32 = bswap<u16>(load<u16>(buf + pos + 2));
-            if (b1 >= 0xDC00 && b1 <= 0xDFFF) {
-                return ((b0 - 0xD800) << 10) + (b1 - 0xDC00) + 0x10000;
-            }
-        }
-        return b0;
-    } else if (inputEncoding == 3) {
-        if (pos + 3 >= inputLength) return 0;
-        return load<u32>(buf + pos);
-    } else if (inputEncoding == 4) {
-        if (pos + 3 >= inputLength) return 0;
-        return bswap<u32>(load<u32>(buf + pos));
     }
-    return 0;
+    return b0;
 }
 
+@inline
 export function peekCharLen(pos: u32): u32 {
     if (pos >= inputLength) return 0;
-    let rem: u32 = inputLength - pos;
-    let buf: usize = getInputBuffer();
-    if (inputEncoding == 0) {
-        let b0: u32 = load<u8>(buf + pos);
-        if (b0 >= 0xF0) return rem >= 4 ? 4 : rem;
-        if (b0 >= 0xE0) return rem >= 3 ? 3 : rem;
-        if (b0 >= 0xC0) return rem >= 2 ? 2 : rem;
-        return 1;
-    } else if (inputEncoding == 1) {
-        if (rem < 2) return rem;
-        let b0: u32 = load<u16>(buf + pos);
-        if (b0 >= 0xD800 && b0 <= 0xDBFF && rem >= 4) {
-            let b1: u32 = load<u16>(buf + pos + 2);
-            if (b1 >= 0xDC00 && b1 <= 0xDFFF) return 4;
-        }
-        return 2;
-    } else if (inputEncoding == 2) {
-        if (rem < 2) return rem;
-        let b0: u32 = bswap<u16>(load<u16>(buf + pos));
-        if (b0 >= 0xD800 && b0 <= 0xDBFF && rem >= 4) {
-            let b1: u32 = bswap<u16>(load<u16>(buf + pos + 2));
-            if (b1 >= 0xDC00 && b1 <= 0xDFFF) return 4;
-        }
-        return 2;
+    let buf: usize = getInputBuffer() + ((pos as usize) << 1);
+    let b0: u32 = load<u16>(buf);
+    if (b0 >= 0xD800 && b0 <= 0xDBFF && pos + 1 < inputLength) {
+        let b1: u32 = load<u16>(buf + 2);
+        if (b1 >= 0xDC00 && b1 <= 0xDFFF) return 2;
     }
-    return rem >= 4 ? 4 : rem;
+    return 1;
 }
 
+@inline
 export function peekPrevChar(pos: u32): i32 {
     if (pos == 0 || pos > inputLength) return 0;
     let buf: usize = getInputBuffer();
-    if (inputEncoding == 0) {
-        let p: u32 = pos - 1;
-        let b: u32 = load<u8>(buf + p);
-        if ((b & 0x80) == 0) return b;
-        let count: u32 = 1;
-        while (p > 0 && (load<u8>(buf + p) & 0xC0) == 0x80 && count < 4) {
-            p--;
-            count++;
+    let b0: u32 = load<u16>(buf + (((pos - 1) as usize) << 1));
+    if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 2) {
+        let b1: u32 = load<u16>(buf + (((pos - 2) as usize) << 1));
+        if (b1 >= 0xD800 && b1 <= 0xDBFF) {
+            return ((b1 - 0xD800) << 10) + (b0 - 0xDC00) + 0x10000;
         }
-        let lead: u32 = load<u8>(buf + p);
-        if ((lead & 0xC0) != 0x80) {
-            let ch = peekChar(p);
-            let len = peekCharLen(p);
-            if (p + len == pos) return ch;
-        }
-        return b;
-    } else if (inputEncoding == 1) {
-        if (pos < 2) return 0;
-        let b0: u32 = load<u16>(buf + pos - 2);
-        if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
-            let b1: u32 = load<u16>(buf + pos - 4);
-            if (b1 >= 0xD800 && b1 <= 0xDBFF) {
-                return ((b1 - 0xD800) << 10) + (b0 - 0xDC00) + 0x10000;
-            }
-        }
-        return b0;
-    } else if (inputEncoding == 2) {
-        if (pos < 2) return 0;
-        let b0: u32 = bswap<u16>(load<u16>(buf + pos - 2));
-        if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
-            let b1: u32 = bswap<u16>(load<u16>(buf + pos - 4));
-            if (b1 >= 0xD800 && b1 <= 0xDBFF) {
-                return ((b1 - 0xD800) << 10) + (b0 - 0xDC00) + 0x10000;
-            }
-        }
-        return b0;
-    } else if (inputEncoding == 3) {
-        if (pos < 4) return 0;
-        return load<u32>(buf + pos - 4);
-    } else if (inputEncoding == 4) {
-        if (pos < 4) return 0;
-        return bswap<u32>(load<u32>(buf + pos - 4));
     }
-    return 0;
+    return b0;
 }
 
+@inline
 export function peekPrevCharLen(pos: u32): u32 {
     if (pos == 0 || pos > inputLength) return 0;
     let buf: usize = getInputBuffer();
-    if (inputEncoding == 0) {
-        let p: u32 = pos - 1;
-        let b: u32 = load<u8>(buf + p);
-        if ((b & 0x80) == 0) return 1;
-        let count: u32 = 1;
-        while (p > 0 && (load<u8>(buf + p) & 0xC0) == 0x80 && count < 4) {
-            p--;
-            count++;
-        }
-        let lead: u32 = load<u8>(buf + p);
-        if ((lead & 0xC0) != 0x80) {
-            let len = peekCharLen(p);
-            if (p + len == pos) return len;
-        }
-        return 1;
-    } else if (inputEncoding == 1 || inputEncoding == 2) {
-        if (pos < 2) return pos;
-        let b0: u32 = inputEncoding == 1 ? load<u16>(buf + pos - 2) : bswap<u16>(load<u16>(buf + pos - 2));
-        if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 4) {
-            let b1: u32 = inputEncoding == 1 ? load<u16>(buf + pos - 4) : bswap<u16>(load<u16>(buf + pos - 4));
-            if (b1 >= 0xD800 && b1 <= 0xDBFF) return 4;
-        }
-        return 2;
+    let b0: u32 = load<u16>(buf + (((pos - 1) as usize) << 1));
+    if (b0 >= 0xDC00 && b0 <= 0xDFFF && pos >= 2) {
+        let b1: u32 = load<u16>(buf + (((pos - 2) as usize) << 1));
+        if (b1 >= 0xD800 && b1 <= 0xDBFF) return 2;
     }
-    return pos >= 4 ? 4 : pos;
+    return 1;
 }
 `;
   lexerCode += `export let inputLength: u32 = 0;
@@ -642,6 +519,14 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         branchCode += wordBoundaryCheck;
         branchCode += `        }\n`;
         branchCode += `      }\n`;
+      } else if (
+        val === "." &&
+        Array.from(regexTokens.values()).some((r) => r.includes("\\.\\d") || r.includes("\\.[0-9]"))
+      ) {
+        branchCode += `      if (!(lexPos + char0Len < inputLength && peekChar(lexPos + char0Len) >= 48 && peekChar(lexPos + char0Len) <= 57)) {\n`;
+        branchCode += `        let cPos = lexPos + char0Len;\n`;
+        branchCode += wordBoundaryCheck;
+        branchCode += `      }\n`;
       } else {
         branchCode += `      {\n`;
         branchCode += `        let cPos = lexPos + char0Len;\n`;
@@ -828,19 +713,41 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
             lexerCode += `        let mwkToken = checkMultiWordKeyword(lexPos, lexLen);\n`;
             lexerCode += `        if (mwkToken != 0) { return mwkToken; }\n`;
           }
-          lexerCode += `        // Keyword extraction optimization\n`;
-          lexerCode += `        let kwMatch = false;\n`;
-          lexerCode += `        let cPos = lexPos;\n`;
-          for (const [kw, _] of keywordTokens.entries()) {
-            const kwTokenInt = normalized.symToInt.get(`"${kw}"`);
-            const kwCps = toCodePoints(kw);
-            lexerCode += `        kwMatch = true; cPos = lexPos;\n`;
-            for (let i = 0; i < kwCps.length; i++) {
-              lexerCode += `        if (kwMatch && peekChar(cPos) == ${kwCps[i]}) { cPos += peekCharLen(cPos); } else { kwMatch = false; }\n`;
+          if (keywordTokens.size > 0) {
+            lexerCode += `        // Keyword extraction optimization (bucketed by length & first code point)\n`;
+            const kwByLen = new Map<number, { kw: string; kwTokenInt: number | undefined; kwCps: number[] }[]>();
+            for (const [kw, _] of keywordTokens.entries()) {
+              const kwTokenInt = normalized.symToInt.get(`"${kw}"`);
+              const kwCps = toCodePoints(kw);
+              if (kwCps.length === 0) continue;
+              let bucket = kwByLen.get(kw.length);
+              if (!bucket) {
+                bucket = [];
+                kwByLen.set(kw.length, bucket);
+              }
+              bucket.push({ kw, kwTokenInt, kwCps });
             }
-            lexerCode += `        if (kwMatch && (cPos - lexPos == lexLen)) {\n`;
-            lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
-            lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.${tokenName}) == 0) return SyntaxType.T_${kwTokenInt};\n`;
+            lexerCode += `        switch (lexLen) {\n`;
+            for (const [len, bucket] of kwByLen.entries()) {
+              lexerCode += `          case ${len}: {\n`;
+              lexerCode += `            let firstCp = peekChar(lexPos);\n`;
+              lexerCode += `            let kwMatch = false;\n`;
+              lexerCode += `            let cPos: u32 = 0;\n`;
+              for (const { kwTokenInt, kwCps } of bucket) {
+                lexerCode += `            if (firstCp == ${kwCps[0]}) {\n`;
+                lexerCode += `              kwMatch = true; cPos = lexPos + peekCharLen(lexPos);\n`;
+                for (let i = 1; i < kwCps.length; i++) {
+                  lexerCode += `              if (kwMatch && peekChar(cPos) == ${kwCps[i]}) { cPos += peekCharLen(cPos); } else { kwMatch = false; }\n`;
+                }
+                lexerCode += `              if (kwMatch && (cPos - lexPos == lexLen)) {\n`;
+                lexerCode += `                if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
+                lexerCode += `                if (load<u8>(expected_tokens + <u32>SyntaxType.${tokenName}) == 0) return SyntaxType.T_${kwTokenInt};\n`;
+                lexerCode += `              }\n`;
+                lexerCode += `            }\n`;
+              }
+              lexerCode += `            break;\n`;
+              lexerCode += `          }\n`;
+            }
             lexerCode += `        }\n`;
           }
         }
@@ -863,20 +770,42 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         }
 
         if (reservedKey) {
-          lexerCode += `        // Reserved keywords override\n`;
-          lexerCode += `        let kwMatch2 = false;\n`;
-          lexerCode += `        let cPos2 = lexPos;\n`;
           const reservedTokens = normalized.reservedKeywords.get(reservedKey)!;
-          for (const rt of reservedTokens) {
-            const rtVal = rt.startsWith('"') ? rt.slice(1, -1) : rt;
-            const kwTokenInt = normalized.symToInt.get(rt);
-            const rtCps = toCodePoints(rtVal);
-            lexerCode += `        kwMatch2 = true; cPos2 = lexPos;\n`;
-            for (let i = 0; i < rtCps.length; i++) {
-              lexerCode += `        if (kwMatch2 && peekChar(cPos2) == ${rtCps[i]}) { cPos2 += peekCharLen(cPos2); } else { kwMatch2 = false; }\n`;
+          if (reservedTokens.size > 0) {
+            lexerCode += `        // Reserved keywords override (bucketed by length & first code point)\n`;
+            const rtByLen = new Map<number, { kwTokenInt: number | undefined; rtCps: number[] }[]>();
+            for (const rt of reservedTokens) {
+              const rtVal = rt.startsWith('"') ? rt.slice(1, -1) : rt;
+              const kwTokenInt = normalized.symToInt.get(rt);
+              const rtCps = toCodePoints(rtVal);
+              if (rtCps.length === 0) continue;
+              let bucket = rtByLen.get(rtVal.length);
+              if (!bucket) {
+                bucket = [];
+                rtByLen.set(rtVal.length, bucket);
+              }
+              bucket.push({ kwTokenInt, rtCps });
             }
-            lexerCode += `        if (kwMatch2 && (cPos2 - lexPos == lexLen)) {\n`;
-            lexerCode += `           return SyntaxType.T_${kwTokenInt};\n`;
+            lexerCode += `        switch (lexLen) {\n`;
+            for (const [len, bucket] of rtByLen.entries()) {
+              lexerCode += `          case ${len}: {\n`;
+              lexerCode += `            let firstCp2 = peekChar(lexPos);\n`;
+              lexerCode += `            let kwMatch2 = false;\n`;
+              lexerCode += `            let cPos2: u32 = 0;\n`;
+              for (const { kwTokenInt, rtCps } of bucket) {
+                lexerCode += `            if (firstCp2 == ${rtCps[0]}) {\n`;
+                lexerCode += `              kwMatch2 = true; cPos2 = lexPos + peekCharLen(lexPos);\n`;
+                for (let i = 1; i < rtCps.length; i++) {
+                  lexerCode += `              if (kwMatch2 && peekChar(cPos2) == ${rtCps[i]}) { cPos2 += peekCharLen(cPos2); } else { kwMatch2 = false; }\n`;
+                }
+                lexerCode += `              if (kwMatch2 && (cPos2 - lexPos == lexLen)) {\n`;
+                lexerCode += `                return SyntaxType.T_${kwTokenInt};\n`;
+                lexerCode += `              }\n`;
+                lexerCode += `            }\n`;
+              }
+              lexerCode += `            break;\n`;
+              lexerCode += `          }\n`;
+            }
             lexerCode += `        }\n`;
           }
         }
@@ -893,64 +822,65 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   // After identifier matching, check if ident + space + next word forms a multi-word keyword
   let helpers = "";
   if (sp && sp.multiWordKeywords && sp.multiWordKeywords.length > 0) {
-    helpers += `
-  // --- Multi-Word Keyword Lookahead ---
-`;
-    helpers += `  // After matching an identifier, speculatively check for multi-word keywords
-`;
-    // Generate a post-ident check function
-    helpers += `function checkMultiWordKeyword(startPos: u32, identLen: u32): i32 {
-`;
-    helpers += `  let afterIdent = startPos + identLen;
-`;
-    helpers += `  // Skip whitespace between words
-`;
-    helpers += `  let wsPos = afterIdent;
-`;
-    helpers += `  while (wsPos < inputLength) { let ch = peekChar(wsPos); if (ch == 32 || ch == 9) { wsPos += peekCharLen(wsPos); } else { break; } }\n`;
-    helpers += `  if (wsPos == afterIdent) return 0; // No whitespace = not multi-word\n`;
-
+    const validMwkEntries: { mwk: string; firstWord: string; restWords: string; tokenInt: number }[] = [];
+    const firstWordLens = new Set<number>();
     for (const mwk of sp.multiWordKeywords) {
       const words = mwk.split(/\s+/);
       if (words.length < 2) continue;
       const firstWord = words[0];
       const restWords = words.slice(1).join(" ");
-
       const tokenInt = normalized.symToInt.get(`"${mwk}"`) ?? normalized.symToInt.get(mwk);
       if (tokenInt) {
-        helpers += `  // "${mwk}"\n`;
-        helpers += `  {\n`;
-        helpers += `    let mMatch = true;\n`;
-        helpers += `    let mPos = startPos;\n`;
-        const firstCps = toCodePoints(firstWord);
-        for (let i = 0; i < firstCps.length; i++) {
-          helpers += `    if (mMatch && peekChar(mPos) == ${firstCps[i]}) { mPos += peekCharLen(mPos); } else { mMatch = false; }\n`;
-        }
-        helpers += `    if (mMatch && (mPos - startPos == identLen)) {\n`;
-        helpers += `      let rPos = wsPos;\n`;
-        const restCps = toCodePoints(restWords);
-        for (let i = 0; i < restCps.length; i++) {
-          helpers += `      if (mMatch && peekChar(rPos) == ${restCps[i]}) { rPos += peekCharLen(rPos); } else { mMatch = false; }\n`;
-        }
-        helpers += `      if (mMatch && rPos <= inputLength) {\n`;
-        helpers += `        let afterCh = rPos < inputLength ? peekChar(rPos) : 0;\n`;
-        helpers += `        if (afterCh == 0 || !((afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57))) {\n`;
-        helpers += `          lexLen = <u32>(rPos - startPos);\n`;
-        helpers += `          return SyntaxType.T_${tokenInt};\n`;
-        helpers += `        }\n`;
-        helpers += `      }\n`;
-        helpers += `    }\n`;
-        helpers += `  }\n`;
+        validMwkEntries.push({ mwk, firstWord, restWords, tokenInt });
+        firstWordLens.add(firstWord.length);
       }
     }
-    helpers += `  return 0;
-`;
-    helpers += `}
-`;
+    helpers += `\n  // --- Multi-Word Keyword Lookahead ---\n`;
+    helpers += `  // After matching an identifier, speculatively check for multi-word keywords\n`;
+    helpers += `function checkMultiWordKeyword(startPos: u32, identLen: u32): i32 {\n`;
+    if (firstWordLens.size > 0) {
+      const lenCheck = Array.from(firstWordLens)
+        .map((l) => `identLen != ${l}`)
+        .join(" && ");
+      helpers += `  if (${lenCheck}) return 0;\n`;
+    }
+    helpers += `  let afterIdent = startPos + identLen;\n`;
+    helpers += `  // Skip whitespace between words\n`;
+    helpers += `  let wsPos = afterIdent;\n`;
+    helpers += `  while (wsPos < inputLength) { let ch = peekChar(wsPos); if (ch == 32 || ch == 9) { wsPos += peekCharLen(wsPos); } else { break; } }\n`;
+    helpers += `  if (wsPos == afterIdent) return 0; // No whitespace = not multi-word\n`;
+
+    for (const { mwk, firstWord, restWords, tokenInt } of validMwkEntries) {
+      helpers += `  // "${mwk}"\n`;
+      helpers += `  if (identLen == ${firstWord.length}) {\n`;
+      helpers += `    let mMatch = true;\n`;
+      helpers += `    let mPos = startPos;\n`;
+      const firstCps = toCodePoints(firstWord);
+      for (let i = 0; i < firstCps.length; i++) {
+        helpers += `    if (mMatch && peekChar(mPos) == ${firstCps[i]}) { mPos += peekCharLen(mPos); } else { mMatch = false; }\n`;
+      }
+      helpers += `    if (mMatch && (mPos - startPos == identLen)) {\n`;
+      helpers += `      let rPos = wsPos;\n`;
+      const restCps = toCodePoints(restWords);
+      for (let i = 0; i < restCps.length; i++) {
+        helpers += `      if (mMatch && peekChar(rPos) == ${restCps[i]}) { rPos += peekCharLen(rPos); } else { mMatch = false; }\n`;
+      }
+      helpers += `      if (mMatch && rPos <= inputLength) {\n`;
+      helpers += `        let afterCh = rPos < inputLength ? peekChar(rPos) : 0;\n`;
+      helpers += `        if (afterCh == 0 || !((afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57))) {\n`;
+      helpers += `          lexLen = <u32>(rPos - startPos);\n`;
+      helpers += `          return SyntaxType.T_${tokenInt};\n`;
+      helpers += `        }\n`;
+      helpers += `      }\n`;
+      helpers += `    }\n`;
+      helpers += `  }\n`;
+    }
+    helpers += `  return 0;\n`;
+    helpers += `}\n`;
   }
   lexerCode += `
   lexLen = peekCharLen(lexPos);
-  if (lexLen == 0) lexLen = (inputEncoding == 0 ? 1 : (inputEncoding == 1 || inputEncoding == 2 ? 2 : 4)); // Fail-safe
+  if (lexLen == 0) lexLen = 1; // Fail-safe
   return SyntaxType.ERROR;
 }
 `;

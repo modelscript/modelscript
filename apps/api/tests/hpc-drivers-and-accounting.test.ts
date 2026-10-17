@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { JobQueue } from "../src/jobs.js";
 import { calculateCostCredits, COMPUTE_PROFILES } from "../src/services/hpc/compute-profiles.js";
 import { LocalProcessDriver } from "../src/services/hpc/drivers/local-driver.js";
 import { parseMemoryStringToBytes, parseSacctOutput, SlurmDriver } from "../src/services/hpc/drivers/slurm-driver.js";
@@ -381,5 +382,33 @@ test("HPC Drivers & Cost Accounting", async (t) => {
     assert.strictEqual(metrics.suspiciousActivity, "credit_exhausted");
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  await t.test("JobQueue executes multiple cluster jobs concurrently up to configured limit", async () => {
+    const queue = new JobQueue({ concurrency: 3 });
+    let activeNow = 0;
+    let peakActive = 0;
+
+    const makeTask = () => async () => {
+      activeNow++;
+      if (activeNow > peakActive) peakActive = activeNow;
+      await new Promise((r) => setTimeout(r, 40));
+      activeNow--;
+    };
+
+    for (let i = 0; i < 6; i++) {
+      queue.enqueue(`concurrent-job-${i}`, makeTask());
+    }
+
+    let attempts = 0;
+    while (attempts < 40) {
+      const allDone = [0, 1, 2, 3, 4, 5].every((i) => queue.getStatus(`concurrent-job-${i}`)?.status === "completed");
+      if (allDone) break;
+      await new Promise((r) => setTimeout(r, 20));
+      attempts++;
+    }
+
+    assert.strictEqual(peakActive, 3, "Peak concurrent jobs must match configured concurrency limit (3)");
+    assert.strictEqual(queue.activeCount, 0, "All jobs should be finished");
   });
 });

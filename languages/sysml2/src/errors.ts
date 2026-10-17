@@ -129,6 +129,12 @@ export const SysML2ErrorCode = {
     severity: "error" as DiagnosticSeverity,
     message: (pkg: string) => `Import '${pkg}' could not be resolved.`,
   },
+  UNRESOLVED_TRANSITION_STATE: {
+    code: 2006,
+    rule: "unresolved-transition-state",
+    severity: "error" as DiagnosticSeverity,
+    message: (stateName: string) => `Transition state '${stateName}' could not be resolved in enclosing state machine.`,
+  },
 
   // ── 3xxx: Type System & Static Checking ────────────────────────────────
   TYPE_MISMATCH: {
@@ -246,6 +252,37 @@ export const SysML2ErrorCode = {
     severity: "info" as DiagnosticSeverity,
     message: (name: string) => `Requirement '${name}' should have a specified subject or satisfy relation`,
   },
+  EMPTY_PACKAGE: {
+    code: 4007,
+    rule: "empty-package",
+    severity: "info" as DiagnosticSeverity,
+    message: (name: string) => `Package '${name}' has no members`,
+  },
+  REQUIREMENT_WITHOUT_CONSTRAINT: {
+    code: 4008,
+    rule: "requirement-without-constraint",
+    severity: "info" as DiagnosticSeverity,
+    message: (name: string) => `Requirement '${name}' has no constraints or textual documentation`,
+  },
+  EMPTY_VERIFICATION_CASE: {
+    code: 4009,
+    rule: "empty-verification-case",
+    severity: "info" as DiagnosticSeverity,
+    message: (name: string) => `Verification case '${name}' has no verify requirements or sub-actions`,
+  },
+  MISSING_VERIFICATION_OBJECTIVE: {
+    code: 4010,
+    rule: "missing-verification-objective",
+    severity: "warning" as DiagnosticSeverity,
+    message: (name: string) => `Verification case '${name}' has no verification objective or verify statement`,
+  },
+  UNVERIFIED_REQUIREMENT: {
+    code: 4011,
+    rule: "unverified-requirement",
+    severity: "warning" as DiagnosticSeverity,
+    message: (name: string, pkgName: string) =>
+      `Requirement '${name}' is not verified by any verification case in package '${pkgName}'`,
+  },
 
   // ── 5xxx: Behavior, State Machines & Formal Verification ────────────────
   CONSTRAINT_VIOLATED: {
@@ -281,7 +318,7 @@ export const SysML2ErrorCode = {
   ACTIVITY_CFA_UNREACHABLE: {
     code: 5004,
     rule: "activity-cfa-unreachable",
-    severity: "error" as DiagnosticSeverity,
+    severity: "warning" as DiagnosticSeverity,
     message: (detail: string) => detail,
   },
   ACTIVITY_SOUNDNESS_VIOLATION: {
@@ -302,12 +339,6 @@ export const SysML2ErrorCode = {
     severity: "warning" as DiagnosticSeverity,
     message: (name: string) => `Package '${name}' should start with an uppercase letter`,
   },
-  EMPTY_PACKAGE: {
-    code: 4007,
-    rule: "empty-package",
-    severity: "info" as DiagnosticSeverity,
-    message: (name: string) => `Package '${name}' has no members`,
-  },
   STATEMACHINE_NONDETERMINISTIC: {
     code: 5007,
     rule: "statemachine-nondeterministic",
@@ -319,6 +350,59 @@ export const SysML2ErrorCode = {
     rule: "statemachine-deadlock",
     severity: "error" as DiagnosticSeverity,
     message: (detail: string) => `Deadlock gap detected in transition guards: ${detail}`,
+  },
+  SATISFYING_VIOLATED_REQUIREMENT: {
+    code: 5009,
+    rule: "satisfying-violated-requirement",
+    severity: "error" as DiagnosticSeverity,
+    message: (partName: string, reqName: string, violations: string) =>
+      `Part '${partName}' cannot satisfy requirement '${reqName}': ${violations}`,
+  },
+  CONFLICTING_REQUIREMENTS: {
+    code: 5010,
+    rule: "conflicting-requirements",
+    severity: "error" as DiagnosticSeverity,
+    message: (pkgName: string, conflictNames: string, witnessStr: string = "") =>
+      `Conflicting requirements in '${pkgName}': ${conflictNames} cannot be simultaneously satisfied.${witnessStr}`,
+  },
+  INTERPROCEDURAL_CONTRACT_VIOLATION: {
+    code: 5011,
+    rule: "interprocedural-contract-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (detail: string) => detail,
+  },
+  LOOP_NON_TERMINATING: {
+    code: 5012,
+    rule: "loop-non-terminating",
+    severity: "warning" as DiagnosticSeverity,
+    message: (detail: string) => detail,
+  },
+  DECISION_TABLE_NON_EXHAUSTIVE: {
+    code: 5013,
+    rule: "decision-table-non-exhaustive",
+    severity: "warning" as DiagnosticSeverity,
+    message: (decideName: string, detail?: string) =>
+      detail ? `Decision node '${decideName}' is not exhaustive: ${detail}` : decideName,
+  },
+  DECISION_TABLE_NONDETERMINISTIC: {
+    code: 5014,
+    rule: "decision-table-nondeterministic",
+    severity: "error" as DiagnosticSeverity,
+    message: (decideName: string, detail?: string) =>
+      detail ? `Decision node '${decideName}' has overlapping branch guards: ${detail}` : decideName,
+  },
+  DECISION_TABLE_DEAD_BRANCH: {
+    code: 5015,
+    rule: "decision-table-dead-branch",
+    severity: "warning" as DiagnosticSeverity,
+    message: (decideName: string, detail?: string) =>
+      detail ? `Decision node '${decideName}' has dead branch(es): ${detail}` : decideName,
+  },
+  ACTIVITY_SAFETY_VIOLATION: {
+    code: 5016,
+    rule: "activity-safety-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (detail: string) => detail,
   },
 } as const;
 
@@ -337,4 +421,29 @@ export function createSysML2Diagnostic(
     message: def.message(...args),
     ...options,
   };
+}
+
+const sysml2ErrorsByCode = new Map<number, ErrorCodeDef>();
+for (const def of Object.values(SysML2ErrorCode)) {
+  if (!sysml2ErrorsByCode.has(def.code)) {
+    sysml2ErrorsByCode.set(def.code, def);
+  }
+}
+
+/**
+ * Look up a SysML v2 error code definition by numeric code or rule name.
+ */
+export function getSysML2ErrorCodeDef(codeOrRule: number | string): ErrorCodeDef | undefined {
+  if (typeof codeOrRule === "number") {
+    return sysml2ErrorsByCode.get(codeOrRule);
+  }
+  const numMatch = /^S?(\d+)$/i.exec(codeOrRule.trim());
+  if (numMatch) {
+    return sysml2ErrorsByCode.get(Number(numMatch[1]));
+  }
+  const norm = codeOrRule.toLowerCase();
+  for (const def of Object.values(SysML2ErrorCode)) {
+    if (def.rule.toLowerCase() === norm) return def;
+  }
+  return undefined;
 }

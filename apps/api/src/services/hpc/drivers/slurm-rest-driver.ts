@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import path from "node:path";
-import { calculateCostCredits } from "../compute-profiles.js";
+import { calculateCostCredits, getComputeProfile } from "../compute-profiles.js";
 import type {
   ComputeProfile,
   HpcDriver,
@@ -149,11 +149,13 @@ export class SlurmRestDriver implements HpcDriver {
       throw new Error(`Failed to parse job_id from Slurm REST response: ${JSON.stringify(res.data)}`);
     }
 
+    const profile = getComputeProfile(spec.profileId);
+
     return {
       nativeJobId,
       driverType: "slurm-rest",
       allocatedResources: spec.resources,
-      estimatedCreditsPerHour: 10,
+      estimatedCreditsPerHour: profile.costCreditsPerHour,
     };
   }
 

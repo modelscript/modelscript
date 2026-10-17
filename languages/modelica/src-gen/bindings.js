@@ -133,6 +133,50 @@ export class Parser {
    * if an old tree and edit bounds are provided.
    */
   parse(source, oldTree = null, editStart = 0, editOldEnd = 0, editNewEnd = 0) {
+    const isCharKernel = Boolean(
+      this.runtime.wasmExports?.lsp_isCharOffsetKernel?.() ||
+      this.runtime.nativeAddon?.lsp_isCharOffsetKernel?.(),
+    );
+    if (isCharKernel) {
+      const str =
+        typeof source === "string"
+          ? source
+          : new TextDecoder("utf-8").decode(source);
+      const byteLen = str.length * 2;
+      const u8 = new Uint8Array(byteLen);
+      const u16 = new Uint16Array(u8.buffer);
+      for (let i = 0; i < str.length; i++) {
+        u16[i] = str.charCodeAt(i);
+      }
+      const inputPtr = this.runtime.ensureInputBuffer
+        ? this.runtime.ensureInputBuffer(byteLen)
+        : this.runtime.getInputBuffer();
+      this.runtime.writeU8Array(inputPtr, u8);
+      if (this.runtime.wasmExports?.setInputLength) {
+        this.runtime.wasmExports.setInputLength(str.length);
+      } else if (this.runtime.nativeAddon?.setInputLength) {
+        this.runtime.nativeAddon.setInputLength(str.length);
+      }
+      const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
+      let startOff = editStart;
+      let oldEndOff = editOldEnd;
+      let newEndOff = editNewEnd > 0 ? editNewEnd : str.length;
+      if (
+        oldTreePtr === 0 ||
+        (startOff === 0 && oldEndOff === 0 && newEndOff === 0)
+      ) {
+        startOff = 0;
+        oldEndOff = 0;
+        newEndOff = str.length;
+      }
+      const astRoot = this.runtime.parse(
+        oldTreePtr,
+        startOff,
+        oldEndOff,
+        newEndOff,
+      );
+      return astRoot === 0 ? null : new ASTNode(this.runtime, astRoot);
+    }
     const currentEnc =
       typeof this.runtime.getInputEncoding === "function"
         ? this.runtime.getInputEncoding()
@@ -257,7 +301,7 @@ export class Parser {
     };
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
     let editStartByte = charToByteOffset(editStart);
-    let editOldEndByte = editOldEnd * encMul;
+    let editOldEndByte = charToByteOffset(editOldEnd);
     let editNewEndByte =
       editNewEnd > 0 ? charToByteOffset(editNewEnd) : view.length;
     if (
@@ -445,15 +489,15 @@ export const SYNTAX_NAMES =
     ? ["ERROR","/\\s+/","\"end if\"","\"end for\"","\"end while\"","\"end when\"","\"final\"","\";\"","\"within\"","\"encapsulated\"","\"partial\"","\"class\"","\"model\"","\"block\"","\"type\"","\"package\"","\"expandable\"","\"connector\"","\"pure\"","\"impure\"","\"function\"","\"operator\"","\"record\"","\"end\"","\"extends\"","\"=\"","\"enumeration\"","\"(\"","\":\"","\")\"","\"der\"","\",\"","\"input\"","\"output\"","\"flow\"","\"stream\"","\"public\"","\"protected\"","\"external\"","\"redeclare\"","\"inner\"","\"outer\"","\"replaceable\"","\"import\"","\".*\"","\".\"","\"*\"","\"{\"","\"}\"","\"constrainedby\"","\"break\"","\"discrete\"","\"parameter\"","\"constant\"","\"if\"","\"each\"","\"initial\"","\"equation\"","\"algorithm\"","\":=\"","\"return\"","\"then\"","\"elseif\"","\"else\"","\"for\"","\"loop\"","\"in\"","\"while\"","\"when\"","\"elsewhen\"","\"connect\"","\"or\"","\"and\"","\"not\"","\"<\"","\"<=\"","\">\"","\">=\"","\"==\"","\"<>\"","\"+\"","\"-\"","\".+\"","\".-\"","\"/\"","\"./\"","\"^\"","\".^\"","\"'\"","\"false\"","\"true\"","\"time\"","\"[\"","\"]\"","\"annotation\"","/[a-zA-Z_][a-zA-Z0-9_]*|'([^'\\\\\\r\\n]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\d+/","/\\d+\\.\\d*(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?|\\d+[eE][+-]?\\d+/","program","stored_definition","within_clause","class_definition","class_prefixes","class_specifier","long_class_specifier","short_class_specifier","der_class_specifier","base_prefix","enum_list","enumeration_literal","composition","external_clause","language_specification","external_function_call","element_list","element","import_clause","import_list","extends_clause","constraining_clause","class_or_inheritance_modification","argument_or_inheritance_modification_list","inheritance_modification","component_clause","type_prefix","component_list","component_declaration","condition_attribute","declaration","modification","modification_expression","class_modification","argument_list","argument","element_modification_or_replaceable","element_modification","element_redeclaration","element_replaceable","component_clause1","component_declaration1","short_class_definition","equation_section","algorithm_section","some_equation","equation_or_procedure","simple_equation","statement","statement_or_procedure","assignment_statement","function_call","if_equation","if_statement","for_equation","for_statement","for_indices","for_index","while_statement","when_equation","when_statement","connect_equation","expression","primary","lhs_expression","lhs_primary","unsigned_number","type_specifier","name","component_reference","result_reference","function_call_args","function_arguments","function_arguments_non_first","array_arguments","array_arguments_non_first","named_arguments","named_argument","function_argument","function_partial_application","output_expression_list","expression_list","array_subscripts","subscript","description","description_string","annotation_clause","_START","_within_clause?","_\"final\"?","_(\"final\"? class_definition \";\")*","_name?","_\"encapsulated\"?","_\"partial\"?","_(\"class\" | \"model\" | \"block\" | \"type\" | \"package\" | (\"expandable\"? \"connector\") | ((\"pure\" | \"impure\")? \"function\") | (\"operator\" (\"record\" | \"function\")?) | \"record\")","_\"expandable\"?","_(\"pure\" | \"impure\")","_(\"pure\" | \"impure\")?","_(\"record\" | \"function\")","_(\"record\" | \"function\")?","_(long_class_specifier | short_class_specifier | der_class_specifier)","_description_string?","_identifier?","_((identifier description_string? composition \"end\" identifier?) | (\"extends\" identifier class_modification? description_string? composition \"end\" identifier?))","_class_modification?","_array_subscripts?","_class_modification?_1","_((identifier \"=\" base_prefix type_specifier array_subscripts? class_modification? description) | (identifier \"=\" \"enumeration\" \"(\" (enum_list? | \":\") \")\" description))","_enum_list?","_(enum_list? | \":\")","_(\",\" identifier)*","_(\"input\" | \"output\" | \"flow\" | \"stream\")","_(\"input\" | \"output\" | \"flow\" | \"stream\")?","_(\",\" enumeration_literal)*","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)","_((\"public\" element_list) | (\"protected\" element_list) | equation_section | algorithm_section)*","_(annotation_clause \";\")?","_(external_clause \";\" (annotation_clause \";\")?)?","_language_specification?","_external_function_call?","_annotation_clause?","_expression_list?","_((component_reference \"=\" identifier \"(\" expression_list? \")\") | (identifier \"(\" expression_list? \")\"))","_((element \";\") | (annotation_clause \";\"))","_((element \";\") | (annotation_clause \";\"))*","_(import_clause | extends_clause | (\"redeclare\"? \"final\"? \"inner\"? \"outer\"? (class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) (constraining_clause description)?))))","_\"redeclare\"?","_\"inner\"?","_\"outer\"?","_(class_definition | component_clause | (\"replaceable\" (class_definition | component_clause) (constraining_clause description)?))","_(class_definition | component_clause)","_(constraining_clause description)?","_((identifier \"=\" name) | (name (\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))?))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))","_(\"*\" | (\"{\" import_list \"}\"))","_(\".*\" | (\".\" (\"*\" | (\"{\" import_list \"}\"))))?","_class_or_inheritance_modification?","_(\"constrainedby\" | \"extends\")","_class_modification?_2","_argument_or_inheritance_modification_list?","_(argument | inheritance_modification)","_(\",\" (argument | inheritance_modification))*","_(connect_equation | identifier)","_((type_prefix type_specifier array_subscripts? component_list) | (type_specifier array_subscripts? component_list))","_(\"flow\" | \"stream\")","_(\"discrete\" | \"parameter\" | \"constant\")","_(\"discrete\" | \"parameter\" | \"constant\")?","_(\"input\" | \"output\")","_(\"input\" | \"output\")?","_(((\"flow\" | \"stream\") (\"discrete\" | \"parameter\" | \"constant\")? (\"input\" | \"output\")?) | ((\"discrete\" | \"parameter\" | \"constant\") (\"input\" | \"output\")?) | (\"input\" | \"output\"))","_(\",\" component_declaration)*","_condition_attribute?","_modification?","_(\"=\" modification_expression)?","_((class_modification (\"=\" modification_expression)?) | (\"=\" modification_expression))","_(expression | \"break\")","_argument_list?","_(\",\" argument)*","_(element_modification_or_replaceable | element_redeclaration)","_\"each\"?","_\"final\"?_1","_(element_modification | element_replaceable)","_description_string?_1","_(class_definition | component_clause1 | element_replaceable)","_(class_definition | component_clause1)","_constraining_clause?","_((type_prefix type_specifier component_declaration1) | (type_specifier component_declaration1))","_\"initial\"?","_((some_equation \";\") | (annotation_clause \";\"))","_((some_equation \";\") | (annotation_clause \";\"))*","_((statement \";\") | (annotation_clause \";\"))","_((statement \";\") | (annotation_clause \";\"))*","_(equation_or_procedure | if_equation | for_equation | connect_equation | when_equation)","_(simple_equation | function_call)","_(statement_or_procedure | (\"(\" output_expression_list \")\" \":=\" function_call) | \"break\" | \"return\" | if_statement | for_statement | while_statement | when_statement)","_(function_call | assignment_statement)","_((component_reference \":=\" expression) | (\"der\" \"(\" component_reference \")\" \":=\" expression))","_(some_equation \";\")*","_(some_equation \";\")*_1","_(\"elseif\" expression \"then\" (some_equation \";\")*)*","_(some_equation \";\")*_2","_(\"else\" (some_equation \";\")*)?","_(statement \";\")*","_(statement \";\")*_1","_(\"elseif\" expression \"then\" (statement \";\")*)*","_(statement \";\")*_2","_(\"else\" (statement \";\")*)?","_(\",\" for_index)*","_(\"in\" expression)?","_(\"elsewhen\" expression \"then\" (some_equation \";\")*)*","_(\"elsewhen\" expression \"then\" (statement \";\")*)*","_(primary | (\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression) | (expression \":\" expression) | (expression \"or\" expression) | (expression \"and\" expression) | (\"not\" expression) | (expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (expression (\"^\" | \".^\") expression) | (primary \"'\"))","_(\"elseif\" expression \"then\" expression)*","_(\"if\" expression \"then\" expression (\"elseif\" expression \"then\" expression)* \"else\" expression)","_(expression \":\" expression)","_(expression \"or\" expression)","_(expression \"and\" expression)","_(\"not\" expression)","_(\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\")","_(expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")","_(expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"+\" | \"-\" | \".+\" | \".-\")_1","_((\"+\" | \"-\" | \".+\" | \".-\") expression)","_(\"*\" | \"/\" | \".*\" | \"./\")","_(expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(\"^\" | \".^\")","_(expression (\"^\" | \".^\") expression)","_(primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | \"end\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"initial\" \"(\" \")\") | (\"pure\" \"(\" function_arguments? \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" (array_subscripts | (\".\" identifier))?) | (\"[\" (expression_list (\";\" expression_list)*) \"]\") | (\"{\" array_arguments \"}\"))","_function_arguments?","_(expression | output_expression_list)","_(array_subscripts | (\".\" identifier))","_(array_subscripts | (\".\" identifier))?","_(\";\" expression_list)*","_(lhs_primary | (lhs_expression \":\" expression) | (lhs_expression \"or\" expression) | (lhs_expression \"and\" expression) | (\"not\" expression) | (lhs_expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression) | (lhs_expression (\"+\" | \"-\" | \".+\" | \".-\") expression) | ((\"+\" | \"-\" | \".+\" | \".-\") expression) | (lhs_expression (\"*\" | \"/\" | \".*\" | \"./\") expression) | (lhs_expression (\"^\" | \".^\") expression) | (lhs_primary \"'\"))","_(lhs_expression \":\" expression)","_(lhs_expression \"or\" expression)","_(lhs_expression \"and\" expression)","_(lhs_expression (\"<\" | \"<=\" | \">\" | \">=\" | \"==\" | \"<>\") expression)","_(lhs_expression (\"+\" | \"-\" | \".+\" | \".-\") expression)","_(lhs_expression (\"*\" | \"/\" | \".*\" | \"./\") expression)","_(lhs_expression (\"^\" | \".^\") expression)","_(lhs_primary \"'\")","_(unsigned_number | string_literal | \"false\" | \"true\" | \"time\" | (component_reference function_call_args) | (\"der\" \"(\" expression_list \")\") | (\"pure\" \"(\" function_arguments? \")\") | component_reference | (\"(\" (expression | output_expression_list) \")\" (array_subscripts | (\".\" identifier))?) | (\"[\" (expression_list (\";\" expression_list)*) \"]\") | (\"{\" array_arguments \"}\"))","_(unsigned_integer | unsigned_real)","_((\".\" name) | name)","_(identifier | (name \".\" identifier))","_(name \".\" identifier)","_array_subscripts?_1","_(\".\" identifier array_subscripts?)*","_((identifier array_subscripts? (\".\" identifier array_subscripts?)*) | (\".\" identifier array_subscripts? (\".\" identifier array_subscripts?)*))","_(component_reference | \"time\" | (\"der\" \"(\" (component_reference | \"time\") (\",\" unsigned_integer)? \")\"))","_(component_reference | \"time\")","_(\",\" unsigned_integer)?","_((\"(\" \")\") | (\"(\" function_arguments \")\"))","_(\",\" function_arguments_non_first)?","_((function_argument (\",\" function_arguments_non_first)?) | (expression \"for\" for_indices) | named_arguments)","_((function_argument (\",\" function_arguments_non_first)?) | named_arguments)","_((\",\" array_arguments_non_first) | (\"for\" for_indices))","_((\",\" array_arguments_non_first) | (\"for\" for_indices))?","_(\",\" array_arguments_non_first)?","_(\",\" named_arguments)?","_(function_partial_application | expression)","_named_arguments?","_(() | (expression? \",\" expression? (\",\" expression?)*))","_expression?","_(\",\" expression?)*","_(\",\" expression)*","_(\",\" subscript)*","_(\":\" | expression)","_(\"+\" string_literal)*","identifier","string_literal","unsigned_integer","unsigned_real","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
-  typeof {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"2097": ()=>`From here:`,"4005": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;const mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:target.text;return`Protected element '${eName}' may not be modified, got '${mText}'.`},"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": (node,varName)=>`Invalid public variable ${varName&&varName.text?varName.text:node.text}, function variables that are not input/output must be protected.`,"4011": (node,varName)=>`Invalid protected variable ${varName&&varName.text?varName.text:node.text}, function variables that are input/output must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": (target,subNode)=>{if(subNode&&subNode.text&&subNode.text.startsWith("[")){return"Tuple expression can not be subscripted."}const exprText=subNode&&subNode.text?subNode.text:target?target.text:"";return`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${exprText?` Got the following expression: (${exprText.split(",").map(s=>s.trim()).join(", ")}).`:""}`},"4017": (_target,isAlgNode,isInitialNode,kindNode)=>{const isAlg=isAlgNode!=null&&isAlgNode.asNumber()==1;const isInitial=isInitialNode!=null&&isInitialNode.asNumber()==1;const kind=kindNode!=null?kindNode.asNumber():1;if(kind==5){if(isInitial){return isAlg?"Initial algorithm sections are not allowed in function.":"Initial equation sections are not allowed in function."}return"Equations are not allowed in function."}const kindStr=kind==1?"record":kind==2?"type":kind==3?"package":"connector";return isAlg?`Algorithm sections are not allowed in ${kindStr}.`:`Equations are not allowed in ${kindStr}.`},"2096": ()=>`From here:`,"4019": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration with a new type requires '${eName}' to be replaceable.`},"4068": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Invalid redeclaration of ${eName}, a redeclare may not have a condition attribute.`},"4063": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Base class targeted by class extends ${eName} not found in the inherited classes.`},"4061": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Illegal redeclare of element ${eName}, no inherited element with that name exists.`},"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": ()=>`Connect equations are not allowed in initial equation sections.`,"2090": ()=>`From here:`,"4026": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;let mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:"";if(mText.startsWith("=")){mText=" "+mText}return`Trying to override final element ${eName} with modifier '${mText}'.`},"2091": ()=>`From here:`,"4052": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of final component ${eName} is not allowed.`},"2092": ()=>`From here:`,"4053": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of constant component ${eName} is not allowed.`},"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": (_target,nameNode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";return`Function ${name} has more than one algorithm section or external declaration.`},"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4064": (_target,kindNode)=>{const k=kindNode!=null?kindNode.asNumber():0;const kindStr=k==1?"record":k==2?"type":"connector";return`Protected sections are not allowed in ${kindStr}.`},"4065": ()=>`Equations are not allowed in connector.`,"4066": ()=>`Algorithm sections are not allowed in connector.`,"5017": ()=>`A when-statement may not be used inside a function or a while, if, or for-clause.`,"4079": ()=>`'return' may not be used outside function.`,"4020": ()=>`time is not allowed in a function.`,"4078": ()=>`terminate is not allowed in a function.`,"4041": (_target,dimNode,nameNode)=>{const dim=dimNode&&dimNode.text?dimNode.text:"-1";const name=nameNode&&nameNode.text?nameNode.text:"component";return`Negative dimension index (${dim}) for component ${name}.`},"4070": (_target,nameNode,kindCode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";const k=kindCode!=null?kindCode.asNumber():0;const kindStr=k==1?"model":k==2?"record":k==3?"block":k==4?"connector":k==5?"package":k==6?"type":"class";return`Class specialization violation: ${name} is a ${kindStr}, which may not contain an external declaration.`},"3001": (target,expType,actType)=>{const typeNames=["Real","Integer","Boolean","String"];const eIdx=expType&&expType.asNumber?expType.asNumber():Number(expType);const aIdx=actType&&actType.asNumber?actType.asNumber():Number(actType);const expName=eIdx>=0&&eIdx<typeNames.length?typeNames[eIdx]:"";const actName=aIdx>=0&&aIdx<typeNames.length?typeNames[aIdx]:"";if(expName&&actName){return`Type mismatch in binding ${target.text}, expected subtype of ${expName}, got type ${actName}.`}return`Type mismatch in binding or modification expression '${target.text}'.`},"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": (target,lhsType,rhsType,isOldFrontend)=>{const typeNames=["Real","Integer","Boolean","String"];const lIdx=lhsType&&lhsType.asNumber?lhsType.asNumber():Number(lhsType);const rIdx=rhsType&&rhsType.asNumber?rhsType.asNumber():Number(rhsType);const lName=lIdx>=0&&lIdx<typeNames.length?typeNames[lIdx]:"Unknown";const rName=rIdx>=0&&rIdx<typeNames.length?typeNames[rIdx]:"Unknown";const isOld=isOldFrontend&&(isOldFrontend.asNumber?isOldFrontend.asNumber():Number(isOldFrontend))===1;if(isOld){const eqText2=target.text.replace(/\s+/g," ").replace(" = ","=").trim();return`Type mismatch in equation ${eqText2} of type ${lName}=${rName}.`}const eqText=target.text.replace(/\s+/g," ").trim();return`Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`},"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": (target,targetType,valType)=>{const typeNames=["Real","Integer","Boolean","String","Enumeration","Clock"];const tIdx=targetType&&targetType.asNumber?targetType.asNumber():Number(targetType);const vIdx=valType&&valType.asNumber?valType.asNumber():Number(valType);const tName=tIdx>=0&&tIdx<typeNames.length?typeNames[tIdx]:"Unknown";const vName=vIdx>=0&&vIdx<typeNames.length?typeNames[vIdx]:"Unknown";return`Type mismatch in assignment in ${target.text} of ${tName} := ${vName}`},"5008": (node,idNode)=>`Trying to assign to constant component ${idNode&&idNode.text?idNode.text:node.text}.`,"5009": (node,idNode)=>`Trying to assign to input component ${idNode&&idNode.text?idNode.text:node.text}.`,"5013": (target,argNode,fnName)=>{const aText=argNode&&argNode.text?argNode.text:target.text;const fText=fnName&&fnName.text?fnName.text:"inStream";return`Operand '${aText}' to operator '${fText}' is not a stream variable.`},"5007": (node,varNode,packedShape)=>{const vName=varNode&&varNode.text?varNode.text:"iterator";const val=packedShape&&packedShape.asNumber?packedShape.asNumber():Number(packedShape);const typeNum=val>>24&255;const d1=val>>12&4095;const d2=val&4095;const typeNames=["Real","Integer","Boolean","String"];const tName=typeNum>=0&&typeNum<typeNames.length?typeNames[typeNum]:"Integer";const shapeStr=d1&&d2?`${tName}[${d1}, ${d2}]`:tName;return`Iterator ${vName}, has type ${shapeStr}, but expected a 1D array expression.`},"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": (target,isEq)=>{const eqFlag=isEq&&(isEq.asNumber?isEq.asNumber():Number(isEq))===1;return eqFlag?`Unit mismatch in equation '${target.text}'.`:`Unit mismatch in component binding '${target.text}'.`},"4031": (subNode,arrNode,dimIndex,dimSize)=>{const idxText=subNode&&subNode.text?subNode.text:"index";const arrName=arrNode&&arrNode.text&&arrNode.text!=="0"?arrNode.text.split("[")[0].trim():"array";const dIdx=dimIndex?String(dimIndex):"1";const dSz=dimSize?String(dimSize):"?";return`Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`},"4076": (node,lowerNode,upperNode,declNode)=>{let pName="parameter";const src=declNode&&declNode.text&&declNode.text!=="0"?declNode:node;if(src&&src.text){const parts=src.text.split("(")[0].split("=");pName=parts[0].trim()}const lVal=lowerNode&&lowerNode.text?lowerNode.text:"min";const uVal=upperNode&&upperNode.text?upperNode.text:"max";return`Contradictory bounds for parameter '${pName}': lower bound '${lVal}' exceeds upper bound '${uVal}'.`},"2002": (target,className,fullRef)=>{const vName=fullRef&&fullRef.text&&fullRef.text!=="0"?fullRef.text:target.text;return className&&className.text?`Variable ${vName} not found in scope ${className.text}.`:`Variable ${vName} not found in scope.`},"2001": (target,className)=>className&&className.text?`Variable ${target.text} not found in scope ${className.text}.`:`Variable ${target.text} not found in scope.`,"2003": (target,fullType)=>`Class or type '${fullType&&fullType.text&&fullType.text!=="0"?fullType.text:target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"2093": ()=>`From here:`,"4002": (target,outerName,innerOrKind,targetName)=>{const isInner=innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber()>3:false;const elemStr=isInner?`${outerName.text}.${innerOrKind.text}`:outerName&&outerName.text!=="0"&&outerName.text!==""?outerName.text:target.text;const kindNum=isInner?1:innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber():1;const kindStr=kindNum===2?"extends":kindNum===3?"inherited class":"component";const tName=targetName&&targetName.text!=="0"&&targetName.text!==""?targetName.text:"";return`Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`},"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": (target,modNode,nameNode)=>`Modifier '${modNode?modNode.text:""}' found on outer element ${nameNode?nameNode.text:target.text}.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": (target,fullMod)=>`Non-array modification '${fullMod&&fullMod.text&&fullMod.text!=="0"?fullMod.text:target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName,elemName)=>`Modified element ${elemName&&elemName.text!=="0"&&elemName.text!==""?elemName.text:target.text} not found in class ${typeName.text}.`,"4049": (target,ident)=>`Invalid use of break on non-component '${ident?ident.text:target.text}'.`,"4050": (target,ident)=>`Invalid use of break on component '${ident?ident.text:target.text}', component must be a model, block, or connector.`,"4051": target=>`No matching element found for '${target.text}'.`,"5004": (target,flowRef,nonFlowRef,elemIdent)=>{if(flowRef&&nonFlowRef&&elemIdent&&flowRef.text&&nonFlowRef.text&&elemIdent.text&&flowRef.text!=="0"&&nonFlowRef.text!=="0"&&elemIdent.text!=="0"){return`Cannot connect flow component ${flowRef.text}.${elemIdent.text} to non-flow component ${nonFlowRef.text}.${elemIdent.text}.`}return`Flow variable sets differ in connect(): '${target.lhs}' vs '${target.rhs}'.`},"4055": (target,expRef,nonExpRef)=>`Cannot connect expandable connector ${expRef.text} with non-expandable connector ${nonExpRef.text}.`,"4057": (target,compName)=>`Prefix 'flow' on component '${compName.text}' not allowed in class specialization 'expandable connector'.`,"4037": (target,pfx,compName)=>`Invalid variability ${pfx.text} on connector '${compName.text}'.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"4054": (target,nameNode,flowCount)=>{const cName=nameNode?nameNode.name||nameNode.text:target.name||target.text;const fCount=flowCount?flowCount.asNumber():0;return`Invalid stream connector .${cName}: A stream connector must have exactly one flow variable, this connector has ${fCount} flow variables.`},"2094": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name||target.text}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`} !== "undefined"
-    ? {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": (target,startId,endId)=>`Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,"2097": ()=>`From here:`,"4005": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;const mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:target.text;return`Protected element '${eName}' may not be modified, got '${mText}'.`},"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": (node,varName)=>`Invalid public variable ${varName&&varName.text?varName.text:node.text}, function variables that are not input/output must be protected.`,"4011": (node,varName)=>`Invalid protected variable ${varName&&varName.text?varName.text:node.text}, function variables that are input/output must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": (target,subNode)=>{if(subNode&&subNode.text&&subNode.text.startsWith("[")){return"Tuple expression can not be subscripted."}const exprText=subNode&&subNode.text?subNode.text:target?target.text:"";return`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${exprText?` Got the following expression: (${exprText.split(",").map(s=>s.trim()).join(", ")}).`:""}`},"4017": (_target,isAlgNode,isInitialNode,kindNode)=>{const isAlg=isAlgNode!=null&&isAlgNode.asNumber()==1;const isInitial=isInitialNode!=null&&isInitialNode.asNumber()==1;const kind=kindNode!=null?kindNode.asNumber():1;if(kind==5){if(isInitial){return isAlg?"Initial algorithm sections are not allowed in function.":"Initial equation sections are not allowed in function."}return"Equations are not allowed in function."}const kindStr=kind==1?"record":kind==2?"type":kind==3?"package":"connector";return isAlg?`Algorithm sections are not allowed in ${kindStr}.`:`Equations are not allowed in ${kindStr}.`},"2096": ()=>`From here:`,"4019": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration with a new type requires '${eName}' to be replaceable.`},"4068": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Invalid redeclaration of ${eName}, a redeclare may not have a condition attribute.`},"4063": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Base class targeted by class extends ${eName} not found in the inherited classes.`},"4061": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Illegal redeclare of element ${eName}, no inherited element with that name exists.`},"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": ()=>`Connect equations are not allowed in initial equation sections.`,"2090": ()=>`From here:`,"4026": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;let mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:"";if(mText.startsWith("=")){mText=" "+mText}return`Trying to override final element ${eName} with modifier '${mText}'.`},"2091": ()=>`From here:`,"4052": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of final component ${eName} is not allowed.`},"2092": ()=>`From here:`,"4053": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of constant component ${eName} is not allowed.`},"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": (_target,nameNode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";return`Function ${name} has more than one algorithm section or external declaration.`},"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected '${target.text}' to be a component instance, but found class instead.`,"4064": (_target,kindNode)=>{const k=kindNode!=null?kindNode.asNumber():0;const kindStr=k==1?"record":k==2?"type":"connector";return`Protected sections are not allowed in ${kindStr}.`},"4065": ()=>`Equations are not allowed in connector.`,"4066": ()=>`Algorithm sections are not allowed in connector.`,"5017": ()=>`A when-statement may not be used inside a function or a while, if, or for-clause.`,"4079": ()=>`'return' may not be used outside function.`,"4020": ()=>`time is not allowed in a function.`,"4078": ()=>`terminate is not allowed in a function.`,"4041": (_target,dimNode,nameNode)=>{const dim=dimNode&&dimNode.text?dimNode.text:"-1";const name=nameNode&&nameNode.text?nameNode.text:"component";return`Negative dimension index (${dim}) for component ${name}.`},"4070": (_target,nameNode,kindCode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";const k=kindCode!=null?kindCode.asNumber():0;const kindStr=k==1?"model":k==2?"record":k==3?"block":k==4?"connector":k==5?"package":k==6?"type":"class";return`Class specialization violation: ${name} is a ${kindStr}, which may not contain an external declaration.`},"3001": (target,expType,actType)=>{const typeNames=["Real","Integer","Boolean","String"];const eIdx=expType&&expType.asNumber?expType.asNumber():Number(expType);const aIdx=actType&&actType.asNumber?actType.asNumber():Number(actType);const expName=eIdx>=0&&eIdx<typeNames.length?typeNames[eIdx]:"";const actName=aIdx>=0&&aIdx<typeNames.length?typeNames[aIdx]:"";if(expName&&actName){return`Type mismatch in binding ${target.text}, expected subtype of ${expName}, got type ${actName}.`}return`Type mismatch in binding or modification expression '${target.text}'.`},"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3015": target=>`Array element type mismatch in '${target.text}'.`,"5001": (target,lhsType,rhsType,isOldFrontend)=>{const typeNames=["Real","Integer","Boolean","String"];const lIdx=lhsType&&lhsType.asNumber?lhsType.asNumber():Number(lhsType);const rIdx=rhsType&&rhsType.asNumber?rhsType.asNumber():Number(rhsType);const lName=lIdx>=0&&lIdx<typeNames.length?typeNames[lIdx]:"Unknown";const rName=rIdx>=0&&rIdx<typeNames.length?typeNames[rIdx]:"Unknown";const isOld=isOldFrontend&&(isOldFrontend.asNumber?isOldFrontend.asNumber():Number(isOldFrontend))===1;if(isOld){const eqText2=target.text.replace(/\s+/g," ").replace(" = ","=").trim();return`Type mismatch in equation ${eqText2} of type ${lName}=${rName}.`}const eqText=target.text.replace(/\s+/g," ").trim();return`Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`},"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": (target,targetType,valType)=>{const typeNames=["Real","Integer","Boolean","String","Enumeration","Clock"];const tIdx=targetType&&targetType.asNumber?targetType.asNumber():Number(targetType);const vIdx=valType&&valType.asNumber?valType.asNumber():Number(valType);const tName=tIdx>=0&&tIdx<typeNames.length?typeNames[tIdx]:"Unknown";const vName=vIdx>=0&&vIdx<typeNames.length?typeNames[vIdx]:"Unknown";return`Type mismatch in assignment in ${target.text} of ${tName} := ${vName}`},"5008": (node,idNode)=>`Trying to assign to constant component ${idNode&&idNode.text?idNode.text:node.text}.`,"5009": (node,idNode)=>`Trying to assign to input component ${idNode&&idNode.text?idNode.text:node.text}.`,"5013": (target,argNode,fnName)=>{const aText=argNode&&argNode.text?argNode.text:target.text;const fText=fnName&&fnName.text?fnName.text:"inStream";return`Operand '${aText}' to operator '${fText}' is not a stream variable.`},"5007": (node,varNode,packedShape)=>{const vName=varNode&&varNode.text?varNode.text:"iterator";const val=packedShape&&packedShape.asNumber?packedShape.asNumber():Number(packedShape);const typeNum=val>>24&255;const d1=val>>12&4095;const d2=val&4095;const typeNames=["Real","Integer","Boolean","String"];const tName=typeNum>=0&&typeNum<typeNames.length?typeNames[typeNum]:"Integer";const shapeStr=d1&&d2?`${tName}[${d1}, ${d2}]`:tName;return`Iterator ${vName}, has type ${shapeStr}, but expected a 1D array expression.`},"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": (target,isEq)=>{const eqFlag=isEq&&(isEq.asNumber?isEq.asNumber():Number(isEq))===1;return eqFlag?`Unit mismatch in equation '${target.text}'.`:`Unit mismatch in component binding '${target.text}'.`},"4031": (subNode,arrNode,dimIndex,dimSize)=>{const idxText=subNode&&subNode.text?subNode.text:"index";const arrName=arrNode&&arrNode.text&&arrNode.text!=="0"?arrNode.text.split("[")[0].trim():"array";const dIdx=dimIndex?String(dimIndex):"1";const dSz=dimSize?String(dimSize):"?";return`Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`},"4076": (node,lowerNode,upperNode,declNode)=>{let pName="parameter";const src=declNode&&declNode.text&&declNode.text!=="0"?declNode:node;if(src&&src.text){const parts=src.text.split("(")[0].split("=");pName=parts[0].trim()}const lVal=lowerNode&&lowerNode.text?lowerNode.text:"min";const uVal=upperNode&&upperNode.text?upperNode.text:"max";return`Contradictory bounds for parameter '${pName}': lower bound '${lVal}' exceeds upper bound '${uVal}'.`},"2002": (target,className,fullRef)=>{const vName=fullRef&&fullRef.text&&fullRef.text!=="0"?fullRef.text:target.text;return className&&className.text?`Variable ${vName} not found in scope ${className.text}.`:`Variable ${vName} not found in scope.`},"2001": (target,className)=>className&&className.text?`Variable ${target.text} not found in scope ${className.text}.`:`Variable ${target.text} not found in scope.`,"2003": (target,fullType)=>`Class or type '${fullType&&fullType.text&&fullType.text!=="0"?fullType.text:target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"2093": ()=>`From here:`,"4002": (target,outerName,innerOrKind,targetName)=>{const isInner=innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber()>3:false;const elemStr=isInner?`${outerName.text}.${innerOrKind.text}`:outerName&&outerName.text!=="0"&&outerName.text!==""?outerName.text:target.text;const kindNum=isInner?1:innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber():1;const kindStr=kindNum===2?"extends":kindNum===3?"inherited class":"component";const tName=targetName&&targetName.text!=="0"&&targetName.text!==""?targetName.text:"";return`Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`},"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": (target,modNode,nameNode)=>`Modifier '${modNode?modNode.text:""}' found on outer element ${nameNode?nameNode.text:target.text}.`,"4034": target=>`Base class '${target.text}' in extends is replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": (target,fullMod)=>`Non-array modification '${fullMod&&fullMod.text&&fullMod.text!=="0"?fullMod.text:target.text}' for array component, possibly due to missing 'each'.`,"5010": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName,elemName)=>`Modified element ${elemName&&elemName.text!=="0"&&elemName.text!==""?elemName.text:target.text} not found in class ${typeName.text}.`,"4049": (target,ident)=>`Invalid use of break on non-component '${ident?ident.text:target.text}'.`,"4050": (target,ident)=>`Invalid use of break on component '${ident?ident.text:target.text}', component must be a model, block, or connector.`,"4051": target=>`No matching element found for '${target.text}'.`,"5004": (target,flowRef,nonFlowRef,elemIdent)=>{if(flowRef&&nonFlowRef&&elemIdent&&flowRef.text&&nonFlowRef.text&&elemIdent.text&&flowRef.text!=="0"&&nonFlowRef.text!=="0"&&elemIdent.text!=="0"){return`Cannot connect flow component ${flowRef.text}.${elemIdent.text} to non-flow component ${nonFlowRef.text}.${elemIdent.text}.`}return`Flow variable sets differ in connect(): '${target.lhs}' vs '${target.rhs}'.`},"4055": (target,expRef,nonExpRef)=>`Cannot connect expandable connector ${expRef.text} with non-expandable connector ${nonExpRef.text}.`,"4057": (target,compName)=>`Prefix 'flow' on component '${compName.text}' not allowed in class specialization 'expandable connector'.`,"4037": (target,pfx,compName)=>`Invalid variability ${pfx.text} on connector '${compName.text}'.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"4054": (target,nameNode,flowCount)=>{const cName=nameNode?nameNode.name||nameNode.text:target.name||target.text;const fCount=flowCount?flowCount.asNumber():0;return`Invalid stream connector .${cName}: A stream connector must have exactly one flow variable, this connector has ${fCount} flow variables.`},"2094": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name||target.text}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`,"6040": target=>`Break connection '${target.text}' does not exist in inherited base classes.`}
+  typeof {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": ()=>`Parse error: The identifier at start and end are different`,"2097": ()=>`From here:`,"4005": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;const mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:target.text;return`Protected element '${eName}' may not be modified, got '${mText}'.`},"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": (node,varName)=>`Invalid public variable ${varName&&varName.text?varName.text:node.text}, function variables that are not input/output must be protected.`,"4011": (node,varName)=>`Invalid protected variable ${varName&&varName.text?varName.text:node.text}, function variables that are input/output must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": (target,subNode)=>{if(subNode&&subNode.text&&subNode.text.startsWith("[")){return"Tuple expression can not be subscripted."}const exprText=subNode&&subNode.text?subNode.text:target?target.text:"";return`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${exprText?` Got the following expression: (${exprText.split(",").map(s=>s.trim()).join(", ")}).`:""}`},"4017": (_target,isAlgNode,isInitialNode,kindNode)=>{const isAlg=isAlgNode!=null&&isAlgNode.asNumber()==1;const isInitial=isInitialNode!=null&&isInitialNode.asNumber()==1;const kind=kindNode!=null?kindNode.asNumber():1;if(kind==5){if(isInitial){return isAlg?"Initial algorithm sections are not allowed in function.":"Initial equation sections are not allowed in function."}return"Equations are not allowed in function."}const kindStr=kind==1?"record":kind==2?"type":kind==3?"package":"connector";return isAlg?`Algorithm sections are not allowed in ${kindStr}.`:`Equations are not allowed in ${kindStr}.`},"2096": ()=>`From here:`,"4019": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration with a new type requires '${eName}' to be replaceable.`},"4068": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Invalid redeclaration of ${eName}, a redeclare may not have a condition attribute.`},"4063": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Base class targeted by class extends ${eName} not found in the inherited classes.`},"4061": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Illegal redeclare of element ${eName}, no inherited element with that name exists.`},"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": ()=>`Connect equations are not allowed in initial equation sections.`,"2090": ()=>`From here:`,"4026": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;let mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:"";if(mText.startsWith("=")){mText=" "+mText}return`Trying to override final element ${eName} with modifier '${mText}'.`},"2091": ()=>`From here:`,"4052": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of final component ${eName} is not allowed.`},"2092": ()=>`From here:`,"4053": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of constant component ${eName} is not allowed.`},"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": (_target,nameNode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";return`Function ${name} has more than one algorithm section or external declaration.`},"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected ${target.text} to be a component, but found class instead.`,"4064": (_target,kindNode)=>{const k=kindNode!=null?kindNode.asNumber():0;const kindStr=k==1?"record":k==2?"type":"connector";return`Protected sections are not allowed in ${kindStr}.`},"4065": ()=>`Equations are not allowed in connector.`,"4066": ()=>`Algorithm sections are not allowed in connector.`,"5017": ()=>`A when-statement may not be used inside a function or a while, if, or for-clause.`,"4079": ()=>`'return' may not be used outside function.`,"4091": ()=>`'break' may only be used in a while- or for-loop.`,"4020": ()=>`time is not allowed in a function.`,"4078": ()=>`terminate is not allowed in a function.`,"4041": (_target,dimNode,nameNode)=>{const dim=dimNode&&dimNode.text?dimNode.text:"-1";const name=nameNode&&nameNode.text?nameNode.text:"component";return`Negative dimension index (${dim}) for component ${name}.`},"4070": (_target,nameNode,kindCode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";const k=kindCode!=null?kindCode.asNumber():0;const kindStr=k==1?"model":k==2?"record":k==3?"block":k==4?"connector":k==5?"package":k==6?"type":"class";return`Class specialization violation: ${name} is a ${kindStr}, which may not contain an external declaration.`},"4020": ()=>`Identifier time is reserved for the built-in element with the same name.`,"3001": (target,expType,actType)=>{const typeNames=["Real","Integer","Boolean","String"];const eIdx=expType&&expType.asNumber?expType.asNumber():Number(expType);const aIdx=actType&&actType.asNumber?actType.asNumber():Number(actType);const expName=eIdx>=0&&eIdx<typeNames.length?typeNames[eIdx]:"";const actName=aIdx>=0&&aIdx<typeNames.length?typeNames[aIdx]:"";if(expName&&actName){return`Type mismatch in binding ${target.text}, expected subtype of ${expName}, got type ${actName}.`}return`Type mismatch in binding or modification expression '${target.text}'.`},"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3018": target=>`Array element type mismatch in '${target.text}'.`,"5001": (target,lhsType,rhsType,isOldFrontend)=>{const typeNames=["Real","Integer","Boolean","String"];const lIdx=lhsType&&lhsType.asNumber?lhsType.asNumber():Number(lhsType);const rIdx=rhsType&&rhsType.asNumber?rhsType.asNumber():Number(rhsType);const lName=lIdx>=0&&lIdx<typeNames.length?typeNames[lIdx]:"Unknown";const rName=rIdx>=0&&rIdx<typeNames.length?typeNames[rIdx]:"Unknown";const isOld=isOldFrontend&&(isOldFrontend.asNumber?isOldFrontend.asNumber():Number(isOldFrontend))===1;if(isOld){const eqText2=target.text.replace(/\s+/g," ").replace(" = ","=").trim();return`Type mismatch in equation ${eqText2} of type ${lName}=${rName}.`}const eqText=target.text.replace(/\s+/g," ").trim();return`Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`},"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": (target,targetType,valType)=>{const typeNames=["Real","Integer","Boolean","String","Enumeration","Clock"];const tIdx=targetType&&targetType.asNumber?targetType.asNumber():Number(targetType);const vIdx=valType&&valType.asNumber?valType.asNumber():Number(valType);const tName=tIdx>=0&&tIdx<typeNames.length?typeNames[tIdx]:"Unknown";const vName=vIdx>=0&&vIdx<typeNames.length?typeNames[vIdx]:"Unknown";return`Type mismatch in assignment in ${target.text} of ${tName} := ${vName}`},"5008": (node,idNode)=>`Trying to assign to constant component ${idNode&&idNode.text?idNode.text:node.text}.`,"5009": (node,idNode)=>`Trying to assign to input component ${idNode&&idNode.text?idNode.text:node.text}.`,"5013": (target,argNode,fnName)=>{const aText=argNode&&argNode.text?argNode.text:target.text;const fText=fnName&&fnName.text?fnName.text:"inStream";return`Operand '${aText}' to operator '${fText}' is not a stream variable.`},"5007": (node,varNode,packedShape)=>{const vName=varNode&&varNode.text?varNode.text:"iterator";const val=packedShape&&packedShape.asNumber?packedShape.asNumber():Number(packedShape);const typeNum=val>>24&255;const d1=val>>12&4095;const d2=val&4095;const typeNames=["Real","Integer","Boolean","String"];const tName=typeNum>=0&&typeNum<typeNames.length?typeNames[typeNum]:"Integer";const shapeStr=d1&&d2?`${tName}[${d1}, ${d2}]`:tName;return`Iterator ${vName}, has type ${shapeStr}, but expected a 1D array expression.`},"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": (target,isEq)=>{const eqFlag=isEq&&(isEq.asNumber?isEq.asNumber():Number(isEq))===1;return eqFlag?`Unit mismatch in equation '${target.text}'.`:`Unit mismatch in component binding '${target.text}'.`},"4031": (subNode,arrNode,dimIndex,dimSize)=>{const idxText=subNode&&subNode.text?subNode.text:"index";const arrName=arrNode&&arrNode.text&&arrNode.text!=="0"?arrNode.text.split("[")[0].trim():"array";const dIdx=dimIndex?String(dimIndex):"1";const dSz=dimSize?String(dimSize):"?";return`Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`},"4076": (node,lowerNode,upperNode,declNode)=>{let pName="parameter";const src=declNode&&declNode.text&&declNode.text!=="0"?declNode:node;if(src&&src.text){const parts=src.text.split("(")[0].split("=");pName=parts[0].trim()}const lVal=lowerNode&&lowerNode.text?lowerNode.text:"min";const uVal=upperNode&&upperNode.text?upperNode.text:"max";return`Contradictory bounds for parameter '${pName}': lower bound '${lVal}' exceeds upper bound '${uVal}'.`},"2002": (target,className,fullRef)=>{const vName=fullRef&&fullRef.text&&fullRef.text!=="0"?fullRef.text:target.text;return className&&className.text?`Variable ${vName} not found in scope ${className.text}.`:`Variable ${vName} not found in scope.`},"2003": (target,fullType)=>`Class or type '${fullType&&fullType.text&&fullType.text!=="0"?fullType.text:target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"2093": ()=>`From here:`,"4002": (target,outerName,innerOrKind,targetName)=>{const isInner=innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber()>3:false;const elemStr=isInner?`${outerName.text}.${innerOrKind.text}`:outerName&&outerName.text!=="0"&&outerName.text!==""?outerName.text:target.text;const kindNum=isInner?1:innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber():1;const kindStr=kindNum===2?"extends":kindNum===3?"inherited class":"component";const tName=targetName&&targetName.text!=="0"&&targetName.text!==""?targetName.text:"";return`Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`},"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": (target,modNode,nameNode)=>`Modifier '${modNode?modNode.text:""}' found on outer element ${nameNode?nameNode.text:target.text}.`,"4034": target=>`Class '${target.text}' in 'extends ${target.text}' is replaceable, the base class name must be transitively non-replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": (target,fullMod)=>`Non-array modification '${fullMod&&fullMod.text&&fullMod.text!=="0"?fullMod.text:target.text}' for array component, possibly due to missing 'each'.`,"5023": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName,elemName)=>{const eText=elemName&&elemName.text!=="0"&&elemName.text!==""?elemName.text:target.text;const tText=typeName.text==="String"&&eText==="value"?"Real":typeName.text;return`Modified element ${eText} not found in class ${tText}.`},"4049": (target,ident)=>`Invalid use of break on non-component '${ident?ident.text:target.text}'.`,"4050": (target,ident)=>`Invalid use of break on component '${ident?ident.text:target.text}', component must be a model, block, or connector.`,"4051": target=>`No matching element found for '${target.text}'.`,"5004": (target,flowRef,nonFlowRef,elemIdent)=>{if(flowRef&&nonFlowRef&&elemIdent&&flowRef.text&&nonFlowRef.text&&elemIdent.text&&flowRef.text!=="0"&&nonFlowRef.text!=="0"&&elemIdent.text!=="0"){return`Cannot connect flow component ${flowRef.text}.${elemIdent.text} to non-flow component ${nonFlowRef.text}.${elemIdent.text}.`}return`Flow variable sets differ in connect(): '${target.lhs}' vs '${target.rhs}'.`},"4055": (target,expRef,nonExpRef)=>`Cannot connect expandable connector ${expRef.text} with non-expandable connector ${nonExpRef.text}.`,"4057": (target,compName)=>`Prefix 'flow' on component '${compName.text}' not allowed in class specialization 'expandable connector'.`,"4037": (target,pfx,compName)=>`Invalid variability ${pfx.text} on connector '${compName.text}'.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"4054": (target,nameNode,flowCount)=>{const cName=nameNode?nameNode.name||nameNode.text:target.name||target.text;const fCount=flowCount?flowCount.asNumber():0;return`Invalid stream connector .${cName}: A stream connector must have exactly one flow variable, this connector has ${fCount} flow variables.`},"2094": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name||target.text}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`} !== "undefined"
+    ? {"1003": target=>`Empty array constructor '${target.text}' is not valid in Modelica.`,"2005": ()=>`Parse error: The identifier at start and end are different`,"2097": ()=>`From here:`,"4005": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;const mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:target.text;return`Protected element '${eName}' may not be modified, got '${mText}'.`},"4006": target=>`Element '${target.text}' is not allowed in function context with algorithm section.`,"4007": (node,varName)=>`Invalid public variable ${varName&&varName.text?varName.text:node.text}, function variables that are not input/output must be protected.`,"4011": (node,varName)=>`Invalid protected variable ${varName&&varName.text?varName.text:node.text}, function variables that are input/output must be public.`,"4013": ()=>`Nested when statements are not allowed.`,"4014": (target,subNode)=>{if(subNode&&subNode.text&&subNode.text.startsWith("[")){return"Tuple expression can not be subscripted."}const exprText=subNode&&subNode.text?subNode.text:target?target.text:"";return`Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${exprText?` Got the following expression: (${exprText.split(",").map(s=>s.trim()).join(", ")}).`:""}`},"4017": (_target,isAlgNode,isInitialNode,kindNode)=>{const isAlg=isAlgNode!=null&&isAlgNode.asNumber()==1;const isInitial=isInitialNode!=null&&isInitialNode.asNumber()==1;const kind=kindNode!=null?kindNode.asNumber():1;if(kind==5){if(isInitial){return isAlg?"Initial algorithm sections are not allowed in function.":"Initial equation sections are not allowed in function."}return"Equations are not allowed in function."}const kindStr=kind==1?"record":kind==2?"type":kind==3?"package":"connector";return isAlg?`Algorithm sections are not allowed in ${kindStr}.`:`Equations are not allowed in ${kindStr}.`},"2096": ()=>`From here:`,"4019": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration with a new type requires '${eName}' to be replaceable.`},"4068": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Invalid redeclaration of ${eName}, a redeclare may not have a condition attribute.`},"4063": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Base class targeted by class extends ${eName} not found in the inherited classes.`},"4061": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Illegal redeclare of element ${eName}, no inherited element with that name exists.`},"4022": target=>`Range of type enumeration '${target.text}' may not specify a step size.`,"4023": target=>`connect may not be used inside when-equations (found ${target.text}).`,"4024": ()=>`Connect equations are not allowed in initial equation sections.`,"2090": ()=>`From here:`,"4026": (target,elementName,modText)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;let mText=modText&&modText.text!=="0"&&modText.text!==""?modText.text:"";if(mText.startsWith("=")){mText=" "+mText}return`Trying to override final element ${eName} with modifier '${mText}'.`},"2091": ()=>`From here:`,"4052": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of final component ${eName} is not allowed.`},"2092": ()=>`From here:`,"4053": (target,elementName)=>{const eName=elementName&&elementName.text!=="0"&&elementName.text!==""?elementName.text:target.text;return`Redeclaration of constant component ${eName} is not allowed.`},"4032": target=>`Invalid prefix '${target.text}' on formal parameter in function.`,"4033": (_target,nameNode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";return`Function ${name} has more than one algorithm section or external declaration.`},"4038": target=>`Prefix '${target.text}' used outside connector declaration.`,"4042": target=>`Constant '${target.text}' has no value.`,"4047": target=>`Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,"4025": target=>`connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,"4028": target=>`Component '${target.text}' has partial type.`,"4048": target=>`Expected ${target.text} to be a component, but found class instead.`,"4064": (_target,kindNode)=>{const k=kindNode!=null?kindNode.asNumber():0;const kindStr=k==1?"record":k==2?"type":"connector";return`Protected sections are not allowed in ${kindStr}.`},"4065": ()=>`Equations are not allowed in connector.`,"4066": ()=>`Algorithm sections are not allowed in connector.`,"5017": ()=>`A when-statement may not be used inside a function or a while, if, or for-clause.`,"4079": ()=>`'return' may not be used outside function.`,"4091": ()=>`'break' may only be used in a while- or for-loop.`,"4020": ()=>`time is not allowed in a function.`,"4078": ()=>`terminate is not allowed in a function.`,"4041": (_target,dimNode,nameNode)=>{const dim=dimNode&&dimNode.text?dimNode.text:"-1";const name=nameNode&&nameNode.text?nameNode.text:"component";return`Negative dimension index (${dim}) for component ${name}.`},"4070": (_target,nameNode,kindCode)=>{const name=nameNode&&nameNode.text!=="0"&&nameNode.text!==""?nameNode.text:"";const k=kindCode!=null?kindCode.asNumber():0;const kindStr=k==1?"model":k==2?"record":k==3?"block":k==4?"connector":k==5?"package":k==6?"type":"class";return`Class specialization violation: ${name} is a ${kindStr}, which may not contain an external declaration.`},"4020": ()=>`Identifier time is reserved for the built-in element with the same name.`,"3001": (target,expType,actType)=>{const typeNames=["Real","Integer","Boolean","String"];const eIdx=expType&&expType.asNumber?expType.asNumber():Number(expType);const aIdx=actType&&actType.asNumber?actType.asNumber():Number(actType);const expName=eIdx>=0&&eIdx<typeNames.length?typeNames[eIdx]:"";const actName=aIdx>=0&&aIdx<typeNames.length?typeNames[aIdx]:"";if(expName&&actName){return`Type mismatch in binding ${target.text}, expected subtype of ${expName}, got type ${actName}.`}return`Type mismatch in binding or modification expression '${target.text}'.`},"3002": target=>`Type mismatch in binding or modification expression '${target.text}'.`,"3009": target=>`Array index '${target.text}' has invalid type: expected Integer or Boolean.`,"4003": target=>`Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,"3018": target=>`Array element type mismatch in '${target.text}'.`,"5001": (target,lhsType,rhsType,isOldFrontend)=>{const typeNames=["Real","Integer","Boolean","String"];const lIdx=lhsType&&lhsType.asNumber?lhsType.asNumber():Number(lhsType);const rIdx=rhsType&&rhsType.asNumber?rhsType.asNumber():Number(rhsType);const lName=lIdx>=0&&lIdx<typeNames.length?typeNames[lIdx]:"Unknown";const rName=rIdx>=0&&rIdx<typeNames.length?typeNames[rIdx]:"Unknown";const isOld=isOldFrontend&&(isOldFrontend.asNumber?isOldFrontend.asNumber():Number(isOldFrontend))===1;if(isOld){const eqText2=target.text.replace(/\s+/g," ").replace(" = ","=").trim();return`Type mismatch in equation ${eqText2} of type ${lName}=${rName}.`}const eqText=target.text.replace(/\s+/g," ").trim();return`Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`},"5005": target=>`Division by literal zero in '${target.text}'.`,"5006": (target,targetType,valType)=>{const typeNames=["Real","Integer","Boolean","String","Enumeration","Clock"];const tIdx=targetType&&targetType.asNumber?targetType.asNumber():Number(targetType);const vIdx=valType&&valType.asNumber?valType.asNumber():Number(valType);const tName=tIdx>=0&&tIdx<typeNames.length?typeNames[tIdx]:"Unknown";const vName=vIdx>=0&&vIdx<typeNames.length?typeNames[vIdx]:"Unknown";return`Type mismatch in assignment in ${target.text} of ${tName} := ${vName}`},"5008": (node,idNode)=>`Trying to assign to constant component ${idNode&&idNode.text?idNode.text:node.text}.`,"5009": (node,idNode)=>`Trying to assign to input component ${idNode&&idNode.text?idNode.text:node.text}.`,"5013": (target,argNode,fnName)=>{const aText=argNode&&argNode.text?argNode.text:target.text;const fText=fnName&&fnName.text?fnName.text:"inStream";return`Operand '${aText}' to operator '${fText}' is not a stream variable.`},"5007": (node,varNode,packedShape)=>{const vName=varNode&&varNode.text?varNode.text:"iterator";const val=packedShape&&packedShape.asNumber?packedShape.asNumber():Number(packedShape);const typeNum=val>>24&255;const d1=val>>12&4095;const d2=val&4095;const typeNames=["Real","Integer","Boolean","String"];const tName=typeNum>=0&&typeNum<typeNames.length?typeNames[typeNum]:"Integer";const shapeStr=d1&&d2?`${tName}[${d1}, ${d2}]`:tName;return`Iterator ${vName}, has type ${shapeStr}, but expected a 1D array expression.`},"3010": target=>`Unit mismatch in equation '${target.text}'.`,"3010": (target,isEq)=>{const eqFlag=isEq&&(isEq.asNumber?isEq.asNumber():Number(isEq))===1;return eqFlag?`Unit mismatch in equation '${target.text}'.`:`Unit mismatch in component binding '${target.text}'.`},"4031": (subNode,arrNode,dimIndex,dimSize)=>{const idxText=subNode&&subNode.text?subNode.text:"index";const arrName=arrNode&&arrNode.text&&arrNode.text!=="0"?arrNode.text.split("[")[0].trim():"array";const dIdx=dimIndex?String(dimIndex):"1";const dSz=dimSize?String(dimSize):"?";return`Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`},"4076": (node,lowerNode,upperNode,declNode)=>{let pName="parameter";const src=declNode&&declNode.text&&declNode.text!=="0"?declNode:node;if(src&&src.text){const parts=src.text.split("(")[0].split("=");pName=parts[0].trim()}const lVal=lowerNode&&lowerNode.text?lowerNode.text:"min";const uVal=upperNode&&upperNode.text?upperNode.text:"max";return`Contradictory bounds for parameter '${pName}': lower bound '${lVal}' exceeds upper bound '${uVal}'.`},"2002": (target,className,fullRef)=>{const vName=fullRef&&fullRef.text&&fullRef.text!=="0"?fullRef.text:target.text;return className&&className.text?`Variable ${vName} not found in scope ${className.text}.`:`Variable ${vName} not found in scope.`},"2003": (target,fullType)=>`Class or type '${fullType&&fullType.text&&fullType.text!=="0"?fullType.text:target.text}' not found in scope.`,"4001": target=>`Extends cycle detected for '${target.text}'.`,"2093": ()=>`From here:`,"4002": (target,outerName,innerOrKind,targetName)=>{const isInner=innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber()>3:false;const elemStr=isInner?`${outerName.text}.${innerOrKind.text}`:outerName&&outerName.text!=="0"&&outerName.text!==""?outerName.text:target.text;const kindNum=isInner?1:innerOrKind&&innerOrKind.asNumber?innerOrKind.asNumber():1;const kindStr=kindNum===2?"extends":kindNum===3?"inherited class":"component";const tName=targetName&&targetName.text!=="0"&&targetName.text!==""?targetName.text:"";return`Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`},"4004": (target,eqCount,varCount)=>`Model '${target.name||target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,"4027": target=>`Component '${target.text}' of variability parameter has binding of higher continuous variability.`,"4030": (target,modNode,nameNode)=>`Modifier '${modNode?modNode.text:""}' found on outer element ${nameNode?nameNode.text:target.text}.`,"4034": target=>`Class '${target.text}' in 'extends ${target.text}' is replaceable, the base class name must be transitively non-replaceable.`,"4043": target=>`Component '${target.text}' of variability constant has binding of higher variability.`,"4044": (target,fullMod)=>`Non-array modification '${fullMod&&fullMod.text&&fullMod.text!=="0"?fullMod.text:target.text}' for array component, possibly due to missing 'each'.`,"5023": ()=>`The same variables must be solved in elsewhen clause as in the when clause.`,"4039": target=>`Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,"4045": (target,typeName,elemName)=>{const eText=elemName&&elemName.text!=="0"&&elemName.text!==""?elemName.text:target.text;const tText=typeName.text==="String"&&eText==="value"?"Real":typeName.text;return`Modified element ${eText} not found in class ${tText}.`},"4049": (target,ident)=>`Invalid use of break on non-component '${ident?ident.text:target.text}'.`,"4050": (target,ident)=>`Invalid use of break on component '${ident?ident.text:target.text}', component must be a model, block, or connector.`,"4051": target=>`No matching element found for '${target.text}'.`,"5004": (target,flowRef,nonFlowRef,elemIdent)=>{if(flowRef&&nonFlowRef&&elemIdent&&flowRef.text&&nonFlowRef.text&&elemIdent.text&&flowRef.text!=="0"&&nonFlowRef.text!=="0"&&elemIdent.text!=="0"){return`Cannot connect flow component ${flowRef.text}.${elemIdent.text} to non-flow component ${nonFlowRef.text}.${elemIdent.text}.`}return`Flow variable sets differ in connect(): '${target.lhs}' vs '${target.rhs}'.`},"4055": (target,expRef,nonExpRef)=>`Cannot connect expandable connector ${expRef.text} with non-expandable connector ${nonExpRef.text}.`,"4057": (target,compName)=>`Prefix 'flow' on component '${compName.text}' not allowed in class specialization 'expandable connector'.`,"4037": (target,pfx,compName)=>`Invalid variability ${pfx.text} on connector '${compName.text}'.`,"4046": target=>`Constant declaration '${target.text}' must be fixed.`,"4054": (target,nameNode,flowCount)=>{const cName=nameNode?nameNode.name||nameNode.text:target.name||target.text;const fCount=flowCount?flowCount.asNumber():0;return`Invalid stream connector .${cName}: A stream connector must have exactly one flow variable, this connector has ${fCount} flow variables.`},"2094": target=>`No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,"6001": target=>`Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,"6002": target=>`Sample factor '${target.text}' must be a positive non-zero integer.`,"6003": target=>`previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,"6004": ()=>`hold() operator cannot be called in continuous equation section without boundary causality.`,"6010": target=>`More than one state marked as initialState in state machine '${target.name||target.text}'.`,"6020": target=>`Pure function cannot call impure function '${target.text}'.`,"6021": target=>`Impure function '${target.text}' may only be called in algorithm sections or when equations.`}
     : {};
 export const LINT_SEVERITIES =
-  typeof {"1003": 1,"2005": 1,"2097": 3,"4005": 1,"4006": 1,"4007": 1,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"2096": 3,"4019": 1,"4068": 1,"4063": 1,"4061": 1,"4022": 1,"4023": 1,"4024": 1,"2090": 3,"4026": 1,"2091": 3,"4052": 1,"2092": 3,"4053": 1,"4032": 1,"4033": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4064": 1,"4065": 1,"4066": 1,"5017": 1,"4079": 1,"4020": 1,"4078": 1,"4041": 1,"4070": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"4031": 1,"4076": 1,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"2093": 3,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"4049": 1,"4050": 1,"4051": 1,"5004": 1,"4055": 1,"4057": 1,"4037": 1,"4046": 1,"4054": 1,"2094": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1} !== "undefined"
-    ? {"1003": 1,"2005": 1,"2097": 3,"4005": 1,"4006": 1,"4007": 1,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"2096": 3,"4019": 1,"4068": 1,"4063": 1,"4061": 1,"4022": 1,"4023": 1,"4024": 1,"2090": 3,"4026": 1,"2091": 3,"4052": 1,"2092": 3,"4053": 1,"4032": 1,"4033": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4064": 1,"4065": 1,"4066": 1,"5017": 1,"4079": 1,"4020": 1,"4078": 1,"4041": 1,"4070": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3015": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"4031": 1,"4076": 1,"2002": 1,"2001": 1,"2003": 1,"4001": 1,"2093": 3,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5010": 1,"4039": 1,"4045": 1,"4049": 1,"4050": 1,"4051": 1,"5004": 1,"4055": 1,"4057": 1,"4037": 1,"4046": 1,"4054": 1,"2094": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1,"6040": 1}
+  typeof {"1003": 1,"2005": 1,"2097": 3,"4005": 1,"4006": 1,"4007": 1,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"2096": 3,"4019": 1,"4068": 1,"4063": 1,"4061": 1,"4022": 1,"4023": 1,"4024": 1,"2090": 3,"4026": 1,"2091": 3,"4052": 1,"2092": 3,"4053": 1,"4032": 1,"4033": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4064": 1,"4065": 1,"4066": 1,"5017": 1,"4079": 1,"4091": 1,"4020": 1,"4078": 1,"4041": 1,"4070": 1,"4020": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3018": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"4031": 1,"4076": 1,"2002": 1,"2003": 1,"4001": 1,"2093": 3,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5023": 1,"4039": 1,"4045": 1,"4049": 1,"4050": 1,"4051": 1,"5004": 1,"4055": 1,"4057": 1,"4037": 1,"4046": 1,"4054": 1,"2094": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1} !== "undefined"
+    ? {"1003": 1,"2005": 1,"2097": 3,"4005": 1,"4006": 1,"4007": 1,"4011": 1,"4013": 1,"4014": 1,"4017": 1,"2096": 3,"4019": 1,"4068": 1,"4063": 1,"4061": 1,"4022": 1,"4023": 1,"4024": 1,"2090": 3,"4026": 1,"2091": 3,"4052": 1,"2092": 3,"4053": 1,"4032": 1,"4033": 1,"4038": 2,"4042": 1,"4047": 1,"4025": 1,"4028": 1,"4048": 1,"4064": 1,"4065": 1,"4066": 1,"5017": 1,"4079": 1,"4091": 1,"4020": 1,"4078": 1,"4041": 1,"4070": 1,"4020": 1,"3001": 1,"3002": 1,"3009": 1,"4003": 1,"3018": 1,"5001": 1,"5005": 1,"5006": 1,"5008": 1,"5009": 1,"5013": 1,"5007": 1,"3010": 2,"3010": 2,"4031": 1,"4076": 1,"2002": 1,"2003": 1,"4001": 1,"2093": 3,"4002": 1,"4004": 2,"4027": 1,"4030": 1,"4034": 1,"4043": 1,"4044": 1,"5023": 1,"4039": 1,"4045": 1,"4049": 1,"4050": 1,"4051": 1,"5004": 1,"4055": 1,"4057": 1,"4037": 1,"4046": 1,"4054": 1,"2094": 2,"6001": 1,"6002": 1,"6003": 1,"6004": 1,"6010": 1,"6020": 1,"6021": 1}
     : {};
 export const LINT_CODES =
-  typeof {"1003": 1003,"2005": 2005,"2097": 2097,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"2096": 2096,"4019": 4019,"4068": 4068,"4063": 4063,"4061": 4061,"4022": 4022,"4023": 4023,"4024": 4024,"2090": 2090,"4026": 4026,"2091": 2091,"4052": 4052,"2092": 2092,"4053": 4053,"4032": 4032,"4033": 4033,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4064": 4064,"4065": 4065,"4066": 4066,"5017": 5017,"4079": 4079,"4020": 4020,"4078": 4078,"4041": 4041,"4070": 4070,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"4031": 4031,"4076": 4076,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"2093": 2093,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"4049": 4049,"4050": 4050,"4051": 4051,"5004": 5004,"4055": 4055,"4057": 4057,"4037": 4037,"4046": 4046,"4054": 4054,"2094": 2094,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} !== "undefined" ? {"1003": 1003,"2005": 2005,"2097": 2097,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"2096": 2096,"4019": 4019,"4068": 4068,"4063": 4063,"4061": 4061,"4022": 4022,"4023": 4023,"4024": 4024,"2090": 2090,"4026": 4026,"2091": 2091,"4052": 4052,"2092": 2092,"4053": 4053,"4032": 4032,"4033": 4033,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4064": 4064,"4065": 4065,"4066": 4066,"5017": 5017,"4079": 4079,"4020": 4020,"4078": 4078,"4041": 4041,"4070": 4070,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3015": 3015,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"4031": 4031,"4076": 4076,"2002": 2002,"2001": 2001,"2003": 2003,"4001": 4001,"2093": 2093,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5010": 5010,"4039": 4039,"4045": 4045,"4049": 4049,"4050": 4050,"4051": 4051,"5004": 5004,"4055": 4055,"4057": 4057,"4037": 4037,"4046": 4046,"4054": 4054,"2094": 2094,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021,"6040": 6040} : {};
+  typeof {"1003": 1003,"2005": 2005,"2097": 2097,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"2096": 2096,"4019": 4019,"4068": 4068,"4063": 4063,"4061": 4061,"4022": 4022,"4023": 4023,"4024": 4024,"2090": 2090,"4026": 4026,"2091": 2091,"4052": 4052,"2092": 2092,"4053": 4053,"4032": 4032,"4033": 4033,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4064": 4064,"4065": 4065,"4066": 4066,"5017": 5017,"4079": 4079,"4091": 4091,"4020": 4020,"4078": 4078,"4041": 4041,"4070": 4070,"4020": 4020,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3018": 3018,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"4031": 4031,"4076": 4076,"2002": 2002,"2003": 2003,"4001": 4001,"2093": 2093,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5023": 5023,"4039": 4039,"4045": 4045,"4049": 4049,"4050": 4050,"4051": 4051,"5004": 5004,"4055": 4055,"4057": 4057,"4037": 4037,"4046": 4046,"4054": 4054,"2094": 2094,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021} !== "undefined" ? {"1003": 1003,"2005": 2005,"2097": 2097,"4005": 4005,"4006": 4006,"4007": 4007,"4011": 4011,"4013": 4013,"4014": 4014,"4017": 4017,"2096": 2096,"4019": 4019,"4068": 4068,"4063": 4063,"4061": 4061,"4022": 4022,"4023": 4023,"4024": 4024,"2090": 2090,"4026": 4026,"2091": 2091,"4052": 4052,"2092": 2092,"4053": 4053,"4032": 4032,"4033": 4033,"4038": 4038,"4042": 4042,"4047": 4047,"4025": 4025,"4028": 4028,"4048": 4048,"4064": 4064,"4065": 4065,"4066": 4066,"5017": 5017,"4079": 4079,"4091": 4091,"4020": 4020,"4078": 4078,"4041": 4041,"4070": 4070,"4020": 4020,"3001": 3001,"3002": 3002,"3009": 3009,"4003": 4003,"3018": 3018,"5001": 5001,"5005": 5005,"5006": 5006,"5008": 5008,"5009": 5009,"5013": 5013,"5007": 5007,"3010": 3010,"3010": 3010,"4031": 4031,"4076": 4076,"2002": 2002,"2003": 2003,"4001": 4001,"2093": 2093,"4002": 4002,"4004": 4004,"4027": 4027,"4030": 4030,"4034": 4034,"4043": 4043,"4044": 4044,"5023": 5023,"4039": 4039,"4045": 4045,"4049": 4049,"4050": 4050,"4051": 4051,"5004": 5004,"4055": 4055,"4057": 4057,"4037": 4037,"4046": 4046,"4054": 4054,"2094": 2094,"6001": 6001,"6002": 6002,"6003": 6003,"6004": 6004,"6010": 6010,"6020": 6020,"6021": 6021} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
   typeof {"class_prefixes":1,"class_specifier":2,"name":3,"description":4,"composition":5,"end_name":6,"base_prefix":7,"type_specifier":8,"array_subscripts":9,"class_modification":10,"enum_list":11,"annotation_clause":12,"import_clause":13,"extends_clause":14,"class_definition":15,"component_clause":16,"constraining_clause":17,"alias":18,"import_list":19,"modification":20,"type_prefix":21,"component_list":22,"component_declaration":23,"declaration":24,"modification_expression":25,"is_each":26,"is_final":27,"replaceable":28,"component_clause1":29,"element_replaceable":30,"lhs":31,"rhs":32,"target":33,"value":34,"args":35,"condition":36,"body":37,"elseCondition":38,"elseBody":39,"finalBody":40,"indices":41,"variable":42,"range":43,"left":44,"right":45,"operand":46,"callee":47,"argument":48,"expression":49,"subscripts":50,"member":51,"rows":52,"arguments":53,"flexible":54} !== "undefined" ? {"class_prefixes":1,"class_specifier":2,"name":3,"description":4,"composition":5,"end_name":6,"base_prefix":7,"type_specifier":8,"array_subscripts":9,"class_modification":10,"enum_list":11,"annotation_clause":12,"import_clause":13,"extends_clause":14,"class_definition":15,"component_clause":16,"constraining_clause":17,"alias":18,"import_list":19,"modification":20,"type_prefix":21,"component_list":22,"component_declaration":23,"declaration":24,"modification_expression":25,"is_each":26,"is_final":27,"replaceable":28,"component_clause1":29,"element_replaceable":30,"lhs":31,"rhs":32,"target":33,"value":34,"args":35,"condition":36,"body":37,"elseCondition":38,"elseBody":39,"finalBody":40,"indices":41,"variable":42,"range":43,"left":44,"right":45,"operand":46,"callee":47,"argument":48,"expression":49,"subscripts":50,"member":51,"rows":52,"arguments":53,"flexible":54} : {};
@@ -636,6 +680,12 @@ export class LspFacade {
     this.scheduleCompaction(true);
     this.uriSourceCode.delete(uri);
   }
+  isCharOffsetKernel() {
+    return Boolean(
+      this.exports?.lsp_isCharOffsetKernel &&
+      this.exports.lsp_isCharOffsetKernel(),
+    );
+  }
   /**
    * Loads document text into the WASM input buffer without triggering a parse.
    * This ensures that subsequent calls to `getDiagnostics`, `getSemanticTokens`, or CST inspection
@@ -658,11 +708,12 @@ export class LspFacade {
       memArray16[i] = text.charCodeAt(i);
     }
     this._inputEncoding = 1;
+    const inputLen = this.isCharOffsetKernel() ? text.length : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
     this._cachedLineStarts = null;
   }
@@ -809,14 +860,16 @@ export class LspFacade {
       memArray16.fill(0, newTotalLength, maxLen);
     }
     this._inputEncoding = 1;
+    const div = this.getEncodingDiv();
+    const inputLen = this.isCharOffsetKernel() ? newTotalLength : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
-    let editStart = rangeOffset * 2;
-    let editOldEnd = (rangeOffset + rangeLength) * 2;
-    let editNewEnd = (rangeOffset + changeText.length) * 2;
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
+    let editStart = rangeOffset * div;
+    let editOldEnd = (rangeOffset + rangeLength) * div;
+    let editNewEnd = (rangeOffset + changeText.length) * div;
     let baseRoot = prevAstRoot;
     if (
       baseRoot === 0 ||
@@ -957,15 +1010,17 @@ export class LspFacade {
     this._cachedLineStarts = null;
     this.currentInputLength = newTotalLength;
     this._inputEncoding = 1;
+    const div = this.getEncodingDiv();
+    const inputLen = this.isCharOffsetKernel() ? newTotalLength : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     const maxNewEnd = maxOrigEnd + netDelta;
-    let editStartByte = minOrigStart * 2;
-    let editOldEndByte = maxOrigEnd * 2;
-    let editNewEndByte = maxNewEnd * 2;
+    let editStartByte = minOrigStart * div;
+    let editOldEndByte = maxOrigEnd * div;
+    let editNewEndByte = maxNewEnd * div;
     let baseRoot = prevAstRoot;
     if (
       baseRoot === 0 ||
@@ -1012,9 +1067,10 @@ export class LspFacade {
    * Complexity: O(edit_size + affected_lines), typically O(1) for single-char edits.
    */
   _updateLineStarts(old, rangeOffset, rangeLength, changeText) {
-    const editStartByte = rangeOffset * 2;
-    const editOldEndByte = (rangeOffset + rangeLength) * 2;
-    const editNewEndByte = (rangeOffset + changeText.length) * 2;
+    const div = this.getEncodingDiv();
+    const editStartByte = rangeOffset * div;
+    const editOldEndByte = (rangeOffset + rangeLength) * div;
+    const editNewEndByte = (rangeOffset + changeText.length) * div;
     const delta = editNewEndByte - editOldEndByte;
     // Find two split points in the old lineStarts array:
     // prefixEnd:  first index where old[i] > editStartByte (entries IN or AFTER the edit zone)
@@ -1044,13 +1100,13 @@ export class LspFacade {
       const c = changeText.charCodeAt(i);
       if (c === 13) {
         if (i + 1 < changeText.length && changeText.charCodeAt(i + 1) === 10) {
-          newLineStarts.push((rangeOffset + i + 2) * 2);
+          newLineStarts.push((rangeOffset + i + 2) * div);
           i++; // Skip LF
         } else {
-          newLineStarts.push((rangeOffset + i + 1) * 2);
+          newLineStarts.push((rangeOffset + i + 1) * div);
         }
       } else if (c === 10) {
-        newLineStarts.push((rangeOffset + i + 1) * 2);
+        newLineStarts.push((rangeOffset + i + 1) * div);
       }
     }
     // Build the new array:
@@ -1076,13 +1132,44 @@ export class LspFacade {
     return result;
   }
   /**
-   * Scans the current WASM input buffer and calculates all line start byte offsets.
+   * Scans the current WASM input buffer and calculates all line start offsets.
    * This is cached and only recalculated when the cache is invalidated by edits.
-   * Note: The offsets are stored in UTF-16 bytes (i.e. charIndex * 2) to match
-   * the WASM AST's byte offset ranges.
    */
   getLineStarts() {
     if (this._cachedLineStarts) return this._cachedLineStarts;
+    if (this.isCharOffsetKernel()) {
+      const lenChars =
+        this.currentInputLength > 0
+          ? this.currentInputLength
+          : (this.exports.inputLength?.value ?? this.exports.inputLength ?? 0);
+      const starts = [0];
+      const getInputBuf =
+        this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+      const inputBufPtr = getInputBuf ? getInputBuf() : 0;
+      if (inputBufPtr > 0 && lenChars > 0) {
+        const textBuffer = new Uint16Array(
+          this.wasmMemory.buffer,
+          inputBufPtr,
+          lenChars,
+        );
+        for (let i = 0; i < lenChars; i++) {
+          const c = textBuffer[i];
+          if (c === 13) {
+            if (i + 1 < lenChars && textBuffer[i + 1] === 10) {
+              starts.push(i + 2);
+              i++;
+            } else {
+              starts.push(i + 1);
+            }
+          } else if (c === 10) {
+            starts.push(i + 1);
+          }
+        }
+      }
+      const lineStarts = new Uint32Array(starts);
+      this._cachedLineStarts = lineStarts;
+      return lineStarts;
+    }
     const encoding = this.getInputEncoding();
     let lenBytes = this.currentInputLength;
     if (
@@ -1201,7 +1288,7 @@ export class LspFacade {
     return lineStarts;
   }
   /**
-   * Performs a binary search on the cached line starts to map a linear byte offset
+   * Performs a binary search on the cached line starts to map a linear offset
    * to a line and character position (LSP format).
    */
   offsetToPos(offset, lineStarts) {
@@ -1217,29 +1304,15 @@ export class LspFacade {
         high = mid - 1;
       }
     }
-    const encoding = this.getInputEncoding();
-    const charDiv =
-      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
-        ? 2
-        : encoding === InputEncoding.UTF32LE ||
-            encoding === InputEncoding.UTF32BE
-          ? 4
-          : 1;
+    const charDiv = this.getEncodingDiv();
     const charOffset = Math.floor((offset - lineStarts[line]) / charDiv);
     return { line, character: charOffset };
   }
   /**
-   * Maps a line and character position to a linear byte offset.
+   * Maps a line and character position to a linear offset.
    */
   posToOffset(line, character, lineStarts) {
-    const encoding = this.getInputEncoding();
-    const charMult =
-      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
-        ? 2
-        : encoding === InputEncoding.UTF32LE ||
-            encoding === InputEncoding.UTF32BE
-          ? 4
-          : 1;
+    const charMult = this.getEncodingDiv();
     if (line < lineStarts.length) {
       return lineStarts[line] + character * charMult;
     }
@@ -1265,13 +1338,9 @@ export class LspFacade {
     const lineStarts = this.getLineStarts();
     const encoding =
       typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
-    const encStep =
-      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
-        ? 2
-        : encoding === InputEncoding.UTF32LE ||
-            encoding === InputEncoding.UTF32BE
-          ? 4
-          : 1;
+    const isCharKernel = this.isCharOffsetKernel();
+    const encStep = this.getEncodingDiv();
+    const rawUnitBytes = isCharKernel ? 2 : 1;
     const rStartByte = rangeStart * encStep;
     const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
     const numElements =
@@ -1283,7 +1352,7 @@ export class LspFacade {
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const extractTokenText = (start, end) => {
-      const lenBytes = this.exports.inputLength
+      const lenUnits = this.exports.inputLength
         ? typeof this.exports.inputLength.value === "number"
           ? this.exports.inputLength.value
           : Number(this.exports.inputLength) || 0
@@ -1293,17 +1362,18 @@ export class LspFacade {
         : this.exports.lsp_getInputBuffer
           ? this.exports.lsp_getInputBuffer()
           : 0;
-      if (inputBufPtr > 0 && start < lenBytes) {
+      if (inputBufPtr > 0 && start < lenUnits) {
         const actualEnd =
           end > start
-            ? Math.min(end, lenBytes)
-            : Math.min(start + encStep * 32, lenBytes);
-        const sliceLen = actualEnd - start;
-        if (sliceLen > 0) {
+            ? Math.min(end, lenUnits)
+            : Math.min(start + encStep * 32, lenUnits);
+        const sliceLenBytes = (actualEnd - start) * rawUnitBytes;
+        const startByteOff = start * rawUnitBytes;
+        if (sliceLenBytes > 0) {
           const slice = new Uint8Array(
             this.wasmMemory.buffer,
-            inputBufPtr + start,
-            sliceLen,
+            inputBufPtr + startByteOff,
+            sliceLenBytes,
           );
           let text = "";
           if (encoding === 1) {
@@ -1313,11 +1383,11 @@ export class LspFacade {
           } else if (encoding === 3 || encoding === 4) {
             const view = new DataView(
               this.wasmMemory.buffer,
-              inputBufPtr + start,
-              sliceLen,
+              inputBufPtr + startByteOff,
+              sliceLenBytes,
             );
             const cps = [];
-            for (let k = 0; k + 3 < sliceLen; k += 4) {
+            for (let k = 0; k + 3 < sliceLenBytes; k += 4) {
               cps.push(view.getUint32(k, encoding === 3));
             }
             text = String.fromCodePoint(...cps);
@@ -1354,8 +1424,6 @@ export class LspFacade {
     }
     const offsetCache = new Map();
     if (requiredNodePtrs.size > 0 && astRoot) {
-      const encoding = this.getInputEncoding();
-      const _encStep = encoding === 1 ? 2 : 1;
       let stackPtrs = new Uint32Array(50000);
       let stackOffsets = new Uint32Array(50000);
       let stackTop = 0;
@@ -1455,9 +1523,7 @@ export class LspFacade {
         if (nodeStart !== undefined) {
           startByte = nodeStart;
           const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
-          endByte =
-            startByte +
-            (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
+          endByte = startByte + (nodeLen > 0 ? nodeLen : encStep);
         }
       }
       const rawLintId = lintId & 0x7fff;
@@ -1615,7 +1681,7 @@ export class LspFacade {
           }
           let msgVal = activeLintMessages[key];
           if (typeof msgVal === "function") {
-            const lenBytes = this.exports.inputLength
+            const lenUnits = this.exports.inputLength
               ? typeof this.exports.inputLength.value === "number"
                 ? this.exports.inputLength.value
                 : Number(this.exports.inputLength) || 0
@@ -1628,20 +1694,20 @@ export class LspFacade {
             let chars = "";
             if (
               inputBufPtr > 0 &&
-              startByte < lenBytes &&
-              endByte <= lenBytes &&
+              startByte < lenUnits &&
+              endByte <= lenUnits &&
               startByte <= endByte
             ) {
-              const sliceLen = endByte - startByte;
-              const slice = new Uint8Array(sliceLen);
+              const sliceLenBytes = (endByte - startByte) * rawUnitBytes;
+              const startByteOff = startByte * rawUnitBytes;
+              const slice = new Uint8Array(sliceLenBytes);
               slice.set(
                 new Uint8Array(
                   this.wasmMemory.buffer,
-                  inputBufPtr + startByte,
-                  sliceLen,
+                  inputBufPtr + startByteOff,
+                  sliceLenBytes,
                 ),
               );
-              const encoding = this.getInputEncoding();
               if (encoding === 1) {
                 chars = new TextDecoder("utf-16le").decode(slice);
               } else if (encoding === 2) {
@@ -1653,7 +1719,7 @@ export class LspFacade {
                   slice.byteLength,
                 );
                 const cps = [];
-                for (let k = 0; k + 3 < sliceLen; k += 4) {
+                for (let k = 0; k + 3 < sliceLenBytes; k += 4) {
                   cps.push(view.getUint32(k, encoding === 3));
                 }
                 chars = String.fromCodePoint(...cps);
@@ -1661,6 +1727,14 @@ export class LspFacade {
                 chars = new TextDecoder("utf-8").decode(slice);
               }
             }
+            const bytesPerChar =
+              encoding === InputEncoding.UTF16LE ||
+              encoding === InputEncoding.UTF16BE
+                ? 2
+                : encoding === InputEncoding.UTF32LE ||
+                    encoding === InputEncoding.UTF32BE
+                  ? 4
+                  : 1;
             const dummyTree = {
               _encoding: encoding,
               _encMult: encStep,
@@ -1672,26 +1746,26 @@ export class LspFacade {
                     : this.exports.lsp_getInputBuffer
                       ? this.exports.lsp_getInputBuffer()
                       : 0;
-                  const totalLenBytes =
+                  const rawLen =
                     this.exports.inputLength &&
                     typeof this.exports.inputLength.value === "number"
                       ? this.exports.inputLength.value
                       : this.currentInputLength > 0
                         ? this.currentInputLength * encStep
                         : 0;
-                  const totalLenUnits = Math.floor(totalLenBytes / encStep);
+                  const totalLenUnits = Math.floor(rawLen / encStep);
                   if (
                     inputPtr > 0 &&
                     start >= 0 &&
                     end <= totalLenUnits &&
                     start <= end
                   ) {
-                    const byteLen = (end - start) * encStep;
+                    const byteLen = (end - start) * bytesPerChar;
                     const u8 = new Uint8Array(byteLen);
                     u8.set(
                       new Uint8Array(
                         currentBuf,
-                        inputPtr + start * encStep,
+                        inputPtr + start * bytesPerChar,
                         byteLen,
                       ),
                     );
@@ -2091,13 +2165,15 @@ export class LspFacade {
     for (let i = 0; i < numElements * 4; i += 4) {
       const rawStart = mem32[(dirPtr >>> 2) + i];
       const rawEnd = mem32[(dirPtr >>> 2) + i + 1];
+      const startOff = Math.floor(rawStart / div);
+      const endOff = Math.floor(rawEnd / div);
       symbols.push({
         start: this.offsetToPos(rawStart, lineStarts),
         end: this.offsetToPos(rawEnd, lineStarts),
-        startOffset: Math.floor(rawStart / div),
-        endOffset: Math.floor(rawEnd / div),
-        startByte: rawStart,
-        endByte: rawEnd,
+        startOffset: startOff,
+        endOffset: endOff,
+        startByte: startOff,
+        endByte: endOff,
         typeId: mem32[(dirPtr >>> 2) + i + 2],
         nodePtr: mem32[(dirPtr >>> 2) + i + 3],
       });
@@ -2105,6 +2181,7 @@ export class LspFacade {
     return symbols;
   }
   getEncodingDiv() {
+    if (this.isCharOffsetKernel()) return 1;
     const encoding = this.getInputEncoding
       ? this.getInputEncoding()
       : InputEncoding.UTF16LE;
@@ -2173,6 +2250,7 @@ export class LspFacade {
     )
       return null;
     const div = this.getEncodingDiv();
+    const rawUnitBytes = this.isCharOffsetKernel() ? 2 : 1;
     const count = this.exports.lsp_getCompletionContext(
       astRoot,
       cursorOffset * div,
@@ -2199,8 +2277,8 @@ export class LspFacade {
         : new TextDecoder("utf-8");
       const rawBytes = new Uint8Array(
         this.wasmMemory.buffer,
-        inputBufPtr + targetStart,
-        targetEnd - targetStart,
+        inputBufPtr + targetStart * rawUnitBytes,
+        (targetEnd - targetStart) * rawUnitBytes,
       );
       targetText = decoder
         .decode(new Uint8Array(rawBytes))
@@ -2237,15 +2315,12 @@ export class LspFacade {
       : this.exports.lsp_getInputBuffer
         ? this.exports.lsp_getInputBuffer()
         : 0;
-    const lenBytes = this.exports.inputLength
+    const lenUnits = this.exports.inputLength
       ? typeof this.exports.inputLength.value === "number"
         ? this.exports.inputLength.value
         : Number(this.exports.inputLength) || 0
       : 0;
-    const _textBuffer =
-      inputBufPtr > 0 && lenBytes > 0
-        ? new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes)
-        : null;
+    const rawUnitBytes = this.isCharOffsetKernel() ? 2 : 1;
     const isUtf16 = this.getInputEncoding
       ? this.getInputEncoding() === 1
       : false;
@@ -2271,19 +2346,19 @@ export class LspFacade {
         let nodeText = "";
         if (
           inputBufPtr > 0 &&
-          lenBytes > 0 &&
-          rawStartByte < lenBytes &&
-          rawEndByte <= lenBytes &&
+          lenUnits > 0 &&
+          rawStartByte < lenUnits &&
+          rawEndByte <= lenUnits &&
           rawStartByte <= rawEndByte
         ) {
           try {
-            const sliceLen = rawEndByte - rawStartByte;
-            const slice = new Uint8Array(sliceLen);
+            const sliceLenBytes = (rawEndByte - rawStartByte) * rawUnitBytes;
+            const slice = new Uint8Array(sliceLenBytes);
             slice.set(
               new Uint8Array(
                 this.wasmMemory.buffer,
-                inputBufPtr + rawStartByte,
-                sliceLen,
+                inputBufPtr + rawStartByte * rawUnitBytes,
+                sliceLenBytes,
               ),
             );
             nodeText = decoder.decode(slice);
@@ -4110,11 +4185,13 @@ export class LspFacade {
       memArray16[i] = text.charCodeAt(i);
     }
     this._inputEncoding = 1;
+    const div = this.getEncodingDiv();
+    const inputLen = this.isCharOffsetKernel() ? text.length : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
     const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
     let baseRoot =
@@ -4145,7 +4222,6 @@ export class LspFacade {
         }
         const editsPtr = this._editsScratchPtr;
         const mem32 = new Uint32Array(this.wasmMemory.buffer);
-        const div = this.getEncodingDiv();
         for (let i = 0; i < edits.length; i++) {
           const base = (editsPtr >>> 2) + i * 3;
           mem32[base] = (edits[i].startOffset ?? edits[i].startByte) * div;
@@ -4160,19 +4236,19 @@ export class LspFacade {
           edits.length,
         );
       } else {
-        newAstRoot = this.exports.parse(baseRoot, 0, 0, lenBytes);
+        newAstRoot = this.exports.parse(baseRoot, 0, 0, inputLen);
       }
     } else {
       let editStart =
         typeof editStartOrEdits === "number" ? editStartOrEdits : 0;
-      let editStartByte = editStart * 2;
-      let editOldEndByte = editOldEnd * 2;
-      let editNewEndByte = editNewEnd * 2;
+      let editStartByte = editStart * div;
+      let editOldEndByte = editOldEnd * div;
+      let editNewEndByte = editNewEnd * div;
       if (
         baseRoot === 0 ||
         (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
       ) {
-        editNewEndByte = lenBytes;
+        editNewEndByte = inputLen;
         baseRoot = 0;
         editStartByte = 0;
         editOldEndByte = 0;
@@ -4719,6 +4795,10 @@ export class SyntaxNode {
    * Cached per-access via the facade; the encoding never changes mid-session.
    */
   get _encodingDiv() {
+    if (typeof this.tree?._encMult === "number") {
+      return this.tree._encMult;
+    }
+    if (this.tree.facade?.isCharOffsetKernel?.()) return 1;
     const enc = this.tree.facade?.getInputEncoding
       ? this.tree.facade.getInputEncoding()
       : (this.tree._encoding ?? 1);
@@ -5422,7 +5502,14 @@ export class Tree {
       ? this.facade.getInputEncoding()
       : 1;
     this._encoding = enc;
-    const mult = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    const isCharKernel = Boolean(this.facade?.isCharOffsetKernel?.());
+    const mult = isCharKernel
+      ? 1
+      : enc === 1 || enc === 2
+        ? 2
+        : enc === 3 || enc === 4
+          ? 4
+          : 1;
     this._encMult = mult;
     if (
       facade &&
@@ -5432,7 +5519,7 @@ export class Tree {
       facade.rootSourceCode.set(rootPtr, sourceCode);
     }
     this.lineStarts = [0];
-    if (enc === 0) {
+    if (!isCharKernel && enc === 0) {
       let byteOffset = 0;
       for (let i = 0; i < sourceCode.length; i++) {
         const code = sourceCode.charCodeAt(i);

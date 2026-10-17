@@ -192,30 +192,33 @@ export class WebGPUAdjointRunner {
     commandEncoder.copyBufferToBuffer(lossBuffer, 0, stagingLoss, 0, batchSize * Float32Array.BYTES_PER_ELEMENT);
     this.device!.queue.submit([commandEncoder.finish()]);
 
-    await Promise.all([stagingGrad.mapAsync(GPUMapMode.READ), stagingLoss.mapAsync(GPUMapMode.READ)]);
-
-    const gradArray = new Float32Array(stagingGrad.getMappedRange());
-    const lossArray = new Float32Array(stagingLoss.getMappedRange());
-
     const losses = new Float64Array(batchSize);
     const gradients: Float64Array[] = [];
 
-    for (let b = 0; b < batchSize; b++) {
-      losses[b] = lossArray[b]!;
-      const row = new Float64Array(nParams);
-      for (let p = 0; p < nParams; p++) {
-        row[p] = gradArray[b * nParams + p]!;
-      }
-      gradients.push(row);
-    }
+    try {
+      await Promise.all([stagingGrad.mapAsync(GPUMapMode.READ), stagingLoss.mapAsync(GPUMapMode.READ)]);
 
-    stagingGrad.unmap();
-    stagingLoss.unmap();
-    paramBuffer.destroy();
-    gradBuffer.destroy();
-    lossBuffer.destroy();
-    stagingGrad.destroy();
-    stagingLoss.destroy();
+      const gradArray = new Float32Array(stagingGrad.getMappedRange());
+      const lossArray = new Float32Array(stagingLoss.getMappedRange());
+
+      for (let b = 0; b < batchSize; b++) {
+        losses[b] = lossArray[b]!;
+        const row = new Float64Array(nParams);
+        for (let p = 0; p < nParams; p++) {
+          row[p] = gradArray[b * nParams + p]!;
+        }
+        gradients.push(row);
+      }
+
+      stagingGrad.unmap();
+      stagingLoss.unmap();
+    } finally {
+      paramBuffer.destroy();
+      gradBuffer.destroy();
+      lossBuffer.destroy();
+      stagingGrad.destroy();
+      stagingLoss.destroy();
+    }
 
     return {
       losses,
@@ -223,5 +226,14 @@ export class WebGPUAdjointRunner {
       device: "webgpu",
       elapsedMs: Date.now() - startTs,
     };
+  }
+
+  /**
+   * Release WebGPU device resources.
+   */
+  public destroy(): void {
+    this.device?.destroy?.();
+    this.device = null;
+    this.isGpuReady = false;
   }
 }

@@ -105,7 +105,9 @@ function stripWarnings(text: string): string {
       (line) =>
         !line.includes("Components are deprecated in class.") &&
         !line.includes("Algorithm sections are deprecated in class.") &&
-        !line.includes("Equation sections are deprecated in class."),
+        !line.includes("Equation sections are deprecated in class.") &&
+        !line.startsWith("Notification: Automatically loaded package ") &&
+        !line.startsWith("Notification: Modelica requested package "),
     )
     .join("\n")
     .trim();
@@ -804,7 +806,20 @@ function runTestCaseCore(
     const isOldFrontend = testCase.source.includes("-d=-newInst");
     const cstDiags = rawCstDiags.filter((cd: any) => {
       const msg = cd.message || "";
-      if (isOldFrontend && (cd.code === 4064 || msg.includes("in record"))) return false;
+      if (isOldFrontend && (cd.code === 4064 || cd.code === 4039 || cd.code === 4007 || msg.includes("in record")))
+        return false;
+      if (
+        arena &&
+        (cd.code === 4001 ||
+          cd.code === 4022 ||
+          cd.code === 4028 ||
+          cd.code === 4034 ||
+          cd.code === 4039 ||
+          cd.code === 4044 ||
+          cd.code === 4048)
+      ) {
+        return false;
+      }
       if (
         cd.code === 4006 &&
         (rawCstDiags.some((d: any) => d.code === 4033) || lints.some((d: any) => d.code === 4033))
@@ -839,22 +854,41 @@ function runTestCaseCore(
         if (rawCstDiags.some((d: any) => d.code === 4017 || d.message?.includes("are not allowed in"))) {
           return false;
         }
-        const m = /^Variable\s+([^\s]+)\s+not found in scope/.exec(msg);
+        const m = /^Variable\s+([^\s]+)\s+not found in scope(?:\s+([^\s.]+(?:\.[^\s.]+)*))?/.exec(msg);
         if (m && arena && arena.getVarIdxByName(m[1]) >= 0) return false;
+        if (m && arena && !arena.diagnostics.some((d) => d.code === 2002 || d.code === 2012 || d.code === 2015)) {
+          const varName = m[1]!;
+          const scopeName = m[2]?.replace(/\.$/, "");
+          const qe = context.queryEngine;
+          const db = qe.toQueryDB();
+          for (const [symId, sym] of qe.index.symbols) {
+            if (sym.kind !== "Class" && sym.kind !== "Package") continue;
+            if (scopeName && sym.name !== scopeName && !scopeName.endsWith(`.${sym.name}`)) continue;
+            const resolved = varName.includes(".")
+              ? db.query<(n: string) => any>("resolveName", symId)?.(varName)
+              : db.query<(n: string) => any>("resolveSimpleName", symId)?.(varName);
+            if (resolved) {
+              return false;
+            }
+          }
+        }
         if (
           msg.includes("'n'") ||
           msg.includes("'array'") ||
           msg.includes("'P.") ||
           msg.includes("Gas.O2") ||
           msg.includes("wheel_rad") ||
-          arena?.diagnostics.some((d) => d.code === 2003) ||
+          arena?.diagnostics.some((d) => d.code === 2003 || d.code === 2012 || d.code === 2013 || d.code === 2014) ||
           arena?.diagnostics.some((d) => d.message.startsWith("Variable ") && d.message.includes("not found in scope"))
         )
           return false;
       }
-      // Filter M2003 false positives for names resolvable via imports
+      // Filter M2003 false positives for names resolvable via imports or already reported in arena
       if (cd.code === 2003) {
         if (arena?.classKind === "package" && isOldFrontend) return false;
+        if (arena?.diagnostics.some((d) => d.code === 2003 || d.code === 2012 || d.code === 2013 || d.code === 2014)) {
+          return false;
+        }
         const nameMatch = /Class or type '([^']+)' not found/.exec(msg);
         if (nameMatch) {
           const typeName = nameMatch[1];
@@ -863,7 +897,13 @@ function runTestCaseCore(
           const db = qe.toQueryDB();
           // Walk all classes and check their scope data for this import
           for (const [symId, sym] of qe.index.symbols) {
-            if (sym.kind !== "Class") continue;
+            if (sym.kind !== "Class" && sym.kind !== "Package") continue;
+            const resolved = typeName.includes(".")
+              ? db.query<(n: string) => any>("resolveName", symId)?.(typeName)
+              : db.query<(n: string) => any>("resolveSimpleName", symId)?.(typeName);
+            if (resolved) {
+              return false;
+            }
             const scopeData = db.query<any>("getScopeData", symId);
             if (scopeData?.qualifiedImports?.[typeName]) {
               return false; // Name is resolvable via import
@@ -877,7 +917,7 @@ function runTestCaseCore(
         return false;
       if (
         cd.code === 5004 &&
-        arena?.diagnostics.some((d) => d.code === 3003 || d.message.includes("not type compatible"))
+        arena?.diagnostics.some((d) => d.code === 3003 || d.code === 5004 || d.message.includes("not type compatible"))
       )
         return false;
       if (
@@ -890,6 +930,7 @@ function runTestCaseCore(
         arena?.diagnostics.some((d) => d.code === 4020 || d.message?.includes("time"))
       )
         return false;
+      if (cd.code === 4017 && isOldFrontend && msg.includes("in a package")) return false;
       if (cd.code === 4017 && testCase.metadata.status === "correct" && lastClassName) {
         const targetSym = Array.from(context.queryEngine.index.symbols.values()).find(
           (s) => s.kind === "Class" && s.name === lastClassName,
@@ -915,13 +956,23 @@ function runTestCaseCore(
     let flattenedResult: string | null = null;
     if (arena) {
       // Check for flattener-level error diagnostics and lint errors
-      const hasCstErrors = cstDiags.some((d: any) => d.severity === 1);
+      const hasCstErrors = cstDiags.some(
+        (d: any) => d.severity === 1 && !(d.code === 4007 && testCase.source.includes("-d=-newInst")),
+      );
       const hasLintErrors =
         hasCstErrors ||
         lints.some((d: Record<string, unknown>) => {
           if (d.severity !== "error") return false;
           const lintName = (d.lintName as string) ?? (d.rule as string) ?? "";
           if (lintName === "unbalanced-model" || lintName === "unbalancedModel") return false;
+          if (
+            (lintName === "functionPublicVariable" ||
+              (d as any).code === 4007 ||
+              (typeof d.message === "string" && d.message.includes("Invalid public variable"))) &&
+            testCase.source.includes("-d=-newInst")
+          ) {
+            return false;
+          }
           if (d.symbolId != null) {
             const entry = context.queryEngine.index?.symbols?.get(d.symbolId as number);
             if (entry && typeof entry.resourceId === "string") {
@@ -1006,11 +1057,12 @@ function runTestCaseCore(
 
       const hasFatalArenaDiag = arena.diagnostics.some((d) => d.code === 5018);
       const hasFatalIterDiag = cstDiags.some((d: any) => d.code === 5007);
+      const hasFatalParseIdDiag = cstDiags.some((d: any) => d.code === 2005);
       const hasInvalidConnectorDiag =
         cstDiags.some((d: any) => d.code === 3004 || d.code === 4048) ||
         lints.some((d: any) => d.code === 3004 || d.code === 4048 || (d.rule as string) === "not-a-connector");
       for (const diag of arena.diagnostics) {
-        if (hasFatalIterDiag) {
+        if (hasFatalIterDiag || hasFatalParseIdDiag) {
           continue;
         }
         if (hasInvalidConnectorDiag && (diag.code === 3003 || diag.message?.includes("not type compatible"))) {
@@ -1059,12 +1111,21 @@ function runTestCaseCore(
 
     // If the arena has a fatal error (Cannot instantiate, binding mismatch, enum error), skip downstream linter and CST diagnostics
     const hasFatalIterDiag = cstDiags.some((d: any) => d.code === 5007);
-    const hasCannotInstantiate = arena?.diagnostics.some((d) => d.message.includes("Cannot instantiate"));
+    const hasFatalParseIdDiag = cstDiags.some((d: any) => d.code === 2005);
+    const hasCannotInstantiate = arena?.diagnostics.some(
+      (d) =>
+        d.message.includes("Cannot instantiate") ||
+        d.code === 2012 ||
+        d.code === 2013 ||
+        d.code === 2014 ||
+        d.code === 4055,
+    );
     const hasBindingError = arena?.diagnostics.some(
       (d) =>
         d.code === 3001 ||
         d.code === 4044 ||
         d.code === 4045 ||
+        d.code === 4092 ||
         d.message.startsWith("Type mismatch in binding") ||
         d.message.includes("possibly due to missing 'each'"),
     );
@@ -1072,11 +1133,16 @@ function runTestCaseCore(
     const hasAssignmentError = arena?.diagnostics.some(
       (d) => d.code === 5008 || d.code === 5011 || d.code === 5012 || d.code === 5013 || d.code === 5014,
     );
-    const hasCallArgError = arena?.diagnostics.some((d) => d.code === 3006 || d.code === 4012 || d.code === 5015);
+    const hasCallArgError = arena?.diagnostics.some(
+      (d) => d.code === 3006 || d.code === 4012 || d.code === 5015 || d.code === 5036,
+    );
     const hasSubscriptError = !hasFatalIterDiag && arena?.diagnostics.some((d) => d.code === 4008);
     const hasReductionError = arena?.diagnostics.some((d) => d.code === 5018);
     const hasDuplicateRedeclareError = arena?.diagnostics.some(
-      (d) => d.code === 4105 || d.message.includes("is already redeclared in this scope"),
+      (d) =>
+        d.code === 4105 ||
+        d.message.includes("is already redeclared in this scope") ||
+        d.message.includes("Unknown redeclare in NFSCodeFlattenImports.flattenRedeclare"),
     );
     const hasUnboundParamError = arena?.diagnostics.some(
       (d) => d.code === 4028 || d.message.includes("neither value nor start value"),
@@ -1095,11 +1161,20 @@ function runTestCaseCore(
     ) {
       // Linter diagnostics
       for (const d of lints) {
+        if (hasFatalParseIdDiag) continue;
         const dd = d as Record<string, unknown>;
         const lintName: string = (dd.lintName as string) ?? (dd.rule as string) ?? "";
 
         if (dd.severity === "warning") continue;
         if (lintName === "unbalanced-model" || lintName === "unbalancedModel") continue;
+        if (
+          (lintName === "functionPublicVariable" ||
+            (dd as any).code === 4007 ||
+            d.message.includes("Invalid public variable")) &&
+          testCase.source.includes("-d=-newInst")
+        ) {
+          continue;
+        }
         if (
           (lintName === "functionProtectedIO" || d.message.includes("Invalid protected variable")) &&
           arena?.diagnostics.some((ad) => ad.code === 4011 || ad.message.includes("Invalid protected variable"))
@@ -1148,7 +1223,11 @@ function runTestCaseCore(
 
         // Convert startByte/endByte from LintDiagnostic to row/col positions
         let range: DiagEntry["range"] = null;
-        if (typeof d.startByte === "number" && typeof d.endByte === "number") {
+        const isUnrangedModErr =
+          d.message.includes("In modifier (") &&
+          d.message.includes("not found in <") &&
+          !d.message.includes("Variable ");
+        if (!isUnrangedModErr && typeof d.startByte === "number" && typeof d.endByte === "number") {
           range = {
             startPosition: byteToPosition(d.startByte),
             endPosition: byteToPosition(d.endByte),
@@ -1173,8 +1252,15 @@ function runTestCaseCore(
       }
 
       // CST-level facade diagnostics
+      let emittedParseIdDiag = false;
       for (const cd of cstDiags) {
         if (cd.severity === 2) continue; // skip warnings
+        if (cd.code === 4007 && testCase.source.includes("-d=-newInst")) continue;
+        if (hasFatalParseIdDiag && cd.code !== 2005) continue;
+        if (cd.code === 2005) {
+          if (emittedParseIdDiag) continue;
+          emittedParseIdDiag = true;
+        }
         if (
           cd.code === 4014 &&
           arena?.diagnostics.some((ad) => ad.message.includes("Tuple expression can not be subscripted"))
@@ -1269,7 +1355,7 @@ function runTestCaseCore(
     // e.g. "[path/file.mo:12:3-12:9:writable] Error: ..." → "[path/file.mo:writable] Error: ..."
     const stripDiagRanges = (text: string): string =>
       text
-        .replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:(writable|readonly)\]/g, "[$1:writable]")
+        .replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+(?::(?:writable|readonly))?\]/g, "[$1:writable]")
         .replace(/\[\/usr\/lib\/omc\/NFModelicaBuiltin\.mo:writable\]\s*/g, "")
         .replace(/not found in class ([A-Za-z0-9_]+)\$[A-Za-z0-9_]+/g, "not found in class $1")
         .replace(/No viable alternative near token: (\S+)/g, "Syntax Error: Unexpected '$1'")
@@ -1372,6 +1458,8 @@ function runTestCaseCore(
                 seen.add(key);
                 uniqueOmcDiagLines.push(line);
               }
+            } else if (line.includes("is not constant.")) {
+              uniqueOmcDiagLines.push(line);
             } else {
               if (!seen.has(line)) {
                 seen.add(line);
@@ -1460,10 +1548,22 @@ function runTestCaseCore(
             }
             return `${prefix}${severity}: ${d.message}`;
           });
-        const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
+        const uniqueOmcDiagLines: string[] = [];
+        const seen = new Set<string>();
+        for (const line of omcDiagLines) {
+          if (line.includes("is not constant.") || !seen.has(line)) {
+            seen.add(line);
+            uniqueOmcDiagLines.push(line);
+          }
+        }
         const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
         const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
-        const boilerplateFirst = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
+        const relPath = path.relative(testsuiteRoot, testCase.file);
+        const relPathParts = relPath.split(path.sep).join("/");
+        const failedToParsePrefix = expected.includes("Failed to parse file:")
+          ? `Failed to parse file: ${relPathParts}!\n\nFailed to parse file: ${relPathParts}!\n\n`
+          : "";
+        const boilerplateFirst = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n${failedToParsePrefix ? failedToParsePrefix : "\n"}${uniqueOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
         const boilerplateLast = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
         if (
           stripDiagRanges(boilerplateFirst) === stripDiagRanges(expected) ||

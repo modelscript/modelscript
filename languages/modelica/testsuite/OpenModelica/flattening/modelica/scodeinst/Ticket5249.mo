@@ -1,7 +1,6 @@
 // name:     Ticket5249.mo
 // keywords: tests if array binding works fine
 // status:   correct
-// xfail:    true
 //
 //
 

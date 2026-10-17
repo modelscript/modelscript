@@ -1,7 +1,6 @@
 // name: FunctionUnitialized3
 // keywords:
 // status: correct
-// xfail:    true
 //
 //
 

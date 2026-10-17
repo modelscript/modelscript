@@ -408,16 +408,18 @@ export function verifyAssumeGuaranteePair(
 /**
  * Scans a QueryDB for all connections and verifies their Assume-Guarantee contracts.
  */
-export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string): ContractVerificationResult {
+export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string | number): ContractVerificationResult {
   const allEntries = db.allEntries();
   const connections = allEntries.filter(
-    (e) => (e.ruleName === "ConnectionUsage" || e.ruleName === "BindingConnectorAsUsage") && e.name,
+    (e) => e.ruleName === "ConnectionUsage" || e.ruleName === "BindingConnectorAsUsage",
   );
 
   const allViolations: ContractViolation[] = [];
 
   for (const conn of connections) {
-    if (scopeFilter && conn.name !== scopeFilter && !conn.name.includes(scopeFilter)) {
+    if (typeof scopeFilter === "number") {
+      if (conn.id !== scopeFilter) continue;
+    } else if (scopeFilter && conn.name !== scopeFilter && !conn.name?.includes(scopeFilter)) {
       continue;
     }
 
@@ -431,26 +433,31 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string): 
     if (!sourceName || !targetName) {
       const refs = db.childrenOf(conn.id).filter((c) => c.kind === "Reference");
       if (refs.length >= 2) {
-        sourceName = refs[0]?.name || db.cstText(refs[0]?.startByte || 0, refs[0]?.endByte || 0);
-        targetName = refs[1]?.name || db.cstText(refs[1]?.startByte || 0, refs[1]?.endByte || 0);
+        sourceName = (refs[0]?.name || db.cstText(refs[0]?.startByte || 0, refs[0]?.endByte || 0) || "").trim();
+        targetName = (refs[1]?.name || db.cstText(refs[1]?.startByte || 0, refs[1]?.endByte || 0) || "").trim();
       }
     }
 
     if (!sourceName || !targetName) continue;
 
-    // Find source and target symbols
-    const sourceSymbols = db.byName(sourceName);
-    const targetSymbols = db.byName(targetName);
+    const resolveEndpointSym = (epName: string): SymbolEntry | undefined => {
+      const direct = db.byName(epName)[0];
+      if (direct) return direct;
+      if (epName.includes(".")) {
+        const parts = epName.split(".");
+        return db.byName(parts[0]!)[0] ?? db.byName(parts[parts.length - 1]!)[0];
+      }
+      return undefined;
+    };
 
-    const sourceSym = sourceSymbols[0];
-    const targetSym = targetSymbols[0];
+    const sourceSym = resolveEndpointSym(sourceName);
+    const targetSym = resolveEndpointSym(targetName);
 
     const sourceGuarantees: string[] = [];
     const targetAssumptions: string[] = [];
 
     const collectConstraints = (sym: SymbolEntry | undefined, isSource: boolean) => {
       if (!sym) return;
-      // Check children constraints
       const children = db.childrenOf(sym.id);
       for (const child of children) {
         const text = db.cstText(child.startByte, child.endByte, child);
@@ -468,7 +475,8 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string): 
     collectConstraints(targetSym, false);
 
     if (sourceGuarantees.length > 0 && targetAssumptions.length > 0) {
-      const res = verifyAssumeGuaranteePair(sourceName, targetName, sourceGuarantees, targetAssumptions, conn.name);
+      const connLabel = conn.name && conn.name !== "<anonymous>" ? conn.name : `${sourceName}->${targetName}`;
+      const res = verifyAssumeGuaranteePair(sourceName, targetName, sourceGuarantees, targetAssumptions, connLabel);
       allViolations.push(...res.violations);
     }
   }

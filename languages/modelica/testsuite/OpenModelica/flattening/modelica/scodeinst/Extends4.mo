@@ -1,7 +1,6 @@
 // name: Extends4.mo
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 // Checks that inherited components are not instantiated in the scope they're
 // inherited into.

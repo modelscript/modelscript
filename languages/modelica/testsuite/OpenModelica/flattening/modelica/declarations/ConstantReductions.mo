@@ -1,7 +1,6 @@
 // name:     ConstantReductions
 // keywords: declaration
 // status:   correct
-// xfail:    true
 //
 // Constant evaluation of reductions.
 //

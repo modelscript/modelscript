@@ -226,6 +226,7 @@ export function performBltTransformationArena(
   arena: DAEBuilder,
   stateVars?: Set<string | number>,
   dummyDerivatives?: Set<string | number>,
+  parameterVars?: Set<number>,
 ): ArenaBltResult {
   const stateKey = stateVars ? Array.from(stateVars).sort().join(",") : "";
   const dummyKey = dummyDerivatives ? Array.from(dummyDerivatives).sort().join(",") : "";
@@ -256,7 +257,7 @@ export function performBltTransformationArena(
       variability === Variability.Parameter ||
       variability === Variability.Constant ||
       variability === Variability.Discrete ||
-      (arena.hasExplicitVarExpression?.(i) && (!stateVars || !stateVars.has(i)))
+      (parameterVars ? parameterVars.has(i) : arena.hasExplicitVarExpression?.(i) && (!stateVars || !stateVars.has(i)))
     ) {
       continue;
     }

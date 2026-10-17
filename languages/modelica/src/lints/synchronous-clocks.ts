@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/dsl";
-import { isDescendantOfInnerClass } from "./helpers.js";
+import {
+  getCallCalleeNode,
+  hasMixedClockDomains,
+  hasNonPositiveSampleFactor,
+  isDescendantOfInnerClass,
+  isImpureCalledInEquationSection,
+  isImpureCalledInPureFunction,
+  isPreviousOnNonClocked,
+} from "./helpers.js";
 
 export const modelicaSyncLints: Record<string, CompilerLint> = {
   /**
@@ -12,19 +20,9 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 6001,
     message: (target) => `Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,
-    query: (db: CodeGraph, node: u32) => {
-      const left = db.ast.getChildByFieldId(node, "left");
-      const right = db.ast.getChildByFieldId(node, "right");
-      if (left != 0 && right != 0) {
-        const leftSym = db.scope.resolve(left);
-        const rightSym = db.scope.resolve(right);
-        if (leftSym != 0 && rightSym != 0) {
-          const clockL = db.model.getProperty(leftSym, "clockId");
-          const clockR = db.model.getProperty(rightSym, "clockId");
-          if (clockL != 0 && clockR != 0 && clockL != clockR) {
-            db.diagnostic(node);
-          }
-        }
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if (hasMixedClockDomains(db, node, $)) {
+        db.diagnostic(node);
       }
     },
   },
@@ -33,21 +31,21 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
    * M6002: Sample factor must be positive integer constant.
    */
   sampleFactorNotPositive: {
-    nodes: ["function_call"],
+    nodes: ["function_call", "primary"],
     severity: "error",
     code: 6002,
     message: (target) => `Sample factor '${target.text}' must be a positive non-zero integer.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const name = db.ast.getChildByFieldId(node, "name");
-      if (name != 0 && (db.ast.textEquals(name, "subSample") || db.ast.textEquals(name, "superSample"))) {
-        const factorArg = db.ast.getChildByFieldId(node, "factor");
-        if (factorArg != 0) {
-          if (
-            db.ast.getType(factorArg) == $.unsigned_integer &&
-            (db.ast.textEquals(factorArg, "0") || db.ast.textEquals(factorArg, "-1"))
-          ) {
-            db.diagnostic(factorArg);
-          }
+      const name = getCallCalleeNode(db, node, $);
+      if (
+        name != 0 &&
+        (db.ast.textEquals(name, "subSample") ||
+          db.ast.textEquals(name, "superSample") ||
+          db.ast.textEquals(name, "shiftSample") ||
+          db.ast.textEquals(name, "backSample"))
+      ) {
+        if (hasNonPositiveSampleFactor(db, node, $)) {
+          db.diagnostic(node);
         }
       }
     },
@@ -57,44 +55,52 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
    * M6003: previous() called on non-clocked variable.
    */
   previousOutsideClocked: {
-    nodes: ["function_call"],
+    nodes: ["function_call", "primary"],
     severity: "error",
     code: 6003,
     message: (target) =>
       `previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const name = db.ast.getChildByFieldId(node, "name");
+      const name = getCallCalleeNode(db, node, $);
       if (name != 0 && db.ast.textEquals(name, "previous")) {
-        let argNode: u32 = 0;
-        for (const arg of db.ast.getDescendants(node, $.function_argument)) {
-          argNode = arg;
-          break;
-        }
-        if (argNode != 0) {
-          const sym = db.scope.resolve(argNode);
-          if (sym != 0 && !db.model.hasFlag(sym, "isClocked")) {
-            db.diagnostic(argNode);
-          }
+        if (isPreviousOnNonClocked(db, node, $)) {
+          db.diagnostic(node);
         }
       }
     },
   },
 
   /**
-   * M6004: hold() called in continuous equation without proper boundary.
+   * M6004: hold() called inside a clocked or continuous derivative operator.
    */
   holdInContinuous: {
-    nodes: ["function_call"],
+    nodes: ["function_call", "primary"],
     severity: "error",
     code: 6004,
     message: () => `hold() operator cannot be called in continuous equation section without boundary causality.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const name = db.ast.getChildByFieldId(node, "name");
+      const name = getCallCalleeNode(db, node, $);
       if (name != 0 && db.ast.textEquals(name, "hold")) {
-        for (const sec of db.ast.getAncestors(node, $.class_definition)) {
-          if (db.ast.getType(sec) == $.equation_section) {
-            db.diagnostic(node);
-            break;
+        for (const anc of db.ast.getAncestors(node, 0)) {
+          if (anc != node) {
+            const t = db.ast.getType(anc);
+            if (t == $.primary && db.ast.startsWith(anc, "der(")) {
+              db.diagnostic(node);
+              break;
+            }
+            if (t == $.function_call || t == $.primary) {
+              const outerName = getCallCalleeNode(db, anc, $);
+              if (
+                outerName != 0 &&
+                (db.ast.textEquals(outerName, "previous") ||
+                  db.ast.textEquals(outerName, "subSample") ||
+                  db.ast.textEquals(outerName, "superSample") ||
+                  db.ast.textEquals(outerName, "der"))
+              ) {
+                db.diagnostic(node);
+                break;
+              }
+            }
           }
         }
       }
@@ -114,9 +120,16 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
       for (const comp of db.ast.getDescendants(node, $.component_clause)) {
         if (isDescendantOfInnerClass(db, comp, node, $)) continue;
         for (const mod of db.ast.getDescendants(comp, $.modification)) {
-          if (db.ast.textEquals(mod, "initialState = true")) {
+          if (db.ast.textEquals(mod, "initialState = true") || db.ast.textEquals(mod, "initialState=true")) {
             initCount++;
           }
+        }
+      }
+      for (const fc of db.ast.getDescendants(node, $.function_call)) {
+        if (isDescendantOfInnerClass(db, fc, node, $)) continue;
+        const fnName = getCallCalleeNode(db, fc, $);
+        if (fnName != 0 && db.ast.textEquals(fnName, "initialState")) {
+          initCount++;
         }
       }
       if (initCount > 1) {
@@ -140,23 +153,13 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
    * M6020: Pure function calls impure function.
    */
   impureCalledInPure: {
-    nodes: ["function_call"],
+    nodes: ["function_call", "primary"],
     severity: "error",
     code: 6020,
     message: (target) => `Pure function cannot call impure function '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const name = db.ast.getChildByFieldId(node, "name");
-      if (name != 0) {
-        const calledSym = db.scope.resolve(name);
-        if (calledSym != 0 && db.model.hasFlag(calledSym, "isImpure")) {
-          for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-            const callerSym = db.scope.resolve(cls);
-            if (callerSym != 0 && !db.model.hasFlag(callerSym, "isImpure")) {
-              db.diagnostic(node);
-            }
-            break;
-          }
-        }
+      if (isImpureCalledInPureFunction(db, node, $)) {
+        db.diagnostic(node);
       }
     },
   },
@@ -165,41 +168,13 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
    * M6021: Impure function called in equation section.
    */
   impureInEquationSection: {
-    nodes: ["function_call"],
+    nodes: ["function_call", "primary"],
     severity: "error",
     code: 6021,
     message: (target) => `Impure function '${target.text}' may only be called in algorithm sections or when equations.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const name = db.ast.getChildByFieldId(node, "name");
-      if (name != 0) {
-        const calledSym = db.scope.resolve(name);
-        if (calledSym != 0 && db.model.hasFlag(calledSym, "isImpure")) {
-          for (const sec of db.ast.getAncestors(node, $.class_definition)) {
-            if (db.ast.getType(sec) == $.equation_section) {
-              db.diagnostic(node);
-              break;
-            }
-          }
-        }
-      }
-    },
-  },
-
-  /**
-   * M6040: Break connection not found in base classes.
-   */
-  breakConnectionNotFound: {
-    nodes: ["inheritance_modification"],
-    severity: "error",
-    code: 6040,
-    message: (target) => `Break connection '${target.text}' does not exist in inherited base classes.`,
-    query: (db: CodeGraph, node: u32) => {
-      const conn = db.ast.getChildByFieldId(node, "connect_equation");
-      if (conn != 0) {
-        const sym = db.scope.resolve(conn);
-        if (sym == 0) {
-          db.diagnostic(conn);
-        }
+      if (isImpureCalledInEquationSection(db, node, $)) {
+        db.diagnostic(node);
       }
     },
   },

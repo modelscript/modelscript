@@ -1,7 +1,6 @@
 // name:     ImportConflict3
 // keywords: import conflict
 // status:   incorrect
-// xfail:    true
 //
 // Checks that using a name imported from several sources produces an error.
 //

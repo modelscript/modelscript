@@ -1,7 +1,6 @@
 // name: OperatorOverloadComplex
 // keywords: operator overload complex
 // status: correct
-// xfail:    true
 //
 // Tests operator overloading on Complex numbers, operators can only contain function declarations
 //

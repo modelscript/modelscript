@@ -1,7 +1,6 @@
 // name: ConditionInvalidContext3
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 
 model A

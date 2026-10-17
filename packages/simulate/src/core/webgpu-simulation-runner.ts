@@ -363,20 +363,23 @@ export class WebGPUSimulationRunner {
     }
 
     // Single batched read back across entire simulation trajectory
-    await trajectoryReadbackBuffer.mapAsync(GPUMapMode.READ);
-    const mappedData = new Float32Array(trajectoryReadbackBuffer.getMappedRange());
-    const stepStride = this.buffers.varCount * 2;
-    for (let s = 1; s <= steps; s++) {
-      const srcOffset = s * stepStride;
-      const dstOffset = s * this.buffers.varCount;
-      for (let i = 0; i < this.buffers.varCount; i++) {
-        resultBuffer[dstOffset + i] =
-          mappedData[srcOffset + i * 2] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! +
-          mappedData[srcOffset + i * 2 + 1] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+    try {
+      await trajectoryReadbackBuffer.mapAsync(GPUMapMode.READ);
+      const mappedData = new Float32Array(trajectoryReadbackBuffer.getMappedRange());
+      const stepStride = this.buffers.varCount * 2;
+      for (let s = 1; s <= steps; s++) {
+        const srcOffset = s * stepStride;
+        const dstOffset = s * this.buffers.varCount;
+        for (let i = 0; i < this.buffers.varCount; i++) {
+          resultBuffer[dstOffset + i] =
+            mappedData[srcOffset + i * 2] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! +
+            mappedData[srcOffset + i * 2 + 1] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+        }
       }
+      trajectoryReadbackBuffer.unmap();
+    } finally {
+      trajectoryReadbackBuffer.destroy();
     }
-    trajectoryReadbackBuffer.unmap();
-    trajectoryReadbackBuffer.destroy();
 
     return resultBuffer;
   }
@@ -524,18 +527,21 @@ export class WebGPUSimulationRunner {
     commandEncoder.copyBufferToBuffer(this.stateBuffer, 0, readbackBuffer, 0, this.buffers.varCount * 8);
     this.device.queue.submit([commandEncoder.finish()]);
 
-    await readbackBuffer.mapAsync(GPUMapMode.READ);
-    const resultState = new Float32Array(readbackBuffer.getMappedRange());
-
-    // 5. Extract only the derivative values
     const derivValues = new Float32Array(this.numStates);
-    for (let i = 0; i < this.numStates; i++) {
-      const idx = this.buffers.derivVarIndices[i] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
-      derivValues[i] = (resultState[idx * 2] ?? 0) + (resultState[idx * 2 + 1] ?? 0);
-    }
+    try {
+      await readbackBuffer.mapAsync(GPUMapMode.READ);
+      const resultState = new Float32Array(readbackBuffer.getMappedRange());
 
-    readbackBuffer.unmap();
-    readbackBuffer.destroy();
+      // 5. Extract only the derivative values
+      for (let i = 0; i < this.numStates; i++) {
+        const idx = this.buffers.derivVarIndices[i] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+        derivValues[i] = (resultState[idx * 2] ?? 0) + (resultState[idx * 2 + 1] ?? 0);
+      }
+
+      readbackBuffer.unmap();
+    } finally {
+      readbackBuffer.destroy();
+    }
 
     return derivValues;
   }
@@ -568,5 +574,20 @@ export class WebGPUSimulationRunner {
     const result = await dopri5Async(rhsFnAsync, t0, Array.from(y0), tEnd, outputTimes, options);
 
     return { t: result.times, y: result.states };
+  }
+
+  /**
+   * Release all allocated GPU buffers and destroy the WebGPU device.
+   */
+  public destroy(): void {
+    this.stateBuffer?.destroy?.();
+    this.residualsBuffer?.destroy?.();
+    this.paramsBuffer?.destroy?.();
+    this.stateIndicesBuffer?.destroy?.();
+    this.derivIndicesBuffer?.destroy?.();
+    this.y0Buffer?.destroy?.();
+    this.yAccBuffer?.destroy?.();
+    this.stageScratchBuffer?.destroy?.();
+    this.device?.destroy?.();
   }
 }

@@ -1,7 +1,6 @@
 // name:     BC5 - LimIntegrator component
 // keywords: LimIntegrator
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the LimIntegrator component.
 //

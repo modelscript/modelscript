@@ -6,9 +6,11 @@ export class CloudStatusBar implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
   private timer: any = null;
   private apiBaseUrl: string;
+  private authToken: string | undefined;
 
-  constructor(apiBaseUrl = "http://localhost:3000/api/v1") {
-    this.apiBaseUrl = apiBaseUrl;
+  constructor(apiBaseUrl = "http://localhost:3000/api/v1", authToken?: string) {
+    this.apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
+    this.authToken = authToken;
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
     this.statusBarItem.command = "modelscript.openCloudMenu";
     this.statusBarItem.tooltip = "ModelScript Cloud HPC Orchestration — Click for profiles & balance";
@@ -17,6 +19,17 @@ export class CloudStatusBar implements vscode.Disposable {
 
     this.refreshBalance();
     this.timer = setInterval(() => this.refreshBalance(), 30000);
+  }
+
+  private getConfig(): { baseUrl: string; headers: Record<string, string> } {
+    const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
+    const baseUrl = (cfg.get<string>("apiBaseUrl") || this.apiBaseUrl).replace(/\/+$/, "");
+    const token = cfg.get<string>("authToken") || this.authToken;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    return { baseUrl, headers };
   }
 
   public updateStatus(balance: number | null, activeJobs = 0): void {
@@ -30,10 +43,11 @@ export class CloudStatusBar implements vscode.Disposable {
 
   public async refreshBalance(): Promise<void> {
     try {
-      const res = await fetch(`${this.apiBaseUrl}/cloud/balance`);
+      const { baseUrl, headers } = this.getConfig();
+      const res = await fetch(`${baseUrl}/cloud/balance`, { headers });
       if (res.ok) {
         const data = (await res.json()) as { balance: number };
-        const jobsRes = await fetch(`${this.apiBaseUrl}/cloud/jobs`);
+        const jobsRes = await fetch(`${baseUrl}/cloud/jobs`, { headers });
         let activeCount = 0;
         if (jobsRes.ok) {
           const jobsData = (await jobsRes.json()) as { jobs: { status: string }[] };

@@ -32,7 +32,7 @@ async function runCamJob(data: CamJobData) {
   let minY = -25.0,
     maxY = 25.0;
   let minZ = -5.0,
-    maxZ = 0.0;
+    _maxZ = 0.0;
 
   try {
     const stepText = await fs.readFile(data.stepFilePath, "utf8");
@@ -68,7 +68,7 @@ async function runCamJob(data: CamJobData) {
       minY = pMinY;
       maxY = pMaxY;
       minZ = pMinZ;
-      maxZ = pMaxZ;
+      _maxZ = pMaxZ;
     }
   } catch (err) {
     console.warn(`[CamWorker] Could not parse STEP geometry points directly, using stock bounds:`, err);

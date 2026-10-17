@@ -19,7 +19,7 @@ import {
 } from "@primer/octicons-react";
 import { Button, Dialog, Flash, FormControl, Heading, Select, Spinner, Text, Textarea } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
 import { blockUser, followUser, getUserProfile, muteUser, reportUser, unblockUser, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
@@ -31,6 +31,7 @@ import ProfileRepos from "../components/ProfileRepos";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
+import { safeCssImageUrl, sanitizeHttpUrl } from "../util/url";
 
 const XIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -77,6 +78,7 @@ const Tab = styled.button<{ $active?: boolean }>`
 
 const ProfilePage: React.FC = () => {
   const { username } = useParams();
+  const navigate = useNavigate();
   const { user, token } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   usePageTitle(
@@ -231,7 +233,7 @@ const ProfilePage: React.FC = () => {
         style={{
           height: "200px",
           backgroundColor: "var(--color-canvas-subtle)",
-          backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : "none",
+          backgroundImage: safeCssImageUrl(profile.banner_url) || "none",
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}
@@ -251,18 +253,15 @@ const ProfilePage: React.FC = () => {
               color: "white",
               fontSize: "48px",
               fontWeight: "bold",
-              backgroundImage: profile.avatar_url ? `url(${profile.avatar_url})` : "none",
+              backgroundImage: safeCssImageUrl(profile.avatar_url) || "none",
               backgroundSize: "cover",
             }}
           >
-            {!profile.avatar_url && profile.username.charAt(0).toUpperCase()}
+            {!safeCssImageUrl(profile.avatar_url) && profile.username.charAt(0).toUpperCase()}
           </Box>
           <Box mb={2} display="flex" gap={2} alignItems="center">
             {isOwnProfile ? (
-              <Button
-                onClick={() => (window.location.href = "/settings")}
-                style={{ borderRadius: "9999px", fontWeight: "bold" }}
-              >
+              <Button onClick={() => navigate("/settings")} style={{ borderRadius: "9999px", fontWeight: "bold" }}>
                 Edit profile
               </Button>
             ) : (
@@ -540,11 +539,11 @@ const ProfilePage: React.FC = () => {
             >
               <GlobeIcon size={13} /> ActivityPub Federated Actor
             </span>
-            {profile.actor_url && (
+            {sanitizeHttpUrl(profile.actor_url, { allowRelative: false }) && (
               <a
-                href={profile.actor_url}
+                href={sanitizeHttpUrl(profile.actor_url, { allowRelative: false })}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 style={{
                   fontSize: "12px",
                   color: "var(--color-text-muted)",
@@ -583,13 +582,13 @@ const ProfilePage: React.FC = () => {
               <LocationIcon size={16} /> <Text style={{ fontSize: "14px" }}>{profile.location}</Text>
             </Box>
           )}
-          {profile.website && (
+          {sanitizeHttpUrl(profile.website, { allowRelative: false, prependHttpsIfMissingScheme: true }) && (
             <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
               <LinkIcon size={16} />{" "}
               <a
-                href={profile.website}
+                href={sanitizeHttpUrl(profile.website, { allowRelative: false, prependHttpsIfMissingScheme: true })}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 style={{ color: "var(--color-accent-emphasis)", textDecoration: "none" }}
               >
                 {profile.website}

@@ -42,6 +42,7 @@ import {
 } from "../api";
 import Box from "../components/Box";
 import { usePageTitle } from "../util/title";
+import { sanitizeHttpUrl } from "../util/url";
 
 type AdminTab = "moderation" | "federation" | "dmca" | "audit" | "database" | "flags";
 
@@ -990,14 +991,21 @@ export const AdminPage: React.FC = () => {
 
                     <Box fontSize="13px">
                       <strong>Infringing URL:</strong>{" "}
-                      <a
-                        href={n.infringing_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: "var(--color-accent-purple)" }}
-                      >
-                        {n.infringing_url}
-                      </a>
+                      {sanitizeHttpUrl(n.infringing_url, { allowRelative: true, prependHttpsIfMissingScheme: true }) ? (
+                        <a
+                          href={sanitizeHttpUrl(n.infringing_url, {
+                            allowRelative: true,
+                            prependHttpsIfMissingScheme: true,
+                          })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "var(--color-accent-purple)" }}
+                        >
+                          {n.infringing_url}
+                        </a>
+                      ) : (
+                        <span>{n.infringing_url}</span>
+                      )}
                     </Box>
 
                     <Box fontSize="13px" color="var(--color-text-muted)">

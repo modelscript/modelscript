@@ -10,9 +10,11 @@ import {
   VarAttrKind,
   Variability,
   evaluateArenaExpression,
+  hasArrayEquations,
   isolateSymbolicallyArena,
   pantelidesIndexReductionArena,
   performBltTransformationArena,
+  scalarizeArena,
   tryOptimizeLoopWithGroebner,
   type ArenaStateMachine,
 } from "@modelscript/runtime";
@@ -304,9 +306,44 @@ export class ArenaSimulator {
   constructor(public arena: DAEBuilder) {}
 
   prepare() {
+    let hasPreservedArrays = hasArrayEquations(this.arena);
+    if (!hasPreservedArrays) {
+      for (let i = 0; i < this.arena.varCount; i++) {
+        if (!this.arena.isVarRemoved(i) && this.arena.getVarShape(i).length > 0) {
+          hasPreservedArrays = true;
+          break;
+        }
+      }
+    }
+    if (hasPreservedArrays) {
+      this.arena = scalarizeArena(this.arena);
+    }
+
+    const cachedPrep = (this.arena as any)._cachedSimPrep;
+    if (cachedPrep) {
+      this.parameters = new Map(cachedPrep.parameters);
+      this.parameterVars = new Set(cachedPrep.parameterVars);
+      this.stateVars = new Set(cachedPrep.stateVars);
+      this.derivativeVars = new Set(cachedPrep.derivativeVars);
+      this.dummyDerivatives = new Set(cachedPrep.dummyDerivatives);
+      this.sortedEquations = cachedPrep.sortedEquations;
+      this.blocks = cachedPrep.blocks;
+      this.executionBlocks = cachedPrep.executionBlocks;
+      this.preValuesByStringId = new Float64Array(this.arena.interner.size);
+      this.compiledBlocks = this.compileBlocks();
+      this.extractWhenClauses();
+      this.extractAssertions();
+      this.extractEventIndicators();
+      this.extractStateMachines();
+      this.prepareFmuMappings();
+      return;
+    }
+
+    (this.arena as any)._mutatedBySim = true;
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
     this.resolveParameters();
     this.resolveKinematicVelocities();
+    this.reduceAffineStateConstraints();
     this.identifyDerivatives();
     this.eliminateAliases();
 
@@ -320,11 +357,22 @@ export class ArenaSimulator {
     this.dummyDerivatives = pantelidesRes.dummyDerivatives;
 
     // Arena-Native BLT / Bipartite Matching
-    const bltRes = performBltTransformationArena(this.arena, this.stateVars, this.dummyDerivatives);
+    const bltRes = performBltTransformationArena(this.arena, this.stateVars, this.dummyDerivatives, this.parameterVars);
     this.sortedEquations = bltRes.sortedEquations;
     this.blocks = bltRes.blocks;
 
     this.buildExecutionBlocks();
+    (this.arena as any)._cachedSimPrep = {
+      parameters: new Map(this.parameters),
+      parameterVars: new Set(this.parameterVars),
+      stateVars: new Set(this.stateVars),
+      derivativeVars: new Set(this.derivativeVars),
+      dummyDerivatives: new Set(this.dummyDerivatives),
+      sortedEquations: this.sortedEquations,
+      blocks: this.blocks,
+      executionBlocks: this.executionBlocks,
+    };
+
     this.compiledBlocks = this.compileBlocks();
     this.extractWhenClauses();
     this.extractAssertions();
@@ -443,6 +491,47 @@ export class ArenaSimulator {
   }
 
   private resolveParameters() {
+    const exprReferencesContinuous = (exprId: number): boolean => {
+      if (exprId < 0) return false;
+      const k = this.arena.getExprKind(exprId);
+      if (k === ExprKind.Name) {
+        const nameId = this.arena.getExprData1(exprId);
+        const name = this.arena.interner.resolve(nameId);
+        if (name === "time") return true;
+        const vIdx = this.arena.lookupVariable(nameId);
+        if (vIdx >= 0) {
+          const v = this.arena.getVarVariability(vIdx);
+          return v !== Variability.Parameter && v !== Variability.Constant;
+        }
+        return false;
+      }
+      if (k === ExprKind.Der || k === ExprKind.Pre) return true;
+      if (k === ExprKind.Unary || k === ExprKind.Negate) {
+        return exprReferencesContinuous(this.arena.getExprLeft(exprId));
+      }
+      if (k === ExprKind.Binary) {
+        return (
+          exprReferencesContinuous(this.arena.getExprLeft(exprId)) ||
+          exprReferencesContinuous(this.arena.getExprRight(exprId))
+        );
+      }
+      if (k === ExprKind.IfElse) {
+        return (
+          exprReferencesContinuous(this.arena.getExprData1(exprId)) ||
+          exprReferencesContinuous(this.arena.getExprLeft(exprId)) ||
+          exprReferencesContinuous(this.arena.getExprRight(exprId))
+        );
+      }
+      if (k === ExprKind.Call) {
+        const argc = this.arena.getExprRight(exprId);
+        const firstArg = this.arena.getExprLeft(exprId);
+        for (let a = 0; a < argc; a++) {
+          if (exprReferencesContinuous(firstArg + a)) return true;
+        }
+      }
+      return false;
+    };
+
     for (let i = 0; i < this.arena.varCount; i++) {
       if (this.arena.isVarRemoved(i)) continue;
       const variability = this.arena.getVarVariability(i);
@@ -452,9 +541,35 @@ export class ArenaSimulator {
 
       if (!isParam && !(hasExplicitExpr && isNotState)) continue;
 
+      const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
+      if (!isParam && typeof exprId === "number" && exprId >= 0 && exprReferencesContinuous(exprId)) {
+        // Continuous/discrete variable with a continuous binding expression (e.g. from omcCompatibility: true).
+        // Ensure its binding equation is present in the DAE arena rather than treating it as a static parameter.
+        let hasEq = false;
+        const varNameId = this.arena.getVarNameId(i);
+        for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+          if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+          const lhs = this.arena.getEqLhs(eqIdx);
+          const rhs = this.arena.getEqRhs(eqIdx);
+          if (
+            rhs === exprId &&
+            lhs >= 0 &&
+            this.arena.getExprKind(lhs) === ExprKind.Name &&
+            this.arena.getExprData1(lhs) === varNameId
+          ) {
+            hasEq = true;
+            break;
+          }
+        }
+        if (!hasEq) {
+          const lhsExprId = this.arena.addExpression(ExprKind.Name, varNameId);
+          this.arena.addEquation(EqKind.Simple, lhsExprId, exprId);
+        }
+        continue;
+      }
+
       this.parameterVars.add(i);
 
-      const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
       const name = this.arena.getVarName(i);
       let val: number | null = null;
       if (typeof exprId === "number" && exprId !== -1) {
@@ -677,6 +792,474 @@ export class ArenaSimulator {
             this.arena.setEqRhs(i, divExpr);
             break;
           }
+        }
+      }
+    }
+  }
+
+  private reduceAffineStateConstraints() {
+    const allDerVars = new Set<number>();
+    const derAliasOf = new Map<number, number>();
+    const isDerAliasTarget = new Set<number>();
+
+    const isZeroMassOrInertia = (varIdx: number): boolean => {
+      const name = this.arena.getVarName(varIdx);
+      if (name.endsWith(".phi") || name.endsWith(".w")) {
+        const prefix = name.substring(0, name.lastIndexOf("."));
+        const jIdx = this.arena.getVarIdxByName(`${prefix}.J`);
+        if (jIdx >= 0) {
+          const jVal = this.parameters.get(`${prefix}.J`) ?? this.arena.getVarStartValue(jIdx);
+          if (jVal === 0) return true;
+        }
+      }
+      if (name.endsWith(".s") || name.endsWith(".v")) {
+        const prefix = name.substring(0, name.lastIndexOf("."));
+        const mIdx = this.arena.getVarIdxByName(`${prefix}.m`);
+        if (mIdx >= 0) {
+          const mVal = this.parameters.get(`${prefix}.m`) ?? this.arena.getVarStartValue(mIdx);
+          if (mVal === 0) return true;
+        }
+      }
+      return false;
+    };
+
+    const scanDerExpr = (exprId: number) => {
+      if (exprId < 0) return;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Der) {
+        const argId = this.arena.getExprData1(exprId);
+        if (this.arena.getExprKind(argId) === ExprKind.Name) {
+          const vIdx = this.arena.lookupVariable(this.arena.getExprData1(argId));
+          if (vIdx >= 0 && !isZeroMassOrInertia(vIdx)) {
+            allDerVars.add(vIdx);
+          }
+        }
+        return;
+      }
+      switch (kind) {
+        case ExprKind.Binary:
+          scanDerExpr(this.arena.getExprLeft(exprId));
+          scanDerExpr(this.arena.getExprRight(exprId));
+          break;
+        case ExprKind.Unary:
+        case ExprKind.Negate:
+          scanDerExpr(this.arena.getExprLeft(exprId));
+          break;
+        case ExprKind.IfElse:
+          scanDerExpr(this.arena.getExprData1(exprId));
+          scanDerExpr(this.arena.getExprLeft(exprId));
+          scanDerExpr(this.arena.getExprRight(exprId));
+          break;
+        case ExprKind.Call: {
+          const argCount = this.arena.getExprRight(exprId);
+          if (argCount > 0) {
+            const firstArg = this.arena.getExprLeft(exprId);
+            for (let a = 0; a < argCount; a++) scanDerExpr(firstArg + a);
+          }
+          break;
+        }
+        case ExprKind.Tuple:
+        case ExprKind.ArrayCtor: {
+          const count = this.arena.getExprData1(exprId);
+          if (count > 0) {
+            const firstElem = this.arena.getExprLeft(exprId);
+            for (let e = 0; e < count; e++) scanDerExpr(firstElem + e);
+          }
+          break;
+        }
+      }
+    };
+
+    for (let i = 0; i < this.arena.eqCount; i++) {
+      if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
+      const lhs = this.arena.getEqLhs(i);
+      const rhs = this.arena.getEqRhs(i);
+      scanDerExpr(lhs);
+      scanDerExpr(rhs);
+
+      if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(rhs) === ExprKind.Der) {
+        const derArg = this.arena.getExprData1(rhs);
+        if (this.arena.getExprKind(derArg) === ExprKind.Name) {
+          const wIdx = this.arena.lookupVariable(this.arena.getExprData1(lhs));
+          const xIdx = this.arena.lookupVariable(this.arena.getExprData1(derArg));
+          if (wIdx >= 0 && xIdx >= 0 && !isZeroMassOrInertia(xIdx)) {
+            derAliasOf.set(xIdx, wIdx);
+            isDerAliasTarget.add(wIdx);
+          }
+        }
+      } else if (this.arena.getExprKind(rhs) === ExprKind.Name && this.arena.getExprKind(lhs) === ExprKind.Der) {
+        const derArg = this.arena.getExprData1(lhs);
+        if (this.arena.getExprKind(derArg) === ExprKind.Name) {
+          const wIdx = this.arena.lookupVariable(this.arena.getExprData1(rhs));
+          const xIdx = this.arena.lookupVariable(this.arena.getExprData1(derArg));
+          if (wIdx >= 0 && xIdx >= 0 && !isZeroMassOrInertia(xIdx)) {
+            derAliasOf.set(xIdx, wIdx);
+            isDerAliasTarget.add(wIdx);
+          }
+        }
+      }
+    }
+
+    if (allDerVars.size === 0) return;
+
+    const activeCandidateStates = new Set<number>();
+    for (const v of allDerVars) {
+      if (!isDerAliasTarget.has(v)) {
+        activeCandidateStates.add(v);
+      }
+    }
+    if (activeCandidateStates.size === 0) return;
+
+    interface AffineComb {
+      constant: number;
+      coeffs: Map<number, number>;
+    }
+
+    const stateComb = new Map<number, AffineComb>();
+    for (const s of activeCandidateStates) {
+      stateComb.set(s, { constant: 0, coeffs: new Map([[s, 1.0]]) });
+    }
+
+    const cloneComb = (c: AffineComb): AffineComb => ({
+      constant: c.constant,
+      coeffs: new Map(c.coeffs),
+    });
+
+    const addComb = (a: AffineComb, b: AffineComb, signB: number): AffineComb => {
+      const coeffs = new Map(a.coeffs);
+      for (const [k, v] of b.coeffs) {
+        const next = (coeffs.get(k) ?? 0) + signB * v;
+        if (Math.abs(next) < 1e-14) {
+          coeffs.delete(k);
+        } else {
+          coeffs.set(k, next);
+        }
+      }
+      return { constant: a.constant + signB * b.constant, coeffs };
+    };
+
+    const scaleComb = (a: AffineComb, factor: number): AffineComb => {
+      if (Math.abs(factor) < 1e-15) {
+        return { constant: 0, coeffs: new Map() };
+      }
+      const coeffs = new Map<number, number>();
+      for (const [k, v] of a.coeffs) {
+        const next = v * factor;
+        if (Math.abs(next) >= 1e-14) {
+          coeffs.set(k, next);
+        }
+      }
+      return { constant: a.constant * factor, coeffs };
+    };
+
+    const evalAffine = (exprId: number): AffineComb | null => {
+      if (exprId < 0) return null;
+      const kind = this.arena.getExprKind(exprId);
+      switch (kind) {
+        case ExprKind.RealLiteral:
+          return { constant: this.arena.getExprRealValue(exprId), coeffs: new Map() };
+        case ExprKind.IntLiteral:
+        case ExprKind.BoolLiteral:
+        case ExprKind.EnumLiteral:
+          return { constant: this.arena.getExprData1(exprId), coeffs: new Map() };
+        case ExprKind.Name: {
+          const nameId = this.arena.getExprData1(exprId);
+          const vIdx = this.arena.lookupVariable(nameId);
+          if (vIdx < 0) {
+            const name = this.arena.interner.resolve(nameId);
+            if (name && this.parameters.has(name)) {
+              return { constant: this.parameters.get(name)!, coeffs: new Map() };
+            }
+            return null;
+          }
+          if (this.parameterVars.has(vIdx)) {
+            const name = this.arena.getVarName(vIdx);
+            const val = this.parameters.get(name) ?? this.arena.getVarStartValue(vIdx);
+            return { constant: val, coeffs: new Map() };
+          }
+          if (isDerAliasTarget.has(vIdx) || this.arena.isVarFlow(vIdx)) {
+            return null;
+          }
+          const vName = this.arena.getVarName(vIdx);
+          if (vName.endsWith(".tau") || vName.endsWith(".f") || vName.endsWith(".tau_c") || vName.endsWith(".tau_d")) {
+            return null;
+          }
+          const existing = stateComb.get(vIdx);
+          if (existing) {
+            return cloneComb(existing);
+          }
+          return { constant: 0, coeffs: new Map([[vIdx, 1.0]]) };
+        }
+        case ExprKind.Negate: {
+          const sub = evalAffine(this.arena.getExprLeft(exprId));
+          return sub ? scaleComb(sub, -1.0) : null;
+        }
+        case ExprKind.Unary: {
+          const op = this.arena.getExprData1(exprId);
+          const sub = evalAffine(this.arena.getExprLeft(exprId));
+          if (!sub) return null;
+          if (op === UnaryOp.Negate) return scaleComb(sub, -1.0);
+          return null;
+        }
+        case ExprKind.Binary: {
+          const op = this.arena.getExprData1(exprId);
+          const left = evalAffine(this.arena.getExprLeft(exprId));
+          if (!left) return null;
+          const right = evalAffine(this.arena.getExprRight(exprId));
+          if (!right) return null;
+          if (op === BinOp.Add) return addComb(left, right, 1.0);
+          if (op === BinOp.Sub) return addComb(left, right, -1.0);
+          if (op === BinOp.Mul) {
+            if (left.coeffs.size === 0) return scaleComb(right, left.constant);
+            if (right.coeffs.size === 0) return scaleComb(left, right.constant);
+            return null;
+          }
+          if (op === BinOp.Div) {
+            if (right.coeffs.size === 0 && Math.abs(right.constant) > 1e-15) {
+              return scaleComb(left, 1.0 / right.constant);
+            }
+            return null;
+          }
+          return null;
+        }
+        default:
+          return null;
+      }
+    };
+
+    const usedEqs = new Set<number>();
+    const eliminatedStates: number[] = [];
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+        if (usedEqs.has(eqIdx)) continue;
+        if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+        const lhs = this.arena.getEqLhs(eqIdx);
+        const rhs = this.arena.getEqRhs(eqIdx);
+        const lComb = evalAffine(lhs);
+        if (!lComb) continue;
+        const rComb = evalAffine(rhs);
+        if (!rComb) continue;
+        const diff = addComb(lComb, rComb, -1.0);
+
+        const unknownNonStates: number[] = [];
+        for (const k of diff.coeffs.keys()) {
+          if (!activeCandidateStates.has(k)) {
+            unknownNonStates.push(k);
+          }
+        }
+
+        if (unknownNonStates.length === 1) {
+          const u = unknownNonStates[0]!;
+          const cu = diff.coeffs.get(u)!;
+          if (Math.abs(cu) > 1e-12) {
+            const coeffsU = new Map<number, number>();
+            for (const [k, v] of diff.coeffs) {
+              if (k === u) continue;
+              const c = -v / cu;
+              if (Math.abs(c) >= 1e-14) coeffsU.set(k, c);
+            }
+            stateComb.set(u, { constant: -diff.constant / cu, coeffs: coeffsU });
+            usedEqs.add(eqIdx);
+            changed = true;
+          }
+        } else if (unknownNonStates.length === 0) {
+          usedEqs.add(eqIdx);
+          if (diff.coeffs.size >= 1) {
+            const lhsVarIdx =
+              this.arena.getExprKind(lhs) === ExprKind.Name
+                ? this.arena.lookupVariable(this.arena.getExprData1(lhs))
+                : -1;
+            let bestS = -1;
+            let bestScore = -Infinity;
+            for (const [s, cs] of diff.coeffs) {
+              if (Math.abs(cs) <= 1e-12) continue;
+              const sName = this.arena.getVarName(s);
+              let score = 0;
+              if (
+                sName.endsWith(".phi_rel") ||
+                sName.endsWith(".s_rel") ||
+                sName.endsWith(".w_rel") ||
+                sName.endsWith(".v_rel")
+              ) {
+                score += 1000;
+              }
+              score += !this.arena.isVarFixed(s) ? 500 : -500;
+              if (s === lhsVarIdx) score += 50;
+              score += s * 1e-4;
+              if (score > bestScore) {
+                bestScore = score;
+                bestS = s;
+              }
+            }
+
+            if (bestS >= 0) {
+              const cDep = diff.coeffs.get(bestS)!;
+              const coeffsDep = new Map<number, number>();
+              for (const [s, cs] of diff.coeffs) {
+                if (s === bestS) continue;
+                const c = -cs / cDep;
+                if (Math.abs(c) >= 1e-14) coeffsDep.set(s, c);
+              }
+              const combDep: AffineComb = {
+                constant: -diff.constant / cDep,
+                coeffs: coeffsDep,
+              };
+              activeCandidateStates.delete(bestS);
+              eliminatedStates.push(bestS);
+
+              // Substitute bestS -> combDep in all existing stateComb entries
+              for (const [vKey, vComb] of stateComb) {
+                const coeffInV = vComb.coeffs.get(bestS);
+                if (coeffInV !== undefined) {
+                  vComb.coeffs.delete(bestS);
+                  vComb.constant += coeffInV * combDep.constant;
+                  for (const [sRem, cRem] of combDep.coeffs) {
+                    const next = (vComb.coeffs.get(sRem) ?? 0) + coeffInV * cRem;
+                    if (Math.abs(next) < 1e-14) {
+                      vComb.coeffs.delete(sRem);
+                    } else {
+                      vComb.coeffs.set(sRem, next);
+                    }
+                  }
+                }
+              }
+              stateComb.set(bestS, combDep);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+
+    if (eliminatedStates.length === 0) return;
+
+    const buildLinearDerComboExpr = (coeffs: Map<number, number>, order: 1 | 2): number => {
+      let sumExpr = -1;
+      for (const [s, c] of coeffs) {
+        if (Math.abs(c) < 1e-14) continue;
+        let baseDerExpr: number;
+        if (order === 1) {
+          const wIdx = derAliasOf.get(s);
+          if (wIdx !== undefined && allDerVars.has(wIdx)) {
+            baseDerExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(wIdx));
+          } else {
+            const sNameExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(s));
+            baseDerExpr = this.arena.addDerExpr(sNameExpr);
+          }
+        } else {
+          const wIdx = derAliasOf.get(s);
+          const targetIdx = wIdx !== undefined ? wIdx : s;
+          const targetNameExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(targetIdx));
+          baseDerExpr = this.arena.addDerExpr(targetNameExpr);
+        }
+
+        let termExpr: number;
+        const absC = Math.abs(c);
+        const isNeg = c < 0;
+        if (Math.abs(absC - 1.0) < 1e-12) {
+          termExpr = baseDerExpr;
+        } else {
+          const cLit = this.arena.addRealLiteral(absC);
+          termExpr = this.arena.addBinaryExpr(BinOp.Mul, cLit, baseDerExpr);
+        }
+
+        if (sumExpr === -1) {
+          sumExpr = isNeg ? this.arena.addNegateExpr(termExpr) : termExpr;
+        } else {
+          sumExpr = this.arena.addBinaryExpr(isNeg ? BinOp.Sub : BinOp.Add, sumExpr, termExpr);
+        }
+      }
+      if (sumExpr === -1) {
+        sumExpr = this.arena.addRealLiteral(0.0);
+      }
+      return sumExpr;
+    };
+
+    const replaceDerInExpr = (exprId: number, targetVarIdx: number, replacementExprId: number): number => {
+      if (exprId < 0) return exprId;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Der) {
+        const argId = this.arena.getExprData1(exprId);
+        if (this.arena.getExprKind(argId) === ExprKind.Name) {
+          const vIdx = this.arena.lookupVariable(this.arena.getExprData1(argId));
+          if (vIdx === targetVarIdx) {
+            return replacementExprId;
+          }
+        }
+        return exprId;
+      }
+      switch (kind) {
+        case ExprKind.Binary: {
+          const l = this.arena.getExprLeft(exprId);
+          const r = this.arena.getExprRight(exprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          const nr = replaceDerInExpr(r, targetVarIdx, replacementExprId);
+          if (nl !== l || nr !== r) {
+            return this.arena.addBinaryExpr(this.arena.getExprData1(exprId), nl, nr);
+          }
+          return exprId;
+        }
+        case ExprKind.Negate: {
+          const l = this.arena.getExprLeft(exprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          if (nl !== l) {
+            return this.arena.addNegateExpr(nl);
+          }
+          return exprId;
+        }
+        case ExprKind.Unary: {
+          const l = this.arena.getExprLeft(exprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          if (nl !== l) {
+            return this.arena.addUnaryExpr(this.arena.getExprData1(exprId), nl);
+          }
+          return exprId;
+        }
+        case ExprKind.IfElse: {
+          const cond = this.arena.getExprData1(exprId);
+          const l = this.arena.getExprLeft(exprId);
+          const r = this.arena.getExprRight(exprId);
+          const nCond = replaceDerInExpr(cond, targetVarIdx, replacementExprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          const nr = replaceDerInExpr(r, targetVarIdx, replacementExprId);
+          if (nCond !== cond || nl !== l || nr !== r) {
+            return this.arena.addExpression(ExprKind.IfElse, nCond, nl, nr);
+          }
+          return exprId;
+        }
+        default:
+          return exprId;
+      }
+    };
+
+    for (const sDep of eliminatedStates) {
+      const finalComb = stateComb.get(sDep);
+      if (!finalComb) continue;
+      const derExpr1 = buildLinearDerComboExpr(finalComb.coeffs, 1);
+      for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+        if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+        const lhs = this.arena.getEqLhs(eqIdx);
+        const rhs = this.arena.getEqRhs(eqIdx);
+        const nLhs = replaceDerInExpr(lhs, sDep, derExpr1);
+        const nRhs = replaceDerInExpr(rhs, sDep, derExpr1);
+        if (nLhs !== lhs) this.arena.setEqLhs(eqIdx, nLhs);
+        if (nRhs !== rhs) this.arena.setEqRhs(eqIdx, nRhs);
+      }
+
+      const wDep = derAliasOf.get(sDep);
+      if (wDep !== undefined && allDerVars.has(wDep)) {
+        const derExpr2 = buildLinearDerComboExpr(finalComb.coeffs, 2);
+        for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+          if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+          const lhs = this.arena.getEqLhs(eqIdx);
+          const rhs = this.arena.getEqRhs(eqIdx);
+          const nLhs = replaceDerInExpr(lhs, wDep, derExpr2);
+          const nRhs = replaceDerInExpr(rhs, wDep, derExpr2);
+          if (nLhs !== lhs) this.arena.setEqLhs(eqIdx, nLhs);
+          if (nRhs !== rhs) this.arena.setEqRhs(eqIdx, nRhs);
         }
       }
     }
@@ -1200,14 +1783,36 @@ export class ArenaSimulator {
     const scale = this.newtonScratchScale;
     const dualStack = this.newtonScratchDualStack;
 
+    const blockAny = block as any;
+    let cachedVarIds: Int32Array | undefined = blockAny._varNameIds;
+    let cachedResIds: Int32Array | undefined = blockAny._resExprIds;
+    if (!cachedVarIds || !cachedResIds) {
+      cachedVarIds = new Int32Array(m);
+      cachedResIds = new Int32Array(m);
+      for (let i = 0; i < m; i++) {
+        cachedVarIds[i] = this.arena.getVarNameId(block.vars[i] as number);
+        const eqIdx = block.eqIdxs[i] as number;
+        const lhsId = this.arena.getEqLhs(eqIdx);
+        const rhsId = this.arena.getEqRhs(eqIdx);
+        cachedResIds[i] = this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
+      }
+      blockAny._varNameIds = cachedVarIds;
+      blockAny._resExprIds = cachedResIds;
+    }
+
     // Collect variable name StringIds
     for (let i = 0; i < m; i++) {
-      const varIdx = block.vars[i] as number;
-      const nid = this.arena.getVarNameId(varIdx);
+      const nid = cachedVarIds[i] as number;
       varNameIds[i] = nid;
       // Initialize from warm-start cache or current environment
       x[i] = this.algWarmStart.get(nid) ?? valuesByStringId[nid] ?? 0;
     }
+
+    const compiledRes: ((env: Float64Array, x: Float64Array, R: Float64Array) => number) | undefined =
+      blockAny._compiledResiduals;
+    const compiledJac: ((env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) => void) | undefined =
+      blockAny._compiledJacobian;
+    const isLinearSystem = blockAny._isLinearSystem === true;
 
     let converged = false;
 
@@ -1215,16 +1820,19 @@ export class ArenaSimulator {
       // Set current values into the environment
       for (let i = 0; i < m; i++) valuesByStringId[varNameIds[i] as number] = x[i] as number;
 
-      // Evaluate residuals: R_i = x_i - expr_i (where expr_i is the RHS of eq_i isolated for var_i)
+      // Evaluate residuals: R_i = lhs_i - rhs_i
       let maxR = 0;
-      for (let i = 0; i < m; i++) {
-        const eqIdx = block.eqIdxs[i] as number;
-        const rhsId = this.arena.getEqRhs(eqIdx);
-        const exprVal = evaluateArenaRuntime(this.arena, rhsId, valuesByStringId);
-        const val = isFinite(exprVal) ? exprVal : 0;
-        const rVal = (x[i] as number) - val;
-        R[i] = rVal;
-        maxR = Math.max(maxR, Math.abs(rVal));
+      if (compiledRes) {
+        maxR = compiledRes(valuesByStringId, x, R);
+      } else {
+        for (let i = 0; i < m; i++) {
+          const resId = cachedResIds[i] as number;
+          const exprVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId);
+          const rVal = isFinite(exprVal) ? exprVal : 0;
+          R[i] = rVal;
+          const absR = Math.abs(rVal);
+          if (absR > maxR) maxR = absR;
+        }
       }
 
       if (maxR < NEWTON_TOL) {
@@ -1232,26 +1840,29 @@ export class ArenaSimulator {
         break;
       }
 
-      // Compute Jacobian via zero-allocation forward-mode AD (flat dual evaluation)
-      for (let j = 0; j < m; j++) {
-        const nid = varNameIds[j] as number;
+      // Compute Jacobian
+      if (compiledJac) {
+        compiledJac(valuesByStringId, x, R, J);
+      } else {
+        for (let j = 0; j < m; j++) {
+          const nid = varNameIds[j] as number;
 
-        for (let i = 0; i < m; i++) {
-          const eqIdx = block.eqIdxs[i] as number;
-          const rhsId = this.arena.getEqRhs(eqIdx);
-          const ok = evaluateArenaDualFlat(this.arena, rhsId, valuesByStringId, nid, dualStack, 0);
-          if (ok) {
-            // J[i][j] = δ_{ij} - d(expr_i)/dx_j
-            J[i * m + j] = (i === j ? 1.0 : 0.0) - (dualStack[1] as number);
-          } else {
-            // AD failed — fall back to finite differences
-            const xj = x[j] as number;
-            const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
-            valuesByStringId[nid] = xj + eps;
-            const perturbedVal = evaluateArenaRuntime(this.arena, rhsId, valuesByStringId);
-            const R_perturbed = (i === j ? xj + eps : (x[i] as number)) - (isFinite(perturbedVal) ? perturbedVal : 0);
-            J[i * m + j] = (R_perturbed - (R[i] as number)) / eps;
-            valuesByStringId[nid] = xj;
+          for (let i = 0; i < m; i++) {
+            const resId = cachedResIds[i] as number;
+            const ok = evaluateArenaDualFlat(this.arena, resId, valuesByStringId, nid, dualStack, 0);
+            if (ok) {
+              // J[i][j] = d(res_i)/dx_j
+              J[i * m + j] = dualStack[1] as number;
+            } else {
+              // AD failed — fall back to finite differences
+              const xj = x[j] as number;
+              const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+              valuesByStringId[nid] = xj + eps;
+              const perturbedVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId);
+              const R_perturbed = isFinite(perturbedVal) ? perturbedVal : 0;
+              J[i * m + j] = (R_perturbed - (R[i] as number)) / eps;
+              valuesByStringId[nid] = xj;
+            }
           }
         }
       }
@@ -1265,6 +1876,10 @@ export class ArenaSimulator {
           const nx = (x[i] as number) + (negR[i] as number);
           x[i] = nx;
           valuesByStringId[varNameIds[i] as number] = nx;
+        }
+        if (isLinearSystem) {
+          converged = true;
+          break;
         }
       } catch {
         // Singular Jacobian — skip this block
@@ -1293,6 +1908,8 @@ export class ArenaSimulator {
       const arena = this.arena;
       if (this.executionBlocks.length === 0) return () => {};
 
+      const systemBlocks: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>[] = [];
+
       const helpers = {
         getTimeTableValue: (tableIdStrId: number, icol: number, timeIn: number) => {
           const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
@@ -1313,6 +1930,35 @@ export class ArenaSimulator {
         getNextTimeEvent: (_tableIdStrId: number, _timeIn: number) => {
           return 1e100;
         },
+        evalExpr: (exprId: number, env: Float64Array) => {
+          return evaluateArenaRuntime(arena, exprId, env, this.preValuesByStringId);
+        },
+        evalDual: (
+          resId: number,
+          nid: number,
+          env: Float64Array,
+          x: Float64Array,
+          R: Float64Array,
+          i: number,
+          j: number,
+        ) => {
+          const dualStack = this.newtonScratchDualStack;
+          const ok = evaluateArenaDualFlat(arena, resId, env, nid, dualStack, 0);
+          if (ok) {
+            return dualStack[1] as number;
+          }
+          const xj = x[j] as number;
+          const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+          env[nid] = xj + eps;
+          const perturbedVal = evaluateArenaRuntime(arena, resId, env);
+          const R_perturbed = isFinite(perturbedVal) ? perturbedVal : 0;
+          env[nid] = xj;
+          return (R_perturbed - (R[i] as number)) / eps;
+        },
+        solveSystem: (sysIdx: number, env: Float64Array) => {
+          const blk = systemBlocks[sysIdx];
+          if (blk) this.solveNewtonBlock(blk, env);
+        },
       };
 
       function exprToJs(exprId: number): string {
@@ -1329,6 +1975,18 @@ export class ArenaSimulator {
             const nameId = arena.getExprData1(exprId);
             return `env[${nameId}]`;
           }
+          case ExprKind.Der: {
+            const innerExprId = arena.getExprData1(exprId);
+            if (arena.getExprKind(innerExprId) === ExprKind.Name) {
+              const innerNameId = arena.getExprData1(innerExprId);
+              const innerName = arena.interner.resolve(innerNameId);
+              if (innerName) {
+                const derId = arena.interner.intern(`der(${innerName})`);
+                return `env[${derId}]`;
+              }
+            }
+            return `helpers.evalExpr(${exprId}, env)`;
+          }
           case ExprKind.Negate: {
             return `(-(${exprToJs(arena.getExprLeft(exprId))}))`;
           }
@@ -1337,7 +1995,7 @@ export class ArenaSimulator {
             const operand = exprToJs(arena.getExprLeft(exprId));
             if (op === UnaryOp.Negate) return `(-(${operand}))`;
             if (op === UnaryOp.Not) return `((${operand}) === 0 ? 1 : 0)`;
-            return "0";
+            return `helpers.evalExpr(${exprId}, env)`;
           }
           case ExprKind.Binary: {
             const op = arena.getExprData1(exprId);
@@ -1376,7 +2034,7 @@ export class ArenaSimulator {
               case BinOp.Neq:
                 return `((${left}) !== (${right}) ? 1 : 0)`;
               default:
-                return "0";
+                return `helpers.evalExpr(${exprId}, env)`;
             }
           }
           case ExprKind.IfElse: {
@@ -1390,6 +2048,32 @@ export class ArenaSimulator {
             const cleanFn = fnName.replace(/^(Modelica\.(Math|ComplexMath)\.|Math\.)/, "");
             const argCount = arena.getExprRight(exprId);
             const firstArg = arena.getExprLeft(exprId);
+
+            if (
+              cleanFn === "edge" ||
+              cleanFn === "change" ||
+              cleanFn === "sample" ||
+              cleanFn === "initial" ||
+              cleanFn === "terminal"
+            ) {
+              return "0";
+            }
+
+            if (cleanFn === "der" && argCount === 1 && arena.getExprKind(firstArg) === ExprKind.Name) {
+              const innerName = arena.interner.resolve(arena.getExprData1(firstArg));
+              if (innerName) {
+                const derId = arena.interner.intern(`der(${innerName})`);
+                return `env[${derId}]`;
+              }
+            }
+
+            if (cleanFn === "smooth") {
+              if (argCount > 1) {
+                return `(${exprToJs(arena.getExprLeft(exprId + 1))})`;
+              }
+              return argCount > 0 ? `(${exprToJs(firstArg)})` : "0";
+            }
+
             const arg = exprToJs(firstArg);
 
             if (cleanFn === "sin") return `Math.sin(${arg})`;
@@ -1408,7 +2092,7 @@ export class ArenaSimulator {
             if (cleanFn === "abs") return `Math.abs(${arg})`;
             if (cleanFn === "sign") return `Math.sign(${arg})`;
             if (cleanFn === "ceil") return `Math.ceil(${arg})`;
-            if (cleanFn === "floor") return `Math.floor(${arg})`;
+            if (cleanFn === "floor" || cleanFn === "integer") return `Math.floor(${arg})`;
             if (
               cleanFn === "noEvent" ||
               cleanFn === "homotopy" ||
@@ -1452,10 +2136,144 @@ export class ArenaSimulator {
               return `helpers.getNextTimeEvent(${tableVarNameId}, ${timeJs})`;
             }
 
-            return "0";
+            return `helpers.evalExpr(${exprId}, env)`;
           }
           default:
+            return `helpers.evalExpr(${exprId}, env)`;
+        }
+      }
+
+      function dualToJs(exprId: number, seedNameId: number): string | null {
+        if (exprId < 0) return "0";
+        const kind = arena.getExprKind(exprId);
+        switch (kind) {
+          case ExprKind.RealLiteral:
+          case ExprKind.IntLiteral:
+          case ExprKind.BoolLiteral:
+          case ExprKind.EnumLiteral:
             return "0";
+          case ExprKind.Name:
+            return arena.getExprData1(exprId) === seedNameId ? "1" : "0";
+          case ExprKind.Der: {
+            const innerExprId = arena.getExprData1(exprId);
+            if (arena.getExprKind(innerExprId) === ExprKind.Name) {
+              const innerName = arena.interner.resolve(arena.getExprData1(innerExprId));
+              if (innerName) {
+                const derId = arena.interner.intern(`der(${innerName})`);
+                return derId === seedNameId ? "1" : "0";
+              }
+            }
+            return null;
+          }
+          case ExprKind.Negate: {
+            const dL = dualToJs(arena.getExprLeft(exprId), seedNameId);
+            if (dL === null) return null;
+            if (dL === "0") return "0";
+            return `(-(${dL}))`;
+          }
+          case ExprKind.Unary: {
+            const op = arena.getExprData1(exprId);
+            if (op === UnaryOp.Negate) {
+              const dL = dualToJs(arena.getExprLeft(exprId), seedNameId);
+              if (dL === null) return null;
+              if (dL === "0") return "0";
+              return `(-(${dL}))`;
+            }
+            if (op === UnaryOp.Not) return "0";
+            return null;
+          }
+          case ExprKind.Binary: {
+            const op = arena.getExprData1(exprId);
+            if (
+              op === BinOp.Lt ||
+              op === BinOp.Lte ||
+              op === BinOp.Gt ||
+              op === BinOp.Gte ||
+              op === BinOp.Eq ||
+              op === BinOp.Neq ||
+              op === BinOp.And ||
+              op === BinOp.Or
+            ) {
+              return "0";
+            }
+            const lId = arena.getExprLeft(exprId);
+            const rId = arena.getExprRight(exprId);
+            const dL = dualToJs(lId, seedNameId);
+            const dR = dualToJs(rId, seedNameId);
+            if (dL === null || dR === null) return null;
+            if (dL === "0" && dR === "0") return "0";
+            switch (op) {
+              case BinOp.Add:
+              case BinOp.ElemAdd:
+                if (dL === "0") return dR;
+                if (dR === "0") return dL;
+                return `((${dL}) + (${dR}))`;
+              case BinOp.Sub:
+              case BinOp.ElemSub:
+                if (dL === "0") return `(-(${dR}))`;
+                if (dR === "0") return dL;
+                return `((${dL}) - (${dR}))`;
+              case BinOp.Mul:
+              case BinOp.ElemMul: {
+                const vL = exprToJs(lId);
+                const vR = exprToJs(rId);
+                if (dL === "0") return `((${vL}) * (${dR}))`;
+                if (dR === "0") return `((${dL}) * (${vR}))`;
+                return `((${dL}) * (${vR}) + (${vL}) * (${dR}))`;
+              }
+              case BinOp.Div:
+              case BinOp.ElemDiv: {
+                const vL = exprToJs(lId);
+                const vR = exprToJs(rId);
+                if (dR === "0") return `((${dL}) / (${vR}))`;
+                if (dL === "0") return `(-((${vL}) * (${dR})) / ((${vR}) * (${vR})))`;
+                if (dR !== "0") return `(((${dL}) * (${vR}) - (${vL}) * (${dR})) / ((${vR}) * (${vR})))`;
+                return null;
+              }
+              default:
+                return null;
+            }
+          }
+          case ExprKind.IfElse: {
+            const condId = arena.getExprData1(exprId);
+            const tId = arena.getExprLeft(exprId);
+            const eId = arena.getExprRight(exprId);
+            const dT = dualToJs(tId, seedNameId);
+            const dE = dualToJs(eId, seedNameId);
+            if (dT === null || dE === null) return null;
+            if (dT === "0" && dE === "0") return "0";
+            const condJs = exprToJs(condId);
+            return `((${condJs}) !== 0 ? (${dT}) : (${dE}))`;
+          }
+          case ExprKind.Call: {
+            const fnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+            const cleanFn = fnName.replace(/^(Modelica\.(Math|ComplexMath)\.|Math\.)/, "");
+            const argCount = arena.getExprRight(exprId);
+            const firstArg = arena.getExprLeft(exprId);
+            if (cleanFn === "der" && argCount === 1 && arena.getExprKind(firstArg) === ExprKind.Name) {
+              const innerName = arena.interner.resolve(arena.getExprData1(firstArg));
+              if (innerName) {
+                const derId = arena.interner.intern(`der(${innerName})`);
+                return derId === seedNameId ? "1" : "0";
+              }
+            }
+            if (
+              cleanFn === "noEvent" ||
+              cleanFn === "homotopy" ||
+              cleanFn === "/*Real*/" ||
+              cleanFn === "/*Integer*/" ||
+              cleanFn === "/*Boolean*/"
+            ) {
+              return argCount > 0 ? dualToJs(firstArg, seedNameId) : "0";
+            }
+            if (cleanFn === "smooth") {
+              if (argCount > 1) return dualToJs(arena.getExprLeft(exprId + 1), seedNameId);
+              return argCount > 0 ? dualToJs(firstArg, seedNameId) : "0";
+            }
+            return null;
+          }
+          default:
+            return null;
         }
       }
 
@@ -1473,8 +2291,81 @@ export class ArenaSimulator {
             chunks.push(new Function("env", "helpers", currentLines.join("\n")) as any);
             currentLines = [];
           }
-        } else {
-          return null; // System block requires nonlinear solver
+        } else if (block.type === "system" && block.vars.length > 0) {
+          const m = block.vars.length;
+          const blockAny = block as any;
+          const varIds = new Int32Array(m);
+          const resIds = new Int32Array(m);
+          for (let i = 0; i < m; i++) {
+            varIds[i] = arena.getVarNameId(block.vars[i] as number);
+            const eqIdx = block.eqIdxs[i] as number;
+            const lhsId = arena.getEqLhs(eqIdx);
+            const rhsId = arena.getEqRhs(eqIdx);
+            resIds[i] = arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
+          }
+          blockAny._varNameIds = varIds;
+          blockAny._resExprIds = resIds;
+
+          if (m <= 64) {
+            let isLinearSystem = true;
+            const varEnvTokens: string[] = [];
+            for (let k = 0; k < m; k++) varEnvTokens.push(`env[${varIds[k]}]`);
+
+            const resLines: string[] = ["let maxR = 0;"];
+            for (let i = 0; i < m; i++) {
+              const resJs = exprToJs(resIds[i] as number);
+              if (resJs.includes("?") || resJs.includes("Math.") || resJs.includes("helpers.")) {
+                isLinearSystem = false;
+              }
+              resLines.push(
+                `{ const v = ${resJs}; const r = Number.isFinite(v) ? v : 0; R[${i}] = r; const ar = Math.abs(r); if (ar > maxR) maxR = ar; }`,
+              );
+            }
+            resLines.push("return maxR;");
+            const rawResFn = new Function("env", "x", "R", "helpers", resLines.join("\n")) as any;
+            blockAny._compiledResiduals = (env: Float64Array, x: Float64Array, R: Float64Array) =>
+              rawResFn(env, x, R, helpers);
+
+            const jacLines: string[] = [];
+            for (let j = 0; j < m; j++) {
+              const nid = varIds[j] as number;
+              for (let i = 0; i < m; i++) {
+                const resId = resIds[i] as number;
+                const dJs = dualToJs(resId, nid);
+                const idx = i * m + j;
+                if (dJs === "0") {
+                  jacLines.push(`J[${idx}] = 0.0;`);
+                } else if (dJs !== null) {
+                  if (isLinearSystem) {
+                    for (let k = 0; k < m; k++) {
+                      if (dJs.includes(varEnvTokens[k]!)) {
+                        isLinearSystem = false;
+                        break;
+                      }
+                    }
+                  }
+                  jacLines.push(
+                    `{ const d = ${dJs}; J[${idx}] = Number.isFinite(d) ? d : helpers.evalDual(${resId}, ${nid}, env, x, R, ${i}, ${j}); }`,
+                  );
+                } else {
+                  isLinearSystem = false;
+                  jacLines.push(`J[${idx}] = helpers.evalDual(${resId}, ${nid}, env, x, R, ${i}, ${j});`);
+                }
+              }
+            }
+            const rawJacFn = new Function("env", "x", "R", "J", "helpers", jacLines.join("\n")) as any;
+            blockAny._compiledJacobian = (env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) =>
+              rawJacFn(env, x, R, J, helpers);
+            blockAny._isLinearSystem = isLinearSystem;
+          }
+
+          const sysIdx = systemBlocks.length;
+          systemBlocks.push(block);
+          currentLines.push(`helpers.solveSystem(${sysIdx}, env);`);
+          if (currentLines.length >= CHUNK_SIZE) {
+            chunks.push(new Function("env", "helpers", currentLines.join("\n")) as any);
+            currentLines = [];
+          }
         }
       }
 
@@ -2085,8 +2976,8 @@ export class ArenaSimulator {
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
     const stopTime = startTime + steps * step;
-    const atol = options?.atol ?? 1e-6;
-    const rtol = options?.rtol ?? 1e-6;
+    const atol = options?.atol ?? 1e-7;
+    const rtol = options?.rtol ?? 1e-7;
 
     // Build output times
     const outputTimes: number[] = [];
@@ -2129,7 +3020,7 @@ export class ArenaSimulator {
         atol,
         rtol,
         initialStep: step,
-        maxStep: Math.abs(stopTime - startTime),
+        maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
         eventDirections: eventDirs as any,
@@ -2139,14 +3030,14 @@ export class ArenaSimulator {
         atol,
         rtol,
         initialStep: step,
-        maxStep: Math.abs(stopTime - startTime),
+        maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
       });
     } else if (solver === "trbdf2") {
       rawResult = trbdf2(rhsFn, startTime, y0, stopTime, outputTimes, {
         atol,
         rtol,
         initialStep: step,
-        maxStep: Math.abs(stopTime - startTime),
+        maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
       });
     } else {
       // dopri5 or auto
@@ -2160,7 +3051,7 @@ export class ArenaSimulator {
           atol,
           rtol,
           initialStep: step,
-          maxStep: Math.abs(stopTime - startTime),
+          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
         },
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,
@@ -3047,6 +3938,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
     sim.debuggerHook = options.debuggerHook;
   }
   sim.prepare();
+  arena = sim.arena;
 
   // ── Step 2: Resolve experiment annotation defaults ──
   const exp = arena.experiment;
@@ -3254,6 +4146,7 @@ export async function simulateArenaAsync(
     sim.debuggerHook = options.debuggerHook;
   }
   sim.prepare();
+  arena = sim.arena;
 
   const exp = arena.experiment;
   const startTime = options?.startTime ?? exp.startTime ?? 0;

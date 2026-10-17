@@ -1,7 +1,6 @@
 // name:     MultipleDeclarations
 // keywords: declaration, extends
 // status:   incorrect
-// xfail:    true
 //
 // Multiple declarations (through extends) must be identical.
 //

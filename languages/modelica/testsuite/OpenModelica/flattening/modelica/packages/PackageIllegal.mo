@@ -1,7 +1,6 @@
 // name: PackageIllegal
 // keywords: package
 // status: correct
-// xfail: true
 //
 // Tests to make sure that a package cannot have non-class components
 // THIS TEST SHOULD FAIL

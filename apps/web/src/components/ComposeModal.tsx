@@ -114,7 +114,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const [view, setView] = useState<"compose" | "drafts" | "confirm_save">("compose");
   const [pendingAction, setPendingAction] = useState<"close" | "view_drafts" | null>(null);
 
-  const [content, setContent] = useState(initialState?.content || "");
+  const [content, setContent] = useState(initialState?.content || initialState?.defaultText || "");
   const [artifactId, setArtifactId] = useState<number | null>(initialState?.artifactId ?? null);
 
   const [currentQuotePost, setCurrentQuotePost] = useState(initialState?.quotePost || initialQuotePost);
@@ -123,8 +123,8 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
   useEffect(() => {
     if (!initialState) return;
-    if (initialState.content) {
-      setContent(initialState.content);
+    if (initialState.content || initialState.defaultText) {
+      setContent(initialState.content || initialState.defaultText || "");
     }
     if (initialState.morselPayload && artifactId === null) {
       const { code, title, dialect } = initialState.morselPayload;

@@ -68,7 +68,7 @@ export const ModelicaErrorCode = {
     message: () => "Wrong number of arguments to identity.",
   },
   IDENTITY_FIRST_ARG_INTEGER: {
-    code: 1000,
+    code: 1004,
     rule: "identity-first-arg-integer",
     severity: "error",
     message: (compName: string = "<NO COMPONENT>") =>
@@ -103,13 +103,13 @@ export const ModelicaErrorCode = {
       `Class ${className} not found in scope ${scope} (looking for a function or record).`,
   },
   CLASS_NOT_FOUND_IN_SCOPE: {
-    code: 2003,
+    code: 2012,
     rule: "class-not-found-in-scope",
     severity: "error",
     message: (className: string, scope: string) => `Class ${className} not found in scope ${scope}.`,
   },
   BASE_CLASS_NOT_FOUND_IN_SCOPE: {
-    code: 2003,
+    code: 2013,
     rule: "base-class-not-found-in-scope",
     severity: "error",
     message: (className: string, scope: string) => `Base class ${className} not found in scope ${scope}.`,
@@ -141,20 +141,20 @@ export const ModelicaErrorCode = {
       `In modifier (${modText}), class or component ${modName} not found in <${className}>.`,
   },
   PARTIAL_BASE_CLASS: {
-    code: 2003,
+    code: 2014,
     rule: "partial-base-class",
     severity: "error",
     message: (partName: string, extName: string) => `Part ${partName} of base class name ${extName} is not a class.`,
   },
   BASE_CLASS_AMBIGUOUS: {
-    code: 2004,
+    code: 2015,
     rule: "base-class-ambiguous",
     severity: "error",
     message: (partName: string, candidateNames: string) =>
       `The base class name ${partName} was found in one or more base classes: ${candidateNames}.`,
   },
   BASE_CLASS_FOUND_IN: {
-    code: 2005,
+    code: 2016,
     rule: "base-class-found-in",
     severity: "error",
     message: (partName: string, baseName: string) => `${partName} was found in base class ${baseName}.`,
@@ -165,10 +165,40 @@ export const ModelicaErrorCode = {
     severity: "notification" as DiagnosticSeverity,
     message: () => "From here:",
   },
+  NOTIFICATION_REDECLARE_FINAL_COMPONENT: {
+    code: 2091,
+    rule: "redeclare-final-component-notification",
+    severity: "info",
+    message: () => "From here:",
+  },
+  NOTIFICATION_REDECLARE_CONSTANT_COMPONENT: {
+    code: 2092,
+    rule: "redeclare-constant-component-notification",
+    severity: "info",
+    message: () => "From here:",
+  },
+  NOTIFICATION_DUPLICATE_MODIFICATION: {
+    code: 2093,
+    rule: "duplicate-modification-notification",
+    severity: "info",
+    message: () => "From here:",
+  },
   NOTIFICATION_FROM_HERE_TRACE: {
     code: 2095,
     rule: "from-here-trace",
     severity: "notification" as DiagnosticSeverity,
+    message: () => "From here:",
+  },
+  NOTIFICATION_REDECLARE_NON_REPLACEABLE: {
+    code: 2096,
+    rule: "redeclare-non-replaceable-notification",
+    severity: "info",
+    message: () => "From here:",
+  },
+  NOTIFICATION_PROTECTED_MODIFICATION: {
+    code: 2097,
+    rule: "protected-modification-notification",
+    severity: "info",
     message: () => "From here:",
   },
 
@@ -188,7 +218,7 @@ export const ModelicaErrorCode = {
       `Type mismatch: '${modName}' expects type '${expectedType}' but got '${actualType}'.`,
   },
   TYPE_MISMATCH_MODIFIER_BINDING: {
-    code: 3002,
+    code: 3020,
     rule: "type-mismatch-modifier-binding",
     severity: "error",
     message: (compName: string, expectedType: string, exprText: string, actualType: string) =>
@@ -231,7 +261,7 @@ export const ModelicaErrorCode = {
       `  ${expectedTypeSignature}`,
   },
   FUNCTION_RETURN_TYPE_MISMATCH: {
-    code: 3007,
+    code: 3021,
     rule: "function-return-type-mismatch",
     severity: "error",
     message: (funcName: string, expectedType: string, actualType: string) =>
@@ -260,19 +290,19 @@ export const ModelicaErrorCode = {
       `Expression '${exprName}' that determines the size of dimension '${dim}' of '${callText}' is not an evaluable parameter expression.`,
   },
   CARDINALITY_IN_CONDITION_ONLY: {
-    code: 4000,
+    code: 4094,
     rule: "cardinality-in-condition-only",
     severity: "error",
     message: () => "cardinality may only be used in the condition of an if-statement or if-equation.",
   },
   CONDITIONAL_EXPRESSION_NOT_EVALUATED: {
-    code: 4000,
+    code: 4095,
     rule: "conditional-expression-not-evaluated",
     severity: "error",
     message: (condText: string) => `The conditional expression ${condText} could not be evaluated.`,
   },
   DIMENSIONS_MUST_BE_PARAMETER: {
-    code: 4000,
+    code: 4096,
     rule: "dimensions-must-be-parameter",
     severity: "error",
     message: (callStr: string) => `Dimensions must be parameter or constant expression (in ${callStr}).`,
@@ -285,7 +315,7 @@ export const ModelicaErrorCode = {
       `Duplicate elements (due to inherited elements) not identical:\n  first element is:  ${currText}\n  second element is: ${prevText}`,
   },
   WHEN_IN_INITIAL_EQUATION: {
-    code: 5017,
+    code: 5038,
     rule: "when-in-initial-equation",
     severity: "error",
     message: () => "when-clause is not allowed in initial section.",
@@ -385,7 +415,7 @@ export const ModelicaErrorCode = {
     message: (className: string) => `${className} is partial, name lookup is not allowed in partial classes.`,
   },
   CALLED_FUNCTION_PARTIAL: {
-    code: 4039,
+    code: 4097,
     rule: "called-function-partial",
     severity: "error",
     message: (fnName: string) => `Called function '${fnName}' is partial.`,
@@ -411,7 +441,7 @@ export const ModelicaErrorCode = {
       `External object ${className} contains invalid element '${elemName}'.`,
   },
   EXTERNAL_OBJECT_MISSING_DESTRUCTOR: {
-    code: 4066,
+    code: 4113,
     rule: "external-object-missing-destructor",
     severity: "error",
     message: (className: string) => `External object ${className} is missing a destructor.`,
@@ -423,7 +453,7 @@ export const ModelicaErrorCode = {
     message: (className: string) => `External object ${className} is missing a constructor.`,
   },
   EXTERNAL_OBJECT_NOT_REPLACEABLE: {
-    code: 4068,
+    code: 4115,
     rule: "external-object-not-replaceable",
     severity: "error",
     message: (elemName: string) => `'${elemName}' may not be replaceable.`,
@@ -500,7 +530,7 @@ export const ModelicaErrorCode = {
     message: () => `Algorithm sections are not allowed in connector.`,
   },
   INVALID_CONNECTOR_VARIABILITY: {
-    code: 4067,
+    code: 4114,
     rule: "invalid-connector-variability",
     severity: "error",
     message: (variability: string, compName: string) =>
@@ -514,7 +544,7 @@ export const ModelicaErrorCode = {
       `Invalid redeclaration of ${elementName}, a redeclare may not have a condition attribute.`,
   },
   VARIABLE_IN_PACKAGE_NOT_CONSTANT: {
-    code: 4073,
+    code: 4119,
     rule: "variable-in-package-not-constant",
     severity: "error",
     message: (varName: string, pkgName: string) => `Variable ${varName} in package ${pkgName} is not constant.`,
@@ -569,7 +599,7 @@ export const ModelicaErrorCode = {
     message: (prefix: string, varName: string) => `Invalid prefix ${prefix} on formal parameter ${varName}.`,
   },
   MISSING_INNER: {
-    code: 0,
+    code: 2094,
     rule: "missing-inner",
     severity: "warning",
     message: (typeName: string, componentName: string, scopeName: string, inners: string) =>
@@ -618,14 +648,14 @@ export const ModelicaErrorCode = {
       `Cannot connect flow component ${flowComp} to non-flow component ${nonFlowComp}.`,
   },
   REINIT_TYPE_MISMATCH: {
-    code: 5007,
+    code: 5024,
     rule: "reinit-type-mismatch",
     severity: "error",
     message: (varName: string, actualType: string) =>
       `The first argument to reinit must be a subtype of Real, but ${varName} has type ${actualType}.`,
   },
   REINIT_NOT_CONTINUOUS: {
-    code: 5008,
+    code: 5033,
     rule: "reinit-not-continuous",
     severity: "error",
     message: (varName: string, variability: string) =>
@@ -729,33 +759,33 @@ export const ModelicaErrorCode = {
       `Component '${componentName}' may not be assigned to due to class specialization '${specialization}'.`,
   },
   INVALID_SIZE_INDEX: {
-    code: 5015,
+    code: 5036,
     rule: "invalid-size-index",
     severity: "error",
     message: (dim: number | string, arrName: string, maxDim: number | string) =>
       `Invalid index ${dim} in call to size of ${arrName}, valid index interval is [1,${maxDim}].`,
   },
   REINIT_OUTSIDE_WHEN: {
-    code: 5018,
+    code: 5040,
     rule: "reinit-outside-when",
     severity: "error",
     message: () => "Operator reinit may only be used in the body of a when equation.",
   },
   REINIT_IN_ALGORITHM: {
-    code: 5019,
+    code: 5041,
     rule: "reinit-in-algorithm",
     severity: "error",
     message: () =>
       "Operator reinit may not be used in an algorithm section (use translation flag --allowNonStandardModelica=reinitInAlgorithms to ignore).",
   },
   REINIT_ARG1_NOT_VARIABLE: {
-    code: 5020,
+    code: 5042,
     rule: "reinit-arg1-not-variable",
     severity: "error",
     message: () => "The first argument to reinit must be a variable of type Real or an array of such variables.",
   },
   REINIT_ARG2_TYPE_MISMATCH: {
-    code: 5021,
+    code: 5044,
     rule: "reinit-arg2-type-mismatch",
     severity: "error",
     message: (argText: string, actualType: string, expectedType: string) =>
@@ -794,14 +824,14 @@ export const ModelicaErrorCode = {
       `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${exprText ? ` Got the following expression: ${exprText}.` : ""}`,
   },
   NO_MATCHING_FUNCTION: {
-    code: 3010,
+    code: 3019,
     rule: "no-matching-function",
     severity: "error",
     message: (callExpr: string, callSig: string, candidateSig: string) =>
       `No matching function found for ${callExpr}\nof type\n  ${callSig}\ncandidates are \n  ${candidateSig}`,
   },
   UNUSED_INPUT_VARIABLE: {
-    code: 0,
+    code: 4093,
     rule: "unused-input-variable",
     severity: "warning",
     message: (varName: string, funcName: string) => `Unused input variable ${varName} in function ${funcName}.`,
@@ -1004,19 +1034,19 @@ export const ModelicaErrorCode = {
 
   // ── Elsewhen variable mismatch ───────────────────────────────────────
   ELSEWHEN_VARIABLE_MISMATCH: {
-    code: 5010,
+    code: 5023,
     rule: "elsewhen-variable-mismatch",
     severity: "error",
     message: () => "The same variables must be solved in elsewhen clause as in the when clause.",
   },
   EVAL_EXTERNAL_BUILTIN: {
-    code: 5011,
+    code: 5034,
     rule: "eval-external-builtin",
     severity: "error",
     message: (funcName: string) => `Internal error NFCeval.evalBuiltinCall: unimplemented case for ${funcName}`,
   },
   ARGUMENT_NOT_DIFFERENTIABLE: {
-    code: 5012,
+    code: 5035,
     rule: "argument-not-differentiable",
     severity: "error",
     message: (argName: string) => `Argument '${argName}' of der is not differentiable.`,
@@ -1074,7 +1104,7 @@ export const ModelicaErrorCode = {
       `Protected element '${varName}' may not be modified, got '${modText}'.`,
   },
   CLASS_SPECIALIZATION_VIOLATION: {
-    code: 4050,
+    code: 4098,
     rule: "class-specialization-violation",
     severity: "error",
     message: (className: string, errorDetail: string) => `Class specialization violation: ${className} ${errorDetail}.`,
@@ -1105,8 +1135,17 @@ export const ModelicaErrorCode = {
     message: (modText: string, componentName: string) =>
       `Non-array modification '${modText}' for array component '${componentName}', possibly due to missing 'each'.`,
   },
-  BINDING_DIMENSION_MISMATCH: {
+  CST_MODIFIED_ELEMENT_NOT_FOUND: {
     code: 4045,
+    rule: "modified-element-not-found-cst",
+    severity: "error",
+    message: (modName: string, className: string = "") =>
+      className
+        ? `Modified element ${modName} not found in class ${className}.`
+        : `Modified element ${modName} not found.`,
+  },
+  BINDING_DIMENSION_MISMATCH: {
+    code: 4092,
     rule: "binding-dimension-mismatch",
     severity: "error",
     message: (componentName: string, bindingText: string, expectedDims: string, actualDims: string) =>
@@ -1189,7 +1228,7 @@ export const ModelicaErrorCode = {
       `Cannot connect expandable connector ${expName} with non-expandable connector ${nonExpName}.`,
   },
   CANNOT_CONNECT_UNDECLARED_EXPANDABLE_CONNECTORS: {
-    code: 4056,
+    code: 4099,
     rule: "cannot-connect-undeclared-expandable-connectors",
     severity: "error",
     message: (c1: string, c2: string) =>
@@ -1203,40 +1242,40 @@ export const ModelicaErrorCode = {
       `Prefix 'flow' on component '${compName}' not allowed in class specialization 'expandable connector'.`,
   },
   NON_ENCAPSULATED_OPERATOR: {
-    code: 4070,
+    code: 4116,
     rule: "operator-encapsulation",
     severity: "error",
     message: (recordName: string, opName: string) => `Operator ${recordName}.'${opName}' is not encapsulated.`,
   },
   OPERATOR_CONSTRUCTOR_INVALID_OUTPUT_COUNT: {
-    code: 4071,
+    code: 4117,
     rule: "operator-constructor-outputs",
     severity: "error",
     message: (recordName: string) => `Operator ${recordName}.'constructor' must have exactly one output.`,
   },
   OPERATOR_CONSTRUCTOR_INVALID_OUTPUT_TYPE: {
-    code: 4072,
+    code: 4118,
     rule: "operator-constructor-output-type",
     severity: "error",
     message: (recordName: string, outputName: string, actualType: string) =>
       `Output '${outputName}' in operator ${recordName}.'constructor' must be of type ${recordName}, got type ${actualType}.`,
   },
   AMBIGUOUS_OPERATOR_OVERLOAD: {
-    code: 4073,
+    code: 4120,
     rule: "ambiguous-operator-overload",
     severity: "error",
     message: (exprText: string, candidatesText: string) =>
       `Ambiguous matching overloaded operator functions found for ${exprText}.\nCandidates are:\n${candidatesText}`,
   },
   NO_MATCHING_OPERATOR_FUNCTION: {
-    code: 4074,
+    code: 4121,
     rule: "no-matching-operator-function",
     severity: "error",
     message: (callExprText: string, candidatesText: string) =>
       `No matching function found for ${callExprText}.\nCandidates are:\n${candidatesText}`,
   },
   CANNOT_RESOLVE_OPERATOR_TYPE: {
-    code: 4075,
+    code: 4122,
     rule: "cannot-resolve-operator-type",
     severity: "error",
     message: (exprText: string, leftType: string, rightType: string) =>
@@ -1269,14 +1308,20 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (cycleList: string) => `Cyclically dependent function components found: {${cycleList}}`,
   },
+  BREAK_OUTSIDE_LOOP: {
+    code: 4091,
+    rule: "break-outside-loop",
+    severity: "error",
+    message: () => `'break' must be inside a for or while loop, or enclose a connect equation.`,
+  },
   FUNCTION_NO_NAMED_PARAMETER: {
-    code: 5016,
+    code: 5037,
     rule: "function-no-named-parameter",
     severity: "error",
     message: (funcName: string, paramName: string) => `Function ${funcName} has no input parameter named ${paramName}.`,
   },
   SIZE_FIRST_ARG_NOT_ARRAY: {
-    code: 5017,
+    code: 5039,
     rule: "size-first-arg-not-array",
     severity: "error",
     message: (argText?: string) =>
@@ -1299,7 +1344,7 @@ export const ModelicaErrorCode = {
       `Failed to deduce dimension ${dimIdx} of ${varName} due to missing binding equation.`,
   },
   ILLEGAL_END_USAGE: {
-    code: 5020,
+    code: 5043,
     rule: "illegal-end-usage",
     severity: "error",
     message: () => `'end' can not be used outside array subscripts.`,
@@ -1344,6 +1389,15 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (r0Raw: string, type0: string, r1Raw: string, type1: string) =>
       `The type of variables \n${r0Raw} type:\n${type0} and \n${r1Raw} type:\n${type1}\nare inconsistent in connect equations.`,
+  },
+  ARRAY_ELEMENT_TYPE_MISMATCH: {
+    code: 3018,
+    rule: "array-element-type-mismatch",
+    severity: "error",
+    message: (exprText: string = "") =>
+      exprText
+        ? `Array constructor elements have inconsistent types in '${exprText}'.`
+        : `Array constructor elements have inconsistent types.`,
   },
   RECURSIVE_DEFINITION: {
     code: 4058,
@@ -1410,6 +1464,59 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (condStr: string) =>
       `Type error in when conditional '${condStr}'. Expected Boolean scalar or vector, got Clock.`,
+  },
+
+  // ── 6xxx: Synchronous Clocks, State Machines & Purity ─────────────────
+  MIXED_CLOCK_DOMAINS: {
+    code: 6001,
+    rule: "mixed-clock-domains",
+    severity: "error",
+    message: (exprText: string) => `Clocked expression '${exprText}' mixes signals from different clock domains.`,
+  },
+  SAMPLE_FACTOR_NOT_POSITIVE: {
+    code: 6002,
+    rule: "sample-factor-not-positive",
+    severity: "error",
+    message: () => `Sub-clock factor must be a positive integer.`,
+  },
+  PREVIOUS_OUTSIDE_CLOCKED: {
+    code: 6003,
+    rule: "previous-outside-clocked",
+    severity: "error",
+    message: (exprText: string) =>
+      `Operator 'previous()' may only be applied to clocked discrete-time variables in '${exprText}'.`,
+  },
+  HOLD_IN_CONTINUOUS: {
+    code: 6004,
+    rule: "hold-in-continuous",
+    severity: "error",
+    message: (exprText: string) =>
+      `Operator 'hold()' converts a clocked signal to continuous-time and cannot be used inside a clocked partition: '${exprText}'.`,
+  },
+  DUPLICATE_INITIAL_STATE: {
+    code: 6010,
+    rule: "duplicate-initial-state",
+    severity: "error",
+    message: () => `A state machine partition must have at most one initialState() call.`,
+  },
+  IMPURE_CALLED_IN_PURE: {
+    code: 6020,
+    rule: "impure-called-in-pure",
+    severity: "error",
+    message: (callText: string) => `Impure function '${callText}' cannot be called inside a pure function.`,
+  },
+  IMPURE_IN_EQUATION_SECTION: {
+    code: 6021,
+    rule: "impure-in-equation-section",
+    severity: "error",
+    message: (callText: string) =>
+      `Impure function '${callText}' may only be called inside a when-equation or when-statement.`,
+  },
+  BREAK_CONNECTION_NOT_FOUND: {
+    code: 6040,
+    rule: "break-connection-not-found",
+    severity: "error",
+    message: (connText: string) => `Connection '${connText}' in 'break' modifier does not exist in base class.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

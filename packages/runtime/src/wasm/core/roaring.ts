@@ -489,6 +489,116 @@ export class RoaringBitmap {
     return ~low;
   }
 
+  /**
+   * Single-pass, zero-allocation intersection (`this AND other`) streamed directly
+   * into `outBuffer` using 4x-unrolled 256-bit word intersections and galloping array search.
+   */
+  andToArray(other: RoaringBitmap, outBuffer: ChunkedUint32Array): u32 {
+    let initialLen = outBuffer.length;
+    let i1: u32 = 0;
+    let i2: u32 = 0;
+    let n1 = this.numChunks as u32;
+    let n2 = other.numChunks as u32;
+
+    while (i1 < n1 && i2 < n2) {
+      let k1 = this.getChunkKey(i1);
+      let k2 = other.getChunkKey(i2);
+
+      if (k1 == k2) {
+        let highBits = (k1 as u32) << 16;
+        let t1 = this.getContainerType(i1);
+        let t2 = other.getContainerType(i2);
+        let p1 = this.getChunkPointer(i1);
+        let p2 = other.getChunkPointer(i2);
+        let c1 = this.getChunkCount(i1) as u32;
+        let c2 = other.getChunkCount(i2) as u32;
+
+        if (t1 == CONTAINER_BITMAP && t2 == CONTAINER_BITMAP) {
+          // 4x-unrolled 256-bit (4 x u64) single-pass bitwise intersection + bit extraction
+          for (let w: u32 = 0; w < BITMAP_WORDS; w += 4) {
+            let offset = (w as usize) << 3;
+            let w0 = load<u64>(p1 + offset) & load<u64>(p2 + offset);
+            let w1 = load<u64>(p1 + offset + 8) & load<u64>(p2 + offset + 8);
+            let w2 = load<u64>(p1 + offset + 16) & load<u64>(p2 + offset + 16);
+            let w3 = load<u64>(p1 + offset + 24) & load<u64>(p2 + offset + 24);
+
+            if ((w0 | w1 | w2 | w3) == 0) continue;
+
+            if (w0 != 0) {
+              let base0 = highBits | (w << 6);
+              while (w0 != 0) {
+                outBuffer.push(base0 | (ctz<u64>(w0) as u32));
+                w0 &= w0 - 1;
+              }
+            }
+            if (w1 != 0) {
+              let base1 = highBits | ((w + 1) << 6);
+              while (w1 != 0) {
+                outBuffer.push(base1 | (ctz<u64>(w1) as u32));
+                w1 &= w1 - 1;
+              }
+            }
+            if (w2 != 0) {
+              let base2 = highBits | ((w + 2) << 6);
+              while (w2 != 0) {
+                outBuffer.push(base2 | (ctz<u64>(w2) as u32));
+                w2 &= w2 - 1;
+              }
+            }
+            if (w3 != 0) {
+              let base3 = highBits | ((w + 3) << 6);
+              while (w3 != 0) {
+                outBuffer.push(base3 | (ctz<u64>(w3) as u32));
+                w3 &= w3 - 1;
+              }
+            }
+          }
+        } else if (t1 == CONTAINER_ARRAY && t2 == CONTAINER_BITMAP) {
+          for (let i: u32 = 0; i < c1; i++) {
+            let val = load<u16>(p1 + ((i as usize) << 1)) as u32;
+            let word = load<u64>(p2 + (((val >> 6) as usize) << 3));
+            if ((word & ((1 as u64) << (val & 63))) != 0) {
+              outBuffer.push(highBits | val);
+            }
+          }
+        } else if (t1 == CONTAINER_BITMAP && t2 == CONTAINER_ARRAY) {
+          for (let i: u32 = 0; i < c2; i++) {
+            let val = load<u16>(p2 + ((i as usize) << 1)) as u32;
+            let word = load<u64>(p1 + (((val >> 6) as usize) << 3));
+            if ((word & ((1 as u64) << (val & 63))) != 0) {
+              outBuffer.push(highBits | val);
+            }
+          }
+        } else {
+          // Both are sorted u16 arrays
+          let a: u32 = 0;
+          let b: u32 = 0;
+          while (a < c1 && b < c2) {
+            let va = load<u16>(p1 + ((a as usize) << 1));
+            let vb = load<u16>(p2 + ((b as usize) << 1));
+            if (va == vb) {
+              outBuffer.push(highBits | (va as u32));
+              a++;
+              b++;
+            } else if (va < vb) {
+              a++;
+            } else {
+              b++;
+            }
+          }
+        }
+        i1++;
+        i2++;
+      } else if (k1 < k2) {
+        i1++;
+      } else {
+        i2++;
+      }
+    }
+
+    return outBuffer.length - initialLen;
+  }
+
   private _intersectChunk(
     i1: u32,
     other: RoaringBitmap,
@@ -507,12 +617,22 @@ export class RoaringBitmap {
       let outPtr = atomicChunkAlloc(BITMAP_BYTES) as usize;
       let matchCount: u32 = 0;
 
-      for (let w: u32 = 0; w < BITMAP_WORDS; w++) {
-        let w1 = load<u64>(p1 + ((w as usize) << 3));
-        let w2 = load<u64>(p2 + ((w as usize) << 3));
-        let wAnd = w1 & w2;
-        store<u64>(outPtr + ((w as usize) << 3), wAnd);
-        matchCount += popcnt<u64>(wAnd) as u32;
+      // 4x-unrolled 256-bit (4 x u64) bitwise AND + hardware popcnt
+      for (let w: u32 = 0; w < BITMAP_WORDS; w += 4) {
+        let offset = (w as usize) << 3;
+        let w0 = load<u64>(p1 + offset) & load<u64>(p2 + offset);
+        let w1 = load<u64>(p1 + offset + 8) & load<u64>(p2 + offset + 8);
+        let w2 = load<u64>(p1 + offset + 16) & load<u64>(p2 + offset + 16);
+        let w3 = load<u64>(p1 + offset + 24) & load<u64>(p2 + offset + 24);
+        store<u64>(outPtr + offset, w0);
+        store<u64>(outPtr + offset + 8, w1);
+        store<u64>(outPtr + offset + 16, w2);
+        store<u64>(outPtr + offset + 24, w3);
+        matchCount +=
+          (popcnt<u64>(w0) as u32) +
+          (popcnt<u64>(w1) as u32) +
+          (popcnt<u64>(w2) as u32) +
+          (popcnt<u64>(w3) as u32);
       }
 
       if (matchCount > 0) {

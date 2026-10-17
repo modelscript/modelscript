@@ -32,6 +32,8 @@ export class HpcSlurmCfdProvider extends BaseCfdProvider {
   private slurmJobId: string | null = null;
   private jobStatus: HpcJobStatus = "pending";
   private currentStep = 0;
+  private inletVelocity = 15.0;
+  private readonly coupledInputs = new Map<string, CosimValue>();
   private lastDragForce = 0;
   private lastMaxVelocity = 0;
   private currentSlice: InSituTelemetrySlice | null = null;
@@ -50,6 +52,7 @@ export class HpcSlurmCfdProvider extends BaseCfdProvider {
       timestamp: new Date().toISOString(),
       description: `Distributed HPC CFD execution on Slurm partition '${spec.cluster.partition}' (${spec.decomposition.numberOfSubdomains} ranks)`,
       variables: [
+        { name: "inlet_velocity", type: "Real", causality: "input", description: "Freestream inlet velocity (m/s)" },
         { name: "total_drag_force", type: "Real", causality: "output", description: "Aerodynamic drag force (N)" },
         { name: "max_velocity", type: "Real", causality: "output", description: "Max flow velocity (m/s)" },
       ],
@@ -110,28 +113,46 @@ ${methodConfig}
    */
   public static generateSbatchScript(spec: CfdSimulationJobSpec): string {
     const { cluster, decomposition, solver, caseDir, jobId } = spec;
-    const totalMpiRanks = decomposition.numberOfSubdomains;
+    const totalMpiRanks = Math.max(1, Math.floor(decomposition.numberOfSubdomains));
+    const sanitizeToken = (v: string | undefined, fb = "default") =>
+      ((v || fb).split(/[\r\n]/)[0] ?? "").replace(/[^a-zA-Z0-9._:/@-]/g, "_") || fb;
+    const escapeBash = (v: string) =>
+      v
+        .replace(/[\r\n]+/g, " ")
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\$/g, "\\$")
+        .replace(/`/g, "\\`");
 
-    const moduleLines = (cluster.modules ?? ["openfoam/v2312", "openmpi"]).map((m) => `module load ${m}`).join("\n");
+    const safeJobId = sanitizeToken(jobId, "cfd-job");
+    const safePartition = sanitizeToken(cluster.partition, "compute");
+    const safeWalltime = sanitizeToken(cluster.walltime, "01:00:00");
+    const safeSolver = sanitizeToken(solver, "simpleFoam");
+    const safeCaseDir = escapeBash(caseDir);
 
-    const envLines = Object.entries(cluster.env ?? {})
-      .map(([k, v]) => `export ${k}="${v}"`)
+    const moduleLines = (cluster.modules ?? ["openfoam/v2312", "openmpi"])
+      .map((m) => `module load ${sanitizeToken(m, "openmpi")}`)
       .join("\n");
 
-    const gpuDirective = cluster.gpusPerNode ? `#SBATCH --gpus-per-node=${cluster.gpusPerNode}` : "";
-    const memDirective = cluster.memoryPerNode ? `#SBATCH --mem=${cluster.memoryPerNode}` : "";
-    const accountDirective = cluster.account ? `#SBATCH --account=${cluster.account}` : "";
-    const qosDirective = cluster.qos ? `#SBATCH --qos=${cluster.qos}` : "";
+    const envLines = Object.entries(cluster.env ?? {})
+      .filter(([k]) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k))
+      .map(([k, v]) => `export ${k}="${escapeBash(String(v))}"`)
+      .join("\n");
+
+    const gpuDirective = cluster.gpusPerNode ? `#SBATCH --gpus-per-node=${Math.floor(cluster.gpusPerNode)}` : "";
+    const memDirective = cluster.memoryPerNode ? `#SBATCH --mem=${sanitizeToken(cluster.memoryPerNode, "16G")}` : "";
+    const accountDirective = cluster.account ? `#SBATCH --account=${sanitizeToken(cluster.account)}` : "";
+    const qosDirective = cluster.qos ? `#SBATCH --qos=${sanitizeToken(cluster.qos)}` : "";
 
     return `#!/usr/bin/env bash
-#SBATCH --job-name=modelscript-${jobId}
-#SBATCH --nodes=${cluster.nodes}
-#SBATCH --ntasks-per-node=${cluster.tasksPerNode}
-#SBATCH --cpus-per-task=${cluster.cpusPerTask ?? 1}
-#SBATCH --partition=${cluster.partition}
-#SBATCH --time=${cluster.walltime}
-#SBATCH --output=${caseDir}/slurm-%j.out
-#SBATCH --error=${caseDir}/slurm-%j.err
+#SBATCH --job-name=modelscript-${safeJobId}
+#SBATCH --nodes=${Math.max(1, Math.floor(cluster.nodes))}
+#SBATCH --ntasks-per-node=${Math.max(1, Math.floor(cluster.tasksPerNode))}
+#SBATCH --cpus-per-task=${Math.max(1, Math.floor(cluster.cpusPerTask ?? 1))}
+#SBATCH --partition=${safePartition}
+#SBATCH --time=${safeWalltime}
+#SBATCH --output=${safeCaseDir}/slurm-%j.out
+#SBATCH --error=${safeCaseDir}/slurm-%j.err
 ${gpuDirective}
 ${memDirective}
 ${accountDirective}
@@ -140,25 +161,25 @@ ${qosDirective}
 set -euo pipefail
 
 echo "=========================================================="
-echo "ModelScript Distributed HPC CFD Job: ${jobId}"
-echo "Nodes: $SLURM_NNODES, Partition: ${cluster.partition}"
+echo "ModelScript Distributed HPC CFD Job: ${safeJobId}"
+echo "Nodes: $SLURM_NNODES, Partition: ${safePartition}"
 echo "Start Time: $(date)"
 echo "=========================================================="
 
 ${moduleLines}
 ${envLines}
 
-cd "${caseDir}"
+cd "${safeCaseDir}"
 
 # 1. Automated Domain Decomposition
 if [ ! -d "processor0" ]; then
-    echo "[HPC] Decomposing mesh into ${totalMpiRanks} subdomains using ${decomposition.method}..."
+    echo "[HPC] Decomposing mesh into ${totalMpiRanks} subdomains using ${sanitizeToken(decomposition.method, "scotch")}..."
     decomposePar -force
 fi
 
 # 2. Parallel CFD Execution
-echo "[HPC] Launching parallel solver '${solver}' with ${totalMpiRanks} MPI ranks..."
-srun --mpi=pmix -n ${totalMpiRanks} ${solver} -parallel
+echo "[HPC] Launching parallel solver '${safeSolver}' with ${totalMpiRanks} MPI ranks..."
+srun --mpi=pmix -n ${totalMpiRanks} ${safeSolver} -parallel
 
 echo "[HPC] Execution finished at $(date)."
 `;
@@ -225,31 +246,74 @@ echo "[HPC] Execution finished at $(date)."
     this.currentTime = currentTime + stepSize;
     this.currentStep++;
 
-    // Compute updated analytical / simulated cluster aerodynamic forces
-    const vSpeed = 15.0;
-    const cd = 0.32; // streamlined vehicle drag coefficient
-    const area = 2.2; // 2.2 m^2 frontal area
-    const rho = 1.225;
-    this.lastDragForce = 0.5 * rho * vSpeed * vSpeed * cd * area;
-    this.lastMaxVelocity = vSpeed * 1.45;
+    // 1. Attempt to ingest live OpenFOAM force telemetry from postProcessing/forces/0/forces.dat if present
+    let parsedFromDisk = false;
+    if (this.spec.caseDir) {
+      try {
+        const forcesPath = path.join(this.spec.caseDir, "postProcessing", "forces", "0", "forces.dat");
+        const content = await fs.readFile(forcesPath, "utf8");
+        const lines = content
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0 && !l.startsWith("#"));
+        const lastLine = lines[lines.length - 1];
+        if (lastLine) {
+          const nums = lastLine.replace(/[()]/g, " ").trim().split(/\s+/).map(Number);
+          // OpenFOAM forces.dat format: Time ((px py pz) (vx vy vz) ...)
+          if (nums.length >= 7 && Number.isFinite(nums[1]) && Number.isFinite(nums[4])) {
+            this.lastDragForce = (nums[1] ?? 0) + (nums[4] ?? 0);
+            parsedFromDisk = true;
+          }
+        }
+      } catch {
+        // Fallback to coupled analytical model if forces.dat is not present on disk
+      }
+    }
 
-    // Synthesize in-situ 2D cut-plane telemetry slice if configured
-    if (this.spec.telemetry?.enabled) {
-      const plane = this.spec.telemetry.cutPlanes?.[0] ?? {
-        planeId: "mid_z",
-        origin: [0, 0, 0.5] as [number, number, number],
-        normal: [0, 0, 1] as [number, number, number],
-        fields: ["velocityMagnitude", "pressure"],
-      };
+    if (!parsedFromDisk) {
+      // Compute updated analytical / coupled cluster aerodynamic forces
+      const vSpeed = this.inletVelocity;
+      const cd = 0.32; // streamlined vehicle drag coefficient
+      const area = 2.2; // 2.2 m^2 frontal area
+      const rho = 1.225;
+      this.lastDragForce = 0.5 * rho * vSpeed * vSpeed * cd * area;
+      this.lastMaxVelocity = Math.abs(vSpeed) * 1.45;
+    }
 
-      this.currentSlice = InSituSliceCodec.synthesizeSlice(
-        plane.origin,
-        plane.normal,
-        [4.0, 2.0],
-        [20, 10],
-        this.currentTime,
-        this.currentStep,
-      );
+    // 2. Ingest or synthesize in-situ 2D cut-plane telemetry slice if configured
+    const interval = Math.max(1, Math.floor(this.spec.telemetry?.sampleIntervalSteps ?? 1));
+    if (this.spec.telemetry?.enabled && this.currentStep % interval === 0) {
+      let loadedSlice: InSituTelemetrySlice | null = null;
+      if (this.spec.caseDir) {
+        try {
+          const slicePath = path.join(this.spec.caseDir, "postProcessing", "in_situ_slice.bin");
+          const rawBuf = await fs.readFile(slicePath);
+          const ab = rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength);
+          loadedSlice = InSituSliceCodec.deserialize(ab);
+        } catch {
+          // No binary slice file on disk; synthesize planar cut
+        }
+      }
+
+      if (loadedSlice) {
+        this.currentSlice = loadedSlice;
+      } else {
+        const plane = this.spec.telemetry.cutPlanes?.[0] ?? {
+          planeId: "mid_z",
+          origin: [0, 0, 0.5] as [number, number, number],
+          normal: [0, 0, 1] as [number, number, number],
+          fields: ["velocityMagnitude", "pressure"],
+        };
+
+        this.currentSlice = InSituSliceCodec.synthesizeSlice(
+          plane.origin,
+          plane.normal,
+          [4.0, 2.0],
+          [20, 10],
+          this.currentTime,
+          this.currentStep,
+        );
+      }
     }
   }
 
@@ -260,8 +324,24 @@ echo "[HPC] Execution finished at $(date)."
     return outputs;
   }
 
-  public async setInputs(_values: Map<string, CosimValue>): Promise<void> {
-    // Prescribe cluster boundary conditions if needed
+  public async setInputs(values: Map<string, CosimValue>): Promise<void> {
+    for (const [key, val] of values.entries()) {
+      this.coupledInputs.set(key, val);
+      if (
+        (key === "inlet_velocity" || key === "velocity" || key === "u_inlet") &&
+        typeof val === "number" &&
+        Number.isFinite(val)
+      ) {
+        this.inletVelocity = val;
+      }
+    }
+
+    if (this.spec.caseDir && values.size > 0) {
+      const payload = Object.fromEntries(this.coupledInputs.entries());
+      await fs
+        .writeFile(path.join(this.spec.caseDir, "coupled_inputs.json"), JSON.stringify(payload, null, 2), "utf8")
+        .catch(() => {});
+    }
   }
 
   public getInSituSlice(): InSituTelemetrySlice | null {
@@ -276,11 +356,22 @@ echo "[HPC] Execution finished at $(date)."
     return null;
   }
 
-  public async loadGeometry(_stepFileData: Uint8Array): Promise<void> {
-    // Packages CAD geometry for cluster upload
+  public async loadGeometry(stepFileData: Uint8Array): Promise<void> {
+    if (this.spec.caseDir && stepFileData.byteLength > 0) {
+      const triSurfaceDir = path.join(this.spec.caseDir, "constant", "triSurface");
+      await fs.mkdir(triSurfaceDir, { recursive: true }).catch(() => {});
+      await fs.writeFile(path.join(triSurfaceDir, "geometry.step"), stepFileData).catch(() => {});
+    }
   }
 
   public async terminate(): Promise<void> {
+    if (this.slurmJobId && /^\d+$/.test(this.slurmJobId) && this.jobStatus === "running") {
+      await new Promise<void>((resolve) => {
+        const proc = spawn("scancel", [this.slurmJobId!], { stdio: "ignore" });
+        proc.on("error", () => resolve());
+        proc.on("close", () => resolve());
+      });
+    }
     this.jobStatus = "completed";
   }
 }

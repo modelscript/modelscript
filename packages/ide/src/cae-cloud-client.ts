@@ -48,13 +48,34 @@ export interface CaeCloudJobStatus {
  * Client connector bridging VS Code custom editors to the @modelscript/api Cloud CAE solver backend.
  */
 export class CaeCloudClient {
-  constructor(private readonly apiBaseUrl = "http://localhost:3000/api/v1") {}
+  private authToken?: string | undefined;
+
+  constructor(
+    private readonly apiBaseUrl = "http://localhost:3000/api/v1",
+    authToken?: string,
+  ) {
+    this.authToken = authToken;
+  }
+
+  public setAuthToken(token?: string): void {
+    this.authToken = token;
+  }
+
+  private buildHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { ...extra };
+    if (this.authToken) {
+      headers["Authorization"] = `Bearer ${this.authToken}`;
+    }
+    return headers;
+  }
 
   /**
    * Fetches the available compute profiles (node configurations and cost rates) from the cluster.
    */
   public async getComputeProfiles(): Promise<ComputeProfileInfo[]> {
-    const res = await fetch(`${this.apiBaseUrl}/cae/profiles`);
+    const res = await fetch(`${this.apiBaseUrl}/cae/profiles`, {
+      headers: this.buildHeaders(),
+    });
     if (!res.ok) {
       throw new Error(`Failed to fetch compute profiles: ${res.statusText}`);
     }
@@ -72,6 +93,7 @@ export class CaeCloudClient {
 
     const res = await fetch(`${this.apiBaseUrl}/cae/upload`, {
       method: "POST",
+      headers: this.buildHeaders(),
       body: formData,
     });
 
@@ -88,7 +110,7 @@ export class CaeCloudClient {
   public async submitJob(submission: CaeCloudJobSubmission): Promise<{ jobId: string }> {
     const res = await fetch(`${this.apiBaseUrl}/cae/jobs`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this.buildHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(submission),
     });
 
@@ -104,7 +126,9 @@ export class CaeCloudClient {
    * Polls the current status of a cloud simulation job.
    */
   public async getJobStatus(jobId: string): Promise<CaeCloudJobStatus> {
-    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}`);
+    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}`, {
+      headers: this.buildHeaders(),
+    });
     if (!res.ok) {
       throw new Error(`Failed to fetch status for job ${jobId}`);
     }
@@ -117,6 +141,7 @@ export class CaeCloudClient {
   public async cancelJob(jobId: string): Promise<boolean> {
     const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}`, {
       method: "DELETE",
+      headers: this.buildHeaders(),
     });
     if (!res.ok) return false;
     const body = await res.json();
@@ -127,7 +152,9 @@ export class CaeCloudClient {
    * Fetches the synthesized UnstructuredGrid (.vtu) field result.
    */
   public async fetchResultsVtu(jobId: string): Promise<string> {
-    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/results`);
+    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/results`, {
+      headers: this.buildHeaders(),
+    });
     if (!res.ok) {
       throw new Error(`Result .vtu not ready for job ${jobId}`);
     }
@@ -138,7 +165,9 @@ export class CaeCloudClient {
    * Fetches 3D surface mesh and result fields (stress, displacement) formatted as FeaMeshPayload.
    */
   public async fetchMeshPayload(jobId: string): Promise<any> {
-    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/mesh-payload`);
+    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/mesh-payload`, {
+      headers: this.buildHeaders(),
+    });
     if (res.ok) {
       return await res.json();
     }
@@ -151,7 +180,9 @@ export class CaeCloudClient {
    * Fetches scalar KPIs (convergence, max stress, max displacement) for a job.
    */
   public async fetchScalars(jobId: string): Promise<any> {
-    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/scalars`);
+    const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/scalars`, {
+      headers: this.buildHeaders(),
+    });
     if (!res.ok) {
       throw new Error(`Scalars not ready for job ${jobId}`);
     }
@@ -261,7 +292,7 @@ export class CaeCloudClient {
 
     fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/events`, {
       signal: controller.signal,
-      headers: { Accept: "text/event-stream" },
+      headers: this.buildHeaders({ Accept: "text/event-stream" }),
     })
       .then(async (response) => {
         if (!response.ok || !response.body) {

@@ -1,6 +1,5 @@
 // name: ExternalFunctionArray
 // status: correct
-// xfail:    true
 // teardown_command: rm -f ExternalFunctionArray_*
 //
 // Tests that the output arrays in temporaries do not overlap

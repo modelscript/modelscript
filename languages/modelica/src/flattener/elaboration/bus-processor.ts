@@ -271,6 +271,25 @@ export function processExpandableConnectors(
             busConnections.push([paired, bKey]);
           }
         }
+      } else if (
+        !dae.extensionMetadata?.isOldFrontend &&
+        ((matchL && matchL.relPath === "" && matchR && matchR.relPath !== "") ||
+          (matchR && matchR.relPath === "" && matchL && matchL.relPath !== "")) &&
+        busConnections.some(([a, b]) => {
+          const expPfx = matchL && matchL.relPath === "" ? matchL.busPrefix : matchR!.busPrefix;
+          return a === expPfx || b === expPfx;
+        })
+      ) {
+        const expName = matchL && matchL.relPath === "" ? lhsName : rhsName;
+        const nonExpName = matchL && matchL.relPath === "" ? rhsName : lhsName;
+        const srcRange = dae.getEqSourceRange?.(i);
+        dae.diagnostics.push({
+          severity: "error",
+          code: ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.code,
+          message: ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.message(expName, nonExpName),
+          range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+        });
+        return;
       } else {
         if (matchL && matchL.relPath !== "") {
           markSignalReferenced(lhsName);

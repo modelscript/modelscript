@@ -29,6 +29,8 @@ import {
   cloneNode,
   getNodeMerkleHash,
   getNodeMerkleHashAt,
+  stringArenaPtr,
+  stringArenaCapacity,
   S,
 } from "../arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3, getExpectedTokensPoolPtr, getExpectedTokensPoolLen, resetExpectedTokensPool, setAncestorCacheEnabled } from "./engine";
@@ -38,7 +40,7 @@ import { stub_getDefinition, stub_getBinaryBuffer } from "../indexing/stub";
 
 @inline
 export function getEncodingStep(): u32 {
-  return inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+  return 1;
 }
 
 // --- LSP Endpoints ---
@@ -1655,7 +1657,7 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    let targetOffsetStart = lspLastNodeOffset;
    let targetSpan = ast_getTextSpan(node, targetOffsetStart);
    let targetHash = ast_hashSpan(targetSpan);
-   let targetLen = (targetSpan & 0xFFFFFFFF) as u32;
+   let targetLen = getNodeByteLength(node);
 
    // F12 to get the definition
    let defNode = lsp_invokeDefinition(node);
@@ -1837,11 +1839,19 @@ export function lsp_formatDocument(astRoot: u32, preserveFormatting: u32 = 0): u
     start = 0;
   }
 
-  let inBuf = getInputBuffer();
+  let isOverride =
+    stringArenaPtr != 0 &&
+    start >= (stringArenaPtr as u32) + 4 &&
+    start < ((stringArenaPtr + stringArenaCapacity) as u32);
+  let srcPtr: usize = isOverride
+    ? (start as usize)
+    : getInputBuffer() + ((start as usize) << 1);
+  let byteLen: u32 = isOverride ? len : (len << 1);
+
   let word: u32 = 0;
   let shift: u32 = 0;
-  for (let i: u32 = 0; i < len; i++) {
-    let b = load<u8>(inBuf + start + i);
+  for (let i: u32 = 0; i < byteLen; i++) {
+    let b = load<u8>(srcPtr + i);
     word |= (b as u32) << shift;
     shift += 8;
     if (shift == 32) {
@@ -1855,7 +1865,7 @@ export function lsp_formatDocument(astRoot: u32, preserveFormatting: u32 = 0): u
   }
 
   flushBinaryBuffer();
-  return len;
+  return byteLen;
 }
 
 // ── 2D Diagram & Visual Modeling Endpoints ──────────────────────────────────

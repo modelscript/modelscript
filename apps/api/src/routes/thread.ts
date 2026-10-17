@@ -71,7 +71,18 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     sseClients.add(res);
     res.write(`event: init\ndata: ${JSON.stringify({ status: "connected", timestamp: new Date().toISOString() })}\n\n`);
 
+    const heartbeatInterval = setInterval(() => {
+      try {
+        res.write(`: heartbeat\n\n`);
+      } catch {
+        clearInterval(heartbeatInterval);
+        sseClients.delete(res);
+      }
+    }, 15_000);
+    heartbeatInterval.unref?.();
+
     req.on("close", () => {
+      clearInterval(heartbeatInterval);
       sseClients.delete(res);
     });
   });
@@ -283,6 +294,10 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
 
   // ── POST /api/v1/threads/conflicts/reconcile ──────────────────────────
   router.post("/conflicts/reconcile", (req, res) => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     const conflictId = req.body.conflictId || "conflict_bus_voltage";
     const strategy = req.body.strategy || "physics-simplex";
     const customValue = typeof req.body.customValue === "number" ? req.body.customValue : undefined;
@@ -511,11 +526,15 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
 
   // ── POST /api/v1/threads/proposals ────────────────────────────────────
   router.post("/proposals", (req, res) => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     const { threadId, title, description, diffSummary, safetyStandard } = req.body;
     if (!threadId || !title) {
       return res.status(400).json({ error: "Missing required fields: threadId, title" });
     }
-    const proposedBy = (req as any).user?.username || (req as any).user?.email || req.body.proposedBy || "engineer";
+    const proposedBy = authUser?.username || authUser?.email || req.body.proposedBy || "engineer";
     const proposal = createProposal({
       threadId: String(threadId),
       title: String(title),
@@ -554,12 +573,16 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
 
   // ── POST /api/v1/threads/proposals/:id/review ─────────────────────────
   router.post("/proposals/:id/review", (req, res) => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     const id = parseInt(req.params.id, 10);
     const { status, comment, safetyStandard } = req.body;
     if (!["approved", "rejected", "applied"].includes(status)) {
       return res.status(400).json({ error: "Invalid status. Must be 'approved', 'rejected', or 'applied'." });
     }
-    const resolvedBy = (req as any).user?.username || (req as any).user?.email || req.body.resolvedBy || "reviewer";
+    const resolvedBy = authUser?.username || authUser?.email || req.body.resolvedBy || "reviewer";
     const updated = reviewProposal(id, status, resolvedBy, comment, safetyStandard);
     if (!updated) {
       return res.status(404).json({ error: `Proposal ${req.params.id} not found` });

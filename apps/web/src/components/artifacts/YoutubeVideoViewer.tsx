@@ -59,10 +59,11 @@ const PlayButton = styled.div`
 const YoutubeVideoViewer: React.FC<YoutubeVideoViewerProps> = ({ viewConfig, isFullScreen }) => {
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const videoId = viewConfig.videoId;
+  const rawVideoId = viewConfig.videoId;
+  const videoId = typeof rawVideoId === "string" && /^[a-zA-Z0-9_-]{6,20}$/.test(rawVideoId) ? rawVideoId : null;
   // If thumbnail_url isn't passed via viewConfig, we can fallback to a generated one if needed,
   // but it's passed as artifact.thumbnail_url normally. We will just use standard YouTube thumbnail.
-  const thumbnailUrl = viewConfig.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const thumbnailUrl = videoId ? viewConfig.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
 
   if (!videoId) {
     return <Box p={3}>Invalid YouTube video configuration.</Box>;

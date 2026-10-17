@@ -1,7 +1,6 @@
 // name:     ModifyConstant4
 // keywords: scoping,modification
 // status:   incorrect
-// xfail:    true
 //
 // Only members may be modified.
 //

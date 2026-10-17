@@ -4,6 +4,7 @@ import DOMPurify from "dompurify";
 import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { safeCssImageUrl, safeHostname, sanitizeHttpUrl } from "../src/util/url.js";
 
 const window = new JSDOM("").window;
 const purify = DOMPurify(window as unknown as Window);
@@ -46,5 +47,35 @@ describe("SVG Sanitization Pipeline", () => {
     assert.ok(sanitized.includes("linearGradient"), "Must retain linearGradient");
     assert.ok(sanitized.includes("<rect"), "Must retain rect");
     assert.ok(sanitized.includes("<path"), "Must retain path");
+  });
+});
+
+describe("URL & CSS Image Sanitization Utilities", () => {
+  it("allows http, https, and relative paths in sanitizeHttpUrl", () => {
+    assert.strictEqual(sanitizeHttpUrl("https://modelscript.org/docs"), "https://modelscript.org/docs");
+    assert.strictEqual(sanitizeHttpUrl("http://example.com/a"), "http://example.com/a");
+    assert.strictEqual(sanitizeHttpUrl("/api/v1/artifacts/1"), "/api/v1/artifacts/1");
+  });
+
+  it("rejects javascript:, data:, vbscript:, and protocol-relative URLs in sanitizeHttpUrl", () => {
+    assert.strictEqual(sanitizeHttpUrl("javascript:alert(1)"), undefined);
+    assert.strictEqual(sanitizeHttpUrl("  JaVaScRiPt:alert(document.cookie)"), undefined);
+    assert.strictEqual(sanitizeHttpUrl("data:text/html,<script>alert(1)</script>"), undefined);
+    assert.strictEqual(sanitizeHttpUrl("//evil.example.com/payload"), undefined);
+    assert.strictEqual(sanitizeHttpUrl(""), undefined);
+    assert.strictEqual(sanitizeHttpUrl(undefined), undefined);
+  });
+
+  it("extracts hostname safely without throwing in safeHostname", () => {
+    assert.strictEqual(safeHostname("https://sub.modelscript.org/path"), "sub.modelscript.org");
+    assert.strictEqual(safeHostname("http://[::invalid", "fallback.local"), "fallback.local");
+    assert.strictEqual(safeHostname(null, "fallback.local"), "fallback.local");
+  });
+
+  it("escapes CSS url() breakout characters in safeCssImageUrl", () => {
+    assert.strictEqual(safeCssImageUrl("https://example.com/banner.png"), 'url("https://example.com/banner.png")');
+    assert.strictEqual(safeCssImageUrl("javascript:alert(1)"), undefined);
+    const breakout = safeCssImageUrl('https://example.com/a.png"); background: red;');
+    assert.ok(breakout && !breakout.includes('");'), "Must percent-encode quotes and parentheses");
   });
 });

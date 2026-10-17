@@ -89,6 +89,7 @@ export const baselineMigration: Migration = {
         registration_ip TEXT,
         ed25519_public_key TEXT,
         ed25519_private_key TEXT,
+        bot_token_hash TEXT,
         token_version INTEGER DEFAULT 1
       );
 
@@ -119,11 +120,13 @@ export const baselineMigration: Migration = {
         created_at    TEXT DEFAULT (datetime('now')),
         UNIQUE(follower_id, following_id)
       );
+      CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id, state);
 
       CREATE TABLE IF NOT EXISTS rss_feeds (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         url             TEXT NOT NULL UNIQUE,
         title           TEXT,
+        description     TEXT,
         site_url        TEXT,
         last_fetched_at TEXT,
         last_guid       TEXT,
@@ -172,6 +175,8 @@ export const baselineMigration: Migration = {
         updated_at      TEXT DEFAULT (datetime('now')),
         published_at    TEXT DEFAULT (datetime('now'))
       );
+      CREATE INDEX IF NOT EXISTS idx_posts_repost ON posts(repost_of_id);
+      CREATE INDEX IF NOT EXISTS idx_posts_quote ON posts(quote_post_id);
 
       CREATE TABLE IF NOT EXISTS packages (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,

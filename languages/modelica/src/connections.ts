@@ -483,6 +483,80 @@ export class ModelicaPortBalancer {
       const toExact = dae.getVarIdxByName(toStr);
 
       if (fromExact !== -1 && toExact !== -1 && !dae.isVarRemoved(fromExact) && !dae.isVarRemoved(toExact)) {
+        if (dae.extensionMetadata?.isOldFrontend && dae.isVarFlow(fromExact) !== dae.isVarFlow(toExact)) {
+          const flowComp = dae.isVarFlow(fromExact) ? fromStr : toStr;
+          const nonFlowComp = dae.isVarFlow(fromExact) ? toStr : fromStr;
+          const srcRange = dae.getEqSourceRange?.(eqIdx);
+          const range = srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined;
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.CONNECT_FLOW_MISMATCH.code,
+            message: ModelicaErrorCode.CONNECT_FLOW_MISMATCH.message(flowComp, nonFlowComp),
+            range,
+          });
+          if (state.db && state.flattener?.currentRootClassId) {
+            const r0Raw = fromStr.split(".")[0]!;
+            const r1Raw = toStr.split(".")[0]!;
+            const scopeId = state.flattener.currentRootClassId;
+            const allChildren = state.db.childrenOf(scopeId);
+            const c0Sym = allChildren.find((c: any) => c.kind === "Component" && c.name === r0Raw);
+            const c1Sym = allChildren.find((c: any) => c.kind === "Component" && c.name === r1Raw);
+            const c0Inst = c0Sym ? state.db.query("componentInstance", c0Sym.id) : null;
+            const c1Inst = c1Sym ? state.db.query("componentInstance", c1Sym.id) : null;
+            const resolveConnectorSym = (typeSpec: string | null | undefined) => {
+              if (!typeSpec) return null;
+              const matches = state.db.byName(typeSpec);
+              return matches?.find((e: any) => e.kind === "Class") ?? null;
+            };
+            const sym0 = resolveConnectorSym(c0Inst?.typeSpecifier);
+            const sym1 = resolveConnectorSym(c1Inst?.typeSpecifier);
+            if (sym0 && sym1) {
+              const formatConnectorType = (sym: any): string => {
+                const elems = state.db.query("allElements", sym.id) ?? state.db.childrenOf(sym.id);
+                const comps = elems.filter((e: any) => e.kind === "Component" && !(e.metadata as any)?.isProtected);
+                const compLines = comps.map((c: any) => {
+                  const inst = state.db.query("componentInstance", c.id);
+                  const m = (c.metadata as any) ?? {};
+                  const flow = inst?.flowPrefix || m.flowPrefix ? "flow " : "";
+                  let typeName = inst?.typeSpecifier ?? (c as any).typeSpecifier ?? "Real";
+                  let modStr = "";
+                  if (inst?.modification?.args && inst.modification.args.length > 0) {
+                    modStr =
+                      "(" +
+                      inst.modification.args
+                        .map((a: any) => `${a.name} = "${a.value?.text ?? a.value?.value ?? ""}"`)
+                        .join(", ") +
+                      ")";
+                  } else {
+                    const resolved = state.db.byName(typeName)?.find((e: any) => e.kind === "Class");
+                    if (resolved) {
+                      const src = (state.db as any).source ? ((state.db as any).source(resolved.resourceId) ?? "") : "";
+                      const snippet =
+                        src && resolved.startByte !== undefined && resolved.endByte !== undefined
+                          ? src.substring(resolved.startByte, resolved.endByte)
+                          : ((state.db.cstNode?.(resolved.id) as any)?.text ?? "");
+                      const match = snippet.match(/=\s*([A-Za-z0-9_]+(\([^)]+\))?)/);
+                      if (match) {
+                        typeName = match[1];
+                      }
+                    }
+                  }
+                  return `  ${flow}${typeName}${modStr} ${c.name};`;
+                });
+                return `connector ${sym.name}\n${compLines.join("\n")}\nend ${sym.name};`;
+              };
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.CONNECT_TYPES_INCONSISTENT.code,
+                message: `The type of variables \n${r0Raw} type:\n${formatConnectorType(
+                  sym0,
+                )} and \n${r1Raw} type:\n${formatConnectorType(sym1)}\nare inconsistent in connect equations.`,
+                range,
+              });
+            }
+          }
+          continue;
+        }
         if (!isBrokenOverconstrainedVarPair(fromStr, toStr)) {
           uf.union(fromExact, toExact);
           resolvedPairs.push([fromExact, toExact, eqIdx]);
@@ -559,10 +633,32 @@ export class ModelicaPortBalancer {
             isPlugCompatible = false;
           }
         } else if (fromDesc && fromDesc.length > 0) {
-          if (!toDesc || toDesc.length !== fromDesc.length || hasArrayDesc(toStr)) {
+          if (!toDesc || toDesc.length === 0 || hasArrayDesc(toStr)) {
             isPlugCompatible = false;
           } else {
+            const isConditionallyDisabledSubcomponent = (fullVarName: string): boolean => {
+              if (state.flattener?.isComponentDisabled(fullVarName)) return true;
+              const parts = fullVarName.split(".");
+              for (let pLen = 1; pLen < parts.length; pLen++) {
+                const subPrefix = parts.slice(0, pLen).join(".");
+                if (state.flattener?.isComponentDisabled(subPrefix)) return true;
+              }
+              if (state.db) {
+                for (let pIdx = 1; pIdx < parts.length; pIdx++) {
+                  const segName = parts[pIdx]!.replace(/\[.*\]$/, "");
+                  const syms = state.db.byName(segName) || [];
+                  for (const sym of syms) {
+                    if (sym.kind === "Component") {
+                      const cst = (state.db as any).cstNode?.(sym.id);
+                      if (cst?.text && /\bif\s+/.test(cst.text)) return true;
+                    }
+                  }
+                }
+              }
+              return false;
+            };
             const fromPrefixLen = fromStr.length;
+            const toPrefixLen = toStr.length;
             for (const idxA of fromDesc) {
               const vNameA = dae.getVarName(idxA);
               const suffix = vNameA.substring(fromPrefixLen);
@@ -585,9 +681,31 @@ export class ModelicaPortBalancer {
                     if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
                   }
                 }
+              } else if (
+                (idxB === -1 || dae.isVarRemoved(idxB)) &&
+                (isConditionallyDisabledSubcomponent(targetName) || isConditionallyDisabledSubcomponent(vNameA))
+              ) {
+                continue;
               } else {
                 isPlugCompatible = false;
                 break;
+              }
+            }
+            if (isPlugCompatible) {
+              for (const idxB of toDesc) {
+                const vNameB = dae.getVarName(idxB);
+                const suffix = vNameB.substring(toPrefixLen);
+                const sourceName = fromStr + suffix;
+                const idxA = dae.getVarIdxByName(sourceName);
+                if (idxA === -1 || dae.isVarRemoved(idxA)) {
+                  if (
+                    !isConditionallyDisabledSubcomponent(sourceName) &&
+                    !isConditionallyDisabledSubcomponent(vNameB)
+                  ) {
+                    isPlugCompatible = false;
+                    break;
+                  }
+                }
               }
             }
           }
@@ -677,9 +795,47 @@ export class ModelicaPortBalancer {
       return false;
     };
 
+    const topLevelConnectorPrefixes = new Set<string>();
+    if (state.db && state.flattener?.currentRootClassId) {
+      const rootElems =
+        state.db.query("allElements", state.flattener.currentRootClassId) ??
+        state.db.childrenOf(state.flattener.currentRootClassId) ??
+        [];
+      for (const el of rootElems) {
+        if (el.kind === "Component") {
+          let compClassId = state.db.query("classInstance", el.id);
+          if (!compClassId) {
+            const ci = state.db.query("componentInstance", el.id);
+            const tSpec = ci?.typeSpecifier ?? (el.metadata as any)?.typeSpecifier;
+            if (tSpec) {
+              const found = state.db.byName(String(tSpec).split(".").pop()!)?.find((s: any) => s.kind === "Class");
+              if (found) compClassId = found.id;
+            }
+          }
+          if (compClassId) {
+            const compClass = state.db.symbol(compClassId);
+            const classKind = String(
+              (compClass?.metadata as any)?.classKind ?? (compClass?.metadata as any)?.classPrefixes ?? "",
+            ).toLowerCase();
+            if (state.db.query("isConnector", compClassId) || classKind.includes("connector")) {
+              topLevelConnectorPrefixes.add(el.name);
+            }
+          }
+        }
+      }
+    }
+    const isTopLevelConnectorVar = (varName: string): boolean => {
+      if (topLevelConnectorPrefixes.size === 0) return false;
+      const dot = varName.indexOf(".");
+      if (dot <= 0) return false;
+      const firstSeg = varName.slice(0, dot).replace(/\[.*\]$/, "");
+      return topLevelConnectorPrefixes.has(firstSeg);
+    };
+
     const isOutsideOrOuter = (varName: string, vIdx?: number) =>
       (vIdx !== undefined && outsideVarSet.has(vIdx)) ||
       isInnerOrOuterVar(varName) ||
+      isTopLevelConnectorVar(varName) ||
       varName.indexOf(".") === varName.lastIndexOf(".") ||
       varName.startsWith("ip.") ||
       varName.includes(".ip.") ||
@@ -1389,7 +1545,13 @@ export class ModelicaPortBalancer {
       if (group.length <= 1) {
         if (isFlow && !handledFlowVars.has(firstVarIdx)) {
           const expr = dae.getVarExpression(firstVarIdx);
-          if (typeof expr === "number" && expr >= 0) {
+          const firstVarName = dae.getVarName(firstVarIdx);
+          if (
+            typeof expr === "number" &&
+            expr >= 0 &&
+            !isInnerOrOuterVar(firstVarName) &&
+            !firstVarName.includes(".ip.")
+          ) {
             continue;
           }
           if (options?.omcCompatibility && dae.classKind === "connector") {
@@ -1733,13 +1895,14 @@ export class ModelicaPortBalancer {
       group: string[];
       internalPotentials: { kind: EqKind; lhs: number; rhs: number }[];
       internalFlowSum?: { kind: EqKind; lhs: number; rhs: number };
+      internalFlowSums?: { kind: EqKind; lhs: number; rhs: number }[];
       internalStreams: { kind: EqKind; lhs: number; rhs: number; desc?: string }[];
     }
     const ooGroupData: OOGroupData[] = [];
 
     if (outsideOutsidePairs.length > 0) {
       const getPortVars = (port: string) => {
-        const vars: { r: number[]; f?: number; s?: number } = { r: [] };
+        const vars: { r: number[]; f?: number; fList: number[]; s?: number } = { r: [], fList: [] };
         for (let i = 0; i < dae.varCount; i++) {
           if (dae.isVarRemoved(i)) continue;
           const vName = dae.getVarName(i);
@@ -1748,6 +1911,7 @@ export class ModelicaPortBalancer {
               vars.s = i;
             } else if (dae.isVarFlow(i)) {
               vars.f = i;
+              vars.fList.push(i);
             } else {
               vars.r.push(i);
             }
@@ -1792,26 +1956,32 @@ export class ModelicaPortBalancer {
         const gd: OOGroupData = {
           group,
           internalPotentials: [],
+          internalFlowSums: [],
           internalStreams: [],
         };
 
         // 2. Outside flow sum: (-p0.f) + (-p1.f) + ... = 0.0
-        const fVars = group.map((p) => getPortVars(p).f).filter((f): f is number => f !== undefined);
-        if (fVars.length > 1) {
-          let sumExpr = dae.addExpression(
-            ExprKind.Negate,
-            0,
-            dae.addExpression(ExprKind.Name, dae.getVarNameId(fVars[0]!)),
-          );
-          for (let i = 1; i < fVars.length; i++) {
-            const term = dae.addExpression(
+        const p0PortVars = getPortVars(group[0]!);
+        for (let fIdx = 0; fIdx < p0PortVars.fList.length; fIdx++) {
+          const fVars = group.map((p) => getPortVars(p).fList[fIdx]).filter((f): f is number => f !== undefined);
+          if (fVars.length > 1) {
+            let sumExpr = dae.addExpression(
               ExprKind.Negate,
               0,
-              dae.addExpression(ExprKind.Name, dae.getVarNameId(fVars[i]!)),
+              dae.addExpression(ExprKind.Name, dae.getVarNameId(fVars[0]!)),
             );
-            sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, term);
+            for (let i = 1; i < fVars.length; i++) {
+              const term = dae.addExpression(
+                ExprKind.Negate,
+                0,
+                dae.addExpression(ExprKind.Name, dae.getVarNameId(fVars[i]!)),
+              );
+              sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, term);
+            }
+            const eqObj = { kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr };
+            gd.internalFlowSums!.push(eqObj);
+            if (!gd.internalFlowSum) gd.internalFlowSum = eqObj;
           }
-          gd.internalFlowSum = { kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr };
         }
 
         // 3. Potential equations: p0.r = pi.r
@@ -1967,8 +2137,11 @@ export class ModelicaPortBalancer {
               zeroFlows.sort((a, b) => a.varName.localeCompare(b.varName));
               zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
               for (const gd of ooGroupData) {
-                if (gd.internalFlowSum)
+                if (gd.internalFlowSums && gd.internalFlowSums.length > 0) {
+                  gd.internalFlowSums.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+                } else if (gd.internalFlowSum) {
                   dae.addEquation(gd.internalFlowSum.kind, gd.internalFlowSum.lhs, gd.internalFlowSum.rhs);
+                }
                 gd.internalPotentials.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
                 gd.internalStreams.forEach((eq) => {
                   const eqIdx = dae.addEquation(eq.kind, eq.lhs, eq.rhs);
@@ -2011,8 +2184,11 @@ export class ModelicaPortBalancer {
                   }
                 }
                 gd.internalPotentials.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
-                if (gd.internalFlowSum)
+                if (gd.internalFlowSums && gd.internalFlowSums.length > 0) {
+                  gd.internalFlowSums.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+                } else if (gd.internalFlowSum) {
                   dae.addEquation(gd.internalFlowSum.kind, gd.internalFlowSum.lhs, gd.internalFlowSum.rhs);
+                }
                 gd.internalStreams.forEach((eq) => {
                   const eqIdx = dae.addEquation(eq.kind, eq.lhs, eq.rhs);
                   if (eq.desc && eqIdx >= 0) {

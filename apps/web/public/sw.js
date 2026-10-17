@@ -43,12 +43,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 1. WASM parsers & Static build assets (CacheFirst with network fallback)
-  if (
-    url.pathname.endsWith(".wasm") ||
-    url.pathname.startsWith("/assets/") ||
-    url.pathname.startsWith("/lsp/server/dist/")
-  ) {
+  // 1a. Content-hashed build assets (CacheFirst)
+  if (url.pathname.startsWith("/assets/")) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {
@@ -64,6 +60,26 @@ self.addEventListener("fetch", (event) => {
           return networkResponse;
         });
       }),
+    );
+    return;
+  }
+
+  // 1b. Unhashed WASM parsers & LSP server bundles (StaleWhileRevalidate so updates propagate)
+  if (url.pathname.endsWith(".wasm") || url.pathname.startsWith("/lsp/server/dist/")) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(request).then((cachedResponse) => {
+          const fetchPromise = fetch(request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                cache.put(request, networkResponse.clone());
+              }
+              return networkResponse;
+            })
+            .catch(() => cachedResponse);
+          return cachedResponse || fetchPromise;
+        }),
+      ),
     );
     return;
   }

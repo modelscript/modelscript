@@ -1,5 +1,4 @@
 // status: correct
-// xfail:    true
 
 package Modelica_Noise
 package Math

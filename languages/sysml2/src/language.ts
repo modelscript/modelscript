@@ -11,6 +11,8 @@
 
 import { analyzeInterproceduralCfa } from "./activity-cfa.js";
 import { checkActivitySoundnessForSymbol } from "./activity-soundness.js";
+import { extractActivityInvariants, SysML2ActivityVerifier } from "./activity-verifier.js";
+import { DecisionTableVerifier } from "./decision-table-verifier.js";
 import {
   areDimensionsEqual,
   getDimensionLabel,
@@ -21,7 +23,12 @@ import {
 import { SysML2ErrorCode } from "./errors.js";
 import { LoopInvariantAnalyzer } from "./loop-invariant-analyzer.js";
 import { emitAxioms } from "./reasoner-bridge.js";
-import { checkConnectionTypeCompatibility, checkFeatureAssignmentType } from "./type-checker.js";
+import {
+  checkConnectionTypeCompatibility,
+  checkFeatureAssignmentType,
+  checkImportResolution,
+  checkSymbolResolution,
+} from "./type-checker.js";
 import { sysml2Writeback } from "./writeback.js";
 
 import {
@@ -1616,6 +1623,7 @@ const definitionLints = {
     }
     return null;
   },
+  symbolNotFound: (db: QueryDB, self: SymbolEntry) => checkSymbolResolution(db, self),
 };
 
 /** Shared lint rules for all Usage rules */
@@ -1638,6 +1646,39 @@ const usageLints = {
     }
     return null;
   },
+  duplicateFeatureName: (db: QueryDB, self: SymbolEntry) => definitionLints.duplicateFeatureName(db, self),
+  circularSpecialization: (db: QueryDB, self: SymbolEntry) => {
+    if (!self.name || self.name === "<anonymous>") return null;
+    const queue: string[] = [];
+    for (const child of db.childrenOf(self.id)) {
+      if ((child.ruleName === "OwnedSubsetting" || child.ruleName === "OwnedRedefinition") && child.name) {
+        queue.push(child.name);
+      }
+    }
+    if (queue.length === 0) return null;
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current === self.name) {
+        return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
+          code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
+          field: "declaredName",
+        });
+      }
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const targets = db.byName(current);
+      const target = targets.find((t) => t.kind === "Usage");
+      if (!target) continue;
+      for (const sc of db.childrenOf(target.id)) {
+        if ((sc.ruleName === "OwnedSubsetting" || sc.ruleName === "OwnedRedefinition") && sc.name) {
+          queue.push(sc.name);
+        }
+      }
+    }
+    return null;
+  },
+  symbolNotFound: (db: QueryDB, self: SymbolEntry) => checkSymbolResolution(db, self),
   multiplicityBounds: (_db: QueryDB, self: SymbolEntry) => {
     // metadata fields are extracted as strings from the CST if they existed
     const lowerStr = self.metadata?.multiplicityLower as string | undefined;
@@ -1877,7 +1918,10 @@ const satisfyRequirementLints = {
     if (!reqTarget) return null;
     const constraintsMet = evaluateConstraintsMet(db, reqTarget);
     if (constraintsMet === false) {
-      return warning(`Satisfying '${targetName}' whose constraints evaluate to false`, { field: "declaredName" });
+      return warning(`Satisfying '${targetName}' whose constraints evaluate to false`, {
+        code: SysML2ErrorCode.SATISFYING_VIOLATED_REQUIREMENT.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -1949,7 +1993,10 @@ const verificationCaseDefinitionLints = {
   emptyVerificationCase: (db: QueryDB, self: SymbolEntry) => {
     const verifyMembers = db.childrenOf(self.id).filter((c) => c.ruleName === "VerifyRequirementUsage");
     if (verifyMembers.length === 0 && self.name) {
-      return info(`Verification case '${self.name}' has no 'verify' members`, { field: "declaredName" });
+      return info(`Verification case '${self.name}' has no 'verify' members`, {
+        code: SysML2ErrorCode.EMPTY_VERIFICATION_CASE.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -1957,7 +2004,10 @@ const verificationCaseDefinitionLints = {
     if (metaStr(self, "isAbstract") === "true") return null;
     const objectives = db.childrenOf(self.id).filter((c) => c.ruleName === "ObjectiveRequirementUsage");
     if (objectives.length === 0 && self.name) {
-      return info(`Verification case '${self.name}' has no objective`, { field: "declaredName" });
+      return info(`Verification case '${self.name}' has no objective`, {
+        code: SysML2ErrorCode.MISSING_VERIFICATION_OBJECTIVE.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -1969,7 +2019,10 @@ const verificationCaseUsageLints = {
   emptyVerificationCase: (db: QueryDB, self: SymbolEntry) => {
     const verifyMembers = db.childrenOf(self.id).filter((c) => c.ruleName === "VerifyRequirementUsage");
     if (verifyMembers.length === 0 && self.name) {
-      return info(`Verification case '${self.name}' has no 'verify' members`, { field: "declaredName" });
+      return info(`Verification case '${self.name}' has no 'verify' members`, {
+        code: SysML2ErrorCode.EMPTY_VERIFICATION_CASE.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -2187,10 +2240,11 @@ const connectionLints = {
   },
   connectionTypeCompatibility: (db: QueryDB, self: SymbolEntry) => checkConnectionTypeCompatibility(db, self),
   interfaceContract: (db: QueryDB, self: SymbolEntry) => {
-    const res = verifyAllInterfaceContracts(db, self.name);
+    const res = verifyAllInterfaceContracts(db, self.id);
     if (!res.isSatisfied && res.violations.length > 0) {
       const v = res.violations[0]!;
-      return error(SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.message(self.name, v.reason), {
+      const connName = self.name && self.name !== "<anonymous>" ? self.name : v.connectionName || "<anonymous>";
+      return error(SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.message(connName, v.reason), {
         code: SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.code,
         startByte: self.startByte,
         endByte: self.endByte,
@@ -2208,36 +2262,52 @@ const verifyRequirementLints = {
     const targets = db.byName(targetName);
     const reqTarget = targets.find((t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage");
     if (targets.length > 0 && !reqTarget) {
-      return error(`Verify target '${targetName}' is not a Requirement`, { field: "declaredName" });
+      return error(SysML2ErrorCode.VERIFY_TARGET_NOT_A_REQUIREMENT.message(targetName), {
+        code: SysML2ErrorCode.VERIFY_TARGET_NOT_A_REQUIREMENT.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
 };
 
-/** Lint rules for ActionDefinition and ActionUsage: Activity CFA, Definite Assignment, Soundness */
+/** Lint rules for ActionDefinition and ActionUsage: Activity CFA, Definite Assignment, Soundness, Decision Tables & BMC */
 const actionCommonLints = {
   activitySoundness: (db: QueryDB, self: SymbolEntry) => {
-    // Only check if it defines an activity with child nodes or parameters
     const children = db.childrenOf(self.id);
     const hasActivityMembers = children.some(
       (c) =>
         c.ruleName === "ActionUsage" ||
         c.ruleName === "PerformActionUsage" ||
+        c.ruleName === "AcceptActionNode" ||
+        c.ruleName === "SendActionNode" ||
+        c.ruleName === "AssignActionNode" ||
         c.ruleName === "DecisionNode" ||
         c.ruleName === "MergeNode" ||
         c.ruleName === "ForkNode" ||
         c.ruleName === "JoinNode" ||
         c.ruleName === "SuccessionAsUsage" ||
-        c.ruleName === "SuccessionFlowUsage",
+        c.ruleName === "SuccessionFlowUsage" ||
+        c.ruleName === "FlowUsage",
     );
     if (!hasActivityMembers) return null;
     const res = checkActivitySoundnessForSymbol(db, self);
-    if (!res.isSound && res.diagnostics.length > 0) {
-      const firstErr = res.diagnostics.find((d) => d.severity === "error") || res.diagnostics[0]!;
-      return error(firstErr.message, {
-        startByte: firstErr.startByte ?? self.startByte,
-        endByte: firstErr.endByte ?? self.endByte,
+    if (res.diagnostics.length > 0) {
+      const results = res.diagnostics.map((d) => {
+        const code =
+          d.rule === "unreachable-action"
+            ? SysML2ErrorCode.ACTIVITY_CFA_UNREACHABLE.code
+            : d.rule === "use-before-def" || d.rule === "definite-output-assignment"
+              ? SysML2ErrorCode.DEFINITE_ASSIGNMENT_VIOLATION.code
+              : SysML2ErrorCode.ACTIVITY_SOUNDNESS_VIOLATION.code;
+        const emitFn = d.severity === "warning" ? warning : error;
+        return emitFn(d.message, {
+          code,
+          startByte: d.startByte ?? self.startByte,
+          endByte: d.endByte ?? self.endByte,
+        });
       });
+      return results.length === 1 ? results[0]! : results;
     }
     return null;
   },
@@ -2245,9 +2315,30 @@ const actionCommonLints = {
     const text = db.cstText(self.startByte, self.endByte, self) || "";
     if (/\b(?:perform|:\s*[A-Za-z_])/.test(text)) {
       const res = analyzeInterproceduralCfa(db, self.name);
-      const myErr = res.diagnostics.find((d) => d.nodeName === self.name && d.severity === "error");
+      const localRules = new Set([
+        "unreachable-action",
+        "use-before-def",
+        "definite-output-assignment",
+        "join-decide-deadlock",
+        "unbound-action-input",
+      ]);
+      const childNames = new Set(
+        db
+          .childrenOf(self.id)
+          .map((c) => c.name)
+          .filter(Boolean),
+      );
+      const myErr = res.diagnostics.find(
+        (d) =>
+          !localRules.has(d.rule) &&
+          (d.nodeName === self.name ||
+            childNames.has(d.nodeName) ||
+            (d.startByte !== undefined && d.startByte >= self.startByte && (d.endByte ?? d.startByte) <= self.endByte)),
+      );
       if (myErr) {
-        return error(myErr.message, {
+        const emitFn = myErr.severity === "warning" ? warning : error;
+        return emitFn(myErr.message, {
+          code: SysML2ErrorCode.INTERPROCEDURAL_CONTRACT_VIOLATION.code,
           startByte: myErr.startByte ?? self.startByte,
           endByte: myErr.endByte ?? self.endByte,
         });
@@ -2257,20 +2348,89 @@ const actionCommonLints = {
   },
   loopTermination: (db: QueryDB, self: SymbolEntry) => {
     const text = db.cstText(self.startByte, self.endByte, self) || "";
-    const whileMatch = /while\s*\(([^)]+)\)\s*\{/.exec(text);
+    const whileMatch = /\bwhile\s*(?:\(([^)]+)\)|([^{]+?))\s*\{/.exec(text);
     if (whileMatch) {
-      const cond = whileMatch[1]!;
+      const cond = (whileMatch[1] ?? whileMatch[2] ?? "").trim();
       const openBrace = text.indexOf("{", whileMatch.index);
       const closeBrace = text.lastIndexOf("}");
       const body = openBrace !== -1 && closeBrace > openBrace ? text.slice(openBrace + 1, closeBrace) : "";
       const loopRes = LoopInvariantAnalyzer.analyzeLoop({ condition: cond, body });
       if (!loopRes.isTerminating && loopRes.diagnostics.length > 0) {
         const firstErr = loopRes.diagnostics[0]!;
-        return error(firstErr.message, {
+        return warning(firstErr.message, {
+          code: SysML2ErrorCode.LOOP_NON_TERMINATING.code,
           startByte: self.startByte + whileMatch.index,
           endByte: self.endByte,
         });
       }
+    }
+    return null;
+  },
+  decisionTableExhaustiveness: (db: QueryDB, self: SymbolEntry) => {
+    const hasDecisions = db.childrenOf(self.id).some((c) => c.ruleName === "DecisionNode");
+    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    if (!hasDecisions && !/\bdecide\b/.test(text)) return null;
+
+    let dtMap = DecisionTableVerifier.verifyAllDecisionsInDb(db, self);
+    if (dtMap.size === 0 && /\bdecide\b/.test(text)) {
+      dtMap = DecisionTableVerifier.verifyAllDecisionsFromText(text);
+    }
+    const results: any[] = [];
+    for (const [decideName, dtRes] of dtMap) {
+      if (!dtRes.isDeterministic && dtRes.overlappingBranches.length > 0) {
+        const pairStr = dtRes.overlappingBranches.map((o) => `'${o.branchA}' and '${o.branchB}'`).join(", ");
+        results.push(
+          error(SysML2ErrorCode.DECISION_TABLE_NONDETERMINISTIC.message(decideName, pairStr), {
+            code: SysML2ErrorCode.DECISION_TABLE_NONDETERMINISTIC.code,
+            startByte: self.startByte,
+            endByte: self.endByte,
+          }),
+        );
+      }
+      if (dtRes.hasDeadBranches && dtRes.deadBranches.length > 0) {
+        results.push(
+          warning(SysML2ErrorCode.DECISION_TABLE_DEAD_BRANCH.message(decideName, dtRes.deadBranches.join(", ")), {
+            code: SysML2ErrorCode.DECISION_TABLE_DEAD_BRANCH.code,
+            startByte: self.startByte,
+            endByte: self.endByte,
+          }),
+        );
+      }
+      if (!dtRes.isExhaustive) {
+        results.push(
+          warning(
+            SysML2ErrorCode.DECISION_TABLE_NON_EXHAUSTIVE.message(
+              decideName,
+              dtRes.suggestedFixCondition || dtRes.summary,
+            ),
+            {
+              code: SysML2ErrorCode.DECISION_TABLE_NON_EXHAUSTIVE.code,
+              startByte: self.startByte,
+              endByte: self.endByte,
+            },
+          ),
+        );
+      }
+    }
+    if (results.length === 0) return null;
+    return results.length === 1 ? results[0]! : results;
+  },
+  activitySafetyVerification: (db: QueryDB, self: SymbolEntry) => {
+    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    if (!text || (!text.includes("hazard") && !text.includes("error") && !text.includes("assert"))) {
+      return null;
+    }
+    const invariant = extractActivityInvariants(text);
+    const hasForbidden = (invariant.forbiddenNodes?.length ?? 0) > 0;
+    const hasMutex = (invariant.mutuallyExclusiveNodes?.length ?? 0) > 0;
+    if (!hasForbidden && !hasMutex && invariant.maxTokenCapacity === undefined) return null;
+    const res = SysML2ActivityVerifier.verify(text);
+    if (!res.isCertified && res.bmcResult?.violation) {
+      return error(res.summary, {
+        code: SysML2ErrorCode.ACTIVITY_SAFETY_VIOLATION.code,
+        startByte: self.startByte,
+        endByte: self.endByte,
+      });
     }
     return null;
   },
@@ -2371,7 +2531,10 @@ const requirementStructuralLints = {
       .childrenOf(self.id)
       .filter((c) => c.ruleName === "RequirementConstraintUsage" && metaStr(c, "constraintKind") === "require");
     if (assumes.length === 0 && requires.length === 0 && self.name) {
-      return info(`Requirement '${self.name}' has no assume or require constraints`, { field: "declaredName" });
+      return info(`Requirement '${self.name}' has no assume or require constraints`, {
+        code: SysML2ErrorCode.REQUIREMENT_WITHOUT_CONSTRAINT.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -2515,6 +2678,7 @@ const packageTraceabilityLints = {
     }
     return null;
   },
+  duplicateFeatureName: (db: QueryDB, self: SymbolEntry) => definitionLints.duplicateFeatureName(db, self),
   emptyPackage: (db: QueryDB, self: SymbolEntry) => {
     if (db.childrenOf(self.id).length === 0) {
       return info(SysML2ErrorCode.EMPTY_PACKAGE.message(self.name), {
@@ -2532,7 +2696,10 @@ const packageTraceabilityLints = {
     );
     if (unverified.length > 0) {
       const names = unverified.map((r) => r.name).join(", ");
-      return warning(`Package '${self.name}' has unverified requirements: ${names}`, { field: "declaredName" });
+      return warning(`Package '${self.name}' has unverified requirements: ${names}`, {
+        code: SysML2ErrorCode.UNVERIFIED_REQUIREMENT.code,
+        field: "declaredName",
+      });
     }
     return null;
   },
@@ -2561,6 +2728,7 @@ const packageTraceabilityLints = {
       return error(
         `Conflicting requirements detected in '${self.name || "package"}'${coreNames}: ${smtResult.violatedConstraints[0]?.reason || "unsatisfiable constraints"}`,
         {
+          code: SysML2ErrorCode.CONFLICTING_REQUIREMENTS.code,
           field: "declaredName",
         },
       );
@@ -2572,13 +2740,117 @@ const packageTraceabilityLints = {
     if (!smResult.isDeterministic && smResult.diagnostics.length > 0) {
       const diag = smResult.diagnostics.find((d) => d.type === "nondeterminism");
       if (diag) {
-        return error(diag.message, { field: "declaredName" });
+        return error(diag.message, {
+          code: SysML2ErrorCode.STATEMACHINE_NONDETERMINISTIC.code,
+          field: "declaredName",
+        });
       }
     }
     if (!smResult.isComplete && smResult.diagnostics.length > 0) {
       const diag = smResult.diagnostics.find((d) => d.type === "deadlock");
       if (diag) {
-        return warning(diag.message, { field: "declaredName" });
+        return warning(diag.message, {
+          code: SysML2ErrorCode.STATEMACHINE_DEADLOCK.code,
+          field: "declaredName",
+        });
+      }
+    }
+    return null;
+  },
+};
+
+/** Lint rules for Import declarations */
+const importLints = {
+  unresolvedImport: (db: QueryDB, self: SymbolEntry) => checkImportResolution(db, self),
+};
+
+/** Lint rules for EnumeratedValue declarations */
+const enumValueLints = {
+  ...usageLints,
+  duplicateEnumValue: (db: QueryDB, self: SymbolEntry) => {
+    if (!self.name || self.parentId == null) return null;
+    const siblings = db
+      .childrenOf(self.parentId)
+      .filter((c) => c.ruleName === "EnumeratedValue" && c.name === self.name);
+    if (siblings.length > 1 && siblings[0]?.id !== self.id) {
+      const parentSym = db.symbol(self.parentId);
+      return warning(SysML2ErrorCode.DUPLICATE_MEMBER.message(self.name, parentSym?.name || "enum"), {
+        code: SysML2ErrorCode.DUPLICATE_MEMBER.code,
+        field: "declaredName",
+      });
+    }
+    return null;
+  },
+};
+
+/** Lint rules for StateDefinition and StateUsage */
+const stateMachineCommonLints = {
+  stateMachineDeterminism: (db: QueryDB, self: SymbolEntry) => {
+    const hasTransitions = db.childrenOf(self.id).some((c) => c.ruleName === "TransitionUsage");
+    if (!hasTransitions) return null;
+    const smResult = verifyAllStateMachineTransitions(db, self.name);
+    const results: any[] = [];
+    for (const diag of smResult.diagnostics) {
+      if (diag.type === "nondeterminism") {
+        results.push(
+          error(diag.message, {
+            code: SysML2ErrorCode.STATEMACHINE_NONDETERMINISTIC.code,
+            field: "declaredName",
+            startByte: self.startByte,
+            endByte: self.endByte,
+          }),
+        );
+      } else if (diag.type === "deadlock") {
+        results.push(
+          warning(diag.message, {
+            code: SysML2ErrorCode.STATEMACHINE_DEADLOCK.code,
+            field: "declaredName",
+            startByte: self.startByte,
+            endByte: self.endByte,
+          }),
+        );
+      }
+    }
+    if (results.length === 0) return null;
+    return results.length === 1 ? results[0]! : results;
+  },
+};
+
+const stateDefinitionLints = {
+  ...definitionLints,
+  ...stateMachineCommonLints,
+};
+
+const stateUsageLints = {
+  ...usageLints,
+  ...stateMachineCommonLints,
+};
+
+/** Lint rules for TransitionUsage */
+const transitionUsageLints = {
+  ...usageLints,
+  unresolvedTransitionState: (db: QueryDB, self: SymbolEntry) => {
+    if (self.parentId == null) return null;
+    const stateSiblings = db
+      .childrenOf(self.parentId)
+      .filter(
+        (c) => c.ruleName === "StateUsage" || c.ruleName === "ExhibitStateUsage" || c.ruleName === "StateDefinition",
+      );
+    if (stateSiblings.length === 0) return null;
+    const validStateNames = new Set(stateSiblings.map((s) => s.name).filter(Boolean));
+
+    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    const firstMatch = /\bfirst\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(text);
+    const thenMatch = /\bthen\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(text);
+
+    for (const m of [firstMatch, thenMatch]) {
+      const stateName = m?.[1]?.trim();
+      if (stateName && !validStateNames.has(stateName) && !resolveFeatureInScope(db, self.parentId, stateName)) {
+        return error(SysML2ErrorCode.UNRESOLVED_TRANSITION_STATE.message(stateName), {
+          code: SysML2ErrorCode.UNRESOLVED_TRANSITION_STATE.code,
+          startByte: self.startByte,
+          endByte: self.endByte,
+        });
       }
     }
     return null;
@@ -2818,10 +3090,10 @@ const sysmlEdgeGraphics = (opts: {
 export const sysml2Language = language({
   name: "sysml2",
   displayName: "SysML v2",
-  fileExtensions: [".sysml", ".sysml2"],
+  fileExtensions: [".sysml", ".sysml2", ".kerml"],
 
   lsp: {
-    fileExtensions: [".sysml", ".sysml2"],
+    fileExtensions: [".sysml", ".sysml2", ".kerml"],
     icons: {
       light: "./assets/sysml2/icon-light.png",
       dark: "./assets/sysml2/icon-dark.png",
@@ -3660,6 +3932,7 @@ export const sysml2Language = language({
           },
         }),
         model: importModel,
+        lints: importLints,
       }),
 
     _ImportedMembership: ($) =>
@@ -3685,6 +3958,7 @@ export const sysml2Language = language({
           },
         }),
         model: importModel,
+        lints: importLints,
       }),
 
     _ImportedNamespace: ($) =>
@@ -4080,6 +4354,7 @@ export const sysml2Language = language({
           name: "EnumerationValueNode" as const,
           visitable: true,
         },
+        lints: enumValueLints,
       }),
 
     EnumerationUsage: ($) =>
@@ -4707,6 +4982,7 @@ export const sysml2Language = language({
         symbol: usageAttrs("action"),
         queries: usageQueries,
         model: usageModel,
+        lints: usageLints,
         graphics: () => ({
           role: "node",
           node: {
@@ -4756,6 +5032,7 @@ export const sysml2Language = language({
         symbol: usageAttrs("action"),
         queries: usageQueries,
         model: usageModel,
+        lints: usageLints,
         graphics: () => ({
           role: "node",
           node: {
@@ -4805,6 +5082,7 @@ export const sysml2Language = language({
         symbol: usageAttrs("action"),
         queries: usageQueries,
         model: usageModel,
+        lints: usageLints,
       }),
 
     PerformActionUsage: ($) =>
@@ -4960,7 +5238,10 @@ export const sysml2Language = language({
               const prevIsAbstract = (previous.metadata as Record<string, unknown>)?.isAbstract;
               const currIsAbstract = (self.metadata as Record<string, unknown>)?.isAbstract;
               if (currIsAbstract && !prevIsAbstract) {
-                return error("Cannot make an existing concrete requirement abstract.", { field: "declaredName" });
+                return error(SysML2ErrorCode.ABSTRACT_REQUIREMENT_VIOLATION.message(), {
+                  code: SysML2ErrorCode.ABSTRACT_REQUIREMENT_VIOLATION.code,
+                  field: "declaredName",
+                });
               }
             }
             return null;
@@ -4992,6 +5273,7 @@ export const sysml2Language = language({
         syntax: seq("subject", repeat($._usage_modifier), $._Usage),
         symbol: usageAttrs("subject"),
         model: usageModel,
+        lints: usageLints,
         graphics: () => sysmlUsageGraphics({ stereotype: "subject", fill: "#f1f8e9", stroke: "#33691e" }),
       }),
 
@@ -5513,7 +5795,7 @@ export const sysml2Language = language({
         }),
         queries: stateQueries,
         model: stateDefinitionModel,
-        lints: definitionLints,
+        lints: stateDefinitionLints,
         graphics: () => sysmlNodeGraphics({ stereotype: "state def", fill: "#fffbeb", stroke: "#d97706" }),
       }),
 
@@ -5562,7 +5844,7 @@ export const sysml2Language = language({
         }),
         queries: { ...usageQueries, ...stateQueries },
         model: stateUsageModel,
-        lints: usageLints,
+        lints: stateUsageLints,
         graphics: () => sysmlUsageGraphics({ stereotype: "state", fill: "#fffbeb", stroke: "#f59e0b" }),
       }),
 
@@ -5589,7 +5871,7 @@ export const sysml2Language = language({
         }),
         queries: { ...usageQueries, ...stateQueries },
         model: stateUsageModel,
-        lints: usageLints,
+        lints: stateUsageLints,
       }),
 
     TransitionUsageMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.TransitionUsage)),
@@ -5623,6 +5905,7 @@ export const sysml2Language = language({
         }),
         queries: usageQueries,
         model: usageModel,
+        lints: transitionUsageLints,
         graphics: () =>
           sysmlEdgeGraphics({
             label: "«transition»",

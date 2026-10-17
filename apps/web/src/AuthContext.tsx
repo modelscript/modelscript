@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import api from "./api";
+import { clearOfflineCache } from "./util/offline-storage";
 
 export interface User {
   id: number;
@@ -122,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("modelscript:wallet-update", handleWalletUpdate);
 
     const handleAuthExpired = () => {
+      void clearOfflineCache();
       setToken(null);
       setUser(null);
     };
@@ -200,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     api.post("/auth/logout").catch(() => {});
+    void clearOfflineCache();
     setToken(null);
     setUser(null);
   }, []);

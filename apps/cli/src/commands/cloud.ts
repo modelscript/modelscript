@@ -27,6 +27,55 @@ const c = {
   blue: (s: string) => (useColor() ? `\x1b[34m${s}\x1b[0m` : s),
 };
 
+async function streamJobEvents(apiUrl: string, jobId: string, headers: Record<string, string>): Promise<void> {
+  const res = await fetch(`${apiUrl}/api/v1/cloud/jobs/${jobId}/events`, {
+    headers: { ...headers, Accept: "text/event-stream" },
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to attach to event stream (${res.status} ${res.statusText})`);
+  }
+
+  console.log(`\n${c.bold(`--- Streaming Live Events for ${jobId} ---`)}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() || "";
+
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+      try {
+        const evt = JSON.parse(line.slice(5).trim()) as any;
+        if (evt.type === "init" && Array.isArray(evt.logs)) {
+          for (const l of evt.logs) console.log(l);
+          if (evt.status === "completed" || evt.status === "failed" || evt.status === "cancelled") {
+            return;
+          }
+        } else if (evt.type === "log") {
+          console.log(String(evt.data));
+        } else if (evt.type === "status") {
+          const st = evt.data?.status;
+          if (st === "completed") {
+            console.log(c.green(`✔ Job ${jobId} completed.`));
+            return;
+          } else if (st === "failed" || st === "cancelled") {
+            console.error(c.red(`✖ Job ${jobId} ${st}: ${evt.data?.error || ""}`));
+            return;
+          }
+        }
+      } catch {
+        // ignore malformed chunk
+      }
+    }
+  }
+}
+
 export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
   command: "cloud <action> [target]",
   describe: "Manage cloud HPC jobs, compute profiles, credit wallet, and live telemetry",
@@ -221,6 +270,10 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           process.exit(1);
         }
         try {
+          if (args.follow) {
+            await streamJobEvents(apiUrl, jobId, headers);
+            break;
+          }
           const res = await fetch(`${apiUrl}/api/v1/cloud/jobs/${jobId}/logs`, { headers });
           if (!res.ok) {
             console.error(`Error: Failed to fetch logs (${res.status} ${res.statusText})`);
@@ -275,10 +328,10 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             process.exit(1);
           }
           const disposition = res.headers.get("content-disposition") || "";
-          let fileName = `result_${jobId}.dat`;
+          let fileName = `result_${path.basename(jobId)}.dat`;
           const match = disposition.match(/filename="?([^";]+)"?/);
           if (match && match[1]) {
-            fileName = match[1];
+            fileName = path.basename(match[1]) || fileName;
           }
 
           const outPath = args.output ? path.resolve(args.output) : path.join(process.cwd(), fileName);
@@ -345,8 +398,12 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           const data = (await res.json()) as { jobId: string };
           console.log(c.green(`✔ Job dispatched successfully!`));
           console.log(`  Job ID: ${data.jobId}`);
-          console.log(`  Check status: msx cloud status ${data.jobId}`);
-          console.log(`  View logs:    msx cloud logs ${data.jobId}`);
+          if (args.follow) {
+            await streamJobEvents(apiUrl, data.jobId, headers);
+          } else {
+            console.log(`  Check status: msx cloud status ${data.jobId}`);
+            console.log(`  View logs:    msx cloud logs ${data.jobId}`);
+          }
         } catch (err: any) {
           console.error(`Dispatch failed: ${err.message}`);
           process.exit(1);

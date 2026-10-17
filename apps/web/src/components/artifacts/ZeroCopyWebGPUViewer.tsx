@@ -63,6 +63,8 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
 
     let cancelled = false;
     let animationFrameId: number | null = null;
+    let standaloneBuffer: GPUBuffer | null = null;
+    let standaloneDevice: GPUDevice | null = null;
 
     if (runner) {
       // MAIN THREAD FALLBACK (VS Code Webview)
@@ -159,6 +161,90 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
           0,
         );
       }
+    } else {
+      // STANDALONE PROCEDURAL WEBGPU WAVE SIMULATION
+      const initStandalone = async () => {
+        if (typeof navigator === "undefined" || !("gpu" in navigator) || !navigator.gpu) {
+          setStatus("WebGPU is not supported on this browser or origin.");
+          return;
+        }
+        try {
+          const adapter = await navigator.gpu.requestAdapter();
+          if (!adapter || cancelled) {
+            setStatus("WebGPU adapter unavailable.");
+            return;
+          }
+          const device = await adapter.requestDevice();
+          if (cancelled) {
+            device.destroy();
+            return;
+          }
+          standaloneDevice = device;
+          const context = canvas.getContext("webgpu");
+          if (!context) {
+            setStatus("WebGPU context not available.");
+            return;
+          }
+          const format = navigator.gpu.getPreferredCanvasFormat();
+          context.configure({ device, format, alphaMode: "premultiplied" });
+
+          const numStates = 256;
+          const stateArray = new Float32Array(numStates);
+          const gpuBuffer = device.createBuffer({
+            size: stateArray.byteLength,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+          });
+          standaloneBuffer = gpuBuffer;
+
+          const shaderModule = device.createShaderModule({ code: SHADER_CODE });
+          const pipeline = device.createRenderPipeline({
+            layout: "auto",
+            vertex: { module: shaderModule, entryPoint: "vs_main" },
+            fragment: { module: shaderModule, entryPoint: "fs_main", targets: [{ format }] },
+            primitive: { topology: "line-strip" },
+          });
+          const bindGroup = device.createBindGroup({
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [{ binding: 0, resource: { buffer: gpuBuffer } }],
+          });
+
+          setStatus(`Running WebGPU Solver (${className || "Standalone Harmonic Field"})`);
+          let t = 0;
+          const render = () => {
+            if (cancelled) return;
+            t += 0.03;
+            for (let i = 0; i < numStates; i++) {
+              const x = (i / (numStates - 1)) * Math.PI * 4;
+              stateArray[i] = Math.sin(x - t) * Math.cos(x * 0.35 + t * 0.5) * 6.0;
+            }
+            device.queue.writeBuffer(gpuBuffer, 0, stateArray);
+
+            const commandEncoder = device.createCommandEncoder();
+            const textureView = context.getCurrentTexture().createView();
+            const renderPass = commandEncoder.beginRenderPass({
+              colorAttachments: [
+                {
+                  view: textureView,
+                  clearValue: { r: 0.05, g: 0.05, b: 0.07, a: 1.0 },
+                  loadOp: "clear",
+                  storeOp: "store",
+                },
+              ],
+            });
+            renderPass.setPipeline(pipeline);
+            renderPass.setBindGroup(0, bindGroup);
+            renderPass.draw(numStates, 1, 0, 0);
+            renderPass.end();
+
+            device.queue.submit([commandEncoder.finish()]);
+            animationFrameId = requestAnimationFrame(render);
+          };
+          render();
+        } catch (err: unknown) {
+          setStatus("WebGPU initialization error: " + (err instanceof Error ? err.message : String(err)));
+        }
+      };
+      void initStandalone();
     }
 
     return () => {
@@ -166,6 +252,8 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
       if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId);
       }
+      standaloneBuffer?.destroy();
+      standaloneDevice?.destroy();
     };
   }, [runner, uri, className]);
 

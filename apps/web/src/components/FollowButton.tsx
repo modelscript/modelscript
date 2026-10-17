@@ -70,6 +70,10 @@ const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowin
   const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
   const [loading, setLoading] = useState(false);
 
+  React.useEffect(() => {
+    setIsFollowing(initialIsFollowing);
+  }, [initialIsFollowing, username]);
+
   if (user?.username === username) return null; // Don't show follow button for self
 
   const toggleFollow = async (e: React.MouseEvent) => {

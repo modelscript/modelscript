@@ -1,7 +1,6 @@
 // name:     modifyOuter
 // keywords: modification inner outer innerouter
 // status:   correct
-// xfail:    true
 //
 //  It is illegal to modify on pure "outer" elements.
 //  we only issue a warning now and ignore the modification.

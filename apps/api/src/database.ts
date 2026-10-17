@@ -504,7 +504,10 @@ export class LibraryDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
       CREATE INDEX IF NOT EXISTS idx_posts_reply ON posts(reply_to_id);
+      CREATE INDEX IF NOT EXISTS idx_posts_repost ON posts(repost_of_id);
+      CREATE INDEX IF NOT EXISTS idx_posts_quote ON posts(quote_post_id);
       CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id, state);
 
       CREATE TABLE IF NOT EXISTS user_public_keys (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -560,6 +563,7 @@ export class LibraryDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id, read);
       CREATE INDEX IF NOT EXISTS idx_notifs_type_user ON notifications(user_id, type, read);
+      CREATE INDEX IF NOT EXISTS idx_notifs_post ON notifications(post_id);
 
       CREATE TABLE IF NOT EXISTS linked_repos (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -613,6 +617,7 @@ export class LibraryDatabase {
         topic_id INTEGER REFERENCES trending_topics(id) ON DELETE CASCADE,
         UNIQUE(post_id, topic_id)
       );
+      CREATE INDEX IF NOT EXISTS idx_post_topics_topic ON post_topics(topic_id);
 
       CREATE TABLE IF NOT EXISTS post_location_stats (
         post_id      INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
@@ -945,16 +950,12 @@ export class LibraryDatabase {
       // Column already exists
     }
 
-    try {
-      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN etag TEXT`);
-      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN last_modified TEXT`);
-      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN poll_interval_mins INTEGER DEFAULT 15`);
-      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN last_polled_at TEXT`);
-    } catch (e) {
-      // Columns already exist
-    }
-
     const userColumns = [
+      "ALTER TABLE rss_feeds ADD COLUMN description TEXT",
+      "ALTER TABLE rss_feeds ADD COLUMN etag TEXT",
+      "ALTER TABLE rss_feeds ADD COLUMN last_modified TEXT",
+      "ALTER TABLE rss_feeds ADD COLUMN poll_interval_mins INTEGER DEFAULT 15",
+      "ALTER TABLE rss_feeds ADD COLUMN last_polled_at TEXT",
       "ALTER TABLE users ADD COLUMN rsa_private_key TEXT",
       "ALTER TABLE users ADD COLUMN rsa_public_key TEXT",
       "ALTER TABLE users ADD COLUMN actor_url TEXT",
@@ -970,6 +971,7 @@ export class LibraryDatabase {
       "ALTER TABLE users ADD COLUMN totp_secret TEXT",
       "ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0",
       "ALTER TABLE users ADD COLUMN backup_codes TEXT DEFAULT '[]'",
+      "ALTER TABLE users ADD COLUMN bot_token_hash TEXT",
       "ALTER TABLE follows ADD COLUMN state TEXT DEFAULT 'accepted'",
     ];
     for (const sql of userColumns) {
@@ -1424,13 +1426,29 @@ export class LibraryDatabase {
                password_hash = 'REDACTED',
                status = 'deleted',
                registration_ip = NULL,
-               credit_balance = 0
+               credit_balance = 0,
+               token_version = COALESCE(token_version, 1) + 1,
+               totp_secret = NULL,
+               totp_enabled = 0,
+               backup_codes = NULL,
+               rsa_private_key = NULL,
+               rsa_public_key = NULL,
+               ed25519_private_key = NULL,
+               ed25519_public_key = NULL
            WHERE id = ?`,
         )
         .run(redactedEmail, redactedName, redactedBio, userId);
 
       try {
-        this.#db.prepare(`DELETE FROM bot_tokens WHERE user_id = ?`).run(userId);
+        this.#db.prepare(`DELETE FROM users WHERE owner_id = ? AND account_type = 'bot'`).run(userId);
+      } catch {}
+
+      try {
+        this.#db.prepare(`DELETE FROM oauth_accounts WHERE user_id = ?`).run(userId);
+      } catch {}
+
+      try {
+        this.#db.prepare(`DELETE FROM user_public_keys WHERE user_id = ?`).run(userId);
       } catch {}
 
       try {
@@ -1438,6 +1456,8 @@ export class LibraryDatabase {
         this.#db.prepare(`DELETE FROM likes WHERE user_id = ?`).run(userId);
         this.#db.prepare(`DELETE FROM follows WHERE follower_id = ? OR following_id = ?`).run(userId, userId);
         this.#db.prepare(`DELETE FROM notifications WHERE user_id = ? OR actor_id = ?`).run(userId, userId);
+        this.#db.prepare(`DELETE FROM user_mutes WHERE muter_id = ? OR muted_id = ?`).run(userId, userId);
+        this.#db.prepare(`DELETE FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?`).run(userId, userId);
       } catch {}
 
       this.logAudit({
@@ -1466,13 +1486,18 @@ export class LibraryDatabase {
 
     let posts: any[] = [];
     try {
-      posts = this.#db.prepare(`SELECT id, content, created_at, published_at FROM posts WHERE user_id = ?`).all(userId);
+      posts = this.#db.prepare(`SELECT id, content, created_at FROM posts WHERE author_id = ?`).all(userId);
     } catch {}
 
     let libraries: any[] = [];
     try {
       libraries = this.#db
-        .prepare(`SELECT name, version, created_at FROM library_releases WHERE published_by = ?`)
+        .prepare(
+          `SELECT p.name, pv.version, pv.published_at as created_at
+           FROM package_versions pv
+           JOIN packages p ON pv.package_id = p.id
+           WHERE pv.published_by = ?`,
+        )
         .all(userId);
     } catch {}
 
@@ -1855,7 +1880,8 @@ export class LibraryDatabase {
       banner_url?: string;
     },
   ) {
-    const fields = Object.entries(profile).filter(([_, v]) => v !== undefined);
+    const ALLOWED_PROFILE_COLUMNS = new Set(["display_name", "bio", "location", "website", "avatar_url", "banner_url"]);
+    const fields = Object.entries(profile).filter(([k, v]) => ALLOWED_PROFILE_COLUMNS.has(k) && v !== undefined);
     if (fields.length === 0) return;
     const setClause = fields.map(([k, _]) => `${k} = ?`).join(", ");
     const values = fields.map(([_, v]) => v);
@@ -2166,6 +2192,17 @@ export class LibraryDatabase {
         }
       } catch (e) {}
     }
+    if (p.metadata && typeof p.metadata === "object") {
+      if (!p.client_signature && p.metadata.clientSignature) {
+        p.client_signature = p.metadata.clientSignature;
+      }
+      if (!p.key_id_string && p.metadata.keyIdString) {
+        p.key_id_string = p.metadata.keyIdString;
+      }
+    }
+    if (p.artifact_view_id && !p.artifact_view) {
+      p.artifact_view = this.getArtifactView(p.artifact_view_id);
+    }
     if (p.repost_of_id) {
       p.repost_post = this.getPost(p.repost_of_id, currentUserId);
     }
@@ -2176,6 +2213,7 @@ export class LibraryDatabase {
   }
 
   getPost(id: number, currentUserId?: number): any {
+    const uid = currentUserId || -1;
     const p = this.#db
       .prepare(
         `
@@ -2183,18 +2221,20 @@ export class LibraryDatabase {
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.id = ?
     `,
       )
-      .get(id);
+      .get(uid, uid, uid, id);
     return this.hydratePost(p, currentUserId);
   }
 
   getReplies(postId: number, currentUserId?: number, limit: number = 50): any[] {
+    const uid = currentUserId || -1;
+    const modFilter = this.buildMuteBlockFilter(currentUserId);
     const posts = this.#db
       .prepare(
         `
@@ -2202,20 +2242,22 @@ export class LibraryDatabase {
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.reply_to_id = ?
+        ${modFilter.sql}
       ORDER BY p.created_at ASC
       LIMIT ?
     `,
       )
-      .all(postId, limit) as any[];
+      .all(uid, uid, uid, postId, ...modFilter.params, limit) as any[];
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
 
   getQuotes(postId: number, currentUserId?: number, limit: number = 50): any[] {
+    const uid = currentUserId || -1;
     const posts = this.#db
       .prepare(
         `
@@ -2223,20 +2265,21 @@ export class LibraryDatabase {
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.quote_post_id = ?
       ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
-      .all(postId, limit) as any[];
+      .all(uid, uid, uid, postId, limit) as any[];
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
 
   getReposts(postId: number, currentUserId?: number, limit: number = 50): any[] {
+    const uid = currentUserId || -1;
     const posts = this.#db
       .prepare(
         `
@@ -2244,16 +2287,16 @@ export class LibraryDatabase {
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.repost_of_id = ?
       ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
-      .all(postId, limit) as any[];
+      .all(uid, uid, uid, postId, limit) as any[];
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
 
@@ -2345,18 +2388,31 @@ export class LibraryDatabase {
     };
   }
 
+  private buildMuteBlockFilter(userId?: number): { sql: string; params: any[] } {
+    if (!userId || userId <= 0) return { sql: "", params: [] };
+    return {
+      sql: ` AND p.author_id NOT IN (SELECT muted_id FROM user_mutes WHERE muter_id = ?)
+        AND p.author_id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+        AND p.author_id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)`,
+      params: [userId, userId, userId],
+    };
+  }
+
   getHomeTimeline(userId: number, limit: number = 20, offset: number = 0, artifactType?: string, tag?: string): any[] {
-    // Derive topics dynamically before fetching the feed
     try {
-      this.deriveUserTopics(userId);
+      const hasTopics = this.#db.prepare(`SELECT 1 FROM user_topics WHERE user_id = ? LIMIT 1`).get(userId);
+      if (!hasTopics) {
+        this.deriveUserTopics(userId);
+      }
     } catch (e) {
       console.error("Failed to derive user topics", e);
     }
 
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
-    const baseParams = [userId, userId, userId, userId, userId, userId, userId, userId, userId];
-    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, limit, offset];
+    const modFilter = this.buildMuteBlockFilter(userId);
+    const baseParams = [userId, userId, userId, userId, userId, userId, userId, userId, userId, userId];
+    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
 
     const posts = this.#db
       .prepare(
@@ -2388,6 +2444,7 @@ export class LibraryDatabase {
         (
           p.author_id = ? OR 
           p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
+          p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = ?) OR
           EXISTS (
             SELECT 1 FROM post_topics pt
             JOIN trending_topics t ON pt.topic_id = t.id
@@ -2397,6 +2454,7 @@ export class LibraryDatabase {
         )
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${modFilter.sql}
       ORDER BY total_score DESC, p.created_at DESC
       LIMIT ? OFFSET ?
     `,
@@ -2416,8 +2474,9 @@ export class LibraryDatabase {
     const orderBy = sort === "popular" ? "like_count DESC, diversity_score DESC" : "diversity_score DESC";
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
-    const baseParams = [userId, userId, userId, userId, userId];
-    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, limit, offset];
+    const modFilter = this.buildMuteBlockFilter(userId);
+    const baseParams = [userId, userId, userId, userId, userId, userId];
+    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
 
     const posts = this.#db
       .prepare(
@@ -2441,9 +2500,14 @@ export class LibraryDatabase {
       FROM posts p
       JOIN users u ON p.author_id = u.id
       LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
-      WHERE (p.author_id = ? OR p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?))
+      WHERE (
+        p.author_id = ? OR
+        p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
+        p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = ?)
+      )
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${modFilter.sql}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `,
@@ -2462,7 +2526,8 @@ export class LibraryDatabase {
     const uid = currentUserId || -1;
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
-    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, limit, offset];
+    const modFilter = this.buildMuteBlockFilter(currentUserId);
+    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
 
     const posts = this.#db
       .prepare(
@@ -2486,6 +2551,7 @@ export class LibraryDatabase {
       WHERE p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${modFilter.sql}
       ORDER BY (engagement_score / (CAST((julianday('now') - julianday(p.created_at)) * 24 as REAL) + 2)) DESC, p.created_at DESC
       LIMIT ? OFFSET ?
     `,
@@ -2505,7 +2571,8 @@ export class LibraryDatabase {
     const uid = currentUserId || -1;
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
-    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, limit, offset];
+    const modFilter = this.buildMuteBlockFilter(currentUserId);
+    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
 
     const posts = this.#db
       .prepare(
@@ -2524,6 +2591,7 @@ export class LibraryDatabase {
         AND p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${modFilter.sql}
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `,
@@ -2543,6 +2611,7 @@ export class LibraryDatabase {
       typeFilter = "AND p.reply_to_id IS NULL";
     }
 
+    const uid = currentUserId || -1;
     const posts = this.#db
       .prepare(
         `
@@ -2550,16 +2619,16 @@ export class LibraryDatabase {
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE u.username = ? ${typeFilter}
       ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
-      .all(username, limit) as any[];
+      .all(uid, uid, uid, username, limit) as any[];
     return posts.map((p) => this.hydratePost(p, currentUserId));
   }
 
@@ -2602,6 +2671,9 @@ export class LibraryDatabase {
       return false; // unliked
     } else {
       this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+      try {
+        this.deriveUserTopics(userId);
+      } catch {}
       const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as any;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "like", postId);
@@ -2614,6 +2686,9 @@ export class LibraryDatabase {
     const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
     if (!existing) {
       this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+      try {
+        this.deriveUserTopics(userId);
+      } catch {}
       const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as any;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "like", postId);
@@ -2697,6 +2772,27 @@ export class LibraryDatabase {
       "credit_warning",
     ].includes(type);
     if (userId === actorId && !isSystemNotification) return;
+
+    if (!isSystemNotification) {
+      try {
+        if (
+          this.isUserBlocked(userId, actorId) ||
+          this.isUserBlocked(actorId, userId) ||
+          this.isUserMuted(userId, actorId)
+        ) {
+          return;
+        }
+        const rawSettings = this.getNotificationSettings(userId);
+        if (rawSettings) {
+          const parsed = JSON.parse(rawSettings);
+          if (parsed && typeof parsed === "object") {
+            if (parsed[type] === false || parsed[`${type}s`] === false) {
+              return;
+            }
+          }
+        }
+      } catch {}
+    }
 
     let metadataStr: string | null = null;
     if (metadata) {
@@ -2963,7 +3059,7 @@ export class LibraryDatabase {
       .prepare(
         `SELECT u.actor_url, u.username
          FROM follows f
-         JOIN users u ON f.follower_id = u.id
+         JOIN users u ON f.following_id = u.id
          WHERE f.follower_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
          ORDER BY f.id DESC LIMIT ? OFFSET ?`,
       )
@@ -2983,13 +3079,22 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT * FROM posts WHERE ap_id = ?`).get(apId);
   }
 
-  deletePostByApId(apId: string): boolean {
-    const post = this.#db.prepare(`SELECT id FROM posts WHERE ap_id = ?`).get(apId) as any;
+  deletePostByApId(apId: string, expectedAuthorId?: number): boolean {
+    const post = this.#db.prepare(`SELECT id, author_id FROM posts WHERE ap_id = ?`).get(apId) as any;
     if (!post) return false;
+    if (expectedAuthorId !== undefined && post.author_id !== expectedAuthorId) {
+      return false;
+    }
     return this.deletePost(post.id).success;
   }
 
-  updatePostContentByApId(apId: string, content: string): boolean {
+  updatePostContentByApId(apId: string, content: string, expectedAuthorId?: number): boolean {
+    if (expectedAuthorId !== undefined) {
+      const res = this.#db
+        .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE ap_id = ? AND author_id = ?`)
+        .run(content, apId, expectedAuthorId);
+      return res.changes > 0;
+    }
     const res = this.#db
       .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE ap_id = ?`)
       .run(content, apId);
@@ -3385,7 +3490,7 @@ export class LibraryDatabase {
     this.#db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(viewConfig, id);
   }
 
-  updateArtifactThumbnail(id: number, thumbnailUrl: string): void {
+  updateArtifactThumbnail(id: number, thumbnailUrl: string, thumbnailUrlDark?: string): void {
     const row = this.#db.prepare(`SELECT view_config FROM artifact_views WHERE id = ?`).get(id) as
       | { view_config?: string }
       | undefined;
@@ -3394,7 +3499,7 @@ export class LibraryDatabase {
         const config = JSON.parse(row.view_config);
         config.thumbnailUrl = thumbnailUrl;
         config.thumbnailUrlLight = thumbnailUrl;
-        config.thumbnailUrlDark = thumbnailUrl;
+        config.thumbnailUrlDark = thumbnailUrlDark || thumbnailUrl;
         this.#db
           .prepare(`UPDATE artifact_views SET thumbnail_url = ?, view_config = ? WHERE id = ?`)
           .run(thumbnailUrl, JSON.stringify(config), id);
@@ -3417,7 +3522,11 @@ export class LibraryDatabase {
     try {
       posts = this.#db
         .prepare(
-          `SELECT id, content, created_at, published_at, like_count, reply_count, repost_count FROM posts WHERE user_id = ? ORDER BY id DESC`,
+          `SELECT p.id, p.content, p.created_at,
+             (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+             (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+             (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count
+           FROM posts p WHERE p.author_id = ? ORDER BY p.id DESC`,
         )
         .all(userId);
     } catch {}
@@ -3425,7 +3534,13 @@ export class LibraryDatabase {
     let libraries: any[] = [];
     try {
       libraries = this.#db
-        .prepare(`SELECT name, version, created_at FROM library_releases WHERE published_by = ? ORDER BY id DESC`)
+        .prepare(
+          `SELECT p.name, pv.version, pv.published_at as created_at
+           FROM package_versions pv
+           JOIN packages p ON pv.package_id = p.id
+           WHERE pv.published_by = ?
+           ORDER BY pv.id DESC`,
+        )
         .all(userId);
     } catch {}
 
@@ -3676,6 +3791,44 @@ export class LibraryDatabase {
       existingConcepts.set(t.concept.toLowerCase(), t);
     }
 
+    const missingCurated = CURATED_ENGINEERING_TOPICS.filter((cur) => !existingConcepts.has(cur.concept.toLowerCase()));
+    const curatedPostCounts = new Map<string, number>();
+
+    if (missingCurated.length > 0) {
+      try {
+        const placeholders = missingCurated.map(() => "?").join(", ");
+        const indexedRows = this.#db
+          .prepare(
+            `SELECT LOWER(t.concept) as concept, COUNT(pt.post_id) as count
+             FROM trending_topics t
+             JOIN post_topics pt ON pt.topic_id = t.id
+             WHERE LOWER(t.concept) IN (${placeholders})
+             GROUP BY LOWER(t.concept)`,
+          )
+          .all(...missingCurated.map((c) => c.concept.toLowerCase())) as Array<{ concept: string; count: number }>;
+        for (const r of indexedRows) {
+          curatedPostCounts.set(r.concept, Number(r.count || 0));
+        }
+
+        const unindexedCurated = missingCurated.filter((c) => !curatedPostCounts.has(c.concept.toLowerCase()));
+        if (unindexedCurated.length > 0) {
+          const sumExprs = unindexedCurated
+            .map((_, idx) => `COALESCE(SUM(CASE WHEN lower(content) LIKE ? THEN 1 ELSE 0 END), 0) as c_${idx}`)
+            .join(", ");
+          const sumRow = this.#db
+            .prepare(`SELECT ${sumExprs} FROM posts`)
+            .get(...unindexedCurated.map((c) => `%#${c.concept.toLowerCase()}%`)) as Record<string, number> | undefined;
+          if (sumRow) {
+            for (const [idx, c] of unindexedCurated.entries()) {
+              curatedPostCounts.set(c.concept.toLowerCase(), Number(sumRow[`c_${idx}`] || 0));
+            }
+          }
+        }
+      } catch {
+        // Fallback to 0 counts on error
+      }
+    }
+
     for (const [i, cur] of CURATED_ENGINEERING_TOPICS.entries()) {
       const key = cur.concept.toLowerCase();
       const match = existingConcepts.get(key);
@@ -3683,16 +3836,7 @@ export class LibraryDatabase {
         match.real_score += cur.score;
         match.current_score += cur.score;
       } else {
-        let hashtagPostCount = 0;
-        try {
-          const countRow = this.#db
-            .prepare(`SELECT COUNT(*) as count FROM posts WHERE lower(content) LIKE ?`)
-            .get(`%#${cur.concept}%`) as { count: number } | undefined;
-          hashtagPostCount = countRow?.count || 0;
-        } catch {
-          hashtagPostCount = 0;
-        }
-
+        const hashtagPostCount = curatedPostCounts.get(key) || 0;
         const newTopic = {
           id: -(i + 1),
           concept: cur.concept,
@@ -3714,15 +3858,16 @@ export class LibraryDatabase {
   getTopicPosts(concept: string, currentUserId?: number, limit = 20, offset = 0, artifactType?: string): any[] {
     const cleanConcept = concept.replace(/^#/, "").trim().toLowerCase();
     const artifactFilter = this.buildArtifactFilter(artifactType);
+    const uid = currentUserId || -1;
 
     const query = `
       SELECT DISTINCT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=${currentUserId})` : "0"} as reposted,
-        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p 
       JOIN users u ON p.author_id = u.id
       LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
@@ -3734,7 +3879,17 @@ export class LibraryDatabase {
       LIMIT ? OFFSET ?
     `;
 
-    const params = [cleanConcept, cleanConcept, `%#${cleanConcept}%`, ...artifactFilter.params, limit, offset];
+    const params = [
+      uid,
+      uid,
+      uid,
+      cleanConcept,
+      cleanConcept,
+      `%#${cleanConcept}%`,
+      ...artifactFilter.params,
+      limit,
+      offset,
+    ];
 
     const posts = this.#db.prepare(query).all(...params) as any[];
     return posts.map((p) => this.hydratePost(p, currentUserId));

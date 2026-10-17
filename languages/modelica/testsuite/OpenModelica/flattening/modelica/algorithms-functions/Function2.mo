@@ -1,7 +1,6 @@
 // name:     Function2
 // keywords: function
 // status:   correct
-// xfail:    true
 //
 // This tests for illegal parts of a function definition.
 // This test should really fail, but since the MSL uses public non-formal

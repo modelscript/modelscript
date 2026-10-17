@@ -101,8 +101,24 @@ export class FederationWorker {
           continue;
         }
 
+        let signingKeyId = transportKeyId;
+        let signingKey = transportKey;
+        if (typeof payload.actor === "string") {
+          const userMatch = payload.actor.match(/\/users\/([^/#?]+)$/);
+          if (userMatch?.[1]) {
+            const localUser = this.db.getUserByUsername(decodeURIComponent(userMatch[1]));
+            if (localUser) {
+              const userKeys = this.db.ensureUserRSAKeys(localUser.id);
+              if (userKeys?.privateKey) {
+                signingKeyId = `${payload.actor}#main-key`;
+                signingKey = userKeys.privateKey;
+              }
+            }
+          }
+        }
+
         try {
-          await sendSignedRequest(item.target_inbox_url, payload, transportKeyId, transportKey, this.db);
+          await sendSignedRequest(item.target_inbox_url, payload, signingKeyId, signingKey, this.db);
           this.db.updateFederationDeliveryStatus(item.id, "completed");
         } catch (err: any) {
           const errMsg = err?.message || String(err);

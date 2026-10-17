@@ -266,7 +266,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         let errNode = wrapPoppedNodesInError(head, anc, pos);
         let firstPad: u32 = getNodePadding(errNode);
 
-        let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+        let step: u32 = 1;
         let diagStart: u32 = anc.pos + firstPad;
         let diagEnd: u32 = pos;
 

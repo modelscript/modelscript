@@ -1,7 +1,6 @@
 // name:     BC4 - Integrator component
 // keywords: Integrator
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the Integrator component.
 //

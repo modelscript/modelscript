@@ -276,6 +276,7 @@ const FlowStreaks: React.FC<{
     baseCylinder.rotateX(Math.PI / 2); // Align cylinder along Z axis locally so we can orient it easily if needed, or keep Y axis
 
     const instancedGeo = new THREE.InstancedBufferGeometry().copy(baseCylinder);
+    baseCylinder.dispose();
 
     const randoms = new Float32Array(count);
     const velocityMags = new Float32Array(count);
@@ -395,6 +396,18 @@ const FlowStreaks: React.FC<{
       blending: THREE.AdditiveBlending,
     });
   }, [scale, colormapTexture, vMin, vMax]);
+
+  useEffect(() => {
+    return () => {
+      instancedGeo.dispose();
+    };
+  }, [instancedGeo]);
+
+  useEffect(() => {
+    return () => {
+      material.dispose();
+    };
+  }, [material]);
 
   useFrame((state) => {
     if (material.uniforms) {
@@ -707,6 +720,18 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
 
   // Compute the colormap texture
   const colormapTexture = useMemo(() => createColormapTexture(colormapPreset), [colormapPreset]);
+
+  useEffect(() => {
+    return () => {
+      geometry?.dispose();
+    };
+  }, [geometry]);
+
+  useEffect(() => {
+    return () => {
+      colormapTexture.dispose();
+    };
+  }, [colormapTexture]);
 
   // Get the active field data
   const currentField: VtuField | undefined = vtuData?.fields.find((f) => f.name === activeField);

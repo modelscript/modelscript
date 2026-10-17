@@ -1,7 +1,6 @@
 // name:     ConnectInnerOuterArray1
 // keywords: connect inner outer array #2793
 // status:   correct
-// xfail:    true
 //
 // Checks that inner/outer works when connecting connectors in arrays.
 //

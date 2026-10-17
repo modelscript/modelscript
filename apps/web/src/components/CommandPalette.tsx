@@ -517,7 +517,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         icon: <CodeIcon size={16} />,
         action: () => {
           onClose();
-          if (onOpenCompose) onOpenCompose();
+          if (onOpenCompose) {
+            (onOpenCompose as (initial?: { content?: string }) => void)({ content: `/synthesize ${query}` });
+          } else {
+            window.dispatchEvent(
+              new CustomEvent("modelscript:open-compose", { detail: { content: `/synthesize ${query}` } }),
+            );
+          }
         },
       },
     ];

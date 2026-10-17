@@ -1,7 +1,6 @@
 // name:     ReplaceFunction
 // keywords: modification
 // status:   incorrect
-// xfail:    true
 //
 // Function arguments must be identical, including their names,
 // in functions of the same type.

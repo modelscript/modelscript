@@ -210,7 +210,7 @@ export async function simulateCloud(
         fs.mkdirSync(outDir, { recursive: true });
       }
 
-      const fileNamePrefix = args.name.replace(/\./g, "_");
+      const fileNamePrefix = path.basename(args.name).replace(/[^a-zA-Z0-9_-]/g, "_") || "model";
       const outFilePath = path.join(outDir, `${fileNamePrefix}_res.csv`);
       fs.writeFileSync(outFilePath, csvData, "utf-8");
 

@@ -212,6 +212,18 @@ function CadMeshModels({
     });
   }, [mode, blendRatio, clippingPlanes]);
 
+  useEffect(() => {
+    return () => {
+      baseMaterial.dispose();
+    };
+  }, [baseMaterial]);
+
+  useEffect(() => {
+    return () => {
+      headMaterial.dispose();
+    };
+  }, [headMaterial]);
+
   const baseOffset = mode === "side-by-side" ? -assemblySpan * 0.65 : 0;
   const headOffset = mode === "side-by-side" ? assemblySpan * 0.65 : 0;
 
@@ -327,6 +339,18 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
       active = false;
     };
   }, [baseMeshUrl, headMeshUrl]);
+
+  useEffect(() => {
+    return () => {
+      baseGeometries?.forEach((g) => g.dispose());
+    };
+  }, [baseGeometries]);
+
+  useEffect(() => {
+    return () => {
+      headGeometries?.forEach((g) => g.dispose());
+    };
+  }, [headGeometries]);
 
   // Combined Bounding Box & Span
   const { combinedSpan, baseStats, headStats } = useMemo(() => {

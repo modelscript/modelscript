@@ -32,6 +32,7 @@ import { StickyHeader } from "../components/SharedStyles";
 import { parseFederatedHandle } from "../util/federation";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
+import { safeCssImageUrl } from "../util/url";
 
 export type NotificationCategory = "all" | "engineering" | "packages" | "mentions" | "system";
 
@@ -154,7 +155,7 @@ const Avatar = styled.div<{ $url?: string }>`
   height: 36px;
   border-radius: 50%;
   background: var(--gradient-ai, linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%));
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url)};
   background-size: cover;
   flex-shrink: 0;
 `;

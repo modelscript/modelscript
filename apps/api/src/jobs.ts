@@ -19,22 +19,42 @@ export interface JobInfo {
 
 type JobFn = () => Promise<void>;
 
+export interface JobQueueOptions {
+  /** Maximum number of concurrently executing jobs (defaults to 16 for Slurm/Slurm-REST, 4 for local). */
+  concurrency?: number | undefined;
+}
+
 /**
- * In-process serial job queue.
+ * In-process concurrent job queue with configurable concurrency limits.
  *
  * Supports two execution modes:
- * - `enqueue(key, fn)` — runs an async function in the main thread (for I/O-bound tasks).
+ * - `enqueue(key, fn)` — runs an async function in the main thread (for I/O-bound and cluster tasks).
  * - `enqueueProcess(key, scriptPath, data)` — forks a child process (for CPU-bound tasks).
  */
 export class JobQueue extends EventEmitter {
   readonly #queue: { key: string; fn: JobFn }[] = [];
   readonly #status = new Map<string, JobInfo>();
-  #running = false;
-  #runningChildProcess: ChildProcess | null = null;
+  readonly #runningChildProcesses = new Set<ChildProcess>();
+  #activeCount = 0;
+  public readonly concurrency: number;
 
-  constructor() {
+  constructor(options: JobQueueOptions = {}) {
     super();
     this.setMaxListeners(100);
+    const defaultConcurrency =
+      Number(process.env["JOB_QUEUE_CONCURRENCY"]) ||
+      (process.env["HPC_BACKEND"] === "slurm" || process.env["HPC_BACKEND"] === "slurm-rest" ? 16 : 4);
+    this.concurrency = Math.max(1, Math.floor(options.concurrency ?? defaultConcurrency));
+  }
+
+  /** Number of currently executing jobs. */
+  get activeCount(): number {
+    return this.#activeCount;
+  }
+
+  /** Number of queued jobs waiting for an execution slot. */
+  get pendingCount(): number {
+    return this.#queue.length;
   }
 
   /** Enqueue an in-process async job. */
@@ -42,7 +62,7 @@ export class JobQueue extends EventEmitter {
     if (this.#status.has(key)) return;
     this.#status.set(key, { status: "pending" });
     this.#queue.push({ key, fn });
-    void this.#process();
+    this.#process();
   }
 
   /**
@@ -57,7 +77,7 @@ export class JobQueue extends EventEmitter {
       key,
       fn: () => this.#runChildProcess(key, scriptPath, data),
     });
-    void this.#process();
+    this.#process();
   }
 
   /** Get the status of a job by key. */
@@ -71,10 +91,12 @@ export class JobQueue extends EventEmitter {
     this.#status.clear();
     this.removeAllListeners();
 
-    if (this.#runningChildProcess) {
-      console.log("[JobQueue] Killing currently running child process...");
-      this.#runningChildProcess.kill("SIGTERM");
-      this.#runningChildProcess = null;
+    if (this.#runningChildProcesses.size > 0) {
+      console.log(`[JobQueue] Killing ${this.#runningChildProcesses.size} running child process(es)...`);
+      for (const child of this.#runningChildProcesses) {
+        child.kill("SIGTERM");
+      }
+      this.#runningChildProcesses.clear();
     }
   }
 
@@ -119,7 +141,7 @@ export class JobQueue extends EventEmitter {
         env: { ...process.env, NODE_OPTIONS: "" },
       });
 
-      this.#runningChildProcess = child;
+      this.#runningChildProcesses.add(child);
 
       child.stdout?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
@@ -142,11 +164,12 @@ export class JobQueue extends EventEmitter {
       });
 
       child.on("error", (err) => {
+        this.#runningChildProcesses.delete(child);
         reject(err);
       });
 
       child.on("exit", (code, signal) => {
-        this.#runningChildProcess = null;
+        this.#runningChildProcesses.delete(child);
         if (code === 0) {
           resolve();
         } else if (signal) {
@@ -161,34 +184,36 @@ export class JobQueue extends EventEmitter {
     });
   }
 
-  async #process(): Promise<void> {
-    if (this.#running) return;
-    this.#running = true;
-
-    while (this.#queue.length > 0) {
+  #process(): void {
+    while (this.#activeCount < this.concurrency && this.#queue.length > 0) {
       const job = this.#queue.shift();
       if (!job) continue;
 
-      const currentStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
-      this.#status.set(job.key, { ...currentStatus, status: "processing" });
-      this.emit(`status:${job.key}`, { status: "processing" });
-      try {
-        await job.fn();
-        const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
-        this.#status.set(job.key, { ...updatedStatus, status: "completed" });
-        this.emit(`status:${job.key}`, { status: "completed" });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        console.error(`Job "${job.key}" failed: ${message}`);
-        const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
-        this.#status.set(job.key, { ...updatedStatus, status: "failed", error: message });
-        this.emit(`status:${job.key}`, { status: "failed", error: message });
-      } finally {
-        this.#prune();
-      }
+      this.#activeCount++;
+      void this.#executeJob(job);
     }
+  }
 
-    this.#running = false;
+  async #executeJob(job: { key: string; fn: JobFn }): Promise<void> {
+    const currentStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
+    this.#status.set(job.key, { ...currentStatus, status: "processing" });
+    this.emit(`status:${job.key}`, { status: "processing" });
+    try {
+      await job.fn();
+      const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
+      this.#status.set(job.key, { ...updatedStatus, status: "completed" });
+      this.emit(`status:${job.key}`, { status: "completed" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error(`Job "${job.key}" failed: ${message}`);
+      const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
+      this.#status.set(job.key, { ...updatedStatus, status: "failed", error: message });
+      this.emit(`status:${job.key}`, { status: "failed", error: message });
+    } finally {
+      this.#activeCount = Math.max(0, this.#activeCount - 1);
+      this.#prune();
+      this.#process();
+    }
   }
 
   static readonly MAX_STATUS_ENTRIES = 1000;

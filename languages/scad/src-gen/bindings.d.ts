@@ -273,6 +273,7 @@ export declare class LspFacade {
    * Closes a document, unregistering its root from GC and triggering compaction.
    */
   removeDocument(uri: string): void;
+  isCharOffsetKernel(): boolean;
   /**
    * Loads document text into the WASM input buffer without triggering a parse.
    * This ensures that subsequent calls to `getDiagnostics`, `getSemanticTokens`, or CST inspection
@@ -346,19 +347,17 @@ export declare class LspFacade {
    */
   private _updateLineStarts;
   /**
-   * Scans the current WASM input buffer and calculates all line start byte offsets.
+   * Scans the current WASM input buffer and calculates all line start offsets.
    * This is cached and only recalculated when the cache is invalidated by edits.
-   * Note: The offsets are stored in UTF-16 bytes (i.e. charIndex * 2) to match
-   * the WASM AST's byte offset ranges.
    */
   getLineStarts(): Uint32Array;
   /**
-   * Performs a binary search on the cached line starts to map a linear byte offset
+   * Performs a binary search on the cached line starts to map a linear offset
    * to a line and character position (LSP format).
    */
   offsetToPos(offset: number, lineStarts: Uint32Array): Position;
   /**
-   * Maps a line and character position to a linear byte offset.
+   * Maps a line and character position to a linear offset.
    */
   posToOffset(line: number, character: number, lineStarts: Uint32Array): number;
   /**

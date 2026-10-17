@@ -1,7 +1,6 @@
 // name:     ImportQualifiedInvalid1
 // keywords: qualified import
 // status:   incorrect
-// xfail:    true
 //
 // Checks that an error is output for missing qualified imports.
 //

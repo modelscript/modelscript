@@ -2,7 +2,152 @@
 
 import { error, type LintResult } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
+import { kermlStdlibEntries } from "../src-gen/kerml-snapshot.js";
+import { KNOWN_DIMENSIONS } from "./dimensions.js";
 import { SysML2ErrorCode } from "./errors.js";
+
+const STDLIB_PACKAGES = new Set<string>([
+  "ScalarValues",
+  "Base",
+  "CoreTypes",
+  "Collections",
+  "Control",
+  "Transfers",
+  "Performances",
+  "ISQ",
+  "ISQBase",
+  "ISQSpaceTime",
+  "ISQMechanics",
+  "ISQThermodynamics",
+  "ISQElectromagnetism",
+  "ISQLight",
+  "ISQChemistryMolecular",
+  "ISQAtomicNuclear",
+  "SI",
+  "SIBaseUnits",
+  "SIDerivedUnits",
+  "USCustomaryUnits",
+  "CauseAndEffect",
+  "SpatialFrames",
+  "StateMachines",
+  "KerML",
+  "SysML",
+  "Occurrences",
+  "Objects",
+  "Links",
+  "Clocks",
+  "Triggers",
+  "Parts",
+  "Ports",
+  "Connections",
+  "Interfaces",
+  "Items",
+  "Allocations",
+  "Actions",
+  "Calculations",
+  "Constraints",
+  "Requirements",
+  "Cases",
+  "AnalysisCases",
+  "VerificationCases",
+  "UseCases",
+  "Views",
+  "Metadata",
+  "Quantities",
+  "MeasurementReferences",
+  "UnitsAndScales",
+  "VectorCalculations",
+  "NumericalFunctions",
+  "TrigFunctions",
+  "SequenceFunctions",
+  "DataFunctions",
+  "ControlFunctions",
+  "StandardLibrary",
+]);
+
+const STDLIB_SYMBOLS = new Set<string>([
+  "Real",
+  "Integer",
+  "Boolean",
+  "String",
+  "Natural",
+  "Positive",
+  "UnlimitedNatural",
+  "Complex",
+  "Rational",
+  "Anything",
+  "Element",
+  "Feature",
+  "Type",
+  "Classifier",
+  "DataType",
+  "Class",
+  "Structure",
+  "Behavior",
+  "Occurrence",
+  "Life",
+  "Snapshot",
+  "Link",
+  "Relationship",
+  "Association",
+  "Connector",
+  "Interface",
+  "Metadata",
+  "Object",
+  "Part",
+  "Item",
+  "Port",
+  "Action",
+  "State",
+  "Constraint",
+  "Calculation",
+  "Requirement",
+  "Collection",
+  "List",
+  "Set",
+  "Bag",
+  "Array",
+  "Map",
+  "ControlNode",
+  "MergeNode",
+  "DecisionNode",
+  "ForkNode",
+  "JoinNode",
+  "Transfer",
+  "Flow",
+  "Message",
+  "Performance",
+  "Evaluation",
+  "Execution",
+  ...Object.keys(KNOWN_DIMENSIONS),
+]);
+
+for (const entry of kermlStdlibEntries) {
+  if (entry.name && entry.name !== "<anonymous>") {
+    STDLIB_SYMBOLS.add(entry.name.trim());
+  }
+}
+
+/**
+ * Checks whether a symbol or qualified path belongs to the built-in KerML/SysML v2 standard library.
+ */
+export function isStdlibOrBuiltinSymbol(name: string): boolean {
+  if (!name) return true;
+  const clean = name
+    .trim()
+    .replace(/^~\s*/, "")
+    .replace(/::\*+(?:::\*+)*$/, "");
+  if (!clean || clean === "<anonymous>" || clean === "*") return true;
+  if (clean.includes("::")) {
+    const parts = clean.split("::");
+    const rootPkg = parts[0]!.trim();
+    const leaf = parts[parts.length - 1]!.trim();
+    if (STDLIB_PACKAGES.has(rootPkg)) return true;
+    if (STDLIB_SYMBOLS.has(leaf)) return true;
+    return false;
+  }
+  return STDLIB_PACKAGES.has(clean) || STDLIB_SYMBOLS.has(clean);
+}
 
 export interface TypeInferenceResult {
   typeName?: string;
@@ -255,13 +400,34 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
   return {};
 }
 
+function isDeclarationSymbol(c: SymbolEntry): boolean {
+  return (
+    c.kind !== "Reference" &&
+    c.kind !== "Import" &&
+    c.kind !== "Specialization" &&
+    c.ruleName !== "OwnedFeatureTyping" &&
+    c.ruleName !== "ConjugatedPortTyping" &&
+    c.ruleName !== "OwnedSubclassification" &&
+    c.ruleName !== "Subclassification" &&
+    c.ruleName !== "OwnedSubsetting" &&
+    c.ruleName !== "OwnedReferenceSubsetting" &&
+    c.ruleName !== "OwnedCrossSubsetting" &&
+    c.ruleName !== "OwnedRedefinition"
+  );
+}
+
 function resolveFeatureInScopeLocal(db: QueryDB, scopeId: number | null, name: string): SymbolEntry | null {
-  if (scopeId != null) {
-    const children = db.childrenOf(scopeId);
-    const found = children.find((c) => c.name === name);
+  let currId: number | null = scopeId;
+  const visited = new Set<number>();
+  while (currId != null && !visited.has(currId)) {
+    visited.add(currId);
+    const children = db.childrenOf(currId);
+    const found = children.find((c) => c.name === name && isDeclarationSymbol(c));
     if (found) return found;
+    const scopeSym = db.symbol(currId);
+    currId = scopeSym?.parentId ?? null;
   }
-  const globals = db.byName(name);
+  const globals = db.byName(name)?.filter(isDeclarationSymbol);
   return globals?.[0] ?? null;
 }
 
@@ -505,6 +671,93 @@ export function checkConnectionTypeCompatibility(db: QueryDB, self: SymbolEntry)
   return null;
 }
 
+/**
+ * Statically validates that type references (: Type) and specialization references (:> Super)
+ * resolve in scope or the standard library (Code S2002).
+ */
+export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResult | null {
+  const children = db.childrenOf(self.id);
+  for (const child of children) {
+    if (
+      child.ruleName === "OwnedFeatureTyping" ||
+      child.ruleName === "ConjugatedPortTyping" ||
+      child.ruleName === "OwnedSubclassification" ||
+      child.ruleName === "Subclassification"
+    ) {
+      const rawName = (child.name || db.cstText(child.startByte, child.endByte, child) || "").trim();
+      const cleanName = rawName.replace(/^~\s*/, "").trim();
+      if (!cleanName || cleanName === "<anonymous>" || isStdlibOrBuiltinSymbol(cleanName)) continue;
+
+      const resolved =
+        resolvePathInScope(db, self.parentId ?? self.id, cleanName) ??
+        db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) ??
+        null;
+      if (!resolved) {
+        return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
+          code: SysML2ErrorCode.SYMBOL_NOT_FOUND.code,
+          startByte: child.startByte ?? self.startByte,
+          endByte: child.endByte ?? self.endByte,
+        });
+      }
+    }
+  }
+  for (const inh of self.inherits || []) {
+    const cleanName = inh.replace(/^~\s*/, "").trim();
+    if (!cleanName || cleanName === "<anonymous>" || isStdlibOrBuiltinSymbol(cleanName)) continue;
+    const resolved =
+      resolvePathInScope(db, self.parentId ?? self.id, cleanName) ??
+      db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) ??
+      null;
+    if (!resolved) {
+      return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
+        code: SysML2ErrorCode.SYMBOL_NOT_FOUND.code,
+        startByte: self.startByte,
+        endByte: self.endByte,
+      });
+    }
+  }
+  return null;
+}
+
+/**
+ * Statically validates that MembershipImport and NamespaceImport declarations resolve
+ * to an existing package or symbol in the workspace or standard library (Code S2005).
+ */
+export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResult | null {
+  let rawImport = (self.name && self.name !== "<anonymous>" ? self.name : "").trim();
+  if (!rawImport) {
+    const refChild = db.childrenOf(self.id).find((c) => c.kind === "Reference" && c.name);
+    if (refChild?.name) {
+      rawImport = refChild.name.trim();
+    } else {
+      const text = db.cstText(self.startByte, self.endByte, self) || "";
+      const m = /\bimport\s+(?:all\s+)?([A-Za-z_][A-Za-z0-9_:]*)/.exec(text);
+      if (m?.[1]) {
+        rawImport = m[1].replace(/::\*+.*$/, "").trim();
+      }
+    }
+  }
+  if (!rawImport) return null;
+
+  const cleanTarget = rawImport.replace(/::\*+(?:::\*+)*$/, "").trim();
+  if (!cleanTarget || isStdlibOrBuiltinSymbol(cleanTarget)) return null;
+
+  const resolved =
+    resolvePathInScope(db, self.parentId, cleanTarget) ??
+    db.byName(cleanTarget)?.find(isDeclarationSymbol) ??
+    db.byName(normalizeTypeName(cleanTarget))?.find(isDeclarationSymbol) ??
+    null;
+
+  if (!resolved) {
+    return error(SysML2ErrorCode.UNRESOLVED_IMPORT.message(rawImport), {
+      code: SysML2ErrorCode.UNRESOLVED_IMPORT.code,
+      startByte: self.startByte,
+      endByte: self.endByte,
+    });
+  }
+  return null;
+}
+
 export class SysML2TypeChecker {
   constructor(private db: QueryDB) {}
 
@@ -518,5 +771,17 @@ export class SysML2TypeChecker {
     const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
     if (!entry) return null;
     return checkConnectionTypeCompatibility(this.db, entry);
+  }
+
+  checkSymbolResolution(entryOrId: SymbolEntry | number): LintResult | null {
+    const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
+    if (!entry) return null;
+    return checkSymbolResolution(this.db, entry);
+  }
+
+  checkImportResolution(entryOrId: SymbolEntry | number): LintResult | null {
+    const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
+    if (!entry) return null;
+    return checkImportResolution(this.db, entry);
   }
 }

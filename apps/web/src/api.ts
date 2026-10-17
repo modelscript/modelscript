@@ -1544,12 +1544,12 @@ export const getPostParents = async (id: string | number): Promise<{ posts: any[
   return data;
 };
 
-export const getPostQuotes = async (id: string | number): Promise<{ posts: any[] }> => {
+export const getPostQuotes = async (id: string | number): Promise<{ quotes?: any[]; posts?: any[] }> => {
   const { data } = await api.get(`/social/posts/${id}/quotes`);
   return data;
 };
 
-export const getPostReposts = async (id: string | number): Promise<{ posts: any[] }> => {
+export const getPostReposts = async (id: string | number): Promise<{ reposts?: any[]; posts?: any[] }> => {
   const { data } = await api.get(`/social/posts/${id}/reposts`);
   return data;
 };
@@ -1837,8 +1837,9 @@ export const revokeAllSessions = async (): Promise<{ success: boolean; message: 
 
 export interface Setup2FAResponse {
   secret: string;
-  otpauthUri: string;
-  message: string;
+  otpauthUri?: string;
+  otpAuthUri?: string;
+  message?: string;
 }
 
 export interface Verify2FAResponse {
@@ -1858,8 +1859,8 @@ export const setup2FA = async (): Promise<Setup2FAResponse> => {
   return data;
 };
 
-export const verify2FA = async (code: string): Promise<Verify2FAResponse> => {
-  const { data } = await api.post("/auth/2fa/verify", { code });
+export const verify2FA = async (code: string, secret?: string): Promise<Verify2FAResponse> => {
+  const { data } = await api.post("/auth/2fa/verify", { code, ...(secret ? { secret } : {}) });
   return data;
 };
 

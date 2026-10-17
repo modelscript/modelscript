@@ -1,7 +1,6 @@
 // name:     DeclarationOrder1
 // keywords: declaration order
 // status:   correct
-// xfail:    true
 //
 // A model or component is available in its entire scope,
 // even before before it is declared.

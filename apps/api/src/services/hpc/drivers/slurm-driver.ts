@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { calculateCostCredits } from "../compute-profiles.js";
+import { calculateCostCredits, getComputeProfile } from "../compute-profiles.js";
 import type {
   ComputeProfile,
   HpcDriver,
@@ -167,12 +167,13 @@ export class SlurmDriver implements HpcDriver {
     }
 
     const nativeJobId = match[1];
+    const profile = getComputeProfile(spec.profileId);
 
     return {
       nativeJobId,
       driverType: "slurm",
       allocatedResources: spec.resources,
-      estimatedCreditsPerHour: 10,
+      estimatedCreditsPerHour: profile.costCreditsPerHour,
     };
   }
 

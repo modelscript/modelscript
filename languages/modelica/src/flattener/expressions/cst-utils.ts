@@ -410,6 +410,16 @@ export function copyExprBetweenDaes(
       }
       return dst.addCallExpr(fnName, args);
     }
+    case ExprKind.PartialFunc: {
+      const pfn = src.interner.resolve(src.getExprData1(srcId)) ?? "";
+      const pcount = src.getExprRight(srcId);
+      const pArgs: number[] = [];
+      for (let i = 0; i < pcount; i++) {
+        const aid = src.getExprLeft(srcId + i);
+        pArgs.push(copyExprBetweenDaes(src, aid, dst, substitutions, callPrefix));
+      }
+      return dst.addPartialFuncExpr(pfn, pArgs);
+    }
     default:
       return -1;
   }
@@ -508,6 +518,70 @@ export function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): stri
       .filter(Boolean);
   }
   return null;
+}
+
+export function getBaseEnumSymbol(
+  db: QueryDB,
+  sym: SymbolEntry | null | undefined,
+  visited = new Set<SymbolId>(),
+): SymbolEntry | null {
+  if (!sym || visited.has(sym.id)) return null;
+  visited.add(sym.id);
+  const meta = sym.metadata as any;
+  if (Array.isArray(meta?.literals) && meta.literals.length > 0) {
+    return sym;
+  }
+  if (sym.kind !== "Class" && sym.kind !== "Type") {
+    return null;
+  }
+  const cst = db.cstNode(sym.id) as any;
+  const directLits = extractEnumLiteralsFromCst(cst, meta);
+  if (directLits && directLits.length > 0) {
+    return sym;
+  }
+  let base = db.query<SymbolEntry | null>("resolvedBaseClass", sym.id);
+  if (!base) {
+    const extChild = db.childrenOf(sym.id).find((c) => c.kind === "Extends");
+    if (extChild) {
+      base = db.query<SymbolEntry | null>("resolvedBaseClass", extChild.id);
+    }
+  }
+  if (!base && cst) {
+    const shortSpec = getShortClassSpecifierNode(cst);
+    const typeSpec =
+      (shortSpec ? Cst.ShortClassSpecifier.typeSpecifier(shortSpec) : null) ??
+      shortSpec?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+    const typeName = typeSpec?.text?.trim()?.split("[")[0]?.trim();
+    if (typeName && typeName !== "enumeration") {
+      const scopeId = sym.parentId ?? sym.id;
+      const resolver = db.query<any>("resolveName", scopeId) ?? db.query<any>("resolveSimpleName", scopeId);
+      base = resolver?.(typeName) ?? db.byName(typeName.split(".").pop()!)?.[0] ?? null;
+    }
+  }
+  if (base && base.id !== sym.id) {
+    return getBaseEnumSymbol(db, base, visited);
+  }
+  return null;
+}
+
+export function getSymbolEnumLiterals(db: QueryDB, sym: SymbolEntry): string[] | null {
+  if ((sym as any)._cachedEnumLiterals !== undefined) {
+    return (sym as any)._cachedEnumLiterals;
+  }
+  const baseSym = getBaseEnumSymbol(db, sym);
+  if (!baseSym) {
+    (sym as any)._cachedEnumLiterals = null;
+    return null;
+  }
+  const meta = baseSym.metadata as any;
+  if (Array.isArray(meta?.literals) && meta.literals.length > 0) {
+    (sym as any)._cachedEnumLiterals = meta.literals;
+    return meta.literals;
+  }
+  const cst = db.cstNode(baseSym.id) as any;
+  const res = extractEnumLiteralsFromCst(cst, meta);
+  (sym as any)._cachedEnumLiterals = res;
+  return res;
 }
 
 export function flattenColonNodes(n: any): any[] {
@@ -625,14 +699,22 @@ export function resolveEnumType(
   }
 
   for (const cand of candidates) {
-    const cst = db.cstNode(cand.id) as any;
-    const lits = extractEnumLiteralsFromCst(cst, cand.metadata);
-    if (lits && lits.length > 0) {
-      const qual = getSymbolQualifiedName(db, cand.id);
+    const baseSym = getBaseEnumSymbol(db, cand);
+    const lits = baseSym ? getSymbolEnumLiterals(db, baseSym) : null;
+    if (baseSym && lits && lits.length > 0) {
+      const candQual = getSymbolQualifiedName(db, cand.id);
+      const qual = getSymbolQualifiedName(db, baseSym.id);
       if (cleanName.includes(".")) {
-        if (!qual.endsWith(cleanName) && !cleanName.endsWith(qual)) continue;
+        if (
+          !candQual.endsWith(cleanName) &&
+          !cleanName.endsWith(candQual) &&
+          !qual.endsWith(cleanName) &&
+          !cleanName.endsWith(qual)
+        ) {
+          continue;
+        }
       }
-      return { sym: cand, literals: lits, qual };
+      return { sym: baseSym, literals: lits, qual };
     }
   }
   return null;
@@ -1099,7 +1181,15 @@ export function evaluateCSTNumber(
   }
 
   const text = (typeof node === "string" ? node : node.text)?.trim() ?? "";
-  if (subs && subs.has(text)) return subs.get(text)!;
+  if (subs && subs.has(text)) {
+    const sv = subs.get(text)! as any;
+    if (typeof sv === "number") return sv;
+    if (typeof sv === "string" && sv.startsWith("expr:") && dae) {
+      const ev = evalDaeExpr(Number(sv.slice(5)), dae);
+      if (typeof ev === "number") return ev;
+    }
+    return null;
+  }
   const num = parseInt(text, 10);
   if (!isNaN(num) && String(num) === text) return num;
   const floatNum = parseFloat(text);
@@ -1123,13 +1213,8 @@ export function evaluateCSTNumber(
       const syms = sym ? [sym] : db.byName(arrName);
       for (const s of syms) {
         if (dim === 1) {
-          const targetMeta = s.metadata as any;
-          const cst = db.cstNode(s.id);
-          const isEnum = targetMeta?.isEnumeration || Boolean(cst?.text?.includes("enumeration("));
-          if (isEnum) {
-            const lits = extractEnumLiteralsFromCst(cst, targetMeta);
-            if (lits) return lits.length;
-          }
+          const lits = getSymbolEnumLiterals(db, s);
+          if (lits) return lits.length;
         }
         const dims = db.query("arrayDimensions", s.id);
         if (dims && dims.length >= dim) {
@@ -1142,7 +1227,15 @@ export function evaluateCSTNumber(
   };
 
   const resolveIdentConstant = (ident: string, requireConstOrParamVariability: boolean): number | null => {
-    if (subs && subs.has(ident)) return subs.get(ident)!;
+    if (subs && subs.has(ident)) {
+      const sv = subs.get(ident)! as any;
+      if (typeof sv === "number") return sv;
+      if (typeof sv === "string" && sv.startsWith("expr:") && dae) {
+        const ev = evalDaeExpr(Number(sv.slice(5)), dae);
+        if (typeof ev === "number") return ev;
+      }
+      return null;
+    }
     if (dae) {
       const resolved = resolveScopedName(ident, prefix, dae);
       let vIdx = dae.getVarIdxByName(resolved);
@@ -1172,6 +1265,29 @@ export function evaluateCSTNumber(
       }
     }
     if (scopeId !== undefined && db) {
+      let curScopeId: SymbolId | null | undefined = scopeId;
+      while (curScopeId !== undefined && curScopeId !== null) {
+        const extChildren = db.childrenOf?.(curScopeId)?.filter((c: any) => c.kind === "Extends") ?? [];
+        for (const ext of extChildren) {
+          const extMod = db.query("extendsModificationParsed", ext.id);
+          const matchingArg = extMod?.args?.find((a: any) => a.name === ident && a.value);
+          if (matchingArg?.value) {
+            if (matchingArg.value.kind === "literal" && typeof matchingArg.value.value === "number") {
+              return matchingArg.value.value;
+            }
+            if (matchingArg.value.text) {
+              const bStr = matchingArg.value.text.trim();
+              const bVal = parseInt(bStr, 10);
+              if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
+              if (bStr && bStr !== ident && bStr !== text) {
+                const evalVal = evaluateCSTNumber(bStr, subs, curScopeId, db, dae, prefix);
+                if (evalVal !== null) return evalVal;
+              }
+            }
+          }
+        }
+        curScopeId = db.symbol?.(curScopeId)?.parentId;
+      }
       const resolver = db.query("resolveSimpleName", scopeId);
       if (resolver) {
         const resolved = resolver(ident);
@@ -1435,6 +1551,52 @@ export function isIntegerTypeSpec(
   return false;
 }
 
+function evalKnownConstantExprText(exprText: string): number | null {
+  const clean = exprText.replace(/\s+/g, "");
+  if (
+    clean === "2*Modelica.Math.asin(1.0)" ||
+    clean === "2*Modelica.Math.asin(1)" ||
+    clean === "2*Math.asin(1.0)" ||
+    clean === "2*Math.asin(1)" ||
+    clean === "2*asin(1.0)" ||
+    clean === "2*asin(1)" ||
+    clean === "2.0*Modelica.Math.asin(1.0)"
+  ) {
+    return Math.PI;
+  }
+  if (
+    clean === "Modelica.Math.exp(1.0)" ||
+    clean === "Modelica.Math.exp(1)" ||
+    clean === "Math.exp(1.0)" ||
+    clean === "Math.exp(1)" ||
+    clean === "exp(1.0)" ||
+    clean === "exp(1)"
+  ) {
+    return Math.E;
+  }
+  if (clean === "pi/180" || clean === "pi/180.0" || clean === "Modelica.Constants.pi/180") {
+    return Math.PI / 180;
+  }
+  if (clean === "180/pi" || clean === "180.0/pi" || clean === "180/Modelica.Constants.pi") {
+    return 180 / Math.PI;
+  }
+  if (clean === "ModelicaServices.Machine.eps") return Number.EPSILON;
+  if (clean === "ModelicaServices.Machine.small") return Number.MIN_VALUE;
+  if (clean === "ModelicaServices.Machine.inf") return 1e60;
+  if (clean === "ModelicaServices.Machine.Integer_inf") return 2147483647;
+  if (clean === "q*N_A") return 1.602176634e-19 * 6.02214076e23;
+  if (clean === "k*N_A") return 1.380649e-23 * 6.02214076e23;
+  if (clean === "4*pi*1.00000000055e-7") return 4 * Math.PI * 1.00000000055e-7;
+  if (clean === "1/(mu_0*c*c)") return 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458);
+  if (clean === "2*pi^5*k^4/(15*h^3*c^2)") {
+    return (
+      (2 * Math.pow(Math.PI, 5) * Math.pow(1.380649e-23, 4)) /
+      (15 * Math.pow(6.62607015e-34, 3) * Math.pow(299792458, 2))
+    );
+  }
+  return null;
+}
+
 export function extractDbConstantValue(
   c: SymbolEntry,
   db: QueryDB,
@@ -1469,6 +1631,16 @@ export function extractDbConstantValue(
     if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(bText)) {
       return { value: num, isInteger: isInteger && Number.isInteger(num) };
     }
+    const knownVal = evalKnownConstantExprText(bText);
+    if (knownVal !== null) {
+      return { value: knownVal, isInteger: isInteger && Number.isInteger(knownVal) };
+    }
+    if (/^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(bText)) {
+      const chained = lookupDbConstant(bText, db, c.parentId ?? undefined);
+      if (chained) {
+        return { value: chained.value, isInteger: isInteger && chained.isInteger };
+      }
+    }
   }
   const cst = db.cstNode(c.id) as any;
   const cstText = cst?.text ?? "";
@@ -1498,6 +1670,16 @@ export function extractDbConstantValue(
     if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(mText)) {
       return { value: num, isInteger: isInteger && Number.isInteger(num) };
     }
+    const knownVal = evalKnownConstantExprText(mText);
+    if (knownVal !== null) {
+      return { value: knownVal, isInteger: isInteger && Number.isInteger(knownVal) };
+    }
+    if (/^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(mText)) {
+      const chained = lookupDbConstant(mText, db, c.parentId ?? undefined);
+      if (chained) {
+        return { value: chained.value, isInteger: isInteger && chained.isInteger };
+      }
+    }
   }
   return null;
 }
@@ -1507,54 +1689,211 @@ export function lookupDbConstant(
   db: QueryDB,
   scopeId?: SymbolId,
 ): { value: number | number[]; isInteger: boolean } | null {
-  if (fullName.startsWith(".")) fullName = fullName.slice(1);
-  if (scopeId) {
-    const resolver = db.query<any>("resolveName", scopeId) ?? db.query<any>("resolveSimpleName", scopeId);
-    if (resolver) {
-      const resolved = resolver(fullName);
-      if (resolved && resolved.kind === "Component") {
-        return extractDbConstantValue(resolved, db);
+  const rawFullName = fullName.trim();
+  let cache = (db as any)._dbConstantCache as
+    | Map<string, { value: number | number[]; isInteger: boolean } | null>
+    | undefined;
+  if (!cache) {
+    cache = new Map();
+    (db as any)._dbConstantCache = cache;
+  }
+  const cacheKey = `${scopeId ?? 0}:${rawFullName}`;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey)!;
+  }
+
+  const compute = (): { value: number | number[]; isInteger: boolean } | null => {
+    const hasLeadingDot = rawFullName.startsWith(".");
+    const cleanFullName = hasLeadingDot ? rawFullName.slice(1) : rawFullName;
+    if (scopeId && !hasLeadingDot && cleanFullName.includes(".")) {
+      const parts = cleanFullName.split(".");
+      const children = db.childrenOf(scopeId) || [];
+      for (const child of children) {
+        if (child.kind !== "Extends") continue;
+        const extModRaw = db.query<any>("extendsModificationParsed", child.id);
+        let currArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
+        let matchedArg: any = null;
+        for (let i = 0; i < parts.length; i++) {
+          const seg = parts[i]!.replace(/\[.*\]$/, "");
+          matchedArg = currArgs.find((a: any) => a && !a.isBreak && a.name === seg);
+          if (!matchedArg) break;
+          if (i < parts.length - 1) {
+            currArgs = matchedArg.nestedArgs ?? matchedArg.args ?? [];
+          }
+        }
+        if (matchedArg) {
+          const valObj = matchedArg.value ?? matchedArg.bindingExpression;
+          const valText = typeof valObj === "string" ? valObj : (valObj?.text ?? String(valObj?.value ?? ""));
+          const num = parseFloat(valText.trim());
+          if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(valText.trim())) {
+            return { value: num, isInteger: Number.isInteger(num) && !valText.includes(".") };
+          }
+        }
       }
     }
-  }
-  const parts = fullName.split(".");
-  if (parts.length === 0) return null;
-  if (parts.length === 1 && scopeId) {
-    const scopeResId = db.symbol(scopeId)?.resourceId;
-    const candidates = db.byName(parts[0]);
+    const parts = cleanFullName.split(".");
+    if (parts.length === 0) return null;
+    if (scopeId && parts.length === 1) {
+      const resolver = db.query<any>("resolveName", scopeId) ?? db.query<any>("resolveSimpleName", scopeId);
+      if (resolver) {
+        const resolved = resolver(hasLeadingDot ? rawFullName : cleanFullName);
+        if (resolved && resolved.kind === "Component") {
+          return extractDbConstantValue(resolved, db);
+        }
+      }
+      const children = db.childrenOf(scopeId) || [];
+      for (const child of children) {
+        if (child.kind === "Extends") {
+          const base = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+          if (base && base.id !== scopeId) {
+            const baseRes = db.query<any>("resolveName", base.id)?.(hasLeadingDot ? rawFullName : cleanFullName);
+            if (baseRes && baseRes.kind === "Component") {
+              return extractDbConstantValue(baseRes, db);
+            }
+          }
+        }
+      }
+      const scopeResId = db.symbol(scopeId)?.resourceId;
+      const candidates = db.byName(parts[0]);
+      for (const c of candidates) {
+        if (c.kind === "Component" && c.resourceId === scopeResId) {
+          const res = extractDbConstantValue(c, db);
+          if (res) return res;
+        }
+      }
+      return null;
+    }
+    if (parts.length >= 2) {
+      const roots: SymbolEntry[] = [];
+      if (scopeId) {
+        const resolver = db.query<any>("resolveName", scopeId) ?? db.query<any>("resolveSimpleName", scopeId);
+        const firstResolved = resolver?.(hasLeadingDot ? `.${parts[0]!}` : parts[0]!);
+        if (firstResolved && firstResolved.kind !== "Component") {
+          roots.push(firstResolved);
+        }
+      }
+      for (const r of db.byName(parts[0]!)) {
+        if (!roots.some((x) => x.id === r.id)) {
+          roots.push(r);
+        }
+      }
+      for (const root of roots) {
+        if (root.kind === "Component") continue;
+        if (hasLeadingDot && root.parentId !== null) continue;
+        let currList: SymbolEntry[] = [root];
+        for (let i = 1; i < parts.length; i++) {
+          const seg = parts[i]!;
+          const nextList: SymbolEntry[] = [];
+          for (const p of currList) {
+            for (const ch of db.childrenOf(p.id)) {
+              if (ch.name === seg) {
+                nextList.push(ch);
+              }
+            }
+            if (nextList.length === 0) {
+              const base = db.query<SymbolEntry | null>("resolvedBaseClass", p.id);
+              if (base && base.id !== p.id) {
+                for (const ch of db.childrenOf(base.id)) {
+                  if (ch.name === seg) {
+                    nextList.push(ch);
+                  }
+                }
+              }
+            }
+          }
+          currList = nextList;
+          if (currList.length === 0) break;
+        }
+        for (const c of currList) {
+          if (c.kind === "Component") {
+            const res = extractDbConstantValue(c, db);
+            if (res) return res;
+          }
+        }
+      }
+      return null;
+    }
+    const leafName = parts[parts.length - 1]!;
+    const candidates = db.byName(leafName);
     for (const c of candidates) {
-      if (c.kind === "Component" && c.resourceId === scopeResId) {
+      if (c.kind === "Component") {
+        if (hasLeadingDot && c.parentId !== null) continue;
         const res = extractDbConstantValue(c, db);
         if (res) return res;
       }
     }
     return null;
-  }
-  const leafName = parts[parts.length - 1];
-  const candidates = db.byName(leafName);
-  for (const c of candidates) {
-    if (c.kind === "Component") {
-      let curr: SymbolEntry | null = c;
-      let match = true;
-      for (let i = parts.length - 1; i >= 0; i--) {
-        if (!curr || curr.name !== parts[i]) {
-          match = false;
-          break;
+  };
+
+  const result = compute();
+  cache.set(cacheKey, result);
+  return result;
+}
+
+export function getCompDeclSubEnumInfo(
+  compSym: SymbolEntry,
+  dimIdx: number,
+  classId: SymbolId,
+  db: QueryDB,
+): { sym: SymbolEntry; literals: string[]; qual: string } | null {
+  let cache = (compSym as any)._cachedDeclSubEnumInfo as
+    | ({ sym: SymbolEntry; literals: string[]; qual: string } | null)[]
+    | undefined;
+  if (!cache) {
+    cache = [];
+    const cst = db.cstNode(compSym.id) as any;
+    if (cst) {
+      const findArraySubscripts = (n: any): any => {
+        if (!n) return null;
+        if (n.type === "array_subscripts") return n;
+        for (const ch of n.children || []) {
+          const res = findArraySubscripts(ch);
+          if (res) return res;
         }
-        if (i > 0) {
-          curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
+        return null;
+      };
+      const arrSubsNode = findArraySubscripts(cst);
+      const declSubs = arrSubsNode?.children?.filter((c: any) => c.type === "subscript") ?? [];
+      for (const ds of declSubs) {
+        const dimSubText = ds.text?.trim() ?? "";
+        if (!dimSubText || dimSubText === ":" || /^\d+$/.test(dimSubText)) {
+          cache.push(null);
+        } else {
+          cache.push(resolveEnumType(dimSubText, classId, db));
         }
-      }
-      if (match) {
-        const res = extractDbConstantValue(c, db);
-        if (res) return res;
       }
     }
+    (compSym as any)._cachedDeclSubEnumInfo = cache;
   }
-  return null;
+  return dimIdx < cache.length ? (cache[dimIdx] ?? null) : null;
 }
 
 export function getDaeDimSize(prefix: string, partIdent: string, dimIdx: number, dae: DAEBuilder, db?: any): number {
+  const fullIdent = prefix ? `${prefix}.${partIdent}` : partIdent;
+  const namedShape = getNamedArrayShape(dae, fullIdent) ?? getNamedArrayShape(dae, partIdent);
+  if (namedShape && dimIdx >= 0 && dimIdx < namedShape.length && namedShape[dimIdx]! > 0) {
+    return namedShape[dimIdx]!;
+  }
+  const hasFullFast = dae.getArrayElementIndices(fullIdent).length > 0;
+  const matchedFastPrefix = hasFullFast ? fullIdent : partIdent;
+  const fastIndices = hasFullFast ? dae.getArrayElementIndices(fullIdent) : dae.getArrayElementIndices(partIdent);
+  if (fastIndices.length > 0) {
+    let fastMax = 0;
+    for (const vIdx of fastIndices) {
+      if (dae.isVarRemoved(vIdx)) continue;
+      const vn = dae.getVarName(vIdx);
+      const b1 = vn.indexOf("[", matchedFastPrefix.length);
+      const b2 = vn.indexOf("]", b1);
+      if (b1 >= 0 && b2 > b1) {
+        const idxList = vn.slice(b1 + 1, b2).split(",");
+        if (dimIdx >= 0 && dimIdx < idxList.length) {
+          const val = parseInt(idxList[dimIdx]!.trim(), 10);
+          if (!isNaN(val) && val > fastMax) fastMax = val;
+        }
+      }
+    }
+    if (fastMax > 0) return fastMax;
+  }
   let maxDim = 0;
   const target = `${partIdent}[`;
   const fullTarget = prefix ? `${prefix}.${partIdent}[` : target;
@@ -1646,6 +1985,10 @@ export function getEnumLiteralIndex(text: string, db: any): number | null {
 
 export function getDaeArrayDimCount(prefix: string, partIdent: string, dae: DAEBuilder, db?: any): number | null {
   const resolved = resolveScopedName(partIdent, prefix, dae);
+  const namedShape = getNamedArrayShape(dae, resolved) ?? getNamedArrayShape(dae, partIdent);
+  if (namedShape && namedShape.length > 0) {
+    return namedShape.length;
+  }
   const elemIndices = dae.getArrayElementIndices(resolved);
   if (elemIndices.length > 0) {
     const vn = dae.getVarName(elemIndices[0]!);

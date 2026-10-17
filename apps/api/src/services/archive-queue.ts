@@ -170,6 +170,8 @@ export class ArchiveQueue {
         } catch (err: any) {
           job.status = "failed";
           job.error = err.message || "Archive compilation failed";
+          job.completedAt = new Date().toISOString();
+          job.expiresAt = new Date(Date.now() + this.ttlMs).toISOString();
         } finally {
           this.activeCount--;
           this.drain(database);

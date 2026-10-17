@@ -53,13 +53,18 @@ export const SCALAR_VECTORIZABLE_FUNCTIONS = new Map<string, { arity: number; fo
 ]);
 
 export function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
+  const sym = db.symbol(symId);
+  if (!sym) return "";
+  if ((sym as any)._fqn !== undefined) return (sym as any)._fqn;
   const parts: string[] = [];
-  let curr: SymbolEntry | null = db.symbol(symId);
+  let curr: SymbolEntry | null = sym;
   while (curr) {
     parts.unshift(curr.name);
     curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
   }
-  return parts.join(".");
+  const fqn = parts.join(".");
+  (sym as any)._fqn = fqn;
+  return fqn;
 }
 
 export function isEquationExpr(c: any): boolean {

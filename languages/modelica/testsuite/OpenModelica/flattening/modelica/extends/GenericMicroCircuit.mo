@@ -1,7 +1,6 @@
 // name:     MicroCircuitValid
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 // cflags: -d=-newInst
 //
 // Dymola 5.2a gives back "Error:�Type�CompType�did�not�extend�from�basic�types."

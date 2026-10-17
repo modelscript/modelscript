@@ -611,16 +611,16 @@ export function resolveDottedName(rootElement: u32, dottedNamePtr: u32): u32 {
     let numSegs: u32 = 0;
     let segStart: u32 = 0;
     let len = getNodeByteLength(dottedNamePtr);
-    let strDataPtr = getInputBuffer() + getNodePadding(dottedNamePtr);
+    let strDataPtr = getInputBuffer() + ((getNodePadding(dottedNamePtr) as usize) << 1);
     
     for (let i: u32 = 0; i <= len; i++) {
-        let ch: u8 = i < len ? load<u8>(strDataPtr + i) : 46; // '.'
+        let ch: u16 = i < len ? load<u16>(strDataPtr + ((i as usize) << 1)) : 46; // '.'
         if (ch == 46 || i == len) { // '.'
             if (i > segStart) {
                 // Hash the segment
                 let segHash: u32 = 5381;
                 for (let j: u32 = segStart; j < i; j++) {
-                    segHash = ((segHash << 5) + segHash + load<u8>(strDataPtr + j)) >>> 0;
+                    segHash = ((segHash << 5) + segHash + (load<u16>(strDataPtr + ((j as usize) << 1)) as u32)) >>> 0;
                 }
                 pathSegments[numSegs++] = segHash;
                 if (numSegs >= PATH_RESOLVE_MAX_DEPTH) break;

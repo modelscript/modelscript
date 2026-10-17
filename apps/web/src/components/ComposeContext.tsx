@@ -5,6 +5,7 @@ import type { SpatialPin } from "./artifacts/spatial-pin";
 
 export interface ComposeInitialState {
   content?: string;
+  defaultText?: string;
   artifactId?: number | null;
   quotePost?: any;
   replyToPost?: any;

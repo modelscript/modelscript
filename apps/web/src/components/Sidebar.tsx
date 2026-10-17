@@ -23,6 +23,7 @@ import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useTheme } from "../theme";
+import { safeCssImageUrl } from "../util/url";
 import Box from "./Box";
 
 const SidebarContainer = styled.header`
@@ -304,7 +305,7 @@ const SidebarAvatar = styled.div<{ $url?: string }>`
   border-radius: 50%;
   background: var(--gradient-ai);
   box-shadow: var(--glow-ai-sm);
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url)};
   background-size: cover;
   display: flex;
   align-items: center;

@@ -931,7 +931,6 @@ export function generateParserTables(
       "setInputEncoding",
       "getInputBuffer",
       "ParseHead",
-      "ErrorBranch",
       "VarAccessor",
       "ExprAccessor",
       "EqAccessor",

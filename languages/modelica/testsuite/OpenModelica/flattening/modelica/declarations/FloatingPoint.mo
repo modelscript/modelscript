@@ -1,7 +1,6 @@
 // name: FloatingPoint
 // keywords: real
 // status: correct
-// xfail:    true
 //
 // Tests the different ways floating point numbers may be declared
 //

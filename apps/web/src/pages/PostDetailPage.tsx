@@ -165,6 +165,8 @@ const ActionDockBtn = styled.button<{ $primary?: boolean }>`
     transform: translateY(-1px);
     background: ${(props) =>
       props.$primary ? "var(--gradient-cta)" : "var(--color-bg-card-hover, rgba(125, 125, 125, 0.1))"};
+  }
+
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;

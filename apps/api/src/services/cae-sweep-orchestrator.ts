@@ -59,8 +59,12 @@ export interface CaeSweepRun {
   costCredits?: number | undefined;
 }
 
+export const MAX_SWEEP_SAMPLES = 200;
+
 export interface CaeSweepState {
   sweepId: string;
+  dbJobId?: number | null | undefined;
+  userId?: number | null | undefined;
   title: string;
   solver: CaeSolverType;
   strategy: DoEStrategy;
@@ -124,7 +128,23 @@ export class CaeSweepOrchestrator {
   /**
    * Submits and begins execution of a multi-job parametric DoE sweep.
    */
-  public submitSweep(spec: CaeSweepSpec): CaeSweepState {
+  public submitSweep(
+    spec: CaeSweepSpec,
+    options?: {
+      dbJobId?: number | null | undefined;
+      userId?: number | null | undefined;
+      onSweepFinalized?: ((state: CaeSweepState) => void) | undefined;
+    },
+  ): CaeSweepState {
+    if (
+      typeof spec.sampling.sampleCount !== "number" ||
+      !Number.isFinite(spec.sampling.sampleCount) ||
+      spec.sampling.sampleCount < 1 ||
+      spec.sampling.sampleCount > MAX_SWEEP_SAMPLES
+    ) {
+      throw new Error(`Invalid sampleCount: must be between 1 and ${MAX_SWEEP_SAMPLES}.`);
+    }
+
     const sweepId = `sweep_${crypto.randomBytes(6).toString("hex")}`;
     const sweepDir = path.join(this.cacheDir, "sweeps", sweepId);
     fs.mkdirSync(sweepDir, { recursive: true });
@@ -149,6 +169,8 @@ export class CaeSweepOrchestrator {
 
     const state: CaeSweepState = {
       sweepId,
+      dbJobId: options?.dbJobId,
+      userId: options?.userId,
       title: spec.title || `DoE Sweep (${spec.solver.toUpperCase()})`,
       solver: spec.solver,
       strategy: spec.sampling.strategy,
@@ -170,7 +192,7 @@ export class CaeSweepOrchestrator {
     this.activeRunners.set(sweepId, new Set());
 
     // Asynchronously begin execution pool
-    void this.executeSweep(sweepId, spec);
+    void this.executeSweep(sweepId, spec, options?.onSweepFinalized);
 
     return state;
   }
@@ -401,7 +423,11 @@ export class CaeSweepOrchestrator {
     return results;
   }
 
-  private async executeSweep(sweepId: string, spec: CaeSweepSpec): Promise<void> {
+  private async executeSweep(
+    sweepId: string,
+    spec: CaeSweepSpec,
+    onSweepFinalized?: (state: CaeSweepState) => void,
+  ): Promise<void> {
     const state = this.sweeps.get(sweepId);
     if (!state) return;
 
@@ -578,6 +604,33 @@ export class CaeSweepOrchestrator {
         failedRuns: state.failedRuns,
         progressPercent: 100,
       });
+
+      try {
+        onSweepFinalized?.(state);
+      } catch {
+        // ignore callback errors
+      }
+    }
+
+    this.pruneOldSweeps();
+  }
+
+  private pruneOldSweeps(): void {
+    const MAX_RETAINED_SWEEPS = 200;
+    if (this.sweeps.size <= MAX_RETAINED_SWEEPS) return;
+    for (const [id, st] of this.sweeps.entries()) {
+      if (this.sweeps.size <= MAX_RETAINED_SWEEPS) break;
+      if (
+        st.status === "completed" ||
+        st.status === "partial_success" ||
+        st.status === "failed" ||
+        st.status === "cancelled"
+      ) {
+        this.sweeps.delete(id);
+        this.streamers.get(id)?.removeAllListeners();
+        this.streamers.delete(id);
+        this.activeRunners.delete(id);
+      }
     }
   }
 }

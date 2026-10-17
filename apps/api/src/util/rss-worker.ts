@@ -2,6 +2,7 @@
 
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
+import { safePublicFetch } from "./ssrf.js";
 
 // Extensible framework for domain-specific feed handlers
 interface FeedItemProcessor {
@@ -119,7 +120,7 @@ export async function processRssFeeds(database: LibraryDatabase) {
       if (feed.etag) headers["If-None-Match"] = feed.etag;
       if (feed.last_modified) headers["If-Modified-Since"] = feed.last_modified;
 
-      const res = await fetch(feed.url, { headers });
+      const res = await safePublicFetch(feed.url, { headers });
 
       // Adaptive Polling parameters
       const MIN_INTERVAL = 15; // 15 minutes

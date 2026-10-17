@@ -1,7 +1,6 @@
 // name:     ExtendsDerived.mo
 // keywords: extends modifier handling
 // status:   correct
-// xfail:    true
 //
 // check that modifiers on derived classes which are extended are not lost
 //

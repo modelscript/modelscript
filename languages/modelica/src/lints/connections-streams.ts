@@ -11,6 +11,7 @@ import {
   isConnectorCompatible,
   isDescendantOfInnerClass,
   isExpandableConnector,
+  isMissingInnerInDocument,
   resolveDottedComponentClass,
 } from "./helpers.js";
 
@@ -265,7 +266,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M0000: Missing inner declaration for outer component.
+   * M2094: Missing inner declaration for outer component.
    */
   missingInner: {
     nodes: ["component_clause"],
@@ -273,17 +274,8 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     code: 2094,
     message: (target) => `No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let isOuter = false;
-      for (const pfx of db.ast.getDescendants(node, $.type_prefix)) {
-        if (db.ast.textEquals(pfx, "outer")) isOuter = true;
-      }
-      if (isOuter) {
-        for (const decl of db.ast.getChildrenByFieldId(node, "declaration")) {
-          const sym = db.scope.resolve(decl);
-          if (sym != 0 && !db.model.hasFlag(sym, "hasInnerMatch")) {
-            db.diagnostic(decl);
-          }
-        }
+      if (isMissingInnerInDocument(db, node, $)) {
+        db.diagnostic(node);
       }
     },
   },

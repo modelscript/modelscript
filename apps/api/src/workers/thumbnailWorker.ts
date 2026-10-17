@@ -110,7 +110,7 @@ async function doGenerateThumbnail(artifactId: number): Promise<string | null> {
 
     await browser.close();
 
-    getDatabase().updateArtifactThumbnail(artifactId, thumbnailUrlLight);
+    getDatabase().updateArtifactThumbnail(artifactId, thumbnailUrlLight, thumbnailUrlDark);
     console.log(`[Thumbnail Worker] Successfully updated database for artifact ${artifactId}`);
 
     return thumbnailUrlLight;

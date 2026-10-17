@@ -7,6 +7,7 @@ import { LocalProcessDriver, type LocalDriverOptions } from "./drivers/local-dri
 import { SlurmDriver } from "./drivers/slurm-driver.js";
 import { SlurmRestDriver } from "./drivers/slurm-rest-driver.js";
 import type { ComputeProfile, HpcDriver, HpcJobSpec, HpcSubmissionResult, HpcUsageMetrics } from "./hpc-types.js";
+import { validateResourceLimits } from "./quota-guard.js";
 import { getObjectStager, type ObjectStager } from "./staging/index.js";
 
 export interface HpcEngineOptions {
@@ -22,6 +23,7 @@ export interface HpcEngineOptions {
 export class HpcEngine {
   private readonly driver: HpcDriver;
   private readonly stager: ObjectStager;
+  private readonly nativeToLogicalJobId = new Map<string, string>();
 
   constructor(options: HpcEngineOptions = {}) {
     if (options.driver) {
@@ -60,6 +62,12 @@ export class HpcEngine {
     profileId?: string,
   ): Promise<{ submission: HpcSubmissionResult; profile: ComputeProfile }> {
     const profile = getComputeProfile(profileId || spec.profileId);
+
+    // Enforce profile and platform hard resource limits
+    const limitCheck = validateResourceLimits(spec.resources, profile);
+    if (!limitCheck.valid) {
+      throw new Error(limitCheck.reason || "Requested compute resources exceed platform limits.");
+    }
 
     // If remote S3 staging is active, stage inputs and attach manifest
     let stagingManifest = spec.stagingManifest;
@@ -100,10 +108,15 @@ export class HpcEngine {
         tasksPerNode: spec.resources.tasksPerNode ?? profile.tasksPerNode ?? 1,
         nodes: spec.resources.nodes ?? profile.nodes ?? 1,
         timeLimitMinutes: spec.resources.timeLimitMinutes,
+        maxWallClockSeconds: spec.resources.maxWallClockSeconds,
+        networkIsolation: spec.resources.networkIsolation,
+        account: spec.resources.account,
+        qos: spec.resources.qos,
       },
     };
 
     const submission = await this.driver.submit(mergedSpec);
+    this.nativeToLogicalJobId.set(submission.nativeJobId, spec.jobId);
     return { submission, profile };
   }
 
@@ -150,6 +163,7 @@ export class HpcEngine {
               for await (const chunk of stream) {
                 onLogChunk(chunk.toString("utf8"));
               }
+              bytesRead = stats.size;
             }
           } catch {
             // ignore
@@ -157,19 +171,37 @@ export class HpcEngine {
         }
 
         // If remote S3 staging was active, pull back remote outputs to workingDir
+        const logicalJobId = this.nativeToLogicalJobId.get(nativeJobId) ?? nativeJobId;
+        this.nativeToLogicalJobId.delete(nativeJobId);
+
         if (this.stager.type === "s3") {
           const expectedOutputs = ["result.vtu", "scalars.json", "output.log", "residuals.csv"];
+          const candidateJobIds = logicalJobId !== nativeJobId ? [logicalJobId, nativeJobId] : [logicalJobId];
           for (const filename of expectedOutputs) {
-            const remoteKey = `jobs/${nativeJobId}/outputs/${filename}`;
             const targetPath = path.join(workingDir, filename);
             if (!fs.existsSync(targetPath)) {
-              try {
-                if (await this.stager.hasObject(remoteKey)) {
-                  await this.stager.downloadFile(remoteKey, targetPath);
+              for (const candidateId of candidateJobIds) {
+                const remoteKey = `jobs/${candidateId}/outputs/${filename}`;
+                try {
+                  if (await this.stager.hasObject(remoteKey)) {
+                    await this.stager.downloadFile(remoteKey, targetPath);
+                    break;
+                  }
+                } catch {
+                  // optional output file may not exist
                 }
-              } catch {
-                // optional output file may not exist
               }
+            }
+          }
+
+          // Stream downloaded remote output.log if local log was not present
+          const remoteLogTarget = path.join(workingDir, "output.log");
+          if (onLogChunk && bytesRead === 0 && fs.existsSync(remoteLogTarget)) {
+            try {
+              const content = fs.readFileSync(remoteLogTarget, "utf8");
+              if (content) onLogChunk(content);
+            } catch {
+              // ignore
             }
           }
         }
@@ -184,6 +216,7 @@ export class HpcEngine {
   }
 
   public async cancel(nativeJobId: string): Promise<boolean> {
+    this.nativeToLogicalJobId.delete(nativeJobId);
     return this.driver.cancel(nativeJobId);
   }
 }

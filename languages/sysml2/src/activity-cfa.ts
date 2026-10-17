@@ -378,23 +378,91 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
   for (const child of children) {
     const rule = child.ruleName;
     const name = child.name;
+
+    if (rule === "SuccessionAsUsage" || rule === "SuccessionFlowUsage" || rule === "FlowUsage") {
+      const text = db.cstText(child.startByte, child.endByte, child) || "";
+      const m =
+        /\b(?:first|succession)\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?/.exec(
+          text,
+        ) ||
+        /\bflow\s+(?:of\s+[A-Za-z0-9_.:]+\s+from|from)\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?/.exec(
+          text,
+        );
+      if (m) {
+        flows.push({
+          source: m[1]!,
+          target: m[2]!,
+          kind: rule === "SuccessionFlowUsage" || rule === "FlowUsage" ? "object" : "control",
+          guard: m[3]?.trim(),
+          startByte: child.startByte,
+          endByte: child.endByte,
+        });
+      }
+      continue;
+    }
+
     if (!name || name === "<anonymous>") continue;
 
-    if (rule === "ActionUsage" || rule === "PerformActionUsage") {
+    // Top-level action pins (in / out / inout parameters on the enclosing ActionDefinition / ActionUsage)
+    if (
+      rule === "ParameterMember" ||
+      rule === "ReturnParameterMember" ||
+      rule === "ItemUsage" ||
+      rule === "AttributeUsage" ||
+      rule === "ReferenceUsage" ||
+      rule === "DefaultReferenceUsage"
+    ) {
+      const text = (db.cstText(child.startByte, child.endByte, child) || "").trim();
+      const metaDir = (child.metadata as any)?.direction;
+      const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
+      const dir =
+        rule === "ReturnParameterMember" ? "out" : ((metaDir || dirMatch?.[1]) as "in" | "out" | "inout" | undefined);
+      if (dir) {
+        const hasDefault = /=|:=|\bdefault\b/.test(text);
+        declaredOutputs.push({
+          name,
+          direction: dir === ("return" as any) ? "out" : dir,
+          hasDefault,
+          startByte: child.startByte,
+          endByte: child.endByte,
+        });
+        continue;
+      }
+    }
+
+    if (
+      rule === "ActionUsage" ||
+      rule === "PerformActionUsage" ||
+      rule === "AcceptActionNode" ||
+      rule === "SendActionNode" ||
+      rule === "AssignActionNode"
+    ) {
       const inputs: ActionPinInfo[] = [];
       const outputs: ActionPinInfo[] = [];
       const assignments: ActionAssignmentInfo[] = [];
 
-      // Check child parameters
-      const pinSymbols = db
-        .childrenOf(child.id)
-        .filter((c) => c.ruleName === "ParameterMember" || c.ruleName === "ReturnParameterMember");
-      for (const pin of pinSymbols) {
-        const text = db.cstText(pin.startByte, pin.endByte, pin) || "";
-        const isOut = pin.ruleName === "ReturnParameterMember" || /\bout\b/.test(text) || /\breturn\b/.test(text);
+      // Check child parameters / pin usages
+      const childSymbols = db.childrenOf(child.id);
+      for (const pin of childSymbols) {
+        if (!pin.name || pin.name === "<anonymous>") continue;
+        const text = (db.cstText(pin.startByte, pin.endByte, pin) || "").trim();
+        const metaDir = (pin.metadata as any)?.direction;
+        const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
+        const isParamRule = pin.ruleName === "ParameterMember" || pin.ruleName === "ReturnParameterMember";
+        if (!isParamRule && !metaDir && !dirMatch) continue;
+
+        const isOut =
+          pin.ruleName === "ReturnParameterMember" ||
+          metaDir === "out" ||
+          metaDir === "inout" ||
+          dirMatch?.[1] === "out" ||
+          dirMatch?.[1] === "inout" ||
+          dirMatch?.[1] === "return";
+        const hasDefault = /=|:=|\bdefault\b/.test(text);
         const pinInfo: ActionPinInfo = {
-          name: pin.name || "pin",
+          name: pin.name,
           direction: isOut ? "out" : "in",
+          hasDefault,
           startByte: pin.startByte,
           endByte: pin.endByte,
         };
@@ -406,11 +474,39 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         }
       }
 
-      // Check assignments in CST
+      // Check assignments and inline pins in CST text
       const actionText = db.cstText(child.startByte, child.endByte, child) || "";
-      const typeMatch = /:\s*([A-Za-z_][A-Za-z0-9_.]*)/.exec(actionText);
-      const calleeTypeName = (child as any).typeName || (typeMatch ? typeMatch[1] : undefined);
+      const headerSlice = actionText.split("{")[0] || actionText;
+      const typeMatch = /:\s*([A-Za-z_][A-Za-z0-9_.]*)/.exec(headerSlice);
+      const typingChild = childSymbols.find((c) => c.ruleName === "OwnedFeatureTyping" && c.name);
+      const calleeTypeName = (child as any).typeName || typingChild?.name || (typeMatch ? typeMatch[1] : undefined);
       const isInvocation = rule === "PerformActionUsage" || Boolean(calleeTypeName);
+
+      // Fallback regex extraction for pins if not already indexed as child symbols
+      const bodyStartIdx = actionText.indexOf("{");
+      const bodySlice = bodyStartIdx !== -1 ? actionText.slice(bodyStartIdx + 1) : "";
+      const pinRegex =
+        /\b(in|out|inout)\s+(?:item\s+|attribute\s+|ref\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.:]+))?/g;
+      let pMatch: RegExpExecArray | null;
+      while ((pMatch = pinRegex.exec(bodySlice)) !== null) {
+        const dir = pMatch[1] as "in" | "out" | "inout";
+        const pName = pMatch[2]!;
+        const pType = pMatch[3];
+        if (inputs.some((p) => p.name === pName) || outputs.some((p) => p.name === pName)) continue;
+        const pinInfo: ActionPinInfo = {
+          name: pName,
+          direction: dir,
+          type: pType,
+          startByte: child.startByte + bodyStartIdx + 1 + pMatch.index,
+          endByte: child.startByte + bodyStartIdx + 1 + pMatch.index + pMatch[0].length,
+        };
+        if (dir === "in") {
+          inputs.push(pinInfo);
+        } else {
+          outputs.push(pinInfo);
+          declaredOutputs.push(pinInfo);
+        }
+      }
 
       const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;]+);/g;
       let asMatch: RegExpExecArray | null;
@@ -421,6 +517,18 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
           startByte: child.startByte + asMatch.index,
           endByte: child.startByte + asMatch.index + asMatch[0].length,
         });
+      }
+      const assignRevRegex = /\bassign\s+([^;=]+?)\s*=:\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
+      while ((asMatch = assignRevRegex.exec(actionText)) !== null) {
+        const tgt = asMatch[2]!;
+        if (!assignments.some((a) => a.target === tgt)) {
+          assignments.push({
+            target: tgt,
+            expr: asMatch[1]!.trim(),
+            startByte: child.startByte + asMatch.index,
+            endByte: child.startByte + asMatch.index + asMatch[0].length,
+          });
+        }
       }
 
       nodes.push({
@@ -449,18 +557,6 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         startByte: child.startByte,
         endByte: child.endByte,
       });
-    } else if (rule === "SuccessionAsUsage" || rule === "SuccessionFlowUsage") {
-      const text = db.cstText(child.startByte, child.endByte, child) || "";
-      const m = /\bfirst\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)/.exec(text);
-      if (m) {
-        flows.push({
-          source: m[1]!,
-          target: m[2]!,
-          kind: rule === "SuccessionFlowUsage" ? "object" : "control",
-          startByte: child.startByte,
-          endByte: child.endByte,
-        });
-      }
     }
   }
 

@@ -1,7 +1,6 @@
 // name:     ScopeDeclaration2
 // keywords: scoping,declaration
 // status:   incorrect
-// xfail:    true
 //
 // An element is visible in its entire scope.
 // The following is thus incorrect since the minimum

@@ -29,13 +29,18 @@ function cyrb53(str: string, seed = 0): string {
 }
 
 function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
+  const sym = db.symbol(symId);
+  if (!sym) return "";
+  if ((sym as any)._fqn !== undefined) return (sym as any)._fqn;
   const parts: string[] = [];
-  let curr: SymbolEntry | null = db.symbol(symId);
+  let curr: SymbolEntry | null = sym;
   while (curr) {
     parts.unshift(curr.name);
     curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
   }
-  return parts.join(".");
+  const fqn = parts.join(".");
+  (sym as any)._fqn = fqn;
+  return fqn;
 }
 
 export function checkModifierNotFound(
@@ -52,7 +57,11 @@ export function checkModifierNotFound(
 
   let currentEntry: SymbolEntry | null = typeEntry;
   let isBuiltin = Boolean(currentEntry?.metadata?.isPredefined);
-  let isEnum = currentEntry?.metadata?.classPrefixes === "enumeration";
+  let isEnum =
+    currentEntry?.metadata?.classPrefixes === "enumeration" ||
+    Boolean(currentEntry?.metadata?.isEnumeration) ||
+    Array.isArray(currentEntry?.metadata?.literals) ||
+    Boolean(currentEntry && (db.cstNode(currentEntry.id) as any)?.text?.includes("enumeration("));
   let visited = new Set<SymbolId>();
 
   if (
@@ -119,7 +128,11 @@ export function checkModifierNotFound(
         currentEntry.name === "Integer" ||
         currentEntry.name === "Boolean" ||
         currentEntry.name === "String";
-      isEnum = currentEntry.metadata?.classPrefixes === "enumeration";
+      isEnum =
+        currentEntry.metadata?.classPrefixes === "enumeration" ||
+        Boolean(currentEntry.metadata?.isEnumeration) ||
+        Array.isArray(currentEntry.metadata?.literals) ||
+        Boolean((db.cstNode(currentEntry.id) as any)?.text?.includes("enumeration("));
     }
   }
 
@@ -170,6 +183,7 @@ export function checkModifierNotFound(
       !declaredNames.has(arg.name)
     ) {
       let msg: string;
+      let diagCode: number = ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code;
       if (self.kind === "Class") {
         if (!arg.isRedeclaration && overrideClassName === self.name) {
           let modText = arg.name;
@@ -179,8 +193,10 @@ export function checkModifierNotFound(
             modText += " = " + arg.bindingExpression;
           }
           msg = `In modifier (${modText}), class or component ${arg.name} not found in <${self.name}>.`;
+          diagCode = ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code;
         } else {
           msg = `Modified element ${arg.name} not found in class ${typeEntry.name}.`;
+          diagCode = ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.code;
         }
       } else if (!arg.isRedeclaration && overrideClassName) {
         // value modifier on a short class or nested
@@ -191,22 +207,79 @@ export function checkModifierNotFound(
           modText += " = " + arg.bindingExpression;
         }
         msg = `Variable ${self.name}.${overrideClassName}: In modifier (${modText}), class or component ${arg.name} not found in <${typeEntry.name}$${self.name}$${overrideClassName}>.`;
+        diagCode = ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code;
+      } else if (
+        self.kind === "Component" &&
+        !arg.isRedeclaration &&
+        arg.name === typeEntry.name &&
+        arg.nestedArgs &&
+        arg.nestedArgs.length > 0 &&
+        self.parentId
+      ) {
+        const parentSym = db.symbol(self.parentId);
+        let varPath = self.name;
+        let scopeTag = `${typeEntry.name}$${self.name}`;
+        if (parentSym) {
+          const topSyms = db.childrenOf(parentSym.parentId ?? null);
+          for (const s of topSyms) {
+            if (s && s.kind === "Class") {
+              for (const ch of db.childrenOf(s.id)) {
+                const ci = db.query<any>("componentInstance", ch.id);
+                const tSpec = ci?.typeSpecifier ?? (ch.metadata as any)?.typeSpecifier;
+                if (ch.kind === "Component" && tSpec === parentSym.name) {
+                  varPath = `${ch.name}.${self.name}`;
+                  scopeTag = `${typeEntry.name}$${ch.name}$${self.name}`;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        const nested = arg.nestedArgs[0]!;
+        let nestedVal = "";
+        if (nested.value && typeof nested.value.text === "string") {
+          nestedVal = " = " + nested.value.text;
+        } else if (nested.bindingExpression) {
+          nestedVal = " = " + nested.bindingExpression;
+        }
+        const modText = `${arg.name}(${nested.name}${nestedVal}), class or component ${nested.name}`;
+        msg = `Variable ${varPath}: In modifier (${modText}), class or component ${arg.name} not found in <${scopeTag}>.`;
+        diagCode = ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code;
+        let curCst = db.cstNode(self.id) as any;
+        while (curCst && curCst.type !== "component_clause" && curCst.parent) {
+          curCst = curCst.parent;
+        }
+        if (curCst && curCst.startByte !== undefined && curCst.endByte !== undefined) {
+          results.push(
+            error(msg, {
+              startByte: curCst.startByte,
+              endByte: curCst.endByte,
+              code: diagCode,
+            }),
+          );
+          continue;
+        }
       } else {
         // Direct component modifier is already handled by WASM M4045
         continue;
       }
 
-      if (arg.nameRange) {
+      const isShortClassUnknownMod = self.kind === "Class" && !arg.isRedeclaration && overrideClassName === self.name;
+      if (isShortClassUnknownMod) {
+        results.push(error(msg, { code: diagCode }));
+      } else if (arg.nameRange) {
         results.push(
           error(msg, {
             startByte: arg.nameRange[0],
             endByte: arg.nameRange[1],
+            code: diagCode,
           }),
         );
       } else {
         results.push(
           error(msg, {
             field: "declaration.modification",
+            code: diagCode,
           }),
         );
       }
@@ -224,64 +297,6 @@ export function checkModifierNotFound(
 
       if (originalId) {
         const originalEntry = db.symbol(originalId);
-
-        // Check if both are functions
-        if (
-          arg.isRedeclaration &&
-          arg.redeclaredTypeSpecifier &&
-          originalEntry &&
-          (originalEntry.metadata?.classPrefixes as string)?.includes("function")
-        ) {
-          const resolve = db.query<any>("resolveName", self.id);
-          let redeclaredEntry: SymbolEntry | null = null;
-          if (resolve) redeclaredEntry = resolve(arg.redeclaredTypeSpecifier, true) as SymbolEntry | null;
-
-          // If not found from self.id, try parentId
-          if (!redeclaredEntry && self.parentId) {
-            const resolveParent = db.query<any>("resolveName", self.parentId);
-            if (resolveParent) redeclaredEntry = resolveParent(arg.redeclaredTypeSpecifier, true) as SymbolEntry | null;
-          }
-
-          if (redeclaredEntry && (redeclaredEntry.metadata?.classPrefixes as string)?.includes("function")) {
-            const origElements = db.query<SymbolId[]>("instantiate", originalId) || [];
-            const newElements = db.query<SymbolId[]>("instantiate", redeclaredEntry.id) || [];
-
-            const getInputs = (eids: SymbolId[]) => {
-              const inputs: string[] = [];
-              for (const eid of eids) {
-                const child = db.symbol(eid);
-                if (child && child.kind === "Component") {
-                  const causality = db.query<string>("causality", eid);
-                  if (causality === "input") inputs.push(child.name!);
-                }
-              }
-              return inputs;
-            };
-
-            const origInputs = getInputs(origElements);
-            const newInputs = getInputs(newElements);
-
-            let mismatch = origInputs.length !== newInputs.length;
-            if (!mismatch) {
-              for (let i = 0; i < origInputs.length; i++) {
-                if (origInputs[i] !== newInputs[i]) {
-                  mismatch = true;
-                  break;
-                }
-              }
-            }
-
-            if (mismatch) {
-              results.push(
-                error(`Function arguments must be identical, including their names, in functions of the same type.`, {
-                  startByte: arg.nameRange ? arg.nameRange[0] : undefined,
-                  endByte: arg.nameRange ? arg.nameRange[1] : undefined,
-                  field: arg.nameRange ? undefined : "declaration.modification",
-                }),
-              );
-            }
-          }
-        }
 
         // Recursively check nested arguments
         if (arg.nestedArgs && arg.nestedArgs.length > 0) {
@@ -567,7 +582,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
           modText: n.text?.trim() ?? "",
           each: false,
-          final: false,
+          final: /\bfinal\b/.test((n.text ?? "").split("(")[0] ?? ""),
           isRedeclaration: true,
           redeclaredKind: "component",
           redeclaredTypeSpecifier: typeName,
@@ -666,7 +681,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
               modText: n.text?.trim() ?? "",
               each: false,
-              final: false,
+              final: /\bfinal\b/.test((n.text ?? "").split("(")[0] ?? ""),
               isRedeclaration: true,
               redeclaredKind: "class",
               redeclaredTypeSpecifier: typeName,
@@ -970,7 +985,11 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
 
       if (importKind === "simple") {
         const shortName = aliasName ?? pkgName.split(".").pop() ?? pkgName;
-        qualifiedImports[shortName] = pkgName;
+        if (shortName in qualifiedImports) {
+          qualifiedImports[shortName] = "__CONFLICT__";
+        } else {
+          qualifiedImports[shortName] = pkgName;
+        }
       } else if (importKind === "unqualified") {
         unqualifiedImportPkgs.push(pkgName);
       } else if (importKind === "compound") {
@@ -1003,21 +1022,7 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
     }
   }
 
-  let isEncapsulated = !!(self.metadata as Record<string, unknown>)?.encapsulated;
-  if (!isEncapsulated) {
-    const rawKind = String((self.metadata as any)?.classKind ?? (self.metadata as any)?.classPrefixes ?? "");
-    if (/\bencapsulated\b/.test(rawKind)) {
-      isEncapsulated = true;
-    } else {
-      const cst = db.cstNode(self.id) as any;
-      if (cst) {
-        const text = (cst.text ?? "").slice(0, 120);
-        if (/\bencapsulated\b/.test(text)) {
-          isEncapsulated = true;
-        }
-      }
-    }
-  }
+  const isEncapsulated = isSymbolEncapsulated(db, self);
 
   const ret = {
     directByName,
@@ -1032,25 +1037,44 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
 }
 
 export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
-  if ((sym.metadata as any)?.encapsulated) return true;
-  const rawKind = String((sym.metadata as any)?.classKind ?? (sym.metadata as any)?.classPrefixes ?? "");
-  if (/\bencapsulated\b/.test(rawKind)) return true;
-  const cst = db.cstNode(sym.id) as any;
-  if (cst) {
-    const text = (cst.text ?? "").slice(0, 120);
-    if (/\bencapsulated\b/.test(text)) return true;
+  if ((sym as any)._isEncapsulated !== undefined) return (sym as any)._isEncapsulated;
+  if ((sym.metadata as any)?.encapsulated) {
+    (sym as any)._isEncapsulated = true;
+    return true;
   }
-  return false;
+  const rawKind = String((sym.metadata as any)?.classKind ?? (sym.metadata as any)?.classPrefixes ?? "");
+  if (/\bencapsulated\b/.test(rawKind)) {
+    (sym as any)._isEncapsulated = true;
+    return true;
+  }
+  let text = "";
+  if (sym.startByte != null && sym.endByte != null && typeof (db as any).cstText === "function") {
+    text = (db as any).cstText(sym.startByte, Math.min(sym.endByte, sym.startByte + 120), sym) ?? "";
+  } else {
+    const cst = db.cstNode(sym.id) as any;
+    if (cst) {
+      text = (cst.text ?? "").slice(0, 120);
+    }
+  }
+  const res = /\bencapsulated\b/.test(text);
+  (sym as any)._isEncapsulated = res;
+  return res;
 }
 
 export function isScopeEncapsulated(db: QueryDB, symbolId: SymbolId | null | undefined): boolean {
-  let currId = symbolId;
-  while (currId !== null && currId !== undefined) {
-    const sym = db.symbol(currId);
-    if (!sym) break;
-    if (isSymbolEncapsulated(db, sym)) return true;
-    currId = sym.parentId;
+  if (symbolId === null || symbolId === undefined) return false;
+  const rootSym = db.symbol(symbolId);
+  if (!rootSym) return false;
+  if ((rootSym as any)._isScopeEncapsulated !== undefined) return (rootSym as any)._isScopeEncapsulated;
+  let curr: SymbolEntry | null = rootSym;
+  while (curr) {
+    if (isSymbolEncapsulated(db, curr)) {
+      (rootSym as any)._isScopeEncapsulated = true;
+      return true;
+    }
+    curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
   }
+  (rootSym as any)._isScopeEncapsulated = false;
   return false;
 }
 
@@ -1069,6 +1093,7 @@ export function resolveSimpleNameHelper(
   encapsulated = false,
   skipInherited = false,
   visited: Set<SymbolId> = new Set(),
+  memberOnly = false,
 ): SymbolEntry | null {
   if (visited.has(classId)) return null;
   visited.add(classId);
@@ -1091,6 +1116,26 @@ export function resolveSimpleNameHelper(
     }
   }
   if (directId !== undefined) return db.symbol(directId);
+
+  const unspecializedSym = db.symbol(unspecializedId);
+  if (unspecializedSym) {
+    const cstText = (db.cstNode(unspecializedId) as any)?.text;
+    const enumMatch = typeof cstText === "string" ? cstText.match(/enumeration\s*\(([^)]+)\)/) : null;
+    if (enumMatch?.[1]) {
+      const hasLit = enumMatch[1]
+        .split(",")
+        .some((p: string) => p.trim().split(/\s+/)[0]?.replace(/^'|'$/g, "") === name);
+      if (hasLit) {
+        return {
+          ...unspecializedSym,
+          id: -1 as any,
+          parentId: unspecializedId,
+          kind: "EnumerationLiteral" as any,
+          name,
+        };
+      }
+    }
+  }
 
   // 2. Inherited elements
   if (!skipInherited) {
@@ -1123,7 +1168,15 @@ export function resolveSimpleNameHelper(
             resolved = db.byName(typeName)?.find((e) => e.kind === "Class" || e.kind === "Package") ?? null;
           }
           if (resolved?.id && resolved.id !== classId && !visited.has(resolved.id)) {
-            const found = resolveSimpleNameHelper(db, resolved.id, name, encapsulated, skipInherited, visited);
+            const found = resolveSimpleNameHelper(
+              db,
+              resolved.id,
+              name,
+              encapsulated,
+              skipInherited,
+              visited,
+              memberOnly,
+            );
             if (found) return found;
           }
         }
@@ -1131,10 +1184,20 @@ export function resolveSimpleNameHelper(
     }
   }
 
+  if (memberOnly) {
+    const qualPkg = scope.qualifiedImports[name];
+    if (qualPkg && qualPkg !== "__CONFLICT__") {
+      const target = resolveQualified(db, qualPkg, true);
+      if (target?.kind === "Component") return target;
+    }
+    return null;
+  }
+
   // 3. Qualified imports
   const qualPkg = scope.qualifiedImports[name];
   if (qualPkg) {
-    return resolveQualified(db, qualPkg);
+    if (qualPkg === "__CONFLICT__") return null;
+    return resolveQualified(db, qualPkg, true);
   }
 
   // Helper to resolve an import path, respecting local aliases for the first segment
@@ -1142,11 +1205,11 @@ export function resolveSimpleNameHelper(
     const parts = pathStr.split(".");
     const first = parts[0];
     const aliasTarget = scope.qualifiedImports[first!];
-    if (aliasTarget) {
+    if (aliasTarget && aliasTarget !== "__CONFLICT__") {
       const fullPath = [aliasTarget, ...parts.slice(1)].join(".");
-      return resolveQualified(db, fullPath);
+      return resolveQualified(db, fullPath, true);
     } else {
-      return resolveQualified(db, pathStr);
+      return resolveQualified(db, pathStr, true);
     }
   };
 
@@ -1162,14 +1225,22 @@ export function resolveSimpleNameHelper(
   }
 
   // 5. Unqualified imports
+  let unqualMatch: SymbolEntry | null = null;
+  let unqualMatchCount = 0;
   for (const pkg of scope.unqualifiedImportPkgs) {
     const pkgEntry = resolveImportPath(pkg);
     if (pkgEntry) {
       for (const pkgChild of db.childrenOf(pkgEntry.id)) {
-        if (pkgChild.name === name && pkgChild.kind !== "Reference") return pkgChild;
+        if (pkgChild.name === name && pkgChild.kind !== "Reference") {
+          unqualMatch = pkgChild;
+          unqualMatchCount++;
+          break;
+        }
       }
     }
   }
+  if (unqualMatchCount === 1 && unqualMatch) return unqualMatch;
+  if (unqualMatchCount > 1) return null;
 
   // 6. Parent scope walk (unless encapsulated)
   if (
@@ -1181,8 +1252,19 @@ export function resolveSimpleNameHelper(
   ) {
     const parentEntry = db.symbol(scope.parentId);
     if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
-      const found = resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited, visited);
-      if (found) return found;
+      if (visited.size === 1) {
+        const parentResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
+          "resolveSimpleName",
+          parentEntry.id,
+        );
+        const found = parentResolver
+          ? parentResolver(name, false, skipInherited)
+          : resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited, visited, false);
+        if (found) return found;
+      } else {
+        const found = resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited, visited, false);
+        if (found) return found;
+      }
     }
   }
 
@@ -1209,10 +1291,20 @@ export function resolveSimpleNameHelper(
  * Resolves a dot-separated path from the global scope.
  * Used for resolving import targets and global fallbacks.
  */
-function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
+export function resolveQualified(db: QueryDB, path: string, topOnly = false): SymbolEntry | null {
   if (path.startsWith(".")) {
     path = path.slice(1);
   }
+  const cacheKey = topOnly ? `${path}|top` : path;
+  const dbAny = db as any;
+  let qualCache: Map<string, SymbolEntry> | undefined = dbAny._resolveQualifiedCache;
+  if (!qualCache) {
+    qualCache = new Map<string, SymbolEntry>();
+    dbAny._resolveQualifiedCache = qualCache;
+  }
+  const cached = qualCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
   if (db.ensureFQNIndexed) {
     db.ensureFQNIndexed(path);
   }
@@ -1221,12 +1313,15 @@ function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
 
   // Try to find the root part (entry with no parent)
   const rootEntries = db.byName(parts[0]!);
-  let current =
-    rootEntries.find((e) => (e.metadata as any)?.isPredefined) ??
-    rootEntries.find((e) => e.parentId === null) ??
-    rootEntries.find((e) => ["Class", "Package", "Function", "Definition", "Enumeration"].includes(e.kind)) ??
-    rootEntries[0] ??
-    null;
+  let current = topOnly
+    ? (rootEntries.find((e) => (e.metadata as any)?.isPredefined) ??
+      rootEntries.find((e) => e.parentId === null) ??
+      null)
+    : (rootEntries.find((e) => (e.metadata as any)?.isPredefined) ??
+      rootEntries.find((e) => e.parentId === null) ??
+      rootEntries.find((e) => ["Class", "Package", "Function", "Definition", "Enumeration"].includes(e.kind)) ??
+      rootEntries[0] ??
+      null);
 
   if (!current) return null;
 
@@ -1239,6 +1334,7 @@ function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
     if (!current) return null;
   }
 
+  qualCache.set(cacheKey, current);
   return current;
 }
 
@@ -3024,8 +3120,17 @@ export const classDefinitionQueries: Record<string, any> = {
   },
 
   resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
-    return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
-      return resolveSimpleNameHelper(db, self.id, name, encapsulated, skipInherited);
+    const cache = new Map<string, SymbolEntry | null>();
+    return (name: string, encapsulated = false, skipInherited = false, memberOnly = false): SymbolEntry | null => {
+      const key =
+        !encapsulated && !skipInherited && !memberOnly
+          ? name
+          : `${name}|${encapsulated ? 1 : 0}${skipInherited ? 1 : 0}${memberOnly ? 1 : 0}`;
+      const cached = cache.get(key);
+      if (cached !== undefined) return cached;
+      const res = resolveSimpleNameHelper(db, self.id, name, encapsulated, skipInherited, new Set(), memberOnly);
+      cache.set(key, res);
+      return res;
     };
   },
 
@@ -3036,8 +3141,79 @@ export const classDefinitionQueries: Record<string, any> = {
    * into children for each subsequent part.
    */
   resolveName: (db: QueryDB, self: SymbolEntry) => {
-    return (qualifiedName: string, skipInherited = false): SymbolEntry | null => {
-      if (db.ensureFQNIndexed) {
+    const cache = new Map<string, SymbolEntry | null>();
+    return (qualifiedName: string, skipInherited = false, allowMemberImports = false): SymbolEntry | null => {
+      const key =
+        !skipInherited && !allowMemberImports
+          ? qualifiedName
+          : `${qualifiedName}|${skipInherited ? 1 : 0}${allowMemberImports ? 1 : 0}`;
+      const cached = cache.get(key);
+      if (cached !== undefined) return cached;
+
+      const parts = qualifiedName.split(".");
+      if (parts.length === 0) {
+        cache.set(key, null);
+        return null;
+      }
+
+      const tryResolve = (): SymbolEntry | null => {
+        // Handle fully qualified names (e.g. .Modelica.Math.sin)
+        let startIndex = 0;
+        let current: SymbolEntry | null = null;
+        if (parts[0] === "") {
+          if (parts.length < 2) return null;
+          current =
+            db
+              .byName(parts[1])
+              ?.find(
+                (e) => e.parentId === null && (e.kind === "Class" || e.kind === "Package" || e.kind === "Function"),
+              ) ?? null;
+          startIndex = 2;
+        } else {
+          // Resolve first part via scope resolution
+          const resolver = db.query<(n: string, enc?: boolean, skip?: boolean, mem?: boolean) => SymbolEntry | null>(
+            "resolveSimpleName",
+            self.id,
+          );
+          current = resolver?.(parts[0]!, false, skipInherited) ?? null;
+          startIndex = 1;
+        }
+
+        if (!current) return null;
+
+        // Navigate remaining parts
+        for (let i = startIndex; i < parts.length; i++) {
+          const part = parts[i]!;
+          if ((part === "constructor" || part === "destructor") && current.id !== self.id) {
+            const currentChildren = db.childrenOf(current.id);
+            const extendsExtObj = currentChildren?.some((c) => c.kind === "Extends" && c.name === "ExternalObject");
+            if (extendsExtObj) {
+              return null;
+            }
+          }
+          let targetResolver = db.query<
+            (n: string, enc?: boolean, skip?: boolean, mem?: boolean) => SymbolEntry | null
+          >("resolveSimpleName", current.id);
+          let nextPart = targetResolver?.(part, false, false, !allowMemberImports);
+          if (!nextPart && db.ensureFQNIndexed) {
+            const curFQN = getSymbolQualifiedName(db, current.id);
+            if (curFQN) {
+              db.ensureFQNIndexed(curFQN + "." + part);
+              targetResolver = db.query<
+                (n: string, enc?: boolean, skip?: boolean, mem?: boolean) => SymbolEntry | null
+              >("resolveSimpleName", current.id);
+              nextPart = targetResolver?.(part, false, false, !allowMemberImports);
+            }
+          }
+          if (!nextPart) return null;
+          current = nextPart;
+        }
+
+        return current;
+      };
+
+      let result = tryResolve();
+      if (!result && db.ensureFQNIndexed) {
         if (qualifiedName.includes(".")) {
           db.ensureFQNIndexed(qualifiedName.startsWith(".") ? qualifiedName.slice(1) : qualifiedName);
         }
@@ -3051,65 +3227,11 @@ export const classDefinitionQueries: Record<string, any> = {
           }
           enc = enc.parentId !== null ? (db.symbol(enc.parentId) ?? null) : null;
         }
-      }
-      const parts = qualifiedName.split(".");
-      if (parts.length === 0) return null;
-
-      // Handle fully qualified names (e.g. .Modelica.Math.sin)
-      let startIndex = 0;
-      let current: SymbolEntry | null = null;
-      if (parts[0] === "") {
-        if (parts.length < 2) return null;
-        current =
-          db
-            .byName(parts[1])
-            ?.find(
-              (e) => e.parentId === null && (e.kind === "Class" || e.kind === "Package" || e.kind === "Function"),
-            ) ?? null;
-        startIndex = 2;
-      } else {
-        // Resolve first part via scope resolution
-        const resolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
-          "resolveSimpleName",
-          self.id,
-        );
-        current = resolver?.(parts[0]!, false, skipInherited) ?? null;
-        startIndex = 1;
+        result = tryResolve();
       }
 
-      if (!current) return null;
-
-      // Navigate remaining parts
-      for (let i = startIndex; i < parts.length; i++) {
-        const part = parts[i]!;
-        if ((part === "constructor" || part === "destructor") && current.id !== self.id) {
-          const currentChildren = db.childrenOf(current.id);
-          const extendsExtObj = currentChildren?.some((c) => c.kind === "Extends" && c.name === "ExternalObject");
-          if (extendsExtObj) {
-            return null;
-          }
-        }
-        let targetResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
-          "resolveSimpleName",
-          current.id,
-        );
-        let nextPart = targetResolver?.(part, false, false);
-        if (!nextPart && db.ensureFQNIndexed) {
-          const curFQN = getSymbolQualifiedName(db, current.id);
-          if (curFQN) {
-            db.ensureFQNIndexed(curFQN + "." + part);
-            targetResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
-              "resolveSimpleName",
-              current.id,
-            );
-            nextPart = targetResolver?.(part, false, false);
-          }
-        }
-        if (!nextPart) return null;
-        current = nextPart;
-      }
-
-      return current;
+      cache.set(key, result);
+      return result;
     };
   },
 
@@ -3189,10 +3311,10 @@ export const classDefinitionQueries: Record<string, any> = {
 
       // In Modelica §5.6.1, elements inherited from extends clauses are added before
       // elements declared directly in the class, in the order of the extends-clauses.
-      // Trailing extends clauses (no components declared after them) are moved before all components.
+      // Trailing extends clauses (no public components declared after them) are moved before all components.
       let lastCompIdx = -1;
       for (let i = children.length - 1; i >= 0; i--) {
-        if (children[i].kind === "Component") {
+        if (children[i].kind === "Component" && !db.query<boolean>("isProtected", children[i].id)) {
           lastCompIdx = i;
           break;
         }
@@ -3221,11 +3343,6 @@ export const classDefinitionQueries: Record<string, any> = {
 
       const elements: SymbolId[] = [];
       const seenNames = new Set<string>();
-      for (const child of orderedChildren) {
-        if (child.kind === "Component" && child.name) {
-          seenNames.add(child.name);
-        }
-      }
 
       // NEW: handle extends in long class specifier!
       const selfCstExt = db.cstNode(self.id) as any;
@@ -3292,6 +3409,10 @@ export const classDefinitionQueries: Record<string, any> = {
           // Always use the static component SymbolId.
           // Outer modifications are resolved by the flattener's ModificationStack,
           // eliminating the need for virtual specialized component entries.
+          if (child.name && !redeclaredNames.has(child.name)) {
+            if (seenNames.has(child.name)) continue;
+            seenNames.add(child.name);
+          }
           elements.push(child.id);
         } else if (child.kind === "Extends") {
           // Check for break
@@ -3434,10 +3555,13 @@ export const extendsClauseQueries: Record<string, any> = {
     }
     // Use resolveName from the enclosing class for proper scope resolution
     if (self.parentId !== null) {
-      const resolveName = db.query<(n: string, skip?: boolean) => SymbolEntry | null>("resolveName", self.parentId);
+      const resolveName = db.query<(n: string, skip?: boolean, allowMemImp?: boolean) => SymbolEntry | null>(
+        "resolveName",
+        self.parentId,
+      );
       if (resolveName) {
         // Pass true for skipInherited to prevent cyclic lookup in extends clauses
-        let resolved = resolveName(baseName, true);
+        let resolved = resolveName(baseName, true, true);
         // console.error(`[DEBUG RESOLVE] resolveName("${baseName}") returned: ${resolved?.kind} (id=${resolved?.id})`);
 
         // If it resolves to the exact class that contains this extends clause,
@@ -4034,6 +4158,25 @@ export const componentDeclarationQueries: Record<string, any> = {
         }
       }
     }
+    if (!typeEntry && self.parentId !== null && self.parentId !== scopeId && !specArgs?.data?.isRedeclaration) {
+      const declParent = db.symbol(self.parentId);
+      if (declParent && (declParent.kind === "Class" || declParent.kind === "Package")) {
+        if (typeName.includes(".")) {
+          const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", declParent.id);
+          if (qualResolver) {
+            typeEntry = qualResolver(typeName);
+          }
+        } else {
+          const resolver = db.query<(n: string, enc?: boolean) => SymbolEntry | null>(
+            "resolveSimpleName",
+            declParent.id,
+          );
+          if (resolver) {
+            typeEntry = resolver(typeName);
+          }
+        }
+      }
+    }
     const isEncapsulatedScope = scopeId !== null ? isScopeEncapsulated(db, scopeId) : false;
     if (isEncapsulatedScope) {
       if (!typeEntry) {
@@ -4053,12 +4196,17 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (!typeEntry) {
       const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
       const entries = db.byName(simpleName);
-      // Prefer predefined types (Real, Integer, etc.) and types over models
-      // to avoid resolving e.g. "Temperature" to a random sensor class.
+      // Prefer predefined types (Real, Integer, etc.), or top-level classes for unqualified names.
       typeEntry =
         entries?.find((e) => (e.metadata as Record<string, unknown>)?.isPredefined && e.kind === "Class") ??
-        entries?.find((e) => (e.metadata as Record<string, unknown>)?.classPrefixes === "type") ??
-        entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ??
+        (!typeName.includes(".")
+          ? (entries?.find(
+              (e) => e.parentId === null && (e.metadata as Record<string, unknown>)?.classPrefixes === "type",
+            ) ??
+            entries?.find(
+              (e) => e.parentId === null && (e.kind === "Class" || e.kind === "Package" || e.kind === "Function"),
+            ))
+          : null) ??
         null;
     }
     if (!typeEntry) return null;
@@ -4236,9 +4384,9 @@ export const componentDeclarationQueries: Record<string, any> = {
   resolvedArrayDimensions: {
     execute: (db: QueryDB, self: SymbolEntry): number[] | null => {
       if (evaluatingDimensionsStack.length === 0) {
-        cyclicDimensionDiagnostics.clear();
         activeDimQueriesStack = [];
       }
+      cyclicDimensionDiagnostics.delete(self.id);
       activeQueryDB = db;
 
       const rawDims = db.query<Array<

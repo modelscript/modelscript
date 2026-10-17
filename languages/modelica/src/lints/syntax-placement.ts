@@ -11,12 +11,15 @@ import {
   getExpressionVariability,
   getRedeclName,
   hasTypePrefix,
+  isCardinalityClassArg,
   isClassKind,
   isDescendantOfInnerClass,
   isDirectModificationChild,
   isElementFinal,
   isElementProtected,
   isElementReplaceable,
+  isEnumStepRangeExpr,
+  isPartialTypeComponentInScope,
   VARIABILITY_CONTINUOUS,
 } from "./helpers.js";
 
@@ -43,14 +46,13 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["long_class_specifier"],
     severity: "error",
     code: 2005,
-    message: (target, startId, endId) =>
-      `Identifier at end of class ('${endId.text}') does not match start ('${startId.text}').`,
+    message: () => `Parse error: The identifier at start and end are different`,
     query: (db: CodeGraph, node: u32) => {
       const startId = db.ast.getChildByFieldId(node, "name");
       const endId = db.ast.getChildByFieldId(node, "end_name");
       if (startId != 0 && endId != 0) {
         if (!db.ast.textEqualsNode(startId, endId)) {
-          db.diagnostic(endId, startId, endId);
+          db.diagnostic(node);
         }
       }
     },
@@ -886,14 +888,9 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4022,
     message: (target) => `Range of type enumeration '${target.text}' may not specify a step size.`,
-    query: (db: CodeGraph, node: u32) => {
-      const stepChild = db.ast.getChildByFieldId(node, "step");
-      const startChild = db.ast.getChildByFieldId(node, "start");
-      if (stepChild != 0 && startChild != 0) {
-        const startType = db.model.getProperty(db.scope.resolve(startChild), "baseType");
-        if (startType == 4 /* Enum */) {
-          db.diagnostic(stepChild);
-        }
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if (isEnumStepRangeExpr(db, node, $)) {
+        db.diagnostic(node);
       }
     },
   },
@@ -1729,16 +1726,9 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4028,
     message: (target) => `Component '${target.text}' has partial type.`,
-    query: (db: CodeGraph, node: u32) => {
-      const typeSpec = db.ast.getChildByFieldId(node, "type_specifier");
-      if (typeSpec != 0) {
-        const sym = db.scope.resolve(typeSpec);
-        if (sym != 0 && db.model.hasFlag(sym, "isPartial")) {
-          const isReplaceable = db.ast.getChildByFieldId(node, "replaceable") != 0;
-          if (!isReplaceable) {
-            db.diagnostic(typeSpec);
-          }
-        }
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if (isPartialTypeComponentInScope(db, node, $)) {
+        db.diagnostic(node);
       }
     },
   },
@@ -1747,18 +1737,14 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M4048: Expected component instance, but found class in cardinality().
    */
   cardinalityExpectedComponent: {
-    nodes: ["function_call"],
+    nodes: ["function_call", "primary"],
     severity: "error",
     code: 4048,
-    message: (target) => `Expected '${target.text}' to be a component instance, but found class instead.`,
+    message: (target) => `Expected ${target.text} to be a component, but found class instead.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const name = db.ast.getChildByFieldId(node, "name");
-      if (name != 0 && db.ast.textEquals(name, "cardinality")) {
+      if (isCardinalityClassArg(db, node, $)) {
         for (const arg of db.ast.getDescendants(node, $.function_argument)) {
-          const sym = db.scope.resolve(arg);
-          if (sym != 0 && db.model.hasFlag(sym, "isClass")) {
-            db.diagnostic(arg);
-          }
+          db.diagnostic(arg);
           break;
         }
       }
@@ -1924,6 +1910,43 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         }
       }
       if (!isInsideFunction) {
+        db.diagnostic(node);
+      }
+    },
+  },
+
+  /**
+   * M4091: 'break' may only be used in a while- or for-loop.
+   */
+  breakOutsideLoop: {
+    nodes: ["statement"],
+    severity: "error",
+    code: 4091,
+    message: () => `'break' may only be used in a while- or for-loop.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let isBreak = false;
+      let ch = db.ast.getFirstChild(node);
+      while (ch != 0) {
+        if (db.ast.textEquals(ch, "break")) {
+          isBreak = true;
+          break;
+        }
+        ch = db.ast.getNextSibling(ch);
+      }
+      if (!isBreak) return;
+
+      let isInsideLoop = false;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const t = db.ast.getType(anc);
+        if (t == $.for_statement || t == $.while_statement || t == $.for_equation) {
+          isInsideLoop = true;
+          break;
+        }
+        if (t == $.class_definition) {
+          break;
+        }
+      }
+      if (!isInsideLoop) {
         db.diagnostic(node);
       }
     },
@@ -2100,6 +2123,25 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             db.diagnostic(node, nameNode != 0 ? nameNode : anc, k);
           }
           break;
+        }
+      }
+    },
+  },
+
+  /**
+   * M4020: Identifier time is reserved for the built-in element with the same name.
+   */
+  reservedBuiltinTime: {
+    nodes: ["component_clause"],
+    severity: "error",
+    code: 4020,
+    message: () => `Identifier time is reserved for the built-in element with the same name.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      for (const decl of db.ast.getDescendants(node, $.declaration)) {
+        const nameNode = db.ast.getChildByFieldId(decl, "name");
+        if (nameNode != 0 && db.ast.textEquals(nameNode, "time")) {
+          db.diagnostic(node);
+          return;
         }
       }
     },

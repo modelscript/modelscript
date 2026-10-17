@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { CheckIcon, CopyIcon, DownloadIcon, GraphIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text, useTheme } from "@primer/react";
+import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
@@ -161,7 +162,7 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
         : {
             background: "transparent",
           },
-      securityLevel: "loose",
+      securityLevel: "strict",
     });
 
     const renderMermaid = async () => {
@@ -169,9 +170,13 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
         setError(null);
         const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
         const { svg } = await mermaid.render(id, code);
-        setSvgString(svg);
+        const cleanSvg = DOMPurify.sanitize(svg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          ADD_TAGS: ["foreignObject"],
+        });
+        setSvgString(cleanSvg);
         if (containerRef.current) {
-          containerRef.current.innerHTML = svg;
+          containerRef.current.innerHTML = cleanSvg;
         }
       } catch (err: any) {
         console.error("Mermaid rendering failed:", err);

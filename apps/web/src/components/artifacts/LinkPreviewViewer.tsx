@@ -62,23 +62,40 @@ const Domain = styled.div`
   margin-top: 4px;
 `;
 
+interface LinkPreviewConfig {
+  url?: string;
+  domain?: string;
+  title?: string;
+  description?: string;
+  image?: string;
+}
+
 interface LinkPreviewViewerProps {
-  viewConfig: unknown;
+  viewConfig: LinkPreviewConfig | Record<string, any> | null | undefined;
   isFullScreen?: boolean;
 }
 
+import { safeCssImageUrl, safeHostname, sanitizeHttpUrl } from "../../util/url";
+
 const LinkPreviewViewer: React.FC<LinkPreviewViewerProps> = ({ viewConfig }) => {
-  const { url, domain, title, description, image } = viewConfig;
+  const { url, domain, title, description, image } = (viewConfig || {}) as LinkPreviewConfig;
+  const safeHref = sanitizeHttpUrl(url, { allowRelative: true, prependHttpsIfMissingScheme: true });
+  const safeBgImage = safeCssImageUrl(image);
 
   return (
-    <LinkCard href={url} target="_blank" rel="noopener noreferrer">
-      {image && <ImageContainer style={{ backgroundImage: `url(${image})` }} />}
+    <LinkCard
+      href={safeHref || "#"}
+      target={safeHref ? "_blank" : undefined}
+      rel="noopener noreferrer"
+      onClick={!safeHref ? (e) => e.preventDefault() : undefined}
+    >
+      {safeBgImage && <ImageContainer style={{ backgroundImage: safeBgImage }} />}
       <ContentContainer>
         {title && <Title>{title}</Title>}
         {description && <Description>{description}</Description>}
         <Domain>
           <LinkIcon size={14} />
-          {domain || new URL(url || "https://modelscript.org").hostname}
+          {domain || safeHostname(url, "modelscript.org")}
         </Domain>
       </ContentContainer>
     </LinkCard>

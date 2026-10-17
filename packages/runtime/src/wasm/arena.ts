@@ -703,12 +703,15 @@ export function computeNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
       let len = (span & 0xffffffff) as u32;
       let isOverride = (stringArenaPtr != 0 && ptr >= stringArenaPtr && ptr < stringArenaPtr + (stringArenaCapacity as usize));
       let inBuf = getInputBuffer();
-      if (isOverride || inBuf != 0) {
-        if (!isOverride) {
-          ptr += inBuf;
-        }
+      if (isOverride) {
         for (let i: u32 = 0; i < len; i++) {
           h ^= load<u8>(ptr + i) as u64;
+          h = h * 0x100000001b3;
+        }
+      } else if (inBuf != 0) {
+        let basePtr = inBuf + (ptr << 1);
+        for (let i: u32 = 0; i < len; i++) {
+          h ^= load<u16>(basePtr + ((i as usize) << 1)) as u64;
           h = h * 0x100000001b3;
         }
       }
@@ -1249,7 +1252,8 @@ export function getNodeTextSlice(nodePtr: u32, outBuffer: usize): u32 {
   if (len == 0) return 0;
   let isOverride = (stringArenaPtr != 0 && ptr >= stringArenaPtr && ptr < stringArenaPtr + (stringArenaCapacity as usize));
   if (!isOverride) {
-    ptr += getInputBuffer();
+    ptr = getInputBuffer() + (ptr << 1);
+    len = len << 1;
   }
   memory.copy(outBuffer, ptr, len);
   return len;
@@ -1667,9 +1671,9 @@ function cacheNodeStringsInner(nodeId: u32, absoluteStart: u32, depth: i32): voi
 
   // 1. If it's a leaf node and has byteLength > 0, extract the text!
   if (child == 0 && getNodeByteLength(nodeId) > 0) {
-    let ptr = getInputBuffer() + absoluteStart;
-    let len = getNodeByteLength(nodeId);
-    ast_extractLiteralString(nodeId, ptr, len, inputEncoding);
+    let ptr = getInputBuffer() + ((absoluteStart as usize) << 1);
+    let len = getNodeByteLength(nodeId) << 1;
+    ast_extractLiteralString(nodeId, ptr, len, 1);
   }
 
   // 2. Compute offset distribution for children
@@ -1725,8 +1729,6 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
 
   let lenA = (spanA & 0xFFFFFFFF) as u32;
   let lenB = (spanB & 0xFFFFFFFF) as u32;
-  if (lenA != lenB) return false;
-
   let ptrA = (spanA >> 32) as u32;
   let ptrB = (spanB >> 32) as u32;
 
@@ -1735,6 +1737,8 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
 
   let inBufCap = S().currentInputBufferSize;
   if (!isOverrideA) {
+    ptrA = ptrA << 1;
+    lenA = lenA << 1;
     if (ptrA >= inBufCap || ptrA + lenA > inBufCap) return false;
     ptrA += getInputBuffer() as u32;
   } else {
@@ -1742,12 +1746,16 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
     if (ptrA + lenA > arenaEnd) return false;
   }
   if (!isOverrideB) {
+    ptrB = ptrB << 1;
+    lenB = lenB << 1;
     if (ptrB >= inBufCap || ptrB + lenB > inBufCap) return false;
     ptrB += getInputBuffer() as u32;
   } else {
     let arenaEnd = (stringArenaPtr as u32) + (stringArenaCapacity as u32);
     if (ptrB + lenB > arenaEnd) return false;
   }
+
+  if (lenA != lenB) return false;
 
   let ptrA_arr = changetype<UnmanagedUint8Array>(ptrA);
   let ptrB_arr = changetype<UnmanagedUint8Array>(ptrB);
@@ -2308,13 +2316,15 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
   let len = (span & 0xFFFFFFFF) as u32;
   
   let isOverride = (stringArenaPtr != 0 && ptr >= (stringArenaPtr as u32) && ptr < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
-  let encoding = inputEncoding;
+  let encoding: u8 = 1;
   
   if (isOverride) {
     let rawLen = load<u32>(ptr - 4);
     encoding = (rawLen & 0x80000000) != 0 ? 0 : 1;
   } else {
-    ptr += getInputBuffer() as u32;
+    ptr = (getInputBuffer() as u32) + (ptr << 1);
+    len = len << 1;
+    encoding = 1;
   }
 
   if (encoding == 0) {

@@ -2,7 +2,7 @@
 
 import { PlayIcon, ServerIcon, XIcon } from "@primer/octicons-react";
 import { Button, Dialog, IconButton, Spinner } from "@primer/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dispatchCloudJob, getCloudBalance, getCloudJobResult, getCloudProfiles } from "../../api";
 
 export interface CloudDispatchModalProps {
@@ -47,9 +47,14 @@ export function CloudDispatchModal({
   const [status, setStatus] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
       setJobId(null);
       setStatus(null);
       setLogs([]);
@@ -68,24 +73,42 @@ export function CloudDispatchModal({
         }
       })
       .finally(() => setLoading(false));
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
   }, [isOpen]);
 
   const handleDispatch = async () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
     setDispatching(true);
     setError(null);
     setLogs(["Submitting job to ModelScript Cloud HPC..."]);
     setStatus("queued");
 
     try {
+      const startTime = experimentConfig?.startTime ?? 0;
+      const stopTime = experimentConfig?.stopTime ?? 10;
+      const numberOfIntervals =
+        experimentConfig?.interval && experimentConfig.interval > 0
+          ? Math.max(10, Math.round((stopTime - startTime) / experimentConfig.interval))
+          : 500;
+
       const data = await dispatchCloudJob({
         domain: "modelica",
         name: modelName || "Model",
         profile: selectedProfile,
         sourceContent: sourceCode,
         experiment: {
-          startTime: experimentConfig?.startTime ?? 0,
-          stopTime: experimentConfig?.stopTime ?? 10,
-          numberOfIntervals: 500,
+          startTime,
+          stopTime,
+          numberOfIntervals,
         },
       });
 
@@ -93,34 +116,50 @@ export function CloudDispatchModal({
       setJobId(dispatchedJobId);
       setStatus("running");
 
+      const handleTerminalStatus = async (st: string, errMsg?: string) => {
+        setStatus(st);
+        if (st === "completed") {
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+          }
+          setDispatching(false);
+          try {
+            const csvText = await getCloudJobResult(dispatchedJobId);
+            const parsed = parseCsvResults(csvText);
+            if (parsed) {
+              onResultLoaded(parsed);
+            }
+          } catch (resErr) {
+            console.error("Failed to load result", resErr);
+          }
+        } else if (st === "failed" || st === "cancelled") {
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+          }
+          setDispatching(false);
+          setError(errMsg || "Simulation failed on cloud node.");
+        }
+      };
+
       // Connect to event stream
       const eventSource = new EventSource(`/api/v1/cloud/jobs/${dispatchedJobId}/events`);
+      eventSourceRef.current = eventSource;
       eventSource.onmessage = async (e) => {
         try {
           const payload = JSON.parse(e.data);
-          if (payload.type === "log") {
+          if (payload.type === "init") {
+            if (Array.isArray(payload.logs) && payload.logs.length > 0) {
+              setLogs(payload.logs);
+            }
+            if (typeof payload.status === "string") {
+              await handleTerminalStatus(payload.status, payload.error);
+            }
+          } else if (payload.type === "log") {
             setLogs((prev) => [...prev, payload.data]);
           } else if (payload.type === "status") {
-            const st = payload.data.status;
-            setStatus(st);
-            if (st === "completed") {
-              eventSource.close();
-              setDispatching(false);
-              // Fetch results
-              try {
-                const csvText = await getCloudJobResult(dispatchedJobId);
-                const parsed = parseCsvResults(csvText);
-                if (parsed) {
-                  onResultLoaded(parsed);
-                }
-              } catch (resErr) {
-                console.error("Failed to load result", resErr);
-              }
-            } else if (st === "failed") {
-              eventSource.close();
-              setDispatching(false);
-              setError(payload.data.error || "Simulation failed on cloud node.");
-            }
+            await handleTerminalStatus(payload.data.status, payload.data.error);
           }
         } catch {
           // ignore stream parse errors

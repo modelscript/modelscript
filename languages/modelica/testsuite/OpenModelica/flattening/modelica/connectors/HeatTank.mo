@@ -1,7 +1,6 @@
 // name:     HeatTank
 // keywords: replaceable connector
 // status:   correct
-// xfail:    true
 //
 // Error in implementation, replaceable connector.
 // Drmodelica: 4.4 Parameterization and extension of Interfaces (p. 136).

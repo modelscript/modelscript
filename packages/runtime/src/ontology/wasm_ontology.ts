@@ -119,6 +119,7 @@ export interface OWL2ClassAssertion {
 
 export interface OWL2ObjectSomeValuesFrom {
   readonly type: "ObjectSomeValuesFrom";
+  readonly subClassIri?: string;
   readonly propertyIri: string;
   readonly fillerClassIri: string;
   readonly sourceLang?: string;
@@ -126,6 +127,7 @@ export interface OWL2ObjectSomeValuesFrom {
 
 export interface OWL2DataSomeValuesFrom {
   readonly type: "DataSomeValuesFrom";
+  readonly subClassIri?: string;
   readonly propertyIri: string;
   readonly dataRange: string;
   readonly sourceLang?: string;
@@ -137,9 +139,79 @@ export interface OWL2FunctionalObjectProperty {
   readonly sourceLang?: string;
 }
 
+export interface OWL2InverseFunctionalObjectProperty {
+  readonly type: "InverseFunctionalObjectProperty";
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2ReflexiveObjectProperty {
+  readonly type: "ReflexiveObjectProperty";
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
 export interface OWL2FunctionalDataProperty {
   readonly type: "FunctionalDataProperty";
   readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2SubObjectPropertyOf {
+  readonly type: "SubObjectPropertyOf";
+  readonly subPropertyIri: string;
+  readonly superPropertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2SubDataPropertyOf {
+  readonly type: "SubDataPropertyOf";
+  readonly subPropertyIri: string;
+  readonly superPropertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2ObjectPropertyDomain {
+  readonly type: "ObjectPropertyDomain";
+  readonly propertyIri: string;
+  readonly domainIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2ObjectPropertyRange {
+  readonly type: "ObjectPropertyRange";
+  readonly propertyIri: string;
+  readonly rangeIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2DataPropertyDomain {
+  readonly type: "DataPropertyDomain";
+  readonly propertyIri: string;
+  readonly domainIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2DataPropertyRange {
+  readonly type: "DataPropertyRange";
+  readonly propertyIri: string;
+  readonly rangeIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2NegativeObjectPropertyAssertion {
+  readonly type: "NegativeObjectPropertyAssertion";
+  readonly propertyIri: string;
+  readonly subjectIri: string;
+  readonly objectIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2NegativeDataPropertyAssertion {
+  readonly type: "NegativeDataPropertyAssertion";
+  readonly propertyIri: string;
+  readonly subjectIri: string;
+  readonly value: string;
   readonly sourceLang?: string;
 }
 
@@ -410,7 +482,17 @@ export type OWL2Axiom =
   | OWL2ObjectSomeValuesFrom
   | OWL2DataSomeValuesFrom
   | OWL2FunctionalObjectProperty
+  | OWL2InverseFunctionalObjectProperty
+  | OWL2ReflexiveObjectProperty
   | OWL2FunctionalDataProperty
+  | OWL2SubObjectPropertyOf
+  | OWL2SubDataPropertyOf
+  | OWL2ObjectPropertyDomain
+  | OWL2ObjectPropertyRange
+  | OWL2DataPropertyDomain
+  | OWL2DataPropertyRange
+  | OWL2NegativeObjectPropertyAssertion
+  | OWL2NegativeDataPropertyAssertion
   | OWL2SameIndividual
   | OWL2UniversalRestriction
   | OWL2DisjunctiveClass
@@ -1079,6 +1161,17 @@ interface PropertyEdge {
   objectIri: string;
 }
 
+interface BgpCompiledIndex {
+  allFacts: { s: string; p: string; o: string }[];
+  exactSet: Set<string>;
+  bySubjPred: Map<string, string[]>;
+  byPredObj: Map<string, string[]>;
+  bySubjObj: Map<string, string[]>;
+  byPred: Map<string, { s: string; o: string }[]>;
+  bySubj: Map<string, { p: string; o: string }[]>;
+  byObj: Map<string, { s: string; p: string }[]>;
+}
+
 export class WasmOntologyReasoner implements IOWLReasoner {
   private _status: ReasonerStatus = "idle";
   private _axioms: OWL2Axiom[] = [];
@@ -1095,9 +1188,19 @@ export class WasmOntologyReasoner implements IOWLReasoner {
   private objectPropertyAssertions = new Map<string, PropertyEdge[]>();
   private dataPropertyAssertions = new Map<string, { subjectIri: string; value: string }[]>();
   private functionalDataProperties = new Set<string>();
+  private inverseFunctionalObjectProperties = new Set<string>();
+  private reflexiveProperties = new Set<string>();
   private asymmetricProperties = new Set<string>();
   private irreflexiveProperties = new Set<string>();
   private disjointPropertyPairs = new Set<string>();
+  private subObjectPropertyEdges = new Map<string, Set<string>>();
+  private subDataPropertyEdges = new Map<string, Set<string>>();
+  private objectPropertyDomains = new Map<string, Set<string>>();
+  private objectPropertyRanges = new Map<string, Set<string>>();
+  private dataPropertyDomains = new Map<string, Set<string>>();
+  private dataPropertyRanges = new Map<string, Set<string>>();
+  private negativeObjectAssertions: OWL2NegativeObjectPropertyAssertion[] = [];
+  private negativeDataAssertions: OWL2NegativeDataPropertyAssertion[] = [];
   private rawDataPropertyAssertions: OWL2DataPropertyAssertion[] = [];
   private subPropertyChains: OWL2SubPropertyChainOf[] = [];
   private qualifiedCardinalities: OWL2QualifiedCardinality[] = [];
@@ -1107,6 +1210,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
   private swrlRules: OWL2SwrlRule[] = [];
 
   private _classified = false;
+  private _bgpIndex: BgpCompiledIndex | null = null;
   private _wasmInstance: WasmOntologyInstance | null = null;
 
   constructor(wasmInstance?: WasmOntologyInstance | null) {
@@ -1142,6 +1246,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     }
 
     this._classified = false;
+    this._bgpIndex = null;
     this._status = "ready";
   }
 
@@ -1156,10 +1261,12 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     }
 
     this._classified = false;
+    this._bgpIndex = null;
   }
 
   classify(): void {
     this._status = "classifying";
+    this._bgpIndex = null;
 
     for (const node of this.classes.values()) {
       node.allSuperClasses = null;
@@ -1177,6 +1284,64 @@ export class WasmOntologyReasoner implements IOWLReasoner {
         if (!superNode.allSubClasses) superNode.allSubClasses = new Set();
         superNode.allSubClasses.add(iri);
       }
+    }
+
+    // Saturate SubObjectPropertyOf and SubDataPropertyOf hierarchies
+    if (this.subObjectPropertyEdges.size > 0) {
+      let propChanged = true;
+      let propPasses = 0;
+      while (propChanged && propPasses < 25) {
+        propChanged = false;
+        propPasses++;
+        for (const [subP, superSet] of this.subObjectPropertyEdges) {
+          const subEdges = this.objectPropertyAssertions.get(subP);
+          if (!subEdges || subEdges.length === 0) continue;
+          for (const supP of superSet) {
+            const supEdges = this.objectPropertyAssertions.get(supP) ?? [];
+            for (const e of subEdges) {
+              if (!supEdges.some((ex) => ex.subjectIri === e.subjectIri && ex.objectIri === e.objectIri)) {
+                supEdges.push({ subjectIri: e.subjectIri, objectIri: e.objectIri });
+                propChanged = true;
+              }
+            }
+            this.objectPropertyAssertions.set(supP, supEdges);
+          }
+        }
+      }
+    }
+
+    if (this.subDataPropertyEdges.size > 0) {
+      let dataPropChanged = true;
+      let dataPropPasses = 0;
+      while (dataPropChanged && dataPropPasses < 25) {
+        dataPropChanged = false;
+        dataPropPasses++;
+        for (const [subP, superSet] of this.subDataPropertyEdges) {
+          const subAsserts = this.dataPropertyAssertions.get(subP);
+          if (!subAsserts || subAsserts.length === 0) continue;
+          for (const supP of superSet) {
+            const supAsserts = this.dataPropertyAssertions.get(supP) ?? [];
+            for (const a of subAsserts) {
+              if (!supAsserts.some((ex) => ex.subjectIri === a.subjectIri && ex.value === a.value)) {
+                supAsserts.push({ subjectIri: a.subjectIri, value: a.value });
+                dataPropChanged = true;
+              }
+            }
+            this.dataPropertyAssertions.set(supP, supAsserts);
+          }
+        }
+      }
+    }
+
+    // Reflexive object properties: R(x, x) for all known individuals x
+    for (const propIri of this.reflexiveProperties) {
+      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+      for (const indIri of this.individualTypes.keys()) {
+        if (!edges.some((e) => e.subjectIri === indIri && e.objectIri === indIri)) {
+          edges.push({ subjectIri: indIri, objectIri: indIri });
+        }
+      }
+      this.objectPropertyAssertions.set(propIri, edges);
     }
 
     // Functional property unification
@@ -1198,6 +1363,54 @@ export class WasmOntologyReasoner implements IOWLReasoner {
             }
           }
         }
+      }
+    }
+
+    // InverseFunctional property unification
+    for (const propIri of this.inverseFunctionalObjectProperties) {
+      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+      const byObject = new Map<string, string[]>();
+      for (const e of edges) {
+        const list = byObject.get(e.objectIri) ?? [];
+        list.push(e.subjectIri);
+        byObject.set(e.objectIri, list);
+      }
+      for (const [, subjs] of byObject) {
+        if (subjs.length > 1) {
+          for (let i = 0; i < subjs.length; i++) {
+            for (let j = i + 1; j < subjs.length; j++) {
+              const s1 = subjs[i]!;
+              const s2 = subjs[j]!;
+              this.unifyIndividuals(s1, s2);
+            }
+          }
+        }
+      }
+    }
+
+    // ObjectPropertyDomain, ObjectPropertyRange, DataPropertyDomain propagation
+    for (const [propIri, domains] of this.objectPropertyDomains) {
+      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+      for (const e of edges) {
+        const types = this.individualTypes.get(e.subjectIri) ?? new Set();
+        for (const domIri of domains) types.add(domIri);
+        this.individualTypes.set(e.subjectIri, types);
+      }
+    }
+    for (const [propIri, ranges] of this.objectPropertyRanges) {
+      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+      for (const e of edges) {
+        const types = this.individualTypes.get(e.objectIri) ?? new Set();
+        for (const rngIri of ranges) types.add(rngIri);
+        this.individualTypes.set(e.objectIri, types);
+      }
+    }
+    for (const [propIri, domains] of this.dataPropertyDomains) {
+      const asserts = this.dataPropertyAssertions.get(propIri) ?? [];
+      for (const a of asserts) {
+        const types = this.individualTypes.get(a.subjectIri) ?? new Set();
+        for (const domIri of domains) types.add(domIri);
+        this.individualTypes.set(a.subjectIri, types);
       }
     }
 
@@ -1397,6 +1610,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     const consistency = this.checkConsistencyInternal();
     this._status = consistency.isConsistent ? "ready" : "inconsistent";
     this._classified = true;
+    this._ensureBgpIndex();
   }
 
   private unifyIndividuals(ind1: string, ind2: string): void {
@@ -1961,6 +2175,24 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     };
   }
 
+  getSuperClasses(classIri: string): readonly string[] {
+    if (!this._classified) this.classify();
+    const node = this.classes.get(classIri);
+    return node?.allSuperClasses ? [...node.allSuperClasses] : [];
+  }
+
+  getSubClasses(classIri: string): readonly string[] {
+    if (!this._classified) this.classify();
+    const node = this.classes.get(classIri);
+    return node?.allSubClasses ? [...node.allSubClasses] : [];
+  }
+
+  getIndividualTypes(individualIri: string): readonly string[] {
+    if (!this._classified) this.classify();
+    const types = this.individualTypes.get(individualIri);
+    return types ? [...types] : [];
+  }
+
   getTransitiveClosure(propertyIri: string, fromIri: string): PropertyChainResult {
     const edges = this.objectPropertyAssertions.get(propertyIri) ?? [];
     const visited = new Set<string>();
@@ -2172,8 +2404,106 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return Array.from(reachable);
   }
 
+  private _ensureBgpIndex(): BgpCompiledIndex {
+    if (this._bgpIndex !== null) return this._bgpIndex;
+
+    const allFacts: { s: string; p: string; o: string }[] = [];
+    const exactSet = new Set<string>();
+    const bySubjPred = new Map<string, string[]>();
+    const byPredObj = new Map<string, string[]>();
+    const bySubjObj = new Map<string, string[]>();
+    const byPred = new Map<string, { s: string; o: string }[]>();
+    const bySubj = new Map<string, { p: string; o: string }[]>();
+    const byObj = new Map<string, { s: string; p: string }[]>();
+
+    const addFact = (s: string, p: string, o: string) => {
+      const spoKey = `${s}\0${p}\0${o}`;
+      if (exactSet.has(spoKey)) return;
+      exactSet.add(spoKey);
+
+      const fact = { s, p, o };
+      allFacts.push(fact);
+
+      const spKey = `${s}\0${p}`;
+      let spList = bySubjPred.get(spKey);
+      if (!spList) {
+        spList = [];
+        bySubjPred.set(spKey, spList);
+      }
+      spList.push(o);
+
+      const poKey = `${p}\0${o}`;
+      let poList = byPredObj.get(poKey);
+      if (!poList) {
+        poList = [];
+        byPredObj.set(poKey, poList);
+      }
+      poList.push(s);
+
+      const soKey = `${s}\0${o}`;
+      let soList = bySubjObj.get(soKey);
+      if (!soList) {
+        soList = [];
+        bySubjObj.set(soKey, soList);
+      }
+      soList.push(p);
+
+      let pList = byPred.get(p);
+      if (!pList) {
+        pList = [];
+        byPred.set(p, pList);
+      }
+      pList.push({ s, o });
+
+      let sList = bySubj.get(s);
+      if (!sList) {
+        sList = [];
+        bySubj.set(s, sList);
+      }
+      sList.push({ p, o });
+
+      let oList = byObj.get(o);
+      if (!oList) {
+        oList = [];
+        byObj.set(o, oList);
+      }
+      oList.push({ s, p });
+    };
+
+    for (const [p, edges] of this.objectPropertyAssertions) {
+      for (const e of edges) addFact(e.subjectIri, p, e.objectIri);
+    }
+
+    for (const [p, asserts] of this.dataPropertyAssertions) {
+      for (const a of asserts) addFact(a.subjectIri, p, a.value);
+    }
+
+    for (const [ind, types] of this.individualTypes) {
+      for (const t of types) addFact(ind, "rdf:type", t);
+    }
+
+    for (const ax of this._axioms) {
+      if (ax.type === "SubClassOf") {
+        addFact(ax.subClassIri, "rdfs:subClassOf", ax.superClassIri);
+      }
+    }
+
+    this._bgpIndex = {
+      allFacts,
+      exactSet,
+      bySubjPred,
+      byPredObj,
+      bySubjObj,
+      byPred,
+      bySubj,
+      byObj,
+    };
+    return this._bgpIndex;
+  }
+
   queryBgp(query: BgpQuery): BgpQueryResult {
     if (!this._classified) this.classify();
+    const idx = this._ensureBgpIndex();
     const start = performance.now();
 
     const varSet = new Set<string>();
@@ -2188,53 +2518,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       return { variables, bindings: [], executionTimeMs: performance.now() - start };
     }
 
-    // 1. Gather all asserted + inferred facts
-    const allFacts: { s: string; p: string; o: string }[] = [];
-    const byPred = new Map<string, { s: string; o: string }[]>();
-    const bySubjPred = new Map<string, string[]>();
-
-    const addFact = (s: string, p: string, o: string) => {
-      allFacts.push({ s, p, o });
-      let pList = byPred.get(p);
-      if (!pList) {
-        pList = [];
-        byPred.set(p, pList);
-      }
-      pList.push({ s, o });
-
-      const spKey = `${s}|${p}`;
-      let spList = bySubjPred.get(spKey);
-      if (!spList) {
-        spList = [];
-        bySubjPred.set(spKey, spList);
-      }
-      spList.push(o);
-    };
-
-    // Object property assertions (inferred + asserted)
-    for (const [p, edges] of this.objectPropertyAssertions) {
-      for (const e of edges) addFact(e.subjectIri, p, e.objectIri);
-    }
-
-    // Data property assertions (inferred + asserted)
-    for (const [p, asserts] of this.dataPropertyAssertions) {
-      for (const a of asserts) addFact(a.subjectIri, p, a.value);
-    }
-
-    // Class assertions (inferred + asserted)
-    for (const [ind, types] of this.individualTypes) {
-      for (const t of types) addFact(ind, "rdf:type", t);
-    }
-
-    // SubClassOf axioms
-    for (const ax of this._axioms) {
-      if (ax.type === "SubClassOf") {
-        addFact(ax.subClassIri, "rdfs:subClassOf", ax.superClassIri);
-      }
-    }
-
-    // 2. Selectivity-guided pattern reordering
-    // Score patterns based on bound variables and constants
+    // 1. Selectivity-guided pattern reordering using covering index cardinalities
     const remainingPatterns = [...query.patterns];
     const orderedPatterns: TriplePattern[] = [];
     const boundVars = new Set<string>();
@@ -2245,15 +2529,40 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
       for (let i = 0; i < remainingPatterns.length; i++) {
         const pat = remainingPatterns[i]!;
-        let score = 0;
-        if (!pat.subject.startsWith("?") || boundVars.has(pat.subject)) score += 3;
-        if (!pat.predicate.startsWith("?") || boundVars.has(pat.predicate)) score += 5;
-        if (!pat.object.startsWith("?") || boundVars.has(pat.object)) score += 3;
+        const sConst = !pat.subject.startsWith("?");
+        const pConst = !pat.predicate.startsWith("?");
+        const oConst = !pat.object.startsWith("?");
+        const sBound = sConst || boundVars.has(pat.subject);
+        const pBound = pConst || boundVars.has(pat.predicate);
+        const oBound = oConst || boundVars.has(pat.object);
 
-        // Bias towards smaller predicates
-        if (!pat.predicate.startsWith("?")) {
-          const predCount = byPred.get(pat.predicate)?.length ?? 0;
-          score += 1000 / (predCount + 1);
+        let score = 0;
+        if (sBound && pBound && oBound) {
+          score = 10000;
+        } else if (sBound && pBound) {
+          const card =
+            sConst && pConst
+              ? (idx.bySubjPred.get(`${pat.subject}\0${pat.predicate}`)?.length ?? 0)
+              : (idx.byPred.get(pat.predicate)?.length ?? 100);
+          score = 5000 + 1000 / (card + 1);
+        } else if (pBound && oBound) {
+          const card =
+            pConst && oConst
+              ? (idx.byPredObj.get(`${pat.predicate}\0${pat.object}`)?.length ?? 0)
+              : (idx.byPred.get(pat.predicate)?.length ?? 100);
+          score = 5000 + 1000 / (card + 1);
+        } else if (sBound && oBound) {
+          const card = sConst && oConst ? (idx.bySubjObj.get(`${pat.subject}\0${pat.object}`)?.length ?? 0) : 100;
+          score = 4000 + 1000 / (card + 1);
+        } else if (pBound) {
+          const card = pConst ? (idx.byPred.get(pat.predicate)?.length ?? 0) : 500;
+          score = 2000 + 1000 / (card + 1);
+        } else if (sBound) {
+          const card = sConst ? (idx.bySubj.get(pat.subject)?.length ?? 0) : 500;
+          score = 1500 + 1000 / (card + 1);
+        } else if (oBound) {
+          const card = oConst ? (idx.byObj.get(pat.object)?.length ?? 0) : 500;
+          score = 1500 + 1000 / (card + 1);
         }
 
         if (score > bestScore) {
@@ -2269,69 +2578,88 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       if (selected.object.startsWith("?")) boundVars.add(selected.object);
     }
 
-    // 3. Index-accelerated join execution
+    // 2. Zero-wrapper-allocation index join execution across all 6 covering maps
     let currentBindings: Record<string, string>[] = [{}];
 
     for (const pat of orderedPatterns) {
       const nextBindings: Record<string, string>[] = [];
+      const sVar = pat.subject.startsWith("?") ? pat.subject : null;
+      const pVar = pat.predicate.startsWith("?") ? pat.predicate : null;
+      const oVar = pat.object.startsWith("?") ? pat.object : null;
 
-      for (const env of currentBindings) {
-        const pVal = pat.predicate.startsWith("?") ? env[pat.predicate] : pat.predicate;
-        const sVal = pat.subject.startsWith("?") ? env[pat.subject] : pat.subject;
+      for (let bIdx = 0; bIdx < currentBindings.length; bIdx++) {
+        const env = currentBindings[bIdx]!;
+        const sVal = sVar !== null ? env[sVar] : pat.subject;
+        const pVal = pVar !== null ? env[pVar] : pat.predicate;
+        const oVal = oVar !== null ? env[oVar] : pat.object;
 
-        let candidateFacts: { s: string; p: string; o: string }[];
-        if (pVal && sVal) {
-          const objs = bySubjPred.get(`${sVal}|${pVal}`);
-          if (!objs || objs.length === 0) continue;
-          candidateFacts = objs.map((o) => ({ s: sVal, p: pVal, o }));
-        } else if (pVal) {
-          const edges = byPred.get(pVal);
-          if (!edges || edges.length === 0) continue;
-          candidateFacts = edges.map((e) => ({ s: e.s, p: pVal, o: e.o }));
+        if (sVal !== undefined && pVal !== undefined && oVal !== undefined) {
+          if (idx.exactSet.has(`${sVal}\0${pVal}\0${oVal}`)) {
+            nextBindings.push(env);
+          }
+        } else if (sVal !== undefined && pVal !== undefined) {
+          const objs = idx.bySubjPred.get(`${sVal}\0${pVal}`);
+          if (objs !== undefined) {
+            for (let i = 0; i < objs.length; i++) {
+              nextBindings.push({ ...env, [oVar!]: objs[i]! });
+            }
+          }
+        } else if (pVal !== undefined && oVal !== undefined) {
+          const subjs = idx.byPredObj.get(`${pVal}\0${oVal}`);
+          if (subjs !== undefined) {
+            for (let i = 0; i < subjs.length; i++) {
+              nextBindings.push({ ...env, [sVar!]: subjs[i]! });
+            }
+          }
+        } else if (sVal !== undefined && oVal !== undefined) {
+          const preds = idx.bySubjObj.get(`${sVal}\0${oVal}`);
+          if (preds !== undefined) {
+            for (let i = 0; i < preds.length; i++) {
+              nextBindings.push({ ...env, [pVar!]: preds[i]! });
+            }
+          }
+        } else if (pVal !== undefined) {
+          const edges = idx.byPred.get(pVal);
+          if (edges !== undefined) {
+            const sameSO = sVar === oVar;
+            for (let i = 0; i < edges.length; i++) {
+              const e = edges[i]!;
+              if (sameSO && e.s !== e.o) continue;
+              nextBindings.push({ ...env, [sVar!]: e.s, [oVar!]: e.o });
+            }
+          }
+        } else if (sVal !== undefined) {
+          const edges = idx.bySubj.get(sVal);
+          if (edges !== undefined) {
+            const samePO = pVar === oVar;
+            for (let i = 0; i < edges.length; i++) {
+              const e = edges[i]!;
+              if (samePO && e.p !== e.o) continue;
+              nextBindings.push({ ...env, [pVar!]: e.p, [oVar!]: e.o });
+            }
+          }
+        } else if (oVal !== undefined) {
+          const edges = idx.byObj.get(oVal);
+          if (edges !== undefined) {
+            const sameSP = sVar === pVar;
+            for (let i = 0; i < edges.length; i++) {
+              const e = edges[i]!;
+              if (sameSP && e.s !== e.p) continue;
+              nextBindings.push({ ...env, [sVar!]: e.s, [pVar!]: e.p });
+            }
+          }
         } else {
-          candidateFacts = allFacts;
-        }
-
-        for (const fact of candidateFacts) {
-          let match = true;
-          const newEnv = { ...env };
-
-          if (pat.subject.startsWith("?")) {
-            if (env[pat.subject] !== undefined) {
-              if (env[pat.subject] !== fact.s) match = false;
-            } else {
-              newEnv[pat.subject] = fact.s;
-            }
-          } else if (pat.subject !== fact.s) {
-            match = false;
-          }
-
-          if (!match) continue;
-
-          if (pat.predicate.startsWith("?")) {
-            if (env[pat.predicate] !== undefined) {
-              if (env[pat.predicate] !== fact.p) match = false;
-            } else {
-              newEnv[pat.predicate] = fact.p;
-            }
-          } else if (pat.predicate !== fact.p) {
-            match = false;
-          }
-
-          if (!match) continue;
-
-          if (pat.object.startsWith("?")) {
-            if (env[pat.object] !== undefined) {
-              if (env[pat.object] !== fact.o) match = false;
-            } else {
-              newEnv[pat.object] = fact.o;
-            }
-          } else if (pat.object !== fact.o) {
-            match = false;
-          }
-
-          if (match) {
-            nextBindings.push(newEnv);
+          for (let i = 0; i < idx.allFacts.length; i++) {
+            const f = idx.allFacts[i]!;
+            if (sVar === pVar && f.s !== f.p) continue;
+            if (sVar === oVar && f.s !== f.o) continue;
+            if (pVar === oVar && f.p !== f.o) continue;
+            nextBindings.push({
+              ...env,
+              [sVar!]: f.s,
+              [pVar!]: f.p,
+              [oVar!]: f.o,
+            });
           }
         }
       }
@@ -2340,14 +2668,9 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       if (currentBindings.length === 0) break;
     }
 
-    const uniqueMap = new Map<string, Record<string, string>>();
-    for (const b of currentBindings) {
-      uniqueMap.set(JSON.stringify(b), b);
-    }
-
     return {
       variables,
-      bindings: Array.from(uniqueMap.values()),
+      bindings: currentBindings,
       executionTimeMs: performance.now() - start,
     };
   }
@@ -2486,9 +2809,117 @@ export class WasmOntologyReasoner implements IOWLReasoner {
         break;
       }
 
-      case "ObjectSomeValuesFrom":
-      case "DataSomeValuesFrom":
+      case "ObjectSomeValuesFrom": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.ensureClass(axiom.fillerClassIri);
+        if (axiom.subClassIri) {
+          this.ensureClass(axiom.subClassIri);
+        }
         break;
+      }
+
+      case "DataSomeValuesFrom": {
+        this.dataProperties.add(axiom.propertyIri);
+        if (axiom.subClassIri) {
+          this.ensureClass(axiom.subClassIri);
+        }
+        break;
+      }
+
+      case "InverseFunctionalObjectProperty": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.inverseFunctionalObjectProperties.add(axiom.propertyIri);
+        break;
+      }
+
+      case "ReflexiveObjectProperty": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.reflexiveProperties.add(axiom.propertyIri);
+        break;
+      }
+
+      case "SubObjectPropertyOf": {
+        this.objectProperties.add(axiom.subPropertyIri);
+        this.objectProperties.add(axiom.superPropertyIri);
+        let sups = this.subObjectPropertyEdges.get(axiom.subPropertyIri);
+        if (!sups) {
+          sups = new Set();
+          this.subObjectPropertyEdges.set(axiom.subPropertyIri, sups);
+        }
+        sups.add(axiom.superPropertyIri);
+        break;
+      }
+
+      case "SubDataPropertyOf": {
+        this.dataProperties.add(axiom.subPropertyIri);
+        this.dataProperties.add(axiom.superPropertyIri);
+        let sups = this.subDataPropertyEdges.get(axiom.subPropertyIri);
+        if (!sups) {
+          sups = new Set();
+          this.subDataPropertyEdges.set(axiom.subPropertyIri, sups);
+        }
+        sups.add(axiom.superPropertyIri);
+        break;
+      }
+
+      case "ObjectPropertyDomain": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.ensureClass(axiom.domainIri);
+        let doms = this.objectPropertyDomains.get(axiom.propertyIri);
+        if (!doms) {
+          doms = new Set();
+          this.objectPropertyDomains.set(axiom.propertyIri, doms);
+        }
+        doms.add(axiom.domainIri);
+        break;
+      }
+
+      case "ObjectPropertyRange": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.ensureClass(axiom.rangeIri);
+        let rngs = this.objectPropertyRanges.get(axiom.propertyIri);
+        if (!rngs) {
+          rngs = new Set();
+          this.objectPropertyRanges.set(axiom.propertyIri, rngs);
+        }
+        rngs.add(axiom.rangeIri);
+        break;
+      }
+
+      case "DataPropertyDomain": {
+        this.dataProperties.add(axiom.propertyIri);
+        this.ensureClass(axiom.domainIri);
+        let doms = this.dataPropertyDomains.get(axiom.propertyIri);
+        if (!doms) {
+          doms = new Set();
+          this.dataPropertyDomains.set(axiom.propertyIri, doms);
+        }
+        doms.add(axiom.domainIri);
+        break;
+      }
+
+      case "DataPropertyRange": {
+        this.dataProperties.add(axiom.propertyIri);
+        let rngs = this.dataPropertyRanges.get(axiom.propertyIri);
+        if (!rngs) {
+          rngs = new Set();
+          this.dataPropertyRanges.set(axiom.propertyIri, rngs);
+        }
+        rngs.add(axiom.rangeIri);
+        break;
+      }
+
+      case "NegativeObjectPropertyAssertion": {
+        this.objectProperties.add(axiom.propertyIri);
+        this.negativeObjectAssertions.push(axiom);
+        break;
+      }
+
+      case "NegativeDataPropertyAssertion": {
+        this.dataProperties.add(axiom.propertyIri);
+        this.negativeDataAssertions.push(axiom);
+        break;
+      }
 
       case "SymmetricObjectProperty": {
         const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
@@ -2708,6 +3139,58 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
       case "FunctionalDataProperty": {
         this.functionalDataProperties.delete(axiom.propertyIri);
+        break;
+      }
+
+      case "InverseFunctionalObjectProperty": {
+        this.inverseFunctionalObjectProperties.delete(axiom.propertyIri);
+        break;
+      }
+
+      case "ReflexiveObjectProperty": {
+        this.reflexiveProperties.delete(axiom.propertyIri);
+        break;
+      }
+
+      case "SubObjectPropertyOf": {
+        this.subObjectPropertyEdges.get(axiom.subPropertyIri)?.delete(axiom.superPropertyIri);
+        break;
+      }
+
+      case "SubDataPropertyOf": {
+        this.subDataPropertyEdges.get(axiom.subPropertyIri)?.delete(axiom.superPropertyIri);
+        break;
+      }
+
+      case "ObjectPropertyDomain": {
+        this.objectPropertyDomains.get(axiom.propertyIri)?.delete(axiom.domainIri);
+        break;
+      }
+
+      case "ObjectPropertyRange": {
+        this.objectPropertyRanges.get(axiom.propertyIri)?.delete(axiom.rangeIri);
+        break;
+      }
+
+      case "DataPropertyDomain": {
+        this.dataPropertyDomains.get(axiom.propertyIri)?.delete(axiom.domainIri);
+        break;
+      }
+
+      case "DataPropertyRange": {
+        this.dataPropertyRanges.get(axiom.propertyIri)?.delete(axiom.rangeIri);
+        break;
+      }
+
+      case "NegativeObjectPropertyAssertion": {
+        const nIdx = this.negativeObjectAssertions.findIndex((a) => axiomEqual(a, axiom));
+        if (nIdx !== -1) this.negativeObjectAssertions.splice(nIdx, 1);
+        break;
+      }
+
+      case "NegativeDataPropertyAssertion": {
+        const nIdx = this.negativeDataAssertions.findIndex((a) => axiomEqual(a, axiom));
+        if (nIdx !== -1) this.negativeDataAssertions.splice(nIdx, 1);
         break;
       }
 
@@ -3185,7 +3668,105 @@ export class WasmOntologyReasoner implements IOWLReasoner {
             individualIris: [a, b],
             sourceLang: "inferred",
           });
+          explanations.push(
+            `Individuals '${a}' and '${b}' are declared DifferentIndividuals, but are unified via SameIndividual or functional/inverse-functional property reasoning.`,
+          );
         }
+      }
+    }
+
+    // Reflexive vs Irreflexive / Asymmetric property characteristic conflicts
+    for (const propIri of this.reflexiveProperties) {
+      if (this.irreflexiveProperties.has(propIri)) {
+        conflicts.push({
+          type: "ReflexiveObjectProperty",
+          propertyIri: propIri,
+          sourceLang: "inferred",
+        });
+        conflicts.push({
+          type: "IrreflexiveObjectProperty",
+          propertyIri: propIri,
+          sourceLang: "inferred",
+        });
+        explanations.push(
+          `Object property '${propIri}' cannot be both ReflexiveObjectProperty and IrreflexiveObjectProperty.`,
+        );
+      }
+      if (this.asymmetricProperties.has(propIri)) {
+        conflicts.push({
+          type: "ReflexiveObjectProperty",
+          propertyIri: propIri,
+          sourceLang: "inferred",
+        });
+        conflicts.push({
+          type: "AsymmetricObjectProperty",
+          propertyIri: propIri,
+          sourceLang: "inferred",
+        });
+        explanations.push(
+          `Object property '${propIri}' cannot be both ReflexiveObjectProperty and AsymmetricObjectProperty.`,
+        );
+      }
+    }
+
+    // NegativeObjectPropertyAssertion conflicts
+    for (const neg of this.negativeObjectAssertions) {
+      const edges = this.objectPropertyAssertions.get(neg.propertyIri) ?? [];
+      const subjGroup = this.sameIndividualGroups.get(neg.subjectIri);
+      const objGroup = this.sameIndividualGroups.get(neg.objectIri);
+      const match = edges.find((e) => {
+        const sameSubj = e.subjectIri === neg.subjectIri || (subjGroup?.has(e.subjectIri) ?? false);
+        const sameObj = e.objectIri === neg.objectIri || (objGroup?.has(e.objectIri) ?? false);
+        return sameSubj && sameObj;
+      });
+      if (match) {
+        conflicts.push(neg);
+        conflicts.push({
+          type: "ObjectPropertyAssertion",
+          propertyIri: neg.propertyIri,
+          subjectIri: match.subjectIri,
+          objectIri: match.objectIri,
+          sourceLang: "inferred",
+        });
+        explanations.push(
+          `NegativeObjectPropertyAssertion(${neg.propertyIri} ${neg.subjectIri} ${neg.objectIri}) clashes with asserted or inferred ${neg.propertyIri}(${match.subjectIri}, ${match.objectIri}).`,
+        );
+      }
+    }
+
+    // NegativeDataPropertyAssertion conflicts
+    for (const neg of this.negativeDataAssertions) {
+      const assertions = this.dataPropertyAssertions.get(neg.propertyIri) ?? [];
+      const subjGroup = this.sameIndividualGroups.get(neg.subjectIri);
+      const match = assertions.find((a) => {
+        const sameSubj = a.subjectIri === neg.subjectIri || (subjGroup?.has(a.subjectIri) ?? false);
+        return sameSubj && a.value === neg.value;
+      });
+      if (match) {
+        conflicts.push(neg);
+        conflicts.push({
+          type: "DataPropertyAssertion",
+          propertyIri: neg.propertyIri,
+          subjectIri: match.subjectIri,
+          value: match.value,
+          sourceLang: "inferred",
+        });
+        explanations.push(
+          `NegativeDataPropertyAssertion(${neg.propertyIri} ${neg.subjectIri} "${neg.value}") clashes with asserted or inferred ${neg.propertyIri}(${match.subjectIri}, "${match.value}").`,
+        );
+      }
+    }
+
+    // Individual asserted or inferred to be an instance of owl:Nothing
+    for (const [indIri, types] of this.individualTypes) {
+      if (types.has("owl:Nothing") || types.has("http://www.w3.org/2002/07/owl#Nothing")) {
+        conflicts.push({
+          type: "ClassAssertion",
+          classIri: "owl:Nothing",
+          individualIri: indIri,
+          sourceLang: "inferred",
+        });
+        explanations.push(`Individual '${indIri}' is inferred to be an instance of 'owl:Nothing'.`);
       }
     }
 
@@ -3748,6 +4329,9 @@ export class WasmOntologyReasoner implements IOWLReasoner {
                     }
                   }
                 }
+                if (changed) {
+                  this._bgpIndex = null;
+                }
               }
             } else {
               const tr = rule as SHACLTripleRule;
@@ -3789,6 +4373,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
                     materializedAxioms.push(ax);
                     this._axioms.push(ax);
                     changed = true;
+                    this._bgpIndex = null;
                   }
                 } else if (
                   this.objectProperties.has(p) ||
@@ -3808,6 +4393,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
                     materializedAxioms.push(ax);
                     this._axioms.push(ax);
                     changed = true;
+                    this._bgpIndex = null;
                   }
                 } else {
                   const list = this.dataPropertyAssertions.get(p) ?? [];
@@ -3824,6 +4410,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
                     materializedAxioms.push(ax);
                     this._axioms.push(ax);
                     changed = true;
+                    this._bgpIndex = null;
                   }
                 }
               }
@@ -3982,6 +4569,36 @@ export class WasmOntologyReasoner implements IOWLReasoner {
           if ("propertyIri" in a) s.add(a.propertyIri);
         }
         break;
+      case "InverseFunctionalObjectProperty":
+      case "ReflexiveObjectProperty":
+        s.add(axiom.propertyIri);
+        break;
+      case "SubObjectPropertyOf":
+      case "SubDataPropertyOf":
+        s.add(axiom.subPropertyIri);
+        s.add(axiom.superPropertyIri);
+        break;
+      case "ObjectPropertyDomain":
+      case "DataPropertyDomain":
+        s.add(axiom.propertyIri);
+        s.add(axiom.domainIri);
+        break;
+      case "ObjectPropertyRange":
+        s.add(axiom.propertyIri);
+        s.add(axiom.rangeIri);
+        break;
+      case "DataPropertyRange":
+        s.add(axiom.propertyIri);
+        break;
+      case "NegativeObjectPropertyAssertion":
+        s.add(axiom.propertyIri);
+        s.add(axiom.subjectIri);
+        s.add(axiom.objectIri);
+        break;
+      case "NegativeDataPropertyAssertion":
+        s.add(axiom.propertyIri);
+        s.add(axiom.subjectIri);
+        break;
     }
     return Array.from(s);
   }
@@ -3995,6 +4612,16 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this.transitiveProperties.clear();
     this.functionalObjectProperties.clear();
     this.functionalDataProperties.clear();
+    this.inverseFunctionalObjectProperties.clear();
+    this.reflexiveProperties.clear();
+    this.subObjectPropertyEdges.clear();
+    this.subDataPropertyEdges.clear();
+    this.objectPropertyDomains.clear();
+    this.objectPropertyRanges.clear();
+    this.dataPropertyDomains.clear();
+    this.dataPropertyRanges.clear();
+    this.negativeObjectAssertions = [];
+    this.negativeDataAssertions = [];
     this.asymmetricProperties.clear();
     this.irreflexiveProperties.clear();
     this.disjointPropertyPairs.clear();
@@ -4010,6 +4637,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this.objectPropertyAssertions.clear();
     this.dataPropertyAssertions.clear();
     this._classified = false;
+    this._bgpIndex = null;
   }
 }
 
@@ -4952,9 +5580,29 @@ export function axiomKey(axiom: OWL2Axiom): string {
     case "ClassAssertion":
       return `CA:${axiom.classIri}|${axiom.individualIri}`;
     case "ObjectSomeValuesFrom":
-      return `OSVF:${axiom.propertyIri}|${axiom.fillerClassIri}`;
+      return `OSVF:${axiom.subClassIri ?? ""}|${axiom.propertyIri}|${axiom.fillerClassIri}`;
     case "DataSomeValuesFrom":
-      return `DSVF:${axiom.propertyIri}|${axiom.dataRange}`;
+      return `DSVF:${axiom.subClassIri ?? ""}|${axiom.propertyIri}|${axiom.dataRange}`;
+    case "InverseFunctionalObjectProperty":
+      return `IFOP:${axiom.propertyIri}`;
+    case "ReflexiveObjectProperty":
+      return `ROP:${axiom.propertyIri}`;
+    case "SubObjectPropertyOf":
+      return `SOPO:${axiom.subPropertyIri}|${axiom.superPropertyIri}`;
+    case "SubDataPropertyOf":
+      return `SDPO:${axiom.subPropertyIri}|${axiom.superPropertyIri}`;
+    case "ObjectPropertyDomain":
+      return `OPDOM:${axiom.propertyIri}|${axiom.domainIri}`;
+    case "ObjectPropertyRange":
+      return `OPRNG:${axiom.propertyIri}|${axiom.rangeIri}`;
+    case "DataPropertyDomain":
+      return `DPDOM:${axiom.propertyIri}|${axiom.domainIri}`;
+    case "DataPropertyRange":
+      return `DPRNG:${axiom.propertyIri}|${axiom.rangeIri}`;
+    case "NegativeObjectPropertyAssertion":
+      return `NOPA:${axiom.propertyIri}|${axiom.subjectIri}|${axiom.objectIri}`;
+    case "NegativeDataPropertyAssertion":
+      return `NDPA:${axiom.propertyIri}|${axiom.subjectIri}|${axiom.value}`;
     case "SubPropertyChainOf":
       return `SPCO:${axiom.subPropertyChain.join("o")}->${axiom.superPropertyIri}`;
     case "QualifiedCardinality":
@@ -4990,15 +5638,39 @@ export function axiomReferencesIri(axiom: OWL2Axiom, iri: string): boolean {
     case "DataPropertyAssertion":
       return axiom.propertyIri === iri || axiom.subjectIri === iri;
     case "TransitiveObjectProperty":
+    case "InverseFunctionalObjectProperty":
+    case "ReflexiveObjectProperty":
+    case "FunctionalObjectProperty":
+    case "FunctionalDataProperty":
+    case "SymmetricObjectProperty":
+    case "AsymmetricObjectProperty":
+    case "IrreflexiveObjectProperty":
       return axiom.propertyIri === iri;
+    case "InverseObjectProperty":
+      return axiom.propertyIri === iri || axiom.inversePropertyIri === iri;
+    case "DisjointObjectProperties":
+      return axiom.propertyIris.includes(iri);
+    case "SubObjectPropertyOf":
+    case "SubDataPropertyOf":
+      return axiom.subPropertyIri === iri || axiom.superPropertyIri === iri;
+    case "ObjectPropertyDomain":
+    case "DataPropertyDomain":
+      return axiom.propertyIri === iri || axiom.domainIri === iri;
+    case "ObjectPropertyRange":
+    case "DataPropertyRange":
+      return axiom.propertyIri === iri || axiom.rangeIri === iri;
+    case "NegativeObjectPropertyAssertion":
+      return axiom.propertyIri === iri || axiom.subjectIri === iri || axiom.objectIri === iri;
+    case "NegativeDataPropertyAssertion":
+      return axiom.propertyIri === iri || axiom.subjectIri === iri;
     case "IndividualDeclaration":
       return axiom.iri === iri;
     case "ClassAssertion":
       return axiom.classIri === iri || axiom.individualIri === iri;
     case "ObjectSomeValuesFrom":
-      return axiom.propertyIri === iri || axiom.fillerClassIri === iri;
+      return axiom.propertyIri === iri || axiom.fillerClassIri === iri || axiom.subClassIri === iri;
     case "DataSomeValuesFrom":
-      return axiom.propertyIri === iri;
+      return axiom.propertyIri === iri || axiom.subClassIri === iri;
     case "SubPropertyChainOf":
       return axiom.superPropertyIri === iri || axiom.subPropertyChain.includes(iri);
     case "QualifiedCardinality":
@@ -5042,14 +5714,48 @@ export function axiomToFSS(axiom: OWL2Axiom): string {
       return `DataPropertyAssertion(${axiom.propertyIri} ${axiom.subjectIri} "${axiom.value}")`;
     case "TransitiveObjectProperty":
       return `TransitiveObjectProperty(${axiom.propertyIri})`;
+    case "FunctionalObjectProperty":
+      return `FunctionalObjectProperty(${axiom.propertyIri})`;
+    case "FunctionalDataProperty":
+      return `FunctionalDataProperty(${axiom.propertyIri})`;
+    case "InverseFunctionalObjectProperty":
+      return `InverseFunctionalObjectProperty(${axiom.propertyIri})`;
+    case "ReflexiveObjectProperty":
+      return `ReflexiveObjectProperty(${axiom.propertyIri})`;
+    case "SymmetricObjectProperty":
+      return `SymmetricObjectProperty(${axiom.propertyIri})`;
+    case "AsymmetricObjectProperty":
+      return `AsymmetricObjectProperty(${axiom.propertyIri})`;
+    case "IrreflexiveObjectProperty":
+      return `IrreflexiveObjectProperty(${axiom.propertyIri})`;
+    case "InverseObjectProperty":
+      return `InverseObjectProperties(${axiom.propertyIri} ${axiom.inversePropertyIri})`;
+    case "DisjointObjectProperties":
+      return `DisjointObjectProperties(${axiom.propertyIris.join(" ")})`;
+    case "SubObjectPropertyOf":
+      return `SubObjectPropertyOf(${axiom.subPropertyIri} ${axiom.superPropertyIri})`;
+    case "SubDataPropertyOf":
+      return `SubDataPropertyOf(${axiom.subPropertyIri} ${axiom.superPropertyIri})`;
+    case "ObjectPropertyDomain":
+      return `ObjectPropertyDomain(${axiom.propertyIri} ${axiom.domainIri})`;
+    case "ObjectPropertyRange":
+      return `ObjectPropertyRange(${axiom.propertyIri} ${axiom.rangeIri})`;
+    case "DataPropertyDomain":
+      return `DataPropertyDomain(${axiom.propertyIri} ${axiom.domainIri})`;
+    case "DataPropertyRange":
+      return `DataPropertyRange(${axiom.propertyIri} ${axiom.rangeIri})`;
+    case "NegativeObjectPropertyAssertion":
+      return `NegativeObjectPropertyAssertion(${axiom.propertyIri} ${axiom.subjectIri} ${axiom.objectIri})`;
+    case "NegativeDataPropertyAssertion":
+      return `NegativeDataPropertyAssertion(${axiom.propertyIri} ${axiom.subjectIri} "${axiom.value}")`;
     case "IndividualDeclaration":
       return `Declaration(NamedIndividual(${axiom.iri}))`;
     case "ClassAssertion":
       return `ClassAssertion(${axiom.classIri} ${axiom.individualIri})`;
     case "ObjectSomeValuesFrom":
-      return `SubClassOf(owl:Thing ObjectSomeValuesFrom(${axiom.propertyIri} ${axiom.fillerClassIri}))`;
+      return `SubClassOf(${axiom.subClassIri ?? "owl:Thing"} ObjectSomeValuesFrom(${axiom.propertyIri} ${axiom.fillerClassIri}))`;
     case "DataSomeValuesFrom":
-      return `SubClassOf(owl:Thing DataSomeValuesFrom(${axiom.propertyIri} ${axiom.dataRange}))`;
+      return `SubClassOf(${axiom.subClassIri ?? "owl:Thing"} DataSomeValuesFrom(${axiom.propertyIri} ${axiom.dataRange}))`;
     case "NominalClass":
     case "ObjectOneOf":
       return `EquivalentClasses(${axiom.classIri} ObjectOneOf(${axiom.individualIris.join(" ")}))`;

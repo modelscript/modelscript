@@ -75,6 +75,8 @@ export function getValidatedGeometryPath(rawPath: string): string {
  */
 export class CaeSolverRunner {
   private readonly hpcEngine: HpcEngine;
+  private readonly activeNativeJobIds = new Map<string, string>();
+  private readonly cancelledJobs = new Set<string>();
 
   constructor(hpcEngine?: HpcEngine) {
     this.hpcEngine = hpcEngine || new HpcEngine();
@@ -95,6 +97,10 @@ export class CaeSolverRunner {
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
     try {
+      if (this.cancelledJobs.has(spec.jobId)) {
+        throw new Error("Job CANCELLED before execution");
+      }
+
       // 1. Stage input files in temporary workspace
       const deckFileName = spec.solver === "calculix" ? "job.inp" : "config.cfg";
       const deckPath = path.join(tmpDir, deckFileName);
@@ -124,6 +130,11 @@ export class CaeSolverRunner {
 
       // 3. Resolve profile & build HPC spec
       const profile = getComputeProfile(spec.profile);
+      const requestedMinutes = spec.timeoutSeconds ? Math.ceil(spec.timeoutSeconds / 60) : undefined;
+      const maxProfileMinutes = profile.maxWallClockMinutes ?? 30;
+      const effectiveTimeLimitMinutes =
+        requestedMinutes !== undefined ? Math.min(requestedMinutes, maxProfileMinutes) : undefined;
+
       const hpcSpec: HpcJobSpec = {
         jobId: spec.jobId,
         name: `CAE-${spec.solver.toUpperCase()}-${spec.jobId}`,
@@ -137,17 +148,27 @@ export class CaeSolverRunner {
           partition: profile.partition,
           gpus: profile.gpus,
           gpuType: profile.gpuType,
-          timeLimitMinutes: spec.timeoutSeconds ? Math.ceil(spec.timeoutSeconds / 60) : undefined,
+          timeLimitMinutes: effectiveTimeLimitMinutes,
         },
       };
 
       // 4. Submit and wait for completion with live telemetry streaming
       const { submission } = await this.hpcEngine.submitJob(hpcSpec, profile.id);
+      this.activeNativeJobIds.set(spec.jobId, submission.nativeJobId);
+
+      if (this.cancelledJobs.has(spec.jobId)) {
+        await this.hpcEngine.cancel(submission.nativeJobId);
+        throw new Error("Job CANCELLED by user");
+      }
 
       const usage = await this.hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile, (chunk) => {
         logStream.write(chunk);
         telemetryStreamer.processChunk(chunk);
       });
+
+      if (this.cancelledJobs.has(spec.jobId)) {
+        throw new Error("Job CANCELLED by user");
+      }
 
       if (usage.exitCode !== 0) {
         throw new Error(`Solver exited with code ${usage.exitCode}`);
@@ -185,6 +206,8 @@ export class CaeSolverRunner {
         durationMs: Date.now() - startTime,
       };
     } finally {
+      this.activeNativeJobIds.delete(spec.jobId);
+      this.cancelledJobs.delete(spec.jobId);
       logStream.end();
       if (fs.existsSync(tmpDir)) {
         try {
@@ -197,10 +220,12 @@ export class CaeSolverRunner {
   }
 
   /**
-   * Cancels a running solver job.
+   * Cancels a running solver job using its mapped native cluster job ID.
    */
   public cancelJob(jobId: string): boolean {
-    this.hpcEngine.cancel(jobId);
+    this.cancelledJobs.add(jobId);
+    const nativeId = this.activeNativeJobIds.get(jobId) ?? jobId;
+    void this.hpcEngine.cancel(nativeId);
     return true;
   }
 

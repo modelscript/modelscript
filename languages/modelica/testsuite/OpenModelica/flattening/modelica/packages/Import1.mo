@@ -1,7 +1,6 @@
 // name:     Import1
 // keywords: import
 // status:   correct
-// xfail:    true
 //
 // Demonstrating various form of import.
 //

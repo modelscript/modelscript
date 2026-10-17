@@ -1,7 +1,6 @@
 // name: ConnectComplexFlow1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 operator record Complex

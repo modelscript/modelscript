@@ -15,30 +15,50 @@ import {
 import { Cst } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated } from "../../queries.js";
-import { escapeRegExp, getSymbolQualifiedName } from "../expressions/index.js";
+import {
+  escapeRegExp,
+  evalArithmeticString,
+  getSymbolEnumLiterals,
+  getSymbolQualifiedName,
+} from "../expressions/index.js";
 import { getClassDiagRange } from "../support/range-utils.js";
 import type { ComponentInstanceData } from "../types.js";
 import { collectExtendsMods } from "./component-inst.js";
 
 export function isFunctionSym(db: QueryDB, sym: any): boolean {
   if (!sym) return false;
+  if ((sym as any)._isFunction !== undefined) return (sym as any)._isFunction;
   const meta = (sym.metadata as any) || {};
   const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
   const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
   const words = cleanKind.split(/\s+/).filter(Boolean);
-  if (words.includes("function")) return true;
+  if (words.includes("function")) {
+    (sym as any)._isFunction = true;
+    return true;
+  }
+  if (words.length > 0 && !words.includes("function")) {
+    (sym as any)._isFunction = false;
+    return false;
+  }
   const cst = db.cstNode(sym.id) as any;
   if (cst) {
     for (const child of cst.children || []) {
       if (child.type === "class_prefixes") {
         const childText = (child.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
         const childWords = childText.split(/\s+/).filter(Boolean);
-        if (childWords.includes("function")) return true;
+        if (childWords.includes("function")) {
+          (sym as any)._isFunction = true;
+          return true;
+        }
       }
     }
     const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-    if (/^(?:(?:encapsulated|partial|replaceable|pure|impure)\s+)*function\b/.test(text)) return true;
+    if (/^(?:(?:encapsulated|partial|replaceable|pure|impure)\s+)*function\b/.test(text)) {
+      (sym as any)._isFunction = true;
+      return true;
+    }
   }
+  (sym as any)._isFunction = false;
   return false;
 }
 
@@ -97,14 +117,49 @@ export function generateRecordConstructorFor(
     return null;
   }
 
+  const recordConstValues = new Map<string, number>();
   for (const comp of comps) {
+    if (comp && comp.kind === "Component") {
+      const ci = db.query<ComponentInstanceData>("componentInstance", comp.id);
+      const cm = (comp.metadata as any) || {};
+      const cc = db.cstNode(comp.id) as any;
+      const isConst =
+        ci?.variability === "constant" ||
+        cm.variability === "constant" ||
+        cm.isConstant === true ||
+        /\bconstant\b/.test(cc?.text ?? "");
+      if (isConst) {
+        const bt = ci?.modification?.bindingExpression?.text?.trim();
+        if (bt) {
+          const n = Number(bt);
+          if (!isNaN(n)) recordConstValues.set(comp.name, n);
+        }
+      }
+    }
+  }
+
+  // Order inputs before protected constants so record constructor inputs come first (e.g. RecordConstructors2)
+  const orderedComps = [...comps].sort((a, b) => {
+    const aInst = db.query<ComponentInstanceData>("componentInstance", a.id);
+    const bInst = db.query<ComponentInstanceData>("componentInstance", b.id);
+    const aCst = db.cstNode(a.id) as any;
+    const bCst = db.cstNode(b.id) as any;
+    const aProt =
+      flattener.isCstNodeProtected(aCst) || aInst?.variability === "constant" || /\bconstant\b/.test(aCst?.text ?? "");
+    const bProt =
+      flattener.isCstNodeProtected(bCst) || bInst?.variability === "constant" || /\bconstant\b/.test(bCst?.text ?? "");
+    if (aProt !== bProt) return aProt ? 1 : -1;
+    return 0;
+  });
+
+  for (const comp of orderedComps) {
     if (comp && comp.kind === "Component") {
       const compInst = db.query<ComponentInstanceData>("componentInstance", comp.id);
       const cMeta = (comp.metadata as any) || {};
       const redeclForComp = redeclArgs.find((a: any) => a.name === comp.name);
       let typeSpec = redeclForComp?.redeclaredTypeSpecifier ?? compInst?.typeSpecifier ?? cMeta.typeSpecifier;
-      let compTargetId: SymbolId | null = null;
-      if (typeSpec) {
+      let compTargetId: SymbolId | null = compInst?.classInstance ?? null;
+      if (!compTargetId && typeSpec) {
         const simple = typeSpec.split(".").pop()!;
         const targets = db.byName(simple);
         const found = targets.find((t) => t.kind === "Class" || (t.metadata as any)?.classKind === "type");
@@ -112,7 +167,14 @@ export function generateRecordConstructorFor(
       }
 
       const compTypeMods: any[] = [];
-      if (compTargetId && flattener.isClassType(compTargetId)) {
+      let enumLits: string[] | null = null;
+      if (compTargetId) {
+        const targetSym = db.symbol(compTargetId);
+        if (targetSym) {
+          enumLits = getSymbolEnumLiterals(db, targetSym);
+        }
+      }
+      if (compTargetId && flattener.isClassType(compTargetId) && !enumLits) {
         let currTypeId: SymbolId | null = compTargetId;
         while (currTypeId) {
           const mod = db.query<any>("effectiveModification", currTypeId);
@@ -129,7 +191,8 @@ export function generateRecordConstructorFor(
       }
 
       let vType = VarType.Real;
-      if (typeSpec === "Integer" || cMeta.varType === VarType.Integer) vType = VarType.Integer;
+      if (enumLits && enumLits.length > 0) vType = VarType.Enumeration;
+      else if (typeSpec === "Integer" || cMeta.varType === VarType.Integer) vType = VarType.Integer;
       else if (typeSpec === "Boolean" || cMeta.varType === VarType.Boolean) vType = VarType.Boolean;
       else if (typeSpec === "String" || cMeta.varType === VarType.String) vType = VarType.String;
       else if (typeSpec === "Clock" || cMeta.varType === VarType.Clock) vType = VarType.Clock;
@@ -150,7 +213,12 @@ export function generateRecordConstructorFor(
       if (isCompProt) {
         fn.setVarProtected(varIdx, true);
       }
-      if (typeSpec && !["Real", "Integer", "Boolean", "String"].includes(typeSpec)) {
+      if (enumLits && enumLits.length > 0) {
+        fn.setVarEnumerationLiterals(
+          varIdx,
+          enumLits.map((s: string) => ({ stringValue: s })),
+        );
+      } else if (typeSpec && !["Real", "Integer", "Boolean", "String"].includes(typeSpec)) {
         let customTypeStr = typeSpec;
         if (!customTypeStr.includes(".") && compTargetId && sym.parentId && sym.parentId !== rootClassId) {
           const compTargetSym = db.symbol(compTargetId);
@@ -161,24 +229,26 @@ export function generateRecordConstructorFor(
         }
         fn.setVarCustomType(varIdx, customTypeStr);
       }
-      if (compInst?.arrayDimensions && compInst.arrayDimensions.length > 0) {
-        fn.setVarShape(varIdx, compInst.arrayDimensions);
-      }
       const rawDims = db.query<any[] | null>("arrayDimensions", comp.id);
+      if (compInst?.arrayDimensions && compInst.arrayDimensions.length > 0) {
+        const effectiveShape = compInst.arrayDimensions.map((dimVal, dIdx) =>
+          rawDims?.[dIdx]?.kind !== "literal" ? -1 : dimVal,
+        );
+        fn.setVarShape(varIdx, effectiveShape);
+      }
       if (rawDims && rawDims.length > 0) {
         const shapeExprIds: number[] = [];
         for (const d of rawDims) {
           if (d.kind === "expression") {
             let exprId = -1;
-            if (d.cstBytes) {
+            if (d.text) {
+              const normText = d.text.replace(/,(\S)/g, ", $1");
+              exprId = fn.addExpression(ExprKind.Name, fn.interner.intern(normText));
+            } else if (d.cstBytes) {
               const cstNode = db.cstNodeRange(d.cstBytes[0], d.cstBytes[1], comp) as any;
               if (cstNode) {
                 exprId = flattener.lowerExpr(cstNode, fn, "");
               }
-            }
-            if (exprId < 0 && d.text) {
-              const normText = d.text.replace(/,(\S)/g, ", $1");
-              exprId = fn.addExpression(ExprKind.Name, fn.interner.intern(normText));
             }
             if (exprId >= 0) {
               shapeExprIds.push(exprId);
@@ -218,8 +288,14 @@ export function generateRecordConstructorFor(
       const bText = (extModForComp?.value?.text ?? compInst?.modification?.bindingExpression?.text)?.trim();
       if (bText) {
         const num = Number(bText);
-        if (!isNaN(num)) {
-          const exprId = vType === VarType.Integer ? fn.addIntLiteral(Math.round(num)) : fn.addRealLiteral(num);
+        const arithVal = isNaN(num) ? evalArithmeticString(bText, true) : num;
+        if (arithVal !== null && !isNaN(arithVal)) {
+          const exprId =
+            vType === VarType.Integer ? fn.addIntLiteral(Math.round(arithVal)) : fn.addRealLiteral(arithVal);
+          fn.setVarExpression(varIdx, exprId);
+        } else if (recordConstValues.has(bText)) {
+          const cVal = recordConstValues.get(bText)!;
+          const exprId = vType === VarType.Integer ? fn.addIntLiteral(Math.round(cVal)) : fn.addRealLiteral(cVal);
           fn.setVarExpression(varIdx, exprId);
         } else if (bText === "true" || bText === "false") {
           fn.setVarExpression(varIdx, fn.addBoolLiteral(bText === "true"));
@@ -235,8 +311,14 @@ export function generateRecordConstructorFor(
             }
             return null;
           };
-          const modChild = (compCst as any)?.children?.find((c: any) => c.type === "modification");
-          const exprCst = findBindingExprNode(modChild ?? compCst);
+          let exprCst: any = null;
+          if (extModForComp?.value?.cstBytes) {
+            exprCst = db.cstNodeRange(extModForComp.value.cstBytes[0], extModForComp.value.cstBytes[1], sym) as any;
+          }
+          if (!exprCst) {
+            const modChild = (compCst as any)?.children?.find((c: any) => c.type === "modification");
+            exprCst = findBindingExprNode(modChild ?? compCst);
+          }
           if (exprCst) {
             const exprId = flattener.lowerExpr(exprCst, fn, "");
             if (exprId >= 0) fn.setVarExpression(varIdx, exprId);
@@ -464,9 +546,11 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
                 const vShape = fn.getVarShape(i);
                 const vCustom = fn.getVarCustomType(i);
                 const vExpr = fn.getVarExpression(i);
+                const vEnumLits = fn.getVarEnumerationLiterals(i);
                 const specVarIdx = specFn.addVariable(vName, vType, Variability.Continuous, vCausality);
                 if (vProt) specFn.setVarProtected(specVarIdx, true);
                 if (vCustom) specFn.setVarCustomType(specVarIdx, vCustom);
+                if (vEnumLits) specFn.setVarEnumerationLiterals(specVarIdx, vEnumLits);
                 if (vShape.length > 0) specFn.setVarShape(specVarIdx, vShape);
                 if (vExpr !== undefined && vExpr >= 0) {
                   const ek = fn.getExprKind(vExpr);
@@ -489,11 +573,11 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
           }
         }
       }
-      if (flattener.isOperatorRecordSym(sym)) {
+      if (flattener.isOperatorRecordSym(sym) && dae.classKind !== "function") {
         const ctors = db.query<any[]>("operatorConstructors", sym.id);
         if (ctors && ctors.length > 0) {
           for (const ctor of ctors) {
-            if (!dae.functions.has(ctor.qualifiedName)) {
+            if (!dae.functions.has(ctor.qualifiedName) && !flattener.activeFlatteningFunctionIds.has(ctor.funcSymId)) {
               const ctorFn = flattener.flattenFunction(ctor.funcSymId, ctor.qualifiedName, undefined, dae);
               dae.addFunction(ctor.qualifiedName, ctorFn);
             }
@@ -542,10 +626,15 @@ export function flattenFunction(
   (fn as any).symId = fnSymId;
   (fn as any).flattener = flattener;
   (fn as any).enclosingScopeId = enclosingScopeId ?? fnParentId ?? db.symbol(fnSymId)?.parentId;
+  (fn as any).componentPrefix =
+    (flattener as any).currentFunctionComponentPrefix ?? (parentDae as any)?.componentPrefix;
+  (fn as any).specializedPrefix =
+    (flattener as any).currentFunctionSpecializedPrefix ?? (parentDae as any)?.specializedPrefix;
   (fn as any).isBeingFlattened = true;
   fn.extensionMetadata.isOldFrontend = Boolean(
     parentDae?.extensionMetadata?.isOldFrontend ?? (flattener.options as any)?.isOldFrontend,
   );
+  (fn.extensionMetadata as any).hasOldInstOption = Boolean((parentDae?.extensionMetadata as any)?.hasOldInstOption);
 
   const prevImports = flattener.currentImports;
   try {
@@ -555,16 +644,19 @@ export function flattenFunction(
     if (parentDae) {
       parentDae.addFunction(cleanFnName, fn);
       parentDae.addFunction(fnName, fn);
-      if (baseName) parentDae.addFunction(baseName, fn);
+      if (baseName && !cleanFnName.includes("$")) parentDae.addFunction(baseName, fn);
     }
     fn.addFunction(cleanFnName, fn);
     fn.addFunction(fnName, fn);
-    if (baseName) fn.addFunction(baseName, fn);
+    if (baseName && !cleanFnName.includes("$")) fn.addFunction(baseName, fn);
 
     const fnImports = flattener.collectClassImports(fnSymId);
     flattener.currentImports = new Map([...flattener.currentImports, ...fnImports]);
 
     const cst = db.cstNode(fnSymId) as any;
+    if (cst) {
+      (fn as any).fnRange = getClassDiagRange(cst);
+    }
     if (cst?.text && /\b__OpenModelica_EarlyInline\s*=\s*true\b/.test(cst.text)) {
       (fn as any).isEarlyInline = true;
     }
@@ -697,7 +789,8 @@ export function flattenFunction(
 
     let inheritedExtClause: SymbolEntry | null = null;
     const ownExtClause = findExternalClause(cst);
-    if (ownExtClause) {
+    const hasOwnAlgo = Boolean(cst && /\balgorithm\b/.test(cst.text ?? ""));
+    if (ownExtClause || hasOwnAlgo) {
       const extendsChildren = db.childrenOf(fnSymId).filter((c) => c.kind === "Extends");
       for (const ext of extendsChildren) {
         const base = db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
@@ -711,7 +804,12 @@ export function flattenFunction(
       }
     }
 
-    if (ownExtClause && inheritedExtClause) {
+    const isOldFrontend = Boolean(
+      fn.extensionMetadata?.isOldFrontend ||
+      parentDae?.extensionMetadata?.isOldFrontend ||
+      (flattener.options as any)?.isOldFrontend,
+    );
+    if (!isOldFrontend && (ownExtClause || hasOwnAlgo) && inheritedExtClause) {
       const extCst = db.cstNode(inheritedExtClause.id) as any;
       const notifRange = extCst
         ? {
@@ -755,6 +853,11 @@ export function flattenFunction(
         );
       if (!extClause.text?.includes('"builtin"') && !isCMath && (!cst?.text || !/\bpure\s+function\b/.test(cst.text))) {
         fn.isImpure = true;
+      }
+
+      const includeMatch = extClause.text?.match(/\bInclude\s*=\s*"((?:[^"\\]|\\.)*)"/);
+      if (includeMatch) {
+        (fn as any).externalInclude = includeMatch[1]!.replace(/\\"/g, '"').replace(/\\n/g, "\n");
       }
 
       let extText = extClause.text?.trim() ?? "";
@@ -1245,6 +1348,7 @@ export function generateExternalObjectFunctions(flattener: any, dae: DAEBuilder)
         if (!dae.functions.has(fnQualName)) {
           const fn = flattener.flattenFunction(child.id, fnQualName, undefined, dae);
           fn.isImpure = true;
+          (fn as any).isExplicitImpure = true;
           foldArenaConstants(fn, db, child.id, true);
           dae.addFunction(fnQualName, fn);
         }
@@ -1259,6 +1363,7 @@ export function propagateImpureFunctions(dae: DAEBuilder): void {
       const ct = fn.getVarCustomType(i);
       if (ct && (ct.includes("SerialPort") || ct.includes("SerialPackager") || ct.includes("ExternalObject"))) {
         fn.isImpure = true;
+        (fn as any).isExplicitImpure = true;
       }
     }
   }
@@ -1266,7 +1371,6 @@ export function propagateImpureFunctions(dae: DAEBuilder): void {
   while (changed) {
     changed = false;
     for (const fn of dae.functions.values()) {
-      if (fn.isImpure) continue;
       for (let i = 0; i < fn.exprCount; i++) {
         if (fn.getExprKind(i) === ExprKind.Call) {
           const calledName = fn.interner.resolve(fn.getExprData1(i));
@@ -1274,10 +1378,13 @@ export function propagateImpureFunctions(dae: DAEBuilder): void {
             const targetFn =
               dae.getFunction(calledName) ??
               (calledName.includes(".") ? dae.getFunction(calledName.split(".").pop()!) : undefined);
-            if (targetFn?.isImpure) {
+            if (targetFn?.isImpure && !fn.isImpure) {
               fn.isImpure = true;
               changed = true;
-              break;
+            }
+            if ((targetFn as any)?.isExplicitImpure && !(fn as any).isExplicitImpure) {
+              (fn as any).isExplicitImpure = true;
+              changed = true;
             }
           }
         }

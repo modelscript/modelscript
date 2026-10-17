@@ -162,4 +162,29 @@ describe("SSRF Protection (assertSafePublicUrl)", () => {
       /SSRF Blocked/,
     );
   });
+
+  test("rejects HTTP redirects to private/internal IPs in safePublicFetch", async () => {
+    const mockResolver = async (host: string) => {
+      if (host === "public.example.com") {
+        return [{ address: "93.184.216.34", family: 4 }];
+      }
+      throw new Error("ENOTFOUND");
+    };
+
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "http://169.254.169.254/latest/meta-data/" },
+        })) as typeof fetch;
+
+      await assert.rejects(
+        async () => safePublicFetch("https://public.example.com/start", undefined, mockResolver),
+        /Forbidden private IPv4: 169\.254\.169\.254/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

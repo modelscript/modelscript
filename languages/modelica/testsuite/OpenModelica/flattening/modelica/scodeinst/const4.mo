@@ -1,7 +1,6 @@
 // name: const4.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 

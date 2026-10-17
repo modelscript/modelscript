@@ -843,20 +843,29 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   hasExplicitVarExpression(varIdx: number): boolean {
-    return this.getVarExpression(varIdx) !== undefined;
+    return this.getExplicitVarExpression(varIdx) !== undefined;
   }
 
   getExplicitVarExpression(varIdx: number): number | undefined {
-    return this.getVarExpression(varIdx);
+    const expr = this.varExpressions.get(varIdx);
+    if (expr !== undefined) return expr;
+    if (this.exports?.dae_getVarAttrExpr) {
+      const binding = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, VarAttrKind.Binding);
+      if (binding !== 0xffffffff && binding >= 0) {
+        return binding;
+      }
+    }
+    return undefined;
   }
 
   setVarExpression(varIdx: number, exprId: number): void {
+    const prevExpr = this.varExpressions.get(varIdx);
     this.varExpressions.set(varIdx, exprId);
     this.setVarAttrExpr(varIdx, VarAttrKind.Binding, exprId);
     const existingStart = this.exports?.dae_getVarAttrExpr
       ? this.exports.dae_getVarAttrExpr(this.ptr, varIdx, VarAttrKind.Start)
       : 0xffffffff;
-    if (existingStart === 0xffffffff || existingStart < 0) {
+    if (existingStart === 0xffffffff || existingStart < 0 || existingStart === prevExpr) {
       this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
     }
   }
@@ -1710,8 +1719,12 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   addPartialFuncExpr(funcName: string, argIds: number[]): number {
     const sId = this.interner.intern(funcName);
-    const argsTuple = this.addTupleExpr(argIds);
-    return this.addExpression(ExprKind.PartialFunc, sId, argsTuple, argIds.length);
+    if (argIds.length === 0) return this.addExpression(ExprKind.PartialFunc, sId, -1, 0);
+    const pfId = this.addExpression(ExprKind.PartialFunc, sId, argIds[0]!, argIds.length);
+    for (let i = 1; i < argIds.length; i++) {
+      this.addExpression(ExprKind.Tuple, 0, argIds[i]!, 0);
+    }
+    return pfId;
   }
 
   addIfElseExpr(condExpr: number, trueExpr: number, falseExpr: number): number {
@@ -2400,6 +2413,15 @@ export function differentiateArenaExpressionWrt(arena: WasmDaeBridge, exprId: nu
       return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpressionWrt(arena, operand, wrtVarId));
     }
 
+    case ExprKind.Unary: {
+      const op = arena.getExprData1(exprId) as UnaryOp;
+      if (op === UnaryOp.Negate) {
+        const operand = arena.getExprLeft(exprId);
+        return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpressionWrt(arena, operand, wrtVarId));
+      }
+      return arena.addRealLiteral(0.0);
+    }
+
     case ExprKind.Binary: {
       const op = arena.getExprData1(exprId) as BinOp;
       const left = arena.getExprLeft(exprId);
@@ -2532,6 +2554,15 @@ function differentiateArenaExpressionWrtSet(arena: WasmDaeBridge, exprId: number
     case ExprKind.Negate: {
       const operand = arena.getExprLeft(exprId);
       return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpressionWrtSet(arena, operand, wrtVarIds));
+    }
+
+    case ExprKind.Unary: {
+      const op = arena.getExprData1(exprId) as UnaryOp;
+      if (op === UnaryOp.Negate) {
+        const operand = arena.getExprLeft(exprId);
+        return arena.addExpression(ExprKind.Negate, 0, differentiateArenaExpressionWrtSet(arena, operand, wrtVarIds));
+      }
+      return arena.addRealLiteral(0.0);
     }
 
     case ExprKind.Binary: {

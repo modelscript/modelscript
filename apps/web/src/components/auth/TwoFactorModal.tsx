@@ -239,8 +239,9 @@ export default function TwoFactorModal({
       setup2FA()
         .then(async (data) => {
           setSecret(data.secret);
+          const uri = data.otpauthUri || data.otpAuthUri || "";
           try {
-            const url = await QRCode.toDataURL(data.otpauthUri, {
+            const url = await QRCode.toDataURL(uri, {
               width: 200,
               margin: 1,
               color: { dark: "#000000", light: "#ffffff" },
@@ -265,7 +266,7 @@ export default function TwoFactorModal({
     setError("");
     setLoading(true);
     try {
-      const res = await verify2FA(verificationCode.trim());
+      const res = await verify2FA(verificationCode.trim(), secret || undefined);
       setBackupCodes(res.backupCodes || []);
       setStep("backup");
       onStatusChange(true);

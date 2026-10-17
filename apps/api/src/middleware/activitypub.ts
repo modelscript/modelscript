@@ -88,7 +88,7 @@ export class ActivityPubInboxRateLimiter {
     }
   }
 
-  public middleware(databaseGetter?: (req: Request) => LibraryDatabase | undefined) {
+  public middleware(_databaseGetter?: (req: Request) => LibraryDatabase | undefined) {
     return (req: Request, res: Response, next: NextFunction): void => {
       // In test mode, allow header override or bypass
       if (process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-inbox-limit"] === "true") {
@@ -96,7 +96,10 @@ export class ActivityPubInboxRateLimiter {
         return;
       }
 
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+      const trustForwarded = process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "test";
+      const xff = trustForwarded ? (req.headers["x-forwarded-for"] as string | undefined) : undefined;
+      const forwardedIp = xff ? xff.split(",")[0]?.trim() : undefined;
+      const clientIp = forwardedIp || req.ip || req.socket.remoteAddress || "127.0.0.1";
       const hostHeader = (req.headers["host"] as string) || "";
       const ipKey = `ip:${clientIp}`;
 
@@ -479,6 +482,30 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
 
       // Reconstruct the string to sign
       const headersList = parts.headers.split(" ");
+
+      if (headersList.includes("digest")) {
+        const digestHeader = req.headers["digest"] as string | undefined;
+        if (!digestHeader) {
+          res.status(401).json({ error: "Missing Digest header" });
+          return;
+        }
+        const rawBody =
+          typeof (req as any).rawBody === "string" ? (req as any).rawBody : req.body ? JSON.stringify(req.body) : "";
+        const expectedHash = crypto.createHash("sha256").update(rawBody).digest("base64");
+        if (!digestHeader.includes(expectedHash)) {
+          res.status(401).json({ error: "Digest header mismatch" });
+          return;
+        }
+      }
+
+      if (headersList.includes("date") && req.headers["date"]) {
+        const parsedDate = Date.parse(String(req.headers["date"]));
+        if (!Number.isNaN(parsedDate) && Math.abs(Date.now() - parsedDate) > 15 * 60 * 1000) {
+          res.status(401).json({ error: "Signature Date header is expired or too far in the future" });
+          return;
+        }
+      }
+
       const signedString = headersList
         .map((header) => {
           if (header === "(request-target)") {

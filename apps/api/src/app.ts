@@ -417,12 +417,21 @@ graph TD
     next();
   });
 
+  if (process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "production") {
+    app.set("trust proxy", 1);
+  }
+
   // Rate Limiting
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, // Limit each IP to 200 requests per `window`
+    max: Number(process.env["RATE_LIMIT_MAX"]) || 1000, // Per-IP budget suitable for SPA + API polling
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) =>
+      req.path === "/health" ||
+      req.path.startsWith("/thumbnails") ||
+      req.path.startsWith("/api/thumbnails") ||
+      req.path.startsWith("/uploads"),
     message: { error: "Too many requests, please try again later." },
   });
   if (process.env["NODE_ENV"] === "production") {
@@ -430,8 +439,30 @@ graph TD
   }
 
   // CORS & Security Defensive Headers (OWASP, SOC 2, ISO 27001, GDPR Art. 32)
-  app.use((_req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
+  const allowedOrigins = new Set(
+    [process.env["PUBLIC_URL"], ...(process.env["CORS_ALLOWED_ORIGINS"] || "").split(",")]
+      .map((o) => o?.trim())
+      .filter((o): o is string => Boolean(o)),
+  );
+  app.use((req, res, next) => {
+    const requestOrigin = req.headers.origin;
+    const isPublicFederationPath =
+      req.path.startsWith("/.well-known/") ||
+      req.path.startsWith("/nodeinfo/") ||
+      req.path.startsWith("/actor") ||
+      req.path.startsWith("/users/");
+
+    if (process.env["NODE_ENV"] === "production" && allowedOrigins.size > 0 && !isPublicFederationPath) {
+      if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+        res.header("Access-Control-Allow-Origin", requestOrigin);
+        res.header("Access-Control-Allow-Credentials", "true");
+        res.header("Vary", "Origin");
+      } else if (!requestOrigin) {
+        res.header("Access-Control-Allow-Origin", Array.from(allowedOrigins)[0]!);
+      }
+    } else {
+      res.header("Access-Control-Allow-Origin", "*");
+    }
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.header("X-Content-Type-Options", "nosniff");
@@ -439,7 +470,7 @@ graph TD
     res.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
     res.header("Referrer-Policy", "strict-origin-when-cross-origin");
     res.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    if (_req.method === "OPTIONS") {
+    if (req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
     }
@@ -558,6 +589,7 @@ graph TD
   app.use("/git", gitServerRouter(database));
   app.use("/api/v1/git-server", gitServerRouter(database));
   app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
+  app.use("/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
   app.use("/uploads", express.static(path.resolve(API_ROOT, "uploads")));
 
   if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {

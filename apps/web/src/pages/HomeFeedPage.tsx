@@ -1485,6 +1485,7 @@ const HomeFeedPage: React.FC = () => {
                         <SecondaryActionButton
                           onClick={() =>
                             openCompose({
+                              content: activeTag ? `#${activeTag} ` : "",
                               defaultText: activeTag ? `#${activeTag} ` : "",
                             })
                           }

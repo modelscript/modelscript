@@ -66,10 +66,8 @@ const MAX_CURSOR_DEPTH: i32 = 999999;
 export let t_activeHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let t_nextHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let t_extractedHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
-export let t_candidateHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let activeHeadsCount: u32 = 0;
 export let nextHeadsCount: u32 = 0;
-export let candidateHeadsCount: u32 = 0;
 export let t_pausedHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let pausedHeadsCount: u32 = 0;
 export let g_expectedVersion: u32 = 0;
@@ -93,9 +91,6 @@ export function initGSS(): void {
   }
   if (changetype<usize>(t_extractedHeadsBuffer) == 0) {
     t_extractedHeadsBuffer = changetype<UnmanagedUint32Array>(heap.alloc(ARENA_BUFFER_SIZE * 4));
-  }
-  if (changetype<usize>(t_candidateHeadsBuffer) == 0) {
-    t_candidateHeadsBuffer = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
   }
   if (changetype<usize>(t_pausedHeads) == 0) {
     t_pausedHeads = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
@@ -124,7 +119,6 @@ export function initGSS(): void {
   resetFrontierSummary(t_nextSummary);
   activeHeadsCount = 0;
   nextHeadsCount = 0;
-  candidateHeadsCount = 0;
   pausedHeadsCount = 0;
 }
 
@@ -139,25 +133,6 @@ export function resetGSSProbe(): void {
 
 export function resetPausedHeads(): void {
   pausedHeadsCount = 0;
-}
-
-/**
- * Pushes a parse head candidate into the static zero-alloc candidate pool buffer.
- */
-export function pushCandidateHead(headPtr: u32): boolean {
-  if (candidateHeadsCount >= 64) return false;
-  let newHead = changetype<ParseHead>(headPtr);
-  for (let i: u32 = 0; i < candidateHeadsCount; i++) {
-    let existingHead = changetype<ParseHead>(t_candidateHeadsBuffer[i]);
-    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
-      if (newHead.errorCost < existingHead.errorCost) {
-        t_candidateHeadsBuffer[i] = headPtr;
-      }
-      return true;
-    }
-  }
-  t_candidateHeadsBuffer[candidateHeadsCount++] = headPtr;
-  return true;
 }
 
 export const MAX_COST_DIFFERENCE: i32 = 7000;
@@ -887,19 +862,27 @@ export class GssEdge {
   targetHead: ParseHead | null;
   astNode: u32;
   nextEdge: u32;
+  dynamicPrec: i32;
 }
 
 /**
  * Adds an alternative predecessor link to a GSS head, turning it into a true DAG node.
+ * `dynPrecDelta` records the dynamic precedence offset (`branchDynamicPrec - head.dynamicPrec`)
+ * along this edge so reductions popping across merged GSS diamonds preserve each derivation's score.
  */
-export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNode: u32): void {
+export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNode: u32, dynPrecDelta: i32 = 0): void {
   if (pred == null) return;
   if (head == pred) return;
-  if (head.prev == pred) return;
+  if (head.prev == pred && head.astNode == astNode) return;
   let curr = head.firstEdge;
   while (curr != 0) {
     let edge = changetype<GssEdge>(curr);
-    if (edge.targetHead == pred) return;
+    if (edge.targetHead == pred && edge.astNode == astNode) {
+      if (dynPrecDelta > edge.dynamicPrec) {
+        edge.dynamicPrec = dynPrecDelta;
+      }
+      return;
+    }
     curr = edge.nextEdge;
   }
   let edgePtr = allocGen0(16);
@@ -907,6 +890,7 @@ export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNo
   newEdge.targetHead = pred;
   newEdge.astNode = astNode;
   newEdge.nextEdge = head.firstEdge;
+  newEdge.dynamicPrec = dynPrecDelta;
   head.firstEdge = edgePtr;
 }
 
@@ -915,6 +899,8 @@ export function gssAddPredecessor(head: ParseHead, pred: ParseHead | null, astNo
  */
 export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void {
   if (existingHead == newHead) return;
+  let oldPrec = existingHead.dynamicPrec;
+  let newPrec = newHead.dynamicPrec;
   // Primary link inversion fix:
   // If newHead has higher dynamic precedence (or lower errorCost), swap existingHead's primary link
   // (prev, astNode) with newHead's so the primary link always points to the superior derivation.
@@ -924,9 +910,16 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
     if (newHead.prev != existingHead) {
       let oldPrev = existingHead.prev;
       let oldNode = existingHead.astNode;
+      let shiftDelta = oldPrec - newPrec;
+      let existingEdgePtr = existingHead.firstEdge;
+      while (existingEdgePtr != 0) {
+        let existingEdge = changetype<GssEdge>(existingEdgePtr);
+        existingEdge.dynamicPrec += shiftDelta;
+        existingEdgePtr = existingEdge.nextEdge;
+      }
       existingHead.prev = newHead.prev;
       existingHead.astNode = newHead.astNode;
-      existingHead.dynamicPrec = newHead.dynamicPrec;
+      existingHead.dynamicPrec = newPrec;
       existingHead.errorCost = newHead.errorCost;
       existingHead.inErrorState = newHead.inErrorState;
       // Per-path state must follow the primary derivation, otherwise diagnostics and
@@ -939,18 +932,19 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
       existingHead.pendingPadding = newHead.pendingPadding;
       existingHead.scannerState = newHead.scannerState;
       existingHead.consecutiveInsertions = newHead.consecutiveInsertions;
-      gssAddPredecessor(existingHead, oldPrev, oldNode);
+      gssAddPredecessor(existingHead, oldPrev, oldNode, shiftDelta);
     } else {
-      gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
+      gssAddPredecessor(existingHead, newHead.prev, newHead.astNode, newPrec - existingHead.dynamicPrec);
     }
   } else {
-    gssAddPredecessor(existingHead, newHead.prev, newHead.astNode);
+    gssAddPredecessor(existingHead, newHead.prev, newHead.astNode, newPrec - oldPrec);
   }
 
+  let baseDelta = newPrec - existingHead.dynamicPrec;
   let curr = newHead.firstEdge;
   while (curr != 0) {
     let edge = changetype<GssEdge>(curr);
-    gssAddPredecessor(existingHead, edge.targetHead, edge.astNode);
+    gssAddPredecessor(existingHead, edge.targetHead, edge.astNode, edge.dynamicPrec + baseDelta);
     curr = edge.nextEdge;
   }
   // D9 fix: propagate successfulShifts during merge (take max)
@@ -1098,52 +1092,6 @@ export function allocParseHead(
   h.processed = false;
   h.isDead = false;
   return h;
-}
-
-/**
- * Represents an error recovery branch candidate tracked during GLR parsing.
- */
-@unmanaged
-export class ErrorBranch {
-  head: u32;
-  cost: i32;
-  lexPos: u32;
-  token: i32;
-  lexLen: u32;
-  threshold: i32;
-  errStart: u32;
-  errEnd: u32;
-  scannerState: u32;
-  next: u32;
-}
-
-/**
- * Allocates and initializes an ErrorBranch instance in Generation 0 memory.
- */
-export function allocErrorBranch(
-  head: u32,
-  cost: i32,
-  lexPos: u32,
-  token: i32,
-  lexLen: u32,
-  threshold: i32,
-  errStart: u32,
-  errEnd: u32,
-  scannerState: u32,
-): u32 {
-  let ptr = allocGen0(40);
-  let b = changetype<ErrorBranch>(ptr);
-  b.head = head;
-  b.cost = cost;
-  b.lexPos = lexPos;
-  b.token = token;
-  b.lexLen = lexLen;
-  b.threshold = threshold;
-  b.errStart = errStart;
-  b.errEnd = errEnd;
-  b.scannerState = scannerState;
-  b.next = 0;
-  return ptr;
 }
 
 // ----------------------------------------------------------------------------

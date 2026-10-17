@@ -162,7 +162,8 @@ export default function RenderArtifactPage() {
       case "aas-package":
       case "cyber-physical-system":
       case "hardware-project":
-        return <AasPackageViewer viewConfig={viewConfig} isFullScreen={true} />;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return <AasPackageViewer viewConfig={viewConfig as any} isFullScreen={true} />;
       case "digital-thread":
       case "digital_thread":
       case "thread-explorer":

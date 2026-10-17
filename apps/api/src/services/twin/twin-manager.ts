@@ -58,11 +58,31 @@ export interface ActiveTwinSession {
   currentParameters: Record<string, number>;
   lastTelemetryAt: string | null;
   lastAdaptedAt: string | null;
+  lastAccessedAt: number;
   subscribers: Set<(event: any) => void>;
 }
 
 export class TwinManager {
   private sessions = new Map<number, ActiveTwinSession>();
+  private readonly maxIdleMs = 30 * 60 * 1000;
+
+  /**
+   * Evict idle twin sessions without active SSE subscribers and dispose their DAEBuilder arenas.
+   */
+  public evictIdleSessions(maxIdleMs: number = this.maxIdleMs): number {
+    const now = Date.now();
+    let evicted = 0;
+    for (const [id, session] of this.sessions.entries()) {
+      if (session.subscribers.size === 0 && now - session.lastAccessedAt > maxIdleMs) {
+        try {
+          (session.arena as any).dispose?.();
+        } catch {}
+        this.sessions.delete(id);
+        evicted++;
+      }
+    }
+    return evicted;
+  }
 
   /**
    * Helper to construct a standard DAE arena for the digital twin model.
@@ -112,8 +132,10 @@ export class TwinManager {
    * Retrieve active in-memory session or instantiate it from the database.
    */
   async getOrCreateSession(twinId: number, db: LibraryDatabase): Promise<ActiveTwinSession> {
+    this.evictIdleSessions();
     const existing = this.sessions.get(twinId);
     if (existing) {
+      existing.lastAccessedAt = Date.now();
       return existing;
     }
 
@@ -209,6 +231,7 @@ export class TwinManager {
       currentParameters: currentParams,
       lastTelemetryAt: row.last_telemetry_at,
       lastAdaptedAt: row.last_adapted_at,
+      lastAccessedAt: Date.now(),
       subscribers: new Set(),
     };
 

@@ -69,7 +69,8 @@ export function simulateRouter(
 
       for (const lib of allLibraries) {
         if (standardLibraries.includes(lib.name)) {
-          loadModels.push(lib.version ? `loadModel(${lib.name}, {"${lib.version}"});` : `loadModel(${lib.name});`);
+          const safeVer = lib.version ? String(lib.version).replace(/[^a-zA-Z0-9_.-]/g, "") : "";
+          loadModels.push(safeVer ? `loadModel(${lib.name}, {"${safeVer}"});` : `loadModel(${lib.name});`);
           continue;
         }
 
@@ -90,7 +91,8 @@ export function simulateRouter(
       // Deduplicate and join paths for MODELICAPATH
       const modelicaPath = Array.from(new Set(libraryPaths)).join(path.delimiter);
 
-      const jobId = `simulate-${libraryName || "adhoc"}-${libraryVersion || "0.0"}-${modelName}-${Date.now()}`;
+      const safeModelJobPart = String(modelName).replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const jobId = `simulate-${libraryName || "adhoc"}-${libraryVersion || "0.0"}-${safeModelJobPart}-${Date.now()}`;
 
       jobQueue.enqueue(jobId, async () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "modelscript-simulate-"));
@@ -107,19 +109,21 @@ export function simulateRouter(
           // Build fully qualified model name by extracting the `within` clause
           // from the model source. When the source has `within A.B.C;`, OMC loads
           // the class into that package, so simulate() needs `A.B.C.ClassName`.
-          let qualifiedModelName = modelName;
+          const safeModelName = String(modelName).replace(/[^a-zA-Z0-9_.]/g, "") || "Model";
+          let qualifiedModelName = safeModelName;
           if (modelSource) {
             const withinMatch = modelSource.match(/^\s*within\s+([\w.]+)\s*;/m);
             if (withinMatch?.[1]) {
-              qualifiedModelName = `${withinMatch[1]}.${modelName}`;
+              qualifiedModelName = `${withinMatch[1]}.${safeModelName}`;
             }
           }
 
-          // Use a simple fileNamePrefix so the CSV output path is predictable
-          const fileNamePrefix = modelName.replace(/\./g, "_");
+          // Use a simple fileNamePrefix so the CSV output path is predictable and safe from path traversal
+          const fileNamePrefix = safeModelName.replace(/[^a-zA-Z0-9_]/g, "_") || "model";
           const simArgs = [qualifiedModelName, `outputFormat="csv"`, `fileNamePrefix="${fileNamePrefix}"`];
           if (req.body.numberOfIntervals) {
-            simArgs.push(`numberOfIntervals=${req.body.numberOfIntervals}`);
+            const safeIntervals = Math.max(1, Math.floor(Number(req.body.numberOfIntervals) || 500));
+            simArgs.push(`numberOfIntervals=${safeIntervals}`);
           }
 
           const mosContents = `
@@ -183,7 +187,6 @@ getErrorString();
               args: [prep.runScript],
               workingDir: tmpDir,
               env: {
-                ...process.env,
                 OMP_NUM_THREADS: String(profile.cpus),
               },
               profileId: profile.id,
@@ -202,7 +205,6 @@ getErrorString();
               args: [mosScriptPath],
               workingDir: tmpDir,
               env: {
-                ...process.env,
                 MODELICAPATH: modelicaPath,
                 OMP_NUM_THREADS: String(profile.cpus),
               },

@@ -518,6 +518,11 @@ export const owl2Language = language({
   },
 
   symbols: {
+    OntologyDocument: {
+      name: "$self",
+      kind: "Package",
+      scope: true,
+    },
     ClassEntity: { name: "iri", kind: "Class", scope: true },
     ObjectPropertyEntity: { name: "iri", kind: "ObjectProperty", scope: false },
     DataPropertyEntity: { name: "iri", kind: "DataProperty", scope: false },

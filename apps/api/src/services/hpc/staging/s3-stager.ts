@@ -216,6 +216,7 @@ export class S3ObjectStager implements ObjectStager {
     const epilogueLines = [
       `# --- MODELScript HPC Epilogue (Output Publishing) ---`,
       `echo "[HPC-Epilogue] Publishing results for Job #${jobId}..."`,
+      `for f in slurm-*.out; do if [ -f "$f" ] && [ ! -f "output.log" ]; then cp "$f" "output.log"; break; fi; done`,
       ...outputUploads.map(
         (outSpec) =>
           `if [ -f "${outSpec.targetFilename}" ]; then curl -s -f -X PUT --data-binary @"${outSpec.targetFilename}" "${outSpec.uploadUrl}"; fi`,

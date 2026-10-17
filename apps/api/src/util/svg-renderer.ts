@@ -101,7 +101,7 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
  * Extract metadata for a single component instance.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractComponentMetadata(component: any): ComponentMetadata | null {
+function _extractComponentMetadata(component: any): ComponentMetadata | null {
   const name = component.name;
   if (!name) return null;
 
@@ -219,7 +219,7 @@ function buildClassAdapter(
 
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
-      const childCst = queryDB.cstNode(child.id) as any;
+      const _childCst = queryDB.cstNode(child.id) as any;
       const childClassId = queryDB.query("classInstance", child.id) as number | undefined;
       const compCls =
         typeof childClassId === "number"
@@ -538,7 +538,7 @@ export async function processLibrary(
 
   // Find root classes for this library:
   const rootSymbols: any[] = [];
-  for (const [id, sym] of symIndex.symbols.entries()) {
+  for (const [_id, sym] of symIndex.symbols.entries()) {
     if (
       sym.kind === "Class" &&
       (sym.parentId === null || sym.parentId === sym.id) &&

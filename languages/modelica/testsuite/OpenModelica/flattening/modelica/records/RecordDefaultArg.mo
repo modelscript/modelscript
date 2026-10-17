@@ -1,7 +1,6 @@
 // name:     RecordDefaultArg
 // keywords: record, default argument, #2366
 // status:   correct
-// xfail:    true
 //
 // Tests default arguments in record constructors.
 //

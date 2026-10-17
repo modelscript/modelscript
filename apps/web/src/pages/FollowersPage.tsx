@@ -13,13 +13,14 @@ import FollowButton from "../components/FollowButton";
 import { CircleIconButton } from "../components/SharedStyles";
 import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
+import { safeCssImageUrl } from "../util/url";
 
 const Avatar = styled.div<{ $url?: string; $letter?: string }>`
   width: 48px;
   height: 48px;
   border-radius: 50%;
   background-color: var(--color-canvas-subtle);
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url)};
   background-size: cover;
   background-position: center;
   flex-shrink: 0;

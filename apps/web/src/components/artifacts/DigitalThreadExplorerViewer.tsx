@@ -369,7 +369,7 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
                           sx={{ fontSize: "10px", py: 0, px: 1, backgroundColor: "#f44336", color: "#fff" }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDiagnoseConflict("conflict_bus_voltage");
+                            handleDiagnoseConflict((node as any).conflictId || node.nodeId || "conflict_bus_voltage");
                           }}
                         >
                           Resolve

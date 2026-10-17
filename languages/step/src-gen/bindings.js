@@ -133,6 +133,50 @@ export class Parser {
    * if an old tree and edit bounds are provided.
    */
   parse(source, oldTree = null, editStart = 0, editOldEnd = 0, editNewEnd = 0) {
+    const isCharKernel = Boolean(
+      this.runtime.wasmExports?.lsp_isCharOffsetKernel?.() ||
+      this.runtime.nativeAddon?.lsp_isCharOffsetKernel?.(),
+    );
+    if (isCharKernel) {
+      const str =
+        typeof source === "string"
+          ? source
+          : new TextDecoder("utf-8").decode(source);
+      const byteLen = str.length * 2;
+      const u8 = new Uint8Array(byteLen);
+      const u16 = new Uint16Array(u8.buffer);
+      for (let i = 0; i < str.length; i++) {
+        u16[i] = str.charCodeAt(i);
+      }
+      const inputPtr = this.runtime.ensureInputBuffer
+        ? this.runtime.ensureInputBuffer(byteLen)
+        : this.runtime.getInputBuffer();
+      this.runtime.writeU8Array(inputPtr, u8);
+      if (this.runtime.wasmExports?.setInputLength) {
+        this.runtime.wasmExports.setInputLength(str.length);
+      } else if (this.runtime.nativeAddon?.setInputLength) {
+        this.runtime.nativeAddon.setInputLength(str.length);
+      }
+      const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
+      let startOff = editStart;
+      let oldEndOff = editOldEnd;
+      let newEndOff = editNewEnd > 0 ? editNewEnd : str.length;
+      if (
+        oldTreePtr === 0 ||
+        (startOff === 0 && oldEndOff === 0 && newEndOff === 0)
+      ) {
+        startOff = 0;
+        oldEndOff = 0;
+        newEndOff = str.length;
+      }
+      const astRoot = this.runtime.parse(
+        oldTreePtr,
+        startOff,
+        oldEndOff,
+        newEndOff,
+      );
+      return astRoot === 0 ? null : new ASTNode(this.runtime, astRoot);
+    }
     const currentEnc =
       typeof this.runtime.getInputEncoding === "function"
         ? this.runtime.getInputEncoding()
@@ -257,7 +301,7 @@ export class Parser {
     };
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
     let editStartByte = charToByteOffset(editStart);
-    let editOldEndByte = editOldEnd * encMul;
+    let editOldEndByte = charToByteOffset(editOldEnd);
     let editNewEndByte =
       editNewEnd > 0 ? charToByteOffset(editNewEnd) : view.length;
     if (
@@ -636,6 +680,12 @@ export class LspFacade {
     this.scheduleCompaction(true);
     this.uriSourceCode.delete(uri);
   }
+  isCharOffsetKernel() {
+    return Boolean(
+      this.exports?.lsp_isCharOffsetKernel &&
+      this.exports.lsp_isCharOffsetKernel(),
+    );
+  }
   /**
    * Loads document text into the WASM input buffer without triggering a parse.
    * This ensures that subsequent calls to `getDiagnostics`, `getSemanticTokens`, or CST inspection
@@ -658,11 +708,12 @@ export class LspFacade {
       memArray16[i] = text.charCodeAt(i);
     }
     this._inputEncoding = 1;
+    const inputLen = this.isCharOffsetKernel() ? text.length : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
     this._cachedLineStarts = null;
   }
@@ -809,14 +860,16 @@ export class LspFacade {
       memArray16.fill(0, newTotalLength, maxLen);
     }
     this._inputEncoding = 1;
+    const div = this.getEncodingDiv();
+    const inputLen = this.isCharOffsetKernel() ? newTotalLength : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
-    let editStart = rangeOffset * 2;
-    let editOldEnd = (rangeOffset + rangeLength) * 2;
-    let editNewEnd = (rangeOffset + changeText.length) * 2;
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
+    let editStart = rangeOffset * div;
+    let editOldEnd = (rangeOffset + rangeLength) * div;
+    let editNewEnd = (rangeOffset + changeText.length) * div;
     let baseRoot = prevAstRoot;
     if (
       baseRoot === 0 ||
@@ -957,15 +1010,17 @@ export class LspFacade {
     this._cachedLineStarts = null;
     this.currentInputLength = newTotalLength;
     this._inputEncoding = 1;
+    const div = this.getEncodingDiv();
+    const inputLen = this.isCharOffsetKernel() ? newTotalLength : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     const maxNewEnd = maxOrigEnd + netDelta;
-    let editStartByte = minOrigStart * 2;
-    let editOldEndByte = maxOrigEnd * 2;
-    let editNewEndByte = maxNewEnd * 2;
+    let editStartByte = minOrigStart * div;
+    let editOldEndByte = maxOrigEnd * div;
+    let editNewEndByte = maxNewEnd * div;
     let baseRoot = prevAstRoot;
     if (
       baseRoot === 0 ||
@@ -1012,9 +1067,10 @@ export class LspFacade {
    * Complexity: O(edit_size + affected_lines), typically O(1) for single-char edits.
    */
   _updateLineStarts(old, rangeOffset, rangeLength, changeText) {
-    const editStartByte = rangeOffset * 2;
-    const editOldEndByte = (rangeOffset + rangeLength) * 2;
-    const editNewEndByte = (rangeOffset + changeText.length) * 2;
+    const div = this.getEncodingDiv();
+    const editStartByte = rangeOffset * div;
+    const editOldEndByte = (rangeOffset + rangeLength) * div;
+    const editNewEndByte = (rangeOffset + changeText.length) * div;
     const delta = editNewEndByte - editOldEndByte;
     // Find two split points in the old lineStarts array:
     // prefixEnd:  first index where old[i] > editStartByte (entries IN or AFTER the edit zone)
@@ -1044,13 +1100,13 @@ export class LspFacade {
       const c = changeText.charCodeAt(i);
       if (c === 13) {
         if (i + 1 < changeText.length && changeText.charCodeAt(i + 1) === 10) {
-          newLineStarts.push((rangeOffset + i + 2) * 2);
+          newLineStarts.push((rangeOffset + i + 2) * div);
           i++; // Skip LF
         } else {
-          newLineStarts.push((rangeOffset + i + 1) * 2);
+          newLineStarts.push((rangeOffset + i + 1) * div);
         }
       } else if (c === 10) {
-        newLineStarts.push((rangeOffset + i + 1) * 2);
+        newLineStarts.push((rangeOffset + i + 1) * div);
       }
     }
     // Build the new array:
@@ -1076,13 +1132,44 @@ export class LspFacade {
     return result;
   }
   /**
-   * Scans the current WASM input buffer and calculates all line start byte offsets.
+   * Scans the current WASM input buffer and calculates all line start offsets.
    * This is cached and only recalculated when the cache is invalidated by edits.
-   * Note: The offsets are stored in UTF-16 bytes (i.e. charIndex * 2) to match
-   * the WASM AST's byte offset ranges.
    */
   getLineStarts() {
     if (this._cachedLineStarts) return this._cachedLineStarts;
+    if (this.isCharOffsetKernel()) {
+      const lenChars =
+        this.currentInputLength > 0
+          ? this.currentInputLength
+          : (this.exports.inputLength?.value ?? this.exports.inputLength ?? 0);
+      const starts = [0];
+      const getInputBuf =
+        this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+      const inputBufPtr = getInputBuf ? getInputBuf() : 0;
+      if (inputBufPtr > 0 && lenChars > 0) {
+        const textBuffer = new Uint16Array(
+          this.wasmMemory.buffer,
+          inputBufPtr,
+          lenChars,
+        );
+        for (let i = 0; i < lenChars; i++) {
+          const c = textBuffer[i];
+          if (c === 13) {
+            if (i + 1 < lenChars && textBuffer[i + 1] === 10) {
+              starts.push(i + 2);
+              i++;
+            } else {
+              starts.push(i + 1);
+            }
+          } else if (c === 10) {
+            starts.push(i + 1);
+          }
+        }
+      }
+      const lineStarts = new Uint32Array(starts);
+      this._cachedLineStarts = lineStarts;
+      return lineStarts;
+    }
     const encoding = this.getInputEncoding();
     let lenBytes = this.currentInputLength;
     if (
@@ -1201,7 +1288,7 @@ export class LspFacade {
     return lineStarts;
   }
   /**
-   * Performs a binary search on the cached line starts to map a linear byte offset
+   * Performs a binary search on the cached line starts to map a linear offset
    * to a line and character position (LSP format).
    */
   offsetToPos(offset, lineStarts) {
@@ -1217,29 +1304,15 @@ export class LspFacade {
         high = mid - 1;
       }
     }
-    const encoding = this.getInputEncoding();
-    const charDiv =
-      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
-        ? 2
-        : encoding === InputEncoding.UTF32LE ||
-            encoding === InputEncoding.UTF32BE
-          ? 4
-          : 1;
+    const charDiv = this.getEncodingDiv();
     const charOffset = Math.floor((offset - lineStarts[line]) / charDiv);
     return { line, character: charOffset };
   }
   /**
-   * Maps a line and character position to a linear byte offset.
+   * Maps a line and character position to a linear offset.
    */
   posToOffset(line, character, lineStarts) {
-    const encoding = this.getInputEncoding();
-    const charMult =
-      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
-        ? 2
-        : encoding === InputEncoding.UTF32LE ||
-            encoding === InputEncoding.UTF32BE
-          ? 4
-          : 1;
+    const charMult = this.getEncodingDiv();
     if (line < lineStarts.length) {
       return lineStarts[line] + character * charMult;
     }
@@ -1265,13 +1338,9 @@ export class LspFacade {
     const lineStarts = this.getLineStarts();
     const encoding =
       typeof this.getInputEncoding === "function" ? this.getInputEncoding() : 1;
-    const encStep =
-      encoding === InputEncoding.UTF16LE || encoding === InputEncoding.UTF16BE
-        ? 2
-        : encoding === InputEncoding.UTF32LE ||
-            encoding === InputEncoding.UTF32BE
-          ? 4
-          : 1;
+    const isCharKernel = this.isCharOffsetKernel();
+    const encStep = this.getEncodingDiv();
+    const rawUnitBytes = isCharKernel ? 2 : 1;
     const rStartByte = rangeStart * encStep;
     const rEndByte = Math.max(rangeEnd, rangeStart + 1) * encStep;
     const numElements =
@@ -1283,7 +1352,7 @@ export class LspFacade {
     let memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const extractTokenText = (start, end) => {
-      const lenBytes = this.exports.inputLength
+      const lenUnits = this.exports.inputLength
         ? typeof this.exports.inputLength.value === "number"
           ? this.exports.inputLength.value
           : Number(this.exports.inputLength) || 0
@@ -1293,17 +1362,18 @@ export class LspFacade {
         : this.exports.lsp_getInputBuffer
           ? this.exports.lsp_getInputBuffer()
           : 0;
-      if (inputBufPtr > 0 && start < lenBytes) {
+      if (inputBufPtr > 0 && start < lenUnits) {
         const actualEnd =
           end > start
-            ? Math.min(end, lenBytes)
-            : Math.min(start + encStep * 32, lenBytes);
-        const sliceLen = actualEnd - start;
-        if (sliceLen > 0) {
+            ? Math.min(end, lenUnits)
+            : Math.min(start + encStep * 32, lenUnits);
+        const sliceLenBytes = (actualEnd - start) * rawUnitBytes;
+        const startByteOff = start * rawUnitBytes;
+        if (sliceLenBytes > 0) {
           const slice = new Uint8Array(
             this.wasmMemory.buffer,
-            inputBufPtr + start,
-            sliceLen,
+            inputBufPtr + startByteOff,
+            sliceLenBytes,
           );
           let text = "";
           if (encoding === 1) {
@@ -1313,11 +1383,11 @@ export class LspFacade {
           } else if (encoding === 3 || encoding === 4) {
             const view = new DataView(
               this.wasmMemory.buffer,
-              inputBufPtr + start,
-              sliceLen,
+              inputBufPtr + startByteOff,
+              sliceLenBytes,
             );
             const cps = [];
-            for (let k = 0; k + 3 < sliceLen; k += 4) {
+            for (let k = 0; k + 3 < sliceLenBytes; k += 4) {
               cps.push(view.getUint32(k, encoding === 3));
             }
             text = String.fromCodePoint(...cps);
@@ -1354,8 +1424,6 @@ export class LspFacade {
     }
     const offsetCache = new Map();
     if (requiredNodePtrs.size > 0 && astRoot) {
-      const encoding = this.getInputEncoding();
-      const _encStep = encoding === 1 ? 2 : 1;
       let stackPtrs = new Uint32Array(50000);
       let stackOffsets = new Uint32Array(50000);
       let stackTop = 0;
@@ -1455,9 +1523,7 @@ export class LspFacade {
         if (nodeStart !== undefined) {
           startByte = nodeStart;
           const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
-          endByte =
-            startByte +
-            (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
+          endByte = startByte + (nodeLen > 0 ? nodeLen : encStep);
         }
       }
       const rawLintId = lintId & 0x7fff;
@@ -1615,7 +1681,7 @@ export class LspFacade {
           }
           let msgVal = activeLintMessages[key];
           if (typeof msgVal === "function") {
-            const lenBytes = this.exports.inputLength
+            const lenUnits = this.exports.inputLength
               ? typeof this.exports.inputLength.value === "number"
                 ? this.exports.inputLength.value
                 : Number(this.exports.inputLength) || 0
@@ -1628,20 +1694,20 @@ export class LspFacade {
             let chars = "";
             if (
               inputBufPtr > 0 &&
-              startByte < lenBytes &&
-              endByte <= lenBytes &&
+              startByte < lenUnits &&
+              endByte <= lenUnits &&
               startByte <= endByte
             ) {
-              const sliceLen = endByte - startByte;
-              const slice = new Uint8Array(sliceLen);
+              const sliceLenBytes = (endByte - startByte) * rawUnitBytes;
+              const startByteOff = startByte * rawUnitBytes;
+              const slice = new Uint8Array(sliceLenBytes);
               slice.set(
                 new Uint8Array(
                   this.wasmMemory.buffer,
-                  inputBufPtr + startByte,
-                  sliceLen,
+                  inputBufPtr + startByteOff,
+                  sliceLenBytes,
                 ),
               );
-              const encoding = this.getInputEncoding();
               if (encoding === 1) {
                 chars = new TextDecoder("utf-16le").decode(slice);
               } else if (encoding === 2) {
@@ -1653,7 +1719,7 @@ export class LspFacade {
                   slice.byteLength,
                 );
                 const cps = [];
-                for (let k = 0; k + 3 < sliceLen; k += 4) {
+                for (let k = 0; k + 3 < sliceLenBytes; k += 4) {
                   cps.push(view.getUint32(k, encoding === 3));
                 }
                 chars = String.fromCodePoint(...cps);
@@ -1661,6 +1727,14 @@ export class LspFacade {
                 chars = new TextDecoder("utf-8").decode(slice);
               }
             }
+            const bytesPerChar =
+              encoding === InputEncoding.UTF16LE ||
+              encoding === InputEncoding.UTF16BE
+                ? 2
+                : encoding === InputEncoding.UTF32LE ||
+                    encoding === InputEncoding.UTF32BE
+                  ? 4
+                  : 1;
             const dummyTree = {
               _encoding: encoding,
               _encMult: encStep,
@@ -1672,26 +1746,26 @@ export class LspFacade {
                     : this.exports.lsp_getInputBuffer
                       ? this.exports.lsp_getInputBuffer()
                       : 0;
-                  const totalLenBytes =
+                  const rawLen =
                     this.exports.inputLength &&
                     typeof this.exports.inputLength.value === "number"
                       ? this.exports.inputLength.value
                       : this.currentInputLength > 0
                         ? this.currentInputLength * encStep
                         : 0;
-                  const totalLenUnits = Math.floor(totalLenBytes / encStep);
+                  const totalLenUnits = Math.floor(rawLen / encStep);
                   if (
                     inputPtr > 0 &&
                     start >= 0 &&
                     end <= totalLenUnits &&
                     start <= end
                   ) {
-                    const byteLen = (end - start) * encStep;
+                    const byteLen = (end - start) * bytesPerChar;
                     const u8 = new Uint8Array(byteLen);
                     u8.set(
                       new Uint8Array(
                         currentBuf,
-                        inputPtr + start * encStep,
+                        inputPtr + start * bytesPerChar,
                         byteLen,
                       ),
                     );
@@ -2091,13 +2165,15 @@ export class LspFacade {
     for (let i = 0; i < numElements * 4; i += 4) {
       const rawStart = mem32[(dirPtr >>> 2) + i];
       const rawEnd = mem32[(dirPtr >>> 2) + i + 1];
+      const startOff = Math.floor(rawStart / div);
+      const endOff = Math.floor(rawEnd / div);
       symbols.push({
         start: this.offsetToPos(rawStart, lineStarts),
         end: this.offsetToPos(rawEnd, lineStarts),
-        startOffset: Math.floor(rawStart / div),
-        endOffset: Math.floor(rawEnd / div),
-        startByte: rawStart,
-        endByte: rawEnd,
+        startOffset: startOff,
+        endOffset: endOff,
+        startByte: startOff,
+        endByte: endOff,
         typeId: mem32[(dirPtr >>> 2) + i + 2],
         nodePtr: mem32[(dirPtr >>> 2) + i + 3],
       });
@@ -2105,6 +2181,7 @@ export class LspFacade {
     return symbols;
   }
   getEncodingDiv() {
+    if (this.isCharOffsetKernel()) return 1;
     const encoding = this.getInputEncoding
       ? this.getInputEncoding()
       : InputEncoding.UTF16LE;
@@ -2173,6 +2250,7 @@ export class LspFacade {
     )
       return null;
     const div = this.getEncodingDiv();
+    const rawUnitBytes = this.isCharOffsetKernel() ? 2 : 1;
     const count = this.exports.lsp_getCompletionContext(
       astRoot,
       cursorOffset * div,
@@ -2199,8 +2277,8 @@ export class LspFacade {
         : new TextDecoder("utf-8");
       const rawBytes = new Uint8Array(
         this.wasmMemory.buffer,
-        inputBufPtr + targetStart,
-        targetEnd - targetStart,
+        inputBufPtr + targetStart * rawUnitBytes,
+        (targetEnd - targetStart) * rawUnitBytes,
       );
       targetText = decoder
         .decode(new Uint8Array(rawBytes))
@@ -2237,15 +2315,12 @@ export class LspFacade {
       : this.exports.lsp_getInputBuffer
         ? this.exports.lsp_getInputBuffer()
         : 0;
-    const lenBytes = this.exports.inputLength
+    const lenUnits = this.exports.inputLength
       ? typeof this.exports.inputLength.value === "number"
         ? this.exports.inputLength.value
         : Number(this.exports.inputLength) || 0
       : 0;
-    const _textBuffer =
-      inputBufPtr > 0 && lenBytes > 0
-        ? new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes)
-        : null;
+    const rawUnitBytes = this.isCharOffsetKernel() ? 2 : 1;
     const isUtf16 = this.getInputEncoding
       ? this.getInputEncoding() === 1
       : false;
@@ -2271,19 +2346,19 @@ export class LspFacade {
         let nodeText = "";
         if (
           inputBufPtr > 0 &&
-          lenBytes > 0 &&
-          rawStartByte < lenBytes &&
-          rawEndByte <= lenBytes &&
+          lenUnits > 0 &&
+          rawStartByte < lenUnits &&
+          rawEndByte <= lenUnits &&
           rawStartByte <= rawEndByte
         ) {
           try {
-            const sliceLen = rawEndByte - rawStartByte;
-            const slice = new Uint8Array(sliceLen);
+            const sliceLenBytes = (rawEndByte - rawStartByte) * rawUnitBytes;
+            const slice = new Uint8Array(sliceLenBytes);
             slice.set(
               new Uint8Array(
                 this.wasmMemory.buffer,
-                inputBufPtr + rawStartByte,
-                sliceLen,
+                inputBufPtr + rawStartByte * rawUnitBytes,
+                sliceLenBytes,
               ),
             );
             nodeText = decoder.decode(slice);
@@ -4110,11 +4185,13 @@ export class LspFacade {
       memArray16[i] = text.charCodeAt(i);
     }
     this._inputEncoding = 1;
+    const div = this.getEncodingDiv();
+    const inputLen = this.isCharOffsetKernel() ? text.length : lenBytes;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength)
-      this.exports.lsp_setInputLength(lenBytes);
-    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+      this.exports.lsp_setInputLength(inputLen);
+    else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
     const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
     let baseRoot =
@@ -4145,7 +4222,6 @@ export class LspFacade {
         }
         const editsPtr = this._editsScratchPtr;
         const mem32 = new Uint32Array(this.wasmMemory.buffer);
-        const div = this.getEncodingDiv();
         for (let i = 0; i < edits.length; i++) {
           const base = (editsPtr >>> 2) + i * 3;
           mem32[base] = (edits[i].startOffset ?? edits[i].startByte) * div;
@@ -4160,19 +4236,19 @@ export class LspFacade {
           edits.length,
         );
       } else {
-        newAstRoot = this.exports.parse(baseRoot, 0, 0, lenBytes);
+        newAstRoot = this.exports.parse(baseRoot, 0, 0, inputLen);
       }
     } else {
       let editStart =
         typeof editStartOrEdits === "number" ? editStartOrEdits : 0;
-      let editStartByte = editStart * 2;
-      let editOldEndByte = editOldEnd * 2;
-      let editNewEndByte = editNewEnd * 2;
+      let editStartByte = editStart * div;
+      let editOldEndByte = editOldEnd * div;
+      let editNewEndByte = editNewEnd * div;
       if (
         baseRoot === 0 ||
         (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
       ) {
-        editNewEndByte = lenBytes;
+        editNewEndByte = inputLen;
         baseRoot = 0;
         editStartByte = 0;
         editOldEndByte = 0;
@@ -4719,6 +4795,10 @@ export class SyntaxNode {
    * Cached per-access via the facade; the encoding never changes mid-session.
    */
   get _encodingDiv() {
+    if (typeof this.tree?._encMult === "number") {
+      return this.tree._encMult;
+    }
+    if (this.tree.facade?.isCharOffsetKernel?.()) return 1;
     const enc = this.tree.facade?.getInputEncoding
       ? this.tree.facade.getInputEncoding()
       : (this.tree._encoding ?? 1);
@@ -5422,7 +5502,14 @@ export class Tree {
       ? this.facade.getInputEncoding()
       : 1;
     this._encoding = enc;
-    const mult = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
+    const isCharKernel = Boolean(this.facade?.isCharOffsetKernel?.());
+    const mult = isCharKernel
+      ? 1
+      : enc === 1 || enc === 2
+        ? 2
+        : enc === 3 || enc === 4
+          ? 4
+          : 1;
     this._encMult = mult;
     if (
       facade &&
@@ -5432,7 +5519,7 @@ export class Tree {
       facade.rootSourceCode.set(rootPtr, sourceCode);
     }
     this.lineStarts = [0];
-    if (enc === 0) {
+    if (!isCharKernel && enc === 0) {
       let byteOffset = 0;
       for (let i = 0; i < sourceCode.length; i++) {
         const code = sourceCode.charCodeAt(i);

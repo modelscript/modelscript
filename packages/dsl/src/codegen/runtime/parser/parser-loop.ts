@@ -58,7 +58,7 @@ import {
     globalSearchIterations,
     tempActions, initGlobalCursor, errorCount,
     MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID, isReachableZeroDist, lookupGoto,
-    configEnableBranchA1, configEnableBranchB, configEnableBranchC, configEnableIslandMode, configEnableMultiFile
+    configEnableBranchA1, configEnableBranchB, configEnableMultiFile
 } from "./engine";
 import { globalAstRoot } from "./lsp";
 
@@ -69,7 +69,6 @@ export let diag_count_shift: u32 = 0;
 
 
 import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTarget } from "./recovery";
-import { MAX_PRODUCTION_LENGTH } from "./recovery-config";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
 
 const ACTION_CACHE_SIZE: u32 = 512;
@@ -798,9 +797,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       lh = lh * 0x100000001b3;
       lh ^= (lexLen as u64);
       lh = lh * 0x100000001b3;
-      let inBuf = getInputBuffer() + srcLexPos;
+      let inBuf = getInputBuffer() + ((srcLexPos as usize) << 1);
       for (let i: u32 = 0; i < lexLen; i++) {
-        lh ^= load<u8>(inBuf + i) as u64;
+        lh ^= load<u16>(inBuf + ((i as usize) << 1)) as u64;
         lh = lh * 0x100000001b3;
       }
       setNodeMerkleHash(leaf, (lh & 0xffffffff) as u32, (lh >> 32) as u32);
@@ -2584,9 +2583,9 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
     lh = lh * 0x100000001b3;
     lh ^= (leafLen as u64);
     lh = lh * 0x100000001b3;
-    let inBuf = getInputBuffer() + srcLexPos;
+    let inBuf = getInputBuffer() + ((srcLexPos as usize) << 1);
     for (let i: u32 = 0; i < leafLen; i++) {
-      lh ^= load<u8>(inBuf + i) as u64;
+      lh ^= load<u16>(inBuf + ((i as usize) << 1)) as u64;
       lh = lh * 0x100000001b3;
     }
     setNodeMerkleHash(leaf, (lh & 0xffffffff) as u32, (lh >> 32) as u32);
@@ -2759,6 +2758,7 @@ const MAX_POP_DEPTH: i32 = 128;
 let t_popPathNodes: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
 let t_popPathBottomHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let t_popPathNodeCounts: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+let t_popPathDynDeltas: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
 let t_popDfsNodes: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
 let t_breakdownChildren: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let g_popPathCount: i32 = 0;
@@ -2768,12 +2768,13 @@ function initPopPathBuffers(): void {
     t_popPathNodes = changetype<UnmanagedInt32Array>(heap.alloc(MAX_POP_PATHS * MAX_POP_DEPTH * 4));
     t_popPathBottomHeads = changetype<UnmanagedUint32Array>(heap.alloc(MAX_POP_PATHS * 4));
     t_popPathNodeCounts = changetype<UnmanagedInt32Array>(heap.alloc(MAX_POP_PATHS * 4));
+    t_popPathDynDeltas = changetype<UnmanagedInt32Array>(heap.alloc(MAX_POP_PATHS * 4));
     t_popDfsNodes = changetype<UnmanagedInt32Array>(heap.alloc(MAX_POP_DEPTH * 4));
     t_breakdownChildren = changetype<UnmanagedUint32Array>(heap.alloc(256 * 4));
   }
 }
 
-function recordPopPath(bottomHead: ParseHead, depth: i32): void {
+function recordPopPath(bottomHead: ParseHead, depth: i32, dynDelta: i32 = 0): void {
   if (g_popPathCount >= MAX_POP_PATHS) return;
   let bPtr = changetype<u32>(bottomHead);
   for (let p = 0; p < g_popPathCount; p++) {
@@ -2786,12 +2787,18 @@ function recordPopPath(bottomHead: ParseHead, depth: i32): void {
           break;
         }
       }
-      if (same) return;
+      if (same) {
+        if (dynDelta > t_popPathDynDeltas[p]) {
+          t_popPathDynDeltas[p] = dynDelta;
+        }
+        return;
+      }
     }
   }
   let idx = g_popPathCount++;
   t_popPathBottomHeads[idx] = bPtr;
   t_popPathNodeCounts[idx] = depth;
+  t_popPathDynDeltas[idx] = dynDelta;
   let off = idx * MAX_POP_DEPTH;
   for (let d = 0; d < depth; d++) {
     t_popPathNodes[off + d] = t_popDfsNodes[depth - 1 - d];
@@ -2802,7 +2809,8 @@ function dfsPopPaths(
   curr: ParseHead | null,
   needed: i32,
   isList: bool,
-  depth: i32
+  depth: i32,
+  dynDelta: i32 = 0
 ): void {
   if (g_popPathCount >= MAX_POP_PATHS) return;
   if (curr == null) return;
@@ -2820,9 +2828,9 @@ function dfsPopPaths(
     t_popDfsNodes[depth] = astNode as i32;
     let prevHasMore = currPrev.prev != null || currPrev.firstEdge != 0;
     if (nextNeeded == 0 && (!isList || !prevHasMore || currPrev.astNode == 0 || !isPureErrorNode(currPrev.astNode))) {
-      recordPopPath(currPrev, nextDepth);
+      recordPopPath(currPrev, nextDepth, dynDelta);
     } else {
-      dfsPopPaths(currPrev, nextNeeded, isList, nextDepth);
+      dfsPopPaths(currPrev, nextNeeded, isList, nextDepth, dynDelta);
     }
   }
 
@@ -2835,12 +2843,13 @@ function dfsPopPaths(
       let edgeNode = edge.astNode;
       let edgePure = edgeNode != 0 && isPureErrorNode(edgeNode);
       let edgeNeeded = (!edgePure && needed > 0) ? needed - 1 : needed;
+      let nextDynDelta = dynDelta + edge.dynamicPrec;
       t_popDfsNodes[depth] = edgeNode as i32;
       let targetHasMore = target.prev != null || target.firstEdge != 0;
       if (edgeNeeded == 0 && (!isList || !targetHasMore || target.astNode == 0 || !isPureErrorNode(target.astNode))) {
-        recordPopPath(target, nextDepth);
+        recordPopPath(target, nextDepth, nextDynDelta);
       } else {
-        dfsPopPaths(target, edgeNeeded, isList, nextDepth);
+        dfsPopPaths(target, edgeNeeded, isList, nextDepth, nextDynDelta);
       }
     }
     edgePtr = edge.nextEdge;
@@ -2855,11 +2864,18 @@ function dfsPopPaths(
  * state at `head.pos`, error state, stack summary, progress count) is carried over.
  * The open ERROR container is intentionally not carried: the reduced parent may own it.
  */
-function allocReducedHead(head: ParseHead, nextState: i32, parentNode: u32, bottom: ParseHead | null, reduceProd: i32): ParseHead {
+function allocReducedHead(
+  head: ParseHead,
+  nextState: i32,
+  parentNode: u32,
+  bottom: ParseHead | null,
+  reduceProd: i32,
+  dynDelta: i32 = 0
+): ParseHead {
   return allocParseHead(
     nextState, parentNode, bottom, head.pos, head.scannerState, head.errorCost,
     head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-    head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
+    head.dynamicPrec + dynDelta + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
     0, head.inErrorState, head.summaryPtr, head.summaryCount, head.nodeCount
   );
 }
@@ -2883,7 +2899,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
     if (nextState == -1) return null;
     let isFragile = isConflict;
     let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_globalChildNodes, 0, 0, curr.state, head.balanceHash, isFragile);
-    return allocReducedHead(head, nextState, parentNode, curr, reduceProd);
+    return allocReducedHead(head, nextState, parentNode, curr, reduceProd, 0);
   }
 
   // Fast-path: traverse linear chain and check if any node has firstEdge != 0
@@ -2922,13 +2938,13 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
 
     let isFragile = isConflict;
     let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_globalChildNodes, 0, actualCount, curr.state, head.balanceHash, isFragile);
-    return allocReducedHead(head, nextState, parentNode, curr, reduceProd);
+    return allocReducedHead(head, nextState, parentNode, curr, reduceProd, 0);
   }
 
   // Case B: Multi-link path pop across GSS diamonds (Tree-sitter ts_stack_pop_count)
   initPopPathBuffers();
   g_popPathCount = 0;
-  dfsPopPaths(head, popCount, isList, 0);
+  dfsPopPaths(head, popCount, isList, 0, 0);
 
   if (g_popPathCount == 0) return null;
 
@@ -2938,12 +2954,13 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32, isConfl
   for (let p = 0; p < g_popPathCount; p++) {
     let bHead = changetype<ParseHead>(t_popPathBottomHeads[p]);
     let pCount = t_popPathNodeCounts[p];
+    let pDynDelta = t_popPathDynDeltas[p];
     if (bHead == null) continue;
     let pNextState = lookupGoto(bHead.state, lhsSym);
     if (pNextState == -1) continue;
 
     let parentNode = constructReducedParentNode(lhsSym, reduceProd, t_popPathNodes, p * MAX_POP_DEPTH, pCount, bHead.state, head.balanceHash, isFragile);
-    let newHead = allocReducedHead(head, pNextState, parentNode, bHead, reduceProd);
+    let newHead = allocReducedHead(head, pNextState, parentNode, bHead, reduceProd, pDynDelta);
 
     if (primaryHead == null) {
       primaryHead = newHead;
@@ -3036,33 +3053,55 @@ function breakdownTopOfStack(head: ParseHead): ParseHead | null {
  * Speculatively determines the target LR state of a reduction without constructing AST nodes
  * or pushing speculative heads into the frontier (eliminating head leaks).
  */
-function simulateReduceNextState(head: ParseHead, reduceProd: i32): i32 {
+function simulateReduceNextState(head: ParseHead, reduceProd: i32, lookaheadTok: i32 = -1): i32 {
   if (reduceProd < 0 || reduceProd >= prod_lengths.length) return -1;
   let popCount = prod_lengths[reduceProd];
   let lhsSym = prod_lhs[reduceProd];
   let isList = prod_is_list[reduceProd] == 1;
 
-  let bottomState = -1;
   if (popCount == 0) {
-    bottomState = head.state;
-  } else {
-    let curr: ParseHead | null = head;
-    let needed = popCount;
-    while ((needed > 0 || (isList && curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
-      let astNode = curr.astNode;
-      let isPure = astNode != 0 && isPureErrorNode(astNode);
-      if (!isPure) {
-        if (needed > 0) needed--;
-      }
-      curr = curr.prev;
-    }
-    if (curr == null && needed > 0) return -1;
-    if (curr != null) {
-      bottomState = curr.state;
-    }
+    return lookupGoto(head.state, lhsSym);
   }
 
-  return lookupGoto(bottomState, lhsSym);
+  let curr: ParseHead | null = head;
+  let needed = popCount;
+  let hasMultiLink = false;
+  while ((needed > 0 || (isList && curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
+    if (curr.firstEdge != 0) hasMultiLink = true;
+    let astNode = curr.astNode;
+    let isPure = astNode != 0 && isPureErrorNode(astNode);
+    if (!isPure) {
+      if (needed > 0) needed--;
+    }
+    curr = curr.prev;
+  }
+
+  let primaryGoto = -1;
+  if (curr != null && needed == 0) {
+    primaryGoto = lookupGoto(curr.state, lhsSym);
+    if (!hasMultiLink || (primaryGoto != -1 && (lookaheadTok < 0 || lookupActions(primaryGoto, lookaheadTok) > 0))) {
+      return primaryGoto;
+    }
+  } else if (!hasMultiLink) {
+    return -1;
+  }
+
+  // Fallback for merged GSS diamonds: inspect alternative bottom heads via dfsPopPaths
+  initPopPathBuffers();
+  g_popPathCount = 0;
+  dfsPopPaths(head, popCount, isList, 0, 0);
+  for (let p = 0; p < g_popPathCount; p++) {
+    let bHead = changetype<ParseHead>(t_popPathBottomHeads[p]);
+    if (bHead == null) continue;
+    let pNext = lookupGoto(bHead.state, lhsSym);
+    if (pNext != -1 && (lookaheadTok < 0 || lookupActions(pNext, lookaheadTok) > 0)) {
+      return pNext;
+    }
+    if (primaryGoto == -1 && pNext != -1) {
+      primaryGoto = pNext;
+    }
+  }
+  return primaryGoto;
 }
 
 /**
@@ -3081,8 +3120,6 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
 
     let actCount = action_data[actionOffset];
     let idx = actionOffset + 1;
-    let defaultReduce = -1;
-    let defaultLhs = -1;
     let shiftCandidateReduce = -1;
     let seenSim0: i32 = -1;
     let seenSim1: i32 = -1;
@@ -3097,13 +3134,6 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
         let aTarget = action_data[idx++];
         if (aType == ACTION_REDUCE) {
           if (aTarget >= 0 && aTarget < prod_lhs.length) {
-            let lhs = prod_lhs[aTarget];
-            if (sym == 0) {
-              if (lhs > defaultLhs || (lhs == defaultLhs && aTarget > defaultReduce)) {
-                defaultLhs = lhs;
-                defaultReduce = aTarget;
-              }
-            }
             // B7 fix: prioritize reduction that allows the lookahead token to be shifted
             if (
               shiftCandidateReduce == -1 &&
@@ -3119,7 +3149,7 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
               else if (seenSim3 == -1) seenSim3 = aTarget;
               let rhsLen = prod_lengths[aTarget];
               if (!(curr.state == 0 && rhsLen == 0)) {
-                let simNextState = simulateReduceNextState(curr, aTarget);
+                let simNextState = simulateReduceNextState(curr, aTarget, tok);
                 if (simNextState != -1 && lookupActions(simNextState, tok) > 0) {
                   shiftCandidateReduce = aTarget;
                 }
@@ -3130,7 +3160,7 @@ function doAllPotentialReductions(head: ParseHead, frontierPos: u32, tok: i32): 
       }
     }
 
-    let chosenReduce = shiftCandidateReduce != -1 ? shiftCandidateReduce : defaultReduce;
+    let chosenReduce = shiftCandidateReduce;
     if (chosenReduce == -1) break;
 
     if (curr.state == 0 && prod_lengths[chosenReduce] == 0 && tok != TOKEN_EOF) {

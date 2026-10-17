@@ -13,6 +13,12 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Deploy a new operational digital twin instance bound to a hardware serial number.
    */
   router.post("/", async (req: Request, res: Response): Promise<void> => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const { serialNumber, name, modelicaClass, config, initialParameters } = req.body;
 
     if (!serialNumber || typeof serialNumber !== "string") {
@@ -109,6 +115,12 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Ingest real-time telemetry sample batch or single point.
    */
   router.post("/:id/telemetry", async (req: Request, res: Response): Promise<void> => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const twinId = Number(req.params["id"]);
     if (isNaN(twinId)) {
       res.status(400).json({ error: "Invalid twin ID" });
@@ -173,7 +185,17 @@ export function twinsRouter(database: LibraryDatabase): Router {
       // Send initial hello
       res.write(`data: ${JSON.stringify({ type: "connected", twinId })}\n\n`);
 
+      const heartbeatInterval = setInterval(() => {
+        try {
+          res.write(`: heartbeat\n\n`);
+        } catch {
+          clearInterval(heartbeatInterval);
+        }
+      }, 15_000);
+      heartbeatInterval.unref?.();
+
       req.on("close", () => {
+        clearInterval(heartbeatInterval);
         unsubscribe();
       });
     } catch (err: unknown) {
@@ -187,6 +209,12 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Trigger on-demand MHE calibration (manual override).
    */
   router.post("/:id/adapt", async (req: Request, res: Response): Promise<void> => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const twinId = Number(req.params["id"]);
     if (isNaN(twinId)) {
       res.status(400).json({ error: "Invalid twin ID" });
@@ -256,6 +284,12 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Approve a Physics PR: commits calibrated parameters to active baseline.
    */
   router.post("/:id/proposals/:proposalId/approve", async (req: Request, res: Response): Promise<void> => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const proposalId = Number(req.params["proposalId"]);
     const twinId = Number(req.params["id"]);
     if (isNaN(proposalId) || isNaN(twinId)) {
@@ -263,7 +297,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const reviewerId = Number(req.body?.reviewerId) || 1;
+    const reviewerId = Number(authUser?.id) || Number(req.body?.reviewerId) || 1;
     const notes = req.body?.notes;
 
     const ok = database.reviewTwinProposal(proposalId, "approved", reviewerId, notes);
@@ -293,13 +327,19 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Reject a Physics PR with explanation notes.
    */
   router.post("/:id/proposals/:proposalId/reject", (req: Request, res: Response): void => {
+    const authUser = (req as any).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const proposalId = Number(req.params["proposalId"]);
     if (isNaN(proposalId)) {
       res.status(400).json({ error: "Invalid proposal ID" });
       return;
     }
 
-    const reviewerId = Number(req.body?.reviewerId) || 1;
+    const reviewerId = Number(authUser?.id) || Number(req.body?.reviewerId) || 1;
     const notes = req.body?.notes;
 
     const ok = database.reviewTwinProposal(proposalId, "rejected", reviewerId, notes);

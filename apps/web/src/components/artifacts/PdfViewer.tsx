@@ -5,6 +5,7 @@ import { DownloadIcon, FileIcon, LinkExternalIcon } from "@primer/octicons-react
 import { Button, Text } from "@primer/react";
 import React, { useMemo } from "react";
 import styled from "styled-components";
+import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 
 interface PdfViewerProps {
@@ -35,7 +36,7 @@ const Toolbar = styled.div`
 `;
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const url = viewConfig?.url;
+  const url = sanitizeHttpUrl(viewConfig?.url, { allowRelative: true });
 
   const isMobile = useMemo(() => {
     if (typeof window === "undefined" || typeof navigator === "undefined") return false;
@@ -45,7 +46,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
   if (!url) {
     return (
       <Box p={3} color="var(--color-danger-fg)">
-        <Text>No PDF document URL provided.</Text>
+        <Text>No valid PDF document URL provided.</Text>
       </Box>
     );
   }
@@ -118,6 +119,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
         <Box flex={1} width="100%" height="100%" bg="var(--color-canvas-subtle)">
           <iframe
             src={`${url}#toolbar=0`}
+            sandbox="allow-scripts allow-same-origin"
             width="100%"
             height="100%"
             style={{ border: "none", display: "block" }}

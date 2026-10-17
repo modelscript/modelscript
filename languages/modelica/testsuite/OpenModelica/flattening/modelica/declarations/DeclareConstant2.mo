@@ -1,7 +1,6 @@
 // name:     DeclareConstant2
 // keywords: declaration
 // status:   incorrect
-// xfail:    true
 //
 // The attribute 'value' shall not be accessed.
 //
@@ -16,7 +15,7 @@ end DeclareConstant2;
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
 //
-// [OpenModelica/flattening/modelica/declarations/DeclareConstant2.mo:9:21-9:36:writable] Error: Modified element value not found in class Real.
+// [OpenModelica/flattening/modelica/declarations/DeclareConstant2.mo:10:21-10:36:writable] Error: Modified element value not found in class Real.
 // Error: Error occurred while flattening model DeclareConstant2
 //
 // Execution failed!

@@ -62,11 +62,22 @@ services:
       - "3000:3000"
     volumes:
       - api-data:/app/apps/api/data
+      - api-uploads:/app/apps/api/uploads
+      - api-thumbnails:/app/apps/api/public/thumbnails
+      - api-packages:/app/apps/api/storage
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - TRUST_PROXY=true
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
-      - JWT_SECRET=${JWT_SECRET:-modelscript-dev-secret}
+      - JWT_SECRET=${JWT_SECRET}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - ADMIN_INIT_USERNAME=${ADMIN_INIT_USERNAME:-}
+      - ADMIN_INIT_EMAIL=${ADMIN_INIT_EMAIL:-}
+      - ADMIN_INIT_PASSWORD=${ADMIN_INIT_PASSWORD:-}
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-}
       - TIMESCALE_URL=${TIMESCALE_URL:-}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
@@ -102,6 +113,9 @@ services:
 
 volumes:
   api-data:
+  api-uploads:
+  api-thumbnails:
+  api-packages:
   mqtt-data:
   timescale-data:
   caddy-data:

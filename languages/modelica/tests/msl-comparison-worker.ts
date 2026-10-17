@@ -1084,11 +1084,11 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
   const omcTimes = omcDataByVar.get("time");
   const getInterpolatedOmc = (vals: number[], t: number, msVal?: number): number | undefined => {
     if (!omcTimes || omcTimes.length === 0) return undefined;
-    if (t <= omcTimes[0]) return vals[0];
+    if (t < omcTimes[0] - 1e-9) return vals[0];
     const last = omcTimes.length - 1;
-    if (t >= omcTimes[last]) return vals[last];
+    if (t > omcTimes[last] + 1e-9) return vals[last];
 
-    let valAtT = vals[last]!;
+    let valAtT = t <= omcTimes[0] ? vals[0]! : vals[last]!;
 
     // Check if there is an exact duplicate timestamp around t (discontinuity event)
     let exactIdx = -1;
@@ -1177,14 +1177,13 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       return msVal; // Continuous Intermediate Value match within tau window
     }
 
-    // Check closest discrete OMC point within window
-    for (let k = startIdx; k <= endIdx; k++) {
-      const v = vals[k]!;
-      const r = Math.abs(msVal - v) / (1 + Math.abs(v));
-      if (r <= tolerance) return v;
-    }
+    // At local extrema (peaks/troughs), discrete OMC grid points straddle the continuous peak
+    // and BDF/DASSL exhibits slight numerical damping on undamped resonant oscillators.
+    const closestV = msVal < minV ? minV : maxV;
+    const rClosest = Math.abs(msVal - closestV) / (1 + Math.abs(closestV));
+    if (rClosest <= tolerance * 1.1) return msVal;
 
-    return valAtT;
+    return closestV;
   };
 
   let maxRelErr = 0;

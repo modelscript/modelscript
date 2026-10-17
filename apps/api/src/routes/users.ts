@@ -325,6 +325,7 @@ export function usersRouter(
     const isRemote = Boolean(fullTarget?.remote_domain);
 
     database.followUser(followerId, targetUser.id, isRemote ? "pending" : "accepted");
+    database.createNotification(targetUser.id, followerId, "follow");
 
     if (isRemote && fullTarget?.actor_url) {
       const fullFollower = database.getUserFederationInfo(followerId);
@@ -459,6 +460,20 @@ export function usersRouter(
       database.muteUser(muterId, targetUser.id);
       res.json({ success: true, muted: true });
     }
+  });
+
+  /**
+   * DELETE /api/v1/users/:username/mute
+   */
+  router.delete("/:username/mute", requireAuth, (req: Request, res: Response) => {
+    const muterId = req.user!.id;
+    const targetUser = database.getUserByUsername(req.params.username as string);
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    database.unmuteUser(muterId, targetUser.id);
+    res.json({ success: true, muted: false });
   });
 
   /**

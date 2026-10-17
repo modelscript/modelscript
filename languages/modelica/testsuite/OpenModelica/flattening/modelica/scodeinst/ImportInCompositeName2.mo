@@ -1,7 +1,6 @@
 // name:     ImportInCompositeName2
 // keywords: import lookup
 // status:   incorrect
-// xfail:    true
 //
 //
 

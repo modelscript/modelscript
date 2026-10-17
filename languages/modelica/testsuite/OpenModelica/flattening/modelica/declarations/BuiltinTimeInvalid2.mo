@@ -1,7 +1,6 @@
 // name:     BuiltinTimeInvalid2
 // keywords: time builtin
 // status:   incorrect
-// xfail:    true
 //
 // Checks that time is not a valid component name.
 //

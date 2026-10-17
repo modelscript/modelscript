@@ -21,6 +21,9 @@
     handle /.well-known/* {
         reverse_proxy api:3000
     }
+    handle /nodeinfo/* {
+        reverse_proxy api:3000
+    }
     handle /users/* {
         reverse_proxy api:3000
     }
@@ -28,6 +31,12 @@
         reverse_proxy api:3000
     }
     handle /inbox* {
+        reverse_proxy api:3000
+    }
+    handle /thumbnails/* {
+        reverse_proxy api:3000
+    }
+    handle /uploads/* {
         reverse_proxy api:3000
     }
     handle /legal* {

@@ -8,7 +8,7 @@ export const kermlStdlibEntries = [
   {
     "id": 1,
     "kind": "Package",
-    "name": "ysML v2 / Ke",
+    "name": "ScalarValues",
     "ruleName": "Package",
     "namePath": "declaredName",
     "fieldName": null,
@@ -20,16 +20,16 @@ export const kermlStdlibEntries = [
     "endOffset": 943,
     "fieldRanges": {
       "name": {
-        "startByte": 8,
-        "endByte": 20,
-        "startOffset": 8,
-        "endOffset": 20
+        "startByte": 563,
+        "endByte": 575,
+        "startOffset": 563,
+        "endOffset": 575
       },
       "declaredName": {
-        "startByte": 8,
-        "endByte": 20,
-        "startOffset": 8,
-        "endOffset": 20
+        "startByte": 563,
+        "endByte": 575,
+        "startOffset": 563,
+        "endOffset": 575
       }
     },
     "exports": [
@@ -41,36 +41,36 @@ export const kermlStdlibEntries = [
   {
     "id": 2,
     "kind": "Definition",
-    "name": "n.",
+    "name": "Real",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 27,
-    "endByte": 55,
-    "startOffset": 27,
-    "endOffset": 55,
+    "startByte": 582,
+    "endByte": 610,
+    "startOffset": 582,
+    "endOffset": 610,
     "fieldRanges": {
       "name": {
-        "startByte": 50,
-        "endByte": 54,
-        "startOffset": 50,
-        "endOffset": 54
+        "startByte": 605,
+        "endByte": 609,
+        "startOffset": 605,
+        "endOffset": 609
       },
       "declaredName": {
-        "startByte": 50,
-        "endByte": 54,
-        "startOffset": 50,
-        "endOffset": 54
+        "startByte": 605,
+        "endByte": 609,
+        "startOffset": 605,
+        "endOffset": 609
       }
     },
     "exports": [
-      "ndard library foundation.\n *"
+      "abstract attribute def Real;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "ndard li",
+      "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
     }
@@ -78,36 +78,36 @@ export const kermlStdlibEntries = [
   {
     "id": 3,
     "kind": "Definition",
-    "name": "dard li",
+    "name": "Integer",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 60,
-    "endByte": 91,
-    "startOffset": 60,
-    "endOffset": 91,
+    "startByte": 615,
+    "endByte": 646,
+    "startOffset": 615,
+    "endOffset": 646,
     "fieldRanges": {
       "name": {
-        "startByte": 83,
-        "endByte": 90,
-        "startOffset": 83,
-        "endOffset": 90
+        "startByte": 638,
+        "endByte": 645,
+        "startOffset": 638,
+        "endOffset": 645
       },
       "declaredName": {
-        "startByte": 83,
-        "endByte": 90,
-        "startOffset": 83,
-        "endOffset": 90
+        "startByte": 638,
+        "endByte": 645,
+        "startOffset": 638,
+        "endOffset": 645
       }
     },
     "exports": [
-      "nded comprehensive standard lib"
+      "abstract attribute def Integer;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "nded com",
+      "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
     }
@@ -115,36 +115,36 @@ export const kermlStdlibEntries = [
   {
     "id": 4,
     "kind": "Definition",
-    "name": "lues, C",
+    "name": "Boolean",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 96,
-    "endByte": 127,
-    "startOffset": 96,
-    "endOffset": 127,
+    "startByte": 651,
+    "endByte": 682,
+    "startOffset": 651,
+    "endOffset": 682,
     "fieldRanges": {
       "name": {
-        "startByte": 119,
-        "endByte": 126,
-        "startOffset": 119,
-        "endOffset": 126
+        "startByte": 674,
+        "endByte": 681,
+        "startOffset": 674,
+        "endOffset": 681
       },
       "declaredName": {
-        "startByte": 119,
-        "endByte": 126,
-        "startOffset": 119,
-        "endOffset": 126
+        "startByte": 674,
+        "endByte": 681,
+        "startOffset": 674,
+        "endOffset": 681
       }
     },
     "exports": [
-      "snapshot:\n * - ScalarValues, Co"
+      "abstract attribute def Boolean;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "snapshot",
+      "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
     }
@@ -152,36 +152,36 @@ export const kermlStdlibEntries = [
   {
     "id": 5,
     "kind": "Definition",
-    "name": "s\n * -",
+    "name": "String",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 132,
-    "endByte": 162,
-    "startOffset": 132,
-    "endOffset": 162,
+    "startByte": 687,
+    "endByte": 717,
+    "startOffset": 687,
+    "endOffset": 717,
     "fieldRanges": {
       "name": {
-        "startByte": 155,
-        "endByte": 161,
-        "startOffset": 155,
-        "endOffset": 161
+        "startByte": 710,
+        "endByte": 716,
+        "startOffset": 710,
+        "endOffset": 716
       },
       "declaredName": {
-        "startByte": 155,
-        "endByte": 161,
-        "startOffset": 155,
-        "endOffset": 161
+        "startByte": 710,
+        "endByte": 716,
+        "startOffset": 710,
+        "endOffset": 716
       }
     },
     "exports": [
-      "ions, Links, Occurrences\n * -"
+      "abstract attribute def String;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "ions, Li",
+      "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
     }
@@ -189,65 +189,65 @@ export const kermlStdlibEntries = [
   {
     "id": 6,
     "kind": "Definition",
-    "name": "ansfers",
+    "name": "Natural",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 167,
-    "endByte": 209,
-    "startOffset": 167,
-    "endOffset": 209,
+    "startByte": 722,
+    "endByte": 764,
+    "startOffset": 722,
+    "endOffset": 764,
     "fieldRanges": {
       "name": {
-        "startByte": 190,
-        "endByte": 197,
-        "startOffset": 190,
-        "endOffset": 197
+        "startByte": 745,
+        "endByte": 752,
+        "startOffset": 745,
+        "endOffset": 752
       },
       "declaredName": {
-        "startByte": 190,
-        "endByte": 197,
-        "startOffset": 190,
-        "endOffset": 197
+        "startByte": 745,
+        "endByte": 752,
+        "startOffset": 745,
+        "endOffset": 752
       }
     },
     "exports": [
-      "CoreTypes, Control, Transfers, Performanc"
+      "abstract attribute def Natural :> Integer;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "CoreTyp",
+      "isAbstract": "abstract",
       "isVariation": null,
-      "shortName": "erforman"
+      "shortName": "Integer"
     }
   },
   {
     "id": 7,
     "kind": "Reference",
-    "name": "erforman",
+    "name": "Integer",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 6,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 200,
-    "endByte": 208,
-    "startOffset": 200,
-    "endOffset": 208,
+    "startByte": 755,
+    "endByte": 763,
+    "startOffset": 755,
+    "endOffset": 763,
     "fieldRanges": {
       "name": {
-        "startByte": 200,
-        "endByte": 208,
-        "startOffset": 200,
-        "endOffset": 208
+        "startByte": 755,
+        "endByte": 763,
+        "startOffset": 755,
+        "endOffset": 763
       },
       "superclassifier": {
-        "startByte": 200,
-        "endByte": 208,
-        "startOffset": 200,
-        "endOffset": 208
+        "startByte": 755,
+        "endByte": 763,
+        "startOffset": 755,
+        "endOffset": 763
       }
     },
     "exports": [],
@@ -257,65 +257,65 @@ export const kermlStdlibEntries = [
   {
     "id": 8,
     "kind": "Definition",
-    "name": "ational",
+    "name": "Positive",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 214,
-    "endByte": 257,
-    "startOffset": 214,
-    "endOffset": 257,
+    "startByte": 769,
+    "endByte": 812,
+    "startOffset": 769,
+    "endOffset": 812,
     "fieldRanges": {
       "name": {
-        "startByte": 237,
-        "endByte": 245,
-        "startOffset": 237,
-        "endOffset": 245
+        "startByte": 792,
+        "endByte": 800,
+        "startOffset": 792,
+        "endOffset": 800
       },
       "declaredName": {
-        "startByte": 237,
-        "endByte": 245,
-        "startOffset": 237,
-        "endOffset": 245
+        "startByte": 792,
+        "endByte": 800,
+        "startOffset": 792,
+        "endOffset": 800
       }
     },
     "exports": [
-      "- ISO/IEC 80000 International System of Qu"
+      "abstract attribute def Positive :> Integer;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "- ISO/I",
+      "isAbstract": "abstract",
       "isVariation": null,
-      "shortName": "tem of Q"
+      "shortName": "Integer"
     }
   },
   {
     "id": 9,
     "kind": "Reference",
-    "name": "tem of Q",
+    "name": "Integer",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 8,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 248,
-    "endByte": 256,
-    "startOffset": 248,
-    "endOffset": 256,
+    "startByte": 803,
+    "endByte": 811,
+    "startOffset": 803,
+    "endOffset": 811,
     "fieldRanges": {
       "name": {
-        "startByte": 248,
-        "endByte": 256,
-        "startOffset": 248,
-        "endOffset": 256
+        "startByte": 803,
+        "endByte": 811,
+        "startOffset": 803,
+        "endOffset": 811
       },
       "superclassifier": {
-        "startByte": 248,
-        "endByte": 256,
-        "startOffset": 248,
-        "endOffset": 256
+        "startByte": 803,
+        "endByte": 811,
+        "startOffset": 803,
+        "endOffset": 811
       }
     },
     "exports": [],
@@ -325,65 +325,65 @@ export const kermlStdlibEntries = [
   {
     "id": 10,
     "kind": "Definition",
-    "name": "Units, SI Derive",
+    "name": "UnlimitedNatural",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 262,
-    "endByte": 313,
-    "startOffset": 262,
-    "endOffset": 313,
+    "startByte": 817,
+    "endByte": 868,
+    "startOffset": 817,
+    "endOffset": 868,
     "fieldRanges": {
       "name": {
-        "startByte": 285,
-        "endByte": 301,
-        "startOffset": 285,
-        "endOffset": 301
+        "startByte": 840,
+        "endByte": 856,
+        "startOffset": 840,
+        "endOffset": 856
       },
       "declaredName": {
-        "startByte": 285,
-        "endByte": 301,
-        "startOffset": 285,
-        "endOffset": 301
+        "startByte": 840,
+        "endByte": 856,
+        "startOffset": 840,
+        "endOffset": 856
       }
     },
     "exports": [
-      "ies (ISQ)\n * - SI Base Units, SI Derived Units, SI"
+      "abstract attribute def UnlimitedNatural :> Natural;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "ies (ISQ",
+      "isAbstract": "abstract",
       "isVariation": null,
-      "shortName": "nits, SI"
+      "shortName": "Natural"
     }
   },
   {
     "id": 11,
     "kind": "Reference",
-    "name": "nits, SI",
+    "name": "Natural",
     "ruleName": "OwnedSubclassification",
     "namePath": "superclassifier",
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 304,
-    "endByte": 312,
-    "startOffset": 304,
-    "endOffset": 312,
+    "startByte": 859,
+    "endByte": 867,
+    "startOffset": 859,
+    "endOffset": 867,
     "fieldRanges": {
       "name": {
-        "startByte": 304,
-        "endByte": 312,
-        "startOffset": 304,
-        "endOffset": 312
+        "startByte": 859,
+        "endByte": 867,
+        "startOffset": 859,
+        "endOffset": 867
       },
       "superclassifier": {
-        "startByte": 304,
-        "endByte": 312,
-        "startOffset": 304,
-        "endOffset": 312
+        "startByte": 859,
+        "endByte": 867,
+        "startOffset": 859,
+        "endOffset": 867
       }
     },
     "exports": [],
@@ -393,36 +393,36 @@ export const kermlStdlibEntries = [
   {
     "id": 12,
     "kind": "Definition",
-    "name": "- US C",
+    "name": "Complex",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 318,
-    "endByte": 349,
-    "startOffset": 318,
-    "endOffset": 349,
+    "startByte": 873,
+    "endByte": 904,
+    "startOffset": 873,
+    "endOffset": 904,
     "fieldRanges": {
       "name": {
-        "startByte": 341,
-        "endByte": 348,
-        "startOffset": 341,
-        "endOffset": 348
+        "startByte": 896,
+        "endByte": 903,
+        "startOffset": 896,
+        "endOffset": 903
       },
       "declaredName": {
-        "startByte": 341,
-        "endByte": 348,
-        "startOffset": 341,
-        "endOffset": 348
+        "startByte": 896,
+        "endByte": 903,
+        "startOffset": 896,
+        "endOffset": 903
       }
     },
     "exports": [
-      "xes and Unit Symbols\n * - US Cu"
+      "abstract attribute def Complex;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "xes and",
+      "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
     }
@@ -430,36 +430,36 @@ export const kermlStdlibEntries = [
   {
     "id": 13,
     "kind": "Definition",
-    "name": "- CauseA",
+    "name": "Rational",
     "ruleName": "AttributeDefinition",
     "namePath": "declaredName",
     "fieldName": null,
     "parentId": 1,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 354,
-    "endByte": 386,
-    "startOffset": 354,
-    "endOffset": 386,
+    "startByte": 909,
+    "endByte": 941,
+    "startOffset": 909,
+    "endOffset": 941,
     "fieldRanges": {
       "name": {
-        "startByte": 377,
-        "endByte": 385,
-        "startOffset": 377,
-        "endOffset": 385
+        "startByte": 932,
+        "endByte": 940,
+        "startOffset": 932,
+        "endOffset": 940
       },
       "declaredName": {
-        "startByte": 377,
-        "endByte": 385,
-        "startOffset": 377,
-        "endOffset": 385
+        "startByte": 932,
+        "endByte": 940,
+        "startOffset": 932,
+        "endOffset": 940
       }
     },
     "exports": [
-      "ry & Imperial Units\n * - CauseAn"
+      "abstract attribute def Rational;"
     ],
     "inherits": [],
     "metadata": {
-      "isAbstract": "ry & Imp",
+      "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
     }

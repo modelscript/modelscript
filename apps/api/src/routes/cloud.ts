@@ -57,6 +57,7 @@ export interface CloudDispatchPayload {
 
 export interface CloudJobRecord {
   jobId: string;
+  nativeJobId?: string | undefined;
   dbJobId?: number | null | undefined;
   userId?: number | null | undefined;
   domain: string;
@@ -65,6 +66,7 @@ export interface CloudJobRecord {
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   logs: string[];
   resultPath?: string | undefined;
+  tmpDir?: string | undefined;
   error?: string | undefined;
   startTime: number;
   endTime?: number | undefined;
@@ -72,7 +74,23 @@ export interface CloudJobRecord {
   subscribers: ((event: { type: string; data: unknown }) => void)[];
 }
 
+const MAX_RETAINED_CLOUD_JOBS = 500;
 const activeJobs = new Map<string, CloudJobRecord>();
+
+function pruneCloudJobs(): void {
+  if (activeJobs.size <= MAX_RETAINED_CLOUD_JOBS) return;
+  for (const [id, rec] of activeJobs.entries()) {
+    if (activeJobs.size <= MAX_RETAINED_CLOUD_JOBS) break;
+    if (rec.status === "completed" || rec.status === "failed" || rec.status === "cancelled") {
+      if (rec.tmpDir) {
+        try {
+          fs.rmSync(rec.tmpDir, { recursive: true, force: true });
+        } catch {}
+      }
+      activeJobs.delete(id);
+    }
+  }
+}
 
 export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
   return activeJobs.get(jobId);
@@ -223,6 +241,9 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
 
       // Dispatch asynchronously to job queue
       jobQueue.enqueue(jobId, async () => {
+        if ((jobRecord.status as string) === "cancelled") {
+          return;
+        }
         jobRecord.status = "running";
         jobRecord.logs.push(`[Cloud] Job started running on compute cluster.`);
         broadcast({ type: "status", data: { status: "running" } });
@@ -277,9 +298,14 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
             jobRecord.endTime = Date.now();
             jobRecord.usage = result.usage;
 
+            if ((jobRecord.status as string) === "cancelled" || result.status === "cancelled") {
+              jobRecord.status = "cancelled";
+              return;
+            }
+
             if (result.status === "completed") {
               jobRecord.status = "completed";
-              jobRecord.resultPath = result.resultVtuPath || path.join(resultDir, "results.vtu");
+              jobRecord.resultPath = result.resultVtuPath || path.join(resultDir, "result.vtu");
               jobRecord.logs.push(`[Cloud] CAE computation completed successfully.`);
               broadcast({ type: "status", data: { status: "completed", resultPath: jobRecord.resultPath } });
 
@@ -329,6 +355,7 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
               }
             }
           } catch (err: any) {
+            if ((jobRecord.status as string) === "cancelled") return;
             jobRecord.status = "failed";
             jobRecord.error = err.message || String(err);
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
@@ -352,6 +379,7 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
         } else {
           // Handle Modelica / Monte Carlo
           const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-cloud-${jobId}-`));
+          jobRecord.tmpDir = tmpDir;
           try {
             const mosScriptPath = path.join(tmpDir, "simulate.mos");
             const fileNamePrefix = path.basename(name).replace(/[^a-zA-Z0-9_]/g, "_") || "model";
@@ -409,7 +437,6 @@ getErrorString();
                 args: [prep.runScript],
                 workingDir: tmpDir,
                 env: {
-                  ...process.env,
                   OMP_NUM_THREADS: String(profile.cpus),
                 },
                 profileId: profile.id,
@@ -428,7 +455,6 @@ getErrorString();
                 args: [mosScriptPath],
                 workingDir: tmpDir,
                 env: {
-                  ...process.env,
                   OMP_NUM_THREADS: String(profile.cpus),
                 },
                 profileId: profile.id,
@@ -442,7 +468,18 @@ getErrorString();
             }
 
             const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
+            jobRecord.nativeJobId = submission.nativeJobId;
+
+            if ((jobRecord.status as string) === "cancelled") {
+              await hpcEngine.cancel(submission.nativeJobId);
+              return;
+            }
+
             const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);
+
+            if ((jobRecord.status as string) === "cancelled") {
+              return;
+            }
 
             const csvFilePath = path.resolve(tmpDir, `${fileNamePrefix}_res.csv`);
             if (csvFilePath.startsWith(tmpDir + path.sep) && fs.existsSync(csvFilePath)) {
@@ -482,6 +519,7 @@ getErrorString();
               if (fs.existsSync(logPath)) {
                 details = fs.readFileSync(logPath, "utf8");
               }
+              fs.rmSync(tmpDir, { recursive: true, force: true });
               jobRecord.error = details || "Simulation failed to produce CSV results";
               broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
               if (database && dbJobId) {
@@ -502,6 +540,7 @@ getErrorString();
               }
             }
           } catch (err: any) {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
             jobRecord.status = "failed";
             jobRecord.error = err.message || String(err);
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
@@ -523,6 +562,7 @@ getErrorString();
             }
           }
         }
+        pruneCloudJobs();
       });
 
       res.status(202).json({
@@ -538,6 +578,9 @@ getErrorString();
   // ── 4. GET /api/v1/cloud/jobs ──
   // List active and historical jobs
   router.get("/cloud/jobs", (req: Request, res: Response): void => {
+    const reqAny = req as { user?: { id?: number }; userId?: number };
+    const authUserId = reqAny.user?.id ?? reqAny.userId;
+
     const list: {
       jobId: string;
       domain: string;
@@ -551,6 +594,9 @@ getErrorString();
     }[] = [];
 
     for (const [id, job] of activeJobs.entries()) {
+      if (authUserId !== undefined && job.userId !== undefined && job.userId !== null && job.userId !== authUserId) {
+        continue;
+      }
       list.push({
         jobId: id,
         domain: job.domain,
@@ -677,8 +723,22 @@ getErrorString();
       return;
     }
 
+    if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") {
+      res.json({ success: true, message: `Job ${job.jobId} is already ${job.status}.` });
+      return;
+    }
+
     job.status = "cancelled";
+    job.endTime = Date.now();
     job.logs.push("[Cloud] Job was cancelled by user request.");
+
+    // Terminate the underlying CAE solver or HPC cluster job
+    if (job.domain === "cfd" || job.domain === "fea") {
+      caeRunner.cancelJob(job.jobId);
+    } else {
+      await hpcEngine.cancel(job.nativeJobId || job.jobId);
+    }
+
     for (const sub of job.subscribers) {
       try {
         sub({ type: "status", data: { status: "cancelled" } });

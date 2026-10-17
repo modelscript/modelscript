@@ -428,7 +428,6 @@ export const modelicaLanguage = language({
         "subSample",
         "superSample",
         "then",
-        "time",
         "true",
         "type",
         "when",

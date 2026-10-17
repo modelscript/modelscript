@@ -11,6 +11,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 import { usePageTitle } from "../util/title";
+import { safeCssImageUrl } from "../util/url";
 
 const FeedItemWrapper = styled.div`
   display: flex;
@@ -29,7 +30,7 @@ const Avatar = styled.div<{ $url?: string }>`
   height: 48px;
   border-radius: 50%;
   background-color: var(--color-done-emphasis);
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url)};
   background-size: cover;
   background-position: center;
   display: flex;

@@ -189,6 +189,23 @@ export function evaluateArenaDualExpression(
       }
     }
 
+    case ExprKind.Der: {
+      const argId = arena.getExprData1(exprId);
+      if (arena.getExprKind(argId) === ExprKind.Name) {
+        const innerNameId = arena.getExprData1(argId);
+        const innerName = arena.interner.resolve(innerNameId);
+        if (innerName) {
+          const derNameId = arena.interner.intern(`der(${innerName})`);
+          if (Array.isArray(dualVarsByStringId)) {
+            return dualVarsByStringId[derNameId] ?? null;
+          } else {
+            return dualVarsByStringId.get(derNameId) ?? null;
+          }
+        }
+      }
+      return null;
+    }
+
     case ExprKind.Unary: {
       const op = arena.getExprData1(exprId) as UnaryOp;
       const operand = evaluateArenaDualExpression(arena, arena.getExprLeft(exprId), dualVarsByStringId);
@@ -418,6 +435,21 @@ export function evaluateArenaDualFlat(
       stack[sp] = valuesByStringId[nameId] ?? 0.0;
       stack[sp + 1] = nameId === seedStringId ? 1.0 : 0.0;
       return true;
+    }
+
+    case ExprKind.Der: {
+      const argId = arena.getExprData1(exprId);
+      if (arena.getExprKind(argId) === ExprKind.Name) {
+        const innerNameId = arena.getExprData1(argId);
+        const innerName = arena.interner.resolve(innerNameId);
+        if (innerName) {
+          const derNameId = arena.interner.intern(`der(${innerName})`);
+          stack[sp] = valuesByStringId[derNameId] ?? 0.0;
+          stack[sp + 1] = derNameId === seedStringId ? 1.0 : 0.0;
+          return true;
+        }
+      }
+      return false;
     }
 
     case ExprKind.Unary: {
@@ -1821,6 +1853,32 @@ export function evaluateArenaExpression(
             }
           }
         }
+        if (elements.length > 0) {
+          const lastIdx = elements[elements.length - 1]!;
+          const lastVarName = targetDae.getVarName(lastIdx);
+          const dimMatch = lastVarName.match(/\[(\d+(?:,\d+)+)\]$/);
+          if (dimMatch && dimMatch[1]) {
+            const dims = dimMatch[1].split(",").map(Number);
+            const total = dims.reduce((acc, d) => acc * d, 1);
+            if (dims.length > 1 && total === result.length) {
+              const reshape = (flat: any[], shape: number[], offset: { idx: number }): any[] => {
+                const len = shape[0]!;
+                if (shape.length === 1) {
+                  const slice = flat.slice(offset.idx, offset.idx + len);
+                  offset.idx += len;
+                  return slice;
+                }
+                const rest = shape.slice(1);
+                const outArr: any[] = [];
+                for (let k = 0; k < len; k++) {
+                  outArr.push(reshape(flat, rest, offset));
+                }
+                return outArr;
+              };
+              return reshape(result, dims, { idx: 0 });
+            }
+          }
+        }
         return result;
       }
 
@@ -2490,6 +2548,78 @@ export function evaluateArenaExpression(
         }
       }
       return { __kind: "object" as const, fields };
+    }
+
+    case ExprKind.Comprehension: {
+      const cfn = dae.interner.resolve(dae.getExprData1(exprId)) ?? "array";
+      const bodyId = dae.getExprLeft(exprId);
+      const iterCount = dae.getExprRight(exprId);
+      if (iterCount <= 0) return null;
+
+      const iters: { varName: string; values: ArenaValue[] }[] = [];
+      for (let i = 0; i < iterCount; i++) {
+        const iterNodeId = exprId + 1 + i;
+        const iterVarName = dae.interner.resolve(dae.getExprData1(iterNodeId));
+        const rangeExprId = dae.getExprLeft(iterNodeId);
+        if (!iterVarName || rangeExprId < 0) return null;
+        const rangeVal = evaluateArenaExpression(
+          dae,
+          rangeExprId,
+          parameters,
+          db,
+          scopeId,
+          visitedVars,
+          onlyConstants,
+          functionLookup,
+          callerDae,
+          instancePrefix,
+        );
+        if (!Array.isArray(rangeVal)) return null;
+        iters.push({ varName: iterVarName, values: rangeVal });
+      }
+
+      const evalIterDepth = (depth: number): ArenaValue[] | null => {
+        const iter = iters[depth]!;
+        const prev = parameters.get(iter.varName);
+        const res: ArenaValue[] = [];
+        try {
+          for (const v of iter.values) {
+            parameters.set(iter.varName, v);
+            if (depth + 1 < iters.length) {
+              const sub = evalIterDepth(depth + 1);
+              if (sub === null) return null;
+              res.push(sub);
+            } else {
+              const bodyVal = evaluateArenaExpression(
+                dae,
+                bodyId,
+                parameters,
+                db,
+                scopeId,
+                visitedVars,
+                onlyConstants,
+                functionLookup,
+                callerDae,
+                instancePrefix,
+              );
+              if (bodyVal === null) return null;
+              res.push(bodyVal);
+            }
+          }
+        } finally {
+          if (prev !== undefined) parameters.set(iter.varName, prev);
+          else parameters.delete(iter.varName);
+        }
+        return res;
+      };
+
+      const compArray = evalIterDepth(0);
+      if (compArray === null) return null;
+      if (cfn === "array" || cfn === "{}") return compArray;
+      if (cfn === "sum" || cfn === "product" || cfn === "min" || cfn === "max") {
+        return evalReduction([compArray], cfn);
+      }
+      return compArray;
     }
   }
 

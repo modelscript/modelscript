@@ -22,9 +22,13 @@ export interface PlaygroundDraft {
   updatedAt: number;
 }
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     if (typeof window === "undefined" || !window.indexedDB) {
+      dbPromise = null;
       reject(new Error("IndexedDB not supported in current environment."));
       return;
     }
@@ -44,8 +48,30 @@ function openDatabase(): Promise<IDBDatabase> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onclose = () => {
+        dbPromise = null;
+      };
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
+  });
+  return dbPromise;
+}
+
+function awaitTx(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
   });
 }
 
@@ -63,6 +89,7 @@ export async function cacheArtifact(artifact: any): Promise<void> {
       data: artifact,
       timestamp: Date.now(),
     });
+    await awaitTx(tx);
   } catch (err) {
     console.warn("[offline-storage] Failed to cache artifact:", err);
   }
@@ -95,15 +122,17 @@ export async function cacheTimelinePosts(posts: any[]): Promise<void> {
     const db = await openDatabase();
     const tx = db.transaction("timeline", "readwrite");
     const store = tx.objectStore("timeline");
+    const now = Date.now();
     for (const post of posts) {
       if (post?.id) {
         store.put({
           id: String(post.id),
           data: post,
-          timestamp: Date.now(),
+          timestamp: now,
         });
       }
     }
+    await awaitTx(tx);
   } catch (err) {
     console.warn("[offline-storage] Failed to cache timeline posts:", err);
   }
@@ -145,6 +174,7 @@ export async function savePlaygroundDraft(id: string, code: string, title: strin
       title,
       updatedAt: Date.now(),
     });
+    await awaitTx(tx);
   } catch (err) {
     console.warn("[offline-storage] Failed to save playground draft:", err);
   }
@@ -165,5 +195,25 @@ export async function getPlaygroundDraft(id: string): Promise<PlaygroundDraft | 
     });
   } catch {
     return null;
+  }
+}
+
+/**
+ * Clear all cached offline data from IndexedDB.
+ */
+export async function clearOfflineCache(): Promise<void> {
+  try {
+    const db = await openDatabase();
+    const storeNames = ["artifacts", "timeline", "playground_drafts"].filter((name) =>
+      db.objectStoreNames.contains(name),
+    );
+    if (storeNames.length === 0) return;
+    const tx = db.transaction(storeNames, "readwrite");
+    for (const name of storeNames) {
+      tx.objectStore(name).clear();
+    }
+    await awaitTx(tx);
+  } catch (err) {
+    console.warn("[offline-storage] Failed to clear offline cache:", err);
   }
 }

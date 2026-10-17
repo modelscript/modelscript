@@ -1,7 +1,6 @@
 // name: const7.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 

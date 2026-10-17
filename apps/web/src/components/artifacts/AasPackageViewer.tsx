@@ -4,6 +4,7 @@
 import { CheckIcon, CopyIcon, DownloadIcon, FileCodeIcon, PackageIcon, ToolsIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { useState } from "react";
+import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 import CadStepViewer from "./CadStepViewer";
 
@@ -237,11 +238,17 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
                       <td style={{ padding: "8px" }}>{item.quantity || 1}</td>
                       <td style={{ padding: "8px", fontFamily: "monospace" }}>{item.packageDependency || "—"}</td>
                       <td style={{ padding: "8px" }}>
-                        {item.sourcingUrl ? (
+                        {sanitizeHttpUrl(item.sourcingUrl, {
+                          allowRelative: true,
+                          prependHttpsIfMissingScheme: true,
+                        }) ? (
                           <a
-                            href={item.sourcingUrl}
+                            href={sanitizeHttpUrl(item.sourcingUrl, {
+                              allowRelative: true,
+                              prependHttpsIfMissingScheme: true,
+                            })}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             style={{ color: "var(--color-accent-cyan)" }}
                           >
                             Source Link ↗

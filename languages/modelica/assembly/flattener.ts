@@ -302,6 +302,12 @@ export function locLen(loc: u64): u32 {
 }
 
 @inline
+export function locByteLen(loc: u64): u32 {
+  let len = locLen(loc);
+  return (inputEncoding == 1 || inputEncoding == 2) ? (len << 1) : len;
+}
+
+@inline
 export function locType(loc: u64): u16 {
   let p = locPtr(loc);
   if (p == 0) return 0;
@@ -312,7 +318,8 @@ export function locType(loc: u64): u16 {
 export function locBytes(loc: u64): usize {
   let p = locPtr(loc);
   if (p == 0) return 0;
-  return getInputBuffer() + (locOffset(loc) as usize);
+  let off = locOffset(loc) as usize;
+  return getInputBuffer() + ((inputEncoding == 1 || inputEncoding == 2) ? (off << 1) : off);
 }
 
 @inline
@@ -345,7 +352,7 @@ export function locMakeRoot(nodePtr: u32): u64 {
 export function locIntern(pool: ArenaStringPool, loc: u64): u32 {
   let p = locPtr(loc);
   if (p == 0) return 0;
-  let len = locLen(loc);
+  let len = locByteLen(loc);
   if (len == 0) return 0;
   let bytes = locBytes(loc);
   if (inputEncoding == 1 || inputEncoding == 2) {
@@ -356,27 +363,27 @@ export function locIntern(pool: ArenaStringPool, loc: u64): u32 {
 
 @inline
 export function locMatches(loc: u64, str: string): boolean {
-  return bytesMatch(locBytes(loc), locLen(loc), str);
+  return bytesMatch(locBytes(loc), locByteLen(loc), str);
 }
 
 @inline
 export function locStartsWith(loc: u64, str: string): boolean {
-  return bytesStartsWith(locBytes(loc), locLen(loc), str);
+  return bytesStartsWith(locBytes(loc), locByteLen(loc), str);
 }
 
 @inline
 export function locParseInt(loc: u64): i32 {
-  return parseIntBytes(locBytes(loc), locLen(loc));
+  return parseIntBytes(locBytes(loc), locByteLen(loc));
 }
 
 @inline
 export function locParseReal(loc: u64): f64 {
-  return parseRealBytes(locBytes(loc), locLen(loc));
+  return parseRealBytes(locBytes(loc), locByteLen(loc));
 }
 
 @inline
 export function locHasDotOrExp(loc: u64): boolean {
-  return bytesHaveDotOrExp(locBytes(loc), locLen(loc));
+  return bytesHaveDotOrExp(locBytes(loc), locByteLen(loc));
 }
 
 function modHasEach(modLoc: u64): bool {
@@ -528,7 +535,7 @@ export class CstNodeView {
   @inline get offset(): u32 { return locOffset(this.loc); }
   @inline get isNull(): bool { return locIsNull(this.loc); }
   @inline get type(): u16 { return locType(this.loc); }
-  @inline get byteLength(): u32 { return locLen(this.loc); }
+  @inline get byteLength(): u32 { return locByteLen(this.loc); }
   @inline get padding(): u32 { return locPad(this.loc); }
   @inline get bytes(): usize { return locBytes(this.loc); }
   @inline get text(): SourceTextView { return SourceTextView.at(this.bytes, this.byteLength, inputEncoding == 1 || inputEncoding == 2); }
@@ -593,7 +600,7 @@ export class CstCursor {
   }
 
   @inline get bytes(): usize {
-    return this.isNull ? 0 : (getInputBuffer() + getNodePadding(this.ptr));
+    return this.isNull ? 0 : (getInputBuffer() + ((getNodePadding(this.ptr) as usize) << 1));
   }
 
   @inline toLoc(offset: u32 = 0): u64 {
@@ -1634,7 +1641,7 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64, dae: DaeBuilder | null = nu
   g_hasExplicitZeroDim = false;
   if (locIsNull(subscriptsLoc)) return 0;
   let src = locBytes(subscriptsLoc);
-  let len = locLen(subscriptsLoc);
+  let len = locByteLen(subscriptsLoc);
   let minBytes: u32 = (inputEncoding == 1 || inputEncoding == 2) ? 2 : 1;
   if (len < minBytes || src == 0) return 0;
 
@@ -1711,7 +1718,7 @@ function parseArrayDimensionsLoc(subscriptsLoc: u64, dae: DaeBuilder | null = nu
 
 function parseForIndexRange(fiLoc: u64, dae: DaeBuilder, pool: ArenaStringPool, outVals: ChunkedInt32Array, prefixPathId: u32 = 0, scopeStackPtr: usize = 0): u32 {
   let src = locBytes(fiLoc);
-  let len = locLen(fiLoc);
+  let len = locByteLen(fiLoc);
   let minBytes: u32 = (inputEncoding == 1 || inputEncoding == 2) ? 2 : 1;
   if (len < minBytes || src == 0) return 0;
   let text = SourceTextView.at(src, len, inputEncoding == 1 || inputEncoding == 2);
@@ -2106,6 +2113,33 @@ function extractModAttr(modLoc: u64, attrName: string, exprVisitor: WasmExprVisi
     ch = locNextSibling(ch);
   }
   return 0xffffffff;
+}
+
+function findElementModClassModLoc(modLoc: u64, targetNameId: u32, pool: ArenaStringPool): u64 {
+  if (locIsNull(modLoc)) return 0;
+  let ch = locFirstChild(modLoc);
+  while (!locIsNull(ch)) {
+    let t = locType(ch);
+    if (t == SyntaxType.CLASS_MODIFICATION) {
+      ch = locNextSibling(ch);
+      continue;
+    }
+    if (t == SyntaxType.ELEMENT_MODIFICATION || t == SyntaxType.ELEMENT_MODIFICATION_OR_REPLACEABLE) {
+      let nameCur = locFindDescendant(ch, SyntaxType.IDENTIFIER);
+      if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.TOKEN_IDENTIFIER_ALT);
+      if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.NAME);
+      if (!locIsNull(nameCur) && locIntern(pool, nameCur) == targetNameId) {
+        let subMod = locFindDescendant(ch, SyntaxType.CLASS_MODIFICATION);
+        if (!locIsNull(subMod)) return subMod;
+      }
+      ch = locNextSibling(ch);
+      continue;
+    }
+    let sub = findElementModClassModLoc(ch, targetNameId, pool);
+    if (!locIsNull(sub)) return sub;
+    ch = locNextSibling(ch);
+  }
+  return 0;
 }
 
 function extractModUnit(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
@@ -2905,6 +2939,18 @@ export class WasmExprVisitor {
           poolMatchesSimple(pool, fnId, "pre") || poolMatchesSimple(pool, fnId, "hold") ||
           poolMatchesSimple(pool, fnId, "noEvent")) {
         return true;
+      }
+      if (poolMatchesSimple(pool, fnId, "abs") || poolMatchesSimple(pool, fnId, "min") ||
+          poolMatchesSimple(pool, fnId, "max") || poolMatchesSimple(pool, fnId, "div") ||
+          poolMatchesSimple(pool, fnId, "mod") || poolMatchesSimple(pool, fnId, "rem")) {
+        let argCount = this.dae.getExprRight(exprId);
+        if (argCount > 0) {
+          if (this.isRealExpr(this.dae.getExprLeft(exprId))) return true;
+          for (let i: u32 = 1; i < argCount; i++) {
+            if (this.isRealExpr(this.dae.getExprLeft(exprId + i))) return true;
+          }
+          return false;
+        }
       }
     }
     return false;
@@ -3903,11 +3949,28 @@ export class WasmExprVisitor {
     // 2. Math & Reduction functions (arity 1)
     if (argCount == 1) {
       let a0 = this.tempBuffer.get(argStart);
+      let isSum = poolMatchesSimple(pool, fnNameId, "sum") || poolMatchesSimple(pool, fnNameId, ".sum");
+      let isProd = poolMatchesSimple(pool, fnNameId, "product") || poolMatchesSimple(pool, fnNameId, ".product");
+      let isMin = poolMatchesSimple(pool, fnNameId, "min") || poolMatchesSimple(pool, fnNameId, ".min");
+      let isMax = poolMatchesSimple(pool, fnNameId, "max") || poolMatchesSimple(pool, fnNameId, ".max");
+      if ((isSum || isProd || isMin || isMax) && this.dae.getExprKind(a0) == ExprKind.Name) {
+        let nameId = this.resolveVarName(this.dae.getExprData1(a0));
+        if (this.hasArrayShape(nameId)) {
+          let nd = this.getArrayNDims(nameId);
+          for (let d: u32 = 1; d <= nd; d++) {
+            if (this.getArrayShapeDim(nameId, d) == 0) {
+              if (this.flattenerPtr != 0) {
+                changetype<ModelicaFlattener>(this.flattenerPtr).setError(WasmBailReason.BindingExpr);
+              }
+              return 0xffffffff;
+            }
+          }
+        }
+        if (isSum || isProd) {
+          a0 = resolveVarToArrayCtor(this.dae, pool, a0, this.tempBuffer);
+        }
+      }
       if (this.dae.getExprKind(a0) == ExprKind.ArrayCtor) {
-        let isSum = poolMatchesSimple(pool, fnNameId, "sum") || poolMatchesSimple(pool, fnNameId, ".sum");
-        let isProd = poolMatchesSimple(pool, fnNameId, "product") || poolMatchesSimple(pool, fnNameId, ".product");
-        let isMin = poolMatchesSimple(pool, fnNameId, "min") || poolMatchesSimple(pool, fnNameId, ".min");
-        let isMax = poolMatchesSimple(pool, fnNameId, "max") || poolMatchesSimple(pool, fnNameId, ".max");
         if (isSum || isProd || isMin || isMax) {
           let leafStart = this.tempBuffer.length;
           collectAllArrayCtorLeaves(this.dae, a0, this.tempBuffer);
@@ -4031,6 +4094,10 @@ export class WasmExprVisitor {
           let v0 = this.dae.getExprData1(a0) as i32;
           let v1 = this.dae.getExprData1(a1) as i32;
           if (v1 != 0) return this.dae.addIntLiteral(v0 / v1);
+        } else if (this.isRealExpr(a0) && !this.isRealExpr(a1)) {
+          this.tempBuffer.set(argStart + 1, this.castToReal(a1));
+        } else if (!this.isRealExpr(a0) && this.isRealExpr(a1)) {
+          this.tempBuffer.set(argStart, this.castToReal(a0));
         }
       } else if (poolMatchesSimple(pool, fnNameId, "mod")) {
         if (k0 == ExprKind.IntLiteral && k1 == ExprKind.IntLiteral) {
@@ -4040,12 +4107,20 @@ export class WasmExprVisitor {
             let q = Math.floor((v0 as f64) / (v1 as f64)) as i32;
             return this.dae.addIntLiteral(v0 - q * v1);
           }
+        } else if (this.isRealExpr(a0) && !this.isRealExpr(a1)) {
+          this.tempBuffer.set(argStart + 1, this.castToReal(a1));
+        } else if (!this.isRealExpr(a0) && this.isRealExpr(a1)) {
+          this.tempBuffer.set(argStart, this.castToReal(a0));
         }
       } else if (poolMatchesSimple(pool, fnNameId, "rem")) {
         if (k0 == ExprKind.IntLiteral && k1 == ExprKind.IntLiteral) {
           let v0 = this.dae.getExprData1(a0) as i32;
           let v1 = this.dae.getExprData1(a1) as i32;
           if (v1 != 0) return this.dae.addIntLiteral(v0 % v1);
+        } else if (this.isRealExpr(a0) && !this.isRealExpr(a1)) {
+          this.tempBuffer.set(argStart + 1, this.castToReal(a1));
+        } else if (!this.isRealExpr(a0) && this.isRealExpr(a1)) {
+          this.tempBuffer.set(argStart, this.castToReal(a0));
         }
       }
     }
@@ -5594,7 +5669,7 @@ export class WasmExprVisitor {
     }
     if (t == SyntaxType.STRING_LITERAL) {
       let pool = this.dae.getStringPool();
-      let len = locLen(loc);
+      let len = locByteLen(loc);
       let bytes = locBytes(loc);
       if (inputEncoding == 1 || inputEncoding == 2) {
         if (len >= 4 && load<u16>(bytes) == 34 && load<u16>(bytes + (len as usize) - 2) == 34) {
@@ -6145,6 +6220,7 @@ export class ModelicaFlattener {
   curSubtypeNominalId: u32;
   curSubtypeDisplayUnitId: u32;
   curSubtypeQuantityId: u32;
+  parentFlowFlags: i32;
 
   // Flattening error flag
   hasError: boolean;
@@ -6240,6 +6316,7 @@ export class ModelicaFlattener {
     this.curSubtypeNominalId = 0xffffffff;
     this.curSubtypeDisplayUnitId = 0xffffffff;
     this.curSubtypeQuantityId = 0xffffffff;
+    this.parentFlowFlags = 0;
     let ss = ScopeStack.create();
     this.scopeStackPtr = changetype<usize>(ss) as u32;
 
@@ -6327,6 +6404,7 @@ export class ModelicaFlattener {
     this.curSubtypeNominalId = 0xffffffff;
     this.curSubtypeDisplayUnitId = 0xffffffff;
     this.curSubtypeQuantityId = 0xffffffff;
+    this.parentFlowFlags = 0;
 
     if (this.scopeStackPtr != 0) {
       changetype<ScopeStack>(this.scopeStackPtr).depth = 0;
@@ -7277,6 +7355,12 @@ export class ModelicaFlattener {
               }
             }
           }
+        } else if (
+          g_isOmcNewInst &&
+          ((matchL && relL == 0 && matchR && relR != 0) || (matchR && relR == 0 && matchL && relL != 0))
+        ) {
+          this.setError(WasmBailReason.ConnectRefExpr);
+          return;
         } else {
           if (matchL && relL != 0) {
             this.markSignalReferencedByName(lhsNameId, pool);
@@ -8033,10 +8117,13 @@ export class ModelicaFlattener {
 
     let pool = this.dae.getStringPool();
     if (lKind == ExprKind.Name) {
-      let lNameId = this.resolveOuterToInner(pool, lExpr.data1);
-      if (lNameId != lExpr.data1) {
-        lhs = this.dae.addExpression(ExprKind.Name, lNameId);
-        lExpr = ExprAccessor.at(this.dae.getExprData(), lhs);
+      let lNameId = lExpr.data1;
+      if (this.dae.lookupVariableByName(lNameId) == -1) {
+        lNameId = this.resolveOuterToInner(pool, lNameId);
+        if (lNameId != lExpr.data1) {
+          lhs = this.dae.addExpression(ExprKind.Name, lNameId);
+          lExpr = ExprAccessor.at(this.dae.getExprData(), lhs);
+        }
       }
       if (this.dae.lookupVariableByName(lNameId) == -1 && !pool.isTime(lNameId) && !this.isInsideExpandableBus(lNameId, pool)) {
         this.setError(WasmBailReason.EquationLhsUnresolved);
@@ -8044,10 +8131,13 @@ export class ModelicaFlattener {
       }
     }
     if (rKind == ExprKind.Name) {
-      let rNameId = this.resolveOuterToInner(pool, rExpr.data1);
-      if (rNameId != rExpr.data1) {
-        rhs = this.dae.addExpression(ExprKind.Name, rNameId);
-        rExpr = ExprAccessor.at(this.dae.getExprData(), rhs);
+      let rNameId = rExpr.data1;
+      if (this.dae.lookupVariableByName(rNameId) == -1) {
+        rNameId = this.resolveOuterToInner(pool, rNameId);
+        if (rNameId != rExpr.data1) {
+          rhs = this.dae.addExpression(ExprKind.Name, rNameId);
+          rExpr = ExprAccessor.at(this.dae.getExprData(), rhs);
+        }
       }
       if (this.dae.lookupVariableByName(rNameId) == -1 && !pool.isTime(rNameId) && !this.isInsideExpandableBus(rNameId, pool)) {
         this.setError(WasmBailReason.EquationRhsUnresolved);
@@ -9021,7 +9111,7 @@ export class ModelicaFlattener {
     let varType: i32 = VarType.Real;
     let variability: i32 = Variability.Continuous;
     let causality: i32 = Causality.Local;
-    let varFlags: i32 = 0;
+    let varFlags: i32 = this.parentFlowFlags;
     if (isSectionProtected) {
       varFlags |= FLAG_VAR_PROTECTED;
       isTopLevelInterface = false;
@@ -9101,10 +9191,47 @@ export class ModelicaFlattener {
           defLoc = this.findClassLoc(this.currentClassLoc, typeNameId, pool);
         }
         let firstIdLoc = locFindDescendant(typeSpecLoc, SyntaxType.IDENTIFIER);
-        if (locIsNull(defLoc) && !locIsNull(firstIdLoc)) {
+        if (!locIsNull(firstIdLoc)) {
           let firstId = locIntern(pool, firstIdLoc);
           if (firstId != typeNameId && firstId != fullTypeId) {
-            defLoc = this.findClassLoc(this.currentClassLoc, firstId, pool);
+            if (locIsNull(defLoc)) {
+              defLoc = this.findClassLoc(this.currentClassLoc, firstId, pool);
+            }
+            let scopeClassLoc: u64 = this.findClassLoc(this.currentClassLoc, firstId, pool);
+            let scopeDepth: i32 = 6;
+            while (!locIsNull(scopeClassLoc) && scopeDepth > 0) {
+              scopeDepth--;
+              let extClause = locFindDescendant(scopeClassLoc, SyntaxType.EXTENDS_CLAUSE);
+              if (locIsNull(extClause)) break;
+              let extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_OR_INHERITANCE_MODIFICATION);
+              if (locIsNull(extModLoc)) extModLoc = locFindDescendant(extClause, SyntaxType.CLASS_MODIFICATION);
+              if (!locIsNull(extModLoc)) {
+                let subModLoc = findElementModClassModLoc(extModLoc, typeNameId, pool);
+                if (!locIsNull(subModLoc)) {
+                  let qid = extractModQuantity(subModLoc, this.exprVisitor);
+                  if (qid != 0xffffffff && subtypeQuantityId == 0xffffffff) subtypeQuantityId = qid;
+                  let uid = extractModUnit(subModLoc, this.exprVisitor);
+                  if (uid != 0xffffffff && subtypeUnitId == 0xffffffff) subtypeUnitId = uid;
+                  let sid = extractModStart(subModLoc, this.exprVisitor);
+                  if (sid != 0xffffffff && subtypeStartId == 0xffffffff) subtypeStartId = sid;
+                  let fid = extractModFixed(subModLoc, this.exprVisitor);
+                  if (fid != 0xffffffff && subtypeFixedId == 0xffffffff) subtypeFixedId = fid;
+                  let minId = extractModMin(subModLoc, this.exprVisitor);
+                  if (minId != 0xffffffff && subtypeMinId == 0xffffffff) subtypeMinId = minId;
+                  let maxId = extractModMax(subModLoc, this.exprVisitor);
+                  if (maxId != 0xffffffff && subtypeMaxId == 0xffffffff) subtypeMaxId = maxId;
+                  let nomId = extractModNominal(subModLoc, this.exprVisitor);
+                  if (nomId != 0xffffffff && subtypeNominalId == 0xffffffff) subtypeNominalId = nomId;
+                  let duId = extractModDisplayUnit(subModLoc, this.exprVisitor);
+                  if (duId != 0xffffffff && subtypeDisplayUnitId == 0xffffffff) subtypeDisplayUnitId = duId;
+                }
+              }
+              let extNameLoc = locFindDescendant(extClause, SyntaxType.NAME);
+              if (locIsNull(extNameLoc)) extNameLoc = locFindDescendant(extClause, SyntaxType.IDENTIFIER);
+              if (locIsNull(extNameLoc)) break;
+              let nextScopeId = locIntern(pool, extNameLoc);
+              scopeClassLoc = this.findClassLoc(this.currentClassLoc, nextScopeId, pool);
+            }
           }
         }
         let curDefLoc: u64 = defLoc;
@@ -9556,7 +9683,9 @@ export class ModelicaFlattener {
     }
 
     if (isSimultaneousInnerOuter) {
-      this.removeOuterMapping(fullVarNameId);
+      if (g_isOmcNewInst) {
+        this.removeOuterMapping(fullVarNameId);
+      }
       this.registerInnerDeclaration(prefixPathId, compNameId, fullVarNameId);
     }
 
@@ -10220,6 +10349,10 @@ export class ModelicaFlattener {
             this.registerArrayShape(compNameId, dim1, dim2, dim3, 0, dim4);
           }
         }
+        let prevParentFlowFlags = this.parentFlowFlags;
+        if (isConnectorClassLoc(this.currentClassLoc)) {
+          this.parentFlowFlags |= varFlags & (FLAG_VAR_FLOW | FLAG_VAR_STREAM);
+        }
         if (dim1 > 0 && dim2 == 0) {
           for (let i: u32 = 1; i <= dim1; i++) {
             let subPrefix = concatArrayIndex1D(pool, fullVarNameId, i);
@@ -10269,6 +10402,7 @@ export class ModelicaFlattener {
             this.scopeStack.pop();
           }
         } else if (dim1 > 0 && dim2 > 0) {
+          this.parentFlowFlags = prevParentFlowFlags;
           this.setErrorAt(WasmBailReason.DeclarationDimensions, declLoc);
           return 0;
         } else {
@@ -10276,6 +10410,7 @@ export class ModelicaFlattener {
           count += this.instantiateClassLoc(subClassLoc, fullVarNameId, nextIsTopLevelInterface, nextParentCausality, isCompProtected);
           this.scopeStack.pop();
         }
+        this.parentFlowFlags = prevParentFlowFlags;
       }
     }
 

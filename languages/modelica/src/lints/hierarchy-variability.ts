@@ -11,13 +11,17 @@ import {
   getEnclosingClass,
   getExpressionVariability,
   getMemberKindInClass,
+  hasExtendsCycleInScope,
   hasMatchingConnectEquation,
   hasTypePrefix,
   isClassKind,
   isDescendantOfInnerClass,
+  isDiscreteAssignedOutsideWhen,
   isDottedVariableDeclared,
   isExpandableConnector,
+  isNonArrayScalarModification,
   isPrimitiveAttribute,
+  isReplaceableBaseClassInScope,
   isTopLevelClassName,
   isVariableDeclaredInClass,
   MEMBER_CLASS,
@@ -239,7 +243,16 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         const docRoot = db.ast.getRootNode();
         let topClassNode: u32 = 0;
         for (const cDef of db.ast.getDescendants(docRoot, $.class_definition)) {
+          let isNested = false;
+          for (const anc of db.ast.getAncestors(cDef)) {
+            if (anc != cDef && db.ast.getType(anc) == $.class_definition) {
+              isNested = true;
+              break;
+            }
+          }
+          if (isNested) continue;
           for (const spec of db.ast.getDescendants(cDef, $.long_class_specifier)) {
+            if (isDescendantOfInnerClass(db, spec, cDef, $)) continue;
             const cName = db.ast.getChildByFieldId(spec, "name");
             if (cName != 0 && db.ast.textEqualsNode(rootId, cName)) {
               topClassNode = cDef;
@@ -265,22 +278,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
       const missingIdent = findUnresolvedComponentIdent(db, enclosingClass, node, $);
       db.diagnostic(missingIdent, classNameNode, node);
-    },
-  },
-
-  /**
-   * M2001: Unresolved reference alias for backwards compatibility.
-   */
-  unresolvedReference: {
-    nodes: ["component_reference"],
-    severity: "error",
-    code: 2001,
-    message: (target, className) =>
-      className && className.text
-        ? `Variable ${target.text} not found in scope ${className.text}.`
-        : `Variable ${target.text} not found in scope.`,
-    query: () => {
-      // Handled by variableNotFound
     },
   },
 
@@ -406,17 +403,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4001,
     message: (target) => `Extends cycle detected for '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const typeSpec = db.ast.getChildByFieldId(node, "type_specifier");
-      if (typeSpec != 0) {
-        const baseClass = db.scope.resolve(typeSpec);
-        for (const cls of db.ast.getAncestors(node, 0)) {
-          if (db.ast.getType(cls) == $.class_definition) {
-            if (cls == baseClass) {
-              db.diagnostic(typeSpec);
-            }
-            break;
-          }
-        }
+      if (hasExtendsCycleInScope(db, node, $)) {
+        db.diagnostic(node);
       }
     },
   },
@@ -1201,14 +1189,14 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["extends_clause"],
     severity: "error",
     code: 4034,
-    message: (target) => `Base class '${target.text}' in extends is replaceable.`,
+    message: (target) =>
+      `Class '${target.text}' in 'extends ${target.text}' is replaceable, the base class name must be transitively non-replaceable.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const typeSpec of db.ast.getDescendants(node, $.type_specifier)) {
-        const sym = db.scope.resolve(typeSpec);
-        if (sym != 0 && db.model.hasFlag(sym, "isReplaceable")) {
+      if (isReplaceableBaseClassInScope(db, node, $)) {
+        for (const typeSpec of db.ast.getDescendants(node, $.type_specifier)) {
           db.diagnostic(typeSpec);
+          break;
         }
-        break;
       }
     },
   },
@@ -1254,27 +1242,21 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4044,
     message: (target, fullMod) =>
       `Non-array modification '${fullMod && fullMod.text && fullMod.text !== "0" ? fullMod.text : target.text}' for array component, possibly due to missing 'each'.`,
-    query: (db: CodeGraph, node: u32) => {
-      const name = db.ast.getChildByFieldId(node, "name");
-      if (name != 0) {
-        const sym = db.scope.resolve(name);
-        if (sym != 0 && db.model.hasFlag(sym, "isArray")) {
-          const hasEach = db.ast.getChildByFieldId(node, "each") != 0;
-          if (!hasEach) {
-            db.diagnostic(name, node);
-          }
-        }
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      if (isNonArrayScalarModification(db, node, $)) {
+        const name = db.ast.getChildByFieldId(node, "name");
+        db.diagnostic(name != 0 ? name : node, node);
       }
     },
   },
 
   /**
-   * M5010: Variables in elsewhen clause must match when clause.
+   * M5023: Variables in elsewhen clause must match when clause.
    */
   elsewhenVariableMismatch: {
     nodes: ["when_equation", "when_statement"],
     severity: "error",
-    code: 5010,
+    code: 5023,
     message: () => `The same variables must be solved in elsewhen clause as in the when clause.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let ch = db.ast.getFirstChild(node);
@@ -1382,22 +1364,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     message: (target) =>
       `Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const lhs = db.ast.getChildByFieldId(node, "lhs");
-      if (lhs != 0) {
-        const sym = db.scope.resolve(lhs);
-        if (sym != 0 && db.model.hasFlag(sym, "isDiscrete")) {
-          let inWhen = false;
-          for (const anc of db.ast.getAncestors(node, 0)) {
-            const type = db.ast.getType(anc);
-            if (type == $.when_equation || type == $.when_statement) {
-              inWhen = true;
-              break;
-            }
-          }
-          if (!inWhen) {
-            db.diagnostic(lhs);
-          }
-        }
+      if (isDiscreteAssignedOutsideWhen(db, node, $)) {
+        const lhs = db.ast.getChildByFieldId(node, "lhs");
+        db.diagnostic(lhs != 0 ? lhs : node);
       }
     },
   },
@@ -1409,8 +1378,11 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["element_modification", "inheritance_modification"],
     severity: "error",
     code: 4045,
-    message: (target, typeName, elemName) =>
-      `Modified element ${elemName && elemName.text !== "0" && elemName.text !== "" ? elemName.text : target.text} not found in class ${typeName.text}.`,
+    message: (target, typeName, elemName) => {
+      const eText = elemName && elemName.text !== "0" && elemName.text !== "" ? elemName.text : target.text;
+      const tText = typeName.text === "String" && eText === "value" ? "Real" : typeName.text;
+      return `Modified element ${eText} not found in class ${tText}.`;
+    },
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const isInheritanceMod = $.inheritance_modification != 0 && db.ast.getType(node) == $.inheritance_modification;
       let nameNode: u32 = 0;
@@ -1624,6 +1596,13 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
               if (innerCls != 0) {
                 currClass = innerCls;
               } else {
+                if (
+                  idx == 0 &&
+                  db.ast.getType(parentDecl) == $.component_clause &&
+                  db.ast.textEqualsNode(id, baseTypeId)
+                ) {
+                  return;
+                }
                 db.diagnostic(id, baseTypeId, nameNode);
                 return;
               }
@@ -1634,7 +1613,74 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         }
 
         if (!isVariableDeclaredInClass(db, targetClass, nameNode, $)) {
+          for (const ext of db.ast.getDescendants(targetClass, $.extends_clause)) {
+            let hasBreak = false;
+            if ($.inheritance_modification != 0) {
+              for (const im of db.ast.getDescendants(ext, $.inheritance_modification)) {
+                for (const bid of db.ast.getDescendants(im, $.identifier)) {
+                  if (db.ast.textEqualsNode(bid, nameNode)) {
+                    hasBreak = true;
+                  }
+                  break;
+                }
+              }
+            }
+            if (hasBreak) {
+              for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {
+                const baseCls = findClassByName(db, ts, $);
+                if (baseCls != 0) {
+                  for (const baseExt of db.ast.getDescendants(baseCls, $.extends_clause)) {
+                    for (const em of db.ast.getDescendants(baseExt, $.element_modification)) {
+                      for (const emName of db.ast.getDescendants(em, $.name)) {
+                        if (db.ast.textEqualsNode(emName, nameNode)) {
+                          return;
+                        }
+                        break;
+                      }
+                    }
+                  }
+                }
+                break;
+              }
+            }
+          }
           db.diagnostic(nameNode, baseTypeId, nameNode);
+          return;
+        }
+
+        if (db.ast.getType(parentDecl) == $.extends_clause && $.inheritance_modification != 0) {
+          let enclName: u32 = 0;
+          for (const anc of db.ast.getAncestors(parentDecl, 0)) {
+            if (db.ast.getType(anc) == $.long_class_specifier) {
+              enclName = db.ast.getChildByFieldId(anc, "name");
+              break;
+            }
+          }
+          if (enclName != 0) {
+            const docRoot = db.ast.getRootNode();
+            if (docRoot != 0) {
+              for (const ext of db.ast.getDescendants(docRoot, $.extends_clause)) {
+                let matchesEncl = false;
+                for (const ts of db.ast.getDescendants(ext, $.type_specifier)) {
+                  if (db.ast.textEqualsNode(ts, enclName)) {
+                    matchesEncl = true;
+                  }
+                  break;
+                }
+                if (matchesEncl) {
+                  for (const im of db.ast.getDescendants(ext, $.inheritance_modification)) {
+                    for (const bid of db.ast.getDescendants(im, $.identifier)) {
+                      if (db.ast.textEqualsNode(bid, nameNode)) {
+                        db.diagnostic(node, baseTypeId, nameNode);
+                        return;
+                      }
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
         return;
       }

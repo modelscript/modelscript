@@ -1,7 +1,6 @@
 // name:     ImportQualifiedInvalid2
 // keywords: qualified import
 // status:   incorrect
-// xfail:    true
 //
 // Checks that imports are really lookup up from the top scope.
 //

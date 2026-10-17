@@ -70,6 +70,9 @@ export class WebGPULbmRunner {
    * Returns true if successful, false if WebGPU is not supported in this runtime.
    */
   public async initWebGPU(): Promise<boolean> {
+    if (this.gpuInitialized) {
+      return true;
+    }
     const nav = typeof globalThis !== "undefined" ? (globalThis as any).navigator : undefined;
     if (!nav?.gpu) {
       return false;
@@ -186,7 +189,7 @@ export class WebGPULbmRunner {
       this.gpuInitialized = true;
       return true;
     } catch {
-      this.gpuInitialized = false;
+      this.destroy();
       return false;
     }
   }
@@ -239,6 +242,13 @@ export class WebGPULbmRunner {
     const workgroupsY = Math.ceil(ny / 8);
     const workgroupsZ = Math.ceil(nz / 4);
 
+    const macroBytes = this.totalCells * 4 * 4;
+    const readbackMacro = device.createBuffer({
+      label: "LBM Macro Readback",
+      size: macroBytes,
+      usage: 0x0001 | 0x0008, // MAP_READ | COPY_DST
+    });
+
     const commandEncoder = device.createCommandEncoder();
     for (let s = 0; s < numSteps; s++) {
       const pass = commandEncoder.beginComputePass();
@@ -249,10 +259,26 @@ export class WebGPULbmRunner {
       this.currentPing = !this.currentPing;
     }
 
+    commandEncoder.copyBufferToBuffer(this.gpuMacroBuffer, 0, readbackMacro, 0, macroBytes);
     device.queue.submit([commandEncoder.finish()]);
 
-    // Read back macroFields to CPU
-    return this.step(0); // sync and compute drag
+    // Read back macroFields [vx, vy, vz, rho] from GPU to CPU arrays
+    try {
+      await readbackMacro.mapAsync(0x0001); // GPUMapMode.READ
+      const macroData = new Float32Array(readbackMacro.getMappedRange());
+      for (let i = 0; i < this.totalCells; i++) {
+        const base = i * 4;
+        this.vx[i] = macroData[base] ?? 0;
+        this.vy[i] = macroData[base + 1] ?? 0;
+        this.vz[i] = macroData[base + 2] ?? 0;
+        this.rho[i] = macroData[base + 3] ?? 1;
+      }
+      readbackMacro.unmap();
+    } finally {
+      readbackMacro.destroy();
+    }
+
+    return this.step(0); // compute summary metrics from updated macro fields
   }
 
   /**
@@ -480,5 +506,31 @@ export class WebGPULbmRunner {
       maxVelocity: maxVel,
       pressureDropPa: pDrop,
     };
+  }
+
+  /**
+   * Releases all allocated WebGPU storage/uniform buffers and destroys the GPU device.
+   */
+  public destroy(): void {
+    this.gpuUniformBuffer?.destroy?.();
+    this.gpuCellTypesBuffer?.destroy?.();
+    this.gpuPingBuffer?.destroy?.();
+    this.gpuPongBuffer?.destroy?.();
+    this.gpuMacroBuffer?.destroy?.();
+    this.gpuDeltaWallBuffer?.destroy?.();
+    this.gpuDragOutputBuffer?.destroy?.();
+    this.gpuDevice?.destroy?.();
+    this.gpuUniformBuffer = null;
+    this.gpuCellTypesBuffer = null;
+    this.gpuPingBuffer = null;
+    this.gpuPongBuffer = null;
+    this.gpuMacroBuffer = null;
+    this.gpuDeltaWallBuffer = null;
+    this.gpuDragOutputBuffer = null;
+    this.gpuBindGroup0 = null;
+    this.gpuBindGroup1 = null;
+    this.gpuPipeline = null;
+    this.gpuDevice = null;
+    this.gpuInitialized = false;
   }
 }

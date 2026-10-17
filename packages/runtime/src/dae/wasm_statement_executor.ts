@@ -1204,7 +1204,14 @@ export function executeArenaCEvalStatements(
 
         let iterCount = 0;
         while (true) {
-          if (++iterCount > MAX_WHILE_ITERATIONS) break;
+          if (++iterCount > MAX_WHILE_ITERATIONS) {
+            const range = (arena as any).stmtRanges?.get(i);
+            const err: any = new Error(
+              `The loop iteration limit (--evalLoopLimit=${MAX_WHILE_ITERATIONS}) was exceeded during evaluation.`,
+            );
+            err.range = range;
+            throw err;
+          }
           const condVal = evaluateArenaExpression(
             arena,
             condExprId,
@@ -1418,9 +1425,22 @@ export function executeArenaCEvalStatements(
                 const name = arena.interner.resolve(arena.getExprData1(targetExprId));
                 if (name && t < result.length) {
                   const val = result[t];
-                  if (val !== undefined) {
+                  if (val !== undefined && val !== null) {
                     env.set(name, val);
+                  } else {
+                    env.delete(name);
                   }
+                }
+              }
+            }
+          } else if (result === null && numTargets > 0) {
+            for (let t = 0; t < numTargets; t++) {
+              const targetBlockIdx = i + 1 + t;
+              const targetExprId = arena.getStmtData1(targetBlockIdx);
+              if (arena.getExprKind(targetExprId) === ExprKind.Name) {
+                const name = arena.interner.resolve(arena.getExprData1(targetExprId));
+                if (name && name !== "_") {
+                  env.delete(name);
                 }
               }
             }
@@ -1549,9 +1569,22 @@ export function evaluateArenaFunctionCall(
   }
   if (!funcArena) return null;
 
+  if (
+    funcName.includes(".'constructor'.") &&
+    funcArena.algorithmSections.length === 0 &&
+    !(funcArena as any).recordVarFieldExprs?.size
+  ) {
+    return null;
+  }
+
+  const simpleFnName = (funcArena.name || funcName).replace(/^\.+/, "");
   if (++currentCallDepth > MAX_CALL_DEPTH) {
     currentCallDepth--;
-    throw new Error(`Maximum call depth (${MAX_CALL_DEPTH}) exceeded in function CEval.`);
+    const err: any = new Error(
+      `The recursion limit (--evalRecursionLimit=${MAX_CALL_DEPTH}) was exceeded during evaluation of ${simpleFnName}.`,
+    );
+    err.range = (funcArena as any).fnRange;
+    throw err;
   }
 
   try {
@@ -1597,7 +1630,8 @@ export function evaluateArenaFunctionCall(
       if (funcArena.isVarRemoved(i)) continue;
       if (funcArena.getVarCausality(i) === 1 /* Input */) {
         const s = funcArena.getVarShape(i);
-        if (s && s.length > 0) {
+        const se = funcArena.getVarShapeExprs(i);
+        if ((s && s.length > 0) || (se && se.length > 0)) {
           allScalarInputs = false;
           break;
         }
@@ -1638,6 +1672,8 @@ export function evaluateArenaFunctionCall(
       for (let i = 0; i < funcArena.varCount; i++) {
         if (funcArena.isVarRemoved(i) || funcArena.getVarCausality(i) !== 1 /* Input */) continue;
         const expectedShape = funcArena.getVarShape(i);
+        const expectedShapeExprs = funcArena.getVarShapeExprs(i);
+        const expectedRank = Math.max(expectedShape.length, expectedShapeExprs?.length ?? 0);
         const arg = argValues[inIdx];
         const argShape: number[] = [];
         let curr: any = arg;
@@ -1645,7 +1681,7 @@ export function evaluateArenaFunctionCall(
           argShape.push(curr.length);
           curr = curr[0];
         }
-        if (expectedShape.length !== argShape.length) {
+        if (expectedRank !== argShape.length) {
           return null;
         }
         for (let d = 0; d < expectedShape.length; d++) {
@@ -1768,20 +1804,27 @@ export function evaluateArenaFunctionCall(
       } else {
         if (causality === 2 /* Output */) outputs.push(name);
         if (typeof startExprId === "number" && startExprId !== -1) {
-          const evaluatedVal = evaluateArenaExpression(
-            funcArena,
-            startExprId,
-            env,
-            db,
-            scopeId,
-            undefined,
-            false,
-            functionLookup,
-            dae,
-            instancePrefix,
-          );
+          const isSelfCall =
+            funcArena.getExprKind(startExprId) === ExprKind.Call &&
+            funcArena.interner.resolve(funcArena.getExprData1(startExprId)) === funcName;
+          const evaluatedVal = isSelfCall
+            ? null
+            : evaluateArenaExpression(
+                funcArena,
+                startExprId,
+                env,
+                db,
+                scopeId,
+                undefined,
+                false,
+                functionLookup,
+                dae,
+                instancePrefix,
+              );
           if (evaluatedVal !== null && evaluatedVal !== undefined) {
             env.set(name, evaluatedVal);
+          } else if (isSelfCall) {
+            env.set(name, defaultVal);
           }
         } else {
           env.set(name, defaultVal);
@@ -1843,16 +1886,37 @@ export function evaluateArenaFunctionCall(
       try {
         executeArenaCEvalStatements(funcArena, section.start, section.count, env, functionLookup, db, scopeId);
       } catch (e) {
-        if (e === ArenaCEvalReturnSignal) break;
+        if (e === ArenaCEvalReturnSignal || e === ArenaCEvalBreakSignal) break;
         throw e;
       }
     }
 
     if (funcArena.algorithmSections.length === 0 && funcArena.externalDecl) {
-      const extMatch = funcArena.externalDecl.trim().match(/^(?:external\s+"C"\s+)?(\w+)\s*=\s*(\w+)\s*\(([^)]*)\)/);
+      const splitTopLevelCommas = (s: string): string[] => {
+        const res: string[] = [];
+        let depth = 0;
+        let cur = "";
+        for (let i = 0; i < s.length; i++) {
+          const ch = s[i]!;
+          if (ch === "(" || ch === "[" || ch === "{") depth++;
+          else if (ch === ")" || ch === "]" || ch === "}") depth--;
+          if (ch === "," && depth === 0) {
+            res.push(cur.trim());
+            cur = "";
+          } else {
+            cur += ch;
+          }
+        }
+        if (cur.trim()) res.push(cur.trim());
+        return res;
+      };
+
+      const extDecl = funcArena.externalDecl.trim();
+      const extMatch = extDecl.match(/^(?:external(?:\s+"[^"]+")?\s+)?(?:(\w+)\s*=\s*)?(\w+)\s*\((.*)\)\s*;?$/);
       if (extMatch) {
         const [, outName, cFuncName, argList] = extMatch;
-        const cArgNames = argList ? argList.split(",").map((s: string) => s.trim()) : [];
+        const cArgNames = argList ? splitTopLevelCommas(argList) : [];
+        const extInclude = ((funcArena as any).externalInclude as string | undefined) ?? "";
 
         const C_MATH: Record<string, (...args: number[]) => number> = {
           sin: Math.sin,
@@ -1889,6 +1953,182 @@ export function evaluateArenaFunctionCall(
           const resolvedArgs = cArgNames.map((argName) => env.get(argName));
           const cResult = evaluateMslCFunction(cFuncName, resolvedArgs);
           if (outName) env.set(outName, cResult);
+        } else if (cFuncName === "dgetrf" && cArgNames.length >= 6) {
+          const luName = cArgNames[2]!;
+          const pivotsName = cArgNames[4]!;
+          const infoName = cArgNames[5]!;
+          const luIn = env.get(luName);
+          if (Array.isArray(luIn) && luIn.length > 0 && Array.isArray(luIn[0])) {
+            const M = luIn.length;
+            const N = (luIn[0] as any[]).length;
+            const K = Math.min(M, N);
+            const lu = luIn.map((row: any) => [...row]) as number[][];
+            const pivots = new Array(K).fill(0);
+            let info = 0;
+            for (let j = 0; j < K; j++) {
+              let jp = j;
+              let maxVal = Math.abs(lu[j]![j]!);
+              for (let i = j + 1; i < M; i++) {
+                const v = Math.abs(lu[i]![j]!);
+                if (v > maxVal) {
+                  maxVal = v;
+                  jp = i;
+                }
+              }
+              pivots[j] = jp + 1;
+              if (lu[jp]![j]! !== 0) {
+                if (jp !== j) {
+                  const tmp = lu[j]!;
+                  lu[j] = lu[jp]!;
+                  lu[jp] = tmp;
+                }
+                for (let i = j + 1; i < M; i++) {
+                  lu[i]![j]! /= lu[j]![j]!;
+                }
+              } else if (info === 0) {
+                info = j + 1;
+              }
+              for (let i = j + 1; i < M; i++) {
+                for (let k = j + 1; k < N; k++) {
+                  lu[i]![k]! -= lu[i]![j]! * lu[j]![k]!;
+                }
+              }
+            }
+            env.set(luName, lu);
+            env.set(pivotsName, pivots);
+            env.set(infoName, info);
+          } else {
+            return null;
+          }
+        } else if (cFuncName === "dgetri" && cArgNames.length >= 4) {
+          const invName = cArgNames[1]!;
+          const pivotsName = cArgNames[3]!;
+          const infoName = cArgNames[6];
+          const invIn = env.get(invName);
+          const pivots = env.get(pivotsName);
+          if (Array.isArray(invIn) && invIn.length > 0 && Array.isArray(invIn[0]) && Array.isArray(pivots)) {
+            const N = invIn.length;
+            const inv = invIn.map((row: any) => [...row]) as number[][];
+            let info = 0;
+            for (let j = 0; j < N; j++) {
+              if (inv[j]![j] === 0) {
+                info = j + 1;
+                break;
+              }
+              inv[j]![j] = 1.0 / inv[j]![j]!;
+              const ajj = -inv[j]![j]!;
+              for (let k = 0; k < j; k++) {
+                const temp = inv[k]![j]!;
+                for (let i = 0; i < k; i++) {
+                  inv[i]![j]! += temp * inv[i]![k]!;
+                }
+                inv[k]![j]! *= inv[k]![k]!;
+              }
+              for (let i = 0; i < j; i++) {
+                inv[i]![j]! *= ajj;
+              }
+            }
+            if (info === 0) {
+              const work = new Array(N).fill(0.0);
+              for (let j = N - 2; j >= 0; j--) {
+                for (let i = j + 1; i < N; i++) {
+                  work[i] = inv[i]![j]!;
+                  inv[i]![j] = 0.0;
+                }
+                for (let k = j + 1; k < N; k++) {
+                  for (let i = 0; i < N; i++) {
+                    inv[i]![j]! -= inv[i]![k]! * work[k]!;
+                  }
+                }
+              }
+              for (let j = N - 2; j >= 0; j--) {
+                const jp = Number(pivots[j] ?? j + 1) - 1;
+                if (jp !== j && jp >= 0 && jp < N) {
+                  for (let i = 0; i < N; i++) {
+                    const tmp = inv[i]![j]!;
+                    inv[i]![j] = inv[i]![jp]!;
+                    inv[i]![jp] = tmp;
+                  }
+                }
+              }
+            }
+            env.set(invName, inv);
+            if (infoName) env.set(infoName, info);
+          } else {
+            return null;
+          }
+        } else if (cFuncName && extInclude) {
+          const macroRe = new RegExp(`#define\\s+${cFuncName}\\s*\\(([^)]*)\\)\\s*([^\\r\\n]+)`);
+          const macroMatch = extInclude.match(macroRe);
+          if (macroMatch && outName) {
+            const macroParams = macroMatch[1]!
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            let exprStr = macroMatch[2]!
+              .replace(/\(\s*(?:modelica_integer|modelica_real|double|int|long)\s*\)/g, "")
+              .trim();
+            for (let pIdx = 0; pIdx < macroParams.length; pIdx++) {
+              const pName = macroParams[pIdx]!;
+              const actualArg = cArgNames[pIdx];
+              const argVal = actualArg ? env.get(actualArg) : undefined;
+              if (typeof argVal !== "number") return null;
+              exprStr = exprStr.replace(new RegExp(`\\b${pName}\\b`, "g"), String(argVal));
+            }
+            if (/^[0-9.+\-*/()\s]+$/.test(exprStr)) {
+              const resVal = Function(`"use strict"; return (${exprStr});`)();
+              if (typeof resVal === "number" && !Number.isNaN(resVal)) {
+                const outIdx = funcArena.getVarIdxByName(outName);
+                const isIntOut = outIdx >= 0 && funcArena.getVarType(outIdx) === VarType.Integer;
+                env.set(outName, isIntOut ? Math.trunc(resVal) : resVal);
+              } else {
+                return null;
+              }
+            } else {
+              return null;
+            }
+          } else {
+            const voidFnRe = new RegExp(`void\\s+${cFuncName}\\s*\\(([^)]*)\\)\\s*\\{([\\s\\S]*?)\\}`);
+            const voidMatch = extInclude.match(voidFnRe);
+            if (voidMatch) {
+              const rawDecls = splitTopLevelCommas(voidMatch[1]!);
+              const formalToActual = new Map<string, string>();
+              for (let pIdx = 0; pIdx < rawDecls.length; pIdx++) {
+                const idMatch = rawDecls[pIdx]!.match(/([a-zA-Z_]\w*)\s*(?:\[[^\]]*\])?\s*$/);
+                if (idMatch && cArgNames[pIdx]) {
+                  formalToActual.set(idMatch[1]!, cArgNames[pIdx]!);
+                }
+              }
+              const body = voidMatch[2]!;
+              const assignRe = /([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*=\s*([^;]+);/g;
+              let m: RegExpExecArray | null;
+              let assignedAny = false;
+              while ((m = assignRe.exec(body)) !== null) {
+                const formalArr = m[1]!;
+                const idx = Number(m[2]!);
+                let rhs = m[3]!.trim();
+                const actualArrName = formalToActual.get(formalArr) ?? formalArr;
+                const arrVal = env.get(actualArrName);
+                if (!Array.isArray(arrVal)) return null;
+                for (const [fName, aName] of formalToActual.entries()) {
+                  const v = env.get(aName);
+                  if (typeof v === "number") {
+                    rhs = rhs.replace(new RegExp(`\\b${fName}\\b`, "g"), String(v));
+                  }
+                }
+                if (/^[0-9.+\-*/()\s]+$/.test(rhs)) {
+                  const val = Function(`"use strict"; return (${rhs});`)();
+                  if (typeof val === "number" && !Number.isNaN(val)) {
+                    arrVal[idx] = val;
+                    assignedAny = true;
+                  }
+                }
+              }
+              if (!assignedAny) return null;
+            } else {
+              return null;
+            }
+          }
         } else {
           return null;
         }
@@ -1941,6 +2181,15 @@ export function evaluateArenaFunctionCall(
     }
 
     return null;
+  } catch (e: any) {
+    if (e instanceof RangeError) {
+      const err: any = new Error(
+        `The recursion limit (--evalRecursionLimit=${MAX_CALL_DEPTH}) was exceeded during evaluation of ${simpleFnName}.`,
+      );
+      err.range = (funcArena as any).fnRange;
+      throw err;
+    }
+    throw e;
   } finally {
     currentCallDepth--;
   }

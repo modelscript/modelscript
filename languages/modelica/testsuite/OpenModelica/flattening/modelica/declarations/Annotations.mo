@@ -1,7 +1,6 @@
 // name:     Annotations
 // keywords: declaration annotations comments
 // status:   correct
-// xfail:    true
 //
 // Checks that annotations are output correctly on the flat code when
 // +showAnnotations is used.

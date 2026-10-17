@@ -103,6 +103,12 @@ const MoldOutline: React.FC<{
 }> = ({ length, width, height, center }) => {
   const geo = useMemo(() => new THREE.BoxGeometry(length, width, height), [length, width, height]);
 
+  useEffect(() => {
+    return () => {
+      geo.dispose();
+    };
+  }, [geo]);
+
   return (
     <lineSegments position={center}>
       <edgesGeometry args={[geo]} />
@@ -311,6 +317,12 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
       return null;
     }
   }, [frames]);
+
+  useEffect(() => {
+    return () => {
+      baseGeometry?.dispose();
+    };
+  }, [baseGeometry]);
 
   // Precompute vertex color arrays for all frames
   const colorArrays: Float32Array[] = useMemo(() => {

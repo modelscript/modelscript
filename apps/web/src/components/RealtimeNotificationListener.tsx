@@ -42,6 +42,9 @@ function playNotificationChime(): void {
     osc2.start(now);
     osc1.stop(now + 0.4);
     osc2.stop(now + 0.4);
+    osc2.onended = () => {
+      void ctx.close().catch(() => {});
+    };
   } catch {
     // Gracefully ignore audio context playback restrictions (e.g. before initial user click)
   }

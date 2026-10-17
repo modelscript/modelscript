@@ -198,6 +198,24 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
     };
   }, [viewConfig]);
 
+  useEffect(() => {
+    return () => {
+      if (!object) return;
+      object.traverse((child: any) => {
+        if (child.geometry && typeof child.geometry.dispose === "function") {
+          child.geometry.dispose();
+        }
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m: any) => m?.dispose?.());
+          } else if (typeof child.material.dispose === "function") {
+            child.material.dispose();
+          }
+        }
+      });
+    };
+  }, [object]);
+
   if (error) {
     return (
       <Box p={3} backgroundColor="var(--color-danger-subtle)" borderRadius="6px">

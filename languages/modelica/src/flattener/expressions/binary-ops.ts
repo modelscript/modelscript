@@ -831,7 +831,8 @@ export function broadcastElemBinOp(
       [l, r] = [r, l];
     }
   }
-  const useElemOp = isTopLevel && (lIsArr || rIsArr);
+  const useElemOp =
+    isTopLevel && (lIsArr || rIsArr) && !(lIsArr && rIsArr && (baseOp === BinOp.Add || baseOp === BinOp.Sub));
   return dae.addBinaryExpr(useElemOp ? elemOp : baseOp, l, r);
 }
 
@@ -1061,10 +1062,32 @@ export function resolveOperatorRecord(
   flattener: any,
 ): { name: string; symId: SymbolId; isArray: boolean; arrayDim?: number } | null {
   if (!db) return null;
+  if (exprId >= 0) {
+    const kind = dae.getExprKind(exprId);
+    if (
+      kind === ExprKind.Binary ||
+      kind === ExprKind.Der ||
+      kind === ExprKind.RealLiteral ||
+      kind === ExprKind.IntLiteral ||
+      kind === ExprKind.BoolLiteral ||
+      kind === ExprKind.StringLiteral
+    ) {
+      return null;
+    }
+  }
 
   const findCompType = (baseName: string) => findOperatorRecordComponentType(baseName, dae, db, flattener);
 
   const resolvePath = (pathStr: string) => {
+    if (!pathStr || !/^[a-zA-Z_]\w*(?:\s*\[[^\]]*\]|\.[a-zA-Z_]\w*)*$/.test(pathStr)) return null;
+    const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
+    let fullIdx = dae.getVarIdxByName(pathStr);
+    if (fullIdx < 0 && currentPrefix) {
+      fullIdx = dae.getVarIdxByName(`${currentPrefix}.${pathStr}`);
+    }
+    if (fullIdx >= 0 && !dae.getVarCustomType(fullIdx)) {
+      return null;
+    }
     const parts = pathStr
       .split(".")
       .map((p) => p.split("[")[0].trim())

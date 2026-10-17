@@ -580,12 +580,12 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M3001: Array element type mismatch.
+   * M3018: Array element type mismatch.
    */
   arrayElementTypeMismatch: {
     nodes: ["component_declaration", "component_declaration1"],
     severity: "error",
-    code: 3015,
+    code: 3018,
     message: (target) => `Array element type mismatch in '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let arrayArgs: u32 = 0;

@@ -12,6 +12,7 @@ interface LazyHeavyViewerProps {
   thumbnailUrlLight?: string;
   thumbnailUrlDark?: string;
   title?: string;
+  isFullScreen?: boolean;
   placeholderType?:
     | "fea"
     | "cfd"
@@ -34,12 +35,19 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   thumbnailUrlLight,
   thumbnailUrlDark,
   title,
+  isFullScreen = false,
   placeholderType = "generic",
   children,
 }) => {
-  const [isActive, setIsActive] = useState(false);
+  const [isActive, setIsActive] = useState(isFullScreen);
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedColorMode } = useTheme();
+
+  useEffect(() => {
+    if (isFullScreen) {
+      setIsActive(true);
+    }
+  }, [isFullScreen]);
 
   const currentThumbnailUrl =
     resolvedColorMode === "dark" ? thumbnailUrlDark || thumbnailUrl : thumbnailUrlLight || thumbnailUrl;
@@ -48,17 +56,17 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   useEffect(() => {
     const handleActivate = (e: Event) => {
       const activeId = (e as CustomEvent<number>).detail;
-      if (activeId !== artifactId) {
+      if (activeId !== artifactId && !isFullScreen) {
         setIsActive(false);
       }
     };
     window.addEventListener("activate-3d-viewer", handleActivate);
     return () => window.removeEventListener("activate-3d-viewer", handleActivate);
-  }, [artifactId]);
+  }, [artifactId, isFullScreen]);
 
   // Handle intersection observer to unload on scroll out
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || isFullScreen) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -77,62 +85,67 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     }
 
     return () => observer.disconnect();
-  }, [isActive]);
+  }, [isActive, isFullScreen]);
 
-  if (isActive) {
+  const containerHeight = isFullScreen ? "100%" : "420px";
+
+  if (isActive || isFullScreen) {
     return (
       <div
         ref={containerRef}
         style={{
           width: "100%",
           maxWidth: "100%",
-          height: "420px",
+          height: containerHeight,
+          minHeight: isFullScreen ? "420px" : undefined,
           position: "relative",
           overflow: "hidden",
           boxSizing: "border-box",
-          borderRadius: "8px",
+          borderRadius: isFullScreen ? "0" : "8px",
         }}
       >
         {/* Floating Deactivate / Sleep Button */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsActive(false);
-          }}
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            zIndex: 20,
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-            background: "rgba(15, 23, 42, 0.8)",
-            backdropFilter: "blur(10px)",
-            color: "#e2e8f0",
-            border: "1px solid rgba(255, 255, 255, 0.15)",
-            borderRadius: "16px",
-            padding: "3px 10px",
-            fontSize: "11px",
-            fontWeight: 600,
-            fontFamily: "var(--font-mono, monospace)",
-            cursor: "pointer",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
-            transition: "all 0.15s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(239, 68, 68, 0.85)";
-            e.currentTarget.style.color = "#ffffff";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(15, 23, 42, 0.8)";
-            e.currentTarget.style.color = "#e2e8f0";
-          }}
-          title="Release 3D canvas and return to preview thumbnail"
-        >
-          ✕ Sleep 3D
-        </button>
+        {!isFullScreen && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsActive(false);
+            }}
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              zIndex: 20,
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              background: "rgba(15, 23, 42, 0.8)",
+              backdropFilter: "blur(10px)",
+              color: "#e2e8f0",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: "16px",
+              padding: "3px 10px",
+              fontSize: "11px",
+              fontWeight: 600,
+              fontFamily: "var(--font-mono, monospace)",
+              cursor: "pointer",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(239, 68, 68, 0.85)";
+              e.currentTarget.style.color = "#ffffff";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(15, 23, 42, 0.8)";
+              e.currentTarget.style.color = "#e2e8f0";
+            }}
+            title="Release 3D canvas and return to preview thumbnail"
+          >
+            ✕ Sleep 3D
+          </button>
+        )}
         {children}
       </div>
     );
@@ -145,7 +158,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
       style={{
         width: "100%",
         maxWidth: "100%",
-        height: "420px",
+        height: containerHeight,
         position: "relative",
         overflow: "hidden",
         boxSizing: "border-box",

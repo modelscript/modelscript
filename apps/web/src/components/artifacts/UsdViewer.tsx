@@ -87,16 +87,25 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
     const scriptSrc = "https://ajax.googleapis.com/ajax/libs/model-viewer/3.1.1/model-viewer.min.js";
     let script = document.querySelector(`script[src='${scriptSrc}']`) as HTMLScriptElement | null;
 
+    const handleLoad = () => {
+      setScriptLoaded(true);
+      (window as any).__ARTIFACT_READY = true;
+    };
+    const handleError = () => {
+      setLoadError(true);
+      (window as any).__ARTIFACT_READY = true;
+    };
+
     if (!script) {
       script = document.createElement("script");
       script.type = "module";
       script.src = scriptSrc;
-      script.onload = () => setScriptLoaded(true);
-      script.onerror = () => setLoadError(true);
+      script.addEventListener("load", handleLoad);
+      script.addEventListener("error", handleError);
       document.head.appendChild(script);
     } else {
-      script.addEventListener("load", () => setScriptLoaded(true));
-      script.addEventListener("error", () => setLoadError(true));
+      script.addEventListener("load", handleLoad);
+      script.addEventListener("error", handleError);
     }
 
     // Timeout safety for airgapped / offline environments
@@ -104,10 +113,21 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
       if (!window.customElements || !window.customElements.get("model-viewer")) {
         setLoadError(true);
       }
+      (window as any).__ARTIFACT_READY = true;
     }, 6000);
 
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      script?.removeEventListener("load", handleLoad);
+      script?.removeEventListener("error", handleError);
+    };
   }, []);
+
+  useEffect(() => {
+    if (scriptLoaded || loadError || !modelUrl) {
+      (window as any).__ARTIFACT_READY = true;
+    }
+  }, [scriptLoaded, loadError, modelUrl]);
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();

@@ -2184,6 +2184,27 @@ export class ValidationService {
     diagnostics: Diagnostic[],
   ): Promise<void> {
     try {
+      const { lintOwl2Document } = await import("@modelscript/owl2");
+      const owlLints = lintOwl2Document(tree.rootNode, text, { checkConsistency: false });
+      const posIndex = new PositionIndex(text);
+      for (const od of owlLints) {
+        const start = posIndex.charOffsetToPosition(od.startOffset);
+        const end = posIndex.charOffsetToPosition(od.endOffset);
+        const severity =
+          od.severity === "error"
+            ? DiagnosticSeverity.Error
+            : od.severity === "info"
+              ? DiagnosticSeverity.Information
+              : DiagnosticSeverity.Warning;
+        diagnostics.push({
+          severity,
+          range: { start, end },
+          code: `O${od.code}`,
+          message: od.message,
+          source: "owl2",
+        });
+      }
+
       const axioms = lowerCstToAxioms(tree.rootNode, text);
       const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
       if (store && typeof store.setAxioms === "function") {

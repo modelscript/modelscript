@@ -3,7 +3,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { calculateCostCredits } from "../compute-profiles.js";
+import { calculateCostCredits, getComputeProfile } from "../compute-profiles.js";
 import type {
   ComputeProfile,
   HpcDriver,
@@ -31,11 +31,63 @@ interface LocalJobRecord {
   endTime?: number | undefined;
   startCpuUsage: NodeJS.CpuUsage;
   totalCpuMicroseconds?: number | undefined;
+  childCpuMicroseconds?: number | undefined;
+  peakMemoryMb?: number | undefined;
   exitCode?: number | undefined;
   logPath: string;
   suspiciousActivity?: "potential_cryptomining" | "timeout" | "credit_exhausted" | undefined;
   networkIsolationEnforced?: boolean | undefined;
   sandboxRuntime?: string | undefined;
+}
+
+/**
+ * Samples a spawned child process's cumulative CPU time (utime + stime + cutime + cstime)
+ * and peak resident memory (VmHWM / VmRSS) from Linux `/proc/<pid>`.
+ */
+function sampleChildProcessMetrics(pid: number | undefined): {
+  cpuMicroseconds?: number | undefined;
+  rssMb?: number | undefined;
+} {
+  if (!pid || process.platform !== "linux") return {};
+  let cpuMicroseconds: number | undefined;
+  let rssMb: number | undefined;
+
+  try {
+    const statContent = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const closeParen = statContent.lastIndexOf(")");
+    if (closeParen !== -1) {
+      const fields = statContent
+        .slice(closeParen + 2)
+        .trim()
+        .split(/\s+/);
+      // fields[11] = utime, fields[12] = stime, fields[13] = cutime, fields[14] = cstime (in clock ticks, USER_HZ=100)
+      const utime = Number(fields[11] ?? 0);
+      const stime = Number(fields[12] ?? 0);
+      const cutime = Number(fields[13] ?? 0);
+      const cstime = Number(fields[14] ?? 0);
+      const totalTicks = utime + stime + cutime + cstime;
+      if (Number.isFinite(totalTicks) && totalTicks >= 0) {
+        cpuMicroseconds = totalTicks * 10_000;
+      }
+    }
+  } catch {
+    // Process may have exited
+  }
+
+  try {
+    const statusContent = fs.readFileSync(`/proc/${pid}/status`, "utf8");
+    const hwmMatch = statusContent.match(/^VmHWM:\s+(\d+)\s+kB/m) ?? statusContent.match(/^VmRSS:\s+(\d+)\s+kB/m);
+    if (hwmMatch && hwmMatch[1]) {
+      const kb = Number(hwmMatch[1]);
+      if (Number.isFinite(kb) && kb > 0) {
+        rssMb = Math.max(1, Math.round(kb / 1024));
+      }
+    }
+  } catch {
+    // Process may have exited
+  }
+
+  return { cpuMicroseconds, rssMb };
 }
 
 /**
@@ -155,6 +207,9 @@ export class LocalProcessDriver implements HpcDriver {
     // 2. Prepare log file (mimicking Slurm output naming)
     const logPath = this.getLogPath(spec.jobId, spec.workingDir);
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
+    logStream.on("error", () => {
+      // Ignore write stream errors if workingDir is cleaned up during cancellation
+    });
 
     // 3. Resolve command, MPI, and Sandboxing
     const { execCmd, execArgs, runtime, networkIsolation } = this.resolveSandboxCommand(spec);
@@ -186,6 +241,19 @@ export class LocalProcessDriver implements HpcDriver {
       networkIsolationEnforced: networkIsolation,
       sandboxRuntime: runtime,
     };
+
+    const updateChildMetrics = () => {
+      const sample = sampleChildProcessMetrics(child.pid);
+      if (sample.cpuMicroseconds !== undefined && sample.cpuMicroseconds > (record.childCpuMicroseconds ?? 0)) {
+        record.childCpuMicroseconds = sample.cpuMicroseconds;
+      }
+      if (sample.rssMb !== undefined && sample.rssMb > (record.peakMemoryMb ?? 0)) {
+        record.peakMemoryMb = sample.rssMb;
+      }
+    };
+
+    // Sample immediately after spawn
+    updateChildMetrics();
 
     this.jobs.set(spec.jobId, record);
 
@@ -225,13 +293,15 @@ export class LocalProcessDriver implements HpcDriver {
         return;
       }
 
+      updateChildMetrics();
       const elapsedSeconds = (Date.now() - record.startTime) / 1000;
 
       // Check credit exhaustion
+      const activeProfile = getComputeProfile(spec.profileId);
       if (spec.userId !== undefined && this.options.walletBalanceChecker) {
         try {
           const balance = this.options.walletBalanceChecker(spec.userId);
-          const currentCost = (elapsedSeconds / 3600) * 10;
+          const currentCost = (elapsedSeconds / 3600) * activeProfile.costCreditsPerHour;
           if (balance - currentCost < 0) {
             record.state = "FAILED";
             record.exitCode = 402;
@@ -276,7 +346,18 @@ export class LocalProcessDriver implements HpcDriver {
       if (watchdogTimer) clearInterval(watchdogTimer);
     };
 
+    const pruneOldJobs = () => {
+      if (this.jobs.size <= 500) return;
+      for (const [id, rec] of this.jobs.entries()) {
+        if (this.jobs.size <= 500) break;
+        if (rec.state !== "RUNNING" && rec.state !== "PENDING") {
+          this.jobs.delete(id);
+        }
+      }
+    };
+
     child.on("close", (code) => {
+      updateChildMetrics();
       cleanupTimers();
       const diffCpu = process.cpuUsage(record.startCpuUsage);
       record.totalCpuMicroseconds = diffCpu.user + diffCpu.system;
@@ -290,6 +371,7 @@ export class LocalProcessDriver implements HpcDriver {
       }
 
       logStream.end();
+      pruneOldJobs();
     });
 
     child.on("error", (err) => {
@@ -299,13 +381,15 @@ export class LocalProcessDriver implements HpcDriver {
       record.exitCode = -1;
       logStream.write(`\n[HPC Local Driver Spawn Error]: ${err.message}\n`);
       logStream.end();
+      pruneOldJobs();
     });
 
+    const profile = getComputeProfile(spec.profileId);
     return {
       nativeJobId: spec.jobId,
       driverType: "local",
       allocatedResources: spec.resources,
-      estimatedCreditsPerHour: 10,
+      estimatedCreditsPerHour: profile.costCreditsPerHour,
     };
   }
 
@@ -336,13 +420,18 @@ export class LocalProcessDriver implements HpcDriver {
     const record = this.jobs.get(nativeJobId);
     const wallClockSeconds = record?.endTime ? Math.max(1, Math.round((record.endTime - record.startTime) / 1000)) : 1;
 
-    // CPU core-seconds from captured process CPU or estimated by core allocation
+    // CPU core-seconds from child process /proc/<pid>/stat, parent CPU delta fallback, or core allocation
     const cpus = record?.spec.resources.cpusPerTask ?? profile.cpus;
-    const measuredCpuSec = record?.totalCpuMicroseconds
-      ? Math.round(record.totalCpuMicroseconds / 1000) / 1000
-      : wallClockSeconds * cpus;
+    const cpuMicros =
+      record?.childCpuMicroseconds && record.childCpuMicroseconds > 0
+        ? record.childCpuMicroseconds
+        : record?.totalCpuMicroseconds;
+    const measuredCpuSec = cpuMicros ? Math.round(cpuMicros / 1000) / 1000 : wallClockSeconds * cpus;
 
-    const memoryMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
+    const memoryMb =
+      record?.peakMemoryMb && record.peakMemoryMb > 0
+        ? record.peakMemoryMb
+        : Math.round(process.memoryUsage().rss / (1024 * 1024));
     const costCredits = calculateCostCredits(wallClockSeconds, profile);
 
     return {

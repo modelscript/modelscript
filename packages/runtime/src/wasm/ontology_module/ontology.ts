@@ -689,33 +689,27 @@ export class OntologyStore {
     if (!pWild && (changetype<usize>(pBm) == 0 || pBm.isEmpty())) return 0;
     if (!oWild && (changetype<usize>(oBm) == 0 || oBm.isEmpty())) return 0;
 
-    let resBm: RoaringBitmap = changetype<RoaringBitmap>(0);
+    this.tempAxiomIdBuf.clear();
 
     if (!sWild && !pWild && !oWild) {
       sBm.and(pBm, this.tempJoinBitmap);
-      this.tempJoinBitmap.and(oBm, this.tempJoinBitmap2);
-      resBm = this.tempJoinBitmap2;
+      if (this.tempJoinBitmap.isEmpty()) return 0;
+      this.tempJoinBitmap.andToArray(oBm, this.tempAxiomIdBuf);
     } else if (!sWild && !pWild) {
-      sBm.and(pBm, this.tempJoinBitmap);
-      resBm = this.tempJoinBitmap;
+      sBm.andToArray(pBm, this.tempAxiomIdBuf);
     } else if (!sWild && !oWild) {
-      sBm.and(oBm, this.tempJoinBitmap);
-      resBm = this.tempJoinBitmap;
+      sBm.andToArray(oBm, this.tempAxiomIdBuf);
     } else if (!pWild && !oWild) {
-      pBm.and(oBm, this.tempJoinBitmap);
-      resBm = this.tempJoinBitmap;
+      pBm.andToArray(oBm, this.tempAxiomIdBuf);
     } else if (!sWild) {
-      resBm = sBm;
+      sBm.toArray(this.tempAxiomIdBuf);
     } else if (!pWild) {
-      resBm = pBm;
+      pBm.toArray(this.tempAxiomIdBuf);
     } else {
-      resBm = oBm;
+      oBm.toArray(this.tempAxiomIdBuf);
     }
 
-    if (changetype<usize>(resBm) == 0 || resBm.isEmpty()) return 0;
-
-    this.tempAxiomIdBuf.clear();
-    resBm.toArray(this.tempAxiomIdBuf);
+    if (this.tempAxiomIdBuf.length == 0) return 0;
 
     for (let i: u32 = 0; i < this.tempAxiomIdBuf.length; i++) {
       let axId = this.tempAxiomIdBuf.get(i);

@@ -3,7 +3,7 @@
 import dns from "node:dns/promises";
 import net from "node:net";
 
-export function isPrivateIpv4(b0: number, b1?: number, b2?: number, b3?: number): boolean {
+export function isPrivateIpv4(b0: number, b1?: number, b2?: number, _b3?: number): boolean {
   return (
     b0 === 0 || // 0.0.0.0/8 current network
     b0 === 10 || // 10.0.0.0/8 private
@@ -217,8 +217,31 @@ export async function safePublicFetch(
   init?: RequestInit,
   resolver?: (host: string) => Promise<{ address: string; family: number }[]>,
 ): Promise<Response> {
-  const raw = typeof targetUrl === "string" ? targetUrl : targetUrl.href;
-  const urlObj = await assertSafePublicUrlAsync(raw, resolver);
   const doFetch = (globalThis as Record<string, unknown>)["f" + "etch"] as typeof fetch;
-  return doFetch(urlObj.href, init);
+  let currentUrl = typeof targetUrl === "string" ? targetUrl : targetUrl.href;
+  const maxRedirects = 5;
+
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    const urlObj = await assertSafePublicUrlAsync(currentUrl, resolver);
+    const response = await doFetch(urlObj.href, {
+      ...init,
+      redirect: "manual",
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        return response;
+      }
+      if (hop === maxRedirects) {
+        throw new Error("Too many redirects in safePublicFetch");
+      }
+      currentUrl = new URL(location, urlObj.href).href;
+      continue;
+    }
+
+    return response;
+  }
+
+  throw new Error("Too many redirects in safePublicFetch");
 }

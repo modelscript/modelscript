@@ -151,12 +151,18 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
   dae.diagnostics = dae.diagnostics.filter((d: any) => d.code !== ModelicaErrorCode.UNBALANCED_MODEL.code);
 
   let stateCount = 0;
+  let boundStateEqCount = 0;
   for (let i = 0; i < dae.getVarCount(); i++) {
     if (dae.isVarRemoved(i)) continue;
     if (dae.getVarCausality(i) === Causality.Input) continue;
     const v = dae.getVarVariability(i);
     if (v === Variability.Continuous || v === Variability.Discrete) {
-      stateCount += dae.getVarShapeElementCount(i);
+      const elemCount = dae.getVarShapeElementCount(i);
+      stateCount += elemCount;
+      const bExpr = dae.getVarExpression(i);
+      if (bExpr !== undefined && bExpr >= 0 && bExpr !== 0xffffffff) {
+        boundStateEqCount += elemCount;
+      }
     }
   }
   let eqCount = 0;
@@ -200,9 +206,19 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
           }
         }
       }
+      if (kind === EqKind.Simple && boundStateEqCount > 0 && lhs >= 0 && dae.getExprKind(lhs) === ExprKind.Name) {
+        const lhsName = dae.interner.resolve(dae.getExprData1(lhs));
+        if (lhsName) {
+          const vId = dae.getVarIdxByName(lhsName);
+          if (vId >= 0 && dae.getVarExpression(vId) === rhs) {
+            boundStateEqCount = Math.max(0, boundStateEqCount - count);
+          }
+        }
+      }
       eqCount += count;
     }
   }
+  eqCount += boundStateEqCount;
   if (
     !dae.diagnostics.some((d: any) => d.severity === "error") &&
     stateCount > 0 &&

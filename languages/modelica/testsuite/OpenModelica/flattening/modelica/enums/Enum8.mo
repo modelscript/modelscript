@@ -1,7 +1,6 @@
 // name:     Enumeration8
 // keywords: enumeration enum string String
 // status:   correct
-// xfail:    true
 //
 //
 //

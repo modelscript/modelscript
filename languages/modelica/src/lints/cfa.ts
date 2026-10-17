@@ -1077,6 +1077,12 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
       } else {
         // Other statement
         checkExprReads(stmt.rawText, stmt.startByte, cur, activeLoopVars);
+        if (
+          /^\s*assert\s*\(\s*false\b/.test(stmt.rawText) ||
+          /^\s*(?:Modelica\.Utilities\.Streams\.)?error\s*\(/.test(stmt.rawText)
+        ) {
+          returned = true;
+        }
       }
     }
 

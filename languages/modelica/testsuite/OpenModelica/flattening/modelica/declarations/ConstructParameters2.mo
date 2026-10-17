@@ -1,7 +1,6 @@
 // name:     ConstructParameters2
 // keywords: declaration,algorithm
 // status:   correct
-// xfail:    true
 //
 // Show how to perform the same task
 // as in ConstructParameters1 but with legal

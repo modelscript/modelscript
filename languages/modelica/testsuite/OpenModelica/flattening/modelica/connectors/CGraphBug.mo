@@ -1,7 +1,6 @@
 // name:     CGraphBug
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 
 model Test
 

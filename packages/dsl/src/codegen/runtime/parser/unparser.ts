@@ -70,19 +70,19 @@ export function emitVerbatimNode(nodeId: u32): void {
     stringArenaPtr != 0 &&
     start >= (stringArenaPtr as u32) + 4 &&
     start < ((stringArenaPtr + stringArenaCapacity) as u32);
-  let basePtr: usize = isOverride
-    ? (start as usize)
-    : getInputBuffer() + (start as usize);
-
+  let basePtr: usize;
   let isUtf8: boolean;
-  let step: u32 = 1;
+  let step: u32 = 2;
   if (isOverride) {
+    basePtr = start as usize;
     let header = load<u32>((start - 4) as usize);
     isUtf8 = (header & 0x80000000) != 0;
     step = isUtf8 ? 1 : 2;
   } else {
-    isUtf8 = inputEncoding == 0;
-    step = inputEncoding == 0 ? 1 : inputEncoding <= 2 ? 2 : 4;
+    basePtr = getInputBuffer() + ((start as usize) << 1);
+    len = len << 1;
+    isUtf8 = false;
+    step = 2;
   }
 
   if (isUtf8) {

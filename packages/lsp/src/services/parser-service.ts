@@ -301,7 +301,7 @@ export class ParserService {
             }
             if (text) {
               const tree = this.sharedContext.parse(
-                uri.endsWith(".sysml") || uri.endsWith(".sysml2") ? ".sysml" : ".mo",
+                uri.endsWith(".sysml") || uri.endsWith(".sysml2") || uri.endsWith(".kerml") ? ".sysml" : ".mo",
                 text,
               );
               lazyCache = { tree, text };
@@ -364,7 +364,7 @@ export class ParserService {
             }
             if (text) {
               const tree = this.sharedContext.parse(
-                uri.endsWith(".sysml") || uri.endsWith(".sysml2") ? ".sysml" : ".mo",
+                uri.endsWith(".sysml") || uri.endsWith(".sysml2") || uri.endsWith(".kerml") ? ".sysml" : ".mo",
                 text,
               );
               lazyCache = { tree, text };
@@ -611,7 +611,12 @@ export class ParserService {
       if (!manifest || manifest.length === 0) {
         manifest = [
           { id: "modelica", wasm: "modelica.wasm", displayName: "Modelica", fileExtensions: [".mo"] },
-          { id: "sysml2", wasm: "sysml2.wasm", displayName: "SysML v2", fileExtensions: [".sysml", ".sysml2"] },
+          {
+            id: "sysml2",
+            wasm: "sysml2.wasm",
+            displayName: "SysML v2",
+            fileExtensions: [".sysml", ".sysml2", ".kerml"],
+          },
           { id: "step", wasm: "step.wasm", displayName: "Step", fileExtensions: [".step"] },
           { id: "owl2", wasm: "owl2.wasm", displayName: "Owl2", fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"] },
           { id: "csv", wasm: "csv.wasm", displayName: "Csv", fileExtensions: [".csv"] },
@@ -669,7 +674,7 @@ export class ParserService {
                   globalLanguageRegistry.register({
                     id: "sysml",
                     name: "SysML v2",
-                    extensions: [".sysml", ".sysml2"],
+                    extensions: [".sysml", ".sysml2", ".kerml"],
                     parser: result.parser,
                     facade: result.facade,
                     disposables: [],
@@ -730,7 +735,8 @@ export class ParserService {
         parse: (ext: string, input: string, ...rest: any[]) => {
           const parser = this.getParserForUri(`file:///dummy${ext}`);
           if (parser) return parser.parse(input, ...rest);
-          if (ext === ".sysml" || ext === ".sysml2") return (this.sysml2Parser as any)?.parse(input, ...rest);
+          if (ext === ".sysml" || ext === ".sysml2" || ext === ".kerml")
+            return (this.sysml2Parser as any)?.parse(input, ...rest);
           return (this.parser as any)?.parse(input, ...rest);
         },
         flattenArena: (name: string, classId?: any, _uri?: string, options?: any) => {
@@ -964,7 +970,7 @@ export class ParserService {
 
     // Library class: get from polyglot index directly
     const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
-    const isSysmlUri = uri.endsWith(".sysml") || uri.endsWith(".sysml2");
+    const isSysmlUri = uri.endsWith(".sysml") || uri.endsWith(".sysml2") || uri.endsWith(".kerml");
     let engine = isSysmlUri
       ? this.workspaceManager.globalSysML2QueryEngine
       : this.workspaceManager.globalModelicaQueryEngine;

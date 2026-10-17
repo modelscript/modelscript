@@ -27,6 +27,7 @@ import {
   type UnifiedJob,
 } from "../api";
 import { useAuth } from "../AuthContext";
+import { safeCssImageUrl } from "../util/url";
 import Box from "./Box";
 import CloudSimulationModal from "./CloudSimulationModal";
 import FollowButton from "./FollowButton";
@@ -256,7 +257,7 @@ const Avatar = styled.div<{ $url?: string; $letter?: string }>`
   background: var(--gradient-icon-box, linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2)));
   border: 1px solid var(--color-border-default);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url)};
   background-size: cover;
   background-position: center;
   display: flex;

@@ -311,7 +311,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
                 fontSize={11}
                 allowDataOverflow
                 scale={isLogScale ? "log" : "auto"}
-                domain={isLogScale ? ["auto", "auto"] : undefined}
+                domain={isLogScale ? [1e-6, "auto"] : undefined}
               />
               <Tooltip
                 contentStyle={{

@@ -1,6 +1,5 @@
 // name: ExternalFunction6
 // status: correct
-// xfail:    true
 // teardown_command: rm -f ExternalFunction6_*
 
 class ExternalFunction6

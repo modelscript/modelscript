@@ -204,7 +204,10 @@ export function extractLinearCoeffsArena(
 
   const kind = arena.getExprKind(exprId);
 
-  if (kind === ExprKind.Negate) {
+  if (
+    kind === ExprKind.Negate ||
+    (kind === ExprKind.Unary && (arena.getExprData1(exprId) as UnaryOp) === UnaryOp.Negate)
+  ) {
     const inner = extractLinearCoeffsArena(
       arena,
       arena.getExprLeft(exprId) >= 0 ? arena.getExprLeft(exprId) : arena.getExprData1(exprId),
@@ -298,7 +301,10 @@ export function invertSingleOccurrence(
 
   const kind = arena.getExprKind(exprId);
 
-  if (kind === ExprKind.Negate) {
+  if (
+    kind === ExprKind.Negate ||
+    (kind === ExprKind.Unary && (arena.getExprData1(exprId) as UnaryOp) === UnaryOp.Negate)
+  ) {
     const operand = arena.getExprLeft(exprId) >= 0 ? arena.getExprLeft(exprId) : arena.getExprData1(exprId);
     const negValue = arena.addBinaryExpr(BinOp.Mul, arena.addRealLiteral(-1), valueId);
     return invertSingleOccurrence(arena, operand, targetVarIdx, negValue);
@@ -678,6 +684,8 @@ export function tryOptimizeLoopWithGroebner(
   eqIdxs: number[],
   vars: number[],
 ): ArenaExecutionBlock[] | null {
+  if (vars.length > 4) return null;
+
   const loopVars = new Set<number>(vars);
   const allDeps = new Set<number>();
   for (const eqIdx of eqIdxs) {
@@ -697,6 +705,7 @@ export function tryOptimizeLoopWithGroebner(
   const paramVarNames = paramVarIdxs.map((v) => arena.getVarName(v));
 
   const ringVars = [...loopVarNames, ...paramVarNames];
+  if (ringVars.length > 10) return null;
 
   const polys: Polynomial[] = [];
   for (const eqIdx of eqIdxs) {
@@ -766,6 +775,10 @@ export function tryOptimizeLoopWithGroebner(
     }
 
     if (!foundStep) {
+      // If Gröbner basis did not isolate any variables at all, abort without mutating arena
+      if (unsolvedVars.length === loopVarIdxs.length) {
+        return null;
+      }
       const eqIdxs: number[] = [];
       for (const p of remainingPolys) {
         const pExprId = polynomialToArenaExpr(arena, p);

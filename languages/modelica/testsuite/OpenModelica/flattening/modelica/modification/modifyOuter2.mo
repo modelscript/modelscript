@@ -1,7 +1,6 @@
 // name:     modifyOuter2
 // keywords: modification inner outer innerouter
 // status:   correct
-// xfail:    true
 //
 //  the most inner modification is the actual
 //

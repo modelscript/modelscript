@@ -47,6 +47,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const metadata = {
       ...(typeof rawMetadata === "object" && rawMetadata !== null ? rawMetadata : {}),
       ...(content_warning ? { contentWarning: content_warning } : {}),
+      ...(client_signature ? { clientSignature: client_signature, client_signature } : {}),
+      ...(key_id_string ? { keyIdString: key_id_string, key_id_string } : {}),
     };
 
     if (!content && !repost_of_id && !artifact_view_id) {
@@ -706,7 +708,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const userId = req.user?.id;
     try {
       const quotes = database.getQuotes(postId, userId);
-      res.json({ quotes });
+      res.json({ quotes, posts: quotes });
     } catch (err: any) {
       console.error("GET /posts/:id/quotes error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch quotes" });
@@ -721,7 +723,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const userId = req.user?.id;
     try {
       const reposts = database.getReposts(postId, userId);
-      res.json({ reposts });
+      res.json({ reposts, posts: reposts });
     } catch (err: any) {
       console.error("GET /posts/:id/reposts error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch reposts" });
@@ -764,15 +766,28 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     }
 
     try {
+      if (!req.user && process.env.NODE_ENV === "production") {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
       const artifact = database.getArtifactView(id);
       if (!artifact) {
         res.status(404).json({ error: "Artifact view not found" });
         return;
       }
 
-      // Extract base64
+      const ownerId = (artifact as any).creator_id ?? (artifact as any).author_id;
+      if (req.user && ownerId && ownerId !== req.user.id && (req.user as any).role !== "admin") {
+        res.status(403).json({ error: "Forbidden: Not the owner of this artifact view" });
+        return;
+      }
+
+      // Extract base64 and restrict extension to safe raster formats
       const matches = rawData.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
-      const ext = matches ? (matches[1] === "jpeg" ? "jpg" : matches[1]) : "webp";
+      const rawExt = matches ? (matches[1] === "jpeg" ? "jpg" : matches[1]!.toLowerCase()) : "webp";
+      const allowedExts = new Set(["png", "jpg", "webp", "gif"]);
+      const ext = allowedExts.has(rawExt) ? rawExt : "webp";
       const base64Data = matches ? matches[2]! : rawData.replace(/^data:.*?;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
 
@@ -819,6 +834,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * POST /api/v1/social/artifact-views/from-hpc-job
    */
   router.post("/artifact-views/from-hpc-job", optionalAuth, (req: Request, res: Response) => {
+    if (!req.user && process.env.NODE_ENV === "production") {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     const userId = req.user?.id || 1;
     const { jobId, colormap, activeField, title } = req.body;
 
@@ -827,6 +845,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     }
 
     try {
+      const job = database.getJob(Number(jobId));
+      if (req.user && job && job.user_id && job.user_id !== req.user.id && (req.user as any).role !== "admin") {
+        return res.status(403).json({ error: "Forbidden: Job belongs to another user" });
+      }
+
       const result = database.createArtifactViewFromJob(userId, Number(jobId), {
         colormap,
         activeField,
@@ -980,8 +1003,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       let feed = database.getRssFeedByUrl(targetUrl);
 
       if (!feed) {
-        // Fetch metadata
-        const parser = new Parser({
+        // Fetch metadata via SSRF-safe client
+        const rssRes = await safePublicFetch(targetUrl, {
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
@@ -989,7 +1012,13 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
               "application/rss+xml, application/rdf+xml;q=0.8, application/atom+xml;q=0.6, application/xml;q=0.4, text/xml;q=0.4, text/html;q=0.2, */*;q=0.1",
           },
         });
-        const parsed = await parser.parseURL(targetUrl);
+        if (!rssRes.ok) {
+          res.status(400).json({ error: `Failed to fetch RSS feed: HTTP ${rssRes.status}` });
+          return;
+        }
+        const rssXml = await rssRes.text();
+        const parser = new Parser();
+        const parsed = await parser.parseString(rssXml);
 
         const title = parsed.title || "Unknown Feed";
         const description = parsed.description || "";

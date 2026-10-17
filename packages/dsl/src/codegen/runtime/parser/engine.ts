@@ -462,16 +462,14 @@ function crawlStateExpectedTokens(state: i32, depth: i32): void {
         t_diagExpectedBitset[sym] = 1;
       }
     }
-    if (sym == 0) {
-      for (let na = 0; na < actCount; na++) {
-        let aType = action_data[idx + na * 2];
-        let aTarget = action_data[idx + na * 2 + 1];
-        if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lhs.length) {
-          let lhs = prod_lhs[aTarget];
-          let nextSt = lookupGoto(state, lhs);
-          if (nextSt != -1) {
-            crawlStateExpectedTokens(nextSt, depth + 1);
-          }
+    for (let na = 0; na < actCount; na++) {
+      let aType = action_data[idx + na * 2];
+      let aTarget = action_data[idx + na * 2 + 1];
+      if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lhs.length && prod_lengths[aTarget] == 0) {
+        let lhs = prod_lhs[aTarget];
+        let nextSt = lookupGoto(state, lhs);
+        if (nextSt != -1) {
+          crawlStateExpectedTokens(nextSt, depth + 1);
         }
       }
     }
@@ -625,8 +623,6 @@ export {
   pushActiveHead,
   ParseHead,
   allocParseHead,
-  ErrorBranch,
-  allocErrorBranch,
   initGlobalCursor
 } from "./gss";
 
@@ -643,43 +639,11 @@ export const MODE_GLR: i32 = 1;
 export let currentParserMode: i32 = 0;
 export let configEnableBranchA1: boolean = true;
 export let configEnableBranchB: boolean = true;
-export let configEnableBranchC: boolean = true;
-export let configEnableBranchT: boolean = true;
-export let configEnableIslandMode: boolean = true;
 export let configEnableMultiFile: boolean = false;
 
 export function lsp_setConfigEnableMultiFile(val: boolean): void {
   configEnableMultiFile = val;
 }
-
-// Error Recovery Heuristics
-export {
-  configPenaltyUnwindNode,
-  configPenaltySyncToken,
-  configIslandBasePenalty,
-  configIslandSyncMultiplier,
-  configIslandPoppedMultiplier,
-  COST_SUBSTITUTION_KEYWORD,
-  COST_SUBSTITUTION_STANDARD,
-  COST_SHIFT_TRANSITION,
-  COST_SHIFT_REOPEN_BASE,
-  COST_SHIFT_REOPEN_PER_UNWIND,
-  COST_DELETE_BASE_MULTIPLIER,
-  PENALTY_DELETE_LINE_END_DANGLING,
-  PENALTY_DELETE_NEWLINE_CROSS,
-  PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE,
-  COST_DELETE_DUPLICATE_TOKEN,
-  THRESHOLD_DELETE_SCAN_LIMIT,
-  COST_INSERT_BASE_DEFAULT,
-  PENALTY_INSERT_STRUCTURAL_BRACE,
-  PENALTY_SUBSTITUTION_CROSS_LINE,
-  PENALTY_INSERT_CROSS_LINE,
-  PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE,
-  THRESHOLD_INSERT_MAX_COST,
-  THRESHOLD_PANIC_MODE_CUTOFF,
-  THRESHOLD_HEAD_PRUNING_DISTANCE,
-  COST_ISLAND_INITIAL_SYNC
-} from "./recovery-config";
 
 export let t_lrStateStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let t_lrNodeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
@@ -1636,6 +1600,9 @@ export function lsp_setInputEncoding(encoding: u8): void {
 }
 export function lsp_getInputEncoding(): u8 {
   return inputEncoding;
+}
+export function lsp_isCharOffsetKernel(): u32 {
+  return 1;
 }
 export function lsp_getNodeLeadingPad(ptr: u32): u32 {
   return getNodeLeadingPad(ptr);

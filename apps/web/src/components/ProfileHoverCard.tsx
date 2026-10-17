@@ -6,8 +6,9 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
-import { followUser, getUserProfile } from "../api";
+import { blockUser, followUser, getUserProfile, unblockUser, unfollowUser } from "../api";
 import { parseFederatedHandle } from "../util/federation";
+import { safeCssImageUrl } from "../util/url";
 import Box from "./Box";
 import FederatedDomainPill from "./FederatedDomainPill";
 
@@ -34,7 +35,7 @@ const Avatar = styled.div<AvatarProps>`
   height: 64px;
   border-radius: 50%;
   background-color: var(--color-done-emphasis);
-  background-image: ${(props) => (props.$url ? `url("${props.$url}")` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url) || "none"};
   background-size: cover;
   display: flex;
   align-items: center;
@@ -177,29 +178,37 @@ export default function ProfileHoverCard({
     if (!user || isBlocked) return;
 
     try {
-      const json = await followUser(username);
-      setIsFollowing(json.following);
+      const json = isFollowing ? await unfollowUser(username) : await followUser(username);
+      const nextFollowing = typeof json?.following === "boolean" ? json.following : !isFollowing;
+      setIsFollowing(nextFollowing);
       if (data) {
-        setData({ ...data, follower_count: data.follower_count + (json.following ? 1 : -1) });
+        setData({ ...data, follower_count: Math.max(0, data.follower_count + (nextFollowing ? 1 : -1)) });
       }
     } catch (err) {}
   };
 
-  const handleBlockClick = (e: React.MouseEvent) => {
+  const handleBlockClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (isBlocked) {
       setShowUnblockModal(true);
     } else {
-      setIsBlocked(true);
+      try {
+        await blockUser(username);
+        setIsBlocked(true);
+        setIsFollowing(false);
+      } catch (err) {}
     }
   };
 
-  const confirmUnblock = (e: React.MouseEvent) => {
+  const confirmUnblock = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsBlocked(false);
-    setShowUnblockModal(false);
+    try {
+      await unblockUser(username);
+      setIsBlocked(false);
+      setShowUnblockModal(false);
+    } catch (err) {}
   };
 
   let finalTop = rect ? rect.bottom + window.scrollY : 0;

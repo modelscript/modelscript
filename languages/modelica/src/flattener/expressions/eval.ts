@@ -15,7 +15,7 @@ import {
 } from "@modelscript/runtime";
 import { getExprArrayShape, getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import { exprReferencesRuntimeParameter } from "./binary-ops.js";
-import { evaluateCSTNumber } from "./cst-utils.js";
+import { evaluateCSTNumber, getSymbolEnumLiterals } from "./cst-utils.js";
 import { SCALAR_VECTORIZABLE_FUNCTIONS } from "./functions.js";
 
 export function isArrayLiteral(text: string): boolean {
@@ -77,6 +77,7 @@ export function parseArrayLiteralElements(text: string): string[] {
 export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
   const name = dae.interner.resolve(symId);
   const state = getFlatteningState(dae);
+  if ((state as any).realLoopVars?.has(name)) return true;
   if (state.activeLoopVars?.has(name)) return false;
   if (name === "time") return true;
   // 1. Direct variable lookup (scalar or array)
@@ -257,6 +258,9 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
   if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
     return isRealExpr(dae.getExprLeft(exprId), dae);
   }
+  if (kind === ExprKind.Range) {
+    return isRealExpr(dae.getExprData1(exprId), dae) || isRealExpr(dae.getExprRight(exprId), dae);
+  }
   if (kind === ExprKind.Binary) {
     const op = dae.getExprData1(exprId);
     if (op === BinOp.Div || op === BinOp.ElemDiv || op === BinOp.Pow || op === BinOp.ElemPow) return true;
@@ -264,6 +268,7 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
       op === BinOp.Add ||
       op === BinOp.Sub ||
       op === BinOp.Mul ||
+      op === BinOp.Colon ||
       op === BinOp.ElemAdd ||
       op === BinOp.ElemSub ||
       op === BinOp.ElemMul
@@ -344,7 +349,14 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
     }
     if (fnName === "Clock" || fnName.startsWith("Clock")) return false;
     if (fnName === "sign") return false;
-    if (fnName === "abs" || fnName === "min" || fnName === "max") {
+    if (
+      fnName === "abs" ||
+      fnName === "min" ||
+      fnName === "max" ||
+      fnName === "div" ||
+      fnName === "mod" ||
+      fnName === "rem"
+    ) {
       const argCount = dae.getExprRight(exprId);
       if (argCount > 0) {
         if (isRealExpr(dae.getExprLeft(exprId), dae)) return true;
@@ -378,7 +390,31 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
     return isRealExpr(elem0, dae);
   }
   if (kind === ExprKind.Comprehension) {
-    return isRealExpr(dae.getExprLeft(exprId), dae);
+    const state = getFlatteningState(dae);
+    const iterCount = dae.getExprRight(exprId);
+    const addedVars: string[] = [];
+    const addedRealVars: string[] = [];
+    for (let i = 0; i < iterCount; i++) {
+      const iterNodeId = exprId + 1 + i;
+      const iterVarName = dae.interner.resolve(dae.getExprData1(iterNodeId));
+      const rangeId = dae.getExprLeft(iterNodeId);
+      if (iterVarName && !state.activeLoopVars?.has(iterVarName)) {
+        if (!state.activeLoopVars) state.activeLoopVars = new Set<string>();
+        state.activeLoopVars.add(iterVarName);
+        addedVars.push(iterVarName);
+        if (isRealExpr(rangeId, dae)) {
+          if (!(state as any).realLoopVars) (state as any).realLoopVars = new Set<string>();
+          (state as any).realLoopVars.add(iterVarName);
+          addedRealVars.push(iterVarName);
+        }
+      }
+    }
+    try {
+      return isRealExpr(dae.getExprLeft(exprId), dae);
+    } finally {
+      for (const v of addedVars) state.activeLoopVars?.delete(v);
+      for (const v of addedRealVars) (state as any).realLoopVars?.delete(v);
+    }
   }
   return false;
 }
@@ -654,56 +690,75 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         if (maxDims.length > 0 && maxDims.every((d) => d > 0)) return maxDims;
       }
       if (db) {
-        const simpleName = vName.includes(".") ? vName.split(".").pop()! : vName;
         const currentScopeId =
           state.currentClassId ?? state.flattener?.currentClassId ?? state.flattener?.currentRootClassId;
-        let sym: any = null;
-        if (currentScopeId) {
-          const resolver = ((db as any).query("resolveName", currentScopeId) ??
-            (db as any).query("resolveSimpleName", currentScopeId)) as any;
-          const res = resolver?.(vName) ?? resolver?.(simpleName);
-          if (res) sym = res;
+        let dimsCache = (state as any)._exprDimsByNameCache as Map<string, number[] | null> | undefined;
+        if (!dimsCache) {
+          dimsCache = new Map();
+          (state as any)._exprDimsByNameCache = dimsCache;
         }
-        const syms = sym ? [sym] : db.byName(simpleName);
-        for (const s of syms) {
-          if (s.kind === "Component") {
-            const fullName = db.query("symbolFullName", s.id) ?? s.name;
-            const matchesScope = !currentScopeId || s === sym || s.parentId === currentScopeId;
-            if (fullName === vName || (s.name === vName && matchesScope)) {
-              const rawDims = db.query("arrayDimensions", s.id);
-              const dims = normalizeDims(rawDims);
-              if (dims) return dims;
-              const typeSpec = db.query("typeSpecifier", s.id);
-              if (typeSpec) {
-                const typeMatches = db.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
-                for (const tm of typeMatches) {
-                  if (tm.kind === "Class") {
-                    const rawTDims = db.query("arrayDimensions", tm.id);
-                    const tDims = normalizeDims(rawTDims);
-                    if (tDims) {
-                      return tDims;
+        const cacheKey = `${currentScopeId ?? 0}:${vName}`;
+        if (dimsCache.has(cacheKey)) {
+          return dimsCache.get(cacheKey)!;
+        }
+        const computeDbDims = (): number[] | null => {
+          const simpleName = vName.includes(".") ? vName.split(".").pop()! : vName;
+          let sym: any = null;
+          if (currentScopeId) {
+            const resolver = ((db as any).query("resolveName", currentScopeId) ??
+              (db as any).query("resolveSimpleName", currentScopeId)) as any;
+            const res = resolver?.(vName) ?? resolver?.(simpleName);
+            if (res) sym = res;
+          }
+          const syms = sym ? [sym] : db.byName(simpleName);
+          const hasDot = vName.includes(".");
+          const parentSeg = hasDot ? vName.slice(0, vName.lastIndexOf(".")).split(".").pop()! : null;
+          for (const s of syms) {
+            if (s.kind === "Component") {
+              if (s !== sym) {
+                if (!hasDot) {
+                  if (currentScopeId && s.parentId !== currentScopeId && s.parentId !== null) continue;
+                } else {
+                  const pSym = s.parentId ? db.symbol(s.parentId) : null;
+                  if (!pSym || pSym.name !== parentSeg) continue;
+                }
+              }
+              const fullName = db.query("symbolFullName", s.id) ?? s.name;
+              const matchesScope = !currentScopeId || s === sym || s.parentId === currentScopeId;
+              if (fullName === vName || (s.name === vName && matchesScope)) {
+                const rawDims = db.query("arrayDimensions", s.id);
+                const dims = normalizeDims(rawDims);
+                if (dims) return dims;
+                const typeSpec = db.query("typeSpecifier", s.id);
+                if (typeSpec) {
+                  const typeMatches = db.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
+                  for (const tm of typeMatches) {
+                    if (tm.kind === "Class") {
+                      const rawTDims = db.query("arrayDimensions", tm.id);
+                      const tDims = normalizeDims(rawTDims);
+                      if (tDims) {
+                        return tDims;
+                      }
                     }
                   }
                 }
               }
-            }
-          } else if (s.kind === "Class" || (s.metadata as any)?.classKind === "type") {
-            const cst = db.cstNode(s.id) as any;
-            if (cst) {
-              const txt = cst.text ?? "";
-              const enumMatch = txt.match(/enumeration\s*\(([^)]*)\)/);
-              if (enumMatch) {
-                const literals = enumMatch[1]
-                  .split(",")
-                  .map((str: string) => str.trim())
-                  .filter((str: string) => str.length > 0);
-                if (literals.length > 0) {
-                  return [literals.length];
-                }
+            } else if (s.kind === "Class" || (s.metadata as any)?.classKind === "type") {
+              if (hasDot && s !== sym) {
+                const pSym = s.parentId ? db.symbol(s.parentId) : null;
+                if (!pSym || pSym.name !== parentSeg) continue;
+              }
+              const literals = getSymbolEnumLiterals(db, s);
+              if (literals && literals.length > 0) {
+                return [literals.length];
               }
             }
           }
-        }
+          return null;
+        };
+        const resDims = computeDbDims();
+        dimsCache.set(cacheKey, resDims);
+        if (resDims) return resDims;
       }
     }
     return null;
@@ -894,6 +949,29 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
   if (kind === ExprKind.Subscript) {
     const baseId = dae.getExprData1(exprId);
     const subCount = dae.getExprRight(exprId);
+    if (subCount === 1 && dae.getExprKind(baseId) === ExprKind.Call) {
+      const fnName = dae.interner.resolve(dae.getExprData1(baseId));
+      const fnObj =
+        dae.getFunction?.(fnName) ??
+        (flattener?.currentPrefix ? dae.getFunction?.(`${flattener.currentPrefix}.${fnName}`) : undefined);
+      let outCount = 0;
+      if (fnObj) {
+        for (let vi = 0; vi < fnObj.varCount; vi++) {
+          if (fnObj.getVarCausality(vi) === Causality.Output) outCount++;
+        }
+      } else if (db && fnName) {
+        const cleanFnName = fnName.includes(".") ? fnName.split(".").pop()! : fnName;
+        const fnSym = db.byName(cleanFnName).find((s: any) => s.kind === "Function" || s.kind === "Class");
+        if (fnSym) {
+          outCount = (db.childrenOf(fnSym.id) || []).filter(
+            (c: any) => c.kind === "Component" && (db as QueryDB).query("causality", c.id) === "output",
+          ).length;
+        }
+      }
+      if (outCount > 1) {
+        return getExprDims(baseId, dae, db, flattener);
+      }
+    }
     const baseDims = getExprDims(baseId, dae, db, flattener);
     if (baseDims) {
       const remainingDims: number[] = [];
@@ -1034,22 +1112,41 @@ export function evalDaeExpr(
         {
           const flat = state.flattener;
           const db = state.db ?? flat?.db;
-          const scopeId =
-            (dae as any).enclosingScopeId ??
-            ((dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null) ??
-            flat?.currentClassId ??
-            state.currentClassId;
-          if (scopeId && db) {
+          const scopeIds = [
+            (dae as any).enclosingScopeId,
+            flat?.currentClassId,
+            state.currentClassId,
+            (dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null,
+          ];
+          const scopeId = scopeIds.find((id) => id != null) ?? null;
+          if (db) {
             const simpleName = name.includes(".") ? name.split(".").pop()! : name;
             const prefixPart = name.includes(".") ? name.split(".").slice(0, -1).join(".") : "";
-            const parentChild =
-              db.childrenOf(scopeId)?.find((c: any) => c.name === simpleName && c.kind === "Component") ??
-              db.query("resolveSimpleName", scopeId)?.(simpleName);
-            if (parentChild && parentChild.kind === "Component") {
-              const v = (parentChild.metadata as any)?.variability ?? db.query("variability", parentChild.id);
+            const candidates: any[] = [];
+            for (const sId of scopeIds) {
+              if (!sId) continue;
+              const parentChild =
+                db.childrenOf(sId)?.find((c: any) => c.name === simpleName && c.kind === "Component") ??
+                db.query("resolveSimpleName", sId)?.(simpleName);
+              if (parentChild && parentChild.kind === "Component" && !candidates.includes(parentChild)) {
+                candidates.push(parentChild);
+              }
+            }
+            if (candidates.length === 0) {
+              const byNameCands = db.byName(simpleName);
+              if (byNameCands && byNameCands.length <= 32) {
+                for (const c of byNameCands) {
+                  if (c.kind === "Component") candidates.push(c);
+                }
+              }
+            }
+            for (const cand of candidates) {
+              const v = (cand.metadata as any)?.variability ?? db.query("variability", cand.id);
               if (v === "constant" || v === "parameter") {
-                const compMod: any = db.query("effectiveModification", parentChild.id);
-                const bExpr = compMod?.bindingExpression;
+                const compInst: any = db.query("componentInstance", cand.id);
+                const compMod: any = db.query("effectiveModification", cand.id);
+                const bExpr =
+                  compInst?.bindingExpression ?? compInst?.modification?.value ?? compMod?.bindingExpression;
                 if (bExpr?.text) {
                   const bText = bExpr.text.trim();
                   if (isArrayLiteral(bText) && !/\bfor\b/.test(bText)) {
@@ -1072,7 +1169,7 @@ export function evalDaeExpr(
                   if (bText === "true") return true;
                   if (bText === "false") return false;
                   if (bText !== simpleName && bText !== name) {
-                    const evalVal = evaluateCSTNumber(bText, undefined, scopeId, db, dae, prefixPart);
+                    const evalVal = evaluateCSTNumber(bText, undefined, cand.parentId ?? scopeId, db, dae, prefixPart);
                     if (evalVal !== null) return evalVal;
                   }
                 }
@@ -1234,12 +1331,13 @@ export function evalDaeExpr(
           }
           if (dims && dims.length > 0) {
             if (argCount === 1) {
-              return dims;
+              return dims.every((d) => d >= 0) ? dims : null;
             }
             const dimArgId = dae.getExprLeft(exprId + 1);
             const dimVal = evalDaeExpr(dimArgId, dae, visitedExprs, visitedVars);
             if (typeof dimVal === "number" && dimVal >= 1 && dimVal <= dims.length) {
-              return dims[dimVal - 1]!;
+              const d = dims[dimVal - 1]!;
+              return d >= 0 ? d : null;
             }
           }
           return null;

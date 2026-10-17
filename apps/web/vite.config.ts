@@ -31,10 +31,6 @@ export default defineConfig({
           rename: "modelica.wasm",
         },
         {
-          src: "../../languages/modelica/dist/parser.wasm",
-          dest: "lsp/server/dist",
-        },
-        {
           src: "../../languages/sysml2/dist/parser.wasm",
           dest: "lsp/server/dist",
           rename: "sysml2.wasm",
@@ -91,6 +87,15 @@ export default defineConfig({
             if (id.includes("three") || id.includes("@react-three")) {
               return "vendor-three";
             }
+            if (
+              id.includes("mermaid") ||
+              id.includes("cytoscape") ||
+              id.includes("dagre") ||
+              id.includes("katex") ||
+              id.includes("elkjs")
+            ) {
+              return "vendor-mermaid";
+            }
             if (id.includes("@antv")) {
               return "vendor-antv";
             }
@@ -144,6 +149,22 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/api": {
+        target: "http://127.0.0.1:3000",
+        changeOrigin: true,
+      },
+      "/.well-known": {
+        target: "http://127.0.0.1:3000",
+        changeOrigin: true,
+      },
+      "/nodeinfo": {
+        target: "http://127.0.0.1:3000",
+        changeOrigin: true,
+      },
+      "/actor": {
+        target: "http://127.0.0.1:3000",
+        changeOrigin: true,
+      },
+      "/thumbnails": {
         target: "http://127.0.0.1:3000",
         changeOrigin: true,
       },

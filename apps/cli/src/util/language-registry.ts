@@ -101,7 +101,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   {
     id: "sysml2",
     name: "SysML v2",
-    extensions: [".sysml"],
+    extensions: [".sysml", ".kerml", ".sysml2"],
     isBuiltIn: true,
   },
   {
@@ -119,7 +119,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   {
     id: "owl2",
     name: "OWL2",
-    extensions: [".owl", ".ttl", ".ofn", ".rdf"],
+    extensions: [".owl", ".owl2", ".ttl", ".ofn", ".rdf"],
     isBuiltIn: true,
   },
   {
@@ -131,7 +131,25 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   {
     id: "ssp",
     name: "SSP",
-    extensions: [".ssp"],
+    extensions: [".ssp", ".ssd", ".ssv"],
+    isBuiltIn: true,
+  },
+  {
+    id: "cfd",
+    name: "CFD",
+    extensions: [".cfg", ".cfgt", ".su2", ".cfd"],
+    isBuiltIn: true,
+  },
+  {
+    id: "fea",
+    name: "FEA",
+    extensions: [".inp", ".inpt", ".bdf", ".fea"],
+    isBuiltIn: true,
+  },
+  {
+    id: "pscad",
+    name: "PSCAD",
+    extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     isBuiltIn: true,
   },
 ];

@@ -1,7 +1,6 @@
 // name:     ForceAndTorque.mo
 // keywords: component array addressing
 // status:   correct
-// xfail:    true
 //
 //  Verify component array addressing
 //  adrpo: This tests for bug that generated things like:

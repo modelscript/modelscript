@@ -1,7 +1,6 @@
 // name:     BS8 - SawTooth component
 // keywords: SawTooth
 // status:   correct
-// xfail:    true
 //
 // Testing instantiation of the SawTooth component.
 //

@@ -246,51 +246,53 @@ export class WebGPUOntologyReasoner {
       usage: GPUBufferUsageFlags.MAP_READ | GPUBufferUsageFlags.COPY_DST,
     });
 
-    device.queue.writeBuffer(bufIn, 0, graph.matrix);
-    device.queue.writeBuffer(bufOut, 0, graph.matrix);
+    try {
+      device.queue.writeBuffer(bufIn, 0, graph.matrix);
+      device.queue.writeBuffer(bufOut, 0, graph.matrix);
 
-    const bindGroup = device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: uniformBuffer } },
-        { binding: 1, resource: { buffer: bufIn } },
-        { binding: 2, resource: { buffer: bufOut } },
-        { binding: 3, resource: { buffer: flagBuffer } },
-      ],
-    });
+      const bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: uniformBuffer } },
+          { binding: 1, resource: { buffer: bufIn } },
+          { binding: 2, resource: { buffer: bufOut } },
+          { binding: 3, resource: { buffer: flagBuffer } },
+        ],
+      });
 
-    const workgroups = Math.ceil(n / 64);
-    const maxSteps = Math.ceil(Math.log2(Math.max(2, n))) + 1;
+      const workgroups = Math.ceil(n / 64);
+      const maxSteps = Math.ceil(Math.log2(Math.max(2, n))) + 1;
 
-    for (let step = 0; step < maxSteps; step++) {
-      const commandEncoder = device.createCommandEncoder();
-      const pass = commandEncoder.beginComputePass();
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup);
-      pass.dispatchWorkgroups(workgroups);
-      pass.end();
+      for (let step = 0; step < maxSteps; step++) {
+        const commandEncoder = device.createCommandEncoder();
+        const pass = commandEncoder.beginComputePass();
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.dispatchWorkgroups(workgroups);
+        pass.end();
 
-      // Copy bufOut back to bufIn for next doubling iteration
-      commandEncoder.copyBufferToBuffer(bufOut, 0, bufIn, 0, totalBytes);
-      device.queue.submit([commandEncoder.finish()]);
+        // Copy bufOut back to bufIn for next doubling iteration
+        commandEncoder.copyBufferToBuffer(bufOut, 0, bufIn, 0, totalBytes);
+        device.queue.submit([commandEncoder.finish()]);
+      }
+
+      // Read back final matrix
+      const copyEncoder = device.createCommandEncoder();
+      copyEncoder.copyBufferToBuffer(bufOut, 0, readbackBuffer, 0, totalBytes);
+      device.queue.submit([copyEncoder.finish()]);
+
+      await readbackBuffer.mapAsync(GPUMapModeFlags.READ);
+      const arrayBuffer = readbackBuffer.getMappedRange();
+      graph.matrix.set(new Uint32Array(arrayBuffer));
+      readbackBuffer.unmap();
+    } finally {
+      // Clean up GPU buffers
+      uniformBuffer.destroy();
+      flagBuffer.destroy();
+      bufIn.destroy();
+      bufOut.destroy();
+      readbackBuffer.destroy();
     }
-
-    // Read back final matrix
-    const copyEncoder = device.createCommandEncoder();
-    copyEncoder.copyBufferToBuffer(bufOut, 0, readbackBuffer, 0, totalBytes);
-    device.queue.submit([copyEncoder.finish()]);
-
-    await readbackBuffer.mapAsync(GPUMapModeFlags.READ);
-    const arrayBuffer = readbackBuffer.getMappedRange();
-    graph.matrix.set(new Uint32Array(arrayBuffer));
-    readbackBuffer.unmap();
-
-    // Clean up GPU buffers
-    uniformBuffer.destroy();
-    flagBuffer.destroy();
-    bufIn.destroy();
-    bufOut.destroy();
-    readbackBuffer.destroy();
   }
 
   /**
@@ -306,6 +308,29 @@ export class WebGPUOntologyReasoner {
     const totalInstances = Math.floor(instances.length / stride);
     const violationWords = Math.ceil(totalInstances / 32) || 1;
     const violationBitset = new Uint32Array(violationWords);
+
+    if (this._device && this._shaclPipeline && totalInstances > 0) {
+      await this._validateSHACLWebGPU(instances, constraint, totalInstances, violationBitset, instanceClasses);
+      const violations: number[] = [];
+      for (let w = 0; w < violationWords; w++) {
+        let word = violationBitset[w]!;
+        while (word !== 0) {
+          const bit = 31 - Math.clz32(word & -word);
+          const idx = w * 32 + bit;
+          if (idx < totalInstances) {
+            violations.push(idx);
+          }
+          word &= word - 1;
+        }
+      }
+      return {
+        totalInstances,
+        violationCount: violations.length,
+        violationIndices: new Uint32Array(violations),
+        executionTimeMs: performance.now() - start,
+        engine: "webgpu",
+      };
+    }
 
     const min = constraint.minInclusive ?? -Infinity;
     const max = constraint.maxInclusive ?? Infinity;
@@ -337,7 +362,107 @@ export class WebGPUOntologyReasoner {
       violationCount: violations.length,
       violationIndices: new Uint32Array(violations),
       executionTimeMs: performance.now() - start,
-      engine: this._device ? "webgpu" : "cpu-fallback",
+      engine: "cpu-fallback",
     };
+  }
+
+  /**
+   * WebGPU WGSL Dispatch for Parallel SHACL Constraint Validation.
+   */
+  private async _validateSHACLWebGPU(
+    instances: Float32Array,
+    constraint: SHACLNumericConstraint,
+    totalInstances: number,
+    violationBitset: Uint32Array,
+    instanceClasses?: Uint32Array,
+  ): Promise<void> {
+    const device = this._device!;
+    const pipeline = this._shaclPipeline!;
+
+    const uniformData = new ArrayBuffer(32);
+    const u32View = new Uint32Array(uniformData);
+    const f32View = new Float32Array(uniformData);
+    u32View[0] = totalInstances;
+    u32View[1] = constraint.attributeStride;
+    u32View[2] = constraint.propertyIndex;
+    f32View[3] = constraint.minInclusive ?? -1e38;
+    f32View[4] = constraint.maxInclusive ?? 1e38;
+    u32View[5] = constraint.expectedClassId ?? 0;
+    u32View[6] = constraint.expectedClassId !== undefined && instanceClasses ? 1 : 0;
+    u32View[7] = 0;
+
+    const uniformBuffer = device.createBuffer({
+      size: 32,
+      usage: GPUBufferUsageFlags.UNIFORM | GPUBufferUsageFlags.COPY_DST,
+    });
+    const attrBytes = Math.max(4, instances.byteLength);
+    const attrBuffer = device.createBuffer({
+      size: attrBytes,
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST,
+    });
+    const classesArray = instanceClasses ?? new Uint32Array(Math.max(1, totalInstances));
+    const classBytes = Math.max(4, classesArray.byteLength);
+    const classBuffer = device.createBuffer({
+      size: classBytes,
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST,
+    });
+    const bitsetBytes = Math.max(4, violationBitset.byteLength);
+    const bitsetBuffer = device.createBuffer({
+      size: bitsetBytes,
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_SRC | GPUBufferUsageFlags.COPY_DST,
+    });
+    const readbackBuffer = device.createBuffer({
+      size: bitsetBytes,
+      usage: GPUBufferUsageFlags.MAP_READ | GPUBufferUsageFlags.COPY_DST,
+    });
+
+    try {
+      device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+      device.queue.writeBuffer(attrBuffer, 0, instances);
+      device.queue.writeBuffer(classBuffer, 0, classesArray);
+      device.queue.writeBuffer(bitsetBuffer, 0, violationBitset);
+
+      const bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: uniformBuffer } },
+          { binding: 1, resource: { buffer: attrBuffer } },
+          { binding: 2, resource: { buffer: classBuffer } },
+          { binding: 3, resource: { buffer: bitsetBuffer } },
+        ],
+      });
+
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.dispatchWorkgroups(Math.ceil(totalInstances / 64));
+      pass.end();
+
+      encoder.copyBufferToBuffer(bitsetBuffer, 0, readbackBuffer, 0, violationBitset.byteLength);
+      device.queue.submit([encoder.finish()]);
+
+      await readbackBuffer.mapAsync(GPUMapModeFlags.READ);
+      violationBitset.set(new Uint32Array(readbackBuffer.getMappedRange()));
+      readbackBuffer.unmap();
+    } finally {
+      uniformBuffer.destroy();
+      attrBuffer.destroy();
+      classBuffer.destroy();
+      bitsetBuffer.destroy();
+      readbackBuffer.destroy();
+    }
+  }
+
+  /**
+   * Releases the WebGPU device and pipelines.
+   */
+  public destroy(): void {
+    this._device?.destroy?.();
+    this._device = null;
+    this._adapter = null;
+    this._transitivePipeline = null;
+    this._shaclPipeline = null;
+    this._isInitialized = false;
   }
 }

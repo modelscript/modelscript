@@ -33,7 +33,10 @@ const DUMMY_BCRYPT_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZd
 const isProd = process.env["NODE_ENV"] === "production";
 
 function getClientIp(req: Request): string {
-  return (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+  const trustForwarded = process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "test";
+  const xff = trustForwarded ? (req.headers["x-forwarded-for"] as string | undefined) : undefined;
+  const forwardedIp = xff ? xff.split(",")[0]?.trim() : undefined;
+  return forwardedIp || req.ip || req.socket.remoteAddress || "127.0.0.1";
 }
 
 function setSessionCookie(res: Response, token: string): void {
@@ -568,6 +571,8 @@ export function authRouter(database: LibraryDatabase): Router {
     }
   });
 
+  const pendingTotpSecrets = new Map<number, string>();
+
   /**
    * POST /api/v1/auth/2fa/setup
    *
@@ -582,6 +587,7 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       const secret = generateTotpSecret();
+      pendingTotpSecrets.set(user.id, secret);
       const otpAuthUri = generateTotpUri({
         accountName: user.email,
         secret,
@@ -590,6 +596,7 @@ export function authRouter(database: LibraryDatabase): Router {
       res.json({
         secret,
         otpAuthUri,
+        otpauthUri: otpAuthUri,
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Failed to initialize 2FA setup" });
@@ -605,8 +612,14 @@ export function authRouter(database: LibraryDatabase): Router {
   router.post("/2fa/verify", requireAuth, express.json(), (req: Request, res: Response): void => {
     const { secret, code } = req.body || {};
     const clientIp = getClientIp(req);
+    const pendingSecret = pendingTotpSecrets.get(req.user!.id);
+    if (pendingSecret && typeof secret === "string" && secret.trim() && secret.trim() !== pendingSecret) {
+      res.status(400).json({ error: "Provided secret does not match active 2FA setup session" });
+      return;
+    }
+    const resolvedSecret = pendingSecret || (typeof secret === "string" && secret.trim() ? secret.trim() : undefined);
 
-    if (!secret || typeof secret !== "string") {
+    if (!resolvedSecret) {
       res.status(400).json({ error: "Secret is required" });
       return;
     }
@@ -616,7 +629,7 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const valid = verifyTotpCode(secret, code);
+    const valid = verifyTotpCode(resolvedSecret, code);
     if (!valid) {
       res.status(400).json({ error: "Invalid 6-digit code. Please verify your authenticator app time and try again." });
       return;
@@ -624,7 +637,8 @@ export function authRouter(database: LibraryDatabase): Router {
 
     try {
       const { plainCodes, hashedCodes } = generateBackupCodes(10);
-      database.enableUser2FA(req.user!.id, secret, hashedCodes);
+      database.enableUser2FA(req.user!.id, resolvedSecret, hashedCodes);
+      pendingTotpSecrets.delete(req.user!.id);
 
       database.logAudit({
         actorId: req.user!.id,
@@ -676,20 +690,23 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      // If code was provided, verify it (either TOTP or backup code)
-      if (code && typeof code === "string") {
-        let codeValid = false;
-        if (state2FA.totp_secret && /^\d{6}$/.test(code.trim().replace(/\s+/g, ""))) {
-          codeValid = verifyTotpCode(state2FA.totp_secret, code.trim());
-        }
-        if (!codeValid && state2FA.backup_codes.length > 0) {
-          const backupResult = verifyAndConsumeBackupCode(code.trim(), state2FA.backup_codes);
-          codeValid = backupResult.valid;
-        }
-        if (!codeValid) {
-          res.status(400).json({ error: "Invalid authentication code or backup recovery code" });
-          return;
-        }
+      // Require a valid TOTP or backup recovery code to disable 2FA
+      if (!code || typeof code !== "string" || !code.trim()) {
+        res.status(400).json({ error: "Authentication code or backup recovery code is required" });
+        return;
+      }
+
+      let codeValid = false;
+      if (state2FA.totp_secret && /^\d{6}$/.test(code.trim().replace(/\s+/g, ""))) {
+        codeValid = verifyTotpCode(state2FA.totp_secret, code.trim());
+      }
+      if (!codeValid && state2FA.backup_codes.length > 0) {
+        const backupResult = verifyAndConsumeBackupCode(code.trim(), state2FA.backup_codes);
+        codeValid = backupResult.valid;
+      }
+      if (!codeValid) {
+        res.status(400).json({ error: "Invalid authentication code or backup recovery code" });
+        return;
       }
 
       database.disableUser2FA(userId);
@@ -842,6 +859,36 @@ export function authRouter(database: LibraryDatabase): Router {
     }
   });
 
+  const buildOAuthAuthorizeUrl = (
+    req: Request,
+    provider: string,
+    clientId: string,
+    signedState: string,
+  ): string | null => {
+    const publicBase = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host")}`;
+    const redirectUri = `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/${provider}`;
+    if (provider === "github") {
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scope: "read:user user:email",
+        state: signedState,
+      });
+      return `https://github.com/login/oauth/authorize?${params.toString()}`;
+    }
+    if (provider === "gitlab") {
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        scope: "read_user",
+        state: signedState,
+      });
+      return `https://gitlab.com/oauth/authorize?${params.toString()}`;
+    }
+    return null;
+  };
+
   /**
    * GET /api/v1/auth/login/:provider
    */
@@ -852,17 +899,36 @@ export function authRouter(database: LibraryDatabase): Router {
       res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
       return;
     }
-    // Mock OAuth flow: Redirect to provider, which would normally redirect back to callback
-    res.redirect(`/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}`);
+    const signedState = jwt.sign({ action: "login", provider }, JWT_SECRET, { expiresIn: "10m" });
+    if (clientId) {
+      const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
+      if (authorizeUrl) {
+        res.redirect(authorizeUrl);
+        return;
+      }
+      if (process.env["NODE_ENV"] === "production") {
+        res.status(501).json({ error: `Unsupported OAuth provider '${provider}'.` });
+        return;
+      }
+    }
+    // Dev/test mock OAuth flow when provider client credentials are not configured
+    res.redirect(
+      `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
+    );
   });
 
   /**
    * GET /api/v1/auth/link/:provider
-   * Initiated from the browser via an href link. Accepts token via query param to verify user.
+   * Initiated from the browser via an href link. Accepts token via query param or session cookie to verify user.
    */
   router.get("/link/:provider", (req: Request, res: Response) => {
-    const { provider } = req.params;
-    const token = req.query.token as string;
+    const provider = typeof req.params.provider === "string" ? req.params.provider : String(req.params.provider ?? "");
+    const cookieHeader = req.headers.cookie || "";
+    const cookieMatch = cookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
+    const cookieToken = cookieMatch?.[1] ? decodeURIComponent(cookieMatch[1]) : "";
+    const authHeader = req.headers.authorization || "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    const token = (req.query.token as string) || cookieToken || bearerToken;
     const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
 
     if (!token) {
@@ -870,10 +936,25 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
 
+    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
+    if (process.env["NODE_ENV"] === "production" && !clientId) {
+      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+      return;
+    }
+
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as { id: number };
-      const state = encodeURIComponent(JSON.stringify({ action: "link", userId: decoded.id }));
-      res.redirect(`/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${state}`);
+      const signedState = jwt.sign({ action: "link", userId: decoded.id, provider }, JWT_SECRET, { expiresIn: "10m" });
+      if (clientId) {
+        const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
+        if (authorizeUrl) {
+          res.redirect(authorizeUrl);
+          return;
+        }
+      }
+      res.redirect(
+        `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
+      );
     } catch {
       res.redirect(`${frontendUrl}/settings?error=InvalidToken`);
     }
@@ -904,8 +985,13 @@ export function authRouter(database: LibraryDatabase): Router {
     }
 
     // Real OAuth2 token exchange if credentials configured
-    if (code && clientId && clientSecret) {
+    if (clientId && clientSecret) {
+      if (!code) {
+        res.redirect(`${frontendUrl}/login?error=MissingOAuthCode`);
+        return;
+      }
       try {
+        let verifiedLiveProfile = false;
         if (provider === "github") {
           const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
             method: "POST",
@@ -919,11 +1005,15 @@ export function authRouter(database: LibraryDatabase): Router {
               headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ModelScript" },
             });
             const userData = (await userRes.json()) as { id?: number; login?: string; email?: string };
-            if (userData.id) providerUserId = String(userData.id);
-            if (userData.login) username = userData.login;
-            if (userData.email) email = userData.email;
+            if (userData.id && userData.login) {
+              providerUserId = String(userData.id);
+              username = userData.login;
+              email = userData.email || `${userData.login}@users.noreply.github.com`;
+              verifiedLiveProfile = true;
+            }
           }
         } else if (provider === "gitlab") {
+          const publicBase = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host")}`;
           const tokenRes = await fetch("https://gitlab.com/oauth/token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -932,7 +1022,7 @@ export function authRouter(database: LibraryDatabase): Router {
               client_secret: clientSecret,
               code,
               grant_type: "authorization_code",
-              redirect_uri: `${req.protocol}://${req.get("host")}/api/v1/auth/callback/gitlab`,
+              redirect_uri: `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/gitlab`,
             }),
           });
           const tokenData = (await tokenRes.json()) as { access_token?: string; refresh_token?: string };
@@ -943,20 +1033,41 @@ export function authRouter(database: LibraryDatabase): Router {
               headers: { Authorization: `Bearer ${accessToken}` },
             });
             const userData = (await userRes.json()) as { id?: number; username?: string; email?: string };
-            if (userData.id) providerUserId = String(userData.id);
-            if (userData.username) username = userData.username;
-            if (userData.email) email = userData.email;
+            if (userData.id && userData.username) {
+              providerUserId = String(userData.id);
+              username = userData.username;
+              email = userData.email || `${userData.username}@gitlab.com`;
+              verifiedLiveProfile = true;
+            }
           }
         }
+        if (!verifiedLiveProfile && process.env["NODE_ENV"] === "production") {
+          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+          return;
+        }
       } catch (oauthErr) {
+        if (process.env.NODE_ENV === "production") {
+          console.error(`[OAuth] Live provider exchange failed in production:`, oauthErr);
+          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+          return;
+        }
         console.warn(`[OAuth] Live provider exchange failed, falling back to mock profile:`, oauthErr);
       }
     }
 
     try {
-      let stateData: { action?: string; userId?: number } | null = null;
+      let stateData: { action?: string; userId?: number; provider?: string } | null = null;
       if (stateParam) {
-        stateData = JSON.parse(decodeURIComponent(stateParam));
+        try {
+          stateData = jwt.verify(decodeURIComponent(stateParam), JWT_SECRET) as {
+            action?: string;
+            userId?: number;
+            provider?: string;
+          };
+        } catch {
+          res.redirect(`${frontendUrl}/settings?error=InvalidState`);
+          return;
+        }
       }
 
       if (stateData?.action === "link" && stateData.userId) {

@@ -1,7 +1,6 @@
 // name: ConstantDeclConnector
 // keywords: constant
 // status: correct
-// xfail:    true
 //
 // Tests the constant prefix used on a connector
 //

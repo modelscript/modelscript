@@ -9,6 +9,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 import { usePageTitle } from "../util/title";
+import { safeCssImageUrl } from "../util/url";
 
 const EditProfilePage: React.FC = () => {
   usePageTitle("Edit Profile");
@@ -132,7 +133,7 @@ const EditProfilePage: React.FC = () => {
                   style={{
                     height: "120px",
                     borderRadius: "8px",
-                    backgroundImage: `url(${bannerUrl})`,
+                    backgroundImage: safeCssImageUrl(bannerUrl),
                     backgroundSize: "cover",
                     backgroundPosition: "center",
                     border: "1px solid var(--color-border-default)",
@@ -159,7 +160,7 @@ const EditProfilePage: React.FC = () => {
                       width: "48px",
                       height: "48px",
                       borderRadius: "50%",
-                      backgroundImage: `url(${avatarUrl})`,
+                      backgroundImage: safeCssImageUrl(avatarUrl),
                       backgroundSize: "cover",
                       backgroundPosition: "center",
                       border: "2px solid var(--color-accent-emphasis)",

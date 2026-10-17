@@ -14,7 +14,6 @@ import {
   DAEBuilder,
   eliminateArenaAliases,
   foldArenaConstants,
-  hasArrayEquations,
   type QueryDB,
   scalarizeArena,
   type SymbolEntry,
@@ -344,15 +343,27 @@ export class ModelicaFlattener {
 
   isOperatorRecordSym(sym: any): boolean {
     if (!sym || sym.id < 0 || (sym.metadata as any)?.isPredefined) return false;
+    if ((sym as any)._isOperatorRecord !== undefined) return (sym as any)._isOperatorRecord;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
     const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-    if (/\boperator\s+record\b/.test(cleanKind)) return true;
+    if (/\boperator\s+record\b/.test(cleanKind)) {
+      (sym as any)._isOperatorRecord = true;
+      return true;
+    }
+    if (cleanKind.length > 0 && !/\b(?:operator|record)\b/.test(cleanKind)) {
+      (sym as any)._isOperatorRecord = false;
+      return false;
+    }
     const cst = this.db.cstNode(sym.id) as any;
     if (cst) {
       const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) return true;
+      if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) {
+        (sym as any)._isOperatorRecord = true;
+        return true;
+      }
     }
+    (sym as any)._isOperatorRecord = false;
     return false;
   }
 
@@ -373,7 +384,7 @@ export class ModelicaFlattener {
         return true;
       }
       const shortSpec = getShortClassSpecifierNode(cst);
-      if (shortSpec) {
+      if (shortSpec && !(this.options as any)?.isOldFrontend) {
         const typeSpecNode = shortSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "name");
         const typeName: string = typeSpecNode?.text?.trim();
         if (typeName) {
@@ -406,12 +417,18 @@ export class ModelicaFlattener {
       }
     }
     if (this._globalHasOperatorRecords === undefined) {
-      this._globalHasOperatorRecords = (this.db.allEntries?.() ?? []).some(
-        (s: any) => s.kind === "Class" && this.isOperatorRecordSym(s),
-      );
+      const dbAny = this.db as any;
+      if (dbAny._globalHasOperatorRecords !== undefined) {
+        this._globalHasOperatorRecords = dbAny._globalHasOperatorRecords;
+      } else {
+        this._globalHasOperatorRecords = (this.db.allEntries?.() ?? []).some(
+          (s: any) => s.kind === "Class" && this.isOperatorRecordSym(s),
+        );
+        dbAny._globalHasOperatorRecords = this._globalHasOperatorRecords;
+      }
     }
-    this._hasOperatorRecordsCache.set(rootClassId, this._globalHasOperatorRecords);
-    return this._globalHasOperatorRecords;
+    this._hasOperatorRecordsCache.set(rootClassId, this._globalHasOperatorRecords!);
+    return this._globalHasOperatorRecords!;
   }
 
   validateOperatorRecords(dae: DAEBuilder, rootClassId: SymbolId): void {
@@ -517,11 +534,19 @@ export class ModelicaFlattener {
 
   isRecordSym(sym: any): boolean {
     if (!sym || sym.id < 0 || (sym.metadata as any)?.isPredefined) return false;
+    if ((sym as any)._isRecord !== undefined) return (sym as any)._isRecord;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
     const cleanKind = stripComments(rawKind).trim();
     const words = cleanKind.split(/\s+/).filter(Boolean);
-    if (words.includes("record")) return true;
+    if (words.includes("record")) {
+      (sym as any)._isRecord = true;
+      return true;
+    }
+    if (words.length > 0 && !words.includes("record")) {
+      (sym as any)._isRecord = false;
+      return false;
+    }
     const cst = this.db.cstNode(sym.id) as any;
     if (cst) {
       const pfx = Cst.ClassDefinition.classPrefixes(cst);
@@ -530,11 +555,18 @@ export class ModelicaFlattener {
           .trim()
           .split(/\s+/)
           .filter(Boolean);
-        if (pfxWords.includes("record")) return true;
+        if (pfxWords.includes("record")) {
+          (sym as any)._isRecord = true;
+          return true;
+        }
       }
       const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      if (/^(?:(?:encapsulated|partial)\s+)*record\b/.test(text)) return true;
+      if (/^(?:(?:encapsulated|partial)\s+)*record\b/.test(text)) {
+        (sym as any)._isRecord = true;
+        return true;
+      }
     }
+    (sym as any)._isRecord = false;
     return false;
   }
 
@@ -587,7 +619,12 @@ export class ModelicaFlattener {
       if (!compNode) continue;
 
       // 1. Equations and Algorithms in type, record, connector, package
-      if (cleanKind === "type" || cleanKind === "record" || cleanKind === "connector" || cleanKind === "package") {
+      if (
+        cleanKind === "type" ||
+        cleanKind === "record" ||
+        cleanKind === "connector" ||
+        (cleanKind === "package" && !(dae.extensionMetadata?.isOldFrontend && cls.id !== rootClassId))
+      ) {
         for (const child of compNode.children || []) {
           if (child.type === "equation_section") {
             let targetNode = child;
@@ -700,7 +737,11 @@ export class ModelicaFlattener {
     }
   }
 
+  private _classImportsCache = new Map<SymbolId, Map<string, string>>();
+
   collectClassImports(classId: SymbolId, visited: Set<SymbolId> = new Set<SymbolId>()): Map<string, string> {
+    const cached = this._classImportsCache.get(classId);
+    if (cached !== undefined) return new Map(cached);
     const result = new Map<string, string>();
     if (visited.has(classId)) return result;
     visited.add(classId);
@@ -714,9 +755,10 @@ export class ModelicaFlattener {
       }
     }
 
-    // 2. Base class imports (via Extends)
-    const extendsChildren = this.db.childrenOf(classId).filter((c) => c.kind === "Extends");
-    for (const ext of extendsChildren) {
+    // 2. Base class imports (via Extends) & 3. Own imports from index
+    const children = this.db.childrenOf(classId);
+    for (const ext of children) {
+      if (ext.kind !== "Extends") continue;
       const base = this.db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
       const scoped =
         this.db.query<any>("resolveName", classId)?.(ext.name) ??
@@ -730,8 +772,7 @@ export class ModelicaFlattener {
       }
     }
 
-    // 3. Own imports from index
-    for (const child of this.db.childrenOf(classId)) {
+    for (const child of children) {
       if (child.kind === "Import") {
         const meta = child.metadata as Record<string, unknown>;
         let importKind = meta?.importKind as string | undefined;
@@ -785,6 +826,7 @@ export class ModelicaFlattener {
       }
     }
 
+    this._classImportsCache.set(classId, new Map(result));
     return result;
   }
 
@@ -839,6 +881,17 @@ export class ModelicaFlattener {
 
   constructor(db: QueryDB, options?: FlattenOptions) {
     this.db = db;
+    const dbAny = db as any;
+    if (!dbAny._fileSymbolsCache) dbAny._fileSymbolsCache = new Map<string, any[]>();
+    if (!dbAny._hasOperatorRecordsCache) dbAny._hasOperatorRecordsCache = new Map<SymbolId, boolean>();
+    if (!dbAny._classImportsCache) dbAny._classImportsCache = new Map<SymbolId, Map<string, string>>();
+    if (!dbAny._redeclareCache) dbAny._redeclareCache = new Map<SymbolId, boolean>();
+    if (!dbAny._unsupportedWasmCache) dbAny._unsupportedWasmCache = new Map<SymbolId, boolean>();
+    this._fileSymbolsCache = dbAny._fileSymbolsCache;
+    this._hasOperatorRecordsCache = dbAny._hasOperatorRecordsCache;
+    this._classImportsCache = dbAny._classImportsCache;
+    this._redeclareCache = dbAny._redeclareCache;
+    this._unsupportedWasmCache = dbAny._unsupportedWasmCache;
     const omcCompatibility = options?.omcCompatibility ?? false;
     let backend: FlattenerBackend =
       options?.backend ?? (options as any)?.flattenerBackend ?? (options?.useWasmKernel ? "wasm" : "hybrid");
@@ -991,13 +1044,19 @@ export class ModelicaFlattener {
     if (cst?.text) {
       const matches = (cst.text as string).match(/\b([a-zA-Z_]\w*)\.[a-zA-Z_]\w*/g);
       if (matches) {
+        const sym = this.db.symbol(classId);
         const seenPrefixes = new Set<string>();
         for (const m of matches) {
           const prefixName = m.split(".")[0]!;
-          if (seenPrefixes.has(prefixName)) continue;
+          if (prefixName === "Modelica" || seenPrefixes.has(prefixName)) continue;
           seenPrefixes.add(prefixName);
           const prefixSym = this.db.byName(prefixName).find((e) => e.kind === "Class" || e.kind === "Package");
-          if (prefixSym && prefixSym.id !== classId && this.classHasRedeclare(prefixSym.id, visited)) {
+          if (
+            prefixSym &&
+            prefixSym.id !== classId &&
+            (!sym?.resourceId || prefixSym.resourceId === sym.resourceId) &&
+            this.classHasRedeclare(prefixSym.id, visited)
+          ) {
             return cacheAndReturn(true);
           }
         }
@@ -1081,7 +1140,8 @@ export class ModelicaFlattener {
       /\bequalityConstraint\b/.test(text) ||
       /\[\s*:\s*\]\s*=/.test(text) ||
       /\bfill\s*\([^,]+,\s*\d+\.\d+/.test(text) ||
-      /\b(?:homotopy|semiLinear|outerProduct)\s*\(/.test(text)
+      /\bexternal\s+"FORTRAN 77"/i.test(text) ||
+      /\b(?:homotopy|semiLinear|outerProduct|identity)\s*\(/.test(text)
     ) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
@@ -1133,6 +1193,15 @@ export class ModelicaFlattener {
     }
 
     const children = this.db.childrenOf(classId);
+    const localCompNames = new Set(children.filter((c) => c.kind === "Component").map((c) => c.name));
+    if (localCompNames.size > 0) {
+      for (const compName of localCompNames) {
+        if (new RegExp(`\\b${escapeRegExp(compName)}\\.[a-zA-Z_]\\w*\\s*\\(`).test(text)) {
+          this._unsupportedWasmCache.set(classId, true);
+          return true;
+        }
+      }
+    }
     for (const child of children) {
       if (child.kind === "Extends") {
         const baseClass =
@@ -1142,9 +1211,35 @@ export class ModelicaFlattener {
               this.db.query<any>("resolveSimpleName", classId)?.(child.name))
             : null) ??
           this.db.byName(child.name)?.[0];
-        if (baseClass && this.classHasUnsupportedWasmFeatures(baseClass.id, visited)) {
-          this._unsupportedWasmCache.set(classId, true);
-          return true;
+        if (baseClass) {
+          const extModRaw = this.db.query<any>("extendsModificationParsed", child.id);
+          const extModArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
+          if (extModArgs.length > 0) {
+            const baseChildren = this.db.childrenOf(baseClass.id) || [];
+            for (const mArg of extModArgs) {
+              if (
+                mArg?.name &&
+                baseChildren.some((bc) => bc.name === mArg.name && (bc.kind === "Class" || bc.kind === "Package"))
+              ) {
+                this._unsupportedWasmCache.set(classId, true);
+                return true;
+              }
+            }
+          }
+          if (localCompNames.size > 0) {
+            const baseElems = this.db.query<SymbolId[]>("instantiate", baseClass.id) || [];
+            for (const eid of baseElems) {
+              const eSym = this.db.symbol(eid);
+              if (eSym && eSym.kind === "Component" && localCompNames.has(eSym.name)) {
+                this._unsupportedWasmCache.set(classId, true);
+                return true;
+              }
+            }
+          }
+          if (this.classHasUnsupportedWasmFeatures(baseClass.id, visited)) {
+            this._unsupportedWasmCache.set(classId, true);
+            return true;
+          }
         }
       }
       if (child.kind === "Record" || this.isRecordSym(child)) {
@@ -1158,14 +1253,42 @@ export class ModelicaFlattener {
         }
       }
       if (child.kind === "Component") {
+        const childCst = this.db.cstNode(child.id) as any;
+        if (childCst?.text && /\bif\s+/.test(childCst.text) && !/\bthen\b/.test(childCst.text)) {
+          this._unsupportedWasmCache.set(classId, true);
+          return true;
+        }
         const compInst = this.db.query<any>("componentInstance", child.id);
-        const targetClassId = compInst?.classInstance ?? compInst?.classTargetId;
+        const targetClassId =
+          this.db.query<SymbolId | null>("classInstance", child.id) ??
+          compInst?.classInstance ??
+          compInst?.classTargetId;
         const targetClass = targetClassId
           ? this.db.symbol(targetClassId)
           : ((classId && compInst?.typeSpecifier
               ? (this.db.query<any>("resolveName", classId)?.(compInst.typeSpecifier) ??
                 this.db.query<any>("resolveSimpleName", classId)?.(compInst.typeSpecifier))
               : null) ?? this.db.byName(compInst?.typeSpecifier ?? compInst?.typeName ?? "")?.[0]);
+        const rawSpec = String(compInst?.typeSpecifier ?? compInst?.typeName ?? "").trim();
+        if (
+          !targetClassId &&
+          rawSpec &&
+          rawSpec !== "Real" &&
+          rawSpec !== "Integer" &&
+          rawSpec !== "Boolean" &&
+          rawSpec !== "String" &&
+          rawSpec !== "Clock" &&
+          rawSpec !== "StateSelect" &&
+          rawSpec !== "ExternalObject" &&
+          rawSpec !== "AssertionLevel" &&
+          !rawSpec.startsWith("enumeration") &&
+          !rawSpec.startsWith("SI.") &&
+          !rawSpec.startsWith("Modelica.SIunits.") &&
+          !rawSpec.startsWith("Modelica.Units.SI.")
+        ) {
+          this._unsupportedWasmCache.set(classId, true);
+          return true;
+        }
         const isTypeTarget =
           targetClass &&
           (targetClass.kind === "Type" || String(targetClass.metadata?.classKind ?? "").toLowerCase() === "type");
@@ -1193,8 +1316,13 @@ export class ModelicaFlattener {
       }
     }
     {
-      const src = sym?.resourceId ? (this.db as any).source?.(sym.resourceId) : undefined;
-      if (typeof src === "string" && (/\bexternal\s+"builtin"/.test(src) || /\bderivative\s*=/.test(src))) {
+      const src = (sym?.resourceId ? (this.db as any).source?.(sym.resourceId) : undefined) || text;
+      if (
+        typeof src === "string" &&
+        (/\bexternal\s+"builtin"/.test(src) ||
+          /\bderivative\s*=/.test(src) ||
+          (this.options.omcCompatibility && (/\bimport\s+/.test(src) || /\bencapsulated\s+/.test(src))))
+      ) {
         this._unsupportedWasmCache.set(classId, true);
         return true;
       }
@@ -1868,9 +1996,31 @@ export class ModelicaFlattener {
             };
             const prevCl = getClause(prevCst);
             const currCl = getClause(currCst);
-            let prevText = prevCl?.text?.trim() ?? "";
-            const currText = currCl?.text?.trim() ?? "";
+            let prevText = (prevCl?.text?.trim() ?? "").replace(/;$/, "");
+            const currText = (currCl?.text?.trim() ?? "").replace(/;$/, "");
             prevText = prevText.replace(/^([a-zA-Z_]\w*)\[([^\]]+)\]\s+([a-zA-Z_]\w*)/, "$1 $3[$2]");
+            const classImports = this.collectClassImports(classId);
+            const resolveImportText = (txt: string) => {
+              let res = txt;
+              for (const [alias, target] of classImports) {
+                res = res.replace(new RegExp(`\\b${escapeRegExp(alias)}\\.`, "g"), `${target}.`);
+              }
+              return res;
+            };
+            const resolvedPrev = resolveImportText(prevText);
+            const resolvedCurr = resolveImportText(currText);
+            if (resolvedPrev === resolvedCurr) {
+              const fmtPrev = /^(?:Real|Integer|Boolean|String)\b/.test(resolvedPrev)
+                ? resolvedPrev
+                : `.${resolvedPrev}`;
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+                message: `Duplicate elements:\n ${fmtPrev}.`,
+                range: this.getElementDiagRange(prevCl),
+              });
+              return true;
+            }
             dae.diagnostics.push({
               severity: "notification",
               code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
@@ -1976,120 +2126,243 @@ export class ModelicaFlattener {
       }
     }
 
-    // Check for duplicate elements due to inherited elements
-    for (const ext of extendsClauses) {
-      const baseClass =
-        this.db.query<SymbolEntry | null>("resolvedBaseClass", ext.id) ??
-        (rootClassId
-          ? (this.db.query<any>("resolveName", rootClassId)?.(ext.name) ??
-            this.db.query<any>("resolveSimpleName", rootClassId)?.(ext.name))
-          : null) ??
-        this.db.byName(ext.name)[0];
-      if (baseClass) {
-        const innerConflict = this.db
-          .childrenOf(baseClass.id)
-          .find((c) => c.name === ext.name && (c.kind === "Class" || c.kind === "Package"));
-        if (innerConflict) {
-          const extCst = this.db.cstNode(ext.id) as any;
-          const conflictCst = this.db.cstNode(innerConflict.id) as any;
-          dae.diagnostics.push({
-            severity: "notification",
-            code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
-            message: "From here:",
-            range: {
-              startByte: extCst?.startIndex ?? extCst?.startByte,
-              endByte: extCst?.endIndex ?? extCst?.endByte,
-              startPosition: extCst?.startPosition,
-              endPosition: extCst?.endPosition,
-            },
-          });
-          dae.diagnostics.push({
-            severity: "error",
-            code: ModelicaErrorCode.EXTENDS_OTHER_BASE_CLASS.code,
-            message: ModelicaErrorCode.EXTENDS_OTHER_BASE_CLASS.message(ext.name),
-            range: {
-              startByte: conflictCst?.startIndex ?? conflictCst?.startByte,
-              endByte: conflictCst?.endIndex ?? conflictCst?.endByte,
-              startPosition: conflictCst?.startPosition,
-              endPosition: conflictCst?.endPosition,
-            },
-          });
-          return dae;
+    // Check for duplicate elements due to inherited elements and invalid break on record components
+    const checkInheritedAndBreakErrors = (targetClassId: SymbolId): boolean => {
+      const targetChildren = this.db.childrenOf(targetClassId);
+      const targetExtends = targetChildren.filter((c) => c.kind === "Extends");
+      const targetLocalComps = targetChildren.filter((c) => c.kind === "Component");
+      const targetImports = this.collectClassImports(targetClassId);
+      const isOldFE = Boolean(this.options.isOldFrontend || dae.extensionMetadata?.isOldFrontend);
+      const seenInheritedComps = new Map<
+        string,
+        { elem: SymbolEntry; clause: any; range: { startByte: number; endByte: number }; modText: string | null }
+      >();
+
+      const getClause = (node: any) => {
+        let curr = node;
+        while (curr && curr.type !== "component_clause") curr = curr.parent;
+        if (curr && curr.parent && curr.parent.type === "element") {
+          const parentText = curr.parent.text?.trim() ?? "";
+          if (parentText.startsWith("final")) {
+            return curr.parent;
+          }
+        }
+        return curr;
+      };
+
+      const toRange = (clause: any, fallbackCst: any) =>
+        clause
+          ? {
+              startByte: clause.startIndex ?? clause.startByte,
+              endByte: clause.endIndex ?? clause.endByte,
+            }
+          : {
+              startByte: fallbackCst?.startIndex ?? fallbackCst?.startByte ?? 0,
+              endByte: fallbackCst?.endIndex ?? fallbackCst?.endByte ?? 0,
+            };
+
+      const formatArrayDimBeforeName = (txt: string) =>
+        txt.replace(/^([a-zA-Z_.][\w.]*)\s+([a-zA-Z_]\w*)(\[[^\]]+\])/, "$1$3 $2");
+
+      for (const ext of targetExtends) {
+        const baseClass =
+          this.db.query<SymbolEntry | null>("resolvedBaseClass", ext.id) ??
+          (targetClassId
+            ? (this.db.query<any>("resolveName", targetClassId)?.(ext.name) ??
+              this.db.query<any>("resolveSimpleName", targetClassId)?.(ext.name))
+            : null) ??
+          this.db.byName(ext.name)[0];
+        if (!baseClass) continue;
+
+        if (targetClassId === rootClassId) {
+          const innerConflict = this.db
+            .childrenOf(baseClass.id)
+            .find((c) => c.name === ext.name && (c.kind === "Class" || c.kind === "Package"));
+          if (innerConflict) {
+            const extCst = this.db.cstNode(ext.id) as any;
+            const conflictCst = this.db.cstNode(innerConflict.id) as any;
+            dae.diagnostics.push({
+              severity: "notification",
+              code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
+              message: "From here:",
+              range: {
+                startByte: extCst?.startIndex ?? extCst?.startByte,
+                endByte: extCst?.endIndex ?? extCst?.endByte,
+                startPosition: extCst?.startPosition,
+                endPosition: extCst?.endPosition,
+              },
+            });
+            dae.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.EXTENDS_OTHER_BASE_CLASS.code,
+              message: ModelicaErrorCode.EXTENDS_OTHER_BASE_CLASS.message(ext.name),
+              range: {
+                startByte: conflictCst?.startIndex ?? conflictCst?.startByte,
+                endByte: conflictCst?.endIndex ?? conflictCst?.endByte,
+                startPosition: conflictCst?.startPosition,
+                endPosition: conflictCst?.endPosition,
+              },
+            });
+            return true;
+          }
         }
 
         const extendsModParsedRaw = this.db.query<any>("extendsModificationParsed", ext.id);
         const extendsModParsed: any[] = Array.isArray(extendsModParsedRaw)
           ? extendsModParsedRaw
           : (extendsModParsedRaw?.args ?? []);
+        const baseElements = this.db.query<SymbolId[]>("instantiate", baseClass.id) || [];
         const brokenNames = new Set<string>();
+        const extCst = this.db.cstNode(ext.id) as any;
+
         for (const arg of extendsModParsed) {
           if ((arg.isBreak || arg.value?.kind === "break") && !arg.name.startsWith("break_connect:")) {
             brokenNames.add(arg.name);
+            for (const baseElemId of baseElements) {
+              const baseElem = this.db.symbol(baseElemId);
+              if (baseElem && baseElem.kind === "Component" && baseElem.name === arg.name) {
+                const compClassId = this.db.query<SymbolId | null>("classInstance", baseElem.id);
+                const compClassSym = compClassId ? this.db.symbol(compClassId) : null;
+                if (compClassSym && (compClassSym.kind === "Record" || this.isRecordSym(compClassSym))) {
+                  const baseCst = this.db.cstNode(baseElem.id) as any;
+                  const baseClause = getClause(baseCst);
+                  const baseRange = toRange(baseClause, baseCst);
+                  const notifRange = arg.nameRange
+                    ? { startByte: arg.nameRange[0], endByte: arg.nameRange[1] }
+                    : toRange(null, extCst);
+                  dae.diagnostics.push({
+                    severity: "notification",
+                    code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
+                    message: "From here:",
+                    range: notifRange,
+                  });
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: 4099,
+                    message: `Invalid use of break on component '${arg.name}', component must be a model, block, or connector.`,
+                    range: baseRange,
+                  });
+                  return true;
+                }
+              }
+            }
           }
         }
-        const baseElements = this.db.query<SymbolId[]>("instantiate", baseClass.id) || [];
+
         for (const baseElemId of baseElements) {
           const baseElem = this.db.symbol(baseElemId);
           if (!baseElem || baseElem.kind !== "Component") continue;
           if (brokenNames.has(baseElem.name)) continue;
-          const matchingLocal = localComps.find((c) => c.name === baseElem.name);
+
+          const baseCst = this.db.cstNode(baseElem.id) as any;
+          const baseClause = getClause(baseCst);
+          const baseRange = toRange(baseClause, baseCst);
+
+          const extModArg = extendsModParsed.find(
+            (a) => !a.isBreak && a.name === baseElem.name && (a.value?.text || a.bindingExpression),
+          );
+          const currModVal: string | null = extModArg
+            ? String(extModArg.value?.text ?? extModArg.bindingExpression).trim()
+            : null;
+
+          const prevInh = seenInheritedComps.get(baseElem.name);
+          if (prevInh && prevInh.elem.id !== baseElem.id) {
+            if ((prevInh.modText !== null) !== (currModVal !== null)) {
+              const prevRaw = formatArrayDimBeforeName((prevInh.clause?.text ?? "").trim().replace(/;$/, ""));
+              const currRaw = formatArrayDimBeforeName(
+                (baseClause?.text ?? baseCst?.text ?? "").trim().replace(/;$/, ""),
+              );
+              const applyModBinding = (raw: string, modVal: string | null) => {
+                if (!modVal) return raw;
+                if (raw.includes("=")) {
+                  return raw.replace(/=\s*[^;]+$/, `= ${modVal}`);
+                }
+                return `${raw} = ${modVal}`;
+              };
+              const firstText = applyModBinding(prevRaw, prevInh.modText);
+              const secondText = applyModBinding(currRaw, currModVal);
+              if (firstText !== secondText) {
+                dae.diagnostics.push({
+                  severity: "notification",
+                  code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
+                  message: "From here:",
+                  range: prevInh.range,
+                });
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.DUPLICATE_INHERITED_ELEMENT_NOT_IDENTICAL.code,
+                  message: `Duplicate elements (due to inherited elements) not identical:\n  first element is:  ${firstText}\n  second element is: ${secondText}`,
+                  range: baseRange,
+                });
+                return true;
+              }
+            }
+          }
+          seenInheritedComps.set(baseElem.name, {
+            elem: baseElem,
+            clause: baseClause ?? baseCst,
+            range: baseRange,
+            modText: currModVal,
+          });
+
+          const matchingLocal = targetLocalComps.find((c) => c.name === baseElem.name);
           if (matchingLocal) {
             const isRedecl = this.db.query<boolean>("isRedeclare", matchingLocal.id);
             if (!isRedecl) {
               const localCst = this.db.cstNode(matchingLocal.id) as any;
-              const baseCst = this.db.cstNode(baseElem.id) as any;
-              const extCst = this.db.cstNode(ext.id) as any;
-
-              const getClause = (node: any) => {
-                let curr = node;
-                while (curr && curr.type !== "component_clause") curr = curr.parent;
-                if (curr && curr.parent && curr.parent.type === "element") {
-                  const parentText = curr.parent.text?.trim() ?? "";
-                  if (parentText.startsWith("final")) {
-                    return curr.parent;
-                  }
-                }
-                return curr;
-              };
               const localClause = getClause(localCst);
-              const baseClause = getClause(baseCst);
-
-              const localRange = localClause
-                ? {
-                    startByte: localClause.startIndex ?? localClause.startByte,
-                    endByte: localClause.endIndex ?? localClause.endByte,
-                  }
-                : {
-                    startByte: localCst?.startIndex ?? localCst?.startByte ?? 0,
-                    endByte: localCst?.endIndex ?? localCst?.endByte ?? 0,
-                  };
-              const baseRange = baseClause
-                ? {
-                    startByte: baseClause.startIndex ?? baseClause.startByte,
-                    endByte: baseClause.endIndex ?? baseClause.endByte,
-                  }
-                : {
-                    startByte: baseCst?.startIndex ?? baseCst?.startByte ?? 0,
-                    endByte: baseCst?.endIndex ?? baseCst?.endByte ?? 0,
-                  };
-
+              const localRange = toRange(localClause, localCst);
               const extStart = extCst?.startIndex ?? extCst?.startByte ?? 0;
 
-              let localText = (localClause?.text ?? localCst?.text ?? "").trim().replace(/;$/, "");
-              let baseText = (baseClause?.text ?? baseCst?.text ?? "").trim().replace(/;$/, "");
+              const localText = (localClause?.text ?? localCst?.text ?? "").trim().replace(/;$/, "");
+              const baseText = (baseClause?.text ?? baseCst?.text ?? "").trim().replace(/;$/, "");
 
-              baseText = baseText.replace(/\bReal\b/g, ".Real");
+              let resolvedLocalText = localText;
+              let usedImportAlias = false;
+              for (const [alias, target] of targetImports) {
+                const re = new RegExp(`\\b${escapeRegExp(alias)}\\.`, "g");
+                if (re.test(resolvedLocalText)) {
+                  usedImportAlias = true;
+                  resolvedLocalText = resolvedLocalText.replace(re, `${target}.`);
+                }
+              }
+
+              const normDecl = (s: string) =>
+                s
+                  .replace(/\s+if\s+true\b/g, "")
+                  .replace(/\(\s*([a-zA-Z_]\w*)\s*=\s*/g, "($1 = ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+
+              if (normDecl(resolvedLocalText) === normDecl(baseText)) {
+                continue;
+              }
 
               let firstRange = localRange;
               let secondRange = baseRange;
               let firstText = localText;
               let secondText = baseText;
 
-              if (localRange.startByte > extStart) {
-                firstRange = baseRange;
-                secondRange = localRange;
-                firstText = baseText;
-                secondText = localText;
+              if (isOldFE) {
+                let localDisp = resolvedLocalText.replace(/\(\s*([a-zA-Z_]\w*)\s*=\s*/g, "($1 = ");
+                if (usedImportAlias && !localDisp.startsWith(".")) {
+                  localDisp = `.${localDisp}`;
+                }
+                let baseDisp = baseText
+                  .replace(/\(\s*([a-zA-Z_]\w*)\s*=\s*/g, "($1 = ")
+                  .replace(/\b(Real|Integer|Boolean|String)\b/g, ".$1");
+                if (/^[a-zA-Z_]\w*\.[a-zA-Z_]\w*/.test(baseDisp)) {
+                  baseDisp = `.${baseDisp}`;
+                }
+                firstText = localDisp;
+                secondText = baseDisp;
+              } else {
+                if (localRange.startByte > extStart) {
+                  firstRange = baseRange;
+                  secondRange = localRange;
+                  firstText = baseText;
+                  secondText = localText;
+                }
               }
 
               dae.diagnostics.push({
@@ -2104,10 +2377,64 @@ export class ModelicaFlattener {
                 message: `Duplicate elements (due to inherited elements) not identical:\n  first element is:  ${firstText}\n  second element is: ${secondText}`,
                 range: secondRange,
               });
-              return dae;
+              return true;
             }
           }
         }
+      }
+
+      for (const comp of targetLocalComps) {
+        const compClassId = this.db.query<SymbolId | null>("classInstance", comp.id);
+        const compInst = this.db.query<any>("componentInstance", comp.id);
+        const modArgs: any[] = compInst?.modification?.args ?? [];
+        if (compClassId && modArgs.length > 0) {
+          for (const arg of modArgs) {
+            if (arg.isBreak || !arg.name) continue;
+            const nestedArgs: any[] = arg.nestedArgs ?? arg.args ?? [];
+            if (nestedArgs.length === 0) continue;
+            const member = classFindMember(this, compClassId, arg.name);
+            if (
+              member &&
+              (member.kind === "Class" || member.kind === "Package") &&
+              !this.db.query<boolean>("isReplaceable", member.id)
+            ) {
+              const memberCst = this.db.cstNode(member.id) as any;
+              const isPkg =
+                member.kind === "Package" ||
+                String((member.metadata as any)?.classKind ?? "").toLowerCase() === "package" ||
+                /\bpackage\b/.test(memberCst?.text ?? "");
+              if (isPkg) {
+                for (const nestedArg of nestedArgs) {
+                  if (!nestedArg?.name) continue;
+                  const nestedMember = classFindMember(this, member.id, nestedArg.name);
+                  if (nestedMember && nestedMember.kind === "Component") {
+                    const compCst = this.db.cstNode(comp.id) as any;
+                    const compClause = getClause(compCst);
+                    const compRange = toRange(compClause, compCst);
+                    dae.diagnostics.push({
+                      severity: "error",
+                      code: ModelicaErrorCode.CLASS_NOT_FOUND.code,
+                      message: `Found component '${nestedArg.name}' in composite name '${comp.name}.${arg.name}.${nestedArg.name}', expected class.`,
+                      range: compRange,
+                    });
+                    return true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+
+    if (checkInheritedAndBreakErrors(rootClassId)) {
+      return dae;
+    }
+    for (const comp of localComps) {
+      const compClassId = this.db.query<SymbolId | null>("classInstance", comp.id);
+      if (compClassId && checkInheritedAndBreakErrors(compClassId)) {
+        return dae;
       }
     }
 
@@ -2125,13 +2452,13 @@ export class ModelicaFlattener {
     const isStrictWasm = this.options.backend === "wasm";
     const isDiffMode = this.options.backend === "diff";
     const allowWasm =
-      this.options.backend === "wasm" ||
-      ((this.options.backend === "hybrid" || !this.options.backend) &&
-        this.explicitArrayMode !== "preserve" &&
-        Boolean(this.options.useWasmKernel) &&
-        !this.useLocalDirection &&
-        !this.classHasRedeclare(rootClassId) &&
-        !this.classHasUnsupportedWasmFeatures(rootClassId));
+      this.explicitArrayMode !== "preserve" &&
+      (this.options.backend === "wasm" ||
+        ((this.options.backend === "hybrid" || !this.options.backend) &&
+          Boolean(this.options.useWasmKernel) &&
+          !this.useLocalDirection &&
+          !this.classHasRedeclare(rootClassId) &&
+          !this.classHasUnsupportedWasmFeatures(rootClassId)));
 
     let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
@@ -2202,9 +2529,11 @@ export class ModelicaFlattener {
                 ? ex.flattener_getErrorEndByte(wasmFlattener)
                 : undefined,
               isStrictWasm ? "strict-partial" : "ts-fallback",
-              inputEncodingUnitSize(
-                typeof ex.lsp_getInputEncoding === "function" ? ex.lsp_getInputEncoding() : undefined,
-              ),
+              typeof ex.lsp_isCharOffsetKernel === "function" && ex.lsp_isCharOffsetKernel()
+                ? 1
+                : inputEncodingUnitSize(
+                    typeof ex.lsp_getInputEncoding === "function" ? ex.lsp_getInputEncoding() : undefined,
+                  ),
             );
           }
           const algSectionCount: number =
@@ -2510,6 +2839,7 @@ export class ModelicaFlattener {
         this.state.db = this.db;
         this.state.flattener = this;
         this.state.currentClassId = rootClassId;
+        this.currentClassId = rootClassId;
         dae.classKind = specKind ?? rawKind;
       }
     }
@@ -2600,12 +2930,12 @@ export class ModelicaFlattener {
       }
     }
 
-    this.checkCyclicConstantsAndParameters(dae, rootClassId);
-
     const isOldFrontend = compilerOpts.isOldFrontend;
     dae.extensionMetadata.isOldFrontend = isOldFrontend;
     const isGen = compilerOpts.isGen;
     dae.extensionMetadata.isGen = isGen;
+
+    this.checkCyclicConstantsAndParameters(dae, rootClassId);
 
     const expandArrayConnectEquations = (builder: DAEBuilder) => {
       const origEqCount = builder.eqCount;
@@ -2654,13 +2984,18 @@ export class ModelicaFlattener {
         if (dae.getExprKind(innerId) === ExprKind.Name) {
           refName = dae.interner.resolve(dae.getExprData1(innerId)) || "";
         } else {
-          const vEntry = (this.db as any).symbol?.(
-            this.getFileSymbols().find((s) => s.kind === "Component" && s.name === dae.getVarName(vIdx))?.id,
-          );
-          if (vEntry) {
-            const compInst = this.db.query<any>("componentInstance", vEntry.id);
-            const rawVal = compInst?.modification?.value?.text?.trim();
-            if (rawVal && rawVal.includes(".")) refName = rawVal;
+          const vName = dae.getVarName(vIdx);
+          if (!vName.includes(".")) {
+            const vEntry =
+              this.db.childrenOf(rootClassId).find((s) => s.kind === "Component" && s.name === vName) ??
+              (rootSym?.resourceId
+                ? this.getFileSymbols(rootSym.resourceId).find((s) => s.kind === "Component" && s.name === vName)
+                : undefined);
+            if (vEntry) {
+              const compInst = this.db.query<any>("componentInstance", vEntry.id);
+              const rawVal = compInst?.modification?.value?.text?.trim();
+              if (rawVal && rawVal.includes(".")) refName = rawVal;
+            }
           }
         }
         if (refName && refName.includes(".")) {
@@ -2700,26 +3035,7 @@ export class ModelicaFlattener {
     // 2.5 Fold constants on initial DAE so parameters, dimensions, and expressions are resolved
     foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
 
-    const hasArrayConnect = (builder: DAEBuilder) => {
-      for (let i = 0; i < builder.eqCount; i++) {
-        if (builder.getEqKind(i) === EqKind.Connect) {
-          const l = builder.getEqLhs(i);
-          const r = builder.getEqRhs(i);
-          if (builder.getExprKind(l) !== ExprKind.Name || builder.getExprKind(r) !== ExprKind.Name) return true;
-          const lName = builder.interner.resolve(builder.getExprData1(l));
-          const rName = builder.interner.resolve(builder.getExprData1(r));
-          if (builder.hasArrayElements(lName) || builder.hasArrayElements(rName)) return true;
-          if (this.expandConnectorRef(lName, builder).length > 1 || this.expandConnectorRef(rName, builder).length > 1)
-            return true;
-        }
-      }
-      return false;
-    };
-
-    const shouldScalarize =
-      this.options.arrayMode === "scalarize" ||
-      (this.options.arrayMode !== "preserve" &&
-        (this.options.omcCompatibility || hasArrayEquations(dae) || hasArrayConnect(dae)));
+    const shouldScalarize = this.options.arrayMode === "scalarize";
 
     dae.extensionMetadata.expandableBuses = Array.from(this.expandableBuses.keys());
 
@@ -2733,6 +3049,73 @@ export class ModelicaFlattener {
       this.state.activeLoopVars = this.activeLoopVars;
       (this as any).currentRootDae = dae;
     }
+
+    if (!isOldFrontend) {
+      const condParamLeaves = new Set<string>();
+      const visitedClasses = new Set<SymbolId>();
+      const classQueue: SymbolId[] = [rootClassId];
+      while (classQueue.length > 0) {
+        const cid = classQueue.pop()!;
+        if (visitedClasses.has(cid)) continue;
+        visitedClasses.add(cid);
+        const cSym = this.db.symbol(cid) as any;
+        let cachedInfo = cSym?._cachedCondParamInfo as { leaves: string[]; childClassIds: SymbolId[] } | undefined;
+        if (!cachedInfo) {
+          const leaves: string[] = [];
+          const childClassIds: SymbolId[] = [];
+          const cCst = this.db.cstNode(cid) as any;
+          const cText: string = cCst?.text ?? "";
+          if (cText.includes("if ")) {
+            for (const m of cText.matchAll(/\bif\s+([^;]+);/g)) {
+              const condExpr = m[1] ?? "";
+              if (/\bthen\b/.test(condExpr)) continue;
+              const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
+              for (const id of ids) {
+                if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
+                  leaves.push(id);
+                }
+              }
+            }
+          }
+          for (const ch of this.db.childrenOf(cid)) {
+            if (ch.kind === "Extends") {
+              const baseSym = this.db.query<any>("resolvedBaseClass", ch.id) ?? this.db.byName(ch.name)?.[0];
+              if (baseSym?.id) childClassIds.push(baseSym.id);
+            } else if (ch.kind === "Component") {
+              const targetSym = this.db.query<any>("classInstance", ch.id) ?? this.db.query<any>("resolvedType", ch.id);
+              const ci = this.db.query<any>("componentInstance", ch.id);
+              const tid =
+                typeof targetSym === "number"
+                  ? targetSym
+                  : (targetSym?.id ??
+                    (ci?.typeSpecifier ? this.db.byName(ci.typeSpecifier.split(".").pop()!)?.[0]?.id : undefined));
+              if (tid) childClassIds.push(tid);
+            }
+          }
+          cachedInfo = { leaves, childClassIds };
+          if (cSym) cSym._cachedCondParamInfo = cachedInfo;
+        }
+        for (const leaf of cachedInfo.leaves) condParamLeaves.add(leaf);
+        for (const tid of cachedInfo.childClassIds) {
+          if (!visitedClasses.has(tid)) classQueue.push(tid);
+        }
+      }
+      if (condParamLeaves.size > 0) {
+        for (let i = 0; i < dae.varCount; i++) {
+          if (dae.getVarVariability(i) === Variability.Parameter) {
+            const vName = dae.getVarName(i);
+            const leaf = vName.split(".").pop()!.split("[")[0];
+            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0])) {
+              dae.setVarFinal(i, true);
+            }
+          }
+        }
+      }
+    }
+
+    const varCountBeforeConnections = dae.varCount;
+    const eqCountBeforeConnections = dae.eqCount;
+    const exprCountBeforeConnections = dae.exprCount;
 
     // 2.6 Expandable connector dynamic augmentation, cross-bus pooling, and variable pruning
     if (!flattenedInWasm) {
@@ -2749,7 +3132,15 @@ export class ModelicaFlattener {
     });
 
     // 4. Constant folding and alias elimination
-    foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
+    if (
+      shouldScalarize ||
+      this.expandableBuses.size > 0 ||
+      dae.varCount !== varCountBeforeConnections ||
+      dae.eqCount !== eqCountBeforeConnections ||
+      dae.exprCount !== exprCountBeforeConnections
+    ) {
+      foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
+    }
 
     if (this.options.eliminateAliases) {
       eliminateArenaAliases(dae);
@@ -2786,6 +3177,9 @@ export class ModelicaFlattener {
     this.extractStateMachines(dae);
     dae.groupEquationsForParity();
     this.checkBalance(dae, rootClassId);
+    if (classCst?.text?.includes("showAnnotations") || classCst?.tree?.rootNode?.text?.includes("showAnnotations")) {
+      this.populateShowAnnotations(dae, rootClassId);
+    }
 
     attachDiffReport(dae);
     if (wasmBail) {
@@ -2797,6 +3191,144 @@ export class ModelicaFlattener {
     this.state.varPrefixSet?.clear();
     this.state.varPrefixCount = 0;
     return dae;
+  }
+
+  private populateShowAnnotations(dae: DAEBuilder, rootClassId: SymbolId): void {
+    const normAnnInner = (raw: string): string => {
+      let s = raw.trim();
+      if (s.startsWith("annotation")) s = s.slice("annotation".length).trim();
+      if (s.startsWith("(") && s.endsWith(")")) s = s.slice(1, -1).trim();
+      let out = "";
+      let inStr = false;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i]!;
+        if (ch === '"' && (i === 0 || s[i - 1] !== "\\")) inStr = !inStr;
+        if (!inStr && ch === "=") {
+          const prev = s[i - 1] ?? "";
+          const next = s[i + 1] ?? "";
+          if (prev !== "=" && prev !== "<" && prev !== ">" && prev !== ":" && next !== "=") {
+            out = out.trimEnd() + " = ";
+            while (i + 1 < s.length && s[i + 1] === " ") i++;
+            continue;
+          }
+        }
+        out += ch;
+      }
+      return out.trim();
+    };
+
+    const collectBodyAnnotations = (
+      cstNode: any,
+      eqAnns: string[],
+      algAnns: string[],
+      inAlg = false,
+      isRoot = true,
+    ): void => {
+      if (!cstNode) return;
+      if (!isRoot && cstNode.type === "class_definition") return;
+      if (
+        cstNode.type === "component_clause" ||
+        cstNode.type === "component_declaration" ||
+        cstNode.type === "extends_clause"
+      ) {
+        return;
+      }
+      if (cstNode.type === "annotation_clause") {
+        const inner = normAnnInner(cstNode.text ?? "");
+        if (inner) {
+          if (inAlg) algAnns.push(inner);
+          else eqAnns.push(inner);
+        }
+        return;
+      }
+      const nextInAlg = inAlg || cstNode.type === "algorithm_section";
+      for (const child of cstNode.children || []) {
+        collectBodyAnnotations(child, eqAnns, algAnns, nextInAlg, false);
+      }
+    };
+
+    const findCompAnnText = (compCst: any): string | null => {
+      if (!compCst) return null;
+      const walk = (n: any): string | null => {
+        if (!n) return null;
+        if (n.type === "annotation_clause") return normAnnInner(n.text ?? "");
+        for (const c of n.children || []) {
+          const found = walk(c);
+          if (found) return found;
+        }
+        return null;
+      };
+      return walk(compCst);
+    };
+
+    for (const fn of new Set(dae.functions.values())) {
+      const fnSymId = (fn as any).symId ?? this.db.byName(fn.name.split(".").pop()!)?.[0]?.id;
+      const fnCst = fnSymId ? (this.db.cstNode(fnSymId) as any) : null;
+      if (!fnCst) continue;
+      collectBodyAnnotations(fnCst, fn.equationAnnotations, fn.algorithmAnnotations);
+      if (fn.algorithmSections.length > 0 && fn.equationAnnotations.length > 0 && fn.eqCount === 0) {
+        fn.algorithmAnnotations.push(...fn.equationAnnotations);
+        fn.equationAnnotations.length = 0;
+      }
+      const fnComps = fnSymId ? this.db.childrenOf(fnSymId).filter((c) => c.kind === "Component") : [];
+      for (let i = 0; i < fn.varCount; i++) {
+        const vName = fn.getVarName(i);
+        const comp = fnComps.find((c) => c.name === vName);
+        if (comp) {
+          const ann = findCompAnnText(this.db.cstNode(comp.id));
+          if (ann) fn.setVarCadAnnotation(i, `(${ann})`);
+        }
+      }
+    }
+
+    const rootCst = this.db.cstNode(rootClassId) as any;
+    if (rootCst) {
+      collectBodyAnnotations(rootCst, dae.equationAnnotations, dae.algorithmAnnotations);
+    }
+
+    const findClassComp = (cid: SymbolId, name: string): SymbolEntry | null => {
+      const inst = this.db.query<SymbolId[]>("instantiate", cid) ?? [];
+      for (const id of inst) {
+        const s = this.db.symbol(id);
+        if (s && s.kind === "Component" && s.name === name) return s;
+      }
+      return this.db.childrenOf(cid).find((s) => s.kind === "Component" && s.name === name) ?? null;
+    };
+
+    for (let i = 0; i < dae.varCount; i++) {
+      const vName = dae.getVarName(i);
+      const parts = vName.split(".");
+      let currCid: SymbolId | null = rootClassId;
+      let effectiveAnn: string | null = null;
+      for (let p = 0; p < parts.length && currCid; p++) {
+        const seg = parts[p]!.replace(/\[.*\]$/, "");
+        const comp = findClassComp(currCid, seg);
+        if (!comp) break;
+        const ann = findCompAnnText(this.db.cstNode(comp.id));
+        if (ann) {
+          const hideMatch = ann.match(/^HideResult\s*=\s*(.+)$/);
+          if (hideMatch) {
+            let rhs = hideMatch[1]!.trim();
+            if (rhs !== "true" && rhs !== "false") {
+              const pIdx = dae.getVarIdxByName(rhs);
+              if (pIdx >= 0) {
+                const exprId = dae.getVarExpression(pIdx);
+                if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.BoolLiteral) {
+                  rhs = dae.getExprData1(exprId) !== 0 ? "true" : "false";
+                }
+              }
+            }
+            effectiveAnn = `HideResult = ${rhs}`;
+          } else if (p === parts.length - 1) {
+            effectiveAnn = ann;
+          }
+        }
+        currCid = this.db.query<SymbolId | null>("classInstance", comp.id) ?? null;
+      }
+      if (effectiveAnn) {
+        dae.setVarCadAnnotation(i, `(${effectiveAnn})`);
+      }
+    }
   }
 
   private recordWasmSourceRanges(dae: DAEBuilder, classId: SymbolId): void {
@@ -2894,19 +3426,26 @@ export class ModelicaFlattener {
                 dae.setVarDescription(idx, desc);
               }
             }
-            if (varIdx >= 0) {
-              let p = node.parent;
-              while (p && p.type !== "element" && p.type !== "composition") {
-                p = p.parent;
-              }
-              if (p && p.type === "element" && /\bfinal\b/.test(p.text ?? "")) {
+            let p = node.parent;
+            while (p && p.type !== "element" && p.type !== "composition") {
+              p = p.parent;
+            }
+            if (p && p.type === "element" && /\bfinal\b/.test((p.text ?? "").split("(")[0] ?? "")) {
+              if (varIdx >= 0) {
                 dae.setVarFinal(varIdx, true);
-                const arrayIndices = dae.getArrayElementIndices(name);
-                for (const idx of arrayIndices) {
-                  dae.setVarFinal(idx, true);
+              }
+              const arrayIndices = dae.getArrayElementIndices(name);
+              for (const idx of arrayIndices) {
+                dae.setVarFinal(idx, true);
+              }
+              for (let i = 0; i < dae.varCount; i++) {
+                const vName = dae.getVarName(i);
+                if (vName === name || vName.startsWith(`${name}.`) || vName.startsWith(`${name}[`)) {
+                  dae.setVarFinal(i, true);
                 }
               }
-
+            }
+            if (varIdx >= 0) {
               const rawText = declNode.text ?? node.text ?? "";
               const qMatch = rawText.match(/\bquantity\s*=\s*("([^"\\]|\\.)*")/);
               if (qMatch) {
@@ -2964,6 +3503,49 @@ export class ModelicaFlattener {
     };
     walkVars(cst);
 
+    if (!dae.extensionMetadata?.isOldFrontend) {
+      const condParamLeaves = new Set<string>();
+      const visitedClasses = new Set<SymbolId>();
+      const classQueue: SymbolId[] = [classId];
+      while (classQueue.length > 0) {
+        const cid = classQueue.pop()!;
+        if (visitedClasses.has(cid)) continue;
+        visitedClasses.add(cid);
+        const cCst = this.db.cstNode(cid) as any;
+        const cText: string = cCst?.text ?? "";
+        for (const m of cText.matchAll(/\bif\s+([^;]+);/g)) {
+          const condExpr = m[1] ?? "";
+          if (/\bthen\b/.test(condExpr)) continue;
+          const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
+          for (const id of ids) {
+            if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
+              condParamLeaves.add(id);
+            }
+          }
+        }
+        for (const ch of this.db.childrenOf(cid)) {
+          if (ch.kind === "Extends") {
+            const baseSym = this.db.query<any>("extendsTarget", ch.id);
+            if (baseSym?.id) classQueue.push(baseSym.id);
+          } else if (ch.kind === "Component") {
+            const targetSym = this.db.query<any>("classInstance", ch.id);
+            if (targetSym?.id) classQueue.push(targetSym.id);
+          }
+        }
+      }
+      if (condParamLeaves.size > 0) {
+        for (let i = 0; i < dae.varCount; i++) {
+          if (dae.getVarVariability(i) === Variability.Parameter) {
+            const vName = dae.getVarName(i);
+            const leaf = vName.split(".").pop()!.split("[")[0];
+            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0])) {
+              dae.setVarFinal(i, true);
+            }
+          }
+        }
+      }
+    }
+
     for (let i = 0; i < dae.varCount; i++) {
       if (dae.getVarType(i) === VarType.Enumeration) {
         const existing = dae.getVarEnumerationLiterals(i);
@@ -2992,11 +3574,14 @@ export class ModelicaFlattener {
     if (typeof (dae.exports as any)?.flattener_registerScopeResolution !== "function") return;
     const register = (dae.exports as any).flattener_registerScopeResolution;
     const registerEnum = (dae.exports as any)?.flattener_registerEnumLiteral;
+    const isCharOffset =
+      typeof (dae.exports as any)?.lsp_isCharOffsetKernel === "function" &&
+      Boolean((dae.exports as any).lsp_isCharOffsetKernel());
     const encoding =
       typeof (dae.exports as any)?.lsp_getInputEncoding === "function"
         ? (dae.exports as any).lsp_getInputEncoding()
         : undefined;
-    const unitSize = inputEncodingUnitSize(encoding);
+    const unitSize = isCharOffset ? 1 : inputEncodingUnitSize(encoding);
     const visited = new Set<SymbolId>();
     const queue: SymbolId[] = [rootClassId];
     this.enumTypeMap.clear();

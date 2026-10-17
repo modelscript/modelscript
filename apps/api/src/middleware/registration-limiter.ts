@@ -62,7 +62,10 @@ export class RegistrationRateLimiter {
         return;
       }
 
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+      const trustForwarded = process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "test";
+      const xff = trustForwarded ? (req.headers["x-forwarded-for"] as string | undefined) : undefined;
+      const forwardedIp = xff ? xff.split(",")[0]?.trim() : undefined;
+      const clientIp = forwardedIp || req.ip || req.socket.remoteAddress || "127.0.0.1";
       const status = this.check(clientIp);
 
       if (!status.allowed) {

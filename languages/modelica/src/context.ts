@@ -189,16 +189,19 @@ export class Context {
 
   setSymbolIndex(index: any): void {
     injectPredefinedTypes(index);
+    const missingResources = new Set<string>();
     const contextTree = {
       getText: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId) return null;
+        if (!entry || !entry.resourceId || (startByte === 0 && endByte === 0)) return null;
         let tree = this.#trees.get(entry.resourceId);
         if (!tree) {
+          if (missingResources.has(entry.resourceId)) return null;
           try {
             const text = this.#fs.read(entry.resourceId);
             tree = this.parse(".mo", text);
             this.#trees.set(entry.resourceId, tree);
           } catch {
+            missingResources.add(entry.resourceId);
             return null;
           }
         }
@@ -208,27 +211,21 @@ export class Context {
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
+        if (entry && entry.id < 0) return null;
+        if (startByte === 0 && endByte === 0) return null;
         let tree = entry?.resourceId ? this.#trees.get(entry.resourceId) : undefined;
         if (!tree && entry?.resourceId) {
+          if (missingResources.has(entry.resourceId)) return null;
           try {
             const text = this.#fs.read(entry.resourceId);
             tree = this.parse(".mo", text);
             this.#trees.set(entry.resourceId, tree);
           } catch {
-            // ignore
+            missingResources.add(entry.resourceId);
+            return null;
           }
         }
-        if (!tree && !entry?.resourceId && this.#trees.size === 1) {
-          const candidate = this.#trees.values().next().value;
-          if (
-            candidate?.rootNode &&
-            candidate.rootNode.startIndex <= startByte &&
-            candidate.rootNode.endIndex >= endByte
-          ) {
-            tree = candidate;
-          }
-        }
-        if (!tree) {
+        if (!tree && !entry?.resourceId) {
           for (const [resId, t] of this.#trees.entries()) {
             if (resId.includes("modelscript-cas") || resId.includes("modelscript-studies")) continue;
             if (t.rootNode && t.rootNode.startIndex <= startByte && t.rootNode.endIndex >= endByte) {
@@ -238,7 +235,18 @@ export class Context {
           }
         }
         if (!tree) return null;
-        return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+        let rangeCache = (tree as any)._rangeNodeCache as Map<number, any> | undefined;
+        if (!rangeCache) {
+          rangeCache = new Map<number, any>();
+          (tree as any)._rangeNodeCache = rangeCache;
+        }
+        const endIdx = Math.max(startByte, endByte);
+        const rangeKey = startByte * 0x4000000 + endIdx;
+        const cachedNode = rangeCache.get(rangeKey);
+        if (cachedNode !== undefined) return cachedNode;
+        const node = tree.rootNode.descendantForIndex(startByte, endIdx);
+        rangeCache.set(rangeKey, node);
+        return node;
       },
     };
     (this.#workspaceIndex as any).unifiedIndex = index;
@@ -312,16 +320,19 @@ export class Context {
 
     // Provide a CSTTree that looks up trees by resourceId cached in Context,
     // with on-demand parsing fallback if the tree has not been loaded yet.
+    const missingResources = new Set<string>();
     const contextTree = {
       getText: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId) return null;
+        if (!entry || !entry.resourceId || (startByte === 0 && endByte === 0)) return null;
         let tree = this.#trees.get(entry.resourceId);
         if (!tree) {
+          if (missingResources.has(entry.resourceId)) return null;
           try {
             const text = this.#fs.read(entry.resourceId);
             tree = this.parse(".mo", text);
             this.#trees.set(entry.resourceId, tree);
           } catch {
+            missingResources.add(entry.resourceId);
             return null;
           }
         }
@@ -331,28 +342,32 @@ export class Context {
         return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId || entry.id < 0) return null;
+        if (!entry || !entry.resourceId || entry.id < 0 || (startByte === 0 && endByte === 0)) return null;
         let tree = this.#trees.get(entry.resourceId);
         if (!tree && entry?.resourceId) {
+          if (missingResources.has(entry.resourceId)) return null;
           try {
             const text = this.#fs.read(entry.resourceId);
             tree = this.parse(".mo", text);
             this.#trees.set(entry.resourceId, tree);
           } catch {
-            // ignore
-          }
-        }
-        if (!tree) {
-          for (const [resId, t] of this.#trees.entries()) {
-            if (resId.includes("modelscript-cas") || resId.includes("modelscript-studies")) continue;
-            if (t.rootNode && t.rootNode.startIndex <= startByte && t.rootNode.endIndex >= endByte) {
-              tree = t;
-              break;
-            }
+            missingResources.add(entry.resourceId);
+            return null;
           }
         }
         if (!tree) return null;
-        return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+        let rangeCache = (tree as any)._rangeNodeCache as Map<number, any> | undefined;
+        if (!rangeCache) {
+          rangeCache = new Map<number, any>();
+          (tree as any)._rangeNodeCache = rangeCache;
+        }
+        const endIdx = Math.max(startByte, endByte);
+        const rangeKey = startByte * 0x4000000 + endIdx;
+        const cachedNode = rangeCache.get(rangeKey);
+        if (cachedNode !== undefined) return cachedNode;
+        const node = tree.rootNode.descendantForIndex(startByte, endIdx);
+        rangeCache.set(rangeKey, node);
+        return node;
       },
     };
 
@@ -503,28 +518,30 @@ export class Context {
             parentFQN = undefined;
           }
 
-          // Check within clause if present
-          try {
-            const textHeader = this.#fs.read(dir);
-            if (textHeader) {
-              const withinMatch = textHeader.match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
-              if (withinMatch) {
-                const declaredWithin = withinMatch[1]?.trim();
-                if (declaredWithin) {
-                  if (parentFQN && declaredWithin !== parentFQN) {
-                    console.warn(
-                      `[modelica] Notice: ${dir} declares 'within ${declaredWithin};' which differs from path hierarchy '${parentFQN}'. Using declared within.`,
-                    );
+          // Check within clause if present (skip disk read when hydrating from pre-built index)
+          if (!options?.skipIndex) {
+            try {
+              const textHeader = this.#fs.read(dir);
+              if (textHeader) {
+                const withinMatch = textHeader.match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
+                if (withinMatch) {
+                  const declaredWithin = withinMatch[1]?.trim();
+                  if (declaredWithin) {
+                    if (parentFQN && declaredWithin !== parentFQN) {
+                      console.warn(
+                        `[modelica] Notice: ${dir} declares 'within ${declaredWithin};' which differs from path hierarchy '${parentFQN}'. Using declared within.`,
+                      );
+                    }
+                    parentFQN = declaredWithin;
+                  } else if (basename !== "package.mo") {
+                    // 'within;' with no name means root/top-level
+                    parentFQN = undefined;
                   }
-                  parentFQN = declaredWithin;
-                } else if (basename !== "package.mo") {
-                  // 'within;' with no name means root/top-level
-                  parentFQN = undefined;
                 }
               }
+            } catch {
+              /* ignore read errors during registration */
             }
-          } catch {
-            /* ignore read errors during registration */
           }
 
           // Register for lazy loading (tree is parsed for indexing, on-demand parsing handles flattening)
@@ -804,7 +821,9 @@ export class Context {
       }
     }
     const backendKey = options?.backend ? `:${options.backend}` : "";
-    const cacheKey = `${resourceUri ?? ""}:${name}${backendKey}`;
+    const arrayModeKey = options?.arrayMode ? `:${options.arrayMode}` : "";
+    const omcKey = options?.omcCompatibility ? ":omc" : "";
+    const cacheKey = `${resourceUri ?? ""}:${name}${backendKey}${arrayModeKey}${omcKey}`;
     const cached = (this as any)._daeBodyCache?.get(cacheKey);
 
     const getFileRev = (resUri?: string) => {
@@ -841,7 +860,7 @@ export class Context {
             }
           }
         }
-        if (isClean) {
+        if (isClean && !(cached.builder as any)._mutatedBySim) {
           return cached.builder;
         }
       }

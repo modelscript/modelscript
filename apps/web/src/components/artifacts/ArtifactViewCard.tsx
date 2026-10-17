@@ -16,6 +16,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from "reac
 import { useNavigate } from "react-router-dom";
 import { getArtifactView } from "../../api";
 import { safeJsonParse } from "../../util/json";
+import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
 import LazyHeavyViewer from "./LazyHeavyViewer";
@@ -55,13 +56,19 @@ import type { AnySpatialPin } from "./spatial-pin";
 
 interface ArtifactViewCardProps {
   artifactId: number;
+  initialArtifactView?: any;
   onPinCreated?: (pin: AnySpatialPin) => void;
   onThreadNodeSelected?: (threadId: string | number) => void;
 }
 
-const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCreated, onThreadNodeSelected }) => {
-  const [artifact, setArtifact] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
+  artifactId,
+  initialArtifactView,
+  onPinCreated,
+  onThreadNodeSelected,
+}) => {
+  const [artifact, setArtifact] = useState<any>(initialArtifactView || null);
+  const [loading, setLoading] = useState(!initialArtifactView);
   const [isLoaded, setIsLoaded] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState(true);
@@ -101,6 +108,12 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
   }, [isFullScreen, artifactId, navigate, handleCopyLink]);
 
   useEffect(() => {
+    if (initialArtifactView && initialArtifactView.id === artifactId) {
+      setArtifact(initialArtifactView);
+      setLoading(false);
+      cacheArtifact(initialArtifactView);
+      return;
+    }
     async function fetchArtifact() {
       if (!artifactId) return;
       try {
@@ -120,7 +133,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
       }
     }
     fetchArtifact();
-  }, [artifactId]);
+  }, [artifactId, initialArtifactView]);
 
   const viewConfig: any = useMemo(
     () => ({ ...safeJsonParse(artifact?.view_config, {}), artifactId }),
@@ -174,6 +187,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="CAD 3D Viewer"
             placeholderType="cad"
+            isFullScreen={isFullScreen}
           >
             <CadStepViewer
               artifactId={artifactId}
@@ -216,6 +230,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="USD 3D Viewer"
             placeholderType="cad"
+            isFullScreen={isFullScreen}
           >
             <UsdViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
@@ -247,6 +262,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="WebGPU Simulation"
             placeholderType="plot"
+            isFullScreen={isFullScreen}
           >
             <ZeroCopyWebGPUViewer
               uri={viewConfig?.uri as string}
@@ -271,6 +287,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="Simulation Result Viewer"
             placeholderType={artifact.view_type === "cfd-result" ? "cfd" : "fea"}
+            isFullScreen={isFullScreen}
           >
             <SimulationResultViewer
               artifactId={artifactId}
@@ -290,6 +307,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="CFD Animation"
             placeholderType="cfd"
+            isFullScreen={isFullScreen}
           >
             <CfdAnimationViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
@@ -304,6 +322,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="GCode Viewer"
             placeholderType="gcode"
+            isFullScreen={isFullScreen}
           >
             <GCodeViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
@@ -576,12 +595,12 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
                 {copiedLink ? "Copied" : "Share"}
               </button>
 
-              {(viewConfig.url || viewConfig.downloadUrl) && (
+              {sanitizeHttpUrl(viewConfig.url || viewConfig.downloadUrl, { allowRelative: true }) && (
                 <a
-                  href={viewConfig.url || viewConfig.downloadUrl}
+                  href={sanitizeHttpUrl(viewConfig.url || viewConfig.downloadUrl, { allowRelative: true })}
                   download
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     background: "rgba(255, 255, 255, 0.08)",
@@ -605,7 +624,11 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    window.open(`/api/v1/cae/jobs/${viewConfig.jobId}/reproduce-spec`, "_blank");
+                    window.open(
+                      `/api/v1/cae/jobs/${encodeURIComponent(String(viewConfig.jobId))}/reproduce-spec`,
+                      "_blank",
+                      "noopener,noreferrer",
+                    );
                   }}
                   style={{
                     background: "linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25))",
@@ -1048,7 +1071,11 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                window.open(`/api/v1/cae/jobs/${viewConfig.jobId}/reproduce-spec`, "_blank");
+                window.open(
+                  `/api/v1/cae/jobs/${encodeURIComponent(String(viewConfig.jobId))}/reproduce-spec`,
+                  "_blank",
+                  "noopener,noreferrer",
+                );
               }}
               style={{
                 background: "linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2))",

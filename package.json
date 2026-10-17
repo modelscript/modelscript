@@ -26,6 +26,7 @@
   ],
   "scripts": {
     "bench:parser": "npm run bench:parser --workspace=@modelscript/modelica",
+    "bench:triplestore": "npx tsx scripts/benchmark-triplestore.ts",
     "prebuild": "mkdir -p data",
     "build": "nx run-many --target=build --parallel=8",
     "build:affected": "nx affected --target=build --parallel=8",

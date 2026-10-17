@@ -182,33 +182,35 @@ export class WebGPUReduction {
 
     this.device.queue.submit([encoder.finish()]);
 
-    await Promise.all([
-      readbackMean.mapAsync(GPUMapMode.READ),
-      readbackVar.mapAsync(GPUMapMode.READ),
-      readbackMin.mapAsync(GPUMapMode.READ),
-      readbackMax.mapAsync(GPUMapMode.READ),
-    ]);
+    try {
+      await Promise.all([
+        readbackMean.mapAsync(GPUMapMode.READ),
+        readbackVar.mapAsync(GPUMapMode.READ),
+        readbackMin.mapAsync(GPUMapMode.READ),
+        readbackMax.mapAsync(GPUMapMode.READ),
+      ]);
 
-    const mean = new Float32Array(readbackMean.getMappedRange()).slice();
-    const variance = new Float32Array(readbackVar.getMappedRange()).slice();
-    const min = new Float32Array(readbackMin.getMappedRange()).slice();
-    const max = new Float32Array(readbackMax.getMappedRange()).slice();
+      const mean = new Float32Array(readbackMean.getMappedRange()).slice();
+      const variance = new Float32Array(readbackVar.getMappedRange()).slice();
+      const min = new Float32Array(readbackMin.getMappedRange()).slice();
+      const max = new Float32Array(readbackMax.getMappedRange()).slice();
 
-    readbackMean.unmap();
-    readbackVar.unmap();
-    readbackMin.unmap();
-    readbackMax.unmap();
+      readbackMean.unmap();
+      readbackVar.unmap();
+      readbackMin.unmap();
+      readbackMax.unmap();
 
-    meanBuffer.destroy();
-    varianceBuffer.destroy();
-    minBuffer.destroy();
-    maxBuffer.destroy();
-    readbackMean.destroy();
-    readbackVar.destroy();
-    readbackMin.destroy();
-    readbackMax.destroy();
-    uniformsBuffer.destroy();
-
-    return { mean, variance, min, max };
+      return { mean, variance, min, max };
+    } finally {
+      meanBuffer.destroy();
+      varianceBuffer.destroy();
+      minBuffer.destroy();
+      maxBuffer.destroy();
+      readbackMean.destroy();
+      readbackVar.destroy();
+      readbackMin.destroy();
+      readbackMax.destroy();
+      uniformsBuffer.destroy();
+    }
   }
 }

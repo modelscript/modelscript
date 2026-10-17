@@ -102,6 +102,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         return;
       }
 
+      if (user.status === "deleted") {
+        res.status(401).json({ error: "User account has been deleted" });
+        return;
+      }
+
       if (user.status === "suspended" || user.status === "frozen") {
         res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
         return;

@@ -582,322 +582,332 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   router.post("/federation/resolve", resolveRemoteActor);
   router.post("/api/v1/federation/resolve", resolveRemoteActor);
 
-  // ── Shared Inbox / Actor Inbox endpoint ───────────────────────────
+  // ── Shared Inbox & User Inbox Handler ─────────────────────────────
 
-  router.post(
-    "/actor/inbox",
-    inboxLimiter,
-    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
-    verifier,
-    async (_req: Request, res: Response) => {
-      res.status(202).send();
-    },
-  );
+  const handleInboxActivity = async (req: Request, res: Response) => {
+    const username = req.params.username;
+    const activity = req.body;
+    const remoteActorUrl = (req as Request & { actorId?: string }).actorId;
+    const remoteActorProfile = (req as Request & { actorProfile?: Record<string, unknown> }).actorProfile;
 
-  // ── User Inbox endpoint (Full Activity Coverage & Threading) ──────
+    if (activity?.actor && remoteActorUrl && typeof activity.actor === "string" && activity.actor !== remoteActorUrl) {
+      res.status(403).json({ error: "Actor mismatch between HTTP signature and activity payload" });
+      return;
+    }
 
-  router.post(
-    "/users/:username/inbox",
-    inboxLimiter,
-    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
-    verifier,
-    async (req: Request, res: Response) => {
-      const username = req.params.username;
-      const activity = req.body;
-      const remoteActorUrl = (req as Request & { actorId?: string }).actorId;
-      const remoteActorProfile = (req as Request & { actorProfile?: Record<string, unknown> }).actorProfile;
-
+    let fullLocalUser: ReturnType<typeof db.getUserFederationInfo> | null = null;
+    if (username) {
       const localUser = db.getUserByUsername(username as string);
       if (!localUser) {
         res.status(404).json({ error: "User not found" });
         return;
       }
 
-      const fullLocalUser = db.getUserFederationInfo(localUser.id);
-
+      fullLocalUser = db.getUserFederationInfo(localUser.id);
       if (!fullLocalUser || !fullLocalUser.actor_url) {
         res.status(400).json({ error: "User not federated" });
         return;
       }
+    }
 
-      // Upsert the remote user in our database
-      const remoteUser = db.getOrCreateRemoteUser(remoteActorUrl as string, remoteActorProfile);
+    if (!remoteActorUrl) {
+      res.status(202).send();
+      return;
+    }
 
-      try {
-        if (activity.type === "Follow") {
-          // Record the follow
-          db.followUser(remoteUser.id, fullLocalUser.id as number, "accepted");
+    // Upsert the remote user in our database
+    const remoteUser = db.getOrCreateRemoteUser(remoteActorUrl as string, remoteActorProfile);
 
-          // Send an Accept activity back
-          const acceptActivity = {
-            "@context": "https://www.w3.org/ns/activitystreams",
-            id: `${fullLocalUser.actor_url}#accept-${Date.now()}`,
-            type: "Accept",
-            actor: fullLocalUser.actor_url,
-            object: activity,
-          };
+    try {
+      if (activity.type === "Follow" && fullLocalUser) {
+        // Record the follow
+        db.followUser(remoteUser.id, fullLocalUser.id as number, "accepted");
 
-          const targetInbox =
-            (remoteActorProfile?.endpoints as any)?.sharedInbox ||
-            (remoteActorProfile?.sharedInbox as string) ||
-            (remoteActorProfile?.inbox as string) ||
-            `${remoteActorUrl}/inbox`;
+        // Send an Accept activity back
+        const acceptActivity = {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: `${fullLocalUser.actor_url}#accept-${Date.now()}`,
+          type: "Accept",
+          actor: fullLocalUser.actor_url,
+          object: activity,
+        };
 
-          const instanceKeys = db.getInstanceKeys();
-          const transportKey = instanceKeys.privateKey;
-          const transportKeyId = `${publicUrl}/actor#main-key`;
+        const targetInbox =
+          (remoteActorProfile?.endpoints as any)?.sharedInbox ||
+          (remoteActorProfile?.sharedInbox as string) ||
+          (remoteActorProfile?.inbox as string) ||
+          `${remoteActorUrl}/inbox`;
 
-          // Asynchronously send the Accept back (don't block the response)
-          sendSignedRequest(targetInbox, acceptActivity, transportKeyId, transportKey, db).catch((err) =>
-            console.error("Failed to send Accept activity:", err),
-          );
-        } else if (activity.type === "Accept") {
-          if (activity.object && (activity.object.type === "Follow" || typeof activity.object === "string")) {
-            db.updateFollowState(fullLocalUser.id as number, remoteUser.id, "accepted");
-          }
-        } else if (activity.type === "Reject") {
-          if (activity.object && (activity.object.type === "Follow" || typeof activity.object === "string")) {
-            db.updateFollowState(fullLocalUser.id as number, remoteUser.id, "rejected");
-          }
-        } else if (activity.type === "Undo") {
-          if (activity.object && activity.object.type === "Follow") {
-            db.unfollowUser(remoteUser.id, fullLocalUser.id as number);
-          } else if (activity.object && activity.object.type === "Like") {
-            const targetApId =
-              typeof activity.object.object === "string" ? activity.object.object : activity.object.object?.id;
-            if (targetApId) {
-              const post = db.getPostByApId(targetApId);
-              if (post) {
-                db.unlikePost(remoteUser.id, post.id);
-              }
-            }
-          }
-        } else if (activity.type === "Like") {
-          const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
+        const instanceKeys = db.getInstanceKeys();
+        const transportKey = instanceKeys.privateKey;
+        const transportKeyId = `${publicUrl}/actor#main-key`;
+
+        // Asynchronously send the Accept back (don't block the response)
+        sendSignedRequest(targetInbox, acceptActivity, transportKeyId, transportKey, db).catch((err) =>
+          console.error("Failed to send Accept activity:", err),
+        );
+      } else if (activity.type === "Accept" && fullLocalUser) {
+        if (activity.object && (activity.object.type === "Follow" || typeof activity.object === "string")) {
+          db.updateFollowState(fullLocalUser.id as number, remoteUser.id, "accepted");
+        }
+      } else if (activity.type === "Reject" && fullLocalUser) {
+        if (activity.object && (activity.object.type === "Follow" || typeof activity.object === "string")) {
+          db.updateFollowState(fullLocalUser.id as number, remoteUser.id, "rejected");
+        }
+      } else if (activity.type === "Undo") {
+        if (activity.object && activity.object.type === "Follow" && fullLocalUser) {
+          db.unfollowUser(remoteUser.id, fullLocalUser.id as number);
+        } else if (activity.object && activity.object.type === "Like") {
+          const targetApId =
+            typeof activity.object.object === "string" ? activity.object.object : activity.object.object?.id;
           if (targetApId) {
             const post = db.getPostByApId(targetApId);
             if (post) {
-              db.likePost(remoteUser.id, post.id);
-            }
-          }
-        } else if (activity.type === "Announce") {
-          const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
-          if (targetApId) {
-            const post = db.getPostByApId(targetApId);
-            if (post) {
-              db.createPost(
-                remoteUser.id,
-                null,
-                undefined,
-                undefined,
-                undefined,
-                post.id,
-                activity.id,
-                activity.url || activity.id,
-              );
-              db.createNotification(post.author_id, remoteUser.id, "repost", post.id);
-            }
-          }
-        } else if (activity.type === "Delete") {
-          const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
-          if (targetApId) {
-            db.deletePostByApId(targetApId);
-            try {
-              const parsed = new URL(targetApId as string, "http://localhost");
-              const prefix = "/libraries/";
-              const idx = parsed.pathname.indexOf(prefix);
-              if (idx !== -1) {
-                const rest = parsed.pathname.slice(idx + prefix.length);
-                const lastSlash = rest.lastIndexOf("/");
-                if (lastSlash > 0 && lastSlash < rest.length - 1) {
-                  db.deleteRemotePackage(
-                    decodeURIComponent(rest.slice(0, lastSlash)),
-                    decodeURIComponent(rest.slice(lastSlash + 1)),
-                    remoteActorUrl as string,
-                  );
-                }
-              }
-            } catch {
-              // ignore invalid URI
-            }
-          }
-        } else if (activity.type === "Update" && activity.object && activity.object.type === "Note") {
-          const note = activity.object;
-          if (note.id && note.content) {
-            db.updatePostContentByApId(note.id, note.content);
-          }
-        } else if (
-          activity.type === "Create" &&
-          activity.object &&
-          (activity.object.type === "SoftwareApplication" ||
-            (Array.isArray(activity.object.type) && activity.object.type.includes("schema:SoftwareApplication")) ||
-            activity.object.packageType === "modelica" ||
-            (activity.object.name && activity.object.version && activity.object.checksum))
-        ) {
-          const pkgObj = activity.object;
-          if (pkgObj.name && pkgObj.version) {
-            let pkgName = pkgObj.name;
-            const mode = process.env["FEDERATION_MODE"];
-            let isHubDomain = false;
-            try {
-              const parsedHost = new URL(publicUrl).hostname;
-              isHubDomain = parsedHost === "hub.modelscript.org" || parsedHost.endsWith(".hub.modelscript.org");
-            } catch {
-              isHubDomain = false;
-            }
-            if (mode === "curated-hub" || isHubDomain) {
-              if (!pkgName.startsWith("@")) {
-                try {
-                  const originHost = new URL(remoteActorUrl as string).hostname;
-                  pkgName = `@${originHost}/${pkgName}`;
-                } catch {
-                  // Keep original if actorUrl not a full URL
-                }
-              }
-            }
-
-            db.recordRemotePackage({
-              name: pkgName,
-              version: pkgObj.version,
-              actorUrl: remoteActorUrl as string,
-              downloadUrl: pkgObj.downloadUrl || pkgObj.url || pkgObj.id || "",
-              checksum: pkgObj.checksum || "",
-              license: pkgObj.license || null,
-              description: pkgObj.description || pkgObj.content || null,
-              metadata: JSON.stringify(pkgObj),
-            });
-          }
-        } else if (activity.type === "Create" && activity.object && activity.object.type === "Note") {
-          const note = activity.object;
-
-          // Check if post already exists
-          const existing = db.getPostByApId(note.id);
-          if (!existing) {
-            const content = note.content || "";
-            const isSilenced = (req as any).isDomainSilenced ? 1 : 0;
-
-            // Ingest engineering media attachments into artifact_views
-            let artifactViewId: number | undefined;
-            const rawAttachments = Array.isArray(note.attachment)
-              ? note.attachment
-              : note.attachment
-                ? [note.attachment]
-                : [];
-
-            for (const att of rawAttachments) {
-              if (att && typeof att === "object") {
-                const mediaType = (att.mediaType || att.mimeType || "").toLowerCase();
-                const attUrl = typeof att.url === "string" ? att.url : att.url?.href || "";
-                const lowerUrl = attUrl.toLowerCase();
-
-                let viewType: string | null = att.viewType || null;
-                let sourceType: string = att.sourceType || "federated";
-
-                if (!viewType) {
-                  if (
-                    mediaType === "model/step" ||
-                    mediaType === "application/step" ||
-                    lowerUrl.endsWith(".step") ||
-                    lowerUrl.endsWith(".stp")
-                  ) {
-                    viewType = "cad-step";
-                    sourceType = "step";
-                  } else if (
-                    mediaType.includes("gltf") ||
-                    lowerUrl.endsWith(".glb") ||
-                    lowerUrl.endsWith(".gltf") ||
-                    lowerUrl.endsWith(".usdz")
-                  ) {
-                    viewType = "3d-model";
-                    sourceType = "gltf";
-                  } else if (mediaType.includes("vegalite") || mediaType.includes("chart")) {
-                    viewType = "simulation-plot";
-                    sourceType = "vegalite";
-                  } else if (mediaType === "text/x-modelica" || lowerUrl.endsWith(".mo")) {
-                    viewType = "modelica-code";
-                    sourceType = "modelica";
-                  } else if (mediaType.includes("fmu") || lowerUrl.endsWith(".fmu")) {
-                    viewType = "fmu";
-                    sourceType = "fmu";
-                  } else if (mediaType === "application/pdf") {
-                    viewType = "pdf";
-                    sourceType = "document";
-                  } else if (mediaType.startsWith("image/")) {
-                    viewType = "picture";
-                    sourceType = "image";
-                  }
-                }
-
-                if (viewType && attUrl) {
-                  try {
-                    const safeUrl = assertSafePublicUrl(attUrl);
-                    const config = typeof att.viewConfig === "object" ? { ...att.viewConfig } : {};
-                    config.url = safeUrl.href;
-                    if (att.icon?.url) {
-                      config.thumbnailUrl = att.icon.url;
-                    }
-
-                    artifactViewId = db.createArtifactView(
-                      remoteUser.id,
-                      viewType,
-                      sourceType,
-                      JSON.stringify(config),
-                      att.name || "Federated Engineering Artifact",
-                      att.icon?.url || null,
-                      safeUrl.href,
-                    );
-                    break;
-                  } catch {
-                    // Discard unsafe attachment URLs
-                  }
-                }
-              }
-            }
-
-            // Threading: resolve inReplyTo if pointing to a local or previously federated post
-            let replyToId: number | undefined;
-            if (note.inReplyTo) {
-              const parentPost = db.getPostByApId(note.inReplyTo);
-              if (parentPost) {
-                replyToId = parentPost.id;
-              }
-            }
-
-            const contentWarning = typeof note.summary === "string" ? note.summary.trim() : undefined;
-            const postMetadata = contentWarning ? { contentWarning } : undefined;
-
-            const newPost = db.createPost(
-              remoteUser.id,
-              content,
-              artifactViewId,
-              replyToId,
-              undefined,
-              undefined,
-              note.id,
-              note.url || note.id,
-              undefined,
-              undefined,
-              postMetadata,
-              undefined,
-              isSilenced,
-            );
-
-            if (replyToId) {
-              const parent = db.getPost(replyToId);
-              if (parent && parent.author_id) {
-                db.createNotification(parent.author_id, remoteUser.id, "reply", newPost.id);
-              }
+              db.unlikePost(remoteUser.id, post.id);
             }
           }
         }
+      } else if (activity.type === "Like") {
+        const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
+        if (targetApId) {
+          const post = db.getPostByApId(targetApId);
+          if (post) {
+            db.likePost(remoteUser.id, post.id);
+          }
+        }
+      } else if (activity.type === "Announce") {
+        const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
+        if (targetApId) {
+          const post = db.getPostByApId(targetApId);
+          if (post) {
+            db.createPost(
+              remoteUser.id,
+              null,
+              undefined,
+              undefined,
+              undefined,
+              post.id,
+              activity.id,
+              activity.url || activity.id,
+            );
+            db.createNotification(post.author_id, remoteUser.id, "repost", post.id);
+          }
+        }
+      } else if (activity.type === "Delete") {
+        const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
+        if (targetApId) {
+          db.deletePostByApId(targetApId, remoteUser.id);
+          try {
+            const parsed = new URL(targetApId as string, "http://localhost");
+            const prefix = "/libraries/";
+            const idx = parsed.pathname.indexOf(prefix);
+            if (idx !== -1) {
+              const rest = parsed.pathname.slice(idx + prefix.length);
+              const lastSlash = rest.lastIndexOf("/");
+              if (lastSlash > 0 && lastSlash < rest.length - 1) {
+                db.deleteRemotePackage(
+                  decodeURIComponent(rest.slice(0, lastSlash)),
+                  decodeURIComponent(rest.slice(lastSlash + 1)),
+                  remoteActorUrl as string,
+                );
+              }
+            }
+          } catch {
+            // ignore invalid URI
+          }
+        }
+      } else if (activity.type === "Update" && activity.object && activity.object.type === "Note") {
+        const note = activity.object;
+        if (note.id && note.content) {
+          db.updatePostContentByApId(note.id, note.content, remoteUser.id);
+        }
+      } else if (
+        activity.type === "Create" &&
+        activity.object &&
+        (activity.object.type === "SoftwareApplication" ||
+          (Array.isArray(activity.object.type) && activity.object.type.includes("schema:SoftwareApplication")) ||
+          activity.object.packageType === "modelica" ||
+          (activity.object.name && activity.object.version && activity.object.checksum))
+      ) {
+        const pkgObj = activity.object;
+        if (pkgObj.name && pkgObj.version) {
+          let pkgName = pkgObj.name;
+          const mode = process.env["FEDERATION_MODE"];
+          let isHubDomain = false;
+          try {
+            const parsedHost = new URL(publicUrl).hostname;
+            isHubDomain = parsedHost === "hub.modelscript.org" || parsedHost.endsWith(".hub.modelscript.org");
+          } catch {
+            isHubDomain = false;
+          }
+          if (mode === "curated-hub" || isHubDomain) {
+            if (!pkgName.startsWith("@")) {
+              try {
+                const originHost = new URL(remoteActorUrl as string).hostname;
+                pkgName = `@${originHost}/${pkgName}`;
+              } catch {
+                // Keep original if actorUrl not a full URL
+              }
+            }
+          }
 
-        // Always return 202 Accepted for ActivityPub inboxes unless malformed
-        res.status(202).send();
-      } catch (err) {
-        console.error("Error processing Inbox activity:", err);
-        res.status(500).json({ error: "Internal server error" });
+          db.recordRemotePackage({
+            name: pkgName,
+            version: pkgObj.version,
+            actorUrl: remoteActorUrl as string,
+            downloadUrl: pkgObj.downloadUrl || pkgObj.url || pkgObj.id || "",
+            checksum: pkgObj.checksum || "",
+            license: pkgObj.license || null,
+            description: pkgObj.description || pkgObj.content || null,
+            metadata: JSON.stringify(pkgObj),
+          });
+        }
+      } else if (activity.type === "Create" && activity.object && activity.object.type === "Note") {
+        const note = activity.object;
+
+        // Check if post already exists
+        const existing = db.getPostByApId(note.id);
+        if (!existing) {
+          const content = note.content || "";
+          const isSilenced = (req as any).isDomainSilenced ? 1 : 0;
+
+          // Ingest engineering media attachments into artifact_views
+          let artifactViewId: number | undefined;
+          const rawAttachments = Array.isArray(note.attachment)
+            ? note.attachment
+            : note.attachment
+              ? [note.attachment]
+              : [];
+
+          for (const att of rawAttachments) {
+            if (att && typeof att === "object") {
+              const mediaType = (att.mediaType || att.mimeType || "").toLowerCase();
+              const attUrl = typeof att.url === "string" ? att.url : att.url?.href || "";
+              const lowerUrl = attUrl.toLowerCase();
+
+              let viewType: string | null = att.viewType || null;
+              let sourceType: string = att.sourceType || "federated";
+
+              if (!viewType) {
+                if (
+                  mediaType === "model/step" ||
+                  mediaType === "application/step" ||
+                  lowerUrl.endsWith(".step") ||
+                  lowerUrl.endsWith(".stp")
+                ) {
+                  viewType = "cad-step";
+                  sourceType = "step";
+                } else if (
+                  mediaType.includes("gltf") ||
+                  lowerUrl.endsWith(".glb") ||
+                  lowerUrl.endsWith(".gltf") ||
+                  lowerUrl.endsWith(".usdz")
+                ) {
+                  viewType = "3d-model";
+                  sourceType = "gltf";
+                } else if (mediaType.includes("vegalite") || mediaType.includes("chart")) {
+                  viewType = "simulation-plot";
+                  sourceType = "vegalite";
+                } else if (mediaType === "text/x-modelica" || lowerUrl.endsWith(".mo")) {
+                  viewType = "modelica-code";
+                  sourceType = "modelica";
+                } else if (mediaType.includes("fmu") || lowerUrl.endsWith(".fmu")) {
+                  viewType = "fmu";
+                  sourceType = "fmu";
+                } else if (mediaType === "application/pdf") {
+                  viewType = "pdf";
+                  sourceType = "document";
+                } else if (mediaType.startsWith("image/")) {
+                  viewType = "picture";
+                  sourceType = "image";
+                }
+              }
+
+              if (viewType && attUrl) {
+                try {
+                  const safeUrl = assertSafePublicUrl(attUrl);
+                  const config = typeof att.viewConfig === "object" ? { ...att.viewConfig } : {};
+                  config.url = safeUrl.href;
+                  if (att.icon?.url) {
+                    config.thumbnailUrl = att.icon.url;
+                  }
+
+                  artifactViewId = db.createArtifactView(
+                    remoteUser.id,
+                    viewType,
+                    sourceType,
+                    JSON.stringify(config),
+                    att.name || "Federated Engineering Artifact",
+                    att.icon?.url || null,
+                    safeUrl.href,
+                  );
+                  break;
+                } catch {
+                  // Discard unsafe attachment URLs
+                }
+              }
+            }
+          }
+
+          // Threading: resolve inReplyTo if pointing to a local or previously federated post
+          let replyToId: number | undefined;
+          if (note.inReplyTo) {
+            const parentPost = db.getPostByApId(note.inReplyTo);
+            if (parentPost) {
+              replyToId = parentPost.id;
+            }
+          }
+
+          const contentWarning = typeof note.summary === "string" ? note.summary.trim() : undefined;
+          const postMetadata = contentWarning ? { contentWarning } : undefined;
+
+          const newPost = db.createPost(
+            remoteUser.id,
+            content,
+            artifactViewId,
+            replyToId,
+            undefined,
+            undefined,
+            note.id,
+            note.url || note.id,
+            undefined,
+            undefined,
+            postMetadata,
+            undefined,
+            isSilenced,
+          );
+
+          if (replyToId) {
+            const parent = db.getPost(replyToId);
+            if (parent && parent.author_id) {
+              db.createNotification(parent.author_id, remoteUser.id, "reply", newPost.id);
+            }
+          }
+        }
       }
-    },
+
+      // Always return 202 Accepted for ActivityPub inboxes unless malformed
+      res.status(202).send();
+    } catch (err) {
+      console.error("Error processing Inbox activity:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  };
+
+  router.post(
+    "/actor/inbox",
+    inboxLimiter,
+    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
+    verifier,
+    handleInboxActivity,
+  );
+
+  router.post(
+    "/users/:username/inbox",
+    inboxLimiter,
+    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
+    verifier,
+    handleInboxActivity,
   );
 
   router.get("/federation/packages", (req: Request, res: Response) => {

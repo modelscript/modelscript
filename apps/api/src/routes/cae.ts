@@ -231,6 +231,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
             if (userId) {
               database.releaseUserEscrow(userId, dbJobId, err?.message || "CAE execution exception");
             }
+          } finally {
+            activeStreamers.delete(dbJobId.toString());
           }
         });
 
@@ -388,9 +390,11 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const jobId = parseInt(req.params.id, 10);
     const dbJob = database.getJob(jobId);
     const cancelled = runner.cancelJob(req.params.id);
-    database.updateJobStatus(jobId, "CANCELLED");
-    if (dbJob?.user_id) {
-      database.releaseUserEscrow(dbJob.user_id, jobId, "User cancelled CAE job");
+    if (dbJob && dbJob.status !== "SUCCESS" && dbJob.status !== "FAILED" && dbJob.status !== "CANCELLED") {
+      database.updateJobStatus(jobId, "CANCELLED");
+      if (dbJob.user_id) {
+        database.releaseUserEscrow(dbJob.user_id, jobId, "User cancelled CAE job");
+      }
     }
     res.json({ cancelled });
   });
@@ -474,57 +478,160 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   // --- Automated Parametric DoE Sweep Orchestrator Routes ---
 
   // 9. Submit a new Parametric DoE Sweep
-  router.post("/cae/sweeps", express.json({ limit: "50mb" }), (req, res) => {
-    const { title, solver = "calculix", templateDeck, deckFormat, geometry, sampling, options } = req.body;
+  router.post(
+    "/cae/sweeps",
+    enforceExportCompliance(() => database),
+    express.json({ limit: "50mb" }),
+    (req, res) => {
+      const { title, solver = "calculix", templateDeck, deckFormat, geometry, sampling, options } = req.body;
 
-    if (!templateDeck) {
-      return res.status(400).json({ error: "Missing required 'templateDeck' string." });
-    }
-    if (!sampling || !sampling.parameters || !Array.isArray(sampling.parameters) || sampling.parameters.length === 0) {
-      return res.status(400).json({ error: "Missing required 'sampling.parameters' array." });
-    }
+      if (!templateDeck) {
+        return res.status(400).json({ error: "Missing required 'templateDeck' string." });
+      }
+      if (
+        !sampling ||
+        !sampling.parameters ||
+        !Array.isArray(sampling.parameters) ||
+        sampling.parameters.length === 0
+      ) {
+        return res.status(400).json({ error: "Missing required 'sampling.parameters' array." });
+      }
 
-    const sweepSpec: CaeSweepSpec = {
-      title,
-      solver: solver === "su2" ? "su2" : solver === "openfoam" ? "openfoam" : "calculix",
-      templateDeck,
-      deckFormat: deckFormat || (solver === "su2" ? "cfg" : "inp"),
-      geometry,
-      sampling: {
-        strategy: sampling.strategy || "lhs",
-        sampleCount: sampling.sampleCount || 10,
-        concurrency: sampling.concurrency || 4,
-        parameters: sampling.parameters,
-      },
-      options: options || {},
-    };
+      const sampleCount = sampling.sampleCount ?? 10;
+      if (typeof sampleCount !== "number" || !Number.isFinite(sampleCount) || sampleCount < 1 || sampleCount > 200) {
+        return res.status(400).json({ error: "Invalid 'sampling.sampleCount': must be between 1 and 200." });
+      }
 
-    const state = sweepOrchestrator.submitSweep(sweepSpec);
-    res.json({
-      sweepId: state.sweepId,
-      title: state.title,
-      status: state.status,
-      totalRuns: state.totalRuns,
-      strategy: state.strategy,
-      concurrency: sweepSpec.sampling.concurrency,
-    });
-  });
+      const solverType: CaeSolverType = solver === "su2" ? "su2" : solver === "openfoam" ? "openfoam" : "calculix";
+      const profile = options?.profile || "standard";
+      const userId = resolveRequestUserId(req, database);
+      const userExists = userId ? Boolean(database.getUserById(userId)) : false;
+
+      let estimatedCost = 0;
+      if (userId && userExists) {
+        const quota = checkComputeQuota(userId, profile, database, 0.05 * sampleCount);
+        if (!quota.allowed) {
+          return res.status(402).json({
+            error: "Payment Required: Insufficient Compute Credits",
+            message: quota.reason,
+            balance: quota.userBalance,
+            required: quota.estimatedCost,
+            profile: quota.profileId,
+          });
+        }
+        estimatedCost = quota.estimatedCost;
+      }
+
+      let dbJobId: number | null = null;
+      if (userId && userExists) {
+        dbJobId = database.createJob(
+          `CAE Sweep [${solverType.toUpperCase()}]: ${title || "DoE Study"} (${sampleCount} runs)`,
+          "RUNNING",
+          "ADHOC",
+          "ide",
+          null,
+          { profile, solver: solverType, sampleCount },
+          userId,
+        );
+
+        if (estimatedCost > 0) {
+          const holdRes = database.holdUserCredits(
+            userId,
+            estimatedCost,
+            dbJobId,
+            `HPC Escrow Hold: CAE DoE Sweep (${sampleCount} runs)`,
+            { profile, solver: solverType, sampleCount },
+          );
+          if (!holdRes.success) {
+            database.updateJobStatus(dbJobId, "FAILED");
+            return res.status(402).json({
+              error: "Payment Required: Escrow Hold Failed",
+              message: holdRes.reason,
+              balance: holdRes.newBalance,
+              required: estimatedCost,
+            });
+          }
+        }
+      }
+
+      const sweepSpec: CaeSweepSpec = {
+        title,
+        solver: solverType,
+        templateDeck,
+        deckFormat: deckFormat || (solver === "su2" ? "cfg" : "inp"),
+        geometry,
+        sampling: {
+          strategy: sampling.strategy || "lhs",
+          sampleCount,
+          concurrency: sampling.concurrency || 4,
+          parameters: sampling.parameters,
+        },
+        options: options || {},
+      };
+
+      const state = sweepOrchestrator.submitSweep(sweepSpec, {
+        dbJobId,
+        userId: userExists ? userId : null,
+        onSweepFinalized: (finalState) => {
+          if (!dbJobId) return;
+          if (finalState.status === "completed" || finalState.status === "partial_success") {
+            database.updateJobStatus(dbJobId, "SUCCESS");
+            const totalCredits = finalState.totalCostCredits ?? 0;
+            const totalCpuSec = finalState.totalCpuSeconds ?? 0;
+            database.updateJobAccounting(dbJobId, {
+              computeProfile: profile,
+              cpuSeconds: totalCpuSec,
+              costCredits: totalCredits,
+            });
+            if (userId && userExists) {
+              database.settleUserEscrow(userId, dbJobId, totalCredits, `CAE DoE Sweep: ${state.title}`, {
+                profile,
+                sweepId: finalState.sweepId,
+                completedRuns: finalState.completedRuns,
+                totalRuns: finalState.totalRuns,
+              });
+            }
+          } else if (finalState.status === "failed") {
+            database.updateJobStatus(dbJobId, "FAILED");
+            if (userId && userExists) {
+              database.releaseUserEscrow(userId, dbJobId, "CAE DoE Sweep failed");
+            }
+          }
+        },
+      });
+
+      res.json({
+        sweepId: state.sweepId,
+        title: state.title,
+        status: state.status,
+        totalRuns: state.totalRuns,
+        strategy: state.strategy,
+        concurrency: sweepSpec.sampling.concurrency,
+      });
+    },
+  );
 
   // 10. List All Sweeps
-  router.get("/cae/sweeps", (_req, res) => {
-    const allSweeps = sweepOrchestrator.getAllSweeps().map((s) => ({
-      sweepId: s.sweepId,
-      title: s.title,
-      solver: s.solver,
-      strategy: s.strategy,
-      status: s.status,
-      totalRuns: s.totalRuns,
-      completedRuns: s.completedRuns,
-      failedRuns: s.failedRuns,
-      progressPercent: s.progressPercent,
-      createdAt: s.createdAt,
-      completedAt: s.completedAt,
-    }));
+  router.get("/cae/sweeps", (req, res) => {
+    const reqAny = req as { user?: { id?: number }; userId?: number };
+    const authUserId = reqAny.user?.id ?? reqAny.userId;
+
+    const allSweeps = sweepOrchestrator
+      .getAllSweeps()
+      .filter((s) => authUserId === undefined || s.userId === undefined || s.userId === null || s.userId === authUserId)
+      .map((s) => ({
+        sweepId: s.sweepId,
+        title: s.title,
+        solver: s.solver,
+        strategy: s.strategy,
+        status: s.status,
+        totalRuns: s.totalRuns,
+        completedRuns: s.completedRuns,
+        failedRuns: s.failedRuns,
+        progressPercent: s.progressPercent,
+        createdAt: s.createdAt,
+        completedAt: s.completedAt,
+      }));
     res.json(allSweeps);
   });
 
@@ -539,10 +646,25 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
   // 12. Cancel Sweep
   router.delete("/cae/sweeps/:id", (req, res) => {
-    const cancelled = sweepOrchestrator.cancelSweep(req.params.id);
-    if (!cancelled) {
+    const sweep = sweepOrchestrator.getSweep(req.params.id);
+    if (!sweep) {
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
     }
+    const wasAlreadyTerminal =
+      sweep.status === "cancelled" ||
+      sweep.status === "completed" ||
+      sweep.status === "partial_success" ||
+      sweep.status === "failed";
+
+    sweepOrchestrator.cancelSweep(req.params.id);
+
+    if (!wasAlreadyTerminal && sweep.dbJobId) {
+      database.updateJobStatus(sweep.dbJobId, "CANCELLED");
+      if (sweep.userId) {
+        database.releaseUserEscrow(sweep.userId, sweep.dbJobId, "User cancelled CAE DoE Sweep");
+      }
+    }
+
     res.json({ cancelled: true, sweepId: req.params.id });
   });
 

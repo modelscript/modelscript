@@ -178,6 +178,20 @@ function findDeclInClassInternal(db: CodeGraph, classNode: u32, targetId: u32, $
       return decl;
     }
   }
+  if ($.enumeration_literal != 0) {
+    for (const enumLit of db.ast.getDescendants(classNode, $.enumeration_literal)) {
+      let litId: u32 = 0;
+      for (const id of db.ast.getDescendants(enumLit, $.identifier)) {
+        litId = id;
+        break;
+      }
+      if (litId == 0 && db.ast.getType(enumLit) == $.identifier) litId = enumLit;
+      if (litId != 0 && db.ast.textEqualsNode(targetId, litId)) {
+        if (isDescendantOfInnerClass(db, enumLit, classNode, $)) continue;
+        return enumLit;
+      }
+    }
+  }
   return 0;
 }
 
@@ -524,6 +538,8 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
     if (operandChild != 0) {
       const op = db.ast.getFirstChild(unwrapped);
       if (op != 0 && (db.ast.textEquals(op, "not") || db.ast.getType(op) == 77)) {
+        const operandType = inferExprType(db, operandChild, $);
+        if (operandType >= 0x8000) return operandType;
         return TYPE_BOOLEAN;
       }
       return inferExprType(db, operandChild, $);
@@ -826,6 +842,11 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
             for (const fi of db.ast.getDescendants(anc, $.for_index)) {
               for (const id of db.ast.getDescendants(fi, $.identifier)) {
                 if (db.ast.textEqualsNode(id, compRef)) {
+                  if ($.string_literal != 0) {
+                    for (const sLit of db.ast.getDescendants(fi, $.string_literal)) {
+                      if (sLit != 0) return TYPE_STRING;
+                    }
+                  }
                   return TYPE_INTEGER;
                 }
                 break;
@@ -1343,32 +1364,58 @@ export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<stri
   if (cachedCls >= 0) return cachedCls as u32;
 
   let result: u32 = 0;
+  let fallbackNested: u32 = 0;
   for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
-    if (result != 0) break;
     const nameId = db.ast.getChildByFieldId(spec, "name");
     if (nameId != 0 && db.ast.textEqualsNode(leafId, nameId)) {
+      let clsNode: u32 = 0;
+      let hasParentClass = false;
       for (const cls of db.ast.getAncestors(spec)) {
         if (db.ast.getType(cls) == $.class_definition) {
-          result = cls;
+          if (clsNode == 0) {
+            clsNode = cls;
+          } else {
+            hasParentClass = true;
+            break;
+          }
+        }
+      }
+      if (clsNode != 0) {
+        if (!hasParentClass) {
+          result = clsNode;
           break;
         }
+        if (fallbackNested == 0) fallbackNested = clsNode;
       }
     }
   }
   if (result == 0) {
     for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
-      if (result != 0) break;
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0 && db.ast.textEqualsNode(leafId, nameId)) {
+        let clsNode: u32 = 0;
+        let hasParentClass = false;
         for (const cls of db.ast.getAncestors(spec)) {
           if (db.ast.getType(cls) == $.class_definition) {
-            result = cls;
+            if (clsNode == 0) {
+              clsNode = cls;
+            } else {
+              hasParentClass = true;
+              break;
+            }
+          }
+        }
+        if (clsNode != 0) {
+          if (!hasParentClass) {
+            result = clsNode;
             break;
           }
+          if (fallbackNested == 0) fallbackNested = clsNode;
         }
       }
     }
   }
+  if (result == 0) result = fallbackNested;
   db.ast.setCachedByName(0, leafSpan, result);
   return result;
 }
@@ -1634,7 +1681,12 @@ export function isDottedVariableDeclared(
       if (idx == nonSubscriptCount - 1) {
         return isVariableDeclaredInClass(db, currClass, id, $);
       }
-      let nextClass = resolveComponentClassDefinition(db, currClass, id, $, 0);
+      let nextClass: u32 = 0;
+      if (idx == 0 && db.ast.startsWith(compRefNode, ".")) {
+        nextClass = findClassByName(db, id, $);
+      } else {
+        nextClass = resolveComponentClassDefinition(db, currClass, id, $, 0);
+      }
       if (nextClass == 0 && idx == 0) {
         for (const anc of db.ast.getAncestors(enclosingClass)) {
           if (db.ast.getType(anc) == $.class_definition) {
@@ -2022,6 +2074,23 @@ export function isVariableDeclaredInClass(
   if (findDeclInClass(db, classNode, identNode, $) != 0) return true;
   // 2. Direct inner class definition in classNode
   if (findInnerClassInClass(db, classNode, identNode, $) != 0) return true;
+  // 2.5. Direct import_clause in classNode
+  if ($.import_clause != 0) {
+    for (const imp of db.ast.getDescendants(classNode, $.import_clause)) {
+      if (isDescendantOfInnerClass(db, imp, classNode, $)) continue;
+      let firstId: u32 = 0;
+      let lastId: u32 = 0;
+      for (const id of db.ast.getDescendants(imp, $.identifier)) {
+        if (firstId == 0) firstId = id;
+        lastId = id;
+      }
+      if (firstId != 0 && lastId != 0) {
+        if (db.ast.textEqualsNode(identNode, firstId) || db.ast.textEqualsNode(identNode, lastId)) {
+          return true;
+        }
+      }
+    }
+  }
   // 3. Inherited member or record component
   return getMemberKindInClass(db, classNode, identNode, $) != MEMBER_NONE;
 }
@@ -2961,4 +3030,683 @@ export function getClassNameNode(db: CodeGraph, clsNode: u32, $: Record<string, 
     for (const id of db.ast.getDescendants(spec, $.identifier)) return id;
   }
   return 0;
+}
+
+/**
+ * Checks whether an extends_clause creates a direct or multi-hop inheritance cycle in the same scope.
+ */
+export function hasExtendsCycleInScope(db: CodeGraph, extNode: u32, $: Record<string, u16>): boolean {
+  const startClass = getEnclosingClass(db, extNode, $);
+  if (startClass == 0) return false;
+  let typeSpec: u32 = 0;
+  let c = db.ast.getFirstChild(extNode);
+  while (c != 0) {
+    if (db.ast.getType(c) == $.type_specifier) {
+      typeSpec = c;
+      break;
+    }
+    c = db.ast.getNextSibling(c);
+  }
+  if (typeSpec == 0) return false;
+  let idCount: u32 = 0;
+  let firstId: u32 = 0;
+  for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
+    idCount++;
+    if (firstId == 0) firstId = id;
+  }
+  if (idCount != 1 || firstId == 0) return false;
+
+  const startName = getClassNameNode(db, startClass, $);
+  if (startName == 0) return false;
+  if (db.ast.textEqualsNode(firstId, startName)) return true;
+
+  let outerClass: u32 = 0;
+  for (const anc of db.ast.getAncestors(startClass, 0)) {
+    if (anc != startClass && db.ast.getType(anc) == $.class_definition) {
+      outerClass = anc;
+      break;
+    }
+  }
+  const scopeRoot = outerClass != 0 ? outerClass : db.ast.getRootNode();
+  if (scopeRoot == 0) return false;
+
+  let currTargetId: u32 = firstId;
+  let depth: u32 = 0;
+  while (currTargetId != 0 && depth < 8) {
+    depth++;
+    let targetCls: u32 = 0;
+    for (const cls of db.ast.getDescendants(scopeRoot, $.class_definition)) {
+      if (cls == scopeRoot) continue;
+      let clsParent: u32 = 0;
+      for (const anc of db.ast.getAncestors(cls, 0)) {
+        if (anc != cls && db.ast.getType(anc) == $.class_definition) {
+          clsParent = anc;
+          break;
+        }
+      }
+      if (clsParent != outerClass) continue;
+      const cName = getClassNameNode(db, cls, $);
+      if (cName != 0 && db.ast.textEqualsNode(cName, currTargetId)) {
+        targetCls = cls;
+        break;
+      }
+    }
+    if (targetCls == 0) return false;
+    if (targetCls == startClass) return true;
+
+    let nextTargetId: u32 = 0;
+    for (const ext of db.ast.getDescendants(targetCls, $.extends_clause)) {
+      if (isDescendantOfInnerClass(db, ext, targetCls, $)) continue;
+      let extSpec: u32 = 0;
+      let ch = db.ast.getFirstChild(ext);
+      while (ch != 0) {
+        if (db.ast.getType(ch) == $.type_specifier) {
+          extSpec = ch;
+          break;
+        }
+        ch = db.ast.getNextSibling(ch);
+      }
+      if (extSpec == 0) continue;
+      let extIdCount: u32 = 0;
+      let extFirstId: u32 = 0;
+      for (const id of db.ast.getDescendants(extSpec, $.identifier)) {
+        extIdCount++;
+        if (extFirstId == 0) extFirstId = id;
+      }
+      if (extIdCount == 1 && extFirstId != 0) {
+        if (db.ast.textEqualsNode(extFirstId, startName)) return true;
+        if (nextTargetId == 0) nextTargetId = extFirstId;
+      }
+    }
+    currTargetId = nextTargetId;
+  }
+  return false;
+}
+
+/**
+ * Returns the callee/name node of a function_call or primary call node, or 0 if not a call.
+ */
+export function getCallCalleeNode(db: CodeGraph, callNode: u32, $: Record<string, u16>): u32 {
+  let name = db.ast.getChildByFieldId(callNode, "name");
+  if (name == 0) name = db.ast.getChildByFieldId(callNode, "callee");
+  if (name != 0) return name;
+  const fc = db.ast.getFirstChild(callNode);
+  if (fc != 0 && db.ast.getType(fc) == $.component_reference) {
+    const sib = db.ast.getNextSibling(fc);
+    if (sib != 0 && (db.ast.getType(sib) == $.function_call_args || db.ast.startsWith(sib, "("))) {
+      return fc;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Checks if an extends_clause targets a replaceable inner class in an enclosing class or document.
+ */
+export function isReplaceableBaseClassInScope(db: CodeGraph, extNode: u32, $: Record<string, u16>): boolean {
+  let typeSpec = db.ast.getChildByFieldId(extNode, "type_specifier");
+  if (typeSpec == 0) {
+    for (const ts of db.ast.getDescendants(extNode, $.type_specifier)) {
+      typeSpec = ts;
+      break;
+    }
+  }
+  if (typeSpec == 0) return false;
+  let firstId: u32 = 0;
+  for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
+    firstId = id;
+    break;
+  }
+  if (firstId == 0) return false;
+
+  for (const anc of db.ast.getAncestors(extNode, 0)) {
+    if (db.ast.getType(anc) == $.class_definition) {
+      const innerCls = findInnerClassInClass(db, anc, firstId, $);
+      if (innerCls != 0 && isElementReplaceable(db, innerCls, $)) {
+        return true;
+      }
+    }
+  }
+  const targetCls = findClassByName(db, typeSpec, $);
+  if (targetCls != 0 && isElementReplaceable(db, targetCls, $)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks if a non-replaceable component_clause instantiates a partial class.
+ */
+export function isPartialTypeComponentInScope(db: CodeGraph, compClause: u32, $: Record<string, u16>): boolean {
+  if (isElementReplaceable(db, compClause, $)) return false;
+  for (const anc of db.ast.getAncestors(compClause, 0)) {
+    if (db.ast.getType(anc) == $.class_definition) {
+      if (isClassKind(db, anc, "partial") || isClassKind(db, anc, "package")) return false;
+      if (isClassKind(db, anc, "function") && hasTypePrefix(db, compClause, "input", $)) return false;
+      break;
+    }
+  }
+  let typeSpec: u32 = 0;
+  for (const ts of db.ast.getDescendants(compClause, $.type_specifier)) {
+    typeSpec = ts;
+    break;
+  }
+  if (typeSpec == 0) return false;
+  let idCount: u32 = 0;
+  for (const _id of db.ast.getDescendants(typeSpec, $.identifier)) {
+    idCount++;
+  }
+  if (idCount != 1) return false;
+  const targetCls = findClassByName(db, typeSpec, $);
+  if (targetCls == 0) return false;
+  if (isClassKind(db, targetCls, "function") || isClassKind(db, targetCls, "package")) return false;
+  return isClassKind(db, targetCls, "partial");
+}
+
+/**
+ * Checks if cardinality() is called with a class name instead of a component.
+ */
+export function isCardinalityClassArg(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+  const name = getCallCalleeNode(db, callNode, $);
+  if (name == 0 || !db.ast.textEquals(name, "cardinality")) return false;
+  let firstArg: u32 = 0;
+  for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
+    firstArg = arg;
+    break;
+  }
+  if (firstArg == 0) return false;
+  let idCount: u32 = 0;
+  let argId: u32 = 0;
+  for (const id of db.ast.getDescendants(firstArg, $.identifier)) {
+    idCount++;
+    if (argId == 0) argId = id;
+  }
+  if (idCount != 1 || argId == 0) return false;
+  for (const _sub of db.ast.getDescendants(firstArg, $.array_subscripts)) {
+    return false;
+  }
+  const encClass = getEnclosingClass(db, callNode, $);
+  if (encClass == 0) return false;
+  if (findDeclInClass(db, encClass, argId, $) != 0) return false;
+  if (getMemberKindInClass(db, encClass, argId, $) == MEMBER_CLASS) return true;
+  if (findClassByName(db, argId, $) != 0) return true;
+  return false;
+}
+
+/**
+ * Checks if an expression node is a 3-part range (start : step : stop) over an enumeration type.
+ */
+export function isEnumStepRangeExpr(db: CodeGraph, exprNode: u32, $: Record<string, u16>): boolean {
+  let unwrapped = exprNode;
+  while (unwrapped != 0 && db.ast.getChildCount(unwrapped) == 1) {
+    unwrapped = db.ast.getFirstChild(unwrapped);
+  }
+  if (unwrapped == 0 || db.ast.getChildCount(unwrapped) != 3) return false;
+  const leftRaw = db.ast.getFirstChild(unwrapped);
+  if (leftRaw == 0) return false;
+  const mid = db.ast.getNextSibling(leftRaw);
+  if (mid == 0 || !db.ast.textEquals(mid, ":")) return false;
+  const stopNode = db.ast.getNextSibling(mid);
+  if (stopNode == 0) return false;
+
+  let left = leftRaw;
+  while (left != 0 && db.ast.getChildCount(left) == 1) {
+    left = db.ast.getFirstChild(left);
+  }
+  if (left == 0 || db.ast.getChildCount(left) != 3) return false;
+  const startNode = db.ast.getFirstChild(left);
+  if (startNode == 0) return false;
+  const leftMid = db.ast.getNextSibling(startNode);
+  if (leftMid == 0 || !db.ast.textEquals(leftMid, ":")) return false;
+
+  const startType = inferExprType(db, startNode, $);
+  const stopType = inferExprType(db, stopNode, $);
+  if (startType == TYPE_ENUM || stopType == TYPE_ENUM) return true;
+
+  for (const id of db.ast.getDescendants(startNode, $.identifier)) {
+    if (resolveBasePrimitiveType(db, id, $) == TYPE_ENUM) return true;
+    break;
+  }
+  for (const id of db.ast.getDescendants(stopNode, $.identifier)) {
+    if (resolveBasePrimitiveType(db, id, $) == TYPE_ENUM) return true;
+    break;
+  }
+  return false;
+}
+
+/**
+ * Checks if an element_modification assigns a scalar literal to an array component without 'each'.
+ */
+export function isNonArrayScalarModification(db: CodeGraph, modNode: u32, $: Record<string, u16>): boolean {
+  for (const anc of db.ast.getAncestors(modNode, 0)) {
+    const t = db.ast.getType(anc);
+    if (t == $.argument || t == $.element_modification_or_replaceable) {
+      let ch = db.ast.getFirstChild(anc);
+      while (ch != 0) {
+        if (db.ast.textEquals(ch, "each")) return false;
+        ch = db.ast.getNextSibling(ch);
+      }
+      if (t == $.argument) break;
+    }
+  }
+  let modName = db.ast.getChildByFieldId(modNode, "name");
+  if (modName == 0) {
+    for (const n of db.ast.getDescendants(modNode, $.name)) {
+      modName = n;
+      break;
+    }
+  }
+  if (modName == 0) return false;
+  let idCount: u32 = 0;
+  let targetId: u32 = 0;
+  for (const id of db.ast.getDescendants(modName, $.identifier)) {
+    idCount++;
+    if (targetId == 0) targetId = id;
+  }
+  if (idCount != 1 || targetId == 0) return false;
+
+  let modVal = db.ast.getChildByFieldId(modNode, "modification");
+  if (modVal == 0) {
+    for (const m of db.ast.getDescendants(modNode, $.modification)) {
+      modVal = m;
+      break;
+    }
+  }
+  if (modVal == 0) return false;
+  let exprNode = db.ast.getChildByFieldId(modVal, "modification_expression");
+  if (exprNode == 0) {
+    for (const e of db.ast.getDescendants(modVal, $.modification_expression)) {
+      exprNode = e;
+      break;
+    }
+  }
+  if (exprNode == 0) {
+    let ch = db.ast.getFirstChild(modVal);
+    let afterEq = false;
+    while (ch != 0) {
+      if (db.ast.textEquals(ch, "=") || db.ast.textEquals(ch, ":=")) {
+        afterEq = true;
+      } else if (afterEq) {
+        exprNode = ch;
+        break;
+      }
+      ch = db.ast.getNextSibling(ch);
+    }
+  }
+  if (exprNode == 0) return false;
+  for (const _id of db.ast.getDescendants(exprNode, $.identifier)) return false;
+  for (const _fc of db.ast.getDescendants(exprNode, $.function_call)) return false;
+  for (const _arr of db.ast.getDescendants(exprNode, $.array_arguments)) return false;
+  for (const _sub of db.ast.getDescendants(exprNode, $.array_subscripts)) return false;
+  if (db.ast.startsWith(exprNode, "{") || db.ast.startsWith(exprNode, "[")) return false;
+  for (const subExpr of db.ast.getDescendants(exprNode, $.expression)) {
+    let u = subExpr;
+    while (u != 0 && db.ast.getChildCount(u) == 1) u = db.ast.getFirstChild(u);
+    if (u != 0 && db.ast.getChildCount(u) == 3) {
+      const c1 = db.ast.getFirstChild(u);
+      const c2 = c1 != 0 ? db.ast.getNextSibling(c1) : 0;
+      if (c2 != 0 && db.ast.textEquals(c2, ":")) return false;
+    }
+  }
+  let hasScalarLit = false;
+  for (const _num of db.ast.getDescendants(exprNode, $.unsigned_number)) {
+    hasScalarLit = true;
+    break;
+  }
+  if (!hasScalarLit && (db.ast.textEquals(exprNode, "true") || db.ast.textEquals(exprNode, "false"))) {
+    hasScalarLit = true;
+  }
+  if (!hasScalarLit) return false;
+
+  let compClause: u32 = 0;
+  let declNode: u32 = 0;
+  let classModCount: u32 = 0;
+  for (const anc of db.ast.getAncestors(modNode, 0)) {
+    if (anc == modNode) continue;
+    const t = db.ast.getType(anc);
+    if (t == $.class_modification) classModCount++;
+    if (t == $.declaration && declNode == 0) declNode = anc;
+    if (t == $.component_clause) {
+      compClause = anc;
+      break;
+    }
+    if (t == $.extends_clause || t == $.short_class_specifier) return false;
+  }
+  if (compClause == 0 || classModCount != 1) return false;
+
+  if (declNode != 0) {
+    for (const sub of db.ast.getDescendants(declNode, $.array_subscripts)) {
+      let insideMod = false;
+      for (const anc of db.ast.getAncestors(sub, 0, declNode)) {
+        if (anc == modVal) {
+          insideMod = true;
+          break;
+        }
+      }
+      if (!insideMod) return true;
+    }
+  }
+  for (const sub of db.ast.getDescendants(compClause, $.array_subscripts)) {
+    let insideDecl = false;
+    for (const anc of db.ast.getAncestors(sub, 0, compClause)) {
+      if (anc == declNode || anc == modVal) {
+        insideDecl = true;
+        break;
+      }
+    }
+    if (!insideDecl) return true;
+  }
+
+  let typeSpec: u32 = 0;
+  for (const ts of db.ast.getDescendants(compClause, $.type_specifier)) {
+    typeSpec = ts;
+    break;
+  }
+  if (typeSpec == 0) return false;
+  const targetCls = findClassByName(db, typeSpec, $);
+  if (targetCls == 0) return false;
+
+  const memberDecl = findDeclInClass(db, targetCls, targetId, $);
+  if (memberDecl == 0) return false;
+  for (const _sub of db.ast.getDescendants(memberDecl, $.array_subscripts)) {
+    return true;
+  }
+  for (const anc of db.ast.getAncestors(memberDecl, 0, targetCls)) {
+    if (db.ast.getType(anc) == $.component_clause) {
+      for (const sub of db.ast.getDescendants(anc, $.array_subscripts)) {
+        let insideMember = false;
+        for (const a2 of db.ast.getAncestors(sub, 0, anc)) {
+          if (a2 == memberDecl) {
+            insideMember = true;
+            break;
+          }
+        }
+        if (!insideMember) return true;
+      }
+      break;
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks if a discrete variable is assigned in a continuous equation using 'time' or 'der()' outside a when_equation.
+ */
+export function isDiscreteAssignedOutsideWhen(db: CodeGraph, eqNode: u32, $: Record<string, u16>): boolean {
+  for (const anc of db.ast.getAncestors(eqNode, 0)) {
+    if (db.ast.getType(anc) == $.when_equation) return false;
+  }
+  let lhs = db.ast.getChildByFieldId(eqNode, "lhs");
+  let rhs = db.ast.getChildByFieldId(eqNode, "rhs");
+  if (lhs == 0) lhs = db.ast.getFirstChild(eqNode);
+  if (rhs == 0 && lhs != 0) {
+    let sib = db.ast.getNextSibling(lhs);
+    while (sib != 0) {
+      if (!db.ast.textEquals(sib, "=")) {
+        rhs = sib;
+        break;
+      }
+      sib = db.ast.getNextSibling(sib);
+    }
+  }
+  if (lhs == 0 || rhs == 0) return false;
+  let idCount: u32 = 0;
+  let lhsId: u32 = 0;
+  for (const id of db.ast.getDescendants(lhs, $.identifier)) {
+    idCount++;
+    if (lhsId == 0) lhsId = id;
+  }
+  if (idCount != 1 || lhsId == 0) return false;
+
+  const encClass = getEnclosingClass(db, eqNode, $);
+  if (encClass == 0) return false;
+  const decl = findDeclInClass(db, encClass, lhsId, $);
+  if (decl == 0) return false;
+  let compClause: u32 = 0;
+  for (const anc of db.ast.getAncestors(decl, 0, encClass)) {
+    if (db.ast.getType(anc) == $.component_clause) {
+      compClause = anc;
+      break;
+    }
+  }
+  if (compClause == 0 || !hasTypePrefix(db, compClause, "discrete", $)) return false;
+
+  let hasContinuousTimeOrDer = false;
+  if (db.ast.textEquals(rhs, "time") || db.ast.startsWith(rhs, "der(")) {
+    hasContinuousTimeOrDer = true;
+  }
+  if (!hasContinuousTimeOrDer) {
+    for (const p of db.ast.getDescendants(rhs, $.primary)) {
+      if (db.ast.textEquals(p, "time") || db.ast.startsWith(p, "der(")) {
+        hasContinuousTimeOrDer = true;
+        break;
+      }
+      const callee = getCallCalleeNode(db, p, $);
+      if (callee != 0 && db.ast.textEquals(callee, "sample")) {
+        return false;
+      }
+    }
+  }
+  if (!hasContinuousTimeOrDer) return false;
+  return true;
+}
+
+/**
+ * Checks if a component_clause or its enclosing element has a prefix such as 'inner' or 'outer'.
+ */
+export function hasElementOrTypePrefix(
+  db: CodeGraph,
+  compClause: u32,
+  prefix: string,
+  $: Record<string, u16>,
+): boolean {
+  if (hasTypePrefix(db, compClause, prefix, $)) return true;
+  if (db.ast.startsWith(compClause, prefix)) return true;
+  for (const anc of db.ast.getAncestors(compClause, 0)) {
+    const t = db.ast.getType(anc);
+    if (t == $.element) {
+      if (db.ast.startsWith(anc, prefix)) return true;
+      let ch = db.ast.getFirstChild(anc);
+      while (ch != 0) {
+        if (db.ast.textEquals(ch, prefix)) return true;
+        ch = db.ast.getNextSibling(ch);
+      }
+      break;
+    }
+    if (t == $.class_definition || t == $.composition) break;
+  }
+  return false;
+}
+
+/**
+ * Checks if an outer component_clause has no matching inner declaration in a self-contained document.
+ */
+export function isMissingInnerInDocument(db: CodeGraph, compClause: u32, $: Record<string, u16>): boolean {
+  if (!hasElementOrTypePrefix(db, compClause, "outer", $)) return false;
+  if (hasElementOrTypePrefix(db, compClause, "inner", $)) return false;
+  const encClass = getEnclosingClass(db, compClause, $);
+  if (encClass != 0 && isClassKind(db, encClass, "partial")) return false;
+
+  let outerId: u32 = 0;
+  for (const decl of db.ast.getDescendants(compClause, $.declaration)) {
+    for (const id of db.ast.getDescendants(decl, $.identifier)) {
+      outerId = id;
+      break;
+    }
+    if (outerId != 0) break;
+  }
+  if (outerId == 0) return false;
+
+  const root = db.ast.getRootNode();
+  if (root == 0) return false;
+  for (const _ext of db.ast.getDescendants(root, $.extends_clause)) {
+    return false;
+  }
+  for (const otherComp of db.ast.getDescendants(root, $.component_clause)) {
+    if (!hasElementOrTypePrefix(db, otherComp, "inner", $)) continue;
+    for (const decl of db.ast.getDescendants(otherComp, $.declaration)) {
+      for (const id of db.ast.getDescendants(decl, $.identifier)) {
+        if (db.ast.textEqualsNode(id, outerId)) return false;
+        break;
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * Checks if a binary expression directly mixes two different Clock(...) domains or sample() + previous().
+ */
+export function hasMixedClockDomains(db: CodeGraph, exprNode: u32, $: Record<string, u16>): boolean {
+  let unwrapped = exprNode;
+  while (unwrapped != 0 && db.ast.getChildCount(unwrapped) == 1) {
+    unwrapped = db.ast.getFirstChild(unwrapped);
+  }
+  if (unwrapped == 0 || db.ast.getChildCount(unwrapped) != 3) return false;
+  const left = db.ast.getFirstChild(unwrapped);
+  if (left == 0) return false;
+  const op = db.ast.getNextSibling(left);
+  if (op == 0) return false;
+  const right = db.ast.getNextSibling(op);
+  if (right == 0) return false;
+
+  let leftClockArg: u32 = 0;
+  let leftHasPrevious = false;
+  for (const p of db.ast.getDescendants(left, $.primary)) {
+    const fnName = getCallCalleeNode(db, p, $);
+    if (fnName != 0) {
+      if (db.ast.textEquals(fnName, "Clock")) {
+        for (const arg of db.ast.getDescendants(p, $.function_argument)) {
+          leftClockArg = arg;
+          break;
+        }
+      } else if (db.ast.textEquals(fnName, "previous")) {
+        leftHasPrevious = true;
+      }
+    }
+  }
+
+  let rightClockArg: u32 = 0;
+  let rightHasPrevious = false;
+  for (const p of db.ast.getDescendants(right, $.primary)) {
+    const fnName = getCallCalleeNode(db, p, $);
+    if (fnName != 0) {
+      if (db.ast.textEquals(fnName, "Clock")) {
+        for (const arg of db.ast.getDescendants(p, $.function_argument)) {
+          rightClockArg = arg;
+          break;
+        }
+      } else if (db.ast.textEquals(fnName, "previous")) {
+        rightHasPrevious = true;
+      }
+    }
+  }
+
+  if (leftClockArg != 0 && rightClockArg != 0) {
+    return !db.ast.textEqualsNode(leftClockArg, rightClockArg);
+  }
+  if ((leftClockArg != 0 && rightHasPrevious) || (rightClockArg != 0 && leftHasPrevious)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks if the second positional argument (factor) of subSample/superSample/shiftSample/backSample is <= 0.
+ */
+export function hasNonPositiveSampleFactor(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+  let argIdx: u32 = 0;
+  let secondArg: u32 = 0;
+  for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
+    let directCall: u32 = 0;
+    for (const anc of db.ast.getAncestors(arg, 0, callNode)) {
+      if (anc != arg) {
+        const t = db.ast.getType(anc);
+        if (t == $.function_call || (t == $.primary && getCallCalleeNode(db, anc, $) != 0)) {
+          directCall = anc;
+          break;
+        }
+      }
+    }
+    if (directCall != callNode) continue;
+    argIdx++;
+    if (argIdx == 2) {
+      secondArg = arg;
+      break;
+    }
+  }
+  if (secondArg == 0) return false;
+  if (db.ast.textEquals(secondArg, "0") || db.ast.startsWith(secondArg, "-")) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks if previous() is applied to 'time' or a parameter/constant variable.
+ */
+export function isPreviousOnNonClocked(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+  let firstArg: u32 = 0;
+  for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
+    firstArg = arg;
+    break;
+  }
+  if (firstArg == 0) return false;
+  if (db.ast.textEquals(firstArg, "time")) return true;
+  let argId: u32 = 0;
+  for (const id of db.ast.getDescendants(firstArg, $.identifier)) {
+    argId = id;
+    break;
+  }
+  if (argId == 0) return false;
+  if (db.ast.textEquals(argId, "time")) return true;
+
+  const encClass = getEnclosingClass(db, callNode, $);
+  if (encClass == 0) return false;
+  const decl = findDeclInClass(db, encClass, argId, $);
+  if (decl == 0) return false;
+  let compClause: u32 = 0;
+  for (const anc of db.ast.getAncestors(decl, 0, encClass)) {
+    if (db.ast.getType(anc) == $.component_clause) {
+      compClause = anc;
+      break;
+    }
+  }
+  if (compClause == 0) return false;
+  if (hasTypePrefix(db, compClause, "parameter", $) || hasTypePrefix(db, compClause, "constant", $)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks if an impure function is called inside a pure (non-impure) function.
+ */
+export function isImpureCalledInPureFunction(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+  const name = getCallCalleeNode(db, callNode, $);
+  if (name == 0) return false;
+  const callerCls = getEnclosingClass(db, callNode, $);
+  if (callerCls == 0) return false;
+  if (!isClassKind(db, callerCls, "function") || isClassKind(db, callerCls, "impure")) return false;
+  const calledCls = findClassByName(db, name, $);
+  if (calledCls == 0) return false;
+  return isClassKind(db, calledCls, "impure");
+}
+
+/**
+ * Checks if an impure function is called inside a continuous equation_section (outside when_equation).
+ */
+export function isImpureCalledInEquationSection(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+  let inEqSec = false;
+  for (const anc of db.ast.getAncestors(callNode, 0)) {
+    const t = db.ast.getType(anc);
+    if (t == $.when_equation) return false;
+    if (t == $.equation_section) inEqSec = true;
+  }
+  if (!inEqSec) return false;
+  const name = getCallCalleeNode(db, callNode, $);
+  if (name == 0) return false;
+  const calledCls = findClassByName(db, name, $);
+  if (calledCls == 0) return false;
+  return isClassKind(db, calledCls, "impure");
 }

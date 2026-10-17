@@ -1,7 +1,6 @@
 // name:     Import2
 // keywords: import
 // status:   incorrect
-// xfail:    true
 //
 // Import is not inherited through extends.
 //

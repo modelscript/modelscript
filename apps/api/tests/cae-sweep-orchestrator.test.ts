@@ -158,4 +158,22 @@ Parametric Drone Arm Study
     const checkRes = await request(app).get(`/api/v1/cae/sweeps/${cancelSweepId}`).expect(200);
     assert.strictEqual(checkRes.body.status, "cancelled");
   });
+
+  await t.test("POST /api/v1/cae/sweeps: rejects excessive sampleCount (> 200) with 400", async () => {
+    const res = await request(app)
+      .post("/api/v1/cae/sweeps")
+      .send({
+        title: "Excessive Sweep",
+        solver: "calculix",
+        templateDeck: parametricInpTemplate,
+        sampling: {
+          strategy: "lhs",
+          sampleCount: 5000,
+          parameters: [{ name: "DroneArm.thrustForce", min: 100, max: 200 }],
+        },
+      })
+      .expect(400);
+
+    assert.ok(res.body.error.includes("between 1 and 200"));
+  });
 });

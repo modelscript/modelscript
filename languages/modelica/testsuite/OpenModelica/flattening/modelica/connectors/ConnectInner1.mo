@@ -2,7 +2,6 @@
 // name:     ConnectInner1
 // keywords: connect,dynamic scoping
 // status:   correct
-// xfail:    true
 //
 // This demonstrates dynamic scoping for
 // connector variables.

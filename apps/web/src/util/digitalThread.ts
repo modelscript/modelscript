@@ -238,9 +238,8 @@ export function extractDigitalThreadTwins(
 
       // If CAD binding is found
       if (cadRef) {
-        const matchedCadFile = cadFiles.find(
-          (c) => c.path.includes(cadRef!.split("#")[0].replace("cad://", "")) || true,
-        );
+        const cleanCadTarget = cadRef.split("#")[0].replace("cad://", "");
+        const matchedCadFile = cadFiles.find((c) => c.path.includes(cleanCadTarget)) || cadFiles[0];
         twins.push({
           id: `cad-${comp.component_name}-${cadRef}`,
           source: {

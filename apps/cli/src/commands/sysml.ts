@@ -4,9 +4,9 @@ import {
   SysML2ContainerExporter,
   SysML2EnterpriseSyncGateway,
   SysML2ModelInterchange,
-  SysML2TypeChecker,
   createSysML2QueryEngine,
   createSysML2WorkspaceIndex,
+  getSysML2ErrorCodeDef,
   getSysmlParser,
   loadEmbeddedKerMLStdlib,
 } from "@modelscript/sysml2";
@@ -214,11 +214,20 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
 
     const diagnostics: any[] = [];
     const sourceTexts = new Map<string, string>();
+    const astMap = new Map<string, any>();
+
+    const seenDiagKeys = new Set<string>();
+    const pushUniqueDiagnostic = (diag: any) => {
+      const key = `${diag.file}:${diag.line}:${diag.code}:${diag.message}`;
+      if (seenDiagKeys.has(key)) return;
+      seenDiagKeys.add(key);
+      diagnostics.push(diag);
+    };
 
     for (const f of args.files) {
       const filePath = path.resolve(process.cwd(), f);
       if (!fs.existsSync(filePath)) {
-        diagnostics.push({
+        pushUniqueDiagnostic({
           file: f,
           line: 1,
           col: 1,
@@ -231,36 +240,72 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
 
       const text = fs.readFileSync(filePath, "utf-8");
       const uri = `file://${filePath}`;
+      const relPath = path.relative(process.cwd(), filePath) || f;
       sourceTexts.set(uri, text);
 
-      ws.register(uri, () => {
-        const tree = parser.parse(text);
-        if (tree?.rootNode?.hasError && tree.rootNode.hasError()) {
-          diagnostics.push({
-            file: f,
+      const tree = parser.parse(text);
+      const ast = tree ? (tree.rootNode as any) : null;
+      if (ast) {
+        astMap.set(uri, ast);
+        const facade = (tree as any)?.facade ?? ast?.tree?.facade;
+        if (facade && typeof facade.getDiagnostics === "function") {
+          const rootPtr = ast.id ?? ast.ptr ?? 0;
+          if (rootPtr) {
+            if (typeof facade.loadSource === "function") facade.loadSource(text);
+            for (const cd of facade.getDiagnostics(rootPtr, 0, 0, text)) {
+              const codeNum = typeof cd.code === "number" ? cd.code : 1001;
+              const def = getSysML2ErrorCodeDef(codeNum);
+              const pos = byteToLineCol(text, cd.startByte ?? 0);
+              pushUniqueDiagnostic({
+                file: relPath,
+                line: pos.line,
+                col: pos.col,
+                code: `S${codeNum}`,
+                rule: def?.rule || "syntax",
+                severity: cd.severity === 1 ? "error" : cd.severity === 2 ? "warning" : def?.severity || "error",
+                message: cd.message || def?.message("Syntax error") || "Syntax error",
+              });
+            }
+          }
+        } else if (ast.hasError && ast.hasError()) {
+          pushUniqueDiagnostic({
+            file: relPath,
             line: 1,
             col: 1,
             code: "S1001",
+            rule: "parse-error",
             severity: "error",
             message: "Syntax error detected by native WASM GLR parser",
           });
         }
-        return tree ? (tree.rootNode as any) : null;
-      });
+      }
+      ws.register(uri, () => ast, text);
     }
 
     const unified = await ws.toUnifiedAsync();
-    const qe = createSysML2QueryEngine(unified);
-    const db = qe.toQueryDB();
+    const cstProvider = {
+      getText: (startByte: number, endByte: number, entry?: any) => {
+        if (!entry || !entry.resourceId) return null;
+        const text = sourceTexts.get(entry.resourceId);
+        return text ? text.slice(startByte, endByte) : null;
+      },
+      getNode: (startByte: number, endByte: number, entry?: any) => {
+        if (!entry || !entry.resourceId) return null;
+        const ast = astMap.get(entry.resourceId);
+        if (!ast || typeof ast.descendantForIndex !== "function") return null;
+        return ast.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+      },
+    };
+    const qe = createSysML2QueryEngine(unified, cstProvider as any);
 
-    // Run semantic linter queries
+    // Run semantic & formal verification linter queries
     for (const [uri, text] of sourceTexts.entries()) {
-      const relPath = path.relative(process.cwd(), uri.replace(/^file:\/\//, ""));
+      const relPath = path.relative(process.cwd(), uri.replace(/^file:\/\//, "")) || uri.replace(/^file:\/\//, "");
       const entryLints = qe.runAllLints(uri);
       for (const l of entryLints) {
         if (!l) continue;
         const pos = byteToLineCol(text, l.startByte ?? 0);
-        diagnostics.push({
+        pushUniqueDiagnostic({
           file: relPath,
           line: pos.line,
           col: pos.col,
@@ -269,48 +314,6 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
           severity: l.severity || "warning",
           message: l.message,
         });
-      }
-    }
-
-    // Run static type checking
-    const typeChecker = new SysML2TypeChecker(db);
-    for (const entry of db.allEntries()) {
-      if (!entry.resourceId || !sourceTexts.has(entry.resourceId)) continue;
-      const text = sourceTexts.get(entry.resourceId)!;
-      const relPath = path.relative(process.cwd(), entry.resourceId.replace(/^file:\/\//, ""));
-
-      // Check feature assignments
-      if (entry.ruleName === "AttributeUsage" || entry.ruleName === "PartUsage") {
-        const typeDiag = typeChecker.checkFeatureAssignmentType(entry.id);
-        if (typeDiag) {
-          const pos = byteToLineCol(text, entry.startByte ?? 0);
-          diagnostics.push({
-            file: relPath,
-            line: pos.line,
-            col: pos.col,
-            code: typeDiag.code ? `S${typeDiag.code}` : "S3001",
-            rule: (typeDiag as any).rule || "type-checking",
-            severity: typeDiag.severity,
-            message: typeDiag.message,
-          });
-        }
-      }
-
-      // Check connection compatibility
-      if (entry.ruleName === "ConnectionUsage" || entry.ruleName === "BindingConnectorAsUsage") {
-        const connDiag = typeChecker.checkConnectionTypeCompatibility(entry.id);
-        if (connDiag) {
-          const pos = byteToLineCol(text, entry.startByte ?? 0);
-          diagnostics.push({
-            file: relPath,
-            line: pos.line,
-            col: pos.col,
-            code: connDiag.code ? `S${connDiag.code}` : "S3002",
-            rule: (connDiag as any).rule || "connection-compatibility",
-            severity: connDiag.severity,
-            message: connDiag.message,
-          });
-        }
       }
     }
 

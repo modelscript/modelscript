@@ -109,7 +109,9 @@ function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, 
   ghost.style.overflow = "hidden";
 
   if (iconSvg && iconSvg.includes("<svg")) {
-    ghost.innerHTML = iconSvg;
+    ghost.innerHTML = DOMPurify.sanitize(iconSvg, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+    });
     const svgEl = ghost.querySelector("svg");
     if (svgEl) {
       svgEl.setAttribute("width", "36");

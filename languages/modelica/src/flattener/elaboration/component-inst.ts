@@ -25,7 +25,10 @@ import {
   cyclicDimensionDiagnostics,
   getShortClassSpecifierNode,
   isScopeEncapsulated,
+  isSymbolEncapsulated,
+  resolveQualified,
   validateEnumeration,
+  type ScopeData,
 } from "../../queries.js";
 import {
   castToRealExpr,
@@ -36,18 +39,20 @@ import {
   exprContainsNameRef,
   extractEnumLiteralsFromCst,
   formatArenaValForMod,
-  generateArrayIndices,
   generateArrayTuples,
   getArrayCtorElements,
   getArrayLiteralItems,
+  getBaseEnumSymbol,
   getExprDims,
   getIndexedElementText,
+  getSymbolEnumLiterals,
   getSymbolQualifiedName,
   isArrayLiteral,
   isRealExpr,
   mulWithSimplification,
   parseArrayLiteralElements,
   parseRawLiteralArg,
+  resolveEnumType,
   resolveScopedName,
   splitTopLevel,
   splitTopLevelArgs,
@@ -420,7 +425,7 @@ export function classFindMember(
   for (const child of flattener.db.childrenOf(classId)) {
     if (child.kind === "Extends") {
       const base = resolveExtendsBase(flattener, child, classId);
-      if (base && base.kind === "Class") {
+      if (base && (base.kind === "Class" || base.kind === "Package")) {
         const found = classFindMember(flattener, base.id, name, visited);
         if (found) return found;
       }
@@ -505,6 +510,14 @@ export function validateClassModifiers(
 
     // 2. Redeclaration checks
     if (arg.isRedeclaration) {
+      if (!arg.name) {
+        dae.diagnostics.push({
+          severity: "error",
+          code: ModelicaErrorCode.PARSE_ERROR.code,
+          message: "Internal error Unknown redeclare in NFSCodeFlattenImports.flattenRedeclare",
+        });
+        return false;
+      }
       const targetMember = classFindMember(flattener, targetClassId, arg.name);
       if (!targetMember) {
         // Element not found in class (NonexistentRedeclareModifier1 & 2)
@@ -666,6 +679,53 @@ export function validateClassModifiers(
           } else if (!isTargetGeneric) {
             const isSubset = rhsLits.every((l) => targetLits.includes(l));
             if (!isSubset) {
+              if (dae.extensionMetadata?.isOldFrontend) {
+                const missingLit = targetLits.find((l) => !rhsLits.includes(l)) ?? targetLits[0];
+                const missingRef = `${targetMember.name}.${missingLit}`;
+                const targetClassCst = flattener.db.cstNode(targetClassId) as any;
+                const findEq = (n: any): any => {
+                  if (!n) return null;
+                  if (n.type === "simple_equation" && n.text?.includes(missingRef)) return n;
+                  for (const ch of n.children || []) {
+                    const found = findEq(ch);
+                    if (found) return found;
+                  }
+                  return null;
+                };
+                const eqNode = findEq(targetClassCst) ?? errNode;
+                const lhsText = eqNode?.child?.(0)?.text?.trim() ?? eqNode?.children?.[0]?.text?.trim();
+                const classFqn = getSymbolQualifiedName(flattener.db, targetClassId) ?? targetClassName;
+                const compClauseNode =
+                  arg.cstNode?.parent?.parent?.parent ??
+                  (flattener.currentClassId ? (flattener.db.cstNode(flattener.currentClassId) as any) : null);
+                let instName = "tt";
+                if (compClauseNode?.text && arg.modText) {
+                  const m = new RegExp(`(\\w+)\\s*\\([^)]*${arg.name}`).exec(compClauseNode.text);
+                  if (m?.[1]) instName = m[1];
+                }
+                const scopeName = `${classFqn}$${instName}`;
+                const eqRange = {
+                  startByte: eqNode?.startIndex ?? eqNode?.startByte,
+                  endByte: eqNode?.endIndex ?? eqNode?.endByte,
+                  startPosition: eqNode?.startPosition,
+                  endPosition: eqNode?.endPosition,
+                };
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+                  message: ModelicaErrorCode.VARIABLE_NOT_FOUND.message(missingRef, scopeName),
+                  range: eqRange,
+                });
+                if (lhsText && lhsText !== missingRef) {
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+                    message: ModelicaErrorCode.VARIABLE_NOT_FOUND.message(lhsText, scopeName),
+                    range: eqRange,
+                  });
+                }
+                return false;
+              }
               dae.diagnostics.push({
                 severity: "notification",
                 code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
@@ -709,9 +769,6 @@ export function instantiateElements(
   flattener.currentParentMods = parentMods;
   const state = getFlatteningState(dae, flattener);
   try {
-    if (prefix === "") {
-      cyclicDimensionDiagnostics.clear();
-    }
     const compInstMap = new Map<SymbolId, ComponentInstanceData | undefined>();
     const declaredNames = new Set<string>();
     for (const elemId of elements) {
@@ -991,6 +1048,8 @@ export function instantiateElements(
 
         if (
           dae.classKind === "function" &&
+          !dae.extensionMetadata?.isOldFrontend &&
+          !(flattener as any).options?.isOldFrontend &&
           !compInst.isProtected &&
           compInst.causality !== "input" &&
           compInst.causality !== "output" &&
@@ -1655,6 +1714,13 @@ export function instantiateElements(
             }
 
             const varIdx = dae.addVariable(dae.interner.intern(name), varType, variability, causality, 0.0);
+            if (parentMods?.outerArrayDims && parentMods.outerArrayDims.length > 0) {
+              dae.setVarShape(varIdx, parentMods.outerArrayDims);
+              dae.setVarShapeExprs(
+                varIdx,
+                parentMods.outerArrayDims.map((od: number) => dae.addIntLiteral(od)),
+              );
+            }
             validateFunctionComponentDeclaration(flattener, dae, compInst, causality, false, elemCst);
             if (isComponentHidden(flattener, elemId)) {
               dae.hiddenVarIndices.add(varIdx);
@@ -1671,8 +1737,20 @@ export function instantiateElements(
             if (sb != null && eb != null) {
               dae.setVarSourceRange(varIdx, sb, eb);
             }
-            if (compInst.flowPrefix === "flow") dae.setVarFlow(varIdx, true);
-            if (compInst.flowPrefix === "stream") dae.setVarStream(varIdx, true);
+            if (
+              compInst.flowPrefix === "flow" ||
+              (sym?.metadata as any)?.flowPrefix === "flow" ||
+              parentMods?.parentFlowPrefix === "flow"
+            ) {
+              dae.setVarFlow(varIdx, true);
+            }
+            if (
+              compInst.flowPrefix === "stream" ||
+              (sym?.metadata as any)?.flowPrefix === "stream" ||
+              parentMods?.parentFlowPrefix === "stream"
+            ) {
+              dae.setVarStream(varIdx, true);
+            }
             if (compInst.isFinal) dae.setVarFinal(varIdx, true);
 
             const descText = extractDescription(flattener.db.cstNode(elemId));
@@ -1779,42 +1857,76 @@ export function instantiateElements(
                         );
                       }
                     } else {
-                      try {
-                        const scopeId = parentMods?.packageScopeId ?? flattener.db.symbol(elemId)?.parentId;
-                        const evalVal = flattener.db.evaluate(rawText, scopeId ?? undefined);
-                        if (typeof evalVal === "number") {
-                          attrExprId =
-                            varType === VarType.Integer
-                              ? dae.addIntLiteral(Math.trunc(evalVal))
-                              : dae.addRealLiteral(evalVal);
-                        } else if (typeof evalVal === "string") {
-                          attrExprId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(evalVal));
+                      let resolvedT = /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(rawText)
+                        ? resolveScopedName(rawText, prefix, dae)
+                        : rawText;
+                      let isDaeVar =
+                        arg.name === "start" &&
+                        (dae.getVarIdxByName(resolvedT) >= 0 || dae.getVarIdxByName(`${resolvedT}[1]`) >= 0);
+                      if (!isDaeVar && arg.name === "start" && prefix && /^[a-zA-Z_]\w*$/.test(rawText)) {
+                        const siblingComp =
+                          (elemParentId
+                            ? flattener.db
+                                .childrenOf(elemParentId)
+                                ?.some((c: any) => c.kind === "Component" && c.name === rawText)
+                            : false) ||
+                          (flattener.currentClassId
+                            ? flattener.db
+                                .childrenOf(flattener.currentClassId)
+                                ?.some((c: any) => c.kind === "Component" && c.name === rawText)
+                            : false);
+                        if (siblingComp) {
+                          resolvedT = `${prefix}.${rawText}`;
+                          isDaeVar = true;
                         }
-                        if (evalVal !== null && flattener.options.omcCompatibility) {
-                          const idMatches = rawText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-                          if (idMatches) {
-                            for (const id of idMatches) {
-                              if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
-                                continue;
-                              let p: string | undefined = prefix;
-                              while (p) {
-                                const cand = `${p}.${id}`;
-                                const idx = dae.getVarIdxByName(cand);
-                                if (idx >= 0 && dae.getVarVariability(idx) === Variability.Parameter) {
-                                  dae.setVarFinal(idx, true);
-                                  break;
+                      }
+                      if (
+                        isDaeVar &&
+                        !rawText.includes("(") &&
+                        !rawText.includes("+") &&
+                        !rawText.includes("-") &&
+                        !rawText.includes("*") &&
+                        !rawText.includes("/")
+                      ) {
+                        attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedT));
+                      } else {
+                        try {
+                          const scopeId = parentMods?.packageScopeId ?? flattener.db.symbol(elemId)?.parentId;
+                          const evalVal = flattener.db.evaluate(rawText, scopeId ?? undefined);
+                          if (typeof evalVal === "number") {
+                            attrExprId =
+                              varType === VarType.Integer
+                                ? dae.addIntLiteral(Math.trunc(evalVal))
+                                : dae.addRealLiteral(evalVal);
+                          } else if (typeof evalVal === "string") {
+                            attrExprId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(evalVal));
+                          }
+                          if (evalVal !== null && flattener.options.omcCompatibility) {
+                            const idMatches = rawText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
+                            if (idMatches) {
+                              for (const id of idMatches) {
+                                if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
+                                  continue;
+                                let p: string | undefined = prefix;
+                                while (p) {
+                                  const cand = `${p}.${id}`;
+                                  const idx = dae.getVarIdxByName(cand);
+                                  if (idx >= 0 && dae.getVarVariability(idx) === Variability.Parameter) {
+                                    dae.setVarFinal(idx, true);
+                                    break;
+                                  }
+                                  const dot = p.lastIndexOf(".");
+                                  p = dot !== -1 ? p.substring(0, dot) : undefined;
                                 }
-                                const dot = p.lastIndexOf(".");
-                                p = dot !== -1 ? p.substring(0, dot) : undefined;
-                              }
-                              const rootIdx = dae.getVarIdxByName(id);
-                              if (rootIdx >= 0 && dae.getVarVariability(rootIdx) === Variability.Parameter) {
-                                dae.setVarFinal(rootIdx, true);
+                                const rootIdx = dae.getVarIdxByName(id);
+                                if (rootIdx >= 0 && dae.getVarVariability(rootIdx) === Variability.Parameter) {
+                                  dae.setVarFinal(rootIdx, true);
+                                }
                               }
                             }
                           }
-                        }
-                      } catch {}
+                        } catch {}
+                      }
                     }
                   }
                   if (attrExprId !== null) {
@@ -1848,10 +1960,11 @@ export function instantiateElements(
             Boolean(parentMods?.protectedNames?.has(compInst.name)));
 
         const name = prefix ? `${prefix}.${compInst.name}` : compInst.name;
-        const meta = (flattener.db.symbol(elemId)?.metadata as any) || {};
+        const elemSym = flattener.db.symbol(elemId);
+        const meta = (elemSym?.metadata as any) || {};
 
         let classTargetId = compInst.classInstance;
-        if (flattener.currentClassId && compInst.typeSpecifier) {
+        if (flattener.currentClassId && compInst.typeSpecifier && flattener.currentClassId !== elemSym?.parentId) {
           const origClassSym = classTargetId ? flattener.db.symbol(classTargetId) : null;
           if (origClassSym && origClassSym.parentId !== null) {
             const scopeTarget = compInst.typeSpecifier.includes(".")
@@ -1873,12 +1986,10 @@ export function instantiateElements(
             }
           }
         }
-        const isCurrentScopeEncapsulated = flattener.currentClassId
-          ? isScopeEncapsulated(flattener.db, flattener.currentClassId)
-          : false;
+        const elemParent = elemSym?.parentId ?? flattener.currentClassId;
+        const isCurrentScopeEncapsulated = elemParent ? isScopeEncapsulated(flattener.db, elemParent) : false;
         if (!classTargetId && compInst.typeSpecifier) {
           if (compInst.typeSpecifier.includes(".")) {
-            const elemParent = flattener.db.symbol(elemId)?.parentId;
             if (elemParent !== null && elemParent !== undefined) {
               const parentResolver = flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", elemParent);
               const resolved = parentResolver?.(compInst.typeSpecifier);
@@ -1886,21 +1997,27 @@ export function instantiateElements(
                 classTargetId = resolved.id;
               }
             }
-            if (!classTargetId && !isCurrentScopeEncapsulated) {
-              const rootResolver = flattener.db.query<(n: string) => SymbolEntry | null>(
-                "resolveName",
-                flattener.currentRootClassId,
+          } else {
+            if (elemParent !== null && elemParent !== undefined) {
+              const parentResolver = flattener.db.query<(n: string) => SymbolEntry | null>(
+                "resolveSimpleName",
+                elemParent,
               );
-              const resolved = rootResolver?.(compInst.typeSpecifier);
+              const resolved = parentResolver?.(compInst.typeSpecifier);
               if (resolved && (resolved.kind === "Class" || (resolved.metadata as any)?.classKind === "type")) {
                 classTargetId = resolved.id;
               }
             }
-          } else if (!isCurrentScopeEncapsulated) {
-            const candidates = flattener.db.byName(compInst.typeSpecifier);
-            const found = candidates.find((c) => c.kind === "Class" || (c.metadata as any)?.classKind === "type");
-            if (found) {
-              classTargetId = found.id;
+            if (!classTargetId && !isCurrentScopeEncapsulated) {
+              const candidates = flattener.db.byName(compInst.typeSpecifier);
+              const found = candidates.find(
+                (c) =>
+                  (c.parentId === null || (c.metadata as any)?.isPredefined) &&
+                  (c.kind === "Class" || (c.metadata as any)?.classKind === "type"),
+              );
+              if (found) {
+                classTargetId = found.id;
+              }
             }
           }
         }
@@ -1909,8 +2026,22 @@ export function instantiateElements(
           compInst.typeSpecifier === "Real" ||
           compInst.typeSpecifier === "Integer" ||
           compInst.typeSpecifier === "Boolean" ||
-          compInst.typeSpecifier === "String";
-        if (!classTargetId && !isPrimitive && isCurrentScopeEncapsulated) {
+          compInst.typeSpecifier === "String" ||
+          compInst.typeSpecifier === "Clock" ||
+          compInst.typeSpecifier === "StateSelect" ||
+          compInst.typeSpecifier === "ExternalObject" ||
+          compInst.typeSpecifier === "AssertionLevel" ||
+          Boolean(compInst.typeSpecifier?.startsWith("enumeration"));
+        const hasPendingRedecl = Boolean(
+          parentMods?.args?.some(
+            (a: any) =>
+              a.isRedeclaration &&
+              (a.name === compInst.name ||
+                a.name === compInst.typeSpecifier ||
+                (compInst.typeSpecifier && a.name === compInst.typeSpecifier.split(".").pop())),
+          ),
+        );
+        if (!classTargetId && !isPrimitive && !hasPendingRedecl && compInst.typeSpecifier) {
           let clauseNode: any = elemCst;
           while (clauseNode && clauseNode.type !== "component_clause") {
             clauseNode = clauseNode.parent;
@@ -1930,8 +2061,137 @@ export function instantiateElements(
                   endByte: elemCst.endIndex ?? elemCst.endByte,
                 }
               : undefined;
-          const scopeSym = flattener.currentClassId ? flattener.db.symbol(flattener.currentClassId) : null;
-          const scopeName = scopeSym?.name ?? "scope";
+          const declClassId = elemSym?.parentId ?? flattener.currentClassId;
+          if (compInst.typeSpecifier.includes(".") && declClassId) {
+            const parts = compInst.typeSpecifier.split(".");
+            let curSym =
+              flattener.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", declClassId)?.(parts[0]!) ??
+              null;
+            let importedSegment: string | null = null;
+            for (let i = 1; i < parts.length && curSym; i++) {
+              const part = parts[i]!;
+              const nextMember = flattener.db.query<
+                (n: string, enc?: boolean, skip?: boolean, mem?: boolean) => SymbolEntry | null
+              >("resolveSimpleName", curSym.id)?.(part, false, false, true);
+              if (!nextMember) {
+                const curScope = flattener.db.query<ScopeData | null>(
+                  "scopeData",
+                  flattener.db.baseOf(curSym.id) ?? curSym.id,
+                );
+                const isImportedInCur =
+                  Boolean(curScope?.qualifiedImports?.[part]) ||
+                  Boolean(curScope?.compoundImports?.some((ci) => ci.names.includes(part))) ||
+                  Boolean(
+                    curScope?.unqualifiedImportPkgs?.some((pkg) => {
+                      const pkgSym = resolveQualified(flattener.db, pkg, true);
+                      return pkgSym ? flattener.db.childrenOf(pkgSym.id).some((c) => c.name === part) : false;
+                    }),
+                  );
+                if (isImportedInCur) {
+                  importedSegment = part;
+                }
+                break;
+              }
+              curSym = nextMember;
+            }
+            if (importedSegment) {
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+                message: `Found imported name '${importedSegment}' while looking up composite name '${compInst.typeSpecifier}'.`,
+                range: compRange,
+              });
+              break;
+            }
+          }
+          const firstPart = compInst.typeSpecifier.split(".")[0]!;
+          if (declClassId) {
+            const importChildren = flattener.db.childrenOf(declClassId).filter((c) => c.kind === "Import");
+            const matchingQualImports: { sym: SymbolEntry; pkgName: string; shortName: string }[] = [];
+            const matchingUnqualImports: SymbolEntry[] = [];
+            for (const imp of importChildren) {
+              const impMeta = imp.metadata as Record<string, unknown>;
+              const impCst = flattener.db.cstNode(imp.id) as any;
+              const impText: string = impCst?.text ?? "";
+              const aliasNode = impCst ? Cst.ImportClause.alias(impCst) : null;
+              const importListNode = impCst ? Cst.ImportClause.importList(impCst) : null;
+              const pkgName = String(impMeta?.packageName ?? imp.name ?? "");
+              if (/\.\s*\*/.test(impText) || impMeta?.importKind === "unqualified") {
+                const pkgSym = resolveQualified(flattener.db, pkgName, true);
+                if (
+                  pkgSym &&
+                  flattener.db.childrenOf(pkgSym.id).some((c) => c.name === firstPart && c.kind !== "Reference")
+                ) {
+                  matchingUnqualImports.push(imp);
+                }
+              } else if (!importListNode && impMeta?.importKind !== "compound") {
+                const shortName = String(aliasNode?.text ?? impMeta?.shortName ?? pkgName.split(".").pop() ?? pkgName);
+                if (shortName === firstPart) {
+                  matchingQualImports.push({ sym: imp, pkgName, shortName });
+                }
+              }
+            }
+            const getImpRange = (sym: SymbolEntry) => {
+              const n = flattener.db.cstNode(sym.id) as any;
+              return n
+                ? {
+                    startPosition: n.startPosition,
+                    endPosition: n.endPosition,
+                    startByte: n.startIndex ?? n.startByte,
+                    endByte: n.endIndex ?? n.endByte,
+                  }
+                : undefined;
+            };
+            if (matchingQualImports.length > 1) {
+              const firstImp = matchingQualImports[0]!.sym;
+              const secondImp = matchingQualImports[1]!.sym;
+              dae.diagnostics.push({
+                severity: "notification",
+                code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
+                message: "From here:",
+                range: getImpRange(firstImp),
+              });
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+                message: `Qualified import name ${firstPart} already exists in this scope.`,
+                range: getImpRange(secondImp),
+              });
+            } else if (matchingQualImports.length === 1) {
+              const impInfo = matchingQualImports[0]!;
+              const resolvedImp = resolveQualified(flattener.db, impInfo.pkgName, true);
+              if (!resolvedImp) {
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+                  message: `Import ${impInfo.pkgName} not found in scope <top>.`,
+                  range: getImpRange(impInfo.sym),
+                });
+              }
+            } else if (matchingUnqualImports.length > 1) {
+              const firstImp = matchingUnqualImports[0]!;
+              const secondImp = matchingUnqualImports[1]!;
+              dae.diagnostics.push({
+                severity: "notification",
+                code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
+                message: "From here:",
+                range: getImpRange(firstImp),
+              });
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+                message: `${firstPart} found in several unqualified import statements.`,
+                range: getImpRange(secondImp),
+              });
+            }
+          }
+          const scopeSym = declClassId ? flattener.db.symbol(declClassId) : null;
+          const scopeName =
+            scopeSym && isSymbolEncapsulated(flattener.db, scopeSym)
+              ? scopeSym.name
+              : declClassId
+                ? getSymbolQualifiedName(flattener.db, declClassId)
+                : (scopeSym?.name ?? "scope");
           dae.diagnostics.push({
             severity: "error",
             code: ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
@@ -2385,6 +2645,7 @@ export function instantiateElements(
         const isConnector = isConnectorClass && !isShortConnector;
         if (
           isConnector &&
+          !dae.extensionMetadata?.isOldFrontend &&
           (compInst.variability === "parameter" ||
             compInst.variability === "constant" ||
             parentMods?.parentVariability === Variability.Parameter ||
@@ -2720,13 +2981,33 @@ export function instantiateElements(
           }
 
           if (dae.classKind === "function" && classTarget && flattener.isFunctionSym(classTarget)) {
-            dae.addVariable(
+            const fnVarIdx = dae.addVariable(
               dae.interner.intern(name),
               VarType.Real,
               Variability.Continuous,
               compInst.causality === "input" ? Causality.Input : Causality.Local,
               0.0,
             );
+            const instIds = flattener.db.query<SymbolId[]>("instantiate", classTarget.id);
+            const chs =
+              instIds && instIds.length > 0
+                ? instIds.map((id) => flattener.db.symbol(id)).filter((s): s is SymbolEntry => Boolean(s))
+                : flattener.db.childrenOf(classTarget.id) || [];
+            const inParts: string[] = [];
+            const outParts: string[] = [];
+            for (const ch of chs) {
+              if (ch.kind === "Component") {
+                const ci = flattener.db.query<ComponentInstanceData>("componentInstance", ch.id);
+                const t = ci?.typeSpecifier ?? "Real";
+                if (ci?.causality === "input") {
+                  inParts.push(`#${t} ${ch.name}`);
+                } else if (ci?.causality === "output") {
+                  outParts.push(`#${t}`);
+                }
+              }
+            }
+            const outStr = outParts.length === 0 ? "()" : outParts.join(", ");
+            dae.setVarCustomType(fnVarIdx, `${compInst.name}<function>(${inParts.join(", ")}) => ${outStr}`);
             (state.formalFunctionParams ??= new Map<string, { targetSymId: SymbolId; targetName: string }>()).set(
               name,
               {
@@ -2865,7 +3146,7 @@ export function instantiateElements(
           const recordCtorArgs: any[] = [];
           let resolvedPkgRecordConst = false;
           let isContinuousRecordCtorEq = false;
-          if (isRecordTarget) {
+          if (isRecordTarget && !hasOpRecBinding) {
             const bText = (
               matchingParentArg?.value?.text ??
               matchingClassArg?.value?.text ??
@@ -2978,15 +3259,25 @@ export function instantiateElements(
                   const rawArgs = splitTopLevelArgs(ctorCallMatch[2]!);
                   const evalArgs: any[] = [];
                   for (const argStr of rawArgs) {
-                    const num = Number(argStr.trim());
+                    const ap = argStr.trim();
+                    const num = Number(ap);
                     if (!isNaN(num)) {
                       evalArgs.push(num);
-                    } else if (argStr.trim() === "true") {
+                    } else if (ap === "true") {
                       evalArgs.push(true);
-                    } else if (argStr.trim() === "false") {
+                    } else if (ap === "false") {
                       evalArgs.push(false);
                     } else {
-                      evalArgs.push(null);
+                      const scopedAp = prefix ? `${prefix}.${ap}` : ap;
+                      let vIdx = dae.lookupVariable(scopedAp);
+                      if (vIdx < 0) vIdx = dae.lookupVariable(ap);
+                      if (vIdx >= 0) {
+                        const sv = dae.getVarExpression(vIdx);
+                        const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
+                        evalArgs.push(val !== null && val !== undefined ? val : null);
+                      } else {
+                        evalArgs.push(null);
+                      }
                     }
                   }
                   if (evalArgs.every((a) => a !== null)) {
@@ -3044,7 +3335,9 @@ export function instantiateElements(
           const isRecordVarRef =
             !resolvedPkgRecordConst &&
             parentMods?.bindingExpression?.text &&
-            /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(parentMods.bindingExpression.text.trim());
+            /^[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?(?:\.[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?)*$/.test(
+              parentMods.bindingExpression.text.trim(),
+            );
           const parentBoundRecordField = isRecordVarRef
             ? { kind: "expression", text: `${parentMods.bindingExpression.text.trim()}.${compInst.name}` }
             : null;
@@ -3130,6 +3423,13 @@ export function instantiateElements(
                 : compInst?.causality === "output"
                   ? Causality.Output
                   : parentMods?.parentCausality,
+            parentFlowPrefix: isConnector
+              ? ((compInst?.flowPrefix && compInst.flowPrefix !== "unspecified" ? compInst.flowPrefix : undefined) ??
+                ((meta as any)?.flowPrefix && (meta as any).flowPrefix !== "unspecified"
+                  ? (meta as any).flowPrefix
+                  : undefined) ??
+                parentMods?.parentFlowPrefix)
+              : undefined,
             isFinal: compInst?.isFinal || (meta as any)?.isFinal || parentMods?.isFinal,
           };
           const childEnvPtr = wasmEnv ? wasmEnv.lookupNested(dae.interner.intern(compInst.name)) : 0;
@@ -3298,6 +3598,7 @@ export function instantiateElements(
                       idm,
                     ];
                     for (const c of candidates) {
+                      ((state as any).pendingFinalParamNames ??= new Set<string>()).add(c);
                       const vi = dae.lookupVariable(c);
                       if (
                         !dae.extensionMetadata?.isOldFrontend &&
@@ -3423,6 +3724,7 @@ export function instantiateElements(
               }
             }
             if (flattener.options.arrayMode === "preserve") {
+              setNamedArrayShape(dae, name, arrayDims);
               if (classTargetId && flattener.isExpandableConnectorClass(classTargetId)) {
                 flattener.expandableBuses.set(name, classTargetId);
               }
@@ -3438,10 +3740,37 @@ export function instantiateElements(
                 };
                 instantiateElements(flattener, subElements, name, dae, preserveSubMod);
                 flattener.currentImports = prevImports;
+                if (dae.diagnostics.some((d) => d.code === 2012 || d.code === 2013)) break;
               }
               continue;
             }
-            const indices = generateArrayIndices(arrayDims);
+            const userDimLabels: (string[] | null)[] = [];
+            if (rawDimsComp) {
+              for (const d of rawDimsComp) {
+                const dText = d?.text?.trim() ?? "";
+                if (dText === "Boolean") {
+                  userDimLabels.push(["false", "true"]);
+                } else if (dText) {
+                  const scopeId =
+                    flattener.db.symbol(elemId)?.parentId ??
+                    flattener.currentClassId ??
+                    flattener.currentRootClassId ??
+                    undefined;
+                  const enumInfo = resolveEnumType(dText, scopeId, flattener.db);
+                  if (enumInfo) {
+                    userDimLabels.push(enumInfo.literals.map((l) => `${enumInfo.qual}.${l}`));
+                  } else {
+                    userDimLabels.push(null);
+                  }
+                } else {
+                  userDimLabels.push(null);
+                }
+              }
+            }
+            const indices = generateArrayTuples(arrayDims).map(
+              (tuple) =>
+                `[${tuple.map((val, dIdx) => (userDimLabels[dIdx] && userDimLabels[dIdx]![val - 1] ? userDimLabels[dIdx]![val - 1] : val)).join(",")}]`,
+            );
             for (let idxNum = 0; idxNum < indices.length; idxNum++) {
               const indexStr = indices[idxNum]!;
               const arrVarName = `${name}${indexStr}`;
@@ -3453,6 +3782,19 @@ export function instantiateElements(
                 const splitArgs = effectiveSubMod.args.map((arg: any) => {
                   const argText = arg?.value?.text?.trim();
                   if (argText && argText.startsWith("{") && argText.endsWith("}")) {
+                    const compMatch = argText.match(/^\{\s*([a-zA-Z_]\w*)\s+for\s+([a-zA-Z_]\w*)\s+in\s+(.+?)\s*\}$/);
+                    if (compMatch && compMatch[1] === compMatch[2] && userDimLabels[0]?.[idxNum]) {
+                      const itemText = userDimLabels[0][idxNum]!;
+                      return {
+                        ...arg,
+                        value: {
+                          ...arg.value,
+                          text: itemText,
+                          kind: "expression",
+                          cstBytes: undefined,
+                        },
+                      };
+                    }
                     const items = parseArrayLiteralElements(argText);
                     if (items.length === indices.length) {
                       const itemText = items[idxNum]!.trim();
@@ -3467,6 +3809,24 @@ export function instantiateElements(
                         },
                       };
                     }
+                  } else if (
+                    argText &&
+                    !arg.each &&
+                    /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(argText) &&
+                    (dae.getVarIdxByName(`${argText}[1]`) >= 0 ||
+                      dae.hasArrayElements(argText) ||
+                      (dae.getVarIdxByName(`${argText}.a`) < 0 && getNamedArrayShape(dae, argText) !== undefined))
+                  ) {
+                    const itemText = `${argText}${indexStr}`;
+                    return {
+                      ...arg,
+                      value: {
+                        ...arg.value,
+                        text: itemText,
+                        kind: "expression",
+                        cstBytes: undefined,
+                      },
+                    };
                   }
                   return arg;
                 });
@@ -3475,10 +3835,25 @@ export function instantiateElements(
                   args: splitArgs,
                 };
               }
-              if (arrayCtorElements && idxNum < arrayCtorElements.length) {
+              const bExprText = elemSubMod.bindingExpression?.text?.trim();
+              if (bExprText && !bExprText.startsWith("{") && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(bExprText)) {
+                elemSubMod = {
+                  ...elemSubMod,
+                  bindingExpression: {
+                    ...elemSubMod.bindingExpression,
+                    text: `${bExprText}${indexStr}`,
+                    cstBytes: undefined,
+                  },
+                };
+              } else if (arrayCtorElements && idxNum < arrayCtorElements.length) {
                 const elemText = arrayCtorElements[idxNum]!.trim();
                 const ctorCallMatch = elemText.match(/^([a-zA-Z0-9_.$]+)\s*\(([\s\S]*)\)$/);
-                if (ctorCallMatch) {
+                if (!ctorCallMatch && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(elemText)) {
+                  elemSubMod = {
+                    ...elemSubMod,
+                    bindingExpression: { kind: "expression", text: elemText },
+                  };
+                } else if (ctorCallMatch) {
                   const ctorName = ctorCallMatch[1]!;
                   const targetBaseName = classTarget?.name ?? compInst.typeSpecifier.split(".").pop();
                   if (ctorName === targetBaseName || ctorName.endsWith(`.${targetBaseName}`)) {
@@ -3577,8 +3952,10 @@ export function instantiateElements(
                 }
                 instantiateElements(flattener, subElements, arrVarName, dae, elemSubMod);
                 flattener.currentImports = prevImports;
+                if (dae.diagnostics.some((d) => d.code === 2012 || d.code === 2013)) break;
               }
             }
+            if (dae.diagnostics.some((d) => d.code === 2012 || d.code === 2013)) break;
           } else {
             if (classTargetId && flattener.isExpandableConnectorClass(classTargetId)) {
               flattener.expandableBuses.set(name, classTargetId);
@@ -3591,6 +3968,7 @@ export function instantiateElements(
               }
               instantiateElements(flattener, subElements, name, dae, effectiveSubMod);
               flattener.currentImports = prevImports;
+              if (dae.diagnostics.some((d) => d.code === 2012 || d.code === 2013)) break;
               if (isContinuousRecordCtorEq) {
                 for (const rArg of recordCtorArgs) {
                   if (rArg.name) {
@@ -3614,12 +3992,37 @@ export function instantiateElements(
 
         let varType = VarType.Real;
         let effectiveTypeSpec = effectiveType ?? compInst?.typeSpecifier;
+        const buildFunctionParamCustomType = (): string | null => {
+          if (dae.classKind !== "function" || !classTarget || !flattener.isFunctionSym(classTarget)) return null;
+          const instIds = flattener.db.query<SymbolId[]>("instantiate", classTarget.id);
+          const chs =
+            instIds && instIds.length > 0
+              ? instIds.map((id) => flattener.db.symbol(id)).filter((s): s is SymbolEntry => Boolean(s))
+              : flattener.db.childrenOf(classTarget.id) || [];
+          const inParts: string[] = [];
+          const outParts: string[] = [];
+          for (const ch of chs) {
+            if (ch.kind === "Component") {
+              const ci = flattener.db.query<ComponentInstanceData>("componentInstance", ch.id);
+              const t = ci?.typeSpecifier ?? "Real";
+              if (ci?.causality === "input") {
+                inParts.push(`#${t} ${ch.name}`);
+              } else if (ci?.causality === "output") {
+                outParts.push(`#${t}`);
+              }
+            }
+          }
+          const outStr = outParts.length === 0 ? "()" : outParts.join(", ");
+          return `${compInst.name}<function>(${inParts.join(", ")}) => ${outStr}`;
+        };
         let customType: string | null =
           isExtObj && classTargetId
             ? getSymbolQualifiedName(flattener.db, classTargetId)
             : dae.classKind === "function" && isRecordTarget && classTarget
-              ? (effectiveType ?? classTarget.name)
-              : null;
+              ? dae.extensionMetadata?.isOldFrontend && classTarget.parentId
+                ? getSymbolQualifiedName(flattener.db, classTarget.id) || (effectiveType ?? classTarget.name)
+                : (effectiveType ?? classTarget.name)
+              : buildFunctionParamCustomType();
         const typeMods: any[] = [];
         if (isType && classTargetId) {
           let currId: number | null = classTargetId;
@@ -3685,13 +4088,14 @@ export function instantiateElements(
             if (typeTargets.length > 0) enumSym = typeTargets[0];
           }
           if (enumSym) {
-            const targetMeta = enumSym.metadata as any;
+            const baseEnumSym = getBaseEnumSymbol(flattener.db, enumSym) ?? enumSym;
+            const targetMeta = baseEnumSym.metadata as any;
             const isEnum =
               targetMeta?.classPrefixes === "enumeration" ||
               targetMeta?.isEnumeration ||
-              Boolean((flattener.db.cstNode(enumSym.id) as any)?.text?.includes("enumeration("));
+              Boolean((flattener.db.cstNode(baseEnumSym.id) as any)?.text?.includes("enumeration("));
             if (isEnum) {
-              const enumErr = validateEnumeration(flattener.db.cstNode(enumSym.id) as any, enumSym);
+              const enumErr = validateEnumeration(flattener.db.cstNode(baseEnumSym.id) as any, baseEnumSym);
               if (enumErr) {
                 dae.diagnostics.push({
                   severity: "error",
@@ -3705,10 +4109,12 @@ export function instantiateElements(
                 return;
               }
               varType = VarType.Enumeration;
-              if (!customType && enumSym) {
-                customType = getSymbolQualifiedName(flattener.db, enumSym.id);
+              if (!customType && baseEnumSym) {
+                customType = getSymbolQualifiedName(flattener.db, baseEnumSym.id);
               }
-              const enumLits = extractEnumLiteralsFromCst(flattener.db.cstNode(enumSym.id) as any, targetMeta);
+              const enumLits =
+                extractEnumLiteralsFromCst(flattener.db.cstNode(baseEnumSym.id) as any, targetMeta) ??
+                getSymbolEnumLiterals(flattener.db, baseEnumSym);
               if (enumLits) {
                 enumLiterals = enumLits.map((s: string) => ({ stringValue: s }));
               }
@@ -3810,7 +4216,9 @@ export function instantiateElements(
 
         const isParentBoundRecord =
           parentMods?.bindingExpression?.text &&
-          /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(parentMods.bindingExpression.text.trim());
+          /^[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?(?:\.[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?)*$/.test(
+            parentMods.bindingExpression.text.trim(),
+          );
         const isParentBoundField =
           !effectiveParentArg?.value && !effectiveClassArg?.value && Boolean(isParentBoundRecord);
         let effectiveBinding = effectiveParentArg?.value ?? effectiveClassArg?.value;
@@ -4921,6 +5329,10 @@ export function instantiateElements(
                     const inside = t.slice(5, -1).trim();
                     const firstArg = inside.split(",")[0].trim();
                     t = firstArg;
+                  } else if (t.startsWith("ones(")) {
+                    t = varType === VarType.Integer ? "1" : "1.0";
+                  } else if (t.startsWith("zeros(")) {
+                    t = varType === VarType.Integer ? "0" : "0.0";
                   }
                   if (t === "true" || t === "false") {
                     attrExprId = dae.addExpression(ExprKind.BoolLiteral, t === "true" ? 1 : 0);
@@ -4937,16 +5349,31 @@ export function instantiateElements(
                       const enumShort = customType.split(".").pop()!;
                       if (t.startsWith(`${enumShort}.`)) {
                         resolvedT = `${customType}.${t.slice(enumShort.length + 1)}`;
+                      } else if (enumLiterals.some((el: any) => el.stringValue === t)) {
+                        resolvedT = `${customType}.${t}`;
+                      } else if (t.includes(".")) {
+                        const litSuffix = t.split(".").pop()!;
+                        if (enumLiterals.some((el: any) => el.stringValue === litSuffix)) {
+                          resolvedT = `${customType}.${litSuffix}`;
+                        }
                       }
                     }
                     let isDaeVar =
                       dae.getVarIdxByName(resolvedT) >= 0 ||
                       dae.getVarIdxByName(`${resolvedT}[1]`) >= 0 ||
                       isArrayTarget(t);
-                    if (!isDaeVar && bindingPrefix && /^[a-zA-Z_]\w*$/.test(t) && flattener.currentClassId) {
-                      const siblingComp = flattener.db
-                        .childrenOf(flattener.currentClassId)
-                        ?.some((c: any) => c.kind === "Component" && c.name === t);
+                    const elemParentId =
+                      flattener.db.symbol(elemId)?.parentId || flattener.currentClassId || flattener.currentRootClassId;
+                    if (!isDaeVar && bindingPrefix && /^[a-zA-Z_]\w*$/.test(t) && elemParentId) {
+                      const siblingComp =
+                        flattener.db
+                          .childrenOf(elemParentId)
+                          ?.some((c: any) => c.kind === "Component" && c.name === t) ||
+                        (flattener.currentClassId
+                          ? flattener.db
+                              .childrenOf(flattener.currentClassId)
+                              ?.some((c: any) => c.kind === "Component" && c.name === t)
+                          : false);
                       if (siblingComp) {
                         resolvedT = `${bindingPrefix}.${t}`;
                         isDaeVar = true;
@@ -5059,7 +5486,8 @@ export function instantiateElements(
                               if (
                                 err?.code === 4009 ||
                                 err?.message?.includes("causes a cyclic dependency") ||
-                                err?.message?.includes("assert triggered:")
+                                err?.message?.includes("assert triggered:") ||
+                                err?.message?.includes("limit (--eval")
                               ) {
                                 let compClause: any = elemCst;
                                 while (compClause && compClause.type !== "component_clause") {
@@ -5218,6 +5646,7 @@ export function instantiateElements(
                   idm,
                 ];
                 for (const c of candidates) {
+                  ((state as any).pendingFinalParamNames ??= new Set<string>()).add(c);
                   const vi = dae.lookupVariable(c);
                   if (
                     !dae.extensionMetadata?.isOldFrontend &&
@@ -5274,8 +5703,7 @@ export function instantiateElements(
         }
         const preRegisteredShape =
           getNamedArrayShape(dae, fullCompName) ??
-          (prefix ? getNamedArrayShape(dae, `${prefix}.${compInst.name}`) : null) ??
-          getNamedArrayShape(dae, compInst.name);
+          (prefix ? getNamedArrayShape(dae, `${prefix}.${compInst.name}`) : getNamedArrayShape(dae, compInst.name));
         if (preRegisteredShape && preRegisteredShape.length > 0) {
           arrayDims = preRegisteredShape;
         }
@@ -5863,6 +6291,13 @@ export function instantiateElements(
         }
         if (arrayDims && arrayDims.length > 0) {
           setNamedArrayShape(dae, name, arrayDims);
+          (state.namedArrayTypes ??= new Map<string, number>()).set(name, varType);
+          if (varType === VarType.Enumeration && customType && enumLiterals && enumLiterals.length > 0) {
+            ((state as any).namedArrayEnumInfo ??= new Map<string, { qual: string; literals: string[] }>()).set(name, {
+              qual: customType,
+              literals: enumLiterals.map((el: any) => el.stringValue ?? String(el)),
+            });
+          }
           if (
             dae.classKind !== "function" &&
             flattener.options.arrayMode !== "preserve" &&
@@ -6063,12 +6498,48 @@ export function instantiateElements(
             if (finalShape.length > 0) {
               dae.setVarShape(varIdx, finalShape);
             }
-            if (rawDims && rawDims.length > 0) {
+            if (
+              (rawDims && rawDims.length > 0) ||
+              (parentMods?.outerArrayDims && parentMods.outerArrayDims.length > 0)
+            ) {
               const shapeExprIds: number[] = [];
-              for (const d of rawDims) {
+              if (parentMods?.outerArrayDims) {
+                for (const od of parentMods.outerArrayDims) {
+                  shapeExprIds.push(dae.addIntLiteral(od));
+                }
+              }
+              const fnElemNames = new Set<string>();
+              if (dae.classKind === "function") {
+                for (let vi = 0; vi < dae.varCount; vi++) {
+                  if (!dae.isVarRemoved(vi)) fnElemNames.add(dae.getVarName(vi));
+                }
+                for (const eid of elements) {
+                  const es = flattener.db.symbol(eid);
+                  if (es?.kind === "Component") fnElemNames.add(es.name);
+                }
+              }
+              for (let dIdx = 0; dIdx < (rawDims?.length ?? 0); dIdx++) {
+                const d = rawDims![dIdx]!;
                 if (d.kind === "expression") {
                   let exprId = -1;
-                  if (d.cstBytes) {
+                  const dimText = d.text?.trim() ?? "";
+                  const refsFnVar =
+                    dae.classKind === "function" &&
+                    (dimText.match(/[A-Za-z_]\w*/g) ?? []).some((id: string) => fnElemNames.has(id));
+                  if (!refsFnVar && dimText) {
+                    const constDimVal = evaluateCSTNumber(
+                      dimText,
+                      undefined,
+                      flattener.currentClassId ?? undefined,
+                      flattener.db,
+                      dae,
+                      prefix,
+                    );
+                    if (typeof constDimVal === "number" && constDimVal > 0 && Number.isInteger(constDimVal)) {
+                      exprId = dae.addIntLiteral(constDimVal);
+                    }
+                  }
+                  if (exprId < 0 && d.cstBytes) {
                     const elemSym = flattener.db.symbol(elemId);
                     const cstNode = flattener.db.cstNodeRange(
                       d.cstBytes[0],
@@ -6107,15 +6578,25 @@ export function instantiateElements(
               dae.setVarProtected(varIdx, true);
             }
             validateFunctionComponentDeclaration(flattener, dae, compInst, causality, isElemProtected, elemCst);
-            if (compInst?.flowPrefix === "flow" || (meta as any)?.flowPrefix === "flow") {
+            if (
+              compInst?.flowPrefix === "flow" ||
+              (meta as any)?.flowPrefix === "flow" ||
+              parentMods?.parentFlowPrefix === "flow"
+            ) {
               dae.setVarFlow(varIdx, true);
             }
-            if (compInst?.flowPrefix === "stream" || (meta as any)?.flowPrefix === "stream") {
+            if (
+              compInst?.flowPrefix === "stream" ||
+              (meta as any)?.flowPrefix === "stream" ||
+              parentMods?.parentFlowPrefix === "stream"
+            ) {
               dae.setVarStream(varIdx, true);
             }
             if (
               compInst?.isFinal ||
               (meta as any)?.isFinal ||
+              (!dae.extensionMetadata?.isOldFrontend &&
+                (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
               compInst?.name === "nu" ||
               compInst?.name === "enableExternalTrigger" ||
               (isEvaluated && !prefix) ||
@@ -6162,7 +6643,11 @@ export function instantiateElements(
               if (dText === "Boolean") {
                 dimLabels.push(["false", "true"]);
               } else if (dText) {
-                const scopeId = flattener.currentRootClassId ?? flattener.db.symbol(elemId)?.parentId ?? 0;
+                const scopeId =
+                  flattener.db.symbol(elemId)?.parentId ??
+                  flattener.currentClassId ??
+                  flattener.currentRootClassId ??
+                  0;
                 const resolver = flattener.db.query<((name: string) => SymbolEntry | null) | null>(
                   "resolveSimpleName",
                   scopeId,
@@ -6311,15 +6796,25 @@ export function instantiateElements(
               dae.setVarProtected(varIdx, true);
             }
             validateFunctionComponentDeclaration(flattener, dae, compInst, causality, isElemProtected, elemCst);
-            if (compInst?.flowPrefix === "flow" || (meta as any)?.flowPrefix === "flow") {
+            if (
+              compInst?.flowPrefix === "flow" ||
+              (meta as any)?.flowPrefix === "flow" ||
+              parentMods?.parentFlowPrefix === "flow"
+            ) {
               dae.setVarFlow(varIdx, true);
             }
-            if (compInst?.flowPrefix === "stream" || (meta as any)?.flowPrefix === "stream") {
+            if (
+              compInst?.flowPrefix === "stream" ||
+              (meta as any)?.flowPrefix === "stream" ||
+              parentMods?.parentFlowPrefix === "stream"
+            ) {
               dae.setVarStream(varIdx, true);
             }
             if (
               compInst?.isFinal ||
               (meta as any)?.isFinal ||
+              (!dae.extensionMetadata?.isOldFrontend &&
+                (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
               compInst?.name === "nu" ||
               compInst?.name === "enableExternalTrigger" ||
               (isEvaluated && !prefix) ||
@@ -6347,7 +6842,8 @@ export function instantiateElements(
             const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
             const findBindingExprNode = (n: any): any => {
               if (!n) return null;
-              if (n.type === "expression") return n;
+              if (n.type === "type_specifier" || n.type === "array_subscripts") return null;
+              if (n.type === "expression" && n.text?.trim() === bText) return n;
               for (const c of n.children || []) {
                 const res = findBindingExprNode(c);
                 if (res) return res;
@@ -6410,6 +6906,13 @@ export function instantiateElements(
             causality as number,
             0.0,
           );
+          if (parentMods?.outerArrayDims && parentMods.outerArrayDims.length > 0) {
+            dae.setVarShape(varIdx, parentMods.outerArrayDims);
+            dae.setVarShapeExprs(
+              varIdx,
+              parentMods.outerArrayDims.map((od: number) => dae.addIntLiteral(od)),
+            );
+          }
           if (isComponentHidden(flattener, elemId)) {
             dae.hiddenVarIndices.add(varIdx);
           }
@@ -6424,22 +6927,51 @@ export function instantiateElements(
             dae.setVarProtected(varIdx, true);
           }
           validateFunctionComponentDeclaration(flattener, dae, compInst, causality, isElemProtected, elemCst);
-          if (compInst?.flowPrefix === "flow" || (meta as any)?.flowPrefix === "flow") {
+          if (
+            compInst?.flowPrefix === "flow" ||
+            (meta as any)?.flowPrefix === "flow" ||
+            parentMods?.parentFlowPrefix === "flow"
+          ) {
             dae.setVarFlow(varIdx, true);
           }
-          if (compInst?.flowPrefix === "stream" || (meta as any)?.flowPrefix === "stream") {
+          if (
+            compInst?.flowPrefix === "stream" ||
+            (meta as any)?.flowPrefix === "stream" ||
+            parentMods?.parentFlowPrefix === "stream"
+          ) {
             dae.setVarStream(varIdx, true);
           }
           if (
             compInst?.isFinal ||
             (meta as any)?.isFinal ||
-            (isEvaluated && varType === VarType.Enumeration) ||
+            (!dae.extensionMetadata?.isOldFrontend &&
+              (parentMods?.isFinal ||
+                matchingParentArg?.final ||
+                matchingClassArg?.final ||
+                redeclArg?.final ||
+                (isEvaluated && varType === VarType.Enumeration))) ||
             compInst?.name === "nu" ||
             compInst?.name === "enableExternalTrigger"
           ) {
             dae.setVarFinal(varIdx, true);
           }
           applyModifiers(varIdx, []);
+        }
+      }
+      if (
+        !dae.extensionMetadata?.isOldFrontend &&
+        dae.classKind !== "function" &&
+        (state as any).pendingFinalParamNames
+      ) {
+        for (const c of (state as any).pendingFinalParamNames as Set<string>) {
+          const vi = dae.lookupVariable(c);
+          if (
+            vi >= 0 &&
+            dae.getVarVariability(vi) === Variability.Parameter &&
+            dae.getVarType(vi) === VarType.Integer
+          ) {
+            dae.setVarFinal(vi, true);
+          }
         }
       }
     } finally {
@@ -6531,7 +7063,14 @@ export function validateFunctionComponentDeclaration(
   }
 
   // 3. Public variables that are not input/output must be protected (constants/parameters allowed)
+  const hasOldInstOption = Boolean(
+    dae.extensionMetadata?.isOldFrontend ||
+    (flattener as any).options?.isOldFrontend ||
+    (dae.extensionMetadata as any)?.hasOldInstOption ||
+    ((flattener as any).currentRootDae?.extensionMetadata as any)?.hasOldInstOption,
+  );
   if (
+    !hasOldInstOption &&
     !isElemProtected &&
     causality !== Causality.Input &&
     causality !== Causality.Output &&
@@ -6662,29 +7201,71 @@ export function validateComponentBasicAttributes(
       }
     }
 
-    // 4. Variability mismatch on start attribute (BuiltinAttribute9)
+    // 4. Variability mismatch on start/min/max/nominal attributes (BuiltinAttribute9, ScopeDeclaration2)
     for (const arg of allArgs) {
-      if (arg.name === "start" && arg.value?.text) {
+      if (
+        (arg.name === "start" || arg.name === "min" || arg.name === "max" || arg.name === "nominal") &&
+        arg.value?.text
+      ) {
         const valText = arg.value.text.trim();
         if (/^[a-zA-Z_]\w*$/.test(valText)) {
           const refName = prefix ? `${prefix}.${valText}` : valText;
-          const vi = dae.lookupVariable(refName) >= 0 ? dae.lookupVariable(refName) : dae.lookupVariable(valText);
+          const elemParentId = flattener.db.symbol(elemId)?.parentId ?? compInst.parentId;
+          const syms = flattener.db.byName(valText);
+          const localInParent = syms.find((s: any) => s.parentId === elemParentId && s.kind === "Component");
           let isContinuous = false;
-          if (vi >= 0) {
-            isContinuous = dae.getVarVariability(vi) === Variability.Continuous;
+          let boundRef = valText;
+          if (localInParent) {
+            const symInst = flattener.db.query<any>("componentInstance", localInParent.id);
+            if (!symInst?.variability || symInst.variability === "continuous") {
+              isContinuous = true;
+              if (prefix) boundRef = refName;
+            }
           } else {
-            const syms = flattener.db.byName(valText);
-            const localSym = syms.find(
-              (s: any) => s.parentId === flattener.currentRootClassId || s.parentId === compInst.parentId,
-            );
-            if (localSym && localSym.kind === "Component") {
-              const symInst = flattener.db.query<any>("componentInstance", localSym.id);
-              if (!symInst?.variability || symInst.variability === "continuous") {
-                isContinuous = true;
+            const vi = dae.lookupVariable(refName) >= 0 ? dae.lookupVariable(refName) : dae.lookupVariable(valText);
+            if (vi >= 0) {
+              isContinuous = dae.getVarVariability(vi) === Variability.Continuous;
+              if (dae.lookupVariable(refName) >= 0) boundRef = refName;
+            } else {
+              const rootSym = syms.find(
+                (s: any) => s.parentId === flattener.currentRootClassId && s.kind === "Component",
+              );
+              if (rootSym) {
+                const symInst = flattener.db.query<any>("componentInstance", rootSym.id);
+                if (!symInst?.variability || symInst.variability === "continuous") {
+                  isContinuous = true;
+                }
               }
             }
           }
           if (isContinuous) {
+            if (dae.extensionMetadata?.isOldFrontend) {
+              let clauseNode: any = elemCst;
+              while (clauseNode && clauseNode.type !== "component_clause") {
+                clauseNode = clauseNode.parent;
+              }
+              const fullVarName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
+              const clauseRange = clauseNode
+                ? {
+                    startByte: clauseNode.startIndex ?? clauseNode.startByte,
+                    endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                    startPosition: clauseNode.startPosition,
+                    endPosition: clauseNode.endPosition,
+                  }
+                : {
+                    startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+                    endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+                    startPosition: arg.modPosition?.startPosition,
+                    endPosition: arg.modPosition?.endPosition,
+                  };
+              dae.diagnostics.push({
+                severity: "error",
+                code: ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.code,
+                message: `Variable ${fullVarName}: Component ${arg.name} of variability PARAM has binding ${boundRef} of higher variability VAR.`,
+                range: clauseRange,
+              });
+              return true;
+            }
             const errorRange = {
               startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
               endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
@@ -7019,9 +7600,16 @@ export function collectExtendsMods(
     const typeName = typeSpec?.text?.trim();
     let targetClass: any = null;
     if (typeName) {
-      const matches = flattener.db.byName(typeName);
-      if (matches.length > 0 && matches[0].kind === "Class") {
-        targetClass = matches[0];
+      const selfSym = flattener.db.symbol(classId);
+      const lookupScopeId = selfSym?.parentId ?? classId;
+      const resolved =
+        (typeName.includes(".")
+          ? flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", lookupScopeId)?.(typeName)
+          : flattener.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", lookupScopeId)?.(typeName)) ??
+        flattener.db.byName(typeName)?.find((m) => m.kind === "Class") ??
+        null;
+      if (resolved && resolved.kind === "Class") {
+        targetClass = resolved;
         result.push(...collectExtendsMods(flattener, targetClass.id, visited));
       }
     }

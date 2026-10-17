@@ -1,7 +1,6 @@
 // name:     MultipleDeclarations2
 // keywords: declaration
 // status:   incorrect
-// xfail:    true
 //
 // Multiple declarations are not allowed.
 //

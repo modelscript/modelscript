@@ -2,7 +2,9 @@
 
 import { buildParser, choice, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import expect from "expect";
 import * as fs from "fs";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -17,11 +19,21 @@ const dsl = language({
   name: "GlrRemediationLang",
   rules: {
     Program: ($: any) => repeat($.Stmt),
-    Stmt: ($: any) => choice($.DynamicTieHigh, $.DynamicTieLow, $.LongTupleStmt, $.EpsilonCycleStmt),
+    Stmt: ($: any) =>
+      choice($.DynamicTieHigh, $.DynamicTieLow, $.DiamondLow, $.DiamondHigh, $.LongTupleStmt, $.EpsilonCycleStmt),
 
-    // Priority 2: Two rules matching the exact same token stream but differing in dynamic precedence
+    // Priority 2a: Two rules matching the exact same token stream but differing in dynamic precedence
     DynamicTieHigh: ($: any) => prec.dynamic(10, seq("dyn", $.Identifier, ";")),
     DynamicTieLow: ($: any) => prec.dynamic(1, seq("dyn", $.Identifier, ";")),
+
+    // Priority 2b: GSS diamond merge where SubLow (prec 1) and SubHigh (prec 10) reduce first,
+    // then both shift into the same SharedMid LR states (merging via GssEdge), and finally
+    // reduce to DiamondLow vs DiamondHigh. DiamondHigh must preserve its dynamicPrec=10 across the GSS edge.
+    DiamondLow: ($: any) => seq("diamond", $.SubLow, $.SharedMid, ";"),
+    DiamondHigh: ($: any) => seq("diamond", $.SubHigh, $.SharedMid, ";"),
+    SubLow: ($: any) => prec.dynamic(1, seq($.Identifier)),
+    SubHigh: ($: any) => prec.dynamic(10, seq($.Identifier)),
+    SharedMid: ($: any) => seq("mid", $.Identifier),
 
     // Priority 4: Large production with 36 elements inside an ambiguous construct
     LongTupleStmt: ($: any) =>
@@ -109,7 +121,10 @@ const dsl = language({
     Identifier: ($: any) => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
   },
   extras: ($: any) => [/\s+/],
-  conflicts: ($: any) => [[$.DynamicTieHigh, $.DynamicTieLow]],
+  conflicts: ($: any) => [
+    [$.DynamicTieHigh, $.DynamicTieLow],
+    [$.SubLow, $.SubHigh],
+  ],
   recovery: {
     sync: [";"],
   },
@@ -175,7 +190,7 @@ describe("GLR Remediation: Robustness, Soundness & Completeness", () => {
     activeFacade = new LspFacade(wasmInstance.exports.memory, wasmInstance.exports);
   }, 60000);
 
-  it("Priority 2: should resolve root-level dynamic precedence deterministically", () => {
+  it("Priority 2a: should resolve root-level dynamic precedence deterministically", () => {
     const code = "dyn foo;";
     activeFacade.lastAstRoot = 0;
     const ast = activeFacade.parse(code);
@@ -185,6 +200,19 @@ describe("GLR Remediation: Robustness, Soundness & Completeness", () => {
     // DynamicTieHigh (prec.dynamic = 10) must win over DynamicTieLow (prec.dynamic = 1)
     expect(sexpr).toContain("(DynamicTieHigh");
     expect(sexpr).not.toContain("(DynamicTieLow");
+  });
+
+  it("Priority 2b: should preserve branch dynamicPrecedence across merged GSS edges (diamond merge)", () => {
+    const code = "diamond alpha mid beta;";
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    expect(ast).toBeGreaterThan(0);
+
+    const sexpr = activeFacade.getAstSExpr(ast, true);
+    // SubHigh (prec.dynamic = 10) must preserve its precedence across the SharedMid GSS merge
+    expect(sexpr).toContain("(DiamondHigh");
+    expect(sexpr).toContain("(SubHigh");
+    expect(sexpr).not.toContain("(DiamondLow");
   });
 
   it("Priority 4: should reduce large productions (>32 RHS elements) across GLR paths", () => {
@@ -211,32 +239,23 @@ describe("GLR Remediation: Robustness, Soundness & Completeness", () => {
     expect(sexpr).not.toContain("ERROR");
   });
 
-  it("Priority 3: should correctly decode UTF-16BE characters in the lexer", () => {
-    // Test peekChar directly from the compiled WASM exports for UTF-16BE (encoding 2)
+  it("Priority 3: should correctly decode UTF-16 code units in the lexer", () => {
     const exports = wasmInstance.exports;
-    if (exports.setInputEncoding && exports.peekChar && exports.ensureInputBuffer) {
-      // String "dyn" in UTF-16BE bytes:
-      // 'd' = 0x0064 -> [0x00, 0x64]
-      // 'y' = 0x0079 -> [0x00, 0x79]
-      // 'n' = 0x006E -> [0x00, 0x6E]
-      const beBytes = new Uint8Array([0x00, 0x64, 0x00, 0x79, 0x00, 0x6e]);
-      const bufPtr = exports.ensureInputBuffer(beBytes.length);
-      const mem8 = new Uint8Array(exports.memory.buffer);
-      mem8.set(beBytes, bufPtr);
+    if (exports.peekChar && exports.ensureInputBuffer) {
+      const units = new Uint16Array([0x0064, 0x0079, 0x006e]); // "dyn"
+      const bufPtr = exports.ensureInputBuffer(units.byteLength);
+      const mem16 = new Uint16Array(exports.memory.buffer, bufPtr, units.length);
+      mem16.set(units);
 
-      exports.setInputLength(beBytes.length);
-      exports.setInputEncoding(2); // UTF-16BE
+      exports.setInputLength(units.length);
 
       const ch0 = exports.peekChar(0);
-      const ch1 = exports.peekChar(2);
-      const ch2 = exports.peekChar(4);
+      const ch1 = exports.peekChar(1);
+      const ch2 = exports.peekChar(2);
 
       expect(ch0).toBe(0x64); // 'd'
       expect(ch1).toBe(0x79); // 'y'
       expect(ch2).toBe(0x6e); // 'n'
-
-      // Reset back to UTF-16LE for default operation
-      exports.setInputEncoding(1);
     }
   });
 

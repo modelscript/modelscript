@@ -1,7 +1,6 @@
 // name: PropagateExtends.mo
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A

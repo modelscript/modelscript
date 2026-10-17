@@ -1,7 +1,6 @@
 // name:     ConnectForEquations
 // keywords: <insert keywords here>
 // status:   correct
-// xfail:    true
 //
 // Drmodelica: 8.2  connect equations (p. 244)
 //

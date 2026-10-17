@@ -1,7 +1,6 @@
 // name: DuplicateElementsValid1
 // keywords:
 // status: correct
-// xfail:    true
 //
 
 model A
