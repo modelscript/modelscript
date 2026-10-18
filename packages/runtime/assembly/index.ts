@@ -87,6 +87,7 @@ export * from "../src/wasm/fea/wasm_fea";
 export * from "../src/wasm/cad/wasm_bsp_bvh";
 export * from "../src/wasm/diagram/wasm_layout";
 export * from "../src/wasm/solvers/wasm_advanced_solvers";
+export * from "./flattener";
 
 
 // We will use Typed Arrays instead of Map/Set for much higher performance

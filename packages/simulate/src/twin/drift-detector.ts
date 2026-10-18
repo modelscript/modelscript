@@ -12,13 +12,13 @@ export interface DriftChannelConfig {
   /** Channel name or sensor identifier. */
   name: string;
   /** Expected residual mean under normal operating conditions. Default: 0. */
-  expectedMean?: number;
+  expectedMean?: number | undefined;
   /** Expected standard deviation of sensor noise (σ). Default: 1.0. */
-  expectedStd?: number;
+  expectedStd?: number | undefined;
   /** Minimal detectable shift δ (in units of measurement, or defaults to 1.5 * σ). */
-  minShift?: number;
+  minShift?: number | undefined;
   /** Decision threshold h (in standard units, e.g. 5.0). */
-  threshold?: number;
+  threshold?: number | undefined;
 }
 
 export type DriftSeverity = "low" | "medium" | "high" | "critical";
@@ -44,7 +44,7 @@ export interface DriftEvent {
 
 export class CusumDriftDetector {
   readonly numChannels: number;
-  private readonly configs: Required<DriftChannelConfig>[];
+  private readonly configs: { [K in keyof DriftChannelConfig]-?: NonNullable<DriftChannelConfig[K]> }[];
 
   // Cumulative decision statistics
   private readonly sPos: Float64Array;

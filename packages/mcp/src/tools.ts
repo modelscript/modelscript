@@ -16,6 +16,11 @@ import {
 } from "@modelscript/runtime";
 import {
   ArenaSimulator,
+  autotunePid,
+  computeBodeResponse,
+  computeEigenStructure,
+  computeStabilityMargins,
+  linearizeArenaDae,
   ModelicaCalibrator,
   runArenaDoE,
   runSensitivityAnalysisArena,
@@ -2002,6 +2007,132 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       } catch (err: any) {
         return {
           content: [{ type: "text" as const, text: `PSCAD export error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── modelica_linearize ──────────────────────────────────────────────────
+
+  server.tool(
+    "modelica_linearize",
+    "Linearize a Modelica DAE model around an operating point or steady-state equilibrium to extract explicit LTI State-Space matrices (A, B, C, D), eigenvalues/poles, damping ratios, and stability margins.",
+    {
+      name: z.string().describe("Fully qualified Modelica class name to linearize"),
+      findEquilibrium: z
+        .boolean()
+        .optional()
+        .describe("Solve for steady-state trim (dx/dt = 0) before linearizing (default: false)"),
+      inputNames: z.array(z.string()).optional().describe("Explicit input variable names"),
+      outputNames: z.array(z.string()).optional().describe("Explicit output variable names"),
+    },
+    async ({ name, findEquilibrium, inputNames, outputNames }) => {
+      if (!ctx.current) {
+        return {
+          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
+          isError: true,
+        };
+      }
+      try {
+        const queryDB = ctx.current.queryEngine.toQueryDB();
+        const flattener = new ArenaQueryFlattener(queryDB);
+        const entries = ctx.current.queryEngine.index.byName.get(name) || [];
+        const firstId = entries[0];
+        if (firstId === undefined) {
+          return {
+            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+            isError: true,
+          };
+        }
+        const arena = flattener.flatten(firstId);
+        const lti = linearizeArenaDae(arena as any, {
+          findEquilibrium,
+          inputNames,
+          outputNames,
+        });
+        const poles = computeEigenStructure(lti.A, lti.nStates);
+        const margins =
+          lti.nInputs > 0 && lti.nOutputs > 0 ? computeStabilityMargins(computeBodeResponse(lti)) : undefined;
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  stateNames: lti.stateNames,
+                  inputNames: lti.inputNames,
+                  outputNames: lti.outputNames,
+                  A: Array.from(lti.A),
+                  B: Array.from(lti.B),
+                  C: Array.from(lti.C),
+                  D: Array.from(lti.D),
+                  poles,
+                  stabilityMargins: margins,
+                  operatingPoint: lti.operatingPoint,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `Linearization error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── modelica_tune_pid ───────────────────────────────────────────────────
+
+  server.tool(
+    "modelica_tune_pid",
+    "Automatically tune a P, PI, or PID controller for a linearized Modelica plant model using Skogestad IMC (SIMC) and Sensitivity-Constrained Loop Shaping.",
+    {
+      name: z.string().describe("Fully qualified Modelica class name of the plant"),
+      controllerType: z.enum(["P", "PI", "PID"]).optional().describe("Controller structure (default: PID)"),
+      targetBandwidth: z.number().optional().describe("Target closed-loop bandwidth in rad/s"),
+      minPhaseMarginDeg: z.number().optional().describe("Minimum required phase margin in degrees (default: 45)"),
+      maxSensitivityMs: z.number().optional().describe("Maximum sensitivity peak M_s (default: 1.6)"),
+      inputNames: z.array(z.string()).optional().describe("Plant control input variable names"),
+      outputNames: z.array(z.string()).optional().describe("Plant measured output variable names"),
+    },
+    async ({ name, controllerType, targetBandwidth, minPhaseMarginDeg, maxSensitivityMs, inputNames, outputNames }) => {
+      if (!ctx.current) {
+        return {
+          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
+          isError: true,
+        };
+      }
+      try {
+        const queryDB = ctx.current.queryEngine.toQueryDB();
+        const flattener = new ArenaQueryFlattener(queryDB);
+        const entries = ctx.current.queryEngine.index.byName.get(name) || [];
+        const firstId = entries[0];
+        if (firstId === undefined) {
+          return {
+            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+            isError: true,
+          };
+        }
+        const arena = flattener.flatten(firstId);
+        const lti = linearizeArenaDae(arena as any, { inputNames, outputNames });
+        const tuned = autotunePid(lti, {
+          controllerType,
+          targetBandwidth,
+          minPhaseMarginDeg,
+          maxSensitivityMs,
+        });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(tuned, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `PID tuning error: ${err.message}` }],
           isError: true,
         };
       }

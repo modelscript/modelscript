@@ -11,7 +11,9 @@ const __dirname = path.dirname(__filename);
 
 async function run() {
   console.log("=== Testing Native In-WASM Semantic Flattener ===");
-  const wasmPath = path.resolve(__dirname, "../../../languages/modelica/dist/parser.wasm");
+  const runtimeWasmPath = path.resolve(__dirname, "../build/release.wasm");
+  const modelicaWasmPath = path.resolve(__dirname, "../../../languages/modelica/dist/parser.wasm");
+  const wasmPath = fs.existsSync(runtimeWasmPath) ? runtimeWasmPath : modelicaWasmPath;
   const wasmBuffer = fs.readFileSync(wasmPath);
   const wasmModule = await WebAssembly.compile(wasmBuffer);
 

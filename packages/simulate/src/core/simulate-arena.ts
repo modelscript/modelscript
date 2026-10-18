@@ -9,7 +9,11 @@ import {
   UnaryOp,
   VarAttrKind,
   Variability,
+  causalizeVectorArena,
+  convertArenaToMicroModelica,
+  eliminateVectorArenaAliases,
   evaluateArenaExpression,
+  expandSetBasedConnectionsArena,
   hasArrayEquations,
   isolateSymbolicallyArena,
   pantelidesIndexReductionArena,
@@ -31,6 +35,7 @@ import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js
 import { solveInitialEquationsArena } from "@modelscript/runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "@modelscript/runtime/wasm_statement_executor.js";
 import { buildAdJacobian } from "@modelscript/runtime/wasm_tape.js";
+import { qssSolve } from "../solvers/qss-solver.js";
 import { rodas4p } from "../solvers/rodas4p.js";
 import { trbdf2 } from "../solvers/trbdf2.js";
 import { tsit5 } from "../solvers/tsit5.js";
@@ -3243,7 +3248,21 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     options?: {
-      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode" | undefined;
+      solver?:
+        | "euler"
+        | "rk4"
+        | "dopri5"
+        | "tsit5"
+        | "bdf"
+        | "rodas4p"
+        | "trbdf2"
+        | "qss1"
+        | "qss2"
+        | "qss3"
+        | "liqss2"
+        | "auto"
+        | "cvode"
+        | undefined;
       atol?: number | undefined;
       rtol?: number | undefined;
       outputStringIds?: number[] | undefined;
@@ -3281,13 +3300,17 @@ export class ArenaSimulator {
       ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
     }
 
-    // ── Adaptive solvers (Tsit5, Dopri5, BDF, Rodas4P, TRBDF2) ──
+    // ── Adaptive & Quantized-State solvers (Tsit5, Dopri5, BDF, Rodas4P, TRBDF2, QSS1/2/3, LIQSS2) ──
     if (
       solver === "dopri5" ||
       solver === "tsit5" ||
       solver === "bdf" ||
       solver === "rodas4p" ||
       solver === "trbdf2" ||
+      solver === "qss1" ||
+      solver === "qss2" ||
+      solver === "qss3" ||
+      solver === "liqss2" ||
       solver === "auto"
     ) {
       return this.simulateAdaptive(
@@ -3466,11 +3489,11 @@ export class ArenaSimulator {
   }
 
   /**
-   * Run simulation using an adaptive solver (Dopri5 or BDF).
+   * Run simulation using an adaptive or Quantized-State solver (Dopri5, Tsit5, BDF, Rodas4P, TRBDF2, QSS1/2/3, LIQSS2).
    * Bridges the arena evaluation into the standalone solver modules.
    */
   private simulateAdaptive(
-    solver: "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto",
+    solver: "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "qss1" | "qss2" | "qss3" | "liqss2" | "auto",
     steps: number,
     step: number,
     valuesByStringId: Float64Array,
@@ -3554,6 +3577,15 @@ export class ArenaSimulator {
         rtol,
         initialStep: step,
         maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+      });
+    } else if (solver === "qss1" || solver === "qss2" || solver === "qss3" || solver === "liqss2") {
+      rawResult = qssSolve(rhsFn, startTime, y0, stopTime, outputTimes, {
+        method: solver,
+        atol: options?.atol,
+        rtol: options?.rtol,
+        eventFunctions: eventFns.length > 0 ? eventFns : undefined,
+        eventCallback: eventCb,
+        eventDirections: eventDirs as any,
       });
     } else {
       // dopri5 or auto
@@ -4067,7 +4099,21 @@ export class ArenaSimulator {
     derivStringIds: number[],
     options?: {
       signal?: AbortSignal | undefined;
-      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode" | undefined;
+      solver?:
+        | "euler"
+        | "rk4"
+        | "dopri5"
+        | "tsit5"
+        | "bdf"
+        | "rodas4p"
+        | "trbdf2"
+        | "qss1"
+        | "qss2"
+        | "qss3"
+        | "liqss2"
+        | "auto"
+        | "cvode"
+        | undefined;
       atol?: number | undefined;
       rtol?: number | undefined;
       outputStringIds?: number[] | undefined;
@@ -4123,13 +4169,17 @@ export class ArenaSimulator {
       );
     }
 
-    // Adaptive solvers run synchronously (they're CPU-bound; yielding inside would break solver state)
+    // Adaptive & Quantized-State solvers run synchronously (they're CPU-bound; yielding inside would break solver state)
     if (
       solver === "dopri5" ||
       solver === "tsit5" ||
       solver === "bdf" ||
       solver === "rodas4p" ||
       solver === "trbdf2" ||
+      solver === "qss1" ||
+      solver === "qss2" ||
+      solver === "qss3" ||
+      solver === "liqss2" ||
       solver === "auto"
     ) {
       if (options?.signal?.aborted) throw new Error("Simulation aborted");
@@ -4621,6 +4671,10 @@ export interface ArenaSimulateOptions {
     | "bdf"
     | "rodas4p"
     | "trbdf2"
+    | "qss1"
+    | "qss2"
+    | "qss3"
+    | "liqss2"
     | "auto"
     | "webgpu"
     | "cvode"
@@ -4655,6 +4709,10 @@ export interface ArenaSimulateOptions {
   onStepViolation?:
     | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
     | undefined;
+  /** When true, runs set-based connector expansion, loop alias elimination, and vector causalization before scalarization. */
+  vectorCausalize?: boolean | undefined;
+  /** When true, lowers discontinuous expressions (abs, sign, min, max, if-else) to μ-Modelica discrete variables and When zero-crossings. */
+  microModelica?: boolean | undefined;
 }
 
 /**
@@ -4668,6 +4726,14 @@ export interface ArenaSimulateOptions {
  *   5. Transform output into the standard `{ t, y, states }` format
  */
 export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions): ArenaSimulationResult {
+  if (options?.vectorCausalize) {
+    expandSetBasedConnectionsArena(arena);
+    eliminateVectorArenaAliases(arena);
+    causalizeVectorArena(arena);
+  }
+  if (options?.microModelica) {
+    convertArenaToMicroModelica(arena);
+  }
   // ── Step 1: Prepare the simulator ──
   const sim = new ArenaSimulator(arena);
   if (options?.fmuRegistry) {
@@ -4877,6 +4943,14 @@ export async function simulateArenaAsync(
   arena: DAEBuilder,
   options?: ArenaSimulateOptions,
 ): Promise<ArenaSimulationResult> {
+  if (options?.vectorCausalize) {
+    expandSetBasedConnectionsArena(arena);
+    eliminateVectorArenaAliases(arena);
+    causalizeVectorArena(arena);
+  }
+  if (options?.microModelica) {
+    convertArenaToMicroModelica(arena);
+  }
   const sim = new ArenaSimulator(arena);
   if (options?.fmuRegistry) {
     sim.fmuRegistry = options.fmuRegistry;

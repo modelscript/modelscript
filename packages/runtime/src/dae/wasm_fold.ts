@@ -4037,6 +4037,7 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
   // --- Step 5: Emit & Unroll Equations (`If`, `When`, `For`/`InitialFor`, and Simple/Connect) ---
   // Emit equations
   for (let i = 0; i < dae.eqCount; i++) {
+    if (dae.isEqRemoved(i)) continue;
     const kind = dae.getEqKind(i);
     const lhsId = dae.getEqLhs(i);
     const rhsId = dae.getEqRhs(i);

@@ -35,8 +35,8 @@ describe("TGG Multi-Master Conflict Reconciliation", () => {
     const compiled = compileTGGRules(rules);
     expect(compiled.sourceCode).toContain("Conflict reconciliation policy: __var_vSys <-> __var_vMod (smt-simplex)");
     expect(compiled.sourceCode).toContain("Conflict reconciliation policy: __var_mSys <-> __var_mMod (source-wins)");
-    expect(compiled.sourceCode).toContain("tgg_reconcile_scalar(slot, 0.0, 0.0, 0, corr)");
-    expect(compiled.sourceCode).toContain("tgg_reconcile_scalar(slot, 0.0, 0.0, 1, corr)");
+    expect(compiled.sourceCode).toContain("tgg_reconcile_scalar(slot, __srcVal, __tgtVal, 0, corr)");
+    expect(compiled.sourceCode).toContain("tgg_reconcile_scalar(slot, __srcVal, __tgtVal, 1, corr)");
     expect(compiled.sourceCode).toContain("export function tgg_reconcile_all_conflicts");
   });
 

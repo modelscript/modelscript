@@ -33,15 +33,15 @@ export interface DamageModelConfig {
   /** Type of cumulative damage law. */
   type: "arrhenius" | "fatigue_miner" | "linear_wear";
   /** Critical damage threshold representing end-of-life (typically 1.0). */
-  criticalDamageThreshold?: number;
+  criticalDamageThreshold?: number | undefined;
   /** Pre-exponential factor or degradation rate constant. */
   rateConstant: number;
   /** Activation energy / thermal sensitivity (for Arrhenius). */
-  activationEnergy?: number;
+  activationEnergy?: number | undefined;
   /** Boltzmann constant or gas constant scale. */
-  boltzmannScale?: number;
+  boltzmannScale?: number | undefined;
   /** Exponent factor (e.g. Basquin slope or power-law exponent). */
-  exponent?: number;
+  exponent?: number | undefined;
 }
 
 export interface RulForecast {
@@ -102,7 +102,7 @@ export class VirtualSensorSynthesizer {
 }
 
 export class RulPredictor {
-  readonly damageConfig: Required<DamageModelConfig>;
+  readonly damageConfig: { [K in keyof DamageModelConfig]-?: NonNullable<DamageModelConfig[K]> };
 
   constructor(config: DamageModelConfig) {
     this.damageConfig = {

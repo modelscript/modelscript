@@ -73,11 +73,16 @@ async function runTwinTests() {
 
   // Phase A: Feed zero-mean Gaussian noise for 100 steps -> Expect NO drift alarms
   let falseAlarmCount = 0;
+  let prngState = 1337;
+  const nextRand = (): number => {
+    prngState = (prngState * 1664525 + 1013904223) >>> 0;
+    return (prngState + 0.5) / 4294967296.0;
+  };
   for (let k = 0; k < 100; k++) {
     const t = k * 0.1;
     // Box-Muller standard normal
-    const u1 = Math.random();
-    const u2 = Math.random();
+    const u1 = nextRand();
+    const u2 = nextRand();
     const noise = Math.sqrt(-2.0 * Math.log(Math.max(1e-10, u1))) * Math.cos(2.0 * Math.PI * u2) * 0.5;
     const evt = detector.update(t, [noise]);
     if (evt) falseAlarmCount++;

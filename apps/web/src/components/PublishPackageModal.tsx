@@ -16,10 +16,8 @@ import { useDropzone } from "react-dropzone";
 import { Link, useNavigate } from "react-router-dom";
 import { publishPackageArchive } from "../api";
 import { useAuth } from "../AuthContext";
-import { type ExtractedZipMetadata, inspectPackageZip, isValidSemver } from "../util/package-helpers";
+import { inspectPackageZip, isValidSemver } from "../util/package-helpers";
 import Box from "./Box";
-
-export { inspectPackageZip, isValidSemver, type ExtractedZipMetadata };
 
 async function computeSha256Hex(buffer: ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
@@ -66,8 +64,8 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
       setError(null);
       if (defaultPackageName) {
         setPackageName(defaultPackageName);
-      } else if (user?.username && !packageName) {
-        setPackageName(`@${user.username}/`);
+      } else if (user?.username) {
+        setPackageName((prev) => prev || `@${user.username}/`);
       }
       if (defaultVersion) {
         setVersion(defaultVersion);

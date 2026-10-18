@@ -61,7 +61,7 @@ describe("WASM Hybrid DAE Event & Discontinuity Engine", () => {
           "--exportRuntime",
           "--enable",
           "threads",
-          "--optimize",
+          "--debug",
           "--runtime",
           "stub",
         ],

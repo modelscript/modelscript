@@ -62,7 +62,7 @@ describe("Continuous DAE Simulation Engine", () => {
           "--exportRuntime",
           "--enable",
           "threads",
-          "--optimize",
+          "--debug",
           "--runtime",
           "stub",
         ],

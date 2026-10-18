@@ -89,6 +89,12 @@
           "@modelscript/fea:build",
           "@modelscript/runtime:build"
         ]
+      },
+      "test": {
+        "dependsOn": [
+          "build",
+          "@modelscript/scad:build"
+        ]
       }
     }
   }

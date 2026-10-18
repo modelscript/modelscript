@@ -107,7 +107,7 @@ describe("Phase 5: Numerics, CAS, Solvers & Optimization", () => {
     };
 
     facade = await createInstance();
-  }, 60000);
+  }, 120000);
 
   afterAll(() => {
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });

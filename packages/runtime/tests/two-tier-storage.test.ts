@@ -119,9 +119,9 @@ describe("Two-Tier Storage Architecture & Stub Indexing", () => {
   }, 45000);
 
   afterAll(() => {
-    // if (tmpDir && fs.existsSync(tmpDir)) {
-    //   fs.rmSync(tmpDir, { recursive: true, force: true });
-    // }
+    if (tmpDir && fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   test("Tier 1 Stub Store: Registers and queries symbols without AST retention", () => {
@@ -179,8 +179,8 @@ describe("Two-Tier Storage Architecture & Stub Indexing", () => {
       1,
       0,
       "ExternalLibraryModel",
-      200, // startByte (100 characters in UTF-16)
-      500, // endByte (250 characters in UTF-16)
+      100, // startOffset (100 characters)
+      250, // endOffset (250 characters)
     );
 
     // Parse a local model in current file (fileId: 1) referencing ExternalLibraryModel

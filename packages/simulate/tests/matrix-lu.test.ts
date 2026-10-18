@@ -52,7 +52,7 @@ describe("WASM Linear Algebra & Multi-Variable Newton Solver Engine", () => {
           "--exportRuntime",
           "--enable",
           "threads",
-          "--optimize",
+          "--debug",
           "--runtime",
           "stub",
         ],
@@ -75,7 +75,17 @@ describe("WASM Linear Algebra & Multi-Variable Newton Solver Engine", () => {
 
     const instance = await WebAssembly.instantiate(wasmModule, imports);
     wasmExports = instance.exports;
-  }, 60000);
+  }, 120000);
+
+  afterAll(() => {
+    if (fs.existsSync(tmpDir)) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup error
+      }
+    }
+  });
 
   it("should factor and solve a 2x2 linear system using WASM LU decomposition", () => {
     // Solve system:

@@ -14,6 +14,7 @@ export * from "./fmu.js";
 export * from "./fmu3-codegen.js";
 export * from "./harness-codegen.js";
 export * from "./harness3-codegen.js";
+export * from "./hil-wrappers.js";
 export {
   parseModelDescription,
   parseTerminalsAndIcons,

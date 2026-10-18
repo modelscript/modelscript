@@ -19,8 +19,14 @@ export async function simulateSysml2(
   await initBltWasm();
 
   // Dynamically import SysML2DaeLowerer from @modelscript/sysml2 to preserve clean package boundaries
-  const sysml2Module = "@modelscript/sysml2";
-  const { SysML2DaeLowerer } = (await import(sysml2Module)) as any;
+  let SysML2DaeLowerer: any;
+  try {
+    const sysml2Module = "@modelscript/sysml2";
+    ({ SysML2DaeLowerer } = (await import(sysml2Module)) as any);
+  } catch {
+    const fallbackUrl = new URL("../../../../languages/sysml2/src/sysml2-dae-lowerer.ts", import.meta.url).href;
+    ({ SysML2DaeLowerer } = (await import(fallbackUrl)) as any);
+  }
   const arena = await SysML2DaeLowerer.lowerSystem(sysmlSource);
 
   return simulateArena(arena, options);

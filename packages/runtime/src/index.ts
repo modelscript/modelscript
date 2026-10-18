@@ -22,6 +22,7 @@ export * from "./analysis/wasm_hybrid_flowpipe.js";
 export * from "./analysis/wasm_interval.js";
 export * from "./analysis/wasm_pantelides.js";
 export * from "./analysis/wasm_polynomial_abstraction.js";
+export * from "./analysis/wasm_sbg.js";
 export * from "./analysis/wasm_sos_barrier.js";
 export * from "./analysis/wasm_star_set.js";
 export * from "./analysis/wasm_stochastic_barrier.js";

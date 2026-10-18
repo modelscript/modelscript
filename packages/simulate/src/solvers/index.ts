@@ -3,6 +3,7 @@
 export * from "./bvp-solver.js";
 export * from "./dde-solver.js";
 export * from "./emt/index.js";
+export * from "./qss-solver.js";
 export * from "./rodas4p.js";
 export * from "./sde-solver.js";
 export * from "./sparse-solver-bridge.js";

@@ -43,6 +43,14 @@ export type IntegratorMethod =
   | "cvode"
   /** SUNDIALS IDA via WASM (implicit DAE solver). */
   | "ida"
+  /** First-order Quantized State System discrete-event integrator (QSS1). */
+  | "qss1"
+  /** Second-order Quantized State System discrete-event integrator (QSS2). */
+  | "qss2"
+  /** Third-order Quantized State System discrete-event integrator (QSS3). */
+  | "qss3"
+  /** Second-order Linearly Implicit Quantized State System stiff integrator (LIQSS2). */
+  | "liqss2"
   /** Arena-native DoD pipeline (RK4, Newton algebraic loops, event handling). */
   | "arena";
 

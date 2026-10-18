@@ -52,7 +52,7 @@ describe("Direction-Aware Events & Zeno Limit Protection", () => {
           "--exportRuntime",
           "--enable",
           "threads",
-          "--optimize",
+          "--debug",
           "--runtime",
           "stub",
         ],

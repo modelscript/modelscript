@@ -808,6 +808,11 @@ export function transpileQuery(
         );
       }
 
+      // 4c. Strip non-null assertions on element access (arr[i]! -> arr[i]) for AssemblyScript compatibility
+      if (context !== "subtyping" && ts.isNonNullExpression(node) && ts.isElementAccessExpression(node.expression)) {
+        return visitNode(node.expression);
+      }
+
       // 5. === -> == and !== -> != (AssemblyScript compatibility)
       if (context !== "subtyping" && ts.isBinaryExpression(node)) {
         if (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) {

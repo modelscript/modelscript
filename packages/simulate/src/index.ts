@@ -8,6 +8,7 @@
 
 export * from "./calibration/index.js";
 export * from "./cfd/index.js";
+export * from "./control/index.js";
 export * from "./core/index.js";
 export * from "./fea/index.js";
 export * from "./jit/index.js";

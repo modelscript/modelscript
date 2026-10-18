@@ -757,6 +757,8 @@ export class WasmDaeBridge implements IDaeBuilder {
   private paramNameToEqs = new Map<string, Set<number>>();
   /** Host-side override map for equation kinds not natively stored in the WASM column. */
   private eqKinds = new Map<number, EqKind>();
+  /** Set of equation indices marked as eliminated/removed during vector or structural passes. */
+  private removedEquations = new Set<number>();
   /** Map from equation index to its pre-constant-folding right-hand side expression ID. */
   public origEqRhs = new Map<number, number>();
   /** Arena expression IDs of all `ExprKind.Name` nodes, tracked for fast variable renaming. */
@@ -1302,6 +1304,15 @@ export class WasmDaeBridge implements IDaeBuilder {
   removeVariable(varIdx: number): void {
     const flags = this.getVarFlags(varIdx);
     this.setVarFlags(varIdx, flags | FLAG_VAR_REMOVED);
+  }
+
+  /**
+   * Alias for {@link removeVariable} marking `varIdx` as eliminated (`FLAG_VAR_REMOVED`).
+   *
+   * @param varIdx - 0-based variable index.
+   */
+  markVarRemoved(varIdx: number): void {
+    this.removeVariable(varIdx);
   }
 
   /**
@@ -2197,6 +2208,33 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   getEqFlags(eqId: number): number {
     return this.getEqAux(eqId);
+  }
+
+  /**
+   * Checks whether equation `eqIdx` has been marked as eliminated/removed.
+   *
+   * @param eqIdx - 0-based equation index.
+   */
+  isEqRemoved(eqIdx: number): boolean {
+    return this.removedEquations.has(eqIdx);
+  }
+
+  /**
+   * Marks equation `eqIdx` as eliminated/removed.
+   *
+   * @param eqIdx - 0-based equation index.
+   */
+  markEqRemoved(eqIdx: number): void {
+    this.removedEquations.add(eqIdx);
+  }
+
+  /**
+   * Alias for {@link markEqRemoved} marking equation `eqIdx` as eliminated/removed.
+   *
+   * @param eqIdx - 0-based equation index.
+   */
+  removeEquation(eqIdx: number): void {
+    this.removedEquations.add(eqIdx);
   }
 
   /**
@@ -3145,6 +3183,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     copy.diagnostics = [...this.diagnostics];
     copy.experiment = { ...this.experiment };
     copy.hiddenVarIndices = new Set(this.hiddenVarIndices);
+    copy.removedEquations = new Set(this.removedEquations);
     for (const [k, v] of this.diffusionExprIds) copy.diffusionExprIds.set(k, v);
     copy.extensionMetadata = {
       ...this.extensionMetadata,
