@@ -1,13 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import request from "supertest";
 process.env["NODE_ENV"] = "test";
 
 import { createApp } from "../src/app.js";
+import { LibraryDatabase } from "../src/database.js";
 
 test("Digital Thread Hypergraph Explorer REST Endpoints", async (t) => {
-  const app = createApp();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "thread-route-test-"));
+  const db = new LibraryDatabase(tmpDir);
+  const app = createApp({ database: db });
+
+  t.after(() => {
+    try {
+      db.db.close();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  });
 
   await t.test("GET /api/v1/threads/graph returns multi-domain thread topology", async () => {
     const res = await request(app).get("/api/v1/threads/graph").expect(200);

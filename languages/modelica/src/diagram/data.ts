@@ -2520,6 +2520,9 @@ export function buildComponentProperties(
       if (!elemDescription && element.cstNode?.text) {
         elemDescription = extractFirstQuotedString(element.cstNode.text);
       }
+      if (elemDescription) {
+        elemDescription = stripQuotes(elemDescription);
+      }
 
       const isBoolean =
         element.classInstance?.name === "Boolean" ||

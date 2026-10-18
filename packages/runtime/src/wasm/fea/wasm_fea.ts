@@ -190,9 +190,8 @@ export function fea_solve_csr_pcg(
 
   let rzOld = dotProductWasm(rPtr, zPtr, n);
   const initialResidual = Math.sqrt(Math.max(0.0, rzOld));
-  const rhsNorm = Math.sqrt(Math.max(0.0, dotProductWasm(bPtr, bPtr, n)));
-  const refNorm = Math.max(rhsNorm, Math.max(initialResidual, 1e-30));
-  if (initialResidual < 1e-18 || initialResidual / refNorm < tol) {
+  const refNorm = Math.max(initialResidual, 1e-30);
+  if (initialResidual < 1e-18) {
     return 0;
   }
 

@@ -841,10 +841,9 @@ export class FeaSolver {
 
     let rzOld = this.dot(r, z);
     const initialResidual = Math.sqrt(Math.max(0, rzOld));
-    const rhsNorm = Math.sqrt(Math.max(0, this.dot(b, b)));
-    const refNorm = Math.max(rhsNorm, initialResidual, 1e-30);
+    const refNorm = Math.max(initialResidual, 1e-30);
 
-    if (initialResidual < 1e-18 || initialResidual / refNorm < tol) return;
+    if (initialResidual < 1e-18) return;
 
     for (let iter = 0; iter < maxIters; iter++) {
       this.spmv(p, Ap);

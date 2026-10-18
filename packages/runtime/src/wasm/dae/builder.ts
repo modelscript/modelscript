@@ -795,17 +795,14 @@ export class DaeBuilder {
   }
 
   /**
-   * Resolves an expression payload (`EXPR_DATA1` of `Name` or `Der`) that may store
-   * either an interned `StringId` or a direct 0-based `varIdx`.
-   * Checks `lookupVariableByName` first so small interned `StringId`s are not
-   * misidentified as variable indices.
+   * Resolves an expression payload (`EXPR_DATA1` of `Name` or `Der`) that stores
+   * a 0-based `varIdx`, or falls back to looking up by interned `StringId`.
    */
   @inline
   resolveExprVarId(nameOrVarId: u32): i32 {
     if (nameOrVarId == 0xffffffff) return -1;
-    let lookedUp = this.lookupVariableByName(nameOrVarId);
-    if (lookedUp >= 0) return lookedUp;
-    return nameOrVarId < this.varCount ? (nameOrVarId as i32) : -1;
+    if (nameOrVarId < this.varCount) return nameOrVarId as i32;
+    return this.lookupVariableByName(nameOrVarId);
   }
 
   /**
