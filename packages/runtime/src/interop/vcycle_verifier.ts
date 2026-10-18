@@ -16,9 +16,9 @@ export interface VCycleRequirementSpec {
   constrainedVariable: string;
   operator: "<" | "<=" | "==" | ">=" | ">" | "!=";
   limitValue: number;
-  timeRange?: [number, number];
-  analysisCaseName?: string;
-  kind?: "invariant" | "peak" | "terminal";
+  timeRange?: [number, number] | undefined;
+  analysisCaseName?: string | undefined;
+  kind?: "invariant" | "peak" | "terminal" | undefined;
 }
 
 export interface VCycleVerdict {
@@ -29,7 +29,7 @@ export interface VCycleVerdict {
   peakValue: number;
   limitValue: number;
   marginPercent: number;
-  violationTime?: number;
+  violationTime?: number | undefined;
   isSatisfied: boolean;
   provenanceHash: string;
 }
@@ -51,7 +51,7 @@ export class VCycleVerifier {
     });
 
     for (let rIdx = 0; rIdx < requirements.length; rIdx++) {
-      const req = requirements[rIdx];
+      const req = requirements[rIdx]!;
       const targetIdx = varIndices.get(req.constrainedVariable) ?? 0;
 
       const result = verifyTrajectoryDirect(

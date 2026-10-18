@@ -158,7 +158,7 @@ export class AbstractDomainOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     if (this.dbm.hasNegativeCycle()) {
       return {
         isSat: false,

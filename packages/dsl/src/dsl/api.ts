@@ -16,9 +16,9 @@ export type { GrammarConflictDiagnostic } from "./automata.js";
  */
 export interface BuildOptions {
   /** Source file path for Direct Source AST extraction */
-  sourcePath?: string;
+  sourcePath?: string | undefined;
   /** Source code text for in-memory Direct Source AST extraction */
-  sourceText?: string;
+  sourceText?: string | undefined;
 }
 
 /**
@@ -49,17 +49,17 @@ export interface BuildResult {
   javascriptWrapper: {
     js: string;
     dts: string;
-    syntaxNames?: string[];
-    fieldNames?: string[];
-    semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] };
+    syntaxNames?: string[] | undefined;
+    fieldNames?: string[] | undefined;
+    semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] } | undefined;
   };
-  syntaxNames?: string[];
-  fieldNames?: string[];
+  syntaxNames?: string[] | undefined;
+  fieldNames?: string[] | undefined;
   table?: any;
   /** Any unresolved grammar conflicts (shift/reduce or reduce/reduce). */
-  conflicts?: GrammarConflictDiagnostic[];
+  conflicts?: GrammarConflictDiagnostic[] | undefined;
   /** Compiled Model Context Protocol (MCP) tool and resource manifest. */
-  mcpManifest?: McpManifest;
+  mcpManifest?: McpManifest | undefined;
 }
 
 /**

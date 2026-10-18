@@ -34,7 +34,7 @@ import { NumericalInterval as Interval } from "./interval_domain.js";
  *   - Integrated into the `FixpointSolver` verification waterfall.
  */
 export class ArraySegmentState {
-  public readonly dimensions?: Interval[];
+  public readonly dimensions?: Interval[] | undefined;
 
   constructor(
     public readonly length: Interval,

@@ -14,26 +14,26 @@ export interface ThreadDiagnostic {
   message: string;
   line: number;
   column: number;
-  length?: number;
+  length?: number | undefined;
   source: "modelscript-digital-thread";
-  code?: string;
-  threadId?: string | number;
-  slot?: number;
-  sourceDomain?: string;
-  sourceValue?: number;
-  targetDomain?: string;
-  targetValue?: number;
-  simplexConsensus?: number;
-  unit?: string;
+  code?: string | undefined;
+  threadId?: string | number | undefined;
+  slot?: number | undefined;
+  sourceDomain?: string | undefined;
+  sourceValue?: number | undefined;
+  targetDomain?: string | undefined;
+  targetValue?: number | undefined;
+  simplexConsensus?: number | undefined;
+  unit?: string | undefined;
 }
 
 export interface AlignedDomainElement {
   domain: string;
   name: string;
-  line?: number;
-  column?: number;
-  properties?: Record<string, any>;
-  status?: "synced" | "stale" | "conflict" | "unverified";
+  line?: number | undefined;
+  column?: number | undefined;
+  properties?: Record<string, any> | undefined;
+  status?: "synced" | "stale" | "conflict" | "unverified" | undefined;
 }
 
 export class ThreadDiagnosticsProvider {
@@ -50,7 +50,7 @@ export class ThreadDiagnosticsProvider {
     threadId: string | number,
     domainElements: AlignedDomainElement[],
     tolerance: number = 0.05, // 5% tolerance
-    conflict?: { explanation?: string; culpritEntities?: string[] },
+    conflict?: { explanation?: string | undefined; culpritEntities?: string[] | undefined },
     targetDomain?: string,
   ): ThreadDiagnostic[] {
     const diagnostics: ThreadDiagnostic[] = [];

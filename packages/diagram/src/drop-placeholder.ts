@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export interface DropPlaceholderOptions {
-  width?: number;
-  height?: number;
-  isDark?: boolean;
+  width?: number | undefined;
+  height?: number | undefined;
+  isDark?: boolean | undefined;
 }
 
 export function ensureDiagramStyles(): void {

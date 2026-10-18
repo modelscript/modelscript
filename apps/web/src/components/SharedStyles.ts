@@ -17,7 +17,11 @@ export const StickyHeader = styled.div`
   color: var(--color-text-heading);
 `;
 
-export const CircleIconButton = styled.button<{ $color?: string; $hoverColor?: string; $hoverBg?: string }>`
+export const CircleIconButton = styled.button<{
+  $color?: string | undefined;
+  $hoverColor?: string | undefined;
+  $hoverBg?: string | undefined;
+}>`
   background: none;
   border: none;
   color: ${(props) => props.$color || "var(--color-text-primary)"};

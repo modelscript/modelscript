@@ -92,8 +92,8 @@ import type { FlattenerBackend, FlattenOptions } from "./types.js";
 export class ModelicaFlattener {
   bodySnapshot: DAEBuilder | null = null;
   public db: QueryDB;
-  public options: Required<FlattenOptions>;
-  public explicitArrayMode?: "scalarize" | "preserve";
+  public options: Omit<Required<FlattenOptions>, "flowThreshold"> & { flowThreshold?: number | undefined };
+  public explicitArrayMode?: "scalarize" | "preserve" | undefined;
   public currentRootClassId: SymbolId = 0;
   public currentClassId: SymbolId = 0;
 
@@ -145,7 +145,7 @@ export class ModelicaFlattener {
   public evaluatedConstantArrays = new Map<string, any>();
   public varConditionDeps = new Map<string, string[]>();
   public currentParentMods?: any;
-  public currentBindingCompName?: string;
+  public currentBindingCompName?: string | undefined;
   public enumTypeMap = new Map<string, string[]>();
   private nodeProtectionCache = new WeakMap<any, boolean>();
   public useLocalDirection = false;
@@ -303,11 +303,11 @@ export class ModelicaFlattener {
     }
   }
 
-  private isComponentHidden(elemId: SymbolId): boolean {
+  public isComponentHidden(elemId: SymbolId): boolean {
     return isComponentHidden(this, elemId);
   }
 
-  private extractDescription(elemCst: any): string | null {
+  public extractDescription(elemCst: any): string | null {
     return extractDescription(elemCst);
   }
 
@@ -402,7 +402,7 @@ export class ModelicaFlattener {
   }
 
   private _hasOperatorRecordsCache = new Map<SymbolId, boolean>();
-  private _globalHasOperatorRecords?: boolean;
+  private _globalHasOperatorRecords?: boolean | undefined;
 
   hasOperatorRecords(rootClassId?: SymbolId | null): boolean {
     if (!rootClassId) return true;
@@ -451,7 +451,7 @@ export class ModelicaFlattener {
       for (const child of children) {
         if (child.kind !== "Class") continue;
         const childMeta = (child.metadata as Record<string, unknown>) || {};
-        const childPrefix = String(childMeta?.classPrefixes ?? childMeta?.classKind ?? "");
+        const childPrefix = String(childMeta?.["classPrefixes"] ?? childMeta?.["classKind"] ?? "");
         const childCst = this.db.cstNode(child.id) as any;
         const childText = childCst?.text?.trim() ?? "";
 
@@ -464,7 +464,7 @@ export class ModelicaFlattener {
         if (!isOperator) continue;
 
         const recMeta = (rec.metadata as Record<string, unknown>) || {};
-        const recPrefix = String(recMeta?.classPrefixes ?? recMeta?.classKind ?? "");
+        const recPrefix = String(recMeta?.["classPrefixes"] ?? recMeta?.["classKind"] ?? "");
         const cleanChildPrefix = childPrefix.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
         const cleanChildText = childText.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
         const cleanRecPrefix = recPrefix.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
@@ -595,7 +595,7 @@ export class ModelicaFlattener {
 
     for (const cls of fileClasses) {
       const clsSym = cls;
-      const rawKind = String(clsSym?.metadata?.classKind ?? clsSym?.metadata?.classPrefixes ?? "");
+      const rawKind = String(clsSym?.metadata?.["classKind"] ?? clsSym?.metadata?.["classPrefixes"] ?? "");
       const cleanKind =
         rawKind
           .replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ")
@@ -623,7 +623,7 @@ export class ModelicaFlattener {
         cleanKind === "type" ||
         cleanKind === "record" ||
         cleanKind === "connector" ||
-        (cleanKind === "package" && !(dae.extensionMetadata?.isOldFrontend && cls.id !== rootClassId))
+        (cleanKind === "package" && !(dae.extensionMetadata?.["isOldFrontend"] && cls.id !== rootClassId))
       ) {
         for (const child of compNode.children || []) {
           if (child.type === "equation_section") {
@@ -669,7 +669,7 @@ export class ModelicaFlattener {
       }
 
       // 2. Protected sections in type, record, connector
-      const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+      const isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
       if (cleanKind === "type" || (!isOldFrontend && cleanKind === "record") || cleanKind === "connector") {
         for (let i = 0; i < (compNode.children || []).length; i++) {
           const child = compNode.children[i];
@@ -705,7 +705,7 @@ export class ModelicaFlattener {
       }
 
       // 3. Variable in package must be constant
-      if (cleanKind === "package" && !dae.extensionMetadata?.isOldFrontend) {
+      if (cleanKind === "package" && !dae.extensionMetadata?.["isOldFrontend"]) {
         const children = this.db.childrenOf(cls.id);
         for (const child of children) {
           if (child.kind === "Component") {
@@ -775,9 +775,9 @@ export class ModelicaFlattener {
     for (const child of children) {
       if (child.kind === "Import") {
         const meta = child.metadata as Record<string, unknown>;
-        let importKind = meta?.importKind as string | undefined;
-        let pkgName = (meta?.packageName ?? child.name) as string;
-        let aliasName = meta?.shortName as string | undefined;
+        let importKind = meta?.["importKind"] as string | undefined;
+        let pkgName = (meta?.["packageName"] ?? child.name) as string;
+        let aliasName = meta?.["shortName"] as string | undefined;
 
         // For WASM GLR parser import_clause nodes, inspect the CST
         if (importKind === undefined && (child.ruleName === "import_clause" || child.ruleName === "ImportClause")) {
@@ -849,11 +849,11 @@ export class ModelicaFlattener {
     });
   }
 
-  private isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
+  public isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
     return isStaticTrueAssert(callId, dae);
   }
 
-  private emitFunctionCallEquation(
+  public emitFunctionCallEquation(
     node: SyntaxNode | null | undefined,
     dae: DAEBuilder,
     prefix: string,
@@ -867,7 +867,7 @@ export class ModelicaFlattener {
     extractStateMachines(dae, this.options);
   }
 
-  private collectExprVarNames(exprId: number, dae: DAEBuilder, names: Set<string>, visited = new Set<number>()): void {
+  public collectExprVarNames(exprId: number, dae: DAEBuilder, names: Set<string>, visited = new Set<number>()): void {
     collectExprVarNames(exprId, dae, names, visited);
   }
 
@@ -875,7 +875,7 @@ export class ModelicaFlattener {
     checkCyclicConstantsAndParameters(dae, rootClassId, this.db, this.options, this.varConditionDeps);
   }
 
-  private checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId): void {
+  public checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId): void {
     checkCyclicFunctionComponents(fn, fnSymId, this.db);
   }
 
@@ -944,7 +944,7 @@ export class ModelicaFlattener {
     const dae = this.flattenClass(rootClassId, cachedArena);
     if (
       !dae.diagnostics.some((d) => d.severity === "error") &&
-      !dae.extensionMetadata?.isOldFrontend &&
+      !dae.extensionMetadata?.["isOldFrontend"] &&
       dae.classKind !== "function" &&
       dae.classKind !== "package" &&
       !this.isClassPartial(rootClassId)
@@ -1000,6 +1000,17 @@ export class ModelicaFlattener {
       for (const arg of shortMod.args) {
         if (arg.isRedeclaration || arg.redeclaredTypeSpecifier || arg.isReplaceable) return cacheAndReturn(true);
       }
+      if (shortMod.args.length > 0) {
+        const sym = this.db.symbol(classId);
+        const cstText = (this.db.cstNode(classId) as any)?.text ?? "";
+        if (
+          sym?.kind === "Package" ||
+          (sym?.metadata as any)?.classKind === "package" ||
+          /^\s*(?:(?:encapsulated|partial|replaceable)\s+)*package\b/.test(cstText)
+        ) {
+          return cacheAndReturn(true);
+        }
+      }
     }
 
     const children = this.db.childrenOf(classId);
@@ -1026,6 +1037,9 @@ export class ModelicaFlattener {
             : null) ??
           this.db.byName(child.name)?.[0];
         if (baseClass && this.classHasRedeclare(baseClass.id, visited)) return cacheAndReturn(true);
+      }
+      if (child.kind === "Class" || child.kind === "Package") {
+        if (this.classHasRedeclare(child.id, visited)) return cacheAndReturn(true);
       }
       if (child.kind === "Component") {
         const compInst = this.db.query<any>("componentInstance", child.id);
@@ -1065,7 +1079,7 @@ export class ModelicaFlattener {
     return cacheAndReturn(false);
   }
 
-  private classHasConnect(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
+  public classHasConnect(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
     if (!classId || visited.has(classId)) return false;
     visited.add(classId);
 
@@ -1097,7 +1111,7 @@ export class ModelicaFlattener {
     visited.add(classId);
 
     const sym = this.db.symbol(classId);
-    if (sym && (sym.kind === "Record" || this.isRecordSym(sym))) {
+    if (this.options.intEnumConversion || (sym && (sym.kind === "Record" || this.isRecordSym(sym)))) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
@@ -1122,7 +1136,7 @@ export class ModelicaFlattener {
     const text = stripCommentsAndStrings(rawText);
 
     if (
-      /\b(?:class|model|block)\s+[a-zA-Z_]\w*\s*=\s*/.test(text) ||
+      /\b(?:class|model|block|package)\s+[a-zA-Z_]\w*\s*=\s*/.test(text) ||
       /\bconnector\s+[a-zA-Z_]\w*\s*=\s*(?!(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
         text,
       ) ||
@@ -1141,7 +1155,9 @@ export class ModelicaFlattener {
       /\[\s*:\s*\]\s*=/.test(text) ||
       /\bfill\s*\([^,]+,\s*\d+\.\d+/.test(text) ||
       /\bexternal\s+"FORTRAN 77"/i.test(text) ||
-      /\b(?:homotopy|semiLinear|outerProduct|identity)\s*\(/.test(text)
+      /\b(?:homotopy|semiLinear|outerProduct|identity|diagonal)\s*\(/.test(text) ||
+      /(?:=|\()\s*\.[a-zA-Z_]\w*/.test(text) ||
+      (sym?.parentId != null && /\bconstant\s+/.test(text))
     ) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
@@ -1210,7 +1226,8 @@ export class ModelicaFlattener {
             ? (this.db.query<any>("resolveName", classId)?.(child.name) ??
               this.db.query<any>("resolveSimpleName", classId)?.(child.name))
             : null) ??
-          this.db.byName(child.name)?.[0];
+          this.db.byName(child.name)?.[0] ??
+          (child.name.includes(".") ? this.db.byName(child.name.split(".").pop()!)?.[0] : undefined);
         if (baseClass) {
           const extModRaw = this.db.query<any>("extendsModificationParsed", child.id);
           const extModArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
@@ -1221,6 +1238,11 @@ export class ModelicaFlattener {
                 mArg?.name &&
                 baseChildren.some((bc) => bc.name === mArg.name && (bc.kind === "Class" || bc.kind === "Package"))
               ) {
+                this._unsupportedWasmCache.set(classId, true);
+                return true;
+              }
+              const valTxt = String(mArg?.value?.text ?? mArg?.bindingExpression ?? "").trim();
+              if (valTxt && localCompNames.has(valTxt)) {
                 this._unsupportedWasmCache.set(classId, true);
                 return true;
               }
@@ -1259,6 +1281,15 @@ export class ModelicaFlattener {
           return true;
         }
         const compInst = this.db.query<any>("componentInstance", child.id);
+        const rawSpec = String(compInst?.typeSpecifier ?? compInst?.typeName ?? "").trim();
+        if (rawSpec.includes(".")) {
+          const specParts = rawSpec.split(".");
+          const leafSpec = specParts[specParts.length - 1]!;
+          if (specParts.slice(0, -1).includes(leafSpec)) {
+            this._unsupportedWasmCache.set(classId, true);
+            return true;
+          }
+        }
         const targetClassId =
           this.db.query<SymbolId | null>("classInstance", child.id) ??
           compInst?.classInstance ??
@@ -1268,8 +1299,9 @@ export class ModelicaFlattener {
           : ((classId && compInst?.typeSpecifier
               ? (this.db.query<any>("resolveName", classId)?.(compInst.typeSpecifier) ??
                 this.db.query<any>("resolveSimpleName", classId)?.(compInst.typeSpecifier))
-              : null) ?? this.db.byName(compInst?.typeSpecifier ?? compInst?.typeName ?? "")?.[0]);
-        const rawSpec = String(compInst?.typeSpecifier ?? compInst?.typeName ?? "").trim();
+              : null) ??
+            this.db.byName(rawSpec)?.[0] ??
+            (rawSpec.includes(".") ? this.db.byName(rawSpec.split(".").pop()!)?.[0] : undefined));
         if (
           !targetClassId &&
           rawSpec &&
@@ -1292,6 +1324,18 @@ export class ModelicaFlattener {
         const isTypeTarget =
           targetClass &&
           (targetClass.kind === "Type" || String(targetClass.metadata?.classKind ?? "").toLowerCase() === "type");
+        if (targetClass && !isTypeTarget && localCompNames.size > 0) {
+          const targetCst = this.db.cstNode(targetClass.id) as any;
+          const targetText = targetCst?.text ? stripCommentsAndStrings(targetCst.text) : "";
+          if (targetText && !/\bouter\b/.test(targetText)) {
+            for (const ln of localCompNames) {
+              if (new RegExp(`=[^;]*\\b${escapeRegExp(ln)}\\b`).test(targetText)) {
+                this._unsupportedWasmCache.set(classId, true);
+                return true;
+              }
+            }
+          }
+        }
         if (
           targetClass &&
           !isTypeTarget &&
@@ -1319,9 +1363,7 @@ export class ModelicaFlattener {
       const src = (sym?.resourceId ? (this.db as any).source?.(sym.resourceId) : undefined) || text;
       if (
         typeof src === "string" &&
-        (/\bexternal\s+"builtin"/.test(src) ||
-          /\bderivative\s*=/.test(src) ||
-          (this.options.omcCompatibility && (/\bimport\s+/.test(src) || /\bencapsulated\s+/.test(src))))
+        (/\bexternal\s+"builtin"/.test(src) || /\bderivative\s*(?:\([^)]*\))?\s*=/.test(src))
       ) {
         this._unsupportedWasmCache.set(classId, true);
         return true;
@@ -1335,7 +1377,7 @@ export class ModelicaFlattener {
           return true;
         }
         topNames.add(s.name);
-        if (s.kind === "Function" || s.kind === "Class") {
+        if (s.kind === "Function" || s.kind === "Class" || s.kind === "Package") {
           let fnText = "";
           if (s.startByte != null && s.endByte != null && typeof (this.db as any).cstText === "function") {
             fnText = (this.db as any).cstText(s.startByte, s.endByte, s) ?? "";
@@ -1343,7 +1385,7 @@ export class ModelicaFlattener {
           if (!fnText) {
             fnText = (this.db.cstNode(s.id) as any)?.text ?? "";
           }
-          if (/\bexternal\s+"builtin"/.test(fnText) || /\bderivative\s*=/.test(fnText)) {
+          if (/\bexternal\s+"builtin"/.test(fnText) || /\bderivative\s*(?:\([^)]*\))?\s*=/.test(fnText)) {
             this._unsupportedWasmCache.set(classId, true);
             return true;
           }
@@ -1523,10 +1565,11 @@ export class ModelicaFlattener {
     const rootSymForOldInst = this.db.symbol(rootClassId);
     const compilerOpts = extractCompilerOptions(classCst, this.options, this.db, rootSymForOldInst);
     const isOldInst = compilerOpts.isOldFrontend;
-    dae.extensionMetadata.isOldFrontend = isOldInst;
-    dae.extensionMetadata.scalarizeBindings = compilerOpts.scalarizeBindings;
-    dae.extensionMetadata.scalarizeMinMax = compilerOpts.scalarizeMinMax;
-    dae.extensionMetadata.isGen = compilerOpts.isGen;
+    dae.extensionMetadata["isOldFrontend"] = isOldInst;
+    dae.extensionMetadata["scalarizeBindings"] = compilerOpts.scalarizeBindings;
+    dae.extensionMetadata["scalarizeMinMax"] = compilerOpts.scalarizeMinMax;
+    dae.extensionMetadata["isGen"] = compilerOpts.isGen;
+    dae.extensionMetadata["ignoreReplaceable"] = compilerOpts.ignoreReplaceable;
     (dae.extensionMetadata as any).hasOldInstOption = compilerOpts.hasOldInstAnnotation;
     // Check for non-instantiable class specializations (package, function, etc.)
     const classCstForCheck = classCst as SyntaxNode | null;
@@ -1650,18 +1693,18 @@ export class ModelicaFlattener {
     // Validate extends clauses (illegal components in path, replaceable base classes, inherited extends cycles)
     const extendsClauses = this.db.childrenOf(rootClassId).filter((c) => c.kind === "Extends");
     for (let extIdx = 0; extIdx < extendsClauses.length; extIdx++) {
-      const ext = extendsClauses[extIdx];
+      const ext = extendsClauses[extIdx]!;
       const extCst = this.db.cstNode(ext.id) as any;
       const extRange = extCst
         ? { startByte: extCst.startIndex ?? extCst.startByte, endByte: extCst.endIndex ?? extCst.endByte }
         : undefined;
 
       const parts = ext.name.split(".");
-      let currentScope: SymbolEntry | null = this.db.symbol(rootClassId);
+      let currentScope: SymbolEntry | null = this.db.symbol(rootClassId) ?? null;
       const isEncapsulatedRoot = isScopeEncapsulated(this.db, rootClassId);
       const resolvedChain: { name: string; symbol: SymbolEntry | null }[] = [];
       for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
+        const part = parts[i]!;
         let resolved: SymbolEntry | null = null;
         if (i === 0) {
           const resolver =
@@ -1738,7 +1781,7 @@ export class ModelicaFlattener {
 
       // Check 2: Replaceable base class or segment
       for (let i = 0; i < resolvedChain.length; i++) {
-        const item = resolvedChain[i];
+        const item = resolvedChain[i]!;
         if (item.symbol) {
           const isRep = this.db.query<boolean>("isReplaceable", item.symbol.id);
           if (isRep) {
@@ -1780,7 +1823,7 @@ export class ModelicaFlattener {
       const firstPart = parts[0];
       const priorMatches: { prevExt: SymbolEntry; prevBase: SymbolEntry; innerClass: SymbolEntry }[] = [];
       for (let j = 0; j < extIdx; j++) {
-        const prevExt = extendsClauses[j];
+        const prevExt = extendsClauses[j]!;
         const prevBase =
           this.db.query<SymbolEntry | null>("resolvedBaseClass", prevExt.id) ??
           this.db.byName(prevExt.name).find((e) => e.kind === "Class");
@@ -1910,8 +1953,14 @@ export class ModelicaFlattener {
 
       const seenTop = new Map<string, SymbolEntry>();
       for (const s of topLevelSymbols) {
-        // Built-in type check for top-level classes (Clock2.mo)
-        if (s.name === "Clock") {
+        // Built-in type check for top-level classes
+        if (
+          s.name === "Clock" ||
+          s.name === "Real" ||
+          s.name === "Integer" ||
+          s.name === "Boolean" ||
+          s.name === "String"
+        ) {
           const currCst = this.db.cstNode(s.id) as any;
           dae.diagnostics.push({
             severity: "notification",
@@ -1922,7 +1971,7 @@ export class ModelicaFlattener {
           dae.diagnostics.push({
             severity: "error",
             code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
-            message: ModelicaErrorCode.DUPLICATE_ELEMENT.message("Clock"),
+            message: ModelicaErrorCode.DUPLICATE_ELEMENT.message(s.name),
             range: this.getElementDiagRange(currCst),
           });
           return dae;
@@ -1988,7 +2037,7 @@ export class ModelicaFlattener {
             notifRange = currRange;
             errorRange = prevRange;
           }
-          if (dae.extensionMetadata?.isOldFrontend && elem.kind === "Component" && prevElem.kind === "Component") {
+          if (dae.extensionMetadata?.["isOldFrontend"] && elem.kind === "Component" && prevElem.kind === "Component") {
             const getClause = (node: any) => {
               let curr = node;
               while (curr && curr.type !== "component_clause") curr = curr.parent;
@@ -2132,7 +2181,7 @@ export class ModelicaFlattener {
       const targetExtends = targetChildren.filter((c) => c.kind === "Extends");
       const targetLocalComps = targetChildren.filter((c) => c.kind === "Component");
       const targetImports = this.collectClassImports(targetClassId);
-      const isOldFE = Boolean(this.options.isOldFrontend || dae.extensionMetadata?.isOldFrontend);
+      const isOldFE = Boolean(this.options.isOldFrontend || dae.extensionMetadata?.["isOldFrontend"]);
       const seenInheritedComps = new Map<
         string,
         { elem: SymbolEntry; clause: any; range: { startByte: number; endByte: number }; modText: string | null }
@@ -2460,7 +2509,7 @@ export class ModelicaFlattener {
           !this.classHasRedeclare(rootClassId) &&
           !this.classHasUnsupportedWasmFeatures(rootClassId)));
 
-    let wasmDiffStats: { varCount: number; eqCount: number; error?: string } | null = null;
+    let wasmDiffStats: { varCount: number; eqCount: number; error?: string | undefined } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
       let testDae: DAEBuilder | null = null;
       let wf = 0;
@@ -2931,9 +2980,9 @@ export class ModelicaFlattener {
     }
 
     const isOldFrontend = compilerOpts.isOldFrontend;
-    dae.extensionMetadata.isOldFrontend = isOldFrontend;
+    dae.extensionMetadata["isOldFrontend"] = isOldFrontend;
     const isGen = compilerOpts.isGen;
-    dae.extensionMetadata.isGen = isGen;
+    dae.extensionMetadata["isGen"] = isGen;
 
     this.checkCyclicConstantsAndParameters(dae, rootClassId);
 
@@ -3064,9 +3113,10 @@ export class ModelicaFlattener {
           const leaves: string[] = [];
           const childClassIds: SymbolId[] = [];
           const cCst = this.db.cstNode(cid) as any;
-          const cText: string = cCst?.text ?? "";
-          if (cText.includes("if ")) {
-            for (const m of cText.matchAll(/\bif\s+([^;]+);/g)) {
+          const rawCText: string = cCst?.text ?? "";
+          if (rawCText.includes("if ")) {
+            const cleanCText = stripCommentsAndStrings(rawCText);
+            for (const m of cleanCText.matchAll(/\bif\s+([^;]+);/g)) {
               const condExpr = m[1] ?? "";
               if (/\bthen\b/.test(condExpr)) continue;
               const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
@@ -3104,8 +3154,8 @@ export class ModelicaFlattener {
         for (let i = 0; i < dae.varCount; i++) {
           if (dae.getVarVariability(i) === Variability.Parameter) {
             const vName = dae.getVarName(i);
-            const leaf = vName.split(".").pop()!.split("[")[0];
-            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0])) {
+            const leaf = vName.split(".").pop()!.split("[")[0]!;
+            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0]!)) {
               dae.setVarFinal(i, true);
             }
           }
@@ -3155,12 +3205,12 @@ export class ModelicaFlattener {
 
     const attachDiffReport = (targetDae: DAEBuilder) => {
       const wasmDiff = (this as any)._wasmDiffStats as
-        | { varCount: number; eqCount: number; error?: string }
+        | { varCount: number; eqCount: number; error?: string | undefined }
         | undefined;
       if (wasmDiff) {
         delete (this as any)._wasmDiffStats;
         (targetDae as any).diffReport = wasmDiff;
-        if (process.env.DEBUG_DIFF === "1") {
+        if (process.env["DEBUG_DIFF"] === "1") {
           if (wasmDiff.error) {
             console.warn(`[DiffFlattener] WASM flattener failed: ${wasmDiff.error}`);
           } else {
@@ -3313,7 +3363,7 @@ export class ModelicaFlattener {
               const pIdx = dae.getVarIdxByName(rhs);
               if (pIdx >= 0) {
                 const exprId = dae.getVarExpression(pIdx);
-                if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.BoolLiteral) {
+                if (exprId !== undefined && exprId >= 0 && dae.getExprKind(exprId) === ExprKind.BoolLiteral) {
                   rhs = dae.getExprData1(exprId) !== 0 ? "true" : "false";
                 }
               }
@@ -3503,7 +3553,7 @@ export class ModelicaFlattener {
     };
     walkVars(cst);
 
-    if (!dae.extensionMetadata?.isOldFrontend) {
+    if (!dae.extensionMetadata?.["isOldFrontend"]) {
       const condParamLeaves = new Set<string>();
       const visitedClasses = new Set<SymbolId>();
       const classQueue: SymbolId[] = [classId];
@@ -3512,8 +3562,9 @@ export class ModelicaFlattener {
         if (visitedClasses.has(cid)) continue;
         visitedClasses.add(cid);
         const cCst = this.db.cstNode(cid) as any;
-        const cText: string = cCst?.text ?? "";
-        for (const m of cText.matchAll(/\bif\s+([^;]+);/g)) {
+        const rawCText: string = cCst?.text ?? "";
+        const cleanCText = rawCText.includes("if ") ? stripCommentsAndStrings(rawCText) : "";
+        for (const m of cleanCText.matchAll(/\bif\s+([^;]+);/g)) {
           const condExpr = m[1] ?? "";
           if (/\bthen\b/.test(condExpr)) continue;
           const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
@@ -3537,8 +3588,8 @@ export class ModelicaFlattener {
         for (let i = 0; i < dae.varCount; i++) {
           if (dae.getVarVariability(i) === Variability.Parameter) {
             const vName = dae.getVarName(i);
-            const leaf = vName.split(".").pop()!.split("[")[0];
-            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0])) {
+            const leaf = vName.split(".").pop()!.split("[")[0]!;
+            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0]!)) {
               dae.setVarFinal(i, true);
             }
           }
@@ -3551,7 +3602,7 @@ export class ModelicaFlattener {
         const existing = dae.getVarEnumerationLiterals(i);
         if (!existing || existing.length === 0) {
           const varName = dae.getVarName(i);
-          const leafComp = varName.split(".").pop()!.split("[")[0];
+          const leafComp = varName.split(".").pop()!.split("[")[0]!;
           const compSyms = this.db.byName(leafComp).filter((s) => s.kind === "Component");
           for (const cs of compSyms) {
             const compInst = this.db.query<any>("componentInstance", cs.id);
@@ -3844,31 +3895,37 @@ export class ModelicaFlattener {
     return patchIncremental(this, rootClassId, dae, dirtyRanges, delta);
   }
 
-  private findEquationNodeAt(root: any, start: number, end: number): any {
+  public findEquationNodeAt(root: any, start: number, end: number): any {
     return findEquationNodeAt(root, start, end);
   }
 
-  private findComponentDeclarationAt(root: any, start: number, end: number): any {
+  public findComponentDeclarationAt(root: any, start: number, end: number): any {
     return findComponentDeclarationAt(root, start, end);
   }
 
-  private isCstNodeProtected(node: any): boolean {
+  public isCstNodeProtected(node: any): boolean {
     return isCstNodeProtected(node, this.nodeProtectionCache as any);
   }
 
-  public generateRecordConstructorFor(sym: any, dae: DAEBuilder, rootClassId?: SymbolId): DAEBuilder | null {
-    return generateRecordConstructorFor(this, sym, dae, rootClassId);
+  public generateRecordConstructorFor(
+    sym: any,
+    dae: DAEBuilder,
+    rootClassId?: SymbolId,
+    overrideFnName?: string,
+    overrideResType?: string,
+  ): DAEBuilder | null {
+    return generateRecordConstructorFor(this, sym, dae, rootClassId, overrideFnName, overrideResType);
   }
 
   private generateRecordConstructors(rootClassId: SymbolId, dae: DAEBuilder): void {
     generateRecordConstructors(this, rootClassId, dae);
   }
 
-  private isFunctionSym(sym: any): boolean {
+  public isFunctionSym(sym: any): boolean {
     return isFunctionSym(this.db, sym);
   }
 
-  private isInsideExpandableBus(prefix: string): boolean {
+  public isInsideExpandableBus(prefix: string): boolean {
     return isInsideExpandableBus(this.expandableBuses, prefix);
   }
 
@@ -3876,7 +3933,7 @@ export class ModelicaFlattener {
     processExpandableConnectors(rootClassId, dae, this.db, this.expandableBuses);
   }
 
-  private flattenFunction(
+  public flattenFunction(
     fnSymId: SymbolId,
     fnName: string,
     modifiers?: any[],
@@ -3957,19 +4014,19 @@ export class ModelicaFlattener {
     return checkTypeAliasSpecialization(this, typeSymId);
   }
 
-  private collectInheritedTypeModifiers(scopeId: SymbolId, typeLeafName: string, visited = new Set<SymbolId>()): any[] {
+  public collectInheritedTypeModifiers(scopeId: SymbolId, typeLeafName: string, visited = new Set<SymbolId>()): any[] {
     return collectInheritedTypeModifiers(this, scopeId, typeLeafName, visited);
   }
 
-  private getOrCreateWasmEnv(dae: DAEBuilder, mods?: any): ModelicaModificationEnv | null {
+  public getOrCreateWasmEnv(dae: DAEBuilder, mods?: any): ModelicaModificationEnv | null {
     return getOrCreateWasmEnv(this, dae, mods);
   }
 
-  private classFindMember(classId: SymbolId, name: string, visited: Set<SymbolId> = new Set()): SymbolEntry | null {
+  public classFindMember(classId: SymbolId, name: string, visited: Set<SymbolId> = new Set()): SymbolEntry | null {
     return classFindMember(this, classId, name, visited);
   }
 
-  private validateClassModifiers(defaultTargetClassId: SymbolId, args: any[], dae: DAEBuilder): boolean {
+  public validateClassModifiers(defaultTargetClassId: SymbolId, args: any[], dae: DAEBuilder): boolean {
     return validateClassModifiers(this, defaultTargetClassId, args, dae);
   }
 
@@ -3977,7 +4034,7 @@ export class ModelicaFlattener {
     instantiateElements(this, elements, prefix, dae, parentMods);
   }
 
-  private validateFunctionComponentDeclaration(
+  public validateFunctionComponentDeclaration(
     dae: DAEBuilder,
     compInst: any,
     causality: Causality,
@@ -3987,7 +4044,7 @@ export class ModelicaFlattener {
     validateFunctionComponentDeclaration(this, dae, compInst, causality, isElemProtected, elemCst);
   }
 
-  private validateComponentBasicAttributes(
+  public validateComponentBasicAttributes(
     dae: DAEBuilder,
     compInst: any,
     elemId: SymbolId,
@@ -4008,7 +4065,7 @@ export class ModelicaFlattener {
     );
   }
 
-  private evaluateCSTToNumber(
+  public evaluateCSTToNumber(
     node: SyntaxNode | string | null | undefined,
     scopeId: SymbolId,
     subs?: Map<string, number>,
@@ -4025,11 +4082,11 @@ export class ModelicaFlattener {
     return collectExtendsMods(this, classId, visited);
   }
 
-  private resolveRedeclarationType(scopeId: SymbolId | null, redeclSpecifier: string): SymbolId | null {
+  public resolveRedeclarationType(scopeId: SymbolId | null, redeclSpecifier: string): SymbolId | null {
     return resolveRedeclarationType(this, scopeId, redeclSpecifier);
   }
 
-  private resolveInnerOuterClass(classId: SymbolId): SymbolId {
+  public resolveInnerOuterClass(classId: SymbolId): SymbolId {
     return resolveInnerOuterClass(this, classId);
   }
 

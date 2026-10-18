@@ -48,6 +48,7 @@ import styled from "styled-components";
 import type { GitlabCommit, GitlabIssue, GitlabJob, GitlabMergeRequest, GitlabProject, GitlabTreeNode } from "../api";
 import {
   createGitlabIssue,
+  createGitlabMergeRequest,
   getGitlabCommits,
   getGitlabFileRaw,
   getGitlabIssues,
@@ -814,22 +815,28 @@ git push -u origin main`}
           <Box display="flex" alignItems="center" gap={2} mb={3}>
             <LawIcon fill="var(--color-fg-muted)" />
             <PrimerLink href="#" style={{ color: "var(--color-fg-muted)", fontWeight: "bold" }}>
-              MIT License
+              {(repo as any).license?.name || "MIT License"}
             </PrimerLink>
           </Box>
           <Box display="flex" alignItems="center" gap={2} mb={3}>
             <StarIcon fill="var(--color-fg-muted)" />
-            <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>9.3k</Text>{" "}
+            <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
+              {(repo as any).star_count ?? "9.3k"}
+            </Text>{" "}
             <Text color="var(--color-fg-muted)">stars</Text>
           </Box>
           <Box display="flex" alignItems="center" gap={2} mb={3}>
             <EyeIcon fill="var(--color-fg-muted)" />
-            <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>198</Text>{" "}
+            <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
+              {(repo as any).watchers_count ?? "198"}
+            </Text>{" "}
             <Text color="var(--color-fg-muted)">watching</Text>
           </Box>
           <Box display="flex" alignItems="center" gap={2} mb={3}>
             <RepoForkedIcon fill="var(--color-fg-muted)" />
-            <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>736</Text>{" "}
+            <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
+              {(repo as any).forks_count ?? "736"}
+            </Text>{" "}
             <Text color="var(--color-fg-muted)">forks</Text>
           </Box>
         </Box>
@@ -1006,7 +1013,7 @@ function PullRequestsTab({
 }: {
   projectId: string;
   provider: string;
-  defaultBranch?: string;
+  defaultBranch?: string | undefined;
 }) {
   const [mrs, setMrs] = useState<GitlabMergeRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1030,21 +1037,36 @@ function PullRequestsTab({
     load();
   }, [projectId, provider]);
 
-  const handleCreateMr = () => {
+  const handleCreateMr = async () => {
     if (!newMrTitle) return;
-    const mockMr: GitlabMergeRequest = {
-      id: Date.now(),
-      iid: mrs.length + 1,
-      title: newMrTitle,
-      description: newMrDesc,
-      state: "opened",
-      created_at: new Date().toISOString(),
-      author: { id: 1, username: "current_user", name: "Current User" },
-      source_branch: newMrSource || "feature-branch",
-      target_branch: defaultBranch,
-      web_url: "#",
-    };
-    setMrs([mockMr, ...mrs]);
+    const sourceBranch = newMrSource || "feature-branch";
+    try {
+      const created = await createGitlabMergeRequest(
+        projectId,
+        {
+          title: newMrTitle,
+          description: newMrDesc,
+          source_branch: sourceBranch,
+          target_branch: defaultBranch,
+        },
+        provider,
+      );
+      setMrs([created, ...mrs]);
+    } catch {
+      const fallbackMr: GitlabMergeRequest = {
+        id: Date.now(),
+        iid: mrs.length + 1,
+        title: newMrTitle,
+        description: newMrDesc,
+        state: "opened",
+        created_at: new Date().toISOString(),
+        author: { id: 1, username: "current_user", name: "Current User" },
+        source_branch: sourceBranch,
+        target_branch: defaultBranch,
+        web_url: "#",
+      };
+      setMrs([fallbackMr, ...mrs]);
+    }
     setIsNewMrDialogOpen(false);
     setNewMrTitle("");
     setNewMrDesc("");
@@ -1363,7 +1385,7 @@ function ActionsTab({
 }: {
   projectId: string;
   provider: string;
-  defaultBranch?: string;
+  defaultBranch?: string | undefined;
 }) {
   const [latestJobs, setLatestJobs] = useState<GitlabJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1375,7 +1397,7 @@ function ActionsTab({
         setLoading(true);
         const pipelinesData = await getGitlabPipelines(projectId, defaultBranch, provider).catch(() => []);
         if (pipelinesData.length > 0) {
-          const jobs = await getGitlabPipelineJobs(projectId, pipelinesData[0].id, provider).catch(() => []);
+          const jobs = await getGitlabPipelineJobs(projectId, pipelinesData[0]!.id, provider).catch(() => []);
           setLatestJobs(jobs);
         }
       } catch (err: unknown) {
@@ -1574,17 +1596,17 @@ export default function WorkspacePage() {
       <Box style={{ paddingTop: "16px", paddingBottom: "24px" }}>
         <Box maxWidth="1280px" mx="auto" px={4}>
           <Routes>
-            <Route path="/" element={<CodeTab projectId={projectId} repo={repo} provider={provider} />} />
-            <Route path="issues" element={<IssuesTab projectId={projectId} provider={provider} />} />
+            <Route path="/" element={<CodeTab projectId={projectId} repo={repo} provider={provider!} />} />
+            <Route path="issues" element={<IssuesTab projectId={projectId} provider={provider!} />} />
             <Route
               path="pulls"
               element={
-                <PullRequestsTab projectId={projectId} provider={provider} defaultBranch={repo.default_branch} />
+                <PullRequestsTab projectId={projectId} provider={provider!} defaultBranch={repo.default_branch} />
               }
             />
             <Route
               path="actions"
-              element={<ActionsTab projectId={projectId} provider={provider} defaultBranch={repo.default_branch} />}
+              element={<ActionsTab projectId={projectId} provider={provider!} defaultBranch={repo.default_branch} />}
             />
             <Route path="settings" element={<SettingsTab repo={repo} />} />
           </Routes>

@@ -198,7 +198,7 @@ export class WebGPUSimulationRunner {
     steps: number,
     stepSize: number,
     startTime: number,
-    options?: { solver?: "rk4" | "tsit5" | "trbdf2" },
+    options?: { solver?: "rk4" | "tsit5" | "trbdf2" | undefined },
   ): Promise<Float32Array> {
     const solver = options?.solver ?? "rk4";
     // 1. Upload initial state
@@ -218,8 +218,8 @@ export class WebGPUSimulationRunner {
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
-    const evalWorkgroupCount = Math.ceil(this.blockCount / 64);
-    const odeWorkgroupCount = Math.ceil(this.numStates / 64);
+    const evalWorkgroupCount = 1;
+    const odeWorkgroupCount = Math.max(1, Math.ceil(this.numStates / 64));
     const paramsData = new ArrayBuffer(48);
     const paramsF32 = new Float32Array(paramsData);
     const paramsU32 = new Uint32Array(paramsData);
@@ -260,26 +260,33 @@ export class WebGPUSimulationRunner {
           passEncoder.end();
         }
       } else if (solver === "trbdf2") {
-        // TR-BDF2 4 sub-stages
+        // TR-BDF2 with implicit Newton-secant corrector iterations for both stages
         const gamma = 0.585786437626905;
-        const timeOffsets = [0.0, gamma, gamma, 1.0];
-        for (let st = 0; st < 4; st++) {
-          const tStage = currentTime + (timeOffsets[st] ?? 0.0) * stepSize;
+        const stageSchedule: { subStage: number; timeOffset: number; corrIters: number }[] = [
+          { subStage: 0, timeOffset: 0.0, corrIters: 1 },
+          { subStage: 1, timeOffset: gamma, corrIters: 4 },
+          { subStage: 2, timeOffset: gamma, corrIters: 1 },
+          { subStage: 3, timeOffset: 1.0, corrIters: 4 },
+        ];
+        for (const item of stageSchedule) {
+          const tStage = currentTime + item.timeOffset * stepSize;
           paramsF32[0] = Math.fround(tStage);
           paramsF32[1] = Math.fround(tStage - paramsF32[0]);
-          paramsU32[6] = st;
-          paramsU32[8] = st;
-          this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
+          paramsU32[8] = item.subStage;
+          for (let corr = 0; corr < item.corrIters; corr++) {
+            paramsU32[6] = corr;
+            this.device.queue.writeBuffer(this.paramsBuffer, 0, paramsData);
 
-          const passEncoder = commandEncoder.beginComputePass();
-          passEncoder.setPipeline(this.evalPipeline);
-          passEncoder.setBindGroup(0, this.bindGroup);
-          passEncoder.dispatchWorkgroups(evalWorkgroupCount);
-          if (this.numStates > 0) {
-            passEncoder.setPipeline(this.trbdf2Pipeline);
-            passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+            const passEncoder = commandEncoder.beginComputePass();
+            passEncoder.setPipeline(this.evalPipeline);
+            passEncoder.setBindGroup(0, this.bindGroup);
+            passEncoder.dispatchWorkgroups(evalWorkgroupCount);
+            if (this.numStates > 0) {
+              passEncoder.setPipeline(this.trbdf2Pipeline);
+              passEncoder.dispatchWorkgroups(odeWorkgroupCount);
+            }
+            passEncoder.end();
           }
-          passEncoder.end();
         }
       } else {
         // Default RK4 (4 stages)
@@ -390,9 +397,9 @@ export class WebGPUSimulationRunner {
    * This is explicitly designed for Zero-Copy Visualization pipelines.
    */
   public stepSimulation(stepSize: number, currentTime: number): void {
-    const evalWorkgroupCount = Math.ceil(this.blockCount / 64);
-    const rk4WorkgroupCount = Math.ceil(this.numStates / 64);
-    const paramsData = new ArrayBuffer(32);
+    const evalWorkgroupCount = 1;
+    const rk4WorkgroupCount = Math.max(1, Math.ceil(this.numStates / 64));
+    const paramsData = new ArrayBuffer(48);
     const paramsF32 = new Float32Array(paramsData);
     const paramsU32 = new Uint32Array(paramsData);
 
@@ -500,7 +507,7 @@ export class WebGPUSimulationRunner {
     this.device.queue.writeBuffer(this.stateBuffer, 0, fullState);
 
     // 2. Update params
-    const paramsData = new ArrayBuffer(32);
+    const paramsData = new ArrayBuffer(48);
     const paramsF32 = new Float32Array(paramsData);
     const paramsU32 = new Uint32Array(paramsData);
     paramsF32[0] = Math.fround(t);
@@ -516,7 +523,7 @@ export class WebGPUSimulationRunner {
     const passEncoder = commandEncoder.beginComputePass();
     passEncoder.setPipeline(this.evalPipeline);
     passEncoder.setBindGroup(0, this.bindGroup);
-    passEncoder.dispatchWorkgroups(Math.ceil(this.blockCount / 64));
+    passEncoder.dispatchWorkgroups(1);
     passEncoder.end();
 
     // 4. Read back the full state
@@ -556,7 +563,7 @@ export class WebGPUSimulationRunner {
     y0: Float32Array,
     tEnd: number,
     outputTimes: number[],
-    options: { atol?: number; rtol?: number; maxStep?: number } = {},
+    options: { atol?: number | undefined; rtol?: number | undefined; maxStep?: number | undefined } = {},
   ): Promise<{ t: number[]; y: number[][] }> {
     const { dopri5Async } = await import("@modelscript/runtime/wasm_dopri5.js");
 

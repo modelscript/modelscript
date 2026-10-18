@@ -11,8 +11,8 @@ export function searchRouter(database: LibraryDatabase): Router {
    * GET /api/v1/search/completions
    */
   router.get("/completions", (req: Request, res: Response) => {
-    const q = req.query.q as string;
-    const limit = Number(req.query.limit) || 3;
+    const q = req.query["q"] as string;
+    const limit = Number(req.query["limit"]) || 3;
 
     if (!q || typeof q !== "string") {
       res.json({ topics: [], users: [], packages: [], repositories: [] });

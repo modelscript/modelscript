@@ -2,39 +2,60 @@
 
 import { ModelScriptErrorCode, type ModelScriptDiagnostic } from "./errors.js";
 
+/**
+ * Lexical scope entry representing a declared variable, function, struct, parameter, or FLWOR variable.
+ */
 interface SymbolInfo {
   name: string;
   kind: "variable" | "function" | "struct" | "parameter" | "flwor-var";
-  type?: string;
+  type?: string | undefined;
 }
 
+/**
+ * Recorded signature metadata for a top-level function declaration.
+ */
 interface FunctionSig {
   paramCount: number;
-  returnType?: string;
+  returnType?: string | undefined;
 }
 
+/**
+ * Recorded field set for a declared `struct` type.
+ */
 interface StructSig {
   fields: Set<string>;
 }
 
+/**
+ * Semantic CST linter for ModelScript that validates lexical scoping, duplicate
+ * declarations, FLWOR comprehension variable bindings, function call arity, and
+ * struct field access.
+ */
 export class ModelScriptLinter {
   private diagnostics: ModelScriptDiagnostic[] = [];
   private scopes: Map<string, SymbolInfo>[] = [];
   private functions = new Map<string, FunctionSig>();
   private structs = new Map<string, StructSig>();
 
+  /** Pushes a new lexical scope onto the scope stack. */
   private enterScope(): void {
     this.scopes.push(new Map());
   }
 
+  /** Pops the innermost lexical scope from the scope stack. */
   private exitScope(): void {
     this.scopes.pop();
   }
 
+  /** Returns the active innermost symbol table. */
   private currentScope(): Map<string, SymbolInfo> {
-    return this.scopes[this.scopes.length - 1];
+    return this.scopes[this.scopes.length - 1]!;
   }
 
+  /**
+   * Registers a symbol in the current lexical scope, emitting `DUPLICATE_DECLARATION`
+   * if an identifier with the same name already exists in the same scope.
+   */
   private declareSymbol(name: string, kind: SymbolInfo["kind"], node: any, type?: string): boolean {
     const scope = this.currentScope();
     if (scope.has(name)) {
@@ -51,18 +72,24 @@ export class ModelScriptLinter {
     return true;
   }
 
+  /** Searches the lexical scope stack from innermost to outermost for `name`. */
   private lookupSymbol(name: string): SymbolInfo | undefined {
     for (let i = this.scopes.length - 1; i >= 0; i--) {
-      const sym = this.scopes[i].get(name);
+      const sym = this.scopes[i]!.get(name);
       if (sym) return sym;
     }
     return undefined;
   }
 
+  /** Returns `true` if `name` is bound in any enclosing lexical scope. */
   private isDeclared(name: string): boolean {
     return this.lookupSymbol(name) !== undefined;
   }
 
+  /**
+   * Attempts to resolve the struct type name of an object receiver expression
+   * (either via variable type annotation or `new StructName(...)` construction).
+   */
   private resolveObjectStructName(node: any): string | undefined {
     let cur = node;
     while (
@@ -90,6 +117,7 @@ export class ModelScriptLinter {
     return undefined;
   }
 
+  /** Appends a 1-indexed diagnostic anchored at `node`'s CST span. */
   private addDiagnostic(
     code: number,
     rule: string,
@@ -113,6 +141,10 @@ export class ModelScriptLinter {
     });
   }
 
+  /**
+   * Runs two-pass semantic linting over a parsed ModelScript CST root node:
+   * Pass 1 hoists top-level imports, structs, and functions; Pass 2 validates statements and expressions.
+   */
   lint(rootNode: any): ModelScriptDiagnostic[] {
     this.diagnostics = [];
     this.scopes = [];
@@ -133,6 +165,10 @@ export class ModelScriptLinter {
     return this.diagnostics;
   }
 
+  /**
+   * First pass: hoists top-level `ImportDeclaration`, `StructDeclaration`, and
+   * `FunctionDeclaration` symbols so forward references and member checks succeed.
+   */
   private collectDeclarations(node: any): void {
     if (!node) return;
 
@@ -194,6 +230,10 @@ export class ModelScriptLinter {
     }
   }
 
+  /**
+   * Second pass: recursively traverses statements and expressions, managing lexical scopes
+   * and checking identifier resolution, call arities, and struct member accesses.
+   */
   private walk(node: any): void {
     if (!node) return;
 
@@ -214,6 +254,7 @@ export class ModelScriptLinter {
         const valNode = node.childForFieldName?.("value");
         const name = idNode?.text;
 
+        // Lint initializer expression before binding the variable in scope
         if (valNode) {
           this.walk(valNode);
         }
@@ -258,6 +299,7 @@ export class ModelScriptLinter {
       }
 
       case "FLWORExpression": {
+        // Sequential clause scoping: variables bound in `for`/`let` are visible in subsequent clauses
         this.enterScope();
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
@@ -289,6 +331,7 @@ export class ModelScriptLinter {
       }
 
       case "PostfixExpression": {
+        // Validate function call argument count against hoisted signature
         const calleeNode = node.childForFieldName?.("callee");
         if (calleeNode) {
           const fnName = calleeNode.text;
@@ -311,6 +354,7 @@ export class ModelScriptLinter {
           }
         }
 
+        // Validate struct field existence when receiver resolves to a known struct
         const objNode = node.childForFieldName?.("object");
         const propNode = node.childForFieldName?.("property");
         if (objNode && propNode?.text) {
@@ -339,6 +383,7 @@ export class ModelScriptLinter {
       case "IDENTIFIER": {
         const name = node.text;
         const parent = node.parent;
+        // Skip identifiers that sit in declaration-name, field-key, named-arg, or type-reference positions
         const isDeclarationName =
           ((parent?.type === "VariableDeclaration" ||
             parent?.type === "StructDeclaration" ||

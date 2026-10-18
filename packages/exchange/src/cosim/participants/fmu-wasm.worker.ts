@@ -100,7 +100,7 @@ self.onmessage = async (event: MessageEvent) => {
         }
 
         const env = {
-          abort: (msg: number, file: number, line: number, column: number) => {
+          abort: (_msg: number, _file: number, line: number, column: number) => {
             throw new Error(`WASM abort at ${line}:${column}`);
           },
         };

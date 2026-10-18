@@ -66,12 +66,12 @@ export interface DaeFlowpipeOptions {
   nominalZ: number[];
   tSpan: [number, number];
   dt: number;
-  order?: number;
-  tol?: number;
+  order?: number | undefined;
+  tol?: number | undefined;
   /** Requirements checked against the validated tubes (validated path only). */
-  requirements?: DaeFlowpipeRequirement[];
+  requirements?: DaeFlowpipeRequirement[] | undefined;
   /** Smallest step the validated path may shrink to before giving up (default 1e-9). */
-  minDt?: number;
+  minDt?: number | undefined;
 }
 
 export interface DaeFlowpipeStep {
@@ -112,7 +112,7 @@ export class IntervalKrawczykOperator {
    */
   public static contract(
     dae: DaeSystem,
-    xBox: Interval[],
+    _xBox: Interval[],
     zBox: Interval[],
     z0Nominal: number[],
     x0Nominal: number[],
@@ -555,7 +555,7 @@ export class DaeFlowpipeSolver {
       const gNom = dae.g(currentNomX, currentNomZ);
       const JzNom = dae.jacobianGz(currentNomX, currentNomZ);
       if (dae.numAlgStates === 1 && Math.abs(JzNom[0]?.[0] ?? 0) > 1e-12) {
-        currentNomZ[0] -= (gNom[0] ?? 0) / JzNom[0]![0]!;
+        currentNomZ[0] = currentNomZ[0]! - (gNom[0] ?? 0) / JzNom[0]![0]!;
       }
 
       // 2. High-order Taylor series step for differential variables:

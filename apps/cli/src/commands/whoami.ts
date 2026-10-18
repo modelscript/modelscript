@@ -4,8 +4,8 @@ import type { CommandModule } from "yargs";
 import { getApiUrl, getAuthHeaders, getToken } from "../util/auth.js";
 
 interface WhoAmIArgs {
-  registry?: string;
-  json?: boolean;
+  registry?: string | undefined;
+  json?: boolean | undefined;
 }
 
 export const WhoAmI: CommandModule<{}, WhoAmIArgs> = {

@@ -5,15 +5,15 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 
 interface ArtifactPlaceholderProps {
-  type?: "cfd" | "fea" | "cad" | "pdf" | "generic" | string;
-  title?: string;
-  aspectRatio?: string;
-  height?: string | number;
-  className?: string;
-  style?: React.CSSProperties;
+  type?: "cfd" | "fea" | "cad" | "pdf" | "generic" | string | undefined;
+  title?: string | undefined;
+  aspectRatio?: string | undefined;
+  height?: string | number | undefined;
+  className?: string | undefined;
+  style?: React.CSSProperties | undefined;
 }
 
-const Wrapper = styled.div<{ $aspectRatio?: string; $height?: string | number }>`
+const Wrapper = styled.div<{ $aspectRatio?: string | undefined; $height?: string | number | undefined }>`
   position: relative;
   width: 100%;
   max-width: 100%;

@@ -1,29 +1,55 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * Represents a single reachability flowpipe enclosure envelope over time.
+ */
 export interface FlowpipeEnvelope {
+  /** Display name of the reachability enclosure. */
   name: string;
+  /** Abstract domain geometry kind used to compute the enclosure. */
   kind: "zonotope" | "interval" | "octagon" | "affine";
+  /** Stroke color for rendering the envelope boundary. */
   color: string;
-  fillColor?: string;
-  borderDash?: number[];
-  lineWidth?: number;
+  /** Optional translucent fill color for the envelope ribbon. */
+  fillColor?: string | undefined;
+  /** Optional SVG/Canvas stroke dash pattern. */
+  borderDash?: number[] | undefined;
+  /** Optional stroke line width in pixels. */
+  lineWidth?: number | undefined;
+  /** Lower bound trajectory array aligned with time steps. */
   lo: number[];
+  /** Upper bound trajectory array aligned with time steps. */
   hi: number[];
-  peakVal?: number;
-  breachTime?: number;
-  isViolation?: boolean;
+  /** Peak extreme value reached across the time horizon. */
+  peakVal?: number | undefined;
+  /** First timestamp at which a safety requirement limit was breached. */
+  breachTime?: number | undefined;
+  /** Whether this envelope violates the safety requirement. */
+  isViolation?: boolean | undefined;
 }
 
+/**
+ * Reachability verification dataset containing nominal trajectories, flowpipe envelopes, and safety limits.
+ */
 export interface ReachabilityData {
+  /** Time step array in seconds. */
   t: number[];
+  /** Monitored state or variable identifier. */
   variable: string;
+  /** Nominal center trajectory values across time steps. */
   nominalTrajectory: number[];
+  /** Flowpipe over-approximation envelopes. */
   envelopes: FlowpipeEnvelope[];
+  /** Numerical safety threshold from the requirement specification. */
   requirementLimit: number;
+  /** Human-readable label for the safety requirement threshold. */
   requirementLabel: string;
+  /** Whether all flowpipe envelopes remain strictly within the requirement limit. */
   isCertifiedSafe: boolean;
-  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[];
-  yRange?: [number, number];
+  /** Optional status badges summarizing pass/warn/fail verification gates. */
+  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[] | undefined;
+  /** Optional Y-axis display range `[min, max]`. */
+  yRange?: [number, number] | undefined;
 }
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
@@ -36,46 +62,87 @@ import { LanguageClient } from "vscode-languageclient/browser";
 import { CadViewerPanel } from "./cad-viewer-panel";
 import { MultiBodyAnimationPanel } from "./multibody-animation-panel";
 
+/**
+ * Time-series simulation result payload returned by the language server or client-side solver.
+ */
 interface SimulationResult {
+  /** Array of simulation time points in seconds. */
   t: number[];
+  /** 2D array of state/variable trajectories (`y[varIndex][timeIndex]`). */
   y: number[][];
+  /** Ordered list of state and algebraic variable names corresponding to rows in `y`. */
   states: string[];
-  parameters?: {
-    name: string;
-    type: "real" | "integer" | "boolean" | "enumeration";
-    defaultValue: number;
-    min?: number;
-    max?: number;
-    step: number;
-    unit?: string;
-    description?: string;
-    enumLiterals?: { ordinal: number; label: string }[];
-  }[];
-  experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
-  error?: string;
-  sweepResults?: { value: number; y: number[][] }[];
-  telemetry?: { executionTimeMs: number; stepCount: number };
+  /** Tunable model parameters discovered for interactive sliders and sweeps. */
+  parameters?:
+    | {
+        name: string;
+        type: "real" | "integer" | "boolean" | "enumeration";
+        defaultValue: number;
+        min?: number | undefined;
+        max?: number | undefined;
+        step: number;
+        unit?: string | undefined;
+        description?: string | undefined;
+        enumLiterals?: { ordinal: number; label: string }[] | undefined;
+      }[]
+    | undefined;
+  /** Experiment configuration metadata extracted from model annotations. */
+  experiment?:
+    | {
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        tolerance?: number | undefined;
+      }
+    | undefined;
+  /** Optional error message if the simulation failed. */
+  error?: string | undefined;
+  /** Optional multi-run parameter sweep trajectories. */
+  sweepResults?: { value: number; y: number[][] }[] | undefined;
+  /** Solver execution telemetry metrics. */
+  telemetry?: { executionTimeMs: number; stepCount: number } | undefined;
 }
 
+/**
+ * Webview panel controller for interactive plotting of batch simulations, parameter sweeps,
+ * Monte Carlo fan charts, reachability flowpipes, and live streaming telemetry.
+ */
 export class SimulationPanel {
+  /** Singleton instance of the currently active simulation panel. */
   static currentPanel: SimulationPanel | undefined;
+  /** VS Code webview view type identifier. */
   static readonly viewType = "modelscript.simulation";
 
+  /** Underlying VS Code webview panel instance. */
   private readonly panel: vscode.WebviewPanel;
+  /** Root URI of the extension used to resolve bundled scripts. */
   private readonly extensionUri: vscode.Uri;
+  /** Whether the panel is operating in live streaming mode rather than batch mode. */
   private readonly liveMode: boolean;
-  public sourceUri?: string;
-  public client?: LanguageClient;
-  private isReady = false;
-  private lastResult?: SimulationResult;
-  private lastLiveConfig?: {
-    type: "live" | "liveLocal";
-    mqttWsUrl?: string;
-    sessionId?: string;
-    participantId?: string;
-  };
+  /** URI of the source model document associated with the simulation. */
+  public sourceUri?: string | undefined;
+  /** Language client used to dispatch re-simulation requests with parameter overrides. */
+  public client?: LanguageClient | undefined;
+  /** Whether the webview frontend has finished initializing and sent its `ready` signal. */
+  public isReady = false;
+  /** Most recent batch simulation result cached for webview reloads. */
+  private lastResult?: SimulationResult | undefined;
+  /** Most recent live streaming configuration cached for webview reloads. */
+  private lastLiveConfig?:
+    | {
+        type: "live" | "liveLocal";
+        mqttWsUrl?: string | undefined;
+        sessionId?: string | undefined;
+        participantId?: string | undefined;
+      }
+    | undefined;
+  /** Subscriptions to dispose when the panel is closed. */
   private disposables: vscode.Disposable[] = [];
 
+  /**
+   * Executes a simulation for the active text editor document via the LSP server
+   * and opens or updates the simulation results webview panel.
+   */
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
@@ -241,6 +308,9 @@ export class SimulationPanel {
     }
   }
 
+  /**
+   * Initializes the simulation webview panel and binds message listeners for interactive parameter sweeps and 3D animation.
+   */
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, liveMode: boolean) {
     this.panel = panel;
     this.extensionUri = extensionUri;
@@ -383,6 +453,10 @@ export class SimulationPanel {
     );
   }
 
+  /**
+   * Posts batch simulation results to the webview chart and forwards trajectory data
+   * to any open 3D CAD or Multi-Body animation panels.
+   */
   public postResults(result: SimulationResult) {
     this.lastResult = result;
     const isDark =
@@ -399,6 +473,9 @@ export class SimulationPanel {
     }
   }
 
+  /**
+   * Configures the webview for live MQTT WebSocket streaming mode.
+   */
   private postLiveConfig(mqttWsUrl: string, sessionId?: string, participantId?: string) {
     this.lastLiveConfig = { type: "live", mqttWsUrl, sessionId, participantId };
     const isDark =
@@ -413,6 +490,9 @@ export class SimulationPanel {
     });
   }
 
+  /**
+   * Configures the webview for browser-local live streaming mode (data pushed via `postMessage`).
+   */
   private postLiveLocalConfig(sessionId?: string) {
     this.lastLiveConfig = { type: "liveLocal", sessionId };
     const isDark =
@@ -487,6 +567,9 @@ export class SimulationPanel {
     }
   }
 
+  /**
+   * Generates the HTML document and CSP policy for the simulation results webview.
+   */
   private getHtmlForWebview(): string {
     const webview = this.panel.webview;
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "simulation-webview.js"));
@@ -1250,6 +1333,9 @@ export class SimulationPanel {
 </html>`;
   }
 
+  /**
+   * Disposes the simulation webview panel and all registered event subscriptions.
+   */
   dispose() {
     SimulationPanel.currentPanel = undefined;
     this.panel.dispose();
@@ -1260,6 +1346,9 @@ export class SimulationPanel {
   }
 }
 
+/**
+ * Generates a 32-character alphanumeric nonce for Content-Security-Policy script authorization.
+ */
 function getNonce() {
   let text = "";
   const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";

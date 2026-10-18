@@ -11,9 +11,9 @@ const vendorDir = path.resolve(__dirname, "../../native/vendor");
 
 export interface NativeCompileOptions {
   outPath: string;
-  entryFn?: string;
-  cc?: string;
-  cflags?: string[];
+  entryFn?: string | undefined;
+  cc?: string | undefined;
+  cflags?: string[] | undefined;
 }
 
 export class NativeEmitter {
@@ -57,10 +57,8 @@ int main(int argc, char** argv) {
     wasm2c_module_instantiate(&instance);
     
     // Call exported entry function
-    #if defined(w2c_module_${entryFn}) || 1
     u32 result = w2c_module_${entryFn}(&instance);
     printf("Result: %u\\n", result);
-    #endif
 
     wasm2c_module_free(&instance);
     wasm_rt_free();
@@ -70,7 +68,7 @@ int main(int argc, char** argv) {
     fs.writeFileSync(harnessFile, harness);
 
     // 4. Compile with host clang / gcc
-    const cc = options.cc || process.env.CC || "clang";
+    const cc = options.cc || process.env["CC"] || "clang";
     const cflags = options.cflags || ["-O2"];
 
     const compileArgs = [

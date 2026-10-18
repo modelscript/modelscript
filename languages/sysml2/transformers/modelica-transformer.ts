@@ -7,15 +7,15 @@
 
 export interface SysML2PartDef {
   name: string;
-  isAbstract?: boolean;
-  superclasses?: string[];
-  attributes: { name: string; type: string; value?: string; isInherited?: boolean }[];
-  ports: { name: string; type: string; isInherited?: boolean }[];
+  isAbstract?: boolean | undefined;
+  superclasses?: string[] | undefined;
+  attributes: { name: string; type: string; value?: string | undefined; isInherited?: boolean | undefined }[];
+  ports: { name: string; type: string; isInherited?: boolean | undefined }[];
   connections: { source: string; target: string }[];
 }
 
 export interface ReasonerFeatureProvider {
-  getInferredFeatures?: (className: string) => { name: string; type: string }[];
+  getInferredFeatures?: ((className: string) => { name: string; type: string }[]) | undefined;
 }
 
 /**

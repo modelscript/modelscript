@@ -14,22 +14,22 @@ export interface ArchiveJob {
   format: "zip" | "json";
   status: ArchiveJobStatus;
   createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  expiresAt?: string;
-  error?: string;
-  filePath?: string;
-  fileSizeBytes?: number;
-  queuePosition?: number;
+  startedAt?: string | undefined;
+  completedAt?: string | undefined;
+  expiresAt?: string | undefined;
+  error?: string | undefined;
+  filePath?: string | undefined;
+  fileSizeBytes?: number | undefined;
+  queuePosition?: number | undefined;
 }
 
 export interface ArchiveQueueOptions {
   /** Maximum number of concurrent archive generation workers. Defaults to ARCHIVE_CONCURRENCY env or 2. */
-  maxConcurrency?: number;
+  maxConcurrency?: number | undefined;
   /** Storage directory for staged archives. Defaults to 'data/archives'. */
-  storageDir?: string;
+  storageDir?: string | undefined;
   /** TTL for completed archive files in milliseconds. Defaults to 24 hours. */
-  ttlMs?: number;
+  ttlMs?: number | undefined;
 }
 
 /**

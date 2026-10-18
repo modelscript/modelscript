@@ -50,7 +50,7 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
   // ── GET /cad/convert ───────────────────────────────────────────
   // Fetch a STEP file, convert it to JSON (web-optimized), and cache it.
   router.get("/cad/convert", async (req: Request, res: Response) => {
-    const url = req.query.url as string;
+    const url = req.query["url"] as string;
     if (!url) {
       res.status(400).json({ error: "Missing 'url' query parameter" });
       return;
@@ -66,35 +66,136 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
   });
 
   // ── GET /packages/:name/:version/artifacts ────────────────────
-  // List all artifacts for a package version
-  router.get("/packages/:name/:version/artifacts", (req: Request, res: Response): void => {
-    const packageName = decodeURIComponent(param(req, "name"));
-    const version = param(req, "version");
+  // List all artifacts for a package version (supports both unscoped and @scope/name)
+  router.get(
+    ["/packages/:name/:version/artifacts", "/packages/:scope/:name/:version/artifacts"],
+    (req: Request, res: Response): void => {
+      const scope = req.params["scope"] ? decodeURIComponent(param(req, "scope")) : "";
+      const rawName = decodeURIComponent(param(req, "name"));
+      const packageName = scope ? `${scope.startsWith("@") ? scope : `@${scope}`}/${rawName}` : rawName;
+      const version = param(req, "version");
 
-    if (!packageName || !version) {
-      res.status(400).json({ error: "Package name and version required" });
-      return;
-    }
+      if (!packageName || !version) {
+        res.status(400).json({ error: "Package name and version required" });
+        return;
+      }
 
-    const pkg = database.getPackage(packageName);
-    if (!pkg) {
-      res.status(404).json({ error: "Package not found" });
-      return;
-    }
+      const pkg = database.getPackage(packageName);
+      if (!pkg) {
+        res.status(404).json({ error: "Package not found" });
+        return;
+      }
 
-    const versionRow = database.getPackageVersion(pkg.id, version);
-    if (!versionRow) {
-      res.status(404).json({ error: "Version not found" });
-      return;
-    }
+      const versionRow = database.getPackageVersion(pkg.id, version);
+      if (!versionRow) {
+        res.status(404).json({ error: "Version not found" });
+        return;
+      }
 
-    const artifacts = database.getArtifacts(versionRow.id);
+      const encodedPkgPath = packageName.startsWith("@")
+        ? packageName
+            .split("/")
+            .map((s) => encodeURIComponent(s))
+            .join("/")
+        : encodeURIComponent(packageName);
+      const encodedVer = encodeURIComponent(version);
 
-    const enriched = artifacts.map((artifact) => {
+      const artifacts = database.getArtifacts(versionRow.id);
+
+      const enriched = artifacts.map((artifact) => {
+        const meta = artifact.metadata ? (JSON.parse(artifact.metadata) as Record<string, unknown>) : {};
+        const handler = registry.getHandler(artifact.type);
+        const resourceUrl = `/api/v1/libraries/${encodedPkgPath}/${encodedVer}/resources/${artifact.path}`;
+
+        // Build a view descriptor if a handler exists
+        let viewer = null;
+        if (handler) {
+          viewer = handler.getViewDescriptor({
+            type: artifact.type,
+            path: artifact.path,
+            details: meta,
+          });
+          if (viewer) {
+            viewer = {
+              ...viewer,
+              config: {
+                url: resourceUrl,
+                resourceUrl,
+                packageName,
+                version,
+                ...viewer.config,
+                ...(typeof viewer.config?.["codeUrl"] === "string" && !viewer.config["codeUrl"].startsWith("/")
+                  ? { codeUrl: resourceUrl }
+                  : {}),
+                ...(typeof viewer.config?.["spec"] === "string" && !viewer.config["spec"].startsWith("/")
+                  ? { spec: resourceUrl }
+                  : {}),
+              },
+            };
+          }
+        }
+
+        return {
+          id: artifact.id,
+          type: artifact.type,
+          path: artifact.path,
+          displayName: handler?.displayName ?? artifact.type,
+          metadata: meta,
+          viewer,
+        };
+      });
+
+      res.json({ artifacts: enriched });
+    },
+  );
+
+  // ── GET /packages/:name/:version/artifacts/:id ────────────────
+  // Get detailed artifact info with viewer configuration
+  router.get(
+    ["/packages/:name/:version/artifacts/:id", "/packages/:scope/:name/:version/artifacts/:id"],
+    (req: Request, res: Response): void => {
+      const scope = req.params["scope"] ? decodeURIComponent(param(req, "scope")) : "";
+      const rawName = decodeURIComponent(param(req, "name"));
+      const packageName = scope ? `${scope.startsWith("@") ? scope : `@${scope}`}/${rawName}` : rawName;
+      const version = param(req, "version");
+      const artifactId = parseInt(param(req, "id"), 10);
+
+      if (!packageName || !version || isNaN(artifactId)) {
+        res.status(400).json({ error: "Package name, version, and artifact ID required" });
+        return;
+      }
+
+      const pkg = database.getPackage(packageName);
+      if (!pkg) {
+        res.status(404).json({ error: "Package not found" });
+        return;
+      }
+
+      const versionRow = database.getPackageVersion(pkg.id, version);
+      if (!versionRow) {
+        res.status(404).json({ error: "Version not found" });
+        return;
+      }
+
+      const artifacts = database.getArtifacts(versionRow.id);
+      const artifact = artifacts.find((a) => a.id === artifactId);
+      if (!artifact) {
+        res.status(404).json({ error: "Artifact not found" });
+        return;
+      }
+
+      const encodedPkgPath = packageName.startsWith("@")
+        ? packageName
+            .split("/")
+            .map((s) => encodeURIComponent(s))
+            .join("/")
+        : encodeURIComponent(packageName);
+      const encodedVer = encodeURIComponent(version);
+      const resourceUrl = `/api/v1/libraries/${encodedPkgPath}/${encodedVer}/resources/${artifact.path}`;
+
       const meta = artifact.metadata ? (JSON.parse(artifact.metadata) as Record<string, unknown>) : {};
       const handler = registry.getHandler(artifact.type);
 
-      // Build a view descriptor if a handler exists
       let viewer = null;
       if (handler) {
         viewer = handler.getViewDescriptor({
@@ -102,73 +203,30 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
           path: artifact.path,
           details: meta,
         });
+        if (viewer) {
+          viewer = {
+            ...viewer,
+            config: {
+              url: resourceUrl,
+              resourceUrl,
+              packageName,
+              version,
+              ...viewer.config,
+            },
+          };
+        }
       }
 
-      return {
+      res.json({
         id: artifact.id,
         type: artifact.type,
         path: artifact.path,
         displayName: handler?.displayName ?? artifact.type,
         metadata: meta,
         viewer,
-      };
-    });
-
-    res.json({ artifacts: enriched });
-  });
-
-  // ── GET /packages/:name/:version/artifacts/:id ────────────────
-  // Get detailed artifact info with viewer configuration
-  router.get("/packages/:name/:version/artifacts/:id", (req: Request, res: Response): void => {
-    const packageName = decodeURIComponent(param(req, "name"));
-    const version = param(req, "version");
-    const artifactId = parseInt(param(req, "id"), 10);
-
-    if (!packageName || !version || isNaN(artifactId)) {
-      res.status(400).json({ error: "Package name, version, and artifact ID required" });
-      return;
-    }
-
-    const pkg = database.getPackage(packageName);
-    if (!pkg) {
-      res.status(404).json({ error: "Package not found" });
-      return;
-    }
-
-    const versionRow = database.getPackageVersion(pkg.id, version);
-    if (!versionRow) {
-      res.status(404).json({ error: "Version not found" });
-      return;
-    }
-
-    const artifacts = database.getArtifacts(versionRow.id);
-    const artifact = artifacts.find((a) => a.id === artifactId);
-    if (!artifact) {
-      res.status(404).json({ error: "Artifact not found" });
-      return;
-    }
-
-    const meta = artifact.metadata ? (JSON.parse(artifact.metadata) as Record<string, unknown>) : {};
-    const handler = registry.getHandler(artifact.type);
-
-    let viewer = null;
-    if (handler) {
-      viewer = handler.getViewDescriptor({
-        type: artifact.type,
-        path: artifact.path,
-        details: meta,
       });
-    }
-
-    res.json({
-      id: artifact.id,
-      type: artifact.type,
-      path: artifact.path,
-      displayName: handler?.displayName ?? artifact.type,
-      metadata: meta,
-      viewer,
-    });
-  });
+    },
+  );
 
   return router;
 }

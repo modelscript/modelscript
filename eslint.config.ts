@@ -109,14 +109,14 @@ export default defineConfig([
       },
     },
     rules: {
-      "@typescript-eslint/await-thenable": "off",
+      "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-for-in-array": "error",
-      "@typescript-eslint/no-implied-eval": "off",
-      "@typescript-eslint/only-throw-error": "off",
+      "@typescript-eslint/no-implied-eval": "error",
+      "@typescript-eslint/only-throw-error": "error",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-unused-vars": [
-        "warn",
+        "error",
         {
           argsIgnorePattern: "^[_$]",
           varsIgnorePattern: "^_",
@@ -185,7 +185,9 @@ export default defineConfig([
       },
     },
     rules: {
+      "@typescript-eslint/await-thenable": "off",
       "@typescript-eslint/no-for-in-array": "off",
+      "@typescript-eslint/only-throw-error": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/consistent-generic-constructors": "off",
       "@typescript-eslint/no-explicit-any": "off",

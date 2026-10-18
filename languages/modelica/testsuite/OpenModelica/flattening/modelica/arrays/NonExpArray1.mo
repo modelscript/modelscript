@@ -1,7 +1,6 @@
 // name:     Non-expanded Array1
 // keywords: array
 // status:   correct
-// xfail:    true
 //
 // This is a simple test of non-expanded array handling.
 //

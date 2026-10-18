@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/runtime";
 import { execSync, spawn } from "node:child_process";
@@ -9,27 +10,27 @@ import path from "node:path";
 
 export interface JitEngineOptions {
   /** Execution mode: "auto" prefers cached native binary or V8 JIT; "v8" uses in-process V8; "native" compiles C */
-  mode?: "auto" | "v8" | "native";
+  mode?: "auto" | "v8" | "native" | undefined;
   /** Directory for cached native binaries */
-  cacheDir?: string;
+  cacheDir?: string | undefined;
   /** C compiler (default: gcc or clang) */
-  compiler?: string;
+  compiler?: string | undefined;
   /** Optimization level (default: -O3 -fno-math-errno) */
-  optFlag?: string;
+  optFlag?: string | undefined;
 }
 
 export interface JitSimulateOptions {
-  startTime?: number;
-  stopTime?: number;
-  step?: number;
-  solver?: "rk4" | "euler";
-  tolerance?: number;
-  parameterOverrides?: Map<string, number> | Record<string, number>;
-  mode?: "auto" | "v8" | "native";
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  step?: number | undefined;
+  solver?: "rk4" | "euler" | undefined;
+  tolerance?: number | undefined;
+  parameterOverrides?: Map<string, number> | Record<string, number> | undefined;
+  mode?: "auto" | "v8" | "native" | undefined;
   /** Pre-generated C simulation code (optional) */
-  cSource?: string;
+  cSource?: string | undefined;
   /** Model identifier name */
-  modelName?: string;
+  modelName?: string | undefined;
 }
 
 export interface JitSimulateResult {
@@ -57,13 +58,13 @@ export class ArenaJitEngine {
 
   constructor(options?: JitEngineOptions) {
     this.defaultMode = options?.mode ?? "auto";
-    this.compiler = options?.compiler ?? process.env.CC ?? "gcc";
+    this.compiler = options?.compiler ?? process.env["CC"] ?? "gcc";
     this.optFlag = options?.optFlag ?? "-O3 -fno-math-errno";
 
     if (options?.cacheDir) {
       this.cacheDir = options.cacheDir;
     } else {
-      const tmp = typeof process !== "undefined" ? process.env.TMPDIR || os.tmpdir() : "/tmp";
+      const tmp = typeof process !== "undefined" ? process.env["TMPDIR"] || os.tmpdir() : "/tmp";
       this.cacheDir = path.join(tmp, "msx-jit-cache");
     }
 
@@ -158,7 +159,7 @@ export class ArenaJitEngine {
         for (let s = 0; s < numStates; s++) {
           const sIdx = stateVarIndices[s]!;
           const derIdx = derVarIndices[s]!;
-          env[sIdx] += h * (env[derIdx] ?? 0);
+          env[sIdx] = env[sIdx]! + h * (env[derIdx] ?? 0);
         }
       } else {
         // RK4
@@ -269,7 +270,7 @@ export class ArenaJitEngine {
 
       if (arena.getVarVariability(v) === Variability.Parameter) {
         const expr = arena.getVarExpression(v);
-        if (expr >= 0 && arena.getExprKind(expr) === ExprKind.RealLiteral) {
+        if (expr !== undefined && expr >= 0 && arena.getExprKind(expr) === ExprKind.RealLiteral) {
           initialEnv[v] = arena.getExprRealValue(expr);
         }
       }

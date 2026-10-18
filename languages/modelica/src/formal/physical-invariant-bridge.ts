@@ -14,11 +14,11 @@ import {
 import { ModelicaCFGLowerer, type ModelicaStatement } from "./modelica-cfg-lowerer.js";
 
 export interface ContinuousDiscreteVerificationOptions {
-  functionName?: string;
-  continuousModelName?: string;
-  stateNames?: string[];
-  flowpipeResult?: FlowpipeReachabilityResult | HybridFlowpipeResult;
-  plantPreconditions?: Map<string, [number, number]>;
+  functionName?: string | undefined;
+  continuousModelName?: string | undefined;
+  stateNames?: string[] | undefined;
+  flowpipeResult?: FlowpipeReachabilityResult | HybridFlowpipeResult | undefined;
+  plantPreconditions?: Map<string, [number, number]> | undefined;
 }
 
 export interface ContinuousDiscreteProofCertificate {
@@ -219,7 +219,7 @@ export class PhysicalInvariantBridge {
     controlCode: string | ModelicaStatement[],
     controlVariables: ModelicaVariableDecl[] = [],
     stateToInputMapping: Record<string, string> = {},
-    options?: { functionName?: string; continuousModelName?: string },
+    options?: { functionName?: string | undefined; continuousModelName?: string | undefined },
   ): ContinuousDiscreteProofCertificate {
     // 1. Solve validated continuous/hybrid reachability
     const hybridResult = HybridFlowpipeSolver.solve(hybridProblem);

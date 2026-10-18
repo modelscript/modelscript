@@ -18,20 +18,22 @@ export interface SimulationFieldMeta {
   association: "point" | "cell";
   numComponents: number;
   range: [number, number];
-  unit?: string;
+  unit?: string | undefined;
 }
 
 export interface SimulationDetails {
   format: string;
-  meshType?: string;
-  numPoints?: number;
-  numCells?: number;
-  bounds?: [number, number, number, number, number, number];
-  fields?: SimulationFieldMeta[];
-  solverInfo?: {
-    name: string;
-    version?: string;
-  };
+  meshType?: string | undefined;
+  numPoints?: number | undefined;
+  numCells?: number | undefined;
+  bounds?: [number, number, number, number, number, number] | undefined;
+  fields?: SimulationFieldMeta[] | undefined;
+  solverInfo?:
+    | {
+        name: string;
+        version?: string | undefined;
+      }
+    | undefined;
 }
 
 export class SimulationArtifactHandler implements ArtifactHandler {
@@ -58,7 +60,7 @@ export class SimulationArtifactHandler implements ArtifactHandler {
 
   validate(artifact: Record<string, unknown>): string[] {
     const errors: string[] = [];
-    if (!artifact.path) errors.push("Missing artifact path");
+    if (!artifact["path"]) errors.push("Missing artifact path");
     return errors;
   }
 

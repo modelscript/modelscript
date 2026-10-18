@@ -149,10 +149,12 @@ export class McapReader {
         const channelId = this.view.getUint16(p, true);
         p += 2;
         const _sequence = this.view.getUint32(p, true);
+        void _sequence;
         p += 4;
         const logTime = this.view.getBigUint64(p, true);
         p += 8;
         const _publishTime = this.view.getBigUint64(p, true);
+        void _publishTime;
         p += 8;
 
         if (t0Ns === null) {
@@ -211,7 +213,12 @@ export class McapReader {
  */
 export class McapWriter {
   public static create(
-    series: { topic: string; timestamps: Float64Array; values: Float64Array; encoding?: "json" | "binary" }[],
+    series: {
+      topic: string;
+      timestamps: Float64Array;
+      values: Float64Array;
+      encoding?: "json" | "binary" | undefined;
+    }[],
   ): Uint8Array {
     const encoder = new TextEncoder();
     const chunks: Uint8Array[] = [];
@@ -272,7 +279,7 @@ export class McapWriter {
       channelId: number;
       timeSec: number;
       value: number;
-      encoding?: "json" | "binary";
+      encoding?: "json" | "binary" | undefined;
     }
 
     const allMsgs: MsgRef[] = [];

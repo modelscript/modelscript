@@ -22,16 +22,16 @@ export interface CaeRunResult {
    */
   fields: Record<string, Float32Array | number[]>;
   /** Optional mesh node coordinates [x0, y0, z0, x1, y1, z1, ...] */
-  nodeCoordinates?: Float32Array | number[];
+  nodeCoordinates?: Float32Array | number[] | undefined;
 }
 
 export interface SnapshotExtractionOptions {
   /** Target primary field to extract into the snapshot matrix. Default: first matching field */
   targetField: string;
   /** Expected number of spatial features/nodes. If not provided, inferred from the first run. */
-  expectedFeatures?: number;
+  expectedFeatures?: number | undefined;
   /** Whether to normalize parameter columns to [0, 1]. Default: false */
-  normalizeParameters?: boolean;
+  normalizeParameters?: boolean | undefined;
 }
 
 export class CaeSnapshotExtractor {

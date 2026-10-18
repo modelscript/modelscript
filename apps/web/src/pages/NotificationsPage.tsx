@@ -58,7 +58,7 @@ function formatPostContent(content: string) {
   return parts.map((part, idx) => {
     const match = part.match(/^(\s*)(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)$/);
     if (match) {
-      const rawHandle = match[2].substring(1);
+      const rawHandle = match[2]!.substring(1);
       const parsed = parseFederatedHandle(rawHandle);
       return (
         <React.Fragment key={idx}>
@@ -150,7 +150,7 @@ const MetricChip = styled.span`
   border: 1px solid var(--color-border-default);
 `;
 
-const Avatar = styled.div<{ $url?: string }>`
+const Avatar = styled.div<{ $url?: string | undefined }>`
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -745,10 +745,10 @@ const NotificationsPage: React.FC = () => {
             // Social & Mention Notification Row
             let thumbnail = null;
             if (notif.post_artifact_config && notif.post_artifact_type === "picture") {
-              const conf = safeJsonParse<{ url?: string }>(notif.post_artifact_config, {});
+              const conf = safeJsonParse<{ url?: string | undefined }>(notif.post_artifact_config, {});
               if (conf.url) thumbnail = conf.url;
             } else if (notif.post_artifact_config && notif.post_artifact_type === "link-preview") {
-              const conf = safeJsonParse<{ image?: string }>(notif.post_artifact_config, {});
+              const conf = safeJsonParse<{ image?: string | undefined }>(notif.post_artifact_config, {});
               if (conf.image) thumbnail = conf.image;
             }
 

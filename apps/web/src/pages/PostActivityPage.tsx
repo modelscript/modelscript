@@ -23,7 +23,7 @@ const TabBar = styled.div`
   z-index: 10;
 `;
 
-const Tab = styled.button<{ $active?: boolean }>`
+const Tab = styled.button<{ $active?: boolean | undefined }>`
   flex: 1;
   display: flex;
   align-items: center;

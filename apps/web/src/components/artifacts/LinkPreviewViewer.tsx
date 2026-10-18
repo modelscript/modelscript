@@ -63,16 +63,16 @@ const Domain = styled.div`
 `;
 
 interface LinkPreviewConfig {
-  url?: string;
-  domain?: string;
-  title?: string;
-  description?: string;
-  image?: string;
+  url?: string | undefined;
+  domain?: string | undefined;
+  title?: string | undefined;
+  description?: string | undefined;
+  image?: string | undefined;
 }
 
 interface LinkPreviewViewerProps {
   viewConfig: LinkPreviewConfig | Record<string, any> | null | undefined;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 import { safeCssImageUrl, safeHostname, sanitizeHttpUrl } from "../../util/url";

@@ -17,7 +17,7 @@ export interface PredicateDecl {
   name: string;
   arity: number;
   varNames: string[];
-  types?: ("real" | "int" | "bool")[];
+  types?: ("real" | "int" | "bool")[] | undefined;
 }
 
 export interface PredicateApp {
@@ -27,10 +27,10 @@ export interface PredicateApp {
 
 export interface HornClause {
   id: number;
-  name?: string;
+  name?: string | undefined;
   bodyConstraints: NonlinearConstraint[];
   bodyPredicates: PredicateApp[];
-  head?: PredicateApp; // undefined / null indicates query (implying false / bottom)
+  head?: PredicateApp | undefined; // undefined / null indicates query (implying false / bottom)
 }
 
 export class ChcSystem {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -22,8 +23,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultWasmPath = path.join(__dirname, "../dist/parser.wasm");
 
 export interface CompileOptions {
-  wasmPath?: string;
-  target?: "js" | "wasm" | "native";
+  wasmPath?: string | undefined;
+  target?: "js" | "wasm" | "native" | undefined;
 }
 
 export class ModelScriptCompiler {
@@ -57,9 +58,10 @@ export class ModelScriptCompiler {
 
   executeJs(source: string, context: Record<string, unknown> = {}): unknown {
     const { js } = this.compileToJs(source);
+    const executableJs = js.replace(/^\s*import\s+[\s\S]*?\s+from\s+["'][^"']*["']\s*;\s*$/gm, "");
     const contextKeys = Object.keys(context);
     const contextVals = Object.values(context);
-    const fn = new Function(...contextKeys, `${js}`);
+    const fn = new Function(...contextKeys, executableJs);
     return fn(...contextVals);
   }
 

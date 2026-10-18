@@ -239,15 +239,28 @@ export function writeComtradeCff(record: ComtradeRecord): string {
   return `--- file type: CFG ---\n` + cfg + `--- file type: INF ---\n` + inf + `--- file type: DAT ASCII ---\n` + dat;
 }
 
+/**
+ * Minimal structural interface representing an EMT simulation result for COMTRADE conversion.
+ */
 export interface SimulationResultLike {
+  /** Uniformly sampled simulation time vector in seconds. */
   time: Float64Array;
+  /** Map from bus identifier to primary (phase A or single-phase) voltage waveform in Volts. */
   busVoltages: Map<string, Float64Array>;
+  /** Optional map from bus identifier to 3-phase (`a`, `b`, `c`) instantaneous voltage waveforms in Volts. */
   busPhaseVoltages?: Map<string, { a: Float64Array; b: Float64Array; c: Float64Array }> | undefined;
+  /** Optional map from branch/component identifier to primary (phase A) current waveform in Amperes. */
   branchCurrents?: Map<string, Float64Array> | undefined;
+  /** Optional map from branch/component identifier to 3-phase (`a`, `b`, `c`) instantaneous current waveforms in Amperes. */
   branchPhaseCurrents?: Map<string, { a: Float64Array; b: Float64Array; c: Float64Array }> | undefined;
+  /** Optional map from CSMF control signal identifier to sampled trajectory values. */
   controlSignals?: Map<string, Float64Array> | undefined;
 }
 
+/**
+ * Computes an optimal 16-bit integer quantization multiplier `multiplierA` and symmetric `[min, max]` sample bounds
+ * so that small-amplitude waveforms retain full dynamic range in integer COMTRADE `.dat` files.
+ */
 function computeChannelScale(arr: Float64Array): { multiplierA: number; min: number; max: number } {
   let maxAbs = 0;
   for (let i = 0; i < arr.length; i++) {

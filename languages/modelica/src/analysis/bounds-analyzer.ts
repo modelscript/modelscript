@@ -8,7 +8,7 @@ export interface SubscriptViolation {
   subscriptText: string;
   dimensionIndex: number;
   dimensionSize: number;
-  subscriptValue?: number;
+  subscriptValue?: number | undefined;
 }
 
 /**

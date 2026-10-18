@@ -1,5 +1,4 @@
 // status: correct
-// xfail:    true
 
 model Identity4
 

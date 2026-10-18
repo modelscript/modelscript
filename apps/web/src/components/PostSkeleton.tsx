@@ -33,7 +33,7 @@ const MetaRow = styled.div`
   gap: 8px;
 `;
 
-const ShimmerLine = styled.div<{ $width: string; $height?: string }>`
+const ShimmerLine = styled.div<{ $width: string; $height?: string | undefined }>`
   width: ${(props) => props.$width};
   height: ${(props) => props.$height || "13px"};
   border-radius: var(--radius-sm);
@@ -60,7 +60,7 @@ const ActionPlaceholder = styled.div`
 `;
 
 export interface PostSkeletonProps {
-  hasArtifact?: boolean;
+  hasArtifact?: boolean | undefined;
 }
 
 export const PostSkeleton: React.FC<PostSkeletonProps> = ({ hasArtifact = false }) => {

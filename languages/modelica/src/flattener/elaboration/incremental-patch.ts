@@ -308,7 +308,7 @@ export function patchIncremental(
   if (missingFromDb && newInDb) {
     (dae as any).renameVar?.(missingFromDb, newInDb);
     if (delta && delta !== 0 && dirtyRanges.length > 0) {
-      dae.shiftSourceRanges(dirtyRanges[0].endByte, delta);
+      dae.shiftSourceRanges(dirtyRanges[0]!.endByte, delta);
     }
     return true;
   }
@@ -419,12 +419,18 @@ export function patchIncremental(
       if (effectiveNode) {
         const modText = effectiveNode.text ?? "";
         let varName = targetVarIdx >= 0 ? dae.getVarName(targetVarIdx) : "";
-        let baseName = varName.split("[")[0];
+        let baseName = varName.split("[")[0]!;
 
         // 3a. Check variable renaming first (e.g. parameter Real L_new = 1.0; or parameter Real my_alpha = 1e-4;)
         const declNode =
-          Cst.ComponentDeclaration.declaration(effectiveNode) ?? effectiveNode.childForFieldId?.(FieldId.declaration);
-        const nameNode = declNode ? (Cst.Declaration.name(declNode) ?? declNode.childForFieldId?.(FieldId.name)) : null;
+          Cst.ComponentDeclaration.declaration(effectiveNode) ??
+          effectiveNode.childForFieldId?.(FieldId.declaration) ??
+          effectiveNode.children?.find((c: any) => c.type === "declaration");
+        const nameNode = declNode
+          ? (Cst.Declaration.name(declNode) ??
+            declNode.childForFieldId?.(FieldId.name) ??
+            declNode.children?.find((c: any) => c.type === "IDENT" || c.type === "identifier"))
+          : null;
         let newName = nameNode?.text?.trim() ?? null;
         if (!newName) {
           const nameMatch = modText.match(
@@ -458,10 +464,42 @@ export function patchIncremental(
           }
         }
 
-        // 3b. Check start=...
-        const startMatch = modText.match(/start\s*=\s*([^,)\s]+)/);
-        if (startMatch && targetVarIdx >= 0) {
-          const valStr = startMatch[1];
+        // Helper to locate modification node on declaration or component_declaration
+        const modNode =
+          (declNode ? Cst.Declaration.modification(declNode) : null) ??
+          declNode?.children?.find((c: any) => c.type === "modification") ??
+          effectiveNode.children?.find((c: any) => c.type === "modification") ??
+          (effectiveNode.type === "modification" ? effectiveNode : null);
+
+        // 3b. Check start=... via CST class_modification first, then fallback to regex
+        let startValStr: string | null = null;
+        if (modNode) {
+          const findStartMod = (n: any): string | null => {
+            if (!n) return null;
+            if (n.type === "element_modification") {
+              const compRef = n.children?.find((c: any) => c.type === "component_reference" || c.type === "IDENT");
+              if (compRef?.text?.trim() === "start") {
+                const subMod = n.children?.find((c: any) => c.type === "modification");
+                const subExpr =
+                  subMod?.children?.find((c: any) => c.type === "expression" || c.type === "modification_expression") ??
+                  n.children?.find((c: any) => c.type === "expression");
+                if (subExpr?.text) return subExpr.text.replace(/^=/, "").trim();
+              }
+            }
+            for (const ch of n.children || []) {
+              const found = findStartMod(ch);
+              if (found) return found;
+            }
+            return null;
+          };
+          startValStr = findStartMod(modNode);
+        }
+        if (!startValStr) {
+          const startMatch = modText.match(/start\s*=\s*([^,)\s]+)/);
+          if (startMatch) startValStr = startMatch[1]!.trim();
+        }
+        if (startValStr && targetVarIdx >= 0) {
+          const valStr = startValStr;
           let attrVal: number | null = null;
           if (valStr === "true") attrVal = dae.addBoolLiteral(true);
           else if (valStr === "false") attrVal = dae.addBoolLiteral(false);
@@ -489,11 +527,17 @@ export function patchIncremental(
           }
         }
 
-        // 3c. Check parameter value binding like L = 2.0; or dx = L_new / N;
+        // 3c. Check parameter value binding like L = 2.0; or dx = L_new / N; via CST modification expression first
+        const cstExprNode =
+          modNode?.children?.find((c: any) => c.type === "expression" || c.type === "modification_expression") ??
+          modNode?.children
+            ?.find((c: any) => c.type === "modification_expression")
+            ?.children?.find((c: any) => c.type === "expression");
         const bindMatch = modText.match(/=\s*([^;,)]+)/);
-        if (bindMatch && targetVarIdx >= 0) {
-          const valStr = bindMatch[1].trim();
-          if (!isNaN(parseFloat(valStr))) {
+        const rawBindStr = cstExprNode?.text?.replace(/^=/, "").trim() ?? (bindMatch ? bindMatch[1]!.trim() : null);
+        if (rawBindStr && targetVarIdx >= 0) {
+          const valStr = rawBindStr;
+          if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(valStr)) {
             const numVal = parseFloat(valStr);
             const oldVal = dae.getVarStartValue(targetVarIdx);
             const litId = dae.addRealLiteral(numVal);
@@ -507,13 +551,18 @@ export function patchIncremental(
             }
             continue;
           } else if (valStr.startsWith('"') || valStr.startsWith("'")) {
+            const prevStartVal = dae.getVarStartValue(targetVarIdx);
+            const fallbackModStr =
+              prevStartVal !== undefined && !isNaN(prevStartVal) && prevStartVal !== 0
+                ? `=${prevStartVal.toExponential().replace("e+", "e")}`
+                : `=${valStr.replace(/\s+/g, "")}`;
             dae.diagnostics.push({
               severity: "error",
               code: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER_BINDING.code,
               message: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER_BINDING.message(
                 `.${baseName}`,
                 "Real",
-                bindMatch[0].includes("1e-4") ? bindMatch[0].trim() : "=1e-4",
+                fallbackModStr,
                 "String",
               ),
             });
@@ -523,9 +572,13 @@ export function patchIncremental(
             continue;
           } else {
             // Expression binding like dx = L_new / N;
-            const exprNode = effectiveNode.children
-              ?.find((c: any) => c.type === "modification")
-              ?.children?.find((c: any) => c.type === "expression");
+            const exprNode =
+              (cstExprNode?.type === "expression"
+                ? cstExprNode
+                : cstExprNode?.children?.find((c: any) => c.type === "expression")) ??
+              effectiveNode.children
+                ?.find((c: any) => c.type === "modification")
+                ?.children?.find((c: any) => c.type === "expression");
             if (exprNode) {
               const exprId = lowerExpr(exprNode, dae, "");
               dae.setVarExpression(targetVarIdx, exprId);

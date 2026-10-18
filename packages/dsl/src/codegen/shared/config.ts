@@ -12,9 +12,9 @@ export interface ConfigLayoutEntry {
   offset: number;
   size: number;
   defaultValue: any;
-  choices?: string[];
-  min?: number;
-  max?: number;
+  choices?: string[] | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
 }
 
 export interface ConfigLayoutResult {
@@ -36,13 +36,13 @@ export function generateConfigDomain(
   // 1. Gather all options from schema
   const rawList: { key: string; category: string; name: string; opt: ConfigOption }[] = [];
   for (const catName of Object.keys(schema)) {
-    const cat = schema[catName];
+    const cat = schema[catName]!;
     for (const optName of Object.keys(cat)) {
       rawList.push({
         key: `${catName}.${optName}`,
         category: catName,
         name: optName,
-        opt: cat[optName],
+        opt: cat[optName]!,
       });
     }
   }

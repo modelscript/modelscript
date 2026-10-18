@@ -6,15 +6,15 @@ import path from "node:path";
 
 export interface LockfileDomainSummary {
   files: string[];
-  hash?: string;
+  hash?: string | undefined;
 }
 
 export interface LockfilePackageEntry {
   version: string;
   resolved: string;
   integrity: string; // sha256:...
-  domains?: Record<string, LockfileDomainSummary>;
-  dependencies?: Record<string, string>;
+  domains?: Record<string, LockfileDomainSummary> | undefined;
+  dependencies?: Record<string, string> | undefined;
 }
 
 export interface ModelScriptLockfile {

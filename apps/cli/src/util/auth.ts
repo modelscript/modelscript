@@ -7,8 +7,8 @@ import path from "node:path";
 const RC_PATH = path.join(homedir(), ".modelscriptrc");
 
 interface RcConfig {
-  token?: string;
-  apiUrl?: string;
+  token?: string | undefined;
+  apiUrl?: string | undefined;
 }
 
 function readRc(): RcConfig {
@@ -27,7 +27,7 @@ function writeRc(config: RcConfig): void {
 }
 
 export function getApiUrl(): string {
-  const envUrl = process.env.MODELSCRIPT_API_URL;
+  const envUrl = process.env["MODELSCRIPT_API_URL"];
   if (envUrl) return envUrl.replace(/\/+$/, "");
   const rcUrl = readRc().apiUrl;
   if (rcUrl) return rcUrl.replace(/\/+$/, "");
@@ -41,7 +41,7 @@ export function saveApiUrl(url: string): void {
 }
 
 export function getToken(): string | undefined {
-  return process.env.MODELSCRIPT_API_TOKEN || readRc().token;
+  return process.env["MODELSCRIPT_API_TOKEN"] || readRc().token;
 }
 
 export function saveToken(token: string): void {

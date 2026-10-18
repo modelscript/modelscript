@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * Semantic type representation used across ModelScript's Salsa queries and WASM codegen.
+ */
 export type ModelScriptType =
   | { kind: "i32" }
   | { kind: "u32" }
@@ -11,6 +14,9 @@ export type ModelScriptType =
   | { kind: "array"; element: ModelScriptType }
   | { kind: "unknown" };
 
+/**
+ * Memory layout metadata for a single field within a linear-memory struct.
+ */
 export interface StructFieldLayout {
   name: string;
   type: ModelScriptType;
@@ -19,6 +25,9 @@ export interface StructFieldLayout {
   alignment: number;
 }
 
+/**
+ * Computed byte layout, alignment, and field table for a ModelScript `struct`.
+ */
 export interface StructLayout {
   name: string;
   totalSize: number;
@@ -26,6 +35,10 @@ export interface StructLayout {
   fields: StructFieldLayout[];
 }
 
+/**
+ * Returns the byte size and natural alignment requirement for a `ModelScriptType`
+ * in 32-bit WebAssembly linear memory.
+ */
 export function getTypeSizeAndAlign(type: ModelScriptType): { size: number; align: number } {
   switch (type.kind) {
     case "i32":
@@ -46,6 +59,10 @@ export function getTypeSizeAndAlign(type: ModelScriptType): { size: number; alig
   }
 }
 
+/**
+ * Parses a textual type annotation (e.g., `"f64"`, `"Array<i32>"`, `"Vector3"`)
+ * into a structured `ModelScriptType`.
+ */
 export function parseTypeName(typeStr: string): ModelScriptType {
   const trimmed = typeStr.trim();
   if (trimmed === "i32") return { kind: "i32" };
@@ -67,6 +84,11 @@ export function parseTypeName(typeStr: string): ModelScriptType {
   return { kind: "struct", name: trimmed };
 }
 
+/**
+ * Recursively unwraps grammar wrapper CST nodes (`TopLevelDeclaration`, `Statement`,
+ * `Expression`, `PrimaryExpression`, `ParenthesizedExpression`) to reach the underlying
+ * semantic AST/CST node.
+ */
 export function unwrapNode(node: any): any {
   if (!node) return null;
   while (
@@ -104,21 +126,79 @@ function queryKey(queryName: string, id: string | number): string {
   return `${queryName}:${id}`;
 }
 
+/**
+ * Revision-tracked Salsa query engine for ModelScript, providing memoized
+ * struct memory layout computation and expression type inference.
+ */
 export class ModelScriptQueryEngine {
   private cache = new Map<string, { revision: number; value: any }>();
+  private structLayouts = new Map<string, StructLayout>();
   private globalRevision = 1;
 
+  /**
+   * Advances the global revision counter, invalidating stale cached query entries.
+   */
   incrementRevision(): number {
     return ++this.globalRevision;
   }
 
+  /**
+   * Returns the current global revision number.
+   */
   getRevision(): number {
     return this.globalRevision;
   }
 
+  /**
+   * Clears all memoized query results and resets the revision counter.
+   */
   clear(): void {
     this.cache.clear();
+    this.structLayouts.clear();
     this.globalRevision = 1;
+  }
+
+  /**
+   * Walks up to the root `SourceFile` node and indexes all top-level `StructDeclaration` layouts.
+   */
+  private indexStructsFromRoot(contextNode: any): void {
+    let curr = contextNode;
+    while (curr?.parent) {
+      curr = curr.parent;
+    }
+    if (!curr || !curr.childCount) return;
+    for (let i = 0; i < curr.childCount; i++) {
+      const child = unwrapNode(curr.child(i));
+      if (child?.type === "StructDeclaration") {
+        this.structLayout(child);
+      }
+    }
+  }
+
+  /**
+   * Looks up a struct's memory layout by name, lazily indexing root declarations if needed.
+   */
+  private findStructLayout(structName: string, contextNode?: any): StructLayout | undefined {
+    let layout = this.structLayouts.get(structName);
+    if (!layout && contextNode) {
+      this.indexStructsFromRoot(contextNode);
+      layout = this.structLayouts.get(structName);
+    }
+    return layout;
+  }
+
+  /**
+   * Searches all known struct layouts for a field matching `propName` when receiver type is unknown.
+   */
+  private findFieldInAnyStruct(propName: string, contextNode?: any): ModelScriptType | undefined {
+    if (contextNode) {
+      this.indexStructsFromRoot(contextNode);
+    }
+    for (const layout of this.structLayouts.values()) {
+      const field = layout.fields.find((f) => f.name === propName);
+      if (field) return field.type;
+    }
+    return undefined;
   }
 
   /**
@@ -181,6 +261,7 @@ export class ModelScriptQueryEngine {
       fields,
     };
 
+    this.structLayouts.set(layout.name, layout);
     this.cache.set(cacheKey, { revision: this.globalRevision, value: layout });
     return layout;
   }
@@ -192,10 +273,15 @@ export class ModelScriptQueryEngine {
     const node = unwrapNode(rawNode);
     if (!node) return { kind: "unknown" };
 
+    // Build a deterministic cache key incorporating both node span and active lexical scope bindings
     const scopeTag =
       scope.size > 0
         ? Array.from(scope.entries())
-            .map(([k, v]) => `${k}:${v.kind}`)
+            .map(([k, v]) => {
+              if (v.kind === "struct") return `${k}:struct:${v.name}`;
+              if (v.kind === "array") return `${k}:array:${v.element.kind}`;
+              return `${k}:${v.kind}`;
+            })
             .join(",")
         : "";
     const cacheKey = queryKey("inferExpr", `${node.startIndex}_${node.endIndex}_${node.text}_${scopeTag}`);
@@ -208,6 +294,7 @@ export class ModelScriptQueryEngine {
 
     switch (node.type) {
       case "NUMBER": {
+        // Floating-point literals contain a decimal point or scientific exponent
         const text = node.text || "";
         result = text.includes(".") || text.toLowerCase().includes("e") ? { kind: "f64" } : { kind: "i32" };
         break;
@@ -240,6 +327,7 @@ export class ModelScriptQueryEngine {
         const op = node.childForFieldName ? node.childForFieldName("operator")?.text : node.children?.[1]?.text;
         const right = node.childForFieldName ? node.childForFieldName("right") : node.children?.[2];
 
+        // Relational and logical operators always yield boolean results; arithmetic promotes to f64
         if (["==", "!=", "<", "<=", ">", ">="].includes(op)) {
           result = { kind: "bool" };
         } else if (["&&", "||"].includes(op)) {
@@ -265,7 +353,17 @@ export class ModelScriptQueryEngine {
         }
         break;
       }
+      case "NewExpression": {
+        const ctorName =
+          node.childForFieldName?.("constructor")?.text ||
+          node.childForFieldName?.("class")?.text ||
+          node.namedChildren?.[0]?.text ||
+          "AnonymousStruct";
+        result = { kind: "struct", name: ctorName };
+        break;
+      }
       case "FLWORExpression": {
+        // A FLWOR query always evaluates to an array of its ReturnClause expression type
         const returnClause = node.namedChildren?.find((c: any) => c.type === "ReturnClause");
         if (returnClause) {
           const expr =
@@ -278,8 +376,30 @@ export class ModelScriptQueryEngine {
         break;
       }
       case "PostfixExpression": {
-        // e.g. x.val -> look into struct if available, otherwise unknown
-        result = { kind: "f64" };
+        const objNode = node.childForFieldName?.("object");
+        const propNode = node.childForFieldName?.("property");
+        const arrNode = node.childForFieldName?.("array");
+        const idxNode = node.childForFieldName?.("index");
+
+        if (objNode && propNode) {
+          const propName = propNode.text || "";
+          const objType = this.inferExpressionType(objNode, scope);
+          if (objType.kind === "struct") {
+            const layout = this.findStructLayout(objType.name, node);
+            const field = layout?.fields.find((f) => f.name === propName);
+            result = field ? field.type : { kind: "f64" };
+          } else if (objType.kind === "array" && propName === "length") {
+            result = { kind: "i32" };
+          } else {
+            const fieldType = this.findFieldInAnyStruct(propName, node);
+            result = fieldType ?? { kind: "f64" };
+          }
+        } else if (arrNode && idxNode) {
+          const arrType = this.inferExpressionType(arrNode, scope);
+          result = arrType.kind === "array" ? arrType.element : { kind: "f64" };
+        } else {
+          result = { kind: "f64" };
+        }
         break;
       }
       default:

@@ -1,6 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DaeBuilder, EQ_STRIDE, EQ_KIND, EqKind, EQ_LHS, EQ_RHS, EXPR_STRIDE, EXPR_KIND, ExprKind, EXPR_DATA1 } from "../dae/builder";
+import {
+  DaeBuilder,
+  EQ_STRIDE,
+  EQ_KIND,
+  EqKind,
+  EQ_LHS,
+  EQ_RHS,
+  EXPR_STRIDE,
+  EXPR_KIND,
+  ExprKind,
+  EXPR_DATA1,
+  VAR_STRIDE,
+  VAR_FLAGS,
+  FLAG_VAR_STATE,
+  FLAG_TEARING_VAR,
+} from "../dae/builder";
 import { evalEquationResidual } from "../dae/eval";
 import { EventDetector } from "../simulation/events";
 import { luFactor, luSolve, vectorNormInf } from "./matrix";
@@ -191,6 +206,11 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
 
     let targetVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
     if (targetVarIdx >= dae.varCount) continue;
+
+    let varFlags = dae.getVarData().get(targetVarIdx * VAR_STRIDE + VAR_FLAGS);
+    if ((varFlags & FLAG_VAR_STATE) != 0 && (varFlags & FLAG_TEARING_VAR) == 0) {
+      continue;
+    }
 
     // Retrieve warm start value if available
     let warmVal = dae.getWarmStartValue(targetVarIdx);

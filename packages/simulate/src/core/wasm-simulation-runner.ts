@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 
 /**
  * WebAssembly Simulation Runner.
@@ -14,7 +15,7 @@
 export interface WasmScalarVariable {
   name: string;
   valueReference: number;
-  causality?: string;
+  causality?: string | undefined;
 }
 
 // ── Emscripten module interface ──
@@ -41,15 +42,15 @@ interface WasmModelModule {
 /** Options for WASM simulation. */
 export interface WasmSimulationOptions {
   /** Simulation start time (default: 0). */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Simulation stop time (default: 1). */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Integration step size (default: 0.001). */
-  stepSize?: number;
+  stepSize?: number | undefined;
   /** Output interval — record every N steps (default: 1). */
-  outputInterval?: number;
+  outputInterval?: number | undefined;
   /** Parameter overrides: valueReference → value */
-  parameters?: Map<number, number>;
+  parameters?: Map<number, number> | undefined;
 }
 
 /** Result of a WASM simulation run. */

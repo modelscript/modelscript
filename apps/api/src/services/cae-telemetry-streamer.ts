@@ -7,19 +7,19 @@ export type CaeSolverType = "calculix" | "su2" | "openfoam";
 
 export interface CaeIterationEvent {
   type: "iteration";
-  step?: number;
+  step?: number | undefined;
   iteration: number;
-  time?: number;
+  time?: number | undefined;
   residuals: Record<string, number>;
-  metrics?: Record<string, number>; // e.g. CL, CD, maxForce, etc.
+  metrics?: Record<string, number> | undefined; // e.g. CL, CD, maxForce, etc.
   timestamp: number;
-  rawLog?: string;
+  rawLog?: string | undefined;
 }
 
 export interface CaePhaseEvent {
   type: "phase";
   phase: string;
-  message?: string;
+  message?: string | undefined;
   timestamp: number;
 }
 

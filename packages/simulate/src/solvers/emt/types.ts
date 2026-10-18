@@ -7,13 +7,13 @@
 export interface EmtSolverOptions {
   timeStepSec: number; // e.g. 20e-6 s (20 microseconds)
   durationSec: number; // e.g. 1.0 s
-  nominalFrequencyHz?: number | undefined; // 50 or 60 Hz
-  enableCda?: boolean | undefined; // Critical Damping Adjustment for switch chatter
-  enableInterpolation?: boolean | undefined; // Linear sub-step switching interpolation at zero-crossing
-  steadyStateInit?: boolean | undefined; // Initialize companion history buffers from AC load-flow phasor solution at t = 0^-
-  threePhase?: boolean | undefined; // Enable full 3-phase (abc) unbalanced MANA network formulation
-  maxNonlinearIterations?: number | undefined; // Within-step Newton-Raphson / fixed-point iterations for non-linear elements (default: 1)
-  nonlinearToleranceVolts?: number | undefined; // Voltage convergence tolerance |v^(m) - v^(m-1)| in Volts (default: 1.0 V)
+  nominalFrequencyHz?: number; // 50 or 60 Hz
+  enableCda?: boolean; // Critical Damping Adjustment for switch chatter
+  enableInterpolation?: boolean; // Linear sub-step switching interpolation at zero-crossing
+  steadyStateInit?: boolean; // Initialize companion history buffers from AC load-flow phasor solution at t = 0^-
+  threePhase?: boolean; // Enable full 3-phase (abc) unbalanced MANA network formulation
+  maxNonlinearIterations?: number; // Within-step Newton-Raphson / fixed-point iterations for non-linear elements (default: 1)
+  nonlinearToleranceVolts?: number; // Voltage convergence tolerance |v^(m) - v^(m-1)| in Volts (default: 1.0 V)
 }
 
 export interface ThreePhaseWaveform {

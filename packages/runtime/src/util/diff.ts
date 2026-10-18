@@ -3,8 +3,8 @@
 export interface EditRange {
   startByte: number;
   endByte: number;
-  startOffset?: number;
-  endOffset?: number;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
   delta: number;
 }
 
@@ -150,7 +150,7 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
 
   while (pIdx < prevLines.length || nIdx < newLines.length) {
     while (pIdx < prevLines.length && nIdx < newLines.length && prevLines[pIdx] === newLines[nIdx]) {
-      const lineLen = newLines[nIdx].length + 1;
+      const lineLen = newLines[nIdx]!.length + 1;
       _pOffset += lineLen;
       nOffset += lineLen;
       pIdx++;
@@ -170,7 +170,7 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
         if (
           checkP < prevLines.length &&
           checkN < newLines.length &&
-          prevLines[checkP].trim() !== "" &&
+          prevLines[checkP]!.trim() !== "" &&
           prevLines[checkP] === newLines[checkN]
         ) {
           foundP = checkP;
@@ -183,11 +183,11 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     if (foundP !== -1 && foundN !== -1) {
       let pLen = 0;
       for (let i = pIdx; i < foundP; i++) {
-        pLen += prevLines[i].length + (i < prevLines.length - 1 ? 1 : 0);
+        pLen += prevLines[i]!.length + (i < prevLines.length - 1 ? 1 : 0);
       }
       let nLen = 0;
       for (let i = nIdx; i < foundN; i++) {
-        nLen += newLines[i].length + (i < newLines.length - 1 ? 1 : 0);
+        nLen += newLines[i]!.length + (i < newLines.length - 1 ? 1 : 0);
       }
       hunks.push({
         startByte: hunkStartInNew,
@@ -203,11 +203,11 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     } else {
       let pLen = 0;
       for (let i = pIdx; i < prevLines.length; i++) {
-        pLen += prevLines[i].length + (i < prevLines.length - 1 ? 1 : 0);
+        pLen += prevLines[i]!.length + (i < prevLines.length - 1 ? 1 : 0);
       }
       let nLen = 0;
       for (let i = nIdx; i < newLines.length; i++) {
-        nLen += newLines[i].length + (i < newLines.length - 1 ? 1 : 0);
+        nLen += newLines[i]!.length + (i < newLines.length - 1 ? 1 : 0);
       }
       hunks.push({
         startByte: hunkStartInNew,

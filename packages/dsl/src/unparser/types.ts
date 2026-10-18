@@ -47,11 +47,11 @@ export interface ChildInsertion {
   /** Text content or sub-patch to insert */
   content: string;
   /** Position to insert: 'start' (first child), 'end' (last child), or relative to an existing child */
-  position?: "start" | "end" | "before" | "after";
+  position?: "start" | "end" | "before" | "after" | undefined;
   /** Reference child node or predicate to insert before/after */
-  referenceChild?: SyntaxNode | ((child: SyntaxNode) => boolean);
+  referenceChild?: SyntaxNode | ((child: SyntaxNode) => boolean) | undefined;
   /** Separator token to use if in a delimited list (default: ", " for argument lists, "\n" for statement blocks) */
-  separator?: string;
+  separator?: string | undefined;
 }
 
 /**
@@ -61,7 +61,7 @@ export interface ChildDeletion {
   /** Child node to delete or predicate finding the child */
   target: SyntaxNode | ((child: SyntaxNode) => boolean);
   /** Whether to cleanly consume adjacent delimiters (e.g. leading or trailing comma). Default: true */
-  cleanAdjacentDelimiter?: boolean;
+  cleanAdjacentDelimiter?: boolean | undefined;
 }
 
 /**
@@ -77,27 +77,27 @@ export interface CstPatch {
    * Complete replacement text for the target node.
    * If provided, the target node's entire span [target.startIndex, target.endIndex] is replaced by this text.
    */
-  replaceText?: string;
+  replaceText?: string | undefined;
 
   /**
    * Specific child nodes to replace (maps child SyntaxNode to new replacement text).
    */
-  replaceChildren?: Map<SyntaxNode, string>;
+  replaceChildren?: Map<SyntaxNode, string> | undefined;
 
   /**
    * Child nodes to insert into this node's child list.
    */
-  insertChildren?: ChildInsertion[];
+  insertChildren?: ChildInsertion[] | undefined;
 
   /**
    * Child nodes to delete from this node.
    */
-  deleteChildren?: (SyntaxNode | ChildDeletion)[];
+  deleteChildren?: (SyntaxNode | ChildDeletion)[] | undefined;
 
   /**
    * Field replacements (maps grammar field names to new string values).
    */
-  fields?: Record<string, string>;
+  fields?: Record<string, string> | undefined;
 }
 
 /**
@@ -107,21 +107,21 @@ export interface UnparseOptions {
   /**
    * Indentation size in spaces (default: 2).
    */
-  indentSize?: number;
+  indentSize?: number | undefined;
 
   /**
    * Base indentation level (number of indents) to apply (default: inferred from target line).
    */
-  baseIndentLevel?: number;
+  baseIndentLevel?: number | undefined;
 
   /**
    * When true, unmodified clean nodes are emitted verbatim from the input buffer.
    * Default: true.
    */
-  verbatimCleanNodes?: boolean;
+  verbatimCleanNodes?: boolean | undefined;
 
   /**
    * Newline delimiter to use ('\n' or '\r\n'). Default: '\n'.
    */
-  newline?: string;
+  newline?: string | undefined;
 }

@@ -99,19 +99,19 @@ export const COLORMAP_NAMES: ColormapPreset[] = Object.keys(PRESETS) as Colormap
  * Interpolate between colormap stops to produce an RGBA pixel.
  */
 function sampleColormap(stops: ColormapStops, t: number): [number, number, number, number] {
-  if (t <= stops[0][0]) return [stops[0][1], stops[0][2], stops[0][3], 1];
-  if (t >= stops[stops.length - 1][0]) {
-    const last = stops[stops.length - 1];
+  if (t <= stops[0]![0]) return [stops[0]![1], stops[0]![2], stops[0]![3], 1];
+  if (t >= stops[stops.length - 1]![0]) {
+    const last = stops[stops.length - 1]!;
     return [last[1], last[2], last[3], 1];
   }
 
   for (let i = 0; i < stops.length - 1; i++) {
-    if (t >= stops[i][0] && t <= stops[i + 1][0]) {
-      const frac = (t - stops[i][0]) / (stops[i + 1][0] - stops[i][0]);
+    if (t >= stops[i]![0] && t <= stops[i + 1]![0]) {
+      const frac = (t - stops[i]![0]) / (stops[i + 1]![0] - stops[i]![0]);
       return [
-        stops[i][1] + frac * (stops[i + 1][1] - stops[i][1]),
-        stops[i][2] + frac * (stops[i + 1][2] - stops[i][2]),
-        stops[i][3] + frac * (stops[i + 1][3] - stops[i][3]),
+        stops[i]![1] + frac * (stops[i + 1]![1] - stops[i]![1]),
+        stops[i]![2] + frac * (stops[i + 1]![2] - stops[i]![2]),
+        stops[i]![3] + frac * (stops[i + 1]![3] - stops[i]![3]),
         1,
       ];
     }
@@ -125,7 +125,7 @@ function sampleColormap(stops: ColormapStops, t: number): [number, number, numbe
  * Returns a 256×1 RGBA texture for use as a LUT in shaders.
  */
 export function createColormapTexture(preset: ColormapPreset = "viridis"): THREE.DataTexture {
-  const stops = PRESETS[preset] || PRESETS.viridis;
+  const stops = PRESETS[preset]! || PRESETS.viridis;
   const width = 256;
   const data = new Uint8Array(width * 4);
 
@@ -152,7 +152,7 @@ export function createColormapTexture(preset: ColormapPreset = "viridis"): THREE
  * Returns CSS rgb() string — useful for legends and UI.
  */
 export function sampleColormapCss(preset: ColormapPreset, t: number): string {
-  const stops = PRESETS[preset] || PRESETS.viridis;
+  const stops = PRESETS[preset]! || PRESETS.viridis;
   const [r, g, b] = sampleColormap(stops, t);
   return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }

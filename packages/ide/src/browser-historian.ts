@@ -17,11 +17,11 @@ export interface DataPoint {
 
 /** Query options for retrieving recorded data. */
 export interface HistorianQuery {
-  participantId?: string;
-  variable?: string;
-  startTime?: number;
-  endTime?: number;
-  limit?: number;
+  participantId?: string | undefined;
+  variable?: string | undefined;
+  startTime?: number | undefined;
+  endTime?: number | undefined;
+  limit?: number | undefined;
 }
 
 /**

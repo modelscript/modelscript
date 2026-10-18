@@ -21,12 +21,12 @@ import {
 } from "./blackbox.js";
 
 export interface PsoOptions extends SingleObjectiveOptions {
-  swarmSize?: number;
-  c1?: number;
-  c2?: number;
-  w?: number;
-  useConstriction?: boolean;
-  targetFitness?: number;
+  swarmSize?: number | undefined;
+  c1?: number | undefined;
+  c2?: number | undefined;
+  w?: number | undefined;
+  useConstriction?: boolean | undefined;
+  targetFitness?: number | undefined;
 }
 
 /**

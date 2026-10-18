@@ -20,18 +20,20 @@ import SafeOrbitControls from "./SafeOrbitControls";
 // ── Types ───────────────────────────────────────────────────────
 
 interface CfdAnimationViewerProps {
-  artifactId?: number;
+  artifactId?: number | undefined;
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 interface CfdFrame {
   time: number;
-  geometry?: {
-    positions: number[];
-    normals: number[];
-    indices: number[];
-  };
+  geometry?:
+    | {
+        positions: number[];
+        normals: number[];
+        indices: number[];
+      }
+    | undefined;
   fields: {
     "alpha.polymer": number[];
     temperature: number[];
@@ -288,7 +290,7 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
   // Build geometry from frame 0
   const baseGeometry = useMemo(() => {
     if (frames.length === 0) return null;
-    const f0 = frames[0];
+    const f0 = frames[0]!;
     if (!f0.geometry) return null;
 
     try {
@@ -336,7 +338,7 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
       const c = new THREE.Color();
 
       for (let i = 0; i < numVerts; i++) {
-        alphaToColor(alphaField[i], tempField[i] || 400, c);
+        alphaToColor(alphaField[i]!, tempField[i] || 400, c);
         colors[i * 3] = c.r;
         colors[i * 3 + 1] = c.g;
         colors[i * 3 + 2] = c.b;
@@ -358,7 +360,7 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
   // Get vertex count
   const vertexCount = useMemo(() => {
     if (frames.length === 0) return 0;
-    return frames[0].fields["alpha.polymer"]?.length || 0;
+    return frames[0]!.fields["alpha.polymer"]?.length || 0;
   }, [frames]);
 
   // Get mold geometry for outline

@@ -12,7 +12,7 @@ export function registerActionRouter(context: LspContext): void {
   // 1. List actions endpoint
   context.connection.onRequest(
     "modelscript/listActions",
-    async (params?: { languageId?: string; uri?: string }): Promise<any[]> => {
+    async (params?: { languageId?: string | undefined; uri?: string | undefined }): Promise<any[]> => {
       const plugins = params?.languageId
         ? [globalLanguageRegistry.getPluginById(params.languageId)].filter(Boolean)
         : params?.uri
@@ -51,9 +51,9 @@ export function registerActionRouter(context: LspContext): void {
     "modelscript/executeAction",
     async (params: {
       actionId: string;
-      languageId?: string;
-      uri?: string;
-      inputs?: Record<string, any>;
+      languageId?: string | undefined;
+      uri?: string | undefined;
+      inputs?: Record<string, any> | undefined;
     }): Promise<any> => {
       console.log(
         `[LSP-WORKER][executeAction] START: actionId=${params.actionId}, uri=${params.uri}, lang=${params.languageId}`,
@@ -107,7 +107,7 @@ export function registerActionRouter(context: LspContext): void {
         );
       }
 
-      let docText = params.inputs?.documentText;
+      let docText = params.inputs?.["documentText"];
       if (!docText) {
         let doc = params.uri ? context.documents.get(params.uri) : undefined;
         if (!doc && params.uri && typeof context.documents?.all === "function") {
@@ -149,11 +149,11 @@ export function registerActionRouter(context: LspContext): void {
         for (const d of context.documents.all()) {
           const text = d.getText();
           if (
-            params.inputs?.name &&
-            (text.includes(`model ${params.inputs.name}`) ||
-              text.includes(`class ${params.inputs.name}`) ||
-              text.includes(`block ${params.inputs.name}`) ||
-              text.includes(params.inputs.name))
+            params.inputs?.["name"] &&
+            (text.includes(`model ${params.inputs["name"]}`) ||
+              text.includes(`class ${params.inputs["name"]}`) ||
+              text.includes(`block ${params.inputs["name"]}`) ||
+              text.includes(params.inputs["name"]))
           ) {
             docText = text;
             if (!params.uri) params.uri = d.uri;

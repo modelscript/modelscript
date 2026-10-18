@@ -173,7 +173,7 @@ export function computeSequenceLayout(
   // ── Step 4: Compute total height and lifeline stem length ──
   const stemBottom =
     messages.length > 0
-      ? messages[messages.length - 1].y + cfg.messageSpacing
+      ? messages[messages.length - 1]!.y + cfg.messageSpacing
       : cfg.topMargin + cfg.headerHeight + cfg.messageStartY + 60;
 
   for (const ll of lifelines) {
@@ -182,7 +182,7 @@ export function computeSequenceLayout(
 
   const totalWidth =
     lifelines.length > 0
-      ? lifelines[lifelines.length - 1].centerX + cfg.headerWidth / 2 + cfg.leftMargin
+      ? lifelines[lifelines.length - 1]!.centerX + cfg.headerWidth / 2 + cfg.leftMargin
       : cfg.leftMargin * 2 + cfg.headerWidth;
   const totalHeight = stemBottom + cfg.topMargin;
 

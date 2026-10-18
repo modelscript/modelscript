@@ -15,6 +15,7 @@ import {
   EQ_KIND,
   EQ_LHS,
   EQ_RHS,
+  EQ_AUX,
   EqKind,
   VAR_STRIDE,
   VAR_NAME,
@@ -25,6 +26,9 @@ import {
   FLAG_TEARING_VAR,
   FLAG_VAR_STATE,
   FLAG_VAR_STATE_DER,
+  FLAG_VAR_FIXED,
+  FLAG_EQ_INITIAL,
+  FLAG_HIGH_INDEX_EQ,
 } from "../dae/builder";
 import { BltEngine } from "./blt";
 import { BuiltinMathFunc } from "../dae/cas";
@@ -157,6 +161,22 @@ export function containsDerivative(exprId: u32, dae: DaeBuilder): boolean {
 }
 
 /**
+ * Resolves the AST expression ID for the `idx`-th argument of a multi-argument function call in the DAE arena.
+ */
+@inline
+function getCallSubArgPantelides(dae: DaeBuilder, callExprId: u32, firstArg: u32, idx: u32): u32 {
+  if (idx == 0) return firstArg;
+  let slotIdx = callExprId + idx;
+  if (slotIdx < dae.exprCount) {
+    let slotOffset = slotIdx * EXPR_STRIDE;
+    if (dae.getExprData().get(slotOffset + EXPR_KIND) == ExprKind.Tuple) {
+      return dae.getExprData().get(slotOffset + EXPR_LEFT) as u32;
+    }
+  }
+  return firstArg + idx;
+}
+
+/**
  * Symbolic Differentiator for expressions in the DAE Builder.
  * Differentiates an expression tree with respect to continuous time t.
  */
@@ -180,14 +200,73 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
   // Variable Reference
   if (kind == ExprKind.Name) {
     let rawId: u32 = u32(dae.getExprData().get(offset + EXPR_DATA1));
+    if (dae.getStringPool().isTime(rawId as i32)) {
+      return dae.addRealLiteral(1.0);
+    }
     let resolvedVarId: i32 = rawId < dae.varCount ? (rawId as i32) : dae.lookupVariableByName(rawId);
     if (resolvedVarId >= 0 && (resolvedVarId as u32) < dae.varCount) {
       let varId = resolvedVarId as u32;
+      let varNameId = dae.getVarData().get(varId * VAR_STRIDE + VAR_NAME) as i32;
+      if (dae.getStringPool().isTime(varNameId)) {
+        return dae.addRealLiteral(1.0);
+      }
       let variability = dae.getVarData().get(varId * VAR_STRIDE + VAR_VARIABILITY);
-      if (variability == Variability.Parameter || variability == Variability.Constant) {
+      if (
+        variability == Variability.Parameter ||
+        variability == Variability.Constant ||
+        variability == Variability.Discrete
+      ) {
         return dae.addRealLiteral(0.0);
       }
+      if (stateVars.length > 0) {
+        let isState = false;
+        for (let s: u32 = 0; s < stateVars.length; s++) {
+          let sv = stateVars.get(s);
+          if (sv == (varId as i32) || sv == (rawId as i32)) {
+            isState = true;
+            break;
+          }
+        }
+        if (!isState) {
+          return dae.addRealLiteral(0.0);
+        }
+      }
       return dae.addExpression(ExprKind.Der, exprId);
+    }
+    if (stateVars.length > 0) {
+      let isState = false;
+      for (let s: u32 = 0; s < stateVars.length; s++) {
+        if (stateVars.get(s) == (rawId as i32)) {
+          isState = true;
+          break;
+        }
+      }
+      if (!isState) {
+        return dae.addRealLiteral(0.0);
+      }
+    }
+    return dae.addExpression(ExprKind.Der, exprId);
+  }
+
+  // Subscript: d/dt(x[i]) -> der(x[i]) (or 0.0 if base is parameter/constant/discrete)
+  if (kind == ExprKind.Subscript) {
+    let baseExpr = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (baseExpr != 0xffffffff && baseExpr < dae.exprCount) {
+      let bOff = baseExpr * EXPR_STRIDE;
+      if (dae.getExprData().get(bOff + EXPR_KIND) == ExprKind.Name) {
+        let rawId = dae.getExprData().get(bOff + EXPR_DATA1) as u32;
+        let resolvedVarId: i32 = rawId < dae.varCount ? (rawId as i32) : dae.lookupVariableByName(rawId);
+        if (resolvedVarId >= 0 && (resolvedVarId as u32) < dae.varCount) {
+          let variability = dae.getVarData().get((resolvedVarId as u32) * VAR_STRIDE + VAR_VARIABILITY);
+          if (
+            variability == Variability.Parameter ||
+            variability == Variability.Constant ||
+            variability == Variability.Discrete
+          ) {
+            return dae.addRealLiteral(0.0);
+          }
+        }
+      }
     }
     return dae.addExpression(ExprKind.Der, exprId);
   }
@@ -233,10 +312,73 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
 
   // Elementary Function Call: Chain Rule d(f(u))/dt = f'(u) * du/dt
   if (kind == ExprKind.Call) {
-    let funcId = dae.getExprData().get(offset + EXPR_DATA1);
+    let rawFuncId = dae.getExprData().get(offset + EXPR_DATA1);
+    let funcId = dae.resolveBuiltinMathFunc(rawFuncId);
     let arg = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     let argCount = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
     if (arg == 0xffffffff || argCount == 0) return dae.addRealLiteral(0.0);
+
+    if (funcId == BuiltinMathFunc.NoEvent || funcId == BuiltinMathFunc.Homotopy) {
+      return differentiateExpr(arg, dae, stateVars);
+    }
+    if (funcId == BuiltinMathFunc.Smooth && argCount >= 2) {
+      let exprArg = getCallSubArgPantelides(dae, exprId, arg, 1);
+      return differentiateExpr(exprArg, dae, stateVars);
+    }
+    if (funcId == BuiltinMathFunc.SemiLinear && argCount >= 3) {
+      let xArg = arg;
+      let kPos = getCallSubArgPantelides(dae, exprId, arg, 1);
+      let kNeg = getCallSubArgPantelides(dae, exprId, arg, 2);
+      let dx = differentiateExpr(xArg, dae, stateVars);
+      let dkPos = differentiateExpr(kPos, dae, stateVars);
+      let dkNeg = differentiateExpr(kNeg, dae, stateVars);
+      let posBranch = dae.addExpression(
+        ExprKind.Binary,
+        BinOp.Add,
+        dae.addExpression(ExprKind.Binary, BinOp.Mul, kPos as i32, dx as i32) as i32,
+        dae.addExpression(ExprKind.Binary, BinOp.Mul, xArg as i32, dkPos as i32) as i32,
+      );
+      let negBranch = dae.addExpression(
+        ExprKind.Binary,
+        BinOp.Add,
+        dae.addExpression(ExprKind.Binary, BinOp.Mul, kNeg as i32, dx as i32) as i32,
+        dae.addExpression(ExprKind.Binary, BinOp.Mul, xArg as i32, dkNeg as i32) as i32,
+      );
+      let cond = dae.addExpression(ExprKind.Binary, BinOp.Gte, xArg as i32, dae.addRealLiteral(0.0) as i32);
+      return dae.addExpression(ExprKind.IfElse, cond as i32, posBranch as i32, negBranch as i32);
+    }
+    if ((funcId == BuiltinMathFunc.Min || funcId == BuiltinMathFunc.Max) && argCount >= 2) {
+      let arg2 = getCallSubArgPantelides(dae, exprId, arg, 1);
+      let dArg1 = differentiateExpr(arg, dae, stateVars);
+      let dArg2 = differentiateExpr(arg2, dae, stateVars);
+      let cmpOp = funcId == BuiltinMathFunc.Min ? BinOp.Lte : BinOp.Gte;
+      let cond = dae.addExpression(ExprKind.Binary, cmpOp, arg as i32, arg2 as i32);
+      return dae.addExpression(ExprKind.IfElse, cond as i32, dArg1 as i32, dArg2 as i32);
+    }
+    if (funcId == BuiltinMathFunc.Atan2 && argCount >= 2) {
+      let xArg = getCallSubArgPantelides(dae, exprId, arg, 1);
+      let dy = differentiateExpr(arg, dae, stateVars);
+      let dx = differentiateExpr(xArg, dae, stateVars);
+      if (isZeroExpr(dy, dae) && isZeroExpr(dx, dae)) return dae.addRealLiteral(0.0);
+      let xDy = dae.addExpression(ExprKind.Binary, BinOp.Mul, xArg as i32, dy as i32);
+      let yDx = dae.addExpression(ExprKind.Binary, BinOp.Mul, arg as i32, dx as i32);
+      let num = dae.addExpression(ExprKind.Binary, BinOp.Sub, xDy as i32, yDx as i32);
+      let x2 = dae.addExpression(ExprKind.Binary, BinOp.Mul, xArg as i32, xArg as i32);
+      let y2 = dae.addExpression(ExprKind.Binary, BinOp.Mul, arg as i32, arg as i32);
+      let den = dae.addExpression(ExprKind.Binary, BinOp.Add, x2 as i32, y2 as i32);
+      return dae.addExpression(ExprKind.Binary, BinOp.Div, num as i32, den as i32);
+    }
+    if (funcId == BuiltinMathFunc.Pow && argCount >= 2) {
+      let arg2 = getCallSubArgPantelides(dae, exprId, arg, 1);
+      let powExpr = dae.addExpression(ExprKind.Binary, BinOp.Pow, arg as i32, arg2 as i32);
+      return differentiateExpr(powExpr, dae, stateVars);
+    }
+    if (funcId == BuiltinMathFunc.Fmod || funcId == BuiltinMathFunc.Mod) {
+      return differentiateExpr(arg, dae, stateVars);
+    }
+    if (funcId == BuiltinMathFunc.Sign || funcId == BuiltinMathFunc.Floor || funcId == BuiltinMathFunc.Ceil) {
+      return dae.addRealLiteral(0.0);
+    }
 
     let dArg = differentiateExpr(arg, dae, stateVars);
     if (isZeroExpr(dArg, dae)) return dae.addRealLiteral(0.0);
@@ -311,8 +453,9 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
       return dae.addExpression(ExprKind.Binary, BinOp.Div, dArg as i32, denom as i32);
     }
     if (funcId == BuiltinMathFunc.Abs) {
-      let signU = dae.addExpression(ExprKind.Call, BuiltinMathFunc.Sign, arg as i32, 1);
-      return dae.addExpression(ExprKind.Binary, BinOp.Mul, signU as i32, dArg as i32);
+      let cond = dae.addExpression(ExprKind.Binary, BinOp.Gte, arg as i32, dae.addRealLiteral(0.0) as i32);
+      let negDu = dae.addExpression(ExprKind.Negate, 0, dArg as i32);
+      return dae.addExpression(ExprKind.IfElse, cond as i32, dArg as i32, negDu as i32);
     }
     return dae.addRealLiteral(0.0);
   }
@@ -439,32 +582,49 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
  */
 @unmanaged
 export class PantelidesEngine {
+  /** Target DAE arena containing equations, variables, and expressions. */
   dae: DaeBuilder;
+  /** Companion BLT engine used for downstream block partitioning. */
   blt: BltEngine;
 
   // CSR Graph adjacency
+  /** CSR row pointer array mapping each equation to its dependent variables slice. */
   eqDepPtrs: ChunkedInt32Array;
+  /** CSR column index array storing variable IDs referenced by each equation. */
   eqDepVars: ChunkedInt32Array;
 
   // Bipartite matching arrays
+  /** Maps each equation index to its matched highest-order variable ID (-1 if unmatched). */
   matchEqToVar: ChunkedInt32Array; // eq -> var
+  /** Maps each variable ID to its matched equation index (-1 if unmatched). */
   matchVarToEq: ChunkedInt32Array; // var -> eq
 
   // Alternating path search markers
+  /** Visited flags for equations during DFS augmenting path search (colored by equation subset). */
   visitedEq: ChunkedUint8Array;
+  /** Visited flags for variables during DFS augmenting path search (colored by variable subset). */
   visitedVar: ChunkedUint8Array;
 
   // Differentiation tracking
+  /** Tracks how many times each equation has been differentiated during Pantelides reduction. */
   eqDiffLevel: ChunkedInt32Array;
+  /** Tracks the maximum differentiation order of each variable. */
   varDiffLevel: ChunkedInt32Array;
+  /** Maps each variable to its immediate derivative variable ID (-1 if none). */
   varDerivativeOf: ChunkedInt32Array;
 
   // Mattsson-Söderlind dummy derivatives
+  /** Variable IDs selected as algebraic dummy derivatives to eliminate overdetermination. */
   dummyDerivatives: ChunkedInt32Array;
 
+  /** Total number of Pantelides differentiation rounds executed. */
   diffRounds: u32;
+  /** Computed structural index of the DAE system (1 for standard index-1 systems, >1 for higher-index). */
   structuralIndex: u32;
 
+  /**
+   * Initializes the Pantelides engine and allocates unmanaged CSR, matching, and differentiation arrays.
+   */
   init(dae: DaeBuilder, blt: BltEngine | null = null): void {
     this.dae = dae;
     if (blt != null) {
@@ -506,13 +666,15 @@ export class PantelidesEngine {
     for (let i: u32 = 0; i <= eqCount; i++) {
       this.eqDepPtrs.push(0);
     }
-    let isStateVar = createChunkedUint8Array(varCount);
+
+    // Track maximum derivative order of each variable across all equations.
+    // Variables flagged as state variables start at order 1; algebraic variables start at 0.
+    let maxVarOrder = createChunkedInt32Array(varCount);
     for (let i: u32 = 0; i < varCount; i++) {
       let flags = this.dae.getVarData().get(i * VAR_STRIDE + VAR_FLAGS);
-      isStateVar.push((flags & (FLAG_VAR_STATE | FLAG_VAR_STATE_DER)) != 0 ? 1 : 0);
+      maxVarOrder.push((flags & (FLAG_VAR_STATE | FLAG_VAR_STATE_DER)) != 0 ? 1 : 0);
     }
 
-    // Also mark variables that appear inside ExprKind.Der as state variables
     let exprStack = createChunkedInt32Array(256);
     for (let i: u32 = 0; i < eqCount; i++) {
       let offset = i * EQ_STRIDE;
@@ -529,23 +691,32 @@ export class PantelidesEngine {
         let exprOffset = exprId * EXPR_STRIDE;
         let kind = this.dae.getExprData().get(exprOffset + EXPR_KIND);
         if (kind == ExprKind.Der) {
-          let inner = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
-          if (inner != 0xffffffff && inner < this.dae.exprCount) {
-            let innerOffset = inner * EXPR_STRIDE;
-            if (this.dae.getExprData().get(innerOffset + EXPR_KIND) == ExprKind.Name) {
-              let rawId = this.dae.getExprData().get(innerOffset + EXPR_DATA1) as u32;
+          let depth: i32 = 1;
+          let curr = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          while (curr != 0xffffffff && curr < this.dae.exprCount) {
+            let cOff = curr * EXPR_STRIDE;
+            let cKind = this.dae.getExprData().get(cOff + EXPR_KIND);
+            if (cKind == ExprKind.Der) {
+              depth++;
+              curr = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
+            } else if (cKind == ExprKind.Name) {
+              let rawId = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
               let resolvedId = rawId < varCount ? (rawId as i32) : this.dae.lookupVariableByName(rawId);
               if (resolvedId >= 0 && (resolvedId as u32) < varCount) {
                 let vId = resolvedId as u32;
-                isStateVar.set(vId, 1);
+                if (depth > maxVarOrder.get(vId)) {
+                  maxVarOrder.set(vId, depth);
+                }
                 this.dae.setVarFlag(vId, FLAG_VAR_STATE);
                 while (this.varDerivativeOf.length <= vId) this.varDerivativeOf.push(-1);
                 if (this.varDerivativeOf.get(vId) == -1) {
                   this.varDerivativeOf.set(vId, vId as i32);
                 }
               }
+              break;
             } else {
-              exprStack.push(inner as i32);
+              exprStack.push(curr as i32);
+              break;
             }
           }
         } else if (kind == ExprKind.Binary || kind == ExprKind.Range) {
@@ -626,21 +797,28 @@ export class PantelidesEngine {
         let kind = this.dae.getExprData().get(exprOffset + EXPR_KIND);
 
         if (kind == ExprKind.Der) {
-          let inner = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
-          if (inner != 0xffffffff && inner < this.dae.exprCount) {
-            let innerOffset = inner * EXPR_STRIDE;
-            if (this.dae.getExprData().get(innerOffset + EXPR_KIND) == ExprKind.Name) {
-              let rawId = this.dae.getExprData().get(innerOffset + EXPR_DATA1) as u32;
+          let depth: i32 = 1;
+          let curr = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          while (curr != 0xffffffff && curr < this.dae.exprCount) {
+            let cOff = curr * EXPR_STRIDE;
+            let cKind = this.dae.getExprData().get(cOff + EXPR_KIND);
+            if (cKind == ExprKind.Der) {
+              depth++;
+              curr = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
+            } else if (cKind == ExprKind.Name) {
+              let rawId = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
               let resolvedId = rawId < varCount ? (rawId as i32) : this.dae.lookupVariableByName(rawId);
               if (resolvedId >= 0 && (resolvedId as u32) < varCount) {
                 let varId = resolvedId as u32;
-                if (seenVars.get(varId) == 0) {
+                if (depth == maxVarOrder.get(varId) && seenVars.get(varId) == 0) {
                   seenVars.set(varId, 1);
                   this.eqDepVars.push(varId as i32);
                 }
               }
+              break;
             } else {
-              exprStack.push(inner as i32);
+              exprStack.push(curr as i32);
+              break;
             }
           }
         } else if (kind == ExprKind.Name) {
@@ -650,7 +828,7 @@ export class PantelidesEngine {
             let varId = resolvedId as u32;
             let variability = this.dae.getVarData().get(varId * VAR_STRIDE + VAR_VARIABILITY);
             if (variability != Variability.Parameter && variability != Variability.Constant) {
-              if (isStateVar.get(varId) == 0) {
+              if (maxVarOrder.get(varId) == 0) {
                 if (seenVars.get(varId) == 0) {
                   seenVars.set(varId, 1);
                   this.eqDepVars.push(varId as i32);
@@ -861,13 +1039,17 @@ export class PantelidesEngine {
           let lhsId = this.dae.getEqData().get(offset + EQ_LHS) as u32;
           let rhsId = this.dae.getEqData().get(offset + EQ_RHS) as u32;
 
+          // Mark the source constraint equation as a high-index constraint equation
+          let srcAux = this.dae.getEqData().get(offset + EQ_AUX);
+          this.dae.getEqData().set(offset + EQ_AUX, srcAux | FLAG_HIGH_INDEX_EQ | FLAG_EQ_INITIAL);
+
           let dLhs = differentiateExpr(lhsId, this.dae, stateVars);
           let dRhs = differentiateExpr(rhsId, this.dae, stateVars);
 
           let simLhs = simplifyAst(dLhs, this.dae);
           let simRhs = simplifyAst(dRhs, this.dae);
 
-          let newEqIdx = this.dae.addEquation(EqKind.Simple, simLhs, simRhs);
+          let newEqIdx = this.dae.addEquation(EqKind.Simple, simLhs, simRhs, FLAG_HIGH_INDEX_EQ);
           let currLevel = eqIdx < this.eqDiffLevel.length ? this.eqDiffLevel.get(eqIdx) : 0;
           this.eqDiffLevel.push(currLevel + 1);
 
@@ -898,16 +1080,74 @@ export class PantelidesEngine {
 
   /**
    * Selects dummy derivatives according to the Mattsson-Söderlind algorithm.
-   * Any state variable whose highest-order derivative is matched to a differentiated
-   * constraint equation (eqDiffLevel > 0) or left unmatched after index reduction
-   * is demoted to a dummy derivative.
+   * For each differentiated constraint equation (eqDiffLevel > 0), selects the highest-priority
+   * candidate state variable (preferring non-fixed states with higher differentiation order),
+   * marks the equation with FLAG_HIGH_INDEX_EQ, and demotes the selected variable (and any
+   * remaining unmatched state variables) to dummy derivatives.
    */
   @inline
   selectDummyDerivatives(): void {
     if (this.diffRounds == 0) return;
     let varCount = this.dae.varCount;
+    let eqCount = this.dae.eqCount;
+    let chosenMask = createChunkedUint8Array(varCount);
+    for (let i: u32 = 0; i < varCount; i++) chosenMask.push(0);
 
+    // 1. For each differentiated constraint equation, pick the best candidate state variable
+    for (let eqIdx: u32 = 0; eqIdx < eqCount; eqIdx++) {
+      let level = eqIdx < this.eqDiffLevel.length ? this.eqDiffLevel.get(eqIdx) : 0;
+      if (level <= 0) continue;
+
+      let eqOff = eqIdx * EQ_STRIDE;
+      let curAux = this.dae.getEqData().get(eqOff + EQ_AUX);
+      this.dae.getEqData().set(eqOff + EQ_AUX, curAux | FLAG_HIGH_INDEX_EQ);
+
+      let matchedVar = eqIdx < this.matchEqToVar.length ? this.matchEqToVar.get(eqIdx) : -1;
+      let bestVar: i32 = -1;
+      let bestScore: i32 = -0x7fffffff;
+
+      if (eqIdx + 1 < this.eqDepPtrs.length) {
+        let start = this.eqDepPtrs.get(eqIdx) as u32;
+        let end = this.eqDepPtrs.get(eqIdx + 1) as u32;
+        for (let j: u32 = start; j < end; j++) {
+          let v = this.eqDepVars.get(j) as u32;
+          if (v >= varCount || chosenMask.get(v) != 0) continue;
+          let parent = v < this.varDerivativeOf.length ? this.varDerivativeOf.get(v) : -1;
+          if (parent == -1 || (parent as u32) >= varCount) continue;
+          let vFlags = this.dae.getVarData().get(v * VAR_STRIDE + VAR_FLAGS);
+          let parentFlags = this.dae.getVarData().get((parent as u32) * VAR_STRIDE + VAR_FLAGS);
+          let parentIsState = (parentFlags & (FLAG_VAR_STATE | FLAG_VAR_STATE_DER)) != 0 || parent == (v as i32);
+          if (!parentIsState) continue;
+
+          // Score: prefer matched variable, non-fixed initial state, and higher diff level
+          let score: i32 = 0;
+          if ((v as i32) == matchedVar) score += 100;
+          if ((vFlags & FLAG_VAR_FIXED) == 0) score += 20;
+          if (v < this.varDiffLevel.length) score += this.varDiffLevel.get(v) * 10;
+          score += v as i32; // deterministic tie-break preferring later state variables
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestVar = v as i32;
+          }
+        }
+      }
+
+      if (bestVar == -1 && matchedVar >= 0 && (matchedVar as u32) < varCount && chosenMask.get(matchedVar as u32) == 0) {
+        bestVar = matchedVar;
+      }
+
+      if (bestVar >= 0 && (bestVar as u32) < varCount) {
+        let bv = bestVar as u32;
+        chosenMask.set(bv, 1);
+        this.dummyDerivatives.push(bestVar);
+        this.dae.setVarFlag(bv, FLAG_TEARING_VAR | FLAG_VAR_STATE_DER);
+      }
+    }
+
+    // 2. Also demote any remaining state variables left unmatched or matched to high-index equations
     for (let v: u32 = 0; v < varCount; v++) {
+      if (chosenMask.get(v) != 0) continue;
       let parent = v < this.varDerivativeOf.length ? this.varDerivativeOf.get(v) : -1;
 
       if (parent != -1 && (parent as u32) < varCount) {
@@ -922,8 +1162,9 @@ export class PantelidesEngine {
             isDummy = true;
           }
           if (isDummy) {
+            chosenMask.set(v, 1);
             this.dummyDerivatives.push(v as i32);
-            this.dae.setVarFlag(v, FLAG_TEARING_VAR);
+            this.dae.setVarFlag(v, FLAG_TEARING_VAR | FLAG_VAR_STATE_DER);
           }
         }
       }
@@ -954,6 +1195,9 @@ export class PantelidesEngine {
 // Exported C/WASM Bridge Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Allocates and initializes a new `PantelidesEngine` in WebAssembly linear memory.
+ */
 export function dae_createPantelides(daePtr: u32, bltPtr: u32): u32 {
   let pantPtr = atomicChunkAlloc(offsetof<PantelidesEngine>());
   let pant = changetype<PantelidesEngine>(pantPtr);
@@ -966,22 +1210,34 @@ export function dae_createPantelides(daePtr: u32, bltPtr: u32): u32 {
   return pantPtr as u32;
 }
 
+/**
+ * Executes Pantelides index reduction and Mattsson-Söderlind dummy derivative selection on the engine.
+ */
 export function dae_runPantelides(pantPtr: u32, stateVarsPtr: u32): u32 {
   if (pantPtr == 0) return 0;
   let stateVars = stateVarsPtr != 0 ? changetype<ChunkedInt32Array>(stateVarsPtr) : changetype<PantelidesEngine>(pantPtr).dummyDerivatives;
   return changetype<PantelidesEngine>(pantPtr).reduceIndex(stateVars);
 }
 
+/**
+ * Returns the computed structural DAE index after running Pantelides analysis.
+ */
 export function dae_getPantelidesIndex(pantPtr: u32): u32 {
   if (pantPtr == 0) return 1;
   return changetype<PantelidesEngine>(pantPtr).structuralIndex;
 }
 
+/**
+ * Returns the number of variables selected as Mattsson-Söderlind dummy derivatives.
+ */
 export function dae_getDummyDerivativeCount(pantPtr: u32): u32 {
   if (pantPtr == 0) return 0;
   return changetype<PantelidesEngine>(pantPtr).dummyDerivatives.length;
 }
 
+/**
+ * Returns the variable ID of the `idx`-th selected dummy derivative, or -1 if out of bounds.
+ */
 export function dae_getDummyDerivativeVar(pantPtr: u32, idx: u32): i32 {
   if (pantPtr == 0) return -1;
   let pant = changetype<PantelidesEngine>(pantPtr);
@@ -989,6 +1245,9 @@ export function dae_getDummyDerivativeVar(pantPtr: u32, idx: u32): i32 {
   return pant.dummyDerivatives.get(idx);
 }
 
+/**
+ * Returns the number of times equation `eqIdx` was differentiated during index reduction.
+ */
 export function dae_getEqDiffLevel(pantPtr: u32, eqIdx: u32): i32 {
   if (pantPtr == 0) return 0;
   let pant = changetype<PantelidesEngine>(pantPtr);
@@ -996,6 +1255,9 @@ export function dae_getEqDiffLevel(pantPtr: u32, eqIdx: u32): i32 {
   return pant.eqDiffLevel.get(eqIdx);
 }
 
+/**
+ * Returns the maximum differentiation order recorded for variable `varIdx`.
+ */
 export function dae_getVarDiffLevel(pantPtr: u32, varIdx: u32): i32 {
   if (pantPtr == 0) return 0;
   let pant = changetype<PantelidesEngine>(pantPtr);
@@ -1003,6 +1265,9 @@ export function dae_getVarDiffLevel(pantPtr: u32, varIdx: u32): i32 {
   return pant.varDiffLevel.get(varIdx);
 }
 
+/**
+ * Dynamically swaps an active continuous state variable with a dummy derivative candidate at runtime.
+ */
 export function dae_swapDynamicState(pantPtr: u32, oldVar: u32, newVar: u32): boolean {
   if (pantPtr == 0) return false;
   return changetype<PantelidesEngine>(pantPtr).swapDynamicState(oldVar, newVar);

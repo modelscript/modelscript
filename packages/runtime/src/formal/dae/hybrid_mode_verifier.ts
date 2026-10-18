@@ -22,9 +22,9 @@ export interface HybridVerificationIssue {
   severity: "definite" | "possible";
   whenEqIdx: number;
   message: string;
-  varIdx?: number;
-  varName?: string;
-  details?: Record<string, unknown>;
+  varIdx?: number | undefined;
+  varName?: string | undefined;
+  details?: Record<string, unknown> | undefined;
 }
 
 export interface HybridVerificationResult {
@@ -35,9 +35,9 @@ export interface HybridVerificationResult {
 
 export interface HybridVerifierOptions {
   /** Known continuous state variable indices */
-  stateVars?: Set<number>;
+  stateVars?: Set<number> | undefined;
   /** Explicit bounds for variables */
-  variableBounds?: Map<number, NumericalInterval>;
+  variableBounds?: Map<number, NumericalInterval> | undefined;
 }
 
 export class HybridModeConsistencyVerifier {
@@ -108,7 +108,9 @@ export class HybridModeConsistencyVerifier {
     meta: {
       conditionExprId: number;
       equations: { kind: EqKind; lhs: number; rhs: number }[];
-      elseWhenClauses?: { conditionExprId: number; equations: { kind: EqKind; lhs: number; rhs: number }[] }[];
+      elseWhenClauses?:
+        | { conditionExprId: number; equations: { kind: EqKind; lhs: number; rhs: number }[] }[]
+        | undefined;
     },
     issues: HybridVerificationIssue[],
   ): void {
@@ -175,7 +177,7 @@ export class HybridModeConsistencyVerifier {
     whenEqIdx: number,
     meta: {
       conditionExprId: number;
-      elseWhenClauses?: { conditionExprId: number }[];
+      elseWhenClauses?: { conditionExprId: number }[] | undefined;
     },
     issues: HybridVerificationIssue[],
   ): void {

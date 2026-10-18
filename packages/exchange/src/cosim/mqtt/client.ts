@@ -29,9 +29,9 @@ import {
 
 export interface MqttClientOptions {
   /** MQTT broker URL (e.g., mqtt://localhost:1883). */
-  brokerUrl?: string;
+  brokerUrl?: string | undefined;
   /** Custom stream builder for in-memory browser brokers. */
-  streamBuilder?: () => unknown;
+  streamBuilder?: (() => unknown) | undefined;
   /** Client ID (auto-generated if not provided). */
   clientId?: string | undefined;
   /** UNS context for topic construction. */
@@ -229,6 +229,17 @@ export class CosimMqttClient {
     const topic = sessionResultsTopic(this.unsContext, sessionId);
     return new Promise<void>((resolve, reject) => {
       this.client?.subscribe(topic, { qos: 0 }, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  /** Subscribe to an arbitrary MQTT topic pattern. */
+  async subscribeTopic(topic: string, qos: 0 | 1 = 0): Promise<void> {
+    if (!this.client) return;
+    return new Promise<void>((resolve, reject) => {
+      this.client?.subscribe(topic, { qos }, (err) => {
         if (err) reject(err);
         else resolve();
       });

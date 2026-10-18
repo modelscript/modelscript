@@ -16,28 +16,33 @@ export class DdpManifestParser {
     const raw = JSON.parse(jsonStr) as Record<string, unknown>;
 
     // Handle standard ddpVersion or default to 1.0
-    const ddpVersion = typeof raw.ddpVersion === "string" ? raw.ddpVersion : "1.0";
-    const packageId = typeof raw.packageId === "string" ? raw.packageId : ((raw.id as string) ?? "ddp:unnamed-package");
-    const title = typeof raw.title === "string" ? raw.title : ((raw.name as string) ?? packageId);
-    const version = typeof raw.version === "string" ? raw.version : "1.0.0";
-    const createdAt = typeof raw.createdAt === "string" ? raw.createdAt : new Date().toISOString();
+    const ddpVersion = typeof raw["ddpVersion"] === "string" ? raw["ddpVersion"] : "1.0";
+    const packageId =
+      typeof raw["packageId"] === "string" ? raw["packageId"] : ((raw["id"] as string) ?? "ddp:unnamed-package");
+    const title = typeof raw["title"] === "string" ? raw["title"] : ((raw["name"] as string) ?? packageId);
+    const version = typeof raw["version"] === "string" ? raw["version"] : "1.0.0";
+    const createdAt = typeof raw["createdAt"] === "string" ? raw["createdAt"] : new Date().toISOString();
 
-    const artifactsRaw = (raw.artifacts as Record<string, unknown>) ?? {};
+    const artifactsRaw = (raw["artifacts"] as Record<string, unknown>) ?? {};
     const artifacts = {
-      requirements: Array.isArray(artifactsRaw.requirements)
-        ? (artifactsRaw.requirements as DdpArtifactDescriptor[])
+      requirements: Array.isArray(artifactsRaw["requirements"])
+        ? (artifactsRaw["requirements"] as DdpArtifactDescriptor[])
         : undefined,
-      geometry: Array.isArray(artifactsRaw.geometry) ? (artifactsRaw.geometry as DdpArtifactDescriptor[]) : undefined,
-      behavior: Array.isArray(artifactsRaw.behavior) ? (artifactsRaw.behavior as DdpArtifactDescriptor[]) : undefined,
-      parameters: Array.isArray(artifactsRaw.parameters)
-        ? (artifactsRaw.parameters as DdpArtifactDescriptor[])
+      geometry: Array.isArray(artifactsRaw["geometry"])
+        ? (artifactsRaw["geometry"] as DdpArtifactDescriptor[])
         : undefined,
-      documentation: Array.isArray(artifactsRaw.documentation)
-        ? (artifactsRaw.documentation as DdpArtifactDescriptor[])
+      behavior: Array.isArray(artifactsRaw["behavior"])
+        ? (artifactsRaw["behavior"] as DdpArtifactDescriptor[])
+        : undefined,
+      parameters: Array.isArray(artifactsRaw["parameters"])
+        ? (artifactsRaw["parameters"] as DdpArtifactDescriptor[])
+        : undefined,
+      documentation: Array.isArray(artifactsRaw["documentation"])
+        ? (artifactsRaw["documentation"] as DdpArtifactDescriptor[])
         : undefined,
     };
 
-    const relations = Array.isArray(raw.relations) ? (raw.relations as DdpRelation[]) : undefined;
+    const relations = Array.isArray(raw["relations"]) ? (raw["relations"] as DdpRelation[]) : undefined;
 
     return {
       "@context": (raw["@context"] as string | Record<string, string>) ?? DEFAULT_DDP_CONTEXT,
@@ -45,16 +50,17 @@ export class DdpManifestParser {
       packageId,
       title,
       version,
-      description: typeof raw.description === "string" ? raw.description : undefined,
-      creator: raw.creator as DdpManifest["creator"],
-      recipient: raw.recipient as DdpManifest["recipient"],
+      description: typeof raw["description"] === "string" ? raw["description"] : undefined,
+      creator: raw["creator"] as DdpManifest["creator"],
+      recipient: raw["recipient"] as DdpManifest["recipient"],
       createdAt,
-      modifiedAt: typeof raw.modifiedAt === "string" ? raw.modifiedAt : undefined,
-      securityClassification: typeof raw.securityClassification === "string" ? raw.securityClassification : undefined,
-      license: typeof raw.license === "string" ? raw.license : undefined,
+      modifiedAt: typeof raw["modifiedAt"] === "string" ? raw["modifiedAt"] : undefined,
+      securityClassification:
+        typeof raw["securityClassification"] === "string" ? raw["securityClassification"] : undefined,
+      license: typeof raw["license"] === "string" ? raw["license"] : undefined,
       artifacts,
       relations,
-      properties: raw.properties as Record<string, unknown> | undefined,
+      properties: raw["properties"] as Record<string, unknown> | undefined,
     };
   }
 
@@ -70,20 +76,20 @@ export class DdpManifestParser {
       version: manifest.version,
     };
 
-    if (manifest.description) output.description = manifest.description;
-    if (manifest.creator) output.creator = manifest.creator;
-    if (manifest.recipient) output.recipient = manifest.recipient;
-    output.createdAt = manifest.createdAt;
-    if (manifest.modifiedAt) output.modifiedAt = manifest.modifiedAt;
-    if (manifest.securityClassification) output.securityClassification = manifest.securityClassification;
-    if (manifest.license) output.license = manifest.license;
+    if (manifest.description) output["description"] = manifest.description;
+    if (manifest.creator) output["creator"] = manifest.creator;
+    if (manifest.recipient) output["recipient"] = manifest.recipient;
+    output["createdAt"] = manifest.createdAt;
+    if (manifest.modifiedAt) output["modifiedAt"] = manifest.modifiedAt;
+    if (manifest.securityClassification) output["securityClassification"] = manifest.securityClassification;
+    if (manifest.license) output["license"] = manifest.license;
 
-    output.artifacts = manifest.artifacts;
+    output["artifacts"] = manifest.artifacts;
     if (manifest.relations && manifest.relations.length > 0) {
-      output.relations = manifest.relations;
+      output["relations"] = manifest.relations;
     }
     if (manifest.properties && Object.keys(manifest.properties).length > 0) {
-      output.properties = manifest.properties;
+      output["properties"] = manifest.properties;
     }
 
     return JSON.stringify(output, null, pretty ? 2 : undefined);
@@ -133,7 +139,7 @@ export class DdpManifestParser {
     // Validate relations if present
     if (manifest.relations) {
       for (let i = 0; i < manifest.relations.length; i++) {
-        const rel = manifest.relations[i];
+        const rel = manifest.relations[i]!;
         if (!rel.relationType) {
           errors.push(`Relation at index ${i} is missing 'relationType'.`);
         }

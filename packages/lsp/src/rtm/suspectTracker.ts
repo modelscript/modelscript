@@ -8,7 +8,7 @@ export interface VerifiedBaseline {
   uri: string;
   snapshotHash: string;
   timestamp: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> | undefined;
 }
 
 /**
@@ -16,7 +16,7 @@ export interface VerifiedBaseline {
  */
 export class SuspectTracker {
   private baselines = new Map<string, VerifiedBaseline>();
-  private suspects = new Map<string, { isSuspect: boolean; reason?: string; timestamp: number }>();
+  private suspects = new Map<string, { isSuspect: boolean; reason?: string | undefined; timestamp: number }>();
 
   /**
    * Computes a deterministic signature hash for a symbol entry.
@@ -122,7 +122,7 @@ export class SuspectTracker {
   /**
    * Checks whether a trace link (by key `${sourceName}|${targetName}`) is suspect.
    */
-  checkLinkSuspect(linkKey: string): { isSuspect: boolean; reason?: string } {
+  checkLinkSuspect(linkKey: string): { isSuspect: boolean; reason?: string | undefined } {
     const direct = this.suspects.get(linkKey);
     if (direct?.isSuspect) return direct;
 
@@ -157,8 +157,8 @@ export class SuspectTracker {
   /**
    * Returns a map of all currently suspect links.
    */
-  getSuspectMap(): Map<string, { isSuspect: boolean; reason?: string }> {
-    const res = new Map<string, { isSuspect: boolean; reason?: string }>();
+  getSuspectMap(): Map<string, { isSuspect: boolean; reason?: string | undefined }> {
+    const res = new Map<string, { isSuspect: boolean; reason?: string | undefined }>();
     for (const [k, v] of this.suspects) {
       res.set(k, { isSuspect: v.isSuspect, reason: v.reason });
     }

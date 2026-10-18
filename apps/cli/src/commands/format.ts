@@ -5,13 +5,13 @@ import path from "node:path";
 import type { CommandModule } from "yargs";
 import { LanguageResolver } from "../util/language-registry.js";
 
-interface FormatArgs {
+export interface FormatArgs {
   files: string[];
-  write?: boolean;
-  check?: boolean;
-  language?: string;
-  indentSize?: number;
-  preserveFormatting?: boolean;
+  write?: boolean | undefined;
+  check?: boolean | undefined;
+  language?: string | undefined;
+  indentSize?: number | undefined;
+  preserveFormatting?: boolean | undefined;
 }
 
 function expandFiles(entries: string[], languageOverride?: string): string[] {
@@ -91,7 +91,7 @@ export const Format: CommandModule<any, any> = {
       });
   },
   handler: async (args) => {
-    const filePaths = expandFiles(args.files, args.language);
+    const filePaths = expandFiles(args["files"], args["language"]);
     if (filePaths.length === 0) {
       console.error("No matching files found to format.");
       process.exit(1);
@@ -99,15 +99,15 @@ export const Format: CommandModule<any, any> = {
 
     let unformattedCount = 0;
     let formattedCount = 0;
-    const isSingleFileStdout = !args.write && !args.check && filePaths.length === 1;
+    const isSingleFileStdout = !args["write"] && !args["check"] && filePaths.length === 1;
 
     for (const filePath of filePaths) {
       try {
-        const lang = await LanguageResolver.resolve(filePath, args.language);
+        const lang = await LanguageResolver.resolve(filePath, args["language"]);
         const original = fs.readFileSync(filePath, "utf-8");
         const formatted = await lang.format(original, {
-          indentSize: args.indentSize,
-          preserveFormatting: args.preserveFormatting,
+          indentSize: args["indentSize"],
+          preserveFormatting: args["preserveFormatting"],
         });
 
         if (isSingleFileStdout) {
@@ -117,12 +117,12 @@ export const Format: CommandModule<any, any> = {
 
         const isUnchanged = formatted === original;
 
-        if (args.check) {
+        if (args["check"]) {
           if (!isUnchanged) {
             console.error(`[unformatted] ${path.relative(process.cwd(), filePath)} (${lang.manifest.name})`);
             unformattedCount++;
           }
-        } else if (args.write) {
+        } else if (args["write"]) {
           if (!isUnchanged) {
             fs.writeFileSync(filePath, formatted, "utf-8");
             console.log(`Formatted ${path.relative(process.cwd(), filePath)} (${lang.manifest.name})`);
@@ -139,14 +139,14 @@ export const Format: CommandModule<any, any> = {
       }
     }
 
-    if (args.check) {
+    if (args["check"]) {
       if (unformattedCount > 0) {
         console.error(`\nFound ${unformattedCount} unformatted file(s). Run 'msx format -w' to format in place.`);
         process.exit(1);
       } else {
         console.log(`All ${filePaths.length} file(s) are properly formatted.`);
       }
-    } else if (args.write) {
+    } else if (args["write"]) {
       console.log(
         `Formatting complete. ${formattedCount} file(s) formatted, ${filePaths.length - formattedCount} file(s) already clean.`,
       );

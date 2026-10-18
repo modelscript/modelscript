@@ -31,7 +31,7 @@ export function VariablesTree({ variables, selectedVariables, onToggleVariable }
 
       for (let i = 0; i < originalParts.length; i++) {
         const isLeaf = i === originalParts.length - 1;
-        const basePart = originalParts[i];
+        const basePart = originalParts[i]!;
 
         const part = isLeaf && isDer ? `der(${basePart})` : basePart;
         prefix = prefix ? `${prefix}.${basePart}` : basePart;

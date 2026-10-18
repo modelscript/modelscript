@@ -22,12 +22,12 @@ function resolveParamValue(value: unknown, scopeId: SymbolId | null, db: QueryDB
   }
   if (value && typeof value === "object") {
     const modVal = value as Record<string, unknown>;
-    if (modVal.kind === "literal" && typeof modVal.value === "number") {
-      return modVal.value;
+    if (modVal["kind"] === "literal" && typeof modVal["value"] === "number") {
+      return modVal["value"];
     }
-    if (modVal.kind === "expression") {
-      if (typeof modVal.text === "string") {
-        const parsed = Number(modVal.text);
+    if (modVal["kind"] === "expression") {
+      if (typeof modVal["text"] === "string") {
+        const parsed = Number(modVal["text"]);
         if (!isNaN(parsed)) return parsed;
       }
       try {
@@ -134,7 +134,7 @@ export function extractCSGTopology(context: Context, className: string): CSGExec
           }
 
           // CST fallback for inline modifications
-          const cstNode = db.cstNode(child.id) as { text?: string } | null;
+          const cstNode = db.cstNode(child.id) as { text?: string | undefined } | null;
           if (cstNode?.text) {
             const text = cstNode.text;
             const parenIdx = text.indexOf("(");
@@ -166,7 +166,7 @@ export function extractCSGTopology(context: Context, className: string): CSGExec
               }
 
               if (parameters[compChild.name] === undefined) {
-                const compCst = db.cstNode(compChild.id) as { text?: string } | null;
+                const compCst = db.cstNode(compChild.id) as { text?: string | undefined } | null;
                 if (compCst?.text) {
                   const eqIdx = compCst.text.indexOf("=");
                   if (eqIdx !== -1) {

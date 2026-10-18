@@ -7,7 +7,7 @@ export interface FeatureFlagDefinition {
   defaultValue: boolean;
   category: "core" | "compute" | "financial" | "social" | "iot" | "developer" | "experimental";
   maturity: "production" | "beta" | "alpha" | "internal";
-  allowedRoles?: ("admin" | "beta_tester" | "user" | "guest")[];
+  allowedRoles?: ("admin" | "beta_tester" | "user" | "guest")[] | undefined;
 }
 
 export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {

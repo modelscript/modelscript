@@ -9,15 +9,15 @@ import Box from "../Box";
 
 interface RepositoryViewCardProps {
   viewConfig: {
-    namespace?: string;
-    project?: string;
-    provider?: string;
-    description?: string;
-    defaultBranch?: string;
-    cloneUrl?: string;
+    namespace?: string | undefined;
+    project?: string | undefined;
+    provider?: string | undefined;
+    description?: string | undefined;
+    defaultBranch?: string | undefined;
+    cloneUrl?: string | undefined;
     [key: string]: any;
   };
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 const CardWrapper = styled.div`

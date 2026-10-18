@@ -7,7 +7,7 @@
 export type TGGExprPattern =
   | { kind: "binary"; op: string; left: any; right: any }
   | { kind: "unary"; op: string; arg: any }
-  | { kind: "der"; stateVar: any; order?: number }
+  | { kind: "der"; stateVar: any; order?: number | undefined }
   | { kind: "call"; func: string; args: any[] }
   | { kind: "ident"; name: any }
   | { kind: "literal"; val: any };
@@ -18,9 +18,9 @@ export interface TGGPattern {
   /** Named variable bindings or literal values */
   bindings: Record<string, any>;
   /** Optional inner/nested patterns for child elements or body */
-  children?: TGGPattern[];
+  children?: TGGPattern[] | undefined;
   /** Optional recursive AST expression for mathematical equations / constraints */
-  expr?: TGGExprPattern;
+  expr?: TGGExprPattern | undefined;
 }
 
 export type TGGConstraintKind =
@@ -53,26 +53,28 @@ export interface TGGRuleOptions<
 > {
   name: string;
   /** Existing structural prerequisites in source, target, and correspondence */
-  context?: (
-    $: any,
-    v: (name: string) => any,
-  ) => {
-    source?: TGGPattern | any;
-    target?: TGGPattern | any;
-    corr?: TGGPattern | any;
-  };
+  context?:
+    | ((
+        $: any,
+        v: (name: string) => any,
+      ) => {
+        source?: TGGPattern | any;
+        target?: TGGPattern | any;
+        corr?: TGGPattern | any;
+      })
+    | undefined;
   /** Source language pattern (matched in forward, created in backward) */
   source: ($: any, v: (name: string) => any) => TGGPattern | any;
   /** Target language pattern (created in forward, matched in backward) */
   target: ($: any, v: (name: string) => any) => TGGPattern | any;
   /** Bidirectional attribute constraints and value mapping equations */
-  where?: (v: (name: string) => any) => TGGConstraint[];
+  where?: ((v: (name: string) => any) => TGGConstraint[]) | undefined;
   /** Priority override (default: 0, higher wins in dispatch) */
-  priority?: number;
+  priority?: number | undefined;
   /** Target language identifier for multi-target polyglot dispatch */
-  targetLang?: string;
+  targetLang?: string | undefined;
   /** Source language identifier */
-  sourceLang?: string;
+  sourceLang?: string | undefined;
 }
 
 export interface PolyglotConfig<
@@ -82,13 +84,13 @@ export interface PolyglotConfig<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   /** Target language identifiers this language can project to/from */
-  languages?: string[];
+  languages?: string[] | undefined;
   /** Declarative TGG rules */
-  rules?: TGGRuleOptions<RuleName, FieldName, QueryName, ModelAttrs>[];
+  rules?: TGGRuleOptions<RuleName, FieldName, QueryName, ModelAttrs>[] | undefined;
   /** Type mapping tables between source and target primitive types */
-  typeMaps?: Record<string, Record<string, string>>;
+  typeMaps?: Record<string, Record<string, string>> | undefined;
   /** Reasoner predicates that supply inferred facts for TGG matching (e.g. ['subClassOf', 'hasFeature']) */
-  reasonerBindings?: string[];
+  reasonerBindings?: string[] | undefined;
 }
 
 /**
@@ -171,7 +173,7 @@ export function tggReconcile(
 export function tggReconcilePhysics(
   sourceVar: any,
   targetVar: any,
-  bounds: { min: number; max: number; tolerance?: number },
+  bounds: { min: number; max: number; tolerance?: number | undefined },
 ): TGGConstraint {
   return { kind: "reconcilePhysics", args: [sourceVar, targetVar, bounds] };
 }
@@ -234,10 +236,10 @@ export function tggCall(func: string, args: any[]): TGGExprPattern {
 }
 
 export interface TGGThreadRuleOptions<DomainNames extends string = string> {
-  name?: string;
+  name?: string | undefined;
   domains: Record<DomainNames, (patternBuilder: any, varProxy: (name: string) => string) => any>;
-  where?: (varProxy: (name: string) => string) => TGGConstraint[];
-  priority?: number;
+  where?: ((varProxy: (name: string) => string) => TGGConstraint[]) | undefined;
+  priority?: number | undefined;
 }
 
 /**
@@ -256,7 +258,7 @@ export function tggThreadRule<DomainNames extends string = string>(
 export interface DpoElementSpec {
   action: "preserve" | "delete" | "create";
   nodeType: string;
-  bindings?: Record<string, any>;
+  bindings?: Record<string, any> | undefined;
 }
 
 export interface DpoRuleBuilder {
@@ -271,10 +273,10 @@ export interface TGGDpoRuleOptions {
   name: string;
   domain: string;
   elements: DpoElementSpec[];
-  danglingEdgePolicy?: "strict" | "cascade";
-  targetSyncDomain?: string;
-  targetSyncHandler?: (srcReq: any, targetBlock: any) => void;
-  where?: TGGConstraint[];
+  danglingEdgePolicy?: "strict" | "cascade" | undefined;
+  targetSyncDomain?: string | undefined;
+  targetSyncHandler?: ((srcReq: any, targetBlock: any) => void) | undefined;
+  where?: TGGConstraint[] | undefined;
 }
 
 export class TGGDpoRuleFluentBuilder {
@@ -282,8 +284,8 @@ export class TGGDpoRuleFluentBuilder {
   private _domain: string = "";
   private _elements: DpoElementSpec[] = [];
   private _danglingEdgePolicy: "strict" | "cascade" = "strict";
-  private _targetSyncDomain?: string;
-  private _targetSyncHandler?: (srcReq: any, targetBlock: any) => void;
+  private _targetSyncDomain?: string | undefined;
+  private _targetSyncHandler?: ((srcReq: any, targetBlock: any) => void) | undefined;
   private _constraints: TGGConstraint[] = [];
 
   constructor(name: string) {

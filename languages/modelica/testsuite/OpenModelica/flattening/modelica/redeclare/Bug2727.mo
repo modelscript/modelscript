@@ -1,7 +1,6 @@
 // name:     ModifiersOnExtends.mo [BUG: #2727]
 // keywords: extends modifier handling
 // status:   correct
-// xfail:    true
 //
 // check that modifiers on extends are not lost
 //

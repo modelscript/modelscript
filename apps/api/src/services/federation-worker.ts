@@ -49,7 +49,7 @@ export class FederationWorker {
 
       const instanceKeys = this.db.getInstanceKeys();
       const transportKey = instanceKeys.privateKey;
-      const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+      const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
       const transportKeyId = `${publicUrl}/actor#main-key`;
 
       for (const item of items) {
@@ -103,14 +103,14 @@ export class FederationWorker {
 
         let signingKeyId = transportKeyId;
         let signingKey = transportKey;
-        if (typeof payload.actor === "string") {
-          const userMatch = payload.actor.match(/\/users\/([^/#?]+)$/);
+        if (typeof payload["actor"] === "string") {
+          const userMatch = payload["actor"].match(/\/users\/([^/#?]+)$/);
           if (userMatch?.[1]) {
             const localUser = this.db.getUserByUsername(decodeURIComponent(userMatch[1]));
             if (localUser) {
               const userKeys = this.db.ensureUserRSAKeys(localUser.id);
               if (userKeys?.privateKey) {
-                signingKeyId = `${payload.actor}#main-key`;
+                signingKeyId = `${payload["actor"]}#main-key`;
                 signingKey = userKeys.privateKey;
               }
             }
@@ -150,7 +150,7 @@ export class FederationWorker {
   public enqueueActivityBroadcast(
     activity: Record<string, unknown>,
     authorId: number,
-    additionalInboxes: { inbox_url: string; shared_inbox_url?: string; remote_domain: string }[] = [],
+    additionalInboxes: { inbox_url: string; shared_inbox_url?: string | undefined; remote_domain: string }[] = [],
   ): number {
     const remoteFollowers = this.db.db
       .prepare(
@@ -159,13 +159,13 @@ export class FederationWorker {
          JOIN users u ON f.follower_id = u.id
          WHERE f.following_id = ? AND u.remote_domain IS NOT NULL AND (f.state = 'accepted' OR f.state IS NULL)`,
       )
-      .all(authorId) as { inbox_url: string; shared_inbox_url?: string; remote_domain: string }[];
+      .all(authorId) as { inbox_url: string; shared_inbox_url?: string | undefined; remote_domain: string }[];
 
     const allRecipients = [...remoteFollowers, ...additionalInboxes];
     if (allRecipients.length === 0) return 0;
 
     // Group recipients by remote domain for sharedInbox deduplication
-    const domainGroups = new Map<string, { sharedInbox?: string; personalInboxes: Set<string> }>();
+    const domainGroups = new Map<string, { sharedInbox?: string | undefined; personalInboxes: Set<string> }>();
 
     for (const f of allRecipients) {
       const domain = f.remote_domain.toLowerCase();
@@ -183,8 +183,8 @@ export class FederationWorker {
     }
 
     let enqueued = 0;
-    const actType = (activity.type as string) || "Activity";
-    const actId = (activity.id as string) || `${Date.now()}`;
+    const actType = (activity["type"] as string) || "Activity";
+    const actId = (activity["id"] as string) || `${Date.now()}`;
 
     for (const [domain, group] of domainGroups.entries()) {
       if (group.sharedInbox) {

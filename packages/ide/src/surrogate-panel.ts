@@ -12,16 +12,18 @@ export class SurrogatePanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
-  public sourceUri?: string;
-  private client?: LanguageClient;
+  public sourceUri?: string | undefined;
+  private client?: LanguageClient | undefined;
   private disposables: vscode.Disposable[] = [];
 
-  private currentSurrogate?: {
-    modelId: string;
-    wasmC: string;
-    emccFlags: string[];
-    exportedFunctions: string[];
-  };
+  private currentSurrogate?:
+    | {
+        modelId: string;
+        wasmC: string;
+        emccFlags: string[];
+        exportedFunctions: string[];
+      }
+    | undefined;
 
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
     const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
@@ -72,11 +74,11 @@ export class SurrogatePanel {
           try {
             const result = await this.client.sendRequest<{
               success: boolean;
-              metrics?: { trainMSE: number; valMSE: number; r2: number };
+              metrics?: { trainMSE: number; valMSE: number; r2: number } | undefined;
               wasmC: string;
               emccFlags: string[];
               exportedFunctions: string[];
-              error?: string;
+              error?: string | undefined;
             }>("modelscript/trainSurrogate", {
               uri,
               ...msg.payload,

@@ -9,13 +9,13 @@ export interface NuXmvVarDecl {
 }
 
 export interface NuXmvExportOptions {
-  moduleName?: string;
-  stateMachineName?: string;
-  invariants?: string[];
-  ltlSpecs?: string[];
-  inputVars?: NuXmvVarDecl[];
-  outputVars?: NuXmvVarDecl[];
-  substates?: Record<string, string[]>;
+  moduleName?: string | undefined;
+  stateMachineName?: string | undefined;
+  invariants?: string[] | undefined;
+  ltlSpecs?: string[] | undefined;
+  inputVars?: NuXmvVarDecl[] | undefined;
+  outputVars?: NuXmvVarDecl[] | undefined;
+  substates?: Record<string, string[]> | undefined;
 }
 
 export interface OcraContractSpec {
@@ -26,19 +26,21 @@ export interface OcraContractSpec {
 
 export interface OcraComponentSpec {
   name: string;
-  inputs?: { name: string; type?: string }[];
-  outputs?: { name: string; type?: string }[];
+  inputs?: { name: string; type?: string | undefined }[] | undefined;
+  outputs?: { name: string; type?: string | undefined }[] | undefined;
   contracts: OcraContractSpec[];
-  subcomponents?: { name: string; type: string }[];
-  refinements?: {
-    contractName: string;
-    subcontracts: string[];
-  }[];
+  subcomponents?: { name: string; type: string }[] | undefined;
+  refinements?:
+    | {
+        contractName: string;
+        subcontracts: string[];
+      }[]
+    | undefined;
 }
 
 export interface OcraExportOptions {
-  systemName?: string;
-  components?: OcraComponentSpec[];
+  systemName?: string | undefined;
+  components?: OcraComponentSpec[] | undefined;
 }
 
 /**
@@ -245,8 +247,8 @@ export function exportToOcra(
     const systemName = options.systemName || "System";
 
     const extractedContracts: OcraContractSpec[] = [];
-    const inputs: { name: string; type?: string }[] = [];
-    const outputs: { name: string; type?: string }[] = [];
+    const inputs: { name: string; type?: string | undefined }[] = [];
+    const outputs: { name: string; type?: string | undefined }[] = [];
 
     for (const e of allEntries) {
       if (e.ruleName === "PortUsage" || e.ruleName === "PortDefinition") {

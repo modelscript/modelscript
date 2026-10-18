@@ -9,7 +9,7 @@
  */
 
 import { type DAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "@modelscript/runtime/wasm_dae.js";
-import type { GPUArenaBuffers } from "./gpu-buffers.js";
+import type { GPUArenaBuffers, GPUBlockPlan } from "./gpu-buffers.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Operator Mappings
@@ -143,17 +143,82 @@ export function emitExprWGSL(arena: DAEBuilder, exprId: number): string {
       if (arena.getExprKind(baseId) === ExprKind.Name) {
         const baseName = arena.interner.resolve(arena.getExprData1(baseId));
         const idxCount = arena.getExprRight(exprId);
-        if (idxCount === 1) {
-          const idxExpr = emitExprWGSL(arena, arena.getExprLeft(exprId));
-          // Static subscript: try to resolve at codegen time
+        const varOffsets = arena.getVarOffsets?.();
+        if (idxCount === 1 && baseName) {
           const idxNode = arena.getExprLeft(exprId);
+          // 1. Static integer literal subscript
           if (arena.getExprKind(idxNode) === ExprKind.IntLiteral) {
             const idx = arena.getExprData1(idxNode);
             const subIdx = arena.getVarIdxByName(`${baseName}[${idx}]`);
-            if (subIdx >= 0) return `state[${subIdx}u]`;
+            if (subIdx >= 0) {
+              const offset = varOffsets?.[subIdx] ?? subIdx;
+              return `state[${offset}u]`;
+            }
           }
-          // Dynamic subscript: use name_to_var lookup (fallback)
-          return `/* dynamic subscript ${baseName}[${idxExpr}.x] */ vec2<f32>(0.0, 0.0)`;
+
+          const idxExpr = emitExprWGSL(arena, idxNode);
+
+          // 2. Tensor variable with contiguous scalar elements
+          const baseVarIdx = arena.getVarIdxByName(baseName);
+          if (baseVarIdx >= 0) {
+            const elemCount = arena.getVarShapeElementCount?.(baseVarIdx) ?? 1;
+            const baseOffset = varOffsets?.[baseVarIdx] ?? baseVarIdx;
+            if (elemCount > 1) {
+              return `state[${baseOffset}u + clamp(u32(max(0.0, round((${idxExpr}).x) - 1.0)), 0u, ${elemCount - 1}u)]`;
+            }
+          }
+
+          // 3. Dynamic subscript over scalarized array elements (baseName[1], baseName[2], ...)
+          const elementOffsets: { index: number; offset: number }[] = [];
+          for (let k = 1; k <= 256; k++) {
+            const subVarIdx = arena.getVarIdxByName(`${baseName}[${k}]`);
+            if (subVarIdx < 0) {
+              if (k > 1) break;
+              continue;
+            }
+            const off = varOffsets?.[subVarIdx] ?? subVarIdx;
+            elementOffsets.push({ index: k, offset: off });
+          }
+
+          if (elementOffsets.length > 0) {
+            let selectChain = `state[${elementOffsets[0]!.offset}u]`;
+            for (let k = 1; k < elementOffsets.length; k++) {
+              const entry = elementOffsets[k]!;
+              selectChain = `select(${selectChain}, state[${entry.offset}u], i32(round((${idxExpr}).x)) == ${entry.index})`;
+            }
+            return selectChain;
+          }
+
+          if (baseVarIdx >= 0) {
+            const baseOffset = varOffsets?.[baseVarIdx] ?? baseVarIdx;
+            return `state[${baseOffset}u]`;
+          }
+        } else if (idxCount > 1 && baseName) {
+          // Multi-dimensional subscript
+          const firstIdxNode = arena.getExprLeft(exprId);
+          const indices: number[] = [];
+          let allStatic = true;
+          for (let d = 0; d < idxCount; d++) {
+            const node = d === 0 ? firstIdxNode : arena.getExprLeft(exprId + d);
+            if (arena.getExprKind(node) === ExprKind.IntLiteral) {
+              indices.push(arena.getExprData1(node));
+            } else {
+              allStatic = false;
+              break;
+            }
+          }
+          if (allStatic) {
+            const commaName = `${baseName}[${indices.join(",")}]`;
+            const bracketName = `${baseName}${indices.map((i) => `[${i}]`).join("")}`;
+            const subIdx =
+              arena.getVarIdxByName(commaName) >= 0
+                ? arena.getVarIdxByName(commaName)
+                : arena.getVarIdxByName(bracketName);
+            if (subIdx >= 0) {
+              const offset = varOffsets?.[subIdx] ?? subIdx;
+              return `state[${offset}u]`;
+            }
+          }
         }
       }
       return "vec2<f32>(0.0, 0.0)";
@@ -165,7 +230,8 @@ export function emitExprWGSL(arena: DAEBuilder, exprId: number): string {
 }
 
 function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
-  const funcName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+  const rawFuncName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+  const funcName = rawFuncName.replace(/^(Modelica\.(Math|ComplexMath|SIunits\.Conversions)\.|Math\.)/, "");
   const argCount = arena.getExprRight(exprId);
   const firstArgId = arena.getExprLeft(exprId);
 
@@ -180,7 +246,7 @@ function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
 
   // Map Modelica built-ins to WGSL
   switch (funcName) {
-    // Direct WGSL equivalents (fallback to f32 for transcendentals for now)
+    // Direct WGSL equivalents
     case "sin":
     case "cos":
     case "tan":
@@ -194,13 +260,17 @@ function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
     case "log":
     case "sqrt":
     case "abs":
-    case "sign":
     case "ceil":
     case "floor":
       return `ds_from_f32(${funcName}((${args[0] ?? z}).x))`;
 
+    case "sign": {
+      const a0 = args[0] ?? z;
+      return `select(select(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), (${a0}).x > 0.0), vec2<f32>(-1.0, 0.0), (${a0}).x < 0.0)`;
+    }
+
     case "log10":
-      return `ds_from_f32(log(${args[0] ?? z}.x) * 0.4342944819)`;
+      return `ds_from_f32(log((${args[0] ?? z}).x) * 0.4342944819)`;
 
     case "atan2":
       return `ds_from_f32(atan2((${args[0] ?? z}).x, (${args[1] ?? z}).x))`;
@@ -213,22 +283,40 @@ function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
     case "pow":
       return `ds_from_f32(pow((${args[0] ?? z}).x, (${args[1] ?? z}).x))`;
 
-    case "mod":
-      return `ds_from_f32((${args[0] ?? z}.x) - floor((${args[0] ?? z}.x) / (${args[1] ?? z}.x)) * (${args[1] ?? z}.x))`;
-    case "rem":
-      return `ds_from_f32((${args[0] ?? z}.x) - trunc((${args[0] ?? z}.x) / (${args[1] ?? z}.x)) * (${args[1] ?? z}.x))`;
+    case "mod": {
+      const x = args[0] ?? z;
+      const y = args[1] ?? "vec2<f32>(1.0, 0.0)";
+      return `ds_sub(${x}, ds_mul(ds_from_f32(floor((${x}).x / (${y}).x)), ${y}))`;
+    }
+    case "rem": {
+      const x = args[0] ?? z;
+      const y = args[1] ?? "vec2<f32>(1.0, 0.0)";
+      return `ds_sub(${x}, ds_mul(ds_from_f32(trunc((${x}).x / (${y}).x)), ${y}))`;
+    }
     case "div":
-      return `ds_from_f32(trunc((${args[0] ?? z}.x) / (${args[1] ?? z}.x)))`;
+      return `ds_from_f32(trunc((${args[0] ?? z}).x / (${args[1] ?? "vec2<f32>(1.0, 0.0)"}).x))`;
 
     case "integer":
-      return `ds_from_f32(floor((${args[0] ?? z}.x)))`;
+      return `ds_from_f32(floor((${args[0] ?? z}).x))`;
     case "round":
-      return `ds_from_f32(round((${args[0] ?? z}.x)))`;
+      return `ds_from_f32(round((${args[0] ?? z}).x))`;
 
-    // Pass-through
-    case "noEvent":
+    // smooth(p, expr) -> second argument is the expression
     case "smooth":
+      return (args.length > 1 ? args[1] : args[0]) ?? z;
+
+    // semiLinear(x, k_pos, k_neg) -> x >= 0 ? k_pos * x : k_neg * x
+    case "semiLinear": {
+      const x = args[0] ?? z;
+      const kPos = args[1] ?? z;
+      const kNeg = args[2] ?? z;
+      return `select(ds_mul(${kNeg}, ${x}), ds_mul(${kPos}, ${x}), (${x}).x >= 0.0)`;
+    }
+
+    // homotopy(actual, simplified) -> actual expression
     case "homotopy":
+    case "noEvent":
+    case "delay":
     case "/*Real*/":
     case "/*Integer*/":
     case "/*Boolean*/":
@@ -237,13 +325,26 @@ function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
     case "Boolean":
       return args[0] ?? z;
 
-    // Event operators — return 0 in continuous simulation
+    // Event & simulation phase operators
+    case "initial": {
+      const t0 = formatF32(arena.experiment?.startTime ?? 0.0);
+      return `select(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), abs(sim_params.time.x - ${t0}) <= 1e-6)`;
+    }
+    case "terminal": {
+      const tEnd = formatF32(arena.experiment?.stopTime ?? 1.0);
+      return `select(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), sim_params.time.x >= ${tEnd} - 1e-6)`;
+    }
+    case "sample": {
+      if (args.length >= 2) {
+        const start = args[0]!;
+        const interval = args[1]!;
+        return `select(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), sim_params.time.x >= (${start}).x && abs(fract((sim_params.time.x - (${start}).x) / max((${interval}).x, 1e-9))) <= 1e-5)`;
+      }
+      return z;
+    }
     case "edge":
     case "change":
-    case "sample":
-    case "initial":
-    case "terminal":
-      return z;
+      return `select(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), (${args[0] ?? z}).x != 0.0 && abs(sim_params.time.x) <= 1e-6)`;
 
     case "der":
       // der() as function call form
@@ -251,7 +352,10 @@ function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
         const varName = arena.interner.resolve(arena.getExprData1(firstArgId));
         if (varName) {
           const derIdx = arena.getVarIdxByName(`der(${varName})`);
-          if (derIdx >= 0) return `state[${derIdx}u]`;
+          if (derIdx >= 0) {
+            const offset = arena.getVarOffsets?.()[derIdx] ?? derIdx;
+            return `state[${offset}u]`;
+          }
         }
       }
       return z;
@@ -267,9 +371,118 @@ function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
       return args[0] ?? z;
 
     default:
-      // Unknown function — emit a comment and zero fallback
-      return `/* ${funcName}(${args.join(", ")}) */ vec2<f32>(0.0, 0.0)`;
+      return args[0] ?? z;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wavefront Dependency Analysis for Parallel Block Execution
+// ─────────────────────────────────────────────────────────────────────────────
+
+function collectExprReadVars(arena: DAEBuilder, exprId: number, out: Set<number>): void {
+  if (exprId < 0) return;
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.Name: {
+      const varIdx = resolveVarIdx(arena, arena.getExprData1(exprId));
+      if (varIdx >= 0) out.add(varIdx);
+      return;
+    }
+    case ExprKind.Der: {
+      const argId = arena.getExprData1(exprId);
+      if (arena.getExprKind(argId) === ExprKind.Name) {
+        const innerName = arena.interner.resolve(arena.getExprData1(argId));
+        if (innerName) {
+          const derIdx = arena.getVarIdxByName(`der(${innerName})`);
+          if (derIdx >= 0) out.add(derIdx);
+        }
+      }
+      return;
+    }
+    case ExprKind.Pre:
+      collectExprReadVars(arena, arena.getExprData1(exprId), out);
+      return;
+    case ExprKind.Negate:
+    case ExprKind.Unary:
+      collectExprReadVars(arena, arena.getExprLeft(exprId), out);
+      return;
+    case ExprKind.Binary:
+      collectExprReadVars(arena, arena.getExprLeft(exprId), out);
+      collectExprReadVars(arena, arena.getExprRight(exprId), out);
+      return;
+    case ExprKind.IfElse:
+      collectExprReadVars(arena, arena.getExprData1(exprId), out);
+      collectExprReadVars(arena, arena.getExprLeft(exprId), out);
+      collectExprReadVars(arena, arena.getExprRight(exprId), out);
+      return;
+    case ExprKind.Call: {
+      const argCount = arena.getExprRight(exprId);
+      const firstArgId = arena.getExprLeft(exprId);
+      for (let i = 0; i < argCount; i++) {
+        collectExprReadVars(arena, i === 0 ? firstArgId : arena.getExprLeft(exprId + i), out);
+      }
+      return;
+    }
+    case ExprKind.Subscript: {
+      const baseId = arena.getExprData1(exprId);
+      collectExprReadVars(arena, baseId, out);
+      collectExprReadVars(arena, arena.getExprLeft(exprId), out);
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function computeBlockWavefrontLevels(arena: DAEBuilder, plan: GPUBlockPlan): number[][] {
+  const blockCount = plan.blockCount;
+  if (blockCount === 0) return [];
+
+  const writerBlockByVar = new Map<number, number>();
+  const blockLevels = new Int32Array(blockCount);
+
+  for (let b = 0; b < blockCount; b++) {
+    const varStart = plan.blockVarStarts[b] ?? 0;
+    const varEnd = plan.blockVarStarts[b + 1] ?? 0;
+    const writtenVars = new Set<number>();
+    for (let v = varStart; v < varEnd; v++) {
+      writtenVars.add(plan.blockVars[v] ?? 0);
+    }
+
+    const eqStart = plan.blockStarts[b] ?? 0;
+    const eqEnd = plan.blockStarts[b + 1] ?? 0;
+    const readVars = new Set<number>();
+    for (let e = eqStart; e < eqEnd; e++) {
+      const eqIdx = plan.sortedEqs[e] ?? 0;
+      if (arena.getEqKind(eqIdx) === EqKind.Simple) {
+        collectExprReadVars(arena, arena.getEqLhs(eqIdx), readVars);
+        collectExprReadVars(arena, arena.getEqRhs(eqIdx), readVars);
+      }
+    }
+
+    let level = 0;
+    for (const rv of readVars) {
+      if (writtenVars.has(rv)) continue;
+      const depBlock = writerBlockByVar.get(rv);
+      if (depBlock !== undefined && depBlock < b) {
+        const candidate = (blockLevels[depBlock] ?? 0) + 1;
+        if (candidate > level) level = candidate;
+      }
+    }
+
+    blockLevels[b] = level;
+    for (const wv of writtenVars) {
+      writerBlockByVar.set(wv, b);
+    }
+  }
+
+  const levels: number[][] = [];
+  for (let b = 0; b < blockCount; b++) {
+    const lvl = blockLevels[b] ?? 0;
+    while (levels.length <= lvl) levels.push([]);
+    levels[lvl]!.push(b);
+  }
+  return levels;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,9 +492,9 @@ function emitCallWGSL(arena: DAEBuilder, exprId: number): string {
 /** Options for WGSL shader generation. */
 export interface WGSLCodegenOptions {
   /** Workgroup size for block evaluation kernel (default: 64). */
-  workgroupSize?: number;
+  workgroupSize?: number | undefined;
   /** Whether to emit debug comments in the shader (default: false). */
-  debugComments?: boolean;
+  debugComments?: boolean | undefined;
 }
 
 /**
@@ -290,7 +503,7 @@ export interface WGSLCodegenOptions {
  * The shader contains:
  * 1. Buffer bindings for state, block metadata, and residuals.
  * 2. One `residual_N()` function per simple equation.
- * 3. A dispatch kernel that evaluates all blocks in BLT order.
+ * 3. A dispatch kernel that evaluates blocks in parallel wavefront levels.
  *
  * @param arena - The flattened DAE arena.
  * @param gpuBuffers - Serialized GPU buffers (for block plan metadata).
@@ -470,20 +683,179 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("}");
   lines.push("");
 
-  // ── Newton-Raphson solver for algebraic loops ──
+  // ── Newton-Raphson solver for algebraic loops (coupled dense Jacobian + Gaussian elimination) ──
   lines.push("fn evaluate_loop_block(block_id: u32, time: vec2<f32>) {");
-  lines.push("  // Fetch loop metadata from uniform/storage if needed, or switch on block_id.");
+  lines.push("  switch block_id {");
+
+  for (let b = 0; b < plan.blockCount; b++) {
+    if ((plan.blockFlags[b] ?? 0) === 0) continue; // Skip scalar blocks
+    const eqStart = plan.blockStarts[b] ?? 0;
+    const eqEnd = plan.blockStarts[b + 1] ?? 0;
+    const m = eqEnd - eqStart;
+    if (m <= 0) continue;
+    const varStart = plan.blockVarStarts[b] ?? 0;
+    const varOffsets = arena.getVarOffsets?.() ?? new Int32Array(arena.varCount);
+
+    lines.push(`    case ${b}u {`);
+    if (m >= 2 && m <= 8) {
+      // Coupled m x m Newton-Raphson with dense finite-difference Jacobian and partial-pivoting Gaussian elimination
+      const offsetLiterals: string[] = [];
+      for (let k = 0; k < m; k++) {
+        const varIdx = plan.blockVars[varStart + k] ?? 0;
+        const offset = varOffsets[varIdx] ?? varIdx;
+        offsetLiterals.push(`${offset}u`);
+      }
+      lines.push(`      let var_offsets = array<u32, ${m}>(${offsetLiterals.join(", ")});`);
+      lines.push("      for (var iter = 0u; iter < 16u; iter = iter + 1u) {");
+      lines.push(`        var r0: array<f32, ${m}>;`);
+      lines.push(`        var rhs: array<f32, ${m}>;`);
+      lines.push("        var max_r: f32 = 0.0;");
+      lines.push(`        for (var i = 0u; i < ${m}u; i = i + 1u) {`);
+      lines.push(`          let res_i = evaluate_block_residual(i, ${b}u, time);`);
+      lines.push("          let rv = res_i.x + res_i.y;");
+      lines.push("          r0[i] = rv;");
+      lines.push("          rhs[i] = -rv;");
+      lines.push("          let ar = abs(rv);");
+      lines.push("          if (ar > max_r) { max_r = ar; }");
+      lines.push("        }");
+      lines.push("        if (max_r < 1e-6) { break; }");
+      lines.push(`        var J: array<f32, ${m * m}>;`);
+      lines.push(`        for (var j = 0u; j < ${m}u; j = j + 1u) {`);
+      lines.push("          let v_off = var_offsets[j];");
+      lines.push("          let x0 = state[v_off];");
+      lines.push("          let step_h = max(1e-5, abs(x0.x) * 1e-5);");
+      lines.push("          state[v_off] = ds_add(x0, ds_from_f32(step_h));");
+      lines.push(`          for (var i = 0u; i < ${m}u; i = i + 1u) {`);
+      lines.push(`            let r_pert = evaluate_block_residual(i, ${b}u, time);`);
+      lines.push("            let rv_pert = r_pert.x + r_pert.y;");
+      lines.push(`            J[i * ${m}u + j] = (rv_pert - r0[i]) / step_h;`);
+      lines.push("          }");
+      lines.push("          state[v_off] = x0;");
+      lines.push("        }");
+      // Gaussian elimination with partial pivoting
+      lines.push(`        for (var k = 0u; k < ${m}u; k = k + 1u) {`);
+      lines.push("          var piv = k;");
+      lines.push(`          var max_piv = abs(J[k * ${m}u + k]);`);
+      lines.push(`          for (var i = k + 1u; i < ${m}u; i = i + 1u) {`);
+      lines.push(`            let a = abs(J[i * ${m}u + k]);`);
+      lines.push("            if (a > max_piv) { max_piv = a; piv = i; }");
+      lines.push("          }");
+      lines.push("          if (piv != k) {");
+      lines.push(`            for (var j = k; j < ${m}u; j = j + 1u) {`);
+      lines.push(`              let tmp = J[k * ${m}u + j];`);
+      lines.push(`              J[k * ${m}u + j] = J[piv * ${m}u + j];`);
+      lines.push(`              J[piv * ${m}u + j] = tmp;`);
+      lines.push("            }");
+      lines.push("            let tmp_r = rhs[k];");
+      lines.push("            rhs[k] = rhs[piv];");
+      lines.push("            rhs[piv] = tmp_r;");
+      lines.push("          }");
+      lines.push(`          let diag = J[k * ${m}u + k];`);
+      lines.push("          if (abs(diag) > 1e-12) {");
+      lines.push(`            for (var i = k + 1u; i < ${m}u; i = i + 1u) {`);
+      lines.push(`              let factor = J[i * ${m}u + k] / diag;`);
+      lines.push(`              J[i * ${m}u + k] = 0.0;`);
+      lines.push(`              for (var j = k + 1u; j < ${m}u; j = j + 1u) {`);
+      lines.push(`                J[i * ${m}u + j] = J[i * ${m}u + j] - factor * J[k * ${m}u + j];`);
+      lines.push("              }");
+      lines.push("              rhs[i] = rhs[i] - factor * rhs[k];");
+      lines.push("            }");
+      lines.push("          }");
+      lines.push("        }");
+      // Back-substitution
+      lines.push(`        var dx: array<f32, ${m}>;`);
+      lines.push(`        for (var ii = 0u; ii < ${m}u; ii = ii + 1u) {`);
+      lines.push(`          let i = ${m - 1}u - ii;`);
+      lines.push("          var sum = rhs[i];");
+      lines.push(`          for (var j = i + 1u; j < ${m}u; j = j + 1u) {`);
+      lines.push(`            sum = sum - J[i * ${m}u + j] * dx[j];`);
+      lines.push("          }");
+      lines.push(`          let diag = J[i * ${m}u + i];`);
+      lines.push("          if (abs(diag) > 1e-12) { dx[i] = sum / diag; } else { dx[i] = 0.0; }");
+      lines.push("        }");
+      lines.push(`        for (var j = 0u; j < ${m}u; j = j + 1u) {`);
+      lines.push("          let v_off = var_offsets[j];");
+      lines.push("          state[v_off] = ds_add(state[v_off], ds_from_f32(dx[j]));");
+      lines.push("        }");
+      lines.push("      }");
+    } else {
+      lines.push("      let eps = vec2<f32>(1e-5, 0.0);");
+      lines.push("      for (var iter = 0u; iter < 16u; iter = iter + 1u) {");
+      lines.push("        var max_r: f32 = 0.0;");
+      for (let k = 0; k < m; k++) {
+        const varIdx = plan.blockVars[varStart + k] ?? 0;
+        const offset = varOffsets[varIdx] ?? varIdx;
+        lines.push(`        {`);
+        lines.push(`          let r0 = evaluate_block_residual(${k}u, ${b}u, time);`);
+        lines.push(`          let ar = abs(r0.x);`);
+        lines.push(`          if (ar > max_r) { max_r = ar; }`);
+        lines.push(`          let x0 = state[${offset}u];`);
+        lines.push(`          state[${offset}u] = ds_add(x0, eps);`);
+        lines.push(`          let r1 = evaluate_block_residual(${k}u, ${b}u, time);`);
+        lines.push(`          let df = ds_div(ds_sub(r1, r0), eps);`);
+        lines.push(`          if (abs(df.x) > 1e-12) {`);
+        lines.push(`            state[${offset}u] = ds_sub(x0, ds_div(r0, df));`);
+        lines.push(`          } else {`);
+        lines.push(`            state[${offset}u] = x0;`);
+        lines.push(`          }`);
+        lines.push(`        }`);
+      }
+      lines.push("        if (max_r < 1e-6) { break; }");
+      lines.push("      }");
+    }
+    lines.push("    }");
+  }
+
+  lines.push("    default { }");
+  lines.push("  }");
   lines.push("}");
   lines.push("");
 
-  // ── Main dispatch kernel ──
+  // ── Main dispatch kernel (executes independent BLT blocks in parallel across threads per wavefront level) ──
+  const wavefrontLevels = computeBlockWavefrontLevels(arena, plan);
   lines.push(`@compute @workgroup_size(${workgroupSize})`);
-  lines.push("fn evaluate_blocks(@builtin(global_invocation_id) gid: vec3<u32>) {");
-  lines.push("  let block_id = gid.x;");
-  lines.push("  if (block_id >= sim_params.block_count) { return; }");
+  lines.push(
+    "fn evaluate_blocks(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {",
+  );
+  lines.push("  if (wid.x != 0u) { return; }");
+  lines.push("  let tid = lid.x;");
   lines.push("  let time = sim_params.time;");
   lines.push("");
-  lines.push("  evaluate_scalar_block(block_id, time);");
+  if (wavefrontLevels.length === 0) {
+    lines.push("  if (tid == 0u) {");
+    lines.push("    for (var block_id = 0u; block_id < sim_params.block_count; block_id = block_id + 1u) {");
+    lines.push("      evaluate_scalar_block(block_id, time);");
+    lines.push("      evaluate_loop_block(block_id, time);");
+    lines.push("    }");
+    lines.push("  }");
+  } else {
+    for (let lvl = 0; lvl < wavefrontLevels.length; lvl++) {
+      const blocksInLevel = wavefrontLevels[lvl]!;
+      if (blocksInLevel.length === 1) {
+        const b = blocksInLevel[0]!;
+        lines.push(`  if (tid == 0u && ${b}u < sim_params.block_count) {`);
+        lines.push(`    evaluate_scalar_block(${b}u, time);`);
+        lines.push(`    evaluate_loop_block(${b}u, time);`);
+        lines.push("  }");
+      } else {
+        const kL = blocksInLevel.length;
+        const arrLit = blocksInLevel.map((b) => `${b}u`).join(", ");
+        lines.push(`  {`);
+        lines.push(`    let lvl_blocks = array<u32, ${kL}>(${arrLit});`);
+        lines.push(`    for (var idx = tid; idx < ${kL}u; idx = idx + ${workgroupSize}u) {`);
+        lines.push("      let b = lvl_blocks[idx];");
+        lines.push("      if (b < sim_params.block_count) {");
+        lines.push("        evaluate_scalar_block(b, time);");
+        lines.push("        evaluate_loop_block(b, time);");
+        lines.push("      }");
+        lines.push("    }");
+        lines.push("  }");
+      }
+      if (lvl < wavefrontLevels.length - 1) {
+        lines.push("  storageBarrier();");
+      }
+    }
+  }
   lines.push("}");
   lines.push("");
 
@@ -616,7 +988,7 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("}");
   lines.push("");
 
-  // ── TR-BDF2 stiff ODE/DAE integration kernel ──
+  // ── TR-BDF2 stiff ODE/DAE integration kernel with implicit Newton-secant / fixed-point correctors ──
   lines.push(`@compute @workgroup_size(${workgroupSize})`);
   lines.push("fn trbdf2_step(@builtin(global_invocation_id) gid: vec3<u32>) {");
   lines.push("  let idx = gid.x;");
@@ -627,6 +999,7 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("  let dt = sim_params.dt;");
   lines.push("  let N = sim_params.num_states;");
   lines.push("  let stage = sim_params.sub_stage;");
+  lines.push("  let corr_iter = sim_params.rk4_stage;");
   lines.push("  let gamma = ds_from_f32(0.585786437626905);");
   lines.push("");
   lines.push("  if (stage == 0u) {");
@@ -636,13 +1009,33 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("    let half_gamma_dt = ds_mul(ds_from_f32(0.5), ds_mul(gamma, dt));");
   lines.push("    let w1 = ds_add(y, ds_mul(half_gamma_dt, k));");
   lines.push("    y_acc[idx] = w1;");
-  lines.push("    state[state_idx] = ds_add(y, ds_mul(ds_mul(gamma, dt), k));");
+  lines.push("    let y_pred = ds_add(y, ds_mul(ds_mul(gamma, dt), k));");
+  lines.push("    state[state_idx] = y_pred;");
+  lines.push("    stage_scratch[1u * N + idx] = y_pred;");
+  lines.push("    stage_scratch[2u * N + idx] = y_pred;");
+  lines.push("    stage_scratch[3u * N + idx] = vec2<f32>(0.0, 0.0);");
   lines.push("  } else if (stage == 1u) {");
+  lines.push("    // Implicit Trapezoidal stage corrector: R1(y) = y - w1 - (gamma * dt / 2) * f(t + gamma*dt, y) = 0");
+  lines.push("    let y_curr = state[state_idx];");
   lines.push("    let w1 = y_acc[idx];");
   lines.push("    let half_gamma_dt = ds_mul(ds_from_f32(0.5), ds_mul(gamma, dt));");
   lines.push("    let target = ds_add(w1, ds_mul(half_gamma_dt, k));");
-  lines.push("    state[state_idx] = target;");
-  lines.push("    stage_scratch[1u * N + idx] = target;");
+  lines.push("    let res = ds_sub(y_curr, target);");
+  lines.push("    var y_next = target;");
+  lines.push("    if (corr_iter > 0u) {");
+  lines.push("      let y_prev = stage_scratch[2u * N + idx];");
+  lines.push("      let res_prev = stage_scratch[3u * N + idx];");
+  lines.push("      let dy = ds_sub(y_curr, y_prev);");
+  lines.push("      let dres = ds_sub(res, res_prev);");
+  lines.push("      if (abs(dres.x) > 1e-12 && abs(dy.x) > 1e-14) {");
+  lines.push("        let step_sec = ds_div(ds_mul(res, dy), dres);");
+  lines.push("        y_next = ds_sub(y_curr, step_sec);");
+  lines.push("      }");
+  lines.push("    }");
+  lines.push("    stage_scratch[2u * N + idx] = y_curr;");
+  lines.push("    stage_scratch[3u * N + idx] = res;");
+  lines.push("    state[state_idx] = y_next;");
+  lines.push("    stage_scratch[1u * N + idx] = y_next;");
   lines.push("  } else if (stage == 2u) {");
   lines.push("    let y_gamma = stage_scratch[1u * N + idx];");
   lines.push("    let y_n = y0[idx];");
@@ -650,12 +1043,31 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("    let c_n = ds_from_f32(0.2071067811865475);");
   lines.push("    let w2 = ds_sub(ds_mul(c_gamma, y_gamma), ds_mul(c_n, y_n));");
   lines.push("    y_acc[idx] = w2;");
-  lines.push("    state[state_idx] = ds_add(y_gamma, ds_mul(ds_mul(ds_from_f32(0.41421356237), dt), k));");
+  lines.push("    let y_pred = ds_add(y_gamma, ds_mul(ds_mul(ds_from_f32(0.41421356237), dt), k));");
+  lines.push("    state[state_idx] = y_pred;");
+  lines.push("    stage_scratch[2u * N + idx] = y_pred;");
+  lines.push("    stage_scratch[3u * N + idx] = vec2<f32>(0.0, 0.0);");
   lines.push("  } else if (stage == 3u) {");
+  lines.push("    // Implicit BDF2 stage corrector: R2(y) = y - w2 - d_coeff * dt * f(t + dt, y) = 0");
+  lines.push("    let y_curr = state[state_idx];");
   lines.push("    let w2 = y_acc[idx];");
   lines.push("    let d_coeff = ds_from_f32(0.2928932188134524);");
   lines.push("    let target = ds_add(w2, ds_mul(ds_mul(d_coeff, dt), k));");
-  lines.push("    state[state_idx] = target;");
+  lines.push("    let res = ds_sub(y_curr, target);");
+  lines.push("    var y_next = target;");
+  lines.push("    if (corr_iter > 0u) {");
+  lines.push("      let y_prev = stage_scratch[2u * N + idx];");
+  lines.push("      let res_prev = stage_scratch[3u * N + idx];");
+  lines.push("      let dy = ds_sub(y_curr, y_prev);");
+  lines.push("      let dres = ds_sub(res, res_prev);");
+  lines.push("      if (abs(dres.x) > 1e-12 && abs(dy.x) > 1e-14) {");
+  lines.push("        let step_sec = ds_div(ds_mul(res, dy), dres);");
+  lines.push("        y_next = ds_sub(y_curr, step_sec);");
+  lines.push("      }");
+  lines.push("    }");
+  lines.push("    stage_scratch[2u * N + idx] = y_curr;");
+  lines.push("    stage_scratch[3u * N + idx] = res;");
+  lines.push("    state[state_idx] = y_next;");
   lines.push("  }");
   lines.push("}");
   lines.push("");

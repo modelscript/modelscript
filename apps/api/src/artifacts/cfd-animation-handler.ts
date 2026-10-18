@@ -29,7 +29,7 @@ export class CfdAnimationHandler implements ArtifactHandler {
 
   validate(artifact: Record<string, unknown>): string[] {
     const errors: string[] = [];
-    if (!artifact.path && !artifact.frames) errors.push("Missing frames data");
+    if (!artifact["path"] && !artifact["frames"]) errors.push("Missing frames data");
     return errors;
   }
 

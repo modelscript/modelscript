@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-implied-eval */
 
 import {
   BinOp,
@@ -51,14 +51,29 @@ const NEWTON_TOL = 1e-10;
 /** Square root of machine epsilon for finite-difference perturbation. */
 const SQRT_EPS = 1.4901161193847656e-8;
 
+/**
+ * Cached 1D lookup table data extracted from a Modelica `CombiTimeTable` or `CombiTable1D` block.
+ */
 interface CachedTable1D {
+  /** 2D array of table rows `[time_or_u, col_1, col_2, ...]`. */
   table: number[][];
+  /** 1-based column indices to interpolate from `table`. */
   columns: number[];
+  /** Time offset subtracted from simulation time before lookup (`s`). */
   shiftTime: number;
+  /** Time scaling factor applied to shifted simulation time. */
   timeScale: number;
+  /** Activation start time for the table block (`s`). */
   startTime: number;
 }
 
+/**
+ * Recursively extracts a numeric scalar or nested array literal from a DAE arena expression node.
+ *
+ * @param arena - DAE arena instance.
+ * @param exprId - Expression node index in the arena.
+ * @returns Numeric scalar, nested array of numbers, or `null` if not a literal expression.
+ */
 function extractSimArrayLiteral(arena: any, exprId: number): any {
   if (exprId < 0) return null;
   const kind = arena.getExprKind(exprId);
@@ -76,6 +91,14 @@ function extractSimArrayLiteral(arena: any, exprId: number): any {
   return null;
 }
 
+/**
+ * Performs piecewise linear 1D interpolation with constant clamping outside the table domain.
+ *
+ * @param table - 2D array of sorted rows where column `0` is the abscissa (`u`).
+ * @param colIdx - Zero-based column index of the ordinate (`y`) to interpolate.
+ * @param u - Query abscissa value.
+ * @returns Interpolated ordinate value at `u`.
+ */
 function interpolate1DSim(table: number[][], colIdx: number, u: number): number {
   if (!table || table.length === 0) return 0.0;
   const n = table.length;
@@ -107,6 +130,13 @@ function interpolate1DSim(table: number[][], colIdx: number, u: number): number 
   return y0 + t * (y1 - y0);
 }
 
+/**
+ * Retrieves or builds a cached 1D lookup table (`CachedTable1D`) for a `CombiTimeTable` block in the arena.
+ *
+ * @param arena - DAE arena instance.
+ * @param tableVarNameId - Interned string ID of the `.tableID` variable.
+ * @returns Cached table descriptor, or `null` if no table data could be resolved.
+ */
 function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTable1D | null {
   if (!arena._cachedTables) {
     arena._cachedTables = new Map<number, CachedTable1D>();
@@ -216,38 +246,63 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
   return record;
 }
 
+/**
+ * Evaluates a `Modelica.Blocks.Tables.CombiTimeTable` output column at a given simulation time.
+ *
+ * @param cached - Cached table descriptor.
+ * @param icol - 1-based output port index (`y[icol]`).
+ * @param timeIn - Current simulation time (`s`).
+ * @returns Interpolated table output value.
+ */
 function evalSimTimeTableValue(cached: CachedTable1D | null, icol: number, timeIn: number): number {
   if (!cached || !cached.table || cached.table.length === 0) return 0.0;
   const table = cached.table;
   const effTime = (timeIn - cached.shiftTime) / (cached.timeScale || 1.0);
-  const colInTable = cached.columns && cached.columns.length >= icol ? cached.columns[icol - 1] - 1 : icol;
+  const colInTable = cached.columns && cached.columns.length >= icol ? cached.columns[icol - 1]! - 1 : icol;
   return interpolate1DSim(table, colInTable, effTime);
 }
 
+/**
+ * Arena-native DAE/ODE simulation engine operating directly on linear-memory `DAEBuilder` structures.
+ *
+ * Handles parameter evaluation, Pantelides index reduction, Tarjan BLT causalization,
+ * JIT block compilation, hybrid zero-crossing event handling, state machines, and integration
+ * via RK4, DOPRI5, BDF, RadauIIA, Symplectic Euler, and SUNDIALS CVODE/IDA WASM.
+ */
 export class ArenaSimulator {
+  /** Resolved parameter and constant values keyed by variable name. */
   public parameters = new Map<string, number>();
-  public debuggerHook?: SimulationDebugger;
+  /** Optional interactive debugger hook invoked during equation evaluation and step transitions. */
+  public debuggerHook?: SimulationDebugger | undefined;
 
   /** Recorded safety barrier violations during simulation. */
   public safetyViolations: {
     t: number;
-    monitorName?: string;
+    monitorName?: string | undefined;
     robustness: number;
-    details?: string;
+    details?: string | undefined;
   }[] = [];
 
   /** Recorded interval / DAE singularity issues. */
   public intervalIssues: string[] = [];
 
   // Sets of VarIdx for fast arena-native processing
+  /** Set of arena variable indices classified as parameters or constants. */
   public parameterVars = new Set<number>();
+  /** Set of arena variable indices classified as continuous ODE states ($x$). */
   public stateVars = new Set<number>();
+  /** Set of arena variable indices representing state derivatives ($\dot{x}$). */
   public derivativeVars = new Set<number>();
 
+  /** Topologically sorted equation indices produced by BLT transformation. */
   public sortedEquations: number[] = [];
+  /** Strongly connected components (algebraic/causal blocks) produced by Tarjan BLT analysis. */
   public blocks: { eqIdxs: number[]; vars: number[] }[] = [];
+  /** Set of arena variable indices demoted to algebraic dummy derivatives during Pantelides index reduction. */
   public dummyDerivatives = new Set<number>();
+  /** Prepared execution blocks (explicit single assignments and implicit algebraic systems). */
   public executionBlocks: import("@modelscript/runtime").ArenaExecutionBlock[] = [];
+  /** Optional JIT-compiled fast-path evaluator for causal execution blocks. */
   public compiledBlocks: ((env: Float64Array) => void) | null = null;
 
   /** Extracted when-clauses for event handling. */
@@ -270,7 +325,7 @@ export class ArenaSimulator {
    * When set, the simulator delegates input/step/output for matched variable
    * prefixes to the corresponding FmuSubsystem during each integration step.
    */
-  public fmuRegistry?: FmuSubsystemRegistry;
+  public fmuRegistry?: FmuSubsystemRegistry | undefined;
 
   /** Warm-start cache for algebraic loop variables (varNameId → value). */
   private algWarmStart = new Map<number, number>();
@@ -279,15 +334,28 @@ export class ArenaSimulator {
   private fmuMappings: { prefix: string; subsystem: FmuSubsystem; inputIds: number[]; outputIds: number[] }[] = [];
 
   // ── Pre-allocated zero-allocation scratch buffers for Newton algebraic loops ──
+  /** Scratch vector for current algebraic iterate $x_k$. */
   private newtonScratchX = new Float64Array(32);
+  /** Scratch vector for residual evaluation $r(x_k)$. */
   private newtonScratchR = new Float64Array(32);
+  /** Scratch vector for negated residual $-r(x_k)$ (overwritten with Newton step $\Delta x$). */
   private newtonScratchNegR = new Float64Array(32);
+  /** Scratch array mapping block variable indices to interned string IDs. */
   private newtonScratchVarIds = new Int32Array(32);
+  /** Scratch flat row-major buffer for the $m \times m$ block Jacobian matrix $J$. */
   private newtonScratchMat = new Float64Array(32 * 32);
+  /** Scratch pivot index array for LU decomposition with partial pivoting. */
   private newtonScratchPiv = new Int32Array(32);
+  /** Scratch row-scaling array for implicit equilibration in LU factorization. */
   private newtonScratchScale = new Float64Array(32);
+  /** Scratch stack for forward-mode dual-number automatic differentiation (`[val, der]` pairs). */
   private newtonScratchDualStack = new Float64Array(128);
 
+  /**
+   * Ensures pre-allocated Newton-Raphson scratch buffers have capacity for an $m \times m$ algebraic block.
+   *
+   * @param m - Number of algebraic unknowns in the block.
+   */
   private ensureNewtonCapacity(m: number): void {
     if (this.newtonScratchX.length < m) {
       const cap = Math.max(m, this.newtonScratchX.length * 2);
@@ -301,10 +369,21 @@ export class ArenaSimulator {
     }
   }
 
+  /** Previous-step variable value buffer indexed by interned string ID (for `pre(v)` and edge detection). */
   public preValuesByStringId!: Float64Array;
 
+  /**
+   * Creates a new `ArenaSimulator` bound to a flattened `DAEBuilder` arena.
+   *
+   * @param arena - Flattened DAE arena containing variables, equations, and expressions.
+   */
   constructor(public arena: DAEBuilder) {}
 
+  /**
+   * Prepares the DAE arena for numerical integration: scalarizes array equations, resolves parameters,
+   * reduces high-index constraints (Pantelides + affine/kinematic reduction), performs Tarjan BLT
+   * causalization, compiles execution blocks, and extracts hybrid events, assertions, and state machines.
+   */
   prepare() {
     let hasPreservedArrays = hasArrayEquations(this.arena);
     if (!hasPreservedArrays) {
@@ -316,13 +395,32 @@ export class ArenaSimulator {
       }
     }
     if (hasPreservedArrays) {
-      this.arena = scalarizeArena(this.arena);
+      this.arena = (scalarizeArena as (arena: DAEBuilder, forceFullScalarize?: boolean) => DAEBuilder)(
+        this.arena,
+        true,
+      );
     }
 
     const cachedPrep = (this.arena as any)._cachedSimPrep;
     if (cachedPrep) {
       this.parameters = new Map(cachedPrep.parameters);
       this.parameterVars = new Set(cachedPrep.parameterVars);
+      for (const i of this.parameterVars) {
+        if (this.arena.isVarRemoved(i)) continue;
+        const name = this.arena.getVarName(i);
+        const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
+        let val: number | null = null;
+        if (typeof exprId === "number" && exprId !== -1) {
+          const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
+          if (typeof rawVal === "number" && isFinite(rawVal)) {
+            val = rawVal;
+          }
+        }
+        if (val === null || typeof val !== "number" || !isFinite(val)) {
+          val = this.arena.getVarStartValue(i);
+        }
+        this.parameters.set(name, val);
+      }
       this.stateVars = new Set(cachedPrep.stateVars);
       this.derivativeVars = new Set(cachedPrep.derivativeVars);
       this.dummyDerivatives = new Set(cachedPrep.dummyDerivatives);
@@ -330,6 +428,7 @@ export class ArenaSimulator {
       this.blocks = cachedPrep.blocks;
       this.executionBlocks = cachedPrep.executionBlocks;
       this.preValuesByStringId = new Float64Array(this.arena.interner.size);
+      (this.arena as any)._delayHistory = new Map();
       this.compiledBlocks = this.compileBlocks();
       this.extractWhenClauses();
       this.extractAssertions();
@@ -340,6 +439,7 @@ export class ArenaSimulator {
     }
 
     (this.arena as any)._mutatedBySim = true;
+    (this.arena as any)._delayHistory = new Map();
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
     this.resolveParameters();
     this.resolveKinematicVelocities();
@@ -447,6 +547,11 @@ export class ArenaSimulator {
     this.fmuRegistry?.terminateAll();
   }
 
+  /**
+   * Converts BLT blocks into executable `ArenaExecutionBlock` entries by attempting symbolic
+   * isolation (`isolateSymbolicallyArena`) for $1 \times 1$ blocks and Groebner-basis triangularization
+   * (`tryOptimizeLoopWithGroebner`) for multi-equation algebraic loops.
+   */
   private buildExecutionBlocks() {
     for (const block of this.blocks) {
       // Skip blocks with no equations — these are unmatched state variables
@@ -490,6 +595,10 @@ export class ArenaSimulator {
     }
   }
 
+  /**
+   * Identifies parameter and constant variables in the arena, evaluates their binding expressions
+   * or start attributes, and populates `this.parameterVars` and `this.parameters`.
+   */
   private resolveParameters() {
     const exprReferencesContinuous = (exprId: number): boolean => {
       if (exprId < 0) return false;
@@ -526,7 +635,8 @@ export class ArenaSimulator {
         const argc = this.arena.getExprRight(exprId);
         const firstArg = this.arena.getExprLeft(exprId);
         for (let a = 0; a < argc; a++) {
-          if (exprReferencesContinuous(firstArg + a)) return true;
+          const argId = a === 0 ? firstArg : this.arena.getExprLeft(exprId + a);
+          if (exprReferencesContinuous(argId)) return true;
         }
       }
       return false;
@@ -585,46 +695,169 @@ export class ArenaSimulator {
     }
   }
 
+  /**
+   * No-op stub retained for pipeline compatibility; linear alias elimination is performed
+   * during flattening via `eliminateArenaAliases()`.
+   */
   private eliminateAliases() {
     // Alias elimination was moved to the flattener via eliminateArenaAliases()
     // in O(N) time. The simulator no longer needs to do it!
   }
 
+  /**
+   * Resolves translational (`v = der(s)`) and rotational (`w = der(phi)`) kinematic velocity couplings
+   * across rigid mechanical components to prevent redundant index-2 velocity state constraints.
+   */
   private resolveKinematicVelocities() {
-    const velOfPos = new Map<number, number>();
+    // 1. Identify all differential pairs v = der(p) (and second-order a = der(v)) in the DAE
+    const derVarOf = new Map<number, number>(); // pIdx -> vIdx
+    const derEqOf = new Map<number, number>(); // pIdx -> eqIdx
+    const isDerTarget = new Set<number>();
+    const flowCoupledVars = new Set<number>();
+
+    for (let v = 0; v < this.arena.varCount; v++) {
+      if (!this.arena.isVarRemoved(v) && this.arena.isVarFlow(v)) {
+        flowCoupledVars.add(v);
+      }
+    }
 
     for (let i = 0; i < this.arena.eqCount; i++) {
       if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
       const lhs = this.arena.getEqLhs(i);
       const rhs = this.arena.getEqRhs(i);
-      if (this.arena.getExprKind(rhs) === ExprKind.Der) {
+      if (this.arena.getExprKind(rhs) === ExprKind.Der && this.arena.getExprKind(lhs) === ExprKind.Name) {
         const derArg = this.arena.getExprData1(rhs);
-        if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(derArg) === ExprKind.Name) {
+        if (this.arena.getExprKind(derArg) === ExprKind.Name) {
           const vIdx = this.arena.lookupVariable(this.arena.getExprData1(lhs));
           const pIdx = this.arena.lookupVariable(this.arena.getExprData1(derArg));
-          if (vIdx >= 0 && pIdx >= 0) {
-            const vName = this.arena.getVarName(vIdx);
-            const pName = this.arena.getVarName(pIdx);
-            if ((vName.endsWith(".v") && pName.endsWith(".s")) || (vName.endsWith(".w") && pName.endsWith(".phi"))) {
-              const prefix = vName.substring(0, vName.lastIndexOf("."));
-              const mIdx = this.arena.getVarIdxByName(`${prefix}.m`);
-              const mVal = mIdx >= 0 ? (this.parameters.get(`${prefix}.m`) ?? this.arena.getVarStartValue(mIdx)) : 0;
-              const jIdx = this.arena.getVarIdxByName(`${prefix}.J`);
-              const jVal = jIdx >= 0 ? (this.parameters.get(`${prefix}.J`) ?? this.arena.getVarStartValue(jIdx)) : 0;
-              if (mVal > 0 || jVal > 0 || prefix.endsWith(".windSpeed")) {
-                if (pName.startsWith(prefix + ".")) {
-                  velOfPos.set(pIdx, vIdx);
-                  const faIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.s`);
-                  if (faIdx >= 0) velOfPos.set(faIdx, vIdx);
-                  const fbIdx = this.arena.getVarIdxByName(`${prefix}.flange_b.s`);
-                  if (fbIdx >= 0) velOfPos.set(fbIdx, vIdx);
-                  const faPhiIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.phi`);
-                  if (faPhiIdx >= 0) velOfPos.set(faPhiIdx, vIdx);
-                  const fbPhiIdx = this.arena.getVarIdxByName(`${prefix}.flange_b.phi`);
-                  if (fbPhiIdx >= 0) velOfPos.set(fbPhiIdx, vIdx);
-                }
+          if (vIdx >= 0 && pIdx >= 0 && !flowCoupledVars.has(vIdx)) {
+            derVarOf.set(pIdx, vIdx);
+            derEqOf.set(pIdx, i);
+            isDerTarget.add(vIdx);
+          }
+        }
+      }
+    }
+
+    if (derVarOf.size === 0) return;
+
+    // Helper: check if an expression references a specific variable index or any flow-coupled variable
+    const exprRefsVar = (exprId: number, targetVarIdx: number): boolean => {
+      if (exprId < 0) return false;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Name) {
+        return this.arena.lookupVariable(this.arena.getExprData1(exprId)) === targetVarIdx;
+      }
+      if (kind === ExprKind.Binary) {
+        return (
+          exprRefsVar(this.arena.getExprLeft(exprId), targetVarIdx) ||
+          exprRefsVar(this.arena.getExprRight(exprId), targetVarIdx)
+        );
+      }
+      if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+        return exprRefsVar(this.arena.getExprLeft(exprId), targetVarIdx);
+      }
+      if (kind === ExprKind.IfElse) {
+        return (
+          exprRefsVar(this.arena.getExprData1(exprId), targetVarIdx) ||
+          exprRefsVar(this.arena.getExprLeft(exprId), targetVarIdx) ||
+          exprRefsVar(this.arena.getExprRight(exprId), targetVarIdx)
+        );
+      }
+      return false;
+    };
+
+    const exprHasDer = (exprId: number): boolean => {
+      if (exprId < 0) return false;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Der) return true;
+      if (kind === ExprKind.Binary) {
+        return exprHasDer(this.arena.getExprLeft(exprId)) || exprHasDer(this.arena.getExprRight(exprId));
+      }
+      if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+        return exprHasDer(this.arena.getExprLeft(exprId));
+      }
+      if (kind === ExprKind.IfElse) {
+        return (
+          exprHasDer(this.arena.getExprData1(exprId)) ||
+          exprHasDer(this.arena.getExprLeft(exprId)) ||
+          exprHasDer(this.arena.getExprRight(exprId))
+        );
+      }
+      return false;
+    };
+
+    // Determine generalized inertia for a differential pair (pIdx, vIdx):
+    // > 0 if backed by positive mass/inertia or non-derivative kinematic source equation;
+    // === 0 if degenerate zero-mass/inertia; < 0 if massless kinematic sensor/element.
+    const getGeneralizedInertiaStatus = (pIdx: number, vIdx: number): "positive" | "zero" | "kinematic" => {
+      const aIdx = derVarOf.get(vIdx) ?? -1;
+      const vName = this.arena.getVarName(vIdx);
+      const dotPos = vName.lastIndexOf(".");
+      const prefix = dotPos >= 0 ? vName.substring(0, dotPos) : "";
+
+      if (prefix) {
+        // Check any mass/inertia parameter in the same component scope multiplying acceleration
+        for (const suffix of ["m", "J"]) {
+          const paramIdx = this.arena.getVarIdxByName(`${prefix}.${suffix}`);
+          if (paramIdx >= 0 && this.parameterVars.has(paramIdx)) {
+            const pVal = this.parameters.get(`${prefix}.${suffix}`) ?? this.arena.getVarStartValue(paramIdx);
+            return pVal > 0 ? "positive" : "zero";
+          }
+        }
+      }
+
+      // Structural check on dynamic equation involving acceleration `aIdx` and flow variables
+      if (aIdx >= 0) {
+        for (let k = 0; k < this.arena.eqCount; k++) {
+          if (this.arena.getEqKind(k) !== EqKind.Simple || k === derEqOf.get(vIdx)) continue;
+          const kLhs = this.arena.getEqLhs(k);
+          const kRhs = this.arena.getEqRhs(k);
+          if (exprRefsVar(kLhs, aIdx) || exprRefsVar(kRhs, aIdx)) {
+            for (const fVar of flowCoupledVars) {
+              if (exprRefsVar(kLhs, fVar) || exprRefsVar(kRhs, fVar)) {
+                return "positive";
               }
             }
+          }
+        }
+      }
+
+      // Structural check for kinematic position source equation (pIdx defined by non-derivative, non-flow equation)
+      for (let k = 0; k < this.arena.eqCount; k++) {
+        if (this.arena.getEqKind(k) !== EqKind.Simple || k === derEqOf.get(pIdx)) continue;
+        const kLhs = this.arena.getEqLhs(k);
+        const kRhs = this.arena.getEqRhs(k);
+        if (
+          this.arena.getExprKind(kLhs) === ExprKind.Name &&
+          this.arena.lookupVariable(this.arena.getExprData1(kLhs)) === pIdx &&
+          !exprHasDer(kRhs)
+        ) {
+          return "positive";
+        }
+      }
+
+      return "kinematic";
+    };
+
+    const velOfPos = new Map<number, number>();
+    const inertiaStatusOfPos = new Map<number, "positive" | "zero" | "kinematic">();
+
+    for (const [pIdx, vIdx] of derVarOf) {
+      if (isDerTarget.has(pIdx)) continue; // Skip second-order (v, a) pairs
+      const status = getGeneralizedInertiaStatus(pIdx, vIdx);
+      inertiaStatusOfPos.set(pIdx, status);
+      if (status === "positive") {
+        velOfPos.set(pIdx, vIdx);
+        // Also seed same-component connector positions connected by constant geometry offset
+        const pName = this.arena.getVarName(pIdx);
+        const dotIdx = pName.lastIndexOf(".");
+        if (dotIdx >= 0) {
+          const prefix = pName.substring(0, dotIdx);
+          const leaf = pName.substring(dotIdx + 1);
+          for (const port of ["flange_a", "flange_b", "flange"]) {
+            const portVarIdx = this.arena.getVarIdxByName(`${prefix}.${port}.${leaf}`);
+            if (portVarIdx >= 0) velOfPos.set(portVarIdx, vIdx);
           }
         }
       }
@@ -632,6 +865,7 @@ export class ArenaSimulator {
 
     const coupledMasses = new Map<number, number>();
 
+    // 2. Propagate driving velocities across position equality and constant-offset equations
     let changed = true;
     while (changed) {
       changed = false;
@@ -661,168 +895,133 @@ export class ArenaSimulator {
       }
     }
 
-    for (let i = 0; i < this.arena.eqCount; i++) {
-      if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
-      const lhs = this.arena.getEqLhs(i);
-      const rhs = this.arena.getEqRhs(i);
-      if (this.arena.getExprKind(rhs) === ExprKind.Der) {
-        const derArg = this.arena.getExprData1(rhs);
-        if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(derArg) === ExprKind.Name) {
-          const vIdx = this.arena.lookupVariable(this.arena.getExprData1(lhs));
-          const sIdx = this.arena.lookupVariable(this.arena.getExprData1(derArg));
-          if (vIdx >= 0 && sIdx >= 0) {
-            const vName = this.arena.getVarName(vIdx);
-            if (coupledMasses.has(vIdx)) {
-              const primaryV = coupledMasses.get(vIdx)!;
-              const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryV));
-              this.arena.setEqRhs(i, vExpr);
-              const prefix = vName.substring(0, vName.lastIndexOf("."));
-              const aIdx = this.arena.getVarIdxByName(`${prefix}.a`);
-              const primaryName = this.arena.getVarName(primaryV);
-              const primaryPrefix = primaryName.substring(0, primaryName.lastIndexOf("."));
-              const primaryAIdx = this.arena.getVarIdxByName(`${primaryPrefix}.a`);
-              if (aIdx >= 0 && primaryAIdx >= 0) {
-                for (let j = 0; j < this.arena.eqCount; j++) {
-                  if (this.arena.getEqKind(j) !== EqKind.Simple) continue;
-                  const jLhs = this.arena.getEqLhs(j);
-                  if (
-                    this.arena.getExprKind(jLhs) === ExprKind.Name &&
-                    this.arena.lookupVariable(this.arena.getExprData1(jLhs)) === aIdx
-                  ) {
-                    const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryAIdx));
-                    this.arena.setEqRhs(j, aExpr);
-                    break;
-                  }
-                }
-              }
-              continue;
-            }
+    // 3. Rewrite dependent kinematic velocity (and coupled acceleration) equations
+    for (const [sIdx, vIdx] of derVarOf) {
+      if (isDerTarget.has(sIdx)) continue;
+      const eqIdx = derEqOf.get(sIdx)!;
 
-            const sName = this.arena.getVarName(sIdx);
-            if (!sName.endsWith(".s") && !sName.endsWith(".phi")) continue;
+      if (coupledMasses.has(vIdx)) {
+        const primaryV = coupledMasses.get(vIdx)!;
+        const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryV));
+        this.arena.setEqRhs(eqIdx, vExpr);
+        const aIdx = derVarOf.get(vIdx) ?? -1;
+        const primaryAIdx = derVarOf.get(primaryV) ?? -1;
+        if (aIdx >= 0 && primaryAIdx >= 0) {
+          const aEqIdx = derEqOf.get(vIdx);
+          if (aEqIdx !== undefined) {
+            const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryAIdx));
+            this.arena.setEqRhs(aEqIdx, aExpr);
+          }
+        }
+        continue;
+      }
 
-            const prefix = sName.substring(0, sName.lastIndexOf("."));
-            if (
-              this.arena.getVarIdxByName(`${prefix}.m`) >= 0 ||
-              this.arena.getVarIdxByName(`${prefix}.J`) >= 0 ||
-              prefix.endsWith(".mass") ||
-              prefix.endsWith(".inertia")
-            ) {
-              continue;
-            }
+      const status = inertiaStatusOfPos.get(sIdx);
+      if (status === "positive" || status === "zero") continue;
 
-            const directV = velOfPos.get(sIdx);
-            if (directV !== undefined && directV !== vIdx) {
-              const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(directV));
-              this.arena.setEqRhs(i, vExpr);
-              continue;
-            }
-
-            const flangeIdx =
-              this.arena.getVarIdxByName(`${prefix}.flange.s`) >= 0
-                ? this.arena.getVarIdxByName(`${prefix}.flange.s`)
-                : this.arena.getVarIdxByName(`${prefix}.flange_b.s`);
-            if (flangeIdx >= 0) {
-              const flangeV = velOfPos.get(flangeIdx);
-              if (flangeV !== undefined && flangeV !== vIdx) {
-                const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(flangeV));
-                this.arena.setEqRhs(i, vExpr);
-                continue;
-              }
-            }
-
-            const flangePhiIdx =
-              this.arena.getVarIdxByName(`${prefix}.flange.phi`) >= 0
-                ? this.arena.getVarIdxByName(`${prefix}.flange.phi`)
-                : this.arena.getVarIdxByName(`${prefix}.flange_b.phi`);
-            if (flangePhiIdx >= 0) {
-              const flangeW = velOfPos.get(flangePhiIdx);
-              if (flangeW !== undefined && flangeW !== vIdx) {
-                const wExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(flangeW));
-                this.arena.setEqRhs(i, wExpr);
-                continue;
-              }
+      let resolvedV = velOfPos.get(sIdx);
+      if (resolvedV === undefined) {
+        const sName = this.arena.getVarName(sIdx);
+        const dotIdx = sName.lastIndexOf(".");
+        if (dotIdx >= 0) {
+          const prefix = sName.substring(0, dotIdx);
+          const leaf = sName.substring(dotIdx + 1).replace(/_rel$/, "");
+          for (const port of ["flange", "flange_b", "flange_a"]) {
+            const portIdx = this.arena.getVarIdxByName(`${prefix}.${port}.${leaf}`);
+            if (portIdx >= 0 && velOfPos.has(portIdx)) {
+              resolvedV = velOfPos.get(portIdx);
+              break;
             }
           }
         }
+      }
+
+      if (resolvedV !== undefined && resolvedV !== vIdx) {
+        const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(resolvedV));
+        this.arena.setEqRhs(eqIdx, vExpr);
       }
     }
 
-    // Kinematic resolution for massless rotational drive trains connected via idealRollingWheel:
-    for (const prefix of ["vehicle", "vehicle1", "trailer"]) {
-      const wIdx = this.arena.getVarIdxByName(`${prefix}.inertia.w`);
-      const aRotIdx = this.arena.getVarIdxByName(`${prefix}.inertia.a`);
-      const vMassIdx = this.arena.getVarIdxByName(`${prefix}.mass.v`);
-      const aMassIdx = this.arena.getVarIdxByName(`${prefix}.mass.a`);
-      const rIdx =
-        this.arena.getVarIdxByName(`${prefix}.idealRollingWheel.radius`) >= 0
-          ? this.arena.getVarIdxByName(`${prefix}.idealRollingWheel.radius`)
-          : this.arena.getVarIdxByName(`${prefix}.R`);
-      const rVal =
-        rIdx >= 0 ? (this.parameters.get(this.arena.getVarName(rIdx)) ?? this.arena.getVarStartValue(rIdx)) : 0;
+    // 4. Structural kinematic ratio resolution for zero-inertia chains coupled to positive-inertia chains
+    //    via linear transformer/rolling-wheel constraints (e.g. `(phi_R - phi_0) * radius = s_T - s_0`)
+    for (const [pZeroIdx, vZeroIdx] of derVarOf) {
+      if (inertiaStatusOfPos.get(pZeroIdx) !== "zero") continue;
+      const aZeroIdx = derVarOf.get(vZeroIdx) ?? -1;
+      const zeroPrefix = this.arena.getVarName(pZeroIdx).split(".").slice(0, -2).join(".");
 
-      if (wIdx >= 0 && vMassIdx >= 0 && rVal > 0) {
-        for (let i = 0; i < this.arena.eqCount; i++) {
-          if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
-          const lhs = this.arena.getEqLhs(i);
-          if (
-            this.arena.getExprKind(lhs) === ExprKind.Name &&
-            this.arena.lookupVariable(this.arena.getExprData1(lhs)) === wIdx
-          ) {
-            const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(vMassIdx));
-            const rExpr = this.arena.addRealLiteral(rVal);
-            const divExpr = this.arena.addBinaryExpr(BinOp.Div, vExpr, rExpr);
-            this.arena.setEqRhs(i, divExpr);
-            break;
+      // Find a positive-inertia chain in the same subsystem coupled via a positive ratio parameter
+      for (const [pPosIdx, vPosIdx] of derVarOf) {
+        if (inertiaStatusOfPos.get(pPosIdx) !== "positive" || pPosIdx === pZeroIdx) continue;
+        const posPrefix = this.arena.getVarName(pPosIdx).split(".").slice(0, -2).join(".");
+        if (zeroPrefix !== posPrefix) continue;
+
+        // Locate positive kinematic conversion ratio parameter (e.g. rolling radius / gear ratio) in the subsystem
+        let ratioVal = 0;
+        for (const pVarIdx of this.parameterVars) {
+          const pVarName = this.arena.getVarName(pVarIdx);
+          const matchesScope = zeroPrefix ? pVarName.startsWith(zeroPrefix + ".") : !pVarName.includes(".");
+          if (matchesScope && (pVarName.endsWith(".radius") || pVarName.endsWith(".R"))) {
+            const val = this.parameters.get(pVarName) ?? this.arena.getVarStartValue(pVarIdx);
+            if (val > 0) {
+              ratioVal = val;
+              break;
+            }
           }
         }
-      }
 
-      if (aRotIdx >= 0 && aMassIdx >= 0 && rVal > 0) {
-        for (let i = 0; i < this.arena.eqCount; i++) {
-          if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
-          const lhs = this.arena.getEqLhs(i);
-          if (
-            this.arena.getExprKind(lhs) === ExprKind.Name &&
-            this.arena.lookupVariable(this.arena.getExprData1(lhs)) === aRotIdx
-          ) {
-            const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(aMassIdx));
-            const rExpr = this.arena.addRealLiteral(rVal);
-            const divExpr = this.arena.addBinaryExpr(BinOp.Div, aExpr, rExpr);
-            this.arena.setEqRhs(i, divExpr);
-            break;
+        if (ratioVal > 0) {
+          const vZeroEq = derEqOf.get(pZeroIdx);
+          if (vZeroEq !== undefined) {
+            const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(vPosIdx));
+            const rExpr = this.arena.addRealLiteral(ratioVal);
+            this.arena.setEqRhs(vZeroEq, this.arena.addBinaryExpr(BinOp.Div, vExpr, rExpr));
           }
+          const aPosIdx = derVarOf.get(vPosIdx) ?? -1;
+          const aZeroEq = derEqOf.get(vZeroIdx);
+          if (aZeroIdx >= 0 && aPosIdx >= 0 && aZeroEq !== undefined) {
+            const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(aPosIdx));
+            const rExpr = this.arena.addRealLiteral(ratioVal);
+            this.arena.setEqRhs(aZeroEq, this.arena.addBinaryExpr(BinOp.Div, aExpr, rExpr));
+          }
+          break;
         }
       }
     }
   }
 
+  /**
+   * Performs symbolic index-reduction on affine constraints among differentiated states
+   * (e.g., Rigidly connected rotational inertias `phi1 = phi2 + c` or translational masses `s1 = s2`).
+   *
+   * 1. Scans all `EqKind.Simple` equations to identify candidate state variables (`allDerVars`) and
+   *    first-order derivative aliases (`w = der(x)`).
+   * 2. Evaluates equations symbolically into affine combinations (`constant + sum_i coeff_i * x_i`).
+   * 3. Uses `stateSelect` priority attributes (`never` > `avoid` > `default` > `prefer` > `always`)
+   *    and `fixed` flags to select dependent states for elimination.
+   * 4. Rewrites `der(sDep)` (and second-order `der(wDep)`) into linear combinations of independent state derivatives.
+   */
   private reduceAffineStateConstraints() {
     const allDerVars = new Set<number>();
     const derAliasOf = new Map<number, number>();
     const isDerAliasTarget = new Set<number>();
 
+    // Helper: ignore degenerate zero-inertia or zero-mass mechanical states
     const isZeroMassOrInertia = (varIdx: number): boolean => {
       const name = this.arena.getVarName(varIdx);
-      if (name.endsWith(".phi") || name.endsWith(".w")) {
-        const prefix = name.substring(0, name.lastIndexOf("."));
-        const jIdx = this.arena.getVarIdxByName(`${prefix}.J`);
-        if (jIdx >= 0) {
-          const jVal = this.parameters.get(`${prefix}.J`) ?? this.arena.getVarStartValue(jIdx);
-          if (jVal === 0) return true;
-        }
-      }
-      if (name.endsWith(".s") || name.endsWith(".v")) {
-        const prefix = name.substring(0, name.lastIndexOf("."));
-        const mIdx = this.arena.getVarIdxByName(`${prefix}.m`);
-        if (mIdx >= 0) {
-          const mVal = this.parameters.get(`${prefix}.m`) ?? this.arena.getVarStartValue(mIdx);
-          if (mVal === 0) return true;
+      const dotIdx = name.lastIndexOf(".");
+      if (dotIdx < 0) return false;
+      const prefix = name.substring(0, dotIdx);
+      for (const paramSuffix of ["J", "m"]) {
+        const pIdx = this.arena.getVarIdxByName(`${prefix}.${paramSuffix}`);
+        if (pIdx >= 0 && this.parameterVars.has(pIdx)) {
+          const pVal = this.parameters.get(`${prefix}.${paramSuffix}`) ?? this.arena.getVarStartValue(pIdx);
+          if (pVal === 0) return true;
         }
       }
       return false;
     };
 
+    // 1. Recursively scan arena expressions to collect all variables appearing inside `der(x)`
     const scanDerExpr = (exprId: number) => {
       if (exprId < 0) return;
       const kind = this.arena.getExprKind(exprId);
@@ -854,7 +1053,9 @@ export class ArenaSimulator {
           const argCount = this.arena.getExprRight(exprId);
           if (argCount > 0) {
             const firstArg = this.arena.getExprLeft(exprId);
-            for (let a = 0; a < argCount; a++) scanDerExpr(firstArg + a);
+            for (let a = 0; a < argCount; a++) {
+              scanDerExpr(a === 0 ? firstArg : this.arena.getExprLeft(exprId + a));
+            }
           }
           break;
         }
@@ -863,13 +1064,16 @@ export class ArenaSimulator {
           const count = this.arena.getExprData1(exprId);
           if (count > 0) {
             const firstElem = this.arena.getExprLeft(exprId);
-            for (let e = 0; e < count; e++) scanDerExpr(firstElem + e);
+            for (let e = 0; e < count; e++) {
+              scanDerExpr(e === 0 ? firstElem : this.arena.getExprLeft(exprId + e));
+            }
           }
           break;
         }
       }
     };
 
+    // Also record direct velocity/angular-velocity alias equations `w = der(x)`
     for (let i = 0; i < this.arena.eqCount; i++) {
       if (this.arena.getEqKind(i) !== EqKind.Simple) continue;
       const lhs = this.arena.getEqLhs(i);
@@ -902,6 +1106,44 @@ export class ArenaSimulator {
 
     if (allDerVars.size === 0) return;
 
+    // Identify flow-coupled generalized force/torque variables structurally from connector flow flags
+    const flowCoupledVars = new Set<number>();
+    for (let v = 0; v < this.arena.varCount; v++) {
+      if (!this.arena.isVarRemoved(v) && this.arena.isVarFlow(v)) {
+        flowCoupledVars.add(v);
+      }
+    }
+    let flowChanged = true;
+    while (flowChanged) {
+      flowChanged = false;
+      for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+        if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+        const lhs = this.arena.getEqLhs(eqIdx);
+        const rhs = this.arena.getEqRhs(eqIdx);
+        const unwrapSignedVar = (exprId: number): number => {
+          if (exprId < 0) return -1;
+          const k = this.arena.getExprKind(exprId);
+          if (k === ExprKind.Name) return this.arena.lookupVariable(this.arena.getExprData1(exprId));
+          if (k === ExprKind.Negate || (k === ExprKind.Unary && this.arena.getExprData1(exprId) === UnaryOp.Negate)) {
+            return unwrapSignedVar(this.arena.getExprLeft(exprId));
+          }
+          return -1;
+        };
+        const vL = unwrapSignedVar(lhs);
+        const vR = unwrapSignedVar(rhs);
+        if (vL >= 0 && vR >= 0 && !allDerVars.has(vL) && !allDerVars.has(vR)) {
+          if (flowCoupledVars.has(vL) && !flowCoupledVars.has(vR)) {
+            flowCoupledVars.add(vR);
+            flowChanged = true;
+          } else if (flowCoupledVars.has(vR) && !flowCoupledVars.has(vL)) {
+            flowCoupledVars.add(vL);
+            flowChanged = true;
+          }
+        }
+      }
+    }
+
+    // 2. Seed primary candidate states (excluding derivative alias targets `w` where `w = der(phi)`)
     const activeCandidateStates = new Set<number>();
     for (const v of allDerVars) {
       if (!isDerAliasTarget.has(v)) {
@@ -952,6 +1194,7 @@ export class ArenaSimulator {
       return { constant: a.constant * factor, coeffs };
     };
 
+    // 3. Symbolically evaluate an arena expression into an AffineComb if it is purely linear/affine
     const evalAffine = (exprId: number): AffineComb | null => {
       if (exprId < 0) return null;
       const kind = this.arena.getExprKind(exprId);
@@ -977,7 +1220,7 @@ export class ArenaSimulator {
             const val = this.parameters.get(name) ?? this.arena.getVarStartValue(vIdx);
             return { constant: val, coeffs: new Map() };
           }
-          if (isDerAliasTarget.has(vIdx) || this.arena.isVarFlow(vIdx)) {
+          if (isDerAliasTarget.has(vIdx) || flowCoupledVars.has(vIdx)) {
             return null;
           }
           const vName = this.arena.getVarName(vIdx);
@@ -1030,6 +1273,7 @@ export class ArenaSimulator {
     const usedEqs = new Set<number>();
     const eliminatedStates: number[] = [];
 
+    // 4. Fixed-point Gaussian elimination over affine algebraic equations
     let changed = true;
     while (changed) {
       changed = false;
@@ -1052,6 +1296,7 @@ export class ArenaSimulator {
         }
 
         if (unknownNonStates.length === 1) {
+          // Case A: Equation defines a single algebraic kinematic variable `u` in terms of states
           const u = unknownNonStates[0]!;
           const cu = diff.coeffs.get(u)!;
           if (Math.abs(cu) > 1e-12) {
@@ -1066,6 +1311,7 @@ export class ArenaSimulator {
             changed = true;
           }
         } else if (unknownNonStates.length === 0) {
+          // Case B: Pure affine constraint among candidate states — score and eliminate one dependent state `bestS`
           usedEqs.add(eqIdx);
           if (diff.coeffs.size >= 1) {
             const lhsVarIdx =
@@ -1078,12 +1324,26 @@ export class ArenaSimulator {
               if (Math.abs(cs) <= 1e-12) continue;
               const sName = this.arena.getVarName(s);
               let score = 0;
-              if (
-                sName.endsWith(".phi_rel") ||
-                sName.endsWith(".s_rel") ||
-                sName.endsWith(".w_rel") ||
-                sName.endsWith(".v_rel")
-              ) {
+              const ssAttr = this.arena.getVarAttr(s, "stateSelect");
+              if (ssAttr !== undefined && ssAttr >= 0) {
+                const ssKind = this.arena.getExprKind(ssAttr);
+                if (ssKind === ExprKind.IntLiteral) {
+                  const ssVal = this.arena.getExprData1(ssAttr);
+                  // 1=never, 2=avoid, 3=default, 4=prefer, 5=always
+                  if (ssVal === 1) score += 2000;
+                  else if (ssVal === 2) score += 1000;
+                  else if (ssVal === 4) score -= 1000;
+                  else if (ssVal === 5) score -= 2000;
+                } else if (ssKind === ExprKind.Name || ssKind === ExprKind.EnumLiteral) {
+                  const ssText = this.arena.interner.resolve(this.arena.getExprData1(ssAttr)) ?? "";
+                  if (ssText.endsWith(".never") || ssText === "never") score += 2000;
+                  else if (ssText.endsWith(".avoid") || ssText === "avoid") score += 1000;
+                  else if (ssText.endsWith(".prefer") || ssText === "prefer") score -= 1000;
+                  else if (ssText.endsWith(".always") || ssText === "always") score -= 2000;
+                }
+              }
+              const isRelativeCoordinate = (s === lhsVarIdx && diff.coeffs.size >= 3) || sName.endsWith("_rel");
+              if (isRelativeCoordinate) {
                 score += 1000;
               }
               score += !this.arena.isVarFixed(s) ? 500 : -500;
@@ -1112,6 +1372,7 @@ export class ArenaSimulator {
 
               // Substitute bestS -> combDep in all existing stateComb entries
               for (const [vKey, vComb] of stateComb) {
+                void vKey;
                 const coeffInV = vComb.coeffs.get(bestS);
                 if (coeffInV !== undefined) {
                   vComb.coeffs.delete(bestS);
@@ -1136,6 +1397,8 @@ export class ArenaSimulator {
 
     if (eliminatedStates.length === 0) return;
 
+    // 5. Differentiate the affine state relation `sDep = c_0 + sum c_i * s_i` to synthesize
+    //    `der(sDep) = sum c_i * der(s_i)` (order 1) and `der(wDep) = sum c_i * der(w_i)` (order 2)
     const buildLinearDerComboExpr = (coeffs: Map<number, number>, order: 1 | 2): number => {
       let sumExpr = -1;
       for (const [s, c] of coeffs) {
@@ -1235,6 +1498,7 @@ export class ArenaSimulator {
       }
     };
 
+    // 6. Rewrite all occurrences of `der(sDep)` and `der(wDep)` across the DAE equation arena
     for (const sDep of eliminatedStates) {
       const finalComb = stateComb.get(sDep);
       if (!finalComb) continue;
@@ -1265,6 +1529,11 @@ export class ArenaSimulator {
     }
   }
 
+  /**
+   * Scans all DAE arena equations for `ExprKind.Der` nodes, registers their inner variables
+   * in `stateVars` (filtering out zero-mass/zero-inertia mechanical bodies), and ensures a
+   * corresponding `der(x)` variable exists in `derivativeVars`.
+   */
   private identifyDerivatives() {
     const scanExpr = (exprId: number) => {
       if (exprId < 0) return;
@@ -1337,7 +1606,7 @@ export class ArenaSimulator {
           if (argCount > 0) {
             const firstArg = this.arena.getExprLeft(exprId);
             for (let a = 0; a < argCount; a++) {
-              scanExpr(firstArg + a);
+              scanExpr(a === 0 ? firstArg : this.arena.getExprLeft(exprId + a));
             }
           }
           break;
@@ -1348,7 +1617,7 @@ export class ArenaSimulator {
           if (count > 0) {
             const firstElem = this.arena.getExprLeft(exprId);
             for (let e = 0; e < count; e++) {
-              scanExpr(firstElem + e);
+              scanExpr(e === 0 ? firstElem : this.arena.getExprLeft(exprId + e));
             }
           }
           break;
@@ -1373,6 +1642,10 @@ export class ArenaSimulator {
 
   // extractDerivativeEquations removed
 
+  /**
+   * Placeholder hook for evaluating explicit derivative equations (now scheduled
+   * directly inside the topological BLT execution blocks).
+   */
   public evaluateDerivativeEquations(_valuesByStringId: Float64Array): void {
     // Handled by BLT
   }
@@ -1381,6 +1654,10 @@ export class ArenaSimulator {
   // When-Clause Extraction
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Extracts all `EqKind.When` equations and their `elsewhen` branches from the DAE arena
+   * side-table into `this.whenClauses`.
+   */
   private extractWhenClauses() {
     this.whenClauses = [];
     for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
@@ -1406,6 +1683,10 @@ export class ArenaSimulator {
     }
   }
 
+  /**
+   * Converts the body equations of a `when` or `elsewhen` clause into executable
+   * discrete `reinit(var, expr)` and `assign` actions.
+   */
   private extractWhenActionsFromMeta(
     bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
   ): ArenaWhenAction[] {
@@ -1463,6 +1744,10 @@ export class ArenaSimulator {
   // Assertion Extraction
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Scans the DAE arena for `assert(condition, message)` function-call equations
+   * and populates `this.assertions` for runtime verification.
+   */
   private extractAssertions() {
     this.assertions = [];
     for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
@@ -1492,17 +1777,81 @@ export class ArenaSimulator {
   // Event Indicator Extraction
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Collects all continuous zero-crossing event indicators from `when` conditions,
+   * `if` equations, and `if-then-else` expressions (excluding sub-expressions wrapped in `noEvent()`).
+   */
   private extractEventIndicators() {
     this.eventIndicators = [];
-    for (const clause of this.whenClauses) {
+    for (let cIdx = 0; cIdx < this.whenClauses.length; cIdx++) {
+      const clause = this.whenClauses[cIdx]!;
       const indicators = this.collectEventIndicators(clause.conditionExprId);
       for (const ind of indicators) {
-        if (
-          !this.eventIndicators.some(
-            (existing) => existing.exprId === ind.exprId && existing.direction === ind.direction,
-          )
-        ) {
-          this.eventIndicators.push({ exprId: ind.exprId, prevValue: 0, direction: ind.direction });
+        let existing = this.eventIndicators.find((e) => e.exprId === ind.exprId && e.direction === ind.direction);
+        if (!existing) {
+          existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction };
+          (existing as any).clauseIndices = [];
+          this.eventIndicators.push(existing);
+        }
+        const clauseIndices: number[] = (existing as any).clauseIndices ?? ((existing as any).clauseIndices = []);
+        if (!clauseIndices.includes(cIdx)) {
+          clauseIndices.push(cIdx);
+        }
+      }
+    }
+
+    const addIfIndicator = (condId: number): void => {
+      if (condId < 0) return;
+      for (const ind of this.collectEventIndicators(condId)) {
+        let existing = this.eventIndicators.find((e) => e.exprId === ind.exprId && e.direction === ind.direction);
+        if (!existing) {
+          existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction };
+          (existing as any).clauseIndices = [];
+          this.eventIndicators.push(existing);
+        }
+      }
+    };
+
+    const scanIfElseExpr = (exprId: number): void => {
+      if (exprId < 0) return;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Call) {
+        const fnName = this.arena.interner.resolve(this.arena.getExprData1(exprId));
+        if (fnName === "noEvent") return;
+        const argc = this.arena.getExprRight(exprId);
+        const firstArg = this.arena.getExprLeft(exprId);
+        for (let a = 0; a < argc; a++) {
+          scanIfElseExpr(a === 0 ? firstArg : this.arena.getExprLeft(exprId + a));
+        }
+        return;
+      }
+      if (kind === ExprKind.IfElse) {
+        addIfIndicator(this.arena.getExprData1(exprId));
+        scanIfElseExpr(this.arena.getExprLeft(exprId));
+        scanIfElseExpr(this.arena.getExprRight(exprId));
+        return;
+      }
+      if (kind === ExprKind.Binary) {
+        scanIfElseExpr(this.arena.getExprLeft(exprId));
+        scanIfElseExpr(this.arena.getExprRight(exprId));
+      } else if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+        scanIfElseExpr(this.arena.getExprLeft(exprId));
+      }
+    };
+
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      const eqKind = this.arena.getEqKind(eqIdx);
+      if (eqKind === EqKind.Simple) {
+        scanIfElseExpr(this.arena.getEqLhs(eqIdx));
+        scanIfElseExpr(this.arena.getEqRhs(eqIdx));
+      } else if (eqKind === EqKind.If) {
+        const meta = (this.arena as any).getIfEquationMeta?.(eqIdx);
+        if (meta?.branches) {
+          for (const branch of meta.branches) {
+            if (typeof branch.conditionExprId === "number" && branch.conditionExprId >= 0) {
+              addIfIndicator(branch.conditionExprId);
+            }
+          }
         }
       }
     }
@@ -1558,6 +1907,10 @@ export class ArenaSimulator {
   // State Machine Extraction
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Initializes runtime state-machine hierarchies (`this.stateMachineRuntimes`)
+   * from the Modelica 3.3 synchronous state machines registered in the DAE arena.
+   */
   private extractStateMachines() {
     this.stateMachineRuntimes = [];
     for (const sm of this.arena.stateMachines) {
@@ -1606,6 +1959,7 @@ export class ArenaSimulator {
   //                    of the source state have reached a final state
   // ─────────────────────────────────────────────────────────────────────────
 
+  /** Executes one tick of all top-level synchronous state machine runtimes. */
   private executeStateMachines(valuesByStringId: Float64Array): void {
     for (const rt of this.stateMachineRuntimes) {
       this.executeSingleStateMachine(rt, valuesByStringId);
@@ -1624,6 +1978,11 @@ export class ArenaSimulator {
     return dt > 0 ? dt : 0;
   }
 
+  /**
+   * Evaluates priority-ordered transitions, active-state equations, nested sub-automata,
+   * and Modelica 3.3 state machine intrinsics (`activeState`, `ticksInState`, `timeInState`, `previousState`)
+   * for a single state machine runtime.
+   */
   private executeSingleStateMachine(rt: ArenaStateMachineRuntime, valuesByStringId: Float64Array): void {
     const dt = this.getStepSize(valuesByStringId);
 
@@ -1747,6 +2106,10 @@ export class ArenaSimulator {
   // Assertion Checking
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Evaluates all extracted Modelica `assert(condition, message)` clauses at time `t`
+   * and throws an error if any assertion condition evaluates to false (`0`).
+   */
   private checkAssertions(valuesByStringId: Float64Array, t: number): void {
     for (const assertion of this.assertions) {
       const condVal = evaluateArenaRuntime(this.arena, assertion.conditionExprId, valuesByStringId);
@@ -1765,6 +2128,11 @@ export class ArenaSimulator {
   // Newton-Raphson Solver for Algebraic Loops
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Solves a simultaneous algebraic loop (`type: "system"`) using damped Newton-Raphson
+   * with pre-allocated scratch buffers, forward-mode AD / JIT-compiled Jacobians,
+   * flat LU factorization (`luFactorFlat`), and warm-starting across time steps.
+   */
   private solveNewtonBlock(
     block: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>,
     valuesByStringId: Float64Array,
@@ -1903,6 +2271,15 @@ export class ArenaSimulator {
   // Block Evaluation (shared between integrators)
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * JIT-compiles topological BLT execution blocks (`single` scalar assignments and `system` algebraic loops)
+   * into specialized JavaScript closures (`new Function("env", "helpers", ...)`).
+   *
+   * - Lowers arena expression trees (`exprToJs`) and forward-mode symbolic partial derivatives (`dualToJs`)
+   *   directly into inline JavaScript arithmetic over `env: Float64Array`.
+   * - Precompiles residual and analytical Jacobian evaluators for simultaneous algebraic systems (`m <= 64`).
+   * - Splits large models into chunks of at most 4,000 statements per closure to stay within V8 TurboFan optimization limits.
+   */
   private compileBlocks(): ((env: Float64Array) => void) | null {
     try {
       const arena = this.arena;
@@ -1910,6 +2287,7 @@ export class ArenaSimulator {
 
       const systemBlocks: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>[] = [];
 
+      // 1. Runtime helper table passed into compiled closures for external tables, fallback expressions, and Newton blocks
       const helpers = {
         getTimeTableValue: (tableIdStrId: number, icol: number, timeIn: number) => {
           const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
@@ -1918,13 +2296,13 @@ export class ArenaSimulator {
         getTimeTableTmin: (tableIdStrId: number) => {
           const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
           return cached && cached.table.length > 0
-            ? (cached.table[0][0] + cached.shiftTime) * (cached.timeScale || 1.0)
+            ? (cached.table[0]![0]! + cached.shiftTime) * (cached.timeScale || 1.0)
             : 0;
         },
         getTimeTableTmax: (tableIdStrId: number) => {
           const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
           return cached && cached.table.length > 0
-            ? (cached.table[cached.table.length - 1][0] + cached.shiftTime) * (cached.timeScale || 1.0)
+            ? (cached.table[cached.table.length - 1]![0]! + cached.shiftTime) * (cached.timeScale || 1.0)
             : 0;
         },
         getNextTimeEvent: (_tableIdStrId: number, _timeIn: number) => {
@@ -1933,6 +2311,7 @@ export class ArenaSimulator {
         evalExpr: (exprId: number, env: Float64Array) => {
           return evaluateArenaRuntime(arena, exprId, env, this.preValuesByStringId);
         },
+        // Evaluates partial derivative d(resId)/d(nid) via flat dual-number AD, falling back to finite differences
         evalDual: (
           resId: number,
           nid: number,
@@ -1961,6 +2340,7 @@ export class ArenaSimulator {
         },
       };
 
+      // 2. Recursively lower an arena expression (`exprId`) into a JavaScript expression string reading `env[nameId]`
       function exprToJs(exprId: number): string {
         if (exprId < 0) return "0";
         const kind = arena.getExprKind(exprId);
@@ -2049,14 +2429,17 @@ export class ArenaSimulator {
             const argCount = arena.getExprRight(exprId);
             const firstArg = arena.getExprLeft(exprId);
 
+            // Event-generating or stateful operators delegate to runtime evaluator
             if (
               cleanFn === "edge" ||
               cleanFn === "change" ||
               cleanFn === "sample" ||
               cleanFn === "initial" ||
-              cleanFn === "terminal"
+              cleanFn === "terminal" ||
+              cleanFn === "pre" ||
+              cleanFn === "delay"
             ) {
-              return "0";
+              return `helpers.evalExpr(${exprId}, env)`;
             }
 
             if (cleanFn === "der" && argCount === 1 && arena.getExprKind(firstArg) === ExprKind.Name) {
@@ -2143,6 +2526,8 @@ export class ArenaSimulator {
         }
       }
 
+      // 3. Symbolically differentiate `exprId` with respect to `seedNameId` into a JS expression string
+      //    (returns "0" for constants/unrelated variables, or `null` if non-differentiable)
       function dualToJs(exprId: number, seedNameId: number): string | null {
         if (exprId < 0) return "0";
         const kind = arena.getExprKind(exprId);
@@ -2215,6 +2600,7 @@ export class ArenaSimulator {
                 return `((${dL}) - (${dR}))`;
               case BinOp.Mul:
               case BinOp.ElemMul: {
+                // Product rule: d(u * v) = du * v + u * dv
                 const vL = exprToJs(lId);
                 const vR = exprToJs(rId);
                 if (dL === "0") return `((${vL}) * (${dR}))`;
@@ -2223,12 +2609,26 @@ export class ArenaSimulator {
               }
               case BinOp.Div:
               case BinOp.ElemDiv: {
+                // Quotient rule: d(u / v) = (du * v - u * dv) / (v * v)
                 const vL = exprToJs(lId);
                 const vR = exprToJs(rId);
                 if (dR === "0") return `((${dL}) / (${vR}))`;
                 if (dL === "0") return `(-((${vL}) * (${dR})) / ((${vR}) * (${vR})))`;
                 if (dR !== "0") return `(((${dL}) * (${vR}) - (${vL}) * (${dR})) / ((${vR}) * (${vR})))`;
                 return null;
+              }
+              case BinOp.Pow:
+              case BinOp.ElemPow: {
+                // Power rule: d(u^v) = v * u^(v-1) * du + u^v * ln(u) * dv
+                const vL = exprToJs(lId);
+                const vR = exprToJs(rId);
+                if (dR === "0") {
+                  return `((${vR}) * Math.pow(${vL}, (${vR}) - 1) * (${dL}))`;
+                }
+                if (dL === "0") {
+                  return `(Math.pow(${vL}, ${vR}) * Math.log(${vL}) * (${dR}))`;
+                }
+                return `(Math.pow(${vL}, (${vR}) - 1) * ((${vR}) * (${dL}) + (${vL}) * Math.log(${vL}) * (${dR})))`;
               }
               default:
                 return null;
@@ -2270,6 +2670,47 @@ export class ArenaSimulator {
               if (argCount > 1) return dualToJs(arena.getExprLeft(exprId + 1), seedNameId);
               return argCount > 0 ? dualToJs(firstArg, seedNameId) : "0";
             }
+            if (argCount === 1) {
+              const dArg = dualToJs(firstArg, seedNameId);
+              if (dArg === null) return null;
+              if (dArg === "0") return "0";
+              const vArg = exprToJs(firstArg);
+              if (cleanFn === "sin") return `(Math.cos(${vArg}) * (${dArg}))`;
+              if (cleanFn === "cos") return `(-Math.sin(${vArg}) * (${dArg}))`;
+              if (cleanFn === "tan") return `((${dArg}) / (Math.cos(${vArg}) * Math.cos(${vArg})))`;
+              if (cleanFn === "asin") return `((${dArg}) / Math.sqrt(1 - (${vArg}) * (${vArg})))`;
+              if (cleanFn === "acos") return `(-(${dArg}) / Math.sqrt(1 - (${vArg}) * (${vArg})))`;
+              if (cleanFn === "atan") return `((${dArg}) / (1 + (${vArg}) * (${vArg})))`;
+              if (cleanFn === "sinh") return `(Math.cosh(${vArg}) * (${dArg}))`;
+              if (cleanFn === "cosh") return `(Math.sinh(${vArg}) * (${dArg}))`;
+              if (cleanFn === "tanh") return `((1 - Math.tanh(${vArg}) * Math.tanh(${vArg})) * (${dArg}))`;
+              if (cleanFn === "exp") return `(Math.exp(${vArg}) * (${dArg}))`;
+              if (cleanFn === "log") return `((${dArg}) / (${vArg}))`;
+              if (cleanFn === "log10") return `((${dArg}) / ((${vArg}) * Math.LN10))`;
+              if (cleanFn === "sqrt") return `((${dArg}) / (2 * Math.sqrt(${vArg})))`;
+              if (cleanFn === "abs") return `(((${vArg}) >= 0 ? 1 : -1) * (${dArg}))`;
+              if (cleanFn === "sign" || cleanFn === "ceil" || cleanFn === "floor" || cleanFn === "integer") {
+                return "0";
+              }
+            }
+            if (argCount === 2) {
+              const secondArg = arena.getExprLeft(exprId + 1);
+              const d0 = dualToJs(firstArg, seedNameId);
+              const d1 = dualToJs(secondArg, seedNameId);
+              if (d0 === null || d1 === null) return null;
+              if (d0 === "0" && d1 === "0") return "0";
+              const v0 = exprToJs(firstArg);
+              const v1 = exprToJs(secondArg);
+              if (cleanFn === "atan2") {
+                return `(((${v1}) * (${d0}) - (${v0}) * (${d1})) / ((${v0}) * (${v0}) + (${v1}) * (${v1})))`;
+              }
+              if (cleanFn === "max") {
+                return `((${v0}) >= (${v1}) ? (${d0}) : (${d1}))`;
+              }
+              if (cleanFn === "min") {
+                return `((${v0}) <= (${v1}) ? (${d0}) : (${d1}))`;
+              }
+            }
             return null;
           }
           default:
@@ -2277,7 +2718,7 @@ export class ArenaSimulator {
         }
       }
 
-      // Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
+      // 4. Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
       const CHUNK_SIZE = 4000;
       const chunks: ((env: Float64Array) => void)[] = [];
       let currentLines: string[] = [];
@@ -2292,6 +2733,8 @@ export class ArenaSimulator {
             currentLines = [];
           }
         } else if (block.type === "system" && block.vars.length > 0) {
+          // 5. For simultaneous algebraic systems (`m` variables), construct residual expressions `lhs - rhs`
+          //    and compile dedicated residual (`_compiledResiduals`) and Jacobian (`_compiledJacobian`) closures
           const m = block.vars.length;
           const blockAny = block as any;
           const varIds = new Int32Array(m);
@@ -2307,6 +2750,7 @@ export class ArenaSimulator {
           blockAny._resExprIds = resIds;
 
           if (m <= 64) {
+            // Detect whether the system is purely linear (constant Jacobian entries wrt block unknowns)
             let isLinearSystem = true;
             const varEnvTokens: string[] = [];
             for (let k = 0; k < m; k++) varEnvTokens.push(`env[${varIds[k]}]`);
@@ -2385,6 +2829,10 @@ export class ArenaSimulator {
     }
   }
 
+  /**
+   * Evaluates all topological BLT execution blocks (`single` assignments and `system` algebraic loops)
+   * in causal order, updating `valuesByStringId` in-place via the JIT-compiled closure when available.
+   */
   public evaluateBlocks(valuesByStringId: Float64Array): void {
     if (this.compiledBlocks) {
       this.compiledBlocks(valuesByStringId);
@@ -2405,25 +2853,43 @@ export class ArenaSimulator {
   // When-Clause Event Handling
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Processes discrete `when` and `elsewhen` clauses using rising-edge detection
+   * (`isActive && !clause.wasActive`) with bounded fixed-point event iteration.
+   */
   private processWhenClauses(valuesByStringId: Float64Array): void {
-    for (const clause of this.whenClauses) {
-      const condVal = evaluateArenaRuntime(
-        this.arena,
-        clause.conditionExprId,
-        valuesByStringId,
-        this.preValuesByStringId,
-      );
-      const isActive = condVal !== 0;
+    if (this.whenClauses.length === 0) return;
+    for (let iter = 0; iter < 10; iter++) {
+      let anyFired = false;
+      for (const clause of this.whenClauses) {
+        const condVal = evaluateArenaRuntime(
+          this.arena,
+          clause.conditionExprId,
+          valuesByStringId,
+          this.preValuesByStringId,
+        );
+        const isActive = condVal !== 0;
 
-      // Rising edge detection
-      if (isActive && !clause.wasActive) {
-        for (const action of clause.actions) {
-          const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId, this.preValuesByStringId);
-          valuesByStringId[action.targetNameId] = val;
+        // Rising edge detection
+        if (isActive && !clause.wasActive) {
+          anyFired = true;
+          for (const action of clause.actions) {
+            const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId, this.preValuesByStringId);
+            valuesByStringId[action.targetNameId] = val;
+          }
+          const postCondVal = evaluateArenaRuntime(
+            this.arena,
+            clause.conditionExprId,
+            valuesByStringId,
+            this.preValuesByStringId,
+          );
+          clause.wasActive = postCondVal !== 0;
+        } else {
+          clause.wasActive = isActive;
         }
       }
-
-      clause.wasActive = isActive;
+      if (!anyFired) break;
+      this.evaluateBlocks(valuesByStringId);
     }
   }
 
@@ -2431,6 +2897,10 @@ export class ArenaSimulator {
   // RHS Bridge: builds a (t, y) => dy/dt callback for Dopri5/BDF
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Constructs a pure ODE right-hand side closure `(t, y) => dy/dt` for adaptive
+   * integrators (Dopri5, Tsit5, BDF, Rodas4P, TR-BDF2).
+   */
   private buildRhsFunction(
     valuesByStringId: Float64Array,
     stateStringIds: number[],
@@ -2467,6 +2937,10 @@ export class ArenaSimulator {
   // Event Functions Bridge: builds g_i(t, y) functions for zero-crossing
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Constructs scalar zero-crossing indicator callbacks $g_i(t, y)$ for all extracted
+   * relational and `sample(start, interval)` event indicators.
+   */
   private buildEventFunctions(
     valuesByStringId: Float64Array,
     stateStringIds: number[],
@@ -2476,12 +2950,27 @@ export class ArenaSimulator {
     const n = stateStringIds.length;
 
     return this.eventIndicators.map((ei) => {
+      const kind = this.arena.getExprKind(ei.exprId);
+      const isSampleCall =
+        kind === ExprKind.Call &&
+        this.arena.interner.resolve(this.arena.getExprData1(ei.exprId)) === "sample" &&
+        this.arena.getExprRight(ei.exprId) >= 2;
+      const sampleStartExprId = isSampleCall ? this.arena.getExprLeft(ei.exprId) : -1;
+      const sampleIntervalExprId = isSampleCall ? this.arena.getExprLeft(ei.exprId + 1) : -1;
+
       return (t: number, y: number[]): number => {
         valuesByStringId[timeId] = t;
         for (let i = 0; i < n; i++) {
           valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
         }
-        return evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+        if (isSampleCall) {
+          const start = evaluateArenaRuntime(this.arena, sampleStartExprId, valuesByStringId);
+          const interval = evaluateArenaRuntime(this.arena, sampleIntervalExprId, valuesByStringId);
+          if (interval <= 0) return -1;
+          const u = (t - start) / interval;
+          return u < 0 ? u : Math.sin(Math.PI * u);
+        }
+        return evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId, this.preValuesByStringId);
       };
     });
   }
@@ -2490,6 +2979,11 @@ export class ArenaSimulator {
   // Event Callback: handles zero-crossing events (reinit, discrete updates)
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Constructs the event-handling callback invoked by adaptive solvers when a zero-crossing
+   * root is located, executing state machines, `when`-clause `reinit`/assignment actions,
+   * and zero-crossing surface projection.
+   */
   private buildEventCallback(
     valuesByStringId: Float64Array,
     stateStringIds: number[],
@@ -2505,6 +2999,9 @@ export class ArenaSimulator {
       // Evaluate blocks and derivative equations at the event state
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
+      if (this.preValuesByStringId && this.preValuesByStringId.length === valuesByStringId.length) {
+        this.preValuesByStringId.set(valuesByStringId);
+      }
       this.executeStateMachines(valuesByStringId);
 
       // Project state onto the zero-crossing surface BEFORE evaluating when-clauses.
@@ -2516,9 +3013,11 @@ export class ArenaSimulator {
       // evaluate to true at the event instant. The nudge magnitude (1e-10) is
       // large enough to flip the boolean but small enough to be physically
       // negligible (well within solver tolerance).
+      let triggeredClauseIndices: number[] | undefined;
       if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
         const ei = this.eventIndicators[eventIdx];
         if (ei) {
+          triggeredClauseIndices = (ei as any).clauseIndices;
           const eiKind = this.arena.getExprKind(ei.exprId);
 
           let targetStateNameId = -1;
@@ -2559,44 +3058,57 @@ export class ArenaSimulator {
         }
       }
 
-      // Reset wasActive flags before processing when-clauses.
-      //
-      // In the adaptive solver (dopri5/BDF) path, when-clause conditions are NOT
-      // evaluated during intermediate RHS calls (to avoid corrupting memory state
-      // during trial RK stages). This means wasActive can become stale — it may
-      // still be `true` from a previous event even though the condition was `false`
-      // throughout the intervening integration.
-      //
-      // Since this callback is only invoked when a zero-crossing event was detected
-      // (meaning a condition boundary was just crossed), we reset wasActive to false
-      // for all clauses. This ensures correct rising-edge detection: if the condition
-      // is now true at the event time, it will be recognized as a rising edge.
-      //
-      // For clauses whose condition is NOT related to the triggered zero-crossing,
-      // resetting wasActive is safe — if their condition is currently active, it
-      // represents a genuine rising edge that was missed during integration (and
-      // should be processed). If inactive, no action will be taken anyway.
-      for (const clause of this.whenClauses) {
-        clause.wasActive = false;
+      // Reset wasActive flags for clauses participating in the triggered zero-crossing
+      // (or all clauses if no clause indices array was attached to the event).
+      if (Array.isArray(triggeredClauseIndices)) {
+        for (const cIdx of triggeredClauseIndices) {
+          const clause = this.whenClauses[cIdx];
+          if (clause) clause.wasActive = false;
+        }
+      } else {
+        for (const clause of this.whenClauses) {
+          clause.wasActive = false;
+        }
       }
 
-      // Process all when-clauses. We evaluate their boolean conditions at the precise
-      // event state to detect rising edges.
-      for (const clause of this.whenClauses) {
-        const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
-        const isActive = condVal !== 0;
+      // Process all when-clauses with bounded discrete event iteration.
+      // We evaluate their boolean conditions at the precise event state to detect rising edges,
+      // and record any state variables modified by reinit/assign actions so post-event surface
+      // projection does not clobber them.
+      const modifiedByWhen = new Set<number>();
+      for (let iter = 0; iter < 10; iter++) {
+        let anyFired = false;
+        for (const clause of this.whenClauses) {
+          const condVal = evaluateArenaRuntime(
+            this.arena,
+            clause.conditionExprId,
+            valuesByStringId,
+            this.preValuesByStringId,
+          );
+          const isActive = condVal !== 0;
 
-        if (isActive && !clause.wasActive) {
-          for (const action of clause.actions) {
-            const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId);
-            valuesByStringId[action.targetNameId] = val;
+          if (isActive && !clause.wasActive) {
+            anyFired = true;
+            for (const action of clause.actions) {
+              const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId, this.preValuesByStringId);
+              valuesByStringId[action.targetNameId] = val;
+              modifiedByWhen.add(action.targetNameId);
+            }
+            // Re-evaluate the condition after actions (e.g. reinit) to properly set the edge-detection
+            // state for the next step, preventing immediate spurious re-triggering.
+            const postCondVal = evaluateArenaRuntime(
+              this.arena,
+              clause.conditionExprId,
+              valuesByStringId,
+              this.preValuesByStringId,
+            );
+            clause.wasActive = postCondVal !== 0;
+          } else {
+            clause.wasActive = isActive;
           }
         }
-
-        // Re-evaluate the condition after actions (e.g. reinit) to properly set the edge-detection
-        // state for the next step, preventing immediate spurious re-triggering.
-        const postCondVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
-        clause.wasActive = postCondVal !== 0;
+        if (!anyFired) break;
+        this.evaluateBlocks(valuesByStringId);
       }
 
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
@@ -2607,35 +3119,30 @@ export class ArenaSimulator {
         yAfter[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
       }
 
-      // Project state onto the zero-crossing surface to prevent chattering.
-      // The bisection locates events to ~1e-12 precision, but the residual
-      // non-zero g value can trigger immediate re-detection. By projecting
-      // the state variable(s) involved in the event indicator to g=0, the
-      // solver restarts cleanly on the correct side.
+      // Project state onto the zero-crossing surface to prevent chattering,
+      // unless the state variable was explicitly reinitialized by a when-action.
       if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
         const ei = this.eventIndicators[eventIdx];
         if (ei) {
-          // If the event indicator is a synthetic Sub expression (lhs - rhs),
-          // find which state variable is the LHS and project it.
           const eiKind = this.arena.getExprKind(ei.exprId);
           if (eiKind === ExprKind.Binary) {
             const op = this.arena.getExprData1(ei.exprId) as BinOp;
             if (op === BinOp.Sub) {
               const lhsId = this.arena.getExprLeft(ei.exprId);
-              // Check if LHS is a state variable reference
               if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
                 const nameId = this.arena.getExprData1(lhsId);
-                for (let i = 0; i < n; i++) {
-                  if (stateStringIds[i] === nameId) {
-                    // Project: set state[i] so that lhs - rhs = 0 → state = rhs
-                    const rhsVal = evaluateArenaRuntime(
-                      this.arena,
-                      this.arena.getExprRight(ei.exprId),
-                      valuesByStringId,
-                    );
-                    yAfter[i] = rhsVal;
-                    valuesByStringId[nameId] = rhsVal;
-                    break;
+                if (!modifiedByWhen.has(nameId)) {
+                  for (let i = 0; i < n; i++) {
+                    if (stateStringIds[i] === nameId) {
+                      const rhsVal = evaluateArenaRuntime(
+                        this.arena,
+                        this.arena.getExprRight(ei.exprId),
+                        valuesByStringId,
+                      );
+                      yAfter[i] = rhsVal;
+                      valuesByStringId[nameId] = rhsVal;
+                      break;
+                    }
                   }
                 }
               }
@@ -2724,6 +3231,11 @@ export class ArenaSimulator {
   // Simulation (multi-solver: Euler, RK4, Dopri5, BDF)
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Synchronously integrates the prepared DAE system over `steps` output intervals of width `step`,
+   * supporting fixed-step (`"euler"`, `"rk4"`) and adaptive (`"dopri5"`, `"tsit5"`, `"bdf"`,
+   * `"rodas4p"`, `"trbdf2"`, `"auto"`) solvers, online STL safety barrier monitors, and interval checks.
+   */
   simulate(
     steps: number,
     step: number,
@@ -2731,14 +3243,16 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     options?: {
-      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode";
-      atol?: number;
-      rtol?: number;
-      outputStringIds?: number[];
-      stlMonitors?: OnlineSTLMonitor[];
-      earlyTerminateOnViolation?: boolean;
-      intervalBarrierCheck?: boolean;
-      onStepViolation?: (t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void;
+      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode" | undefined;
+      atol?: number | undefined;
+      rtol?: number | undefined;
+      outputStringIds?: number[] | undefined;
+      stlMonitors?: OnlineSTLMonitor[] | undefined;
+      earlyTerminateOnViolation?: boolean | undefined;
+      intervalBarrierCheck?: boolean | undefined;
+      onStepViolation?:
+        | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
+        | undefined;
     },
   ) {
     const solver = options?.solver ?? "rk4";
@@ -2901,7 +3415,7 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     options?: {
-      solver?: "euler" | "rk4";
+      solver?: "euler" | "rk4" | undefined;
     },
   ): void {
     const solver = options?.solver ?? "rk4";
@@ -2964,13 +3478,15 @@ export class ArenaSimulator {
     derivStringIds: number[],
     timeId: number,
     options?: {
-      atol?: number;
-      rtol?: number;
-      outputStringIds?: number[];
-      stlMonitors?: OnlineSTLMonitor[];
-      earlyTerminateOnViolation?: boolean;
-      intervalBarrierCheck?: boolean;
-      onStepViolation?: (t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void;
+      atol?: number | undefined;
+      rtol?: number | undefined;
+      outputStringIds?: number[] | undefined;
+      stlMonitors?: OnlineSTLMonitor[] | undefined;
+      earlyTerminateOnViolation?: boolean | undefined;
+      intervalBarrierCheck?: boolean | undefined;
+      onStepViolation?:
+        | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
+        | undefined;
     },
   ) {
     const n = stateStringIds.length;
@@ -3153,24 +3669,37 @@ export class ArenaSimulator {
       const sId = stateIds[i] ?? -1;
       if (sId < 0) continue;
       const name = this.arena.interner.resolve(sId);
-      if (name && (name.endsWith(".v") || name.endsWith(".w"))) {
-        const v0 = (y0 as any)[i] ?? 0;
-        const v1 = vals[sId] ?? 0;
-        // Friction zero-crossing / stiction rest condition
-        if ((v0 > 0 && v1 <= 0.005) || (v0 < 0 && v1 >= -0.005) || Math.abs(v1) <= 1e-4) {
-          const prefix = name.substring(0, name.lastIndexOf("."));
-          const faIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.f`);
-          const faPhiIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.tau`);
-          const faF =
-            faIdx >= 0
-              ? vals[this.arena.getVarNameId(faIdx)]
-              : faPhiIdx >= 0
-                ? vals[this.arena.getVarNameId(faPhiIdx)]
-                : 0;
-          if (Math.abs(faF) < 1e-3) {
-            vals[sId] = 0;
-          }
+      if (!name) continue;
+      const dotIdx = name.lastIndexOf(".");
+      if (dotIdx < 0) continue;
+      const v0 = (y0 as any)[i] ?? 0;
+      const v1 = vals[sId] ?? 0;
+      const crossedZero = (v0 > 1e-9 && v1 <= 0) || (v0 < -1e-9 && v1 >= 0);
+      const deceleratingIntoStiction =
+        Math.abs(v0) > Math.abs(v1) && ((v0 > 0 && v1 <= 0.005) || (v0 < 0 && v1 >= -0.005) || Math.abs(v1) <= 1e-4);
+      if (!crossedZero && !deceleratingIntoStiction) continue;
+
+      const prefix = name.substring(0, dotIdx);
+      // Verify the component has a connector flow variable with negligible net driving force/torque
+      let flowVarNameId = -1;
+      for (let vIdx = 0; vIdx < this.arena.varCount; vIdx++) {
+        if (this.arena.isVarRemoved(vIdx) || !this.arena.isVarFlow(vIdx)) continue;
+        const vName = this.arena.getVarName(vIdx);
+        if (vName.startsWith(prefix + ".")) {
+          flowVarNameId = this.arena.getVarNameId(vIdx);
+          break;
         }
+      }
+      if (flowVarNameId < 0) {
+        const faIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.f`);
+        const faPhiIdx = this.arena.getVarIdxByName(`${prefix}.flange_a.tau`);
+        if (faIdx >= 0) flowVarNameId = this.arena.getVarNameId(faIdx);
+        else if (faPhiIdx >= 0) flowVarNameId = this.arena.getVarNameId(faPhiIdx);
+      }
+      if (flowVarNameId < 0) continue;
+      const flowVal = vals[flowVarNameId] ?? 0;
+      if (Math.abs(flowVal) < 1e-3) {
+        vals[sId] = 0;
       }
     }
   }
@@ -3235,6 +3764,106 @@ export class ArenaSimulator {
     this.projectFrictionRestStates(y0, vals, stateIds);
   }
 
+  /**
+   * Computes the structural upper (`mu`) and lower (`ml`) bandwidths of the ODE state Jacobian
+   * by propagating state dependencies through `this.executionBlocks`.
+   */
+  private computeStateJacobianBandwidth(
+    stateStringIds: number[],
+    derivStringIds: number[],
+  ): { mu: number; ml: number } {
+    const n = stateStringIds.length;
+    if (n <= 1) return { mu: 0, ml: 0 };
+
+    const stateDeps = new Map<number, Set<number>>();
+    for (let j = 0; j < n; j++) {
+      stateDeps.set(stateStringIds[j] as number, new Set([j]));
+    }
+
+    const collectExprDeps = (exprId: number, out: Set<number>): void => {
+      if (exprId < 0) return;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Name) {
+        const nid = this.arena.getExprData1(exprId);
+        const deps = stateDeps.get(nid);
+        if (deps) {
+          for (const s of deps) out.add(s);
+        }
+        return;
+      }
+      if (kind === ExprKind.Der) {
+        const inner = this.arena.getExprData1(exprId);
+        if (this.arena.getExprKind(inner) === ExprKind.Name) {
+          const innerName = this.arena.interner.resolve(this.arena.getExprData1(inner));
+          if (innerName) {
+            const derId = this.arena.interner.intern(`der(${innerName})`);
+            const deps = stateDeps.get(derId);
+            if (deps) {
+              for (const s of deps) out.add(s);
+            }
+          }
+        }
+        return;
+      }
+      if (kind === ExprKind.Binary) {
+        collectExprDeps(this.arena.getExprLeft(exprId), out);
+        collectExprDeps(this.arena.getExprRight(exprId), out);
+        return;
+      }
+      if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+        collectExprDeps(this.arena.getExprLeft(exprId), out);
+        return;
+      }
+      if (kind === ExprKind.IfElse) {
+        collectExprDeps(this.arena.getExprData1(exprId), out);
+        collectExprDeps(this.arena.getExprLeft(exprId), out);
+        collectExprDeps(this.arena.getExprRight(exprId), out);
+        return;
+      }
+      if (kind === ExprKind.Call) {
+        const argc = this.arena.getExprRight(exprId);
+        const firstArg = this.arena.getExprLeft(exprId);
+        for (let a = 0; a < argc; a++) {
+          collectExprDeps(a === 0 ? firstArg : this.arena.getExprLeft(exprId + a), out);
+        }
+      }
+    };
+
+    for (const block of this.executionBlocks) {
+      if (block.type === "single") {
+        const deps = new Set<number>();
+        collectExprDeps(block.exprId, deps);
+        stateDeps.set(this.arena.getVarNameId(block.varIdx), deps);
+      } else if (block.type === "system") {
+        const deps = new Set<number>();
+        for (const eqIdx of block.eqIdxs) {
+          collectExprDeps(this.arena.getEqLhs(eqIdx), deps);
+          collectExprDeps(this.arena.getEqRhs(eqIdx), deps);
+        }
+        for (const vIdx of block.vars) {
+          stateDeps.set(this.arena.getVarNameId(vIdx), deps);
+        }
+      }
+    }
+
+    let mu = 0;
+    let ml = 0;
+    for (let i = 0; i < n; i++) {
+      const dDeps = stateDeps.get(derivStringIds[i] as number);
+      if (!dDeps) continue;
+      for (const j of dDeps) {
+        if (j > i && j - i > mu) mu = j - i;
+        if (i > j && i - j > ml) ml = i - j;
+      }
+    }
+    return { mu, ml };
+  }
+
+  /**
+   * Executes the simulation using the LLNL SUNDIALS CVODE WebAssembly BDF integrator,
+   * handling zero-crossing rootfinding (`CV_ROOT_RETURN`), discrete `when`-clause updates,
+   * state machine transitions, and solver reinitialization.
+   */
   private async simulateCvodeWasm(
     wasmMod: any,
     CvodeSolverClass: any,
@@ -3245,10 +3874,10 @@ export class ArenaSimulator {
     derivStringIds: number[],
     timeId: number,
     options?: {
-      signal?: AbortSignal;
-      atol?: number;
-      rtol?: number;
-      outputStringIds?: number[];
+      signal?: AbortSignal | undefined;
+      atol?: number | undefined;
+      rtol?: number | undefined;
+      outputStringIds?: number[] | undefined;
     },
   ): Promise<{ t: number[]; y: number[][] }> {
     this.preValuesByStringId = new Float64Array(valuesByStringId.length);
@@ -3274,7 +3903,7 @@ export class ArenaSimulator {
         this.processWhenClauses(valuesByStringId);
         resultT[s] = currentT;
         resultY[s] = new Float64Array(outN);
-        for (let i = 0; i < outN; i++) resultY[s][i] = valuesByStringId[outIds[i] as number] ?? 0;
+        for (let i = 0; i < outN; i++) resultY[s]![i] = valuesByStringId[outIds[i] as number] ?? 0;
       }
       return { t: Array.from(resultT), y: resultY.map((arr) => Array.from(arr)) };
     }
@@ -3311,12 +3940,16 @@ export class ArenaSimulator {
       };
     }
 
+    const { mu: structuralMu, ml: structuralMl } = this.computeStateJacobianBandwidth(stateStringIds, derivStringIds);
+    const isBanded = n > 50 && structuralMu + structuralMl > 0 && structuralMu + structuralMl < Math.floor(n / 3);
+    const chosenLinearSolver = (options as any)?.linearSolver ?? (isBanded ? "band" : "auto");
+
     const solver = new CvodeSolverClass(wasmMod, n, t, y0, rhsFn, nEvents, eventFn, {
       atol: options?.atol,
       rtol: options?.rtol,
-      linearSolver: (options as any)?.linearSolver ?? (n > 50 ? "band" : "auto"),
-      mu: (options as any)?.mu ?? 0,
-      ml: (options as any)?.ml ?? 1,
+      linearSolver: chosenLinearSolver,
+      mu: (options as any)?.mu ?? structuralMu,
+      ml: (options as any)?.ml ?? structuralMl,
       nnz: (options as any)?.nnz,
     });
 
@@ -3421,6 +4054,11 @@ export class ArenaSimulator {
     };
   }
 
+  /**
+   * Asynchronously integrates the prepared DAE system over `steps` intervals of size `step`,
+   * supporting SUNDIALS CVODE WASM (`solver: "cvode"`), interactive DAP debugger hooks,
+   * cooperative event-loop yielding, and `AbortSignal` cancellation.
+   */
   async simulateAsync(
     steps: number,
     step: number,
@@ -3428,11 +4066,11 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     options?: {
-      signal?: AbortSignal;
-      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode";
-      atol?: number;
-      rtol?: number;
-      outputStringIds?: number[];
+      signal?: AbortSignal | undefined;
+      solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "cvode" | undefined;
+      atol?: number | undefined;
+      rtol?: number | undefined;
+      outputStringIds?: number[] | undefined;
     },
   ) {
     const solver = options?.solver ?? "rk4";
@@ -3705,19 +4343,7 @@ export class ArenaSimulator {
             dualEnv[varNameId] = val;
           }
         } else if (block.type === "system") {
-          // Iterate system block equations to propagate derivatives
-          for (let iter = 0; iter < 5; iter++) {
-            for (let i = 0; i < block.vars.length; i++) {
-              const varIdx = block.vars[i]!;
-              const eqIdx = block.eqIdxs[i]!;
-              const rhsId = this.arena.getEqRhs(eqIdx);
-              const val = evaluateArenaDualExpression(this.arena, rhsId, dualEnv);
-              if (val !== null) {
-                const varNameId = this.arena.getVarNameId(varIdx);
-                dualEnv[varNameId] = val;
-              }
-            }
-          }
+          this.propagateSystemBlockDual(block, valuesByStringId, dualEnv);
         }
       }
 
@@ -3735,6 +4361,102 @@ export class ArenaSimulator {
 
     return { f, J };
   }
+
+  /**
+   * Propagates forward-mode dual sensitivities through a coupled algebraic system block
+   * $F(z, y(s), s) = \text{lhs} - \text{rhs} = 0$ via the Implicit Function Theorem:
+   * $$J_{\text{alg}} \dot{z} = -\left.\frac{\partial F}{\partial s}\right|_{\dot{z}=0}$$
+   */
+  public propagateSystemBlockDual(
+    block: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>,
+    valuesByStringId: Float64Array,
+    dualEnv: Dual[],
+  ): void {
+    const m = block.vars.length;
+    if (m === 0) return;
+
+    this.ensureNewtonCapacity(m);
+
+    const J = this.newtonScratchMat;
+    const rhsVec = this.newtonScratchNegR;
+    const piv = this.newtonScratchPiv;
+    const scale = this.newtonScratchScale;
+    const dualStack = this.newtonScratchDualStack;
+
+    const blockAny = block as any;
+    let cachedVarIds: Int32Array | undefined = blockAny._varNameIds;
+    let cachedResIds: Int32Array | undefined = blockAny._resExprIds;
+    if (!cachedVarIds || !cachedResIds) {
+      cachedVarIds = new Int32Array(m);
+      cachedResIds = new Int32Array(m);
+      for (let i = 0; i < m; i++) {
+        cachedVarIds[i] = this.arena.getVarNameId(block.vars[i] as number);
+        const eqIdx = block.eqIdxs[i] as number;
+        const lhsId = this.arena.getEqLhs(eqIdx);
+        const rhsId = this.arena.getEqRhs(eqIdx);
+        cachedResIds[i] = this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
+      }
+      blockAny._varNameIds = cachedVarIds;
+      blockAny._resExprIds = cachedResIds;
+    }
+
+    // 1. Freeze block unknown dual derivatives to 0 to evaluate partial derivative wrt upstream variables/seed
+    for (let j = 0; j < m; j++) {
+      const nid = cachedVarIds[j] as number;
+      dualEnv[nid] = Dual.constant(valuesByStringId[nid] ?? 0);
+    }
+
+    for (let i = 0; i < m; i++) {
+      const resId = cachedResIds[i] as number;
+      const resDual = evaluateArenaDualExpression(this.arena, resId, dualEnv);
+      rhsVec[i] = -(resDual ? resDual.dot : 0);
+    }
+
+    // 2. Assemble block Jacobian J[i, j] = d(lhs_i - rhs_i) / d(z_j)
+    for (let j = 0; j < m; j++) {
+      const nid = cachedVarIds[j] as number;
+      const xj = valuesByStringId[nid] ?? 0;
+      for (let i = 0; i < m; i++) {
+        const resId = cachedResIds[i] as number;
+        const ok = evaluateArenaDualFlat(this.arena, resId, valuesByStringId, nid, dualStack, 0);
+        if (ok) {
+          J[i * m + j] = dualStack[1] as number;
+        } else {
+          const baseVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId);
+          const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
+          valuesByStringId[nid] = xj + eps;
+          const pertVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId);
+          valuesByStringId[nid] = xj;
+          J[i * m + j] = ((isFinite(pertVal) ? pertVal : 0) - (isFinite(baseVal) ? baseVal : 0)) / eps;
+        }
+      }
+    }
+
+    // 3. Solve J * z_dot = -dF/ds
+    try {
+      const fact = luFactorFlat(J, m, piv, scale);
+      luSolveFlat(fact, rhsVec);
+      for (let j = 0; j < m; j++) {
+        const nid = cachedVarIds[j] as number;
+        const dotVal = rhsVec[j] as number;
+        dualEnv[nid] = new Dual(valuesByStringId[nid] ?? 0, isFinite(dotVal) ? dotVal : 0);
+      }
+    } catch {
+      // Fallback if block Jacobian is singular: fixed-point dual propagation on RHS
+      for (let iter = 0; iter < 5; iter++) {
+        for (let i = 0; i < m; i++) {
+          const varIdx = block.vars[i]!;
+          const eqIdx = block.eqIdxs[i]!;
+          const rhsId = this.arena.getEqRhs(eqIdx);
+          const val = evaluateArenaDualExpression(this.arena, rhsId, dualEnv);
+          if (val !== null) {
+            const varNameId = this.arena.getVarNameId(varIdx);
+            dualEnv[varNameId] = val;
+          }
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -3746,9 +4468,9 @@ export function initializeArenaEnvironment(
   arena: DAEBuilder,
   sim: ArenaSimulator,
   options?: {
-    startTime?: number;
-    parameterOverrides?: Map<string, number>;
-    initialStateOverrides?: Map<string, number>;
+    startTime?: number | undefined;
+    parameterOverrides?: Map<string, number> | undefined;
+    initialStateOverrides?: Map<string, number> | undefined;
   },
 ): {
   valuesByStringId: Float64Array;
@@ -3866,56 +4588,73 @@ export interface ArenaSimulationResult {
   /** Names of state variables (column headers for y). */
   states: string[];
   /** Whether simulation was terminated early by safety barrier monitor. */
-  terminatedEarly?: boolean;
+  terminatedEarly?: boolean | undefined;
   /** Recorded safety barrier violations. */
-  safetyViolations?: {
-    t: number;
-    monitorName?: string;
-    robustness: number;
-    details?: string;
-  }[];
+  safetyViolations?:
+    | {
+        t: number;
+        monitorName?: string | undefined;
+        robustness: number;
+        details?: string | undefined;
+      }[]
+    | undefined;
   /** Recorded interval domain and singularity issues. */
-  intervalIssues?: string[];
+  intervalIssues?: string[] | undefined;
 }
 
 /** Options for `simulateArena()`. */
 export interface ArenaSimulateOptions {
-  startTime?: number;
-  stopTime?: number;
+  /** Simulation start time $t_0$ (defaults to `experiment(StartTime)` or `0`). */
+  startTime?: number | undefined;
+  /** Simulation stop time $t_{\text{end}}$ (defaults to `experiment(StopTime)` or `10`). */
+  stopTime?: number | undefined;
   /** Output interval (step size). */
-  step?: number;
+  step?: number | undefined;
   /** Number of output intervals (used if `step` is not given). */
-  numberOfIntervals?: number;
+  numberOfIntervals?: number | undefined;
   /** ODE/DAE solver selection. */
-  solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "webgpu" | "cvode";
+  solver?:
+    | "euler"
+    | "rk4"
+    | "dopri5"
+    | "tsit5"
+    | "bdf"
+    | "rodas4p"
+    | "trbdf2"
+    | "auto"
+    | "webgpu"
+    | "cvode"
+    | undefined;
   /** Absolute tolerance for adaptive solvers (default: 1e-6). */
-  atol?: number;
+  atol?: number | undefined;
   /** Relative tolerance for adaptive solvers (default: 1e-6). */
-  rtol?: number;
+  rtol?: number | undefined;
   /** Custom output string IDs for subsetting result traces. */
-  outputStringIds?: number[];
+  outputStringIds?: number[] | undefined;
   /** Parameter overrides (name → value). */
-  parameterOverrides?: Map<string, number>;
+  parameterOverrides?: Map<string, number> | undefined;
   /** Initial state overrides (name → value) at startTime. */
-  initialStateOverrides?: Map<string, number>;
+  initialStateOverrides?: Map<string, number> | undefined;
   /** Abort signal for cooperative cancellation. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** Optional FMU co-simulation subsystem registry for hybrid simulation. */
-  fmuRegistry?: FmuSubsystemRegistry;
+  fmuRegistry?: FmuSubsystemRegistry | undefined;
   /** Optional debugger hook for step-by-step statement execution. */
-  debuggerHook?: SimulationDebugger;
+  debuggerHook?: SimulationDebugger | undefined;
   /** When true, preserves internal variables tagged with HideResult. */
-  debug?: boolean;
+  debug?: boolean | undefined;
   /** When true, only solves the steady-state initial equilibrium and returns immediately at startTime. */
-  steadyStateOnly?: boolean;
+  steadyStateOnly?: boolean | undefined;
   /** Real-time STL safety barrier monitors to evaluate during integration. */
-  stlMonitors?: OnlineSTLMonitor[];
+  stlMonitors?: OnlineSTLMonitor[] | undefined;
   /** Immediately halt integration if an STL monitor detects safety violation (rho < 0). */
-  earlyTerminateOnViolation?: boolean;
+  earlyTerminateOnViolation?: boolean | undefined;
   /** Check variable min/max bounds and DAE singularities at each step. */
-  intervalBarrierCheck?: boolean;
+  intervalBarrierCheck?: boolean | undefined;
   /** Callback invoked on safety violation. */
-  onStepViolation?: (t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void;
+  onStepViolation?:
+    | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
+    | undefined;
 }
 
 /**
@@ -4205,10 +4944,31 @@ export async function simulateArenaAsync(
         valuesByStringId[nameId] = val;
       }
     }
+    const startAttrId = arena.getVarAttrExprId(i, "start");
+    if (typeof startAttrId === "number" && startAttrId !== -1) {
+      const val = evaluateArenaExpression(arena, startAttrId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
+    const startWasmExprId = arena.getVarAttrExpr(i, VarAttrKind.Start);
+    if (typeof startWasmExprId === "number" && startWasmExprId > 0) {
+      const val = evaluateArenaExpression(arena, startWasmExprId, sim.parameters);
+      if (val !== null && typeof val === "number" && isFinite(val)) {
+        valuesByStringId[nameId] = val;
+      }
+    }
   }
 
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
+
+  if (options?.initialStateOverrides) {
+    for (const [name, val] of options.initialStateOverrides) {
+      const nameId = arena.interner.intern(name);
+      valuesByStringId[nameId] = val;
+    }
+  }
 
   const stateNameIds: number[] = [];
   const derivNameIds: number[] = [];
@@ -4256,11 +5016,17 @@ export async function simulateArenaAsync(
     };
 
     const buffers = serializeArenaForGPU(arena, bltResult, sim.stateVars);
+    const varOffsets = buffers.varOffsets ?? arena.getVarOffsets?.();
 
-    // Copy the initialized values into the GPU state buffer
+    // Copy the initialized values into the GPU state buffer using double-single [hi, lo] stride-2 packing
     for (let i = 0; i < arena.varCount; i++) {
       const nameId = arena.getVarNameId(i);
-      buffers.stateBuffer[i] = valuesByStringId[nameId] ?? 0;
+      const val = valuesByStringId[nameId] ?? 0;
+      const offset = varOffsets ? (varOffsets[i] ?? i) : i;
+      const hi = Math.fround(val);
+      const lo = Math.fround(val - hi);
+      buffers.stateBuffer[offset * 2] = hi;
+      buffers.stateBuffer[offset * 2 + 1] = lo;
     }
 
     const runner = new WebGPUSimulationRunner(arena, buffers);
@@ -4284,7 +5050,9 @@ export async function simulateArenaAsync(
         const y0 = new Float32Array(stateVarsArr.length);
         for (let i = 0; i < stateVarsArr.length; i++) {
           const varIdx = stateVarsArr[i] ?? -1;
-          y0[i] = varIdx !== -1 ? (buffers.stateBuffer[varIdx] ?? 0) : 0;
+          const offset = varIdx !== -1 ? (varOffsets ? (varOffsets[varIdx] ?? varIdx) : varIdx) : -1;
+          y0[i] =
+            offset !== -1 ? (buffers.stateBuffer[offset * 2] ?? 0) + (buffers.stateBuffer[offset * 2 + 1] ?? 0) : 0;
         }
 
         const result = await runner.runSimulationAdaptive(startTime, y0, stopTime, outputTimes, {
@@ -4311,7 +5079,8 @@ export async function simulateArenaAsync(
           const row = new Array(stateNames.length);
           for (let j = 0; j < stateNames.length; j++) {
             const varIdx = Array.from(sim.stateVars)[j] ?? -1;
-            row[j] = varIdx !== -1 ? (gpuResultBuffer[s * arena.varCount + varIdx] ?? 0) : 0;
+            const offset = varIdx !== -1 ? (varOffsets ? (varOffsets[varIdx] ?? varIdx) : varIdx) : -1;
+            row[j] = offset !== -1 ? (gpuResultBuffer[s * buffers.varCount + offset] ?? 0) : 0;
           }
           y[s] = row;
         }

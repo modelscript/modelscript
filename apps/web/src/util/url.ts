@@ -8,7 +8,7 @@ const SCHEME_REGEX = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
  */
 export function sanitizeHttpUrl(
   rawUrl: string | null | undefined,
-  options?: { allowRelative?: boolean; prependHttpsIfMissingScheme?: boolean },
+  options?: { allowRelative?: boolean | undefined; prependHttpsIfMissingScheme?: boolean | undefined },
 ): string | undefined {
   if (!rawUrl || typeof rawUrl !== "string") return undefined;
   // Strip ASCII control characters and leading/trailing whitespace
@@ -78,4 +78,42 @@ export function safeCssImageUrl(rawUrl: string | null | undefined): string | und
 
   const escaped = safeUrl.replace(/["\\()\n\r]/g, (ch) => `\\${ch}`);
   return `url("${escaped}")`;
+}
+
+/**
+ * Normalizes React Router route params for both unscoped (`/packages/:name/...`)
+ * and scoped (`/packages/:scope/:name/...`) package routes.
+ */
+export function resolvePackageParams(params: {
+  scope?: string | undefined;
+  name?: string | undefined;
+  version?: string | undefined;
+  className?: string | undefined;
+}): {
+  name: string | undefined;
+  version: string | undefined;
+  className: string | undefined;
+} {
+  const rawScope = params.scope ? decodeURIComponent(params.scope) : undefined;
+  const rawName = params.name ? decodeURIComponent(params.name) : undefined;
+  const fullName = rawScope && rawName ? `${rawScope}/${rawName}` : rawName;
+  return {
+    name: fullName,
+    version: params.version ? decodeURIComponent(params.version) : undefined,
+    className: params.className ? decodeURIComponent(params.className) : undefined,
+  };
+}
+
+/**
+ * Safely encodes a package name for API and router path segments.
+ * Preserves the `@scope/name` slash structure for scoped packages while encoding
+ * individual path segments.
+ */
+export function encodePackagePath(name: string): string {
+  if (!name) return "";
+  if (name.startsWith("@") && name.includes("/")) {
+    const [scope, ...rest] = name.split("/");
+    return `${encodeURIComponent(scope!)}/${encodeURIComponent(rest.join("/"))}`;
+  }
+  return encodeURIComponent(name);
 }

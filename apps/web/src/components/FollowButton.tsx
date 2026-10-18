@@ -8,12 +8,12 @@ import { followUser, unfollowUser } from "../api";
 interface FollowButtonProps {
   username: string;
   initialIsFollowing: boolean;
-  onToggle?: (isFollowing: boolean) => void;
-  size?: "small" | "medium" | "large";
-  isRssFeed?: boolean;
+  onToggle?: ((isFollowing: boolean) => void) | undefined;
+  size?: "small" | "medium" | "large" | undefined;
+  isRssFeed?: boolean | undefined;
 }
 
-const StyledFollowBtn = styled.button<{ $isFollowing: boolean; $size?: string }>`
+const StyledFollowBtn = styled.button<{ $isFollowing: boolean; $size?: string | undefined }>`
   border-radius: 9999px;
   font-weight: 600;
   font-size: ${(props) => (props.$size === "small" ? "12px" : "13.5px")};

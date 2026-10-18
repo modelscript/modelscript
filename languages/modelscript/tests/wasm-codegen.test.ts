@@ -72,4 +72,30 @@ test("Phase 5: WebAssembly Emitter & Linear Memory IR", async (t) => {
     const expected = 3.141592653589793 * 2.5 * 2.5;
     assert.ok(Math.abs(wasmArea - expected) < 1e-9);
   });
+
+  await t.test(
+    "compiles and executes struct instantiation, field access, and array indexing in WebAssembly",
+    async () => {
+      const code = `
+      @unmanaged
+      struct Vector2D {
+        x: f64;
+        y: f64;
+        tag: i32;
+      }
+
+      function computeStructAndArray(): f64 {
+        let v = new Vector2D(3.0, 4.0, 7);
+        let weights = [10, 20, 30];
+        let magSq: f64 = (v.x * v.x) + (v.y * v.y);
+        let bonus: i32 = v.tag + weights[1] + weights.length;
+        return magSq + bonus;
+      }
+    `;
+
+      const wasmResult = await compiler.executeWasm(code, "computeStructAndArray", []);
+      // magSq = 9 + 16 = 25; bonus = 7 + 20 + 3 = 30; total = 55
+      assert.equal(wasmResult, 55);
+    },
+  );
 });

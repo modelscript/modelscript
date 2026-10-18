@@ -48,29 +48,46 @@ export function getBdfErrorConst(order: u32): f64 {
  */
 @unmanaged
 export class BdfSolver {
+  /** Linear memory pointer to the associated `DaeBuilder` instance. */
   daePtr: u32;
+  /** Number of continuous differential state variables $N$. */
   nStates: u32;
+  /** Current active BDF integration order ($1 \dots 5$). */
   order: u32; // Current order (1..5)
+  /** Maximum permissible BDF integration order ($1 \dots 5$). */
   maxOrder: u32;
+  /** Absolute error tolerance for local truncation error and Newton convergence checks. */
   atol: f64;
+  /** Relative error tolerance for local truncation error and Newton convergence checks. */
   rtol: f64;
+  /** Total number of integration steps taken since initialization. */
   stepCount: u32;
 
   // Nordsieck History Array: z[order+1][nStates]
   // Row 0: y_n
   // Row 1: h * y_n'
   // Row 2: (h^2 / 2) * y_n'' ...
+  /** Pointer to the flattened Nordsieck history matrix (`6 * nStates` `f64` elements). */
   historyPtr: usize;
+  /** Pointer to the `u32[nStates]` array mapping state slot indices to DAE variable indices. */
   stateIndicesPtr: usize; // u32[nStates]
+  /** Pointer to the `u32[nStates]` array mapping state slot indices to derivative DAE variable indices. */
   derivIndicesPtr: usize; // u32[nStates]
 
   // Scratch memory for Newton iterations and LU
+  /** Pointer to contiguous unmanaged scratch memory used for Newton residuals, Jacobians, and LU pivoting. */
   scratchPtr: usize;
 
+  /** Returns a typed view over the Nordsieck history buffer. */
   @inline get history(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.historyPtr); }
+  /** Returns a typed view over the continuous state variable index mapping. */
   @inline get stateIndices(): UnmanagedUint32Array { return changetype<UnmanagedUint32Array>(this.stateIndicesPtr); }
+  /** Returns a typed view over the state derivative variable index mapping. */
   @inline get derivIndices(): UnmanagedUint32Array { return changetype<UnmanagedUint32Array>(this.derivIndicesPtr); }
 
+  /**
+   * Initializes the BDF solver state and allocates Nordsieck history and Newton/LU scratch buffers.
+   */
   init(daePtr: u32, nStates: u32, atol: f64, rtol: f64, maxOrder: u32): void {
     this.daePtr = daePtr;
     this.nStates = nStates;
@@ -306,25 +323,47 @@ export function stepMultiOrderBDF(
 
   evalBdfEquations(solver, dae, varValuesPtr);
 
-  // 3. Update Nordsieck History with Difference Correction
+  // 3. Update Nordsieck History with Difference Correction (Byrne & Hindmarsh l_j weights)
+  let maxErrNorm: f64 = 0.0;
+  let errConst: f64 = 1.0 / ((q + 1) as f64);
+
   for (let i: u32 = 0; i < n; i++) {
     let sIdx = stateIndices[i];
     let yFinal = varValues[sIdx];
     let yPred = hist[i];
     let delta = yFinal - yPred;
 
+    let absY = Math.abs(yFinal);
+    let sc = solver.atol + solver.rtol * absY;
+    if (sc < 1e-15) sc = 1e-15;
+    let errI = (errConst * Math.abs(delta)) / sc;
+    if (errI > maxErrNorm) maxErrNorm = errI;
+
     hist[i] = yFinal;
     hist[1 * n + i] = dt * varValues[derivIndices[i]];
 
-    if (q >= 2) {
-      let row2 = hist[2 * n + i];
-      hist[2 * n + i] = row2 + delta * (1.0 / alpha0);
+    if (q == 2) {
+      hist[2 * n + i] = hist[2 * n + i] + delta * (1.0 / 3.0);
+    } else if (q == 3) {
+      hist[2 * n + i] = hist[2 * n + i] + delta * (6.0 / 11.0);
+      hist[3 * n + i] = hist[3 * n + i] + delta * (1.0 / 11.0);
+    } else if (q == 4) {
+      hist[2 * n + i] = hist[2 * n + i] + delta * (7.0 / 10.0);
+      hist[3 * n + i] = hist[3 * n + i] + delta * (1.0 / 5.0);
+      hist[4 * n + i] = hist[4 * n + i] + delta * (1.0 / 50.0);
+    } else if (q >= 5) {
+      hist[2 * n + i] = hist[2 * n + i] + delta * (225.0 / 274.0);
+      hist[3 * n + i] = hist[3 * n + i] + delta * (85.0 / 274.0);
+      hist[4 * n + i] = hist[4 * n + i] + delta * (15.0 / 274.0);
+      hist[5 * n + i] = hist[5 * n + i] + delta * (1.0 / 274.0);
     }
   }
 
-  // 4. Adaptive Order Control: Increase order if error is small
+  // 4. Adaptive Order Control based on predictor-corrector error norm
   solver.stepCount++;
-  if (solver.stepCount > 5 && solver.order < solver.maxOrder) {
+  if (maxErrNorm > 1.0 && solver.order > 1) {
+    solver.order--;
+  } else if (maxErrNorm < 0.5 && solver.stepCount > 5 && solver.order < solver.maxOrder) {
     solver.order++;
   }
 
@@ -335,6 +374,9 @@ export function stepMultiOrderBDF(
 // C/WASM Export Wrappers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Allocates and initializes a new variable-order `BdfSolver` instance in WebAssembly linear memory.
+ */
 export function dae_createBdfSolver(
   daePtr: u32,
   nStates: u32,
@@ -349,6 +391,9 @@ export function dae_createBdfSolver(
   return ptr as u32;
 }
 
+/**
+ * Maps state slot `idx` to its corresponding state variable ID (`stateVarIdx`) and derivative variable ID (`derivVarIdx`).
+ */
 export function dae_setBdfStateMapping(
   solverPtr: u32,
   idx: u32,
@@ -362,6 +407,9 @@ export function dae_setBdfStateMapping(
   solver.derivIndices[idx] = derivVarIdx;
 }
 
+/**
+ * Advances the BDF solver by a single time step `dt` from time `t`, updating `varValuesPtr` in place.
+ */
 export function dae_stepBdfSolver(
   solverPtr: u32,
   varValuesPtr: u32,

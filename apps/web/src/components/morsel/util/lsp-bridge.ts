@@ -93,48 +93,57 @@ export interface LspTextEdit {
 }
 
 export interface SimulateParams {
-  className?: string;
-  startTime?: number;
-  stopTime?: number;
-  interval?: number;
-  equidistant?: boolean;
-  solver?: string;
-  rtol?: number;
-  atol?: number;
-  numberOfIntervals?: number;
-  steadyStateOnly?: boolean;
-  format?: string;
-  parameterOverrides?: Record<string, number>;
-  sweepConfig?: { parameterName: string; start: number; end: number; steps: number };
+  className?: string | undefined;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  interval?: number | undefined;
+  equidistant?: boolean | undefined;
+  solver?: string | undefined;
+  rtol?: number | undefined;
+  atol?: number | undefined;
+  numberOfIntervals?: number | undefined;
+  steadyStateOnly?: boolean | undefined;
+  format?: string | undefined;
+  parameterOverrides?: Record<string, number> | undefined;
+  sweepConfig?: { parameterName: string; start: number; end: number; steps: number } | undefined;
 }
 
 export interface SimulateResult {
   t: number[];
   y: number[][];
   states: string[];
-  parameters?: {
-    name: string;
-    type: "real" | "integer" | "boolean" | "enumeration";
-    defaultValue: number;
-    min?: number;
-    max?: number;
-    step: number;
-    unit?: string;
-    enumLiterals?: { ordinal: number; label: string }[];
-  }[];
-  experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
-  error?: string;
-  sweepResults?: { value: number; y: number[][] }[];
+  parameters?:
+    | {
+        name: string;
+        type: "real" | "integer" | "boolean" | "enumeration";
+        defaultValue: number;
+        min?: number | undefined;
+        max?: number | undefined;
+        step: number;
+        unit?: string | undefined;
+        enumLiterals?: { ordinal: number; label: string }[] | undefined;
+      }[]
+    | undefined;
+  experiment?:
+    | {
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        tolerance?: number | undefined;
+      }
+    | undefined;
+  error?: string | undefined;
+  sweepResults?: { value: number; y: number[][] }[] | undefined;
 }
 
 export interface TreeNodeInfo {
   id: string;
   name: string;
-  compositeName?: string;
-  localizedName?: string;
-  classKind?: string;
+  compositeName?: string | undefined;
+  localizedName?: string | undefined;
+  classKind?: string | undefined;
   hasChildren: boolean;
-  iconSvg?: string | null;
+  iconSvg?: string | null | undefined;
 }
 
 export type ComponentProperties = ComponentPropertyData;
@@ -190,7 +199,10 @@ export async function calibrate(uri: string, params: Omit<CalibrateParams, "uri"
 // Flatten
 // ────────────────────────────────────────────────────────────────────
 
-export async function flatten(name: string, uri?: string): Promise<{ text: string | null; error?: string }> {
+export async function flatten(
+  name: string,
+  uri?: string,
+): Promise<{ text: string | null; error?: string | undefined }> {
   return (await lsp()).sendRequest("modelscript/flatten", { name, uri });
 }
 
@@ -202,7 +214,9 @@ export async function getLibraryTree(uri: string, parentId?: string): Promise<Tr
   return (await lsp()).sendRequest("modelscript/getLibraryTree", { uri, parentId });
 }
 
-export async function getClassSource(className: string): Promise<{ content: string | null; error?: string }> {
+export async function getClassSource(
+  className: string,
+): Promise<{ content: string | null; error?: string | undefined }> {
   return (await lsp()).sendRequest("modelscript/getClassSource", { className });
 }
 
@@ -281,15 +295,15 @@ export function applyLspEdits(
 
 export interface CalibrateParams {
   uri: string;
-  className?: string; // Target model to calibrate
+  className?: string | undefined; // Target model to calibrate
   csvData: string; // Raw CSV text
-  timeColumn?: string;
-  columnMapping?: Record<string, string>; // e.g., { "csvVar": "modelVar" }
+  timeColumn?: string | undefined;
+  columnMapping?: Record<string, string> | undefined; // e.g., { "csvVar": "modelVar" }
   parameters: string[]; // List of parameters to optimize
-  parameterBounds?: Record<string, { min: number; max: number }>;
-  tolerance?: number;
-  maxIterations?: number;
-  method?: "lm" | "sqp";
+  parameterBounds?: Record<string, { min: number; max: number }> | undefined;
+  tolerance?: number | undefined;
+  maxIterations?: number | undefined;
+  method?: "lm" | "sqp" | undefined;
 }
 
 export interface CalibrateResult {
@@ -303,5 +317,5 @@ export interface CalibrateResult {
     states: string[];
   };
   costHistory: number[];
-  error?: string;
+  error?: string | undefined;
 }

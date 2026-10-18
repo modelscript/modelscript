@@ -228,8 +228,8 @@ export const PlaygroundPage: React.FC = () => {
   const sourceParam = searchParams.get("source");
   const fromArtifactParam = searchParams.get("fromArtifact");
 
-  const [currentCode, setCurrentCode] = useState<string>(HERO_EXAMPLES[0].code);
-  const [currentTitle, setCurrentTitle] = useState<string>(HERO_EXAMPLES[0].name);
+  const [currentCode, setCurrentCode] = useState<string>(HERO_EXAMPLES[0]!.code);
+  const [currentTitle, setCurrentTitle] = useState<string>(HERO_EXAMPLES[0]!.name);
   usePageTitle(currentTitle ? `${currentTitle} — Playground` : "Playground");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);

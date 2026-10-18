@@ -34,8 +34,8 @@ export class RtmIndexEngine {
     if (
       rule === "HazardDefinition" ||
       rule === "HazardUsage" ||
-      entry.metadata?.defKind === "hazard" ||
-      entry.metadata?.hazardId ||
+      entry.metadata?.["defKind"] === "hazard" ||
+      entry.metadata?.["hazardId"] ||
       rule.toLowerCase().includes("hazard")
     ) {
       return "hazard";
@@ -79,8 +79,8 @@ export class RtmIndexEngine {
     }
 
     if (
-      entry.metadata?.isPhysical ||
-      entry.metadata?.category === "physical" ||
+      entry.metadata?.["isPhysical"] ||
+      entry.metadata?.["category"] === "physical" ||
       rule === "PhysicalComponentDefinition" ||
       rule === "PhysicalComponentUsage" ||
       entry.name?.toLowerCase().startsWith("hw_") ||
@@ -118,19 +118,19 @@ export class RtmIndexEngine {
       if (elementDomain !== domain) continue;
 
       const reqId =
-        (entry.metadata?.id as string) ??
-        (entry.metadata?.reqId as string) ??
+        (entry.metadata?.["id"] as string) ??
+        (entry.metadata?.["reqId"] as string) ??
         (domain === "requirement" ? `REQ-${String(seqId++).padStart(3, "0")}` : undefined);
 
       const hazardId =
-        (entry.metadata?.hazardId as string) ??
-        (entry.metadata?.id as string) ??
+        (entry.metadata?.["hazardId"] as string) ??
+        (entry.metadata?.["id"] as string) ??
         (domain === "hazard" ? `HAZ-${String(seqId++).padStart(3, "0")}` : undefined);
 
       const text =
-        (entry.metadata?.doc as string) ??
-        (entry.metadata?.description as string) ??
-        (entry.metadata?.text as string) ??
+        (entry.metadata?.["doc"] as string) ??
+        (entry.metadata?.["description"] as string) ??
+        (entry.metadata?.["text"] as string) ??
         "";
 
       let parentName = "";
@@ -155,11 +155,11 @@ export class RtmIndexEngine {
 
       let iso14971Data: any = undefined;
       if (domain === "hazard") {
-        const sev = Number(entry.metadata?.severity ?? entry.metadata?.initialSeverity ?? 4);
-        const prob = Number(entry.metadata?.probability ?? entry.metadata?.initialProbability ?? 3);
+        const sev = Number(entry.metadata?.["severity"] ?? entry.metadata?.["initialSeverity"] ?? 4);
+        const prob = Number(entry.metadata?.["probability"] ?? entry.metadata?.["initialProbability"] ?? 3);
         const rpn = sev * prob;
-        const resSev = Number(entry.metadata?.residualSeverity ?? Math.min(sev, 2));
-        const resProb = Number(entry.metadata?.residualProbability ?? 1);
+        const resSev = Number(entry.metadata?.["residualSeverity"] ?? Math.min(sev, 2));
+        const resProb = Number(entry.metadata?.["residualProbability"] ?? 1);
         const resRpn = resSev * resProb;
         iso14971Data = {
           hazardId: hazardId ?? entry.name,
@@ -173,12 +173,12 @@ export class RtmIndexEngine {
           residualProbability: resProb,
           residualRpn: resRpn,
           residualAcceptability: resRpn >= 15 ? "Unacceptable" : resRpn >= 8 ? "ALARP" : "Broadly Acceptable",
-          mitigationRequirementIds: entry.metadata?.mitigates
-            ? [String(entry.metadata.mitigates)]
-            : entry.metadata?.mitigatedBy
-              ? [String(entry.metadata.mitigatedBy)]
+          mitigationRequirementIds: entry.metadata?.["mitigates"]
+            ? [String(entry.metadata["mitigates"])]
+            : entry.metadata?.["mitigatedBy"]
+              ? [String(entry.metadata["mitigatedBy"])]
               : [],
-          status: entry.metadata?.mitigates || entry.metadata?.mitigatedBy ? "Mitigated" : "Unmitigated",
+          status: entry.metadata?.["mitigates"] || entry.metadata?.["mitigatedBy"] ? "Mitigated" : "Unmitigated",
         };
       }
 
@@ -195,7 +195,7 @@ export class RtmIndexEngine {
           reqId,
           hazardId,
           text,
-          category: (entry.metadata?.category as string) ?? undefined,
+          category: (entry.metadata?.["category"] as string) ?? undefined,
           iso14971: iso14971Data,
           parentName: parentName || undefined,
           packagePath: packagePath || undefined,
@@ -213,7 +213,7 @@ export class RtmIndexEngine {
   static extractLinks(
     index: SymbolIndex,
     evidenceMap?: Map<string, RtmVerificationEvidence>,
-    suspectMap?: Map<string, { isSuspect: boolean; reason?: string }>,
+    suspectMap?: Map<string, { isSuspect: boolean; reason?: string | undefined }>,
   ): { links: RtmLink[]; linkMap: Record<string, RtmLink> } {
     const links: RtmLink[] = [];
     const linkMap: Record<string, RtmLink> = {};
@@ -233,11 +233,11 @@ export class RtmIndexEngine {
       else if (rule.includes("Derive")) linkKind = "derive";
 
       // Also check Modelica/SysML metadata annotations for satisfies / verifies / mitigates / connects / allocates
-      const metaSatisfies = entry.metadata?.satisfies as string | undefined;
-      const metaVerifies = entry.metadata?.verifies as string | undefined;
-      const metaMitigates = (entry.metadata?.mitigates ?? entry.metadata?.mitigatedBy) as string | undefined;
-      const metaAllocates = (entry.metadata?.allocates ?? entry.metadata?.allocatedTo) as string | undefined;
-      const metaConnects = (entry.metadata?.connects ?? entry.metadata?.connectedTo) as string | undefined;
+      const metaSatisfies = entry.metadata?.["satisfies"] as string | undefined;
+      const metaVerifies = entry.metadata?.["verifies"] as string | undefined;
+      const metaMitigates = (entry.metadata?.["mitigates"] ?? entry.metadata?.["mitigatedBy"]) as string | undefined;
+      const metaAllocates = (entry.metadata?.["allocates"] ?? entry.metadata?.["allocatedTo"]) as string | undefined;
+      const metaConnects = (entry.metadata?.["connects"] ?? entry.metadata?.["connectedTo"]) as string | undefined;
 
       if (!linkKind && !metaSatisfies && !metaVerifies && !metaMitigates && !metaAllocates && !metaConnects) continue;
 
@@ -255,9 +255,9 @@ export class RtmIndexEngine {
         sourceName = childRefs[0]!.name ?? "<unknown>";
         sourceId = childRefs[0]!.id;
         targetName = childRefs[1]!.name ?? "<unknown>";
-      } else if (entry.metadata?.source && entry.metadata?.target) {
-        sourceName = String(entry.metadata.source);
-        targetName = String(entry.metadata.target);
+      } else if (entry.metadata?.["source"] && entry.metadata?.["target"]) {
+        sourceName = String(entry.metadata["source"]);
+        targetName = String(entry.metadata["target"]);
       } else if (metaSatisfies || metaVerifies || metaMitigates || metaAllocates || metaConnects) {
         linkKind = metaSatisfies
           ? "satisfy"
@@ -283,7 +283,7 @@ export class RtmIndexEngine {
         }
       }
 
-      if (!targetName) continue;
+      if (!targetName || !linkKind) continue;
 
       // Resolve target symbol ID
       let targetId = -1;
@@ -454,7 +454,7 @@ export class RtmIndexEngine {
     colDomain: RtmDomain = "requirement",
     uriFilter?: string,
     evidenceMap?: Map<string, RtmVerificationEvidence>,
-    suspectMap?: Map<string, { isSuspect: boolean; reason?: string }>,
+    suspectMap?: Map<string, { isSuspect: boolean; reason?: string | undefined }>,
   ): RtmMatrixPayload {
     const rows = this.extractElementsByDomain(index, rowDomain, uriFilter);
     const cols = this.extractElementsByDomain(index, colDomain, uriFilter);

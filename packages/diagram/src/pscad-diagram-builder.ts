@@ -89,20 +89,20 @@ export interface PscadProjectLike {
 export interface X6CellData {
   id: string;
   shape: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  angle?: number;
-  markup?: any[];
-  attrs?: Record<string, any>;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  angle?: number | undefined;
+  markup?: any[] | undefined;
+  attrs?: Record<string, any> | undefined;
   ports?: any;
-  properties?: Record<string, any>;
+  properties?: Record<string, any> | undefined;
   source?: any;
   target?: any;
-  vertices?: { x: number; y: number }[];
-  data?: Record<string, any>;
-  diffStatus?: "added" | "removed" | "modified" | "unchanged";
+  vertices?: { x: number; y: number }[] | undefined;
+  data?: Record<string, any> | undefined;
+  diffStatus?: "added" | "removed" | "modified" | "unchanged" | undefined;
 }
 
 export interface PscadDiagramGraph {
@@ -683,8 +683,8 @@ export function renderPscadSvg(project: PscadProjectLike): string {
   // Render edges (wires) first
   for (const c of diag.cells) {
     if (c.shape === "edge" && c.source && c.target) {
-      const srcPt = c.data?.sourcePoint ?? c.source;
-      const tgtPt = c.data?.targetPoint ?? c.target;
+      const srcPt = c.data?.["sourcePoint"] ?? c.source;
+      const tgtPt = c.data?.["targetPoint"] ?? c.target;
       if (srcPt?.x === undefined || tgtPt?.x === undefined) continue;
       let pathData = `M ${srcPt.x} ${srcPt.y}`;
       if (c.vertices) {
@@ -703,19 +703,19 @@ export function renderPscadSvg(project: PscadProjectLike): string {
       const w = c.width ?? 60;
       const h = c.height ?? 60;
 
-      if (c.data?.kind === "junction") {
-        const jx = c.data.position?.x ?? c.x + 4;
-        const jy = c.data.position?.y ?? c.y + 4;
+      if (c.data?.["kind"] === "junction") {
+        const jx = c.data["position"]?.x ?? c.x + 4;
+        const jy = c.data["position"]?.y ?? c.y + 4;
         elementsSvg += `  <circle cx="${jx}" cy="${jy}" r="4" fill="#38bdf8" stroke="#0f172a" stroke-width="1.5" />\n`;
-      } else if (c.data?.kind === "bus") {
-        const vbase = c.data.vbase ?? 230;
+      } else if (c.data?.["kind"] === "bus") {
+        const vbase = c.data["vbase"] ?? 230;
         const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
         elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
         elementsSvg += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
-        elementsSvg += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(String(c.data.name ?? c.id))} (${vbase} kV)</text>\n`;
+        elementsSvg += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(String(c.data["name"] ?? c.id))} (${vbase} kV)</text>\n`;
         elementsSvg += `  </g>\n`;
-      } else if (c.data?.kind === "sticky") {
-        const lines = (c.data.text || "").split("\n");
+      } else if (c.data?.["kind"] === "sticky") {
+        const lines = (c.data["text"] || "").split("\n");
         const isBanner = w > 400;
         const fill = isBanner ? "#fffbeb" : "#fef3c7";
         const stroke = isBanner ? "#f59e0b" : "#d97706";
@@ -728,9 +728,9 @@ export function renderPscadSvg(project: PscadProjectLike): string {
         }
         elementsSvg += `  </g>\n`;
       } else {
-        const rawName = String(c.data?.name || c.id);
+        const rawName = String(c.data?.["name"] || c.id);
         const name = rawName.includes(":") ? rawName.split(":").pop()! : rawName;
-        const defn = String(c.data?.definition || "Component");
+        const defn = String(c.data?.["definition"] || "Component");
         elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
         elementsSvg += `    <rect width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />\n`;
         elementsSvg += `    <text x="${w / 2}" y="${h / 2 - 4}" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">${escapeHtml(name)}</text>\n`;

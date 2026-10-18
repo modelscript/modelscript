@@ -311,7 +311,7 @@ export default function LoginPage() {
       }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { error?: string } } };
+        const axiosErr = err as { response?: { data?: { error?: string | undefined } | undefined } | undefined };
         setError(axiosErr.response?.data?.error || "Login failed");
       } else {
         setError("Login failed. Please try again.");
@@ -330,7 +330,7 @@ export default function LoginPage() {
       navigate("/");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { error?: string } } };
+        const axiosErr = err as { response?: { data?: { error?: string | undefined } | undefined } | undefined };
         setError(axiosErr.response?.data?.error || "Invalid verification code. Please try again.");
       } else {
         setError("Verification failed. Please check your code and try again.");

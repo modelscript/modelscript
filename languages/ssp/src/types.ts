@@ -104,8 +104,8 @@ export interface SspParameterBinding {
 
 /** Default experiment annotation. */
 export interface SspDefaultExperiment {
-  startTime?: number;
-  stopTime?: number;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
 }
 
 /** Root system structure from SystemStructure.ssd. */
@@ -117,7 +117,7 @@ export interface SspSystem {
   /** SSP version. */
   version: string;
   /** System-level boundary connectors. */
-  connectors?: SspConnector[];
+  connectors?: SspConnector[] | undefined;
   /** Components in the system. */
   components: SspComponent[];
   /** Connections between components. */

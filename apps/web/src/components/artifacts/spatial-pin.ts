@@ -11,10 +11,10 @@ export interface SpatialPin {
 export interface SpatialPin2D {
   coord: [number, number]; // normalized coordinates [0, 1] or plot coordinates [x, y]
   label: string;
-  fieldName?: string;
-  value?: number | string;
-  comment?: string;
-  metadata?: Record<string, unknown>;
+  fieldName?: string | undefined;
+  value?: number | string | undefined;
+  comment?: string | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export type AnySpatialPin = SpatialPin | SpatialPin2D;

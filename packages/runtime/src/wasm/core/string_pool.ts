@@ -450,6 +450,99 @@ export class ArenaStringPool {
     }
     return false;
   }
+
+  matchBuiltinMathFunc(id: u32): i32 {
+    if (id < 11 || id >= this.stringCount) return -1;
+    let len = this.stringLengths.get(id);
+    let off = this.stringOffsets.get(id);
+    // Strip package prefix such as "Modelica.Math." or "Math."
+    let lastDot: i32 = -1;
+    for (let i: u32 = 0; i < len; i++) {
+      if (this.charBuffer.get(off + i) == 46) {
+        lastDot = i as i32;
+      }
+    }
+    if (lastDot >= 0) {
+      let skip = (lastDot as u32) + 1;
+      if (skip >= len) return -1;
+      off += skip;
+      len -= skip;
+    }
+    let c0 = len > 0 ? this.charBuffer.get(off) : 0;
+    let c1 = len > 1 ? this.charBuffer.get(off + 1) : 0;
+    let c2 = len > 2 ? this.charBuffer.get(off + 2) : 0;
+    if (len == 3) {
+      if (c0 == 115 && c1 == 105 && c2 == 110) return 0;  // "sin"
+      if (c0 == 99  && c1 == 111 && c2 == 115) return 1;  // "cos"
+      if (c0 == 116 && c1 == 97  && c2 == 110) return 2;  // "tan"
+      if (c0 == 101 && c1 == 120 && c2 == 112) return 10; // "exp"
+      if (c0 == 108 && c1 == 111 && c2 == 103) return 11; // "log"
+      if (c0 == 97  && c1 == 98  && c2 == 115) return 14; // "abs"
+      if (c0 == 109 && c1 == 105 && c2 == 110) return 16; // "min"
+      if (c0 == 109 && c1 == 97  && c2 == 120) return 17; // "max"
+      if (c0 == 109 && c1 == 111 && c2 == 100) return 20; // "mod"
+      if (c0 == 114 && c1 == 101 && c2 == 109) return 20; // "rem"
+      if (c0 == 112 && c1 == 111 && c2 == 119) return 21; // "pow"
+      return -1;
+    }
+    if (len == 4) {
+      let c3 = this.charBuffer.get(off + 3);
+      if (c0 == 97  && c1 == 115 && c2 == 105 && c3 == 110) return 3;  // "asin"
+      if (c0 == 97  && c1 == 99  && c2 == 111 && c3 == 115) return 4;  // "acos"
+      if (c0 == 97  && c1 == 116 && c2 == 97  && c3 == 110) return 5;  // "atan"
+      if (c0 == 115 && c1 == 105 && c2 == 110 && c3 == 104) return 7;  // "sinh"
+      if (c0 == 99  && c1 == 111 && c2 == 115 && c3 == 104) return 8;  // "cosh"
+      if (c0 == 116 && c1 == 97  && c2 == 110 && c3 == 104) return 9;  // "tanh"
+      if (c0 == 115 && c1 == 113 && c2 == 114 && c3 == 116) return 13; // "sqrt"
+      if (c0 == 115 && c1 == 105 && c2 == 103 && c3 == 110) return 15; // "sign"
+      if (c0 == 99  && c1 == 101 && c2 == 105 && c3 == 108) return 19; // "ceil"
+      if (c0 == 102 && c1 == 109 && c2 == 111 && c3 == 100) return 20; // "fmod"
+      return -1;
+    }
+    if (len == 5) {
+      let c3 = this.charBuffer.get(off + 3);
+      let c4 = this.charBuffer.get(off + 4);
+      if (c0 == 97  && c1 == 116 && c2 == 97  && c3 == 110 && c4 == 50)  return 6;  // "atan2"
+      if (c0 == 108 && c1 == 111 && c2 == 103 && c3 == 49  && c4 == 48)  return 12; // "log10"
+      if (c0 == 102 && c1 == 108 && c2 == 111 && c3 == 111 && c4 == 114) return 18; // "floor"
+      return -1;
+    }
+    if (len == 6) {
+      // "smooth"
+      if (c0 == 115 && c1 == 109 && c2 == 111 && this.charBuffer.get(off + 3) == 111 && this.charBuffer.get(off + 4) == 116 && this.charBuffer.get(off + 5) == 104) return 23;
+      return -1;
+    }
+    if (len == 7) {
+      // "noEvent"
+      if (c0 == 110 && c1 == 111 && c2 == 69 && this.charBuffer.get(off + 3) == 118 && this.charBuffer.get(off + 4) == 101 && this.charBuffer.get(off + 5) == 110 && this.charBuffer.get(off + 6) == 116) return 22;
+      return -1;
+    }
+    if (len == 8) {
+      // "homotopy"
+      if (c0 == 104 && c1 == 111 && c2 == 109 && this.charBuffer.get(off + 3) == 111 && this.charBuffer.get(off + 4) == 116 && this.charBuffer.get(off + 5) == 111 && this.charBuffer.get(off + 6) == 112 && this.charBuffer.get(off + 7) == 121) return 24;
+      return -1;
+    }
+    if (len == 10) {
+      // "semiLinear"
+      if (c0 == 115 && c1 == 101 && c2 == 109 && this.charBuffer.get(off + 3) == 105 && this.charBuffer.get(off + 4) == 76 && this.charBuffer.get(off + 5) == 105 && this.charBuffer.get(off + 6) == 110 && this.charBuffer.get(off + 7) == 101 && this.charBuffer.get(off + 8) == 97 && this.charBuffer.get(off + 9) == 114) return 25;
+      return -1;
+    }
+    return -1;
+  }
+
+  resolveBuiltinMathFunc(funcId: i32): i32 {
+    if (funcId >= 11 && (funcId as u32) < this.stringCount) {
+      let matched = this.matchBuiltinMathFunc(funcId as u32);
+      if (matched >= 0) return matched;
+    }
+    if (funcId >= 56 && funcId <= 81 && (funcId as u32) >= this.stringCount) {
+      return funcId - 56;
+    }
+    if (funcId >= 0 && funcId <= 25) {
+      return funcId;
+    }
+    return -1;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -25,11 +25,11 @@ export interface CaeScalarContractSpec {
   actualValue: number;
   threshold: number;
   operator: "<=" | "<" | ">=" | ">" | "==";
-  unit?: string;
-  sourceRunId?: string | number;
-  partName?: string;
-  sysmlRequirementId?: string;
-  hypergraphThreadId?: number;
+  unit?: string | undefined;
+  sourceRunId?: string | number | undefined;
+  partName?: string | undefined;
+  sysmlRequirementId?: string | undefined;
+  hypergraphThreadId?: number | undefined;
 }
 
 export interface CaeContractStatus {
@@ -38,7 +38,7 @@ export interface CaeContractStatus {
   actualValue: number;
   threshold: number;
   operator: string;
-  unit?: string;
+  unit?: string | undefined;
   isSatisfied: boolean;
   marginPercent: number;
   explanation: string;
@@ -127,7 +127,7 @@ export class CaeContractOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     for (const [id, spec] of this.contracts.entries()) {
       const isSatisfied = this.evaluateCondition(spec.actualValue, spec.operator, spec.threshold);
       if (!isSatisfied) {

@@ -11,15 +11,15 @@ import { invertSvgColors } from "./util/x6";
 interface ComponentListProps {
   components: DiagramNode[] | null;
   onSelect: (name: string) => void;
-  selectedName?: string | null;
-  language?: string | null;
-  translations?: Translations;
+  selectedName?: string | null | undefined;
+  language?: string | null | undefined;
+  translations?: Translations | undefined;
 }
 
 interface ComponentIconProps {
-  iconSvg?: string;
-  size?: number;
-  darkMode?: boolean;
+  iconSvg?: string | undefined;
+  size?: number | undefined;
+  darkMode?: boolean | undefined;
 }
 
 export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {

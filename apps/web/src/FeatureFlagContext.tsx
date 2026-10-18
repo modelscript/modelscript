@@ -135,7 +135,7 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
 
       // 2. Check local storage / in-memory developer override (e.g., ff_cae_cloud_solver)
       if (key in overrides) {
-        return overrides[key];
+        return overrides[key]!;
       }
 
       // 3. Fall back to evaluated flags or default
@@ -191,7 +191,7 @@ export function FeatureGate({
   children,
 }: {
   flag: string;
-  fallback?: React.ReactNode;
+  fallback?: React.ReactNode | undefined;
   children: React.ReactNode;
 }) {
   const enabled = useFeatureFlag(flag);

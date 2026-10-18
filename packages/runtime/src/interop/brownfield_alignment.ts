@@ -20,10 +20,10 @@ export interface AlignmentElement {
   id: string | number;
   name: string;
   domain: ThreadDomain | string;
-  type?: string;
-  ports?: string[];
-  children?: string[];
-  properties?: Record<string, any>;
+  type?: string | undefined;
+  ports?: string[] | undefined;
+  children?: string[] | undefined;
+  properties?: Record<string, any> | undefined;
 }
 
 export interface AlignmentScoreBreakdown {
@@ -46,11 +46,11 @@ export interface AlignmentCandidate {
 }
 
 export interface BrownfieldAlignmentOptions {
-  minConfidence?: number;
-  customAcronyms?: Record<string, string>;
-  tokenWeight?: number;
-  trigramWeight?: number;
-  structuralWeight?: number;
+  minConfidence?: number | undefined;
+  customAcronyms?: Record<string, string> | undefined;
+  tokenWeight?: number | undefined;
+  trigramWeight?: number | undefined;
+  structuralWeight?: number | undefined;
 }
 
 export const DEFAULT_DOMAIN_ACRONYMS: Record<string, string> = {
@@ -319,7 +319,7 @@ export class BrownfieldAlignmentEngine {
   alignModels(
     sources: AlignmentElement[],
     targets: AlignmentElement[],
-    options?: { minConfidence?: number; topKPerSource?: number },
+    options?: { minConfidence?: number | undefined; topKPerSource?: number | undefined },
   ): AlignmentCandidate[] {
     const minConfidence = options?.minConfidence ?? 0.5;
     const topK = options?.topKPerSource ?? 3;
@@ -339,7 +339,7 @@ export class BrownfieldAlignmentEngine {
 
       // Keep top K
       for (let k = 0; k < Math.min(topK, srcMatches.length); k++) {
-        candidates.push(srcMatches[k]);
+        candidates.push(srcMatches[k]!);
       }
     }
 
@@ -352,7 +352,7 @@ export class BrownfieldAlignmentEngine {
   applySeeds(
     candidates: AlignmentCandidate[],
     hypergraph: DigitalThreadHypergraph,
-    options?: { minConfidence?: number; threadIdStart?: number },
+    options?: { minConfidence?: number | undefined; threadIdStart?: number | undefined },
   ): { seededCount: number; threadsCreated: number } {
     const minConfidence = options?.minConfidence ?? 0.85;
     let nextThreadId = options?.threadIdStart ?? hypergraph.getThreadCount() + 1000;

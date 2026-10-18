@@ -21,7 +21,7 @@ export function usersRouter(
    * GET /api/v1/users/suggestions
    */
   router.get("/suggestions", optionalAuth, (req: Request, res: Response) => {
-    const limit = Number(req.query.limit) || 3;
+    const limit = Number(req.query["limit"]) || 3;
     const currentUserId = req.user?.id;
     const suggestions = database.getUserSuggestions(currentUserId, limit);
     res.json({ suggestions });
@@ -54,7 +54,7 @@ export function usersRouter(
    * GET /api/v1/users/:username
    */
   router.get("/:username", optionalAuth, async (req: Request, res: Response) => {
-    const username = req.params.username as string;
+    const username = req.params["username"] as string;
     let profile = database.getFullProfileByUsername(username);
 
     if (!profile && username.includes("@")) {
@@ -94,7 +94,7 @@ export function usersRouter(
    * GET /api/v1/users/:username/following
    */
   router.get("/:username/following", optionalAuth, (req: Request, res: Response) => {
-    const targetUser = database.getUserByUsername(req.params.username as string);
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -108,7 +108,7 @@ export function usersRouter(
    * GET /api/v1/users/:username/followers
    */
   router.get("/:username/followers", optionalAuth, (req: Request, res: Response) => {
-    const targetUser = database.getUserByUsername(req.params.username as string);
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -183,7 +183,7 @@ export function usersRouter(
       return;
     }
 
-    const format = (req.body?.format || req.query.format || "zip") === "json" ? "json" : "zip";
+    const format = (req.body?.format || req.query["format"] || "zip") === "json" ? "json" : "zip";
     const job = archiveQueue.enqueue(database, userId, user.username, format);
 
     database.logAudit({
@@ -214,7 +214,7 @@ export function usersRouter(
    */
   router.get("/me/export/status", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const jobId = req.query.jobId as string | undefined;
+    const jobId = req.query["jobId"] as string | undefined;
     const job = jobId ? archiveQueue.getJob(jobId) : archiveQueue.getLatestUserJob(userId);
 
     if (!job || job.userId !== userId) {
@@ -247,7 +247,7 @@ export function usersRouter(
    */
   router.get("/me/export/download", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const jobId = req.query.jobId as string | undefined;
+    const jobId = req.query["jobId"] as string | undefined;
     const job = jobId ? archiveQueue.getJob(jobId) : archiveQueue.getLatestUserJob(userId);
 
     if (!job || job.userId !== userId || job.status !== "completed" || !job.filePath) {
@@ -268,7 +268,7 @@ export function usersRouter(
    */
   router.get("/me/export", requireAuth, defaultArchiveExportLimiter.middleware(), (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const format = (req.query.format as string)?.toLowerCase();
+    const format = (req.query["format"] as string)?.toLowerCase();
     const isZip = format === "zip" || (!format && req.headers.accept === "application/zip");
 
     database.logAudit({
@@ -308,7 +308,7 @@ export function usersRouter(
    */
   router.post("/:username/follow", requireAuth, (req: Request, res: Response) => {
     const followerId = req.user!.id;
-    const username = req.params.username as string;
+    const username = req.params["username"] as string;
 
     const targetUser = database.getUserByUsername(username);
     if (!targetUser) {
@@ -360,7 +360,7 @@ export function usersRouter(
    */
   router.delete("/:username/follow", requireAuth, (req: Request, res: Response) => {
     const followerId = req.user!.id;
-    const username = req.params.username as string;
+    const username = req.params["username"] as string;
 
     const targetUser = database.getUserByUsername(username);
     if (!targetUser) {
@@ -411,7 +411,7 @@ export function usersRouter(
    */
   router.post("/:username/block", requireAuth, (req: Request, res: Response) => {
     const blockerId = req.user!.id;
-    const targetUser = database.getUserByUsername(req.params.username as string);
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -429,7 +429,7 @@ export function usersRouter(
    */
   router.delete("/:username/block", requireAuth, (req: Request, res: Response) => {
     const blockerId = req.user!.id;
-    const targetUser = database.getUserByUsername(req.params.username as string);
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -443,7 +443,7 @@ export function usersRouter(
    */
   router.post("/:username/mute", requireAuth, (req: Request, res: Response) => {
     const muterId = req.user!.id;
-    const targetUser = database.getUserByUsername(req.params.username as string);
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -467,7 +467,7 @@ export function usersRouter(
    */
   router.delete("/:username/mute", requireAuth, (req: Request, res: Response) => {
     const muterId = req.user!.id;
-    const targetUser = database.getUserByUsername(req.params.username as string);
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -481,7 +481,7 @@ export function usersRouter(
    */
   router.post("/:username/report", requireAuth, (req: Request, res: Response) => {
     const reporterId = req.user!.id;
-    const targetUser = database.getUserByUsername(req.params.username as string);
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -544,7 +544,7 @@ export function usersRouter(
    */
   router.delete("/me/bots/:botId", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const botId = parseInt(req.params.botId as string, 10);
+    const botId = parseInt(req.params["botId"] as string, 10);
 
     if (isNaN(botId)) {
       res.status(400).json({ error: "Invalid bot ID" });

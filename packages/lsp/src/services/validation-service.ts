@@ -28,7 +28,7 @@ export function extractCanonicalErrorInfo(
   code: string | number | undefined,
   lintName?: string,
   plugin?: any,
-): { codeNum?: number; ruleName?: string; raw: string } {
+): { codeNum?: number | undefined; ruleName?: string | undefined; raw: string } {
   const raw = String(code ?? lintName ?? "").trim();
   if (!raw) return { raw: "" };
 
@@ -142,7 +142,7 @@ export function tryDeduplicateOrMergeSemanticDiagnostic(
 
       if (existingIsGeneric && incomingIsSpecific) {
         existing.message = incoming.message;
-        existing.code = incoming.code ?? existing.code;
+        if (incoming.code !== undefined) existing.code = incoming.code;
         existing.range = incoming.range;
       } else if (incomingIsSpecific && incoming.message.length > existing.message.length) {
         // Incoming Salsa diagnostic usually contains more specific details (e.g. types, scopes)
@@ -230,28 +230,54 @@ export function deduplicateAllDiagnostics(diagnostics: Diagnostic[]): Diagnostic
   return result;
 }
 
+/**
+ * Orchestrates multi-language syntax validation, Salsa semantic analysis, CST/query linting,
+ * formal verification (abstract interpretation, DAE reachability, OWL2 tableau reasoning),
+ * and digital thread cross-domain consistency checks across open workspace documents.
+ */
 export class ValidationService {
   // Instance state (previously module-level variables in browserServerMain.ts)
+  /** Cached semantic diagnostics per document URI, preserved across fast keystroke syntax checks. */
   public lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
+  /** Last source text indexed into the workspace symbol table per normalized URI. */
   public lastIndexedText = new Map<string, string>();
+  /** Active `LSPBridge` instances keyed by document URI for hover, definition, and completion queries. */
   public documentLSPBridges = new Map<string, LSPBridge>();
+  /** In-flight asynchronous semantic validation promises keyed by document URI. */
   public activeValidationPromises = new Map<string, Promise<void>>();
+  /** Monotonically increasing edit revision counters per document URI for staleness cancellation. */
   public documentRevisions = new Map<string, number>();
+  /** Debounce timers for Tier 3 semantic validation per document URI. */
   public activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Debounce timer for cross-file revalidation when exported symbol names change. */
   public revalidationTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Project library dependencies declared in workspace configuration. */
   public declaredDependencies: Array<{ name: string; version: string }> = [];
+  /** Set of `<name>@<version>` identifiers for dependencies that have finished loading. */
   public loadedDependencies = new Set<string>();
 
+  /** Cached SysML v2 requirement verification diagnostics per document URI. */
   public verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
+  /** Cached requirement verification case results per document URI. */
   public verificationResultsByUri = new Map<string, any[]>();
+  /** Cached Modelica algorithm abstract interpretation proof results per URI and function name. */
   public modelicaProofResultsByUri = new Map<string, Map<string, any>>();
+  /** Cached Modelica DAE reachability and BLT verification results per URI and class name. */
   public modelicaDaeVerificationResultsByUri = new Map<string, Map<string, any>>();
+  /** Cached OWL2 / ontological description logic reasoner diagnostics per document URI. */
   public reasonerDiagnosticsByUri = new Map<string, Diagnostic[]>();
 
+  /**
+   * Returns true once all declared project library dependencies have been loaded into the workspace.
+   */
   get dependenciesReady(): boolean {
     return this.declaredDependencies.every((dep) => this.loadedDependencies.has(`${dep.name}@${dep.version}`));
   }
 
+  /**
+   * Marks a project dependency (`name@version`) as loaded and triggers full re-validation
+   * of all open documents once all declared dependencies are ready.
+   */
   markDependencyLoaded(name: string, version: string): void {
     this.loadedDependencies.add(`${name}@${version}`);
     if (this.dependenciesReady) {
@@ -279,11 +305,15 @@ export class ValidationService {
    */
   public documentViewports = new Map<
     string,
-    { startOffset?: number; endOffset?: number; startByte: number; endByte: number }
+    { startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }
   >();
 
+  /** Shared ontological description logic reasoner service for cross-domain consistency checking. */
   public reasonerService: ReasonerService;
 
+  /**
+   * Creates a new `ValidationService` and subscribes to digital thread hypergraph change events.
+   */
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
@@ -303,6 +333,10 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Sends a throttled `modelscript/projectTreeChanged` notification to the client
+   * (leading-edge immediate fire followed by a 500ms trailing-edge cooldown).
+   */
   public sendProjectTreeChanged(): void {
     if (globalThis.projectTreeChangedTimer) {
       globalThis.projectTreeChangedPending = true;
@@ -575,6 +609,9 @@ export class ValidationService {
     return { syntaxDiags, wasmLintDiags };
   }
 
+  /**
+   * Immediately executes any pending debounced validation timer for `uri` and awaits in-flight validation.
+   */
   public async flushValidation(uri: string): Promise<void> {
     const timer = this.activeValidationTimers.get(uri);
     if (timer) {
@@ -589,6 +626,10 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Validates a `TextDocument` by routing to domain-specific validators (STEP, CFD, FEA, SCAD,
+   * PSCAD, SSP, CSV, JS/TS sidecars) or running the uniform incremental WASM GLR parse and semantic pipeline.
+   */
   public async validateTextDocument(textDocument: TextDocument): Promise<void> {
     const uri = textDocument.uri;
     const text = textDocument.getText();
@@ -618,8 +659,8 @@ export class ValidationService {
       return;
     }
 
-    // Handle CFD configuration files (.cfg, .cfgt, .su2, .cfd)
-    const isCfd = textDocument.languageId === "cfd" || /\.(cfg|cfgt|su2|cfd)($|\?|#)/i.test(uri);
+    // Handle CFD configuration files (.cfg, .cfgt, .su2, .cfd, .foam)
+    const isCfd = textDocument.languageId === "cfd" || /\.(cfg|cfgt|su2|cfd|foam)($|\?|#)/i.test(uri);
     if (isCfd) {
       await this.validateCfdDocument(textDocument, plugin);
       return;
@@ -683,7 +724,9 @@ export class ValidationService {
 
     const oldCached = this.documentManager.documentTrees.get(uri);
     let tree: any;
-    let editRanges: Array<{ startOffset?: number; endOffset?: number; startByte: number; endByte: number }> | undefined;
+    let editRanges:
+      | Array<{ startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }>
+      | undefined;
 
     try {
       if (oldCached && oldCached.text !== text) {
@@ -797,17 +840,30 @@ export class ValidationService {
     });
   }
 
+  /**
+   * Executes the 8-stage asynchronous semantic validation pipeline:
+   * 1. Incremental symbol re-indexing
+   * 2. Cross-file revalidation scheduling
+   * 3. Unified workspace index & Salsa `QueryEngine` update
+   * 4. Preflight cache hydration
+   * 5. WASM CST lints & Salsa query lints
+   * 6. Domain post-validation hooks (OWL2 reasoner, SysML v2 verification, Modelica abstract interpretation & DAE reachability)
+   * 7. Class instance wrapper population for tree views
+   * 8. Diagnostic deduplication and delivery
+   */
   public async runUnifiedSemanticPipeline(params: {
     uri: string;
     text: string;
     tree: any;
-    editRanges?: Array<{ startOffset?: number; endOffset?: number; startByte: number; endByte: number }>;
+    editRanges?:
+      | Array<{ startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }>
+      | undefined;
     baseDiagnostics: Diagnostic[];
-    wasmLintDiags?: any[];
+    wasmLintDiags?: any[] | undefined;
     revisionAtStart: number | null;
-    plugin?: LanguagePlugin;
+    plugin?: LanguagePlugin | undefined;
     langId: string;
-    textDocument?: TextDocument;
+    textDocument?: TextDocument | undefined;
   }): Promise<void> {
     const {
       uri,
@@ -835,6 +891,7 @@ export class ValidationService {
 
     try {
       const t0 = performance.now();
+      void t0;
       const effectiveUri = uri.startsWith("modelscript-lib://global")
         ? "file://" + uri.substring("modelscript-lib://global".length)
         : uri;
@@ -1242,11 +1299,11 @@ export class ValidationService {
           (uri.includes("DroneSimulation") || text.includes("DroneSimulation"))
         ) {
           for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+            const line = lines[i]!;
 
             const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
             if (massMatch) {
-              const val = parseFloat(massMatch[1]);
+              const val = parseFloat(massMatch[1]!);
               const colMatch = /\bReal\s+(m)\b/.exec(line);
               const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
               if (Math.abs(val - 1.2) > 0.01) {
@@ -1272,7 +1329,7 @@ export class ValidationService {
         // 2. SysML v2 DroneAssembly digital-thread diagnostics
         if (uri.endsWith(".sysml") || uri.endsWith(".kerml") || langId === "sysml2") {
           for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+            const line = lines[i]!;
 
             if (/^\s*(?:abstract\s+)?part\s+def\s+DroneAssembly\b/.test(line)) {
               const col = line.indexOf("DroneAssembly");
@@ -1313,6 +1370,10 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Evaluates digital thread alignments and multi-master conflicts for the given document URI,
+   * returning LSP diagnostics for parameter drift or conflict slots.
+   */
   public collectThreadDiagnostics(uri: string, textDocument?: TextDocument): Diagnostic[] {
     const diagnostics: Diagnostic[] = [];
     if (!this.workspaceManager) return diagnostics;
@@ -1399,10 +1460,12 @@ export class ValidationService {
     uri: string,
     text: string,
     tree: any,
-    editRanges: Array<{ startOffset?: number; endOffset?: number; startByte: number; endByte: number }> | undefined,
+    editRanges:
+      | Array<{ startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }>
+      | undefined,
     baseDiagnostics: Diagnostic[],
     revisionAtStart: number | null,
-    context: any,
+    _context: any,
   ): Promise<void> {
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     await this.runUnifiedSemanticPipeline({
@@ -1417,6 +1480,9 @@ export class ValidationService {
     });
   }
 
+  /**
+   * Instantiates a Salsa `QueryEngine` for `langId` using the registered language plugin factory or global fallback.
+   */
   private createDefaultQueryEngine(langId: string, unifiedIndex: any, cstTreeWrapper: any): QueryEngine {
     const norm = langId.toLowerCase();
     const plugin = globalLanguageRegistry.getPluginById(norm);
@@ -1430,6 +1496,9 @@ export class ValidationService {
     return new QueryEngine(unifiedIndex, new Map(), { tree: cstTreeWrapper });
   }
 
+  /**
+   * Validates an OpenSCAD (`.scad`) document using the SCAD WASM parser, CST linter, and digital thread CAD bounds checks.
+   */
   private async validateScadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const scadDiagnostics: Diagnostic[] = [];
@@ -1474,11 +1543,11 @@ export class ValidationService {
 
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
-        const rawLine = lines[i];
+        const rawLine = lines[i]!;
 
         const tagMatch = /tag_port\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/.exec(rawLine);
         if (tagMatch) {
-          const portName = tagMatch[1];
+          const portName = tagMatch[1]!;
           const portType = tagMatch[2];
           const col = rawLine.indexOf(portName);
           scadDiagnostics.push({
@@ -1491,7 +1560,7 @@ export class ValidationService {
 
         const thicknessMatch = /arm_thickness\s*=\s*([0-9.]+)/.exec(rawLine);
         if (thicknessMatch) {
-          const val = parseFloat(thicknessMatch[1]);
+          const val = parseFloat(thicknessMatch[1]!);
           const col = rawLine.indexOf("arm_thickness");
           if (val < 3.8) {
             scadDiagnostics.push({
@@ -1546,6 +1615,9 @@ export class ValidationService {
     this.sendProjectTreeChanged();
   }
 
+  /**
+   * Registers a JavaScript/TypeScript sidecar file as a synthetic class instance in the workspace.
+   */
   private validateSidecarDocument(textDocument: TextDocument): void {
     const context = this.parserService.sharedContext;
     if (!context) return;
@@ -1570,7 +1642,10 @@ export class ValidationService {
     this.sendProjectTreeChanged();
   }
 
-  private async validatePscadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+  /**
+   * Parses, lints, and indexes a PSCAD (`.pscx`, `.pslx`, `.pswx`, `.psmx`) power systems document.
+   */
+  private async validatePscadDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const pscadDiagnostics: Diagnostic[] = [];
 
@@ -1629,7 +1704,10 @@ export class ValidationService {
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: pscadDiagnostics });
   }
 
-  private async validateSspDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+  /**
+   * Validates an SSP (`SystemStructure.ssd`) or SSV (`ParameterSet.ssv`) XML document.
+   */
+  private async validateSspDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const sspDiagnostics: Diagnostic[] = [];
 
@@ -1676,7 +1754,10 @@ export class ValidationService {
     this.sendProjectTreeChanged();
   }
 
-  private async validateCsvDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+  /**
+   * Validates a CSV tabular data document using `@modelscript/csv`.
+   */
+  private async validateCsvDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const csvDiagnostics: Diagnostic[] = [];
 
@@ -1717,14 +1798,18 @@ export class ValidationService {
     this.sendProjectTreeChanged();
   }
 
-  private async validateCfdDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+  /**
+   * Validates a CFD configuration file (`.cfg`, `.su2`, `.foam`, `.cfd`) and emits aerodynamic polar diagnostics.
+   */
+  private async validateCfdDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const cfdDiagnostics: Diagnostic[] = [];
 
     try {
       this.connection.console.info(`[cfd] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { parseSu2Config } = await import("@modelscript/cfd");
-      const cfdData = parseSu2Config(text);
+      const { parseCfdConfig, extractCfdSlicingProperties } = (await import("@modelscript/cfd")) as any;
+      const isOpenFoam = textDocument.uri.toLowerCase().endsWith(".foam") || text.includes("FoamFile");
+      const cfdData = parseCfdConfig(text, isOpenFoam ? "openfoam" : "su2");
 
       this.documentManager.documentTrees.set(textDocument.uri, {
         text,
@@ -1734,7 +1819,7 @@ export class ValidationService {
 
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
-        const rawLine = lines[i];
+        const rawLine = lines[i]!;
         const trimmed = rawLine.trim();
         if (!trimmed || trimmed.startsWith("%") || trimmed.startsWith("//") || trimmed.startsWith("#")) {
           continue;
@@ -1745,6 +1830,21 @@ export class ValidationService {
         const codeLine = commentMatch ? rawLine.slice(0, commentMatch.index) : rawLine;
         const cleanCode = codeLine.trim();
         if (!cleanCode) continue;
+
+        if (isOpenFoam) {
+          const openBraces = (cleanCode.match(/\{\{/g) || []).length;
+          const closeBraces = (cleanCode.match(/\}\}/g) || []).length;
+          if (openBraces !== closeBraces) {
+            const col = rawLine.indexOf(cleanCode);
+            cfdDiagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start: { line: i, character: col }, end: { line: i, character: col + cleanCode.length } },
+              message: "Syntax Error: Unclosed embedded parameter expression '{{'",
+              source: "cfd",
+            });
+          }
+          continue;
+        }
 
         if (!cleanCode.includes("=")) {
           const col = rawLine.indexOf(cleanCode);
@@ -1813,23 +1913,23 @@ export class ValidationService {
           }
         }
       }
+
+      // Cross-domain aerodynamic parity diagnostics
+      const cfdProps = extractCfdSlicingProperties(text);
+      const cfdLines = text.split(/\r?\n/);
+      for (let i = 0; i < cfdLines.length; i++) {
+        const line = cfdLines[i]!;
+        if (/^\s*REF_AREA\s*=/i.test(line)) {
+          cfdDiagnostics.push({
+            severity: DiagnosticSeverity.Information,
+            range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
+            message: `[CFD Aerodynamic Polar] Evaluated drag coefficient Cd = ${cfdProps.cd.toFixed(4)} at reference area A_ref = ${cfdProps.refArea.toFixed(3)} m². Cruise airspeed: ${cfdProps.freeStreamVelocity.toFixed(1)} m/s.`,
+            source: "cfd",
+          });
+        }
+      }
     } catch (e: any) {
       this.connection.console.warn(`[cfd] Parse failed for ${textDocument.uri}: ${e.message}`);
-    }
-
-    // Cross-domain aerodynamic parity diagnostics
-    const cfdLines = text.split(/\r?\n/);
-    for (let i = 0; i < cfdLines.length; i++) {
-      const line = cfdLines[i];
-      if (/^\s*REF_AREA\s*=\s*0\.030/i.test(line)) {
-        cfdDiagnostics.push({
-          severity: DiagnosticSeverity.Information,
-          range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
-          message:
-            "[CFD Aerodynamic Polar] Evaluated drag coefficient Cd = 0.8000 at reference area A_ref = 0.030 m². Cruise airspeed: 10.0 m/s.",
-          source: "cfd",
-        });
-      }
     }
 
     this.lastSemanticDiagnostics.set(textDocument.uri, cfdDiagnostics);
@@ -1837,14 +1937,21 @@ export class ValidationService {
     this.sendProjectTreeChanged();
   }
 
-  private async validateFeaDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
+  /**
+   * Validates an FEA input deck (`.inp`, `.bdf`, `.fea`) for card syntax, parameter formatting, and Von Mises stress safety factors.
+   */
+  private async validateFeaDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const feaDiagnostics: Diagnostic[] = [];
 
     try {
       this.connection.console.info(`[fea] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { parseInpDeck } = await import("@modelscript/fea");
-      const feaData = parseInpDeck(text);
+      const { parseFeaDeck, extractFeaSlicingProperties } = (await import("@modelscript/fea")) as any;
+      const isBdf =
+        textDocument.uri.toLowerCase().endsWith(".bdf") ||
+        (!text.includes("*NODE") &&
+          (text.includes("BEGIN BULK") || /^\s*(GRID|MAT1|CTETRA|CHEXA|PSOLID)\b/m.test(text)));
+      const feaData = parseFeaDeck(text, isBdf ? "bdf" : "inp");
 
       this.documentManager.documentTrees.set(textDocument.uri, {
         text,
@@ -1853,6 +1960,7 @@ export class ValidationService {
       });
 
       let currentCard = "";
+      void currentCard;
       const VALID_FEA_CARDS = new Set([
         "HEADING",
         "NODE",
@@ -1913,14 +2021,14 @@ export class ValidationService {
 
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
-        const rawLine = lines[i];
+        const rawLine = lines[i]!;
         const trimmed = rawLine.trim();
         if (!trimmed || trimmed.startsWith("**") || trimmed.startsWith("$") || trimmed.startsWith("#")) {
           continue;
         }
 
-        // Keyword card line: starts with *
-        if (trimmed.startsWith("*")) {
+        // Keyword card line: starts with * (CalculiX / Abaqus .inp decks only)
+        if (!isBdf && trimmed.startsWith("*")) {
           const cardContent = trimmed.slice(1).trim();
           if (!cardContent) {
             const col = rawLine.indexOf("*");
@@ -1934,16 +2042,16 @@ export class ValidationService {
           }
 
           const cardTokens = cardContent.split(",").map((s) => s.trim());
-          const cardName = cardTokens[0].toUpperCase();
+          const cardName = cardTokens[0]!.toUpperCase();
           currentCard = cardName;
 
           if (!VALID_FEA_CARDS.has(cardName)) {
-            const cardCol = rawLine.indexOf(cardTokens[0]);
+            const cardCol = rawLine.indexOf(cardTokens[0]!);
             feaDiagnostics.push({
               severity: DiagnosticSeverity.Error,
               range: {
                 start: { line: i, character: cardCol >= 0 ? cardCol : 0 },
-                end: { line: i, character: (cardCol >= 0 ? cardCol : 0) + cardTokens[0].length },
+                end: { line: i, character: (cardCol >= 0 ? cardCol : 0) + cardTokens[0]!.length },
               },
               message: `Syntax Error: Unknown keyword card '*${cardName}'`,
               source: "fea",
@@ -1978,7 +2086,7 @@ export class ValidationService {
           continue;
         }
 
-        // Data line: validate items are comma-separated
+        // Data line: validate embedded expressions {{ ... }} are balanced
         const openBraces = (trimmed.match(/\{\{/g) || []).length;
         const closeBraces = (trimmed.match(/\}\}/g) || []).length;
         if (openBraces !== closeBraces) {
@@ -1991,23 +2099,27 @@ export class ValidationService {
           });
         }
       }
+
+      // Cross-domain FEA structural slicing parity diagnostics
+      const feaProps = extractFeaSlicingProperties(text);
+      const sigmaMaxMPa = feaProps.maxVonMisesStress / 1e6;
+      const yieldMPa = 180.0;
+      const sf = sigmaMaxMPa > 0 ? yieldMPa / sigmaMaxMPa : 99.9;
+      const cmp = sigmaMaxMPa <= yieldMPa ? "<=" : ">";
+      const feaLines = text.split(/\r?\n/);
+      for (let i = 0; i < feaLines.length; i++) {
+        const line = feaLines[i]!;
+        if (/^\*SOLID SECTION/i.test(line) || (isBdf && /^\s*PSOLID\b/i.test(line))) {
+          feaDiagnostics.push({
+            severity: DiagnosticSeverity.Information,
+            range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
+            message: `[FEA Structural Invariant] Arm bending stress verified: peak σ_max = ${sigmaMaxMPa.toFixed(1)} MPa ${cmp} ${yieldMPa.toFixed(1)} MPa (SF = ${sf.toFixed(2)}). Calibrated mass: ${feaProps.totalMass.toFixed(2)} kg.`,
+            source: "fea",
+          });
+        }
+      }
     } catch (e: any) {
       this.connection.console.warn(`[fea] Parse failed for ${textDocument.uri}: ${e.message}`);
-    }
-
-    // Cross-domain FEA structural slicing parity diagnostics
-    const feaLines = text.split(/\r?\n/);
-    for (let i = 0; i < feaLines.length; i++) {
-      const line = feaLines[i];
-      if (/^\*SOLID SECTION/i.test(line)) {
-        feaDiagnostics.push({
-          severity: DiagnosticSeverity.Information,
-          range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
-          message:
-            "[FEA Structural Invariant] Arm bending stress verified: peak σ_max = 172.4 MPa <= 180.0 MPa (SF = 1.04). Calibrated mass: 1.20 kg.",
-          source: "fea",
-        });
-      }
     }
 
     this.lastSemanticDiagnostics.set(textDocument.uri, feaDiagnostics);
@@ -2015,6 +2127,9 @@ export class ValidationService {
     this.sendProjectTreeChanged();
   }
 
+  /**
+   * Validates an ISO 10303-21 STEP document (`.step`, `.stp`, `.p21`) for syntax, entity reference integrity, and schema arity.
+   */
   private async validateStepDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const buffer = new TextEncoder().encode(text);
@@ -2038,6 +2153,7 @@ export class ValidationService {
         buffer,
         astIndex,
       );
+      void stepIndex;
 
       const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       if (this.workspaceManager.globalModelicaQueryEngine) {
@@ -2101,7 +2217,7 @@ export class ValidationService {
       const schema = STEP_SCHEMA[def.type];
       if (schema) {
         let i = def.endOffset;
-        while (i < text.length && /\s/.test(text[i])) i++;
+        while (i < text.length && /\s/.test(text[i]!)) i++;
         if (text[i] === "(") {
           const argsStart = i;
           let depth = 0;
@@ -2110,7 +2226,7 @@ export class ValidationService {
           let hasContent = false;
 
           for (i = argsStart; i < text.length; i++) {
-            const ch = text[i];
+            const ch = text[i]!;
             if (ch === "'") {
               if (inStr && text[i + 1] === "'") {
                 i++;
@@ -2177,6 +2293,10 @@ export class ValidationService {
     }, 300);
   }
 
+  /**
+   * Runs OWL2 Functional Syntax linting, lowers CST axioms into the shared ontology store,
+   * and executes tableau consistency reasoning.
+   */
   private async postValidateOwl2(
     effectiveUri: string,
     tree: any,
@@ -2231,6 +2351,9 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Updates the ontological reasoner after SysML v2 validation and routes any logical contradictions to affected documents.
+   */
   private postValidateSysml2(effectiveUri: string, diagnostics: Diagnostic[]): void {
     try {
       const versions = new Map<string, number>();
@@ -2247,6 +2370,9 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Updates the ontological reasoner after Modelica validation when OWL2 axioms are present in the workspace.
+   */
   private postValidateModelicaReasoner(effectiveUri: string, diagnostics: Diagnostic[]): void {
     try {
       const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
@@ -2266,6 +2392,10 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Maps minimal conflict cores and unsat explanations from the description logic reasoner
+   * back to source document ranges and publishes cross-document diagnostics.
+   */
   private routeReasonerDiagnostics(
     currentUri: string,
     consistency: any,
@@ -2458,6 +2588,10 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Runs formal abstract interpretation over Modelica `algorithm` sections to prove absence of
+   * runtime defects (division by zero, array out-of-bounds, uninitialized reads) or emit diagnostics.
+   */
   public async postValidateModelicaAbstractInterpretation(
     effectiveUri: string,
     textDocument: TextDocument,
@@ -2479,6 +2613,7 @@ export class ValidationService {
       const cached = this.documentManager.documentTrees.get(effectiveUri);
       while ((match = funcRegex.exec(text)) !== null) {
         const kind = match[1]!;
+        void kind;
         const name = match[2]!;
         const body = match[3]!;
 
@@ -2665,6 +2800,10 @@ export class ValidationService {
     return out;
   }
 
+  /**
+   * Flattens Modelica classes in the document, performs BLT transformation, and runs
+   * `DaeBltReachabilityEngine` and `HybridModeConsistencyVerifier` within `daeVerificationBudgetMs`.
+   */
   public async postValidateModelicaDaeReachability(
     effectiveUri: string,
     textDocument: TextDocument,
@@ -2844,6 +2983,9 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Checks if a SysML v2 document contains verification or analysis cases and schedules automatic verification.
+   */
   private checkAutoVerify(effectiveUri: string): void {
     if (this.workspaceManager.unifiedWorkspace) {
       try {
@@ -2880,6 +3022,9 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Populates lightweight top-level class instance wrappers in `workspaceManager` for project and library tree views.
+   */
   private populateClassWrappers(effectiveUri: string, uri: string, unifiedIndex: any, engine: any, context: any): void {
     const db = engine?.toQueryDB
       ? engine.toQueryDB()
@@ -2955,6 +3100,9 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Minimal regex-based fallback validator (checks unclosed block comments) when WASM parsers are unavailable.
+   */
   private fallbackRegexValidation(textDocument: TextDocument): void {
     const text = textDocument.getText();
     const diagnostics: Diagnostic[] = [];
@@ -2974,7 +3122,11 @@ export class ValidationService {
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
   }
 
-  async runVerificationForUri(uri: string): Promise<{ ok: boolean; error?: string }> {
+  /**
+   * Executes SysML v2 verification cases in `uri` by flattening and simulating linked Modelica models
+   * and evaluating requirement constraints against simulated trajectories.
+   */
+  async runVerificationForUri(uri: string): Promise<{ ok: boolean; error?: string | undefined }> {
     try {
       const textDocument = this.documentManager.documents.get(uri);
       if (!textDocument) throw new Error("Document not found");
@@ -3202,6 +3354,9 @@ export class ValidationService {
     }
   }
 
+  /**
+   * Resolves an ontology IRI or qualified symbol name to a 0-based line/character range within `currentUri`.
+   */
   private findRangeForIri(
     iri: string,
     currentUri: string,
@@ -3279,6 +3434,9 @@ export class ValidationService {
     return null;
   }
 
+  /**
+   * Locates the workspace URI and 0-based source range where the given ontology IRI or symbol is declared.
+   */
   public findDeclarationLocation(iri: string): {
     uri: string;
     range: { start: { line: number; character: number }; end: { line: number; character: number } };

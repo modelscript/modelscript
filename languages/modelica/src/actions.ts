@@ -473,7 +473,7 @@ export const modelicaActionHandlers: Record<
     const classRegex = /\b(model|block|class|record|connector|function|package)\s+([A-Za-z0-9_]+)/g;
     let m: RegExpExecArray | null;
     while ((m = classRegex.exec(code)) !== null) {
-      classes.push({ kind: m[1], name: m[2] });
+      classes.push({ kind: m[1]!, name: m[2]! });
     }
     return {
       classes,

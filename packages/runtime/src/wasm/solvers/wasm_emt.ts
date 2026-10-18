@@ -16,16 +16,31 @@ import { atomicChunkAlloc } from "../arena";
 import { UnmanagedFloat64Array, DenseMatrixView } from "../core/array";
 import { luFactor, luSolve } from "./matrix";
 
+/** Branch type code for a pure resistor ($R$). */
 export const EMT_BRANCH_TYPE_RESISTOR: u32 = 1;
+/** Branch type code for a pure or series-damped inductor ($L$ or $R$-$L$). */
 export const EMT_BRANCH_TYPE_INDUCTOR: u32 = 2;
+/** Branch type code for a pure capacitor ($C$). */
 export const EMT_BRANCH_TYPE_CAPACITOR: u32 = 3;
+/** Branch type code for a general parallel/series $R$-$L$-$C$ branch. */
 export const EMT_BRANCH_TYPE_PARALLEL_RLC: u32 = 4;
 
+/** Source type code for a sinusoidal AC Norton voltage source. */
 export const EMT_SOURCE_TYPE_AC_VOLTAGE: u32 = 1;
+/** Source type code for a constant DC Norton voltage source. */
 export const EMT_SOURCE_TYPE_DC_VOLTAGE: u32 = 2;
+/** Source type code for a sinusoidal AC current source. */
 export const EMT_SOURCE_TYPE_AC_CURRENT: u32 = 3;
+/** Source type code for a constant DC current source. */
 export const EMT_SOURCE_TYPE_DC_CURRENT: u32 = 4;
 
+/**
+ * Unmanaged in-arena Electromagnetic Transients (EMT) companion-circuit solver implementing
+ * Dommel's trapezoidal nodal admittance formulation with CDA damping, Bergeron and Marti/Gustavsen
+ * frequency-dependent transmission lines, nonlinear saturable cores and MOV arresters,
+ * 6th-order Park synchronous machines, 5th-order Krause induction/DFIG machines, VSC/LCC/MMC bridges,
+ * SRF-PLLs, and bilinear Tustin CSMF control block graphs.
+ */
 @unmanaged
 export class WasmEmtSolver {
   nNodes: u32;
@@ -305,6 +320,9 @@ export class WasmEmtSolver {
   trajectoryRecordedSteps: u32;
   stridePerStep: u32;        // 1 (time) + nNodes
 
+  /**
+   * Allocates all Struct-of-Arrays component buffers and nodal conductance matrices in linear memory for `nNodes` buses.
+   */
   init(nNodes: u32, maxBranches: u32, maxSources: u32, dt: f64): void {
     this.nNodes = nNodes;
     this.maxBranches = maxBranches > 0 ? maxBranches : 64;
@@ -583,11 +601,15 @@ export class WasmEmtSolver {
     this.stridePerStep = 1 + nNodes;
   }
 
+  /** Returns the byte allocation size for the Bergeron line buffer length array. */
   @inline
   private lineMaxAlloc(): u32 {
     return this.maxLines * sizeof<i32>();
   }
 
+  /**
+   * Adds a discretized trapezoidal companion $R$-$L$-$C$ branch between `fromNode` and `toNode`.
+   */
   addBranch(fromNode: i32, toNode: i32, r: f64, l: f64, c: f64): i32 {
     if (this.nBranches >= this.maxBranches) return -1;
     let idx = this.nBranches++;
@@ -619,6 +641,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds an AC or DC Norton equivalent source connected to `node`.
+   */
   addSource(node: i32, vPeakKv: f64, freqHz: f64, phaseRad: f64, gSource: f64, type: u32): i32 {
     if (this.nSources >= this.maxSources) return -1;
     let idx = this.nSources++;
@@ -636,6 +661,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a distributed-parameter Bergeron traveling-wave transmission line with surge impedance `zc` and travel time `tauSec`.
+   */
   addBergeronLine(fromNode: i32, toNode: i32, zc: f64, tauSec: f64, rTotal: f64): i32 {
     if (this.nLines >= this.maxLines) return -1;
     let idx = this.nLines++;
@@ -673,6 +701,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a 4-terminal coupled transformer winding with primary `(pPos, pNeg)`, secondary `(sPos, sNeg)`, leakage conductance `gLeakage`, and `turnsRatio`.
+   */
   addTransformerWinding(
     pPos: i32,
     pNeg: i32,
@@ -698,6 +729,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a time-switched fault conductance `gFault` between `nodeA` and `nodeB` (or ground if `nodeB < 0`) active during `[startSec, endSec)`.
+   */
   addFault(nodeA: i32, nodeB: i32, startSec: f64, endSec: f64, gFault: f64): i32 {
     if (this.nFaults >= this.maxFaults) return -1;
     let idx = this.nFaults++;
@@ -712,6 +746,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a circuit breaker pole between `fromNode` and `toNode` with current zero-crossing interruption and sub-step interpolation.
+   */
   addBreaker(
     fromNode: i32,
     toNode: i32,
@@ -742,6 +779,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a two-slope piecewise-linear saturable magnetizing core at `node`.
+   */
   addSaturableCore(
     node: i32,
     lUnsatH: f64,
@@ -766,6 +806,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a nonlinear metal-oxide varistor (MOV) surge arrester (IEEE Std C62.22 piecewise V-I) between `fromNode` and `toNode`.
+   */
   addSurgeArrester(fromNode: i32, toNode: i32, vRefVolts: f64): i32 {
     if (this.nArresters >= this.maxArresters) return -1;
     let idx = this.nArresters++;
@@ -785,6 +828,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a 3-phase 6th-order subtransient Park $d$-$q$ synchronous generator/motor connected to `(nodeA, nodeB, nodeC)`.
+   */
   addSynchronousMachine(
     nodeA: i32,
     nodeB: i32,
@@ -853,11 +899,17 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Configures the maximum within-step Newton-Raphson iterations and voltage convergence tolerance for nonlinear elements.
+   */
   setNonlinearIterationOptions(maxIterations: u32, toleranceVolts: f64): void {
     this.maxNonlinearIterations = maxIterations > 1 ? maxIterations : 1;
     this.nonlinearToleranceVolts = toleranceVolts > 1e-6 ? toleranceVolts : 1.0;
   }
 
+  /**
+   * Adds a 3-phase power electronics converter bridge (`0` = 2-level VSC PWM, `1` = 6-pulse LCC Graetz bridge, `2` = MMC Thévenin arm model).
+   */
   addConverterBridge(
     nodeA: i32,
     nodeB: i32,
@@ -910,6 +962,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a 3-phase 5th-order Krause $d$-$q$ induction machine or Type-3 DFIG with rotor crowbar protection.
+   */
   addInductionMachine(
     nodeA: i32,
     nodeB: i32,
@@ -965,6 +1020,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Adds a Marti / Gustavsen rational pole-residue Frequency-Dependent Transmission Line (FD-Line) between `fromNode` and `toNode`.
+   */
   addFrequencyDependentLine(
     fromNode: i32,
     toNode: i32,
@@ -1046,6 +1104,9 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Appends a vector-fitted characteristic admittance ($Y_c$) rational pole-residue pair to FD-Line `fdLineIdx`.
+   */
   addFdLineYPole(fdLineIdx: u32, poleRad: f64, residueSiemens: f64): i32 {
     if (fdLineIdx >= this.nFdLines) return -1;
     let nY = load<u32>(this.fdNYPolesPtr + (((fdLineIdx as usize)) << 2));
@@ -1080,6 +1141,9 @@ export class WasmEmtSolver {
     return nY as i32;
   }
 
+  /**
+   * Appends a vector-fitted propagation function ($H$) rational pole-residue pair to FD-Line `fdLineIdx`.
+   */
   addFdLineHPole(fdLineIdx: u32, poleRad: f64, residueDimless: f64): i32 {
     if (fdLineIdx >= this.nFdLines) return -1;
     let nH = load<u32>(this.fdNHPolesPtr + (((fdLineIdx as usize)) << 2));
@@ -1111,6 +1175,9 @@ export class WasmEmtSolver {
     return nH as i32;
   }
 
+  /**
+   * Adds a CSMF continuous/discrete control block (`const`, `gain`, `sum`, `sub`, `mult`, `div`, `limit`, `pi`, `lag`, `leadlag`, `compar`, `sensor_v`, `sensor_i`).
+   */
   addControlBlock(
     kind: u32,
     in0: i32,
@@ -1141,17 +1208,26 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /**
+   * Sets external scalar inputs `(u0, u1)` on CSMF control block `blockIdx`.
+   */
   setControlInput(blockIdx: u32, u0: f64, u1: f64): void {
     if (blockIdx >= this.nCtrlBlocks) return;
     store<f64>(this.ctrlExtIn0Ptr + (((blockIdx as usize)) << 3), u0);
     store<f64>(this.ctrlExtIn1Ptr + (((blockIdx as usize)) << 3), u1);
   }
 
+  /**
+   * Returns the current output signal value of CSMF control block `blockIdx`.
+   */
   getControlOutput(blockIdx: u32): f64 {
     if (blockIdx >= this.nCtrlBlocks) return 0.0;
     return load<f64>(this.ctrlOutPtr + (((blockIdx as usize)) << 3));
   }
 
+  /**
+   * Adds a 3-phase Synchronous Reference Frame Phase-Locked Loop (SRF-PLL) connected to `(nodeA, nodeB, nodeC)`.
+   */
   addPll(
     nodeA: i32,
     nodeB: i32,
@@ -1180,12 +1256,14 @@ export class WasmEmtSolver {
     return idx as i32;
   }
 
+  /** Adds `delta` to entry `(r, c)` of the dense nodal conductance matrix $[G]$. */
   @inline
   private addG(r: u32, c: u32, delta: f64): void {
     let ptr = this.gDensePtr + ((((r * this.nNodes + c) as usize)) << 3);
     store<f64>(ptr, load<f64>(ptr) + delta);
   }
 
+  /** Bounds-checked helper that adds `delta` to $G_{r,c}$ when both node indices are non-ground ($\ge 0$). */
   @inline
   private addGChecked(r: i32, c: i32, delta: f64): void {
     let n = this.nNodes;
@@ -1194,6 +1272,7 @@ export class WasmEmtSolver {
     }
   }
 
+  /** Stamps a two-terminal conductance `g` between nodes `i` and `j` into $[G]$. */
   stampConductance(i: i32, j: i32, g: f64): void {
     let n = this.nNodes;
     if (i >= 0 && (i as u32) < n) {
@@ -1208,6 +1287,7 @@ export class WasmEmtSolver {
     }
   }
 
+  /** Stamps a grounded shunt conductance `g` at node `i` into $[G]$. */
   stampShunt(i: i32, g: f64): void {
     let n = this.nNodes;
     if (i >= 0 && (i as u32) < n) {
@@ -1215,6 +1295,7 @@ export class WasmEmtSolver {
     }
   }
 
+  /** Stamps a 4-terminal coupled transformer winding with leakage conductance `g` and turns ratio `a` into $[G]$. */
   stampTransformer(pPos: i32, pNeg: i32, sPos: i32, sNeg: i32, g: f64, a: f64): void {
     this.stampConductance(pPos, pNeg, g);
     this.stampConductance(sPos, sNeg, a * a * g);
@@ -1229,6 +1310,7 @@ export class WasmEmtSolver {
     this.addGChecked(sNeg, pNeg, -ag);
   }
 
+  /** Copies the current nodal conductance matrix $[G]$ and computes its LU factorization with partial pivoting. */
   factorizeCurrentG(): bool {
     let n = this.nNodes;
     let matSize = n * n;
@@ -1247,6 +1329,7 @@ export class WasmEmtSolver {
     return ok;
   }
 
+  /** Assembles the full nodal conductance matrix $[G]$ across all registered components and computes its initial LU factorization. */
   buildAndFactorize(): bool {
     let n = this.nNodes;
     let matSize = n * n;
@@ -1363,6 +1446,7 @@ export class WasmEmtSolver {
     return this.factorizeCurrentG();
   }
 
+  /** Applies Critical Damping Adjustment (CDA / backward-Euler half-step) to suppress trapezoidal numerical chatter after switching events. */
   private applyCdaDamping(): void {
     if (!this.enableCda) return;
     for (let b: u32 = 0; b < this.nBranches; b++) {
@@ -1378,6 +1462,7 @@ export class WasmEmtSolver {
     }
   }
 
+  /** Resets simulation time, nodal voltages, history currents, wave delay buffers, and control states to $t = 0$. */
   reset(): void {
     this.t = 0.0;
     this.stepCount = 0;
@@ -1458,6 +1543,7 @@ export class WasmEmtSolver {
     }
   }
 
+  /** Allocates a contiguous linear-memory trajectory buffer capable of recording `maxSteps` time steps of `(t, v_0..v_{N-1})`. */
   allocTrajectory(maxSteps: u32): usize {
     let totalElements = maxSteps * this.stridePerStep;
     this.trajectoryBufferPtr = atomicChunkAlloc(totalElements * sizeof<f64>());
@@ -1466,6 +1552,9 @@ export class WasmEmtSolver {
     return this.trajectoryBufferPtr;
   }
 
+  /**
+   * Advances the EMT companion-circuit simulation by one fixed time step $\Delta t$.
+   */
   step(): void {
     if (!this.isFactorized) return;
     let n = this.nNodes;
@@ -2603,6 +2692,9 @@ export class WasmEmtSolver {
     this.stepCount++;
   }
 
+  /**
+   * Executes `nSteps` consecutive EMT simulation steps in a tight in-WASM loop and returns the updated `stepCount`.
+   */
   runSteps(nSteps: u32): u32 {
     for (let k: u32 = 0; k < nSteps; k++) {
       this.step();
@@ -2617,6 +2709,7 @@ export class WasmEmtSolver {
 
 const WASM_EMT_SOLVER_SIZE: u32 = 2048;
 
+/** Allocates and initializes a new `WasmEmtSolver` instance in linear memory. */
 export function emt_create(nNodes: u32, maxBranches: u32, maxSources: u32, dt: f64): usize {
   let solverPtr = atomicChunkAlloc(WASM_EMT_SOLVER_SIZE);
   let solver = changetype<WasmEmtSolver>(solverPtr);
@@ -2624,16 +2717,19 @@ export function emt_create(nNodes: u32, maxBranches: u32, maxSources: u32, dt: f
   return solverPtr;
 }
 
+/** Resets the `WasmEmtSolver` instance at `solverPtr` to $t = 0$. */
 export function emt_reset(solverPtr: usize): void {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   solver.reset();
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addBranch`. */
 export function emt_add_branch(solverPtr: usize, from: i32, to: i32, r: f64, l: f64, c: f64): i32 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.addBranch(from, to, r, l, c);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addSource`. */
 export function emt_add_source(
   solverPtr: usize,
   node: i32,
@@ -2647,6 +2743,7 @@ export function emt_add_source(
   return solver.addSource(node, vPeakKv, freqHz, phaseRad, gSource, type);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addBergeronLine`. */
 export function emt_add_bergeron_line(
   solverPtr: usize,
   fromNode: i32,
@@ -2659,6 +2756,7 @@ export function emt_add_bergeron_line(
   return solver.addBergeronLine(fromNode, toNode, zc, tauSec, rTotal);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addTransformerWinding`. */
 export function emt_add_transformer_winding(
   solverPtr: usize,
   pPos: i32,
@@ -2673,6 +2771,7 @@ export function emt_add_transformer_winding(
   return solver.addTransformerWinding(pPos, pNeg, sPos, sNeg, gLeakage, alphaL, turnsRatio);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addFault`. */
 export function emt_add_fault(
   solverPtr: usize,
   nodeA: i32,
@@ -2685,6 +2784,7 @@ export function emt_add_fault(
   return solver.addFault(nodeA, nodeB, startSec, endSec, gFault);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addBreaker`. */
 export function emt_add_breaker(
   solverPtr: usize,
   fromNode: i32,
@@ -2709,6 +2809,7 @@ export function emt_add_breaker(
   );
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addSaturableCore`. */
 export function emt_add_saturable_core(
   solverPtr: usize,
   node: i32,
@@ -2721,6 +2822,7 @@ export function emt_add_saturable_core(
   return solver.addSaturableCore(node, lUnsatH, lSatH, kneeFluxWb, remanentFluxWb);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addSurgeArrester`. */
 export function emt_add_surge_arrester(
   solverPtr: usize,
   fromNode: i32,
@@ -2731,6 +2833,7 @@ export function emt_add_surge_arrester(
   return solver.addSurgeArrester(fromNode, toNode, vRefVolts);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addSynchronousMachine`. */
 export function emt_add_sync_machine(
   solverPtr: usize,
   nodeA: i32,
@@ -2777,16 +2880,19 @@ export function emt_add_sync_machine(
   );
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.setNonlinearIterationOptions`. */
 export function emt_set_nonlinear_options(solverPtr: usize, maxIterations: u32, toleranceVolts: f64): void {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   solver.setNonlinearIterationOptions(maxIterations, toleranceVolts);
 }
 
+/** Returns the cumulative number of nonlinear Newton-Raphson iterations executed across all steps. */
 export function emt_get_nonlinear_iterations(solverPtr: usize): u32 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.totalNonlinearIterations;
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addConverterBridge`. */
 export function emt_add_converter_bridge(
   solverPtr: usize,
   nodeA: i32,
@@ -2819,12 +2925,14 @@ export function emt_add_converter_bridge(
   );
 }
 
+/** Returns the current DC-link voltage (in kV) of converter bridge `convIdx`. */
 export function emt_get_converter_dc_voltage_kv(solverPtr: usize, convIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (convIdx >= solver.nConverters) return 0.0;
   return load<f64>(solver.convVdcVoltsPtr + (((convIdx as usize)) << 3)) / 1000.0;
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addInductionMachine`. */
 export function emt_add_induction_machine(
   solverPtr: usize,
   nodeA: i32,
@@ -2865,24 +2973,28 @@ export function emt_add_induction_machine(
   );
 }
 
+/** Returns the per-unit rotor mechanical speed $\omega_r$ of induction machine `indIdx`. */
 export function emt_get_induction_machine_speed_pu(solverPtr: usize, indIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (indIdx >= solver.nIndMachines) return 1.0;
   return load<f64>(solver.indOmegaRPuPtr + (((indIdx as usize)) << 3));
 }
 
+/** Returns the per-unit electromagnetic torque $T_e$ of induction machine `indIdx`. */
 export function emt_get_induction_machine_torque_pu(solverPtr: usize, indIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (indIdx >= solver.nIndMachines) return 0.0;
   return load<f64>(solver.indTePuPtr + (((indIdx as usize)) << 3));
 }
 
+/** Returns `1` if the DFIG rotor crowbar protection is engaged on induction machine `indIdx`, else `0`. */
 export function emt_get_induction_machine_crowbar(solverPtr: usize, indIdx: u32): u32 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (indIdx >= solver.nIndMachines) return 0;
   return load<u32>(solver.indCrowbarActivePtr + (((indIdx as usize)) << 2));
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addFrequencyDependentLine`. */
 export function emt_add_fd_line(
   solverPtr: usize,
   fromNode: i32,
@@ -2896,6 +3008,7 @@ export function emt_add_fd_line(
   return solver.addFrequencyDependentLine(fromNode, toNode, gInf, tauSec, maxPolesY, maxPolesH);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addFdLineYPole`. */
 export function emt_add_fd_line_y_pole(
   solverPtr: usize,
   fdLineIdx: u32,
@@ -2906,6 +3019,7 @@ export function emt_add_fd_line_y_pole(
   return solver.addFdLineYPole(fdLineIdx, poleRad, residueSiemens);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addFdLineHPole`. */
 export function emt_add_fd_line_h_pole(
   solverPtr: usize,
   fdLineIdx: u32,
@@ -2916,92 +3030,109 @@ export function emt_add_fd_line_h_pole(
   return solver.addFdLineHPole(fdLineIdx, poleRad, residueDimless);
 }
 
+/** Returns the sending-end recursive convolution history current of FD-Line `fdLineIdx`. */
 export function emt_get_fd_line_hist_from(solverPtr: usize, fdLineIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (fdLineIdx >= solver.nFdLines) return 0.0;
   return load<f64>(solver.fdIHistFromPtr + (((fdLineIdx as usize)) << 3));
 }
 
+/** Returns the receiving-end recursive convolution history current of FD-Line `fdLineIdx`. */
 export function emt_get_fd_line_hist_to(solverPtr: usize, fdLineIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (fdLineIdx >= solver.nFdLines) return 0.0;
   return load<f64>(solver.fdIHistToPtr + (((fdLineIdx as usize)) << 3));
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.buildAndFactorize`. */
 export function emt_build_and_factorize(solverPtr: usize): bool {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.buildAndFactorize();
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.step`. */
 export function emt_step(solverPtr: usize): void {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   solver.step();
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.runSteps`. */
 export function emt_run_steps(solverPtr: usize, nSteps: u32): u32 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.runSteps(nSteps);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.allocTrajectory`. */
 export function emt_alloc_trajectory(solverPtr: usize, maxSteps: u32): usize {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.allocTrajectory(maxSteps);
 }
 
+/** Returns the linear memory pointer to the current nodal voltage vector `v(t)`. */
 export function emt_get_voltages_ptr(solverPtr: usize): usize {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.vVecPtr;
 }
 
+/** Returns the current simulation time $t$ in seconds. */
 export function emt_get_time(solverPtr: usize): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.t;
 }
 
+/** Returns the number of completed simulation time steps. */
 export function emt_get_step_count(solverPtr: usize): u32 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.stepCount;
 }
 
+/** Returns the number of LU matrix refactorizations performed during the simulation. */
 export function emt_get_factorization_count(solverPtr: usize): u32 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.factorizationCount;
 }
 
+/** Returns the linear memory pointer to the recorded trajectory buffer. */
 export function emt_get_trajectory_ptr(solverPtr: usize): usize {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.trajectoryBufferPtr;
 }
 
+/** Returns the number of time steps recorded in the trajectory buffer. */
 export function emt_get_trajectory_count(solverPtr: usize): u32 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.trajectoryRecordedSteps;
 }
 
+/** Returns the instantaneous current (in Amperes) through branch `branchIdx`. */
 export function emt_get_branch_current(solverPtr: usize, branchIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (branchIdx >= solver.nBranches) return 0.0;
   return load<f64>(solver.branchCurrentPtr + (((branchIdx as usize)) << 3));
 }
 
+/** Returns the cumulative energy (in Joules) absorbed by surge arrester `arrIdx`. */
 export function emt_get_arrester_energy(solverPtr: usize, arrIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (arrIdx >= solver.nArresters) return 0.0;
   return load<f64>(solver.arrEnergyJPtr + (((arrIdx as usize)) << 3));
 }
 
+/** Returns the per-unit rotor speed $\omega$ of synchronous machine `macIdx`. */
 export function emt_get_machine_speed_pu(solverPtr: usize, macIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (macIdx >= solver.nMachines) return 1.0;
   return load<f64>(solver.macOmegaPuPtr + (((macIdx as usize)) << 3));
 }
 
+/** Returns the rotor angle $\delta$ (in degrees) of synchronous machine `macIdx`. */
 export function emt_get_machine_angle_deg(solverPtr: usize, macIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (macIdx >= solver.nMachines) return 0.0;
   return (load<f64>(solver.macDeltaRadPtr + (((macIdx as usize)) << 3)) * 180.0) / Math.PI;
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addControlBlock`. */
 export function emt_add_control_block(
   solverPtr: usize,
   kind: u32,
@@ -3017,16 +3148,19 @@ export function emt_add_control_block(
   return solver.addControlBlock(kind, in0, in1, p0, p1, p2, minOut, maxOut);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.setControlInput`. */
 export function emt_set_control_input(solverPtr: usize, blockIdx: u32, u0: f64, u1: f64): void {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   solver.setControlInput(blockIdx, u0, u1);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.getControlOutput`. */
 export function emt_get_control_output(solverPtr: usize, blockIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   return solver.getControlOutput(blockIdx);
 }
 
+/** C-ABI wrapper for `WasmEmtSolver.addPll`. */
 export function emt_add_pll(
   solverPtr: usize,
   nodeA: i32,
@@ -3041,24 +3175,28 @@ export function emt_add_pll(
   return solver.addPll(nodeA, nodeB, nodeC, vBaseKvLL, freqNomHz, kp, ki);
 }
 
+/** Returns the estimated grid frequency (in Hz) tracked by SRF-PLL `pllIdx`. */
 export function emt_get_pll_freq_hz(solverPtr: usize, pllIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (pllIdx >= solver.nPlls) return 60.0;
   return load<f64>(solver.pllFreqHzPtr + (((pllIdx as usize)) << 3));
 }
 
+/** Returns the locked phase angle $\theta$ (in radians) tracked by SRF-PLL `pllIdx`. */
 export function emt_get_pll_angle_rad(solverPtr: usize, pllIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (pllIdx >= solver.nPlls) return 0.0;
   return load<f64>(solver.pllThetaRadPtr + (((pllIdx as usize)) << 3));
 }
 
+/** Returns the direct-axis voltage $v_d$ (in p.u.) measured by SRF-PLL `pllIdx`. */
 export function emt_get_pll_vd_pu(solverPtr: usize, pllIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (pllIdx >= solver.nPlls) return 0.0;
   return load<f64>(solver.pllVdPuPtr + (((pllIdx as usize)) << 3));
 }
 
+/** Returns the quadrature-axis voltage $v_q$ (in p.u.) measured by SRF-PLL `pllIdx`. */
 export function emt_get_pll_vq_pu(solverPtr: usize, pllIdx: u32): f64 {
   let solver = changetype<WasmEmtSolver>(solverPtr);
   if (pllIdx >= solver.nPlls) return 0.0;

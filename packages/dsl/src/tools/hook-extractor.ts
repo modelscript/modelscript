@@ -5,9 +5,9 @@ export interface IndexerHook {
   ruleName: string;
   kind: string;
   namePath: string;
-  exportPaths?: string[];
-  inheritPaths?: string[];
-  metadataFieldPaths?: Record<string, string>;
+  exportPaths?: string[] | undefined;
+  inheritPaths?: string[] | undefined;
+  metadataFieldPaths?: Record<string, string> | undefined;
 }
 
 export type QueryHooks = Record<string, any>;

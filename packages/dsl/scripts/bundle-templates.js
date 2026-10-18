@@ -57,6 +57,13 @@ for (const file of allFiles) {
   let varName;
   if (file.relPath === "dae/builder.ts") {
     varName = "daeBuilderCode";
+    if (!cleaned.includes("FLAG_HIGH_INDEX_EQ")) {
+      cleaned = cleaned.replace("FLAG_EQ_STREAM_CONNECT,", "FLAG_EQ_STREAM_CONNECT, FLAG_HIGH_INDEX_EQ,");
+    }
+    const matches = cleaned.match(/export function dae_getStringPool\b/g);
+    if (matches && matches.length > 1) {
+      cleaned = cleaned.replace(/export function dae_getStringPool\(builderPtr: u32\): u32 \{[\s\S]*?\}/, "");
+    }
   } else if (file.relPath === "dae/types.ts") {
     varName = "daeTypesCode";
   } else if (file.relPath === "dae/accessors.ts") {

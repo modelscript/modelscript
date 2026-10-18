@@ -24,13 +24,13 @@ interface TreeWidgetProps {
   /** Called when user double-clicks a class to open it. */
   onSelect: (className: string, kind: string) => void;
   /** Called when user single-clicks a class (highlight on diagram). */
-  onHighlight?: (className: string) => void;
-  width?: number | string;
-  filter?: string;
+  onHighlight?: ((className: string) => void) | undefined;
+  width?: number | string | undefined;
+  filter?: string | undefined;
   /** Incremented to force a re-fetch. */
-  version?: number;
-  language?: string | null;
-  selectedClassName?: string | null;
+  version?: number | undefined;
+  language?: string | null | undefined;
+  selectedClassName?: string | null | undefined;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -83,10 +83,10 @@ interface TreeNodeProps {
   node: TreeNodeInfo;
   uri: string;
   onSelect: (className: string, kind: string) => void;
-  onHighlight?: (className: string) => void;
+  onHighlight?: ((className: string) => void) | undefined;
   depth: number;
-  showQualifiedName?: boolean;
-  selectedClassName?: string | null;
+  showQualifiedName?: boolean | undefined;
+  selectedClassName?: string | null | undefined;
 }
 
 function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, className: string) {

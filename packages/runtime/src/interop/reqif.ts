@@ -25,23 +25,23 @@ export interface ReqIfRequirement {
   id: string;
   name: string;
   text: string;
-  type?: string;
+  type?: string | undefined;
   attributes: Record<string, string | number | boolean>;
-  children?: ReqIfRequirement[];
-  satisfiedBy?: string[];
-  verifiedBy?: string[];
-  status?: "Draft" | "Approved" | "Verified" | "Violated";
-  asilLevel?: "QM" | "ASIL-A" | "ASIL-B" | "ASIL-C" | "ASIL-D";
-  limitValue?: number;
-  comparator?: "<" | "<=" | "==" | ">=" | ">" | "!=";
+  children?: ReqIfRequirement[] | undefined;
+  satisfiedBy?: string[] | undefined;
+  verifiedBy?: string[] | undefined;
+  status?: "Draft" | "Approved" | "Verified" | "Violated" | undefined;
+  asilLevel?: "QM" | "ASIL-A" | "ASIL-B" | "ASIL-C" | "ASIL-D" | undefined;
+  limitValue?: number | undefined;
+  comparator?: "<" | "<=" | "==" | ">=" | ">" | "!=" | undefined;
 }
 
 export interface ReqIfSpecification {
   id: string;
   title: string;
-  description?: string;
+  description?: string | undefined;
   requirements: ReqIfRequirement[];
-  relations?: ReqIfRelation[];
+  relations?: ReqIfRelation[] | undefined;
 }
 
 export class ReqIfParser {
@@ -59,7 +59,7 @@ export class ReqIfParser {
     // Extract title from REQ-IF-HEADER or SPECIFICATION
     const titleMatch = xmlString.match(/<TITLE>([^<]*)<\/TITLE>/i) || xmlString.match(/LONG-NAME="([^"]+)"/i);
     if (titleMatch) {
-      spec.title = titleMatch[1];
+      spec.title = titleMatch[1]!;
     }
 
     // Map to hold flat list of requirements by ID for hierarchical reconstruction
@@ -70,11 +70,11 @@ export class ReqIfParser {
     let match: RegExpExecArray | null;
 
     while ((match = specObjRegex.exec(xmlString)) !== null) {
-      const attrsStr = match[1];
-      const body = match[2];
+      const attrsStr = match[1]!;
+      const body = match[2]!;
 
       const idMatch = attrsStr.match(/IDENTIFIER="([^"]+)"/i);
-      const id = idMatch ? idMatch[1] : `REQ-${reqMap.size + 1}`;
+      const id = idMatch ? idMatch[1]! : `REQ-${reqMap.size + 1}`;
 
       // Extract custom attributes first
       const attributes: Record<string, string | number | boolean> = {};
@@ -89,14 +89,14 @@ export class ReqIfParser {
       let extractedAsil: ReqIfRequirement["asilLevel"] = undefined;
 
       while ((valMatch = valRegex.exec(body)) !== null) {
-        const valAttrs = valMatch[1];
-        const valBody = valMatch[2];
+        const valAttrs = valMatch[1]!;
+        const valBody = valMatch[2]!;
 
         // Attribute name / definition reference
         const attrDefMatch =
           valAttrs.match(/(?:ATTRIBUTE-DEFINITION|DEFINITION)="([^"]+)"/i) ||
           valBody.match(/<ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>([^<]*)<\/ATTRIBUTE-DEFINITION-[A-Z0-9_-]+-REF>/i);
-        const attrName = attrDefMatch ? attrDefMatch[1].trim() : "Attribute";
+        const attrName = attrDefMatch ? attrDefMatch[1]!.trim() : "Attribute";
 
         // Raw value
         const theValAttrMatch = valAttrs.match(/THE-VALUE="([^"]*)"/i);
@@ -112,7 +112,7 @@ export class ReqIfParser {
 
         let rawStr = "";
         if (theValAttrMatch) {
-          rawStr = theValAttrMatch[1];
+          rawStr = theValAttrMatch[1]!;
         } else if (theValBody) {
           let stripped = theValBody;
           let prev = "";
@@ -122,7 +122,7 @@ export class ReqIfParser {
           }
           rawStr = stripped.trim();
         } else if (enumRefMatch) {
-          rawStr = enumRefMatch[1].trim();
+          rawStr = enumRefMatch[1]!.trim();
         }
         const rawVal = unescapeXml(rawStr);
 
@@ -158,7 +158,7 @@ export class ReqIfParser {
         const compMatch = text.match(/(?:>=|<=|>|<|==|!=|\bexceed\b|\bat least\b|\bmaximum\b|\bminimum\b)\s*([\d.]+)/i);
         if (compMatch) {
           if (limitValue === undefined) {
-            limitValue = parseFloat(compMatch[1]);
+            limitValue = parseFloat(compMatch[1]!);
           }
           if (comparator === undefined) {
             if (text.includes(">=") || text.includes("at least")) comparator = ">=";
@@ -193,8 +193,8 @@ export class ReqIfParser {
     // 2. Extract SPEC-RELATIONS
     const relationRegex = /<SPEC-RELATION\b([^>]*)>([\s\S]*?)<\/SPEC-RELATION>/gi;
     while ((match = relationRegex.exec(xmlString)) !== null) {
-      const relAttrs = match[1];
-      const relBody = match[2];
+      const relAttrs = match[1]!;
+      const relBody = match[2]!;
 
       const extractInnerRef = (container: string, parentTag: string, childTag: string): string | undefined => {
         const pOpen = `<${parentTag}>`;
@@ -205,7 +205,7 @@ export class ReqIfParser {
         if (pEnd === -1) return undefined;
         const inner = container.slice(pStart + pOpen.length, pEnd);
         const m = inner.match(new RegExp(`<${childTag}>([^<]*)<\\/${childTag}>`, "i"));
-        return m ? m[1].trim() : undefined;
+        return m ? m[1]!.trim() : undefined;
       };
 
       const relId = relAttrs.match(/IDENTIFIER="([^"]+)"/i)?.[1] || `REL-${spec.relations!.length + 1}`;
@@ -251,7 +251,7 @@ export class ReqIfParser {
           if (depth === 0 && tagStart !== -1) {
             const fullTag = blockXml.substring(tagStart, i + 17);
             const objRefMatch = fullTag.match(/<OBJECT>[\s\S]*?<SPEC-OBJECT-REF>(.*?)<\/SPEC-OBJECT-REF>/i);
-            const currentReqId = objRefMatch ? objRefMatch[1].trim() : undefined;
+            const currentReqId = objRefMatch ? objRefMatch[1]!.trim() : undefined;
 
             if (currentReqId) {
               if (parentReqId) {
@@ -260,7 +260,7 @@ export class ReqIfParser {
               }
               const childrenBlock = fullTag.match(/<CHILDREN>([\s\S]*?)<\/CHILDREN>/i);
               if (childrenBlock) {
-                parseHierarchyBlock(childrenBlock[1], currentReqId);
+                parseHierarchyBlock(childrenBlock[1]!, currentReqId);
               }
             }
             tagStart = -1;
@@ -486,7 +486,7 @@ export class ReqIfParser {
     let headerMatch: RegExpExecArray | null;
 
     while ((headerMatch = defHeaderRegex.exec(sysmlSource)) !== null) {
-      const id = headerMatch[1];
+      const id = headerMatch[1]!;
       const bodyStart = headerMatch.index + headerMatch[0].length;
       let depth = 1;
       let pos = bodyStart;
@@ -516,7 +516,7 @@ export class ReqIfParser {
         name: id,
         text,
         attributes: {},
-        limitValue: limitMatch ? parseFloat(limitMatch[1]) : undefined,
+        limitValue: limitMatch ? parseFloat(limitMatch[1]!) : undefined,
         comparator: compMatch ? (compMatch[1] as any) : undefined,
         asilLevel: asilMatch ? (asilMatch[1] as any) : undefined,
         status: "Approved",
@@ -530,8 +530,8 @@ export class ReqIfParser {
     while ((satMatch = satisfyRegex.exec(sysmlSource)) !== null) {
       spec.relations!.push({
         id: `REL_SAT_${relCount++}`,
-        sourceId: satMatch[2],
-        targetId: satMatch[1],
+        sourceId: satMatch[2]!,
+        targetId: satMatch[1]!,
         type: "satisfies",
       });
     }
@@ -541,8 +541,8 @@ export class ReqIfParser {
     while ((verMatch = verifyRegex.exec(sysmlSource)) !== null) {
       spec.relations!.push({
         id: `REL_VER_${relCount++}`,
-        sourceId: verMatch[2],
-        targetId: verMatch[1],
+        sourceId: verMatch[2]!,
+        targetId: verMatch[1]!,
         type: "verifies",
       });
     }

@@ -9,10 +9,10 @@ import Box from "../Box";
 
 interface UsdViewerProps {
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
-const Wrapper = styled.div<{ $isFullScreen?: boolean }>`
+const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
   background: var(--color-canvas-default, #0d1117);
@@ -236,13 +236,13 @@ declare global {
   namespace JSX {
     interface IntrinsicElements {
       "model-viewer": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string;
-        alt?: string;
-        "auto-rotate"?: boolean;
-        "camera-controls"?: boolean;
-        ar?: boolean;
-        "ar-modes"?: string;
-        "shadow-intensity"?: string;
+        src?: string | undefined;
+        alt?: string | undefined;
+        "auto-rotate"?: boolean | undefined;
+        "camera-controls"?: boolean | undefined;
+        ar?: boolean | undefined;
+        "ar-modes"?: string | undefined;
+        "shadow-intensity"?: string | undefined;
       };
     }
   }

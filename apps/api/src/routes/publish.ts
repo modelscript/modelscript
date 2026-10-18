@@ -244,7 +244,7 @@ export function publishRouter(
           try {
             const author = database.getUserFederationInfo(req.user.id);
             if (author && author.actor_url) {
-              const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+              const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
               const packageId = `${publicUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
               const releaseActivity = {
                 "@context": ["https://www.w3.org/ns/activitystreams", { schema: "http://schema.org/" }],
@@ -269,7 +269,7 @@ export function publishRouter(
                 },
               };
 
-              const fedWorker = worker || (req.app?.locals?.federationWorker as FederationWorker | undefined);
+              const fedWorker = worker || (req.app?.locals?.["federationWorker"] as FederationWorker | undefined);
               if (fedWorker) {
                 fedWorker.enqueueActivityBroadcast(releaseActivity, author.id);
               }
@@ -350,7 +350,7 @@ export function publishRouter(
       try {
         const author = database.getUserFederationInfo(req.user.id);
         if (author && author.actor_url) {
-          const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+          const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
           const packageId = `${publicUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
           const tombstoneActivity = {
             "@context": "https://www.w3.org/ns/activitystreams",
@@ -366,7 +366,7 @@ export function publishRouter(
             },
           };
 
-          const fedWorker = worker || (req.app?.locals?.federationWorker as FederationWorker | undefined);
+          const fedWorker = worker || (req.app?.locals?.["federationWorker"] as FederationWorker | undefined);
           if (fedWorker) {
             fedWorker.enqueueActivityBroadcast(tombstoneActivity, author.id);
           }

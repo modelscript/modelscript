@@ -15,21 +15,21 @@ export interface FailureMode {
   id: string;
   name: string;
   component: string;
-  description?: string;
-  probability?: number;
+  description?: string | undefined;
+  probability?: number | undefined;
 }
 
 export interface HazardDefinition {
   id: string;
   name: string;
-  description?: string;
-  severity?: number; // 1-5 (Negligible to Catastrophic)
-  probability?: number; // 1-5 (Improbable to Frequent)
-  initialRpn?: number;
-  residualSeverity?: number;
-  residualProbability?: number;
-  residualRpn?: number;
-  mitigationRequirementId?: string;
+  description?: string | undefined;
+  severity?: number | undefined; // 1-5 (Negligible to Catastrophic)
+  probability?: number | undefined; // 1-5 (Improbable to Frequent)
+  initialRpn?: number | undefined;
+  residualSeverity?: number | undefined;
+  residualProbability?: number | undefined;
+  residualRpn?: number | undefined;
+  mitigationRequirementId?: string | undefined;
   /**
    * Predicate that evaluates whether a given set of active failure IDs triggers the hazard.
    */
@@ -40,7 +40,7 @@ export interface MinimalCutSet {
   order: number;
   faultIds: string[];
   faultNames: string[];
-  probability?: number;
+  probability?: number | undefined;
   description: string;
 }
 
@@ -52,17 +52,17 @@ export interface SafetyAnalysisResult {
   singlePointsOfFailure: MinimalCutSet[];
   totalCutSetsCount: number;
   maxOrderExplored: number;
-  faultTreeDiagram?: DiagramData;
+  faultTreeDiagram?: DiagramData | undefined;
   summary: string;
-  diagnostics?: string[];
+  diagnostics?: string[] | undefined;
 }
 
 export interface SafetyAnalysisOptions {
-  failureModes?: FailureMode[];
-  hazard?: HazardDefinition;
-  maxOrder?: number;
-  maxCutSets?: number;
-  generateDiagram?: boolean;
+  failureModes?: FailureMode[] | undefined;
+  hazard?: HazardDefinition | undefined;
+  maxOrder?: number | undefined;
+  maxCutSets?: number | undefined;
+  generateDiagram?: boolean | undefined;
 }
 
 /**
@@ -298,16 +298,19 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
     });
 
     const hasFailureMeta =
-      sym.metadata?.defKind === "failure_mode" ||
-      sym.metadata?.defKind === "fault" ||
-      sym.metadata?.stereotype === "FailureMode" ||
-      sym.metadata?.stereotype === "Fault";
+      sym.metadata?.["defKind"] === "failure_mode" ||
+      sym.metadata?.["defKind"] === "fault" ||
+      sym.metadata?.["stereotype"] === "FailureMode" ||
+      sym.metadata?.["stereotype"] === "Fault";
 
     if (hasFailureType || hasFailureMeta) {
       let prob: number | undefined = undefined;
       for (const ch of children) {
-        if ((ch.name === "probability" || ch.name === "prob" || ch.name === "rate") && ch.metadata?.val !== undefined) {
-          const v = Number(ch.metadata.val);
+        if (
+          (ch.name === "probability" || ch.name === "prob" || ch.name === "rate") &&
+          ch.metadata?.["val"] !== undefined
+        ) {
+          const v = Number(ch.metadata["val"]);
           if (!Number.isNaN(v)) prob = v;
         }
       }
@@ -333,17 +336,17 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
       return isTypeRef && (typeName === "hazard" || typeName.endsWith("::hazard"));
     });
 
-    const hasHazardMeta = sym.metadata?.defKind === "hazard" || sym.metadata?.stereotype === "Hazard";
+    const hasHazardMeta = sym.metadata?.["defKind"] === "hazard" || sym.metadata?.["stereotype"] === "Hazard";
 
     if (hasHazardType || hasHazardMeta) {
       const linkedCauses: string[] = [];
-      if (Array.isArray(sym.metadata?.causes)) {
-        linkedCauses.push(...sym.metadata.causes);
-      } else if (typeof sym.metadata?.causes === "string") {
-        linkedCauses.push(sym.metadata.causes);
+      if (Array.isArray(sym.metadata?.["causes"])) {
+        linkedCauses.push(...sym.metadata["causes"]);
+      } else if (typeof sym.metadata?.["causes"] === "string") {
+        linkedCauses.push(sym.metadata["causes"]);
       }
-      if (sym.metadata?.cause && typeof sym.metadata.cause === "string") {
-        linkedCauses.push(sym.metadata.cause);
+      if (sym.metadata?.["cause"] && typeof sym.metadata["cause"] === "string") {
+        linkedCauses.push(sym.metadata["cause"]);
       }
       for (const ch of children) {
         if (
@@ -352,8 +355,8 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
           ch.name === "failureModes" ||
           ch.ruleName?.toLowerCase().includes("cause")
         ) {
-          if (ch.metadata?.target) linkedCauses.push(String(ch.metadata.target));
-          else if (ch.metadata?.val) linkedCauses.push(String(ch.metadata.val));
+          if (ch.metadata?.["target"]) linkedCauses.push(String(ch.metadata["target"]));
+          else if (ch.metadata?.["val"]) linkedCauses.push(String(ch.metadata["val"]));
           else if (ch.name && ch.name !== "causes" && ch.name !== "cause") linkedCauses.push(ch.name);
         }
         if (ch.ruleName === "FeatureTyping" || ch.ruleName === "OwnedFeatureTyping") {
@@ -367,15 +370,15 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
       const causeSet = new Set(linkedCauses.filter((c) => c !== "causes" && c !== "cause"));
 
       const gateType = String(
-        sym.metadata?.logic || sym.metadata?.gate || sym.metadata?.causesHazardLogic || "",
+        sym.metadata?.["logic"] || sym.metadata?.["gate"] || sym.metadata?.["causesHazardLogic"] || "",
       ).toLowerCase();
-      const votingK = sym.metadata?.kOfN ?? sym.metadata?.threshold ?? (sym.metadata?.voting as any)?.k;
+      const votingK = sym.metadata?.["kOfN"] ?? sym.metadata?.["threshold"] ?? (sym.metadata?.["voting"] as any)?.k;
 
       let causesHazard: (active: Set<string>) => boolean;
-      let description = sym.metadata?.description as string | undefined;
+      let description = sym.metadata?.["description"] as string | undefined;
 
-      if (sym.metadata?.expression || sym.metadata?.condition) {
-        const expr = String(sym.metadata.expression || sym.metadata.condition);
+      if (sym.metadata?.["expression"] || sym.metadata?.["condition"]) {
+        const expr = String(sym.metadata["expression"] || sym.metadata["condition"]);
         causesHazard = (active) => evaluateBooleanFaultLogic(expr, active);
       } else if (votingK !== undefined && typeof votingK === "number" && causeSet.size > 0) {
         causesHazard = (active) => {
@@ -431,25 +434,57 @@ export function analyzeSafetyAndFaultTree(
   let failureModes = options.failureModes;
   let hazard = options.hazard;
 
-  if ((!failureModes || failureModes.length === 0) && queryDB) {
+  if ((!failureModes || failureModes.length === 0 || !hazard) && queryDB) {
     const extracted = extractSysML2FailureModes(queryDB);
     if (!failureModes || failureModes.length === 0) failureModes = extracted.failureModes;
     if (!hazard && extracted.hazards.length > 0) hazard = extracted.hazards[0];
   }
 
-  if (!failureModes || failureModes.length === 0) {
-    failureModes = [
-      { id: "FaultA", name: "Component A Failure", component: "SubsystemA" },
-      { id: "FaultB", name: "Component B Failure", component: "SubsystemB" },
-    ];
-  }
-
-  if (!hazard) {
-    hazard = {
-      id: "SystemHazard",
-      name: "Top-Level System Hazard",
-      description: "Loss of primary mission function",
-      causesHazard: (active) => active.has("FaultA") && active.has("FaultB"),
+  if (!hazard || !failureModes || failureModes.length === 0) {
+    const diagMsg = !hazard
+      ? "No hazard definitions found in model; returning empty fault tree."
+      : `Hazard '${hazard.name}' has no failure modes defined in model; returning empty fault tree.`;
+    if (
+      hazard?.description &&
+      hazard.description.includes("no associated failure mode causal rules or physics evaluator")
+    ) {
+      return {
+        hazardId: hazard.id,
+        hazardName: hazard.name,
+        isHazardReachable: false,
+        minimalCutSets: [],
+        singlePointsOfFailure: [],
+        totalCutSetsCount: 0,
+        maxOrderExplored: maxOrder,
+        faultTreeDiagram: generateDiagram
+          ? synthesizeFaultTreeDiagram({
+              hazardName: hazard.name,
+              hazardDescription: hazard.description,
+              minimalCutSets: [],
+            })
+          : undefined,
+        summary: `Hazard '${hazard.name}' is unreachable under all analyzed fault combinations.`,
+        diagnostics: [hazard.description],
+      };
+    }
+    return {
+      hazardId: hazard?.id ?? "",
+      hazardName: hazard?.name ?? "None",
+      isHazardReachable: false,
+      minimalCutSets: [],
+      singlePointsOfFailure: [],
+      totalCutSetsCount: 0,
+      maxOrderExplored: maxOrder,
+      faultTreeDiagram:
+        generateDiagram && hazard
+          ? synthesizeFaultTreeDiagram({
+              hazardName: hazard.name,
+              hazardDescription: hazard.description,
+              minimalCutSets: [],
+            })
+          : undefined,
+      summary: diagMsg,
+      diagnostics: [diagMsg],
     };
   }
 
@@ -508,11 +543,11 @@ export interface DftGate {
   name: string;
   type: DftGateType;
   inputs: string[];
-  k?: number; // for VOT (k-out-of-n)
-  trigger?: string; // for FDEP
-  dependents?: string[]; // for FDEP
-  primary?: string; // for SPARE
-  spares?: string[]; // for SPARE
+  k?: number | undefined; // for VOT (k-out-of-n)
+  trigger?: string | undefined; // for FDEP
+  dependents?: string[] | undefined; // for FDEP
+  primary?: string | undefined; // for SPARE
+  spares?: string[] | undefined; // for SPARE
 }
 
 export interface DftModel {
@@ -760,8 +795,8 @@ export interface ControlLoop {
   controller: string;
   controlAction: string;
   controlledProcess: string;
-  feedback?: string[];
-  context?: string;
+  feedback?: string[] | undefined;
+  context?: string | undefined;
 }
 
 export interface UnsafeControlAction {
@@ -875,46 +910,152 @@ export function synthesizeStpaUcas(controlLoops: ControlLoop[], defaultHazard = 
 }
 
 /**
- * Extracts candidate control loops from SysML v2 QueryDB symbols.
+ * Extracts candidate control loops from SysML v2 QueryDB symbols by tracing
+ * structural connection / flow edges (ConnectionUsage, FlowConnectionUsage,
+ * AllocationUsage, and explicit source->target metadata), with role-based
+ * fallback pairing when connection edges are omitted.
  */
 export function extractSysML2ControlLoops(queryDB: QueryDB): ControlLoop[] {
   const loops: ControlLoop[] = [];
+  const seenIds = new Set<string>();
   const symbols = queryDB.allEntries ? queryDB.allEntries() : [];
 
-  let controller: string | undefined;
-  let action: string | undefined;
-  let process: string | undefined;
+  const controllers: string[] = [];
+  const actions: string[] = [];
+  const processes: string[] = [];
 
   for (const sym of symbols) {
     const name = sym.name || "";
     const lower = name.toLowerCase();
+    const ruleName = ((sym as any).ruleName || (sym as any).kind || "").toString();
+    const meta = (sym.metadata || {}) as Record<string, any>;
 
-    if (lower.includes("controller") || lower.includes("ecu") || lower.includes("manager")) {
-      controller = name;
+    // 1. Check explicit structural connection / flow symbols
+    if (
+      ruleName === "ConnectionUsage" ||
+      ruleName === "FlowConnectionUsage" ||
+      ruleName === "InterfaceUsage" ||
+      ruleName === "AllocationUsage" ||
+      meta["defKind"] === "connection" ||
+      meta["defKind"] === "flow" ||
+      (typeof meta["source"] === "string" && typeof meta["target"] === "string")
+    ) {
+      const rawSrc = String(meta["source"] || meta["from"] || "").trim();
+      const rawDst = String(meta["target"] || meta["to"] || "").trim();
+      if (rawSrc && rawDst) {
+        const srcComp = rawSrc.split(".")[0]!;
+        const srcPort = rawSrc.includes(".") ? rawSrc.split(".").slice(1).join(".") : "";
+        const dstComp = rawDst.split(".")[0]!;
+        const actionName = String(meta["payload"] || meta["item"] || name || srcPort || "controlSignal");
+        const loopId = `loop_${srcComp}_${actionName}_${dstComp}`;
+        if (!seenIds.has(loopId)) {
+          seenIds.add(loopId);
+          loops.push({
+            id: loopId,
+            controller: srcComp,
+            controlAction: actionName,
+            controlledProcess: dstComp,
+          });
+        }
+      }
+    }
+
+    // 2. Collect role candidates by AST rule / metadata / semantic naming
+    if (
+      meta["role"] === "controller" ||
+      lower.includes("controller") ||
+      lower.includes("ecu") ||
+      lower.includes("manager") ||
+      lower.includes("autopilot")
+    ) {
+      if (name && !controllers.includes(name)) controllers.push(name);
     } else if (
+      ruleName === "ActionUsage" ||
+      ruleName === "ActionDefinition" ||
+      meta["role"] === "action" ||
       lower.includes("action") ||
       lower.includes("command") ||
       lower.includes("brake") ||
       lower.includes("thrust")
     ) {
-      action = name;
+      if (name && !actions.includes(name)) actions.push(name);
     } else if (
+      meta["role"] === "plant" ||
+      meta["role"] === "process" ||
       lower.includes("plant") ||
       lower.includes("actuator") ||
       lower.includes("engine") ||
       lower.includes("process")
     ) {
-      process = name;
+      if (name && !processes.includes(name)) processes.push(name);
     }
   }
 
-  if (controller && action) {
-    loops.push({
-      id: `loop_${controller}_${action}`,
-      controller,
-      controlAction: action,
-      controlledProcess: process || "Plant",
-    });
+  // 3. Also check source text for `connect A.out to B.in` or `flow of X from A to B`
+  const srcText: string = (queryDB as any)?.source || (queryDB as any)?.doc?.text || "";
+  if (srcText) {
+    const flowRegex =
+      /\bflow\s+(?:of\s+([A-Za-z_][A-Za-z0-9_]*)\s+)?from\s+([A-Za-z_][A-Za-z0-9_.]*)\s+to\s+([A-Za-z_][A-Za-z0-9_.]*)/g;
+    let fm: RegExpExecArray | null;
+    while ((fm = flowRegex.exec(srcText)) !== null) {
+      const payload = fm[1];
+      const srcEndpoint = fm[2]!;
+      const dstEndpoint = fm[3]!;
+      const srcComp = srcEndpoint.split(".")[0]!;
+      const srcPort = srcEndpoint.includes(".") ? srcEndpoint.split(".").pop()! : "controlFlow";
+      const dstComp = dstEndpoint.split(".")[0]!;
+      const act = payload || srcPort;
+      const loopId = `loop_${srcComp}_${act}`;
+      if (!seenIds.has(loopId)) {
+        seenIds.add(loopId);
+        loops.push({
+          id: loopId,
+          controller: srcComp,
+          controlAction: act,
+          controlledProcess: dstComp,
+        });
+      }
+    }
+
+    const connRegex = /\bconnect\s+([A-Za-z_][A-Za-z0-9_.]*)\s+to\s+([A-Za-z_][A-Za-z0-9_.]*)/g;
+    let cm: RegExpExecArray | null;
+    while ((cm = connRegex.exec(srcText)) !== null) {
+      const srcEndpoint = cm[1]!;
+      const dstEndpoint = cm[2]!;
+      const srcComp = srcEndpoint.split(".")[0]!;
+      const srcPort = srcEndpoint.includes(".") ? srcEndpoint.split(".").pop()! : actions[0] || "command";
+      const dstComp = dstEndpoint.split(".")[0]!;
+      const loopId = `loop_${srcComp}_${srcPort}`;
+      if (!seenIds.has(loopId)) {
+        seenIds.add(loopId);
+        loops.push({
+          id: loopId,
+          controller: srcComp,
+          controlAction: srcPort,
+          controlledProcess: dstComp,
+        });
+      }
+    }
+  }
+
+  // 4. Fallback: pair discovered controllers, actions, and processes
+  if (loops.length === 0 && controllers.length > 0 && actions.length > 0) {
+    const count = Math.max(controllers.length, actions.length);
+    for (let i = 0; i < count; i++) {
+      const ctrl = controllers[i % controllers.length]!;
+      const act = actions[i % actions.length]!;
+      const proc = processes.length > 0 ? processes[i % processes.length]! : "Plant";
+      const loopId = `loop_${ctrl}_${act}`;
+      if (!seenIds.has(loopId)) {
+        seenIds.add(loopId);
+        loops.push({
+          id: loopId,
+          controller: ctrl,
+          controlAction: act,
+          controlledProcess: proc,
+        });
+      }
+    }
   }
 
   return loops;

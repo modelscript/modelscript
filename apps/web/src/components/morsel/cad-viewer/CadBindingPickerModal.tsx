@@ -20,9 +20,9 @@ interface CadBindingPickerModalProps {
   onClose: () => void;
   component: CadComponent | null;
   availableVariables: string[];
-  animationController?: AnimationController | null;
+  animationController?: AnimationController | null | undefined;
   onSave: (componentName: string, bindings: DynamicBindingConfig[]) => void;
-  dark?: boolean;
+  dark?: boolean | undefined;
 }
 
 const PROPERTY_OPTIONS = [
@@ -79,9 +79,9 @@ export function CadBindingPickerModal({
 
       const initial: DynamicBindingConfig[] = [];
       if (r0Vars.length >= 3) {
-        initial.push({ property: "position", index: 0, variable: r0Vars[0], unit: "m" });
-        initial.push({ property: "position", index: 1, variable: r0Vars[1], unit: "m" });
-        initial.push({ property: "position", index: 2, variable: r0Vars[2], unit: "m" });
+        initial.push({ property: "position", index: 0, variable: r0Vars[0]!, unit: "m" });
+        initial.push({ property: "position", index: 1, variable: r0Vars[1]!, unit: "m" });
+        initial.push({ property: "position", index: 2, variable: r0Vars[2]!, unit: "m" });
       }
       if (hasRt) {
         const rtVar = availableVariables.find((v) => v.includes("R.T")) || "R.T";
@@ -307,7 +307,7 @@ export function CadBindingPickerModal({
                           handleUpdateBinding(idx, { property: "rotation", format: "matrix3x3", index: undefined });
                         } else {
                           const [prop, indexStr] = val.split(":");
-                          const indexNum = parseInt(indexStr, 10);
+                          const indexNum = parseInt(indexStr!, 10);
                           const opt = PROPERTY_OPTIONS.find((p) => p.property === prop && p.index === indexNum);
                           handleUpdateBinding(idx, {
                             property: prop as DynamicBindingConfig["property"],

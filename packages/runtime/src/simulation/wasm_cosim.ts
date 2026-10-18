@@ -16,13 +16,13 @@ export type WasmCosimMethod = "jacobi" | "gauss-seidel";
 /** Configuration for the WASM Co-Simulation Orchestrator. */
 export interface WasmCosimConfig {
   /** Master algorithm method (default: "gauss-seidel"). */
-  method?: WasmCosimMethod;
+  method?: WasmCosimMethod | undefined;
   /** Maximum Gauss-Seidel iterations per step (default: 10). */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** Convergence tolerance for coupled variables (default: 1e-6). */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Gauss-Seidel relaxation factor in (0, 1] (default: 1.0). */
-  relaxation?: number;
+  relaxation?: number | undefined;
 }
 
 /** Participant connection spec for WASM co-simulation. */
@@ -32,21 +32,21 @@ export interface WasmParticipantSpec {
   /** FMI standard version: 2 for FMI 2.0, 3 for FMI 3.0. */
   fmiVersion: 2 | 3;
   /** Integer step ratio for multi-rate stepping (default: 1). */
-  stepRatio?: number;
+  stepRatio?: number | undefined;
 }
 
 /** Direct variable coupling connection between FMU instances. */
 export interface WasmCouplingSpec {
   srcInstancePtr: number;
   srcVr: number;
-  srcFmiVersion?: 2 | 3;
+  srcFmiVersion?: 2 | 3 | undefined;
   dstInstancePtr: number;
   dstVr: number;
-  dstFmiVersion?: 2 | 3;
+  dstFmiVersion?: 2 | 3 | undefined;
   /** Linear scaling factor: dst = src * scale + offset (default: 1.0). */
-  scale?: number;
+  scale?: number | undefined;
   /** Linear offset (default: 0.0). */
-  offset?: number;
+  offset?: number | undefined;
 }
 
 /**

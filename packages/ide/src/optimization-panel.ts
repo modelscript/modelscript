@@ -12,8 +12,8 @@ export class OptimizationPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
-  public sourceUri?: string;
-  private client?: LanguageClient;
+  public sourceUri?: string | undefined;
+  private client?: LanguageClient | undefined;
   private disposables: vscode.Disposable[] = [];
 
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {

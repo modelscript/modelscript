@@ -1,7 +1,6 @@
 // name:     Cross
 // keywords: equation, vector
 // status:   correct
-// xfail:    true
 //
 //
 

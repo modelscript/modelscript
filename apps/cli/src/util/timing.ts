@@ -8,7 +8,7 @@
  */
 
 export class Profiler {
-  private marks = new Map<string, { start: number; end?: number }>();
+  private marks = new Map<string, { start: number; end?: number | undefined }>();
 
   /** Begin timing a named stage. */
   start(stage: string): void {

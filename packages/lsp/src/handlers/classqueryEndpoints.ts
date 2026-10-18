@@ -23,20 +23,20 @@ export function registerClassQueryEndpoints(context: LspContext) {
         name: string;
         uri: string;
         type: "simulation" | "calibration";
-        startTime?: number;
-        stopTime?: number;
-        interval?: number;
-        tolerance?: number;
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        tolerance?: number | undefined;
       }[];
     } => {
       const experiments: {
         name: string;
         uri: string;
         type: "simulation" | "calibration";
-        startTime?: number;
-        stopTime?: number;
-        interval?: number;
-        tolerance?: number;
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        tolerance?: number | undefined;
       }[] = [];
 
       for (const [uri, instances] of context.workspaceManager.documentInstances) {
@@ -102,7 +102,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/searchClasses",
-    (params: { query: string; limit?: number }): { results: TreeNodeInfo[] } => {
+    (params: { query: string; limit?: number | undefined }): { results: TreeNodeInfo[] } => {
       const query = (params.query ?? "").toLowerCase();
       if (!query) return { results: [] };
 
@@ -128,18 +128,20 @@ export function registerClassQueryEndpoints(context: LspContext) {
         }
       }
 
-      results.sort((a, b) => a.compositeName.localeCompare(b.compositeName));
+      results.sort((a, b) => (a.compositeName ?? "").localeCompare(b.compositeName ?? ""));
       return { results };
     },
   );
 
   context.connection.onRequest(
     "modelscript/getClassSource",
-    (params: { className: string }): { content: string | null; uri?: string; error?: string } => {
+    (params: {
+      className: string;
+    }): { content: string | null; uri?: string | undefined; error?: string | undefined } => {
       try {
         const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         const parts = params.className.split(".");
-        let entries = unifiedIndex.byName.get(parts[parts.length - 1]);
+        let entries = unifiedIndex.byName.get(parts[parts.length - 1]!);
         let entry = undefined;
 
         if (entries) {
@@ -275,7 +277,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
               const prefix = text.substring(0, startByte);
               const lines = prefix.split("\n");
               line = lines.length - 1;
-              character = lines[lines.length - 1].length;
+              character = lines[lines.length - 1]!.length;
             }
           }
           return { uri, line, character };
@@ -307,6 +309,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       const classInstance = instances[0];
       const docContext = context.workspaceManager.documentContexts.get(params.uri);
+      void docContext;
 
       try {
         // Get base name from defaultComponentName annotation or class name
@@ -361,7 +364,10 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/flatten",
-    async (params: { name: string; uri?: string }): Promise<{ text: string | null; error?: string }> => {
+    async (params: {
+      name: string;
+      uri?: string | undefined;
+    }): Promise<{ text: string | null; error?: string | undefined }> => {
       let instances = params.uri ? context.workspaceManager.documentInstances.get(params.uri) : undefined;
 
       // Fallback to finding instances via context if URI isn't provided or didn't work
@@ -448,14 +454,14 @@ export function registerClassQueryEndpoints(context: LspContext) {
     "modelscript/query",
     (params: {
       name: string;
-      uri?: string;
+      uri?: string | undefined;
     }): {
       name: string;
       kind: string;
       description: string;
       components: { name: string; type: string; description: string }[];
       childClasses: { name: string; kind: string }[];
-      error?: string;
+      error?: string | undefined;
     } | null => {
       let ctx: Context | undefined;
       if (params.uri) ctx = context.workspaceManager.documentContexts.get(params.uri);
@@ -575,7 +581,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getClassHierarchy",
-    (params: { uri: string; className?: string }): ClassHierarchyNode | null => {
+    (params: { uri: string; className?: string | undefined }): ClassHierarchyNode | null => {
       const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
@@ -599,7 +605,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getComponentTree",
-    (params: { uri: string; className?: string }): ComponentTreeNode | null => {
+    (params: { uri: string; className?: string | undefined }): ComponentTreeNode | null => {
       const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
@@ -628,7 +634,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
     } catch {}
     // Normalize modelica://lib/..., modelica:///lib/..., modelica:/lib/...
     const m = uStr.match(/^modelica:(?:\/\/lib\/|\/{1,3})(.*)$/i);
-    let p = m ? m[1] : uStr;
+    let p = m ? m[1]! : uStr;
     if (!p.startsWith("lib/") && !p.startsWith("/lib/")) {
       p = "lib/" + p.replace(/^\/+/, "");
     }
@@ -638,9 +644,14 @@ export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getVirtualFile",
     (params: {
-      uri?: string;
-      path?: string;
-    }): { content?: string; size?: number; exists: boolean; isDirectory?: boolean } => {
+      uri?: string | undefined;
+      path?: string | undefined;
+    }): {
+      content?: string | undefined;
+      size?: number | undefined;
+      exists: boolean;
+      isDirectory?: boolean | undefined;
+    } => {
       const target = params?.uri || params?.path || "";
       if (!target) return { exists: false };
       const fsPath = getVirtualFsPath(target);
@@ -665,7 +676,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/readVirtualDirectory",
-    (params: { uri?: string; path?: string }): { name: string; isDirectory: boolean }[] => {
+    (params: { uri?: string | undefined; path?: string | undefined }): { name: string; isDirectory: boolean }[] => {
       const target = params?.uri || params?.path || "";
       if (!target) return [];
       const fsPath = getVirtualFsPath(target);

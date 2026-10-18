@@ -7,12 +7,12 @@ import Box from "../Box";
 
 interface ZeroCopyWebGPUViewerProps {
   // If runner is provided, run in main thread (for VS Code Webview fallback)
-  runner?: WebGPUSimulationRunner;
+  runner?: WebGPUSimulationRunner | undefined;
   // If uri and className are provided, run via OffscreenCanvas in the LSP worker (for Morsel Web IDE)
-  uri?: string;
-  className?: string;
-  width?: string;
-  height?: string;
+  uri?: string | undefined;
+  className?: string | undefined;
+  width?: string | undefined;
+  height?: string | undefined;
 }
 
 const SHADER_CODE = `

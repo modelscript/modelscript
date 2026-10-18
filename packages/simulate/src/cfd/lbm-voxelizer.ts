@@ -23,9 +23,18 @@ export class LbmVoxelizer {
   public static voxelize(
     config: LbmGridConfig,
     obstacles: {
-      boxes?: ObstacleBox[];
-      cylinders?: ObstacleCylinder[];
-      solidWalls?: { minX?: boolean; maxX?: boolean; minY?: boolean; maxY?: boolean; minZ?: boolean; maxZ?: boolean };
+      boxes?: ObstacleBox[] | undefined;
+      cylinders?: ObstacleCylinder[] | undefined;
+      solidWalls?:
+        | {
+            minX?: boolean | undefined;
+            maxX?: boolean | undefined;
+            minY?: boolean | undefined;
+            maxY?: boolean | undefined;
+            minZ?: boolean | undefined;
+            maxZ?: boolean | undefined;
+          }
+        | undefined;
     },
   ): Uint8Array {
     const { nx, ny, nz } = config;
@@ -133,9 +142,18 @@ export class LbmVoxelizer {
   public static computeWallDistances(
     config: LbmGridConfig,
     obstacles: {
-      boxes?: ObstacleBox[];
-      cylinders?: ObstacleCylinder[];
-      solidWalls?: { minX?: boolean; maxX?: boolean; minY?: boolean; maxY?: boolean; minZ?: boolean; maxZ?: boolean };
+      boxes?: ObstacleBox[] | undefined;
+      cylinders?: ObstacleCylinder[] | undefined;
+      solidWalls?:
+        | {
+            minX?: boolean | undefined;
+            maxX?: boolean | undefined;
+            minY?: boolean | undefined;
+            maxY?: boolean | undefined;
+            minZ?: boolean | undefined;
+            maxZ?: boolean | undefined;
+          }
+        | undefined;
     },
     grid: Uint8Array,
   ): Float32Array {
@@ -162,9 +180,9 @@ export class LbmVoxelizer {
           }
 
           for (let i = 1; i < 19; i++) {
-            const nxCoord = x + CX[i];
-            const nyCoord = y + CY[i];
-            const nzCoord = z + CZ[i];
+            const nxCoord = x + CX[i]!;
+            const nyCoord = y + CY[i]!;
+            const nzCoord = z + CZ[i]!;
 
             if (nxCoord < 0 || nxCoord >= nx || nyCoord < 0 || nyCoord >= ny || nzCoord < 0 || nzCoord >= nz) {
               continue;
@@ -190,18 +208,18 @@ export class LbmVoxelizer {
                 if (cyl.axis === "z") {
                   p0x = x - cx;
                   p0y = y - cy;
-                  dx = CX[i];
-                  dy = CY[i];
+                  dx = CX[i]!;
+                  dy = CY[i]!;
                 } else if (cyl.axis === "x") {
                   p0x = y - cy;
                   p0y = z - cz;
-                  dx = CY[i];
-                  dy = CZ[i];
+                  dx = CY[i]!;
+                  dy = CZ[i]!;
                 } else {
                   p0x = x - cx;
                   p0y = z - cz;
-                  dx = CX[i];
-                  dy = CZ[i];
+                  dx = CX[i]!;
+                  dy = CZ[i]!;
                 }
 
                 const a = dx * dx + dy * dy;
@@ -212,7 +230,7 @@ export class LbmVoxelizer {
                   if (disc >= 0) {
                     const s = (-b - Math.sqrt(disc)) / (2 * a);
                     if (s > 0 && s <= 1.0) {
-                      deltaWall[idx * 19 + i] = Math.max(0.05, Math.min(0.95, s));
+                      deltaWall[i * totalCells + idx] = Math.max(0.05, Math.min(0.95, s));
                     }
                   }
                 }

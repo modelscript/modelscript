@@ -34,7 +34,7 @@ export interface DiscoveredLanguagesResult {
  * Inspects package.json, language.ts, and dist/parser.wasm for each subdirectory.
  */
 export async function discoverWorkspaceLanguages(languagesDir: string): Promise<DiscoveredLanguagesResult> {
-  const dynamicImport = (m: string): Promise<any> => Function("m", "return import(m)")(m);
+  const dynamicImport = (m: string): Promise<any> => import(m);
   const normalizedLangs: NormalizedLanguage[] = [];
   const wasmAssets: DiscoveredLanguageAsset[] = [];
   const manifest: DiscoveredLanguageManifestEntry[] = [];
@@ -107,7 +107,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     }
 
     const [normalized] = normalizeLanguages([langDef]);
-    normalizedLangs.push(normalized);
+    normalizedLangs.push(normalized!);
 
     // 3. Discover native GLR parser.wasm
     const wasmCandidates = [path.join(langDir, "dist", "parser.wasm"), path.join(langDir, "parser.wasm")];
@@ -115,7 +115,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     let wasmFileName: string | undefined;
     const foundWasm = wasmCandidates.find(fs.existsSync);
     if (foundWasm) {
-      wasmFileName = `${normalized.id}.wasm`;
+      wasmFileName = `${normalized!.id}.wasm`;
       wasmAssets.push({
         src: foundWasm,
         dest: `server/dist/${wasmFileName}`,
@@ -136,7 +136,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     if (foundBindings) {
       wasmAssets.push({
         src: foundBindings,
-        dest: `server/dist/${normalized.id}.bindings.js`,
+        dest: `server/dist/${normalized!.id}.bindings.js`,
       });
       try {
         const fileUrl = path.isAbsolute(foundBindings) ? `file://${foundBindings}` : foundBindings;
@@ -156,13 +156,13 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
           if (!syntaxNames) {
             const m = content.match(/SYNTAX_NAMES\s*=\s*(?:typeof\s*)?(\[[^\]]+\])/);
             if (m) {
-              syntaxNames = JSON.parse(m[1]);
+              syntaxNames = JSON.parse(m[1]!);
             }
           }
           if (!fieldNames) {
             const mf = content.match(/FIELD_NAMES\s*=\s*(?:typeof\s*)?(\{[\s\S]*?\})\s*!==/);
             if (mf) {
-              fieldNames = JSON.parse(mf[1]);
+              fieldNames = JSON.parse(mf[1]!);
             }
           }
         } catch {}
@@ -170,16 +170,16 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     }
 
     manifest.push({
-      id: normalized.id,
-      name: normalized.name,
-      displayName: normalized.displayName,
-      fileExtensions: normalized.fileExtensions,
-      primaryExtension: normalized.primaryExtension,
+      id: normalized!.id,
+      name: normalized!.name,
+      displayName: normalized!.displayName,
+      fileExtensions: normalized!.fileExtensions,
+      primaryExtension: normalized!.primaryExtension,
       wasm: wasmFileName,
       syntaxNames,
       fieldNames,
-      lineComment: normalized.lineComment,
-      blockComment: normalized.blockComment,
+      lineComment: normalized!.lineComment,
+      blockComment: normalized!.blockComment,
     });
   }
 

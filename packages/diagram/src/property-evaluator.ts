@@ -39,7 +39,7 @@ class Tokenizer {
   constructor(private input: string) {}
 
   nextToken(): Token {
-    while (this.pos < this.input.length && /\s/.test(this.input[this.pos])) {
+    while (this.pos < this.input.length && /\s/.test(this.input[this.pos]!)) {
       this.pos++;
     }
 
@@ -48,7 +48,7 @@ class Tokenizer {
     }
 
     const start = this.pos;
-    const ch = this.input[this.pos];
+    const ch = this.input[this.pos]!;
 
     // Parentheses & comma
     if (ch === "(") {
@@ -121,7 +121,7 @@ class Tokenizer {
     // Numbers
     if (/[0-9]/.test(ch)) {
       let numStr = "";
-      while (this.pos < this.input.length && /[0-9.]/.test(this.input[this.pos])) {
+      while (this.pos < this.input.length && /[0-9.]/.test(this.input[this.pos]!)) {
         numStr += this.input[this.pos];
         this.pos++;
       }
@@ -131,7 +131,7 @@ class Tokenizer {
     // Identifiers and Keywords
     if (/[a-zA-Z_]/.test(ch)) {
       let ident = "";
-      while (this.pos < this.input.length && /[a-zA-Z0-9_.]/.test(this.input[this.pos])) {
+      while (this.pos < this.input.length && /[a-zA-Z0-9_.]/.test(this.input[this.pos]!)) {
         ident += this.input[this.pos];
         this.pos++;
       }

@@ -16,19 +16,19 @@ import styled, { css, keyframes } from "styled-components";
 interface DatasetColumn {
   name: string;
   type: "number" | "string" | "boolean";
-  min?: number;
-  max?: number;
-  mean?: number;
-  unique?: number;
+  min?: number | undefined;
+  max?: number | undefined;
+  mean?: number | undefined;
+  unique?: number | undefined;
 }
 
 interface DatasetViewerProps {
   config: {
-    columns?: DatasetColumn[];
-    rowCount?: number;
-    format?: string;
-    previewRows?: string[][];
-    hasHeader?: boolean;
+    columns?: DatasetColumn[] | undefined;
+    rowCount?: number | undefined;
+    format?: string | undefined;
+    previewRows?: string[][] | undefined;
+    hasHeader?: boolean | undefined;
   };
   artifactPath: string;
 }

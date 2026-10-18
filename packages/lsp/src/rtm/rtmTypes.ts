@@ -103,13 +103,13 @@ export interface Iso14971Hazard {
   id: string;
   hazardId: string;
   name: string;
-  description?: string;
+  description?: string | undefined;
   initialSeverity: number; // 1-5 (Negligible to Catastrophic)
   initialProbability: number; // 1-5 (Improbable to Frequent)
   initialRpn: number; // Severity * Probability (1-25)
   initialAcceptability: "Broadly Acceptable" | "ALARP" | "Unacceptable";
   mitigationRequirementIds: string[];
-  mitigationRequirements?: string[];
+  mitigationRequirements?: string[] | undefined;
   residualSeverity: number;
   residualProbability: number;
   residualRpn: number;
@@ -129,7 +129,7 @@ export interface FmecaRiskRecord {
   initialOccurrence: number;
   initialRpn: number;
   mitigationMeasure: string;
-  mitigationRequirementId?: string;
+  mitigationRequirementId?: string | undefined;
   residualSeverity: number;
   residualOccurrence: number;
   residualRpn: number;
@@ -150,12 +150,12 @@ export interface RtmElement {
   startByte: number;
   endByte: number;
   metadata: {
-    reqId?: string;
-    hazardId?: string;
-    text?: string;
-    category?: string;
-    allocatedTo?: string[];
-    iso14971?: Partial<Iso14971Hazard>;
+    reqId?: string | undefined;
+    hazardId?: string | undefined;
+    text?: string | undefined;
+    category?: string | undefined;
+    allocatedTo?: string[] | undefined;
+    iso14971?: Partial<Iso14971Hazard> | undefined;
     [key: string]: any;
   };
 }
@@ -166,13 +166,13 @@ export interface RtmElement {
 export interface RtmVerificationEvidence {
   solverType: "simplex_smt" | "sundials_dae" | "fuml" | "flowpipe_reachability" | "structural";
   isSatisfied: boolean;
-  margin?: number;
-  peakValue?: number;
-  limitValue?: number;
-  violationTime?: number;
-  counterexample?: Record<string, number> | number;
-  unsatCore?: string[];
-  reason?: string;
+  margin?: number | undefined;
+  peakValue?: number | undefined;
+  limitValue?: number | undefined;
+  violationTime?: number | undefined;
+  counterexample?: Record<string, number> | number | undefined;
+  unsatCore?: string[] | undefined;
+  reason?: string | undefined;
   timestamp: number;
 }
 
@@ -189,12 +189,12 @@ export interface RtmLink {
   targetName: string;
   targetUri: string;
   status: RtmLinkStatus;
-  evidence?: RtmVerificationEvidence;
+  evidence?: RtmVerificationEvidence | undefined;
   isSuspect: boolean;
-  suspectReason?: string;
-  declarationUri?: string;
-  declarationStartByte?: number;
-  declarationEndByte?: number;
+  suspectReason?: string | undefined;
+  declarationUri?: string | undefined;
+  declarationStartByte?: number | undefined;
+  declarationEndByte?: number | undefined;
 }
 
 /**
@@ -211,11 +211,11 @@ export interface RtmAnalytics {
   suspectLinkCount: number;
   failingLinkCount: number;
   // ISO 14971 Risk Analytics
-  totalHazards?: number;
-  mitigatedHazardsCount?: number;
-  unmitigatedHazardsCount?: number;
-  unacceptableResidualRiskCount?: number;
-  averageRpnReduction?: number;
+  totalHazards?: number | undefined;
+  mitigatedHazardsCount?: number | undefined;
+  unmitigatedHazardsCount?: number | undefined;
+  unacceptableResidualRiskCount?: number | undefined;
+  averageRpnReduction?: number | undefined;
 }
 
 /**

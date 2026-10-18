@@ -9,13 +9,13 @@ import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchy-utils.js"
 export interface ProjectTreeNodeInfo {
   id: string;
   name: string;
-  uri?: string;
-  compositeName?: string;
-  classKind?: string;
+  uri?: string | undefined;
+  compositeName?: string | undefined;
+  classKind?: string | undefined;
   hasChildren: boolean;
   isFile: boolean;
-  iconSvg?: string;
-  line?: number;
+  iconSvg?: string | undefined;
+  line?: number | undefined;
 }
 
 export const iconCache = new Map<string, string | null>();
@@ -23,7 +23,7 @@ export const iconCache = new Map<string, string | null>();
 export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getLibraryTree",
-    async (params: { uri: string; parentId?: string }): Promise<TreeNodeInfo[]> => {
+    async (params: { uri: string; parentId?: string | undefined }): Promise<TreeNodeInfo[]> => {
       console.log(`[LSP treeHandler] getLibraryTree parentId=${params.parentId}`);
       // Use the unified workspace — merges all language indices
       const uw = context.workspaceManager.unifiedWorkspace;
@@ -76,113 +76,88 @@ export function registerTreeHandlers(context: LspContext) {
     },
   );
 
-  context.connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string }): ProjectTreeNodeInfo[] => {
-    const nodes: ProjectTreeNodeInfo[] = [];
+  context.connection.onRequest(
+    "modelscript/getProjectTree",
+    (params: { parentId?: string | undefined }): ProjectTreeNodeInfo[] => {
+      const nodes: ProjectTreeNodeInfo[] = [];
 
-    const getIndex = (ws: any) =>
-      typeof ws?.toTreeIndex === "function"
-        ? ws.toTreeIndex()
-        : typeof ws?.toUnifiedPartial === "function"
-          ? ws.toUnifiedPartial()
-          : typeof ws?.toUnified === "function"
-            ? ws.toUnified()
-            : (ws?.toSymbolIndex?.() ?? { symbols: new Map(), byName: new Map(), childrenOf: new Map() });
+      const getIndex = (ws: any) =>
+        typeof ws?.toTreeIndex === "function"
+          ? ws.toTreeIndex()
+          : typeof ws?.toUnifiedPartial === "function"
+            ? ws.toUnifiedPartial()
+            : typeof ws?.toUnified === "function"
+              ? ws.toUnified()
+              : (ws?.toSymbolIndex?.() ?? { symbols: new Map(), byName: new Map(), childrenOf: new Map() });
 
-    const unified = getIndex(context.workspaceManager?.unifiedWorkspace);
+      const unified = getIndex(context.workspaceManager?.unifiedWorkspace);
 
-    const allSymbols = new Map<string, any>();
-    if (unified?.symbols) {
-      for (const [id, entry] of unified.symbols) allSymbols.set(id.toString(), entry);
-    }
-
-    // Group top-level elements by resourceId
-    const files = new Map<string, any[]>();
-    for (const entry of allSymbols.values()) {
-      if (entry.resourceId) {
-        if (!files.has(entry.resourceId)) files.set(entry.resourceId, []);
-        files.get(entry.resourceId)?.push(entry);
+      const allSymbols = new Map<string, any>();
+      if (unified?.symbols) {
+        for (const [id, entry] of unified.symbols) allSymbols.set(id.toString(), entry);
       }
-    }
 
-    function getCompositeName(entry: any): string {
-      if (entry.parentId === null) return entry.name;
-      const parent = allSymbols.get(entry.parentId.toString());
-      if (!parent) return entry.name;
-      return getCompositeName(parent) + "." + entry.name;
-    }
-
-    function hasClassChildren(entry: any) {
-      for (const child of allSymbols.values()) {
-        if (child.parentId === entry.id && (child.kind === "Class" || child.kind === "Def")) {
-          return true;
+      // Group top-level elements by resourceId
+      const files = new Map<string, any[]>();
+      for (const entry of allSymbols.values()) {
+        if (entry.resourceId) {
+          if (!files.has(entry.resourceId)) files.set(entry.resourceId, []);
+          files.get(entry.resourceId)?.push(entry);
         }
       }
-      return false;
-    }
 
-    if (!params.parentId) {
-      // Root level: return one node per parsed file (exclude stdlib)
-      for (const [uri, entries] of files.entries()) {
-        if (!uri) continue;
-        if (uri.startsWith("file:///lib/")) continue;
-
-        const fileName = uri.split("/").pop() ?? uri;
-        let hasChildren = false;
-        for (const entry of entries) {
-          if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
-            hasChildren = true;
-            break;
-          }
-        }
-
-        nodes.push({
-          id: uri,
-          name: fileName,
-          uri,
-          hasChildren,
-          isFile: true,
-        });
+      function getCompositeName(entry: any): string {
+        if (entry.parentId === null) return entry.name;
+        const parent = allSymbols.get(entry.parentId.toString());
+        if (!parent) return entry.name;
+        return getCompositeName(parent) + "." + entry.name;
       }
-      nodes.sort((a, b) => a.name.localeCompare(b.name));
-    } else {
-      const sepIdx = params.parentId.indexOf("::");
-      const isFileNode = sepIdx < 0;
 
-      if (isFileNode) {
-        const entries = files.get(params.parentId) ?? [];
-        for (const entry of entries) {
-          if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
-            nodes.push({
-              id: `${params.parentId}::${getCompositeName(entry)}`,
-              name: entry.name,
-              uri: params.parentId,
-              compositeName: getCompositeName(entry),
-              classKind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
-              hasChildren: hasClassChildren(entry),
-              isFile: false,
-            });
+      function hasClassChildren(entry: any) {
+        for (const child of allSymbols.values()) {
+          if (child.parentId === entry.id && (child.kind === "Class" || child.kind === "Def")) {
+            return true;
           }
         }
-      } else {
-        const docUri = params.parentId.substring(0, sepIdx);
-        const compositeName = params.parentId.substring(sepIdx + 2);
-        const entries = files.get(docUri) ?? [];
+        return false;
+      }
 
-        let parentEntry: any = null;
-        for (const entry of entries) {
-          if (getCompositeName(entry) === compositeName) {
-            parentEntry = entry;
-            break;
-          }
-        }
+      if (!params.parentId) {
+        // Root level: return one node per parsed file (exclude stdlib)
+        for (const [uri, entries] of files.entries()) {
+          if (!uri) continue;
+          if (uri.startsWith("file:///lib/")) continue;
 
-        if (parentEntry) {
+          const fileName = uri.split("/").pop() ?? uri;
+          let hasChildren = false;
           for (const entry of entries) {
-            if (entry.parentId === parentEntry.id && (entry.kind === "Class" || entry.kind === "Def")) {
+            if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+              hasChildren = true;
+              break;
+            }
+          }
+
+          nodes.push({
+            id: uri,
+            name: fileName,
+            uri,
+            hasChildren,
+            isFile: true,
+          });
+        }
+        nodes.sort((a, b) => a.name.localeCompare(b.name));
+      } else {
+        const sepIdx = params.parentId.indexOf("::");
+        const isFileNode = sepIdx < 0;
+
+        if (isFileNode) {
+          const entries = files.get(params.parentId) ?? [];
+          for (const entry of entries) {
+            if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
               nodes.push({
-                id: `${docUri}::${getCompositeName(entry)}`,
+                id: `${params.parentId}::${getCompositeName(entry)}`,
                 name: entry.name,
-                uri: docUri,
+                uri: params.parentId,
                 compositeName: getCompositeName(entry),
                 classKind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
                 hasChildren: hasClassChildren(entry),
@@ -190,16 +165,44 @@ export function registerTreeHandlers(context: LspContext) {
               });
             }
           }
+        } else {
+          const docUri = params.parentId.substring(0, sepIdx);
+          const compositeName = params.parentId.substring(sepIdx + 2);
+          const entries = files.get(docUri) ?? [];
+
+          let parentEntry: any = null;
+          for (const entry of entries) {
+            if (getCompositeName(entry) === compositeName) {
+              parentEntry = entry;
+              break;
+            }
+          }
+
+          if (parentEntry) {
+            for (const entry of entries) {
+              if (entry.parentId === parentEntry.id && (entry.kind === "Class" || entry.kind === "Def")) {
+                nodes.push({
+                  id: `${docUri}::${getCompositeName(entry)}`,
+                  name: entry.name,
+                  uri: docUri,
+                  compositeName: getCompositeName(entry),
+                  classKind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
+                  hasChildren: hasClassChildren(entry),
+                  isFile: false,
+                });
+              }
+            }
+          }
         }
       }
-    }
 
-    return nodes;
-  });
+      return nodes;
+    },
+  );
 
   context.connection.onRequest(
     "modelscript/getClassIcon",
-    async (params: { className: string; uri?: string }): Promise<string | null> => {
+    async (params: { className: string; uri?: string | undefined }): Promise<string | null> => {
       if (
         !params.className ||
         params.className.startsWith("__LIB__:") ||
@@ -226,14 +229,14 @@ export function registerTreeHandlers(context: LspContext) {
         let symIds = unified.byName.get(params.className);
         if (!symIds || symIds.length === 0) {
           const parts = params.className.split(".");
-          const leaf = parts[parts.length - 1];
+          const leaf = parts[parts.length - 1]!;
           symIds = unified.byName.get(leaf);
         }
         if (symIds && symIds.length > 0) {
           for (const id of symIds) {
             const entry = unified.symbols.get(id);
-            if (entry?.metadata?.iconSvg) {
-              const svg = String(entry.metadata.iconSvg);
+            if (entry?.metadata?.["iconSvg"]) {
+              const svg = String(entry.metadata["iconSvg"]);
               iconCache.set(params.className, svg);
               return svg;
             }

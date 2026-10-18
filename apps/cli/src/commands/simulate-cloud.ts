@@ -7,14 +7,14 @@ import type { SimulateArgs } from "./simulate.js";
 
 export interface CloudSimulationResult {
   jobId: string;
-  resultPath?: string;
-  costCredits?: number;
-  runtimeSeconds?: number;
-  csvContent?: string;
+  resultPath?: string | undefined;
+  costCredits?: number | undefined;
+  runtimeSeconds?: number | undefined;
+  csvContent?: string | undefined;
 }
 
 export interface SimulateCloudOptions {
-  exitOnError?: boolean;
+  exitOnError?: boolean | undefined;
 }
 
 /**
@@ -39,7 +39,7 @@ export async function simulateCloud(
 
   // Collect Modelica source from paths
   let modelSource = "";
-  for (const p of args.paths) {
+  for (const p of args.paths!) {
     if (fs.existsSync(p)) {
       const stat = fs.statSync(p);
       if (stat.isFile()) {
@@ -62,7 +62,7 @@ export async function simulateCloud(
   }
 
   if (!modelSource.trim()) {
-    const msg = `Error: Could not read any Modelica source files from: ${args.paths.join(", ")}`;
+    const msg = `Error: Could not read any Modelica source files from: ${args.paths!.join(", ")}`;
     if (options.exitOnError) {
       console.error(msg);
       process.exit(1);
@@ -82,7 +82,7 @@ export async function simulateCloud(
     profile,
   };
   if (numberOfIntervals !== undefined) {
-    payload.numberOfIntervals = numberOfIntervals;
+    payload["numberOfIntervals"] = numberOfIntervals;
   }
 
   console.log(`[Cloud Burst] Dispatching simulation to ModelScript HPC (${apiUrl})...`);

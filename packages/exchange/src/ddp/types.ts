@@ -180,10 +180,10 @@ export interface DdpVerificationReport {
   unverifiedCount: number;
   details: {
     requirementId: string;
-    description?: string;
-    verifyingArtifact?: string;
+    description?: string | undefined;
+    verifyingArtifact?: string | undefined;
     relationType: string;
     status: "passed" | "failed" | "unverified";
-    evidence?: string;
+    evidence?: string | undefined;
   }[];
 }

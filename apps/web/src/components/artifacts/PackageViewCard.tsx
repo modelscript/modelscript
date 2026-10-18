@@ -9,15 +9,15 @@ import Box from "../Box";
 
 interface PackageViewCardProps {
   viewConfig: {
-    name?: string;
-    version?: string;
-    description?: string;
-    license?: string;
-    dialect?: string;
-    keywords?: string[];
+    name?: string | undefined;
+    version?: string | undefined;
+    description?: string | undefined;
+    license?: string | undefined;
+    dialect?: string | undefined;
+    keywords?: string[] | undefined;
     [key: string]: any;
   };
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 const CardWrapper = styled.div`

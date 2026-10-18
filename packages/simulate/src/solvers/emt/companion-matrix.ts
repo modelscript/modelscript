@@ -45,14 +45,14 @@ export interface CompanionSystem {
  */
 export function stampTwoTerminalConductance(dense: Float64Array[], n: number, i: number, j: number, g: number): void {
   if (i >= 0 && i < n) {
-    dense[i]![i] += g;
+    dense[i]![i] = dense[i]![i]! + g;
   }
   if (j >= 0 && j < n) {
-    dense[j]![j] += g;
+    dense[j]![j] = dense[j]![j]! + g;
   }
   if (i >= 0 && j >= 0 && i < n && j < n) {
-    dense[i]![j] -= g;
-    dense[j]![i] -= g;
+    dense[i]![j] = dense[i]![j]! - g;
+    dense[j]![i] = dense[j]![i]! - g;
   }
 }
 
@@ -61,7 +61,7 @@ export function stampTwoTerminalConductance(dense: Float64Array[], n: number, i:
  */
 export function stampShuntConductance(dense: Float64Array[], n: number, i: number, g: number): void {
   if (i >= 0 && i < n) {
-    dense[i]![i] += g;
+    dense[i]![i] = dense[i]![i]! + g;
   }
 }
 
@@ -93,7 +93,7 @@ export function stampTransformerWinding(
   const ag = a * g;
   const addEntry = (r: number, c: number, val: number) => {
     if (r >= 0 && r < n && c >= 0 && c < n) {
-      dense[r]![c] += val;
+      dense[r]![c] = dense[r]![c]! + val;
     }
   };
 
@@ -120,7 +120,7 @@ export function buildCompanionSystem(
   rlcBranches: RlcBranchState[],
   lines: BergeronLineState[],
   fmus: FmuIbrState[],
-  sources?: { node: number; gSource?: number }[],
+  sources?: { node: number; gSource?: number | undefined }[],
   transformerWindings?: TransformerWindingState[],
   breakerPoles?: BreakerPoleState[],
   dynamicPairs?: { nodeA: number; nodeB: number }[],
@@ -133,7 +133,7 @@ export function buildCompanionSystem(
   // 1. Stamp RLC branches (including 3-phase zero-sequence mutual coupling when active)
   const addEntry = (r: number, c: number, val: number) => {
     if (r >= 0 && r < nNodes && c >= 0 && c < nNodes) {
-      dense[r]![c] += val;
+      dense[r]![c] = dense[r]![c]! + val;
     }
   };
   for (let i = 0; i < rlcBranches.length; i++) {
@@ -196,7 +196,7 @@ export function buildCompanionSystem(
   // Add small numerical ground conductance to prevent isolated floating node singularities
   const gGroundRegularizer = 1e-7;
   for (let i = 0; i < nNodes; i++) {
-    dense[i]![i] += gGroundRegularizer;
+    dense[i]![i] = dense[i]![i]! + gGroundRegularizer;
   }
 
   // 5. Partition into connected electrical subsystems (traveling-wave network tearing)

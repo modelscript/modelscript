@@ -8,9 +8,9 @@ export interface ParameterInfo {
   name: string;
   type: "real" | "integer" | "boolean" | "enumeration";
   defaultValue: number;
-  step?: number;
-  unit?: string;
-  enumLiterals?: { ordinal: number; label: string }[];
+  step?: number | undefined;
+  unit?: string | undefined;
+  enumLiterals?: { ordinal: number; label: string }[] | undefined;
 }
 
 export interface SweepState {
@@ -26,13 +26,13 @@ interface SimulationParametersProps {
   /** Current user overrides (sparse — only contains changed values). */
   overrides: Map<string, number>;
   /** Sweep configuration state. */
-  sweepState?: SweepState | null;
+  sweepState?: SweepState | null | undefined;
   /** Called when the user edits a parameter value. */
   onChange: (name: string, value: number) => void;
   /** Called when the user resets a parameter to its default. */
   onReset: (name: string) => void;
   /** Called when the sweep mode is toggled or sweep config is changed. */
-  onSweepChange?: (sweep: SweepState | null) => void;
+  onSweepChange?: ((sweep: SweepState | null) => void) | undefined;
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -50,10 +50,10 @@ function NumericParameterRow({
   info: ParameterInfo;
   currentValue: number;
   isOverridden: boolean;
-  sweepState?: SweepState | null;
+  sweepState?: SweepState | null | undefined;
   onChange: (name: string, value: number) => void;
   onReset: (name: string) => void;
-  onSweepChange?: (sweep: SweepState | null) => void;
+  onSweepChange?: ((sweep: SweepState | null) => void) | undefined;
 }) {
   const [editValue, setEditValue] = useState(String(currentValue));
 
@@ -359,15 +359,15 @@ export function SimulationParameters({
 }
 
 export interface ExperimentOverrides {
-  startTime?: number;
-  stopTime?: number;
-  interval?: number;
-  tolerance?: number;
-  solver?: string;
-  numberOfIntervals?: number;
-  atol?: number;
-  equidistant?: boolean;
-  steadyStateOnly?: boolean;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  interval?: number | undefined;
+  tolerance?: number | undefined;
+  solver?: string | undefined;
+  numberOfIntervals?: number | undefined;
+  atol?: number | undefined;
+  equidistant?: boolean | undefined;
+  steadyStateOnly?: boolean | undefined;
 }
 
 export function SimulationExperimentSettings({
@@ -376,14 +376,16 @@ export function SimulationExperimentSettings({
   onChange,
   onReset,
 }: {
-  experiment?: {
-    startTime?: number;
-    stopTime?: number;
-    interval?: number;
-    tolerance?: number;
-    solver?: string;
-    numberOfIntervals?: number;
-  };
+  experiment?:
+    | {
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        tolerance?: number | undefined;
+        solver?: string | undefined;
+        numberOfIntervals?: number | undefined;
+      }
+    | undefined;
   overrides: ExperimentOverrides;
   onChange: (name: keyof ExperimentOverrides, value: any) => void;
   onReset: (name: keyof ExperimentOverrides) => void;

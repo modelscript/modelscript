@@ -8,7 +8,7 @@ import Box from "../Box";
 
 interface YoutubeVideoViewerProps {
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 const ThumbnailWrapper = styled.div`

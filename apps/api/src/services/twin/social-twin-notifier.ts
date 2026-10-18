@@ -13,11 +13,11 @@ export interface DriftAlertPayload {
   score: number;
   severity: "low" | "medium" | "high";
   timestamp: number;
-  calibratedParameters?: Record<string, number>;
-  parameterDeltas?: Record<string, { prior: number; calibrated: number; deltaPct: number }>;
-  healthScore?: number;
-  rulHours?: number;
-  adaptationId?: number;
+  calibratedParameters?: Record<string, number> | undefined;
+  parameterDeltas?: Record<string, { prior: number; calibrated: number; deltaPct: number }> | undefined;
+  healthScore?: number | undefined;
+  rulHours?: number | undefined;
+  adaptationId?: number | undefined;
 }
 
 export class SocialTwinNotifier {
@@ -30,7 +30,7 @@ export class SocialTwinNotifier {
   async notifyDriftAndOpenProposal(payload: DriftAlertPayload): Promise<{
     postId: number;
     artifactViewId: number;
-    proposalId?: number;
+    proposalId?: number | undefined;
   }> {
     // 1. Determine author (e.g. system bot or user 1)
     let authorId = 1;
@@ -119,7 +119,7 @@ CC: @thermal-lead @powertrain-lead @maintenance-ops`;
       });
     }
 
-    const result: { postId: number; artifactViewId: number; proposalId?: number } = {
+    const result: { postId: number; artifactViewId: number; proposalId?: number | undefined } = {
       postId,
       artifactViewId,
     };

@@ -284,7 +284,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     // 1. Check Standard 1D Port Connections
     for (const [portA, portB] of this.connections) {
       const itemsA = this.getEffectiveItems(portA);

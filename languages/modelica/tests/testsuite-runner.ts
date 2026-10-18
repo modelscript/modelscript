@@ -192,7 +192,10 @@ function parseTestFile(filePath: string): TestCase | null {
 
   // Find the Result: / endResult block
   const resultStartIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
-  const resultEndIdx = lines.findIndex((l) => /^\/\/\s*endResult/.test(l));
+  const resultEndIdx =
+    resultStartIdx >= 0
+      ? lines.findIndex((l, idx) => idx > resultStartIdx && /^\/\/\s*endResult/.test(l))
+      : lines.findIndex((l) => /^\/\/\s*endResult/.test(l));
 
   // Extract source: full file content up to Result: marker (preserves tree-sitter positions)
   const sourceEnd = resultStartIdx >= 0 ? resultStartIdx : lines.length;

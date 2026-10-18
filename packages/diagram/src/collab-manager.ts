@@ -12,10 +12,10 @@ import type {
 export interface CollabManagerOptions {
   peerId: string;
   userName: string;
-  userColor?: string;
-  heartbeatTimeoutMs?: number;
-  onBroadcast?: (message: CollabMessage) => void;
-  onStateChange?: () => void;
+  userColor?: string | undefined;
+  heartbeatTimeoutMs?: number | undefined;
+  onBroadcast?: ((message: CollabMessage) => void) | undefined;
+  onStateChange?: (() => void) | undefined;
 }
 
 const DEFAULT_COLORS = ["#4ec9b0", "#007acc", "#ba68c8", "#ff9800", "#f14c4c", "#4fc1ff", "#ce9178", "#9cdcfe"];
@@ -35,9 +35,9 @@ export class CollabManager {
   private componentOverrides = new Map<string, { item: PlacementItem; timestamp: number }>();
 
   private heartbeatTimeoutMs: number;
-  private onBroadcast?: (message: CollabMessage) => void;
-  private onStateChange?: () => void;
-  private cleanupInterval?: ReturnType<typeof setInterval>;
+  private onBroadcast?: ((message: CollabMessage) => void) | undefined;
+  private onStateChange?: (() => void) | undefined;
+  private cleanupInterval?: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: CollabManagerOptions) {
     this.peerId = options.peerId;
@@ -65,9 +65,9 @@ export class CollabManager {
 
   /** Update local cursor position and viewport, then broadcast presence */
   public updateLocalPresence(params: {
-    cursor?: { x: number; y: number };
-    selection?: string[];
-    viewport?: { x: number; y: number; zoom: number };
+    cursor?: { x: number; y: number } | undefined;
+    selection?: string[] | undefined;
+    viewport?: { x: number; y: number; zoom: number } | undefined;
   }): void {
     const presence: PeerPresence = {
       peerId: this.peerId,

@@ -16,62 +16,122 @@
 
 import type { EmtNetlist } from "../types.js";
 
+/**
+ * Specification of a transmission fault disturbance evaluated against IEEE 2800-2022 ride-through clauses.
+ */
 export interface Ieee2800FaultSpec {
+  /** Fault inception timestamp in seconds (e.g., `0.02` s). */
   faultStartSec: number; // e.g. 0.02 s
+  /** Fault clearing duration in seconds (e.g., `0.150` s for a 150 ms sag). */
   faultDurationSec: number; // e.g. 0.150 s (150 ms)
+  /** Pre-fault nominal Point of Interconnection (POI) voltage in kV (e.g., `230.0` kV). */
   vPreFaultKv: number; // e.g. 230.0 kV
+  /** Residual POI voltage during the fault sag in kV (e.g., `11.5` kV for a 0.05 pu deep sag). */
   vFaultKv: number; // e.g. 0.05 * 230 = 11.5 kV (0.05 pu deep sag)
+  /** Optional IBR plant rated peak current in Amperes used for per-unit reactive gain normalization. */
   ratedCurrentAmp?: number | undefined; // Optional IBR rated peak current (A)
+  /** Required minimum incremental positive-sequence reactive droop gain $k_1 = \Delta I_{1q,\text{pu}} / \Delta V_{1,\text{pu}}$ (default: `1.5`). */
   minK1Gain?: number | undefined; // Required incremental positive-sequence reactive gain k1 (default: 1.5)
+  /** Required minimum incremental negative-sequence reactive droop gain $k_2 = \Delta I_{2q,\text{pu}} / \Delta V_{2,\text{pu}}$ (default: `1.5`). */
   minK2Gain?: number | undefined; // Required incremental negative-sequence reactive gain k2 (default: 1.5)
+  /** Whether to evaluate the full 7-clause sequence-domain IEEE 2800-2022 and NERC PRC-029-1 suite. */
   evaluateExtendedClauses?: boolean | undefined; // Evaluate full 7-clause IEEE 2800 / NERC PRC-029 suite
 }
 
+/**
+ * Outcome of evaluating a single IEEE 2800-2022 / NERC PRC-029-1 interconnection clause.
+ */
 export interface Ieee2800CheckResult {
+  /** Standard clause identifier (e.g., `"5.3.2"`, `"5.4.1"`, `"7.2.2.3.4"`). */
   clause: string;
+  /** Short descriptive title of the compliance check. */
   title: string;
+  /** Pass/fail/warning compliance status for the clause. */
   status: "PASS" | "FAIL" | "WARN";
+  /** Formatted string reporting the metric extracted from the EMT waveform. */
   measuredValue: string;
+  /** Formatted string stating the mandatory IEEE 2800-2022 / NERC PRC-029-1 threshold. */
   requiredLimit: string;
+  /** Detailed engineering explanation of the clause evaluation outcome. */
   details: string;
 }
 
+/**
+ * Time-domain trajectories of symmetrical components ($V_0, V_1, V_2, I_0, I_1, I_2$),
+ * synchronous $dq$ current projections, frequency, and RoCoF extracted via 1-cycle sliding fundamental DFT.
+ */
 export interface SequencePhasorTrajectory {
+  /** Zero-sequence voltage magnitude trajectory $|V_0(t)|$. */
   v0: Float64Array;
+  /** Positive-sequence voltage magnitude trajectory $|V_1(t)|$. */
   v1: Float64Array;
+  /** Negative-sequence voltage magnitude trajectory $|V_2(t)|$. */
   v2: Float64Array;
+  /** Zero-sequence current magnitude trajectory $|I_0(t)|$. */
   i0: Float64Array;
+  /** Positive-sequence current magnitude trajectory $|I_1(t)|$. */
   i1: Float64Array;
+  /** Negative-sequence current magnitude trajectory $|I_2(t)|$. */
   i2: Float64Array;
+  /** Positive-sequence active current $I_{1d}(t)$ aligned in-phase with $V_1$. */
   i1d: Float64Array; // Positive-sequence active current (aligned with V1)
+  /** Positive-sequence reactive current $I_{1q}(t)$ ($> 0$ indicates capacitive/over-excited injection supporting a voltage sag). */
   i1q: Float64Array; // Positive-sequence reactive current (over-excited/capacitive > 0 supports voltage sag)
+  /** Negative-sequence active current $I_{2d}(t)$ aligned with $V_2$. */
   i2d: Float64Array; // Negative-sequence active current (aligned with V2)
+  /** Negative-sequence reactive current $I_{2q}(t)$ suppressing unbalanced voltage rise. */
   i2q: Float64Array; // Negative-sequence reactive current (suppresses voltage unbalance)
+  /** Filtered instantaneous positive-sequence fundamental frequency trajectory in Hz. */
   frequencyHz: Float64Array;
+  /** Rate of Change of Frequency ($\text{RoCoF} = df/dt$) trajectory in Hz/s. */
   rocofHzPerSec: Float64Array;
+  /** Maximum instantaneous positive-sequence phase-angle jump observed in degrees. */
   maxPhaseJumpDeg: number;
 }
 
+/**
+ * Complete IEEE 2800-2022 & NERC PRC-029-1 compliance report for an EMT simulation run.
+ */
 export interface Ieee2800ComplianceReport {
+  /** Name of the evaluated PSCAD project. */
   projectName: string;
+  /** Aggregate compliance verdict (`"PASS"` iff all evaluated clauses pass). */
   overallStatus: "PASS" | "FAIL";
+  /** ISO-8601 timestamp when the verification report was generated. */
   evaluatedAt: string;
+  /** Individual clause check results. */
   checks: Ieee2800CheckResult[];
+  /** Optional symmetrical component phasor trajectories when extended sequence checks are run. */
   sequencePhasors?: SequencePhasorTrajectory | undefined;
+  /** Multi-line human-readable summary of all evaluated clauses. */
   summary: string;
 }
 
+/**
+ * Three-phase (`a`, `b`, `c`) time-domain waveform channels.
+ */
 export interface ThreePhaseChannels {
+  /** Phase A instantaneous waveform array. */
   a: Float64Array;
+  /** Phase B instantaneous waveform array. */
   b: Float64Array;
+  /** Phase C instantaneous waveform array. */
   c: Float64Array;
 }
 
+/**
+ * Input EMT simulation waveforms at the Point of Interconnection (POI) for IEEE 2800-2022 verification.
+ */
 export interface SimulationWaveformSample {
+  /** Simulation timestamp array in seconds. */
   time: Float64Array;
+  /** Primary (Phase A or single-phase) POI voltage waveform in Volts. */
   vPoi: Float64Array;
+  /** Primary (Phase A or single-phase) IBR branch current injection waveform in Amperes. */
   iIbr: Float64Array;
+  /** Optional 3-phase POI voltage waveforms (`a`, `b`, `c`) for Fortescue sequence decomposition. */
   vPoiAbc?: ThreePhaseChannels | undefined;
+  /** Optional 3-phase IBR current waveforms (`a`, `b`, `c`) for Fortescue sequence decomposition. */
   iIbrAbc?: ThreePhaseChannels | undefined;
 }
 

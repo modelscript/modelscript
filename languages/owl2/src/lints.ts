@@ -12,6 +12,10 @@ import {
 } from "./cst-lowering.js";
 import { Owl2ErrorCode, type Owl2DiagnosticSeverity, type Owl2ErrorCodeDef } from "./errors.js";
 
+/**
+ * Diagnostic emitted by the OWL 2 static and semantic linter (`lintOwl2Document`),
+ * including byte offsets and optional offending entity IRI.
+ */
 export interface Owl2LintDiagnostic {
   readonly code: number;
   readonly rule: string;
@@ -21,27 +25,33 @@ export interface Owl2LintDiagnostic {
   readonly endByte: number;
   readonly startOffset: number;
   readonly endOffset: number;
-  readonly iri?: string;
+  readonly iri?: string | undefined;
 }
 
+/**
+ * Configuration options for `lintOwl2Document`.
+ */
 export interface Owl2LintOptions {
   /**
    * Emit O2001 warnings for entities referenced without an explicit Declaration(...) axiom.
    * When undefined, defaults to true if the ontology contains at least one Declaration axiom.
    */
-  checkUndeclaredEntities?: boolean;
+  checkUndeclaredEntities?: boolean | undefined;
   /**
    * Run WasmOntologyReasoner consistency & satisfiability verification (O5001–O5004).
    * Defaults to true.
    */
-  checkConsistency?: boolean;
+  checkConsistency?: boolean | undefined;
   /**
    * Optional OWL 2 profile to validate against ("DL" | "EL").
    * When set to "EL", emits O6001 warnings for constructs outside the OWL 2 EL profile.
    */
-  profile?: "DL" | "EL";
+  profile?: "DL" | "EL" | undefined;
 }
 
+/**
+ * Standard W3C OWL 2 Datatype map IRIs (XSD, RDF, RDFS, and OWL real/rational datatypes).
+ */
 const STANDARD_OWL2_DATATYPES = new Set([
   "xsd:string",
   "xsd:boolean",
@@ -87,8 +97,12 @@ const STANDARD_OWL2_DATATYPES = new Set([
   "owl:rational",
 ]);
 
+/** Built-in top and bottom class IRIs in OWL 2 (`owl:Thing` and `owl:Nothing`). */
 const BUILTIN_CLASS_IRIS = new Set(["owl:Thing", "owl:Nothing"]);
 
+/**
+ * CST node types disallowed under the polynomial-time OWL 2 EL profile (O6001).
+ */
 const OWL2_EL_DISALLOWED_NODES: Readonly<Record<string, string>> = {
   ObjectUnionOf: "ObjectUnionOf",
   ObjectComplementOf: "ObjectComplementOf",
@@ -109,6 +123,9 @@ const OWL2_EL_DISALLOWED_NODES: Readonly<Record<string, string>> = {
   AsymmetricObjectPropertyAxiom: "AsymmetricObjectProperty",
 };
 
+/**
+ * Minimum required argument counts for N-ary OWL 2 class expressions and axioms (O1005).
+ */
 const NARY_MIN_ARITY: Readonly<Record<string, { name: string; min: number }>> = {
   ObjectIntersectionOf: { name: "ObjectIntersectionOf", min: 2 },
   ObjectUnionOf: { name: "ObjectUnionOf", min: 2 },
@@ -120,6 +137,10 @@ const NARY_MIN_ARITY: Readonly<Record<string, { name: string; min: number }>> = 
   ObjectOneOf: { name: "ObjectOneOf", min: 1 },
 };
 
+/**
+ * OWL 2 DL constructs that require simple (non-transitive, non-composite) object properties
+ * to preserve decidability (O4001).
+ */
 const NON_SIMPLE_RESTRICTED_CONSTRUCTS: Readonly<Record<string, string>> = {
   ObjectMinCardinality: "ObjectMinCardinality",
   ObjectMaxCardinality: "ObjectMaxCardinality",
@@ -132,12 +153,18 @@ const NON_SIMPLE_RESTRICTED_CONSTRUCTS: Readonly<Record<string, string>> = {
   DisjointObjectPropertiesAxiom: "DisjointObjectProperties",
 };
 
+/**
+ * Extracts a normalized `[startByte, endByte]` range from a `GenericSyntaxNode`.
+ */
 function getNodeSpan(node: GenericSyntaxNode, sourceText?: string): { startByte: number; endByte: number } {
   const start = node.startByte ?? node.startOffset ?? node.startIndex ?? 0;
   const end = node.endByte ?? node.endOffset ?? node.endIndex ?? (sourceText ? sourceText.length : start);
   return { startByte: start, endByte: Math.max(start, end) };
 }
 
+/**
+ * Returns `true` if `iri` belongs to the reserved built-in `owl:`, `rdf:`, `rdfs:`, or `xsd:` vocabularies.
+ */
 function isBuiltInVocabularyIri(iri: string): boolean {
   return (
     iri.startsWith("owl:") ||
@@ -151,12 +178,18 @@ function isBuiltInVocabularyIri(iri: string): boolean {
   );
 }
 
+/**
+ * Returns `true` if `iri` refers to a standard OWL 2 or XML Schema datatype.
+ */
 function isDatatypeIri(iri: string): boolean {
   return (
     STANDARD_OWL2_DATATYPES.has(iri) || iri.startsWith("xsd:") || iri.startsWith("http://www.w3.org/2001/XMLSchema#")
   );
 }
 
+/**
+ * Validates whether a literal string conforms to the lexical space of the specified OWL 2 / XSD datatype (O3006).
+ */
 function isValidLexicalValueForDatatype(value: string, datatypeIri: string): boolean {
   switch (datatypeIri) {
     case "xsd:integer":
@@ -189,6 +222,9 @@ function isValidLexicalValueForDatatype(value: string, datatypeIri: string): boo
   }
 }
 
+/**
+ * Checks whether a bracketed `<...>` full IRI has a valid RFC 3987 scheme and no illegal characters (O1004).
+ */
 function isSyntacticallyValidFullIri(rawFullIri: string): boolean {
   const trimmed = rawFullIri.trim();
   if (!trimmed.startsWith("<") || !trimmed.endsWith(">")) return false;

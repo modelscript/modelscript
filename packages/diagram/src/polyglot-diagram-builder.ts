@@ -7,13 +7,13 @@ import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
 /** X6 SVG Markup element — defines the DOM structure of a node/port. */
 export interface X6Markup {
   tagName: string;
-  selector?: string;
-  groupSelector?: string;
-  attrs?: Record<string, string | number>;
-  style?: Record<string, string | number>;
-  className?: string;
-  textContent?: string;
-  children?: X6Markup[];
+  selector?: string | undefined;
+  groupSelector?: string | undefined;
+  attrs?: Record<string, string | number> | undefined;
+  style?: Record<string, string | number> | undefined;
+  className?: string | undefined;
+  textContent?: string | undefined;
+  children?: X6Markup[] | undefined;
 }
 
 /**
@@ -25,32 +25,34 @@ export type X6Attrs = Record<string, Record<string, string | number | Record<str
 
 /** X6 port group definition — appearance template for a group of ports. */
 export interface X6PortGroup {
-  position?: string | { name: string; args?: Record<string, unknown> };
-  markup?: X6Markup | X6Markup[];
-  attrs?: X6Attrs;
-  zIndex?: number | "auto";
-  label?: {
-    markup?: X6Markup | X6Markup[];
-    position?: { name: string; args?: Record<string, unknown> };
-  };
+  position?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  markup?: X6Markup | X6Markup[] | undefined;
+  attrs?: X6Attrs | undefined;
+  zIndex?: number | "auto" | undefined;
+  label?:
+    | {
+        markup?: X6Markup | X6Markup[] | undefined;
+        position?: { name: string; args?: Record<string, unknown> | undefined } | undefined;
+      }
+    | undefined;
 }
 
 /** X6 port item — a single port instance. */
 export interface X6PortItem {
-  id?: string;
-  group?: string;
-  direction?: string;
-  isConjugated?: boolean;
-  args?: Record<string, unknown>;
-  markup?: X6Markup | X6Markup[];
-  attrs?: X6Attrs;
-  zIndex?: number | "auto";
+  id?: string | undefined;
+  group?: string | undefined;
+  direction?: string | undefined;
+  isConjugated?: boolean | undefined;
+  args?: Record<string, unknown> | undefined;
+  markup?: X6Markup | X6Markup[] | undefined;
+  attrs?: X6Attrs | undefined;
+  zIndex?: number | "auto" | undefined;
 }
 
 /** X6 port configuration — groups define templates, items define instances. */
 export interface X6Ports {
-  groups?: Record<string, X6PortGroup>;
-  items?: X6PortItem[];
+  groups?: Record<string, X6PortGroup> | undefined;
+  items?: X6PortItem[] | undefined;
 }
 
 /** Full GraphicsConfig — node, edge, and port configuration for X6 rendering. */
@@ -59,48 +61,54 @@ export interface GraphicsConfig {
   role: "node" | "edge" | "group" | "port-owner" | "compartment" | "port";
 
   /** Node/Group visual configuration (X6 addNode format). */
-  node?: {
-    /** X6 shape name (default: "rect"). */
-    shape?: string;
-    /** SVG markup elements defining the DOM structure. */
-    markup?: X6Markup[];
-    /** Attribute styles keyed by selector (body, label, icon, etc). */
-    attrs?: X6Attrs;
-    /** Default node size. */
-    size?: { width: number; height: number };
-    /** Port group templates and optional static items. */
-    ports?: X6Ports;
-    /**
-     * Query name to call for dynamic port items at render time.
-     * The renderer calls `db.query(portQuery, symbolId)` to get port entries.
-     */
-    portQuery?: string;
-  };
+  node?:
+    | {
+        /** X6 shape name (default: "rect"). */
+        shape?: string | undefined;
+        /** SVG markup elements defining the DOM structure. */
+        markup?: X6Markup[] | undefined;
+        /** Attribute styles keyed by selector (body, label, icon, etc). */
+        attrs?: X6Attrs | undefined;
+        /** Default node size. */
+        size?: { width: number; height: number } | undefined;
+        /** Port group templates and optional static items. */
+        ports?: X6Ports | undefined;
+        /**
+         * Query name to call for dynamic port items at render time.
+         * The renderer calls `db.query(portQuery, symbolId)` to get port entries.
+         */
+        portQuery?: string | undefined;
+      }
+    | undefined;
 
   /** Edge visual configuration (X6 addEdge format). */
-  edge?: {
-    /** X6 edge shape name (default: "edge"). */
-    shape?: string;
-    /** Field path pointing to the source node symbol. */
-    source?: SelfAccessor | string;
-    /** Field path pointing to the target node symbol. */
-    target?: SelfAccessor | string;
-    /** Field path to resolve source port name. */
-    sourcePort?: SelfAccessor | string;
-    /** Field path to resolve target port name. */
-    targetPort?: SelfAccessor | string;
-    /** Edge attrs (line styles, markers). */
-    attrs?: X6Attrs;
-    /** Edge labels (stereotype text, etc). */
-    labels?: {
-      attrs?: X6Attrs;
-      position?: { distance?: number; offset?: number };
-    }[];
-    /** Router config (e.g. "manhattan", "orth"). */
-    router?: string | { name: string; args?: Record<string, unknown> };
-    /** Connector config (e.g. "rounded", "smooth"). */
-    connector?: string | { name: string; args?: Record<string, unknown> };
-  };
+  edge?:
+    | {
+        /** X6 edge shape name (default: "edge"). */
+        shape?: string | undefined;
+        /** Field path pointing to the source node symbol. */
+        source?: SelfAccessor | string | undefined;
+        /** Field path pointing to the target node symbol. */
+        target?: SelfAccessor | string | undefined;
+        /** Field path to resolve source port name. */
+        sourcePort?: SelfAccessor | string | undefined;
+        /** Field path to resolve target port name. */
+        targetPort?: SelfAccessor | string | undefined;
+        /** Edge attrs (line styles, markers). */
+        attrs?: X6Attrs | undefined;
+        /** Edge labels (stereotype text, etc). */
+        labels?:
+          | {
+              attrs?: X6Attrs | undefined;
+              position?: { distance?: number | undefined; offset?: number | undefined } | undefined;
+            }[]
+          | undefined;
+        /** Router config (e.g. "manhattan", "orth"). */
+        router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+        /** Connector config (e.g. "rounded", "smooth"). */
+        connector?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+      }
+    | undefined;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -116,13 +124,13 @@ export type SymbolId = string;
 export interface SymbolEntry {
   id: SymbolId;
   ruleName: string;
-  name?: string;
+  name?: string | undefined;
   parentId: SymbolId | null;
   metadata: Record<string, unknown>;
-  resourceId?: string;
-  startByte?: number;
-  endByte?: number;
-  language?: string;
+  resourceId?: string | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  language?: string | undefined;
 }
 export interface SymbolIndex {
   symbols: Map<SymbolId, SymbolEntry>;
@@ -147,35 +155,37 @@ export interface PolyglotDiagramNode {
   /** X6 markup — can be an array (selector-based) or a single SVG tree. */
   markup: X6Markup[] | X6Markup;
   /** X6 attrs keyed by selector. */
-  attrs?: X6Attrs;
+  attrs?: X6Attrs | undefined;
   /** Ports configuration. */
-  ports?: X6Ports & { items?: any[] };
+  ports?: (X6Ports & { items?: any[] | undefined }) | undefined;
   /** Shape name for X6 (e.g. "rect"). */
-  shape?: string;
+  shape?: string | undefined;
   /** Parent node ID for X6 group embedding. */
-  parent?: string;
+  parent?: string | undefined;
   /** Child node IDs for X6 group embedding (bidirectional with parent). */
-  children?: string[];
+  children?: string[] | undefined;
   /** Properties for the side panel. */
-  properties?: {
-    className: string;
-    description: string;
-    parameters: { name: string; value: string }[];
-    /** Source byte range for reveal-on-click. */
-    sourceRange?: { startByte: number; endByte: number };
-    /** Grammar rule name, used for cross-diagram navigation. */
-    ruleName?: string;
-    /** Embedded bitmap or SVG icon */
-    icon?: string;
-  };
+  properties?:
+    | {
+        className: string;
+        description: string;
+        parameters: { name: string; value: string }[];
+        /** Source byte range for reveal-on-click. */
+        sourceRange?: { startByte: number; endByte: number } | undefined;
+        /** Grammar rule name, used for cross-diagram navigation. */
+        ruleName?: string | undefined;
+        /** Embedded bitmap or SVG icon */
+        icon?: string | undefined;
+      }
+    | undefined;
   /** Compartments for BDD blocks / structural definitions. */
-  compartments?: { header: string; entries: string[] }[];
+  compartments?: { header: string; entries: string[] }[] | undefined;
   /** Whether this node should be auto-laid-out by Dagre. */
   autoLayout: boolean;
   /** Reactive simulation telemetry animation channels */
-  animations?: { property: string; variableName: string; transform?: string }[];
+  animations?: { property: string; variableName: string; transform?: string | undefined }[] | undefined;
   /** Interactive bidirectional bindings (momentary, toggle, slider, numeric) */
-  interactive?: InteractiveBinding[];
+  interactive?: InteractiveBinding[] | undefined;
   /** Arbitrary domain and visualization data (multiplicity, sections, etc.) */
   data?: any;
 }
@@ -184,49 +194,51 @@ export interface PolyglotDiagramEdge {
   id: string;
   shape: string;
   zIndex: number;
-  source: string | { cell: string; port?: string };
-  target: string | { cell: string; port?: string };
-  vertices?: { x: number; y: number }[];
-  router?: string | { name: string; args?: Record<string, unknown> };
-  connector?: string | { name: string; args?: Record<string, unknown> };
+  source: string | { cell: string; port?: string | undefined };
+  target: string | { cell: string; port?: string | undefined };
+  vertices?: { x: number; y: number }[] | undefined;
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  connector?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
   attrs: X6Attrs;
-  labels?: any[];
+  labels?: any[] | undefined;
   /** Reactive simulation telemetry animation channels */
-  animations?: { property: string; variableName: string; transform?: string }[];
+  animations?: { property: string; variableName: string; transform?: string | undefined }[] | undefined;
 }
 
 export interface PolyglotDiagramData {
   nodes: PolyglotDiagramNode[];
   edges: PolyglotDiagramEdge[];
-  coordinateSystem?: { x: number; y: number; width: number; height: number } | null;
+  coordinateSystem?: { x: number; y: number; width: number; height: number } | null | undefined;
   diagramBackground?: any;
   /** Optional: the type of diagram, used by the renderer to select layout algorithms */
-  diagramType?: string;
+  diagramType?: string | undefined;
   /** Layout strategy (dagre, sequence, manual, grid, etc.) */
-  layout?: string;
+  layout?: string | undefined;
   /** Available views / projections discovered dynamically or configured statically */
-  availableViews?: { id: string; label: string; description?: string }[];
+  availableViews?: { id: string; label: string; description?: string | undefined }[] | undefined;
 }
 
 export interface PolyglotDiagramOptions {
-  customProjections?: Record<string, any>;
-  structuralKinds?: Set<string> | string[];
-  standaloneKinds?: Set<string> | string[];
-  usageKinds?: Set<string> | string[];
-  definitionKinds?: Set<string> | string[];
-  portKinds?: Set<string> | string[];
-  reactiveDynamics?: boolean;
-  typingRules?: Set<string> | string[];
-  subclassificationRules?: Set<string> | string[];
-  subsettingRules?: Set<string> | string[];
-  redefinitionRules?: Set<string> | string[];
-  inModelDiscovery?: {
-    rule?: string;
-    nameField?: string;
-    exposeField?: string;
-  };
-  solderDots?: boolean;
-  stemLines?: boolean;
+  customProjections?: Record<string, any> | undefined;
+  structuralKinds?: Set<string> | string[] | undefined;
+  standaloneKinds?: Set<string> | string[] | undefined;
+  usageKinds?: Set<string> | string[] | undefined;
+  definitionKinds?: Set<string> | string[] | undefined;
+  portKinds?: Set<string> | string[] | undefined;
+  reactiveDynamics?: boolean | undefined;
+  typingRules?: Set<string> | string[] | undefined;
+  subclassificationRules?: Set<string> | string[] | undefined;
+  subsettingRules?: Set<string> | string[] | undefined;
+  redefinitionRules?: Set<string> | string[] | undefined;
+  inModelDiscovery?:
+    | {
+        rule?: string | undefined;
+        nameField?: string | undefined;
+        exposeField?: string | undefined;
+      }
+    | undefined;
+  solderDots?: boolean | undefined;
+  stemLines?: boolean | undefined;
 }
 
 /**
@@ -238,16 +250,16 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
   if (!nodeConfig) return;
 
   // 1. Procedural 3D Gradients
-  const body = node.attrs?.body;
+  const body = node.attrs?.["body"];
   if (body) {
     const pattern =
       (body as any).fillPattern || (config as any).fillPattern || (nodeConfig.attrs as any)?.body?.fillPattern;
     if (pattern === "cylinder-horizontal" || pattern === "HorizontalCylinder") {
-      body.fill = "url(#grad-cylinder-horizontal)";
+      body["fill"] = "url(#grad-cylinder-horizontal)";
     } else if (pattern === "cylinder-vertical" || pattern === "VerticalCylinder") {
-      body.fill = "url(#grad-cylinder-vertical)";
+      body["fill"] = "url(#grad-cylinder-vertical)";
     } else if (pattern === "sphere" || pattern === "Sphere") {
-      body.fill = "url(#grad-sphere)";
+      body["fill"] = "url(#grad-sphere)";
     }
   }
 
@@ -291,7 +303,7 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
     }
     if (!node.attrs) node.attrs = {};
     const existingIconAttrs = typeof rawAttrsIcon === "object" && rawAttrsIcon !== null ? rawAttrsIcon : {};
-    node.attrs.icon = {
+    node.attrs["icon"] = {
       refWidth: "24",
       refHeight: "24",
       refX: 8,
@@ -324,7 +336,7 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
   }
 
   // 3. Reactive Dynamics & DynamicSelect Animation Channels
-  const animBindings: { property: string; variableName: string; transform?: string }[] = [];
+  const animBindings: { property: string; variableName: string; transform?: string | undefined }[] = [];
   const animCfg = (nodeConfig as any).animation || (config as any).animation;
   if (animCfg?.channels && Array.isArray(animCfg.channels)) {
     for (const ch of animCfg.channels) {
@@ -362,8 +374,8 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
       if (dsMatch) {
         animBindings.push({
           property: key,
-          variableName: dsMatch[2].trim(),
-          transform: dsMatch[2].trim(),
+          variableName: dsMatch[2]!.trim(),
+          transform: dsMatch[2]!.trim(),
         });
       }
     }
@@ -1197,7 +1209,7 @@ export function buildPolyglotDiagram(
 
       if (hasCompartments) {
         stateMarkup.push({ tagName: "line", selector: "separator" });
-        stateAttrs.separator = {
+        stateAttrs["separator"] = {
           x1: 0,
           y1: HEADER_H - 4,
           x2: bubbleWidth,
@@ -1453,7 +1465,7 @@ export function buildPolyglotDiagram(
       let currentY = HEADER_HEIGHT;
 
       // Header separator line
-      attrs.headerSep = {
+      attrs["headerSep"] = {
         x1: 0,
         y1: currentY,
         x2: 999, // will be clamped by node width or chord
@@ -1466,7 +1478,7 @@ export function buildPolyglotDiagram(
       let maxContentWidth = Math.max(size.width, nameText.length * 9.5 + 40, stereoText.length * 7.5 + 32);
 
       for (let si = 0; si < sections.length; si++) {
-        const section = sections[si];
+        const section = sections[si]!;
         const sepId = `sep_${si}`;
         const headerId = `secHead_${si}`;
 
@@ -1504,7 +1516,7 @@ export function buildPolyglotDiagram(
         // Entries
         for (let ei = 0; ei < section.entries.length; ei++) {
           const entryId = `entry_${si}_${ei}`;
-          let entryText = section.entries[ei];
+          let entryText = section.entries[ei]!;
           if (
             section.header === "constraints" ||
             section.header === "calculations" ||
@@ -1546,7 +1558,7 @@ export function buildPolyglotDiagram(
         // Header band covering top area with rounded top corners
         const headerPath = `M 0 6 A 6 6 0 0 1 6 0 L ${adjustedWidth - 6} 0 A 6 6 0 0 1 ${adjustedWidth} 6 L ${adjustedWidth} ${HEADER_HEIGHT} L 0 ${HEADER_HEIGHT} Z`;
 
-        attrs.headerBody = {
+        attrs["headerBody"] = {
           d: hasSections ? headerPath : "",
           fill: hasSections ? fillColor : "transparent",
           stroke: "none",
@@ -1555,7 +1567,7 @@ export function buildPolyglotDiagram(
 
       if (shortName && !isEllipse) {
         const badgeWidth = shortName.length * 6.8 + 12;
-        attrs.idBadgeRect = {
+        attrs["idBadgeRect"] = {
           x: adjustedWidth - badgeWidth - 8,
           y: 6,
           width: badgeWidth,
@@ -1565,7 +1577,7 @@ export function buildPolyglotDiagram(
           fill: strokeColor,
           stroke: "none",
         };
-        attrs.idBadgeText = {
+        attrs["idBadgeText"] = {
           text: shortName,
           fill: "#ffffff",
           fontSize: 9,
@@ -1581,7 +1593,7 @@ export function buildPolyglotDiagram(
       if (isParallel && hasSections && !isEllipse) {
         const midY = (HEADER_HEIGHT + adjustedHeight) / 2;
         markup.push({ tagName: "line", selector: "parallelRegionDivider" });
-        attrs.parallelRegionDivider = {
+        attrs["parallelRegionDivider"] = {
           x1: 4,
           y1: midY,
           x2: adjustedWidth - 4,
@@ -1606,10 +1618,10 @@ export function buildPolyglotDiagram(
           };
         };
 
-        if (attrs.headerSep) {
+        if (attrs["headerSep"]) {
           const hChord = calcChord(HEADER_HEIGHT);
-          attrs.headerSep.x1 = hChord.x1;
-          attrs.headerSep.x2 = hChord.x2;
+          attrs["headerSep"].x1 = hChord.x1;
+          attrs["headerSep"].x2 = hChord.x2;
         }
 
         for (let si = 0; si < sections.length; si++) {
@@ -1621,7 +1633,7 @@ export function buildPolyglotDiagram(
           }
         }
       } else {
-        attrs.headerSep.x2 = adjustedWidth;
+        attrs["headerSep"].x2 = adjustedWidth;
         for (let si = 0; si < sections.length; si++) {
           const sepId = `sep_${si}`;
           if (attrs[sepId]) {
@@ -1632,7 +1644,7 @@ export function buildPolyglotDiagram(
 
       // Body definition — ellipse or clean rect
       if (isEllipse) {
-        attrs.body = {
+        attrs["body"] = {
           fill: fillColor || "#fdf2f8",
           stroke: strokeColor || "#db2777",
           strokeWidth: isDef ? 1.5 : 1,
@@ -1647,7 +1659,7 @@ export function buildPolyglotDiagram(
           ...(isDef ? {} : { strokeDasharray: "6 3" }),
         };
       } else {
-        attrs.body = {
+        attrs["body"] = {
           fill: hasSections ? "#ffffff" : fillColor,
           stroke: strokeColor,
           strokeWidth: isDef ? 1.5 : 1,
@@ -1732,50 +1744,50 @@ export function buildPolyglotDiagram(
     // Strip separator/compartment for standalone usages that have no compartment text
     // to avoid the green line extending beyond the box
     if (resolvedAttrs && !compartmentText) {
-      if (resolvedAttrs.separator) {
-        (resolvedAttrs.separator as any).display = "none";
+      if (resolvedAttrs["separator"]) {
+        (resolvedAttrs["separator"] as any).display = "none";
       }
-      if (resolvedAttrs.compartment) {
-        (resolvedAttrs.compartment as any).display = "none";
+      if (resolvedAttrs["compartment"]) {
+        (resolvedAttrs["compartment"] as any).display = "none";
       }
       // Also shrink height since there's no compartment slot
       if (!hasExplicitVectorGlyph && config.role !== "group") {
         adjustedHeight = Math.min(adjustedHeight, 50);
       }
     }
-    if (resolvedAttrs?.label && nameText) {
-      (resolvedAttrs.label as any).text = nameText;
+    if (resolvedAttrs?.["label"] && nameText) {
+      (resolvedAttrs["label"] as any).text = nameText;
     }
-    if (resolvedAttrs?.tabLabel && nameText) {
-      (resolvedAttrs.tabLabel as any).text = nameText;
+    if (resolvedAttrs?.["tabLabel"] && nameText) {
+      (resolvedAttrs["tabLabel"] as any).text = nameText;
     }
-    if (config.role === "group" && resolvedAttrs?.tab) {
+    if (config.role === "group" && resolvedAttrs?.["tab"]) {
       const tabWidth = Math.max(120, Math.ceil((nameText.length + 4) * 8.5));
-      (resolvedAttrs.tab as any).width = tabWidth;
-      (resolvedAttrs.tab as any).height = 32;
-      (resolvedAttrs.tab as any).fill = (resolvedAttrs.tab as any).fill || "#f1f5f9";
-      (resolvedAttrs.tab as any).stroke = (resolvedAttrs.tab as any).stroke || strokeColor || "#475569";
+      (resolvedAttrs["tab"] as any).width = tabWidth;
+      (resolvedAttrs["tab"] as any).height = 32;
+      (resolvedAttrs["tab"] as any).fill = (resolvedAttrs["tab"] as any).fill || "#f1f5f9";
+      (resolvedAttrs["tab"] as any).stroke = (resolvedAttrs["tab"] as any).stroke || strokeColor || "#475569";
       adjustedWidth = Math.max(adjustedWidth, tabWidth + 24);
     }
-    if (resolvedAttrs?.separator) {
-      (resolvedAttrs.separator as any).x2 = adjustedWidth;
+    if (resolvedAttrs?.["separator"]) {
+      (resolvedAttrs["separator"] as any).x2 = adjustedWidth;
     }
-    if (isEllipse && resolvedAttrs?.body) {
-      (resolvedAttrs.body as any).cx = adjustedWidth / 2;
-      (resolvedAttrs.body as any).cy = adjustedHeight / 2;
-      (resolvedAttrs.body as any).rx = adjustedWidth / 2;
-      (resolvedAttrs.body as any).ry = adjustedHeight / 2;
-      (resolvedAttrs.body as any).refCx = "50%";
-      (resolvedAttrs.body as any).refCy = "50%";
-      (resolvedAttrs.body as any).refRx = "50%";
-      (resolvedAttrs.body as any).refRy = "50%";
-      if (resolvedAttrs.stereotype) {
-        (resolvedAttrs.stereotype as any).refX = 0.5;
-        (resolvedAttrs.stereotype as any).refY = Math.round(adjustedHeight * 0.28);
+    if (isEllipse && resolvedAttrs?.["body"]) {
+      (resolvedAttrs["body"] as any).cx = adjustedWidth / 2;
+      (resolvedAttrs["body"] as any).cy = adjustedHeight / 2;
+      (resolvedAttrs["body"] as any).rx = adjustedWidth / 2;
+      (resolvedAttrs["body"] as any).ry = adjustedHeight / 2;
+      (resolvedAttrs["body"] as any).refCx = "50%";
+      (resolvedAttrs["body"] as any).refCy = "50%";
+      (resolvedAttrs["body"] as any).refRx = "50%";
+      (resolvedAttrs["body"] as any).refRy = "50%";
+      if (resolvedAttrs["stereotype"]) {
+        (resolvedAttrs["stereotype"] as any).refX = 0.5;
+        (resolvedAttrs["stereotype"] as any).refY = Math.round(adjustedHeight * 0.28);
       }
-      if (resolvedAttrs.label) {
-        (resolvedAttrs.label as any).refX = 0.5;
-        (resolvedAttrs.label as any).refY = Math.round(adjustedHeight * 0.55);
+      if (resolvedAttrs["label"]) {
+        (resolvedAttrs["label"] as any).refX = 0.5;
+        (resolvedAttrs["label"] as any).refY = Math.round(adjustedHeight * 0.55);
       }
     }
 
@@ -1868,8 +1880,8 @@ export function buildPolyglotDiagram(
     }
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const groups = parentNode.ports.groups!;
-    if (!groups.in) {
-      groups.in = {
+    if (!groups["in"]) {
+      groups["in"] = {
         position: "left",
         attrs: {
           rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
@@ -1880,12 +1892,12 @@ export function buildPolyglotDiagram(
           position: { name: "left", args: { y: -10 } },
         },
       };
-    } else if (!groups.in.label || !groups.in.label.position) {
-      groups.in.label = { position: { name: "left", args: { y: -10 } } };
+    } else if (!groups["in"].label || !groups["in"].label.position) {
+      groups["in"].label = { position: { name: "left", args: { y: -10 } } };
     }
 
-    if (!groups.out) {
-      groups.out = {
+    if (!groups["out"]) {
+      groups["out"] = {
         position: "right",
         attrs: {
           rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
@@ -1896,8 +1908,8 @@ export function buildPolyglotDiagram(
           position: { name: "right", args: { y: -10 } },
         },
       };
-    } else if (!groups.out.label || !groups.out.label.position) {
-      groups.out.label = { position: { name: "right", args: { y: -10 } } };
+    } else if (!groups["out"].label || !groups["out"].label.position) {
+      groups["out"].label = { position: { name: "right", args: { y: -10 } } };
     }
 
     for (const [gName, gVal] of Object.entries(groups)) {
@@ -1957,7 +1969,8 @@ export function buildPolyglotDiagram(
     );
 
     const portCfg = gfxConfig[sym.ruleName];
-    const portCustomAttrs = portCfg?.node?.attrs?.body || portCfg?.node?.attrs?.circle || portCfg?.node?.attrs?.rect;
+    const portCustomAttrs =
+      portCfg?.node?.attrs?.["body"] || portCfg?.node?.attrs?.["circle"] || portCfg?.node?.attrs?.["rect"];
 
     portItems.push({
       id: portName,
@@ -2024,8 +2037,8 @@ export function buildPolyglotDiagram(
     const { sourceId, targetId } = resolveEdgeEndpoints(sym, index, symbolIdToNodeId, gfxConfig, resolver);
     if (!sourceId || !targetId) continue;
 
-    const sourceNodeId = sourceId.includes(".") ? sourceId.split(".")[0] : sourceId;
-    const targetNodeId = targetId.includes(".") ? targetId.split(".")[0] : targetId;
+    const sourceNodeId = sourceId.includes(".") ? sourceId.split(".")[0]! : sourceId;
+    const targetNodeId = targetId.includes(".") ? targetId.split(".")[0]! : targetId;
 
     // Prevent rendering edges connected to nodes that were filtered out or fully absorbed
     if (!actualNodeIds.has(sourceNodeId) || !actualNodeIds.has(targetNodeId)) {
@@ -2035,16 +2048,16 @@ export function buildPolyglotDiagram(
     // Resolve {{name}} templates in labels
     let resolvedLabels = edgeConfig.labels?.map((label) => {
       const resolvedAttrs = resolveTemplates(label.attrs, sym);
-      if (resolvedAttrs?.rect) {
-        resolvedAttrs.rect.stroke = resolvedAttrs.rect.stroke || "#cbd5e1";
-        resolvedAttrs.rect.strokeWidth = resolvedAttrs.rect.strokeWidth ?? 1;
-        resolvedAttrs.rect.fill = resolvedAttrs.rect.fill || "#ffffff";
-        resolvedAttrs.rect.rx = resolvedAttrs.rect.rx ?? 4;
-        resolvedAttrs.rect.ry = resolvedAttrs.rect.ry ?? 4;
-        resolvedAttrs.rect.refWidth = resolvedAttrs.rect.refWidth ?? 12;
-        resolvedAttrs.rect.refHeight = resolvedAttrs.rect.refHeight ?? 6;
-        resolvedAttrs.rect.refX = resolvedAttrs.rect.refX ?? -6;
-        resolvedAttrs.rect.refY = resolvedAttrs.rect.refY ?? -3;
+      if (resolvedAttrs?.["rect"]) {
+        resolvedAttrs["rect"]["stroke"] = resolvedAttrs["rect"]["stroke"] || "#cbd5e1";
+        resolvedAttrs["rect"]["strokeWidth"] = resolvedAttrs["rect"]["strokeWidth"] ?? 1;
+        resolvedAttrs["rect"]["fill"] = resolvedAttrs["rect"]["fill"] || "#ffffff";
+        resolvedAttrs["rect"]["rx"] = resolvedAttrs["rect"]["rx"] ?? 4;
+        resolvedAttrs["rect"]["ry"] = resolvedAttrs["rect"]["ry"] ?? 4;
+        resolvedAttrs["rect"]["refWidth"] = resolvedAttrs["rect"]["refWidth"] ?? 12;
+        resolvedAttrs["rect"]["refHeight"] = resolvedAttrs["rect"]["refHeight"] ?? 6;
+        resolvedAttrs["rect"]["refX"] = resolvedAttrs["rect"]["refX"] ?? -6;
+        resolvedAttrs["rect"]["refY"] = resolvedAttrs["rect"]["refY"] ?? -3;
       }
       return {
         ...label,
@@ -2057,9 +2070,9 @@ export function buildPolyglotDiagram(
     // If this is a TransitionUsage or SuccessionAsUsage with guard/trigger/effect metadata,
     // replace the static label with the UML/SysML convention.
     if (sym.ruleName === "TransitionUsage" || sym.ruleName === "SuccessionAsUsage") {
-      const trigger = sym.metadata?.trigger as string | undefined;
-      const guard = sym.metadata?.guard as string | undefined;
-      const effect = sym.metadata?.effect as string | undefined;
+      const trigger = sym.metadata?.["trigger"] as string | undefined;
+      const guard = sym.metadata?.["guard"] as string | undefined;
+      const effect = sym.metadata?.["effect"] as string | undefined;
 
       const parts: string[] = [];
       if (trigger) parts.push(trigger.trim());
@@ -2124,12 +2137,12 @@ export function buildPolyglotDiagram(
       const srcIsBoundary = parentNodeId ? srcCell === parentNodeId : !srcCell?.includes(".");
       const tgtIsBoundary = parentNodeId ? tgtCell === parentNodeId : !tgtCell?.includes(".");
       const isDelegation = srcIsBoundary !== tgtIsBoundary;
-      if (isDelegation && resolvedAttrs.line) {
-        resolvedAttrs.line.strokeDasharray = "4 2";
+      if (isDelegation && resolvedAttrs["line"]) {
+        resolvedAttrs["line"]["strokeDasharray"] = "4 2";
       }
     }
 
-    const edgeAnimBindings: { property: string; variableName: string; transform?: string }[] = [];
+    const edgeAnimBindings: { property: string; variableName: string; transform?: string | undefined }[] = [];
     const edgeAnimCfg = (edgeConfig as any).animation || (config as any).animation;
     if (edgeAnimCfg?.channels && Array.isArray(edgeAnimCfg.channels)) {
       for (const ch of edgeAnimCfg.channels) {
@@ -2326,16 +2339,16 @@ export function buildPolyglotDiagram(
         if (usageNode && target.name && sym.name) {
           const typedLabel = `${sym.name} : ${target.name}`;
           if (usageNode.attrs) {
-            if (usageNode.attrs.label) {
-              (usageNode.attrs.label as any).text = typedLabel;
+            if (usageNode.attrs["label"]) {
+              (usageNode.attrs["label"] as any).text = typedLabel;
             }
           }
           const neededWidth = Math.ceil(typedLabel.length * 9.5 + 40);
           if (neededWidth > usageNode.width) {
             usageNode.width = neededWidth;
             if (usageNode.attrs) {
-              if (usageNode.attrs.headerBody && (usageNode.attrs.headerBody as any).d) {
-                (usageNode.attrs.headerBody as any).d =
+              if (usageNode.attrs["headerBody"] && (usageNode.attrs["headerBody"] as any).d) {
+                (usageNode.attrs["headerBody"] as any).d =
                   `M 0 6 A 6 6 0 0 1 6 0 L ${neededWidth - 6} 0 A 6 6 0 0 1 ${neededWidth} 6 L ${neededWidth} 42 L 0 42 Z`;
               }
               for (const [k, v] of Object.entries(usageNode.attrs)) {
@@ -2496,7 +2509,7 @@ export function buildPolyglotDiagram(
     // States with no incoming transitions get an initial pseudo-state (● → state)
     const noIncoming = [...actualNodeIds].filter((id) => !hasIncoming.has(id));
     if (noIncoming.length > 0) {
-      const targetId = noIncoming[0]; // First unreachable state is the entry point
+      const targetId = noIncoming[0]!; // First unreachable state is the entry point
       const initialId = "__pseudo_initial__";
       const pseudoSize = 20;
 
@@ -2545,7 +2558,7 @@ export function buildPolyglotDiagram(
     // States with no outgoing transitions get a final pseudo-state (state → ◎)
     const noOutgoing = [...actualNodeIds].filter((id) => !hasOutgoing.has(id));
     if (noOutgoing.length > 0) {
-      const sourceId = noOutgoing[noOutgoing.length - 1]; // Last dead-end state
+      const sourceId = noOutgoing[noOutgoing.length - 1]!; // Last dead-end state
       const finalId = "__pseudo_final__";
       const pseudoSize = 24;
 
@@ -2671,7 +2684,7 @@ export function buildPolyglotDiagram(
         return {
           id: e.id,
           points: pts,
-          color: (e.attrs?.line as any)?.stroke as string,
+          color: (e.attrs?.["line"] as any)?.stroke as string,
         };
       })
       .filter((e) => e.points.length >= 2);
@@ -2799,9 +2812,9 @@ function resolveEdgeEndpoints(
   let targetId: string | undefined;
 
   // Strategy 0: Direct metadata endpoints (e.g. from TransitionUsage or ConnectionUsage)
-  if (edgeSym.metadata?.source && edgeSym.metadata?.target) {
-    const rawSrc = String(edgeSym.metadata.source);
-    const rawTgt = String(edgeSym.metadata.target);
+  if (edgeSym.metadata?.["source"] && edgeSym.metadata?.["target"]) {
+    const rawSrc = String(edgeSym.metadata["source"]);
+    const rawTgt = String(edgeSym.metadata["target"]);
     sourceId = findNodeIdByPathOrName(rawSrc, index, symbolIdToNodeId, edgeSym.parentId);
     targetId = findNodeIdByPathOrName(rawTgt, index, symbolIdToNodeId, edgeSym.parentId);
     if (sourceId && targetId) return { sourceId, targetId };
@@ -3137,8 +3150,8 @@ export function buildDiagramFromDSL(
     const cleanedText = text.replace(/\b(?:parameter|constant|input|output|flow|discrete)\b/g, "").trim();
     const declMatch = cleanedText.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
     if (declMatch) {
-      compType = declMatch[1];
-      compName = declMatch[2];
+      compType = declMatch[1]!;
+      compName = declMatch[2]!;
     } else {
       const singleMatch = cleanedText.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
       compName = singleMatch
@@ -3309,8 +3322,8 @@ export function buildDiagramFromDSL(
     const text = getNodeText(rawNode);
     const eqParts = text.split("=");
     if (eqParts.length >= 2) {
-      const lhsMatch = eqParts[0].match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
-      const lhsText = lhsMatch ? lhsMatch[1] : eqParts[0].trim();
+      const lhsMatch = eqParts[0]!.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
+      const lhsText = lhsMatch ? lhsMatch[1]! : eqParts[0]!.trim();
       const rhsText = eqParts.slice(1).join("=").replace(/;$/, "").trim();
 
       const targetNodeId = componentNameToNodeId.get(lhsText);

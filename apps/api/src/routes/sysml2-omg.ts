@@ -128,7 +128,7 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
    */
   router.post("/projects/:projectId/commits", (req: Request, res: Response) => {
     const projectId = getParam(req.params["projectId"]);
-    const { description, elements, relationships } = req.body || {};
+    const { description, elements, relationships, branch } = req.body || {};
     if (!description || typeof description !== "string") {
       res.status(400).json({ error: "Field 'description' is required." });
       return;
@@ -140,6 +140,7 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
         description,
         Array.isArray(elements) ? elements : [],
         Array.isArray(relationships) ? relationships : [],
+        typeof branch === "string" ? branch : undefined,
       );
       sendJsonLd(req, res, commit, 201);
     } catch (err: unknown) {
@@ -265,14 +266,22 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
    */
   router.post("/projects/:projectId/ingest", (req: Request, res: Response) => {
     const projectId = getParam(req.params["projectId"]);
-    const { source, description, uri } = req.body || {};
+    const { source, description, uri, branch, branchName } = req.body || {};
     if (!source || typeof source !== "string") {
       res.status(400).json({ error: "Field 'source' is required (SysML v2 model text)." });
       return;
     }
 
+    const resolvedBranch =
+      typeof branch === "string" ? branch : typeof branchName === "string" ? branchName : undefined;
     try {
-      const commit = omgService.ingestSysML2(projectId, description || "Ingested SysML v2 model", source, uri);
+      const commit = omgService.ingestSysML2(
+        projectId,
+        description || "Ingested SysML v2 model",
+        source,
+        uri,
+        resolvedBranch,
+      );
       sendJsonLd(req, res, commit, 201);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -280,7 +289,171 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
     }
   });
 
-  // ── 6. Multi-Physics Container Export (SSP & FMI 3.0) ──
+  // ── 6. Branches, Tags, Diff & 3-Way Merge ──
+
+  /**
+   * GET /projects/:projectId/branches: List branches in project
+   */
+  router.get("/projects/:projectId/branches", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const project = omgService.getProject(projectId);
+    if (!project) {
+      res.status(404).json({ error: `Project '${projectId}' not found.` });
+      return;
+    }
+    const branches = omgService.listBranches(projectId);
+    sendJsonLd(req, res, {
+      "@type": "Collection",
+      members: branches,
+      totalCount: branches.length,
+    });
+  });
+
+  /**
+   * POST /projects/:projectId/branches: Create a new branch
+   */
+  router.post("/projects/:projectId/branches", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const { name, headCommitId } = req.body || {};
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ error: "Field 'name' is required." });
+      return;
+    }
+    try {
+      const branch = omgService.createBranch(
+        projectId,
+        name,
+        typeof headCommitId === "string" ? headCommitId : undefined,
+      );
+      sendJsonLd(req, res, branch, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(message.includes("not found") ? 404 : 400).json({ error: message });
+    }
+  });
+
+  /**
+   * GET /projects/:projectId/branches/:branchId: Get single branch by ID or name
+   */
+  router.get("/projects/:projectId/branches/:branchId", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const branchId = getParam(req.params["branchId"]);
+    const branch = omgService.getBranch(projectId, branchId);
+    if (!branch) {
+      res.status(404).json({ error: `Branch '${branchId}' not found.` });
+      return;
+    }
+    sendJsonLd(req, res, branch);
+  });
+
+  /**
+   * DELETE /projects/:projectId/branches/:branchId: Delete non-default branch
+   */
+  router.delete("/projects/:projectId/branches/:branchId", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const branchId = getParam(req.params["branchId"]);
+    try {
+      const deleted = omgService.deleteBranch(projectId, branchId);
+      if (!deleted) {
+        res.status(404).json({ error: `Branch '${branchId}' not found.` });
+        return;
+      }
+      res.sendStatus(204);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(400).json({ error: message });
+    }
+  });
+
+  /**
+   * GET /projects/:projectId/tags: List tags in project
+   */
+  router.get("/projects/:projectId/tags", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const project = omgService.getProject(projectId);
+    if (!project) {
+      res.status(404).json({ error: `Project '${projectId}' not found.` });
+      return;
+    }
+    const tags = omgService.listTags(projectId);
+    sendJsonLd(req, res, {
+      "@type": "Collection",
+      members: tags,
+      totalCount: tags.length,
+    });
+  });
+
+  /**
+   * POST /projects/:projectId/tags: Create a tag on a commit
+   */
+  router.post("/projects/:projectId/tags", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const { name, commitId, taggedCommitId, taggedCommit } = req.body || {};
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ error: "Field 'name' is required." });
+      return;
+    }
+    const targetCommitId =
+      typeof commitId === "string"
+        ? commitId
+        : typeof taggedCommitId === "string"
+          ? taggedCommitId
+          : typeof taggedCommit?.["@id"] === "string"
+            ? taggedCommit["@id"]
+            : undefined;
+    try {
+      const tag = omgService.createTag(projectId, name, targetCommitId);
+      sendJsonLd(req, res, tag, 201);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(message.includes("not found") ? 404 : 400).json({ error: message });
+    }
+  });
+
+  /**
+   * GET /projects/:projectId/diff: Compute semantic diff between two commits
+   */
+  router.get("/projects/:projectId/diff", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const baseCommitId = String(req.query["baseCommitId"] || "");
+    const targetCommitId = String(req.query["targetCommitId"] || "");
+    if (!baseCommitId || !targetCommitId) {
+      res.status(400).json({ error: "Query parameters 'baseCommitId' and 'targetCommitId' are required." });
+      return;
+    }
+    try {
+      const diff = omgService.diffCommits(projectId, baseCommitId, targetCommitId);
+      sendJsonLd(req, res, { "@type": "CommitDiff", ...diff });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(message.includes("not found") ? 404 : 400).json({ error: message });
+    }
+  });
+
+  /**
+   * POST /projects/:projectId/merge: Perform 3-way semantic merge between two branches
+   */
+  router.post("/projects/:projectId/merge", (req: Request, res: Response) => {
+    const projectId = getParam(req.params["projectId"]);
+    const { sourceBranch, targetBranch, strategy, description, bounds } = req.body || {};
+    if (!sourceBranch || !targetBranch) {
+      res.status(400).json({ error: "Fields 'sourceBranch' and 'targetBranch' are required." });
+      return;
+    }
+    try {
+      const result = omgService.mergeBranches(projectId, String(sourceBranch), String(targetBranch), {
+        strategy,
+        description,
+        bounds,
+      });
+      sendJsonLd(req, res, { "@type": "BranchMergeResult", ...result }, result.hasConflicts ? 409 : 200);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(message.includes("not found") ? 404 : 400).json({ error: message });
+    }
+  });
+
+  // ── 7. Multi-Physics Container Export (SSP & FMI 3.0) ──
 
   /**
    * POST /projects/:projectId/export/ssp: Export project to SSP (.ssp) container

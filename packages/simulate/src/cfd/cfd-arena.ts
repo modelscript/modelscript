@@ -35,9 +35,9 @@ export const D3Q19_WEIGHTS = new Float32Array([
 
 export interface CfdArenaOptions {
   /** Underlying buffer (ArrayBuffer or SharedArrayBuffer for zero-copy thread sharing). */
-  backingBuffer?: ArrayBuffer | SharedArrayBuffer;
+  backingBuffer?: ArrayBuffer | SharedArrayBuffer | undefined;
   /** Whether to allocate dual buffers for standard pull-streaming or single buffer for AA-pattern in-place streaming. */
-  scheme?: "aa-inplace" | "two-buffer";
+  scheme?: "aa-inplace" | "two-buffer" | undefined;
 }
 
 /**
@@ -61,7 +61,7 @@ export class CfdFieldArena {
   // In 'aa-inplace': f0 holds the active distributions.
   // In 'two-buffer': f0 (ping) and f1 (pong) hold alternating states.
   public readonly f0: Float32Array;
-  public readonly f1?: Float32Array;
+  public readonly f1?: Float32Array | undefined;
 
   // Macroscopic flow fields packed as [vx, vy, vz, rho] per cell (vec4<f32> for WebGPU alignment)
   public readonly macroFields: Float32Array;
@@ -76,7 +76,7 @@ export class CfdFieldArena {
   public readonly cellTypes: Uint32Array;
 
   // Bouzidi curved boundary sub-grid distance fractions delta in (0, 1)
-  public readonly deltaWall?: Float32Array;
+  public readonly deltaWall?: Float32Array | undefined;
 
   constructor(config: LbmGridConfig, cellTypes?: Uint8Array | Uint32Array, options?: CfdArenaOptions) {
     this.config = config;

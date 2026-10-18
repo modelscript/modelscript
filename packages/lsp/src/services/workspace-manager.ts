@@ -38,40 +38,74 @@ try {
   // Non-node environment
 }
 
+/**
+ * Holds the per-language workspace symbol index and Salsa query engine instance.
+ */
 export interface LanguageWorkspaceContext {
+  /** Language-specific workspace symbol index. */
   index: any;
+  /** Memoized Salsa `QueryEngine` bound to `index`, or `null` if not yet initialized. */
   queryEngine: QueryEngine | null;
 }
 
+/**
+ * Source location and property metadata for a domain element bound to a digital thread slot.
+ */
 export interface ThreadElementMetadata {
+  /** Human-readable element name or identifier. */
   name: string;
+  /** Document URI containing the element declaration. */
   uri: string;
+  /** 1-based source line number of the declaration. */
   line: number;
+  /** 1-based source column number of the declaration. */
   column: number;
-  length?: number;
-  domain?: string;
-  properties?: Record<string, any>;
+  /** Optional character length of the declaration identifier. */
+  length?: number | undefined;
+  /** Engineering domain key (e.g., `"sysml2"`, `"modelica"`, `"cad"`, `"fea"`). */
+  domain?: string | undefined;
+  /** Optional key-value map of extracted engineering parameters (e.g., `mass`, `frontalArea`). */
+  properties?: Record<string, any> | undefined;
 }
 
+/**
+ * Central multi-language workspace manager coordinating per-language symbol indices,
+ * Salsa query engines, cross-language `UnifiedWorkspace` resolution, digital thread
+ * hypergraph bindings, and formal semantic theory oracles.
+ */
 export class WorkspaceManager {
+  /** Per-language index and query engine contexts keyed by lowercase language ID. */
   private languageContexts = new Map<string, LanguageWorkspaceContext>();
+  /** Polyglot unified workspace aggregating symbols across all registered language indices. */
   public unifiedWorkspace = new UnifiedWorkspace();
+  /** Map of all registered language workspace indices keyed by lowercase language ID. */
   public allWorkspaceIndices = new Map<string, any>();
+  /** Cached instantiated class adapters keyed by `${uri}#${className}`. */
   public workspaceInstances = new Map<string, any[]>();
+  /** Cached top-level instantiated class descriptors keyed by document URI. */
   public documentInstances = new Map<string, any[]>();
+  /** Cached compiler `Context` objects keyed by document URI. */
   public documentContexts = new Map<string, any>();
 
-  // Canonical Digital Thread Hypergraph
+  /** Canonical Digital Thread Hypergraph tracking cross-domain node bindings and staleness/conflicts. */
   public hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
+  /** Metadata lookup table mapping `${domain}:${nodeId}` keys to source locations and properties. */
   public threadMetadataMap = new Map<string, ThreadElementMetadata>();
 
-  // Canonical Semantic Theory Coordinator for cross-domain formal consistency
+  /** Canonical Semantic Theory Coordinator for cross-domain formal consistency checking. */
   public coordinator: SemanticTheoryCoordinator = new SemanticTheoryCoordinator();
 
+  /**
+   * Returns the active `SemanticTheoryCoordinator` instance.
+   */
   public getCoordinator(): SemanticTheoryCoordinator {
     return this.coordinator;
   }
 
+  /**
+   * Seeds the digital thread hypergraph with default reference cross-domain threads
+   * (powertrain inverter, thermal cooling plate, and multi-domain drone assembly) when empty.
+   */
   public initDefaultThreads(): void {
     if (this.hypergraph.getThreadCount() > 0) return;
     const s0 = this.hypergraph.createThread(101, 1);
@@ -225,6 +259,15 @@ export class WorkspaceManager {
     });
   }
 
+  /**
+   * Binds a domain node ID and its source metadata to a digital thread slot (creating the thread if needed).
+   *
+   * @param threadId - Numeric digital thread identifier.
+   * @param domain - Engineering domain enum value.
+   * @param nodeId - Domain-local symbol or entity ID.
+   * @param meta - Source location and parameter metadata for the bound node.
+   * @returns Allocated or existing hypergraph slot index.
+   */
   public bindThreadSlot(threadId: number, domain: ThreadDomain, nodeId: number, meta: ThreadElementMetadata): number {
     let slot = this.hypergraph.findSlotByThreadId(threadId);
     if (slot === null || slot === undefined) {
@@ -237,6 +280,9 @@ export class WorkspaceManager {
     return slot;
   }
 
+  /**
+   * Finds all digital thread hypergraph slots and domain node bindings associated with a document URI.
+   */
   public getThreadsForUri(
     uri: string,
   ): { slot: number; record: any; meta: ThreadElementMetadata; domain: string; nodeId: number }[] {
@@ -267,6 +313,10 @@ export class WorkspaceManager {
     return results;
   }
 
+  /**
+   * Returns all domain elements aligned under the specified hypergraph `slot` along with their
+   * current synchronization status (`"synced"`, `"stale"`, or `"conflict"`).
+   */
   public findAlignedElementsBySlot(slot: number): AlignedDomainElement[] {
     const record = this.hypergraph.getRecord(slot);
     if (!record) return [];
@@ -295,6 +345,9 @@ export class WorkspaceManager {
     return domainElements;
   }
 
+  /**
+   * Retrieves (or lazily creates via registered factories) the workspace symbol index for `langId`.
+   */
   public getWorkspaceIndex(langId: string): any {
     const norm = langId.toLowerCase();
     const ctx = this.languageContexts.get(norm);
@@ -365,8 +418,12 @@ export class WorkspaceManager {
     return undefined;
   }
 
+  /** Re-entrancy guard set preventing recursive `getQueryEngine` lookups. */
   private activeQueryEngineLookups = new Set<string>();
 
+  /**
+   * Registers a workspace symbol index for `langId` and synchronizes it with `unifiedWorkspace`.
+   */
   public setWorkspaceIndex(langId: string, index: any): void {
     const norm = langId.toLowerCase();
     const existing = this.languageContexts.get(norm) ?? { index: null, queryEngine: null };
@@ -389,6 +446,9 @@ export class WorkspaceManager {
     }
   }
 
+  /**
+   * Retrieves (or lazily initializes) the Salsa `QueryEngine` for `langId`.
+   */
   public getQueryEngine(langId: string): QueryEngine | null {
     const norm = langId.toLowerCase();
     if (this.activeQueryEngineLookups.has(norm)) {
@@ -443,6 +503,9 @@ export class WorkspaceManager {
     }
   }
 
+  /**
+   * Stores the active Salsa `QueryEngine` for `langId` and updates the corresponding language plugin.
+   */
   public setQueryEngine(langId: string, qe: QueryEngine | null): void {
     const norm = langId.toLowerCase();
     const existing = this.languageContexts.get(norm) ?? { index: null, queryEngine: null };
@@ -507,6 +570,7 @@ export class WorkspaceManager {
     this.setWorkspaceIndex("step", val);
   }
 
+  /** Returns the PSCAD workspace symbol index. */
   get pscadWorkspaceIndex() {
     return this.getWorkspaceIndex("pscad");
   }
@@ -559,8 +623,13 @@ export class WorkspaceManager {
     (this.globalSysML2QueryEngine as any)?.disposeDocument?.(uri);
   }
 
-  private documentManager?: DocumentManager;
+  /** Optional reference to the `DocumentManager` for accessing open text documents and CST trees. */
+  private documentManager?: DocumentManager | undefined;
 
+  /**
+   * Creates a new `WorkspaceManager`, registers all formal semantic theory oracles,
+   * initializes default digital threads, and wires CST/query providers into `unifiedWorkspace`.
+   */
   constructor(documentManager?: DocumentManager) {
     this.documentManager = documentManager;
     this.coordinator.registerOracle(new OntologyTheoryOracle());
@@ -597,6 +666,9 @@ export class WorkspaceManager {
     };
   }
 
+  /**
+   * Resolves the Salsa `QueryEngine` responsible for the given document `resourceId`.
+   */
   public getEngine(resourceId?: string): any {
     if (!resourceId) return null;
     const pluginEngine = globalLanguageRegistry.getQueryEngineForUri(resourceId);
@@ -609,6 +681,10 @@ export class WorkspaceManager {
     return null;
   }
 
+  /**
+   * Reads the raw source text for `resourceId` from open editor buffers, cached CST trees,
+   * the virtual browser filesystem, or Node.js disk storage.
+   */
   public getSourceText(resourceId: string): string | null {
     const doc = this.documentManager?.documents?.get?.(resourceId);
     if (doc) return doc.getText();
@@ -654,6 +730,9 @@ export class WorkspaceManager {
     return null;
   }
 
+  /**
+   * Recovers the linear memory CST node for a `SymbolEntry` using its stored byte/character offsets.
+   */
   public getCstNodeForSymbol(entry: any): any {
     if (!entry) return null;
     if (entry.cstNode) return entry.cstNode;
@@ -709,11 +788,27 @@ export class WorkspaceManager {
     return null;
   }
 
-  public resolveClassInstance(uri: string, className?: string, options?: { iconOnly?: boolean }): any | null {
+  /**
+   * Resolves a class instance adapter for `uri` and optional `className`.
+   */
+  public resolveClassInstance(
+    uri: string,
+    className?: string,
+    options?: { iconOnly?: boolean | undefined },
+  ): any | null {
     return this.resolveModelicaClassInstance(uri, className, options);
   }
 
-  public resolveModelicaClassInstance(uri: string, className?: string, options?: { iconOnly?: boolean }): any | null {
+  /**
+   * Resolves a Modelica or SysML v2 class symbol to a rich class-instance adapter supporting
+   * component traversal, `extends` inheritance resolution, `connect` equation extraction,
+   * and lazy `AnnotationEvaluator` evaluation for diagram and icon rendering.
+   */
+  public resolveModelicaClassInstance(
+    uri: string,
+    className?: string,
+    options?: { iconOnly?: boolean | undefined },
+  ): any | null {
     // 1. Check documentInstances first for rich AST models
     const docInsts = this.documentInstances.get(uri);
     if (docInsts && docInsts.length > 0) {
@@ -833,7 +928,7 @@ export class WorkspaceManager {
                       /^\s*(?:(?:flow|stream|discrete|parameter|constant|input|output)\s+)*([A-Za-z0-9_.]+)\s+/,
                     );
                     if (m) {
-                      typeSpec = m[1].trim();
+                      typeSpec = m[1]!.trim();
                     }
                   }
                 } catch {}
@@ -897,7 +992,7 @@ export class WorkspaceManager {
               if (scopeParts.length === 0 && entry.resourceId) {
                 const clean = entry.resourceId.replace(/^[a-z]+:\/*(?:lib\/)?/, "").replace(/\/[^/]+$/, "");
                 const segments = clean.split("/").filter(Boolean);
-                const mIdx = segments.findIndex((s) => s === "Modelica" || s.startsWith("Modelica"));
+                const mIdx = segments.findIndex((s: string) => s === "Modelica" || s.startsWith("Modelica"));
                 if (mIdx !== -1) {
                   scopeParts.push(...segments.slice(mIdx));
                   if (scopeParts[0]?.startsWith("Modelica")) scopeParts[0] = "Modelica";
@@ -1148,7 +1243,7 @@ export class WorkspaceManager {
         // 2. Fall back to part-by-part traversal from each segment
         if (symbolIds.length === 0) {
           for (let startIdx = 0; startIdx < parts.length && symbolIds.length === 0; startIdx++) {
-            let currentIds = (idx.byName.get(parts[startIdx]) || []).filter((id: number) => {
+            let currentIds = (idx.byName.get(parts[startIdx]!) || []).filter((id: number) => {
               const e = idx.symbols.get(id);
               return isClassLike(e);
             });

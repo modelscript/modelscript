@@ -8,7 +8,7 @@ export interface VtkRendererProps {
   /** The latest VTK buffer extracted from the CFD orchestrator */
   vtkBuffer: Uint8Array | null;
   /** Opacity of the melt front */
-  opacity?: number;
+  opacity?: number | undefined;
 }
 
 /**
@@ -34,7 +34,7 @@ export function VtkRenderer({ vtkBuffer, opacity = 0.8 }: VtkRendererProps) {
       const fullText = new TextDecoder().decode(vtkBuffer);
       const pointsMatch = /<Points>\s*<DataArray[^>]*>([\s\S]*?)<\/DataArray>/i.exec(fullText);
       if (pointsMatch) {
-        const coords = pointsMatch[1].trim().split(/\s+/).map(Number);
+        const coords = pointsMatch[1]!.trim().split(/\s+/).map(Number);
         if (coords.length >= 3) {
           let maxR = 0.1;
           for (let i = 0; i < coords.length; i += 3) {
@@ -49,7 +49,7 @@ export function VtkRenderer({ vtkBuffer, opacity = 0.8 }: VtkRendererProps) {
           fullText,
         );
       if (dataMatch && materialRef.current) {
-        const vals = dataMatch[2].trim().split(/\s+/).map(Number);
+        const vals = dataMatch[2]!.trim().split(/\s+/).map(Number);
         const avgVal = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
         const normVal = Math.min(1.0, Math.max(0.0, avgVal / 100.0));
         const tempColor = new THREE.Color().setHSL((1.0 - normVal) * 0.6, 1.0, 0.5);
@@ -58,7 +58,7 @@ export function VtkRenderer({ vtkBuffer, opacity = 0.8 }: VtkRendererProps) {
         materialRef.current.emissiveIntensity = 0.4;
       }
     } else if (vtkBuffer.length > 4) {
-      const progress = vtkBuffer[4] / 255.0;
+      const progress = vtkBuffer[4]! / 255.0;
       setScale(progress * 1.5);
       if (materialRef.current) {
         const tempColor = new THREE.Color().setHSL((1.0 - progress) * 0.6, 1.0, 0.5);

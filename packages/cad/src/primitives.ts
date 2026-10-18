@@ -151,9 +151,9 @@ export function tagPatch(
   tag: {
     portName: string;
     portType: BoundaryPatchType;
-    normal?: Vec3;
-    surfaceArea?: number;
-    name?: string;
+    normal?: Vec3 | undefined;
+    surfaceArea?: number | undefined;
+    name?: string | undefined;
   },
 ): TaggedPatchSolid {
   return Object.freeze({
@@ -220,7 +220,12 @@ export function chamfer(child: Solid, distance: number, edges?: string[], name?:
 export function linearExtrude(
   polygon: readonly [number, number][],
   height: number,
-  opts?: { twist?: number; scale?: number; name?: string; sourceMetadata?: SolidSourceMetadata },
+  opts?: {
+    twist?: number | undefined;
+    scale?: number | undefined;
+    name?: string | undefined;
+    sourceMetadata?: SolidSourceMetadata | undefined;
+  },
 ): ExtrusionSolid {
   return Object.freeze({
     kind: SolidKind.Extrusion,

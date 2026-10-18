@@ -8,12 +8,12 @@ export type RenderMode = "shaded" | "wireframe" | "xray";
 
 interface ViewportCameraControlsProps {
   onPresetSelect: (preset: CameraPreset) => void;
-  renderMode?: RenderMode;
-  onRenderModeChange?: (mode: RenderMode) => void;
-  isPinMode?: boolean;
-  onTogglePinMode?: () => void;
-  isWireframe?: boolean;
-  onToggleWireframe?: (wireframe: boolean) => void;
+  renderMode?: RenderMode | undefined;
+  onRenderModeChange?: ((mode: RenderMode) => void) | undefined;
+  isPinMode?: boolean | undefined;
+  onTogglePinMode?: (() => void) | undefined;
+  isWireframe?: boolean | undefined;
+  onToggleWireframe?: ((wireframe: boolean) => void) | undefined;
 }
 
 const ControlsContainer = styled.div`
@@ -34,7 +34,7 @@ const ControlsContainer = styled.div`
   user-select: none;
 `;
 
-const PresetButton = styled.button<{ $active?: boolean }>`
+const PresetButton = styled.button<{ $active?: boolean | undefined }>`
   background: ${(props) => (props.$active ? "rgba(6, 182, 212, 0.25)" : "transparent")};
   color: ${(props) => (props.$active ? "#06b6d4" : "#e2e8f0")};
   border: ${(props) => (props.$active ? "1px solid rgba(6, 182, 212, 0.4)" : "1px solid transparent")};

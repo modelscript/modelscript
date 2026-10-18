@@ -203,7 +203,7 @@ export function registerDocumentFeaturesProvider(
         } catch {}
       }
 
-      const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
+      const ranges: { startLine: number; endLine: number; kind?: string | undefined }[] = [];
       const FOLDABLE_NODES = new Set([
         "ClassDefinition",
         "EquationSection",
@@ -325,8 +325,8 @@ export function registerDocumentFeaturesProvider(
     // Find the word under cursor
     let wordStart = params.position.character;
     let wordEnd = params.position.character;
-    while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1])) wordStart--;
-    while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd])) wordEnd++;
+    while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1]!)) wordStart--;
+    while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd]!)) wordEnd++;
     const word = lineContent.substring(wordStart, wordEnd);
     if (!word || /^\d/.test(word)) return []; // Skip empty or numeric tokens
 

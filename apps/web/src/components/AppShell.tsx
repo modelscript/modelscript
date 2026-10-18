@@ -32,7 +32,7 @@ const ShellContainer = styled.div`
   box-sizing: border-box;
 `;
 
-const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean }>`
+const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean | undefined }>`
   display: flex;
   width: 100%;
   max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : "1380px")};
@@ -54,9 +54,9 @@ const RightPanelWrapper = styled.div`
 `;
 
 const MainColumn = styled.main<{
-  $isWideLayout?: boolean;
-  $isFullScreenLayout?: boolean;
-  $isInspectorLayout?: boolean;
+  $isWideLayout?: boolean | undefined;
+  $isFullScreenLayout?: boolean | undefined;
+  $isInspectorLayout?: boolean | undefined;
 }>`
   flex: ${(props) =>
     props.$isWideLayout || props.$isFullScreenLayout || props.$isInspectorLayout ? "1" : "0 1 740px"};
@@ -108,7 +108,7 @@ const BottomBarContainer = styled.div`
   }
 `;
 
-const BottomBarButton = styled.button<{ $active?: boolean }>`
+const BottomBarButton = styled.button<{ $active?: boolean | undefined }>`
   background: none;
   border: none;
   color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-muted)")};

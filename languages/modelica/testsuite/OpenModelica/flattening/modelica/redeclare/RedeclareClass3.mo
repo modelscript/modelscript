@@ -1,7 +1,6 @@
 // name:     RedeclareClass3
 // keywords: redeclare class
 // status:   correct
-// xfail:    true
 //
 // Tests simple redeclaration of inherited classes.
 //

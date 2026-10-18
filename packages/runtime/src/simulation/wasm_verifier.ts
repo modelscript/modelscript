@@ -14,34 +14,34 @@ export interface SimulationResult {
   t: number[];
   states: string[];
   y: number[][];
-  parameters?: { name: string; value: string | number | boolean }[];
+  parameters?: { name: string; value: string | number | boolean }[] | undefined;
 }
 
 export interface VerificationResult {
   requirementId: number;
   constraintId: number;
   isSatisfied: boolean;
-  timeSeriesResult?: boolean[];
-  message?: string;
-  requirementName?: string;
+  timeSeriesResult?: boolean[] | undefined;
+  message?: string | undefined;
+  requirementName?: string | undefined;
   /** Peak (extremal) value of the LHS operand over the simulation timeline. */
-  peakValue?: number;
+  peakValue?: number | undefined;
   /** The RHS limit value from the requirement. */
-  limitValue?: number;
+  limitValue?: number | undefined;
   /** Simulation time at which the constraint was first violated. */
-  violationTime?: number;
+  violationTime?: number | undefined;
   /** Name of the LHS operand (e.g., "motor.T", "circuit.C.v"). */
-  lhsName?: string;
+  lhsName?: string | undefined;
   /** Temporal metric evaluated (e.g., "max", "min", "settlingTime", "overshoot", "steadyState", "integral", "pointwise"). */
-  metricName?: "max" | "min" | "settlingTime" | "overshoot" | "steadyState" | "integral" | "pointwise";
+  metricName?: "max" | "min" | "settlingTime" | "overshoot" | "steadyState" | "integral" | "pointwise" | undefined;
   /** Computed scalar value of the temporal metric. */
-  metricValue?: number;
+  metricValue?: number | undefined;
   /** Blast radius: number of impacted downstream artifacts in the digital thread on verification failure. */
-  blastRadius?: number;
+  blastRadius?: number | undefined;
   /** Formal verification verdict kind (proven, violated, unknown). */
-  verdict?: string;
+  verdict?: string | undefined;
   /** Rigor level of the formal verification verdict. */
-  rigor?: string;
+  rigor?: string | undefined;
 }
 
 export type ComparisonOp = "<" | "<=" | "==" | ">=" | ">" | "!=";
@@ -50,8 +50,8 @@ export interface TrajectoryConstraint {
   lhs: string;
   op: ComparisonOp;
   rhs: string | number;
-  timeRange?: [number, number];
-  tolerance?: number;
+  timeRange?: [number, number] | undefined;
+  tolerance?: number | undefined;
 }
 
 export enum VerifyOp {
@@ -407,7 +407,7 @@ export class VerificationRunner {
     constraint: SymbolEntry,
     simResult: SimulationResult,
     timeIndex: number,
-  ): { isSatisfied: boolean; error?: string } {
+  ): { isSatisfied: boolean; error?: string | undefined } {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cst = this.db.cstNode(constraint.id) as any;
     if (!cst) {
@@ -697,8 +697,8 @@ export function verifyTrajectoryDirect(
 ): {
   isSatisfied: boolean;
   peakValue: number;
-  violationTime?: number;
-  violationIndex?: number;
+  violationTime?: number | undefined;
+  violationIndex?: number | undefined;
   timeSeriesResult: boolean[];
 } {
   const numSteps = Array.isArray(t) ? t.length : t.length;

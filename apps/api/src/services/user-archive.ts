@@ -5,38 +5,40 @@ import type { LibraryDatabase } from "../database.js";
 
 export interface UserArchiveBundle {
   exportedAt: string;
-  regulation?: string;
-  profile?: {
-    id: number;
-    username: string;
-    email: string;
-    display_name?: string;
-    bio?: string;
-    avatar_url?: string;
-    banner_url?: string;
-    account_type?: string;
-    credit_balance?: number;
-    created_at?: string;
-  };
+  regulation?: string | undefined;
+  profile?:
+    | {
+        id: number;
+        username: string;
+        email: string;
+        display_name?: string | undefined;
+        bio?: string | undefined;
+        avatar_url?: string | undefined;
+        banner_url?: string | undefined;
+        account_type?: string | undefined;
+        credit_balance?: number | undefined;
+        created_at?: string | undefined;
+      }
+    | undefined;
   user: {
     id: number;
     username: string;
     email: string;
-    display_name?: string;
-    bio?: string;
-    avatar_url?: string;
-    banner_url?: string;
-    account_type?: string;
-    credit_balance?: number;
-    created_at?: string;
+    display_name?: string | undefined;
+    bio?: string | undefined;
+    avatar_url?: string | undefined;
+    banner_url?: string | undefined;
+    account_type?: string | undefined;
+    credit_balance?: number | undefined;
+    created_at?: string | undefined;
   };
   posts: {
     id: number;
     content: string;
     created_at: string;
-    like_count?: number;
-    reply_count?: number;
-    repost_count?: number;
+    like_count?: number | undefined;
+    reply_count?: number | undefined;
+    repost_count?: number | undefined;
   }[];
   libraries: {
     name: string;
@@ -54,16 +56,18 @@ export interface UserArchiveBundle {
   auditHistory: {
     action: string;
     resource_type: string;
-    resource_id?: string;
+    resource_id?: string | undefined;
     created_at: string;
   }[];
-  bookmarks?: {
-    post_id: number;
-    content?: string;
-    created_at?: string;
-  }[];
-  following?: string[];
-  followers?: string[];
+  bookmarks?:
+    | {
+        post_id: number;
+        content?: string | undefined;
+        created_at?: string | undefined;
+      }[]
+    | undefined;
+  following?: string[] | undefined;
+  followers?: string[] | undefined;
 }
 
 /**

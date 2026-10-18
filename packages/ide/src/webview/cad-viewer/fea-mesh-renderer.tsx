@@ -87,9 +87,9 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
       const uy = displacements[i * 3 + 1] ?? 0;
       const uz = displacements[i * 3 + 2] ?? 0;
 
-      displacedPositions[i * 3 + 0] = positions[i * 3 + 0] + ux * activeScale;
-      displacedPositions[i * 3 + 1] = positions[i * 3 + 1] + uy * activeScale;
-      displacedPositions[i * 3 + 2] = positions[i * 3 + 2] + uz * activeScale;
+      displacedPositions[i * 3 + 0] = positions[i * 3 + 0]! + ux * activeScale;
+      displacedPositions[i * 3 + 1] = positions[i * 3 + 1]! + uy * activeScale;
+      displacedPositions[i * 3 + 2] = positions[i * 3 + 2]! + uz * activeScale;
     }
 
     // 2. Compute vertex colors from chosen scalar field

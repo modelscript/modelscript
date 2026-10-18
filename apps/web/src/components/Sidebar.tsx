@@ -116,7 +116,7 @@ const SidebarContainer = styled.header`
   }
 `;
 
-const NavItem = styled(Link)<{ $active?: boolean }>`
+const NavItem = styled(Link)<{ $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   text-decoration: none;
@@ -199,7 +199,7 @@ const ShortcutBadge = styled.span`
   }
 `;
 
-const NavPill = styled.div<{ $active?: boolean }>`
+const NavPill = styled.div<{ $active?: boolean | undefined }>`
   display: inline-flex;
   align-items: center;
   gap: 16px;
@@ -297,7 +297,7 @@ const BrandTitle = styled.div`
   }
 `;
 
-const SidebarAvatar = styled.div<{ $url?: string }>`
+const SidebarAvatar = styled.div<{ $url?: string | undefined }>`
   width: 40px;
   height: 40px;
   min-width: 40px;
@@ -440,7 +440,7 @@ const GuestSignUpBtn = styled(Link)`
 `;
 
 interface SidebarProps {
-  onPostClick?: () => void;
+  onPostClick?: (() => void) | undefined;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
@@ -498,7 +498,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     }
   }
 
-  const renderLinkItem = (link: { to: string; icon: any; label: string; shortcut?: string }) => (
+  const renderLinkItem = (link: { to: string; icon: any; label: string; shortcut?: string | undefined }) => (
     <NavItem key={link.to} to={link.to} $active={location.pathname.startsWith(link.to)}>
       <NavPill $active={location.pathname.startsWith(link.to)}>
         <div

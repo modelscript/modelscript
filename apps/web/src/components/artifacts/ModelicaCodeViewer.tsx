@@ -11,10 +11,10 @@ import Box from "../Box";
 
 interface ModelicaCodeViewerProps {
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
-const Wrapper = styled.div<{ $isFullScreen?: boolean }>`
+const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "340px")};
   background: var(--color-canvas-default, #0d1117);

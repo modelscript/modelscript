@@ -149,13 +149,20 @@ export function isStdlibOrBuiltinSymbol(name: string): boolean {
   return STDLIB_PACKAGES.has(clean) || STDLIB_SYMBOLS.has(clean);
 }
 
+/**
+ * Result of static type inference over a SysML v2 / KerML expression CST node.
+ */
 export interface TypeInferenceResult {
-  typeName?: string;
-  error?: {
-    message: string;
-    startByte?: number;
-    endByte?: number;
-  };
+  /** Resolved canonical type name (e.g. `"Real"`, `"Integer"`, `"Boolean"`), if determinable. */
+  typeName?: string | undefined;
+  /** Type error details and source byte span if an operator/operand type mismatch occurred. */
+  error?:
+    | {
+        message: string;
+        startByte?: number | undefined;
+        endByte?: number | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -284,8 +291,8 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
       if (typeChild?.name) {
         return { typeName: normalizeTypeName(typeChild.name) };
       }
-      if (resolved.metadata?.typeSpecifier) {
-        return { typeName: normalizeTypeName(String(resolved.metadata.typeSpecifier)) };
+      if (resolved.metadata?.["typeSpecifier"]) {
+        return { typeName: normalizeTypeName(String(resolved.metadata["typeSpecifier"])) };
       }
     }
     return {};
@@ -456,8 +463,9 @@ export function resolvePathInScope(db: QueryDB, scopeId: number | null, pathStr:
   // 2. If path contains ".", resolve via dot-notation (subpart -> port/feature)
   if (cleanPath.includes(".")) {
     const segments = cleanPath.split(".");
-    let curr: SymbolEntry | null = resolveFeatureInScopeLocal(db, scopeId, segments[0]!);
-    if (!curr) return null;
+    const first: SymbolEntry | null = resolveFeatureInScopeLocal(db, scopeId, segments[0]!);
+    if (!first) return null;
+    let curr: SymbolEntry = first;
 
     for (let i = 1; i < segments.length; i++) {
       const segName = segments[i]!;
@@ -470,8 +478,8 @@ export function resolvePathInScope(db: QueryDB, scopeId: number | null, pathStr:
         const candidates = db.byName(norm);
         typeDef = candidates.find((c) => c.kind === "Definition") ?? candidates[0] ?? null;
       }
-      if (!typeDef && curr.metadata?.typeSpecifier) {
-        const norm = normalizeTypeName(String(curr.metadata.typeSpecifier));
+      if (!typeDef && curr.metadata?.["typeSpecifier"]) {
+        const norm = normalizeTypeName(String(curr.metadata["typeSpecifier"]));
         const candidates = db.byName(norm);
         typeDef = candidates.find((c) => c.kind === "Definition") ?? candidates[0] ?? null;
       }
@@ -485,7 +493,7 @@ export function resolvePathInScope(db: QueryDB, scopeId: number | null, pathStr:
       }
 
       // Check direct children of curr
-      const direct = db.childrenOf(curr.id).find((c) => c.name === segName);
+      const direct: SymbolEntry | undefined = db.childrenOf(curr.id).find((c) => c.name === segName);
       if (direct) {
         curr = direct;
       } else {
@@ -559,8 +567,8 @@ export function checkFeatureAssignmentType(db: QueryDB, self: SymbolEntry): Lint
       break;
     }
   }
-  if (!declaredTypeName && self.metadata?.typeSpecifier) {
-    declaredTypeName = String(self.metadata.typeSpecifier);
+  if (!declaredTypeName && self.metadata?.["typeSpecifier"]) {
+    declaredTypeName = String(self.metadata["typeSpecifier"]);
   }
   if (!declaredTypeName) return null;
 
@@ -635,7 +643,7 @@ export function checkConnectionTypeCompatibility(db: QueryDB, self: SymbolEntry)
   const getPortType = (entry: SymbolEntry) => {
     const typeChild = db.childrenOf(entry.id).find((c) => c.ruleName === "OwnedFeatureTyping");
     if (typeChild?.name) return normalizeTypeName(typeChild.name);
-    if (entry.metadata?.typeSpecifier) return normalizeTypeName(String(entry.metadata.typeSpecifier));
+    if (entry.metadata?.["typeSpecifier"]) return normalizeTypeName(String(entry.metadata["typeSpecifier"]));
     return null;
   };
 
@@ -758,27 +766,46 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
   return null;
 }
 
+/**
+ * Object-oriented wrapper around the SysML v2 static type checking and name resolution queries.
+ * Accepts either a `SymbolEntry` or numeric symbol ID for each validation rule.
+ */
 export class SysML2TypeChecker {
+  /**
+   * @param db - Active Salsa `QueryDB` backing symbol and CST lookups.
+   */
   constructor(private db: QueryDB) {}
 
+  /**
+   * Validates that a feature's bound value expression is assignable to its declared type (`S3001`).
+   */
   checkFeatureAssignmentType(entryOrId: SymbolEntry | number): LintResult | null {
     const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
     if (!entry) return null;
     return checkFeatureAssignmentType(this.db, entry);
   }
 
+  /**
+   * Validates that connected port endpoints have mutually compatible types (`S3002`).
+   */
   checkConnectionTypeCompatibility(entryOrId: SymbolEntry | number): LintResult | null {
     const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
     if (!entry) return null;
     return checkConnectionTypeCompatibility(this.db, entry);
   }
 
+  /**
+   * Validates that feature typing (`:`) and specialization (`:>`) references resolve in scope (`S2002`).
+   */
   checkSymbolResolution(entryOrId: SymbolEntry | number): LintResult | null {
     const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
     if (!entry) return null;
     return checkSymbolResolution(this.db, entry);
   }
 
+  /**
+   * Validates that `import` clauses resolve to known packages or standard library symbols (`S2005`).
+   */
   checkImportResolution(entryOrId: SymbolEntry | number): LintResult | null {
     const entry = typeof entryOrId === "number" ? this.db.symbol(entryOrId) : entryOrId;
     if (!entry) return null;

@@ -35,7 +35,7 @@ export class TaylorDomain implements ExprDomain<TaylorModel> {
 
   // ── helpers ──
 
-  private zero(): number[] {
+  public zero(): number[] {
     return new Array(this.boxes.length).fill(0);
   }
 

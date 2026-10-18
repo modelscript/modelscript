@@ -4,13 +4,13 @@ import type { QueryDB, SymbolEntry, SymbolId } from "../dsl/types.js";
 
 export interface DiffConfig {
   /** Deterministic identity generator for unnamed or ordered nodes when mapping versions. */
-  identity?: string | ((self: any) => string);
+  identity?: string | ((self: any) => string) | undefined;
   /** Semantic fields to ignore in diff tracking (like documentation or formatting annotations). */
-  ignore?: string[];
+  ignore?: string[] | undefined;
   /** Attributes where changes are flagged as non-breaking/minor. */
-  minor?: string[];
+  minor?: string[] | undefined;
   /** Attributes where changes trigger high-priority breaking diff alerts. */
-  breaking?: string[];
+  breaking?: string[] | undefined;
 }
 
 export type DiffAction = "insert" | "delete" | "update" | "move" | "none";
@@ -23,21 +23,21 @@ export interface SymbolRef {
 export interface SemanticEdit {
   action: DiffAction;
   /** The symbol reference from the 'old' tree (if applicable) */
-  oldSymbol?: SymbolRef | null;
+  oldSymbol?: SymbolRef | null | undefined;
   /** The symbol reference from the 'new' tree (if applicable) */
-  newSymbol?: SymbolRef | null;
+  newSymbol?: SymbolRef | null | undefined;
   /** The underlying symbol entry from the old tree */
-  oldEntry?: SymbolEntry | null;
+  oldEntry?: SymbolEntry | null | undefined;
   /** The underlying symbol entry from the new tree */
-  newEntry?: SymbolEntry | null;
+  newEntry?: SymbolEntry | null | undefined;
   /** Description of the change */
-  description?: string;
+  description?: string | undefined;
   /** Whether this change is breaking for downstream consumers / interfaces */
-  isBreaking?: boolean;
+  isBreaking?: boolean | undefined;
   /** Specific category of semantic change */
-  category?: "metadata" | "type" | "causality" | "variability" | "binding" | "structural" | "topology";
+  category?: "metadata" | "type" | "causality" | "variability" | "binding" | "structural" | "topology" | undefined;
   /** Nested edits for children */
-  children?: SemanticEdit[];
+  children?: SemanticEdit[] | undefined;
 }
 
 export interface SemanticDiffOptions {
@@ -45,11 +45,11 @@ export interface SemanticDiffOptions {
    * If true, changes in the order of children for certain nodes are ignored.
    * Useful for declarative sections like Modelica equations.
    */
-  orderAgnostic?: boolean;
+  orderAgnostic?: boolean | undefined;
   /**
    * If true, only breaking changes are included in the diff result.
    */
-  breakingOnly?: boolean;
+  breakingOnly?: boolean | undefined;
 }
 
 /**
@@ -86,7 +86,7 @@ export function computeSemanticDiff(
       oldEntry.kind.toLowerCase().includes("pin") ||
       oldEntry.kind.toLowerCase().includes("flange") ||
       oldEntry.kind.toLowerCase().includes("connector");
-    const isPublic = !oldEntry.metadata?.isProtected;
+    const isPublic = !oldEntry.metadata?.["isProtected"];
     const isBreaking = isConnectorOrPort || isPublic;
 
     return {
@@ -126,7 +126,7 @@ export function computeSemanticDiff(
   const newMeta = newEntry.metadata || {};
 
   // 1. Causality check (input vs output)
-  if (oldMeta.causality !== newMeta.causality) {
+  if (oldMeta["causality"] !== newMeta["causality"]) {
     isUpdated = true;
     nodeIsBreaking = true;
     edits.push({
@@ -137,14 +137,14 @@ export function computeSemanticDiff(
       newEntry,
       category: "causality",
       isBreaking: true,
-      description: `Causality changed from '${oldMeta.causality || "unspecified"}' to '${newMeta.causality || "unspecified"}'`,
+      description: `Causality changed from '${oldMeta["causality"] || "unspecified"}' to '${newMeta["causality"] || "unspecified"}'`,
     });
   }
 
   // 2. Variability check (parameter, constant, discrete, continuous)
-  if (oldMeta.variability !== newMeta.variability) {
+  if (oldMeta["variability"] !== newMeta["variability"]) {
     isUpdated = true;
-    const isBreaking = oldMeta.variability === "parameter" || newMeta.variability === "constant";
+    const isBreaking = oldMeta["variability"] === "parameter" || newMeta["variability"] === "constant";
     if (isBreaking) nodeIsBreaking = true;
     edits.push({
       action: "update",
@@ -154,13 +154,13 @@ export function computeSemanticDiff(
       newEntry,
       category: "variability",
       isBreaking,
-      description: `Variability changed from '${oldMeta.variability || "continuous"}' to '${newMeta.variability || "continuous"}'`,
+      description: `Variability changed from '${oldMeta["variability"] || "continuous"}' to '${newMeta["variability"] || "continuous"}'`,
     });
   }
 
   // 3. Type check
-  const oldType = oldMeta.typeName || oldMeta.type || (oldEntry as any).typeName;
-  const newType = newMeta.typeName || newMeta.type || (newEntry as any).typeName;
+  const oldType = oldMeta["typeName"] || oldMeta["type"] || (oldEntry as any).typeName;
+  const newType = newMeta["typeName"] || newMeta["type"] || (newEntry as any).typeName;
   if (oldType && newType && oldType !== newType) {
     isUpdated = true;
     nodeIsBreaking = true;
@@ -177,8 +177,8 @@ export function computeSemanticDiff(
   }
 
   // 4. Value / Binding check
-  const oldBinding = oldMeta.binding || oldMeta.modifierValue || oldMeta.value;
-  const newBinding = newMeta.binding || newMeta.modifierValue || newMeta.value;
+  const oldBinding = oldMeta["binding"] || oldMeta["modifierValue"] || oldMeta["value"];
+  const newBinding = newMeta["binding"] || newMeta["modifierValue"] || newMeta["value"];
   if (oldBinding !== undefined && newBinding !== undefined && oldBinding !== newBinding) {
     isUpdated = true;
     edits.push({
@@ -209,8 +209,8 @@ export function computeSemanticDiff(
     });
   }
 
-  const oldArgs = oldNode.db.argsOf(oldNode.id)?.hash;
-  const newArgs = newNode.db.argsOf(newNode.id)?.hash;
+  const oldArgs = oldNode.db["argsOf"](oldNode.id)?.hash;
+  const newArgs = newNode.db["argsOf"](newNode.id)?.hash;
   if (oldArgs !== newArgs) {
     isUpdated = true;
     nodeIsBreaking = true;
@@ -248,7 +248,7 @@ export function computeSemanticDiff(
           oc.kind.toLowerCase().includes("port") ||
           oc.kind.toLowerCase().includes("pin") ||
           oc.kind.toLowerCase().includes("flange");
-        const isBreaking = isConnector || !oc.metadata?.isProtected;
+        const isBreaking = isConnector || !oc.metadata?.["isProtected"];
         if (isBreaking) nodeIsBreaking = true;
         edits.push({
           action: "delete",
@@ -288,7 +288,7 @@ export function computeSemanticDiff(
         }
       } else if (i < oldChildren.length) {
         const oc = oldChildren[i]!;
-        const isBreaking = !oc.metadata?.isProtected;
+        const isBreaking = !oc.metadata?.["isProtected"];
         if (isBreaking) nodeIsBreaking = true;
         edits.push(computeSemanticDiff({ id: oc.id, db: oldNode.db }, null, options));
       } else {

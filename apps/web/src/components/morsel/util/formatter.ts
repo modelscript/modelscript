@@ -42,7 +42,7 @@ export function format(tree: Tree, content: string): string {
   const formattedLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     const trimmedLine = line.trim();
 
     if (trimmedLine.length === 0) {
@@ -72,7 +72,7 @@ export function format(tree: Tree, content: string): string {
     }
 
     // Adjust for dedent triggers (e.g., 'end', 'else', 'equation' keywords)
-    const firstToken = trimmedLine.split(" ")[0]; // Simple check, might need better tokenization
+    const firstToken = trimmedLine.split(" ")[0]!; // Simple check, might need better tokenization
 
     // Dedent start of blocks (model, class, etc)
     if (DEDENT_START_TOKENS.has(firstToken)) {

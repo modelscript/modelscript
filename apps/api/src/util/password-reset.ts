@@ -68,9 +68,14 @@ export function parsePasswordResetTokenPayload(token: string): PasswordResetToke
  */
 export function verifyPasswordResetToken(
   token: string,
-  currentUser: { id: number; email: string; token_version?: number; password_hash?: string | null },
+  currentUser: {
+    id: number;
+    email: string;
+    token_version?: number | undefined;
+    password_hash?: string | null | undefined;
+  },
   secret: string = JWT_SECRET,
-): { valid: boolean; userId?: number; email?: string; error?: string } {
+): { valid: boolean; userId?: number | undefined; email?: string | undefined; error?: string | undefined } {
   if (!token || typeof token !== "string" || !token.includes(".")) {
     return { valid: false, error: "Malformed reset token" };
   }

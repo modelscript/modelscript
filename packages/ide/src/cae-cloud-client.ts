@@ -13,35 +13,41 @@ export interface ComputeProfileInfo {
 
 export interface CaeCloudJobSubmission {
   solver: "calculix" | "su2" | "openfoam";
-  title?: string;
+  title?: string | undefined;
   deck: {
     content: string;
     format: "inp" | "cfg";
   };
-  geometry?: {
-    casHash: string;
-    filename: string;
-  };
-  options?: {
-    cores?: number;
-    timeoutSeconds?: number;
-    profile?: string;
-    runner?: "auto" | "docker" | "host" | "fallback";
-  };
+  geometry?:
+    | {
+        casHash: string;
+        filename: string;
+      }
+    | undefined;
+  options?:
+    | {
+        cores?: number | undefined;
+        timeoutSeconds?: number | undefined;
+        profile?: string | undefined;
+        runner?: "auto" | "docker" | "host" | "fallback" | undefined;
+      }
+    | undefined;
 }
 
 export interface CaeCloudJobStatus {
   jobId: string;
   name: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
-  resultPath?: string;
-  profile?: string;
-  usage?: {
-    cpuSeconds?: number;
-    peakMemoryMb?: number;
-    gpuSeconds?: number;
-    costCredits?: number;
-  };
+  resultPath?: string | undefined;
+  profile?: string | undefined;
+  usage?:
+    | {
+        cpuSeconds?: number | undefined;
+        peakMemoryMb?: number | undefined;
+        gpuSeconds?: number | undefined;
+        costCredits?: number | undefined;
+      }
+    | undefined;
 }
 
 /**

@@ -16,25 +16,25 @@ export interface SundialsCodegenOptions {
   /** Model identifier (from FMU codegen). */
   modelIdentifier: string;
   /** Start time (default: 0). */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Stop time (default: 1). */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Number of output intervals (default: 500). */
-  numberOfIntervals?: number;
+  numberOfIntervals?: number | undefined;
   /** Absolute tolerance (default: 1e-8). */
-  atol?: number;
+  atol?: number | undefined;
   /** Relative tolerance (default: 1e-6). */
-  rtol?: number;
+  rtol?: number | undefined;
   /** Maximum internal steps (default: 50000). */
-  maxSteps?: number;
+  maxSteps?: number | undefined;
   /** Maximum step size (0 = unlimited). */
-  maxStep?: number;
+  maxStep?: number | undefined;
   /** Use CVODE (explicit ODE) or IDA (implicit DAE). */
-  solver?: "cvode" | "ida";
+  solver?: "cvode" | "ida" | undefined;
   /** Use exact AD Jacobian (default: true). */
-  useExactJacobian?: boolean;
+  useExactJacobian?: boolean | undefined;
   /** Generic solver options (overrides specific options). */
-  solverOptions?: SolverOptions;
+  solverOptions?: SolverOptions | undefined;
 }
 
 /** Generated SUNDIALS C files. */

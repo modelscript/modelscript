@@ -7,7 +7,7 @@ import type { EmbeddedBroker } from "./interface.js";
 
 /** Simple paired memory stream to simulate identical ends of a TCP socket. */
 class MemoryStream extends Duplex {
-  peer?: MemoryStream;
+  peer?: MemoryStream | undefined;
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   override _read(_size: number): void {

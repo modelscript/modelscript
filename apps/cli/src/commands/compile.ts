@@ -18,10 +18,10 @@ const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 interface CompileArgs {
   name: string;
   paths: string[];
-  timing?: boolean;
-  "memory-profile"?: boolean;
-  memoryProfile?: boolean;
-  flattener?: "ts" | "wasm" | "hybrid" | "diff";
+  timing?: boolean | undefined;
+  "memory-profile"?: boolean | undefined;
+  memoryProfile?: boolean | undefined;
+  flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
 }
 
 export const Compile: CommandModule<{}, CompileArgs> = {
@@ -176,7 +176,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
             ensureDocument(entry.resourceId);
             return u.cstTextProvider ? u.cstTextProvider(startByte, endByte, entry) : null;
           },
-          getNode: (startByte: number, endByte: number, entry?: any) => {
+          getNode: (_startByte: number, _endByte: number, entry?: any) => {
             if (!entry?.resourceId) return null;
             ensureDocument(entry.resourceId);
             return u.cstNodeProvider ? u.cstNodeProvider(entry.id) : null;

@@ -10,9 +10,9 @@ if (fs.existsSync(grammarPath)) {
   try {
     modelicaGrammar = JSON.parse(fs.readFileSync(grammarPath, "utf-8"));
     if (modelicaGrammar) {
-      modelicaGrammar.name = "modelica";
-      modelicaGrammar.scopeName = modelicaGrammar.scopeName || "source.modelica";
-      modelicaGrammar.aliases = ["Modelica", "mo"];
+      modelicaGrammar["name"] = "modelica";
+      modelicaGrammar["scopeName"] = modelicaGrammar["scopeName"] || "source.modelica";
+      modelicaGrammar["aliases"] = ["Modelica", "mo"];
     }
   } catch {
     modelicaGrammar = null;
@@ -31,7 +31,7 @@ export default defineConfig({
     config(md) {
       const defaultCodeInline = md.renderer.rules.code_inline;
       md.renderer.rules.code_inline = (tokens, idx, options, env, self) => {
-        const token = tokens[idx];
+        const token = tokens[idx]!;
         if (token.content.includes("{{") || token.content.includes("}}")) {
           token.attrSet("v-pre", "");
         }
@@ -41,7 +41,7 @@ export default defineConfig({
       };
       const defaultFence = md.renderer.rules.fence;
       md.renderer.rules.fence = (tokens, idx, options, env, self) => {
-        const token = tokens[idx];
+        const token = tokens[idx]!;
         const info = token.info.trim();
         if (info === "mermaid") {
           const encoded = encodeURIComponent(token.content);

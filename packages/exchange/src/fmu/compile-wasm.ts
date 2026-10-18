@@ -38,9 +38,9 @@ export async function compileToWasm(
   exportedFunctions: string[],
   options?: {
     /** Emscripten optimization level (default: "-O2") */
-    optimizationLevel?: string;
+    optimizationLevel?: string | undefined;
     /** Additional emcc flags */
-    extraFlags?: string[];
+    extraFlags?: string[] | undefined;
   },
 ): Promise<WasmCompileResult> {
   // Dynamic imports — only available in Node.js
@@ -158,8 +158,8 @@ export async function compileAsToWasm(
   asSource: string,
   modelIdentifier: string,
   options?: {
-    optimize?: boolean;
-    shrink?: boolean;
+    optimize?: boolean | undefined;
+    shrink?: boolean | undefined;
   },
 ): Promise<WasmCompileResult> {
   try {

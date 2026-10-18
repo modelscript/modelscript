@@ -59,20 +59,20 @@ export class SparklineRingBuffer {
 const sparklineBuffers = new Map<string, SparklineRingBuffer>();
 
 export interface ReactiveAnimationBinding {
-  cellId?: string;
+  cellId?: string | undefined;
   property: string;
   variableName: string;
-  transform?: string;
-  range?: [number, number];
+  transform?: string | undefined;
+  range?: [number, number] | undefined;
 }
 
 export interface AnimatableCell {
-  id?: string;
-  getData?: () => { animations?: ReactiveAnimationBinding[] } | undefined;
-  rotate?: (angle: number, options?: { absolute?: boolean }) => void;
-  attr?: (path: string, val: any) => void;
-  setVisible?: (visible: boolean) => void;
-  translate?: (dx: number, dy: number) => void;
+  id?: string | undefined;
+  getData?: (() => { animations?: ReactiveAnimationBinding[] | undefined } | undefined) | undefined;
+  rotate?: ((angle: number, options?: { absolute?: boolean | undefined }) => void) | undefined;
+  attr?: ((path: string, val: any) => void) | undefined;
+  setVisible?: ((visible: boolean) => void) | undefined;
+  translate?: ((dx: number, dy: number) => void) | undefined;
 }
 
 /**

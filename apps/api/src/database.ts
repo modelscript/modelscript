@@ -67,7 +67,7 @@ export interface TrendingTopicRow {
   display_name: string;
   current_score: number;
   last_updated_at: string;
-  post_count?: number;
+  post_count?: number | undefined;
 }
 
 export interface JobRow {
@@ -80,12 +80,12 @@ export interface JobRow {
   metadata: string | null;
   started_at: string;
   completed_at: string | null;
-  compute_profile?: string | null;
-  cpu_seconds?: number | null;
-  peak_memory_mb?: number | null;
-  gpu_seconds?: number | null;
-  cost_credits?: number | null;
-  user_id?: number | null;
+  compute_profile?: string | null | undefined;
+  cpu_seconds?: number | null | undefined;
+  peak_memory_mb?: number | null | undefined;
+  gpu_seconds?: number | null | undefined;
+  cost_credits?: number | null | undefined;
+  user_id?: number | null | undefined;
 }
 
 export interface CreditTransactionRow {
@@ -95,9 +95,9 @@ export interface CreditTransactionRow {
   amount: number;
   balance_after: number;
   type: string;
-  transaction_type?: string;
+  transaction_type?: string | undefined;
   description: string;
-  metadata?: string | null;
+  metadata?: string | null | undefined;
   created_at: string;
 }
 
@@ -213,7 +213,7 @@ export type OrgRole = "owner" | "maintainer" | "contributor";
 export interface OrganizationMemberRecord {
   org_id: number;
   user_id: number;
-  username?: string;
+  username?: string | undefined;
   role: OrgRole;
   created_at: string;
 }
@@ -223,7 +223,7 @@ export type CollaboratorPermission = "admin" | "write" | "read";
 export interface PackageCollaboratorRecord {
   library_name: string;
   user_id: number;
-  username?: string;
+  username?: string | undefined;
   permission: CollaboratorPermission;
   created_at: string;
 }
@@ -331,8 +331,12 @@ export class LibraryDatabase {
       "twin_proposals",
       "sysml2_relationships",
       "sysml2_elements",
+      "sysml2_tags",
+      "sysml2_branches",
       "sysml2_commits",
       "sysml2_projects",
+      "thread_conflicts",
+      "thread_snapshots",
     ];
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     this.#db.transaction(() => {
@@ -832,7 +836,8 @@ export class LibraryDatabase {
         project_id      TEXT NOT NULL REFERENCES sysml2_projects(id) ON DELETE CASCADE,
         description     TEXT NOT NULL,
         created         TEXT NOT NULL,
-        previous_commit TEXT
+        previous_commit TEXT,
+        merged_commit   TEXT
       );
 
       CREATE TABLE IF NOT EXISTS sysml2_elements (
@@ -1017,7 +1022,7 @@ export class LibraryDatabase {
       const updateStmt = this.#db.prepare(
         `UPDATE users SET rsa_private_key = ?, rsa_public_key = ?, actor_url = ?, inbox_url = ?, outbox_url = ? WHERE id = ?`,
       );
-      const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+      const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
       this.#db.transaction(() => {
         for (const u of usersWithoutKeys) {
           const keys = this.#generateRSAKeys();
@@ -1113,6 +1118,10 @@ export class LibraryDatabase {
         );
         CREATE INDEX IF NOT EXISTS idx_remote_packages_name ON remote_packages(name);
       `);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE sysml2_commits ADD COLUMN merged_commit TEXT`);
     } catch (e) {}
 
     try {
@@ -1250,27 +1259,27 @@ export class LibraryDatabase {
     email: string,
     passwordHash: string | null,
     options?: {
-      emailVerified?: boolean;
-      initialCredits?: number;
-      termsAcceptedAt?: string;
-      registrationIp?: string;
-      status?: string;
-      accountType?: string;
+      emailVerified?: boolean | undefined;
+      initialCredits?: number | undefined;
+      termsAcceptedAt?: string | undefined;
+      registrationIp?: string | undefined;
+      status?: string | undefined;
+      accountType?: string | undefined;
     },
   ): {
     id: number;
     username: string;
     email: string;
-    account_type?: string;
-    email_verified?: number;
-    status?: string;
-    token_version?: number;
+    account_type?: string | undefined;
+    email_verified?: number | undefined;
+    status?: string | undefined;
+    token_version?: number | undefined;
   } {
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
     const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
     const edKeys = this.#generateEd25519Keys();
-    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+    const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
     const actorUrl = `${publicUrl}/users/${username}`;
     const inboxUrl = `${actorUrl}/inbox`;
     const outboxUrl = `${actorUrl}/outbox`;
@@ -1402,7 +1411,7 @@ export class LibraryDatabase {
    * GDPR Article 17: Right to Erasure / Account Anonymization
    * Redacts personal data, deletes session tokens and social links, and flags account as deleted.
    */
-  anonymizeUser(userId: number): { success: boolean; actorUrl?: string } {
+  anonymizeUser(userId: number): { success: boolean; actorUrl?: string | undefined } {
     const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as any;
     if (!user) {
       return { success: false };
@@ -1542,7 +1551,7 @@ export class LibraryDatabase {
     const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
     const keys = this.#generateRSAKeys();
-    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+    const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
     const actorUrl = `${publicUrl}/users/${username}`;
     const inboxUrl = `${actorUrl}/inbox`;
     const outboxUrl = `${actorUrl}/outbox`;
@@ -1608,7 +1617,7 @@ export class LibraryDatabase {
       const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
       const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
-      const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+      const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
       const actorUrl = `${publicUrl}/users/${username}`;
       const inboxUrl = `${actorUrl}/inbox`;
       const outboxUrl = `${actorUrl}/outbox`;
@@ -1633,26 +1642,50 @@ export class LibraryDatabase {
   getOAuthAccount(
     provider: string,
     providerUserId: string,
-  ): { user_id: number; access_token?: string; refresh_token?: string; expires_at?: string } | undefined {
+  ):
+    | {
+        user_id: number;
+        access_token?: string | undefined;
+        refresh_token?: string | undefined;
+        expires_at?: string | undefined;
+      }
+    | undefined {
     return this.#db
       .prepare(
         `SELECT user_id, access_token, refresh_token, expires_at FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?`,
       )
       .get(provider, providerUserId) as
-      | { user_id: number; access_token?: string; refresh_token?: string; expires_at?: string }
+      | {
+          user_id: number;
+          access_token?: string | undefined;
+          refresh_token?: string | undefined;
+          expires_at?: string | undefined;
+        }
       | undefined;
   }
 
   getOAuthAccountByUserId(
     userId: number,
     provider: string,
-  ): { provider_user_id: string; access_token?: string; refresh_token?: string; expires_at?: string } | undefined {
+  ):
+    | {
+        provider_user_id: string;
+        access_token?: string | undefined;
+        refresh_token?: string | undefined;
+        expires_at?: string | undefined;
+      }
+    | undefined {
     return this.#db
       .prepare(
         `SELECT provider_user_id, access_token, refresh_token, expires_at FROM oauth_accounts WHERE user_id = ? AND provider = ?`,
       )
       .get(userId, provider) as
-      | { provider_user_id: string; access_token?: string; refresh_token?: string; expires_at?: string }
+      | {
+          provider_user_id: string;
+          access_token?: string | undefined;
+          refresh_token?: string | undefined;
+          expires_at?: string | undefined;
+        }
       | undefined;
   }
 
@@ -1696,17 +1729,17 @@ export class LibraryDatabase {
         username: string;
         email: string;
         password_hash: string;
-        account_type?: string;
+        account_type?: string | undefined;
         avatar_url: string;
         display_name: string;
         bio: string;
-        email_verified?: number;
-        status?: string;
-        credit_balance?: number;
-        token_version?: number;
-        totp_enabled?: number;
-        totp_secret?: string | null;
-        backup_codes?: string;
+        email_verified?: number | undefined;
+        status?: string | undefined;
+        credit_balance?: number | undefined;
+        token_version?: number | undefined;
+        totp_enabled?: number | undefined;
+        totp_secret?: string | null | undefined;
+        backup_codes?: string | undefined;
       }
     | undefined {
     return this.#db
@@ -1721,14 +1754,14 @@ export class LibraryDatabase {
         id: number;
         username: string;
         email: string;
-        account_type?: string;
-        email_verified?: number;
-        status?: string;
-        credit_balance?: number;
-        token_version?: number;
-        totp_enabled?: number;
-        totp_secret?: string | null;
-        backup_codes?: string;
+        account_type?: string | undefined;
+        email_verified?: number | undefined;
+        status?: string | undefined;
+        credit_balance?: number | undefined;
+        token_version?: number | undefined;
+        totp_enabled?: number | undefined;
+        totp_secret?: string | null | undefined;
+        backup_codes?: string | undefined;
       }
     | undefined {
     return this.#db
@@ -1743,18 +1776,18 @@ export class LibraryDatabase {
         id: number;
         username: string;
         email: string;
-        password_hash?: string;
-        account_type?: string;
+        password_hash?: string | undefined;
+        account_type?: string | undefined;
         avatar_url: string;
         display_name: string;
         bio: string;
-        email_verified?: number;
-        status?: string;
-        credit_balance?: number;
-        token_version?: number;
-        totp_enabled?: number;
-        totp_secret?: string | null;
-        backup_codes?: string;
+        email_verified?: number | undefined;
+        status?: string | undefined;
+        credit_balance?: number | undefined;
+        token_version?: number | undefined;
+        totp_enabled?: number | undefined;
+        totp_secret?: string | null | undefined;
+        backup_codes?: string | undefined;
       }
     | undefined {
     return this.#db
@@ -1794,12 +1827,12 @@ export class LibraryDatabase {
   getUserFederationInfo(userId: number):
     | {
         id: number;
-        actor_url?: string | null;
-        inbox_url?: string | null;
-        outbox_url?: string | null;
-        remote_domain?: string | null;
-        rsa_public_key?: string | null;
-        rsa_private_key?: string | null;
+        actor_url?: string | null | undefined;
+        inbox_url?: string | null | undefined;
+        outbox_url?: string | null | undefined;
+        remote_domain?: string | null | undefined;
+        rsa_public_key?: string | null | undefined;
+        rsa_private_key?: string | null | undefined;
       }
     | undefined {
     const row = this.#db
@@ -1833,7 +1866,7 @@ export class LibraryDatabase {
     id: number;
     username: string;
     email: string;
-    display_name?: string;
+    display_name?: string | undefined;
     account_type: string;
     status: string;
     created_at: string;
@@ -1872,12 +1905,12 @@ export class LibraryDatabase {
   updateProfile(
     userId: number,
     profile: {
-      display_name?: string;
-      bio?: string;
-      location?: string;
-      website?: string;
-      avatar_url?: string;
-      banner_url?: string;
+      display_name?: string | undefined;
+      bio?: string | undefined;
+      location?: string | undefined;
+      website?: string | undefined;
+      avatar_url?: string | undefined;
+      banner_url?: string | undefined;
     },
   ) {
     const ALLOWED_PROFILE_COLUMNS = new Set(["display_name", "bio", "location", "website", "avatar_url", "banner_url"]);
@@ -1934,7 +1967,13 @@ export class LibraryDatabase {
     | undefined {
     const row = this.#db
       .prepare(`SELECT totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`)
-      .get(userId) as { totp_enabled?: number; totp_secret?: string | null; backup_codes?: string } | undefined;
+      .get(userId) as
+      | {
+          totp_enabled?: number | undefined;
+          totp_secret?: string | null | undefined;
+          backup_codes?: string | undefined;
+        }
+      | undefined;
     if (!row) return undefined;
     let backupCodes: string[] = [];
     try {
@@ -2203,6 +2242,42 @@ export class LibraryDatabase {
     if (p.artifact_view_id && !p.artifact_view) {
       p.artifact_view = this.getArtifactView(p.artifact_view_id);
     }
+    const extraArtifactIds = new Set<number>();
+    if (p.artifact_view_id) {
+      extraArtifactIds.add(Number(p.artifact_view_id));
+    }
+    if (Array.isArray(p.metadata?.notebook?.artifactIds)) {
+      for (const aid of p.metadata.notebook.artifactIds) {
+        if (Number.isFinite(Number(aid))) extraArtifactIds.add(Number(aid));
+      }
+    }
+    if (Array.isArray(p.metadata?.notebook?.cells)) {
+      for (const cell of p.metadata.notebook.cells) {
+        if (cell?.type === "artifact" && Number.isFinite(Number(cell.artifactId))) {
+          extraArtifactIds.add(Number(cell.artifactId));
+        }
+      }
+    }
+    if (typeof p.content === "string" && p.content.includes("::artifact")) {
+      const directiveRe = /::artifact(?:\[[^\]]*\])?\{([^}]*)\}/g;
+      let match: RegExpExecArray | null;
+      while ((match = directiveRe.exec(p.content)) !== null) {
+        const idMatch = (match[1] || "").match(/(?:^|\s)id\s*=\s*["']?(\d+)["']?/);
+        if (idMatch && idMatch[1]) {
+          extraArtifactIds.add(Number(idMatch[1]));
+        }
+      }
+    }
+    if (extraArtifactIds.size > 0) {
+      const viewsMap: Record<number, any> = {};
+      for (const aid of extraArtifactIds) {
+        const view = aid === p.artifact_view_id && p.artifact_view ? p.artifact_view : this.getArtifactView(aid);
+        if (view) {
+          viewsMap[aid] = view;
+        }
+      }
+      p.artifact_views = viewsMap;
+    }
     if (p.repost_of_id) {
       p.repost_post = this.getPost(p.repost_of_id, currentUserId);
     }
@@ -2368,6 +2443,12 @@ export class LibraryDatabase {
     }
     if (norm === "has_artifact" || norm === "artifacts") {
       return { sql: " AND p.artifact_view_id IS NOT NULL", params: [] };
+    }
+    if (norm === "notebook" || norm === "notebooks") {
+      return {
+        sql: " AND (p.metadata LIKE '%\"isNotebook\":true%' OR p.content LIKE '%::artifact%')",
+        params: [],
+      };
     }
     return { sql: " AND LOWER(a.view_type) = ?", params: [norm] };
   }
@@ -2888,7 +2969,11 @@ export class LibraryDatabase {
 
   // ── Federation Domain Moderation ─────────────────────────────────
 
-  getDomainTier(domain: string): { domain: string; tier: "allow" | "silence" | "suspend"; reason?: string } {
+  getDomainTier(domain: string): {
+    domain: string;
+    tier: "allow" | "silence" | "suspend";
+    reason?: string | undefined;
+  } {
     const cleanDomain = domain.toLowerCase().trim();
     const row = this.#db
       .prepare(`SELECT domain, tier, reason FROM federation_domains WHERE domain = ?`)
@@ -2918,7 +3003,13 @@ export class LibraryDatabase {
     this.#db.prepare(`DELETE FROM federation_domains WHERE domain = ?`).run(cleanDomain);
   }
 
-  listFederationDomains(): { domain: string; tier: string; reason?: string; created_at: string; updated_at: string }[] {
+  listFederationDomains(): {
+    domain: string;
+    tier: string;
+    reason?: string | undefined;
+    created_at: string;
+    updated_at: string;
+  }[] {
     return this.#db
       .prepare(`SELECT domain, tier, reason, created_at, updated_at FROM federation_domains ORDER BY created_at DESC`)
       .all() as any[];
@@ -3042,8 +3133,8 @@ export class LibraryDatabase {
          WHERE f.following_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
          ORDER BY f.id DESC LIMIT ? OFFSET ?`,
       )
-      .all(userId, limit, offset) as Array<{ actor_url?: string; username: string }>;
-    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+      .all(userId, limit, offset) as Array<{ actor_url?: string | undefined; username: string }>;
+    const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
     return rows.map((r) => r.actor_url || `${publicUrl}/users/${r.username}`);
   }
 
@@ -3063,8 +3154,8 @@ export class LibraryDatabase {
          WHERE f.follower_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
          ORDER BY f.id DESC LIMIT ? OFFSET ?`,
       )
-      .all(userId, limit, offset) as Array<{ actor_url?: string; username: string }>;
-    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+      .all(userId, limit, offset) as Array<{ actor_url?: string | undefined; username: string }>;
+    const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
     return rows.map((r) => r.actor_url || `${publicUrl}/users/${r.username}`);
   }
 
@@ -3105,7 +3196,12 @@ export class LibraryDatabase {
 
   createContentReport(
     reporterId: number,
-    data: { postId?: number; targetUserId?: number; reason: string; details?: string },
+    data: {
+      postId?: number | undefined;
+      targetUserId?: number | undefined;
+      reason: string;
+      details?: string | undefined;
+    },
   ): { id: number; status: string } {
     const result = this.#db
       .prepare(
@@ -3174,7 +3270,7 @@ export class LibraryDatabase {
     return res.changes > 0;
   }
 
-  deletePost(postId: number): { success: boolean; apId?: string; authorId?: number } {
+  deletePost(postId: number): { success: boolean; apId?: string | undefined; authorId?: number | undefined } {
     const post = this.#db.prepare(`SELECT id, author_id, ap_id FROM posts WHERE id = ?`).get(postId) as any;
     if (!post) {
       return { success: false };
@@ -3197,8 +3293,8 @@ export class LibraryDatabase {
     copyrightOwner: string;
     workDescription: string;
     infringingUrl: string;
-    resourceType?: string;
-    resourceId?: string;
+    resourceType?: string | undefined;
+    resourceId?: string | undefined;
   }): { id: number } {
     const res = this.#db
       .prepare(
@@ -3492,7 +3588,7 @@ export class LibraryDatabase {
 
   updateArtifactThumbnail(id: number, thumbnailUrl: string, thumbnailUrlDark?: string): void {
     const row = this.#db.prepare(`SELECT view_config FROM artifact_views WHERE id = ?`).get(id) as
-      | { view_config?: string }
+      | { view_config?: string | undefined }
       | undefined;
     if (row && row.view_config) {
       try {
@@ -3598,9 +3694,9 @@ export class LibraryDatabase {
     actorUrl: string;
     downloadUrl: string;
     checksum: string;
-    license?: string | null;
-    description?: string | null;
-    metadata?: string | null;
+    license?: string | null | undefined;
+    description?: string | null | undefined;
+    metadata?: string | null | undefined;
   }): { id: number } {
     const res = this.#db
       .prepare(
@@ -3763,7 +3859,7 @@ export class LibraryDatabase {
       : `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 ORDER BY t.current_score DESC LIMIT ?`;
     const params = location ? [location, limit * 5] : [limit * 5];
 
-    const topics = this.#db.prepare(query).all(...params) as (TrendingTopicRow & { post_count?: number })[];
+    const topics = this.#db.prepare(query).all(...params) as (TrendingTopicRow & { post_count?: number | undefined })[];
 
     const currentMs = Date.now();
     const scoredTopics = topics.map((t) => {
@@ -3923,7 +4019,7 @@ export class LibraryDatabase {
     provider: string,
     externalId: string,
     repoFullName: string,
-    defaultBranch?: string,
+    _defaultBranch?: string,
     description?: string,
   ): void {
     const parts = repoFullName.split("/");
@@ -3961,9 +4057,9 @@ export class LibraryDatabase {
     repoId: number;
     provider: "github" | "gitlab" | "local" | "custom";
     secret: string;
-    events?: string[];
-    autoPublish?: boolean;
-    tagPattern?: string;
+    events?: string[] | undefined;
+    autoPublish?: boolean | undefined;
+    tagPattern?: string | undefined;
   }): RepoWebhookRecord {
     const eventsJson = JSON.stringify(params.events ?? ["push", "release"]);
     const autoPublish = params.autoPublish !== false ? 1 : 0;
@@ -4019,8 +4115,8 @@ export class LibraryDatabase {
     webhookId: number;
     eventType: string;
     payload: string;
-    responseStatus?: number;
-    errorMessage?: string;
+    responseStatus?: number | undefined;
+    errorMessage?: string | undefined;
   }): number {
     const info = this.#db
       .prepare(
@@ -4428,8 +4524,8 @@ export class LibraryDatabase {
     libraryName: string;
     libraryVersion: string;
     contentHash: string;
-    signature?: string | null;
-    publishedBy?: number | null;
+    signature?: string | null | undefined;
+    publishedBy?: number | null | undefined;
   }): void {
     const stmt = this.#db.prepare(`
       INSERT INTO library_releases (library_name, library_version, content_hash, signature, published_by)
@@ -4463,11 +4559,11 @@ export class LibraryDatabase {
     signature: string | null;
     published_by: number | null;
     published_at: string;
-    is_deprecated?: number | null;
-    deprecation_reason?: string | null;
-    is_yanked?: number | null;
-    yank_reason?: string | null;
-    yanked_at?: string | null;
+    is_deprecated?: number | null | undefined;
+    deprecation_reason?: string | null | undefined;
+    is_yanked?: number | null | undefined;
+    yank_reason?: string | null | undefined;
+    yanked_at?: string | null | undefined;
   } | null {
     const stmt = this.#db.prepare(`
       SELECT * FROM library_releases
@@ -4739,7 +4835,7 @@ export class LibraryDatabase {
   /**
    * Check if a user is authorized to publish a package release.
    */
-  canUserPublishPackage(libraryName: string, userId: number): { allowed: boolean; reason?: string } {
+  canUserPublishPackage(libraryName: string, userId: number): { allowed: boolean; reason?: string | undefined } {
     const user = this.getUserById(userId);
     if (!user) return { allowed: false, reason: "User not found" };
     if (user.account_type === "admin") return { allowed: true };
@@ -4788,8 +4884,8 @@ export class LibraryDatabase {
   createOrganization(params: {
     slug: string;
     name: string;
-    description?: string | null;
-    avatarUrl?: string | null;
+    description?: string | null | undefined;
+    avatarUrl?: string | null | undefined;
     createdBy: number;
   }): OrganizationRecord {
     const slug = params.slug.trim().toLowerCase();
@@ -4969,13 +5065,13 @@ export class LibraryDatabase {
   updatePackageMeta(
     packageId: number,
     meta: {
-      description?: string | null;
-      readme?: string | null;
-      readme_filename?: string | null;
-      license?: string | null;
-      homepage?: string | null;
-      repository_type?: string | null;
-      repository_url?: string | null;
+      description?: string | null | undefined;
+      readme?: string | null | undefined;
+      readme_filename?: string | null | undefined;
+      license?: string | null | undefined;
+      homepage?: string | null | undefined;
+      repository_type?: string | null | undefined;
+      repository_url?: string | null | undefined;
     },
   ): void {
     this.#db
@@ -5437,7 +5533,7 @@ export class LibraryDatabase {
 
   getUserBalance(userId: number): number {
     const row = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-      | { credit_balance?: number }
+      | { credit_balance?: number | undefined }
       | undefined;
     return row?.credit_balance ?? 0;
   }
@@ -5466,7 +5562,7 @@ export class LibraryDatabase {
 
     const deductTx = this.#db.transaction(() => {
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number }
+        | { credit_balance?: number | undefined }
         | undefined;
 
       if (!user) {
@@ -5541,7 +5637,7 @@ export class LibraryDatabase {
   ): number {
     const grantTx = this.#db.transaction(() => {
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number }
+        | { credit_balance?: number | undefined }
         | undefined;
 
       if (!user) {
@@ -5572,7 +5668,13 @@ export class LibraryDatabase {
     jobId: number | null = null,
     description: string = "HPC Compute Escrow Hold",
     metadata?: Record<string, unknown>,
-  ): { success: boolean; holdId?: number; heldAmount: number; newBalance: number; reason?: string } {
+  ): {
+    success: boolean;
+    holdId?: number | undefined;
+    heldAmount: number;
+    newBalance: number;
+    reason?: string | undefined;
+  } {
     if (amount <= 0) {
       const balance = this.getUserBalance(userId);
       return { success: true, heldAmount: 0, newBalance: balance };
@@ -5580,7 +5682,7 @@ export class LibraryDatabase {
 
     const holdTx = this.#db.transaction(() => {
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number }
+        | { credit_balance?: number | undefined }
         | undefined;
 
       if (!user) {
@@ -5642,7 +5744,7 @@ export class LibraryDatabase {
         .get(userId, jobId) as { id: number; amount: number } | undefined;
 
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number }
+        | { credit_balance?: number | undefined }
         | undefined;
 
       if (!user) {
@@ -5746,7 +5848,7 @@ export class LibraryDatabase {
         .get(userId, jobId) as { id: number; amount: number } | undefined;
 
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number }
+        | { credit_balance?: number | undefined }
         | undefined;
 
       if (!user) {
@@ -5804,7 +5906,7 @@ export class LibraryDatabase {
 
   getUserTransactionCount(userId: number): number {
     const row = this.#db.prepare(`SELECT COUNT(*) as count FROM credit_transactions WHERE user_id = ?`).get(userId) as
-      | { count?: number }
+      | { count?: number | undefined }
       | undefined;
     return row?.count ?? 0;
   }
@@ -5957,7 +6059,7 @@ export class LibraryDatabase {
   createArtifactViewFromJob(
     userId: number,
     jobId: number,
-    options?: { colormap?: string; title?: string; activeField?: string },
+    options?: { colormap?: string | undefined; title?: string | undefined; activeField?: string | undefined },
   ): { artifactId: number; suggestedCaption: string; viewConfig: Record<string, unknown> } {
     const job = this.getJob(jobId);
     if (!job) {
@@ -6107,9 +6209,9 @@ export class LibraryDatabase {
     serialNumber: string;
     packageId: number;
     version: string;
-    commitSha?: string | null;
-    variant?: string | null;
-    birthData?: string | null;
+    commitSha?: string | null | undefined;
+    variant?: string | null | undefined;
+    birthData?: string | null | undefined;
   }): number {
     const result = this.#db
       .prepare(
@@ -6227,11 +6329,11 @@ export class LibraryDatabase {
     instanceId: number;
     name: string;
     modelicaClass: string;
-    status?: string;
-    healthScore?: number;
+    status?: string | undefined;
+    healthScore?: number | undefined;
     config: string;
     currentParameters: string;
-    currentWeights?: string | null;
+    currentWeights?: string | null | undefined;
   }): number {
     const result = this.#db
       .prepare(
@@ -6297,12 +6399,12 @@ export class LibraryDatabase {
   updateTwinState(
     id: number,
     data: {
-      status?: string;
-      healthScore?: number;
-      currentParameters?: string;
-      currentWeights?: string | null;
-      lastTelemetryAt?: string;
-      lastAdaptedAt?: string;
+      status?: string | undefined;
+      healthScore?: number | undefined;
+      currentParameters?: string | undefined;
+      currentWeights?: string | null | undefined;
+      lastTelemetryAt?: string | undefined;
+      lastAdaptedAt?: string | undefined;
     },
   ): void {
     const sets: string[] = [];
@@ -6376,7 +6478,7 @@ export class LibraryDatabase {
       .all(twinId, limit) as TwinAdaptationRow[];
   }
 
-  createTwinProposal(data: { twinId: number; postId?: number | null; adaptationId: number }): number {
+  createTwinProposal(data: { twinId: number; postId?: number | null | undefined; adaptationId: number }): number {
     const result = this.#db
       .prepare(
         `INSERT INTO twin_proposals (twin_id, post_id, adaptation_id, status)
@@ -6475,9 +6577,9 @@ export class LibraryDatabase {
   saveSysml2Project(project: {
     "@id": string;
     name: string;
-    description?: string;
+    description?: string | undefined;
     created: string;
-    defaultBranch: { "@id": string; name: string; headCommitId?: string };
+    defaultBranch: { "@id": string; name: string; headCommitId?: string | undefined };
   }): void {
     this.#db
       .prepare(
@@ -6497,9 +6599,9 @@ export class LibraryDatabase {
     "@id": string;
     "@type": "Project";
     name: string;
-    description?: string;
+    description?: string | undefined;
     created: string;
-    defaultBranch: { "@id": string; name: string; headCommitId?: string };
+    defaultBranch: { "@id": string; name: string; headCommitId?: string | undefined };
   }[] {
     const rows = this.#db.prepare(`SELECT * FROM sysml2_projects ORDER BY created ASC`).all() as any[];
     return rows.map((r) => ({
@@ -6521,9 +6623,90 @@ export class LibraryDatabase {
         this.#db.prepare(`DELETE FROM sysml2_elements WHERE commit_id = ?`).run(c.id);
         this.#db.prepare(`DELETE FROM sysml2_relationships WHERE commit_id = ?`).run(c.id);
       }
+      this.#db.prepare(`DELETE FROM sysml2_tags WHERE project_id = ?`).run(projectId);
+      this.#db.prepare(`DELETE FROM sysml2_branches WHERE project_id = ?`).run(projectId);
       this.#db.prepare(`DELETE FROM sysml2_commits WHERE project_id = ?`).run(projectId);
       this.#db.prepare(`DELETE FROM sysml2_projects WHERE id = ?`).run(projectId);
     })();
+  }
+
+  saveSysml2Branch(branch: {
+    "@id": string;
+    projectId: string;
+    name: string;
+    headCommitId?: string | undefined;
+    created: string;
+  }): void {
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO sysml2_branches (id, project_id, name, head_commit_id, created)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(branch["@id"], branch.projectId, branch.name, branch.headCommitId || null, branch.created);
+  }
+
+  getSysml2Branches(projectId: string): {
+    "@id": string;
+    "@type": "Branch";
+    projectId: string;
+    name: string;
+    headCommitId?: string | undefined;
+    created: string;
+  }[] {
+    const rows = this.#db
+      .prepare(`SELECT * FROM sysml2_branches WHERE project_id = ? ORDER BY created ASC`)
+      .all(projectId) as any[];
+    return rows.map((r) => ({
+      "@id": r.id,
+      "@type": "Branch" as const,
+      projectId: r.project_id,
+      name: r.name,
+      headCommitId: r.head_commit_id || undefined,
+      created: r.created,
+    }));
+  }
+
+  deleteSysml2Branch(projectId: string, branchId: string): boolean {
+    const res = this.#db
+      .prepare(`DELETE FROM sysml2_branches WHERE project_id = ? AND id = ?`)
+      .run(projectId, branchId);
+    return res.changes > 0;
+  }
+
+  saveSysml2Tag(tag: {
+    "@id": string;
+    projectId: string;
+    name: string;
+    taggedCommit: { "@id": string };
+    created: string;
+  }): void {
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO sysml2_tags (id, project_id, name, tagged_commit_id, created)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(tag["@id"], tag.projectId, tag.name, tag.taggedCommit["@id"], tag.created);
+  }
+
+  getSysml2Tags(projectId: string): {
+    "@id": string;
+    "@type": "Tag";
+    projectId: string;
+    name: string;
+    taggedCommit: { "@id": string };
+    created: string;
+  }[] {
+    const rows = this.#db
+      .prepare(`SELECT * FROM sysml2_tags WHERE project_id = ? ORDER BY created ASC`)
+      .all(projectId) as any[];
+    return rows.map((r) => ({
+      "@id": r.id,
+      "@type": "Tag" as const,
+      projectId: r.project_id,
+      name: r.name,
+      taggedCommit: { "@id": r.tagged_commit_id },
+      created: r.created,
+    }));
   }
 
   saveSysml2Commit(commit: {
@@ -6531,12 +6714,13 @@ export class LibraryDatabase {
     projectId: string;
     description: string;
     created: string;
-    previousCommit?: { "@id": string } | null;
+    previousCommit?: { "@id": string } | null | undefined;
+    mergedCommit?: { "@id": string } | null | undefined;
   }): void {
     this.#db
       .prepare(
-        `INSERT OR REPLACE INTO sysml2_commits (id, project_id, description, created, previous_commit)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO sysml2_commits (id, project_id, description, created, previous_commit, merged_commit)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
       .run(
         commit["@id"],
@@ -6544,6 +6728,7 @@ export class LibraryDatabase {
         commit.description,
         commit.created,
         commit.previousCommit ? commit.previousCommit["@id"] : null,
+        commit.mergedCommit ? commit.mergedCommit["@id"] : null,
       );
   }
 
@@ -6553,7 +6738,8 @@ export class LibraryDatabase {
     projectId: string;
     description: string;
     created: string;
-    previousCommit?: { "@id": string } | null;
+    previousCommit?: { "@id": string } | null | undefined;
+    mergedCommit?: { "@id": string } | null | undefined;
   }[] {
     const rows = this.#db
       .prepare(`SELECT * FROM sysml2_commits WHERE project_id = ? ORDER BY created ASC`)
@@ -6565,6 +6751,7 @@ export class LibraryDatabase {
       description: r.description,
       created: r.created,
       previousCommit: r.previous_commit ? { "@id": r.previous_commit } : null,
+      ...(r.merged_commit ? { mergedCommit: { "@id": r.merged_commit } } : {}),
     }));
   }
 
@@ -6737,11 +6924,11 @@ export class LibraryDatabase {
 
   logThreadAudit(entry: {
     threadId: string;
-    proposalId?: number | null;
+    proposalId?: number | null | undefined;
     action: string;
     actor: string;
-    safetyStandard?: string | null;
-    metadata?: string | object;
+    safetyStandard?: string | null | undefined;
+    metadata?: string | object | undefined;
   }): ThreadAuditLogEntry {
     const last = this.#db
       .prepare(`SELECT checksum FROM thread_audit_log WHERE thread_id = ? ORDER BY id DESC LIMIT 1`)
@@ -6786,7 +6973,7 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT * FROM thread_audit_log ORDER BY id ASC`).all() as ThreadAuditLogEntry[];
   }
 
-  verifyThreadAuditChain(threadId: string): { valid: boolean; totalEntries: number; brokenAtId?: number } {
+  verifyThreadAuditChain(threadId: string): { valid: boolean; totalEntries: number; brokenAtId?: number | undefined } {
     const logs = this.getThreadAuditLogs(threadId);
     let prevChecksum = "GENESIS_ROOT";
 
@@ -6802,9 +6989,141 @@ export class LibraryDatabase {
     return { valid: true, totalEntries: logs.length };
   }
 
+  saveThreadSnapshot(
+    serializedJson: string,
+    metadataMap?: Map<string, unknown> | Record<string, unknown>,
+    workspaceId = "default",
+  ): void {
+    let metaObj: Record<string, unknown> = {};
+    if (metadataMap instanceof Map) {
+      metaObj = Object.fromEntries(metadataMap.entries());
+    } else if (metadataMap && typeof metadataMap === "object") {
+      metaObj = metadataMap;
+    }
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO thread_snapshots (workspace_id, serialized_json, metadata_json, updated_at)
+         VALUES (?, ?, ?, datetime('now'))`,
+      )
+      .run(workspaceId, serializedJson, JSON.stringify(metaObj));
+  }
+
+  loadThreadSnapshot(workspaceId = "default"): {
+    serializedJson: string;
+    metadata: Record<string, any>;
+    updatedAt: string;
+  } | null {
+    const row = this.#db.prepare(`SELECT * FROM thread_snapshots WHERE workspace_id = ?`).get(workspaceId) as any;
+    if (!row) return null;
+    let metadata: Record<string, any> = {};
+    try {
+      metadata = JSON.parse(row.metadata_json || "{}");
+    } catch {
+      metadata = {};
+    }
+    return {
+      serializedJson: row.serialized_json,
+      metadata,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  saveThreadConflict(conflict: {
+    conflictId: string;
+    workspaceId?: string | undefined;
+    slot: number;
+    sourceDomain: string;
+    sourceValue: number;
+    sourceUnit: string;
+    targetDomain: string;
+    targetValue: number;
+    targetUnit: string;
+    min: number;
+    max: number;
+    status?: "conflicted" | "resolved" | undefined;
+    resolvedValue?: number | null | undefined;
+  }): void {
+    this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO thread_conflicts (
+          conflict_id, workspace_id, slot, source_domain, source_value, source_unit,
+          target_domain, target_value, target_unit, min_bound, max_bound, status, resolved_value, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      )
+      .run(
+        conflict.conflictId,
+        conflict.workspaceId || "default",
+        conflict.slot,
+        conflict.sourceDomain,
+        conflict.sourceValue,
+        conflict.sourceUnit,
+        conflict.targetDomain,
+        conflict.targetValue,
+        conflict.targetUnit,
+        conflict.min,
+        conflict.max,
+        conflict.status || "conflicted",
+        conflict.resolvedValue ?? null,
+      );
+  }
+
+  getThreadConflicts(workspaceId = "default", status?: string): ThreadConflictRecord[] {
+    let sql = `SELECT * FROM thread_conflicts WHERE workspace_id = ?`;
+    const params: any[] = [workspaceId];
+    if (status) {
+      sql += ` AND status = ?`;
+      params.push(status);
+    }
+    sql += ` ORDER BY updated_at DESC`;
+    const rows = this.#db.prepare(sql).all(...params) as any[];
+    return rows.map((r) => ({
+      conflictId: r.conflict_id,
+      workspaceId: r.workspace_id,
+      slot: r.slot,
+      sourceDomain: r.source_domain,
+      sourceValue: r.source_value,
+      sourceUnit: r.source_unit,
+      targetDomain: r.target_domain,
+      targetValue: r.target_value,
+      targetUnit: r.target_unit,
+      min: r.min_bound,
+      max: r.max_bound,
+      status: r.status,
+      resolvedValue: r.resolved_value,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  resolveThreadConflict(conflictId: string, resolvedValue: number): void {
+    this.#db
+      .prepare(
+        `UPDATE thread_conflicts
+         SET status = 'resolved', resolved_value = ?, updated_at = datetime('now')
+         WHERE conflict_id = ?`,
+      )
+      .run(resolvedValue, conflictId);
+  }
+
   close(): void {
     this.#db.close();
   }
+}
+
+export interface ThreadConflictRecord {
+  conflictId: string;
+  workspaceId: string;
+  slot: number;
+  sourceDomain: string;
+  sourceValue: number;
+  sourceUnit: string;
+  targetDomain: string;
+  targetValue: number;
+  targetUnit: string;
+  min: number;
+  max: number;
+  status: "conflicted" | "resolved";
+  resolvedValue: number | null;
+  updatedAt: string;
 }
 
 export interface ThreadProposal {

@@ -33,18 +33,18 @@ export interface LoopInvariantResult {
   iterationsEstimated: number;
   diagnostics: LoopDiagnostic[];
   summary: string;
-  inductiveProof?: InductiveProofResult;
+  inductiveProof?: InductiveProofResult | undefined;
 }
 
 export interface WhileLoopInfo {
   condition: string;
   body: string;
-  invariants?: string[]; // e.g. "total <= 100", "counter >= 0"
+  invariants?: string[] | undefined; // e.g. "total <= 100", "counter >= 0"
 }
 
 interface ParsedCondition {
   lhsVar: string;
-  rhsVar?: string;
+  rhsVar?: string | undefined;
   operator: "<" | "<=" | ">" | ">=" | "==";
   constant: number;
 }
@@ -97,7 +97,7 @@ function parseCondition(condText: string): ParsedCondition | null {
 
 interface StateUpdate {
   targetVar: string;
-  sourceVar?: string;
+  sourceVar?: string | undefined;
   delta: number;
   isDirectAssignment: boolean;
 }
@@ -204,12 +204,12 @@ export class LoopInvariantAnalyzer {
         message: `Loop condition '${loop.condition}' could not be parsed as a linear/difference constraint.`,
       });
       return {
-        isTerminating: true,
-        invariantHolds: true,
+        isTerminating: false,
+        invariantHolds: false,
         postConditions: currentBounds,
-        iterationsEstimated: 1,
+        iterationsEstimated: 0,
         diagnostics,
-        summary: `Loop analyzed with fallback interval bounds.`,
+        summary: `Loop condition '${loop.condition}' could not be parsed; termination and invariants are unproven.`,
       };
     }
 
@@ -269,15 +269,18 @@ export class LoopInvariantAnalyzer {
       }
     }
 
-    // 3. Fixed-point iteration with Octagon DBM (up to 3 unrolled steps)
+    // 3. Fixed-point / bounded iteration with Octagon DBM
     let invariantHolds = true;
-    const maxSteps = Math.min(3, Math.max(1, iterationsEstimated));
+    const maxSteps = Math.min(256, Math.max(1, iterationsEstimated));
 
     for (let step = 1; step <= maxSteps; step++) {
+      let anyBoundChanged = false;
       // Apply updates to DBM
       for (const u of updates) {
         const tIdx = varIndices.get(u.targetVar)!;
         const b = currentBounds.get(u.targetVar)!;
+        const prevLo = b.lower;
+        const prevHi = b.upper;
         if (u.isDirectAssignment) {
           b.lower = u.delta;
           b.upper = u.delta;
@@ -290,6 +293,9 @@ export class LoopInvariantAnalyzer {
         } else {
           b.lower += u.delta;
           b.upper += u.delta;
+        }
+        if (b.lower !== prevLo || b.upper !== prevHi) {
+          anyBoundChanged = true;
         }
         dbm.assumeInterval(tIdx, b.lower, b.upper);
       }
@@ -315,6 +321,9 @@ export class LoopInvariantAnalyzer {
             }
           }
         }
+      }
+      if (!anyBoundChanged || !invariantHolds) {
+        break;
       }
     }
 

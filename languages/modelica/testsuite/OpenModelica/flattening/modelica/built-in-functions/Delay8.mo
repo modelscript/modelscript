@@ -1,6 +1,5 @@
 // name: Delay8
 // status: correct
-// xfail:    true
 
 block Delay8 "Delay block with variable DelayTime"
   parameter Integer n=3;

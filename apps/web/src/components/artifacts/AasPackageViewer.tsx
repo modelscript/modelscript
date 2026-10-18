@@ -13,15 +13,17 @@ export interface AasPackageViewerProps {
     packageName: string;
     version: string;
     manifest?: any;
-    cadUrl?: string;
-    variants?: string[];
-    instances?: {
-      serialNumber: string;
-      variant?: string;
-      birthData?: Record<string, any>;
-    }[];
+    cadUrl?: string | undefined;
+    variants?: string[] | undefined;
+    instances?:
+      | {
+          serialNumber: string;
+          variant?: string | undefined;
+          birthData?: Record<string, any> | undefined;
+        }[]
+      | undefined;
   };
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, isFullScreen }) => {
@@ -420,7 +422,7 @@ const DataGrid: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </Box>
 );
 
-const DataRow: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
+const DataRow: React.FC<{ label: string; value: string; mono?: boolean | undefined }> = ({ label, value, mono }) => (
   <>
     <Text color="var(--color-fg-muted)">{label}:</Text>
     <Text fontWeight={mono ? "normal" : 500} fontFamily={mono ? "monospace" : "inherit"}>

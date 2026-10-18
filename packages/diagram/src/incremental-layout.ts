@@ -10,15 +10,15 @@ export interface NodePosition {
   y: number;
   width: number;
   height: number;
-  parent?: string;
-  isNew?: boolean;
+  parent?: string | undefined;
+  isNew?: boolean | undefined;
 }
 
 export interface IncrementalOptions {
-  anchorWeight?: number;
-  repulsionWeight?: number;
-  padding?: number;
-  iterations?: number;
+  anchorWeight?: number | undefined;
+  repulsionWeight?: number | undefined;
+  padding?: number | undefined;
+  iterations?: number | undefined;
 }
 
 export interface ContainerExpansion {
@@ -86,7 +86,7 @@ export function computeIncrementalStabilization(
       const avgY = connectedNeighbors.reduce((s, c) => s + c.y, 0) / connectedNeighbors.length;
       return {
         ...n,
-        x: avgX + (connectedNeighbors[0].width + padding),
+        x: avgX + (connectedNeighbors[0]!.width + padding),
         y: avgY,
         isNew: true,
       };
@@ -106,8 +106,8 @@ export function computeIncrementalStabilization(
     // Check overlaps pairwise
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
-        const n1 = nodes[i];
-        const n2 = nodes[j];
+        const n1 = nodes[i]!;
+        const n2 = nodes[j]!;
 
         // Skip parent-child containment overlaps
         if (n1.parent === n2.id || n2.parent === n1.id) continue;

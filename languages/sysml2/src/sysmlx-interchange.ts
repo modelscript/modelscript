@@ -22,14 +22,14 @@ export const OMG_SYSML2_CONTEXT = "https://www.omg.org/spec/SysML/20240201/conte
 export interface SysmlxElement {
   "@id": string;
   "@type": string;
-  name?: string;
-  qualifiedName?: string;
-  isAbstract?: boolean;
-  owner?: { "@id": string } | null;
-  ownedElement?: { "@id": string }[];
-  superclasses?: string[];
-  attributes?: Record<string, any>;
-  sourceUri?: string;
+  name?: string | undefined;
+  qualifiedName?: string | undefined;
+  isAbstract?: boolean | undefined;
+  owner?: { "@id": string } | null | undefined;
+  ownedElement?: { "@id": string }[] | undefined;
+  superclasses?: string[] | undefined;
+  attributes?: Record<string, any> | undefined;
+  sourceUri?: string | undefined;
 }
 
 export interface SysmlxRelationship {
@@ -43,23 +43,25 @@ export interface SysmlxRelationship {
 export interface SysmlxDocument {
   "@context": string;
   "@graph": (SysmlxElement | SysmlxRelationship)[];
-  metadata?: {
-    generator?: string;
-    version?: string;
-    created?: string;
-    description?: string;
-  };
+  metadata?:
+    | {
+        generator?: string | undefined;
+        version?: string | undefined;
+        created?: string | undefined;
+        description?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface SysmlxExportOptions {
-  sourceUri?: string;
-  description?: string;
-  includeStandardLibrary?: boolean;
+  sourceUri?: string | undefined;
+  description?: string | undefined;
+  includeStandardLibrary?: boolean | undefined;
 }
 
 export interface SysmlxImportOptions {
-  targetUri?: string;
-  indent?: number;
+  targetUri?: string | undefined;
+  indent?: number | undefined;
 }
 
 export class SysML2ModelInterchange {
@@ -105,8 +107,8 @@ export class SysML2ModelInterchange {
       const leadingText =
         entry.startByte != null ? sysmlSource.slice(Math.max(0, entry.startByte - 30), entry.startByte) : "";
       const isAbstract =
-        entry.metadata?.isAbstract === true ||
-        entry.metadata?.isAbstract === "true" ||
+        entry.metadata?.["isAbstract"] === true ||
+        entry.metadata?.["isAbstract"] === "true" ||
         /\babstract\b/.test(entryText) ||
         /\babstract\s+$/.test(leadingText);
 
@@ -130,33 +132,33 @@ export class SysML2ModelInterchange {
 
       // Extract attributes and properties
       const attrs: Record<string, any> = { ...entry.metadata };
-      if (entry.name) attrs.declaredName = entry.name;
-      if (entry.startByte != null) attrs.startByte = entry.startByte;
-      if (entry.endByte != null) attrs.endByte = entry.endByte;
+      if (entry.name) attrs["declaredName"] = entry.name;
+      if (entry.startByte != null) attrs["startByte"] = entry.startByte;
+      if (entry.endByte != null) attrs["endByte"] = entry.endByte;
 
       // Extract typing for usages
       const typingChild = children.find((c) => c.ruleName === "OwnedFeatureTyping");
       if (typingChild?.name) {
-        attrs.type = typingChild.name;
+        attrs["type"] = typingChild.name;
       }
-      if (!attrs.type && entryText) {
+      if (!attrs["type"] && entryText) {
         const typeMatch = entryText.match(/:\s*(~?\s*[A-Za-z_][A-Za-z0-9_]*(?:::_?[A-Za-z0-9_]+)*)/);
         if (typeMatch) {
-          attrs.type = typeMatch[1].trim();
+          attrs["type"] = typeMatch[1]!.trim();
         }
       }
-      if (typeof attrs.type === "string" && attrs.type.startsWith("~")) {
-        attrs.isConjugated = true;
-        attrs.type = attrs.type.slice(1).trim();
+      if (typeof attrs["type"] === "string" && attrs["type"].startsWith("~")) {
+        attrs["isConjugated"] = true;
+        attrs["type"] = attrs["type"].slice(1).trim();
       }
 
       // Extract port specifics (direction, conjugation)
       if (entry.ruleName === "PortUsage" || entry.ruleName === "PortDefinition") {
         const text = entryText;
-        if (text.includes("~")) attrs.isConjugated = true;
-        if (text.includes("inout ")) attrs.direction = "inout";
-        else if (text.includes("in ")) attrs.direction = "in";
-        else if (text.includes("out ")) attrs.direction = "out";
+        if (text.includes("~")) attrs["isConjugated"] = true;
+        if (text.includes("inout ")) attrs["direction"] = "inout";
+        else if (text.includes("in ")) attrs["direction"] = "in";
+        else if (text.includes("out ")) attrs["direction"] = "out";
       }
 
       // Extract connection endpoints
@@ -164,15 +166,15 @@ export class SysML2ModelInterchange {
         if (entryText) {
           const connMatch = entryText.match(/connect\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)/);
           if (connMatch) {
-            attrs.source = connMatch[1].trim();
-            attrs.target = connMatch[2].trim();
+            attrs["source"] = connMatch[1]!.trim();
+            attrs["target"] = connMatch[2]!.trim();
           }
         }
-        if (!attrs.source || !attrs.target) {
+        if (!attrs["source"] || !attrs["target"]) {
           const refs = children.filter((c) => c.kind === "Reference" && c.name && !c.name.startsWith("Owned"));
           if (refs.length >= 2) {
-            attrs.source = refs[0].name || (db.cstText(refs[0].startByte, refs[0].endByte) || "").trim();
-            attrs.target = refs[1].name || (db.cstText(refs[1].startByte, refs[1].endByte) || "").trim();
+            attrs["source"] = refs[0]!.name || (db.cstText(refs[0]!.startByte, refs[0]!.endByte) || "").trim();
+            attrs["target"] = refs[1]!.name || (db.cstText(refs[1]!.startByte, refs[1]!.endByte) || "").trim();
           }
         }
       }
@@ -182,7 +184,7 @@ export class SysML2ModelInterchange {
         const text = entryText;
         const braceMatch = text.match(/\{([^}]+)\}/);
         if (braceMatch) {
-          attrs.expression = braceMatch[1].trim();
+          attrs["expression"] = braceMatch[1]!.trim();
         }
       }
 
@@ -191,7 +193,7 @@ export class SysML2ModelInterchange {
         if (entryText) {
           const valMatch = entryText.match(/=\s*([^;]+);/);
           if (valMatch) {
-            attrs.defaultValue = valMatch[1].trim();
+            attrs["defaultValue"] = valMatch[1]!.trim();
           }
         }
       }
@@ -201,7 +203,7 @@ export class SysML2ModelInterchange {
         if (entryText) {
           const satisfyMatch = entryText.match(/satisfy\s+(?:requirement\s+)?([A-Za-z0-9_:]+)/);
           if (satisfyMatch) {
-            attrs.target = satisfyMatch[1].trim();
+            attrs["target"] = satisfyMatch[1]!.trim();
           }
         }
       }
@@ -343,28 +345,28 @@ export class SysML2ModelInterchange {
 
     // 3. Port Usages
     if (type === "PortUsage" || type === "Port") {
-      const conj = elem.attributes?.isConjugated ? "~" : "";
-      const dir = elem.attributes?.direction ? `${elem.attributes.direction} ` : "";
-      const portType = elem.attributes?.type ? ` : ${conj}${elem.attributes.type}` : "";
+      const conj = elem.attributes?.["isConjugated"] ? "~" : "";
+      const dir = elem.attributes?.["direction"] ? `${elem.attributes["direction"]} ` : "";
+      const portType = elem.attributes?.["type"] ? ` : ${conj}${elem.attributes["type"]}` : "";
       return `${indent}${dir}port ${name}${portType};\n`;
     }
 
     // 4. Attribute Usages
     if (type === "AttributeUsage" || type === "Attribute") {
-      const attrType = elem.attributes?.type ? ` : ${elem.attributes.type}` : "";
+      const attrType = elem.attributes?.["type"] ? ` : ${elem.attributes["type"]}` : "";
       const defVal =
-        elem.attributes?.defaultValue !== undefined
-          ? ` = ${elem.attributes.defaultValue}`
-          : elem.attributes?.value !== undefined
-            ? ` = ${elem.attributes.value}`
+        elem.attributes?.["defaultValue"] !== undefined
+          ? ` = ${elem.attributes["defaultValue"]}`
+          : elem.attributes?.["value"] !== undefined
+            ? ` = ${elem.attributes["value"]}`
             : "";
       return `${indent}attribute ${name}${attrType}${defVal};\n`;
     }
 
     // 5. Part Usages
     if (type === "PartUsage") {
-      const partType = elem.attributes?.type ? ` : ${elem.attributes.type}` : "";
-      const mult = elem.attributes?.multiplicity ? `[${elem.attributes.multiplicity}]` : "";
+      const partType = elem.attributes?.["type"] ? ` : ${elem.attributes["type"]}` : "";
+      const mult = elem.attributes?.["multiplicity"] ? `[${elem.attributes["multiplicity"]}]` : "";
       const children = this.getChildren(elem, map);
       if (children.length === 0) {
         return `${indent}part ${name}${mult}${partType};\n`;
@@ -379,14 +381,14 @@ export class SysML2ModelInterchange {
 
     // 6. Item Usages
     if (type === "ItemUsage") {
-      const itemType = elem.attributes?.type ? ` : ${elem.attributes.type}` : "";
+      const itemType = elem.attributes?.["type"] ? ` : ${elem.attributes["type"]}` : "";
       return `${indent}item ${name}${itemType};\n`;
     }
 
     // 7. Connection Usages
     if (type === "ConnectionUsage" || type === "Connector") {
-      const src = elem.attributes?.source;
-      const tgt = elem.attributes?.target;
+      const src = elem.attributes?.["source"];
+      const tgt = elem.attributes?.["target"];
       if (src && tgt) {
         return `${indent}connection ${name ? `${name} ` : ""}connect ${src} to ${tgt};\n`;
       }
@@ -394,7 +396,7 @@ export class SysML2ModelInterchange {
 
     // 8. Constraint Usages
     if (type === "ConstraintUsage" || type === "AssertConstraintUsage") {
-      const expr = elem.attributes?.expression || "";
+      const expr = elem.attributes?.["expression"] || "";
       if (expr) {
         return `${indent}assert constraint ${name ? `${name} ` : ""}{ ${expr} }\n`;
       }
@@ -402,7 +404,7 @@ export class SysML2ModelInterchange {
 
     // 9. Requirement Satisfaction / Verification
     if (type === "SatisfyRequirementUsage" || type === "Satisfy") {
-      const tgt = elem.attributes?.target || name;
+      const tgt = elem.attributes?.["target"] || name;
       if (tgt) {
         return `${indent}satisfy ${tgt};\n`;
       }
@@ -411,8 +413,8 @@ export class SysML2ModelInterchange {
 
     // 10. Succession / Flows
     if (type === "SuccessionAsUsage" || type === "Succession") {
-      const src = elem.attributes?.source;
-      const tgt = elem.attributes?.target;
+      const src = elem.attributes?.["source"];
+      const tgt = elem.attributes?.["target"];
       if (src && tgt) {
         return `${indent}first ${src} then ${tgt};\n`;
       }

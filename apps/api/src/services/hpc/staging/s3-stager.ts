@@ -8,11 +8,11 @@ import type { JobStagingManifest, ObjectStager, StagedDownloadSpec, StagedUpload
 export interface S3StagerOptions {
   endpoint: string; // e.g. "http://localhost:9000" or "https://s3.amazonaws.com"
   bucket: string; // e.g. "modelscript-hpc-artifacts"
-  region?: string; // e.g. "us-east-1"
+  region?: string | undefined; // e.g. "us-east-1"
   accessKeyId: string;
   secretAccessKey: string;
-  forcePathStyle?: boolean; // true for MinIO / local dev (default: true)
-  fetchFn?: typeof fetch; // optional injectable fetch for unit testing
+  forcePathStyle?: boolean | undefined; // true for MinIO / local dev (default: true)
+  fetchFn?: typeof fetch | undefined; // optional injectable fetch for unit testing
 }
 
 function hmacSha256(key: Buffer | string, data: string): Buffer {

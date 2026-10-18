@@ -10,7 +10,7 @@ import { LanguageClient } from "vscode-languageclient/browser";
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = "modelscript.chat";
 
-  private view?: vscode.WebviewView;
+  private view?: vscode.WebviewView | undefined;
   private disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -82,16 +82,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       let result: unknown;
       switch (msg.tool) {
         case "modelscript_flatten":
-          result = await this.client.sendRequest("modelscript/flatten", { name: msg.input.name });
+          result = await this.client.sendRequest("modelscript/flatten", { name: msg.input["name"] });
           break;
         case "modelscript_simulate":
           result = await this.client.sendRequest("modelscript/simulate", msg.input);
           break;
         case "modelscript_query":
-          result = await this.client.sendRequest("modelscript/query", { name: msg.input.name });
+          result = await this.client.sendRequest("modelscript/query", { name: msg.input["name"] });
           break;
         case "modelscript_parse":
-          result = await this.client.sendRequest("modelscript/parse", { code: msg.input.code });
+          result = await this.client.sendRequest("modelscript/parse", { code: msg.input["code"] });
           break;
         case "modelscript_add_component": {
           const editorBefore = vscode.window.activeTextEditor;
@@ -100,12 +100,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
           // Gracefully unwrap if the frontend accidentally sends an extra input layer
           const actualInput =
-            msg.input && typeof msg.input.input === "object" ? (msg.input.input as Record<string, unknown>) : msg.input;
+            msg.input && typeof msg.input["input"] === "object"
+              ? (msg.input["input"] as Record<string, unknown>)
+              : msg.input;
 
           await vscode.commands.executeCommand(
             "modelscript.addToDiagram",
-            actualInput.className,
-            actualInput.classKind || "model",
+            actualInput["className"],
+            actualInput["classKind"] || "model",
           );
 
           // Wait a tick for VS Code's text editor to physically apply the component edit
@@ -117,7 +119,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
           result = {
             success: true,
-            message: `Added ${msg.input.className} to diagram.`,
+            message: `Added ${msg.input["className"]} to diagram.`,
             action: "Edited",
             file: fileName,
             added,
@@ -133,9 +135,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           result = await this.client.sendRequest("modelscript/verifyCandidate", msg.input);
           break;
         case "modelscript_patch_code": {
-          const searchBlock = String(msg.input?.searchBlock ?? "");
-          const replaceBlock = String(msg.input?.replaceBlock ?? "");
-          const fileName = typeof msg.input?.fileName === "string" ? msg.input.fileName : undefined;
+          const searchBlock = String(msg.input?.["searchBlock"] ?? "");
+          const replaceBlock = String(msg.input?.["replaceBlock"] ?? "");
+          const fileName = typeof msg.input?.["fileName"] === "string" ? msg.input["fileName"] : undefined;
 
           let targetEditor = vscode.window.activeTextEditor;
           if (fileName) {
@@ -201,9 +203,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "modelscript_read_file": {
-          const fileName = String(msg.input?.fileName ?? msg.input?.filePath ?? "");
-          const startLine = typeof msg.input?.startLine === "number" ? Math.max(1, msg.input.startLine) : 1;
-          const endLine = typeof msg.input?.endLine === "number" ? msg.input.endLine : undefined;
+          const fileName = String(msg.input?.["fileName"] ?? msg.input?.["filePath"] ?? "");
+          const startLine = typeof msg.input?.["startLine"] === "number" ? Math.max(1, msg.input["startLine"]) : 1;
+          const endLine = typeof msg.input?.["endLine"] === "number" ? msg.input["endLine"] : undefined;
 
           let targetUri: vscode.Uri | undefined;
           if (fileName) {
@@ -247,10 +249,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         case "modelscript_list_workspace_files": {
           const pattern =
-            typeof msg.input?.pattern === "string" && msg.input.pattern.trim().length > 0
-              ? msg.input.pattern.trim()
+            typeof msg.input?.["pattern"] === "string" && msg.input["pattern"].trim().length > 0
+              ? msg.input["pattern"].trim()
               : "**/*.{mo,mos,sysml,sysml2,step,stp,p21,csv,scad,cfg,inp}";
-          const maxResults = typeof msg.input?.maxResults === "number" ? Math.min(100, msg.input.maxResults) : 50;
+          const maxResults =
+            typeof msg.input?.["maxResults"] === "number" ? Math.min(100, msg.input["maxResults"]) : 50;
 
           const uris = await vscode.workspace.findFiles(pattern, "**/node_modules/**", maxResults);
           result = {
@@ -260,8 +263,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "modelscript_find_symbols": {
-          const query = typeof msg.input?.query === "string" ? msg.input.query.toLowerCase().trim() : "";
-          const kind = typeof msg.input?.kind === "string" ? msg.input.kind.toLowerCase().trim() : "";
+          const query = typeof msg.input?.["query"] === "string" ? msg.input["query"].toLowerCase().trim() : "";
+          const kind = typeof msg.input?.["kind"] === "string" ? msg.input["kind"].toLowerCase().trim() : "";
 
           const raw = (await this.client.sendRequest("modelscript/listClasses")) as {
             classes: { name: string; kind: string; uri: string }[];
@@ -284,13 +287,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "modelscript_get_diagnostics": {
-          const fileName = typeof msg.input?.fileName === "string" ? msg.input.fileName : undefined;
+          const fileName = typeof msg.input?.["fileName"] === "string" ? msg.input["fileName"] : undefined;
           const allDiags: {
             file: string;
             severity: "Error" | "Warning" | "Information" | "Hint";
             message: string;
             line: number;
-            code?: string | number;
+            code?: string | number | undefined;
           }[] = [];
 
           for (const [uri, diags] of vscode.languages.getDiagnostics()) {
@@ -382,7 +385,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
 
       // 2. Fallback: Check if local proxy or IDE backend endpoint is reachable
-      const serverUrl = process.env.MODELSCRIPT_API_URL || "http://localhost:8000/api/llm/chat";
+      const serverUrl = process.env["MODELSCRIPT_API_URL"] || "http://localhost:8000/api/llm/chat";
       try {
         const res = await fetch(serverUrl, {
           method: "POST",
@@ -391,7 +394,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         });
 
         if (res.ok) {
-          const data = (await res.json()) as { content?: string; text?: string };
+          const data = (await res.json()) as { content?: string | undefined; text?: string | undefined };
           const reply = data.content || data.text || "";
           webview.postMessage({ type: "cloudStreamChunk", id: msg.id, content: reply });
           webview.postMessage({ type: "cloudStreamEnd", id: msg.id });
@@ -435,7 +438,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       );
       const symbols: { name: string; kind: string }[] = [];
       for (const m of outlineMatches) {
-        symbols.push({ name: m[2], kind: m[1] });
+        symbols.push({ name: m[2]!, kind: m[1]! });
       }
 
       this.view.webview.postMessage({

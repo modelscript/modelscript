@@ -70,9 +70,9 @@ export type Fmi3Type =
 /** Array dimension descriptor. */
 export interface Fmi3Dimension {
   /** Fixed size (known at compile time). */
-  start?: number;
+  start?: number | undefined;
   /** Value reference whose current value determines the size (structural parameter). */
-  valueReference?: number;
+  valueReference?: number | undefined;
 }
 
 /** FMI 3.0 model variable descriptor. */
@@ -86,37 +86,37 @@ export interface Fmi3Variable {
   /** FMI 3.0 variability. */
   variability: Fmi3Variability;
   /** Description string (optional). */
-  description?: string;
+  description?: string | undefined;
   /** Data type. */
   type: Fmi3Type;
   /** Start value (for numeric types). */
-  start?: number | number[];
+  start?: number | number[] | undefined;
   /** SI unit string (optional, for Float types). */
-  unit?: string;
+  unit?: string | undefined;
   /** Display unit (optional). */
-  displayUnit?: string;
+  displayUnit?: string | undefined;
   /** For state variables: VR of the corresponding derivative variable. */
-  derivative?: number;
+  derivative?: number | undefined;
   /** FMI 3.0 initial attribute. */
-  initial?: Fmi3Initial;
+  initial?: Fmi3Initial | undefined;
   /** Declared type name (linkage to TypeDefinitions). */
-  declaredType?: string;
+  declaredType?: string | undefined;
   /** Array dimensions (empty for scalar variables). */
-  dimensions?: Fmi3Dimension[];
+  dimensions?: Fmi3Dimension[] | undefined;
   /** For Clock variables: interval type. */
-  intervalVariability?: "constant" | "fixed" | "tunable" | "changing" | "countdown" | "triggered";
+  intervalVariability?: "constant" | "fixed" | "tunable" | "changing" | "countdown" | "triggered" | undefined;
   /** Alias variable name (if this is an alias). */
-  aliasOf?: string;
+  aliasOf?: string | undefined;
 }
 
 /** FMU 3.0 type support flags. */
 export interface Fmi3TypeFlags {
   /** Include ModelExchange element. */
-  modelExchange?: boolean;
+  modelExchange?: boolean | undefined;
   /** Include CoSimulation element. */
-  coSimulation?: boolean;
+  coSimulation?: boolean | undefined;
   /** Include ScheduledExecution element (new in FMI 3.0). */
-  scheduledExecution?: boolean;
+  scheduledExecution?: boolean | undefined;
 }
 
 /** An FMI 3.0 Terminal member variable reference. */
@@ -134,9 +134,9 @@ export interface Fmi3Terminal {
   /** Terminal name (connector instance name). */
   name: string;
   /** Terminal type (connector type name, e.g. "Modelica.Electrical.Analog.Interfaces.Pin"). */
-  terminalKind?: string;
+  terminalKind?: string | undefined;
   /** Description string. */
-  description?: string;
+  description?: string | undefined;
   /** Member variables. */
   memberVariables: Fmi3TerminalMemberVariable[];
 }
@@ -186,7 +186,7 @@ export interface Fmi3Result {
   /** Terminals (from Modelica connectors). */
   terminals: Fmi3Terminal[];
   /** Terminals and Icons XML payload. */
-  terminalsAndIconsXml?: string | null;
+  terminalsAndIconsXml?: string | null | undefined;
 }
 
 // ── Main generator ──
@@ -202,12 +202,40 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
       break;
     }
   }
+  if (!hasArrays) {
+    for (let i = 0; i < dae.eqCount; i++) {
+      const k = dae.getEqKind(i);
+      if (k === EqKind.Array || k === EqKind.For || k === EqKind.InitialFor) {
+        hasArrays = true;
+        break;
+      }
+    }
+  }
   if (hasArrays) {
-    dae = scalarizeArena(dae);
+    dae = scalarizeArena(dae, true);
     foldArenaConstants(dae);
   }
 
   extractEventIndicatorsFromDae(dae);
+  for (let i = 0; i < dae.exprCount; i++) {
+    if (dae.getExprKind(i) === ExprKind.Der) {
+      const argId = dae.getExprData1(i);
+      if (dae.getExprKind(argId) === ExprKind.Name) {
+        const nameId = dae.getExprData1(argId);
+        const name = dae.interner.resolve(nameId);
+        if (!name) continue;
+        const varIdx = dae.getVarIdxByName(name);
+        if (varIdx !== -1) {
+          const derName = `der(${name})`;
+          if (dae.getVarIdxByName(derName) === -1) {
+            const baseVarType = dae.getVarType(varIdx);
+            const baseVarVariability = dae.getVarVariability(varIdx);
+            dae.addVariable(derName, baseVarType, baseVarVariability, dae.getVarCausality(varIdx), 0.0);
+          }
+        }
+      }
+    }
+  }
 
   const guid = options.guid ?? generateGuid();
   const variables: Fmi3Variable[] = [];
@@ -237,6 +265,7 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
     if (dae.isVarRemoved(i)) continue;
     const shape = dae.getVarShape(i);
     const totalSize = shape.reduce((a, b) => a * b, 1);
+    void totalSize;
     const fv = mapVariable3(dae, i, i);
     // Note: FMI 3.0 arrays use the base VR, we don't reserve valueReferences
     // for each element since the VR points to the whole array conceptually or
@@ -304,8 +333,13 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
   // ── Group array variables for FMI 3.0 native arrays ──
   const groupedVariables = groupArrayVariables3(variables);
 
+  const filteredInitialUnknowns = initialUnknownRefs.filter((ref) => {
+    const v = groupedVariables.find((gv) => gv.valueReference === ref);
+    return v && (v.initial === "calculated" || v.initial === "approx");
+  });
+
   // ── Compute dependencies ──
-  const deps = computeDependencies3(dae, groupedVariables, outputRefs, derivativeRefs, initialUnknownRefs);
+  const deps = computeDependencies3(dae, groupedVariables, outputRefs, derivativeRefs, filteredInitialUnknowns);
 
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
@@ -322,7 +356,7 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
     guid,
     outputRefs,
     derivativeRefs,
-    initialUnknownRefs,
+    initialUnknownRefs: filteredInitialUnknowns,
     clockRefs,
     fmuType,
     nEventIndicators,
@@ -338,7 +372,7 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
     modelStructure: {
       outputs: outputRefs,
       derivatives: derivativeRefs,
-      initialUnknowns: initialUnknownRefs,
+      initialUnknowns: filteredInitialUnknowns,
       continuousStateDerivatives: derivativeRefs,
       clocks: clockRefs,
     },
@@ -367,6 +401,7 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
   >();
   const nonArrayVars: Fmi3Variable[] = [];
 
+  // 1. Partition scalar variables into subscripted families (`x[1,2]` or `der(x[1,2])`) vs plain scalars
   for (const sv of variables) {
     let baseName = "";
     let subscripts: number[] = [];
@@ -396,6 +431,7 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
 
   const result: Fmi3Variable[] = [...nonArrayVars];
 
+  // 2. Validate each candidate array family for uniform rank, uniform FMI attributes, and dense rectangular coverage
   for (const [baseName, family] of families) {
     if (family.vars.length <= 1) {
       result.push(...family.vars);
@@ -422,6 +458,7 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
       continue;
     }
 
+    // Determine upper bound `maxIndices[d]` along each 1-based Modelica dimension
     const maxIndices = Array.from({ length: ndims }, () => 0);
     for (const idx of family.indices) {
       for (let d = 0; d < ndims; d++) {
@@ -432,12 +469,14 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
       }
     }
 
+    // If the family is sparse (e.g. some elements were alias-eliminated), keep individual scalar variables
     const expectedCount = maxIndices.reduce((a, b) => a * b, 1);
     if (family.vars.length !== expectedCount) {
       result.push(...family.vars);
       continue;
     }
 
+    // 3. Sort elements in lexicographic (row-major) order per FMI 3.0 array serialization rules
     const sortedVars = [...family.vars].sort((a, b) => {
       let subsA: number[] = [];
       let subsB: number[] = [];
@@ -463,6 +502,7 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
       return 0;
     });
 
+    // 4. Collect flattened start value vector and emit a single multi-dimensional Fmi3Variable
     const startValues: number[] = [];
     let hasStart = false;
     for (const v of sortedVars) {
@@ -500,6 +540,7 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
 
 // ── FMI 3.0 Terminal Detection ──
 
+/** Groups dotted connector member variables (`port.v`, `port.i`) into FMI 3.0 `<Terminal>` definitions. */
 function detectTerminals3(groupedVariables: Fmi3Variable[]): Fmi3Terminal[] {
   const groups = new Map<string, Fmi3TerminalMemberVariable[]>();
 
@@ -534,6 +575,7 @@ function detectTerminals3(groupedVariables: Fmi3Variable[]): Fmi3Terminal[] {
 
 // ── Internal helpers ──
 
+/** Detects trivial `a = b` alias equations in `dae` and assigns shared `valueReference` IDs. */
 function detectAliases3(dae: DAEBuilder, variables: Fmi3Variable[]): Map<string, string> {
   const aliasMap = new Map<string, string>();
   const svByName = new Map<string, Fmi3Variable>();
@@ -552,8 +594,9 @@ function detectAliases3(dae: DAEBuilder, variables: Fmi3Variable[]): Map<string,
       if (lhsSv.derivative !== undefined || rhsSv.derivative !== undefined) continue;
       if (lhsSv.type !== rhsSv.type) continue;
 
+      if (lhsSv.causality !== "local" || rhsSv.causality !== "local") continue;
+
       if (!aliasMap.has(rhsName) && !aliasMap.has(lhsName)) {
-        rhsSv.valueReference = lhsSv.valueReference;
         rhsSv.aliasOf = lhsName;
         aliasMap.set(rhsName, lhsName);
       }
@@ -567,9 +610,10 @@ function detectAliases3(dae: DAEBuilder, variables: Fmi3Variable[]): Map<string,
 interface DepEntry3 {
   vr: number;
   kind: "dependent" | "constant" | "fixed" | "tunable";
-  elementDeps?: Map<number, number[]>;
+  elementDeps?: Map<number, number[]> | undefined;
 }
 
+/** Maps an FMI 3.0 variability attribute to its `<ModelStructure>` `dependenciesKind` value. */
 function variabilityToDepKind(v: Fmi3Variability): DepEntry3["kind"] {
   switch (v) {
     case "constant":
@@ -583,6 +627,7 @@ function variabilityToDepKind(v: Fmi3Variability): DepEntry3["kind"] {
   }
 }
 
+/** Computes the FMI 3.0 `<ModelStructure>` dependency graph (including per-element array dependencies). */
 function computeDependencies3(
   dae: DAEBuilder,
   variables: Fmi3Variable[],
@@ -700,6 +745,7 @@ function computeDependencies3(
   return deps;
 }
 
+/** Recursively collects all variable names referenced inside DAE arena expression `id`. */
 function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>): void {
   if (id < 0) return;
   switch (dae.getExprKind(id)) {
@@ -823,6 +869,7 @@ function mapVariable3(dae: DAEBuilder, idx: number, valueRef: number): Fmi3Varia
   return fv;
 }
 
+/** Infers the FMI 3.0 element type (`Float64`, `Float32`, `Int8`..`Int64`, `UInt8`..`UInt64`, etc.) for variable `idx`. */
 function mapType3(dae: DAEBuilder, idx: number): Fmi3Type {
   const fmi3TypeAttr = dae.getVarAttrExprId(idx, "__fmi3_type");
   if (fmi3TypeAttr !== undefined && fmi3TypeAttr >= 0) {
@@ -875,6 +922,7 @@ function mapType3(dae: DAEBuilder, idx: number): Fmi3Type {
   return "Float64";
 }
 
+/** Type guard checking whether string `s` is a valid FMI 3.0 `Fmi3Type` tag name. */
 function isValidFmi3Type(s: string): s is Fmi3Type {
   return [
     "Float64",
@@ -895,6 +943,7 @@ function isValidFmi3Type(s: string): s is Fmi3Type {
   ].includes(s);
 }
 
+/** Maps a `DAEBuilder` `Causality`, `Variability`, and attribute map to an FMI 3.0 `Fmi3Causality`. */
 function mapCausality3(c: Causality, v: Variability, attrs?: Map<string, number>): Fmi3Causality {
   if (v === Variability.Parameter) {
     if (attrs?.has("__fmi3_structuralParameter") || attrs?.has("__modelscript_mutableDimension"))
@@ -907,6 +956,7 @@ function mapCausality3(c: Causality, v: Variability, attrs?: Map<string, number>
   return "local";
 }
 
+/** Maps a `DAEBuilder` `Variability` and attribute map to an FMI 3.0 `Fmi3Variability`. */
 function mapVariability3(v: Variability, attrs?: Map<string, number>): Fmi3Variability {
   if (attrs?.has("__modelscript_mutableDimension")) return "tunable";
   switch (v) {
@@ -921,6 +971,7 @@ function mapVariability3(v: Variability, attrs?: Map<string, number>): Fmi3Varia
   }
 }
 
+/** Infers the valid FMI 3.0 `initial` attribute (`"exact"` | `"approx"` | `"calculated"`) for `(causality, variability)`. */
 function mapInitial3(causality: Fmi3Causality, variability: Fmi3Variability): Fmi3Initial | undefined {
   if (causality === "parameter") return "exact";
   if (causality === "calculatedParameter") return "calculated";
@@ -935,6 +986,7 @@ function mapInitial3(causality: Fmi3Causality, variability: Fmi3Variability): Fm
 
 // ── XML generation ──
 
+/** Serializes an FMI 3.0 `modelDescription.xml` document including `<Dimension>`, `<Clock>`, and `<Terminals>`. */
 function generateModelDescriptionXml3(
   variables: Fmi3Variable[],
   opts: Fmi3Options & {
@@ -1133,6 +1185,7 @@ function generateModelDescriptionXml3(
   return lines.join("\n");
 }
 
+/** Formats a single FMI 3.0 `<Output>`, `<ContinuousStateDerivative>`, or `<InitialUnknown>` XML element. */
 function formatUnknown3(elementName: string, ref: number, deps: Map<number, DepEntry3[]>): string {
   const entries = deps.get(ref);
   if (!entries || entries.length === 0) {
@@ -1159,6 +1212,7 @@ function formatUnknown3(elementName: string, ref: number, deps: Map<number, DepE
   return lines.join("\n");
 }
 
+/** Generates the standalone FMI 3.0 `terminalsAndIcons.xml` document from detected connector terminals. */
 export function generateTerminalsAndIconsXml(terminals: Fmi3Terminal[]): string | null {
   if (terminals.length === 0) return null;
 
@@ -1185,6 +1239,7 @@ export function generateTerminalsAndIconsXml(terminals: Fmi3Terminal[]): string 
 
 // ── Utility functions ──
 
+/** Extracts a constant numeric value from a literal expression in `dae`, or returns `null`. */
 function extractNumericLiteral(dae: DAEBuilder, exprId: number): number | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
@@ -1197,6 +1252,7 @@ function extractNumericLiteral(dae: DAEBuilder, exprId: number): number | null {
   return null;
 }
 
+/** Extracts a string literal value from expression `exprId` in `dae`, or returns `null`. */
 function extractStringLiteral(dae: DAEBuilder, exprId: number): string | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
@@ -1206,6 +1262,7 @@ function extractStringLiteral(dae: DAEBuilder, exprId: number): string | null {
   return null;
 }
 
+/** Generates a random UUID string (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) for FMI 3.0 `instantiationToken`. */
 function generateGuid(): string {
   const hex = (n: number) =>
     Array.from({ length: n }, () =>
@@ -1216,6 +1273,7 @@ function generateGuid(): string {
   return `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
 }
 
+/** Escapes special XML characters (`&`, `<`, `>`, `"`) for attribute serialization. */
 function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

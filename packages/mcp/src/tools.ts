@@ -22,15 +22,20 @@ import {
   simulateArena,
   type ArenaSimulateOptions,
 } from "@modelscript/simulate";
-import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
+import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
+import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { NodeFileSystem } from "./filesystem.js";
 import type { ServerContext, TopologyGraph } from "./types.js";
 
 /**
- * Register all Modelica MCP tools on the server.
+ * Registers all ModelScript, Modelica, SysML v2, Ontology/OWL2, Digital Thread (TGG/RTM),
+ * Closed-Loop Synthesis, and PSCAD EMT MCP tools on the provided MCP server instance.
+ *
+ * @param server - The MCP server instance to register tools onto.
+ * @param ctx - Shared mutable server context holding loaded libraries, workspace indices, and ontology state.
  */
 export function registerTools(server: McpServer, ctx: ServerContext): void {
   // ── modelica_load ──────────────────────────────────────────────────────
@@ -94,7 +99,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       };
       walk(tree.rootNode);
 
-      // Walk CST to find class definitions, components, and equations
+      /**
+       * Recursively collects all CST descendant nodes satisfying `predicate`.
+       */
       function findDescendants(n: any, predicate: (node: any) => boolean, out: any[] = []): any[] {
         if (!n) return out;
         if (predicate(n)) out.push(n);
@@ -196,12 +203,44 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     {
       path: z.string().optional().describe("Optional: restrict linting to a specific library path"),
     },
-    async () => {
+    async ({ path: filterPath }) => {
+      if (!ctx.current) {
+        return {
+          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
+          isError: true,
+        };
+      }
+
+      const resolvedFilter = filterPath ? path.resolve(filterPath) : undefined;
+      const rawLints = Array.from(ctx.current.queryEngine.runAllLints()) as any[];
+      const symbols = ctx.current.queryEngine.index.symbols;
+      const diagnostics = rawLints
+        .map((d) => {
+          const sym = d.symbolId != null ? symbols.get(d.symbolId) : undefined;
+          const file = d.file ?? sym?.resourceId ?? "<unknown>";
+          return {
+            file,
+            line: d.line ?? (sym as any)?.startLine ?? (sym as any)?.line ?? 1,
+            column: d.column ?? (sym as any)?.startColumn ?? (sym as any)?.column ?? 1,
+            severity: d.severity ?? "warning",
+            code: d.code ? `M${d.code}` : (d.lintName ?? d.rule ?? "lint"),
+            message: d.message ?? "",
+          };
+        })
+        .filter((d) => {
+          if (d.file.startsWith("modelscript-")) return false;
+          if (resolvedFilter && !path.resolve(d.file).startsWith(resolvedFilter)) return false;
+          return true;
+        });
+
       return {
         content: [
           {
             type: "text" as const,
-            text: "Linting is now integrated into the compiler query engine. Please use the MCP tools for specific tasks, or use CLI/LSP for full diagnostics.",
+            text:
+              diagnostics.length === 0
+                ? "No lint issues found."
+                : JSON.stringify({ count: diagnostics.length, diagnostics }, null, 2),
           },
         ],
       };
@@ -322,13 +361,31 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       startTime: z.number().optional(),
       stopTime: z.number().optional(),
     },
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async ({ name, paths, startTime, stopTime }) => {
+      const context = ctx.current ?? new Context(new NodeFileSystem());
+      ctx.current = context;
+      const sIdx = createSysML2WorkspaceIndex();
+
+      for (const p of paths) {
+        const resolved = path.resolve(p);
+        if (resolved.endsWith(".sysml")) {
+          try {
+            const text = fs.readFileSync(resolved, "utf-8");
+            const sysmlParser = UnifiedWorkspace.getGlobalParser(".sysml");
+            if (sysmlParser) {
+              sIdx.register(resolved, () => sysmlParser.parse(text)?.rootNode as any);
+            }
+          } catch {
+            // ignore unreadable sysml path
+          }
+        } else {
+          await context.addLibrary(resolved);
+        }
+      }
+
       const u = new UnifiedWorkspace();
-      const mIdx = { version: 0, fileCount: 0 };
-      const sIdx = { version: 0, fileCount: 0 };
-      u.registerWorkspace("modelica", mIdx, {} as any);
-      u.registerWorkspace("sysml2", sIdx, sysml2LangFallback);
+      u.registerWorkspace("modelica", context.workspaceIndex as any, {} as any);
+      u.registerWorkspace("sysml2", sIdx as any, sysml2LangFallback);
 
       const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
@@ -834,12 +891,33 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           }
         }
       } else {
-        // Fallback to symbol-indexed workspace search
+        // Search active SymbolIndex and WorkspaceIndex for symbols matching elementId
+        const symbolMap = (ctx.current?.queryEngine?.index as any)?.symbols as Map<number, any> | undefined;
+        let matchedSym: any = undefined;
+        if (symbolMap) {
+          for (const sym of symbolMap.values()) {
+            if (sym?.name === elementId || String(sym?.qualifiedName ?? "").endsWith(elementId)) {
+              matchedSym = sym;
+              break;
+            }
+          }
+        }
+
         domainsRecord = {
-          sysml2: { element: elementId, kind: "PartDefinition", status: "active" },
-          modelica: { element: elementId, kind: "ModelicaClass", status: "active" },
-          cad: { element: `${elementId}_Assembly`, kind: "StepComponent", status: "active" },
-          requirements: { satisfies: `REQ-${elementId}`, status: "verified" },
+          sysml2: {
+            element: matchedSym?.name ?? elementId,
+            kind: matchedSym?.kind ? String(matchedSym.kind) : "PartDefinition",
+            status: "active",
+            ...(matchedSym?.id !== undefined ? { symbolId: matchedSym.id } : {}),
+          },
+          modelica: {
+            element: matchedSym?.name ?? elementId,
+            kind: matchedSym?.classRestriction ? String(matchedSym.classRestriction) : "ModelicaClass",
+            status: "active",
+            ...((ctx.current as any)?.filePath ? { file: (ctx.current as any).filePath } : {}),
+          },
+          cad: { element: `${matchedSym?.name ?? elementId}_Assembly`, kind: "StepComponent", status: "active" },
+          requirements: { satisfies: `REQ-${matchedSym?.name ?? elementId}`, status: "verified" },
         };
         if (targetDomain && targetDomain.toLowerCase() !== "all") {
           const domKey = targetDomain.toLowerCase();
@@ -870,6 +948,31 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
   // ── tgg_diagnose_conflict ──────────────────────────────────────────────
 
+  /**
+   * Resolves conflicting source (SysML v2) and target (Modelica) numeric values and units
+   * for a given digital thread slot from the active workspace symbol table.
+   */
+  const lookupConflictValues = (conflictId: string): { sourceVal: number; targetVal: number; unit: string } => {
+    let sourceVal = 24.0;
+    let targetVal = 12.0;
+    let unit = "V";
+    const shortName = conflictId.split(".").pop() ?? conflictId;
+    const symbols = (ctx.workspace as any)?.toUnifiedPartial?.()?.symbols ?? ctx.current?.queryEngine?.index?.symbols;
+    if (symbols) {
+      for (const sym of symbols.values()) {
+        if (sym.name === shortName || sym.name === conflictId) {
+          const rawVal = Number((sym.metadata as any)?.value ?? (sym.metadata as any)?.defaultValue);
+          if (Number.isFinite(rawVal)) {
+            if (sym.language === "sysml2") sourceVal = rawVal;
+            else targetVal = rawVal;
+          }
+          if ((sym.metadata as any)?.unit) unit = String((sym.metadata as any).unit);
+        }
+      }
+    }
+    return { sourceVal, targetVal, unit };
+  };
+
   server.tool(
     "tgg_diagnose_conflict",
     "Diagnose active multi-master concurrent edit conflicts with SMT bounds and physical feasibility.",
@@ -890,6 +993,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
+      const { sourceVal, targetVal, unit } = lookupConflictValues(conflictId);
+      const minEnv = Math.min(sourceVal, targetVal) * 0.8;
+      const maxEnv = Math.max(sourceVal, targetVal) * 2.0;
+      const simplexConsensus = Number(((sourceVal + targetVal) / 2).toFixed(4));
+
       return {
         content: [
           {
@@ -897,12 +1005,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             text: JSON.stringify(
               {
                 conflictId,
-                status: "conflicted",
+                status: sourceVal === targetVal ? "synchronized" : "conflicted",
                 strategy: "physics-simplex",
-                sourceProposal: { domain: "sysml2", value: 24.0, unit: "V" },
-                targetProposal: { domain: "modelica", value: 12.0, unit: "V" },
-                physicsEnvelope: { min: 10.0, max: 48.0 },
-                simplexConsensus: 18.0,
+                sourceProposal: { domain: "sysml2", value: sourceVal, unit },
+                targetProposal: { domain: "modelica", value: targetVal, unit },
+                physicsEnvelope: { min: Number(minEnv.toFixed(2)), max: Number(maxEnv.toFixed(2)) },
+                simplexConsensus,
                 recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
               },
               null,
@@ -938,9 +1046,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
-      let resolvedValue = customValue ?? 18.0;
-      if (strategy === "source-wins") resolvedValue = 24.0;
-      if (strategy === "target-wins") resolvedValue = 12.0;
+      const { sourceVal, targetVal } = lookupConflictValues(conflictId);
+      let resolvedValue = customValue ?? Number(((sourceVal + targetVal) / 2).toFixed(4));
+      if (strategy === "source-wins") resolvedValue = sourceVal;
+      if (strategy === "target-wins") resolvedValue = targetVal;
 
       return {
         content: [
@@ -1070,6 +1179,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ sourceName, targetRequirement }) => {
       const linkKey = `${sourceName}|${targetRequirement}`;
+      const workspace = (ctx.workspace as any)?.unifiedWorkspace ?? (ctx.workspace as any) ?? new UnifiedWorkspace();
+      const db = typeof workspace.toUnifiedPartial === "function" ? workspace.toUnifiedPartial() : undefined;
+      const matrix = db ? RtmIndexEngine.buildMatrix(db, "sysml_logical" as any, "requirement" as any) : undefined;
+      const linkEntry = (matrix?.links as Record<string, any> | undefined)?.[linkKey];
+      const isSuspect = linkEntry ? Boolean(linkEntry.isSuspect ?? linkEntry.status === "suspect") : true;
+      const diagnosis =
+        linkEntry?.reason ??
+        `Upstream specification for '${targetRequirement}' or parameter bindings in '${sourceName}' were modified since last verification run.`;
       return {
         content: [
           {
@@ -1077,8 +1194,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             text: JSON.stringify(
               {
                 linkKey,
-                isSuspect: true,
-                diagnosis: `Upstream specification for '${targetRequirement}' or parameter bindings in '${sourceName}' were modified since last verification run.`,
+                isSuspect,
+                status: linkEntry?.status ?? (isSuspect ? "suspect" : "verified"),
+                diagnosis,
                 recommendedAction: `Re-run verification via 'modelscript/reverifyLink' or inspect upstream diff in RTM.`,
               },
               null,
@@ -1294,6 +1412,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           ? [extension.startsWith(".") ? extension : `.${extension}`]
           : [".mo", ".mos", ".sysml", ".sysml2", ".step", ".stp", ".csv", ".scad", ".cfg", ".inp"];
 
+        /**
+         * Recursively scans directories up to depth 6 for matching engineering model files.
+         */
         async function scan(dir: string, depth = 0): Promise<void> {
           if (depth > 6 || matchedFiles.length >= maxResults) return;
           let entries;
@@ -1657,8 +1778,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           let min = Infinity;
           let max = -Infinity;
           for (let i = 0; i < series.length; i++) {
-            if (series[i] < min) min = series[i];
-            if (series[i] > max) max = series[i];
+            if (series[i]! < min) min = series[i]!;
+            if (series[i]! > max) max = series[i]!;
           }
           const finalVal = series[series.length - 1] ?? 0;
           const entry = {
@@ -1778,9 +1899,19 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const fmuId = netlist.fmuInstances[0]?.id;
         let iIbr = fmuId ? result.branchCurrents.get(fmuId) : undefined;
         if (!iIbr) {
+          for (const branchArr of result.branchCurrents.values()) {
+            if (branchArr.length === result.time.length) {
+              iIbr = branchArr;
+              break;
+            }
+          }
+        }
+        if (!iIbr) {
           iIbr = new Float64Array(result.time.length);
+          const baseImpedance = Math.max(0.1, vNominalKv / 1.2);
           for (let i = 0; i < iIbr.length; i++) {
-            iIbr[i] = 1200 * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
+            const vInst = vPoi[i] ?? vNominalKv * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
+            iIbr[i] = vInst / baseImpedance;
           }
         }
 

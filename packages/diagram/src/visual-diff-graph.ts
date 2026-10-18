@@ -19,18 +19,18 @@ export interface VisualPropertyDiff {
 
 export interface VisualDiffNode extends DiagramNode {
   diffStatus: DiffStatus;
-  isBreaking?: boolean;
-  propertyChanges?: VisualPropertyDiff[];
-  oldCoordinates?: { x: number; y: number };
-  diffLabel?: string;
+  isBreaking?: boolean | undefined;
+  propertyChanges?: VisualPropertyDiff[] | undefined;
+  oldCoordinates?: { x: number; y: number } | undefined;
+  diffLabel?: string | undefined;
 }
 
 export interface VisualDiffEdge extends DiagramEdge {
   diffStatus: DiffStatus;
-  isBreaking?: boolean;
-  oldSource?: { cell: string; port?: string };
-  oldTarget?: { cell: string; port?: string };
-  diffLabel?: string;
+  isBreaking?: boolean | undefined;
+  oldSource?: { cell: string; port?: string | undefined } | undefined;
+  oldTarget?: { cell: string; port?: string | undefined } | undefined;
+  diffLabel?: string | undefined;
 }
 
 export interface VisualDiffStats {
@@ -51,26 +51,26 @@ export interface VisualDiffData {
   coordinateSystem: CoordinateSystem;
   diagramBackground: X6Markup | null;
   stats: VisualDiffStats;
-  baseDiagram?: DiagramData | null;
-  headDiagram?: DiagramData | null;
+  baseDiagram?: DiagramData | null | undefined;
+  headDiagram?: DiagramData | null | undefined;
 }
 
 export interface VisualDiffOptions {
   /**
    * Keys considered breaking if their value changes (e.g. "direction", "isAbstract", "type").
    */
-  breakingKeys?: string[];
+  breakingKeys?: string[] | undefined;
 
   /**
    * Keys to ignore during property diffing (e.g. "annotationClause", "description").
    */
-  ignoredKeys?: string[];
+  ignoredKeys?: string[] | undefined;
 
   /**
    * Layout stabilization options.
    */
-  padding?: number;
-  iterations?: number;
+  padding?: number | undefined;
+  iterations?: number | undefined;
 }
 
 const DEFAULT_BREAKING_KEYS = [
@@ -90,7 +90,7 @@ const DEFAULT_IGNORED_KEYS = ["annotationClause", "documentation", "docInfo", "d
  * Extracts a normalized matching key for a node (prefers properties.name or id).
  */
 function getNodeKey(node: DiagramNode): string {
-  const propName = node.properties?.values?.name || node.properties?.values?.id;
+  const propName = node.properties?.values?.["name"] || node.properties?.values?.["id"];
   if (propName && typeof propName === "string") return propName;
   if (node.id) return node.id;
   return "";

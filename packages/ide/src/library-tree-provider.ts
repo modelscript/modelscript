@@ -15,15 +15,15 @@ interface TreeNodeInfo {
   name: string;
   compositeName: string;
   classKind: string;
-  icon?: string;
+  icon?: string | undefined;
   hasChildren: boolean;
-  iconSvg?: string;
-  iconUri?: vscode.Uri;
-  uri?: string;
-  language?: string;
-  description?: string;
+  iconSvg?: string | undefined;
+  iconUri?: vscode.Uri | undefined;
+  uri?: string | undefined;
+  language?: string | undefined;
+  description?: string | undefined;
   /** True when the icon is being lazily fetched — show a spinner placeholder. */
-  pendingIcon?: boolean;
+  pendingIcon?: boolean | undefined;
 }
 
 const KIND_TO_ICON_MAP: Record<string, string> = {
@@ -95,7 +95,7 @@ function svgToIconUri(svg: string): vscode.Uri {
 export class LibraryTreeItem extends vscode.TreeItem {
   constructor(
     public readonly info: TreeNodeInfo,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+    public override readonly collapsibleState: vscode.TreeItemCollapsibleState,
   ) {
     super(info.name, collapsibleState);
     this.id = info.id;
@@ -233,7 +233,8 @@ export class LibraryTreeProvider
   getTreeItem(element: LibraryTreeItem): vscode.TreeItem {
     const name = element.info.compositeName;
     if (this.iconUriCache.has(name)) {
-      element.iconPath = this.iconUriCache.get(name);
+      const iconUri = this.iconUriCache.get(name);
+      if (iconUri) element.iconPath = iconUri;
       element.info.pendingIcon = false;
     } else if (this.iconCache.has(name)) {
       const svg = this.iconCache.get(name);
@@ -273,7 +274,9 @@ export class LibraryTreeProvider
     return undefined;
   }
 
-  public onDragStart?: (data: { className: string; classKind: string; iconSvg?: string }) => void;
+  public onDragStart?:
+    | ((data: { className: string; classKind: string; iconSvg?: string | undefined }) => void)
+    | undefined;
 
   public async handleDrag(
     source: readonly LibraryTreeItem[],
@@ -356,7 +359,7 @@ export class LibraryTreeProvider
       const nodesNeedingIcons: TreeNodeInfo[] = [];
       const itemsNeedingIcons: LibraryTreeItem[] = [];
       for (let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
+        const n = nodes[i]!;
         if (
           !n.id.startsWith("__LIB__:") &&
           !n.id.startsWith("__ONTOLOGY__:") &&
@@ -369,7 +372,7 @@ export class LibraryTreeProvider
           !this.iconFetchPending.has(n.compositeName)
         ) {
           nodesNeedingIcons.push(n);
-          itemsNeedingIcons.push(items[i]);
+          itemsNeedingIcons.push(items[i]!);
         }
       }
 

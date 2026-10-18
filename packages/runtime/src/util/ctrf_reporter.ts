@@ -13,9 +13,9 @@ export interface CtrfTest {
   name: string;
   status: "passed" | "failed" | "pending" | "skipped";
   duration: number;
-  message?: string;
-  trace?: string;
-  extra?: Record<string, any>;
+  message?: string | undefined;
+  trace?: string | undefined;
+  extra?: Record<string, any> | undefined;
 }
 
 export interface CtrfReport {

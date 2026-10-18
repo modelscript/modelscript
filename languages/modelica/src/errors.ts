@@ -1,5 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @module errors
+ *
+ * Central diagnostic and error code registry for the Modelica compiler, flattener,
+ * and CST/semantic linters.
+ *
+ * Defines structured `ModelicaDiagnostic` records, the `ModelicaErrorCode` catalog
+ * (categorized into `1xxx` syntax, `2xxx` name resolution, `3xxx` type checking,
+ * `4xxx` structural/inheritance semantics, `5xxx` equations/algorithms/CFA, and
+ * `6xxx` synchronous clocks/state machines), and formatting/lookup utilities.
+ */
+
 import type { Range } from "@modelscript/dsl/utils";
 
 /**
@@ -28,24 +40,31 @@ export interface ModelicaDiagnostic {
 // Error code definition
 // ---------------------------------------------------------------------------
 
+/**
+ * Schema for a registered Modelica diagnostic code entry in {@link ModelicaErrorCode}.
+ */
 export interface ErrorCodeDef {
+  /** Numeric error code (e.g. `1001`, `3001`, `5001`). */
   code: number;
+  /** Kebab-case rule identifier used by CLI/LSP configuration (e.g. `"parse-error"`). */
   rule: string;
+  /** Default diagnostic severity (`"error" | "warning" | "info" | "notification"`). */
   severity: DiagnosticSeverity;
-  /** Template function that produces the human-readable message. */
-  message: (...args: string[]) => string;
+  /** Template function that produces the human-readable message matching OpenModelica's format. */
+  message: (...args: any[]) => string;
 }
 
 /**
  * Central registry of all Modelica diagnostic codes.
  *
- * Naming: M{code} — e.g. M1001, M3001.
+ * Naming: `M{code}` — e.g. `M1001`, `M3001`.
  * Ranges:
- *   1xxx  Syntax / parse
- *   2xxx  Name resolution
- *   3xxx  Type system
- *   4xxx  Structural / semantic
- *   5xxx  Equations & algorithms
+ * - `1xxx` — Syntax / GLR parse errors
+ * - `2xxx` — Name & scope resolution
+ * - `3xxx` — Type system & operator/function signatures
+ * - `4xxx` — Structural / inheritance / modification / connector semantics
+ * - `5xxx` — Equations, algorithms, control-flow analysis (CFA) & structural singularity
+ * - `6xxx` — Synchronous clocks (MLS Chapter 16), state machines (MLS Chapter 17) & purity
  */
 export const ModelicaErrorCode = {
   // ── 1xxx: Syntax & Parse ──────────────────────────────────────────────
@@ -602,7 +621,7 @@ export const ModelicaErrorCode = {
     code: 2094,
     rule: "missing-inner",
     severity: "warning",
-    message: (typeName: string, componentName: string, scopeName: string, inners: string) =>
+    message: (typeName: string, componentName: string, _scopeName: string, inners: string) =>
       `No corresponding 'inner' declaration found for component .${typeName} ${componentName} declared as 'outer'.\n` +
       `  The existing 'inner' components are:\n` +
       `    ${inners}\n` +
@@ -1182,6 +1201,13 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: () => "Parse error: Empty array constructors are not valid in Modelica.",
   },
+  SUBSCRIPTED_MODIFIER: {
+    code: 1005,
+    rule: "subscripted-modifier",
+    severity: "error",
+    message: () =>
+      "Subscripting modifiers is not allowed. Apply the modification on the whole identifier using an array-expression or an each-modifier.",
+  },
   BREAK_ON_NON_COMPONENT: {
     code: 4049,
     rule: "break-on-non-component",
@@ -1521,6 +1547,9 @@ export const ModelicaErrorCode = {
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys
+/**
+ * Union of all diagnostic rule keys in {@link ModelicaErrorCode} (e.g. `"PARSE_ERROR" | "VARIABLE_NOT_FOUND"`).
+ */
 export type ModelicaErrorCodeKey = keyof typeof ModelicaErrorCode;
 
 // ---------------------------------------------------------------------------
@@ -1560,6 +1589,10 @@ export function makeDiagnostic(
  * Format a diagnostic as a string with source range and severity.
  * E.g. "[path/to/file.mo:13:3-13:15] Warning: Invalid public variable ..."
  * When no range is available, falls back to "[M3001] Severity: message".
+ *
+ * @param diag - The structured diagnostic to format.
+ * @param resource - Optional relative or absolute resource path prefix.
+ * @returns The formatted diagnostic string.
  */
 export function formatDiagnostic(diag: ModelicaDiagnostic, resource?: string | null): string {
   const severity = diag.severity.charAt(0).toUpperCase() + diag.severity.slice(1);
@@ -1574,7 +1607,9 @@ export function formatDiagnostic(diag: ModelicaDiagnostic, resource?: string | n
   return `[M${diag.code}] ${severity}: ${diag.message}`;
 }
 
+/** Reverse lookup index mapping numeric error codes (`1001`, `3001`, ...) to their first registered {@link ErrorCodeDef}. */
 const modelicaErrorCodeByCode = new Map<number, ErrorCodeDef>();
+/** Reverse lookup index mapping normalized rule names (lowercase, stripped of `-` and `_`) to their {@link ErrorCodeDef}. */
 const modelicaErrorCodeByRule = new Map<string, ErrorCodeDef>();
 
 for (const def of Object.values(ModelicaErrorCode)) {
@@ -1591,6 +1626,9 @@ for (const def of Object.values(ModelicaErrorCode)) {
 
 /**
  * Look up a Modelica error code definition by numeric code or rule name.
+ *
+ * @param codeOrRule - Numeric code (e.g. `3001`), `"M3001"` string, or rule identifier (e.g. `"type-mismatch-binding"`).
+ * @returns The matching {@link ErrorCodeDef}, or `undefined` if not registered.
  */
 export function getModelicaErrorCodeDef(codeOrRule: number | string): ErrorCodeDef | undefined {
   if (typeof codeOrRule === "number") {
@@ -1605,4 +1643,24 @@ export function getModelicaErrorCodeDef(codeOrRule: number | string): ErrorCodeD
     return modelicaErrorCodeByRule.get(normalized);
   }
   return undefined;
+}
+
+/**
+ * Maps generic GLR parser syntax error messages to specific Modelica diagnostic messages
+ * (e.g. M1003 empty array constructors or M1004 subscripted modifier names) based on the
+ * offending source slice.
+ *
+ * @param message - Raw syntax error message emitted by the WASM GLR parser.
+ * @param sourceSlice - Substring of the Modelica source beginning at the unexpected token.
+ * @returns A specialized Modelica error message if recognized, or `null` otherwise.
+ */
+export function normalizeModelicaSyntaxDiagnostic(message: string, sourceSlice: string): string | null {
+  if (!message.startsWith("Syntax Error: Unexpected")) return null;
+  if (/^\{\s*\}/.test(sourceSlice)) {
+    return ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.message();
+  }
+  if (/^(?:\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*)?\[[^\]]+\]\s*=/.test(sourceSlice)) {
+    return ModelicaErrorCode.SUBSCRIPTED_MODIFIER.message();
+  }
+  return null;
 }

@@ -22,6 +22,20 @@ const VAR_MAPS: Record<string, Record<string, string>> = {
     "y[2]": "y[2]",
     "y[3]": "y[3]",
   },
+  Feedthrough: {
+    Float64_continuous_output: "Float64_continuous_output",
+    Float64_discrete_output: "Float64_discrete_output",
+    Int32_output: "Int32_output",
+    Enumeration_output: "Enumeration_output",
+  },
+  Resource: {
+    y: "y",
+  },
+  Roberts: {
+    y1: "y1",
+    y2: "y2",
+    y3: "y3",
+  },
 };
 
 export const getVarsMap = () => VAR_MAPS;

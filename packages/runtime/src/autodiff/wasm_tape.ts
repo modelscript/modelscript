@@ -12,6 +12,10 @@ import type { DAEBuilder } from "../dae/wasm_dae.js";
 import { BinOp, ExprKind, UnaryOp } from "../dae/wasm_dae.js";
 import { StringInterner } from "../workspace/wasm_string_pool.js";
 
+/**
+ * Opcode kinds for nodes in the static Wengert differentiation tape,
+ * supporting both scalar arithmetic/transcendentals and contiguous SIMD-style vector blocks.
+ */
 export enum TapeOpKind {
   Const = 0,
   Var = 1,
@@ -38,50 +42,78 @@ export enum TapeOpKind {
   Nop = 21,
 }
 
+/** Number of 32-bit integer words per node in `StaticTapeBuilder.opData`. */
 export const TAPE_STRIDE = 4;
+/** Word offset `0` in `opData`: the `TapeOpKind` opcode. */
 export const TAPE_OP_KIND = 0;
+/** Word offset `1` in `opData`: primary operand index or interned variable string ID. */
 export const TAPE_DATA1 = 1;
+/** Word offset `2` in `opData`: secondary operand index or contiguous vector block length. */
 export const TAPE_DATA2 = 2;
+/** Word offset `3` in `opData`: tertiary operand index or subscript offset. */
 export const TAPE_DATA3 = 3;
 
+/**
+ * Formats a JavaScript floating-point number as a valid C `double` literal string.
+ */
 export function formatCDouble(v: number): string {
   if (!isFinite(v)) return v === Infinity ? "INFINITY" : v === -Infinity ? "(-INFINITY)" : "NAN";
   const s = v.toString();
   return !s.includes(".") && !s.includes("e") && !s.includes("E") ? s + ".0" : s;
 }
 
+/**
+ * Data-oriented Wengert tape builder and evaluator for forward-mode and reverse-mode
+ * Algorithmic Differentiation (AD), supporting common subexpression deduplication and C code generation.
+ */
 export class StaticTapeBuilder {
+  /** Current allocated node capacity of `opData` and `valData`. */
   public capacity = 1024;
+  /** Flat struct-of-arrays integer buffer (`capacity * TAPE_STRIDE`) storing tape opcodes and operand indices. */
   public opData = new Int32Array(this.capacity * TAPE_STRIDE);
+  /** Parallel `Float64Array` storing scalar and vector constant literal values by tape node index. */
   public valData = new Float64Array(this.capacity);
+  /** Total number of active nodes recorded on the tape. */
   public length = 0;
+  /** Returns the total number of nodes in the tape (`this.length`). */
   public get nodeCount(): number {
     return this.length;
   }
+  /** Hash-consing cache mapping canonical `(kind:data1:data2:data3:val)` keys to existing tape node indices. */
   private cache = new Map<string, number>();
 
+  /** Returns the `TapeOpKind` for tape node `idx`. */
   public getOpKind(idx: number): TapeOpKind {
     return this.opData[idx * TAPE_STRIDE + TAPE_OP_KIND] as TapeOpKind;
   }
+  /** Returns the primary operand or string ID (`TAPE_DATA1`) for tape node `idx`. */
   public getData1(idx: number): number {
     return this.opData[idx * TAPE_STRIDE + TAPE_DATA1]!;
   }
+  /** Returns the secondary operand or vector length (`TAPE_DATA2`) for tape node `idx`. */
   public getData2(idx: number): number {
     return this.opData[idx * TAPE_STRIDE + TAPE_DATA2]!;
   }
+  /** Returns the tertiary operand or subscript offset (`TAPE_DATA3`) for tape node `idx`. */
   public getData3(idx: number): number {
     return this.opData[idx * TAPE_STRIDE + TAPE_DATA3]!;
   }
+  /** Returns the constant literal value stored at tape node `idx`. */
   public getConstValue(idx: number): number {
     return this.valData[idx] ?? 0;
   }
+  /** Resolves the variable name string for a `TapeOpKind.Var` or `TapeOpKind.VecVar` node at `idx`. */
   public getVarName(idx: number): string {
     const id = this.getData1(idx);
     return this.interner.resolve(id) ?? "";
   }
 
+  /**
+   * Creates a new `StaticTapeBuilder` backed by the given `StringInterner`.
+   */
   constructor(public interner = new StringInterner()) {}
 
+  /** Doubles the underlying typed arrays when `this.length + size` exceeds `this.capacity`. */
   private ensureCapacity(size: number) {
     if (this.length + size > this.capacity) {
       this.capacity = Math.max(this.capacity * 2, this.length + size);
@@ -94,6 +126,9 @@ export class StaticTapeBuilder {
     }
   }
 
+  /**
+   * Appends a scalar operation to the tape with structural hash-consing deduplication, returning its node index.
+   */
   public pushScalarOp(kind: TapeOpKind, data1 = 0, data2 = 0, data3 = 0, val = 0): number {
     const key = `${kind}:${data1}:${data2}:${data3}:${val}`;
     const cached = this.cache.get(key);
@@ -114,6 +149,9 @@ export class StaticTapeBuilder {
     return idx;
   }
 
+  /**
+   * Appends a contiguous SIMD-style vector operation of length `size` to the tape, padding trailing slots with `Nop`.
+   */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public pushVecOp(kind: TapeOpKind, size: number, data1 = 0, _data2 = 0, data3 = 0, vals?: number[]): number {
     this.ensureCapacity(size);
@@ -137,6 +175,9 @@ export class StaticTapeBuilder {
     return idx;
   }
 
+  /**
+   * Recursively lowers an expression tree from a `DAEBuilder` arena (`exprId`) onto the AD tape.
+   */
   public addExpression(exprId: number, arena: DAEBuilder): number {
     if (exprId < 0) return this.pushScalarOp(TapeOpKind.Const, 0, 0, 0, 0);
 
@@ -246,6 +287,9 @@ export class StaticTapeBuilder {
     }
   }
 
+  /**
+   * Lowers an array constructor or tuple expression into an array of individual scalar tape node indices.
+   */
   public addArrayExpression(exprId: number, arena: DAEBuilder): number[] {
     const kind = arena.getExprKind(exprId);
     if (kind === ExprKind.ArrayCtor || kind === ExprKind.Tuple) {
@@ -261,6 +305,9 @@ export class StaticTapeBuilder {
     return [this.addExpression(exprId, arena)];
   }
 
+  /**
+   * Lowers an array expression into a contiguous vectorized block (`VecConst`, `VecVar`, or consecutive scalar ops).
+   */
   public walkArrayVectorized(exprId: number, arena: DAEBuilder): { startIdx: number; size: number } {
     const kind = arena.getExprKind(exprId);
     if (kind !== ExprKind.ArrayCtor && kind !== ExprKind.Tuple) {
@@ -304,6 +351,9 @@ export class StaticTapeBuilder {
     return { startIdx, size: count };
   }
 
+  /**
+   * Appends a high-level descriptor object (`{ type: "add" | "mul" | ... }`) onto the tape.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public pushOp(op: any): number {
     switch (op.type) {
@@ -353,6 +403,9 @@ export class StaticTapeBuilder {
     return this.pushScalarOp(TapeOpKind.Nop, 0, 0, 0, 0);
   }
 
+  /**
+   * Computes the set of all variable names that `outputIndex` transitively depends upon.
+   */
   public getDependencies(outputIndex: number): Set<string> {
     const deps = new Set<string>();
     if (outputIndex < 0 || outputIndex >= this.length) return deps;
@@ -396,6 +449,9 @@ export class StaticTapeBuilder {
     return deps;
   }
 
+  /**
+   * Generates C statements for the primal forward evaluation sweep (`t[i] = ...`).
+   */
   public emitForwardC(varResolver: (name: string) => string): string[] {
     const lines: string[] = [];
     if (this.length === 0) return lines;
@@ -484,6 +540,9 @@ export class StaticTapeBuilder {
     return lines;
   }
 
+  /**
+   * Generates C statements for the forward-mode directional tangent sweep (`dot_t[i] = ...`).
+   */
   public emitForwardDirectionalC(): string[] {
     const lines: string[] = [];
     if (this.length === 0) return lines;
@@ -541,6 +600,9 @@ export class StaticTapeBuilder {
     return lines;
   }
 
+  /**
+   * Generates C statements for second-order forward-over-reverse (Hessian-vector product) directional propagation (`dot_dt[i]`).
+   */
   public emitReverseDirectionalC(outputIndex: number): string[] {
     const lines: string[] = [];
     if (this.length === 0 || outputIndex < 0 || outputIndex >= this.length) return lines;
@@ -613,6 +675,10 @@ export class StaticTapeBuilder {
     return lines;
   }
 
+  /**
+   * Generates C statements for the reverse-mode adjoint gradient sweep (`dt[i]`) seeded at `outputIndex`,
+   * along with a map from variable names to their tape slot indices.
+   */
   public emitReverseC(outputIndex: number): { code: string[]; gradients: Map<string, number> } {
     const lines: string[] = [];
     if (this.length === 0 || outputIndex < 0 || outputIndex >= this.length) {
@@ -732,10 +798,16 @@ export class StaticTapeBuilder {
     return { code: lines, gradients };
   }
 
+  /**
+   * Evaluates the primal forward pass of this tape given variable bindings `varValues`.
+   */
   evaluateForward(varValues: Map<string, number>): Float64Array {
     return evaluateTapeForward(this, varValues);
   }
 
+  /**
+   * Evaluates the reverse-mode adjoint pass of this tape seeded at `outputIndex`, returning variable gradients.
+   */
   evaluateReverse(t: Float64Array, outputIndex: number): Map<string, number> {
     return evaluateTapeReverse(this, t, outputIndex);
   }

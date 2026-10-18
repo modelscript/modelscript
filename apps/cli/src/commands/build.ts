@@ -8,7 +8,7 @@ import type { CommandModule } from "yargs";
 interface BuildArgs {
   entry: string;
   target: string;
-  register?: boolean;
+  register?: boolean | undefined;
 }
 
 export const Build: CommandModule<{}, BuildArgs> = {
@@ -161,9 +161,9 @@ export const Build: CommandModule<{}, BuildArgs> = {
         }
 
         const nativeSo = path.join(distDir, `${langName}.so`);
-        const rawCc = process.env.CC || "cc";
+        const rawCc = process.env["CC"] || "cc";
         const cc = /^[a-zA-Z0-9_./-]+$/.test(rawCc) ? rawCc : "cc";
-        const rawCflags = process.env.CFLAGS || "-O3";
+        const rawCflags = process.env["CFLAGS"] || "-O3";
         const cflags = rawCflags.split(/\s+/).filter((f) => /^[a-zA-Z0-9_./=-]+$/.test(f));
         const compileArgs = [
           ...cflags,

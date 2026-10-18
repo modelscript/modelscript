@@ -7,13 +7,15 @@ import type { MaterialProperties } from "./tet4-types.js";
  * Closed-form 4-node linear tetrahedral (Tet4) element formulation.
  */
 export class Tet4Element {
-  private static wasmScratch?: {
-    wasm: any;
-    coordsPtr: number;
-    dPtr: number;
-    keOutPtr: number;
-    bOutPtr: number;
-  };
+  private static wasmScratch?:
+    | {
+        wasm: any;
+        coordsPtr: number;
+        dPtr: number;
+        keOutPtr: number;
+        bOutPtr: number;
+      }
+    | undefined;
 
   /**
    * Builds the 6x6 isotropic elasticity constitutive matrix D.
@@ -65,7 +67,11 @@ export class Tet4Element {
     const wasm: any = getDefaultWasmExports();
     if (wasm && typeof wasm.fea_compute_tet4_stiffness === "function" && typeof wasm.__new === "function") {
       if (!Tet4Element.wasmScratch || Tet4Element.wasmScratch.wasm !== wasm) {
-        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        const alloc = (bytes: number): number => {
+          const ptr = wasm.__new(bytes, 0);
+          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          return ptr;
+        };
         Tet4Element.wasmScratch = {
           wasm,
           coordsPtr: alloc(12 * 8),
@@ -155,20 +161,20 @@ export class Tet4Element {
     for (let i = 0; i < 4; i++) {
       const col = i * 3;
       // Row 0: eps_xx = dN_i/dx * u_i
-      B[0 * 12 + col + 0] = b[i];
+      B[0 * 12 + col + 0] = b[i]!;
       // Row 1: eps_yy = dN_i/dy * v_i
-      B[1 * 12 + col + 1] = c[i];
+      B[1 * 12 + col + 1] = c[i]!;
       // Row 2: eps_zz = dN_i/dz * w_i
-      B[2 * 12 + col + 2] = d[i];
+      B[2 * 12 + col + 2] = d[i]!;
       // Row 3: gam_xy = dN_i/dy * u_i + dN_i/dx * v_i
-      B[3 * 12 + col + 0] = c[i];
-      B[3 * 12 + col + 1] = b[i];
+      B[3 * 12 + col + 0] = c[i]!;
+      B[3 * 12 + col + 1] = b[i]!;
       // Row 4: gam_yz = dN_i/dz * v_i + dN_i/dy * w_i
-      B[4 * 12 + col + 1] = d[i];
-      B[4 * 12 + col + 2] = c[i];
+      B[4 * 12 + col + 1] = d[i]!;
+      B[4 * 12 + col + 2] = c[i]!;
       // Row 5: gam_zx = dN_i/dz * u_i + dN_i/dx * w_i
-      B[5 * 12 + col + 0] = d[i];
-      B[5 * 12 + col + 2] = b[i];
+      B[5 * 12 + col + 0] = d[i]!;
+      B[5 * 12 + col + 2] = b[i]!;
     }
 
     // Compute DB = D (6x6) * B (6x12) -> (6x12)
@@ -177,7 +183,7 @@ export class Tet4Element {
       for (let c = 0; c < 12; c++) {
         let sum = 0.0;
         for (let k = 0; k < 6; k++) {
-          sum += D[r * 6 + k] * B[k * 12 + c];
+          sum += D[r * 6 + k]! * B[k * 12 + c]!;
         }
         DB[r * 12 + c] = sum;
       }
@@ -190,7 +196,7 @@ export class Tet4Element {
         let sum = 0.0;
         for (let k = 0; k < 6; k++) {
           // B^T[r, k] = B[k, r]
-          sum += B[k * 12 + r] * DB[k * 12 + c];
+          sum += B[k * 12 + r]! * DB[k * 12 + c]!;
         }
         Ke[r * 12 + c] = volume * sum;
       }
@@ -212,7 +218,7 @@ export class Tet4Element {
     for (let r = 0; r < 6; r++) {
       let sum = 0.0;
       for (let c = 0; c < 12; c++) {
-        sum += B[r * 12 + c] * ue[c];
+        sum += B[r * 12 + c]! * ue[c]!;
       }
       eps[r] = sum;
     }
@@ -222,18 +228,18 @@ export class Tet4Element {
     for (let r = 0; r < 6; r++) {
       let sum = 0.0;
       for (let c = 0; c < 6; c++) {
-        sum += D[r * 6 + c] * eps[c];
+        sum += D[r * 6 + c]! * eps[c]!;
       }
       stress[r] = sum;
     }
 
     // 3. von Mises scalar
-    const sxx = stress[0],
-      syy = stress[1],
-      szz = stress[2];
-    const sxy = stress[3],
-      syz = stress[4],
-      szx = stress[5];
+    const sxx = stress[0]!,
+      syy = stress[1]!,
+      szz = stress[2]!;
+    const sxy = stress[3]!,
+      syz = stress[4]!,
+      szx = stress[5]!;
 
     const diff1 = sxx - syy;
     const diff2 = syy - szz;

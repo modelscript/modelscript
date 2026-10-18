@@ -22,8 +22,8 @@ export interface GpuKernel {
   name: string;
   target: CompilationTarget;
   source: string;
-  workgroupSize?: number;
-  gridDim?: [number, number, number];
+  workgroupSize?: number | undefined;
+  gridDim?: [number, number, number] | undefined;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ export interface GpuKernel {
 // ─────────────────────────────────────────────────────────────────────
 
 export interface WgslKernelOpts {
-  workgroupSize?: number;
+  workgroupSize?: number | undefined;
 }
 
 /**
@@ -145,7 +145,7 @@ export function generateCudaKernel(name: string, nInputs: number, bodyCuda: stri
 /**
  * Generate a CUDA matrix multiplication kernel with tiling.
  */
-export function generateCudaMatmul(M: number, K: number, N: number): GpuKernel {
+export function generateCudaMatmul(M: number, _K: number, N: number): GpuKernel {
   const TILE = 16;
   const lines: string[] = [];
 
@@ -243,15 +243,15 @@ import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@mode
 
 export interface BatchedOdeEnsembleConfig {
   /** Kernel name identifier */
-  name?: string;
+  name?: string | undefined;
   /** Number of continuous state variables */
   numStates: number;
   /** Number of parameter overrides per trajectory */
   numParams: number;
   /** State variable names in index order */
-  stateNames?: string[];
+  stateNames?: string[] | undefined;
   /** Parameter names in index order */
-  paramNames?: string[];
+  paramNames?: string[] | undefined;
   /**
    * Derivative expressions dy[s]/dt = f_s(t, y, p).
    * Expressions should use normalized variables:
@@ -261,9 +261,9 @@ export interface BatchedOdeEnsembleConfig {
    */
   rhsExpressions: string[];
   /** Numerical integration method */
-  integrator?: "euler" | "rk4";
+  integrator?: "euler" | "rk4" | undefined;
   /** GPU thread block / workgroup size (default: 256) */
-  workgroupSize?: number;
+  workgroupSize?: number | undefined;
 }
 
 export interface BatchedOdeKernels {
@@ -441,6 +441,9 @@ export function generateBatchedOdeWgslKernel(config: BatchedOdeEnsembleConfig): 
   const integrator = config.integrator ?? "rk4";
   const lines: string[] = [];
 
+  // Emit uniform struct and storage buffer bindings for SoA (struct-of-arrays) layout:
+  // state s of trajectory `traj` is stored at `s * batch_size + traj` so adjacent GPU lanes
+  // perform coalesced 32-bit loads/stores.
   lines.push(`// Auto-generated Batched ODE Ensemble WGSL Shader — DiffEqGPU Architecture`);
   lines.push(`struct SimUniforms {`);
   lines.push(`  t0: f32,`);
@@ -469,6 +472,7 @@ export function generateBatchedOdeWgslKernel(config: BatchedOdeEnsembleConfig): 
   }
   lines.push(``);
 
+  // Unroll the state equations in-register across the time loop to avoid global memory traffic per step
   lines.push(`  // 2. In-register time-stepping`);
   lines.push(`  var t: f32 = uniforms.t0;`);
   lines.push(`  let dt: f32 = uniforms.dt;`);
@@ -482,6 +486,7 @@ export function generateBatchedOdeWgslKernel(config: BatchedOdeEnsembleConfig): 
   lines.push(``);
 
   if (integrator === "euler") {
+    // Explicit forward Euler step: y_{n+1} = y_n + h * f(t_n, y_n)
     for (let s = 0; s < S; s++) {
       const rhs = config.rhsExpressions[s] ?? "0.0";
       lines.push(`    let dy_${s}: f32 = ${rhs};`);
@@ -490,7 +495,7 @@ export function generateBatchedOdeWgslKernel(config: BatchedOdeEnsembleConfig): 
       lines.push(`    y_${s} = y_${s} + h * dy_${s};`);
     }
   } else {
-    // RK4
+    // Classical 4-stage Runge-Kutta (RK4), rewriting `y_<i>` -> `y_tmp_<i>` and `t` -> stage time for intermediate stages
     lines.push(`    // Stage 1 (k1)`);
     for (let s = 0; s < S; s++) {
       const rhs = config.rhsExpressions[s] ?? "0.0";
@@ -543,6 +548,7 @@ export function generateBatchedOdeWgslKernel(config: BatchedOdeEnsembleConfig): 
   lines.push(`    t = t + h;`);
   lines.push(`  }`);
   lines.push(``);
+  // Write final state registers back to global memory in coalesced SoA order
   lines.push(`  // 3. Coalesced store to global memory`);
   for (let s = 0; s < S; s++) {
     lines.push(`  y_out[${s}u * bsz + traj] = y_${s};`);
@@ -582,7 +588,7 @@ export function generateBatchedOdeEnsemble(config: BatchedOdeEnsembleConfig): Ba
  */
 export function createBatchedOdeConfigFromArena(
   arena: DAEBuilder,
-  options?: { integrator?: "euler" | "rk4"; name?: string; workgroupSize?: number },
+  options?: { integrator?: "euler" | "rk4" | undefined; name?: string | undefined; workgroupSize?: number | undefined },
 ): BatchedOdeEnsembleConfig {
   const stateIndices: number[] = [];
   const stateNames: string[] = [];

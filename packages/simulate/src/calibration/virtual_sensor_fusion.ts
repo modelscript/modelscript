@@ -28,13 +28,13 @@ export interface VirtualSensorConfig {
   /** Node indices corresponding to the physical sensor locations (length S). */
   sensorNodeIndices: number[];
   /** Tikhonov ridge regularization parameter gamma (default: 1e-6). */
-  regularizationGamma?: number;
+  regularizationGamma?: number | undefined;
   /** Optional warning threshold for peak reconstructed field value. */
-  warningThreshold?: number;
+  warningThreshold?: number | undefined;
   /** Optional critical threshold for peak reconstructed field value. */
-  criticalThreshold?: number;
+  criticalThreshold?: number | undefined;
   /** Name of the physical quantity (e.g. "VonMisesStress_MPa", "CoreTemperature_C"). */
-  fieldQuantityName?: string;
+  fieldQuantityName?: string | undefined;
 }
 
 export interface VirtualSensorFrameResult {
@@ -64,8 +64,8 @@ export class VirtualSensorFusion {
   private basisModes: Float64Array;
   private sensorIndices: Int32Array;
   private gamma: number;
-  private warningThreshold?: number;
-  private criticalThreshold?: number;
+  private warningThreshold?: number | undefined;
+  private criticalThreshold?: number | undefined;
   public readonly quantityName: string;
 
   // Pre-computed sensor sub-matrix M = H * Phi (S x k)
@@ -257,7 +257,7 @@ export class VirtualSensorFusion {
       const pivot = aug[col * (2 * n) + col]!;
       const invPivot = Math.abs(pivot) > 1e-14 ? 1.0 / pivot : 1.0;
       for (let c = 0; c < 2 * n; c++) {
-        aug[col * (2 * n) + c] *= invPivot;
+        aug[col * (2 * n) + c] = aug[col * (2 * n) + c]! * invPivot;
       }
 
       for (let r = 0; r < n; r++) {
@@ -265,7 +265,7 @@ export class VirtualSensorFusion {
         const factor = aug[r * (2 * n) + col]!;
         if (Math.abs(factor) > 1e-15) {
           for (let c = 0; c < 2 * n; c++) {
-            aug[r * (2 * n) + c] -= factor * aug[col * (2 * n) + c]!;
+            aug[r * (2 * n) + c] = aug[r * (2 * n) + c]! - factor * aug[col * (2 * n) + c]!;
           }
         }
       }

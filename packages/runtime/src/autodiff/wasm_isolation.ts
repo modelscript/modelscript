@@ -127,7 +127,8 @@ export function containsVar(arena: DAEBuilder, exprId: number, targetVarIdx: num
       const count = arena.getExprRight(exprId);
       const first = arena.getExprLeft(exprId);
       for (let i = 0; i < count; i++) {
-        if (containsVar(arena, first + i, targetVarIdx)) return true;
+        const argExpr = i === 0 ? first : arena.getExprLeft(exprId + i);
+        if (argExpr >= 0 && containsVar(arena, argExpr, targetVarIdx)) return true;
       }
       return false;
     }
@@ -168,7 +169,8 @@ export function countOccurrences(arena: DAEBuilder, exprId: number, targetVarIdx
       const first = arena.getExprLeft(exprId);
       let total = 0;
       for (let i = 0; i < count; i++) {
-        total += countOccurrences(arena, first + i, targetVarIdx);
+        const argExpr = i === 0 ? first : arena.getExprLeft(exprId + i);
+        if (argExpr >= 0) total += countOccurrences(arena, argExpr, targetVarIdx);
       }
       return total;
     }
@@ -799,7 +801,7 @@ export function tryOptimizeLoopWithGroebner(
  * High-level TypeScript wrapper for WASM Symbolic Isolation runtime.
  */
 export class WasmIsolationEngine {
-  constructor(private instance?: any) {}
+  constructor(readonly instance?: any) {}
 
   isolate(arena: DAEBuilder, eqIdx: number, targetVarIdx: number): number {
     return isolateSymbolicallyArena(arena, eqIdx, targetVarIdx);

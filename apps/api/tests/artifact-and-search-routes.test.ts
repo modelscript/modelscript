@@ -10,12 +10,20 @@ import request from "supertest";
 process.env["NODE_ENV"] = "test";
 
 import { createApp } from "../src/app.js";
+import { getArtifactRegistry } from "../src/artifacts/index.js";
 import { LibraryDatabase } from "../src/database.js";
+import {
+  extractModelicaComponentsFromSource,
+  extractModelicaEquations,
+  extractSysmlComponentsFromSource,
+  inspectClassSource,
+} from "../src/util/class-source-inspector.js";
 
 test("Artifact Viewer, Search Completions, and RDF Metadata REST Routes", async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "artifact-search-test-"));
   const db = new LibraryDatabase(tmpDir);
   const app = createApp({ database: db });
+  const artifactRegistry = getArtifactRegistry();
 
   t.after(() => {
     try {
@@ -29,6 +37,7 @@ test("Artifact Viewer, Search Completions, and RDF Metadata REST Routes", async 
   // Seed sample user and package
   const user = db.createUser("cad_dev", "cad@modelscript.test", "hash_pw", "CAD Developer");
   const { id: pkgId } = db.getOrCreatePackage("MechanicalComponents");
+  assert.ok(user && pkgId);
 
   await t.test("Artifacts: GET /api/v1/artifacts/types returns registered artifact handlers", async () => {
     const res = await request(app).get("/api/v1/artifacts/types");
@@ -38,6 +47,160 @@ test("Artifact Viewer, Search Completions, and RDF Metadata REST Routes", async 
     assert.ok(types.includes("cad"), "Should include CAD artifact handler");
     assert.ok(types.includes("fmu"), "Should include FMU artifact handler");
     assert.ok(types.includes("dataset"), "Should include Dataset artifact handler");
+    assert.ok(types.includes("vega"), "Should include Vega artifact handler");
+    assert.ok(types.includes("mermaid"), "Should include Mermaid artifact handler");
+    assert.ok(types.includes("sysml"), "Should include SysML v2 artifact handler");
+  });
+
+  await t.test("Artifacts: compound extension detection (.vl.json, .vg.json, .cfd.json, .kerml)", async () => {
+    assert.strictEqual(artifactRegistry.detectType("plots/response.vl.json"), "vega");
+    assert.strictEqual(artifactRegistry.detectType("plots/bode.vg.json"), "vega");
+    assert.strictEqual(artifactRegistry.detectType("sim/melt_front.cfd.json"), "cfd-animation");
+    assert.strictEqual(artifactRegistry.detectType("arch/system.kerml"), "sysml");
+    assert.strictEqual(artifactRegistry.detectType("data/table.tsv"), "dataset");
+    assert.strictEqual(artifactRegistry.detectType("data/table.csv"), "dataset");
+  });
+
+  await t.test("Artifacts: SysML, Vega, and Mermaid handlers extract rich viewer descriptors", async () => {
+    const sysmlCode = `package ThermalControl {
+  requirement <'REQ-01'> MaxTempReq {
+    doc /* Battery cell temperature shall not exceed 328 K */
+  }
+  part def CoolingLoop {
+    port inlet : FluidPort;
+    port outlet : FluidPort;
+  }
+  part primaryLoop : CoolingLoop[2];
+  part radiator : HeatExchanger;
+  satisfy MaxTempReq by primaryLoop;
+  connect primaryLoop.outlet to radiator.inlet;
+}`;
+    const sysmlMeta = await artifactRegistry.extractMetadata(
+      "sysml",
+      Buffer.from(sysmlCode, "utf-8"),
+      "arch/thermal.sysml",
+    );
+    assert.ok(sysmlMeta);
+    const sysmlView = artifactRegistry.getHandler("sysml")?.getViewDescriptor(sysmlMeta);
+    assert.strictEqual(sysmlView?.viewer, "sysml-architecture-viewer");
+    assert.strictEqual(sysmlView?.config.systemName, "ThermalControl");
+    assert.ok(Array.isArray(sysmlView?.config.parts));
+    assert.ok((sysmlView?.config.parts as any[]).length >= 2);
+    assert.ok(Array.isArray(sysmlView?.config.requirements));
+    assert.strictEqual((sysmlView?.config.requirements as any[])[0]?.id, "REQ-01");
+    assert.strictEqual((sysmlView?.config.requirements as any[])[0]?.status, "satisfied");
+    assert.ok(Array.isArray(sysmlView?.config.connections));
+    assert.strictEqual((sysmlView?.config.connections as any[]).length, 1);
+
+    // Vega handler
+    const vegaSpec = {
+      $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+      title: "Step Response",
+      mark: "line",
+    };
+    const vegaMeta = await artifactRegistry.extractMetadata(
+      "vega",
+      Buffer.from(JSON.stringify(vegaSpec), "utf-8"),
+      "plots/step.vl.json",
+    );
+    assert.ok(vegaMeta);
+    const vegaView = artifactRegistry.getHandler("vega")?.getViewDescriptor(vegaMeta);
+    assert.strictEqual(vegaView?.viewer, "vega-plot");
+    assert.strictEqual(vegaView?.config.title, "Step Response");
+    assert.deepStrictEqual(vegaView?.config.spec, vegaSpec);
+
+    // Mermaid handler
+    const mmdCode = "flowchart LR\n  A[Sensor] --> B[Controller]";
+    const mmdMeta = await artifactRegistry.extractMetadata("mermaid", Buffer.from(mmdCode, "utf-8"), "docs/flow.mmd");
+    assert.ok(mmdMeta);
+    const mmdView = artifactRegistry.getHandler("mermaid")?.getViewDescriptor(mmdMeta);
+    assert.strictEqual(mmdView?.viewer, "mermaid-diagram");
+    assert.strictEqual(mmdView?.config.code, mmdCode);
+  });
+
+  await t.test(
+    "Artifacts: Scoped package GET /api/v1/packages/:scope/:name/:version/artifacts injects resourceUrl",
+    async () => {
+      const { id: scopedPkgId } = db.getOrCreatePackage("@alice/PropulsionPkg", "alice");
+      const verId = db.storePackageVersion(
+        scopedPkgId,
+        "1.0.0",
+        "/tmp/fake.tgz",
+        "abc123hash",
+        null,
+        1024,
+        "{}",
+        null,
+        user.id,
+      );
+      db.storeArtifact(
+        verId,
+        "mermaid",
+        "diagrams/control.mmd",
+        JSON.stringify({
+          diagramType: "flowchart",
+          lineCount: 2,
+          code: "flowchart TD\n  X-->Y",
+          title: "control",
+        }),
+      );
+
+      const res = await request(app).get("/api/v1/packages/@alice/PropulsionPkg/1.0.0/artifacts");
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.body.artifacts.length, 1);
+      assert.strictEqual(res.body.artifacts[0].viewer.viewer, "mermaid-diagram");
+      assert.strictEqual(res.body.artifacts[0].viewer.config.packageName, "@alice/PropulsionPkg");
+      assert.strictEqual(
+        res.body.artifacts[0].viewer.config.resourceUrl,
+        "/api/v1/libraries/%40alice/PropulsionPkg/1.0.0/resources/diagrams/control.mmd",
+      );
+    },
+  );
+
+  await t.test("Javadoc Inspector: extracts Modelica equations, parameters, ports, and SysML parts", async () => {
+    const moSource = `model RCFilter "First-order RC low-pass filter"
+  parameter Real R(unit="Ohm") = 100.0 "Series resistance";
+  parameter Real C(unit="F") = 1e-3 "Filter capacitance";
+  Modelica.Blocks.Interfaces.RealInput u "Input voltage";
+  Modelica.Blocks.Interfaces.RealOutput y "Filtered output voltage";
+  Resistor r1(R=R) "Main resistor";
+equation
+  connect(u, r1.p);
+  C * der(y) = (u - y) / R;
+  annotation(Documentation(info="<html><p>Low-pass filter.</p></html>"));
+end RCFilter;`;
+
+    const eqs = extractModelicaEquations(moSource);
+    assert.strictEqual(eqs.length, 2);
+    assert.ok(eqs.some((e) => e.includes("connect(u, r1.p)")));
+    assert.ok(eqs.some((e) => e.includes("C * der(y) = (u - y) / R")));
+
+    const comps = extractModelicaComponentsFromSource(moSource);
+    assert.ok(comps.length >= 5);
+    const rParam = comps.find((c) => c.component_name === "R");
+    assert.strictEqual(rParam?.variability, "parameter");
+    assert.ok(rParam?.modifiers.some((m) => m.modifier_name === "unit" && m.modifier_value === "Ohm"));
+    assert.ok(rParam?.modifiers.some((m) => m.modifier_name === "value" && m.modifier_value === "100.0"));
+
+    // Write to temporary extracted dir and test inspectClassSource
+    const pkgDir = path.join(tmpDir, "extracted-pkg");
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, "RCFilter.mo"), moSource, "utf-8");
+
+    const inspected = inspectClassSource(pkgDir, "TestLib", "1.0.0", "RCFilter", "model");
+    assert.strictEqual(inspected.sourceFile, "RCFilter.mo");
+    assert.ok(inspected.sourceCode?.includes("model RCFilter"));
+    assert.strictEqual(inspected.equations.length, 2);
+    assert.ok(inspected.extractedComponents.length >= 5);
+
+    const sysmlComps = extractSysmlComponentsFromSource(`part def Rover {
+      attribute mass : Real = 45.0;
+      port powerIn : PowerPort;
+      part chassis : AluminumFrame;
+    }`);
+    assert.strictEqual(sysmlComps.length, 3);
+    assert.strictEqual(sysmlComps[0]?.variability, "parameter");
+    assert.strictEqual(sysmlComps[1]?.causality, "connector");
   });
 
   await t.test("Artifacts: GET /api/v1/cad/convert validates query parameters", async () => {

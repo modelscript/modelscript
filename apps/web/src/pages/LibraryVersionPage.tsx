@@ -10,6 +10,7 @@ import { getLibraryVersions } from "../api";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
 import { usePageTitle } from "../util/title";
+import { resolvePackageParams } from "../util/url";
 
 /* ─── styled helpers ─── */
 
@@ -99,7 +100,8 @@ const VersionName = styled.span`
 /* ─── main page ─── */
 
 const LibraryVersionPage: React.FC = () => {
-  const { name } = useParams<{ name: string }>();
+  const rawParams = useParams<{ scope?: string | undefined; name?: string | undefined }>();
+  const { name } = resolvePackageParams(rawParams);
   usePageTitle(name ? `${name} — Versions` : "Versions");
   const [library, setLibrary] = useState<Library | null>(null);
   const [loading, setLoading] = useState(true);

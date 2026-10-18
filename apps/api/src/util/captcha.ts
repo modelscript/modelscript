@@ -7,7 +7,7 @@ export async function verifyCaptchaToken(
   token?: string,
   clientIp?: string,
   secretKey: string = process.env["TURNSTILE_SECRET_KEY"] || "",
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string | undefined }> {
   // Fail-closed guardrail in production mode: reject if secret key is missing
   if (process.env["NODE_ENV"] === "production") {
     if (!secretKey) {
@@ -49,7 +49,7 @@ export async function verifyCaptchaToken(
       },
     });
 
-    const data = (await response.json()) as { success: boolean; "error-codes"?: string[] };
+    const data = (await response.json()) as { success: boolean; "error-codes"?: string[] | undefined };
 
     if (!data.success) {
       return {

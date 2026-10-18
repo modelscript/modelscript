@@ -2,17 +2,13 @@
 
 import * as fs from "node:fs/promises";
 
-// In a real production system, this worker would integrate with a headless CAM slicer.
-// E.g. invoking FreeCAD Path module via python script, or Kiri:Moto node API,
-// or CuraEngine CLI. For the purpose of scaffolding the pipeline, we simulate the output.
-
 interface CamJobData {
   stepFilePath: string;
   outputGcodePath: string;
   config: {
-    toolDiameter?: number;
-    feedRate?: number;
-    spindleSpeed?: number;
+    toolDiameter?: number | undefined;
+    feedRate?: number | undefined;
+    spindleSpeed?: number | undefined;
   };
 }
 
@@ -26,49 +22,93 @@ async function runCamJob(data: CamJobData) {
   const safeZ = 5.0;
   const stepover = toolDiameter * 0.65;
 
-  // Extract real geometric bounds from STEP Cartesian points if available
+  // Extract 3D points and B-Rep face loops from STEP entities
   let minX = -25.0,
     maxX = 25.0;
   let minY = -25.0,
     maxY = 25.0;
   let minZ = -5.0,
-    _maxZ = 0.0;
+    maxZ = 0.0;
+  const parsedPoints: [number, number, number][] = [];
+  const parsedFaces: [number, number, number][][] = [];
 
   try {
     const stepText = await fs.readFile(data.stepFilePath, "utf8");
-    const pointMatches = stepText.matchAll(
-      /CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*\)\s*\)/g,
-    );
-    let count = 0;
-    let pMinX = Infinity,
-      pMaxX = -Infinity;
-    let pMinY = Infinity,
-      pMaxY = -Infinity;
-    let pMinZ = Infinity,
-      pMaxZ = -Infinity;
+    const cartMap = new Map<string, [number, number, number]>();
+    const vertMap = new Map<string, [number, number, number]>();
+    const edgeMap = new Map<string, [string, string]>();
+    const orientMap = new Map<string, string>();
+    const loopMap = new Map<string, string[]>();
 
-    for (const match of pointMatches) {
-      const x = parseFloat(match[1]!);
-      const y = parseFloat(match[2]!);
-      const z = parseFloat(match[3]!);
-      if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+    for (const m of stepText.matchAll(
+      /#(\d+)\s*=\s*CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*\)\s*\)/g,
+    )) {
+      const pt: [number, number, number] = [parseFloat(m[2]!), parseFloat(m[3]!), parseFloat(m[4]!)];
+      if (!isNaN(pt[0]) && !isNaN(pt[1]) && !isNaN(pt[2])) {
+        cartMap.set(`#${m[1]}`, pt);
+        parsedPoints.push(pt);
+      }
+    }
+
+    if (parsedPoints.length === 0) {
+      for (const m of stepText.matchAll(
+        /CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*\)\s*\)/g,
+      )) {
+        const pt: [number, number, number] = [parseFloat(m[1]!), parseFloat(m[2]!), parseFloat(m[3]!)];
+        if (!isNaN(pt[0]) && !isNaN(pt[1]) && !isNaN(pt[2])) {
+          parsedPoints.push(pt);
+        }
+      }
+    }
+
+    for (const m of stepText.matchAll(/#(\d+)\s*=\s*VERTEX_POINT\s*\([^,]*,\s*(#\d+)\s*\)/g)) {
+      const pt = cartMap.get(m[2]!);
+      if (pt) vertMap.set(`#${m[1]}`, pt);
+    }
+    for (const m of stepText.matchAll(/#(\d+)\s*=\s*EDGE_CURVE\s*\([^,]*,\s*(#\d+)\s*,\s*(#\d+)/g)) {
+      edgeMap.set(`#${m[1]}`, [m[2]!, m[3]!]);
+    }
+    for (const m of stepText.matchAll(/#(\d+)\s*=\s*ORIENTED_EDGE\s*\([^,]*,[^,]*,[^,]*,\s*(#\d+)/g)) {
+      orientMap.set(`#${m[1]}`, m[2]!);
+    }
+    for (const m of stepText.matchAll(/#(\d+)\s*=\s*EDGE_LOOP\s*\([^,]*,\s*\(([^)]+)\)\s*\)/g)) {
+      const refs = m[2]!.split(",").map((s) => s.trim());
+      loopMap.set(`#${m[1]}`, refs);
+    }
+    for (const [, oeRefs] of loopMap) {
+      const poly: [number, number, number][] = [];
+      for (const oe of oeRefs) {
+        const ec = orientMap.get(oe);
+        const verts = ec ? edgeMap.get(ec) : undefined;
+        const p0 = verts ? vertMap.get(verts[0]) : undefined;
+        if (p0) poly.push(p0);
+      }
+      if (poly.length >= 3) parsedFaces.push(poly);
+    }
+
+    if (parsedPoints.length >= 4) {
+      let pMinX = Infinity,
+        pMaxX = -Infinity;
+      let pMinY = Infinity,
+        pMaxY = -Infinity;
+      let pMinZ = Infinity,
+        pMaxZ = -Infinity;
+      for (const [x, y, z] of parsedPoints) {
         if (x < pMinX) pMinX = x;
         if (x > pMaxX) pMaxX = x;
         if (y < pMinY) pMinY = y;
         if (y > pMaxY) pMaxY = y;
         if (z < pMinZ) pMinZ = z;
         if (z > pMaxZ) pMaxZ = z;
-        count++;
       }
-    }
-
-    if (count >= 4 && pMaxX - pMinX > 1 && pMaxY - pMinY > 1) {
-      minX = pMinX;
-      maxX = pMaxX;
-      minY = pMinY;
-      maxY = pMaxY;
-      minZ = pMinZ;
-      _maxZ = pMaxZ;
+      if (pMaxX - pMinX > 1 && pMaxY - pMinY > 1) {
+        minX = pMinX;
+        maxX = pMaxX;
+        minY = pMinY;
+        maxY = pMaxY;
+        minZ = pMinZ;
+        maxZ = pMaxZ;
+      }
     }
   } catch (err) {
     console.warn(`[CamWorker] Could not parse STEP geometry points directly, using stock bounds:`, err);
@@ -76,7 +116,7 @@ async function runCamJob(data: CamJobData) {
 
   const stockWidth = maxX - minX;
   const stockHeight = maxY - minY;
-  const targetDepth = Math.min(-1.0, minZ);
+  const targetDepth = Math.min(-1.0, minZ - maxZ);
   const stepdown = Math.min(1.5, Math.abs(targetDepth) / 2);
 
   let gcode = `( ============================================================================ )
@@ -84,6 +124,7 @@ async function runCamJob(data: CamJobData) {
 ( Model: ${data.stepFilePath} )
 ( Tool Diameter: ${toolDiameter.toFixed(3)}mm )
 ( Stock Dimensions: ${stockWidth.toFixed(2)}mm x ${stockHeight.toFixed(2)}mm x ${Math.abs(targetDepth).toFixed(2)}mm )
+( Parsed STEP Vertices: ${parsedPoints.length}, B-Rep Faces: ${parsedFaces.length} )
 ( ============================================================================ )
 
 G21 ; Metric units
@@ -135,6 +176,36 @@ G0 Z${safeZ.toFixed(3)} ; Rapid to clearance plane
     gcode += `G0 Z${safeZ.toFixed(3)}\n`;
 
     currentZ -= stepdown;
+  }
+
+  // 3. 3D Surface Finishing Pass over STEP face/vertex heightfield
+  if (parsedPoints.length > 0) {
+    gcode += `\n( --- Operation 3: 3D Surface Finishing Pass --- )\n`;
+    const finishStep = Math.max(stepover, stockHeight / 8);
+    let fy = minY;
+    let fDir = 1;
+    while (fy <= maxY + 1e-6) {
+      const sampleSteps = 8;
+      const startX = fDir === 1 ? minX : maxX;
+      gcode += `G0 X${startX.toFixed(3)} Y${fy.toFixed(3)}\n`;
+      for (let s = 0; s <= sampleSteps; s++) {
+        const t = fDir === 1 ? s / sampleSteps : 1 - s / sampleSteps;
+        const fx = minX + t * stockWidth;
+        let nearestZ = targetDepth * 0.5;
+        let bestDistSq = Infinity;
+        for (const [px, py, pz] of parsedPoints) {
+          const dSq = (px - fx) * (px - fx) + (py - fy) * (py - fy);
+          if (dSq < bestDistSq) {
+            bestDistSq = dSq;
+            nearestZ = Math.min(0, pz - maxZ);
+          }
+        }
+        gcode += `G1 X${fx.toFixed(3)} Y${fy.toFixed(3)} Z${nearestZ.toFixed(3)} F${feedRate}\n`;
+      }
+      gcode += `G0 Z${safeZ.toFixed(3)}\n`;
+      fy += finishStep;
+      fDir = -fDir;
+    }
   }
 
   process.send?.({ type: "progress", classesProcessed: 80 });

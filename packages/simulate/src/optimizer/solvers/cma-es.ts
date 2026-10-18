@@ -25,9 +25,9 @@ import {
 
 export interface CmaEsOptions extends SingleObjectiveOptions {
   /** Initial standard deviation sigma0. Default: 0.3 * (max - min). */
-  sigma0?: number;
+  sigma0?: number | undefined;
   /** Stop when fitness reaches below this value. Default: -Infinity. */
-  targetFitness?: number;
+  targetFitness?: number | undefined;
 }
 
 /**

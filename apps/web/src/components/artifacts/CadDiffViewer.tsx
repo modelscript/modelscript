@@ -16,8 +16,8 @@ export interface CadDiffViewerProps {
   fileName: string;
   baseVersion: string;
   headVersion: string;
-  height?: number | string;
-  onClose?: () => void;
+  height?: number | string | undefined;
+  onClose?: (() => void) | undefined;
 }
 
 type DiffDisplayMode = "diff" | "side-by-side" | "base" | "head";
@@ -29,7 +29,7 @@ interface GeometryStats {
   boundingBox: THREE.Box3;
 }
 
-const ViewerContainer = styled.div<{ $height?: number | string }>`
+const ViewerContainer = styled.div<{ $height?: number | string | undefined }>`
   position: relative;
   width: 100%;
   height: ${({ $height }) => (typeof $height === "number" ? `${$height}px` : $height || "520px")};

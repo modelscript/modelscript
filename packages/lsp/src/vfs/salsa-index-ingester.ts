@@ -23,7 +23,7 @@ function getSqlInstance(): Promise<any> {
     }
 
     sqlPromise = initSqlJs({
-      wasmBinary,
+      ...(wasmBinary ? { wasmBinary } : {}),
       locateFile: (file: string) => {
         const base = (globalThis as any).serverDistBase;
         if (base) {

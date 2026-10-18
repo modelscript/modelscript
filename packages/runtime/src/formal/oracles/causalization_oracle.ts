@@ -122,7 +122,7 @@ export class CausalizationTheoryOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     // 1. Check Nyquist-Shannon Sampling Stability
     for (const s of this.samplingChecks) {
       const minRequired = 10 * s.dominantPoleFrequencyHz;

@@ -11,21 +11,21 @@ export interface DigitalThreadTwin {
   source: {
     domain: DomainType;
     name: string;
-    qualifiedName?: string;
+    qualifiedName?: string | undefined;
     kind: string;
-    variable?: string;
-    unit?: string;
-    quantity?: string;
+    variable?: string | undefined;
+    unit?: string | undefined;
+    quantity?: string | undefined;
   };
   target: {
     domain: DomainType;
     name: string;
-    qualifiedName?: string;
+    qualifiedName?: string | undefined;
     kind: string;
-    attribute?: string;
-    unit?: string;
-    quantity?: string;
-    resourcePath?: string;
+    attribute?: string | undefined;
+    unit?: string | undefined;
+    quantity?: string | undefined;
+    resourcePath?: string | undefined;
   };
   relationship: "twin" | "cad-binding" | "implements" | "verification" | "calibrated-by";
   parity: {
@@ -33,16 +33,20 @@ export interface DigitalThreadTwin {
     sourceUnit: string;
     targetUnit: string;
     message: string;
-    factor?: number;
+    factor?: number | undefined;
   };
-  cadViewerConfig?: {
-    url: string;
-    stepEntity?: string;
-  };
-  sysmlConfig?: {
-    artifactPath: string;
-    blockName?: string;
-  };
+  cadViewerConfig?:
+    | {
+        url: string;
+        stepEntity?: string | undefined;
+      }
+    | undefined;
+  sysmlConfig?:
+    | {
+        artifactPath: string;
+        blockName?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface DigitalThreadMetrics {
@@ -204,9 +208,9 @@ export function extractDigitalThreadTwins(
       // Check description
       if (comp.description) {
         const twinMatch = comp.description.match(/twin\s*=\s*["']([^"']+)["']/i);
-        if (twinMatch) twinRef = twinMatch[1];
+        if (twinMatch) twinRef = twinMatch[1]!;
         const cadMatch = comp.description.match(/CAD\s*=\s*["']([^"']+)["']/i);
-        if (cadMatch) cadRef = cadMatch[1];
+        if (cadMatch) cadRef = cadMatch[1]!;
       }
 
       // If twin counterpart is found
@@ -238,7 +242,7 @@ export function extractDigitalThreadTwins(
 
       // If CAD binding is found
       if (cadRef) {
-        const cleanCadTarget = cadRef.split("#")[0].replace("cad://", "");
+        const cleanCadTarget = cadRef.split("#")[0]!.replace("cad://", "");
         const matchedCadFile = cadFiles.find((c) => c.path.includes(cleanCadTarget)) || cadFiles[0];
         twins.push({
           id: `cad-${comp.component_name}-${cadRef}`,
@@ -361,22 +365,24 @@ export function extractDigitalThreadTwins(
     }
   }
 
-  // 3. Fallback mock twin thread for rich exploration if package is polyglot
+  // 3. Fallback twin thread for rich exploration if package is polyglot
   if (twins.length === 0 && (cadFiles.length > 0 || sysmlFiles.length > 0 || csvFiles.length > 0)) {
+    const primaryClassName = classes?.[0]?.class_name || `${packageName}.AeroChassis`;
+    const primarySysmlName = sysmlFiles[0]?.displayName || sysmlFiles[0]?.path || "DroneArchitecture::FlightController";
     twins.push(
       {
         id: "demo-twin-1",
         source: {
           domain: "modelica",
-          name: `${packageName}.AeroChassis`,
-          kind: "ModelicaModel",
+          name: primaryClassName,
+          kind: classes?.[0]?.class_kind || "ModelicaModel",
           variable: "angularSpeed",
           unit: "rad/s",
           quantity: "Rotor Velocity",
         },
         target: {
           domain: "sysml2",
-          name: "DroneArchitecture::FlightController",
+          name: primarySysmlName,
           kind: "PartDefinition",
           attribute: "maxSpeed",
           unit: "rad/s",

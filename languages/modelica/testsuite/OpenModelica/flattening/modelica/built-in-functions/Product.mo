@@ -1,7 +1,6 @@
 // name: Product
 // keywords: product
 // status: correct
-// xfail:    true
 //
 // Testing the built-in product function.
 //

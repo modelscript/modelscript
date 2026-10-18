@@ -237,7 +237,7 @@ echo "[HPC] Execution finished at $(date)."
     });
   }
 
-  public async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
+  public override async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
     await super.initialize(startTime, stopTime, stepSize);
     await this.submitJob();
   }

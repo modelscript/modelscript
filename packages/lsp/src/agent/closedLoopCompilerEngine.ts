@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 
 /**
  * Closed-Loop Compiler Verification Engine.
@@ -31,13 +32,13 @@ export interface GateDiagnostic {
   gateName: "WASM GLR Syntax" | "QUDV Physical Dimensions" | "SMT Requirement Feasibility" | "DAE Structural Balance";
   severity: "error" | "warning";
   message: string;
-  line?: number;
-  column?: number;
-  startByte?: number;
-  endByte?: number;
-  code?: string;
-  sourceContext?: string;
-  metadata?: Record<string, any>;
+  line?: number | undefined;
+  column?: number | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  code?: string | undefined;
+  sourceContext?: string | undefined;
+  metadata?: Record<string, any> | undefined;
 }
 
 export interface GateVerificationResult {
@@ -45,21 +46,23 @@ export interface GateVerificationResult {
   gateName: "WASM GLR Syntax" | "QUDV Physical Dimensions" | "SMT Requirement Feasibility" | "DAE Structural Balance";
   passed: boolean;
   diagnostics: GateDiagnostic[];
-  metadata?: {
-    astNodeCount?: number;
-    inferredDimensions?: Record<string, string>;
-    checkedFeatures?: number;
-    isConsistent?: boolean;
-    conflictingRequirements?: string[];
-    unsatCore?: string[];
-    numVariables?: number;
-    numEquations?: number;
-    numConstraints?: number;
-    degreesOfFreedom?: number;
-    isBalanced?: boolean;
-    bltBlocksCount?: number;
-    status?: string;
-  };
+  metadata?:
+    | {
+        astNodeCount?: number | undefined;
+        inferredDimensions?: Record<string, string> | undefined;
+        checkedFeatures?: number | undefined;
+        isConsistent?: boolean | undefined;
+        conflictingRequirements?: string[] | undefined;
+        unsatCore?: string[] | undefined;
+        numVariables?: number | undefined;
+        numEquations?: number | undefined;
+        numConstraints?: number | undefined;
+        degreesOfFreedom?: number | undefined;
+        isBalanced?: boolean | undefined;
+        bltBlocksCount?: number | undefined;
+        status?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface ClosedLoopCandidateVerification {
@@ -71,8 +74,8 @@ export interface ClosedLoopCandidateVerification {
 
 export interface VerifyCandidateOptions {
   parser?: any;
-  targetGates?: (1 | 2 | 3 | 4)[];
-  documentUri?: string;
+  targetGates?: (1 | 2 | 3 | 4)[] | undefined;
+  documentUri?: string | undefined;
 }
 
 /**
@@ -417,7 +420,7 @@ export async function verifyGate2Dimensions(
     // 1. Check unit bracket additions: e.g. 5[m] + 10[s]
     const unitMatches = code.matchAll(/\b([a-zA-Z0-9_]+)\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*);/g);
     for (const match of unitMatches) {
-      const expr = match[2].trim();
+      const expr = match[2]!.trim();
       // Check for obvious incompatible addition of different unit markers if present
       if (/\b(kg|m|s|N|Pa|W|J|V|A|Ohm|F|H)\b/.test(expr)) {
         // e.g., 5[m] + 10[s]
@@ -441,8 +444,8 @@ export async function verifyGate2Dimensions(
     const varTypes = new Map<string, string>();
     const varAssignments: { varName: string; declaredType: string; rhs: string }[] = [];
     for (const dm of declMatches) {
-      const typeName = dm[1];
-      const varName = dm[2];
+      const typeName = dm[1]!;
+      const varName = dm[2]!;
       const rhs = dm[3];
       varTypes.set(varName, typeName);
       if (rhs) {
@@ -518,15 +521,15 @@ export async function verifyGate3Requirements(
     if (constraints.length === 0) {
       const constraintMatches = code.matchAll(/(?:\bassert\s+)?\bconstraint(?:\s+([a-zA-Z0-9_]+))?\s*\{([^}]+)\}/g);
       for (const m of constraintMatches) {
-        const body = m[2].trim();
+        const body = m[2]!.trim();
         const compMatch = body.match(
           /\b([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s*(<=|>=|==|<|>)\s*([0-9]+(?:\.[0-9]+)?)/,
         );
         if (compMatch) {
           constraints.push({
-            lhs: compMatch[1],
+            lhs: compMatch[1]!,
             operator: compMatch[2] as any,
-            rhs: parseFloat(compMatch[3]),
+            rhs: parseFloat(compMatch[3]!),
             expression: body,
             source: "sysml2",
             requirementName: m[1] || "inlineConstraint",
@@ -541,8 +544,8 @@ export async function verifyGate3Requirements(
     );
     for (const rm of reqMatches) {
       const reqName = rm[1];
-      const attrName = rm[2];
-      const val = parseFloat(rm[3]);
+      const attrName = rm[2]!;
+      const val = parseFloat(rm[3]!);
       // If code specifies requirement limit
       constraints.push({
         lhs: attrName,
@@ -605,12 +608,23 @@ export async function verifyGate3Requirements(
     };
   } else if (norm === "modelica") {
     // Modelica parameter and assertion consistency
-    const assertMatches = code.matchAll(/\bassert\s*\(([^,()]+),\s*"([^"]+)"\)\s*;/g);
+    const boundVars = new Map<string, number>();
+    const clean = stripComments(code);
+    const paramRegex =
+      /\b(?:parameter\s+|constant\s+)?(?:Real|Integer|[A-Za-z_][A-Za-z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\([^)]*\))?\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*;/g;
+    for (const pm of clean.matchAll(paramRegex)) {
+      const val = Number(pm[2]);
+      if (Number.isFinite(val)) {
+        boundVars.set(pm[1]!, val);
+      }
+    }
+
+    const assertMatches = clean.matchAll(/\bassert\s*\(([^,]+),\s*"([^"]+)"(?:\s*,[^)]*)?\)\s*;/g);
     for (const am of assertMatches) {
-      const expr = am[1].trim();
-      const msg = am[2];
-      // Check for trivial false assertions: e.g. assert(false, ...) or assert(10 < 5, ...)
-      if (expr === "false" || expr === "0 > 1" || expr === "10 < 5") {
+      const expr = am[1]!.trim();
+      const msg = am[2]!;
+      const evalResult = evaluateModelicaBooleanExpr(expr, boundVars);
+      if (evalResult === false) {
         diagnostics.push({
           gate: 3,
           gateName: "SMT Requirement Feasibility",
@@ -634,6 +648,40 @@ export async function verifyGate3Requirements(
     passed: true,
     diagnostics: [],
   };
+}
+
+function evaluateModelicaBooleanExpr(expr: string, boundVars: ReadonlyMap<string, number>): boolean | null {
+  const trimmed = expr.trim();
+  if (trimmed === "false") return false;
+  if (trimmed === "true") return true;
+
+  // Handle logical 'and' / 'or' / 'not'
+  let jsExpr = trimmed
+    .replace(/\band\b/g, "&&")
+    .replace(/\bor\b/g, "||")
+    .replace(/\bnot\b/g, "!")
+    .replace(/<>/g, "!==");
+
+  // Replace single '=' equality if not part of <=, >=, !=, ==
+  jsExpr = jsExpr.replace(/(?<![<>!=])=(?!=)/g, "===");
+
+  // Substitute bound variables; if an unknown identifier remains, only evaluate if purely numeric
+  const idRegex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+  let hasUnbound = false;
+  jsExpr = jsExpr.replace(idRegex, (id) => {
+    if (id === "true" || id === "false" || id === "Math") return id;
+    if (boundVars.has(id)) return `(${boundVars.get(id)})`;
+    hasUnbound = true;
+    return id;
+  });
+  if (hasUnbound) return null;
+
+  try {
+    const fn = new Function(`return Boolean(${jsExpr});`) as () => boolean;
+    return fn();
+  } catch {
+    return null;
+  }
 }
 
 function stripComments(source: string): string {
@@ -684,6 +732,110 @@ function stripComments(source: string): string {
 }
 
 /**
+ * Compute maximum bipartite matching (equation -> variable) and Tarjan SCC BLT blocks.
+ */
+function analyzeBipartiteAndBLT(
+  variables: string[],
+  equationStrings: string[],
+): { matchedCount: number; bltBlocksCount: number; unmatchedVars: string[] } {
+  const nVars = variables.length;
+  const nEqs = equationStrings.length;
+  const adj: number[][] = Array.from({ length: nEqs }, () => []);
+
+  for (let e = 0; e < nEqs; e++) {
+    const eqText = equationStrings[e]!;
+    for (let v = 0; v < nVars; v++) {
+      const varName = variables[v]!;
+      const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`\\b${escaped}\\b`).test(eqText)) {
+        adj[e]!.push(v);
+      }
+    }
+    // If an equation references no recognized variable directly (e.g. connect), allow fallback edges
+    if (adj[e]!.length === 0 && nVars > 0) {
+      for (let v = 0; v < nVars; v++) adj[e]!.push(v);
+    }
+  }
+
+  // Augmenting path bipartite matching
+  const matchVarToEq = new Int32Array(nVars).fill(-1);
+  const matchEqToVar = new Int32Array(nEqs).fill(-1);
+
+  const dfsAugment = (eqIdx: number, visited: Uint8Array): boolean => {
+    for (const vIdx of adj[eqIdx]!) {
+      if (visited[vIdx]) continue;
+      visited[vIdx] = 1;
+      if (matchVarToEq[vIdx] === -1 || dfsAugment(matchVarToEq[vIdx]!, visited)) {
+        matchVarToEq[vIdx] = eqIdx;
+        matchEqToVar[eqIdx] = vIdx;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  let matchedCount = 0;
+  for (let e = 0; e < nEqs; e++) {
+    const visited = new Uint8Array(nVars);
+    if (dfsAugment(e, visited)) {
+      matchedCount++;
+    }
+  }
+
+  const unmatchedVars: string[] = [];
+  for (let v = 0; v < nVars; v++) {
+    if (matchVarToEq[v] === -1) unmatchedVars.push(variables[v]!);
+  }
+
+  // Tarjan's Strongly Connected Components (SCC) for BLT decomposition on matched equations
+  let index = 0;
+  const indices = new Int32Array(nEqs).fill(-1);
+  const lowlink = new Int32Array(nEqs).fill(-1);
+  const onStack = new Uint8Array(nEqs);
+  const stack: number[] = [];
+  let sccCount = 0;
+
+  const strongConnect = (e: number) => {
+    indices[e] = index;
+    lowlink[e] = index;
+    index++;
+    stack.push(e);
+    onStack[e] = 1;
+
+    for (const v of adj[e]!) {
+      const targetEq = matchVarToEq[v]!;
+      if (targetEq >= 0 && targetEq !== e) {
+        if (indices[targetEq] === -1) {
+          strongConnect(targetEq);
+          lowlink[e] = Math.min(lowlink[e]!, lowlink[targetEq]!);
+        } else if (onStack[targetEq]) {
+          lowlink[e] = Math.min(lowlink[e]!, indices[targetEq]!);
+        }
+      }
+    }
+
+    if (lowlink[e] === indices[e]) {
+      sccCount++;
+      while (stack.length > 0) {
+        const w = stack.pop()!;
+        onStack[w] = 0;
+        if (w === e) break;
+      }
+    }
+  };
+
+  for (let e = 0; e < nEqs; e++) {
+    if (indices[e] === -1) strongConnect(e);
+  }
+
+  return {
+    matchedCount,
+    bltBlocksCount: sccCount > 0 ? sccCount : nEqs,
+    unmatchedVars,
+  };
+}
+
+/**
  * Gate 4: DAE Arena Structural Balance & BLT Causalization
  */
 export async function verifyGate4DAEBalance(
@@ -710,6 +862,31 @@ export async function verifyGate4DAEBalance(
       .filter((s) => s.length > 0);
 
     const declaredVars = new Set<string>();
+
+    // Walk CST if provided to extract component_clause nodes
+    if (_tree?.rootNode) {
+      const visitCst = (node: any) => {
+        if (node.type === "component_clause") {
+          const text = String(node.text ?? "");
+          if (!/\b(?:parameter|constant|input)\b/.test(text)) {
+            const m = text.match(
+              /(?:(?:public|protected)\s+)?(?:(?:output|discrete)\s+)?[A-Za-z_][a-zA-Z0-9_.]*\s+([^=;()]+)/,
+            );
+            if (m?.[1]) {
+              for (const rawId of m[1].split(",")) {
+                const id = rawId.trim().split(/\s+/)[0];
+                if (id && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) declaredVars.add(id);
+              }
+            }
+          }
+        }
+        if (Array.isArray(node.children)) {
+          for (const child of node.children) visitCst(child);
+        }
+      };
+      visitCst(_tree.rootNode);
+    }
+
     for (const stmt of declStatements) {
       if (
         stmt.startsWith("model ") ||
@@ -739,15 +916,15 @@ export async function verifyGate4DAEBalance(
         const idents = typeIdentMatch[1]
           .split(",")
           .map((id) => id.trim().split(/\s+/)[0])
-          .filter((id) => id.length > 0 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id));
+          .filter((id) => id!.length > 0 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id!));
         for (const id of idents) {
-          declaredVars.add(id);
+          declaredVars.add(id!);
         }
       }
     }
 
     // 3. Extract equations in equation section
-    let eqCount = 0;
+    const equationStrings: string[] = [];
     if (eqMatch && eqMatch[1]) {
       const rawEqs = eqMatch[1]
         .split(";")
@@ -756,13 +933,14 @@ export async function verifyGate4DAEBalance(
 
       for (const eq of rawEqs) {
         if (/\bconnect\s*\(/.test(eq)) {
-          eqCount += 2;
+          equationStrings.push(eq, eq);
         } else if (eq.includes("=") || /\bder\s*\(/.test(eq)) {
-          eqCount += 1;
+          equationStrings.push(eq);
         }
       }
     }
 
+    const eqCount = equationStrings.length;
     const varCount = declaredVars.size;
 
     if (varCount > 0 || eqCount > 0) {
@@ -793,7 +971,37 @@ export async function verifyGate4DAEBalance(
       }
     }
 
-    // If balanced, check BLT solvability
+    // Perform bipartite matching & Tarjan SCC BLT block decomposition
+    const { matchedCount, bltBlocksCount, unmatchedVars } = analyzeBipartiteAndBLT([...declaredVars], equationStrings);
+
+    if (varCount > 0 && matchedCount < varCount) {
+      diagnostics.push({
+        gate: 4,
+        gateName: "DAE Structural Balance",
+        severity: "error",
+        message: `DAE structurally singular: ${unmatchedVars.length} variable(s) (${unmatchedVars.join(", ")}) could not be matched to an independent equation.`,
+        metadata: {
+          numEquations: eqCount,
+          numVariables: varCount,
+          matchedCount,
+          unmatchedVars,
+        },
+      });
+      return {
+        gate: 4,
+        gateName: "DAE Structural Balance",
+        passed: false,
+        diagnostics,
+        metadata: {
+          numEquations: eqCount,
+          numVariables: varCount,
+          degreesOfFreedom: varCount - matchedCount,
+          isBalanced: false,
+          bltBlocksCount,
+        },
+      };
+    }
+
     return {
       gate: 4,
       gateName: "DAE Structural Balance",
@@ -804,7 +1012,7 @@ export async function verifyGate4DAEBalance(
         numVariables: varCount,
         degreesOfFreedom: 0,
         isBalanced: true,
-        bltBlocksCount: eqCount,
+        bltBlocksCount,
       },
     };
   } else if (norm === "sysml2" || norm === "sysml") {
@@ -817,14 +1025,14 @@ export async function verifyGate4DAEBalance(
     for (const am of attrMatches) {
       const full = am[0];
       if (!full.includes("=")) {
-        uninitializedAttrs.push(am[1]);
+        uninitializedAttrs.push(am[1]!);
       }
     }
 
     const eqMatches = code.matchAll(/(?:\bassert\s+)?\bconstraint\s*\{([^}=]+=[^}]+)\}/g);
     const equations: string[] = [];
     for (const em of eqMatches) {
-      equations.push(em[1].trim());
+      equations.push(em[1]!.trim());
     }
 
     if (uninitializedAttrs.length > 0 && equations.length > 0) {

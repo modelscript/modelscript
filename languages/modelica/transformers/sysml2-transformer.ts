@@ -8,10 +8,10 @@
 export interface ModelicaComponent {
   name: string;
   typeSpecifier: string;
-  variability?: string;
-  causality?: string;
-  defaultValue?: string;
-  isInherited?: boolean;
+  variability?: string | undefined;
+  causality?: string | undefined;
+  defaultValue?: string | undefined;
+  isInherited?: boolean | undefined;
 }
 
 export interface ModelicaConnection {
@@ -21,15 +21,15 @@ export interface ModelicaConnection {
 
 export interface ModelicaModel {
   name: string;
-  kind?: "model" | "block" | "class";
-  isPartial?: boolean;
-  extends?: string[];
+  kind?: "model" | "block" | "class" | undefined;
+  isPartial?: boolean | undefined;
+  extends?: string[] | undefined;
   components: ModelicaComponent[];
   connections: ModelicaConnection[];
 }
 
 export interface ReasonerFeatureProvider {
-  getInferredFeatures?: (className: string) => { name: string; type: string }[];
+  getInferredFeatures?: ((className: string) => { name: string; type: string }[]) | undefined;
 }
 
 /**

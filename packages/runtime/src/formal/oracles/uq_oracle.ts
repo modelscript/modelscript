@@ -128,7 +128,7 @@ export class UqTheoryOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     for (const req of this.requirements) {
       const dist = this.distributions.get(req.varName);
       if (!dist) continue;

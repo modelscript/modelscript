@@ -48,11 +48,11 @@ export interface StochasticProblem {
   /** Random variables with their distributions. */
   randomVariables: RandomVariable[];
   /** Pre-generated scenarios (if not provided, generated from randomVariables). */
-  scenarios?: Scenario[];
+  scenarios?: Scenario[] | undefined;
   /** Scenario weights (probabilities). Defaults to uniform 1/N. */
-  weights?: number[];
+  weights?: number[] | undefined;
   /** Monte Carlo options for scenario generation. */
-  monteCarloOptions?: MonteCarloOptions;
+  monteCarloOptions?: MonteCarloOptions | undefined;
 }
 
 /**
@@ -67,18 +67,18 @@ export interface MultiStageStochasticProblem {
   /** Scenario probabilities. */
   weights: number[];
   /** Penalty parameter ρ for Progressive Hedging (default: 1.0). */
-  rho?: number;
+  rho?: number | undefined;
   /** Maximum PH iterations (default: 100). */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** PH convergence tolerance (default: 1e-4). */
-  tolerance?: number;
+  tolerance?: number | undefined;
 }
 
 export interface StageDefinition {
   /** Variable names that are decided at this stage. */
   variables: string[];
   /** Transcription method for optimal control within this stage. */
-  method?: TranscriptionMethod;
+  method?: TranscriptionMethod | undefined;
 }
 
 /**
@@ -88,9 +88,9 @@ export interface StochasticResult extends OptimizationResult {
   /** Per-scenario optimal costs. */
   scenarioCosts: number[];
   /** Value of Stochastic Solution: EEV − RP. */
-  vss?: number;
+  vss?: number | undefined;
   /** Expected Value of Perfect Information: RP − WS. */
-  evpi?: number;
+  evpi?: number | undefined;
   /** Number of scenarios used. */
   numScenarios: number;
 }
@@ -518,7 +518,7 @@ export function computeVSSandEVPI(
   scenarioCosts: number[],
   weights: number[],
   evCost?: number,
-): { vss?: number; evpi: number } {
+): { vss?: number | undefined; evpi: number } {
   // WS = Σ pˢ · (optimal cost for scenario s) — wait-and-see value
   let ws = 0;
   for (let i = 0; i < scenarioCosts.length; i++) {

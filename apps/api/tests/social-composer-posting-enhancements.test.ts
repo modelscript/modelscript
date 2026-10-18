@@ -341,4 +341,108 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
     const parsedFmuConfig = JSON.parse(getFmuView.body.artifactView.view_config);
     assert.strictEqual(parsedFmuConfig.modelName, "DriveTrainSystem");
   });
+
+  await t.test("Long-Form Notebook Posts: Interspersed Markdown & Multiple Artifacts", async () => {
+    // Create two distinct artifact views to interleave in a notebook post
+    const art1Res = await request(app)
+      .post("/api/v1/social/artifact-views")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        artifact_type: "modelica-diagram",
+        view_config: JSON.stringify({ modelName: "ChuaCircuit", code: "model ChuaCircuit end ChuaCircuit;" }),
+        title: "Chua Circuit Topology",
+      });
+    assert.strictEqual(art1Res.status, 201);
+    const art1Id = art1Res.body.id as number;
+
+    const art2Res = await request(app)
+      .post("/api/v1/social/artifact-views")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        artifact_type: "simulation-plot",
+        view_config: JSON.stringify({ series: [{ name: "v_C1", data: [0.1, 0.4, -0.3] }] }),
+        title: "Strange Attractor Phase Portrait",
+      });
+    assert.strictEqual(art2Res.status, 201);
+    const art2Id = art2Res.body.id as number;
+
+    // 1. Create a notebook post using structured cells payload
+    const structuredNotebookRes = await request(app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        notebook: {
+          title: "Nonlinear Dynamics of Chua's Circuit",
+          cells: [
+            { id: "c1", type: "markdown", content: "## 1. Circuit Architecture\nWe model the canonical Chua circuit." },
+            {
+              id: "c2",
+              type: "artifact",
+              artifactId: art1Id,
+              title: "Chua Circuit Topology",
+              caption: "Schematic view of the nonlinear resistor and LC tank.",
+            },
+            { id: "c3", type: "markdown", content: "## 2. Chaotic Trajectory\nIntegrating with SUNDIALS CVODE:" },
+            {
+              id: "c4",
+              type: "artifact",
+              artifactId: art2Id,
+              title: "Strange Attractor Phase Portrait",
+              caption: "Double-scroll attractor over t = [0, 50s].",
+            },
+          ],
+        },
+      });
+
+    assert.strictEqual(structuredNotebookRes.status, 201);
+    const nbPost = structuredNotebookRes.body.post;
+    assert.ok(nbPost);
+    // Primary artifact_view_id falls back to the first embedded artifact for SQL compatibility
+    assert.strictEqual(nbPost.artifact_view_id, art1Id);
+    assert.ok(nbPost.metadata?.notebook);
+    assert.strictEqual(nbPost.metadata.notebook.isNotebook, true);
+    assert.strictEqual(nbPost.metadata.notebook.title, "Nonlinear Dynamics of Chua's Circuit");
+    assert.strictEqual(nbPost.metadata.notebook.cells.length, 4);
+    assert.deepStrictEqual(nbPost.metadata.notebook.artifactIds, [art1Id, art2Id]);
+    // Content is automatically serialized with ::artifact[...] directives
+    assert.ok(nbPost.content.includes(`::artifact[Chua Circuit Topology]{id=${art1Id}`));
+    assert.ok(nbPost.content.includes(`::artifact[Strange Attractor Phase Portrait]{id=${art2Id}`));
+    // Multi-artifact hydration map includes both artifact views
+    assert.ok(nbPost.artifact_views);
+    assert.strictEqual(nbPost.artifact_views[art1Id].title, "Chua Circuit Topology");
+    assert.strictEqual(nbPost.artifact_views[art2Id].title, "Strange Attractor Phase Portrait");
+
+    // 2. Create a notebook post using inline ::artifact directives in content
+    const directiveContent = [
+      "Opening analysis of the coupled oscillator.",
+      `::artifact[Chua Circuit Topology]{id=${art1Id} caption="First embedded figure"}`,
+      "Intermediate commentary comparing bifurcations.",
+      `::artifact[Strange Attractor Phase Portrait]{id=${art2Id} caption="Second embedded figure"}`,
+    ].join("\n\n");
+
+    const directiveNotebookRes = await request(app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        content: directiveContent,
+      });
+
+    assert.strictEqual(directiveNotebookRes.status, 201);
+    const dirPost = directiveNotebookRes.body.post;
+    assert.strictEqual(dirPost.artifact_view_id, art1Id);
+    assert.strictEqual(dirPost.metadata?.notebook?.isNotebook, true);
+    assert.strictEqual(dirPost.metadata.notebook.cells.length, 4);
+    assert.deepStrictEqual(dirPost.metadata.notebook.artifactIds, [art1Id, art2Id]);
+    assert.ok(dirPost.artifact_views?.[art1Id]);
+    assert.ok(dirPost.artifact_views?.[art2Id]);
+
+    // 3. Filter timeline by artifactType=notebook
+    const nbTimelineRes = await request(app)
+      .get("/api/v1/social/timeline?artifactType=notebook")
+      .set("Authorization", `Bearer ${authorToken}`);
+    assert.strictEqual(nbTimelineRes.status, 200);
+    const returnedIds = nbTimelineRes.body.posts.map((p: any) => p.id);
+    assert.ok(returnedIds.includes(nbPost.id));
+    assert.ok(returnedIds.includes(dirPost.id));
+  });
 });

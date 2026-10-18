@@ -31,6 +31,11 @@ import { createWasmParserSync } from "../src-gen/bindings.js";
 import { SysML2CstFlattener } from "./flattener/cst-lowerer.js";
 
 let cachedSysmlParser: any = null;
+/**
+ * Lazily loads and caches the synchronous WebAssembly GLR parser for SysML v2 (`parser.wasm`).
+ *
+ * @returns Initialized WASM parser instance or `null` if the binary is unavailable.
+ */
 export function getSysmlParser(): any {
   if (cachedSysmlParser) return cachedSysmlParser;
   try {
@@ -51,27 +56,51 @@ export function getSysmlParser(): any {
   return cachedSysmlParser;
 }
 
+/**
+ * Result of lowering an imperative SysML v2 `action` or `calc` block into `DAEBuilder` statements.
+ */
 export interface LoweredActionDae {
+  /** Linear-memory `DAEBuilder` arena containing variables, expressions, and statements. */
   arena: DAEBuilder;
+  /** Declared action or calculation name. */
   name: string;
+  /** Ordered list of `in` pin/parameter names. */
   inputs: string[];
+  /** Ordered list of `out` or `return` parameter names. */
   outputs: string[];
+  /** Intermediate local variables synthesized from assignments. */
   locals: string[];
+  /** Starting statement index inside `arena` for this action's body. */
   startStmtIdx: number;
+  /** Total number of statement slots emitted for this action. */
   stmtCount: number;
 }
 
+/**
+ * Result of lowering a declarative SysML v2 `constraint` or `part` model into `DAEBuilder` equations.
+ */
 export interface LoweredConstraintDae {
+  /** Linear-memory `DAEBuilder` arena containing variables and DAE equations. */
   arena: DAEBuilder;
+  /** Resolved root model or constraint definition name. */
   name: string;
+  /** Flattened parameter names. */
   parameters: string[];
+  /** Flattened continuous state and algebraic variable names. */
   states: string[];
+  /** Time-derivative expressions (`der(x)`) present in the equations. */
   derivatives: string[];
+  /** Number of equations added to `arena`. */
   eqCount: number;
 }
 
+/**
+ * Lexical token produced by `tokenizeSysml` for lightweight expression/statement parsing.
+ */
 export interface SysML2Token {
+  /** Token classification (`num`, `ident`, `op`, `paren`, `semi`, or `kw`). */
   type: "num" | "ident" | "op" | "paren" | "semi" | "kw";
+  /** Raw token lexeme string. */
   val: string;
 }
 
@@ -124,16 +153,23 @@ export function tokenizeSysml(input: string): SysML2Token[] {
 }
 
 /**
- * Expression parser generating DAE arena ExprIds.
+ * Pratt / recursive-descent expression parser generating linear-memory `DAEBuilder` `ExprId`s directly.
  */
 export class SysmlExprParser {
   private pos = 0;
 
+  /**
+   * @param tokens - Token stream produced by `tokenizeSysml`.
+   * @param arena - Target `DAEBuilder` arena to allocate expression nodes in.
+   */
   constructor(
     private tokens: SysML2Token[],
     private arena: DAEBuilder,
   ) {}
 
+  /**
+   * Parses the token stream and returns the root `ExprId` in `this.arena`.
+   */
   public parse(): number {
     return this.parseLogicalOr();
   }
@@ -289,9 +325,13 @@ export class SysmlExprParser {
 type ParsedAstStmt =
   | { kind: "assign"; target: string; expr: string }
   | { kind: "while"; cond: string; body: ParsedAstStmt[] }
-  | { kind: "if"; cond: string; thenBody: ParsedAstStmt[]; elseBody?: ParsedAstStmt[] }
-  | { kind: "return"; expr?: string };
+  | { kind: "if"; cond: string; thenBody: ParsedAstStmt[]; elseBody?: ParsedAstStmt[] | undefined }
+  | { kind: "return"; expr?: string | undefined };
 
+/**
+ * Compiles SysML v2 calculations, action scripts, and physical part/constraint equations
+ * directly into linear-memory `DAEBuilder` arenas for zero-GC execution and DAE simulation.
+ */
 export class SysML2DaeLowerer {
   /**
    * Lowers an expression string into an arena ExprId.
@@ -371,6 +411,10 @@ export class SysML2DaeLowerer {
     };
   }
 
+  /**
+   * Parses imperative action/calculation statements (`while`, `if`/`else`, `return`, `assign`)
+   * from a brace-delimited body string into a lightweight statement tree.
+   */
   private static parseStatementsToAst(bodyText: string): ParsedAstStmt[] {
     const stmts: ParsedAstStmt[] = [];
     let pos = 0;
@@ -456,6 +500,10 @@ export class SysML2DaeLowerer {
     return stmts;
   }
 
+  /**
+   * Computes the total number of linear statement slots required by a statement block
+   * so `While` and `If` headers can record exact jump offsets in `stmtData`.
+   */
   private static countAstSlots(stmts: ParsedAstStmt[]): number {
     let count = 0;
     for (const s of stmts) {
@@ -473,6 +521,9 @@ export class SysML2DaeLowerer {
     return count;
   }
 
+  /**
+   * Emits parsed statements into `DAEBuilder`'s linear statement table (`stmtData`).
+   */
   private static emitAstStatements(
     stmts: ParsedAstStmt[],
     arena: DAEBuilder,
@@ -516,6 +567,9 @@ export class SysML2DaeLowerer {
     }
   }
 
+  /**
+   * Extracts the substring enclosed by matching `{` and `}` braces starting at `openBracePos`.
+   */
   private static extractBraceBlock(str: string, openBracePos: number): { body: string; endPos: number } {
     let depth = 1;
     let i = openBracePos + 1;
@@ -587,7 +641,7 @@ export class SysML2DaeLowerer {
   public static lowerCst(
     sourceOrRootNode: string | any,
     existingArena?: DAEBuilder,
-    options?: { overrides?: Record<string, number>; rootComponentName?: string },
+    options?: { overrides?: Record<string, number> | undefined; rootComponentName?: string | undefined },
   ): LoweredConstraintDae & { rootName: string } {
     let root = sourceOrRootNode;
     let sourceText: string | undefined;
@@ -761,7 +815,7 @@ export class SysML2DaeLowerer {
 
     // Helper to instantiate a component definition
     const instantiateComponent = (
-      compName: string,
+      _compName: string,
       compBody: string,
       prefix: string,
       overrides: Record<string, number>,

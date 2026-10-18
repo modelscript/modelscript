@@ -189,7 +189,11 @@ export class SessionManager {
   /** Maximum runtime (ms) for running sessions before forced failure. Default: 24 hours. */
   readonly maxRuntimeMs: number;
 
-  constructor(options?: { staleTtlMs?: number; maxRuntimeMs?: number; cleanupIntervalMs?: number }) {
+  constructor(options?: {
+    staleTtlMs?: number | undefined;
+    maxRuntimeMs?: number | undefined;
+    cleanupIntervalMs?: number | undefined;
+  }) {
     this.staleTtlMs = options?.staleTtlMs ?? 60 * 60 * 1000; // 1 hour
     this.maxRuntimeMs = options?.maxRuntimeMs ?? 24 * 60 * 60 * 1000; // 24 hours
 

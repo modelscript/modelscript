@@ -208,12 +208,18 @@ export function initializeGPUStateBuffer(
   buffers: GPUArenaBuffers,
   parameterOverrides?: Map<string, number>,
 ): void {
+  const varOffsets = buffers.varOffsets ?? arena.getVarOffsets?.();
   // Set all parameter and constant values
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
     const v = arena.getVarVariability(i);
     if (v === Variability.Parameter || v === Variability.Constant) {
-      buffers.stateBuffer[i] = arena.getVarStartValue(i);
+      const offset = varOffsets ? (varOffsets[i] ?? i) : i;
+      const val = arena.getVarStartValue(i);
+      const hi = Math.fround(val);
+      const lo = Math.fround(val - hi);
+      buffers.stateBuffer[offset * 2] = hi;
+      buffers.stateBuffer[offset * 2 + 1] = lo;
     }
   }
 
@@ -222,7 +228,11 @@ export function initializeGPUStateBuffer(
     for (const [name, val] of parameterOverrides) {
       const idx = arena.getVarIdxByName(name);
       if (idx >= 0) {
-        buffers.stateBuffer[idx] = val;
+        const offset = varOffsets ? (varOffsets[idx] ?? idx) : idx;
+        const hi = Math.fround(val);
+        const lo = Math.fround(val - hi);
+        buffers.stateBuffer[offset * 2] = hi;
+        buffers.stateBuffer[offset * 2 + 1] = lo;
       }
     }
   }

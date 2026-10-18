@@ -9,9 +9,9 @@ export enum Arrow {
 
 export interface IBitmap extends IGraphicItem {
   "@type": "Bitmap";
-  extent?: IExtent;
-  fileName?: string;
-  imageSource?: string;
+  extent?: IExtent | undefined;
+  fileName?: string | undefined;
+  imageSource?: string | undefined;
 }
 
 export enum BorderPattern {
@@ -25,26 +25,26 @@ export type IColor = [number, number, number];
 
 export interface ICoordinateSystem {
   "@type": "CoordinateSystem";
-  extent?: IExtent;
-  grid?: [IDrawingUnit, IDrawingUnit];
-  initialScale?: number;
-  preserveAspectRatio?: boolean;
+  extent?: IExtent | undefined;
+  grid?: [IDrawingUnit, IDrawingUnit] | undefined;
+  initialScale?: number | undefined;
+  preserveAspectRatio?: boolean | undefined;
 }
 
 export interface IDiagram<T extends IGraphicItem = IGraphicItem> {
   "@type": "Diagram";
-  coordinateSystem?: ICoordinateSystem;
-  graphics?: T[];
+  coordinateSystem?: ICoordinateSystem | undefined;
+  graphics?: T[] | undefined;
 }
 
 export type IDrawingUnit = number;
 
 export interface IEllipse extends IFilledShape, IGraphicItem {
   "@type": "Ellipse";
-  closure?: EllipseClosure;
-  endAngle?: number;
-  extent?: IExtent;
-  startAngle?: number;
+  closure?: EllipseClosure | undefined;
+  endAngle?: number | undefined;
+  extent?: IExtent | undefined;
+  startAngle?: number | undefined;
 }
 
 export enum EllipseClosure {
@@ -58,11 +58,11 @@ export type IExtent = [IPoint, IPoint];
 
 export interface IFilledShape {
   "@type": string;
-  fillColor?: IColor;
-  fillPattern?: FillPattern;
-  lineColor?: IColor;
-  lineThickness?: IDrawingUnit;
-  pattern?: LinePattern;
+  fillColor?: IColor | undefined;
+  fillPattern?: FillPattern | undefined;
+  lineColor?: IColor | undefined;
+  lineThickness?: IDrawingUnit | undefined;
+  pattern?: LinePattern | undefined;
 }
 
 export enum FillPattern {
@@ -81,26 +81,26 @@ export enum FillPattern {
 
 export interface IGraphicItem {
   "@type": string;
-  origin?: IPoint;
-  rotation?: number;
-  visible?: boolean;
+  origin?: IPoint | undefined;
+  rotation?: number | undefined;
+  visible?: boolean | undefined;
 }
 
 export interface IIcon<T extends IGraphicItem = IGraphicItem> {
   "@type": "Icon";
-  coordinateSystem?: ICoordinateSystem;
-  graphics?: T[];
+  coordinateSystem?: ICoordinateSystem | undefined;
+  graphics?: T[] | undefined;
 }
 
 export interface ILine extends IGraphicItem {
   "@type": "Line";
-  arrow?: [Arrow, Arrow];
-  arrowSize?: IDrawingUnit;
-  color?: IColor;
-  thickness?: IDrawingUnit;
-  pattern?: LinePattern;
-  points?: IPoint[];
-  smooth?: Smooth;
+  arrow?: [Arrow, Arrow] | undefined;
+  arrowSize?: IDrawingUnit | undefined;
+  color?: IColor | undefined;
+  thickness?: IDrawingUnit | undefined;
+  pattern?: LinePattern | undefined;
+  points?: IPoint[] | undefined;
+  smooth?: Smooth | undefined;
 }
 
 export enum LinePattern {
@@ -114,24 +114,24 @@ export enum LinePattern {
 
 export interface IPlacement {
   "@type": "Placement";
-  icon?: ITransformation;
-  transformation?: ITransformation;
-  visible?: boolean;
+  icon?: ITransformation | undefined;
+  transformation?: ITransformation | undefined;
+  visible?: boolean | undefined;
 }
 
 export type IPoint = [number, number];
 
 export interface IPolygon extends IFilledShape, IGraphicItem {
   "@type": "Polygon";
-  points?: IPoint[];
-  smooth?: Smooth;
+  points?: IPoint[] | undefined;
+  smooth?: Smooth | undefined;
 }
 
 export interface IRectangle extends IFilledShape, IGraphicItem {
   "@type": "Rectangle";
-  borderPattern?: BorderPattern;
-  extent?: IExtent;
-  radius?: IDrawingUnit;
+  borderPattern?: BorderPattern | undefined;
+  extent?: IExtent | undefined;
+  radius?: IDrawingUnit | undefined;
 }
 
 export enum Smooth {
@@ -141,13 +141,13 @@ export enum Smooth {
 
 export interface IText extends IFilledShape, IGraphicItem {
   "@type": "Text";
-  extent?: IExtent;
-  fontName?: string;
-  fontSize?: IDrawingUnit;
-  horizontalAlignment?: TextAlignment;
-  style?: TextStyle[];
-  string?: string;
-  textStyle?: TextStyle[];
+  extent?: IExtent | undefined;
+  fontName?: string | undefined;
+  fontSize?: IDrawingUnit | undefined;
+  horizontalAlignment?: TextAlignment | undefined;
+  style?: TextStyle[] | undefined;
+  string?: string | undefined;
+  textStyle?: TextStyle[] | undefined;
 }
 
 export enum TextAlignment {
@@ -164,29 +164,29 @@ export enum TextStyle {
 
 export interface ITransformation {
   "@type": "Transformation";
-  extent?: IExtent;
-  origin?: IPoint;
-  rotation?: number;
+  extent?: IExtent | undefined;
+  origin?: IPoint | undefined;
+  rotation?: number | undefined;
 }
 
 export interface ModelicaComponentInstance {
   name: string;
   declaration?: any;
-  classInstance?: ModelicaClassInstance | null;
-  annotation?: (key?: string, ...args: any[]) => any;
-  annotations?: any[];
+  classInstance?: ModelicaClassInstance | null | undefined;
+  annotation?: ((key?: string, ...args: any[]) => any) | undefined;
+  annotations?: any[] | undefined;
   [key: string]: any;
 }
 
 export interface ModelicaClassInstance {
-  id?: number;
+  id?: number | undefined;
   db?: any;
-  name?: string;
-  kind?: string;
-  components?: ModelicaComponentInstance[];
-  extendsClassInstances?: ModelicaClassInstance[];
-  annotation?: (key?: string, ...args: any[]) => any;
-  annotations?: any[];
-  declaredElements?: any[];
+  name?: string | undefined;
+  kind?: string | undefined;
+  components?: ModelicaComponentInstance[] | undefined;
+  extendsClassInstances?: ModelicaClassInstance[] | undefined;
+  annotation?: ((key?: string, ...args: any[]) => any) | undefined;
+  annotations?: any[] | undefined;
+  declaredElements?: any[] | undefined;
   [key: string]: any;
 }

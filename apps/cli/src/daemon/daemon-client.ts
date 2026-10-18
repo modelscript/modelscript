@@ -11,7 +11,9 @@ import { getSocketPath } from "./socket-path.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function isSocketAlive(timeoutMs = 300): Promise<{ alive: boolean; pid?: number; uptime?: number }> {
+export function isSocketAlive(
+  timeoutMs = 300,
+): Promise<{ alive: boolean; pid?: number | undefined; uptime?: number | undefined }> {
   const socketPath = getSocketPath();
   if (!fs.existsSync(socketPath)) {
     return Promise.resolve({ alive: false });

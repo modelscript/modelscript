@@ -32,9 +32,9 @@ export interface ArenaSurrogatePipelineConfig {
    * Instance name for the surrogate in the FmuSubsystemRegistry.
    * If provided, the trained ROM is automatically registered.
    */
-  registerAs?: string;
+  registerAs?: string | undefined;
   /** Optional registry to register into (default: creates new). */
-  registry?: FmuSubsystemRegistry;
+  registry?: FmuSubsystemRegistry | undefined;
 }
 
 /** Result of the arena surrogate pipeline. */
@@ -160,7 +160,7 @@ export function buildArenaSurrogate(
  */
 export async function buildArenaSurrogateAsync(
   arena: DAEBuilder,
-  config: ArenaSurrogatePipelineConfig & { signal?: AbortSignal },
+  config: ArenaSurrogatePipelineConfig & { signal?: AbortSignal | undefined },
   onProgress?: ArenaSurrogateProgressCallback,
 ): Promise<ArenaSurrogatePipelineResult> {
   const totalStart = performance.now();
@@ -175,7 +175,7 @@ export async function buildArenaSurrogateAsync(
     },
   };
 
-  const asyncDoeConfig: ArenaDoEConfig & { signal?: AbortSignal } = { ...doeConfig };
+  const asyncDoeConfig: ArenaDoEConfig & { signal?: AbortSignal | undefined } = { ...doeConfig };
   if (config.signal) asyncDoeConfig.signal = config.signal;
   const doeResult = await runArenaDoEAsync(arena, asyncDoeConfig);
 

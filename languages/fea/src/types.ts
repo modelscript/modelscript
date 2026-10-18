@@ -3,9 +3,9 @@
 export interface BoundaryActionPayload {
   kind: "fix" | "force" | "displacement" | "pressure" | "moment" | "inlet";
   targetId: number | string;
-  dofs?: number[];
-  magnitude?: number;
-  vector?: [number, number, number];
+  dofs?: number[] | undefined;
+  magnitude?: number | undefined;
+  vector?: [number, number, number] | undefined;
 }
 
 export interface FeaNode {
@@ -19,28 +19,28 @@ export interface FeaElement {
   id: number;
   type: string; // e.g. "C3D4", "C3D10", "CTETRA", "CHEXA", "S3", "S4", "CQUAD4", "CTRIA3"
   nodes: number[];
-  elset?: string;
-  family?: "solid" | "shell" | "beam" | "truss" | "other";
+  elset?: string | undefined;
+  family?: "solid" | "shell" | "beam" | "truss" | "other" | undefined;
 }
 
 export interface FeaMaterial {
   name: string;
-  E?: number;
-  nu?: number;
-  rho?: number;
-  yieldStrength?: number;
+  E?: number | undefined;
+  nu?: number | undefined;
+  rho?: number | undefined;
+  yieldStrength?: number | undefined;
 }
 
 export interface CaeDiagnostic {
   severity: "error" | "warning" | "info";
   message: string;
-  line?: number;
-  column?: number;
-  expression?: string;
+  line?: number | undefined;
+  column?: number | undefined;
+  expression?: string | undefined;
 }
 
 export interface FeaModelData {
-  heading?: string;
+  heading?: string | undefined;
   dialect: string;
   nodes: Map<number, FeaNode>;
   elements: Map<number, FeaElement>;
@@ -49,14 +49,15 @@ export interface FeaModelData {
   materials: Map<string, FeaMaterial>;
   fixedNodes: Set<number>;
   nodalLoads: Map<number, [number, number, number]>;
+  displacements?: Map<number, [number, number, number]> | undefined;
 }
 
 export type ParameterLookup = (name: string) => number | string | undefined;
 
 export interface MaterializeOptions {
-  evaluator?: ParameterLookup | Record<string, number | string>;
-  formatNumber?: (val: number) => string;
-  diagnostics?: CaeDiagnostic[];
+  evaluator?: ParameterLookup | Record<string, number | string> | undefined;
+  formatNumber?: ((val: number) => string) | undefined;
+  diagnostics?: CaeDiagnostic[] | undefined;
 }
 
 export interface FeaDialect {

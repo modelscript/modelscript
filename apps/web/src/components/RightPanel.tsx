@@ -250,7 +250,7 @@ const SpinSyncIcon = styled(SyncIcon)<{ $isSpinning: boolean }>`
   }
 `;
 
-const Avatar = styled.div<{ $url?: string; $letter?: string }>`
+const Avatar = styled.div<{ $url?: string | undefined; $letter?: string | undefined }>`
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -366,8 +366,8 @@ const KebabButton = styled.button`
 `;
 
 interface RightPanelProps {
-  clusterInfo?: ClusterStatus | null;
-  onOpenCommandPalette?: () => void;
+  clusterInfo?: ClusterStatus | null | undefined;
+  onOpenCommandPalette?: (() => void) | undefined;
 }
 
 const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, onOpenCommandPalette }) => {

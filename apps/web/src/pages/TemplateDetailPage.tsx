@@ -22,9 +22,9 @@ interface ScriptTemplate {
 }
 
 interface TemplateConfig {
-  solver?: string;
-  estimatedDuration?: string;
-  steps?: unknown[];
+  solver?: string | undefined;
+  estimatedDuration?: string | undefined;
+  steps?: unknown[] | undefined;
 }
 
 const TemplateDetailPage: React.FC = () => {
@@ -63,7 +63,7 @@ const TemplateDetailPage: React.FC = () => {
     } catch (e: unknown) {
       console.error(e);
       const msg =
-        (axios.isAxiosError(e) && (e.response?.data as { error?: string })?.error) ||
+        (axios.isAxiosError(e) && (e.response?.data as { error?: string | undefined })?.error) ||
         (e instanceof Error ? e.message : "Error starting job");
       setError(msg);
     } finally {

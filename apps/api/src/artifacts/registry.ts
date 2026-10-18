@@ -34,11 +34,11 @@ export interface ArtifactMetadata {
   /** Path within the tarball. */
   path: string;
   /** Human-readable description. */
-  description?: string;
+  description?: string | undefined;
   /** MIME type for serving. */
-  mimeType?: string;
+  mimeType?: string | undefined;
   /** Size in bytes (if known). */
-  size?: number;
+  size?: number | undefined;
   /** Type-specific metadata (e.g., FMI version, platforms, variables). */
   details: Record<string, unknown>;
 }
@@ -129,13 +129,19 @@ export class ArtifactRegistry {
    * Auto-detect artifact type from file extension.
    */
   detectType(filePath: string): string | null {
-    const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
+    const lowerPath = filePath.toLowerCase();
+    let bestMatch: { type: string; extLen: number } | null = null;
     for (const handler of this.handlers.values()) {
-      if (handler.extensions.includes(ext)) {
-        return handler.type;
+      for (const ext of handler.extensions) {
+        const lowerExt = ext.toLowerCase();
+        if (lowerPath.endsWith(lowerExt)) {
+          if (!bestMatch || lowerExt.length > bestMatch.extLen) {
+            bestMatch = { type: handler.type, extLen: lowerExt.length };
+          }
+        }
       }
     }
-    return null;
+    return bestMatch ? bestMatch.type : null;
   }
 
   /**
@@ -177,8 +183,8 @@ export class ArtifactRegistry {
     const results: ArtifactMetadata[] = [];
 
     for (const artifact of artifacts) {
-      const type = artifact.type as string;
-      const artifactPath = artifact.path as string;
+      const type = artifact["type"] as string;
+      const artifactPath = artifact["path"] as string;
 
       if (!type || !artifactPath) continue;
 
@@ -188,7 +194,7 @@ export class ArtifactRegistry {
         results.push({
           type,
           path: artifactPath,
-          description: (artifact.description as string) ?? undefined,
+          description: (artifact["description"] as string) ?? undefined,
           details: { ...artifact },
         });
         continue;
@@ -204,7 +210,7 @@ export class ArtifactRegistry {
       results.push({
         type,
         path: artifactPath,
-        description: (artifact.description as string) ?? undefined,
+        description: (artifact["description"] as string) ?? undefined,
         details: { ...artifact },
       });
     }

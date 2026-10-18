@@ -14,17 +14,17 @@ import { findCstNodesByType, ModelicaCFGLowerer, type ModelicaStatement } from "
 
 export interface ModelicaVariableDecl {
   name: string;
-  type?: "Real" | "Integer" | "Boolean" | "String";
-  isInput?: boolean;
-  isOutput?: boolean;
-  isArray?: boolean;
-  arrayDimension?: number;
-  initialBound?: [number, number]; // e.g. [0, 100]
+  type?: "Real" | "Integer" | "Boolean" | "String" | undefined;
+  isInput?: boolean | undefined;
+  isOutput?: boolean | undefined;
+  isArray?: boolean | undefined;
+  arrayDimension?: number | undefined;
+  initialBound?: [number, number] | undefined; // e.g. [0, 100]
 }
 
 export interface ModelicaFormalProofResult {
-  functionName?: string;
-  cfg?: GenericCFG;
+  functionName?: string | undefined;
+  cfg?: GenericCFG | undefined;
   isCertifiedSafe: boolean; // True if 0 definite bugs and 0 potential bugs
   provenSafe: RTECheckResult[];
   definiteBugs: RTECheckResult[];
@@ -41,7 +41,7 @@ export class ModelicaAlgorithmAnalyzer {
   static analyzeCode(
     code: string,
     variables: ModelicaVariableDecl[] = [],
-    options?: { functionName?: string; plantPreconditions?: Map<string, [number, number]> },
+    options?: { functionName?: string | undefined; plantPreconditions?: Map<string, [number, number]> | undefined },
   ): ModelicaFormalProofResult {
     const statements = ModelicaCFGLowerer.parseStatements(code);
     return this.analyze(statements, variables, options);
@@ -53,7 +53,7 @@ export class ModelicaAlgorithmAnalyzer {
   static analyze(
     statements: ModelicaStatement[],
     variables: ModelicaVariableDecl[] = [],
-    options?: { functionName?: string; plantPreconditions?: Map<string, [number, number]> },
+    options?: { functionName?: string | undefined; plantPreconditions?: Map<string, [number, number]> | undefined },
   ): ModelicaFormalProofResult {
     const lowerer = new ModelicaCFGLowerer();
     const cfg = lowerer.lower(statements);
@@ -66,7 +66,7 @@ export class ModelicaAlgorithmAnalyzer {
   static analyzeCfg(
     cfg: GenericCFG,
     variables: ModelicaVariableDecl[] = [],
-    options?: { functionName?: string; plantPreconditions?: Map<string, [number, number]> },
+    options?: { functionName?: string | undefined; plantPreconditions?: Map<string, [number, number]> | undefined },
   ): ModelicaFormalProofResult {
     // 1. Track declared and initialized variables
     const declaredVars = new Set<string>();
@@ -337,7 +337,7 @@ export class ModelicaAlgorithmAnalyzer {
   static analyzeClassCst(
     db: any,
     classId: any,
-    options?: { functionName?: string; plantPreconditions?: Map<string, [number, number]> },
+    options?: { functionName?: string | undefined; plantPreconditions?: Map<string, [number, number]> | undefined },
   ): ModelicaFormalProofResult | null {
     const cst = typeof db?.cstNode === "function" ? db.cstNode(classId) : classId?.type ? classId : null;
     if (!cst) return null;

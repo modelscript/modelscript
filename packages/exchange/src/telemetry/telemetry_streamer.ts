@@ -13,7 +13,7 @@ import { Mdf4Reader } from "./mdf4_reader.js";
 
 export interface SynchronizedChannel {
   name: string;
-  unit?: string;
+  unit?: string | undefined;
   timestamps: Float64Array;
   values: Float64Array;
 }

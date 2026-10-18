@@ -41,16 +41,16 @@ export function evalSafeArithmetic(exprStr: string): number | null {
 
   let pos = 0;
   const nextToken = (): string => {
-    while (pos < str.length && /\s/.test(str[pos])) pos++;
+    while (pos < str.length && /\s/.test(str[pos]!)) pos++;
     if (pos >= str.length) return "";
-    const ch = str[pos];
+    const ch = str[pos]!;
     if ("+-*/()^".includes(ch)) {
       pos++;
       return ch;
     }
     const start = pos;
     if (/[0-9.]/.test(ch)) {
-      while (pos < str.length && /[0-9.]/.test(str[pos])) {
+      while (pos < str.length && /[0-9.]/.test(str[pos]!)) {
         pos++;
       }
       if (pos < str.length && (str[pos] === "e" || str[pos] === "E")) {
@@ -58,9 +58,9 @@ export function evalSafeArithmetic(exprStr: string): number | null {
         if (ePos < str.length && (str[ePos] === "+" || str[ePos] === "-")) {
           ePos++;
         }
-        if (ePos < str.length && /[0-9]/.test(str[ePos])) {
+        if (ePos < str.length && /[0-9]/.test(str[ePos]!)) {
           pos = ePos;
-          while (pos < str.length && /[0-9]/.test(str[pos])) {
+          while (pos < str.length && /[0-9]/.test(str[pos]!)) {
             pos++;
           }
         }
@@ -174,16 +174,46 @@ function resolveAnnotationName(name: string, evalScope: any): any {
   if (!name || typeof name !== "string") return undefined;
   const trimmed = name.trim();
 
-  // 1. Built-in mathematical constants
-  if (trimmed === "pi" || trimmed === "Modelica.Constants.pi") return Math.PI;
-  if (trimmed === "e" || trimmed === "Modelica.Constants.e") return Math.E;
-  if (trimmed === "eps" || trimmed === "Modelica.Constants.eps") return 1e-15;
+  // 1. Built-in mathematical & physical constants (Modelica.Constants)
+  const CONSTANTS_MAP: Record<string, number> = {
+    pi: Math.PI,
+    "Modelica.Constants.pi": Math.PI,
+    e: Math.E,
+    "Modelica.Constants.e": Math.E,
+    eps: 1e-15,
+    "Modelica.Constants.eps": 1e-15,
+    "ModelicaServices.Machine.eps": 1e-15,
+    inf: 1e60,
+    "Modelica.Constants.inf": 1e60,
+    "ModelicaServices.Machine.inf": 1e60,
+    small: 1e-60,
+    "Modelica.Constants.small": 1e-60,
+    D2R: Math.PI / 180,
+    "Modelica.Constants.D2R": Math.PI / 180,
+    R2D: 180 / Math.PI,
+    "Modelica.Constants.R2D": 180 / Math.PI,
+    g_n: 9.80665,
+    "Modelica.Constants.g_n": 9.80665,
+    c: 299792458,
+    "Modelica.Constants.c": 299792458,
+    h: 6.62607015e-34,
+    "Modelica.Constants.h": 6.62607015e-34,
+    k: 1.380649e-23,
+    "Modelica.Constants.k": 1.380649e-23,
+    N_A: 6.02214076e23,
+    "Modelica.Constants.N_A": 6.02214076e23,
+    q: 1.602176634e-19,
+    "Modelica.Constants.q": 1.602176634e-19,
+    T_zero: -273.15,
+    "Modelica.Constants.T_zero": -273.15,
+  };
+  if (trimmed in CONSTANTS_MAP) return CONSTANTS_MAP[trimmed];
 
   // 2. Qualified enum (e.g. FillPattern.Solid or Modelica.Icons.FillPattern.Solid)
   const parts = trimmed.split(".");
   if (parts.length >= 2) {
-    const typeName = parts[parts.length - 2];
-    const member = parts[parts.length - 1];
+    const typeName = parts[parts.length - 2]!;
+    const member = parts[parts.length - 1]!;
     const enumDef = ANNOTATION_ENUMS[typeName];
     if (enumDef && member in enumDef) {
       return enumDef[member];
@@ -975,23 +1005,28 @@ function applyPositionalArguments(obj: any, funcName: string, positionalValues: 
 
 export class AnnotationEvaluator {
   private scope: any;
-  public dynamicBindings: { property?: string; staticExpr: any; dynamicExpr: any; variableName?: string }[] = [];
+  public dynamicBindings: {
+    property?: string | undefined;
+    staticExpr: any;
+    dynamicExpr: any;
+    variableName?: string | undefined;
+  }[] = [];
   public interactiveBindings: {
     action: "momentary" | "toggle" | "numeric" | "slider" | "selector" | "faceplate";
     variableName: string;
-    targetSelector?: string;
-    label?: string;
-    min?: number;
-    max?: number;
-    step?: number;
-    unit?: string;
-    options?: { label: string; value: number | string }[];
-    onValue?: number | boolean | string;
-    offValue?: number | boolean | string;
-    confirmPrompt?: string;
+    targetSelector?: string | undefined;
+    label?: string | undefined;
+    min?: number | undefined;
+    max?: number | undefined;
+    step?: number | undefined;
+    unit?: string | undefined;
+    options?: { label: string; value: number | string }[] | undefined;
+    onValue?: number | boolean | string | undefined;
+    offValue?: number | boolean | string | undefined;
+    confirmPrompt?: string | undefined;
   }[] = [];
 
-  constructor(private evalScope?: any | null) {
+  constructor(evalScope?: any | null) {
     this.scope = evalScope ?? null;
   }
 

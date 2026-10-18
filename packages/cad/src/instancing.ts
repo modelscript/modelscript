@@ -15,13 +15,13 @@ import type { Assembly, PartEntry } from "./types.js";
 export interface InstancedPartDescriptor {
   name: string;
   geometryKey: string;
-  position?: [number, number, number] | readonly [number, number, number];
-  rotation?: [number, number, number] | readonly [number, number, number]; // in degrees
-  quaternion?: [number, number, number, number] | readonly [number, number, number, number]; // [x, y, z, w]
-  scale?: [number, number, number] | readonly [number, number, number];
-  color?: [number, number, number] | readonly [number, number, number];
-  boundingBox?: AABB;
-  metadata?: Record<string, unknown>;
+  position?: [number, number, number] | readonly [number, number, number] | undefined;
+  rotation?: [number, number, number] | readonly [number, number, number] | undefined; // in degrees
+  quaternion?: [number, number, number, number] | readonly [number, number, number, number] | undefined; // [x, y, z, w]
+  scale?: [number, number, number] | readonly [number, number, number] | undefined;
+  color?: [number, number, number] | readonly [number, number, number] | undefined;
+  boundingBox?: AABB | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 /**
@@ -167,7 +167,7 @@ export class InstanceBatchBuffer {
 
   getInstancePosition(instanceId: number): [number, number, number] {
     const off = instanceId * 16;
-    return [this.matrixBuffer[off + 12], this.matrixBuffer[off + 13], this.matrixBuffer[off + 14]];
+    return [this.matrixBuffer[off + 12]!, this.matrixBuffer[off + 13]!, this.matrixBuffer[off + 14]!];
   }
 }
 
@@ -191,7 +191,7 @@ export interface ClusteringResult {
 
 export interface ClusteringOptions {
   /** Minimum parts sharing a geometryKey to form an instanced cluster (default: 2) */
-  minInstanceCount?: number;
+  minInstanceCount?: number | undefined;
 }
 
 /**
@@ -234,7 +234,7 @@ export class AssemblyClusteringEngine {
           maxZ = -Infinity;
 
         for (let i = 0; i < count; i++) {
-          const p = groupParts[i];
+          const p = groupParts[i]!;
           instanceNames.push(p.name);
           nameToInstanceId.set(p.name, i);
 

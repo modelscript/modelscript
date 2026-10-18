@@ -6,14 +6,14 @@ import path from "node:path";
 import type { CommandModule } from "yargs";
 
 interface OslcExportArgs {
-  input?: string;
+  input?: string | undefined;
   domain: "rm" | "qm" | "am" | "all";
   format: "turtle" | "jsonld";
-  output?: string;
+  output?: string | undefined;
 }
 
 interface OslcServeArgs {
-  input?: string;
+  input?: string | undefined;
   port: number;
   host: string;
 }

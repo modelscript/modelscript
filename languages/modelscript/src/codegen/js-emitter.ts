@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * JavaScript code generator for ModelScript that lowers linear CST nodes
+ * (including `struct` declarations and FLWOR comprehensions) into executable ES module code.
+ */
 export class JsEmitter {
   private indentLevel = 0;
   private varCounter = 0;
 
+  /** Returns the current indentation whitespace prefix. */
   private indent(): string {
     return "  ".repeat(this.indentLevel);
   }
 
+  /**
+   * Recursively emits JavaScript source code for a ModelScript CST node.
+   */
   emit(node: any): string {
     if (!node) return "";
 
@@ -24,6 +32,7 @@ export class JsEmitter {
         return statements.join("\n");
       }
 
+      // Unwrap transparent grammar wrapper nodes
       case "TopLevelDeclaration":
       case "Statement":
       case "Expression":
@@ -40,9 +49,9 @@ export class JsEmitter {
       case "ImportDeclaration": {
         const specifiersNode = node.childForFieldName?.("specifiers");
         const sourceNode = node.childForFieldName?.("source");
-        const specifiersText = specifiersNode ? this.emit(specifiersNode) : "";
+        const specifiersText = specifiersNode ? this.emit(specifiersNode) : "{}";
         const sourceText = sourceNode ? sourceNode.text : '""';
-        return `// polyglot import: ${specifiersText} from ${sourceText};\n`;
+        return `import ${specifiersText} from ${sourceText};`;
       }
 
       case "ImportSpecifierList": {
@@ -65,6 +74,7 @@ export class JsEmitter {
       }
 
       case "StructDeclaration": {
+        // Lower ModelScript struct into a JavaScript class with positional field constructor
         const name = node.childForFieldName?.("name")?.text || "AnonymousStruct";
         const fields: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
@@ -280,6 +290,11 @@ export class JsEmitter {
     }
   }
 
+  /**
+   * Lowers a `FLWORExpression` (`for ... let ... where ... order by ... return ...`)
+   * into an immediately-invoked arrow function (IIFE) that collects, filters, sorts,
+   * and maps query results into an array.
+   */
   private emitFLWOR(node: any): string {
     const forClauses: any[] = [];
     const letClauses: any[] = [];

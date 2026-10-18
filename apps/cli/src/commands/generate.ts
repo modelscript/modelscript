@@ -6,12 +6,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
-interface GenerateArgs {
-  target?: string;
-  entries?: string[];
-  entry?: string;
+export interface GenerateArgs {
+  target?: string | undefined;
+  entries?: string[] | undefined;
+  entry?: string | undefined;
   outdir: string;
-  vsix?: boolean;
+  vsix?: boolean | undefined;
 }
 
 export const Generate: CommandModule<any, any> = {
@@ -48,15 +48,16 @@ export const Generate: CommandModule<any, any> = {
   },
   handler: async (args) => {
     try {
-      const isExtension = args.target === "extension";
-      const outDir = args.outdir;
+      const isExtension = args["target"] === "extension";
+      const outDir = args["outdir"];
       const absoluteOutDir = path.resolve(process.cwd(), outDir);
 
-      const rawEntries = args.entries && args.entries.length > 0 ? args.entries : [args.entry || "src/language.ts"];
+      const rawEntries =
+        args["entries"] && args["entries"].length > 0 ? args["entries"] : [args["entry"] || "src/language.ts"];
       // If target was not 'extension' or 'parser', it might be the entry file path
       const entryList =
-        args.target && args.target !== "extension" && args.target !== "parser"
-          ? [args.target, ...rawEntries.filter((e: string) => e !== args.target)]
+        args["target"] && args["target"] !== "extension" && args["target"] !== "parser"
+          ? [args["target"], ...rawEntries.filter((e: string) => e !== args["target"])]
           : rawEntries;
 
       const { createJiti } = await import("jiti");
@@ -73,7 +74,7 @@ export const Generate: CommandModule<any, any> = {
         const module = (await jiti.import(absoluteEntry)) as Record<string, unknown>;
         const lang = Object.values(module).find((val: unknown) => {
           const v = val as Record<string, unknown>;
-          return v && v.name && v.rules;
+          return v && v["name"] && v["rules"];
         }) as any;
 
         if (lang) languageDefs.push(lang);
@@ -124,7 +125,7 @@ export const Generate: CommandModule<any, any> = {
           console.log("Note: Run 'npx esbuild src/extension.ts' inside the output directory to compile the bundle.");
         }
 
-        if (args.vsix) {
+        if (args["vsix"]) {
           console.log("Packaging into .vsix...");
           try {
             execSync(`npx @vscode/vsce package --no-dependencies`, { cwd: absoluteOutDir, stdio: "inherit" });

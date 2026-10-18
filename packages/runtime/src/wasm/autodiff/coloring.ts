@@ -127,7 +127,16 @@ function exprHasVar(dae: DaeBuilder, exprId: u32, targetVar: u32): boolean {
     let count = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
     let first = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     for (let i: u32 = 0; i < count; i++) {
-      if (exprHasVar(dae, first + i, targetVar)) return true;
+      let argExpr: u32 = first + i;
+      if (i > 0 && exprId + i < dae.exprCount) {
+        let slotOffset = (exprId + i) * EXPR_STRIDE;
+        if (dae.getExprData().get(slotOffset + EXPR_KIND) == ExprKind.Tuple) {
+          argExpr = dae.getExprData().get(slotOffset + EXPR_LEFT) as u32;
+        }
+      } else if (i == 0) {
+        argExpr = first;
+      }
+      if (exprHasVar(dae, argExpr, targetVar)) return true;
     }
   }
   return false;

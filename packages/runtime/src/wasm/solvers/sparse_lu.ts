@@ -33,22 +33,36 @@ import { atomicChunkAlloc } from "../arena";
  */
 @unmanaged
 export class SparseLU {
+  /** Dimension $n$ of the square $n \times n$ sparse matrix. */
   n: u32;
   // L factors in CCS format
+  /** Column pointer array (`n + 1` elements) for the lower-triangular factor $L$ in CCS format. */
   lColPtr: ChunkedInt32Array;
+  /** Row index array for non-zero entries of the lower-triangular factor $L$. */
   lRowIndices: ChunkedInt32Array;
+  /** Linear memory pointer to the `f64` numerical values of $L$. */
   lValuesPtr: usize;
   // U factors in CCS format
+  /** Column pointer array (`n + 1` elements) for the upper-triangular factor $U$ in CCS format. */
   uColPtr: ChunkedInt32Array;
+  /** Row index array for non-zero entries of the upper-triangular factor $U$. */
   uRowIndices: ChunkedInt32Array;
+  /** Linear memory pointer to the `f64` numerical values of $U$. */
   uValuesPtr: usize;
   // Row permutation vector P
+  /** Row permutation vector $P$ mapping pivot steps to original row indices. */
   perm: ChunkedInt32Array;
+  /** Inverse row permutation vector $P^{-1}$ mapping original rows to pivot steps. */
   permInv: ChunkedInt32Array;
 
+  /** Returns a typed view over the numerical non-zero values of $L$. */
   @inline get lValues(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.lValuesPtr); }
+  /** Returns a typed view over the numerical non-zero values of $U$. */
   @inline get uValues(): UnmanagedFloat64Array { return changetype<UnmanagedFloat64Array>(this.uValuesPtr); }
 
+  /**
+   * Initializes the sparse LU factor storage and identity row permutations for an $n \times n$ matrix.
+   */
   init(n: u32): void {
     this.n = n;
     this.lColPtr = createChunkedInt32Array(n + 1);
@@ -281,6 +295,9 @@ export function sparseLuSolve(lu: SparseLU, bPtr: usize, xPtr: usize): boolean {
 // C/WASM Export Wrappers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Computes the sparse $PA = LU$ factorization of the `CCSMatrix` at `ccsPtr` and returns the `SparseLU` pointer.
+ */
 export function dae_sparseLuFactor(ccsPtr: u32): u32 {
   if (ccsPtr == 0) return 0;
   let ccs = changetype<CCSMatrix>(ccsPtr);
@@ -288,6 +305,9 @@ export function dae_sparseLuFactor(ccsPtr: u32): u32 {
   return changetype<u32>(lu);
 }
 
+/**
+ * Solves $Ax = b$ using a pre-computed `SparseLU` factorization at `luPtr`, writing the solution to `xPtr`.
+ */
 export function dae_sparseLuSolve(luPtr: u32, bPtr: u32, xPtr: u32): boolean {
   if (luPtr == 0 || bPtr == 0 || xPtr == 0) return false;
   let lu = changetype<SparseLU>(luPtr);

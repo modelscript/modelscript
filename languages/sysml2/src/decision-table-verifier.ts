@@ -17,18 +17,18 @@ import { extractVariables, parseGuardConstraints, type GuardConstraint } from ".
 
 export interface DecisionBranch {
   id: string;
-  name?: string;
+  name?: string | undefined;
   guardText: string;
-  targetName?: string;
+  targetName?: string | undefined;
 }
 
 export interface DecisionTableVerificationResult {
   isExhaustive: boolean;
   isDeterministic: boolean;
   hasDeadBranches: boolean;
-  unhandledScenarioBox?: Record<string, [number, number]>;
-  suggestedFixCondition?: string;
-  suggestedQuickFix?: string;
+  unhandledScenarioBox?: Record<string, [number, number]> | undefined;
+  suggestedFixCondition?: string | undefined;
+  suggestedQuickFix?: string | undefined;
   overlappingBranches: {
     branchA: string;
     branchB: string;
@@ -39,8 +39,8 @@ export interface DecisionTableVerificationResult {
 }
 
 export interface DecisionTableOptions {
-  domainBounds?: Map<string, [number, number]>;
-  defaultRange?: [number, number];
+  domainBounds?: Map<string, [number, number]> | undefined;
+  defaultRange?: [number, number] | undefined;
 }
 
 /**
@@ -190,7 +190,7 @@ function checkUnivariateIntervalExhaustiveness(
   branches: { rawConstraints: GuardConstraint[] }[],
   varName: string,
   domain: [number, number],
-): { isExhaustive: boolean; gap?: [number, number] } | null {
+): { isExhaustive: boolean; gap?: [number, number] | undefined } | null {
   const intervals: { lo: number; hi: number; strictLo: boolean; strictHi: boolean }[] = [];
 
   for (const b of branches) {

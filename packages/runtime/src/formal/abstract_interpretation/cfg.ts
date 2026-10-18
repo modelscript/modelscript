@@ -19,14 +19,14 @@ export enum CFGEdgeKind {
 export interface CFGInstruction {
   id: number;
   op: string;
-  astNodeId?: number;
-  startByte?: number;
-  endByte?: number;
-  startOffset?: number;
-  endOffset?: number;
-  operands?: any[];
-  targetVar?: string;
-  metadata?: Record<string, any>;
+  astNodeId?: number | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  operands?: any[] | undefined;
+  targetVar?: string | undefined;
+  metadata?: Record<string, any> | undefined;
 }
 
 export interface CFGEdge {
@@ -84,11 +84,11 @@ export class GenericCFG {
     targetVar?: string,
     operands?: any[],
     meta?: {
-      astNodeId?: number;
-      startByte?: number;
-      endByte?: number;
-      startOffset?: number;
-      endOffset?: number;
+      astNodeId?: number | undefined;
+      startByte?: number | undefined;
+      endByte?: number | undefined;
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
       [key: string]: any;
     },
   ): CFGInstruction {

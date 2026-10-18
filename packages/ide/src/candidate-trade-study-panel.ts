@@ -35,9 +35,9 @@ export interface TradeStudyCandidate {
   tier2Status: "passed" | "failed";
   tier3Status: "unverified" | "running" | "confirmed" | "refuted";
   parameters: Record<string, number>;
-  meshElements?: number;
-  maxStressMPa?: number;
-  allowableStressMPa?: number;
+  meshElements?: number | undefined;
+  maxStressMPa?: number | undefined;
+  allowableStressMPa?: number | undefined;
 }
 
 export class CandidateTradeStudyPanel {
@@ -45,8 +45,8 @@ export class CandidateTradeStudyPanel {
   public static readonly viewType = "modelscript.candidateTradeStudy";
 
   private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
-  private readonly _client?: LanguageClient;
+  public readonly _extensionUri: vscode.Uri;
+  public readonly _client?: LanguageClient | undefined;
   private _disposables: vscode.Disposable[] = [];
   private _selectedCandidateId = "cand_1";
 
@@ -144,7 +144,7 @@ export class CandidateTradeStudyPanel {
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     client?: LanguageClient,
-    private readonly _targetEntityName?: string,
+    _targetEntityName?: string,
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
@@ -204,8 +204,8 @@ export class CandidateTradeStudyPanel {
     vscode.window.showInformationMessage(`Launched Local WASM FEA / CFD confirmation for '${cand.name}'...`);
 
     const allowableStressMPa = cand.allowableStressMPa ?? 553.0;
-    const wallThickness = cand.parameters.wallThickness ?? 3.0;
-    const filletRadius = cand.parameters.filletRadius ?? 2.5;
+    const wallThickness = cand.parameters["wallThickness"] ?? 3.0;
+    const filletRadius = cand.parameters["filletRadius"] ?? 2.5;
 
     // 1. Dispatch in-WASM FeaSolver to compute 3D stress tensors for the candidate
     try {
@@ -242,12 +242,12 @@ export class CandidateTradeStudyPanel {
       const feaSolver = new FeaSolver(mesh, material);
       const fixedNodes = new Set<number>();
       const nodalLoads = new Map<number, [number, number, number]>();
-      const loadScale = cand.parameters.flangeAngleDeg
-        ? 1200.0 * Math.cos((cand.parameters.flangeAngleDeg * Math.PI) / 180)
+      const loadScale = cand.parameters["flangeAngleDeg"]
+        ? 1200.0 * Math.cos((cand.parameters["flangeAngleDeg"] * Math.PI) / 180)
         : 1200.0;
 
       for (let i = 0; i < mesh.numNodes; i++) {
-        if (mesh.nodeCoords[i * 3 + 2] <= 1e-6) {
+        if (mesh.nodeCoords[i * 3 + 2]! <= 1e-6) {
           fixedNodes.add(i);
         } else {
           nodalLoads.set(i, [0, 0, -loadScale / Math.max(1, mesh.numNodes - fixedNodes.size)]);

@@ -11,30 +11,30 @@ export interface ParameterInversionUpdate {
   parameterName: string;
   previousValue: number;
   newValue: number;
-  unit?: string;
-  sourceVariable?: string; // e.g., "chassis.arm_length"
+  unit?: string | undefined;
+  sourceVariable?: string | undefined; // e.g., "chassis.arm_length"
 }
 
 export interface InversionResult {
   isSuccess: boolean;
   updatedSource: string;
   appliedUpdates: ParameterInversionUpdate[];
-  regeneratedStep?: string;
+  regeneratedStep?: string | undefined;
 }
 
 export interface ParameterConstraintRule {
   name: string;
   evaluate: (params: Record<string, number>) => boolean;
-  description?: string;
+  description?: string | undefined;
 }
 
 export interface SafeRegionGuard {
   /** Explicit numeric bounding boxes per parameter */
-  parameterBounds?: Record<string, { min?: number; max?: number }>;
+  parameterBounds?: Record<string, { min?: number | undefined; max?: number | undefined }> | undefined;
   /** Multidisciplinary linear or non-linear constraint rules (e.g. stress, buckling, clearance) */
-  constraints?: ParameterConstraintRule[];
+  constraints?: ParameterConstraintRule[] | undefined;
   /** Optional custom validator predicate */
-  customValidator?: (params: Record<string, number>) => { isSafe: boolean; violations: string[] };
+  customValidator?: ((params: Record<string, number>) => { isSafe: boolean; violations: string[] }) | undefined;
 }
 
 export interface CertifiedInversionResult extends InversionResult {
@@ -63,7 +63,7 @@ export class ParameterInversionEngine {
       const regex = new RegExp(`(\\b(?:const|let|var)?\\s*${paramName}\\s*=\\s*)([\\d.]+)(\\s*;)`, "g");
       let matched = false;
 
-      result = result.replace(regex, (match, prefix, oldValStr, suffix) => {
+      result = result.replace(regex, (_match, prefix, oldValStr, suffix) => {
         matched = true;
         const oldVal = parseFloat(oldValStr);
         appliedUpdates.push({
@@ -77,7 +77,7 @@ export class ParameterInversionEngine {
       if (!matched) {
         // Also match property key in object literal: e.g. "width: 10,"
         const propRegex = new RegExp(`(\\b${paramName}\\s*:\\s*)([\\d.]+)(\\s*[,;])`, "g");
-        result = result.replace(propRegex, (match, prefix, oldValStr, suffix) => {
+        result = result.replace(propRegex, (_match, prefix, oldValStr, suffix) => {
           const oldVal = parseFloat(oldValStr);
           appliedUpdates.push({
             parameterName: paramName,

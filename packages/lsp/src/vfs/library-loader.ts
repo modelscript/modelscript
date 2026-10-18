@@ -25,8 +25,8 @@ export interface LoaderContext {
   sysml2WorkspaceIndex: any;
   documentTrees: Map<string, { text: string; tree: Tree | null; classCache: Map<string, unknown> }>;
   sysml2Parser: Parser | null;
-  cacheStore?: FederatedQueryCacheStore;
-  registryUrl?: string;
+  cacheStore?: FederatedQueryCacheStore | undefined;
+  registryUrl?: string | undefined;
   federatedEndpoints: string[];
 }
 /**
@@ -102,11 +102,13 @@ export interface RegistryPackageInfo {
    */
   files: Record<string, string>;
   /** Optional modelscript metadata from package.json. */
-  modelscript?: {
-    languages?: string[];
-    main?: string;
-    modelicaVersion?: string;
-  };
+  modelscript?:
+    | {
+        languages?: string[] | undefined;
+        main?: string | undefined;
+        modelicaVersion?: string | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -237,7 +239,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
             }
             // First part may contain spaces (e.g., "Motor Library v1"), take first word
             if (pathParts.length > 0) {
-              pathParts[0] = pathParts[0].split(" ")[0];
+              pathParts[0] = pathParts[0]!.split(" ")[0]!;
             }
             parentFQN = pathParts.join(".");
 
@@ -495,7 +497,7 @@ export async function loadDependencyFromRegistry(
           childrenOf,
         },
         undefined,
-        (origPath) => {
+        (origPath: string) => {
           if (origPath.startsWith("sources/")) {
             return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
           }
@@ -625,7 +627,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
           parts.pop(); // Remove "Filename.mo"
         }
         if (parts.length > 0) {
-          parts[0] = parts[0].split(" ")[0]; // "Modelica 4.1.0" -> "Modelica"
+          parts[0] = parts[0]!.split(" ")[0]!; // "Modelica 4.1.0" -> "Modelica"
         }
         parentFQN = parts.join(".");
         moFiles.push({ fullPath, uri, parentFQN });

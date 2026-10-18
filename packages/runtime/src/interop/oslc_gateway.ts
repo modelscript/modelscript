@@ -65,7 +65,7 @@ export interface OslcArchitectureResource {
   domain: string;
   format: string;
   created: string;
-  sourceFile?: string;
+  sourceFile?: string | undefined;
   allocates: string[];
   satisfiedRequirements: string[];
   properties: Record<string, any>;
@@ -231,7 +231,7 @@ export class OslcGateway {
    */
   importHypergraph(
     hypergraph: DigitalThreadHypergraph,
-    nodeResolver?: (domain: ThreadDomain, nodeId: number) => { name: string; type: string; file?: string },
+    nodeResolver?: (domain: ThreadDomain, nodeId: number) => { name: string; type: string; file?: string | undefined },
   ): void {
     const total = hypergraph.getThreadCount();
     for (let slot = 0; slot < total; slot++) {
@@ -438,7 +438,7 @@ export class OslcGateway {
 
         // Strip trailing semicolon from last statement and terminate with dot
         const lastIdx = lines.length - 1;
-        lines[lastIdx] = lines[lastIdx].replace(/ ;$/, " .");
+        lines[lastIdx] = lines[lastIdx]!.replace(/ ;$/, " .");
         lines.push("");
       }
     }
@@ -464,7 +464,7 @@ export class OslcGateway {
         }
 
         const lastIdx = lines.length - 1;
-        lines[lastIdx] = lines[lastIdx].replace(/ ;$/, " .");
+        lines[lastIdx] = lines[lastIdx]!.replace(/ ;$/, " .");
         lines.push("");
       }
     }
@@ -491,7 +491,7 @@ export class OslcGateway {
         }
 
         const lastIdx = lines.length - 1;
-        lines[lastIdx] = lines[lastIdx].replace(/ ;$/, " .");
+        lines[lastIdx] = lines[lastIdx]!.replace(/ ;$/, " .");
         lines.push("");
       }
     }

@@ -44,7 +44,7 @@ async function processQueue(): Promise<void> {
 }
 
 export function generateThumbnail(artifactId: number): Promise<string | null> {
-  if (process.env.NODE_ENV === "test") {
+  if (process.env["NODE_ENV"] === "test") {
     return Promise.resolve(null);
   }
   return new Promise((resolve) => {
@@ -74,7 +74,7 @@ async function doGenerateThumbnail(artifactId: number): Promise<string | null> {
     const page = await browser.newPage();
     await page.setViewport({ width: 800, height: 600, deviceScaleFactor: 2 });
 
-    const webPort = process.env.WEB_PORT || 3001;
+    const webPort = process.env["WEB_PORT"] || 3001;
     const url = `http://localhost:${webPort}/render-artifact/${artifactId}?thumbnail=true`;
 
     const captureTheme = async (theme: "light" | "dark") => {
@@ -82,7 +82,7 @@ async function doGenerateThumbnail(artifactId: number): Promise<string | null> {
       console.log(`[Thumbnail Worker] Navigating to ${url} (Theme: ${theme})`);
 
       await page.evaluateOnNewDocument(() => {
-        (globalThis as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = false;
+        (globalThis as unknown as { __ARTIFACT_READY?: boolean | undefined }).__ARTIFACT_READY = false;
       });
 
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });

@@ -16,7 +16,7 @@ const OAuthCallbackPage: React.FC = () => {
     let token = searchParams.get("token");
     if (!token && window.location.hash) {
       const match = window.location.hash.match(/token=([^&]+)/);
-      if (match) token = decodeURIComponent(match[1]);
+      if (match) token = decodeURIComponent(match[1]!);
     }
 
     if (token) {

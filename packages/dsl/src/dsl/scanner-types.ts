@@ -10,26 +10,30 @@
  */
 export interface ScannerPrimitives {
   /** Nested block comments: { open: '/*', close: '*\/' } */
-  nestedComment?: { open: string; close: string };
+  nestedComment?: { open: string; close: string } | undefined;
   /** Line comments: '//' or '#' */
-  lineComment?: string;
+  lineComment?: string | undefined;
   /** Escaped/quoted identifiers: { quote: "'", escape?: '\\' } */
-  escapedIdent?: { quote: string; escape?: string };
+  escapedIdent?: { quote: string; escape?: string | undefined } | undefined;
   /** String literals with escape sequences: { delim: '"', escapes: { '\\n': 10, ... } } */
-  stringLiteral?: { delim: string; escapes?: Record<string, number> };
+  stringLiteral?: { delim: string; escapes?: Record<string, number> | undefined } | undefined;
   /** Multi-word keywords that should be lexed as single tokens: ['end if', 'end for'] */
-  multiWordKeywords?: string[];
+  multiWordKeywords?: string[] | undefined;
   /** Python-style indentation layout parsing */
-  layout?: {
-    indent: string;
-    dedent: string;
-  };
+  layout?:
+    | {
+        indent: string;
+        dedent: string;
+      }
+    | undefined;
 }
 
 /**
  * Input definition for custom language AssemblyScript runtime files.
  */
-export type RuntimeFileInput = { filename?: string; content?: string; path?: string } | string;
+export type RuntimeFileInput =
+  | { filename?: string | undefined; content?: string | undefined; path?: string | undefined }
+  | string;
 
 /**
  * Context provided to an external scanner lambda.

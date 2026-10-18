@@ -19,7 +19,7 @@ export interface VirtualSensorSpec {
   /** DAE variable name corresponding to this internal state. */
   daeVariableName: string;
   /** Safe operating limit for threshold alerts. */
-  alarmThreshold?: number;
+  alarmThreshold?: number | undefined;
 }
 
 export interface VirtualSensorReading {

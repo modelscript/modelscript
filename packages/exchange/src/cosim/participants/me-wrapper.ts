@@ -36,14 +36,14 @@ import type { CoSimParticipant } from "../participant.js";
 /** JSON-RPC request to the harness. */
 interface HarnessRequest {
   method: string;
-  params?: Record<string, unknown>;
+  params?: Record<string, unknown> | undefined;
   id: number;
 }
 
 /** JSON-RPC response from the harness. */
 interface HarnessResponse {
   result?: unknown;
-  error?: { code: number; message: string };
+  error?: { code: number; message: string } | undefined;
   id: number;
 }
 

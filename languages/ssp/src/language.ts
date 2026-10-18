@@ -11,6 +11,13 @@ import { language, tggComplement, tggDefaultVal, tggEq, tggRule } from "@modelsc
 import { sspToModelicaBlock } from "./projection.js";
 import { parseSsd } from "./ssd-parser.js";
 
+/**
+ * ModelScript SSP (System Structure and Parameterization) language specification.
+ *
+ * Registers `.ssp`, `.ssd`, and `.ssv` file extensions, ZIP archive extraction
+ * for `.ssp` containers (with nested `.fmu` extraction), IDE co-simulation actions,
+ * and Triple Graph Grammar (TGG) rules projecting SSP systems to Modelica and SysML v2.
+ */
 export const sspLanguage = language({
   name: "ssp",
   fileExtensions: [".ssp", ".ssd", ".ssv"],
@@ -25,6 +32,7 @@ export const sspLanguage = language({
     Root: () => "ssp",
   },
 
+  // IDE and AI agent actions for inspecting SSD diagrams, running multi-FMU co-simulation, and Modelica projection
   actions: [
     {
       id: "open_ssp_editor",
@@ -87,6 +95,7 @@ export const sspLanguage = language({
     },
   ],
 
+  // ZIP container handler for `.ssp` archives: parses SystemStructure.ssd and mounts or extracts nested FMUs
   container: {
     extensions: [".ssp"],
     extract: (data, { zip }) => {
@@ -106,6 +115,7 @@ export const sspLanguage = language({
           size: entry.size,
           read: () => zip.read(data, entry.name),
           readText: () => zip.readText(data, entry.name),
+          // Recursively extract embedded `.fmu` archives; parse `.ssd`/`.ssv` descriptors; mount other resources in VFS
           action: entry.name.endsWith(".fmu")
             ? ("extract_nested" as const)
             : entry.name.endsWith(".ssd") || entry.name.endsWith(".ssv")
@@ -129,6 +139,7 @@ export const sspLanguage = language({
     },
   },
 
+  // Bidirectional TGG rules mapping SSP systems, components, connectors, and connections to Modelica and SysML v2
   polyglot: {
     languages: ["modelica", "sysml2"],
     typeMaps: {

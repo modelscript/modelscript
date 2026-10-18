@@ -16,20 +16,20 @@ import type { ASTQueryFunction, CodeGraph, Cursor, f64, u32 } from "./language.j
 
 /** Visual styling attributes for graphical entities and connections */
 export interface VisualStyle {
-  fill?: string;
-  stroke?: string;
-  strokeWidth?: number;
-  strokeDasharray?: string;
-  textColor?: string;
-  headerFill?: string;
-  opacity?: number;
-  rx?: number;
-  ry?: number;
-  r?: number;
-  size?: number;
-  fontSize?: number;
-  fontStyle?: string;
-  icon?: string;
+  fill?: string | undefined;
+  stroke?: string | undefined;
+  strokeWidth?: number | undefined;
+  strokeDasharray?: string | undefined;
+  textColor?: string | undefined;
+  headerFill?: string | undefined;
+  opacity?: number | undefined;
+  rx?: number | undefined;
+  ry?: number | undefined;
+  r?: number | undefined;
+  size?: number | undefined;
+  fontSize?: number | undefined;
+  fontStyle?: string | undefined;
+  icon?: string | undefined;
   fillPattern?:
     | "cylinder-horizontal"
     | "cylinder-vertical"
@@ -37,10 +37,11 @@ export interface VisualStyle {
     | "HorizontalCylinder"
     | "VerticalCylinder"
     | "Sphere"
-    | string;
-  router?: "manhattan" | "orth" | "metro" | "normal" | "bezier" | string;
-  connector?: "rounded" | "smooth" | "jumpover" | "normal" | string;
-  arrowHead?: "classic" | "block" | "diamond" | "cross" | "none" | string;
+    | string
+    | undefined;
+  router?: "manhattan" | "orth" | "metro" | "normal" | "bezier" | string | undefined;
+  connector?: "rounded" | "smooth" | "jumpover" | "normal" | string | undefined;
+  arrowHead?: "classic" | "block" | "diamond" | "cross" | "none" | string | undefined;
   sourceArrow?:
     | "classic"
     | "block"
@@ -50,7 +51,8 @@ export interface VisualStyle {
     | "open"
     | "half"
     | "none"
-    | string;
+    | string
+    | undefined;
   targetArrow?:
     | "classic"
     | "block"
@@ -60,39 +62,40 @@ export interface VisualStyle {
     | "open"
     | "half"
     | "none"
-    | string;
+    | string
+    | undefined;
 }
 
 /** Spatial mapping & coordinate system configuration */
 export interface SpatialPlacementConfig<FieldName extends string = string> {
   /** In-syntax annotation field or decorator where layout coordinates are stored */
-  annotationField?: FieldName;
+  annotationField?: FieldName | undefined;
   /** Schema: 'explicit' (custom fields), 'modelica' (origin + extent + rotation), 'point' (x, y), 'box' (x, y, w, h) */
-  schema?: "explicit" | "modelica" | "point" | "box" | "custom";
-  originField?: FieldName;
-  extentField?: FieldName;
-  rotationField?: FieldName;
-  xField?: FieldName;
-  yField?: FieldName;
-  widthField?: FieldName;
-  heightField?: FieldName;
+  schema?: "explicit" | "modelica" | "point" | "box" | "custom" | undefined;
+  originField?: FieldName | undefined;
+  extentField?: FieldName | undefined;
+  rotationField?: FieldName | undefined;
+  xField?: FieldName | undefined;
+  yField?: FieldName | undefined;
+  widthField?: FieldName | undefined;
+  heightField?: FieldName | undefined;
   /** Invert Y-axis for mathematical coordinate systems (Y-up) vs screen coordinate systems (Y-down) */
-  invertY?: boolean;
+  invertY?: boolean | undefined;
   /** Default automatic layout algorithm when placement is not explicit in the code */
-  autoLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular";
+  autoLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular" | undefined;
 }
 
 /** Explicit individual port definition for a node */
 export interface VisualPortDefinition {
   id: string;
-  label?: string;
-  side?: "top" | "bottom" | "left" | "right";
-  offset?: number; // 0.0 to 1.0 along perimeter or pixel offset
-  x?: number; // absolute coordinate within icon
-  y?: number;
-  angle?: number;
-  conjugated?: boolean;
-  style?: VisualStyle;
+  label?: string | undefined;
+  side?: "top" | "bottom" | "left" | "right" | undefined;
+  offset?: number | undefined; // 0.0 to 1.0 along perimeter or pixel offset
+  x?: number | undefined; // absolute coordinate within icon
+  y?: number | undefined;
+  angle?: number | undefined;
+  conjugated?: boolean | undefined;
+  style?: VisualStyle | undefined;
 }
 
 /** Port / Anchor configuration for connecting edges to nodes */
@@ -106,14 +109,15 @@ export interface VisualPortConfig<
   query?:
     | QueryName
     | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>
-    | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor);
+    | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor)
+    | undefined;
   /** Field or callback for port identifier / label */
-  label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, port: u32) => string);
+  label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, port: u32) => string) | undefined;
   /** Anchor placement group */
-  group?: "in" | "out" | "left" | "right" | "top" | "bottom" | "auto" | "radial" | "absolute";
-  style?: VisualStyle;
+  group?: "in" | "out" | "left" | "right" | "top" | "bottom" | "auto" | "radial" | "absolute" | undefined;
+  style?: VisualStyle | undefined;
   /** Explicit static or template port items */
-  items?: VisualPortDefinition[];
+  items?: VisualPortDefinition[] | undefined;
 }
 
 /** Structured internal compartment configuration (e.g. attributes, operations, parameters) */
@@ -128,7 +132,7 @@ export interface VisualCompartmentConfig<
     | QueryName
     | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>
     | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor);
-  itemLabel?: (db: CodeGraph<ModelAttrs, RuleName, FieldName>, item: u32) => string;
+  itemLabel?: ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, item: u32) => string) | undefined;
 }
 
 /** Reactive / Live Simulation Animation Binding Channel */
@@ -136,21 +140,21 @@ export interface ReactiveAnimationChannel {
   /** Target visual attribute (e.g., 'rotation', 'extent', 'fill', 'stroke', 'origin', 'visible', 'text', 'scale') */
   attribute: "rotation" | "extent" | "fill" | "stroke" | "origin" | "visible" | "text" | "scale" | string;
   /** Signal / variable name in the simulation state vector (e.g., 'phi', 'temperature', 'active') */
-  signal?: string;
+  signal?: string | undefined;
   /** Value transformation callback (converts simulation numeric state to visual attribute value) */
-  transform?: (db: CodeGraph, node: u32, signalValue: f64) => any;
+  transform?: ((db: CodeGraph, node: u32, signalValue: f64) => any) | undefined;
 }
 
 /** Configuration for simulation-time reactive animations & dynamic selection */
 export interface ReactiveDynamicsConfig {
   /** Function name used in AST for in-code dynamic value selection (e.g., 'DynamicSelect', 'animate') */
-  selectFunction?: string;
+  selectFunction?: string | undefined;
   /** Extract static design-time AST argument vs dynamic simulation AST expression */
-  extractDynamicSelect?: (db: CodeGraph, callNode: u32) => { staticExpr: u32; dynamicExpr: u32 };
+  extractDynamicSelect?: ((db: CodeGraph, callNode: u32) => { staticExpr: u32; dynamicExpr: u32 }) | undefined;
   /** Evaluates dynamic AST expression against live state lookup */
-  evaluateDynamic?: (db: CodeGraph, dynamicExprNode: u32, getState: (varName: string) => f64) => any;
+  evaluateDynamic?: ((db: CodeGraph, dynamicExprNode: u32, getState: (varName: string) => f64) => any) | undefined;
   /** Static animation channel bindings */
-  channels?: ReactiveAnimationChannel[];
+  channels?: ReactiveAnimationChannel[] | undefined;
 }
 
 /**
@@ -173,31 +177,32 @@ export interface VisualElement {
     | "svg"
     | "defs"
     | "g"
-    | string;
-  tagName?: string;
-  selector?: string;
-  groupSelector?: string;
-  attrs?: Record<string, string | number | boolean | undefined>;
-  textContent?: string;
+    | string
+    | undefined;
+  tagName?: string | undefined;
+  selector?: string | undefined;
+  groupSelector?: string | undefined;
+  attrs?: Record<string, string | number | boolean | undefined> | undefined;
+  textContent?: string | undefined;
 
   // Spatial & visual coordinates
-  x?: number;
-  y?: number;
-  width?: number | string;
-  height?: number | string;
-  cx?: number;
-  cy?: number;
-  r?: number;
-  rx?: number;
-  ry?: number;
-  d?: string;
-  points?: [number, number][] | { x: number; y: number }[] | string;
-  text?: string;
-  src?: string;
-  style?: VisualStyle;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | string | undefined;
+  height?: number | string | undefined;
+  cx?: number | undefined;
+  cy?: number | undefined;
+  r?: number | undefined;
+  rx?: number | undefined;
+  ry?: number | undefined;
+  d?: string | undefined;
+  points?: [number, number][] | { x: number; y: number }[] | string | undefined;
+  text?: string | undefined;
+  src?: string | undefined;
+  style?: VisualStyle | undefined;
 
   /** Nested children / sub-elements / SVG container hierarchy */
-  children?: VisualElement[];
+  children?: VisualElement[] | undefined;
 }
 
 /** Visual Node & Group configuration */
@@ -207,50 +212,55 @@ export interface VisualNodeConfig<
   QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
-  role?: "node" | "group" | "compartment";
-  label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => string);
-  stereotype?: string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => string);
-  shape?: "rect" | "circle" | "diamond" | "cylinder" | "package" | "subsystem" | "pill" | "custom" | string;
-  style?: VisualStyle;
-  size?: { width: number; height: number };
-  spatial?: SpatialPlacementConfig<FieldName>;
-  placement?: SpatialPlacementConfig<FieldName>; // Alias for backward-compat
-  ports?: VisualPortConfig<RuleName, FieldName, QueryName, ModelAttrs>;
-  compartments?: VisualCompartmentConfig<RuleName, FieldName, QueryName, ModelAttrs>[];
+  role?: "node" | "group" | "compartment" | undefined;
+  label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => string) | undefined;
+  stereotype?: string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => string) | undefined;
+  shape?: "rect" | "circle" | "diamond" | "cylinder" | "package" | "subsystem" | "pill" | "custom" | string | undefined;
+  style?: VisualStyle | undefined;
+  size?: { width: number; height: number } | undefined;
+  spatial?: SpatialPlacementConfig<FieldName> | undefined;
+  placement?: SpatialPlacementConfig<FieldName> | undefined; // Alias for backward-compat
+  ports?: VisualPortConfig<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
+  compartments?: VisualCompartmentConfig<RuleName, FieldName, QueryName, ModelAttrs>[] | undefined;
 
   /**
    * Dynamic visual representation function / query.
    * Inspects AST nodes, symbols, or types and returns visual elements or vector markup.
    */
-  render?: (
-    db: CodeGraph<ModelAttrs, RuleName, FieldName>,
-    node: u32,
-    env: EvaluationEnvironment,
-  ) => VisualElement[] | any;
+  render?:
+    | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32, env: EvaluationEnvironment) => VisualElement[] | any)
+    | undefined;
 
   /**
    * Declarative AST graphics extractor: extracts child graphical shape AST nodes from any field/query
    */
-  graphics?: {
-    query?: FieldName | QueryName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor);
-    primitives?: Record<string, Record<string, string>>;
-  };
+  graphics?:
+    | {
+        query?:
+          | FieldName
+          | QueryName
+          | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor)
+          | undefined;
+        primitives?: Record<string, Record<string, string>> | undefined;
+      }
+    | undefined;
 
   /** Dynamic template expansions & property bindings (e.g. %name, %R, %class) */
-  propertyBindings?: Record<
-    string,
-    FieldName | string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => any)
-  >;
+  propertyBindings?:
+    | Record<string, FieldName | string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => any)>
+    | undefined;
 
   /** Dual view definition (Icon schematic vs internal Diagram architecture) */
-  views?: {
-    icon?: VisualElement[] | ((db: CodeGraph, node: u32) => VisualElement[]);
-    diagram?: VisualElement[] | ((db: CodeGraph, node: u32) => VisualElement[]);
-  };
+  views?:
+    | {
+        icon?: VisualElement[] | ((db: CodeGraph, node: u32) => VisualElement[]) | undefined;
+        diagram?: VisualElement[] | ((db: CodeGraph, node: u32) => VisualElement[]) | undefined;
+      }
+    | undefined;
 
   /** Reactive simulation animation & dynamic expression evaluation */
-  dynamics?: ReactiveDynamicsConfig;
-  animation?: ReactiveDynamicsConfig; // Alias for backward-compat
+  dynamics?: ReactiveDynamicsConfig | undefined;
+  animation?: ReactiveDynamicsConfig | undefined; // Alias for backward-compat
 }
 
 /** Visual Edge & Connection configuration */
@@ -262,109 +272,113 @@ export interface VisualEdgeConfig<
 > {
   source: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
   target: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
-  sourcePort?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
-  targetPort?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
-  label?: string | FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
-  waypointsField?: FieldName;
-  style?: VisualStyle;
+  sourcePort?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string) | undefined;
+  targetPort?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string) | undefined;
+  label?: string | FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string) | undefined;
+  waypointsField?: FieldName | undefined;
+  style?: VisualStyle | undefined;
 
   /** Live simulation animation for edge states (e.g. flow velocity, current, active transitions) */
-  dynamics?: ReactiveDynamicsConfig;
-  animation?: ReactiveDynamicsConfig; // Alias for backward-compat
+  dynamics?: ReactiveDynamicsConfig | undefined;
+  animation?: ReactiveDynamicsConfig | undefined; // Alias for backward-compat
 }
 
 /** General Diagram Projection (View / Slice / Perspective) */
 export interface DiagramProjectionConfig<RuleName extends string = string, _FieldName extends string = string> {
   label: string;
-  description?: string;
+  description?: string | undefined;
   /** Perspective / Viewpoint identifier */
-  perspective?: string;
-  viewpoint?: string; // Alias for backward-compat
+  perspective?: string | undefined;
+  viewpoint?: string | undefined; // Alias for backward-compat
   /** Explicit list of grammar rules included in this projection */
-  includeRules?: (RuleName | string)[];
+  includeRules?: (RuleName | string)[] | undefined;
   /** Explicit list of grammar rules excluded from this projection */
-  excludeRules?: (RuleName | string)[];
+  excludeRules?: (RuleName | string)[] | undefined;
   /** Explicit list of grammar rules that act as visual group/container boundaries */
-  groupRules?: (RuleName | string)[];
+  groupRules?: (RuleName | string)[] | undefined;
   /** Explicit list of grammar rules rendered as standalone nodes */
-  standaloneRules?: (RuleName | string)[];
+  standaloneRules?: (RuleName | string)[] | undefined;
   /** Explicit list of grammar rules rendered as state bubbles with entry/do/exit compartments */
-  stateBubbleRules?: (RuleName | string)[];
+  stateBubbleRules?: (RuleName | string)[] | undefined;
   /** Explicit list of grammar rules rendered as activity control nodes (fork/join bars, decision/merge diamonds) */
-  controlNodeRules?: (RuleName | string)[];
+  controlNodeRules?: (RuleName | string)[] | undefined;
   /** Synthesize initial and final pseudostate nodes for states without incoming/outgoing transitions */
-  synthesizePseudoStates?: boolean;
+  synthesizePseudoStates?: boolean | undefined;
   /** Scope query: which AST nodes are candidate entities */
-  scope?: (db: CodeGraph, root: u32) => Cursor;
-  expose?: string[] | ((db: CodeGraph, root: u32) => Cursor);
+  scope?: ((db: CodeGraph, root: u32) => Cursor) | undefined;
+  expose?: string[] | ((db: CodeGraph, root: u32) => Cursor) | undefined;
   /** Node filter predicate */
-  filter?: ((db: CodeGraph, node: u32) => boolean) | ((entry: any) => boolean);
+  filter?: ((db: CodeGraph, node: u32) => boolean) | ((entry: any) => boolean) | undefined;
   /** Layout strategy */
-  defaultLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular" | "manual";
+  defaultLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular" | "manual" | undefined;
 }
 
 /** Dynamic In-Model Projection Discovery (e.g. SysML2 views, SQL views, Mermaid subgraphs) */
 export interface InModelProjectionDiscoveryConfig<RuleName extends string = string, FieldName extends string = string> {
   /** The grammar rule defining views/projections in user code (e.g. 'ViewUsage', 'ViewDefinition') */
-  rule?: NoInfer<RuleName>;
-  viewRule?: NoInfer<RuleName>; // Alias for backward-compat
+  rule?: NoInfer<RuleName> | undefined;
+  viewRule?: NoInfer<RuleName> | undefined; // Alias for backward-compat
   /** Perspective / viewpoint definition rule */
-  perspectiveRule?: NoInfer<RuleName>;
-  viewpointRule?: NoInfer<RuleName>; // Alias for backward-compat
+  perspectiveRule?: NoInfer<RuleName> | undefined;
+  viewpointRule?: NoInfer<RuleName> | undefined; // Alias for backward-compat
   /** Field extracting the projection name */
-  nameField?: FieldName;
+  nameField?: FieldName | undefined;
   /** Field extracting the viewpoint / perspective target reference */
-  perspectiveField?: FieldName;
-  viewpointField?: FieldName; // Alias for backward-compat
+  perspectiveField?: FieldName | undefined;
+  viewpointField?: FieldName | undefined; // Alias for backward-compat
   /** Field extracting the expose / scope query expression */
-  exposeField?: FieldName;
+  exposeField?: FieldName | undefined;
   /** Field extracting the filter predicate expression */
-  filterField?: FieldName;
+  filterField?: FieldName | undefined;
   /** Evaluates user's in-model filter expression against candidate AST nodes */
-  evaluateFilter?: (db: CodeGraph, filterNode: u32, candidateNode: u32) => boolean;
+  evaluateFilter?: ((db: CodeGraph, filterNode: u32, candidateNode: u32) => boolean) | undefined;
   /** Evaluates user's in-model expose expression to return an AST cursor */
-  evaluateExpose?: (db: CodeGraph, exposeNode: u32) => Cursor;
+  evaluateExpose?: ((db: CodeGraph, exposeNode: u32) => Cursor) | undefined;
 }
 
 /** Dynamic Graphic Annotation Parser (e.g. Modelica Icon/Diagram, CAD 2D primitives) */
 export interface GraphicAnnotationsConfig<_RuleName extends string = string, FieldName extends string = string> {
   /** Annotation clause field in AST (e.g. 'annotationClause') */
-  annotationField?: FieldName;
+  annotationField?: FieldName | undefined;
   /** Graphic primitive AST constructor mappings */
-  primitives?: Record<string, Record<string, string>>;
-  iconSection?: string;
-  diagramSection?: string;
+  primitives?: Record<string, Record<string, string>> | undefined;
+  iconSection?: string | undefined;
+  diagramSection?: string | undefined;
   /** Resolves string template macros (%name, %<param>) against active instance scope */
-  resolveTemplate?: (db: CodeGraph, templateString: string, componentNode: u32) => string;
+  resolveTemplate?: ((db: CodeGraph, templateString: string, componentNode: u32) => string) | undefined;
 }
 
 /** Bidirectional Visual Mutations (Canvas Action -> AST Synthesis via Unparser) */
 export interface VisualMutationConfig {
-  createEdge?: (source: string, target: string, sourcePort?: string, targetPort?: string) => string;
-  createNode?: (ruleName: string, name: string, x: number, y: number) => string;
-  updatePlacement?: (db: CodeGraph, node: u32, x: number, y: number, w: number, h: number, rot: number) => void;
-  deleteEntity?: (db: CodeGraph, node: u32) => void;
-  renameEntity?: (db: CodeGraph, node: u32, newName: string) => void;
+  createEdge?: ((source: string, target: string, sourcePort?: string, targetPort?: string) => string) | undefined;
+  createNode?: ((ruleName: string, name: string, x: number, y: number) => string) | undefined;
+  updatePlacement?:
+    | ((db: CodeGraph, node: u32, x: number, y: number, w: number, h: number, rot: number) => void)
+    | undefined;
+  deleteEntity?: ((db: CodeGraph, node: u32) => void) | undefined;
+  renameEntity?: ((db: CodeGraph, node: u32, newName: string) => void) | undefined;
 
   /** Declarative string templates or builders */
-  nodeTemplate?: string | ((className: string, name: string) => string);
-  edgeTemplate?: string | ((source: string, target: string) => string);
+  nodeTemplate?: string | ((className: string, name: string) => string) | undefined;
+  edgeTemplate?: string | ((source: string, target: string) => string) | undefined;
   /** Per-relationship and per-view edge templates */
-  edgeTemplates?: Record<string, string | ((src: string, tgt: string, srcPort?: string, tgtPort?: string) => string)>;
+  edgeTemplates?:
+    | Record<string, string | ((src: string, tgt: string, srcPort?: string, tgtPort?: string) => string)>
+    | undefined;
   /** Section names for inserting elements (e.g. { edge: "equations", node: "elements" }) */
-  sections?: Record<string, string>;
-  defaultSection?: string;
-  edgeRule?: string;
-  insertionSection?: string;
+  sections?: Record<string, string> | undefined;
+  defaultSection?: string | undefined;
+  edgeRule?: string | undefined;
+  insertionSection?: string | undefined;
 }
 
 /** Single stencil/tool item in a diagram palette */
 export interface DiagramPaletteItem {
   label: string;
   className: string;
-  iconSvg?: string;
-  description?: string;
-  defaultProps?: Record<string, any>;
+  iconSvg?: string | undefined;
+  description?: string | undefined;
+  defaultProps?: Record<string, any> | undefined;
 }
 
 /** Category grouping for diagram palette items */
@@ -393,7 +407,7 @@ export interface EvaluationEnvironment {
   /** Boolean condition lookup */
   getBoolean(identifier: string): boolean;
   /** Current simulation / execution time */
-  time?: f64;
+  time?: f64 | undefined;
 }
 
 /**
@@ -404,12 +418,12 @@ export interface ExpressionEvaluatorConfig {
    * Evaluates ANY in-language AST expression node using an evaluation environment.
    * Works identically for design-time parameter resolution and 60 FPS simulation playback.
    */
-  evaluate?: (db: CodeGraph, exprNode: u32, env: EvaluationEnvironment) => any;
+  evaluate?: ((db: CodeGraph, exprNode: u32, env: EvaluationEnvironment) => any) | undefined;
 
   /**
    * Optional recognizer for languages with explicit static/dynamic wrapper syntax (e.g. Modelica DynamicSelect)
    */
-  splitStaticDynamic?: (db: CodeGraph, exprNode: u32) => { staticNode: u32; dynamicNode: u32 };
+  splitStaticDynamic?: ((db: CodeGraph, exprNode: u32) => { staticNode: u32; dynamicNode: u32 }) | undefined;
 }
 
 /** Supported field input kinds in the property inspector */
@@ -431,8 +445,8 @@ export type PropertyFieldKind =
 export interface PropertyChoiceOption {
   label: string;
   value: any;
-  description?: string;
-  icon?: string;
+  description?: string | undefined;
+  icon?: string | undefined;
 }
 
 /** Dynamic condition predicate for property visibility or enablement */
@@ -440,10 +454,10 @@ export type PropertyPredicate = string | ((ctx: any) => boolean);
 
 /** Field-level validation rule */
 export interface PropertyFieldValidation {
-  min?: number;
-  max?: number;
-  pattern?: string;
-  validate?: (value: any, ctx: any) => string | null;
+  min?: number | undefined;
+  max?: number | undefined;
+  pattern?: string | undefined;
+  validate?: ((value: any, ctx: any) => string | null) | undefined;
 }
 
 /** Declarative property field definition */
@@ -451,25 +465,25 @@ export interface PropertyFieldConfig {
   key: string;
   label: string;
   kind: PropertyFieldKind;
-  description?: string;
-  placeholder?: string;
+  description?: string | undefined;
+  placeholder?: string | undefined;
   defaultValue?: any;
-  unit?: string;
-  choices?: (string | PropertyChoiceOption)[] | ((ctx: any) => (string | PropertyChoiceOption)[]);
-  enabledIf?: PropertyPredicate;
-  visibleIf?: PropertyPredicate;
-  required?: boolean;
-  validation?: PropertyFieldValidation;
-  readOnly?: boolean;
+  unit?: string | undefined;
+  choices?: (string | PropertyChoiceOption)[] | ((ctx: any) => (string | PropertyChoiceOption)[]) | undefined;
+  enabledIf?: PropertyPredicate | undefined;
+  visibleIf?: PropertyPredicate | undefined;
+  required?: boolean | undefined;
+  validation?: PropertyFieldValidation | undefined;
+  readOnly?: boolean | undefined;
 }
 
 /** Declarative group (accordion/collapsible section) */
 export interface PropertyGroupConfig {
   id: string;
   label: string;
-  description?: string;
-  collapsedByDefault?: boolean;
-  visibleIf?: PropertyPredicate;
+  description?: string | undefined;
+  collapsedByDefault?: boolean | undefined;
+  visibleIf?: PropertyPredicate | undefined;
   fields: PropertyFieldConfig[];
 }
 
@@ -477,28 +491,28 @@ export interface PropertyGroupConfig {
 export interface PropertyTabConfig {
   id: string;
   label: string;
-  icon?: string;
-  visibleIf?: PropertyPredicate;
+  icon?: string | undefined;
+  visibleIf?: PropertyPredicate | undefined;
   groups: PropertyGroupConfig[];
 }
 
 /** Schema for an entity rule */
 export interface EntityPropertySchema<_RuleName extends string = string> {
-  title?: string | ((node: any) => string);
-  icon?: string | ((node: any) => string);
+  title?: string | ((node: any) => string) | undefined;
+  icon?: string | ((node: any) => string) | undefined;
   tabs: PropertyTabConfig[];
 }
 
 /** In-model dynamic property and annotation discovery (e.g. Modelica Dialog) */
 export interface InModelPropertyDiscoveryHook {
-  extractSchema?: (db: any, node: any, queryEngine: any) => EntityPropertySchema | null;
-  extractValues?: (db: any, node: any, queryEngine: any) => Record<string, any> | null;
+  extractSchema?: ((db: any, node: any, queryEngine: any) => EntityPropertySchema | null) | undefined;
+  extractValues?: ((db: any, node: any, queryEngine: any) => Record<string, any> | null) | undefined;
 }
 
 /** AST mutation handler for updating properties back to source code */
 export interface PropertyMutator<_RuleName extends string = string> {
-  updateProperty?: (db: any, node: any, key: string, value: any, previousValue?: any) => any;
-  updateModifier?: (docText: string, node: any, paramName: string, newValue: any) => any;
+  updateProperty?: ((db: any, node: any, key: string, value: any, previousValue?: any) => any) | undefined;
+  updateModifier?: ((docText: string, node: any, paramName: string, newValue: any) => any) | undefined;
 }
 
 /** Property Inspector configuration for a language */
@@ -508,9 +522,9 @@ export interface PropertyInspectorConfig<
   _QueryName extends string = string,
   _ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
-  entities?: Partial<Record<NoInfer<RuleName>, EntityPropertySchema<RuleName>>>;
-  inModelDiscovery?: InModelPropertyDiscoveryHook;
-  mutator?: PropertyMutator<RuleName>;
+  entities?: Partial<Record<NoInfer<RuleName>, EntityPropertySchema<RuleName>>> | undefined;
+  inModelDiscovery?: InModelPropertyDiscoveryHook | undefined;
+  mutator?: PropertyMutator<RuleName> | undefined;
 }
 
 /**
@@ -521,7 +535,7 @@ export interface SidecarConfig {
    * File extension for the sidecar file. Default: ".layout".
    * Examples: ".layout.json", ".sysml.layout", ".layout.yaml"
    */
-  extension?: string;
+  extension?: string | undefined;
 
   /**
    * Path resolution policy.
@@ -531,18 +545,18 @@ export interface SidecarConfig {
    * - Custom resolver function: `(docUri: string, extension: string) => string`
    * Default: "alongside"
    */
-  location?: "alongside" | "hidden" | "subfolder" | ((docUri: string, extension: string) => string);
+  location?: "alongside" | "hidden" | "subfolder" | ((docUri: string, extension: string) => string) | undefined;
 
   /**
    * Serialization format. Default: "json".
    */
-  format?: "json" | "yaml" | "custom";
+  format?: "json" | "yaml" | "custom" | undefined;
 
   /** Custom serializer (Layout object -> string) */
-  serialize?: (layout: any) => string;
+  serialize?: ((layout: any) => string) | undefined;
 
   /** Custom parser (string -> Layout object) */
-  parse?: (content: string) => any;
+  parse?: ((content: string) => any) | undefined;
 }
 
 /**
@@ -555,57 +569,65 @@ export interface DiagramConfig<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   /** Declarative Property Inspector Configuration */
-  properties?: PropertyInspectorConfig<RuleName, FieldName, QueryName, ModelAttrs>;
+  properties?: PropertyInspectorConfig<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
 
   /** Static / built-in diagram projections */
-  projections?: Record<string, DiagramProjectionConfig<RuleName, FieldName>>;
-  views?: Record<string, DiagramProjectionConfig<RuleName, FieldName>>; // Alias for backward-compat
+  projections?: Record<string, DiagramProjectionConfig<RuleName, FieldName>> | undefined;
+  views?: Record<string, DiagramProjectionConfig<RuleName, FieldName>> | undefined; // Alias for backward-compat
 
   /** Dynamic in-model projection / view discovery from user AST (e.g. SysML2 views) */
-  inModelProjections?: InModelProjectionDiscoveryConfig<RuleName, FieldName>;
-  inModelViews?: InModelProjectionDiscoveryConfig<RuleName, FieldName>; // Alias for backward-compat
+  inModelProjections?: InModelProjectionDiscoveryConfig<RuleName, FieldName> | undefined;
+  inModelViews?: InModelProjectionDiscoveryConfig<RuleName, FieldName> | undefined; // Alias for backward-compat
 
   /** In-model graphic annotations & vector shape extraction (optional fallback) */
-  annotations?: GraphicAnnotationsConfig<RuleName, FieldName>;
+  annotations?: GraphicAnnotationsConfig<RuleName, FieldName> | undefined;
 
   /** General in-language expression evaluation engine (evaluates in-code expressions at design-time and live simulation) */
-  evaluator?: ExpressionEvaluatorConfig;
+  evaluator?: ExpressionEvaluatorConfig | undefined;
 
   /** Universal reactive dynamics & simulation animation protocol (e.g. DynamicSelect) */
-  dynamics?: ReactiveDynamicsConfig;
-  dynamicSelect?: ReactiveDynamicsConfig; // Alias for backward-compat
+  dynamics?: ReactiveDynamicsConfig | undefined;
+  dynamicSelect?: ReactiveDynamicsConfig | undefined; // Alias for backward-compat
 
   /** Visual entity / node configurations */
-  entities?: Partial<Record<NoInfer<RuleName>, VisualNodeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>;
-  nodes?: Partial<Record<NoInfer<RuleName>, VisualNodeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>; // Alias for backward-compat
+  entities?:
+    | Partial<Record<NoInfer<RuleName>, VisualNodeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>
+    | undefined;
+  nodes?: Partial<Record<NoInfer<RuleName>, VisualNodeConfig<RuleName, FieldName, QueryName, ModelAttrs>>> | undefined; // Alias for backward-compat
 
   /** Visual relationship / edge configurations */
-  connections?: Partial<Record<NoInfer<RuleName>, VisualEdgeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>;
-  edges?: Partial<Record<NoInfer<RuleName>, VisualEdgeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>; // Alias for backward-compat
+  connections?:
+    | Partial<Record<NoInfer<RuleName>, VisualEdgeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>
+    | undefined;
+  edges?: Partial<Record<NoInfer<RuleName>, VisualEdgeConfig<RuleName, FieldName, QueryName, ModelAttrs>>> | undefined; // Alias for backward-compat
 
   /** Visual mutations (Unparser-backed AST transformations) */
-  mutations?: VisualMutationConfig;
+  mutations?: VisualMutationConfig | undefined;
 
   /** Stencil / Palette configuration */
-  palette?: DiagramPaletteConfig;
+  palette?: DiagramPaletteConfig | undefined;
 
   /** Spatial placement storage strategy */
-  placement?: {
-    persistence?: "inline" | "sidecar";
-    rule?: string;
-    formatPlacement?: (x: number, y: number, w?: number, h?: number, r?: number) => string;
-    parsePlacement?: (node: any) => { x: number; y: number; width?: number; height?: number };
-    /** Declarative sidecar file options (used when persistence is "sidecar") */
-    sidecar?: SidecarConfig;
-  };
+  placement?:
+    | {
+        persistence?: "inline" | "sidecar" | undefined;
+        rule?: string | undefined;
+        formatPlacement?: ((x: number, y: number, w?: number, h?: number, r?: number) => string) | undefined;
+        parsePlacement?:
+          | ((node: any) => { x: number; y: number; width?: number | undefined; height?: number | undefined })
+          | undefined;
+        /** Declarative sidecar file options (used when persistence is "sidecar") */
+        sidecar?: SidecarConfig | undefined;
+      }
+    | undefined;
 
   /** Grammar rule classification sets for structural parent & standalone children */
-  structuralRules?: (RuleName | string)[];
-  standaloneRules?: (RuleName | string)[];
-  usageRules?: (RuleName | string)[];
-  definitionRules?: (RuleName | string)[];
-  portRules?: (RuleName | string)[];
-  reactiveDynamics?: boolean;
+  structuralRules?: (RuleName | string)[] | undefined;
+  standaloneRules?: (RuleName | string)[] | undefined;
+  usageRules?: (RuleName | string)[] | undefined;
+  definitionRules?: (RuleName | string)[] | undefined;
+  portRules?: (RuleName | string)[] | undefined;
+  reactiveDynamics?: boolean | undefined;
 }
 
 /**
@@ -616,17 +638,17 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
   gfxConfig: Record<string, any>;
   graphicsConfig: Record<string, any>;
   options: {
-    customProjections?: Record<string, any>;
-    structuralKinds?: string[];
-    standaloneKinds?: string[];
-    usageKinds?: string[];
-    definitionKinds?: string[];
-    portKinds?: string[];
-    reactiveDynamics?: boolean;
+    customProjections?: Record<string, any> | undefined;
+    structuralKinds?: string[] | undefined;
+    standaloneKinds?: string[] | undefined;
+    usageKinds?: string[] | undefined;
+    definitionKinds?: string[] | undefined;
+    portKinds?: string[] | undefined;
+    reactiveDynamics?: boolean | undefined;
     inModelDiscovery?: any;
-    solderDots?: boolean;
-    mutations?: VisualMutationConfig;
-    palette?: DiagramPaletteConfig;
+    solderDots?: boolean | undefined;
+    mutations?: VisualMutationConfig | undefined;
+    palette?: DiagramPaletteConfig | undefined;
     placement?: any;
   };
 } {

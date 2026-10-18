@@ -4,7 +4,7 @@ import { buildParser, choice, field, language, repeat, semanticToken, seq } from
 import * as childProcess from "child_process";
 import expect from "expect";
 import * as fs from "fs";
-import { before as beforeAll, describe, it } from "node:test";
+import { after as afterAll, before as beforeAll, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -78,6 +78,12 @@ describe("E-Graph Saturation & AST Simplification in WASM Linear Memory", () => 
     wasmExports = instance.exports;
   }, 60000);
 
+  afterAll(() => {
+    if (tmpDir && fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("should export e-graph lifecycle and simplification functions", () => {
     expect(typeof wasmExports.initEGraph).toBe("function");
     expect(typeof wasmExports.initHashCons).toBe("function");
@@ -132,5 +138,47 @@ describe("E-Graph Saturation & AST Simplification in WASM Linear Memory", () => 
 
     expect(kind).toBe(1); // ExprKind.IntLiteral
     expect(data1).toBe(0); // value = 0
+  });
+
+  it("should preserve full 64-bit IEEE-754 float precision without 16-bit truncation", () => {
+    const daePtr = wasmExports.dae_createBuilder();
+    const preciseVal = Math.PI; // 3.141592653589793 (non-zero low 16 mantissa bits)
+    const realLit = wasmExports.dae_addRealLiteral(daePtr, preciseVal);
+    const const0 = wasmExports.dae_addIntLiteral(daePtr, 0);
+    const addExpr = wasmExports.dae_addExpression(daePtr, 5 /* ExprKind.Binary */, 0 /* BinOp.Add */, realLit, const0);
+
+    const simplifiedId = wasmExports.simplifyAst(addExpr, daePtr);
+    expect(wasmExports.dae_getExprKind(daePtr, simplifiedId)).toBe(2); // ExprKind.RealLiteral
+    const extractedVal = wasmExports.dae_getExprRealValue(daePtr, simplifiedId);
+    expect(extractedVal).toBe(preciseVal);
+  });
+
+  it("should keep Unary operators distinct from relational Binary operators and extract Call/Der nodes", () => {
+    const daePtr = wasmExports.dae_createBuilder();
+    const varX = wasmExports.dae_addExpression(daePtr, 0 /* ExprKind.Name */, 7, 0xffffffff, 0xffffffff);
+
+    // Unary negate: kind = 6, data1 = 0 (UnaryOp.Negate)
+    const unaryNeg = wasmExports.dae_addExpression(
+      daePtr,
+      6 /* ExprKind.Unary */,
+      0 /* UnaryOp.Negate */,
+      varX,
+      0xffffffff,
+    );
+    const simplifiedUnary = wasmExports.simplifyAst(unaryNeg, daePtr);
+    expect(wasmExports.dae_getExprKind(daePtr, simplifiedUnary)).toBe(6); // ExprKind.Unary (not relational Binary 5)
+    expect(wasmExports.dae_getExprData1(daePtr, simplifiedUnary)).toBe(0);
+
+    // Der(x): kind = 12, data1 = varX
+    const derX = wasmExports.dae_addDer(daePtr, varX);
+    const simplifiedDer = wasmExports.simplifyAst(derX, daePtr);
+    expect(wasmExports.dae_getExprKind(daePtr, simplifiedDer)).toBe(12); // ExprKind.Der
+
+    // 1-arg Call sin(x): dae_addCall(ptr, funcId = 0 (Sin), firstArg = varX, argCount = 1)
+    const sinCall = wasmExports.dae_addCall(daePtr, 0 /* Sin */, varX, 1);
+    const simplifiedSin = wasmExports.simplifyAst(sinCall, daePtr);
+    expect(wasmExports.dae_getExprKind(daePtr, simplifiedSin)).toBe(7); // ExprKind.Call
+    expect(wasmExports.dae_getExprData1(daePtr, simplifiedSin)).toBe(0); // Sin
+    expect(wasmExports.dae_getExprRight(daePtr, simplifiedSin)).toBe(1); // 1 arg
   });
 });

@@ -35,16 +35,16 @@ interface ClientState {
 /** WebSocket message types from client. */
 interface WsClientMessage {
   type: "subscribe" | "unsubscribe" | "setThrottle";
-  participants?: string[];
-  variables?: string[];
-  throttleMs?: number;
+  participants?: string[] | undefined;
+  variables?: string[] | undefined;
+  throttleMs?: number | undefined;
 }
 
 /** WebSocket message types to client. */
 interface WsServerMessage {
   type: "update" | "batch" | "error" | "subscribed";
-  data?: { participantId: string; variable: string; value: number; time: number }[];
-  error?: string;
+  data?: { participantId: string; variable: string; value: number; time: number }[] | undefined;
+  error?: string | undefined;
 }
 
 /**
@@ -192,7 +192,7 @@ export function attachCosimWebSocket(
       wss.handleUpgrade(req, socket, head, (ws) => {
         handler(ws, req);
       });
-    } else {
+    } else if (!req.url?.startsWith("/api/v1/collab/stream")) {
       socket.destroy();
     }
   });

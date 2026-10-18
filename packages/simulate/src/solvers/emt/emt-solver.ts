@@ -73,118 +73,241 @@ import type {
   TransformerWindingState,
 } from "./types.js";
 
+/**
+ * Complete network topology, apparatus parameters, protection/switching schedules,
+ * and control block definitions for an Electromagnetic Transient (EMT) power system study.
+ */
 export interface EmtCircuitDefinition {
+  /** Ordered list of bus names in the network (`"0"`, `"GND"`, or `"GROUND"` denotes the reference ground node). */
   buses: string[];
+  /** Lumped series/shunt RLC branches with optional zero-sequence ($R_0, L_0, C_0$) mutual coupling parameters. */
   rlc: {
+    /** Unique branch identifier. */
     id: string;
+    /** Sending-end bus name. */
     from: string;
+    /** Receiving-end bus name. */
     to: string;
-    r?: number;
-    l?: number;
-    c?: number;
-    r0?: number;
-    l0?: number;
-    c0?: number;
+    /** Positive-sequence resistance $R_1$ ($\Omega$). */
+    r?: number | undefined;
+    /** Positive-sequence inductance $L_1$ ($\text{H}$). */
+    l?: number | undefined;
+    /** Positive-sequence capacitance $C_1$ ($\text{F}$). */
+    c?: number | undefined;
+    /** Zero-sequence resistance $R_0$ ($\Omega$). */
+    r0?: number | undefined;
+    /** Zero-sequence inductance $L_0$ ($\text{H}$). */
+    l0?: number | undefined;
+    /** Zero-sequence capacitance $C_0$ ($\text{F}$). */
+    c0?: number | undefined;
   }[];
-  transformers?: {
-    id: string;
-    fromBus?: string;
-    toBus?: string;
-    primaryBus?: string;
-    secondaryBus?: string;
-    mvaRating: number;
-    primaryKv: number;
-    secondaryKv: number;
-    leakageReactancePu: number;
-    windingConnection?: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D";
-  }[];
-  breakers?: {
-    id: string;
-    from: string;
-    to: string;
-    closedInitially?: boolean;
-    openTimeSec?: number;
-    closeTimeSec?: number;
-    rClosedOhm?: number;
-    rOpenOhm?: number;
-    choppingCurrentAmp?: number;
-    singlePoleTripPhase?: "A" | "B" | "C" | "ALL";
-  }[];
-  transmissionLines?: {
-    id: string;
-    from: string;
-    to: string;
-    lengthKm: number;
-    rPerKm?: number;
-    lPerKm?: number;
-    cPerKm?: number;
-  }[];
-  fdLines?: FrequencyDependentLineConfig[];
-  modalFdLines?: ModalThreePhaseFdLineConfig[];
-  saturableTransformers?: SaturableTransformerConfig[];
-  surgeArresters?: SurgeArresterConfig[];
-  synchronousMachines?: SynchronousMachineConfig[];
-  inductionMachines?: InductionMachineConfig[];
-  converterBridges?: ConverterBridgeConfig[];
-  fmuInstances?: {
-    id: string;
-    bus: string;
-    ratedMva: number;
-    ratedKv: number;
-    pSetpointMw?: number;
-    qSetpointMvar?: number;
-  }[];
-  sources?: {
-    id?: string;
-    bus: string;
-    vPeakKv: number;
-    freqHz: number;
-    phaseRad?: number;
-    gSource?: number;
-    rSource?: number;
-  }[];
-  faults?: {
-    id?: string;
-    bus: string;
-    startSec: number;
-    durationSec: number;
-    faultResistanceOhm?: number;
-    faultType?: FaultKind;
-  }[];
-  csmfBlocks?: CsmfBlockConfig[];
+  /** Two-winding power transformers with off-nominal turns ratios and three-phase vector group connections. */
+  transformers?:
+    | {
+        /** Unique transformer identifier. */
+        id: string;
+        /** Primary bus name (alias for `primaryBus`). */
+        fromBus?: string | undefined;
+        /** Secondary bus name (alias for `secondaryBus`). */
+        toBus?: string | undefined;
+        /** Primary winding bus name. */
+        primaryBus?: string | undefined;
+        /** Secondary winding bus name. */
+        secondaryBus?: string | undefined;
+        /** Three-phase rated apparent power ($\text{MVA}$). */
+        mvaRating: number;
+        /** Primary winding rated line-to-line voltage ($\text{kV}$). */
+        primaryKv: number;
+        /** Secondary winding rated line-to-line voltage ($\text{kV}$). */
+        secondaryKv: number;
+        /** Leakage reactance in per-unit on the transformer rating base. */
+        leakageReactancePu: number;
+        /** Three-phase winding connection vector group (default: `"Yg-Yg"`). */
+        windingConnection?: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D" | undefined;
+      }[]
+    | undefined;
+  /** AC circuit breakers with current zero-crossing arc extinction, current chopping, and single-pole tripping. */
+  breakers?:
+    | {
+        /** Unique breaker identifier. */
+        id: string;
+        /** Sending-end bus name. */
+        from: string;
+        /** Receiving-end bus name. */
+        to: string;
+        /** Initial contact state at $t = 0$ (default: `true`). */
+        closedInitially?: boolean | undefined;
+        /** Scheduled trip command time ($\text{s}$); poles open at the next current zero-crossing. */
+        openTimeSec?: number | undefined;
+        /** Scheduled close/reclose command time ($\text{s}$). */
+        closeTimeSec?: number | undefined;
+        /** Closed-contact resistance ($\Omega$, default: `1e-3`). */
+        rClosedOhm?: number | undefined;
+        /** Open-contact insulation resistance ($\Omega$, default: `1e9`). */
+        rOpenOhm?: number | undefined;
+        /** Instantaneous current chopping threshold ($\text{A}$, default: `0.5`). */
+        choppingCurrentAmp?: number | undefined;
+        /** Phase pole(s) affected by the trip command (default: `"ALL"`). */
+        singlePoleTripPhase?: "A" | "B" | "C" | "ALL" | undefined;
+      }[]
+    | undefined;
+  /** Distributed-parameter Bergeron traveling-wave transmission lines. */
+  transmissionLines?:
+    | {
+        /** Unique transmission line identifier. */
+        id: string;
+        /** Sending-end bus name. */
+        from: string;
+        /** Receiving-end bus name. */
+        to: string;
+        /** Line length ($\text{km}$). */
+        lengthKm: number;
+        /** Series resistance per unit length ($\Omega/\text{km}$). */
+        rPerKm?: number | undefined;
+        /** Series inductance per unit length ($\text{H}/\text{km}$). */
+        lPerKm?: number | undefined;
+        /** Shunt capacitance per unit length ($\text{F}/\text{km}$). */
+        cPerKm?: number | undefined;
+      }[]
+    | undefined;
+  /** Single-phase Frequency-Dependent Phase Model (FDPM) transmission lines. */
+  fdLines?: FrequencyDependentLineConfig[] | undefined;
+  /** Three-phase modal-domain (Clarke/Karrenbauer) frequency-dependent transmission lines. */
+  modalFdLines?: ModalThreePhaseFdLineConfig[] | undefined;
+  /** Nonlinear saturable-core transformers with piecewise flux-current magnetization characteristics. */
+  saturableTransformers?: SaturableTransformerConfig[] | undefined;
+  /** Metal-Oxide Varistor (MOV) gapless surge arresters. */
+  surgeArresters?: SurgeArresterConfig[] | undefined;
+  /** Full 6th-order subtransient synchronous generators with IEEE exciter, PSS, and turbine-governor controls. */
+  synchronousMachines?: SynchronousMachineConfig[] | undefined;
+  /** 4th-order dq-axis induction machine motors and generators. */
+  inductionMachines?: InductionMachineConfig[] | undefined;
+  /** Power-electronic Voltage-Source (VSC) and Line-Commutated (LCC) converter bridges. */
+  converterBridges?: ConverterBridgeConfig[] | undefined;
+  /** Black-box FMI 2.0/3.0 Inverter-Based Resource (IBR) co-simulation instances with PLL and IEEE 2800 LVRT support. */
+  fmuInstances?:
+    | {
+        /** Unique FMU instance identifier. */
+        id: string;
+        /** Point of Interconnection (POI) bus name. */
+        bus: string;
+        /** Nameplate apparent power rating ($\text{MVA}$). */
+        ratedMva: number;
+        /** Rated terminal voltage ($\text{kV}$). */
+        ratedKv: number;
+        /** Active power dispatch setpoint ($\text{MW}$). */
+        pSetpointMw?: number | undefined;
+        /** Reactive power dispatch setpoint ($\text{MVAr}$). */
+        qSetpointMvar?: number | undefined;
+      }[]
+    | undefined;
+  /** Ideal or Norton-equivalent sinusoidal AC voltage sources. */
+  sources?:
+    | {
+        /** Optional source identifier (defaults to `Source_<i>`). */
+        id?: string | undefined;
+        /** Connected bus name. */
+        bus: string;
+        /** Peak phase voltage magnitude ($\text{kV}$). */
+        vPeakKv: number;
+        /** Fundamental frequency ($\text{Hz}$). */
+        freqHz: number;
+        /** Initial phase angle at $t = 0$ ($\text{rad}$). */
+        phaseRad?: number | undefined;
+        /** Norton source conductance ($\text{S}$). */
+        gSource?: number | undefined;
+        /** Series source resistance ($\Omega$, inverted when `gSource` is omitted). */
+        rSource?: number | undefined;
+      }[]
+    | undefined;
+  /** Time-switched balanced or unbalanced short-circuit faults. */
+  faults?:
+    | {
+        /** Optional fault identifier (defaults to `Fault_<i>`). */
+        id?: string | undefined;
+        /** Faulted bus name. */
+        bus: string;
+        /** Fault inception time ($\text{s}$). */
+        startSec: number;
+        /** Fault duration before self-clearing ($\text{s}$). */
+        durationSec: number;
+        /** Fault arc/path resistance ($\Omega$, default: `1e-3`). */
+        faultResistanceOhm?: number | undefined;
+        /** Balanced or unbalanced fault type (`"3LG"`, `"SLG"`, `"LL"`, `"LLG"`, etc.). */
+        faultType?: FaultKind | undefined;
+      }[]
+    | undefined;
+  /** Continuous System Model Functions (CSMF) control and protection block diagram definitions. */
+  csmfBlocks?: CsmfBlockConfig[] | undefined;
 }
 
+/** Internal runtime state for a single phase-to-ground or phase-to-phase fault conductance element. */
 interface FaultElementState {
+  /** Fault element identifier. */
   id: string;
+  /** Primary faulted node index. */
   nodeA: number;
+  /** Secondary faulted node index (`-1` for phase-to-ground, `>= 0` for phase-to-phase LL). */
   nodeB: number; // -1 for phase-to-ground, >= 0 for phase-to-phase (LL)
+  /** Fault inception time ($\text{s}$). */
   startSec: number;
+  /** Fault clearing time ($\text{s}$). */
   endSec: number;
+  /** Fault conductance $G_{\text{fault}} = 1 / R_{\text{fault}}$ ($\text{S}$). */
   gFault: number;
+  /** Whether the fault conductance is currently stamped into the nodal matrix $[G]$. */
   isActive: boolean;
 }
 
+/**
+ * Electromagnetic Transient (EMT) nodal companion solver implementing Dommel's algorithm.
+ *
+ * Supports single-phase and full three-phase unbalanced networks, Bergeron and frequency-dependent
+ * traveling-wave transmission lines, BBDF subsystem network tearing, Critical Damping Adjustment (CDA),
+ * linear zero-crossing switching interpolation, within-step Newton-Raphson nonlinear iterations,
+ * rotating machines, converter bridges, FMU IBR interfaces, and CSMF control graphs.
+ */
 export class EmtSolver {
+  /** Resolved solver configuration options with all defaults populated. */
   private readonly options: Required<EmtSolverOptions>;
+  /** Whether the solver is operating in full 3-phase (`ABC`) nodal expansion mode. */
   private readonly isThreePhase: boolean;
+  /** Number of phases per bus (`3` in three-phase mode, `1` in single-phase mode). */
   private readonly nPhases: number;
+  /** Lookup map from bus name to zero-based bus index. */
   private readonly busMap = new Map<string, number>();
+  /** Ordered list of bus names in the circuit. */
   private readonly busNames: string[];
+  /** Total number of non-ground buses in the circuit. */
   private readonly nBuses: number;
+  /** Total number of electrical nodes (`nBuses * nPhases`). */
   private readonly nNodes: number;
 
+  /** Per-phase trapezoidal companion states for lumped RLC branches. */
   private readonly rlcStates: RlcBranchState[] = [];
+  /** Per-phase coupled transformer winding companion states. */
   private readonly xfmrWindings: TransformerWindingState[] = [];
+  /** Per-pole circuit breaker states with zero-crossing arc extinction tracking. */
   private readonly breakerPoles: BreakerPoleState[] = [];
+  /** Per-phase Bergeron traveling-wave transmission line states and circular delay buffers. */
   private readonly lineStates: BergeronLineState[] = [];
+  /** Single-phase Frequency-Dependent Phase Model (FDPM) transmission line states. */
   private readonly fdLineStates: FdLineState[] = [];
+  /** Three-phase modal frequency-dependent transmission line states. */
   private readonly modalFdLineStates: ModalThreePhaseFdLineState[] = [];
+  /** Saturable-core transformer states with nonlinear flux-current characteristics. */
   private readonly satXfmrStates: SaturableTransformerState[] = [];
+  /** Metal-Oxide Varistor (MOV) surge arrester states. */
   private readonly arresterStates: SurgeArresterState[] = [];
+  /** 6th-order synchronous machine states. */
   private readonly syncMachineStates: SynchronousMachineState[] = [];
+  /** 4th-order induction machine states. */
   private readonly indMachineStates: InductionMachineState[] = [];
+  /** Power-electronic converter bridge states. */
   private readonly converterStates: ConverterBridgeState[] = [];
+  /** Black-box FMI 2.0/3.0 Inverter-Based Resource (IBR) Norton equivalent states. */
   private readonly fmuStates: FmuIbrState[] = [];
+  /** Sinusoidal Norton equivalent AC voltage source states. */
   private readonly sources: {
     id: string;
     node: number;
@@ -193,9 +316,19 @@ export class EmtSolver {
     phase: number;
     gSource: number;
   }[] = [];
+  /** Scheduled short-circuit fault element states. */
   private readonly faultStates: FaultElementState[] = [];
-  private readonly csmfGraph?: CsmfControlGraph;
+  /** Optional Continuous System Model Functions (CSMF) control and protection execution graph. */
+  private readonly csmfGraph?: CsmfControlGraph | undefined;
 
+  /**
+   * Constructs an `EmtSolver` instance from a circuit topology definition and solver options,
+   * automatically promoting the study to 3-phase mode if unbalanced faults, vector-group
+   * transformers, single-pole breakers, zero-sequence RLC branches, or modal FD lines are present.
+   *
+   * @param circuit Complete EMT network topology and apparatus definition.
+   * @param options Time step, duration, frequency, damping, and nonlinear iteration options.
+   */
   constructor(circuit: EmtCircuitDefinition, options: EmtSolverOptions) {
     const hasUnbalancedFaults =
       circuit.faults?.some((f) => f.faultType !== undefined && f.faultType !== "3LG" && f.faultType !== "ABC") ?? false;
@@ -709,24 +842,34 @@ export class EmtSolver {
     }
   }
 
+  /** Returns the internal runtime states of all Metal-Oxide Varistor (MOV) surge arresters in the network. */
   public getSurgeArresterStates(): readonly SurgeArresterState[] {
     return this.arresterStates;
   }
 
+  /** Returns the internal runtime states of all 6th-order synchronous machines (Park dq0 + swing/exciter/governor). */
   public getSynchronousMachineStates(): readonly SynchronousMachineState[] {
     return this.syncMachineStates;
   }
 
+  /** Returns the internal runtime states of all 4th-order dq induction machine loads/generators. */
   public getInductionMachineStates(): readonly InductionMachineState[] {
     return this.indMachineStates;
   }
 
+  /** Returns the internal runtime states of all power-electronic converter bridges (VSC / LCC). */
   public getConverterBridgeStates(): readonly ConverterBridgeState[] {
     return this.converterStates;
   }
 
   /**
-   * Runs the full transient simulation.
+   * Runs the full electromagnetic transient (EMT) simulation over `[0, durationSec]`.
+   *
+   * Stamps and factorizes the nodal companion conductance matrix (with automatic BBDF
+   * traveling-wave subsystem decoupling), optionally initializes from AC phasor steady state,
+   * steps through discrete fault/breaker events with Critical Damping Adjustment (CDA) and
+   * linear zero-crossing interpolation, performs within-step Newton-Raphson compensation for
+   * saturable cores and MOV arresters, and computes sliding-window symmetrical components.
    */
   public solve(): EmtSimulationResult {
     const startTime = Date.now();
@@ -980,25 +1123,25 @@ export class EmtSolver {
       for (const src of this.sources) {
         if (src.node >= 0) {
           const vInstant = src.vPeakKv * 1e3 * Math.sin(src.omega * t + src.phase);
-          bVec[src.node] += src.gSource * vInstant;
+          bVec[src.node] = bVec[src.node]! + src.gSource * vInstant;
         }
       }
 
       // C. Subtract RLC branch history currents
       for (const b of this.rlcStates) {
         const iHist = b.iHistL + b.iHistC + (b.iHistL0 ?? 0) + (b.iHistC0 ?? 0);
-        if (b.fromNode >= 0) bVec[b.fromNode] -= iHist;
-        if (b.toNode >= 0) bVec[b.toNode] += iHist;
+        if (b.fromNode >= 0) bVec[b.fromNode] = bVec[b.fromNode]! - iHist;
+        if (b.toNode >= 0) bVec[b.toNode] = bVec[b.toNode]! + iHist;
       }
 
       // C2. Subtract coupled transformer winding history currents (with turns ratio a_eff)
       for (const w of this.xfmrWindings) {
         const iHistP = w.iHistPrimary;
         const iHistS = -w.turnsRatio * iHistP;
-        if (w.pPosNode >= 0) bVec[w.pPosNode] -= iHistP;
-        if (w.pNegNode >= 0) bVec[w.pNegNode] += iHistP;
-        if (w.sPosNode >= 0) bVec[w.sPosNode] -= iHistS;
-        if (w.sNegNode >= 0) bVec[w.sNegNode] += iHistS;
+        if (w.pPosNode >= 0) bVec[w.pPosNode] = bVec[w.pPosNode]! - iHistP;
+        if (w.pNegNode >= 0) bVec[w.pNegNode] = bVec[w.pNegNode]! + iHistP;
+        if (w.sPosNode >= 0) bVec[w.sPosNode] = bVec[w.sPosNode]! - iHistS;
+        if (w.sNegNode >= 0) bVec[w.sNegNode] = bVec[w.sNegNode]! + iHistS;
       }
 
       // D. Inject Bergeron transmission line delayed traveling-wave history currents (with fractional delay interpolation)
@@ -1012,42 +1155,42 @@ export class EmtSolver {
         const waveFromM = (1 - frac) * (line.bufferTo[readIdx1] ?? 0) + frac * (line.bufferTo[readIdx2] ?? 0);
 
         // Wave launched from 'fromNode' (K) arrives at 'toNode' (M)
-        if (line.toNode >= 0) bVec[line.toNode] += waveFromK;
+        if (line.toNode >= 0) bVec[line.toNode] = bVec[line.toNode]! + waveFromK;
         // Wave launched from 'toNode' (M) arrives at 'fromNode' (K)
-        if (line.fromNode >= 0) bVec[line.fromNode] += waveFromM;
+        if (line.fromNode >= 0) bVec[line.fromNode] = bVec[line.fromNode]! + waveFromM;
       }
 
       // D2. Inject FD line, modal FD line, Saturable Transformer, MOV Surge Arrester, and Synchronous/Induction Machine history/Norton currents
       for (const fd of this.fdLineStates) {
-        if (fd.config.fromNode >= 0) bVec[fd.config.fromNode] -= fd.iHistFrom;
-        if (fd.config.toNode >= 0) bVec[fd.config.toNode] -= fd.iHistTo;
+        if (fd.config.fromNode >= 0) bVec[fd.config.fromNode] = bVec[fd.config.fromNode]! - fd.iHistFrom;
+        if (fd.config.toNode >= 0) bVec[fd.config.toNode] = bVec[fd.config.toNode]! - fd.iHistTo;
       }
       for (const mfd of this.modalFdLineStates) {
         for (let p = 0; p < 3; p++) {
           const nf = mfd.fromNodes[p] ?? -1;
           const nt = mfd.toNodes[p] ?? -1;
-          if (nf >= 0) bVec[nf] -= mfd.iHistFromPhase[p]!;
-          if (nt >= 0) bVec[nt] -= mfd.iHistToPhase[p]!;
+          if (nf >= 0) bVec[nf] = bVec[nf]! - mfd.iHistFromPhase[p]!;
+          if (nt >= 0) bVec[nt] = bVec[nt]! - mfd.iHistToPhase[p]!;
         }
       }
       for (const sat of this.satXfmrStates) {
         if (sat.config.primaryNode >= 0) {
-          bVec[sat.config.primaryNode] -= sat.iHistLeakage + sat.iHistMag;
+          bVec[sat.config.primaryNode] = bVec[sat.config.primaryNode]! - (sat.iHistLeakage + sat.iHistMag);
         }
         if (sat.config.secondaryNode >= 0) {
-          bVec[sat.config.secondaryNode] += sat.ratio * sat.iHistLeakage;
+          bVec[sat.config.secondaryNode] = bVec[sat.config.secondaryNode]! + sat.ratio * sat.iHistLeakage;
         }
       }
       for (const mov of this.arresterStates) {
         if (mov.node >= 0) {
-          bVec[mov.node] -= mov.iEqHist;
+          bVec[mov.node] = bVec[mov.node]! - mov.iEqHist;
         }
       }
       for (const sm of this.syncMachineStates) {
         for (let p = 0; p < sm.nodes.length; p++) {
           const n = sm.nodes[p]!;
           if (n >= 0) {
-            bVec[n] += sm.iInjectedPhase[p]!;
+            bVec[n] = bVec[n]! + sm.iInjectedPhase[p]!;
           }
         }
       }
@@ -1055,7 +1198,7 @@ export class EmtSolver {
         for (let p = 0; p < im.nodes.length; p++) {
           const n = im.nodes[p]!;
           if (n >= 0) {
-            bVec[n] += im.iInjectedPhase[p]!;
+            bVec[n] = bVec[n]! + im.iInjectedPhase[p]!;
           }
         }
       }
@@ -1063,7 +1206,7 @@ export class EmtSolver {
         for (let p = 0; p < conv.nodes.length; p++) {
           const n = conv.nodes[p]!;
           if (n >= 0) {
-            bVec[n] += conv.iInjectedPhase[p]!;
+            bVec[n] = bVec[n]! + conv.iInjectedPhase[p]!;
           }
         }
       }
@@ -1071,7 +1214,7 @@ export class EmtSolver {
       // E. Inject Black-Box FMU Norton predicted current
       for (const fmu of this.fmuStates) {
         if (fmu.node >= 0) {
-          bVec[fmu.node] += fmu.iInjected;
+          bVec[fmu.node] = bVec[fmu.node]! + fmu.iInjected;
         }
       }
 
@@ -1102,7 +1245,7 @@ export class EmtSolver {
               nlChangedNodes.push(pNode);
             }
             const iEqMag = iMag - sat.gMag * vPrim;
-            bVec[pNode] += sat.iHistMag - iEqMag;
+            bVec[pNode] = bVec[pNode]! + (sat.iHistMag - iEqMag);
             sat.iHistMag = iEqMag;
           }
 
@@ -1117,7 +1260,7 @@ export class EmtSolver {
               nlChangedNodes.push(mov.node);
             }
             const iEqNew = iMov - mov.gCurrent * vNode;
-            bVec[mov.node] += mov.iEqHist - iEqNew;
+            bVec[mov.node] = bVec[mov.node]! + (mov.iEqHist - iEqNew);
             mov.iEqHist = iEqNew;
           }
 

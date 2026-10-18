@@ -32,7 +32,7 @@ export const scadWriteback: WritebackHandler = (ctx: WritebackContext): Writebac
     const declText = fullText.substring(entry.startByte, entry.endByte);
     const eqMatch = declText.match(/(=(?!=))\s*([^;}\r\n]+)/);
     if (eqMatch && eqMatch.index !== undefined) {
-      const rawVal = eqMatch[2].trimEnd();
+      const rawVal = eqMatch[2]!.trimEnd();
       const valOffsetInDecl = eqMatch.index + declText.substring(eqMatch.index).indexOf(rawVal);
       const valStartByte = entry.startByte + valOffsetInDecl;
       const valEndByte = valStartByte + rawVal.length;
@@ -51,8 +51,8 @@ export const scadWriteback: WritebackHandler = (ctx: WritebackContext): Writebac
     const regex = new RegExp(`(\\b${escapeRegex(name)}\\s*=\\s*)([^;\\r\\n]+)`);
     const match = fullText.match(regex);
     if (match && match.index !== undefined) {
-      const valStart = match.index + match[1].length;
-      const valEnd = valStart + match[2].trimEnd().length;
+      const valStart = match.index + match[1]!.length;
+      const valEnd = valStart + match[2]!.trimEnd().length;
 
       return {
         startByte: valStart,

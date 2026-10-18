@@ -78,8 +78,8 @@ interface ParameterDelta {
   name: string;
   parentVal: string;
   forkVal: string;
-  delta?: number;
-  pctChange?: string;
+  delta?: number | undefined;
+  pctChange?: string | undefined;
   status: "modified" | "added" | "removed";
 }
 
@@ -90,15 +90,15 @@ function parseModelicaParameters(code: string): Record<string, string> {
   let match: RegExpExecArray | null;
   while ((match = regex.exec(code)) !== null) {
     const [, name, rawVal] = match;
-    let val = rawVal.trim();
+    let val = rawVal!.trim();
     const commentMatch = val.match(/^(.*?)\s*("[^"]*")\s*$/);
     if (commentMatch) {
-      const exprPart = commentMatch[1].trim();
+      const exprPart = commentMatch[1]!.trim();
       if (exprPart.length > 0) {
         val = exprPart;
       }
     }
-    result[name.trim()] = val.trim();
+    result[name!.trim()] = val.trim();
   }
   return result;
 }
@@ -174,7 +174,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
     for (const key of allKeys) {
       const parentVal = parentParams[key];
-      const forkVal = forkParams[key];
+      const forkVal = forkParams[key]!;
 
       if (parentVal !== undefined && forkVal !== undefined) {
         if (parentVal !== forkVal) {

@@ -34,9 +34,9 @@ export interface EditRange {
   startByte: number;
   oldEndByte: number;
   newEndByte: number;
-  startOffset?: number;
-  oldEndOffset?: number;
-  newEndOffset?: number;
+  startOffset?: number | undefined;
+  oldEndOffset?: number | undefined;
+  newEndOffset?: number | undefined;
 }
 
 export interface SemanticTokensEdit {
@@ -47,8 +47,8 @@ export interface SemanticTokensEdit {
 
 export interface SemanticTokensDeltaResponse {
   resultId: number;
-  edits?: SemanticTokensEdit[];
-  fullTokens?: Uint32Array;
+  edits?: SemanticTokensEdit[] | undefined;
+  fullTokens?: Uint32Array | undefined;
 }
 
 /**
@@ -505,20 +505,20 @@ export interface Diagnostic {
   range: Range;
   message: string;
   severity: number;
-  code?: number | string;
-  expectedTokens?: string[];
+  code?: number | string | undefined;
+  expectedTokens?: string[] | undefined;
   /** Character offset of the diagnostic start within the source text. */
-  startOffset?: number;
+  startOffset?: number | undefined;
   /** Character offset of the diagnostic end within the source text. */
-  endOffset?: number;
+  endOffset?: number | undefined;
   /** @deprecated Use {@link startOffset} instead. */
-  startCharOffset?: number;
+  startCharOffset?: number | undefined;
   /** @deprecated Use {@link endOffset} instead. */
-  endCharOffset?: number;
+  endCharOffset?: number | undefined;
   /** @deprecated Use {@link startOffset} instead. */
-  startByte?: number;
+  startByte?: number | undefined;
   /** @deprecated Use {@link endOffset} instead. */
-  endByte?: number;
+  endByte?: number | undefined;
 }
 
 declare const __SYNTAX_NAMES_LITERAL__: string[];
@@ -2118,7 +2118,14 @@ export class LspFacade {
   getChangedRanges(
     oldTree: number,
     newTree: number,
-  ): { start: number; end: number; startByte: number; endByte: number; startOffset?: number; endOffset?: number }[] {
+  ): {
+    start: number;
+    end: number;
+    startByte: number;
+    endByte: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+  }[] {
     if (!this.exports.lsp_getChangedRanges || !this.exports.lsp_getBinaryBuffer) return [];
     const count = this.exports.lsp_getChangedRanges(oldTree, newTree);
     const ranges: {
@@ -2126,8 +2133,8 @@ export class LspFacade {
       end: number;
       startByte: number;
       endByte: number;
-      startOffset?: number;
-      endOffset?: number;
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
     }[] = [];
     if (count === 0) return ranges;
 
@@ -2630,10 +2637,10 @@ export class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[] {
     if (!this.exports.stub_findByName || !this.exports.stub_getBinaryBuffer) return [];
     const hash = this.hashString(name);
@@ -2678,10 +2685,10 @@ export class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[] {
     if (!this.exports.stub_findByNameHashSIMD || !this.exports.stub_getBinaryBuffer) return [];
     const hash = this.hashString(name);
@@ -2723,10 +2730,10 @@ export class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[] {
     if (!this.exports.stub_getFileSymbols || !this.exports.stub_getBinaryBuffer) return [];
     const numStubs = this.exports.stub_getFileSymbols(fileId);
@@ -2767,10 +2774,10 @@ export class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[] {
     if (!this.exports.stub_getChildren || !this.exports.stub_getBinaryBuffer) return [];
     const numStubs = this.exports.stub_getChildren(parentSymbolId);
@@ -2862,8 +2869,8 @@ export class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
     score: number;
   }[] {
     if (!this.exports.trigram_fuzzyFind || !this.exports.stub_getBinaryBuffer) {
@@ -3199,7 +3206,7 @@ export class LspFacade {
       objectHash: number;
       flags: number;
     }[];
-    explanation?: string;
+    explanation?: string | undefined;
   } {
     if (!this.exports.ontology_checkConsistency || !this.exports.ontology_getQueryBuffer) {
       return { isConsistent: true, conflictingAxioms: [] };
@@ -3395,13 +3402,13 @@ export class LspFacade {
   applyOntologyDelta(
     adds: {
       axiomType: number;
-      sourceLangId?: number;
+      sourceLangId?: number | undefined;
       subject: string;
-      predicate?: string;
-      object?: string;
-      flags?: number;
+      predicate?: string | undefined;
+      object?: string | undefined;
+      flags?: number | undefined;
     }[],
-    retractions: { axiomType: number; subject: string; predicate?: string; object?: string }[],
+    retractions: { axiomType: number; subject: string; predicate?: string | undefined; object?: string | undefined }[],
   ): number {
     if (!this.exports.ontology_applyDelta) return 0;
     const addCount = adds.length;
@@ -4342,7 +4349,6 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
-    console.log(`[Bindings] walkAstDiff START: oldRoot=${oldRoot}, newRoot=${newRoot}`);
     let mem32 = new Uint32Array(this.wasmMemory.buffer);
     const getMem32 = () => {
       if (mem32.buffer !== this.wasmMemory.buffer || mem32.byteLength === 0) {
@@ -4681,7 +4687,6 @@ export class LspFacade {
         }
       }
     }
-    console.log(`[Bindings] walkAstDiff COMPLETE: oldRoot=${oldRoot}, newRoot=${newRoot}, total opsCount=${opsCount}`);
   }
 }
 
@@ -5735,9 +5740,9 @@ export default WasmLanguageBinding;
 
 export interface LruAstCacheOptions {
   /** Maximum number of full document ASTs to keep in memory simultaneously (default: 100). */
-  maxActiveAsts?: number;
+  maxActiveAsts?: number | undefined;
   /** Maximum memory threshold in bytes before LRU eviction triggers (default: 128 MB). */
-  maxAstMemoryBytes?: number;
+  maxAstMemoryBytes?: number | undefined;
 }
 
 /**
@@ -5903,8 +5908,8 @@ export class LspWorkspaceManager {
     kind: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
     score: number;
   }[] {
     const results = this.facade.fuzzyFindSymbols(query, maxResults);
@@ -5928,10 +5933,10 @@ export class LspWorkspaceManager {
 export async function createWasmParser(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
   options?: {
-    syntaxNames?: string[];
-    fieldNames?: Record<string, number>;
-    lintMessages?: Record<string, any>;
-    lintSeverities?: Record<string, number>;
+    syntaxNames?: string[] | undefined;
+    fieldNames?: Record<string, number> | undefined;
+    lintMessages?: Record<string, any> | undefined;
+    lintSeverities?: Record<string, number> | undefined;
   },
 ): Promise<{ facade: LspFacade; parser: TreeSitterParser }> {
   let bytes: ArrayBuffer;
@@ -5954,13 +5959,13 @@ export async function createWasmParser(
         bytes = await res.arrayBuffer();
       } catch {
         const modName = "node" + ":fs";
-        const fs = await Function("m", "return import(m)")(modName);
+        const fs = await import(/* @vite-ignore */ modName);
         const buf = fs.readFileSync(wasmUrlOrBytes);
         bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
       }
     } else {
       const modName = "node" + ":fs";
-      const fs = await Function("m", "return import(m)")(modName);
+      const fs = await import(/* @vite-ignore */ modName);
       const buf = fs.readFileSync(wasmUrlOrBytes);
       bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
@@ -5975,7 +5980,7 @@ export async function createWasmParser(
       for (const bPath of bindingsPaths) {
         try {
           const fileUrl = typeof bPath === "string" && bPath.startsWith("/") ? `file://${bPath}` : bPath;
-          const mod = await Function("m", "return import(m)")(fileUrl);
+          const mod = await import(/* @vite-ignore */ fileUrl);
           if (mod) {
             if (!syntaxNames && mod.SYNTAX_NAMES && mod.SYNTAX_NAMES.length > 0) {
               syntaxNames = mod.SYNTAX_NAMES;
@@ -6059,10 +6064,10 @@ export async function createWasmParser(
 export function createWasmParserSync(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
   options?: {
-    syntaxNames?: string[];
-    fieldNames?: Record<string, number>;
-    lintMessages?: Record<string, any>;
-    lintSeverities?: Record<string, number>;
+    syntaxNames?: string[] | undefined;
+    fieldNames?: Record<string, number> | undefined;
+    lintMessages?: Record<string, any> | undefined;
+    lintSeverities?: Record<string, number> | undefined;
   },
 ): { facade: LspFacade; parser: TreeSitterParser } {
   let bytes: ArrayBuffer;

@@ -41,33 +41,47 @@ import { psoSolveSync } from "../solvers/pso.js";
 
 // ── Public interfaces ──
 
+/**
+ * Specification for a Modelica model parameter calibration / estimation problem.
+ *
+ * Minimizes the weighted sum of squared trajectory errors between simulated
+ * outputs and experimental time-series measurements subject to box constraints.
+ */
 export interface CalibrationProblem {
   /** Parameter names to calibrate. */
   parameters: string[];
   /** Box constraints: parameter → { min, max }. */
   parameterBounds: Map<string, { min: number; max: number }>;
   /** Initial guesses (from model defaults if omitted). */
-  initialGuess?: Map<string, number>;
+  initialGuess?: Map<string, number> | undefined;
   /** Measurement data: variable name → { t: number[], y: number[] }. */
   measurements: Map<string, { t: number[]; y: number[] }>;
   /** Per-variable weights (default 1.0). */
-  weights?: Map<string, number>;
-  /** Simulation time range (auto-detected from measurements if omitted). */
-  startTime?: number;
-  stopTime?: number;
+  weights?: Map<string, number> | undefined;
+  /** Simulation start time (auto-detected from measurements if omitted). */
+  startTime?: number | undefined;
+  /** Simulation stop time (auto-detected from measurements if omitted). */
+  stopTime?: number | undefined;
   /** NLP convergence tolerance (default 1e-8). */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Maximum iterations (default 100). */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** Solver method (default: "lm", or "lbfgsb" for large parameter sets). */
-  method?: "lm" | "sqp" | "lbfgsb" | "cmaes" | "de" | "pso" | "hybrid-cmaes-lm";
+  method?: "lm" | "sqp" | "lbfgsb" | "cmaes" | "de" | "pso" | "hybrid-cmaes-lm" | undefined;
   /** Gradient method (default: "sensitivity" or "adjoint"). */
-  gradient?: "sensitivity" | "finite-difference" | "adjoint";
+  gradient?: "sensitivity" | "finite-difference" | "adjoint" | undefined;
   /** Optional progress callback invoked after each accepted iteration. */
-  onProgress?: (progress: { iteration: number; cost: number; parameters: Record<string, number> }) => void;
+  onProgress?:
+    | ((progress: { iteration: number; cost: number; parameters: Record<string, number> }) => void)
+    | undefined;
 }
 
+/**
+ * Result of a parameter calibration run, including optimal parameter estimates,
+ * residual metrics, convergence history, and simulated trajectories at the optimum.
+ */
 export interface CalibrationResult {
+  /** Whether the calibration optimizer satisfied its convergence criteria. */
   success: boolean;
   /** Optimal parameter values. */
   parameters: Map<string, number>;
@@ -81,16 +95,35 @@ export interface CalibrationResult {
   simulated: { t: number[]; y: Map<string, number[]> };
   /** Cost history for convergence monitoring. */
   costHistory: number[];
+  /** Human-readable termination and convergence summary. */
   message: string;
 }
 
 // ── Calibrator ──
 
+/**
+ * Output-error parameter estimation engine for flattened Modelica DAE models.
+ *
+ * Supports local gradient-based optimizers (Levenberg-Marquardt, L-BFGS-B with
+ * DAE adjoint sensitivities, BFGS-SQP), derivative-free metaheuristics
+ * (CMA-ES, Differential Evolution, Particle Swarm Optimization), and a
+ * two-phase hybrid CMA-ES + Levenberg-Marquardt global-to-local strategy.
+ */
 export class ModelicaCalibrator {
+  /** Flattened DAE arena representing the Modelica model being calibrated. */
   private dae: DAEBuilder;
-  private simulator: ArenaSimulator;
+  /** Prepared arena simulator instance for evaluating model trajectories. */
+  public simulator: ArenaSimulator;
+  /** Calibration problem specification (parameters, bounds, measurements, and solver options). */
   private problem: CalibrationProblem;
 
+  /**
+   * Creates a new `ModelicaCalibrator` for the given DAE model and calibration problem.
+   *
+   * @param dae       Flattened DAE arena.
+   * @param simulator Arena simulator associated with the DAE.
+   * @param problem   Calibration problem configuration and measurement data.
+   */
   constructor(dae: DAEBuilder, simulator: ArenaSimulator, problem: CalibrationProblem) {
     this.dae = dae;
     this.simulator = simulator;
@@ -98,7 +131,10 @@ export class ModelicaCalibrator {
   }
 
   /**
-   * Run the calibration.
+   * Run the parameter calibration using the configured (or automatically selected) optimization method.
+   *
+   * Defaults to `"lbfgsb"` when adjoint gradients are requested or when 6 or more parameters
+   * are calibrated, and `"lm"` (Levenberg-Marquardt) otherwise.
    */
   public calibrate(): CalibrationResult {
     const method =
@@ -129,6 +165,10 @@ export class ModelicaCalibrator {
   // Metaheuristic Solvers (CMA-ES, DE, PSO)
   // ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Solves the calibration problem using a derivative-free global metaheuristic
+   * optimizer (CMA-ES, Differential Evolution, or Particle Swarm Optimization).
+   */
   private solveMetaheuristic(algo: "cmaes" | "de" | "pso"): CalibrationResult {
     const { parameters, parameterBounds, measurements, weights } = this.problem;
     const nParams = parameters.length;
@@ -191,6 +231,11 @@ export class ModelicaCalibrator {
   // Hybrid CMA-ES + Levenberg-Marquardt Solver
   // ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Solves the calibration problem using a two-stage hybrid strategy:
+   * Phase 1 performs global exploration with CMA-ES to escape local minima, and
+   * Phase 2 polishes the best candidate locally using Levenberg-Marquardt.
+   */
   private solveHybridCmaesLM(): CalibrationResult {
     const { parameters, parameterBounds } = this.problem;
     const nParams = parameters.length;
@@ -262,6 +307,10 @@ export class ModelicaCalibrator {
   // L-BFGS-B solver (Scalable Adjoint Sensitivity)
   // ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Solves the calibration problem using limited-memory quasi-Newton L-BFGS-B
+   * coupled with backward-in-time DAE adjoint sensitivity analysis (`solveDaeAdjoint`).
+   */
   private solveLBFGSB(): CalibrationResult {
     const { parameters, parameterBounds, measurements } = this.problem;
     const tol = this.problem.tolerance ?? 1e-6;
@@ -385,6 +434,10 @@ export class ModelicaCalibrator {
   // Levenberg-Marquardt solver
   // ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Solves the nonlinear least-squares calibration problem using damped
+   * Gauss-Newton / Levenberg-Marquardt with box-constraint projection.
+   */
   private solveLM(): CalibrationResult {
     const { parameters, parameterBounds, measurements, weights } = this.problem;
     const tol = this.problem.tolerance ?? 1e-8;
@@ -519,6 +572,10 @@ export class ModelicaCalibrator {
   // SQP solver (scalar objective)
   // ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Solves the calibration problem as a box-constrained scalar optimization
+   * problem using BFGS quasi-Newton Hessian updates and Armijo backtracking line search.
+   */
   private solveSQP(): CalibrationResult {
     const { parameters, parameterBounds, measurements, weights } = this.problem;
     const tol = this.problem.tolerance ?? 1e-8;
@@ -908,6 +965,10 @@ export class ModelicaCalibrator {
   // Result builder
   // ────────────────────────────────────────────────────────────────────
 
+  /**
+   * Runs a final verification simulation at the optimal parameter vector `theta`
+   * and assembles the {@link CalibrationResult} with per-variable residuals and trajectories.
+   */
   private buildResult(
     theta: Float64Array,
     cost: number,
@@ -972,6 +1033,10 @@ export class ModelicaCalibrator {
     };
   }
 
+  /**
+   * Resolves the simulation `[startTime, stopTime]` interval from explicit problem
+   * options or by scanning the minimum and maximum timestamps across all measurement series.
+   */
   private resolveTimeRange(): { startTime: number; stopTime: number } {
     const { measurements } = this.problem;
     let startTime = this.problem.startTime;

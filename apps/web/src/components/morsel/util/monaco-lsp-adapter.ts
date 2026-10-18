@@ -205,8 +205,8 @@ export function setupMonacoLspAdapter(
   connection: ProtocolConnection,
   uri: string,
   callbacks?: {
-    onDiagnostics?: (uri: string, markers: monacoTypes.editor.IMarkerData[]) => void;
-    onStatus?: (state: string, message: string) => void;
+    onDiagnostics?: ((uri: string, markers: monacoTypes.editor.IMarkerData[]) => void) | undefined;
+    onStatus?: ((state: string, message: string) => void) | undefined;
   },
 ): monacoTypes.IDisposable {
   const disposables: monacoTypes.IDisposable[] = [];

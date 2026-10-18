@@ -24,15 +24,15 @@ export interface LbmGridConfig {
   /** Physical fluid density in kg/m^3 (1.225 for air, 1000 for water). */
   density: number;
   /** Prescribed inlet velocity vector [vx, vy, vz] in m/s. */
-  inletVelocity?: [number, number, number];
+  inletVelocity?: [number, number, number] | undefined;
   /** Turbulence modeling option: 'laminar' (default) or 'smagorinsky_les' for high-Re subgrid eddy viscosity. */
-  turbulenceModel?: "laminar" | "smagorinsky_les";
+  turbulenceModel?: "laminar" | "smagorinsky_les" | undefined;
   /** Smagorinsky constant Cs (default: 0.14). */
-  smagorinskyConstant?: number;
+  smagorinskyConstant?: number | undefined;
   /** Whether to use Bouzidi curved wall boundary interpolation (default: true if deltaWall is present). */
-  curvedBoundary?: boolean;
+  curvedBoundary?: boolean | undefined;
   /** Sub-grid distance fractions delta in (0, 1) to obstacle boundary along each discrete velocity direction (nx * ny * nz * 19). */
-  deltaWall?: Float32Array;
+  deltaWall?: Float32Array | undefined;
 }
 
 export interface LbmStepResult {
@@ -43,5 +43,5 @@ export interface LbmStepResult {
   /** Average inlet-to-outlet pressure drop in Pa. */
   pressureDropPa: number;
   /** Velocity magnitude field for 3D slice visualization (nx * ny * nz Float32Array). */
-  velocityMagnitude?: Float32Array;
+  velocityMagnitude?: Float32Array | undefined;
 }

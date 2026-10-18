@@ -19,10 +19,10 @@ export interface ThreadGraphNode {
   nodeId: number;
   name: string;
   status: "synced" | "stale" | "conflict" | "unverified" | "removed";
-  uri?: string;
-  line?: number;
-  column?: number;
-  properties?: Record<string, any>;
+  uri?: string | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  properties?: Record<string, any> | undefined;
 }
 
 export interface ThreadGraphItem {
@@ -53,7 +53,13 @@ export class ThreadExplorerProvider {
     hypergraph: DigitalThreadHypergraph,
     nodeMetadataMap?: Map<
       string,
-      { name?: string; uri?: string; line?: number; column?: number; properties?: Record<string, any> }
+      {
+        name?: string | undefined;
+        uri?: string | undefined;
+        line?: number | undefined;
+        column?: number | undefined;
+        properties?: Record<string, any> | undefined;
+      }
     >,
   ): ThreadGraphResponse {
     const records = hypergraph.getAllRecords();

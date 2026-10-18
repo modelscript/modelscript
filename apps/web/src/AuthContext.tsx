@@ -8,13 +8,13 @@ export interface User {
   id: number;
   username: string;
   email: string;
-  display_name?: string;
-  avatar_url?: string;
-  account_type?: string;
-  role?: string;
-  has_password?: boolean;
-  token_version?: number;
-  totp_enabled?: boolean;
+  display_name?: string | undefined;
+  avatar_url?: string | undefined;
+  account_type?: string | undefined;
+  role?: string | undefined;
+  has_password?: boolean | undefined;
+  token_version?: number | undefined;
+  totp_enabled?: boolean | undefined;
 }
 
 interface AuthContextType {
@@ -23,7 +23,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ requires2FA?: boolean; tempToken?: string; user?: User }>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ requires2FA?: boolean | undefined; tempToken?: string | undefined; user?: User | undefined }>;
   complete2FALogin: (tempToken: string, code: string) => Promise<void>;
   register: (
     username: string,
@@ -31,7 +34,7 @@ interface AuthContextType {
     password: string,
     acceptTerms?: boolean,
     captchaToken?: string,
-  ) => Promise<{ verificationRequired?: boolean; message?: string }>;
+  ) => Promise<{ verificationRequired?: boolean | undefined; message?: string | undefined }>;
   logout: () => void;
   unreadCount: number;
   setUnreadCount: (c: number) => void;

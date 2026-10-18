@@ -22,7 +22,7 @@ export default function OpenFileDropzone({
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (acceptedFiles.length > 0) {
-        const file = acceptedFiles[0];
+        const file = acceptedFiles[0]!;
         const isArchive = file.name.endsWith(".ssp") || file.name.endsWith(".fmu");
 
         if (isArchive) {
@@ -31,7 +31,7 @@ export default function OpenFileDropzone({
             const buffer = e.target?.result as ArrayBuffer;
             if (buffer) {
               const bytes = new Uint8Array(buffer);
-              const nameRaw = file.name.split(".")[0];
+              const nameRaw = file.name.split(".")[0]!;
               // Ensure name is a valid Modelica identifier
               const name = nameRaw.replace(/[^a-zA-Z0-9_]/g, "_");
 

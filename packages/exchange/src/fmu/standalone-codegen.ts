@@ -33,7 +33,7 @@ export interface StandaloneCResult {
 
 export interface StandaloneCOptions extends FmuOptions {
   /** Include a standalone main() harness in the C file for quick CLI testing. */
-  includeMain?: boolean;
+  includeMain?: boolean | undefined;
 }
 
 /**
@@ -266,7 +266,7 @@ export function generateStandaloneCSources(dae: DAEBuilder, options: StandaloneC
   cLines.push("");
   cLines.push("  /* Initialize continuous states from initial variables */");
   for (let i = 0; i < stateVRs.length; i++) {
-    const vr = stateVRs[i];
+    const vr = stateVRs[i]!;
     if (vr >= 0) {
       cLines.push(`  inst->states[${i}] = inst->vars[${vr}];`);
     }
@@ -318,7 +318,7 @@ export function generateStandaloneCSources(dae: DAEBuilder, options: StandaloneC
   cLines.push("      inst->states[i] = y0[i];");
   cLines.push("    }");
   for (let i = 0; i < stateVRs.length; i++) {
-    const vr = stateVRs[i];
+    const vr = stateVRs[i]!;
     if (vr >= 0) cLines.push(`    inst->vars[${vr}] = inst->states[${i}];`);
   }
   cLines.push(`    ${id}_solveAlgebraicLoops(inst);`);
@@ -331,7 +331,7 @@ export function generateStandaloneCSources(dae: DAEBuilder, options: StandaloneC
   cLines.push("      inst->states[i] = y0[i] + 0.5 * dt * k1[i];");
   cLines.push("    }");
   for (let i = 0; i < stateVRs.length; i++) {
-    const vr = stateVRs[i];
+    const vr = stateVRs[i]!;
     if (vr >= 0) cLines.push(`    inst->vars[${vr}] = inst->states[${i}];`);
   }
   cLines.push(`    ${id}_solveAlgebraicLoops(inst);`);
@@ -344,7 +344,7 @@ export function generateStandaloneCSources(dae: DAEBuilder, options: StandaloneC
   cLines.push("      inst->states[i] = y0[i] + 0.5 * dt * k2[i];");
   cLines.push("    }");
   for (let i = 0; i < stateVRs.length; i++) {
-    const vr = stateVRs[i];
+    const vr = stateVRs[i]!;
     if (vr >= 0) cLines.push(`    inst->vars[${vr}] = inst->states[${i}];`);
   }
   cLines.push(`    ${id}_solveAlgebraicLoops(inst);`);
@@ -357,7 +357,7 @@ export function generateStandaloneCSources(dae: DAEBuilder, options: StandaloneC
   cLines.push("      inst->states[i] = y0[i] + dt * k3[i];");
   cLines.push("    }");
   for (let i = 0; i < stateVRs.length; i++) {
-    const vr = stateVRs[i];
+    const vr = stateVRs[i]!;
     if (vr >= 0) cLines.push(`    inst->vars[${vr}] = inst->states[${i}];`);
   }
   cLines.push(`    ${id}_solveAlgebraicLoops(inst);`);
@@ -369,7 +369,7 @@ export function generateStandaloneCSources(dae: DAEBuilder, options: StandaloneC
   cLines.push("      inst->states[i] = y0[i] + (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]);");
   cLines.push("    }");
   for (let i = 0; i < stateVRs.length; i++) {
-    const vr = stateVRs[i];
+    const vr = stateVRs[i]!;
     if (vr >= 0) cLines.push(`    inst->vars[${vr}] = inst->states[${i}];`);
   }
   cLines.push("    inst->time = t0 + dt;");
@@ -408,7 +408,7 @@ export function generateStandaloneCSources(dae: DAEBuilder, options: StandaloneC
     cLines.push(`    ${id}_step(&inst, &in, &out, dt);`);
     cLines.push("    if (step % 20 == 0) {");
     if (outputVars.length > 0) {
-      const firstOut = outputVars[0].sanitized;
+      const firstOut = outputVars[0]!.sanitized;
       cLines.push(`      printf("  t=%.2f s | ${firstOut}=%.4f\\n", inst.time, out.${firstOut});`);
     } else if (nStates > 0) {
       cLines.push(`      printf("  t=%.2f s | state[0]=%.4f\\n", inst.time, inst.states[0]);`);

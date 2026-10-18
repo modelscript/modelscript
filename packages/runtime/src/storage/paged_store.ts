@@ -44,7 +44,7 @@ export interface PagedWasmExports {
   paged_getCommittedTotalTriples?(): number;
   paged_getBufferPoolHitRate?(): number;
   ontology_getOrCreateEntity?(lo: number, hi: number): number;
-  memory?: WebAssembly.Memory;
+  memory?: WebAssembly.Memory | undefined;
 }
 
 export interface PagedTriple {
@@ -130,7 +130,7 @@ function computeSuperblockChecksum(u32View: Uint32Array): number {
 export class PagedStorageEngine {
   private _wasm: PagedWasmExports;
   private _backingFd: number | null = null;
-  private _backingFilePath: string | null = null;
+  public _backingFilePath: string | null = null;
   private _iriMap = new Map<string, number>();
   private _idToIri = new Map<number, string>();
   private _nextSequentialId = 1;
@@ -354,9 +354,9 @@ export class PagedStorageEngine {
    * Wildcards are represented by 0 or undefined.
    */
   public findTriples(pattern: {
-    subject?: string | number;
-    predicate?: string | number;
-    object?: string | number | boolean;
+    subject?: string | number | undefined;
+    predicate?: string | number | undefined;
+    object?: string | number | boolean | undefined;
   }): PagedTriple[] {
     return this._executeFind(pattern, false);
   }
@@ -366,18 +366,18 @@ export class PagedStorageEngine {
    * completely isolated from any ongoing uncommitted write transaction.
    */
   public findTriplesCommitted(pattern: {
-    subject?: string | number;
-    predicate?: string | number;
-    object?: string | number | boolean;
+    subject?: string | number | undefined;
+    predicate?: string | number | undefined;
+    object?: string | number | boolean | undefined;
   }): PagedTriple[] {
     return this._executeFind(pattern, true);
   }
 
   private _executeFind(
     pattern: {
-      subject?: string | number;
-      predicate?: string | number;
-      object?: string | number | boolean;
+      subject?: string | number | undefined;
+      predicate?: string | number | undefined;
+      object?: string | number | boolean | undefined;
     },
     committedOnly: boolean,
   ): PagedTriple[] {

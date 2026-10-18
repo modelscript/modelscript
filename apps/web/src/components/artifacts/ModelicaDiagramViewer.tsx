@@ -11,7 +11,7 @@ const MorselEditorLazy = React.lazy(() => import("../morsel/Morsel"));
 
 interface ModelicaDiagramViewerProps {
   viewConfig: Record<string, unknown>;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`

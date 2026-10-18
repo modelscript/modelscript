@@ -4,6 +4,6 @@ import os from "node:os";
 import path from "node:path";
 
 export function getSocketPath(): string {
-  const uid = typeof process.getuid === "function" ? process.getuid() : process.env.USER || "user";
+  const uid = typeof process.getuid === "function" ? process.getuid() : process.env["USER"] || "user";
   return path.join(os.tmpdir(), `modelscript-${uid}.sock`);
 }

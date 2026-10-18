@@ -14,14 +14,26 @@ import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
+/**
+ * Retrieves the globally registered Modelica diagram operations module.
+ */
 function getModelicaDiagramOps(): any {
   return (globalThis as any).modelicaDiagramOps ?? {};
 }
 
+/**
+ * Retrieves the globally registered SysML v2 diagram operations module.
+ */
 function getSysML2DiagramOps(): any {
   return (globalThis as any).sysml2DiagramOps ?? {};
 }
 
+/**
+ * Computes a fast 32-bit rolling hash of a string for diagram cache invalidation.
+ *
+ * @param str - Input text to hash.
+ * @returns Signed 32-bit integer hash.
+ */
 function simpleHash(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -30,19 +42,41 @@ function simpleHash(str: string): number {
   return hash;
 }
 
+/**
+ * Language server service responsible for building, caching, and mutating
+ * interactive graphical diagrams across Modelica, SysML v2, OWL2, PSCAD, and generic DSLs.
+ */
 export class DiagramService {
+  /** In-memory cache of SysML v2 `.layout` sidecar data keyed by document URI. */
   private sysml2Layouts = new Map<string, any>();
+  /** In-memory cache of OWL2 `.layout` sidecar data keyed by document URI. */
   private owl2Layouts = new Map<string, any>();
+  /** Lazily initialized multi-language diagram protocol dispatcher. */
   private diagramDispatch: any;
+  /** Versioned cache of computed diagram payloads keyed by URI, class name, and diagram type. */
   private diagramCache = new Map<string, { version: string; data: any }>();
+  /** Optional reference to the validation service for checking indexing and dependency readiness. */
   public validationService?: any;
+  /** Optional reference to the parser service for retrieving active WASM parsers. */
   public parserService?: any;
 
+  /**
+   * Clears both the local and global diagram payload caches.
+   */
   clearCache(): void {
     this.diagramCache.clear();
     (globalThis as any).diagramCache?.clear();
   }
 
+  /**
+   * Creates a new `DiagramService`.
+   *
+   * @param connection - Active LSP connection for logging and notifications.
+   * @param documentManager - Document manager providing access to open text buffers.
+   * @param workspaceManager - Workspace manager providing symbol resolution and class instantiation.
+   * @param validationService - Optional validation service reference.
+   * @param parserService - Optional parser service reference.
+   */
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
@@ -55,11 +89,18 @@ export class DiagramService {
     (globalThis as any).clearDiagramCache = () => this.clearCache();
   }
 
+  /**
+   * Computes or returns cached graphical diagram data (nodes, edges, coordinate bounds)
+   * for the specified document URI and optional target class or diagram type.
+   *
+   * @param params - Diagram request parameters including URI, class name, diagram kind, and optional layout sidecar content.
+   * @returns Diagram data payload for rendering in the webview, or `null` if unavailable.
+   */
   async handleGetDiagramData(params: {
     uri: string;
-    className?: string;
-    diagramType?: string;
-    sidecarContent?: string;
+    className?: string | undefined;
+    diagramType?: string | undefined;
+    sidecarContent?: string | undefined;
   }): Promise<any> {
     // Do NOT flush validation here — it blocks the event loop and starves the
     // text editor of diagnostic updates. Instead, build the diagram from the
@@ -216,6 +257,10 @@ export class DiagramService {
     }
   }
 
+  /**
+   * Returns (lazily initializing if necessary) the multi-language diagram protocol dispatcher
+   * configured with Modelica, SysML v2, OWL2, and generic DSL diagram backends.
+   */
   getDiagramDispatch() {
     if (!this.diagramDispatch) {
       const modelicaBackend = new ModelicaDiagramBackend({
@@ -391,7 +436,12 @@ export class DiagramService {
               if (sym.resourceId === uri && sym.name === componentName) {
                 // Get children of this symbol
                 const childIds = unified.childrenOf?.get(sym.id) ?? [];
-                const children: { name: string; ruleName: string; value?: string; description?: string }[] = [];
+                const children: {
+                  name: string;
+                  ruleName: string;
+                  value?: string | undefined;
+                  description?: string | undefined;
+                }[] = [];
                 for (const childId of childIds) {
                   const child = unified.symbols.get(childId);
                   if (child && child.name) {

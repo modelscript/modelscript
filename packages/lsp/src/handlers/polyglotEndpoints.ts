@@ -96,9 +96,9 @@ function getSysmlParser(): any {
 
 export interface RegisterLanguageRequest {
   id: string;
-  name?: string;
-  extensions?: string[];
-  wasmBytes?: number[] | Uint8Array | string;
+  name?: string | undefined;
+  extensions?: string[] | undefined;
+  wasmBytes?: number[] | Uint8Array | string | undefined;
   monarch?: any;
   textmate?: any;
   languageDef?: any;
@@ -106,7 +106,7 @@ export interface RegisterLanguageRequest {
 
 export interface ReloadLanguageRequest {
   id: string;
-  wasmBytes?: number[] | Uint8Array | string;
+  wasmBytes?: number[] | Uint8Array | string | undefined;
   monarch?: any;
   languageDef?: any;
 }
@@ -532,7 +532,7 @@ export function registerPolyglotEndpoints(
                 const idNode = findNodes(modDecls[0], "IDENTIFIER")[0];
                 if (idNode) name = idNode.text.trim();
               }
-              const attributes: { name: string; type: string; value?: string }[] = [];
+              const attributes: { name: string; type: string; value?: string | undefined }[] = [];
               const varDecls = findNodes(root, "VariableDeclaration");
               for (const vd of varDecls) {
                 const idNode = findNodes(vd, "IDENTIFIER")[0];
@@ -563,13 +563,13 @@ export function registerPolyglotEndpoints(
             }
           } else {
             const modMatch = text.match(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/);
-            const name = modMatch ? modMatch[1] : baseName;
-            const attributes: { name: string; type: string; value?: string }[] = [];
+            const name = modMatch ? modMatch[1]! : baseName;
+            const attributes: { name: string; type: string; value?: string | undefined }[] = [];
             const varRegex = /\b([a-zA-Z_]\w*)\s*=\s*([^;]+);/g;
             let m: RegExpExecArray | null;
             while ((m = varRegex.exec(text)) !== null) {
-              if (!m[1].startsWith("//") && m[1] !== "module") {
-                attributes.push({ name: m[1], type: "Real", value: m[2].trim() });
+              if (!m[1]!.startsWith("//") && m[1] !== "module") {
+                attributes.push({ name: m[1]!, type: "Real", value: m[2]!.trim() });
               }
             }
             const components: { name: string; typeSpecifier: string }[] = [];
@@ -611,7 +611,7 @@ export function registerPolyglotEndpoints(
             const classMatches = text.matchAll(
               /\b(?:Declaration\(Class\(:([A-Za-z_][A-Za-z0-9_]*)\)\)|Class:\s*([A-Za-z_][A-Za-z0-9_]*))/g,
             );
-            const classes = Array.from(classMatches).map((cm) => cm[1] || cm[2]);
+            const classes = Array.from(classMatches).map((cm) => cm[1]! || cm[2]!);
             node = { name: classes[0] || baseName, kind: "ontology_class", superclasses: classes.slice(1) };
           }
         } else {
@@ -675,7 +675,7 @@ export function registerPolyglotEndpoints(
   // ── 6. Propagate Stale Correspondence Links ──────────────────────────────
   connection.onRequest(
     "modelscript/propagateStale",
-    async (params: { uri?: string; symbolIds?: number[]; parentSlot?: number }) => {
+    async (params: { uri?: string | undefined; symbolIds?: number[] | undefined; parentSlot?: number | undefined }) => {
       try {
         const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
         const corr = qe?.getCorrespondenceIndex();
@@ -698,25 +698,28 @@ export function registerPolyglotEndpoints(
   );
 
   // ── 7. Reconcile Correspondence Conflicts ────────────────────────────────
-  connection.onRequest("modelscript/reconcileConflicts", async (params: { strategy?: number; uri?: string }) => {
-    try {
-      const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
-      const corr = qe?.getCorrespondenceIndex();
-      let resolvedCount = 0;
-      if (corr && typeof corr.reconcileAll === "function") {
-        resolvedCount = corr.reconcileAll(params.strategy ?? 0);
-        if (params.uri) {
-          connection.sendDiagnostics({ uri: params.uri, diagnostics: [] });
+  connection.onRequest(
+    "modelscript/reconcileConflicts",
+    async (params: { strategy?: number | undefined; uri?: string | undefined }) => {
+      try {
+        const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
+        const corr = qe?.getCorrespondenceIndex();
+        let resolvedCount = 0;
+        if (corr && typeof corr.reconcileAll === "function") {
+          resolvedCount = corr.reconcileAll(params.strategy ?? 0);
+          if (params.uri) {
+            connection.sendDiagnostics({ uri: params.uri, diagnostics: [] });
+          }
         }
+        return { success: true, resolvedCount };
+      } catch (err: any) {
+        return { success: false, error: err?.message || String(err) };
       }
-      return { success: true, resolvedCount };
-    } catch (err: any) {
-      return { success: false, error: err?.message || String(err) };
-    }
-  });
+    },
+  );
 
   // ── 8. Check Correspondence Conflicts & Publish Diagnostics ─────────────
-  connection.onRequest("modelscript/checkCorrespondenceConflicts", async (params: { uri?: string }) => {
+  connection.onRequest("modelscript/checkCorrespondenceConflicts", async (params: { uri?: string | undefined }) => {
     try {
       const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
       const corr = qe?.getCorrespondenceIndex();
@@ -754,18 +757,20 @@ export function registerPolyglotEndpoints(
 export interface ProjectModelRequest {
   uri: string;
   targetLang: "sysml2" | "modelica" | "owl2" | "step" | "csv" | "scad" | "json-schema";
-  targetUri?: string;
-  options?: {
-    strict?: boolean;
-    includeInferredFeatures?: boolean;
-  };
+  targetUri?: string | undefined;
+  options?:
+    | {
+        strict?: boolean | undefined;
+        includeInferredFeatures?: boolean | undefined;
+      }
+    | undefined;
 }
 
 export interface ProjectModelResponse {
   success: boolean;
-  targetSource?: string;
+  targetSource?: string | undefined;
   targetLang: string;
   correspondenceCount: number;
-  diagnostics?: string[];
-  error?: string;
+  diagnostics?: string[] | undefined;
+  error?: string | undefined;
 }

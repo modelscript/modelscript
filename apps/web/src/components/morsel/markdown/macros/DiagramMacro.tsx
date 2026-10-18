@@ -3,8 +3,8 @@
 import Diagram from "../../Diagram.js";
 
 interface DiagramMacroProps {
-  model?: string;
-  type?: string;
+  model?: string | undefined;
+  type?: string | undefined;
 }
 
 export function DiagramMacro(props: DiagramMacroProps) {

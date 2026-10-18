@@ -103,8 +103,8 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
         // Stream completion
         const completion = await engine.chat.completions.create({
           messages: openaiMessages,
-          temperature: options?.modelOptions?.temperature ?? 0.7,
-          max_tokens: options?.modelOptions?.maxOutputTokens ?? 4096,
+          temperature: options?.["modelOptions"]?.temperature ?? 0.7,
+          max_tokens: options?.["modelOptions"]?.maxOutputTokens ?? 4096,
           stream: true,
         });
 

@@ -15,7 +15,7 @@ export interface ParameterBound {
   name: string;
   min: number;
   max: number;
-  nominal?: number;
+  nominal?: number | undefined;
 }
 
 export interface FalsificationProblem {
@@ -30,40 +30,42 @@ export interface FalsificationProblem {
   /** STL safety requirement to falsify (find rho < 0) */
   requirement: STLFormula;
   /** Optional requirement label */
-  requirementName?: string;
+  requirementName?: string | undefined;
 }
 
 export interface FalsificationOptions {
   /** Maximum number of falsification iterations (default: 50) */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** Learning rate for gradient descent step (default: 0.1) */
-  learningRate?: number;
+  learningRate?: number | undefined;
   /** Numerical finite difference perturbation epsilon (default: 1e-4) */
-  epsilon?: number;
+  epsilon?: number | undefined;
   /** Number of random restart attempts if gradient stalls (default: 3) */
-  randomRestarts?: number;
+  randomRestarts?: number | undefined;
   /** Early exit as soon as any violation rho < 0 is discovered (default: true) */
-  earlyExit?: boolean;
+  earlyExit?: boolean | undefined;
 }
 
 export interface FalsificationResult {
   /** Whether a falsifying parameter vector was successfully discovered */
   isFalsified: boolean;
   /** Counterexample parameter vector p* */
-  counterexampleParams?: Record<string, number>;
+  counterexampleParams?: Record<string, number> | undefined;
   /** Worst-case robustness degree rho(p*) */
   minRobustness: number;
   /** Simulation timestamp where violation occurred */
-  violationTime?: number;
+  violationTime?: number | undefined;
   /** Total number of simulation trajectory evaluations */
   evaluations: number;
   /** Iteration history: [iteration, rho, params] */
   history: { iteration: number; robustness: number; params: Record<string, number> }[];
   /** Trajectory that violates requirement */
-  falsifyingTrajectory?: {
-    times: number[];
-    states: number[][];
-  };
+  falsifyingTrajectory?:
+    | {
+        times: number[];
+        states: number[][];
+      }
+    | undefined;
 }
 
 /**
@@ -77,7 +79,7 @@ export class FalsificationRunner {
    */
   public evaluateTrajectory(p: Record<string, number>): {
     robustness: number;
-    violationTime?: number;
+    violationTime?: number | undefined;
     times: number[];
     states: number[][];
   } {

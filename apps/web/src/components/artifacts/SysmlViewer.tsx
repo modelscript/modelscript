@@ -20,9 +20,9 @@ import Box from "../Box";
 export interface SysmlPart {
   name: string;
   type: string;
-  multiplicity?: string;
-  ports?: string[];
-  description?: string;
+  multiplicity?: string | undefined;
+  ports?: string[] | undefined;
+  description?: string | undefined;
 }
 
 export interface SysmlRequirement {
@@ -35,21 +35,21 @@ export interface SysmlRequirement {
 export interface SysmlConnection {
   source: string;
   target: string;
-  flowType?: string;
+  flowType?: string | undefined;
 }
 
 export interface SysmlViewerProps {
   viewConfig: {
-    format?: "SysML2" | "KerML" | string;
-    systemName?: string;
-    title?: string;
-    code?: string;
-    parts?: SysmlPart[];
-    requirements?: SysmlRequirement[];
-    connections?: SysmlConnection[];
+    format?: "SysML2" | "KerML" | string | undefined;
+    systemName?: string | undefined;
+    title?: string | undefined;
+    code?: string | undefined;
+    parts?: SysmlPart[] | undefined;
+    requirements?: SysmlRequirement[] | undefined;
+    connections?: SysmlConnection[] | undefined;
     [key: string]: unknown;
   };
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
@@ -95,7 +95,7 @@ const SystemTitle = styled.div`
   text-overflow: ellipsis;
 `;
 
-const Badge = styled.span<{ $variant?: "sysml" | "req-pass" | "req-warn" | "kerml" }>`
+const Badge = styled.span<{ $variant?: "sysml" | "req-pass" | "req-warn" | "kerml" | undefined }>`
   display: inline-flex;
   align-items: center;
   gap: 4px;

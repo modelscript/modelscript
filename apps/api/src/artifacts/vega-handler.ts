@@ -22,6 +22,8 @@ export class VegaArtifactHandler implements ArtifactHandler {
         details: {
           isVegaLite,
           schema: spec.$schema,
+          title: spec.title || spec.description || filePath,
+          spec,
         },
       };
     } catch (err) {
@@ -33,10 +35,10 @@ export class VegaArtifactHandler implements ArtifactHandler {
   validate(artifact: Record<string, unknown>): string[] {
     const errors: string[] = [];
 
-    if (!artifact.path) {
+    if (!artifact["path"]) {
       errors.push("Vega artifact must have a 'path' field");
     } else {
-      const p = artifact.path as string;
+      const p = artifact["path"] as string;
       const validExts = this.extensions;
       if (!validExts.some((ext) => p.toLowerCase().endsWith(ext))) {
         errors.push(`Vega path must end with ${validExts.join(", ")}, got: "${p}"`);
@@ -52,7 +54,9 @@ export class VegaArtifactHandler implements ArtifactHandler {
       label: "View Plot",
       icon: "graph",
       config: {
-        spec: metadata.path, // The frontend can fetch the JSON from the path
+        spec: metadata.details?.["spec"] || metadata.path,
+        specUrl: metadata.path,
+        title: metadata.details?.["title"] || metadata.description || metadata.path,
       },
     };
   }

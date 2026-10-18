@@ -17,7 +17,7 @@ export interface AudioClockOptions {
   /** Target step interval in seconds (e.g., 0.01 for 100 Hz, 0.005 for 200 Hz). */
   stepSize: number;
   /** Real-time speed factor (1.0 = real-time, 2.0 = 2x speed). Default: 1.0. */
-  realtimeFactor?: number;
+  realtimeFactor?: number | undefined;
   /** Callback fired on each simulation step tick. */
   onTick: (simTime: number, actualElapsedMs: number) => Promise<void> | void;
 }

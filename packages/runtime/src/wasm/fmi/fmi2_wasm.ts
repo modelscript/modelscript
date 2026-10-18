@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DaeBuilder, VAR_STRIDE, VAR_FLAGS, FLAG_VAR_STATE } from "../dae/builder";
-import { computeDerivatives, stepEuler } from "../solvers/integrators";
+import { computeDerivatives, solveAlgebraicConstraints, stepEuler } from "../solvers/integrators";
 import { atomicChunkAlloc } from "../arena";
 import { UnmanagedFloat64Array, UnmanagedUint32Array } from "../core/array";
 
@@ -183,7 +183,21 @@ export function fmi2DoStep(
   let inst = changetype<Fmi2Instance>(instancePtr);
   let dae = changetype<DaeBuilder>(inst.daePtr);
 
-  stepEuler(dae, inst.varValuesPtr as u32, communicationStepSize);
+  let maxSubStep: f64 = 1e-3;
+  let absStep = Math.abs(communicationStepSize);
+  let numSubSteps: i32 = absStep > maxSubStep ? <i32>Math.ceil(absStep / maxSubStep) : 1;
+  if (numSubSteps > 1000) numSubSteps = 1000;
+  let dt = communicationStepSize / <f64>numSubSteps;
+
+  solveAlgebraicConstraints(dae, inst.varValuesPtr as u32);
+  for (let s: i32 = 0; s < numSubSteps; s++) {
+    stepEuler(dae, inst.varValuesPtr as u32, dt);
+    solveAlgebraicConstraints(dae, inst.varValuesPtr as u32);
+  }
+  for (let i: u32 = 0; i < inst.nStates; i++) {
+    let vIdx = inst.stateVarIndices[i];
+    inst.continuousStates[i] = inst.varValues[vIdx];
+  }
   inst.currentTime = currentCommunicationPoint + communicationStepSize;
   inst.fmuState = FMI2_STATE_STEP_COMPLETE;
   return FMI2_OK;

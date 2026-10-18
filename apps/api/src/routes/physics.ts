@@ -82,6 +82,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
     fs.writeFileSync(cachedPath, req.file.buffer);
 
     res.json({ hash, cached: false, message: "Geometry uploaded and cached." });
+    return;
   });
 
   // ── Check if a geometry hash already exists (HEAD request) ──
@@ -96,6 +97,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       // Invalid hash format
     }
     res.status(404).end();
+    return;
   });
 
   // ── Flatten a study class for dynamic UI parameters ──
@@ -209,11 +211,11 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         return res.status(404).json({ error: "Geometry not found in cache. Upload it first via /physics/upload." });
       }
 
-      let simType = (config.type as string) || "unknown";
-      if (config.workflowClass) {
-        if (String(config.workflowClass).includes("FEA")) simType = "FEA";
-        else if (String(config.workflowClass).includes("CFD")) simType = "CFD";
-        else simType = String(config.workflowClass);
+      let simType = (config["type"] as string) || "unknown";
+      if (config["workflowClass"]) {
+        if (String(config["workflowClass"]).includes("FEA")) simType = "FEA";
+        else if (String(config["workflowClass"]).includes("CFD")) simType = "CFD";
+        else simType = String(config["workflowClass"]);
       }
       const configHash = sha256(Buffer.from(JSON.stringify(config)));
       const safeConfigHash = sanitizeHash(configHash);
@@ -225,7 +227,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       }
 
       // Pre-flight quota check
-      const profile = getComputeProfile(config.profile as string | undefined);
+      const profile = getComputeProfile(config["profile"] as string | undefined);
       const userId = resolveRequestUserId(req, database);
       if (userId) {
         const quota = checkComputeQuota(userId, profile.id, database);
@@ -280,7 +282,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
           // Execute the solver via HPC engine
           currentStepId = database.createJobStep(dbJobId, "Run Solver", "RUNNING");
-          const profile = getComputeProfile(config.profile as string | undefined);
+          const profile = getComputeProfile(config["profile"] as string | undefined);
           const hpcSpec: HpcJobSpec = {
             jobId: `physics-${dbJobId}`,
             name: `Physics-${simType}-${dbJobId}`,
@@ -362,6 +364,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       });
 
       res.json({ jobId: dbJobId.toString(), status: "pending" });
+      return;
     },
   );
 
@@ -427,11 +430,13 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         outputGcodePath: cachedResult,
         config,
       });
-
-      // We also need to mark it in the db when it finishes, but enqueueProcess currently just tracks it in memory.
-      // In a real app we'd attach a callback or poll the queue, but for scaffolding we'll let it finish.
+      const camStatus = jobQueue.getStatus(`cam-${dbJobId}`);
+      if (camStatus) {
+        camStatus.resultPath = cachedResult;
+      }
 
       res.json({ jobId: dbJobId.toString(), status: "pending" });
+      return;
     },
   );
 
@@ -443,6 +448,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       return res.status(404).json({ error: "Job not found." });
     }
     res.json(status);
+    return;
   });
 
   // ── Download full .vtu result ──
@@ -457,21 +463,42 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       return res.status(500).json({ error: "Result file missing." });
     }
     res.sendFile(status.resultPath);
+    return;
   });
 
   // ── Download GCode result ──
 
   router.get("/physics/cam/:jobId/gcode", (req, res) => {
-    const status = jobQueue.getStatus(`cam-${req.params.jobId}`);
-    if (!status) return res.status(404).json({ error: "Job not found." });
-    if (status.status !== "completed") {
+    const rawId = req.params.jobId;
+    const status = jobQueue.getStatus(`cam-${rawId}`) || jobQueue.getStatus(rawId);
+    let gcodePath = status?.resultPath;
+
+    if (!gcodePath) {
+      const numericId = Number(String(rawId).replace(/^cam-/, ""));
+      if (!Number.isNaN(numericId)) {
+        const dbJob = (database as any).getJob?.(numericId);
+        if (dbJob?.metadata) {
+          try {
+            const meta = typeof dbJob.metadata === "string" ? JSON.parse(dbJob.metadata) : dbJob.metadata;
+            if (meta?.resultDir) {
+              gcodePath = path.resolve(meta.resultDir, "toolpath.gcode");
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (!status && !gcodePath) {
+      return res.status(404).json({ error: "Job not found." });
+    }
+    if (status && status.status !== "completed" && (!gcodePath || !fs.existsSync(gcodePath))) {
       return res.status(400).json({ error: "Job not completed yet." });
     }
-    // For camWorker, we might not have set status.resultPath if jobQueue.enqueueProcess doesn't return data,
-    // but we know the path format.
-    // To be safe, we rely on the DB or the known resultDir. For now, let's just use a simplified approach:
-    // In a full implementation, we would query the database for the resultDir.
-    return res.status(501).json({ error: "Endpoint requires DB result extraction." });
+    if (!gcodePath || !fs.existsSync(gcodePath)) {
+      return res.status(404).json({ error: "Generated G-Code file not found." });
+    }
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.sendFile(gcodePath);
   });
 
   // ── Extract a specific scalar from the result (server-side) ──
@@ -490,13 +517,14 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
     }
 
     const scalars = JSON.parse(fs.readFileSync(scalarsPath, "utf8"));
-    const field = req.query.field as string | undefined;
+    const field = req.query["field"] as string | undefined;
 
     if (field && scalars[field] !== undefined) {
       return res.json({ [field]: scalars[field] });
     }
 
     res.json(scalars);
+    return;
   });
 
   return router;

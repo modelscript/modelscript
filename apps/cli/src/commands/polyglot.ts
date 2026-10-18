@@ -120,7 +120,7 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
         name: sysmlDef.name || baseName,
         kind: sysmlDef.kind || "model",
         attributes: sysmlDef.attributes.map((a) => {
-          const attr: { name: string; type: string; value?: string } = { name: a.name, type: a.type };
+          const attr: { name: string; type: string; value?: string | undefined } = { name: a.name, type: a.type };
           if (a.defaultValue !== undefined) attr.value = String(a.defaultValue);
           return attr;
         }),
@@ -194,7 +194,7 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
         name: sysmlDef.name || baseName,
         kind: sysmlDef.kind || "part def",
         attributes: sysmlDef.attributes.map((a) => {
-          const attr: { name: string; type: string; value?: string } = { name: a.name, type: a.type };
+          const attr: { name: string; type: string; value?: string | undefined } = { name: a.name, type: a.type };
           if (a.defaultValue !== undefined) attr.value = String(a.defaultValue);
           return attr;
         }),
@@ -273,7 +273,7 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
           const idNode = findNodes(modDecls[0], "IDENTIFIER")[0];
           if (idNode) name = idNode.text.trim();
         }
-        const attributes: { name: string; type: string; value?: string }[] = [];
+        const attributes: { name: string; type: string; value?: string | undefined }[] = [];
         const varDecls = findNodes(root, "VariableDeclaration");
         for (const vd of varDecls) {
           const idNode = findNodes(vd, "IDENTIFIER")[0];
@@ -304,7 +304,7 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
 
     const modMatch = text.match(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/);
     const name = modMatch ? modMatch[1] : baseName;
-    const attributes: { name: string; type: string; value?: string }[] = [];
+    const attributes: { name: string; type: string; value?: string | undefined }[] = [];
     const varRegex = /\b([a-zA-Z_]\w*)\s*=\s*([^;]+);/g;
     let m: RegExpExecArray | null;
     while ((m = varRegex.exec(text)) !== null) {
@@ -375,7 +375,65 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
     return { name, kind: "ontology_class", superclasses: classes.slice(1) };
   }
 
-  // 7. JSON format
+  // 7. FEA Input Decks (.inp, .inpt, .bdf, .dat, .fea)
+  if (ext === ".inp" || ext === ".inpt" || ext === ".bdf" || ext === ".dat" || ext === ".fea") {
+    try {
+      const { getFeaDialect, extractFeaSlicingProperties } = require("@modelscript/fea");
+      const dialect = getFeaDialect(ext);
+      const materialized = text.includes("{{") ? dialect.materialize(text) : text;
+      const model = dialect.parse(materialized);
+      const slicing = extractFeaSlicingProperties(materialized);
+      const attributes: { name: string; type: string; value?: string | undefined }[] = [
+        { name: "mass", type: "Real", value: String(slicing.mass) },
+        { name: "maxVonMisesPa", type: "Real", value: String(slicing.maxVonMisesPa) },
+        { name: "yieldStrengthPa", type: "Real", value: String(slicing.yieldStrengthPa) },
+        { name: "safetyFactor", type: "Real", value: String(slicing.safetyFactor) },
+      ];
+      for (const [matName, mat] of model.materials.entries()) {
+        if (mat.E !== undefined) attributes.push({ name: `${matName}_E`, type: "Real", value: String(mat.E) });
+        if (mat.nu !== undefined) attributes.push({ name: `${matName}_nu`, type: "Real", value: String(mat.nu) });
+        if (mat.rho !== undefined) attributes.push({ name: `${matName}_rho`, type: "Real", value: String(mat.rho) });
+      }
+      return {
+        name: model.heading || baseName,
+        kind: "fea_deck",
+        attributes,
+      };
+    } catch {
+      return { name: baseName, kind: "fea_deck" };
+    }
+  }
+
+  // 8. CFD Configurations (.cfg, .cfgt, .su2, .cfd, .foam)
+  if (ext === ".cfg" || ext === ".cfgt" || ext === ".su2" || ext === ".cfd" || ext === ".foam") {
+    try {
+      const { getCfdDialect, extractCfdSlicingProperties } = require("@modelscript/cfd");
+      const dialect = getCfdDialect(ext === ".foam" ? "openfoam" : "su2");
+      const materialized = text.includes("{{") ? dialect.materialize(text) : text;
+      const model = dialect.parse(materialized);
+      const slicing = extractCfdSlicingProperties(materialized);
+      const attributes: { name: string; type: string; value?: string | undefined }[] = [
+        { name: "Cd", type: "Real", value: String(slicing.cd) },
+        { name: "Cl", type: "Real", value: String(slicing.cl ?? 0) },
+        { name: "refArea", type: "Real", value: String(slicing.refArea) },
+        { name: "freeStreamVelocity", type: "Real", value: String(slicing.freeStreamVelocity) },
+      ];
+      const ports = Array.from(model.markers.values()).map((m: any) => ({
+        name: m.name,
+        type: m.type,
+      }));
+      return {
+        name: baseName,
+        kind: "cfd_config",
+        attributes,
+        ports,
+      };
+    } catch {
+      return { name: baseName, kind: "cfd_config" };
+    }
+  }
+
+  // 9. JSON format
   if (ext === ".json") {
     try {
       const parsed = JSON.parse(text);
@@ -395,7 +453,7 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
 interface ProjectArgs {
   sourceFile: string;
   target: "sysml2" | "modelica" | "owl2" | "step" | "csv" | "scad" | "json-schema";
-  out?: string;
+  out?: string | undefined;
   strict: boolean;
 }
 
@@ -579,15 +637,24 @@ const ThreadCommand: CommandModule<{}, ThreadArgs> = {
     }
 
     const node = parseSourceToPolyglotNode(resolved);
+    const wsData = buildPolyglotIndex([resolved], path.dirname(resolved));
+    const sysmlNodeId = wsData.symbolsByDomain.get(LanguageDomainId.SysML2)?.[0]?.id ?? 201;
+    const modelicaNodeId = wsData.symbolsByDomain.get(LanguageDomainId.Modelica)?.[0]?.id ?? 301;
+    const cadNodeId =
+      wsData.symbolsByDomain.get(LanguageDomainId.STEP_CAD)?.[0]?.id ??
+      wsData.symbolsByDomain.get(LanguageDomainId.SCAD)?.[0]?.id ??
+      401;
+    const reqNodeId = 501;
+
     const hg = new DigitalThreadHypergraph();
     const threadId = 1001;
     const slot = hg.createThread(threadId, 1);
 
     // Bind known domain representations
-    hg.bindDomainNode(slot, ThreadDomain.SysML2, 201);
-    hg.bindDomainNode(slot, ThreadDomain.Modelica, 301);
-    hg.bindDomainNode(slot, ThreadDomain.CAD, 401);
-    hg.bindDomainNode(slot, ThreadDomain.Requirements, 501);
+    hg.bindDomainNode(slot, ThreadDomain.SysML2, sysmlNodeId);
+    hg.bindDomainNode(slot, ThreadDomain.Modelica, modelicaNodeId);
+    hg.bindDomainNode(slot, ThreadDomain.CAD, cadNodeId);
+    hg.bindDomainNode(slot, ThreadDomain.Requirements, reqNodeId);
 
     console.log(`\n=== Digital Thread Alignment for '${path.basename(args.sourceFile)}' ===`);
     console.log(`Thread ID:      THREAD-${threadId}`);
@@ -596,10 +663,10 @@ const ThreadCommand: CommandModule<{}, ThreadArgs> = {
     console.log(`Ports:          ${node.ports?.length ?? 0}`);
     console.log(`Components:     ${node.components?.length ?? 0}`);
     console.log(`\nHypergraph Domain Bindings:`);
-    console.log(`  • SysML v2:     Node #201 [slot ${slot}]`);
-    console.log(`  • Modelica:     Node #301 [slot ${slot}]`);
-    console.log(`  • CAD (STEP):   Node #401 [slot ${slot}]`);
-    console.log(`  • Requirements: Node #501 [slot ${slot}]`);
+    console.log(`  • SysML v2:     Node #${sysmlNodeId} [slot ${slot}]`);
+    console.log(`  • Modelica:     Node #${modelicaNodeId} [slot ${slot}]`);
+    console.log(`  • CAD (STEP):   Node #${cadNodeId} [slot ${slot}]`);
+    console.log(`  • Requirements: Node #${reqNodeId} [slot ${slot}]`);
     console.log(`Status:         ${hg.isStale(slot) ? "STALE" : "SYNCHRONIZED"}`);
     console.log(`Conflict:       ${hg.isConflicted(slot) ? "CONFLICTED" : "NONE"}\n`);
   },
@@ -1031,8 +1098,8 @@ export function buildPolyglotIndex(
 
 interface QueryArgs {
   target: string;
-  workspace?: string;
-  domain?: string;
+  workspace?: string | undefined;
+  domain?: string | undefined;
   checkParity: boolean;
   json: boolean;
 }
@@ -1076,7 +1143,7 @@ const QueryCommand: CommandModule<{}, QueryArgs> = {
       if (/^#\d+$/.test(args.target)) {
         const entityNum = parseInt(args.target.replace("#", ""), 10);
         for (const sym of ws.symbolIndex.symbols.values()) {
-          if (sym.metadata?.entityId === entityNum) {
+          if (sym.metadata?.["entityId"] === entityNum) {
             targetSymId = sym.id;
             break;
           }
@@ -1152,7 +1219,7 @@ const QueryCommand: CommandModule<{}, QueryArgs> = {
               name: entry.name,
               kind: entry.kind,
               domain: domainName(domain),
-              qualifiedName: entry.metadata?.qualifiedName || entry.name,
+              qualifiedName: entry.metadata?.["qualifiedName"] || entry.name,
               resourceId: entry.resourceId,
               metadata: entry.metadata,
             },
@@ -1169,11 +1236,11 @@ const QueryCommand: CommandModule<{}, QueryArgs> = {
     console.log(`Target Query:    ${args.target}`);
     console.log(`Resolved Symbol: ${entry.name} (${entry.kind})`);
     console.log(`Language Domain: ${domainName(domain)} (0x0${domain.toString(16)})`);
-    console.log(`Qualified Name:  ${entry.metadata?.qualifiedName || entry.name}`);
+    console.log(`Qualified Name:  ${entry.metadata?.["qualifiedName"] || entry.name}`);
     console.log(`Resource:        ${entry.resourceId || "in-memory"}`);
-    if (entry.metadata?.type) console.log(`Type:            ${entry.metadata.type}`);
-    if (entry.metadata?.unit) console.log(`Unit:            ${entry.metadata.unit}`);
-    if (entry.metadata?.value) console.log(`Value:           ${entry.metadata.value}`);
+    if (entry.metadata?.["type"]) console.log(`Type:            ${entry.metadata["type"]}`);
+    if (entry.metadata?.["unit"]) console.log(`Unit:            ${entry.metadata["unit"]}`);
+    if (entry.metadata?.["value"]) console.log(`Value:           ${entry.metadata["value"]}`);
 
     console.log(`\n--- 🔀 Digital Thread Twins & Counterparts (${twinReports.length}) ---`);
     if (twinReports.length === 0) {
@@ -1193,8 +1260,8 @@ const QueryCommand: CommandModule<{}, QueryArgs> = {
 // ── Subcommand: check-twins (Milestone 4) ──
 
 interface CheckTwinsArgs {
-  paths?: string[];
-  workspace?: string;
+  paths?: string[] | undefined;
+  workspace?: string | undefined;
   strict: boolean;
   json: boolean;
 }
@@ -1234,7 +1301,7 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
       const meta = sym.metadata;
       if (!meta) continue;
 
-      const twinTarget = meta.twin || meta.counterpart || meta.cadBinding;
+      const twinTarget = meta["twin"] || meta["counterpart"] || meta["cadBinding"];
       if (!twinTarget || typeof twinTarget !== "string") continue;
 
       const symDomain = getSymbolDomain(sym.id);
@@ -1246,7 +1313,7 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
         if (entMatch) {
           const eNum = parseInt(entMatch[1] ?? "0", 10);
           for (const s of ws.symbolIndex.symbols.values()) {
-            if (s.metadata?.entityId === eNum) {
+            if (s.metadata?.["entityId"] === eNum) {
               resolvedTwinId = s.id;
               break;
             }
@@ -1265,15 +1332,15 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
         }
 
         const status = parity.compatible
-          ? `✔ PARITY MATCH [${sym.metadata?.unit || targetSym.metadata?.unit || "compatible"}]`
+          ? `✔ PARITY MATCH [${sym.metadata?.["unit"] || targetSym.metadata?.["unit"] || "compatible"}]`
           : isCadBinding
-            ? `✔ CAD BOUND (#${targetSym.metadata?.entityId ?? targetSym.name})`
+            ? `✔ CAD BOUND (#${targetSym.metadata?.["entityId"] ?? targetSym.name})`
             : `✔ SYNCHRONIZED [${targetSym.kind}]`;
 
         results.push({
-          source: sym.metadata?.qualifiedName || sym.namePath || sym.name,
+          source: sym.metadata?.["qualifiedName"] || sym.namePath || sym.name,
           sourceDomain: domainName(symDomain),
-          target: targetSym.metadata?.qualifiedName || targetSym.namePath || targetSym.name,
+          target: targetSym.metadata?.["qualifiedName"] || targetSym.namePath || targetSym.name,
           targetDomain: domainName(targetDomain),
           link: twinTarget,
           status,
@@ -1282,7 +1349,7 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
       } else {
         brokenCount++;
         results.push({
-          source: sym.metadata?.qualifiedName || sym.namePath || sym.name,
+          source: sym.metadata?.["qualifiedName"] || sym.namePath || sym.name,
           sourceDomain: domainName(symDomain),
           target: twinTarget,
           targetDomain: "Unknown",
@@ -1345,8 +1412,8 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
 // ── Subcommand: index (Milestone 4) ──
 
 interface IndexArgs {
-  paths?: string[];
-  workspace?: string;
+  paths?: string[] | undefined;
+  workspace?: string | undefined;
   out: string;
   json: boolean;
 }

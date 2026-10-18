@@ -162,7 +162,7 @@ export function formatDimension(dim: DimensionVector): string {
   const parts: string[] = [];
   for (let i = 0; i < 7; i++) {
     const exp = dim[i];
-    if (exp === 1) parts.push(symbols[i]);
+    if (exp === 1) parts.push(symbols[i]!);
     else if (exp !== 0) parts.push(`${symbols[i]}^${exp}`);
   }
   return parts.length > 0 ? parts.join("·") : "1 (dimensionless)";
@@ -199,17 +199,17 @@ export function resolveTypeDimension(
   if (typeof typeNameOrEntry === "string") {
     rawName = typeNameOrEntry.includes("::") ? typeNameOrEntry.split("::").pop()! : typeNameOrEntry;
     if (KNOWN_DIMENSIONS[rawName]) {
-      return KNOWN_DIMENSIONS[rawName];
+      return KNOWN_DIMENSIONS[rawName]!;
     }
     const candidates = db.byName(rawName);
     if (candidates && candidates.length > 0) {
-      entry = candidates[0];
+      entry = candidates[0]!;
     }
   } else {
     entry = typeNameOrEntry;
     rawName = entry.name;
     if (KNOWN_DIMENSIONS[rawName]) {
-      return KNOWN_DIMENSIONS[rawName];
+      return KNOWN_DIMENSIONS[rawName]!;
     }
   }
 
@@ -219,7 +219,7 @@ export function resolveTypeDimension(
 
   // Check direct name match
   if (KNOWN_DIMENSIONS[entry.name]) {
-    return KNOWN_DIMENSIONS[entry.name];
+    return KNOWN_DIMENSIONS[entry.name]!;
   }
 
   // Check inherits list from SymbolEntry metadata or entry.inherits
@@ -260,12 +260,14 @@ export function resolveTypeDimension(
 }
 
 export interface DimensionInferenceResult {
-  dimension?: DimensionVector;
-  error?: {
-    message: string;
-    startByte?: number;
-    endByte?: number;
-  };
+  dimension?: DimensionVector | undefined;
+  error?:
+    | {
+        message: string;
+        startByte?: number | undefined;
+        endByte?: number | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -465,9 +467,6 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
 
     case "RelationalExpression": {
       const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
-      const _operators: string[] = node.childrenForFieldName
-        ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || ">")
-        : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };
 
       const left = inferExpressionDimension(db, operands[0], scopeId);
@@ -610,7 +609,7 @@ function resolveFeatureEntryInScope(db: QueryDB, scopeId: number | null, name: s
     }
   }
   const candidates = db.byName(name);
-  return candidates && candidates.length > 0 ? candidates[0] : null;
+  return candidates && candidates.length > 0 ? candidates[0]! : null;
 }
 
 function resolveFeatureTypeEntry(db: QueryDB, entry: SymbolEntry): SymbolEntry | string | null {
@@ -620,8 +619,8 @@ function resolveFeatureTypeEntry(db: QueryDB, entry: SymbolEntry): SymbolEntry |
     }
   }
   // Check metadata typeSpecifier
-  if (entry.metadata?.typeSpecifier) {
-    return String(entry.metadata.typeSpecifier);
+  if (entry.metadata?.["typeSpecifier"]) {
+    return String(entry.metadata["typeSpecifier"]);
   }
   return null;
 }

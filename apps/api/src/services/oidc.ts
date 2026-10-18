@@ -8,10 +8,10 @@ import { JWT_SECRET } from "../middleware/auth-middleware.js";
 export interface OidcClaims {
   sub: string;
   email: string;
-  name?: string;
-  preferred_username?: string;
-  groups?: string[];
-  roles?: string[];
+  name?: string | undefined;
+  preferred_username?: string | undefined;
+  groups?: string[] | undefined;
+  roles?: string[] | undefined;
 }
 
 export class OidcService {
@@ -22,11 +22,11 @@ export class OidcService {
   private adminGroup: string;
 
   constructor(options?: {
-    issuerUrl?: string;
-    clientId?: string;
-    clientSecret?: string;
-    redirectUri?: string;
-    adminGroup?: string;
+    issuerUrl?: string | undefined;
+    clientId?: string | undefined;
+    clientSecret?: string | undefined;
+    redirectUri?: string | undefined;
+    adminGroup?: string | undefined;
   }) {
     this.issuerUrl = (options?.issuerUrl || process.env["OIDC_ISSUER_URL"] || "").replace(/\/+$/, "");
     this.clientId = options?.clientId || process.env["OIDC_CLIENT_ID"] || "";
@@ -103,7 +103,7 @@ export class OidcService {
       if (!configRes.ok) {
         throw new Error(`Failed to fetch OpenID configuration from ${this.issuerUrl}`);
       }
-      const config = (await configRes.json()) as { jwks_uri?: string };
+      const config = (await configRes.json()) as { jwks_uri?: string | undefined };
       if (!config.jwks_uri) {
         throw new Error("OpenID configuration is missing jwks_uri");
       }
@@ -112,7 +112,7 @@ export class OidcService {
       if (!jwksRes.ok) {
         throw new Error(`Failed to fetch JWKS from ${config.jwks_uri}`);
       }
-      const jwks = (await jwksRes.json()) as { keys?: any[] };
+      const jwks = (await jwksRes.json()) as { keys?: any[] | undefined };
       if (!Array.isArray(jwks.keys)) {
         throw new Error("Invalid JWKS payload: missing keys array");
       }
@@ -157,7 +157,9 @@ export class OidcService {
       throw new Error("Invalid ID token: token must be a non-empty string");
     }
 
-    const header = jwt.decode(idToken, { complete: true })?.header as { kid?: string; alg?: string } | undefined;
+    const header = jwt.decode(idToken, { complete: true })?.header as
+      | { kid?: string | undefined; alg?: string | undefined }
+      | undefined;
     if (!header || !header.alg || header.alg === "none") {
       throw new Error("Invalid ID token: unsigned tokens (alg=none) are strictly rejected");
     }

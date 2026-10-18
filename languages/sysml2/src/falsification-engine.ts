@@ -29,31 +29,31 @@ export interface SimulationTrajectory {
 export interface FalsificationOptions {
   parameters: ParameterRange[];
   formula: STLFormula;
-  simulate?: (params: Record<string, number>) => Promise<SimulationTrajectory>;
+  simulate?: ((params: Record<string, number>) => Promise<SimulationTrajectory>) | undefined;
   /**
    * Optional batched simulation function. Evaluates multiple parameter sets in a single invocation
    * (e.g., GPU-accelerated ODE batch, SUNDIALS parallel execution, or external worker pool).
    */
-  simulateBatch?: (paramsList: Record<string, number>[]) => Promise<SimulationTrajectory[]>;
-  maxGenerations?: number;
-  populationSize?: number;
-  seed?: number;
+  simulateBatch?: ((paramsList: Record<string, number>[]) => Promise<SimulationTrajectory[]>) | undefined;
+  maxGenerations?: number | undefined;
+  populationSize?: number | undefined;
+  seed?: number | undefined;
   /** Algorithm: 'de' (default), 'cmaes' / 'cma-es', 'pso', or 'cem' (Cross-Entropy Method). */
-  algorithm?: "de" | "cem" | "cmaes" | "cma-es" | "pso";
+  algorithm?: "de" | "cem" | "cmaes" | "cma-es" | "pso" | undefined;
   /** Elite fraction for CEM (default 0.1 = top 10%). */
-  eliteFraction?: number;
+  eliteFraction?: number | undefined;
   /** Maximum number of concurrent simulations when using individual `simulate` (default: 1 = sequential). */
-  concurrency?: number;
+  concurrency?: number | undefined;
 }
 
 export interface FalsificationResult {
   isFalsified: boolean;
   minRobustness: number;
-  counterexampleParams?: Record<string, number>;
-  falsificationTime?: number;
+  counterexampleParams?: Record<string, number> | undefined;
+  falsificationTime?: number | undefined;
   evaluationsCount: number;
   summary: string;
-  traceRecord?: CanonicalTraceRecord;
+  traceRecord?: CanonicalTraceRecord | undefined;
 }
 
 function findViolatingTimeIndex(times: number[], violationTime?: number): number | undefined {
@@ -153,7 +153,7 @@ export class RequirementFalsifier {
     let bestParams: Record<string, number> | null = null;
     let minRobustness = Infinity;
     let falsificationTime: number | undefined = undefined;
-    let violatingTraj: SimulationTrajectory | null = null;
+    let violatingTraj = null as SimulationTrajectory | null;
     let violatingIndex: number | undefined = undefined;
 
     const vectorToRecord = (vec: Float64Array): Record<string, number> => {

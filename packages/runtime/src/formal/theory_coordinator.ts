@@ -42,6 +42,9 @@
  */
 import { SimplificationWaterfall } from "./simplification_waterfall.js";
 
+/**
+ * Identifier for a specialized formal reasoning domain managed by the coordinator.
+ */
 export type TheoryDomain =
   | "ontology"
   | "constraint"
@@ -52,8 +55,16 @@ export type TheoryDomain =
   | "algebraic"
   | "custom";
 
-export type CancellationTokenLike = { isCancellationRequested?: boolean; aborted?: boolean } | AbortSignal;
+/**
+ * Cooperative cancellation token or standard `AbortSignal` used to interrupt long-running solver loops.
+ */
+export type CancellationTokenLike =
+  | { isCancellationRequested?: boolean | undefined; aborted?: boolean | undefined }
+  | AbortSignal;
 
+/**
+ * Uninterpreted or surrogate function application term `resultVar = f(args...)` tracked for congruence closure.
+ */
 export interface FunctionApplicationTerm {
   functionName: string;
   args: string[];
@@ -61,26 +72,35 @@ export interface FunctionApplicationTerm {
   literalId: number;
 }
 
+/**
+ * Atomic predicate literal asserted into a theory oracle.
+ */
 export interface TheoryLiteral {
   id: number;
   predicate: string;
   args: any[];
-  isNegated?: boolean;
-  domain?: TheoryDomain;
+  isNegated?: boolean | undefined;
+  domain?: TheoryDomain | undefined;
   sourceContext?: any;
 }
 
+/**
+ * Equality or interval bound relation exchanged between theory oracles via the Nelson-Oppen bus.
+ */
 export interface SharedEquality {
   varA: string;
   varB: string;
   domain: "discrete" | "real" | "interval" | "spatial" | "concept";
-  bounds?: [number, number];
-  explanation?: string;
-  sourceOracle?: string;
-  justifications?: number[];
-  justification?: number[];
+  bounds?: [number, number] | undefined;
+  explanation?: string | undefined;
+  sourceOracle?: string | undefined;
+  justifications?: number[] | undefined;
+  justification?: number[] | undefined;
 }
 
+/**
+ * Explanation and minimal conflict clause emitted when a theory oracle detects unsatisfiability.
+ */
 export interface ConflictClause {
   literals: TheoryLiteral[];
   explanation: string;
@@ -88,45 +108,54 @@ export interface ConflictClause {
   theoryName: string;
 }
 
+/**
+ * Result of a coordinated multi-theory satisfiability and equality-propagation fixpoint check.
+ */
 export interface CoordinatorSatResult {
   status: "SAT" | "UNSAT" | "UNKNOWN";
   isSat: boolean;
-  conflict?: ConflictClause;
+  conflict?: ConflictClause | undefined;
   sharedEqualities: SharedEquality[];
-  models?: Record<string, any>;
+  models?: Record<string, any> | undefined;
   iterations: number;
   durationMs: number;
-  reason?: string;
+  reason?: string | undefined;
 }
 
+/**
+ * Event enqueued on the coordinator worklist representing a newly deduced equality or interval bound.
+ */
 export type PropagationEvent =
   | {
       kind: "equality";
       varA: string;
       varB: string;
-      domain?: "discrete" | "real" | "interval" | "spatial" | "concept";
-      theoryDomain?: TheoryDomain;
-      bounds?: [number, number];
-      explanation?: string;
+      domain?: "discrete" | "real" | "interval" | "spatial" | "concept" | undefined;
+      theoryDomain?: TheoryDomain | undefined;
+      bounds?: [number, number] | undefined;
+      explanation?: string | undefined;
       sourceOracle: string;
-      justification?: number[];
+      justification?: number[] | undefined;
     }
   | {
       kind: "bound";
       varName: string;
-      theoryDomain?: TheoryDomain;
+      theoryDomain?: TheoryDomain | undefined;
       bounds: [number, number];
-      explanation?: string;
+      explanation?: string | undefined;
       sourceOracle: string;
-      justification?: number[];
+      justification?: number[] | undefined;
     };
 
+/**
+ * Interface implemented by each domain-specific decision procedure participating in Nelson-Oppen / DPLL(T) coordination.
+ */
 export interface TheoryOracle {
   readonly name: string;
   readonly domain: TheoryDomain;
   assertLiteral(lit: TheoryLiteral): boolean;
   retractLiteral(litId: number): void;
-  checkSat(): { isSat: boolean; conflict?: ConflictClause };
+  checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined };
   propagateEqualities(): SharedEquality[];
   onSharedEquality(eq: SharedEquality): void;
   pushLevel?(): void;
@@ -135,32 +164,52 @@ export interface TheoryOracle {
   getModel?(): Record<string, any>;
 }
 
+/**
+ * Central Nelson-Oppen and CDCL(T) theory coordinator that synchronizes variable equivalence classes,
+ * interval bounds, congruence closure, and conflict clauses across heterogeneous engineering theory oracles.
+ */
 export class SemanticTheoryCoordinator {
+  /** Registered theory oracles keyed by oracle name. */
   private oracles = new Map<string, TheoryOracle>();
+  /** Currently asserted theory literals keyed by literal ID. */
   private activeLiterals = new Map<number, TheoryLiteral>();
+  /** Deduplicated shared equalities exchanged between oracles. */
   private knownEqualities = new Map<string, SharedEquality>();
+  /** Union-Find parent map for variable equivalence classes. */
   private parentMap = new Map<string, string>();
+  /** Tightest intersected interval `[low, high]` for each canonical variable representative. */
   private canonicalBounds = new Map<string, [number, number]>();
+  /** Set of literal IDs justifying the current interval bounds of each canonical variable. */
   private canonicalBoundJustifications = new Map<string, Set<number>>();
+  /** Oracles subscribed to updates on a specific raw variable name. */
   private varSubscribers = new Map<string, Set<TheoryOracle>>();
+  /** Oracles subscribed to updates on a canonical variable equivalence class. */
   private canonSubscribers = new Map<string, Set<TheoryOracle>>();
+  /** Oracles subscribed to all events within a specific `TheoryDomain`. */
   private domainSubscribers = new Map<TheoryDomain, Set<TheoryOracle>>();
+  /** Set of oracle names whose state has changed since the last `checkSat` pass. */
   private dirtyOracles = new Set<string>();
+  /** Pending equality and bound propagation events awaiting dispatch. */
   private worklist: PropagationEvent[] = [];
-  private memoizedResult?: { revision: number; result: CoordinatorSatResult };
-  private infeasibleConflict?: ConflictClause;
+  /** Cached satisfiability result for the current state revision. */
+  private memoizedResult?: { revision: number; result: CoordinatorSatResult } | undefined;
+  /** Immediate bound-inversion or equality conflict detected during eager propagation. */
+  private infeasibleConflict?: ConflictClause | undefined;
+  /** Registered function application terms for congruence closure deduction. */
   private functionTerms: FunctionApplicationTerm[] = [];
+  /** Backtracking stack of solver state snapshots for `pushLevel()` / `popLevel()`. */
   private levelStack: {
     literalIds: number[];
     equalityKeys: string[];
-    worklistSnapshot?: PropagationEvent[];
-    parentSnapshot?: Map<string, string>;
-    boundsSnapshot?: Map<string, [number, number]>;
-    canonSubscribersSnapshot?: Map<string, Set<TheoryOracle>>;
-    boundJustificationsSnapshot?: Map<string, Set<number>>;
-    infeasibleConflictSnapshot?: ConflictClause;
-    functionTermsSnapshot?: FunctionApplicationTerm[];
+    worklistSnapshot?: PropagationEvent[] | undefined;
+    parentSnapshot?: Map<string, string> | undefined;
+    boundsSnapshot?: Map<string, [number, number]> | undefined;
+    canonSubscribersSnapshot?: Map<string, Set<TheoryOracle>> | undefined;
+    boundJustificationsSnapshot?: Map<string, Set<number>> | undefined;
+    infeasibleConflictSnapshot?: ConflictClause | undefined;
+    functionTermsSnapshot?: FunctionApplicationTerm[] | undefined;
   }[] = [];
+  /** Monotonically increasing counter for auto-assigned literal IDs. */
   private nextLitId = 1;
 
   /**
@@ -173,10 +222,16 @@ export class SemanticTheoryCoordinator {
     this.subscribeDomain(oracle.domain, oracle);
   }
 
+  /**
+   * Retrieves a registered theory oracle by its unique name.
+   */
   public getOracle(name: string): TheoryOracle | undefined {
     return this.oracles.get(name);
   }
 
+  /**
+   * Returns all currently registered theory oracles.
+   */
   public getRegisteredOracles(): TheoryOracle[] {
     return Array.from(this.oracles.values());
   }
@@ -231,6 +286,9 @@ export class SemanticTheoryCoordinator {
     this.memoizedResult = undefined;
   }
 
+  /**
+   * Resolves an array of justification literal IDs into their corresponding `TheoryLiteral` objects.
+   */
   private resolveJustificationLiterals(justIds: number[]): TheoryLiteral[] {
     const result: TheoryLiteral[] = [];
     const seen = new Set<number>();
@@ -251,6 +309,9 @@ export class SemanticTheoryCoordinator {
     return result;
   }
 
+  /**
+   * Constructs a `ConflictClause` when interval bound intersection yields an empty interval (`lo > hi`).
+   */
   private makeBoundInversionConflict(
     culpritVar: string,
     lo: number,
@@ -465,7 +526,7 @@ export class SemanticTheoryCoordinator {
   /**
    * Asserts a new theory literal into the coordinator, routing to appropriate oracles.
    */
-  public assertLiteral(lit: Omit<TheoryLiteral, "id"> & { id?: number }): number {
+  public assertLiteral(lit: Omit<TheoryLiteral, "id"> & { id?: number | undefined }): number {
     const id = lit.id ?? this.nextLitId++;
     const fullLit: TheoryLiteral = { ...lit, id };
     this.activeLiterals.set(id, fullLit);
@@ -807,6 +868,9 @@ export class SemanticTheoryCoordinator {
     return varA < varB ? `${varA}===#===${varB}` : `${varB}===#===${varA}`;
   }
 
+  /**
+   * Checks whether the optional cancellation token or `AbortSignal` has been triggered.
+   */
   private isCancelled(token?: CancellationTokenLike): boolean {
     if (!token) return false;
     if ("isCancellationRequested" in token && Boolean((token as any).isCancellationRequested)) {
@@ -868,7 +932,7 @@ export class SemanticTheoryCoordinator {
   private drainWorklist(
     iteration: number,
     startTime: number,
-  ): { unsat?: CoordinatorSatResult; eventsProcessed: number } {
+  ): { unsat?: CoordinatorSatResult | undefined; eventsProcessed: number } {
     let eventsProcessed = 0;
     while (this.worklist.length > 0) {
       const event = this.worklist.shift()!;

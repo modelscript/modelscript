@@ -18,10 +18,10 @@ interface McArgs {
   runs: number;
   threads: number;
   params: string;
-  seed?: number;
+  seed?: number | undefined;
   lhs: boolean;
   format: "csv" | "json";
-  output?: string;
+  output?: string | undefined;
   engine: string;
 }
 

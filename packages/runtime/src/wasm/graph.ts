@@ -82,64 +82,90 @@ import {
   checkTheoryLRA,
 } from "./sat";
 
+/**
+ * WebAssembly bridge API for the Octagon Difference Bound Matrix (DBM) relational abstract domain.
+ * Supports $O(N^3)$ Floyd-Warshall strong closure, interval/difference assumptions, widening, and narrowing.
+ */
 export class OctagonAPI {
+  /** Initializes the Octagon DBM for `numVars` program variables ($2N \times 2N$ signed matrix). */
   @inline init(numVars: u32): void {
     initOctagonDBM(numVars);
   }
+  /** Sets the raw DBM entry $m_{i,j} \le \text{bound}$ between signed variable indices $i$ and $j$. */
   @inline setBound(i: u32, j: u32, bound: i32): void {
     setOctagonBound(i, j, bound);
   }
+  /** Computes the strong closure of the Octagon DBM to propagate transitive difference bounds. */
   @inline close(): void {
     closeOctagonDBM();
   }
+  /** Asserts the difference constraint $v_1 - v_2 \le \text{maxDiff}$ into the Octagon domain. */
   @inline assumeDiff(var1: u32, var2: u32, maxDiff: i32): void {
     assumeOctagonDiff(var1, var2, maxDiff);
   }
+  /** Checks whether $v_1 - v_2 \le \text{limit}$ is entailed by the closed Octagon DBM. */
   @inline checkDiff(var1: u32, var2: u32, limit: i32): boolean {
     return checkOctagonDiff(var1, var2, limit);
   }
+  /** Constrains variable `varIdx` to the interval $[\text{lower}, \text{upper}]$. */
   @inline assumeInterval(varIdx: u32, lower: i32, upper: i32): void {
     assumeOctagonInterval(varIdx, lower, upper);
   }
+  /** Checks whether variable `varIdx` is guaranteed to lie within $[\text{lower}, \text{upper}]$. */
   @inline checkInterval(varIdx: u32, lower: i32, upper: i32): boolean {
     return checkOctagonInterval(varIdx, lower, upper);
   }
+  /** Returns the current upper bound of `varIdx` from its unary diagonal DBM entry. */
   @inline getUpperBound(varIdx: u32): i32 {
     return getOctagonUpperBound(varIdx);
   }
+  /** Returns the current lower bound of `varIdx` from its unary diagonal DBM entry. */
   @inline getLowerBound(varIdx: u32): i32 {
     return getOctagonLowerBound(varIdx);
   }
+  /** Returns `true` if a negative cycle exists on the main diagonal (indicating an inconsistent/bottom state). */
   @inline hasNegativeCycle(): boolean {
     return hasNegativeCycle();
   }
+  /** Resets all Octagon DBM entries to $+\infty$ (unconstrained top state). */
   @inline reset(): void {
     resetOctagonDBM();
   }
+  /** Applies the standard Octagon widening operator against `prevDBM` to accelerate loop fixpoint convergence. */
   @inline widen(prevDBM: u32): void {
     widenOctagonDBM(prevDBM);
   }
+  /** Applies the Octagon narrowing operator against `prevDBM` to refine over-approximated loop invariants. */
   @inline narrow(prevDBM: u32): void {
     narrowOctagonDBM(prevDBM);
   }
 }
 
+/**
+ * WebAssembly bridge API for the in-arena DPLL(T) SAT and Linear Real Arithmetic (LRA) solver.
+ */
 export class SatAPI {
+  /** Initializes the SAT solver arena at `startOffset` in linear memory. */
   @inline init(startOffset: u32): void {
     initSATArena(startOffset);
   }
+  /** Appends a disjunction clause of `len` signed literals from `clausePtr`; returns `false` on immediate conflict. */
   @inline addClause(clausePtr: u32, len: u32): boolean {
     return satAddClause(clausePtr, len);
   }
+  /** Runs the DPLL boolean satisfiability search, returning `true` if SAT and `false` if UNSAT. */
   @inline solve(): boolean {
     return solveDPLL();
   }
+  /** Retrieves the assigned truth value (`0` = false, `1` = true, `2` = unassigned) for variable `varIdx`. */
   @inline getModelValue(varIdx: u32): u8 {
     return satGetModelValue(varIdx);
   }
+  /** Registers a Linear Real Arithmetic half-space constraint associated with boolean indicator `satVar`. */
   @inline registerLraConstraint(satVar: u32, coeffsPtr: u32, limit: f64, isUpper: u8): void {
     registerLraConstraint(satVar, coeffsPtr, limit, isUpper);
   }
+  /** Checks joint feasibility of active LRA constraints under the current boolean assignment. */
   @inline checkLRA(): u32 {
     return checkTheoryLRA();
   }
@@ -151,6 +177,11 @@ export declare function host_runHostQuery(queryId: u32, arg1: u32, arg2: u32, ar
 export let currentLintNode: u32 = 0;
 export let currentLintNodeStart: u32 = 0;
 
+/**
+ * Unmanaged 52-byte Salsa 3.0 incremental query cache node stored in the linear `CodeGraph` arena.
+ * Tracks the query key `(queryType, arg1..arg4)`, cached result `value`, 64-bit Merkle hash,
+ * and intrusive linked lists of upstream dependencies and downstream subscribers.
+ */
 @unmanaged
 export class QueryNode {
   queryType: u32;             // +0
@@ -168,12 +199,18 @@ export class QueryNode {
   verifiedRevision: u32;      // +48
 }
 
+/**
+ * Unmanaged 8-byte intrusive singly-linked list node representing a directed dependency or subscriber edge between `QueryNode`s.
+ */
 @unmanaged
 export class EdgeNode {
   targetPtr: u32;             // +0
   nextEdgePtr: u32;           // +4
 }
 
+/**
+ * Unmanaged 12-byte hash bucket entry mapping a 32-bit FNV-1a FQN hash to its AST declaration node pointer.
+ */
 @unmanaged
 export class FqnSymbol {
   hash: u32;                  // +0
@@ -181,6 +218,9 @@ export class FqnSymbol {
   next: u32;                  // +8
 }
 
+/**
+ * Unmanaged 16-byte ephemeral diagnostic record emitted into the 64KB per-parse diagnostic bump arena.
+ */
 @unmanaged
 export class DiagnosticNode {
   startByte: u32;             // +0
@@ -389,6 +429,9 @@ export function resolveFqnSymbol(fqnHash: u32): u32 {
   return 0;
 }
 
+/**
+ * Unmanaged 16-byte record tracking a lexical import clause and its visibility within an AST scope.
+ */
 @unmanaged
 export class ScopedImport {
   scopeId: u32;
@@ -486,6 +529,9 @@ export let globalRevision: u32 = 1;
 
 export let t_negativeDeps: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 
+/**
+ * Lazily initializes the global 64-bit map tracking negative symbol dependencies for Salsa invalidation.
+ */
 export function ensureNegativeDeps(): void {
   if (changetype<usize>(t_negativeDeps) == 0) {
     t_negativeDeps = changetype<UnmanagedMap64>(createMap64());
@@ -692,35 +738,62 @@ __OUTLINE_QUERY_WRAPPER__
  * Low-level WASM bridge API for n-dimensional tensor creation and manipulation.
  */
 export class TensorAPI {
+  /** Allocates a new tensor handle in the AST arena with the given element `type`, `rank`, and flat `elementCount`. */
   @inline create(type: u32, rank: u32, elementCount: u32): u32 { return ast_createTensor(type, rank, elementCount); }
+  /** Sets the extent of dimension `dimIndex` on tensor `handle`. */
   @inline setShape(handle: u32, dimIndex: u32, size: u32): void { ast_setTensorShape(handle, dimIndex, size); }
+  /** Returns the extent of dimension `dimIndex` on tensor `handle`. */
   @inline getShape(handle: u32, dimIndex: u32): u32 { return ast_getTensorShape(handle, dimIndex); }
 
+  /** Stores a 64-bit float (`f64`) at `flatIndex` in tensor `handle`. */
   @inline setFloat(handle: u32, flatIndex: u32, val: f64): void { ast_setTensorFloat(handle, flatIndex, val); }
+  /** Loads a 64-bit float (`f64`) from `flatIndex` in tensor `handle`. */
   @inline getFloat(handle: u32, flatIndex: u32): f64 { return ast_getTensorFloat(handle, flatIndex); }
+  /** Stores a 32-bit float (`f32`) at `flatIndex` in tensor `handle`. */
   @inline setFloat32(handle: u32, flatIndex: u32, val: f32): void { ast_setTensorFloat32(handle, flatIndex, val); }
+  /** Loads a 32-bit float (`f32`) from `flatIndex` in tensor `handle`. */
   @inline getFloat32(handle: u32, flatIndex: u32): f32 { return ast_getTensorFloat32(handle, flatIndex); }
+  /** Stores a raw 16-bit half-precision float bit pattern (`u16`) at `flatIndex`. */
   @inline setFloat16Raw(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorFloat16Raw(handle, flatIndex, val); }
+  /** Loads a raw 16-bit half-precision float bit pattern (`u16`) from `flatIndex`. */
   @inline getFloat16Raw(handle: u32, flatIndex: u32): u16 { return ast_getTensorFloat16Raw(handle, flatIndex); }
   
+  /** Stores a 32-bit signed integer (`i32`) at `flatIndex` in tensor `handle`. */
   @inline setInt(handle: u32, flatIndex: u32, val: i32): void { ast_setTensorInt(handle, flatIndex, val); }
+  /** Loads a 32-bit signed integer (`i32`) from `flatIndex` in tensor `handle`. */
   @inline getInt(handle: u32, flatIndex: u32): i32 { return ast_getTensorInt(handle, flatIndex); }
+  /** Stores a 32-bit unsigned integer (`u32`) at `flatIndex` in tensor `handle`. */
   @inline setUint32(handle: u32, flatIndex: u32, val: u32): void { ast_setTensorUint32(handle, flatIndex, val); }
+  /** Loads a 32-bit unsigned integer (`u32`) from `flatIndex` in tensor `handle`. */
   @inline getUint32(handle: u32, flatIndex: u32): u32 { return ast_getTensorUint32(handle, flatIndex); }
+  /** Stores a 64-bit signed integer (`i64`) at `flatIndex` in tensor `handle`. */
   @inline setInt64(handle: u32, flatIndex: u32, val: i64): void { ast_setTensorInt64(handle, flatIndex, val); }
+  /** Loads a 64-bit signed integer (`i64`) from `flatIndex` in tensor `handle`. */
   @inline getInt64(handle: u32, flatIndex: u32): i64 { return ast_getTensorInt64(handle, flatIndex); }
+  /** Stores a 64-bit unsigned integer (`u64`) at `flatIndex` in tensor `handle`. */
   @inline setUint64(handle: u32, flatIndex: u32, val: u64): void { ast_setTensorUint64(handle, flatIndex, val); }
+  /** Loads a 64-bit unsigned integer (`u64`) from `flatIndex` in tensor `handle`. */
   @inline getUint64(handle: u32, flatIndex: u32): u64 { return ast_getTensorUint64(handle, flatIndex); }
+  /** Stores a 16-bit signed integer (`i16`) at `flatIndex` in tensor `handle`. */
   @inline setInt16(handle: u32, flatIndex: u32, val: i16): void { ast_setTensorInt16(handle, flatIndex, val); }
+  /** Loads a 16-bit signed integer (`i16`) from `flatIndex` in tensor `handle`. */
   @inline getInt16(handle: u32, flatIndex: u32): i16 { return ast_getTensorInt16(handle, flatIndex); }
+  /** Stores a 16-bit unsigned integer (`u16`) at `flatIndex` in tensor `handle`. */
   @inline setUint16(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorUint16(handle, flatIndex, val); }
+  /** Loads a 16-bit unsigned integer (`u16`) from `flatIndex` in tensor `handle`. */
   @inline getUint16(handle: u32, flatIndex: u32): u16 { return ast_getTensorUint16(handle, flatIndex); }
+  /** Stores an 8-bit signed integer (`i8`) at `flatIndex` in tensor `handle`. */
   @inline setInt8(handle: u32, flatIndex: u32, val: i8): void { ast_setTensorInt8(handle, flatIndex, val); }
+  /** Loads an 8-bit signed integer (`i8`) from `flatIndex` in tensor `handle`. */
   @inline getInt8(handle: u32, flatIndex: u32): i8 { return ast_getTensorInt8(handle, flatIndex); }
+  /** Stores an 8-bit unsigned integer (`u8`) at `flatIndex` in tensor `handle`. */
   @inline setUint8(handle: u32, flatIndex: u32, val: u8): void { ast_setTensorUint8(handle, flatIndex, val); }
+  /** Loads an 8-bit unsigned integer (`u8`) from `flatIndex` in tensor `handle`. */
   @inline getUint8(handle: u32, flatIndex: u32): u8 { return ast_getTensorUint8(handle, flatIndex); }
   
+  /** Stores a boolean value at `flatIndex` in tensor `handle`. */
   @inline setBool(handle: u32, flatIndex: u32, val: boolean): void { ast_setTensorBool(handle, flatIndex, val); }
+  /** Loads a boolean value from `flatIndex` in tensor `handle`. */
   @inline getBool(handle: u32, flatIndex: u32): boolean { return ast_getTensorBool(handle, flatIndex); }
 }
 
@@ -730,10 +803,14 @@ let t_modelProperties: usize = 0;
  * Model API for AST node creation, property attachment, and tree manipulation.
  */
 export class ModelAPI {
+  /** Allocates a new AST node of syntax `type`. */
   @inline create(type: u16): u32 { return ast_createNode(type); }
+  /** Clones `nodeId` shallowly or deeply in the AST arena. */
   @inline clone(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
+  /** Evaluates the memoized semantic attribute query `attrName` on `nodeId`. */
   @inline compute(nodeId: u32, attrName: u32): u32 { return runQuery(attrName, nodeId); }
 
+  /** Retrieves a typed out-of-band property `propId` attached to `nodeId`. */
   @inline getProperty<T>(nodeId: u32, propId: u32): T {
     if (t_modelProperties == 0) return 0 as T;
     let key: u64 = (nodeId as u64) | ((propId as u64) << 32);
@@ -745,6 +822,7 @@ export class ModelAPI {
     }
     return val as T;
   }
+  /** Attaches a typed out-of-band property `propId` with `value` to `nodeId`. */
   @inline setProperty<T>(nodeId: u32, propId: u32, value: T): void {
     if (t_modelProperties == 0) {
       t_modelProperties = changetype<usize>(createMap64To64());
@@ -762,26 +840,44 @@ export class ModelAPI {
     }
   }
   
+  /** Binds `childId` under `parentId` using the text span of `nameNodeId`. */
   @inline bind(parentId: u32, nameNodeId: u32, childId: u32): void { ast_bindChildNode(parentId, nameNodeId, childId); }
+  /** Resolves a named child under `parentId` matching the text span of `nameNodeId`. */
   @inline resolve(parentId: u32, nameNodeId: u32): u32 { return ast_resolveChildNode(parentId, nameNodeId); }
+  /** Binds `childId` under `parentId` using a precomputed 32-bit FNV-1a `hash`. */
   @inline bindHash(parentId: u32, hash: u32, childId: u32): void { ast_bindChildHash(parentId, hash, childId); }
+  /** Resolves a child node under `parentId` by its 32-bit FNV-1a `hash`. */
   @inline resolveHash(parentId: u32, hash: u32): u32 { return ast_resolveChildByHash(parentId, hash); }
 
+  /** Sets bitflags `flag` on `nodeId`. */
   @inline setFlag(nodeId: u32, flag: u32): void { ast_setNodeFlag(nodeId, flag); }
+  /** Clears bitflags `flag` on `nodeId`. */
   @inline clearFlag(nodeId: u32, flag: u32): void { ast_clearNodeFlag(nodeId, flag); }
+  /** Checks whether `flag` is set on `nodeId`. */
   @inline hasFlag(nodeId: u32, flag: u32): boolean { return ast_hasNodeFlag(nodeId, flag); }
 
+  /** Returns the 16-bit syntax type ID of `nodeId`. */
   @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
+  /** Returns the first child pointer of `nodeId`, or `0` if leaf. */
   @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
+  /** Returns the next sibling pointer of `nodeId`, or `0` if last child. */
   @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
+  /** Returns the total number of direct children of `nodeId`. */
   @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
 
+  /** Appends `childId` to the end of `parentId`'s child list. */
   @inline appendChild(parentId: u32, childId: u32): void { ast_appendChild(parentId, childId); }
+  /** Inserts `siblingId` immediately after `targetId`. */
   @inline insertSibling(targetId: u32, siblingId: u32): void { ast_insertSibling(targetId, siblingId); }
+  /** Overwrites the first child pointer of `parentId`. */
   @inline setFirstChild(parentId: u32, childId: u32): void { setFirstChild(parentId, childId); }
+  /** Overwrites the next sibling pointer of `nodeId`. */
   @inline setNextSibling(nodeId: u32, siblingId: u32): void { setNextSibling(nodeId, siblingId); }
+  /** Replaces `oldChildId` with `newChildId` under `parentId`. */
   @inline replaceChild(parentId: u32, oldChildId: u32, newChildId: u32): void { replaceNode(parentId, oldChildId, newChildId); }
+  /** Unlinks `childId` from `parentId`'s child list. */
   @inline removeChild(parentId: u32, childId: u32): void { ast_removeNode(parentId, childId); }
+  /** Returns a cursor iterating over the semantic (named) children of `nodeId`. */
   @inline getSemanticChildren(nodeId: u32): SemanticCursor { return getSemanticChildren(nodeId); }
 }
 
@@ -789,9 +885,13 @@ export class ModelAPI {
  * Hashing utility class for string spans and single byte hashing.
  */
 export class HashAPI {
+  /** Returns the FNV-1a 32-bit offset basis (`2166136261`). */
   @inline init(): u32 { return 2166136261; }
+  /** Mixes a packed 64-bit `(offset, length)` text `span` into `currentHash`. */
   @inline span(currentHash: u32, span: u64): u32 { return ast_hashSpan(span, currentHash); }
+  /** Mixes a single `byte` into `currentHash` using FNV-1a. */
   @inline byte(currentHash: u32, byte: u8): u32 { return ast_hashByte(byte, currentHash); }
+  /** Computes a collision-resistant 64-bit composite hash from a packed text `span`. */
   @inline span64(span: u64): u64 {
       if (span == 0) return 0;
       let h1 = ast_hashSpan(span, 2166136261) as u64;
@@ -808,6 +908,9 @@ let globalClassHasInnerResult: boolean = false;
 let globalClassByNameMap: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 let globalClassByNameGen: u32 = 0xFFFFFFFF;
 
+/**
+ * Returns the per-lint-generation `UnmanagedMap64` cache for class-by-name lookups, clearing it when the generation advances.
+ */
 function classByNameMap(): UnmanagedMap64 {
   if (changetype<usize>(globalClassByNameMap) == 0) {
     globalClassByNameMap = changetype<UnmanagedMap64>(UnmanagedMap64.create(256));
@@ -819,6 +922,9 @@ function classByNameMap(): UnmanagedMap64 {
   return globalClassByNameMap;
 }
 
+/**
+ * Computes a 64-bit cache key combining a text `span` hash and a lookup `kind` discriminator.
+ */
 @inline function classNameKey(span: u64, kind: u32): u64 {
   let h1 = ast_hashSpan(span, 2166136261) as u64;
   let h2 = ast_hashSpan(span, 5381) as u64;
@@ -838,24 +944,30 @@ export class AstAPI {
     let key = classNameKey(nameSpan, kind);
     return m.has(key) ? (m.get(key) as i32) : -1;
   }
+  /** Stores a per-lint-run memoized result `value` keyed by `(kind, nameSpan)`. */
   setCachedByName(kind: u32, nameSpan: u64, value: u32): void {
     classByNameMap().set(classNameKey(nameSpan, kind), value);
   }
+  /** Returns cached boolean (`1` = true, `0` = false, `-1` = miss) indicating whether `classNode` contains unit declarations. */
   @inline getCachedHasUnits(classNode: u32): i32 {
     return classNode == globalClassHasUnitsRoot ? (globalClassHasUnitsResult ? 1 : 0) : -1;
   }
+  /** Caches whether `classNode` contains unit declarations. */
   @inline setCachedHasUnits(classNode: u32, hasUnits: boolean): void {
     globalClassHasUnitsRoot = classNode;
     globalClassHasUnitsResult = hasUnits;
   }
+  /** Returns cached boolean (`1` = true, `0` = false, `-1` = miss) indicating whether `classNode` contains inner classes. */
   @inline getCachedHasInnerClass(classNode: u32): i32 {
     return classNode == globalClassHasInnerRoot ? (globalClassHasInnerResult ? 1 : 0) : -1;
   }
+  /** Caches whether `classNode` contains inner classes. */
   @inline setCachedHasInnerClass(classNode: u32, hasInner: boolean): void {
     globalClassHasInnerRoot = classNode;
     globalClassHasInnerResult = hasInner;
   }
 
+  /** Returns `true` if the leading non-whitespace source text of `nodeId` starts with `prefix`. */
   @inline startsWith(nodeId: u32, prefix: string): boolean {
       if (nodeId == 0 || prefix.length == 0) return false;
       let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
@@ -880,6 +992,7 @@ export class AstAPI {
       return true;
   }
 
+  /** Returns `true` if the source text of `nodeId` exactly equals `text`. */
   @inline textEquals(nodeId: u32, text: string): boolean {
       if (nodeId == 0) return false;
       let nodeLen = getNodeByteLength(nodeId);
@@ -896,6 +1009,7 @@ export class AstAPI {
       return true;
   }
 
+  /** Returns `true` if `nodeA` and `nodeB` have identical UTF-16 source text spans. */
   @inline textEqualsNode(nodeA: u32, nodeB: u32): boolean {
       if (nodeA == nodeB) return true;
       let lenA = getNodeByteLength(nodeA);
@@ -915,15 +1029,23 @@ export class AstAPI {
       return true;
   }
 
+  /** Returns the first child of `nodeId` assigned to grammar `fieldId`, or `0` if absent. */
   @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 { return getChildByFieldId(nodeId, fieldId); }
+  /** Returns a cursor over all children of `nodeId` assigned to grammar `fieldId`. */
   @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor { return getChildrenByFieldId(nodeId, fieldId); }
+  /** Returns a cursor walking upward through the ancestor chain of `nodeId`, optionally filtered by `filterType`. */
   @inline getAncestors(nodeId: u32, filterType: u16 = 0xFFFF, rootNode: u32 = 0): AncestorCursor { return getAncestors(nodeId, filterType, rootNode == 0 ? globalAstRoot : rootNode); }
+  /** Returns a depth-first cursor over all descendants of `nodeId`, optionally filtered by `filterType`. */
   @inline getDescendants(nodeId: u32, filterType: u16 = 0xFFFF): DescendantCursor { return getDescendants(nodeId, filterType); }
+  /** Returns a cursor over identifier tokens comprising a qualified path node. */
   @inline getPathTokens(nodeId: u32): DescendantCursor { return getPathTokens(nodeId); }
 
+  /** Returns the 16-bit syntax type ID of `nodeId`. */
   @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
+  /** Returns the first child pointer of `nodeId`, or `0` if leaf. */
   @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
 
+  /** Parses the decimal integer literal text of `nodeId` directly from the UTF-16 input buffer. */
   @inline parseInteger(nodeId: u32): i32 {
       if (nodeId == 0) return 0;
       let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
@@ -956,6 +1078,7 @@ export class AstAPI {
       return result;
   }
 
+  /** Parses a floating-point literal from `nodeId`'s UTF-16 input span. */
   @inline parseReal(nodeId: u32): f64 {
       if (nodeId == 0) return 0.0;
       let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
@@ -1000,6 +1123,7 @@ export class AstAPI {
       return whole + frac;
   }
 
+  /** Scans the source gap between `leftNode` and `rightNode` to identify the `BinOp` operator code. */
   @inline getBinaryOp(leftNode: u32, rightNode: u32): u16 {
       let leftOffset = lsp_findNodeOffset(globalAstRoot, leftNode, 0);
       let leftLen = getNodeByteLength(leftNode);
@@ -1059,18 +1183,25 @@ export class AstAPI {
       }
       return 0;
   }
+  /** Returns the next sibling pointer of `nodeId`. */
   @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
+  /** Returns the direct child count of `nodeId`. */
   @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
+  /** Returns the UTF-16 character length of `nodeId`. */
   @inline getByteLength(nodeId: u32): u32 { return getNodeByteLength(nodeId); }
 
+  /** Returns the global AST root pointer for the current parse tree. */
   @inline getRootNode(): u32 { return globalAstRoot; }
+  /** Returns the cached enclosing class node for `root`, or `0` on cache miss. */
   @inline getCachedEnclosingClass(root: u32): u32 {
     return root == globalEnclosingClassRoot ? globalEnclosingClassNode : 0;
   }
+  /** Caches the enclosing class node `cls` for `root`. */
   @inline setCachedEnclosingClass(root: u32, cls: u32): void {
     globalEnclosingClassRoot = root;
     globalEnclosingClassNode = cls;
   }
+  /** Returns a packed 64-bit `(offset, length)` text span for `nodeId`. */
   @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { 
     if (absoluteStart == 0xFFFFFFFF) {
         let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
@@ -1078,6 +1209,7 @@ export class AstAPI {
     }
     return ast_getTextSpan(nodeId, absoluteStart); 
   }
+  /** Computes the 32-bit FNV-1a hash of a packed 64-bit text `span`. */
   @inline hashSpan(span: u64): u32 { return ast_hashSpan(span); }
 }
 
@@ -1085,9 +1217,13 @@ export class AstAPI {
  * Set operations API.
  */
 export class SetAPI {
+  /** Allocates a new 64-bit hash set in linear memory and returns its handle. */
   @inline create(): u32 { return createSet64(); }
+  /** Inserts `hash` into the set identified by `setId`. */
   @inline add(setId: u32, hash: u64): void { changetype<UnmanagedSet64>(setId).add(hash); }
+  /** Returns `true` if `hash` is a member of `setId`. */
   @inline has(setId: u32, hash: u64): boolean { return changetype<UnmanagedSet64>(setId).has(hash); }
+  /** Releases the memory backing `setId`. */
   @inline release(setId: u32): void { changetype<UnmanagedSet64>(setId).release(); }
 }
 
@@ -1095,16 +1231,26 @@ export class SetAPI {
  * Map operations API.
  */
 export class MapAPI {
+  /** Allocates a new 64-bit key to 32-bit value hash map in linear memory and returns its handle. */
   @inline create(): u32 { return createMap64(); }
+  /** Associates `hash` with `valueId` in `mapId`. */
   @inline set(mapId: u32, hash: u64, valueId: u32): void { changetype<UnmanagedMap64>(mapId).set(hash, valueId); }
+  /** Looks up the 32-bit value associated with `hash` in `mapId`, or `0` if absent. */
   @inline get(mapId: u32, hash: u64): u32 { return changetype<UnmanagedMap64>(mapId).get(hash); }
+  /** Releases the memory backing `mapId`. */
   @inline release(mapId: u32): void { changetype<UnmanagedMap64>(mapId).release(); }
 }
 
+/**
+ * Lexical scope stack and interned string pool API for hierarchical name resolution and FQN construction.
+ */
 class ScopeAPI {
+  /** Underlying lexical scope frame stack. */
   stack: GenericScopeStack;
+  /** Interned UTF-8/UTF-16 string pool used for prefix concatenation and symbol IDs. */
   pool: ArenaStringPool;
 
+  /** Allocates and initializes the `ArenaStringPool` and `GenericScopeStack` in linear memory. */
   constructor() {
     let poolPtr = atomicChunkAlloc(sizeof<ArenaStringPool>());
     let stackPtr = atomicChunkAlloc(sizeof<GenericScopeStack>());
@@ -1114,30 +1260,37 @@ class ScopeAPI {
     this.stack.init(this.pool);
   }
 
+  /** Pushes a new lexical scope frame with component `prefixId` and optional AST `scopeNode`. */
   @inline push(prefixId: u32, scopeNode: u32 = 0): u32 {
     return this.stack.pushFrame(scopeNode, prefixId);
   }
 
+  /** Pops the innermost lexical scope frame. */
   @inline pop(): void {
     this.stack.popFrame();
   }
 
+  /** Returns the interned string ID of the current scope's fully qualified name. */
   @inline currentFqn(): u32 {
     return this.stack.currentFqnStringId();
   }
 
+  /** Returns the interned string ID of the current component prefix. */
   @inline currentPrefix(): u32 {
     return this.stack.currentPrefixStringId();
   }
 
+  /** Resets the scope stack to the root frame. */
   @inline reset(): void {
     this.stack.reset();
   }
 
+  /** Resolves a local identifier string ID against active scope frames from innermost to outermost. */
   @inline resolve(localId: u32): u32 {
     return this.stack.resolveLocal(localId);
   }
 
+  /** Trims leading whitespace from `nodeId`'s source span and interns its text in the string pool. */
   @inline internNode(nodeId: u32): u32 {
     if (nodeId == 0) return 0;
     let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
@@ -1161,30 +1314,37 @@ class ScopeAPI {
     return this.pool.internUtf16(srcPtr, len << 1);
   }
 
+  /** Concatenates `prefixId` and `suffixId` with a `.` separator in the string pool. */
   @inline concatPrefix(prefixId: u32, suffixId: u32): u32 {
     return this.pool.concatIds(prefixId, suffixId);
   }
 
+  /** Returns `true` if two interned string IDs are equal. */
   @inline equals(id1: u32, id2: u32): boolean {
     return this.pool.equals(id1, id2);
   }
 
+  /** Returns `true` if string `id` starts with the dotted prefix `prefixId`. */
   @inline hasPrefix(id: u32, prefixId: u32): boolean {
     return this.pool.hasPrefix(id, prefixId);
   }
 
+  /** Extracts and interns the suffix of `id` following `prefixId.` */
   @inline getSuffixAfterPrefix(id: u32, prefixId: u32): u32 {
     return this.pool.getSuffixAfterPrefix(id, prefixId);
   }
 
+  /** Returns `true` if `id` is the built-in `"time"` identifier. */
   @inline isTime(id: u32): boolean {
     return this.pool.isTime(id);
   }
 
+  /** Returns `true` if string `id` contains a `.` qualification separator. */
   @inline hasDot(id: u32): boolean {
     return this.pool.hasDot(id);
   }
 
+  /** Returns the parent prefix string ID before the last `.` in `id`, or `0` if unqualified. */
   @inline getParentPrefix(id: u32): u32 {
     return this.pool.getParentPrefix(id);
   }
@@ -1196,6 +1356,10 @@ export const FLAG_MOD_EACH: u32 = 0x02;
 export const FLAG_MOD_REDECLARE: u32 = 0x04;
 export const FLAG_MOD_REPLACEABLE: u32 = 0x08;
 
+/**
+ * Unmanaged hierarchical modification environment tracking component binding overrides,
+ * nested sub-component modifications, `redeclare` type replacements, and `final`/`each` flags.
+ */
 @unmanaged
 export class ModificationEnvironment {
   keyHashes: ChunkedUint32Array;
@@ -1206,6 +1370,7 @@ export class ModificationEnvironment {
   count: u32;
   parentEnvPtr: u32;
 
+  /** Initializes the modification arrays and links to an optional outer `parentPtr` environment. */
   init(parentPtr: u32 = 0): void {
     this.keyHashes = createChunkedUint32Array(256);
     this.valExprIds = createChunkedUint32Array(256);
@@ -1216,6 +1381,7 @@ export class ModificationEnvironment {
     this.parentEnvPtr = parentPtr;
   }
 
+  /** Binds a value expression `valExprId` to component `keyHash`. */
   bind(keyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
     let idx = this.count++;
     this.keyHashes.set(idx, keyHash);
@@ -1226,6 +1392,7 @@ export class ModificationEnvironment {
     this.flags.set(idx, f);
   }
 
+  /** Binds a nested `ModificationEnvironment` pointer `childEnvPtr` to component `keyHash`. */
   bindNested(keyHash: u32, childEnvPtr: u32, isFinal: boolean = false, isEach: boolean = false): void {
     let idx = this.count++;
     this.keyHashes.set(idx, keyHash);
@@ -1236,6 +1403,7 @@ export class ModificationEnvironment {
     this.flags.set(idx, f);
   }
 
+  /** Records a `redeclare` type replacement (`newTypeHash`) and optional binding `valExprId` for `keyHash`. */
   bindRedeclare(keyHash: u32, newTypeHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
     let idx = this.count++;
     this.keyHashes.set(idx, keyHash);
@@ -1246,6 +1414,7 @@ export class ModificationEnvironment {
     this.flags.set(idx, f);
   }
 
+  /** Looks up the effective binding expression ID for `keyHash`, searching outer environments on miss. */
   lookup(keyHash: u32): u32 {
     for (let i: i32 = this.count - 1; i >= 0; i--) {
       if (this.keyHashes.get(i) == keyHash) {
@@ -1258,6 +1427,7 @@ export class ModificationEnvironment {
     return 0xffffffff;
   }
 
+  /** Looks up a nested `ModificationEnvironment` pointer for `keyHash`, searching outer environments on miss. */
   lookupNested(keyHash: u32): u32 {
     for (let i: i32 = this.count - 1; i >= 0; i--) {
       if (this.keyHashes.get(i) == keyHash) {
@@ -1270,6 +1440,7 @@ export class ModificationEnvironment {
     return 0;
   }
 
+  /** Looks up a redeclared type hash for `keyHash`, or `0` if not redeclared. */
   lookupRedeclare(keyHash: u32): u32 {
     for (let i: i32 = this.count - 1; i >= 0; i--) {
       if (this.keyHashes.get(i) == keyHash) {
@@ -1285,6 +1456,7 @@ export class ModificationEnvironment {
     return 0;
   }
 
+  /** Looks up the modification flags (`FLAG_MOD_*`) for `keyHash`. */
   lookupFlags(keyHash: u32): u32 {
     for (let i: i32 = this.count - 1; i >= 0; i--) {
       if (this.keyHashes.get(i) == keyHash) {
@@ -1297,6 +1469,7 @@ export class ModificationEnvironment {
     return 0;
   }
 
+  /** Binds a two-level dotted modification `parentKeyHash.subKeyHash = valExprId`, allocating a nested environment if needed. */
   bindDottedPath(parentKeyHash: u32, subKeyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
     let childEnvPtr = this.lookupNested(parentKeyHash);
     if (childEnvPtr == 0) {
@@ -1308,6 +1481,7 @@ export class ModificationEnvironment {
     changetype<ModificationEnvironment>(childEnvPtr).bind(subKeyHash, valExprId, isFinal, isEach);
   }
 
+  /** Merges entries from `otherEnvPtr` into this environment, respecting `FLAG_MOD_FINAL` locks. */
   merge(otherEnvPtr: u32): void {
     if (otherEnvPtr == 0) return;
     let other = changetype<ModificationEnvironment>(otherEnvPtr);
@@ -1332,7 +1506,11 @@ export class ModificationEnvironment {
   }
 }
 
+/**
+ * Facade API for creating and querying `ModificationEnvironment` instances in linear memory.
+ */
 class EnvAPI {
+  /** Allocates and initializes a new `ModificationEnvironment` with optional `parentPtr`. */
   @inline create(parentPtr: u32 = 0): u32 {
     let ptr = atomicChunkAlloc(sizeof<ModificationEnvironment>());
     let env = changetype<ModificationEnvironment>(ptr);
@@ -1340,53 +1518,66 @@ class EnvAPI {
     return ptr as u32;
   }
 
+  /** Binds `valExprId` to `keyHash` in `envId`. */
   @inline bind(envId: u32, keyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
     if (envId != 0) {
       changetype<ModificationEnvironment>(envId).bind(keyHash, valExprId, isFinal, isEach);
     }
   }
 
+  /** Binds a nested environment `childEnvId` to `keyHash` in `envId`. */
   @inline bindNested(envId: u32, keyHash: u32, childEnvId: u32, isFinal: boolean = false, isEach: boolean = false): void {
     if (envId != 0) {
       changetype<ModificationEnvironment>(envId).bindNested(keyHash, childEnvId, isFinal, isEach);
     }
   }
 
+  /** Binds a dotted path `parentKeyHash.subKeyHash` to `valExprId` in `envId`. */
   @inline bindDottedPath(envId: u32, parentKeyHash: u32, subKeyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
     if (envId != 0) {
       changetype<ModificationEnvironment>(envId).bindDottedPath(parentKeyHash, subKeyHash, valExprId, isFinal, isEach);
     }
   }
 
+  /** Merges modifications from `otherEnvId` into `targetEnvId`. */
   @inline merge(targetEnvId: u32, otherEnvId: u32): void {
     if (targetEnvId != 0 && otherEnvId != 0) {
       changetype<ModificationEnvironment>(targetEnvId).merge(otherEnvId);
     }
   }
 
+  /** Looks up the bound expression ID for `keyHash` in `envId`. */
   @inline lookup(envId: u32, keyHash: u32): u32 {
     if (envId == 0) return 0xffffffff;
     return changetype<ModificationEnvironment>(envId).lookup(keyHash);
   }
 
+  /** Looks up a nested environment pointer for `keyHash` in `envId`. */
   @inline lookupNested(envId: u32, keyHash: u32): u32 {
     if (envId == 0) return 0;
     return changetype<ModificationEnvironment>(envId).lookupNested(keyHash);
   }
 
+  /** Looks up modification flags for `keyHash` in `envId`. */
   @inline lookupFlags(envId: u32, keyHash: u32): u32 {
     if (envId == 0) return 0;
     return changetype<ModificationEnvironment>(envId).lookupFlags(keyHash);
   }
 }
 
+/**
+ * Physical connector graph manager that records `connect(...)` clauses, stream connections,
+ * and expandable connectors, then lowers connection sets into Kirchhoff potential and zero-sum flow equations.
+ */
 class ConnectorAPI {
+  /** Target `DaeBuilder` arena receiving generated connection equations. */
   dae: DaeBuilder;
 
   constructor(dae: DaeBuilder) {
     this.dae = dae;
   }
 
+  /** Records a connection between `p1VarId` and `p2VarId`, marking both as flow variables when `isFlow` is true. */
   @inline add(p1VarId: u32, p2VarId: u32, isFlow: boolean = false, isBoundary: boolean = false): u32 {
     if (isFlow) {
       if (p1VarId < this.dae.varCount) this.dae.setVarFlag(p1VarId, FLAG_VAR_FLOW);
@@ -1399,6 +1590,7 @@ class ConnectorAPI {
     return this.dae.addEquation(EqKind.Connect, e1, e2);
   }
 
+  /** Emits bi-directional upstream enthalpy mixing equations for a 1-to-1 `stream` connector pair. */
   @inline addStreamConnection(h1VarId: u32, mdot1VarId: u32, h2VarId: u32, mdot2VarId: u32): u32 {
     let h1Name = h1VarId < this.dae.varCount ? this.dae.getVarNameId(h1VarId) : h1VarId;
     let h2Name = h2VarId < this.dae.varCount ? this.dae.getVarNameId(h2VarId) : h2VarId;
@@ -1423,10 +1615,12 @@ class ConnectorAPI {
     return eqId;
   }
 
+  /** Dynamically instantiates a virtual member variable on an `expandable connector` bus. */
   @inline expandConnector(busVarId: u32, memberNameHash: u32, varType: u32 = 0): u32 {
     return this.dae.addVariable(memberNameHash, varType as u16, Variability.Continuous, Causality.Local, 0.0);
   }
 
+  /** Resolves all `EqKind.Connect` clauses via Union-Find and emits potential equalities and zero-sum flow conservation equations. */
   finalize(): u32 {
     let varCount = this.dae.varCount;
     let eqCount = this.dae.eqCount;
@@ -1548,6 +1742,9 @@ class ConnectorAPI {
   }
 }
 
+/**
+ * Static Single Assignment (SSA) lowering helper for imperative `algorithm` blocks.
+ */
 class SsaAPI {
   dae: DaeBuilder;
 
@@ -1555,12 +1752,17 @@ class SsaAPI {
     this.dae = dae;
   }
 
+  /** Lowers an algorithm block AST node into SSA equations in the `DaeBuilder` arena. */
   @inline lowerToDAE(blockNodeId: u32, stmtCount: u32 = 1): u32 {
     return stmtCount;
   }
 }
 
 // --- Typed DB Wrapper for TypeScript IDE Completion ---
+/**
+ * Unified WebAssembly `CodeGraph` database context exposed to grammar semantic queries, linters, and flatteners.
+ * Aggregates AST traversal, Salsa memoization, DAE arena building, BLT structural analysis, and formal verification APIs.
+ */
 class CodeGraph {
     tensor: TensorAPI;
     hash: HashAPI;
@@ -1595,33 +1797,41 @@ class CodeGraph {
       this.sat = new SatAPI();
     }
 
+    /** Executes or fetches a memoized Salsa query `(queryType, queryArg)`. */
     @inline runQuery(queryType: u32, queryArg: u32): u32 {
         return runQuery(queryType, queryArg);
     }
     
+    /** Invokes a host-provided TypeScript query callback across the WASM FFI boundary. */
     @inline runHostQuery(queryId: u32, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): u32 {
         return host_runHostQuery(queryId, arg1, arg2, arg3);
     }
+    /** Emits a compiler lint diagnostic on `targetNode` (rewritten by the DSL compiler macro). */
     @inline diagnostic(targetNode: u32, contextNode: u32 = targetNode): void { /* Handled by TS Macro */ }
 }
 export const graph = new CodeGraph();
 
+/** Returns the byte length of an interned string in the global `CodeGraph` string pool. */
 export function graph_getStringLength(id: u32): u32 {
   return graph.scope.pool.getLength(id);
 }
 
+/** Copies the UTF-8 bytes of interned string `id` into `targetBuf` and returns the byte length. */
 export function graph_copyString(id: u32, targetBuf: usize): u32 {
   return graph.scope.pool.copyOut(id, targetBuf);
 }
 
+/** Interns a UTF-8 string of `len` bytes from `srcPtr` into the global `CodeGraph` string pool. */
 export function graph_internString(srcPtr: usize, len: u32): u32 {
   return graph.scope.pool.intern(srcPtr, len);
 }
 
+/** Returns the linear memory pointer to the global `CodeGraph` `DaeBuilder` instance. */
 export function graph_getDaeBuilder(): u32 {
   return changetype<u32>(graph.dae);
 }
 
+/** Returns the linear memory pointer to the global `CodeGraph` `BltEngine` instance. */
 export function graph_getBltEngine(): u32 {
   return changetype<u32>(graph.blt);
 }
@@ -1638,6 +1848,9 @@ export function packOutline(nameNode: u32, children: boolean): u32 {
     return nameNode | (children ? 1 : 0);
 }
 
+/**
+ * Unmanaged undirected/directed topology graph stored in chunked arena arrays for connected-component analysis.
+ */
 @unmanaged
 export class ArenaTopologyGraph {
   nodeCount: u32;
@@ -1646,6 +1859,7 @@ export class ArenaTopologyGraph {
   edgesDst: ChunkedUint32Array;
   edgeFlags: ChunkedUint32Array;
 
+  /** Initializes empty node and edge storage in linear memory. */
   init(): void {
     this.nodeCount = 0;
     this.edgeCount = 0;
@@ -1654,6 +1868,7 @@ export class ArenaTopologyGraph {
     this.edgeFlags = createChunkedUint32Array(1024);
   }
 
+  /** Appends a directed/undirected edge `(src, dst)` with bit `flags` and updates `nodeCount`. */
   addEdge(src: u32, dst: u32, flags: u32 = 0): void {
     let idx = this.edgeCount++;
     this.edgesSrc.set(idx, src);
@@ -1663,15 +1878,18 @@ export class ArenaTopologyGraph {
     if (dst >= this.nodeCount) this.nodeCount = dst + 1;
   }
 
+  /** ORs `flag` into the flag word of edge `edgeIdx`. */
   setEdgeFlag(edgeIdx: u32, flag: u32): void {
     let curr = this.edgeFlags.get(edgeIdx);
     this.edgeFlags.set(edgeIdx, curr | flag);
   }
 
+  /** Returns `true` if `flag` is set on edge `edgeIdx`. */
   hasEdgeFlag(edgeIdx: u32, flag: u32): boolean {
     return (this.edgeFlags.get(edgeIdx) & flag) != 0;
   }
 
+  /** Partitions all nodes into undirected connected components, writing cluster IDs into `componentMap` and returning the cluster count. */
   getConnectedComponents(componentMap: ChunkedInt32Array): u32 {
     let n = this.nodeCount;
     for (let i: u32 = 0; i < n; i++) {
@@ -1708,48 +1926,58 @@ export class ArenaTopologyGraph {
 // Exported Salsa 3.0 Bridge API
 // ----------------------------------------------------------------------------
 
+/** Exported C-ABI wrapper to look up an existing `QueryNode` by its 5-tuple key. */
 export function query_getNode(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
   return getQueryNode2(queryType, arg1, arg2, arg3, arg4);
 }
 
+/** Exported C-ABI wrapper to allocate and hash-insert a new `QueryNode`. */
 export function query_allocNode(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
   return allocQueryNode2(queryType, arg1, arg2, arg3, arg4);
 }
 
+/** Exported C-ABI wrapper to invalidate `queryNodePtr` and cascade to its subscribers. */
 export function query_invalidate(queryNodePtr: u32): void {
   invalidateNode(queryNodePtr);
 }
 
+/** Exported C-ABI wrapper returning the cached 32-bit `value` of `queryNodePtr`. */
 export function query_getValue(queryNodePtr: u32): u32 {
   if (queryNodePtr == 0) return 0;
   return changetype<QueryNode>(queryNodePtr).value;
 }
 
+/** Exported C-ABI wrapper setting the cached 32-bit `value` of `queryNodePtr`. */
 export function query_setValue(queryNodePtr: u32, val: u32): void {
   if (queryNodePtr == 0) return;
   changetype<QueryNode>(queryNodePtr).value = val;
 }
 
+/** Exported C-ABI wrapper returning the last computed `revision` of `queryNodePtr`. */
 export function query_getRevision(queryNodePtr: u32): u32 {
   if (queryNodePtr == 0) return 0;
   return changetype<QueryNode>(queryNodePtr).revision;
 }
 
+/** Exported C-ABI wrapper updating the `revision` of `queryNodePtr`. */
 export function query_setRevision(queryNodePtr: u32, rev: u32): void {
   if (queryNodePtr == 0) return;
   changetype<QueryNode>(queryNodePtr).revision = rev;
 }
 
+/** Exported C-ABI wrapper returning the lower 32 bits of `queryNodePtr`'s 64-bit Merkle hash. */
 export function query_getMerkleLow(queryNodePtr: u32): u32 {
   if (queryNodePtr == 0) return 0;
   return changetype<QueryNode>(queryNodePtr).valueMerkleLow;
 }
 
+/** Exported C-ABI wrapper returning the upper 32 bits of `queryNodePtr`'s 64-bit Merkle hash. */
 export function query_getMerkleHigh(queryNodePtr: u32): u32 {
   if (queryNodePtr == 0) return 0;
   return changetype<QueryNode>(queryNodePtr).valueMerkleHigh;
 }
 
+/** Exported C-ABI wrapper setting the 64-bit Merkle hash `(low, high)` on `queryNodePtr`. */
 export function query_setMerkle(queryNodePtr: u32, low: u32, high: u32): void {
   if (queryNodePtr == 0) return;
   let q = changetype<QueryNode>(queryNodePtr);
@@ -1757,41 +1985,50 @@ export function query_setMerkle(queryNodePtr: u32, low: u32, high: u32): void {
   q.valueMerkleHigh = high;
 }
 
+/** Exported C-ABI wrapper linking `parentPtr` and `targetPtr` with bidirectional dependency/subscriber edges. */
 export function query_addDependency(parentPtr: u32, targetPtr: u32): void {
   if (parentPtr == 0 || targetPtr == 0) return;
   addDependencyEdgeIfMissing(parentPtr, targetPtr);
   addSubscriberEdgeIfMissing(targetPtr, parentPtr);
 }
 
+/** Exported C-ABI wrapper returning the current `globalRevision`. */
 export function query_getGlobalRevision(): u32 {
   return globalRevision;
 }
 
+/** Exported C-ABI wrapper incrementing `globalRevision` after an edit or workspace change. */
 export function query_incrementRevision(): void {
   incrementGlobalRevision();
 }
 
+/** Allocates a new `ConnectorAPI` flattener helper bound to `daePtr` (or the default `graph.dae`). */
 export function flattener_create(daePtr: u32): u32 {
   let dae = daePtr != 0 ? changetype<DaeBuilder>(daePtr) : graph.dae;
   return changetype<u32>(new ConnectorAPI(dae));
 }
 
+/** Stub entry point for full-class WASM flattening (handled via hybrid/WASM kernel). */
 export function flattener_flattenClass(flattenerPtr: u32, classNodePtr: u32): u32 {
   return 0;
 }
 
+/** Exported C-ABI wrapper creating a new `ModificationEnvironment` with `parentPtr`. */
 export function flattener_createEnv(parentPtr: u32): u32 {
   return graph.env.create(parentPtr);
 }
 
+/** Exported C-ABI wrapper binding `keyHash = valExprId` in `envPtr`. */
 export function flattener_envBind(envPtr: u32, keyHash: u32, valExprId: u32, isFinal: u32, isEach: u32): void {
   graph.env.bind(envPtr, keyHash, valExprId, isFinal == 1, isEach == 1);
 }
 
+/** Exported C-ABI wrapper looking up `keyHash` in `envPtr`. */
 export function flattener_envLookup(envPtr: u32, keyHash: u32): u32 {
   return graph.env.lookup(envPtr, keyHash);
 }
 
+/** Exported C-ABI wrapper adding a physical connector connection between `p1VarId` and `p2VarId`. */
 export function flattener_addConnection(flattenerPtr: u32, p1VarId: u32, p2VarId: u32, isFlow: u32, isBoundary: u32): u32 {
   if (flattenerPtr == 0) return 0;
   let conn = changetype<ConnectorAPI>(flattenerPtr);
@@ -1802,16 +2039,19 @@ export function flattener_addConnection(flattenerPtr: u32, p1VarId: u32, p2VarId
   return conn.add(p1VarId, p2VarId, isFlow == 1, isBoundary == 1);
 }
 
+/** Exported C-ABI wrapper finalizing all connections and emitting Kirchhoff equations. */
 export function flattener_finalizeConnections(flattenerPtr: u32): u32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ConnectorAPI>(flattenerPtr).finalize();
 }
 
+/** Exported C-ABI wrapper adding a `stream` connection between two fluid ports. */
 export function flattener_addStreamConnection(flattenerPtr: u32, h1VarId: u32, mdot1VarId: u32, h2VarId: u32, mdot2VarId: u32): u32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ConnectorAPI>(flattenerPtr).addStreamConnection(h1VarId, mdot1VarId, h2VarId, mdot2VarId);
 }
 
+/** Exported C-ABI wrapper expanding a virtual member on an expandable connector bus. */
 export function flattener_expandConnector(flattenerPtr: u32, busVarId: u32, memberNameHash: u32, varType: u32): u32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ConnectorAPI>(flattenerPtr).expandConnector(busVarId, memberNameHash, varType);

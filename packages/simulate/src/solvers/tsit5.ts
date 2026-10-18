@@ -63,18 +63,18 @@ export const TSIT5_E: readonly number[] = [
 // ── Public Interfaces ──
 
 export interface Tsit5Options {
-  atol?: number;
-  rtol?: number;
-  initialStep?: number;
-  maxStep?: number;
-  minStep?: number;
-  maxSteps?: number;
-  equidistantOutput?: boolean;
-  eventFunctions?: Tsit5EventFunction[];
-  eventDirections?: (1 | -1 | 0)[];
-  eventCallback?: Tsit5EventCallback;
+  atol?: number | undefined;
+  rtol?: number | undefined;
+  initialStep?: number | undefined;
+  maxStep?: number | undefined;
+  minStep?: number | undefined;
+  maxSteps?: number | undefined;
+  equidistantOutput?: boolean | undefined;
+  eventFunctions?: Tsit5EventFunction[] | undefined;
+  eventDirections?: (1 | -1 | 0)[] | undefined;
+  eventCallback?: Tsit5EventCallback | undefined;
   /** Optional streaming Signal Temporal Logic (STL) robustness monitors */
-  stlMonitors?: import("../core/stl_monitor.js").STLOnlineMonitor[];
+  stlMonitors?: import("../core/stl_monitor.js").STLOnlineMonitor[] | undefined;
 }
 
 export interface Tsit5Result extends CommonSolverResult {

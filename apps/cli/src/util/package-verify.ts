@@ -6,7 +6,7 @@ export interface PackageVerificationResult {
   valid: boolean;
   computedHash: string;
   expectedHash: string;
-  error?: string;
+  error?: string | undefined;
 }
 
 /**

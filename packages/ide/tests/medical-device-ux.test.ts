@@ -100,8 +100,8 @@ describe("Medical Device & 4D Deformable Organ UX Studio", () => {
 
       const segments = controller.getClearanceSegments();
       assert.strictEqual(segments.length, 1);
-      assert.strictEqual(segments[0].status, "danger");
-      assert.strictEqual(segments[0].distance, 1.2);
+      assert.strictEqual(segments[0]!.status, "danger");
+      assert.strictEqual(segments[0]!.distance, 1.2);
 
       const computedDist = controller.computeClearanceDistance("CannulaTip", "VentricleWall");
       assert.strictEqual(computedDist, 1.2);

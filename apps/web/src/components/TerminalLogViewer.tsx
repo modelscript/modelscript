@@ -29,7 +29,7 @@ const pulseProcessing = keyframes`
 `;
 
 /* ─── Styled Components ─── */
-const TerminalContainer = styled.div<{ $isFullscreen?: boolean; $isCollapsed?: boolean }>`
+const TerminalContainer = styled.div<{ $isFullscreen?: boolean | undefined; $isCollapsed?: boolean | undefined }>`
   position: relative;
   display: flex;
   flex-direction: column;
@@ -160,7 +160,7 @@ const ProcessingBeacon = styled.span`
   animation: ${pulseProcessing} 1.5s infinite ease-in-out;
 `;
 
-const ToolbarButton = styled.button<{ $active?: boolean }>`
+const ToolbarButton = styled.button<{ $active?: boolean | undefined }>`
   background: ${(props) => (props.$active ? "rgba(56, 139, 253, 0.15)" : "transparent")};
   border: 1px solid ${(props) => (props.$active ? "rgba(56, 139, 253, 0.4)" : "var(--color-border-subtle, #21262d)")};
   color: ${(props) => (props.$active ? "var(--color-accent-fg, #58a6ff)" : "var(--color-text-secondary, #8b949e)")};
@@ -232,7 +232,7 @@ const ClearFilterButton = styled.button`
   }
 `;
 
-const TerminalScrollArea = styled.div<{ $isFullscreen?: boolean }>`
+const TerminalScrollArea = styled.div<{ $isFullscreen?: boolean | undefined }>`
   flex: 1;
   max-height: ${(props) => (props.$isFullscreen ? "calc(100vh - 120px)" : "360px")};
   min-height: 180px;
@@ -259,7 +259,11 @@ const TerminalScrollArea = styled.div<{ $isFullscreen?: boolean }>`
   }
 `;
 
-const LogLineRow = styled.div<{ $isError?: boolean; $isWarning?: boolean; $isHighlight?: boolean }>`
+const LogLineRow = styled.div<{
+  $isError?: boolean | undefined;
+  $isWarning?: boolean | undefined;
+  $isHighlight?: boolean | undefined;
+}>`
   display: flex;
   align-items: flex-start;
   padding: 1.5px 12px;
@@ -346,9 +350,9 @@ const CollapsedSummaryBar = styled.div`
 /* ─── ANSI & Syntax Highlight Engine ─── */
 interface StyledSpan {
   text: string;
-  color?: string;
-  bold?: boolean;
-  dim?: boolean;
+  color?: string | undefined;
+  bold?: boolean | undefined;
+  dim?: boolean | undefined;
 }
 
 const ANSI_COLORS: Record<number, string> = {
@@ -517,9 +521,9 @@ function renderSpan(span: StyledSpan, index: number): React.ReactNode {
 export interface TerminalLogViewerProps {
   packageName: string;
   packageVersion: string;
-  initialJobInfo?: JobInfo | null;
-  onJobCompleted?: () => void;
-  defaultCollapsed?: boolean;
+  initialJobInfo?: JobInfo | null | undefined;
+  onJobCompleted?: (() => void) | undefined;
+  defaultCollapsed?: boolean | undefined;
 }
 
 export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({

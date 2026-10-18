@@ -60,7 +60,7 @@ export interface ModelPairRecord {
  * and the 3D Polyglot Visualizer panel.
  */
 export class PolyglotLiveSyncManager implements vscode.Disposable {
-  private static _instance?: PolyglotLiveSyncManager;
+  private static _instance?: PolyglotLiveSyncManager | undefined;
 
   private readonly _pairs = new Map<string, ModelPairRecord>();
   private readonly _reversePairs = new Map<string, ModelPairRecord>();
@@ -311,7 +311,7 @@ export function registerPolyglotActions(context: vscode.ExtensionContext, client
 
         // Open side-by-side editor pane with synthesized target model
         const targetDoc = await vscode.workspace.openTextDocument({
-          content: targetSource,
+          ...(targetSource !== undefined ? { content: targetSource } : {}),
           language: selected.targetLang === "sysml2" ? "sysml" : selected.targetLang,
         });
 

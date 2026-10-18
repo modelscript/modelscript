@@ -32,8 +32,8 @@ export function gitRouter(): Router {
   router.get("/projects/:id/repository/tree", async (req, res) => {
     try {
       const provider = getGitProvider(req.params.id);
-      const ref = (req.query.ref as string) || "main";
-      const path = (req.query.path as string) || "";
+      const ref = (req.query["ref"] as string) || "main";
+      const path = (req.query["path"] as string) || "";
       const tree = await provider.getRepositoryTree(req.params.id, ref, path);
       res.json(tree);
     } catch (err: unknown) {
@@ -52,7 +52,7 @@ export function gitRouter(): Router {
   router.get("/projects/:id/repository/files/:file_path/raw", async (req, res) => {
     try {
       const provider = getGitProvider(req.params.id);
-      const ref = (req.query.ref as string) || "main";
+      const ref = (req.query["ref"] as string) || "main";
       const rawContent = await provider.getRepositoryFileRaw(req.params.id, req.params.file_path, ref);
       res.type("text/plain").send(rawContent);
     } catch (err: unknown) {
@@ -71,7 +71,7 @@ export function gitRouter(): Router {
   router.get("/projects/:id/repository/commits", async (req, res) => {
     try {
       const provider = getGitProvider(req.params.id);
-      const refName = (req.query.ref_name as string) || "main";
+      const refName = (req.query["ref_name"] as string) || "main";
       const commits = await provider.getCommits(req.params.id, refName);
       res.json(commits);
     } catch (err: unknown) {
@@ -89,7 +89,7 @@ export function gitRouter(): Router {
   router.get("/projects/:id/pipelines", async (req, res) => {
     try {
       const provider = getGitProvider(req.params.id);
-      const ref = (req.query.ref as string) || "main";
+      const ref = (req.query["ref"] as string) || "main";
       const pipelines = await provider.getPipelines(req.params.id, ref);
       res.json(pipelines);
     } catch (err: unknown) {

@@ -78,7 +78,7 @@ function computeCfdSemanticTokens(builder: SemanticTokensBuilder, text: string):
   ]);
 
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx];
+    const line = lines[lineIdx]!;
     if (!line.trim()) continue;
 
     // 1. Check for comment start
@@ -210,7 +210,7 @@ function computeFeaSemanticTokens(builder: SemanticTokensBuilder, text: string):
   ]);
 
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx];
+    const line = lines[lineIdx]!;
     const trimmed = line.trim();
     if (!trimmed) continue;
 
@@ -306,7 +306,7 @@ function computeStepSemanticTokens(builder: SemanticTokensBuilder, text: string)
 
   const lines = text.split("\n");
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx];
+    const line = lines[lineIdx]!;
 
     // Match tokens on this line with a multi-pattern regex.
     // Order matters: longer patterns first to avoid partial matches.

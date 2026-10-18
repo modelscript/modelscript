@@ -189,4 +189,29 @@ MARKER_HEATFLUX= ( body1, 0.0, body2, 150.0 )
     // Ensure it replaced rather than duplicated
     assert.strictEqual(updated.trim().split("\n").length, 1);
   });
+
+  it("derives density, freestream velocity, lift, and drag coefficients from compressible SU2 RANS directives", async () => {
+    const { extractCfdSlicingProperties } = await import("../src/index.js");
+    const su2Deck = `
+SOLVER= RANS
+MACH_NUMBER= 0.5
+AOA= 4.0
+REYNOLDS_NUMBER= 3.0e6
+FREESTREAM_PRESSURE= 101325.0
+FREESTREAM_TEMPERATURE= 288.15
+REF_LENGTH= 1.0
+REF_AREA= 0.2
+`;
+    const props = extractCfdSlicingProperties(su2Deck);
+    // Ideal gas density at 101325 Pa, 288.15 K = ~1.225 kg/m^3
+    assert.ok(Math.abs(props.density - 1.225) < 0.01);
+    // Speed of sound at 288.15 K is ~340.3 m/s -> Mach 0.5 is ~170.15 m/s
+    assert.ok(Math.abs(props.freeStreamVelocity - 170.15) < 1.0);
+    assert.strictEqual(props.machNumber, 0.5);
+    assert.strictEqual(props.reynoldsNumber, 3.0e6);
+    assert.ok(props.cl !== undefined && props.cl > 0.3 && props.cl < 0.6);
+    assert.ok(props.cd > 0.01 && props.cd < 0.1);
+    assert.ok(props.dragForce !== undefined && props.dragForce > 0);
+    assert.ok(props.liftForce !== undefined && props.liftForce > props.dragForce!);
+  });
 });

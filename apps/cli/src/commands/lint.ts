@@ -18,15 +18,25 @@ import { LanguageResolver } from "../util/language-registry.js";
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
+/** CLI arguments for the `msx lint` polyglot linting command. */
 interface LintArgs {
+  /** Primary file or directory path to lint. */
   path: string;
+  /** Additional file or directory paths to load into the workspace. */
   paths: string[] | undefined;
-  language?: string;
-  format?: "terminal" | "json";
-  profile?: "DL" | "EL";
-  strict?: boolean;
+  /** Optional language ID filter (`"modelica"`, `"sysml2"`, `"owl2"`, `"scad"`, `"ssp"`, `"cfd"`, `"fea"`, `"pscad"`). */
+  language?: string | undefined;
+  /** Diagnostic output format (`"terminal"` or `"json"`). */
+  format?: "terminal" | "json" | undefined;
+  /** OWL 2 ontology profile to validate against (`"DL"` or `"EL"`). */
+  profile?: "DL" | "EL" | undefined;
+  /** Whether to treat warnings as fatal errors with non-zero exit code. */
+  strict?: boolean | undefined;
 }
 
+/**
+ * Converts a 0-based UTF-16 character/byte offset into a 1-based `{ line, col }` coordinate.
+ */
 function byteToLineCol(text: string, byteOffset: number): { line: number; col: number } {
   const slice = text.slice(0, Math.max(0, byteOffset));
   const lines = slice.split("\n");
@@ -35,6 +45,9 @@ function byteToLineCol(text: string, byteOffset: number): { line: number; col: n
   return { line, col };
 }
 
+/**
+ * Converts a 1-based `(line1, col1)` position into a 0-based byte/character offset.
+ */
 function lineColToByte(text: string, line1: number, col1: number): number {
   const lines = text.split("\n");
   let offset = 0;
@@ -45,6 +58,7 @@ function lineColToByte(text: string, line1: number, col1: number): number {
   return offset + Math.max(0, col1 - 1);
 }
 
+/** Recognized Abaqus/CalculiX `.inp` FEA keyword card names for syntax validation. */
 const VALID_FEA_CARDS = new Set([
   "HEADING",
   "NODE",
@@ -103,6 +117,10 @@ const VALID_FEA_CARDS = new Set([
   "COUPLING",
 ]);
 
+/**
+ * Performs lexical and structural linting on an SU2/CFD configuration file (`KEY = VALUE` directives,
+ * balanced parentheses, and embedded `{{...}}` parameter expressions).
+ */
 function lintCfdText(text: string, resourceId: string): any[] {
   const diags: any[] = [];
   const lines = text.split(/\r?\n/);
@@ -216,6 +234,9 @@ function lintCfdText(text: string, resourceId: string): any[] {
   return diags;
 }
 
+/**
+ * Performs lexical and card-schema linting on a CalculiX/Abaqus `.inp` FEA deck.
+ */
 function lintFeaText(text: string, resourceId: string): any[] {
   const diags: any[] = [];
   const lines = text.split(/\r?\n/);
@@ -320,6 +341,9 @@ function lintFeaText(text: string, resourceId: string): any[] {
   return diags;
 }
 
+/**
+ * Validates STEP (ISO 10303-21) entity reference integrity (`#id`) and arity against `STEP_SCHEMA`.
+ */
 async function lintStepText(text: string, resourceId: string): Promise<any[]> {
   const diags: any[] = [];
   const { parseStepReferences, STEP_SCHEMA } = await import("@modelscript/step");
@@ -413,6 +437,9 @@ async function lintStepText(text: string, resourceId: string): Promise<any[]> {
   return diags;
 }
 
+/**
+ * Recursively walks a directory or file path and collects all files matching `recognizedExts`.
+ */
 function findPolyglotFiles(dir: string, fileList: string[] = [], recognizedExts: Set<string>) {
   if (!fs.existsSync(dir)) return fileList;
   const stat = fs.statSync(dir);
@@ -430,6 +457,10 @@ function findPolyglotFiles(dir: string, fileList: string[] = [], recognizedExts:
   return fileList;
 }
 
+/**
+ * `msx lint <path> [paths...]` CLI command module that runs CST, Salsa semantic, abstract-interpretation,
+ * and ontology/schema linters across all recognized ModelScript polyglot languages.
+ */
 export const Lint: CommandModule<any, LintArgs> = {
   command: "lint <path> [paths...]",
   describe: "Lint polyglot libraries using QueryEngine and DSL parsers",

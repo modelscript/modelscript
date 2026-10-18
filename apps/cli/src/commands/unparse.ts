@@ -5,11 +5,11 @@ import path from "node:path";
 import type { CommandModule } from "yargs";
 import { LanguageResolver } from "../util/language-registry.js";
 
-interface UnparseArgs {
+export interface UnparseArgs {
   file: string;
-  output?: string;
-  language?: string;
-  indentSize?: number;
+  output?: string | undefined;
+  language?: string | undefined;
+  indentSize?: number | undefined;
 }
 
 export const Unparse: CommandModule<any, any> = {
@@ -39,21 +39,21 @@ export const Unparse: CommandModule<any, any> = {
       });
   },
   handler: async (args) => {
-    const filePath = path.resolve(process.cwd(), args.file);
+    const filePath = path.resolve(process.cwd(), args["file"]);
     if (!fs.existsSync(filePath)) {
       console.error(`Error: File not found at ${filePath}`);
       process.exit(1);
     }
 
     try {
-      const lang = await LanguageResolver.resolve(filePath, args.language);
+      const lang = await LanguageResolver.resolve(filePath, args["language"]);
       const original = fs.readFileSync(filePath, "utf-8");
       const unparsed = await lang.unparse(original, {
-        indentSize: args.indentSize,
+        indentSize: args["indentSize"],
       });
 
-      if (args.output) {
-        const outPath = path.resolve(process.cwd(), args.output);
+      if (args["output"]) {
+        const outPath = path.resolve(process.cwd(), args["output"]);
         fs.writeFileSync(outPath, unparsed, "utf-8");
         console.log(`Unparsed output written to: ${outPath}`);
       } else {

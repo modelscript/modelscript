@@ -16,22 +16,22 @@ import { CdclSatSolver, type LitId, TseitinEncoder, type VarId } from "./cdcl_sa
 export type EventNodeKind = "atomic" | "sequence" | "alternative" | "optional" | "loop" | "set";
 
 export interface EventNode {
-  id?: string;
+  id?: string | undefined;
   name: string;
   actor: string;
   kind: EventNodeKind;
-  children?: EventNode[];
-  minRep?: number; // For loop: default 1
-  maxRep?: number; // For loop: default scope k
+  children?: EventNode[] | undefined;
+  minRep?: number | undefined; // For loop: default 1
+  maxRep?: number | undefined; // For loop: default scope k
 }
 
 export type EventRelationKind = "precedes" | "follows" | "includes" | "equals" | "mutex";
 
 export interface EventRelationRule {
   kind: EventRelationKind;
-  sourceActor?: string;
+  sourceActor?: string | undefined;
   sourceEvent: string;
-  targetActor?: string;
+  targetActor?: string | undefined;
   targetEvent: string;
 }
 
@@ -48,16 +48,16 @@ export interface EventAssertion {
   description: string;
   type: "mutex" | "precedence" | "response" | "custom";
   eventA: string; // Actor.Event or Event
-  eventB?: string; // Actor.Event or Event
-  customCheck?: (trace: ConcreteEventInstance[]) => boolean;
+  eventB?: string | undefined; // Actor.Event or Event
+  customCheck?: ((trace: ConcreteEventInstance[]) => boolean) | undefined;
 }
 
 export interface EventGrammarModel {
   name: string;
   actors: Record<string, EventNode>;
-  relations?: EventRelationRule[];
-  coordinations?: EventCoordinationRule[];
-  assertions?: EventAssertion[];
+  relations?: EventRelationRule[] | undefined;
+  coordinations?: EventCoordinationRule[] | undefined;
+  assertions?: EventAssertion[] | undefined;
 }
 
 export interface ConcreteEventInstance {
@@ -90,9 +90,9 @@ export interface EventExplorationResult {
 }
 
 export interface EventExplorationOptions {
-  scope?: number; // Max loop unrolling / instance scope (default: 3)
-  maxTraces?: number; // Max non-isomorphic traces to explore (default: 100)
-  enableSymmetryBreaking?: boolean; // Lexicographic symmetry breaking for symmetric/concurrent actors (default: false)
+  scope?: number | undefined; // Max loop unrolling / instance scope (default: 3)
+  maxTraces?: number | undefined; // Max non-isomorphic traces to explore (default: 100)
+  enableSymmetryBreaking?: boolean | undefined; // Lexicographic symmetry breaking for symmetric/concurrent actors (default: false)
 }
 
 export class EventGrammarSolver {
@@ -110,7 +110,7 @@ export class EventGrammarSolver {
       name: string;
       kind: EventNodeKind;
       occurrence: number;
-      parentInstId?: string;
+      parentInstId?: string | undefined;
     }
 
     const allInstances: FlatInstance[] = [];

@@ -14,34 +14,62 @@ import { extractVariables, parseGuardConstraints, type GuardConstraint } from ".
  * Diagnostic information when an Assume-Guarantee interface contract fails.
  */
 export interface ContractViolation {
-  connectionName?: string;
+  /** Optional name of the connection usage where the contract violation occurred. */
+  connectionName?: string | undefined;
+  /** Name of the upstream supplier port/component providing the guarantee. */
   sourceEndpoint: string;
+  /** Name of the downstream consumer port/component requiring the assumption. */
   targetEndpoint: string;
+  /** Guarantee constraint expression on the supplier endpoint. */
   guarantee: string;
+  /** Assumption constraint expression violated on the consumer endpoint. */
   assumption: string;
+  /** Variable identifier involved in the failed entailment check. */
   variable: string;
+  /** Concrete witness value demonstrating that the guarantee permits a state outside the assumption. */
   counterexample: number;
+  /** Human-readable explanation of why the supplier guarantee fails to entail the consumer assumption. */
   reason: string;
 }
 
+/**
+ * Result of verifying one or more Assume-Guarantee interface connections.
+ */
 export interface ContractVerificationResult {
+  /** True if all verified consumer assumptions are entailed by their connected supplier guarantees. */
   isSatisfied: boolean;
+  /** List of Assume-Guarantee violations discovered across checked connections. */
   violations: ContractViolation[];
 }
 
+/**
+ * Specification of a Signal Temporal Logic (STL) / invariant Assume-Guarantee contract $G_{[t_0, t_1]}(A \Rightarrow G)$.
+ */
 export interface TemporalContract {
-  name?: string;
+  /** Optional identifier of the temporal contract. */
+  name?: string | undefined;
+  /** Environment assumption predicate expression $A$. */
   assumption: string;
+  /** System guarantee predicate expression $G$. */
   guarantee: string;
-  timeHorizon?: [number, number];
+  /** Optional bounded time window $[t_{\min}, t_{\max}]$ in seconds over which the implication must hold. */
+  timeHorizon?: [number, number] | undefined;
 }
 
+/**
+ * Quantitative and qualitative evaluation result for a `TemporalContract`.
+ */
 export interface TemporalContractResult {
+  /** True if the implication $A \Rightarrow G$ holds across all evaluated time samples (or symbolically). */
   isSatisfied: boolean;
+  /** Minimum quantitative STL robustness margin $\rho$ observed while the assumption held ($\rho \ge 0$ indicates satisfaction). */
   minRobustness: number;
-  violationTime?: number;
-  counterexample?: number;
-  reason?: string;
+  /** First simulation timestamp (in seconds) at which $\rho < 0$, if violated. */
+  violationTime?: number | undefined;
+  /** Witness signal value at `violationTime` (or symbolic counterexample value) that violated the guarantee. */
+  counterexample?: number | undefined;
+  /** Diagnostic explanation of the temporal contract outcome or violation. */
+  reason?: string | undefined;
 }
 
 /**
@@ -84,7 +112,7 @@ export function verifyTemporalContract(
       continue;
     }
 
-    // Assumption holds -> check if guarantee holds
+    // Assumption holds -> compute quantitative STL robustness margin rho(G, x(t)) for each guarantee conjunct
     for (const g of gConstraints) {
       const val = signals[g.variable]?.[i];
       if (val === undefined) continue;
@@ -151,10 +179,16 @@ function negateGuardConstraint(c: GuardConstraint): NonlinearConstraint[] {
   }
 }
 
+/**
+ * Result of checking symbolic entailment $\bigwedge \text{Premises} \Rightarrow \text{Conclusion}$.
+ */
 export interface EntailmentResult {
+  /** True if the conjunction of premises mathematically entails the conclusion ($\text{Premises} \land \neg\text{Conclusion}$ is UNSAT). */
   entailed: boolean;
-  reason?: string;
-  counterexample?: Record<string, [number, number]>;
+  /** Human-readable explanation when entailment fails. */
+  reason?: string | undefined;
+  /** Interval box mapping variable names to $[lo, hi]$ bounds where premises hold but the conclusion is violated. */
+  counterexample?: Record<string, [number, number]> | undefined;
 }
 
 /**
@@ -487,21 +521,39 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string | 
   };
 }
 
+/**
+ * Formal Assume-Guarantee contract $C = (A, G)$ associated with a SysML v2 component or interface.
+ */
 export interface AssumeGuaranteeContract {
+  /** Component or contract identifier. */
   name: string;
+  /** List of environment assumption expressions $A$ required by the component. */
   assumptions: string[];
+  /** List of guarantee expressions $G$ ensured by the component whenever $A$ holds. */
   guarantees: string[];
-  inputs?: string[];
-  outputs?: string[];
+  /** Optional list of input port/variable identifiers controlled by the environment. */
+  inputs?: string[] | undefined;
+  /** Optional list of output port/variable identifiers controlled by the component. */
+  outputs?: string[] | undefined;
 }
 
+/**
+ * Result of checking contract refinement $C_1 \preceq C_2$ ($A_2 \Rightarrow A_1$ and $G_1 \Rightarrow G_2$).
+ */
 export interface RefinementResult {
+  /** True if $C_1$ weakens (or preserves) the assumptions of $C_2$ and strengthens (or preserves) the guarantees of $C_2$. */
   isRefined: boolean;
+  /** Diagnostic messages for any assumptions of $C_1$ not entailed by $A_2$. */
   assumptionViolations: string[];
+  /** Diagnostic messages for any guarantees of $C_2$ not entailed by $G_1$. */
   guaranteeViolations: string[];
+  /** Human-readable summary of the refinement check. */
   summary: string;
 }
 
+/**
+ * Algebraic operations on Assume-Guarantee contracts (refinement, parallel composition $\otimes$, quotient $/$, and OCRA-style compositional verification).
+ */
 export class ContractAlgebra {
   /**
    * Evaluates contract refinement C1 <= C2:
@@ -778,20 +830,35 @@ export class ContractAlgebra {
   }
 }
 
+/**
+ * Result of system-level compositional Assume-Guarantee verification (compatibility and refinement proofs).
+ */
 export interface CompositionalProofResult {
+  /** True if all component assumptions are discharged by system assumptions and sibling guarantees without instantaneous dependency cycles. */
   isCompatible: boolean;
+  /** True if the combined component guarantees and system assumptions entail all top-level system guarantees. */
   isRefined: boolean;
+  /** List of component assumption compatibility failures or instantaneous circular dependency violations. */
   compatibilityViolations: {
+    /** Name of the sub-component whose assumption could not be discharged. */
     component: string;
+    /** Unsatisfied assumption expression (or `"temporal-delay"` for algebraic loops). */
     missingAssumption: string;
+    /** Explanation of the compatibility failure. */
     reason: string;
-    counterexample?: Record<string, [number, number]>;
+    /** Optional counterexample box where sibling guarantees hold but the component assumption fails. */
+    counterexample?: Record<string, [number, number]> | undefined;
   }[];
+  /** List of top-level system guarantees that are not entailed by the composition of sub-component contracts. */
   refinementViolations: {
+    /** Unsatisfied system-level guarantee expression. */
     systemGuarantee: string;
+    /** Explanation of the refinement failure. */
     reason: string;
-    counterexample?: Record<string, [number, number]>;
+    /** Optional counterexample box where sub-component guarantees hold but the system guarantee fails. */
+    counterexample?: Record<string, [number, number]> | undefined;
   }[];
+  /** Human-readable summary of both compatibility and refinement proof obligations. */
   summary: string;
 }
 

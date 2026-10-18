@@ -80,7 +80,7 @@ export interface OperatorOverloadParam {
   typeSpec: string;
   isArray: boolean;
   hasDefault: boolean;
-  defaultValue?: string;
+  defaultValue?: string | undefined;
 }
 
 export interface OperatorOverload {

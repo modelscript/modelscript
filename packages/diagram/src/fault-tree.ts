@@ -14,28 +14,13 @@ export interface MinimalCutSetItem {
   order: number;
   faultIds: string[];
   faultNames: string[];
-  probability?: number;
+  probability?: number | undefined;
 }
 
 export interface FaultTreeInput {
   hazardName: string;
-  hazardDescription?: string;
+  hazardDescription?: string | undefined;
   minimalCutSets: MinimalCutSetItem[];
-}
-
-function _createTextMarkup(text: string, fontSize = 12, fill = "#1e293b", fontWeight = "normal"): X6Markup {
-  return {
-    tagName: "text",
-    attrs: {
-      "font-size": fontSize,
-      fill,
-      "text-anchor": "middle",
-      "dominant-baseline": "middle",
-      "font-family": "Inter, system-ui, sans-serif",
-      "font-weight": fontWeight,
-    },
-    textContent: text,
-  };
 }
 
 function createRectMarkup(fill: string, stroke: string, label: string, sublabel?: string, rx = 6): X6Markup {

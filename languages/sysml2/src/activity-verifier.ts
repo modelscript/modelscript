@@ -21,11 +21,11 @@ import {
 import { SysML2FumlBridge } from "./fuml-bridge.js";
 
 export interface SysML2ActivityVerificationOptions {
-  boundK?: number;
-  useKInduction?: boolean;
-  forbiddenActions?: string[];
-  mutuallyExclusivePairs?: [string, string][];
-  maxTokenCapacity?: number;
+  boundK?: number | undefined;
+  useKInduction?: boolean | undefined;
+  forbiddenActions?: string[] | undefined;
+  mutuallyExclusivePairs?: [string, string][] | undefined;
+  maxTokenCapacity?: number | undefined;
 }
 
 export interface SysML2ActivityVerificationResult {
@@ -33,13 +33,15 @@ export interface SysML2ActivityVerificationResult {
   method: "bmc" | "k-induction";
   boundExplored: number;
   invariant: ActivitySafetyInvariant;
-  bmcResult?: BmcResult;
-  kInductionResult?: KInductionResult;
-  violationTrace?: {
-    step: number;
-    firedNodes: string[];
-    reason: string;
-  }[];
+  bmcResult?: BmcResult | undefined;
+  kInductionResult?: KInductionResult | undefined;
+  violationTrace?:
+    | {
+        step: number;
+        firedNodes: string[];
+        reason: string;
+      }[]
+    | undefined;
   summary: string;
 }
 

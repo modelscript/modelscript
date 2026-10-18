@@ -31,10 +31,10 @@ interface AddLibraryModalProps {
   onDismiss: () => void;
   onAddLibrary: (file: File | string, type: "file" | "url" | "gallery") => Promise<void>;
   /** Called when a registry package is selected for install. */
-  onInstallPackage?: (packageName: string, version: string) => Promise<void>;
+  onInstallPackage?: ((packageName: string, version: string) => Promise<void>) | undefined;
   translations: Translations;
   /** Base URL of the ModelScript API (defaults to /api/v1). */
-  registryApiUrl?: string;
+  registryApiUrl?: string | undefined;
 }
 
 export default function AddLibraryModal({
@@ -84,7 +84,7 @@ export default function AddLibraryModal({
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      handleAdd(acceptedFiles[0], "file");
+      handleAdd(acceptedFiles[0]!, "file");
     }
   }, []);
 

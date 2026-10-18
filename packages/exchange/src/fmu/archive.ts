@@ -23,6 +23,7 @@ import {
   EqKind,
   ExprKind,
   foldArenaConstants,
+  hasArrayEquations,
   scalarizeArena,
   UnaryOp,
   Variability,
@@ -42,27 +43,27 @@ import { generateFmuWasmSource } from "./fmu-wasm-codegen.js";
 /** Options for FMU archive generation. */
 export interface FmuArchiveOptions extends FmuOptions {
   /** Target export format: "wasm" | "c" | "js" | "all" (default: "all"). */
-  target?: "wasm" | "c" | "js" | "all";
+  target?: "wasm" | "c" | "js" | "all" | undefined;
   /** Include C source files in the archive (default: true). */
-  includeSources?: boolean;
+  includeSources?: boolean | undefined;
   /** Include serialized model.json (default: true). */
-  includeModelJson?: boolean;
+  includeModelJson?: boolean | undefined;
   /** Include JavaScript model in resources/ (default: true). */
-  includeJs?: boolean;
+  includeJs?: boolean | undefined;
   /** Include WASM-targeted C source in the archive (default: false). */
-  includeWasm?: boolean;
+  includeWasm?: boolean | undefined;
   /** Pre-compiled WASM binary to bundle (if already compiled externally). */
-  wasmBinary?: Uint8Array;
+  wasmBinary?: Uint8Array | undefined;
   /** Optional WASM JS glue code. */
-  wasmJsGlue?: string;
+  wasmJsGlue?: string | undefined;
   /** Optional pre-compiled native binaries to include in binaries/PLATFORM/ */
-  nativeBinaries?: { platform: string; ext: string; binary: Uint8Array }[];
+  nativeBinaries?: { platform: string; ext: string; binary: Uint8Array }[] | undefined;
   /** Additional resource files to bundle in `resources/` (filename → contents). */
-  resourceFiles?: Map<string, Uint8Array>;
+  resourceFiles?: Map<string, Uint8Array> | undefined;
   /** Which FMI versions to bundle (default: "both"). */
-  fmiVersion?: "2" | "3" | "both";
+  fmiVersion?: "2" | "3" | "both" | undefined;
   /** Optional FMI-LS-BUS layered standard manifest to bundle in the FMU root as fmi-ls-bus.xml. */
-  busManifest?: FmiLsBusManifest;
+  busManifest?: FmiLsBusManifest | undefined;
 }
 
 /** Result of FMU archive generation. */
@@ -79,6 +80,7 @@ export interface FmuArchiveResult {
 
 /** Serialize DAEBuilder into a JSON structure matching the legacy DAE schema. */
 export function serializeArenaToJson(dae: DAEBuilder): Record<string, unknown> {
+  // 1. Recursively decode flat 4-word arena expression nodes (ExprKind, data1, left, right) into JSON AST objects
   const serializeExpr = (exprId: number): unknown => {
     if (exprId < 0) return null;
     const kind = dae.getExprKind(exprId);
@@ -190,6 +192,7 @@ export function serializeArenaToJson(dae: DAEBuilder): Record<string, unknown> {
           operand: serializeExpr(dae.getExprLeft(exprId)),
         };
       case ExprKind.Call: {
+        // Function call arguments are stored in `left` (arg 0) followed by `count - 1` contiguous Tuple slots
         const funcName = dae.interner.resolve(dae.getExprData1(exprId)) || "";
         const count = dae.getExprRight(exprId);
         const args: unknown[] = [];
@@ -232,6 +235,7 @@ export function serializeArenaToJson(dae: DAEBuilder): Record<string, unknown> {
     }
   };
 
+  // 2. Serialize non-removed scalar variables with their type, variability, causality, binding, and start value
   const variables: unknown[] = [];
   for (let i = 0; i < dae.varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
@@ -260,31 +264,32 @@ export function serializeArenaToJson(dae: DAEBuilder): Record<string, unknown> {
       "@type": vtype,
       name,
     };
-    if (variability) vJson.variability = variability;
-    if (causality) vJson.causality = causality;
+    if (variability) vJson["variability"] = variability;
+    if (causality) vJson["causality"] = causality;
 
     const exprId = dae.getVarExpression(i);
     if (typeof exprId === "number" && exprId >= 0) {
-      vJson.expression = serializeExpr(exprId);
+      vJson["expression"] = serializeExpr(exprId);
     }
 
     const startAttr = dae.getVarStartAttr(i);
     if (startAttr !== undefined) {
       if (typeof startAttr === "number") {
-        vJson.start = serializeExpr(startAttr);
+        vJson["start"] = serializeExpr(startAttr);
       } else {
-        vJson.start = startAttr;
+        vJson["start"] = startAttr;
       }
     } else {
       const startVal = dae.getVarStartValue(i);
       if (startVal !== 0) {
-        vJson.start = startVal;
+        vJson["start"] = startVal;
       }
     }
 
     variables.push(vJson);
   }
 
+  // 3. Serialize Simple and InitialSimple equality equations into legacy SimpleEquation records
   const equations: unknown[] = [];
   for (let i = 0; i < dae.eqCount; i++) {
     const kind = dae.getEqKind(i);
@@ -319,15 +324,17 @@ export function buildFmuArchive(
   options: FmuArchiveOptions,
   stateVars: Set<string> = new Set<string>(),
 ): FmuArchiveResult {
-  let hasArrays = false;
-  for (let i = 0; i < dae.varCount; i++) {
-    if (dae.getVarShape(i).length > 0) {
-      hasArrays = true;
-      break;
+  let hasArrays = hasArrayEquations(dae);
+  if (!hasArrays) {
+    for (let i = 0; i < dae.varCount; i++) {
+      if (dae.getVarShape(i).length > 0) {
+        hasArrays = true;
+        break;
+      }
     }
   }
   if (hasArrays) {
-    dae = scalarizeArena(dae);
+    dae = scalarizeArena(dae, true);
     foldArenaConstants(dae);
   }
 
@@ -467,7 +474,9 @@ export function buildFmuArchive(
       "  </BuildConfiguration>",
       "</fmiBuildDescription>",
     ].filter(Boolean);
-    files.set("extra/buildDescription.xml", encoder.encode(buildDescLines.join("\n")));
+    const buildDescBytes = encoder.encode(buildDescLines.join("\n"));
+    files.set("sources/buildDescription.xml", buildDescBytes);
+    files.set("extra/buildDescription.xml", buildDescBytes);
   }
 
   // ── Build ZIP archive ──

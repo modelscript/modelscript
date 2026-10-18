@@ -80,6 +80,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     fs.writeFileSync(targetFile, req.file.buffer);
 
     res.json({ hash, cached: false, filename: req.file.originalname, message: "File cached successfully." });
+    return;
   });
 
   router.post(
@@ -247,6 +248,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         console.error("POST /cae/jobs ERROR:", err);
         return res.status(500).json({ error: String(err), stack: (err as any)?.stack });
       }
+      return;
     },
   );
 
@@ -275,6 +277,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         costCredits: dbJob.cost_credits,
       },
     });
+    return;
   });
 
   // 3b. List User's Completed HPC Jobs with Artifacts
@@ -291,10 +294,11 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       console.error("[CaeRouter] GET /cae/user-jobs error:", err);
       res.status(500).json({ error: err.message || String(err) });
     }
+    return;
   });
 
   // 3c. Get Cluster Health & Diagnostics
-  router.get("/cae/cluster/status", async (req, res) => {
+  router.get("/cae/cluster/status", async (_req, res) => {
     try {
       const hpcEngine = new HpcEngine();
       const driver = hpcEngine.getDriver();
@@ -344,10 +348,10 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       if (!dbJob) return res.status(404).json({ error: "Job not found." });
 
       const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
-        resultDir?: string;
-        solver?: string;
-        profile?: string;
-        title?: string;
+        resultDir?: string | undefined;
+        solver?: string | undefined;
+        profile?: string | undefined;
+        title?: string | undefined;
       };
 
       const resultDir = metadata.resultDir;
@@ -383,6 +387,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       console.error("[CaeRouter] GET /cae/jobs/:id/reproduce-spec error:", err);
       res.status(500).json({ error: err.message || String(err) });
     }
+    return;
   });
 
   // 4. Cancel CAE Job
@@ -412,6 +417,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     }
 
     streamer.attachSseStream(res);
+    return;
   });
 
   // 6. Download Result VTU
@@ -419,7 +425,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
 
-    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string };
+    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
     const resultDir = metadata.resultDir;
     if (!resultDir) return res.status(404).json({ error: "No result directory recorded." });
 
@@ -430,6 +436,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
     res.setHeader("Content-Type", "application/xml");
     res.sendFile(vtuPath);
+    return;
   });
 
   // 7. Get Scalar Summary JSON (KPIs)
@@ -437,7 +444,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
 
-    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string };
+    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
     const resultDir = metadata.resultDir;
     if (!resultDir) return res.status(404).json({ error: "No result directory recorded." });
 
@@ -447,6 +454,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     }
 
     res.sendFile(scalarsPath);
+    return;
   });
 
   // 8. Get 3D FEA/CFD Mesh Payload JSON for Webview
@@ -454,7 +462,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
 
-    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string };
+    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
     const resultDir = metadata.resultDir;
     if (!resultDir) return res.status(404).json({ error: "No result directory recorded." });
 
@@ -608,12 +616,13 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         strategy: state.strategy,
         concurrency: sweepSpec.sampling.concurrency,
       });
+      return;
     },
   );
 
   // 10. List All Sweeps
   router.get("/cae/sweeps", (req, res) => {
-    const reqAny = req as { user?: { id?: number }; userId?: number };
+    const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
     const authUserId = reqAny.user?.id ?? reqAny.userId;
 
     const allSweeps = sweepOrchestrator
@@ -642,6 +651,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
     }
     res.json(sweep);
+    return;
   });
 
   // 12. Cancel Sweep
@@ -666,6 +676,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     }
 
     res.json({ cancelled: true, sweepId: req.params.id });
+    return;
   });
 
   // 13. Real-Time Telemetry Stream for Multi-Job Sweep (SSE)
@@ -675,6 +686,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
     }
     sweepOrchestrator.attachSseStream(req.params.id, res);
+    return;
   });
 
   // 14. Compile and Extract SnapshotMatrixDataset from Completed Sweep

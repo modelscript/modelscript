@@ -10,7 +10,7 @@ export interface ModelData {
   id: string;
   name: string;
   content: string;
-  lastModified?: number;
+  lastModified?: number | undefined;
 }
 
 interface SplashProps {
@@ -20,7 +20,7 @@ interface SplashProps {
   recentModels: ModelData[];
   exampleModels: ModelData[];
   context?: any;
-  colorMode?: string;
+  colorMode?: string | undefined;
   translations: Translations;
 }
 

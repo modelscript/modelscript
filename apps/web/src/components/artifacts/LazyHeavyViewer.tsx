@@ -8,11 +8,11 @@ import ArtifactPlaceholder from "./ArtifactPlaceholder";
 
 interface LazyHeavyViewerProps {
   artifactId: number;
-  thumbnailUrl?: string;
-  thumbnailUrlLight?: string;
-  thumbnailUrlDark?: string;
-  title?: string;
-  isFullScreen?: boolean;
+  thumbnailUrl?: string | undefined;
+  thumbnailUrlLight?: string | undefined;
+  thumbnailUrlDark?: string | undefined;
+  title?: string | undefined;
+  isFullScreen?: boolean | undefined;
   placeholderType?:
     | "fea"
     | "cfd"
@@ -25,7 +25,8 @@ interface LazyHeavyViewerProps {
     | "plot"
     | "webgpu"
     | "generic"
-    | string;
+    | string
+    | undefined;
   children: React.ReactNode;
 }
 

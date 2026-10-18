@@ -1,7 +1,6 @@
 // name:     Record Derived 2
 // keywords: record
 // status:   correct
-// xfail:    true
 
 record BaseProps_Tpoly "Fluid state record"
   Real T "temperature";

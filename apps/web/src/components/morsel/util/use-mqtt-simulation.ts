@@ -20,15 +20,17 @@ export interface MqttSimulationConfig {
   /** Data source mode. */
   source: SimulationDataSource;
   /** MQTT session ID to subscribe to. */
-  sessionId?: string;
+  sessionId?: string | undefined;
   /** Participant IDs to subscribe to (empty = all discovered). */
-  participantIds?: string[];
+  participantIds?: string[] | undefined;
   /** Historian replay settings. */
-  replay?: {
-    from?: string;
-    to?: string;
-    speed?: number;
-  };
+  replay?:
+    | {
+        from?: string | undefined;
+        to?: string | undefined;
+        speed?: number | undefined;
+      }
+    | undefined;
 }
 
 /** Return value of the `useMqttSimulation` hook. */

@@ -22,63 +22,69 @@ import { ArenaSimulator, initializeArenaEnvironment } from "./simulate-arena.js"
 export interface DaeStageLossEvaluation {
   loss: number;
   /** Gradient w.r.t differential states x: dL_stage/dx_i */
-  gradState?: Map<string, number>;
+  gradState?: Map<string, number> | undefined;
   /** Gradient w.r.t algebraic variables y: dL_stage/dy_j */
-  gradAlgebraic?: Map<string, number>;
+  gradAlgebraic?: Map<string, number> | undefined;
   /** Direct gradient w.r.t parameters p: dL_stage/dp_k */
-  gradParam?: Map<string, number>;
+  gradParam?: Map<string, number> | undefined;
 }
 
 export interface DaeTerminalLossEvaluation {
   loss: number;
   /** Gradient w.r.t terminal differential states x(T): dPhi/dx_i */
-  gradState?: Map<string, number>;
+  gradState?: Map<string, number> | undefined;
   /** Gradient w.r.t terminal algebraic variables y(T): dPhi/dy_j */
-  gradAlgebraic?: Map<string, number>;
+  gradAlgebraic?: Map<string, number> | undefined;
   /** Direct gradient w.r.t parameters p: dPhi/dp_k */
-  gradParam?: Map<string, number>;
+  gradParam?: Map<string, number> | undefined;
 }
 
 export type DaeAdjointProblem = DaeAdjointSolverOptions;
 
 export interface DaeAdjointSolverOptions {
   /** Simulation start time (default: from experiment annotation or 0). */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Simulation stop time (default: from experiment annotation or 1). */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Output communication step size. */
-  step?: number;
+  step?: number | undefined;
   /** Number of output intervals. */
-  numberOfIntervals?: number;
+  numberOfIntervals?: number | undefined;
   /** Parameter overrides applied before simulation. */
-  parameterOverrides?: Map<string, number>;
+  parameterOverrides?: Map<string, number> | undefined;
   /** Initial state overrides (name → value) applied at startTime. */
-  initialStateOverrides?: Map<string, number>;
+  initialStateOverrides?: Map<string, number> | undefined;
   /** Parameter names to compute sensitivities for. */
   parametersToDifferentiate: string[];
   /** Terminal cost Phi(x(T), y(T), p). */
-  terminalLoss?: (
-    states: Map<string, number>,
-    algebraic: Map<string, number>,
-    params: Map<string, number>,
-  ) => DaeTerminalLossEvaluation;
+  terminalLoss?:
+    | ((
+        states: Map<string, number>,
+        algebraic: Map<string, number>,
+        params: Map<string, number>,
+      ) => DaeTerminalLossEvaluation)
+    | undefined;
   /** Running stage cost L_stage(t, x(t), y(t), p). */
-  stageLoss?: (
-    t: number,
-    states: Map<string, number>,
-    algebraic: Map<string, number>,
-    params: Map<string, number>,
-  ) => DaeStageLossEvaluation;
+  stageLoss?:
+    | ((
+        t: number,
+        states: Map<string, number>,
+        algebraic: Map<string, number>,
+        params: Map<string, number>,
+      ) => DaeStageLossEvaluation)
+    | undefined;
   /** Target trajectory for quadratic tracking loss. Supports both state and algebraic variables. */
-  targetTrajectory?: {
-    names: string[];
-    t?: number[];
-    y: number[][];
-  };
+  targetTrajectory?:
+    | {
+        names: string[];
+        t?: number[] | undefined;
+        y: number[][];
+      }
+    | undefined;
   /** Pre-existing checkpoint tape if re-using a forward trajectory. */
-  checkpointTape?: DenseHermiteCheckpointTape;
+  checkpointTape?: DenseHermiteCheckpointTape | undefined;
   /** Cooperative cancellation signal. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 export interface DaeAdjointSolverResult {
@@ -594,6 +600,8 @@ export class DaeAdjointSolver {
             const varNameId = this.arena.getVarNameId(block.varIdx);
             dualEnv[varNameId] = val;
           }
+        } else if (block.type === "system") {
+          this.sim.propagateSystemBlockDual(block, valuesByStringId, dualEnv);
         }
       }
 

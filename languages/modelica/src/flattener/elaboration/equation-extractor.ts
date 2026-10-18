@@ -53,6 +53,17 @@ import { getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import type { ComponentInstanceData } from "../types.js";
 import { collectExtendsMods } from "./component-inst.js";
 
+/**
+ * Determines whether a lowered arena function-call expression `callId` is a `assert(cond, ...)`
+ * call whose condition `cond` is statically known to evaluate to `true` at compile time.
+ *
+ * Inspects literal `true` conditions as well as constant, final-parameter, and enumeration
+ * relational expressions so redundant assertions can be elided during flattening.
+ *
+ * @param callId - Arena expression ID of the candidate function call.
+ * @param dae - Active `DAEBuilder` containing variable metadata and expression nodes.
+ * @returns `true` if `callId` is an `assert(...)` whose condition statically evaluates to `true`.
+ */
 export function isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
   if (callId < 0 || dae.getExprKind(callId) !== ExprKind.Call) return false;
   const fname = dae.interner.resolve(dae.getExprData1(callId));
@@ -102,6 +113,29 @@ export function isStaticTrueAssert(callId: number, dae: DAEBuilder): boolean {
 
 const sharedAnnotationEvaluator = new AnnotationEvaluator();
 
+/**
+ * Validates and lowers a standalone function-call equation (e.g. `assert(...)`, `terminate(...)`,
+ * `reinit(v, expr)`, or `Connections.branch`/`root`/`potentialRoot`/`isRoot` graph operators)
+ * into the `DAEBuilder` equation arena or enclosing `when`/`elsewhen` clause.
+ *
+ * Enforces MLS §12.7 semantic constraints on `reinit`:
+ * - Must appear inside a `when` equation (`REINIT_OUTSIDE_WHEN`).
+ * - First argument must be a continuous `Real` state variable, not a loop iterator, literal,
+ *   parameter, constant, or discrete variable.
+ * - Vector `reinit(arr, valArr)` calls are scalarized element-by-element.
+ *
+ * Overconstrained connection graph operators (`Connections.branch`, `root`, `potentialRoot`, `isRoot`)
+ * are recorded directly onto `dae.extensionMetadata.overconstrainedGraph` rather than emitted as equations.
+ *
+ * @param flattener - Active `ModelicaFlattener` instance.
+ * @param node - CST node of the `function_call` equation.
+ * @param dae - Target `DAEBuilder` arena.
+ * @param prefix - Current hierarchical component instance prefix.
+ * @param substitutions - Active `for`-loop iterator bindings.
+ * @param isInitial - Whether the equation resides in an `initial equation` section.
+ * @param whenIdx - Enclosing `when` equation index in `dae`, or `-1` if outside `when`.
+ * @param elseWhenClause - Enclosing `elsewhen` branch accumulator, if any.
+ */
 export function emitFunctionCallEquation(
   flattener: any,
   node: SyntaxNode | null | undefined,
@@ -115,6 +149,7 @@ export function emitFunctionCallEquation(
     equations: { kind: EqKind; lhs: number; rhs: number }[];
   } | null,
 ): void {
+  if (!node) return;
   const isReinit =
     node.child?.(0)?.text?.trim() === "reinit" ||
     node.children?.[0]?.text?.trim() === "reinit" ||
@@ -147,7 +182,7 @@ export function emitFunctionCallEquation(
 
     const match = (node.text ?? "").match(/reinit\s*\(\s*([^,\s()]+)/);
     if (match) {
-      const rawTarget = match[1].trim();
+      const rawTarget = match[1]!.trim();
       if (flattener.activeLoopVars.has(rawTarget) || (substitutions && substitutions.has(rawTarget))) {
         dae.diagnostics.push({
           severity: "error",
@@ -218,7 +253,7 @@ export function emitFunctionCallEquation(
         const fullText = (node.text ?? "").trim();
         const arg2Match = fullText.match(/reinit\s*\([^,]+,\s*(.+)\)\s*;?$/s);
         if (arg2Match) {
-          const arg2Text = arg2Match[1].trim();
+          const arg2Text = arg2Match[1]!.trim();
           if (arg2Text.startsWith("{") && arg2Text.endsWith("}")) {
             const elements = arg2Text
               .slice(1, -1)
@@ -246,15 +281,15 @@ export function emitFunctionCallEquation(
 
   const ensureOverconstrainedGraph = () => {
     if (!dae.extensionMetadata) dae.extensionMetadata = {};
-    if (!dae.extensionMetadata.overconstrainedGraph) {
-      dae.extensionMetadata.overconstrainedGraph = {
+    if (!dae.extensionMetadata["overconstrainedGraph"]) {
+      dae.extensionMetadata["overconstrainedGraph"] = {
         roots: new Set<string>(),
         potentialRoots: new Map<string, number>(),
         branches: [] as { a: string; b: string }[],
         queriedRoots: new Set<string>(),
       };
     }
-    return dae.extensionMetadata.overconstrainedGraph as {
+    return dae.extensionMetadata["overconstrainedGraph"] as {
       roots: Set<string>;
       potentialRoots: Map<string, number>;
       branches: { a: string; b: string }[];
@@ -397,6 +432,29 @@ export function emitFunctionCallEquation(
   }
 }
 
+/**
+ * Recursively extracts and lowers all equations, initial equations, connections, and
+ * algorithm sections for `classId` (including its composite sub-components, short-class
+ * targets, and `extends` base classes) into `dae`.
+ *
+ * Execution phases:
+ * 1. Flush any deferred whole-array binding equations (`pendingArrayBindings`) for `prefix`.
+ * 2. Recurse into composite `Component` children (resolving redeclarations, `inner`/`outer`
+ *    redirects, merged hierarchical modifications, and scalarized vs. preserved array dimensions).
+ * 3. Collect and walk CST `equation_section`, `initial_equation_section`, `algorithm_section`,
+ *    and `initial_algorithm_section` nodes to lower `for`, `if`, `when`, `connect`, `simple_equation`,
+ *    and `function_call` equations as well as imperative algorithm statements.
+ * 4. Recurse into short-class base targets and `extends` clauses while propagating `break`
+ *    inheritance modifications (`brokenComponents` and `brokenConnections`).
+ *
+ * @param flattener - Active `ModelicaFlattener` orchestrator.
+ * @param classId - `SymbolId` of the class definition being flattened.
+ * @param prefix - Qualified instance path prefix (empty string at root model).
+ * @param dae - Target `DAEBuilder` arena receiving lowered equations and statements.
+ * @param breakContext - Inherited `break` exclusions for components and `connect()` clauses.
+ * @param parentMods - Merged modification environment propagated from enclosing instances/extends.
+ * @param visitedClasses - Cycle-detection set of `SymbolId`s along the current recursion chain.
+ */
 export function extractClassEquations(
   flattener: any,
   classId: SymbolId,
@@ -420,6 +478,7 @@ export function extractClassEquations(
   }
   curVisited.add(classId);
 
+  // Phase 1: Flush any deferred array variable binding equations queued during component instantiation.
   const classEntry = db.symbol(classId);
   if (flattener.pendingArrayBindings.has(prefix)) {
     const pending = flattener.pendingArrayBindings.get(prefix)!;
@@ -429,7 +488,7 @@ export function extractClassEquations(
     flattener.pendingArrayBindings.delete(prefix);
   }
 
-  const selfRawKind = String(classEntry?.metadata?.classKind ?? classEntry?.metadata?.classPrefixes ?? "");
+  const selfRawKind = String(classEntry?.metadata?.["classKind"] ?? classEntry?.metadata?.["classPrefixes"] ?? "");
   if (
     flattener.pendingArrayBindings.size === 0 &&
     (selfRawKind === "type" || selfRawKind === "record" || selfRawKind === "package" || selfRawKind === "connector")
@@ -437,6 +496,7 @@ export function extractClassEquations(
     return;
   }
 
+  // Phase 2: Recurse into composite sub-components of `classId` to extract their internal equations.
   const children = db.childrenOf(classId);
   for (const child of children) {
     if (child.kind === "Component") {
@@ -444,6 +504,9 @@ export function extractClassEquations(
         continue;
       }
       const compInst = db.query<ComponentInstanceData>("componentInstance", child.id);
+      if (compInst?.isOuter && !compInst?.isInner && compInst.causality !== "output") {
+        continue;
+      }
       const typeSpec =
         compInst?.typeSpecifier ?? (child.metadata as any)?.typeSpecifier ?? (child.metadata as any)?.type_specifier;
       if (typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String") {
@@ -492,15 +555,16 @@ export function extractClassEquations(
           } catch {}
           if (!compClassId) {
             const targets = db.byName(typeSpec);
-            if (targets.length > 0 && targets[0].kind === "Class") {
-              compClassId = targets[0].id;
+            if (targets.length > 0 && targets[0]!.kind === "Class") {
+              compClassId = targets[0]!.id;
             }
           }
         }
       }
       if (compClassId !== null) {
-        compClassId = flattener.resolveInnerOuterClass(compClassId);
-        const compClassSym = db.symbol(compClassId);
+        const resolvedCompClassId: SymbolId | null = flattener.resolveInnerOuterClass(compClassId);
+        if (resolvedCompClassId === null) continue;
+        const compClassSym = db.symbol(resolvedCompClassId);
         const compRawKind = String(
           (compClassSym?.metadata as any)?.classKind ?? (compClassSym?.metadata as any)?.classPrefixes ?? "",
         );
@@ -519,7 +583,7 @@ export function extractClassEquations(
           if (flattener.isComponentDisabled(childPrefix)) continue;
           const matchingArg = parentMods?.args?.find((a: any) => !a.isBreak && a.name === child.name);
           const compMods = compInst?.modification?.args || [];
-          const classExtendsMods = compClassId ? collectExtendsMods(flattener, compClassId) : [];
+          const classExtendsMods = resolvedCompClassId ? collectExtendsMods(flattener, resolvedCompClassId) : [];
           const childSubMod = {
             args: [
               ...classExtendsMods,
@@ -527,23 +591,31 @@ export function extractClassEquations(
               ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
               ...(matchingArg?.nestedArgs || matchingArg?.args || []),
             ],
-            ownerClassId: compClassId,
+            ownerClassId: resolvedCompClassId,
           };
           const arrayDims = db.query<number[] | null>("resolvedArrayDimensions", child.id);
-          if (curVisited.has(compClassId)) {
+          if (curVisited.has(resolvedCompClassId)) {
             continue;
           }
           const nextVisited = new Set(curVisited);
           nextVisited.add(classId);
           if (flattener.options.arrayMode === "preserve") {
-            extractClassEquations(flattener, compClassId, childPrefix, dae, curBreakContext, childSubMod, nextVisited);
+            extractClassEquations(
+              flattener,
+              resolvedCompClassId,
+              childPrefix,
+              dae,
+              curBreakContext,
+              childSubMod,
+              nextVisited,
+            );
           } else if (arrayDims && arrayDims.length > 0) {
             const indices = generateArrayIndices(arrayDims);
             for (const indexStr of indices) {
               if (flattener.isComponentDisabled(`${childPrefix}${indexStr}`)) continue;
               extractClassEquations(
                 flattener,
-                compClassId,
+                resolvedCompClassId,
                 `${childPrefix}${indexStr}`,
                 dae,
                 curBreakContext,
@@ -552,7 +624,15 @@ export function extractClassEquations(
               );
             }
           } else {
-            extractClassEquations(flattener, compClassId, childPrefix, dae, curBreakContext, childSubMod, nextVisited);
+            extractClassEquations(
+              flattener,
+              resolvedCompClassId,
+              childPrefix,
+              dae,
+              curBreakContext,
+              childSubMod,
+              nextVisited,
+            );
           }
         }
       }
@@ -563,6 +643,8 @@ export function extractClassEquations(
     return;
   }
 
+  // Phase 3: Collect and cache equation/algorithm CST sections directly belonging to `classId`
+  // (stopping at nested `class_definition` boundaries) and walk them in canonical order.
   const cst = db.cstNode(classId) as any;
   if (cst) {
     let eqAlgSections = cst._cachedEqAlgSections as any[] | undefined;
@@ -665,7 +747,10 @@ export function extractClassEquations(
             return;
           }
 
-          // For equations: for i in 1:N loop ... end for;
+          // For equations (`for i in range loop ... end for;`):
+          // Evaluates iteration ranges (implicit array subscript dimensions, `{...}` array/enum
+          // literals, or `start[:step]:stop` colon ranges) and either preserves the loop as an
+          // arena `EqKind.For` node (`shouldPreserveFor`) or unrolls it across all index tuples.
           if (Cst.ForEquation.is(node)) {
             const indicesNode = Cst.ForEquation.indices(node);
             const forIndexNodes: any[] = [];
@@ -716,6 +801,8 @@ export function extractClassEquations(
               }
             }
 
+            // Resolves the sequence of discrete iteration values (numbers or enum literal strings)
+            // for a single `for_index` clause under the current outer loop `currentSubs`.
             const getForIndexValues = (fIndex: any, currentSubs: Map<string, number | string>): (number | string)[] => {
               const rangeNode =
                 Cst.ForIndex.range(fIndex) || fIndex.children?.find?.((c: any) => c.type === "expression");
@@ -769,7 +856,7 @@ export function extractClassEquations(
                 if (sVal === null || eVal === null || stVal === null) {
                   let formattedRangeText = rangeText;
                   const isOldInst = Boolean(
-                    dae.extensionMetadata?.isOldFrontend ||
+                    dae.extensionMetadata?.["isOldFrontend"] ||
                     flattener?.options?.isOldFrontend ||
                     (dae.extensionMetadata as any)?.hasOldInstOption,
                   );
@@ -834,6 +921,8 @@ export function extractClassEquations(
               return [1];
             };
 
+            // Recursively unrolls multi-dimensional `for` indices by binding each iterator variable
+            // in `currentSubs` and walking `bodyNodes` at the innermost level.
             const unroll = (indexIdx: number, currentSubs: Map<string, number | string>) => {
               if (indexIdx >= forIndexNodes.length) {
                 for (const bodyChild of bodyNodes) {
@@ -873,6 +962,8 @@ export function extractClassEquations(
               return false;
             };
 
+            // Preserve `for` loops as symbolic `EqKind.For` arena equations when `arrayMode === "preserve"`
+            // and the loop body does not contain `connect()` or `when` equations.
             const shouldPreserveFor =
               !hasForDiagError &&
               forIndexNodes.length > 0 &&
@@ -970,10 +1061,10 @@ export function extractClassEquations(
                       curB.equationNodes.push(child);
                     }
                   }
-                  if (subBranches.length > 0 && subBranches[0].conditionNode) {
-                    const subCondId = flattener.lowerExpr(subBranches[0].conditionNode, dae, prefix, substitutions);
+                  if (subBranches.length > 0 && subBranches[0]!.conditionNode) {
+                    const subCondId = flattener.lowerExpr(subBranches[0]!.conditionNode, dae, prefix, substitutions);
                     const subThen: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-                    for (const eqN of subBranches[0].equationNodes) subThen.push(...lowerForBodyNode(eqN));
+                    for (const eqN of subBranches[0]!.equationNodes) subThen.push(...lowerForBodyNode(eqN));
                     const subElseIf: {
                       conditionExprId: number;
                       bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
@@ -981,7 +1072,7 @@ export function extractClassEquations(
                     }[] = [];
                     const subElse: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
                     for (let bi = 1; bi < subBranches.length; bi++) {
-                      const sb = subBranches[bi];
+                      const sb = subBranches[bi]!;
                       if (sb.conditionNode) {
                         const eCondId = flattener.lowerExpr(sb.conditionNode, dae, prefix, substitutions);
                         const bEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
@@ -1146,7 +1237,7 @@ export function extractClassEquations(
             let isDynamic = false;
 
             for (let i = 0; i < branches.length; i++) {
-              const b = branches[i];
+              const b = branches[i]!;
               if (b.conditionNode) {
                 const condExprId = flattener.lowerExpr(b.conditionNode, dae, prefix, substitutions);
                 if (condExprId >= 0) {
@@ -1197,7 +1288,7 @@ export function extractClassEquations(
             if (!isDynamic) {
               if (staticBranchIndex !== null) {
                 // Statically chosen branch: emit only its equations!
-                const chosen = branches[staticBranchIndex];
+                const chosen = branches[staticBranchIndex]!;
                 for (const eqNode of chosen.equationNodes) {
                   walk(eqNode, substitutions, isInitial);
                 }
@@ -1234,8 +1325,8 @@ export function extractClassEquations(
               if (hasConnectInNonParamIf) return;
             }
 
-            if (branches.length > 0 && branches[0].conditionNode) {
-              const firstCondId = flattener.lowerExpr(branches[0].conditionNode, dae, prefix, substitutions);
+            if (branches.length > 0 && branches[0]!.conditionNode) {
+              const firstCondId = flattener.lowerExpr(branches[0]!.conditionNode, dae, prefix, substitutions);
               const ifIdx = dae.addIfEquation(firstCondId);
               const meta = dae.getIfEquationMeta(ifIdx);
 
@@ -1245,12 +1336,47 @@ export function extractClassEquations(
               ): { kind: EqKind; lhsExprId: number; rhsExprId: number }[] => {
                 let expL = lId;
                 let expR = rId;
+                const isInlineArrayCall = (id: number): boolean => {
+                  if (id < 0) return false;
+                  const k = dae.getExprKind(id);
+                  if (k === ExprKind.Call) {
+                    const fn = dae.interner.resolve(dae.getExprData1(id));
+                    return Boolean(fn && !fn.startsWith("/*Real") && fn !== "Real");
+                  }
+                  if (k === ExprKind.Negate || k === ExprKind.Unary) {
+                    return isInlineArrayCall(dae.getExprLeft(id));
+                  }
+                  if (k === ExprKind.Binary) {
+                    return isInlineArrayCall(dae.getExprLeft(id)) || isInlineArrayCall(dae.getExprRight(id));
+                  }
+                  return false;
+                };
                 if (dae.getExprKind(expL) === ExprKind.Name) {
                   const lName = dae.interner.resolve(dae.getExprData1(expL));
                   if (lName && dae.hasArrayElements(lName)) {
+                    if (isInlineArrayCall(expR)) {
+                      return [{ kind: EqKind.Array, lhsExprId: expL, rhsExprId: expR }];
+                    }
                     const ctor = expandVarToArrayCtor(lName, dae);
                     if (ctor !== null) expL = ctor;
                   }
+                } else if (
+                  dae.getExprKind(expL) === ExprKind.ArrayCtor &&
+                  dae.getExprKind(expR) !== ExprKind.ArrayCtor &&
+                  isInlineArrayCall(expR)
+                ) {
+                  let finalLhs = expL;
+                  let firstElem = dae.getExprLeft(expL);
+                  while (firstElem >= 0 && dae.getExprKind(firstElem) === ExprKind.ArrayCtor) {
+                    firstElem = dae.getExprLeft(firstElem);
+                  }
+                  if (firstElem >= 0 && dae.getExprKind(firstElem) === ExprKind.Name) {
+                    const elemName = dae.interner.resolve(dae.getExprData1(firstElem));
+                    if (elemName && elemName.includes("[")) {
+                      finalLhs = dae.addNameExpr(elemName.split("[")[0]!);
+                    }
+                  }
+                  return [{ kind: EqKind.Array, lhsExprId: finalLhs, rhsExprId: expR }];
                 }
                 if (dae.getExprKind(expR) === ExprKind.Name) {
                   const rName = dae.interner.resolve(dae.getExprData1(expR));
@@ -1313,7 +1439,7 @@ export function extractClassEquations(
                   let subStaticIdx: number | null = null;
                   let subDynamic = false;
                   for (let bi = 0; bi < subBranches.length; bi++) {
-                    const sb = subBranches[bi];
+                    const sb = subBranches[bi]!;
                     if (sb.conditionNode) {
                       const cId = flattener.lowerExpr(sb.conditionNode, dae, prefix, substitutions);
                       const ev = evalDaeExpr(cId, dae);
@@ -1332,17 +1458,17 @@ export function extractClassEquations(
                   if (!subDynamic) {
                     if (subStaticIdx !== null) {
                       const out: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-                      for (const eqN of subBranches[subStaticIdx].equationNodes) {
+                      for (const eqN of subBranches[subStaticIdx]!.equationNodes) {
                         out.push(...lowerInlineEqs(eqN));
                       }
                       return out;
                     }
                     return [];
                   }
-                  if (subBranches.length > 0 && subBranches[0].conditionNode) {
-                    const subCondId = flattener.lowerExpr(subBranches[0].conditionNode, dae, prefix, substitutions);
+                  if (subBranches.length > 0 && subBranches[0]!.conditionNode) {
+                    const subCondId = flattener.lowerExpr(subBranches[0]!.conditionNode, dae, prefix, substitutions);
                     const subThen: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-                    for (const eqN of subBranches[0].equationNodes) {
+                    for (const eqN of subBranches[0]!.equationNodes) {
                       subThen.push(...lowerInlineEqs(eqN));
                     }
                     const subElseIf: {
@@ -1352,7 +1478,7 @@ export function extractClassEquations(
                     }[] = [];
                     const subElse: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
                     for (let bi = 1; bi < subBranches.length; bi++) {
-                      const sb = subBranches[bi];
+                      const sb = subBranches[bi]!;
                       if (sb.conditionNode) {
                         const eCondId = flattener.lowerExpr(sb.conditionNode, dae, prefix, substitutions);
                         const bEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
@@ -1397,7 +1523,7 @@ export function extractClassEquations(
                 return [];
               };
 
-              for (const eqNode of branches[0].equationNodes) {
+              for (const eqNode of branches[0]!.equationNodes) {
                 const eqs = lowerInlineEqs(eqNode);
                 if (eqs.length > 0 && meta) {
                   meta.thenEquations.push(...eqs);
@@ -1405,7 +1531,7 @@ export function extractClassEquations(
               }
 
               for (let i = 1; i < branches.length; i++) {
-                const b = branches[i];
+                const b = branches[i]!;
                 if (b.conditionNode) {
                   const elseCondId = flattener.lowerExpr(b.conditionNode, dae, prefix, substitutions);
                   const bodyEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
@@ -1435,8 +1561,12 @@ export function extractClassEquations(
             }
           }
 
-          // Simple and Equality equations: lhs = rhs;
+          // Simple and Equality equations (`lhs = rhs;`):
+          // Performs broken-component checks, class-as-component diagnostics, tuple/multi-output
+          // function call matching, array constructor expansion, rank/dimension checking, and
+          // element-wise scalarization or `EqKind.Array` emission.
           if (node.type === "simple_equation") {
+            // 1. Reject equations referencing components removed by an inheritance `break` modifier.
             if (curBreakContext.brokenComponents.size > 0) {
               const checkNodeForBroken = (n: any): string | null => {
                 if (!n) return null;
@@ -1476,6 +1606,8 @@ export function extractClassEquations(
               }
             }
 
+            // 2. Detect bare class names illegally referenced as component values in equations
+            // (excluding function/record constructor calls and the first argument of `size(Class, dim)`).
             if (flattener.db) {
               let classAsComp = (node as any)._classAsCompId === classId ? (node as any)._classAsComp : undefined;
               if (classAsComp === undefined) {
@@ -1575,7 +1707,7 @@ export function extractClassEquations(
             if (expressions.length >= 2) {
               let lhsExprId = flattener.lowerExpr(expressions[0], dae, prefix, substitutions, false, true);
               if (
-                dae.extensionMetadata?.isOldFrontend &&
+                dae.extensionMetadata?.["isOldFrontend"] &&
                 lhsExprId >= 0 &&
                 dae.getExprKind(lhsExprId) === ExprKind.Name
               ) {
@@ -1609,6 +1741,9 @@ export function extractClassEquations(
                   }
                 }
               }
+              // 3. Validate tuple LHS `(a, b) = fn(...)`: every tuple element must be a component reference
+              // (or `der(...)` / subscripted array of component references), and the RHS must be a single
+              // multi-output function call rather than a literal tuple expression.
               const isTupleLhs = dae.getExprKind(lhsExprId) === ExprKind.Tuple;
               if (isTupleLhs) {
                 let isAllCompRefs = true;
@@ -1643,7 +1778,7 @@ export function extractClassEquations(
                   const printer = new ArenaDAEPrinter(new StringWriter(), dae, false);
                   const lhsStr = printer.printExprToString(lhsExprId);
                   let formattedInStr = lhsStr;
-                  if (dae.extensionMetadata?.isOldFrontend) {
+                  if (dae.extensionMetadata?.["isOldFrontend"]) {
                     const rawText = node.text ? node.text.trim().replace(/\s+/g, " ") : "";
                     const semiText = rawText.endsWith(";") ? rawText : `${rawText};`;
                     formattedInStr = semiText.replace(/([A-Za-z0-9_]+)\+([A-Za-z0-9_]+)/g, "$1 + $2");
@@ -1704,6 +1839,8 @@ export function extractClassEquations(
                 return;
               }
 
+              // Check whether the RHS is a multi-output function call, padding the LHS tuple with
+              // wildcard `_` placeholders if fewer LHS targets were provided than function outputs.
               let callExprId = rhsExprId;
               if (
                 dae.getExprKind(rhsExprId) === ExprKind.Subscript &&
@@ -1832,6 +1969,11 @@ export function extractClassEquations(
               const rhsKind = dae.getExprKind(rhsExprId);
               const emittedEqIndices: number[] = [];
 
+              // 4. Symbolic array constructor expansion (`resolveToArrayCtor`):
+              // Recursively materializes nested `ExprKind.ArrayCtor` trees for array variable names,
+              // built-in matrix constructors (`identity`, `diagonal`, `zeros`, `ones`, `fill`),
+              // element-wise `der(...)` differentiation (folding constant/parameter derivatives to 0.0),
+              // and binary array/matrix arithmetic (`+`, `-`, matrix/vector `*`, scalar scaling, `/`, `^`).
               const resolveToArrayCtor = (id: number): number => {
                 if (flattener.explicitArrayMode === "preserve") return id;
                 const k = dae.getExprKind(id);
@@ -2086,6 +2228,7 @@ export function extractClassEquations(
               const expandedLhs = resolveToArrayCtor(lhsExprId);
               const expandedRhs = resolveToArrayCtor(rhsExprId);
 
+              // 5. Verify array rank and dimension compatibility between expanded LHS and RHS.
               const effectiveLhsDims =
                 getExprDims(expandedLhs, dae, flattener.db) ?? getExprDims(lhsExprId, dae, flattener.db);
               const effectiveRhsDims =
@@ -2154,6 +2297,8 @@ export function extractClassEquations(
                 return;
               }
 
+              // 6. Recursively unroll matching `ExprKind.ArrayCtor` pairs into scalar `EqKind.Simple`
+              // equations, normalizing `literal = var` into `var = literal` and coercing Integer to Real.
               const emitEq = (lId: number, rId: number) => {
                 const lK = dae.getExprKind(lId);
                 const rK = dae.getExprKind(rId);
@@ -2185,8 +2330,9 @@ export function extractClassEquations(
                   if (isRealExpr(finalLhs, dae) && !isRealExpr(finalRhs, dae)) {
                     finalRhs = castToRealExpr(finalRhs, dae);
                   } else if (
-                    dae.extensionMetadata?.isOldFrontend &&
+                    dae.extensionMetadata?.["isOldFrontend"] &&
                     !isRealExpr(finalLhs, dae) &&
+                    inferArenaExprVarType(dae, finalLhs) === VarType.Integer &&
                     isRealExpr(finalRhs, dae)
                   ) {
                     finalLhs = castToRealExpr(finalLhs, dae);
@@ -2237,6 +2383,9 @@ export function extractClassEquations(
                   const fnDims = getExprDims(exprId, dae, flattener.db);
                   return Boolean(fnDims && fnDims.length > 0);
                 }
+                if (k === ExprKind.Negate || k === ExprKind.Unary) {
+                  return isArrayReturningCall(dae.getExprLeft(exprId));
+                }
                 if (k === ExprKind.Binary) {
                   return (
                     isArrayReturningCall(dae.getExprLeft(exprId)) || isArrayReturningCall(dae.getExprRight(exprId))
@@ -2245,6 +2394,8 @@ export function extractClassEquations(
                 return false;
               };
 
+              // If the RHS is an opaque array-returning function call (or synchronous `subSample`/`superSample`),
+              // emit a whole-array `EqKind.Array` equation with the unsubscripted LHS base array name.
               if (
                 hasLeftDims &&
                 dae.getExprKind(expandedRhs) !== ExprKind.ArrayCtor &&
@@ -2434,8 +2585,8 @@ export function extractClassEquations(
               for (const bConn of curBreakContext.brokenConnections) {
                 const m = bConn.match(/connect\(([^,]+),([^)]+)\)/);
                 if (m) {
-                  const bFrom = m[1].trim().replace(/\s+/g, "");
-                  const bTo = m[2].trim().replace(/\s+/g, "");
+                  const bFrom = m[1]!.trim().replace(/\s+/g, "");
+                  const bTo = m[2]!.trim().replace(/\s+/g, "");
                   if (
                     (r0Raw === bFrom && r1Raw === bTo) ||
                     (r0Raw === bTo && r1Raw === bFrom) ||
@@ -2676,7 +2827,7 @@ export function extractClassEquations(
             const checkIfInWhen = (n: any): boolean => {
               if (n.type === "if_equation" || Cst.IfEquation.is(n)) {
                 const branches: string[][] = [[]];
-                let curBranch = branches[0];
+                let curBranch = branches[0]!;
                 for (const child of n.children || []) {
                   const norm = Cst.kind(child);
                   const text = child.text?.trim() ?? "";
@@ -2710,10 +2861,10 @@ export function extractClassEquations(
                   }
                 }
                 if (branches.length > 1) {
-                  const baseVars = branches[0].slice().sort();
+                  const baseVars = branches[0]!.slice().sort();
                   let mismatch = false;
                   for (let b = 1; b < branches.length; b++) {
-                    const compVars = branches[b].slice().sort();
+                    const compVars = branches[b]!.slice().sort();
                     if (baseVars.length !== compVars.length || baseVars.some((v, i) => v !== compVars[i])) {
                       mismatch = true;
                       break;
@@ -2801,7 +2952,7 @@ export function extractClassEquations(
 
             // Check elsewhen variable consistency
             const whenBranches: string[][] = [[]];
-            let currentWhenBranch = whenBranches[0];
+            let currentWhenBranch = whenBranches[0]!;
             for (const child of node.children || []) {
               const text = child.text?.trim() ?? "";
               const norm = Cst.kind(child);
@@ -2833,10 +2984,10 @@ export function extractClassEquations(
                 (c: any) => c.type === "when_equation" || c.type === "when_statement",
               );
               if (hasNestedWhen) return;
-              const baseVars = whenBranches[0].slice().sort();
+              const baseVars = whenBranches[0]!.slice().sort();
               let hasMismatch = false;
               for (let b = 1; b < whenBranches.length; b++) {
-                const compVars = whenBranches[b].slice().sort();
+                const compVars = whenBranches[b]!.slice().sort();
                 if (baseVars.length !== compVars.length) {
                   hasMismatch = true;
                   break;
@@ -2994,7 +3145,9 @@ export function extractClassEquations(
             return;
           }
 
-          // Algorithm sections:
+          // Algorithm sections (`algorithm` and `initial algorithm`):
+          // Lowers imperative Modelica statements into flat arena `StmtKind` records,
+          // tracking the `[start, count)` slice in `dae.algorithmSections` or `dae.initialAlgorithmSections`.
           if (node.type === "algorithm_section") {
             const state = getFlatteningState(dae);
             state.hasAlgorithmSection = true;
@@ -3007,6 +3160,9 @@ export function extractClassEquations(
                 (c: any) => c.text?.trim() === "initial" || c.type === '"initial"' || c.type === "initial",
               );
 
+            // Recursively unwraps generic `statement` / `statement_or_procedure` CST wrappers
+            // into concrete executable statement CST nodes while preserving multi-output
+            // tuple assignments `(a, b) := fn(...)` and standalone procedure calls.
             const extractExecutableStmts = (n: any): any[] => {
               if (!n) return [];
               const text = n.text?.trim() ?? "";
@@ -3048,15 +3204,18 @@ export function extractClassEquations(
               return [];
             };
 
+            // Lowers a single imperative statement CST node into `DAEBuilder` statement arena entries.
             const lowerStatement = (sNode: any): void => {
               if (!sNode) return;
 
+              // Validate `reinit(v, expr)`: forbidden inside algorithm sections by MLS §12.2
+              // unless `--allowNonStandardModelica=reinitInAlgorithms` is active.
               const sText = (sNode.text ?? "").trim();
               let rootP: any = sNode;
               while (rootP?.parent) rootP = rootP.parent;
               const fileSrc = rootP?.text ?? "";
               const allowsReinitInAlg =
-                dae.extensionMetadata?.isOldFrontend ||
+                dae.extensionMetadata?.["isOldFrontend"] ||
                 (flattener.options as any)?.allowNonStandardModelica?.includes("reinitInAlgorithms") ||
                 /annotation\s*\(\s*__OpenModelica_commandLineOptions\s*=\s*"[^"]*reinitInAlgorithms[^"]*"\s*\)/.test(
                   fileSrc,
@@ -3082,10 +3241,13 @@ export function extractClassEquations(
                 return;
               }
 
+              // Handle wrapper `statement` nodes: either multi-output tuple assignments
+              // `(y1, y2) := fn(x)` or standalone procedure call statements `proc(x)`.
               if (sNode.type === "statement" || sNode.type === "statement_or_procedure") {
                 const outList = (sNode.children || []).find((c: any) => c.type === "output_expression_list");
                 const fnCall = (sNode.children || []).find((c: any) => c.type === "function_call");
                 if (outList && fnCall) {
+                  // Extract comma-separated LHS target expressions, preserving null slots for wildcards.
                   const rawTargets: (any | null)[] = [];
                   let currentExpr: any | null = null;
                   for (const k of outList.children || []) {
@@ -3099,6 +3261,8 @@ export function extractClassEquations(
                   rawTargets.push(currentExpr);
                   let stmtText = sNode.text?.trim() ?? "";
                   if (stmtText.endsWith(";")) stmtText = stmtText.slice(0, -1).trim();
+                  // Verify that none of the tuple LHS targets are read-only parameters or constants
+                  // (except `fixed=false` parameters inside `initial algorithm`).
                   for (const rt of rawTargets) {
                     if (!rt) continue;
                     const rText = rt.text?.trim() ?? "";
@@ -3108,6 +3272,7 @@ export function extractClassEquations(
                       if (vari === Variability.Parameter || vari === Variability.Constant) {
                         const isFixed = dae.getVarAttr(vIdx, "fixed");
                         const isExplicitFalse =
+                          isFixed !== undefined &&
                           isFixed >= 0 &&
                           dae.getExprKind(isFixed) === ExprKind.BoolLiteral &&
                           dae.getExprData1(isFixed) === 0;
@@ -3116,6 +3281,7 @@ export function extractClassEquations(
                         }
                         let fixedStr = "";
                         if (
+                          isFixed !== undefined &&
                           isFixed >= 0 &&
                           dae.getExprKind(isFixed) === ExprKind.BoolLiteral &&
                           dae.getExprData1(isFixed) === 1
@@ -3124,12 +3290,15 @@ export function extractClassEquations(
                         } else if (vari === Variability.Parameter) {
                           fixedStr = "(fixed=true)";
                         }
-                        const formattedCall = stmtText.replace(/\b([a-zA-Z_]\w*)\s*\(\s*(\d+)\s*\)/, (_, fn, arg) => {
-                          const qual = flattener.currentRootClassId
-                            ? `${db.symbol(flattener.currentRootClassId)?.name}.${fn}`
-                            : fn;
-                          return `${qual}(${Number(arg).toFixed(1)})`;
-                        });
+                        const formattedCall = stmtText.replace(
+                          /\b([a-zA-Z_]\w*)\s*\(\s*(\d+)\s*\)/,
+                          (_: string, fn: string, arg: string) => {
+                            const qual = flattener.currentRootClassId
+                              ? `${db.symbol(flattener.currentRootClassId)?.name}.${fn}`
+                              : fn;
+                            return `${qual}(${Number(arg).toFixed(1)})`;
+                          },
+                        );
                         const startB = sNode.startIndex ?? sNode.startByte;
                         const endB = sNode.endIndex ?? sNode.endByte;
                         dae.diagnostics.push({
@@ -3148,6 +3317,7 @@ export function extractClassEquations(
                     }
                   }
 
+                  // Validate that the number of LHS tuple targets matches the function's output arity.
                   const fnCallId = flattener.lowerExpr(fnCall, dae, prefix, substitutions, true);
                   const fnName = fnCall.children?.[0]?.text?.trim() ?? fnCall.text?.split("(")[0]?.trim() ?? "";
                   const fnObj =
@@ -3214,6 +3384,23 @@ export function extractClassEquations(
                       return;
                     }
                   }
+                  // If the function call was inlined directly into an `ExprKind.Tuple`, decompose into
+                  // individual `StmtKind.Assignment` statements; otherwise emit `StmtKind.ComplexAssignment`
+                  // followed by one `StmtKind.Assignment` slot per output target.
+                  if (dae.getExprKind(fnCallId) === ExprKind.Tuple) {
+                    const tupleElems = getArrayCtorElements(fnCallId, dae);
+                    if (tupleElems.length === rawTargets.length) {
+                      for (let i = 0; i < rawTargets.length; i++) {
+                        const rt = rawTargets[i];
+                        if (!rt) continue;
+                        const tid = flattener.lowerExpr(rt, dae, prefix, substitutions, undefined, true);
+                        if (tid >= 0) {
+                          dae.addStatement(StmtKind.Assignment, tid, tupleElems[i]!);
+                        }
+                      }
+                      return;
+                    }
+                  }
                   dae.addStatement(StmtKind.ComplexAssignment, rawTargets.length, fnCallId);
                   for (const rt of rawTargets) {
                     const tid = rt ? flattener.lowerExpr(rt, dae, prefix, substitutions, undefined, true) : -1;
@@ -3274,6 +3461,9 @@ export function extractClassEquations(
                 return;
               }
 
+              // `for` statements in algorithms: preserve loop structure as nested `StmtKind.For`
+              // arena statements rather than unrolling, deducing implicit `for i loop` bounds
+              // from subscripted array shapes in the loop body when the `in range` clause is omitted.
               if (sNode.type === "for_statement") {
                 const indicesNode = (sNode.children || []).find((c: any) => c.type === "for_indices");
                 const forIndices = (indicesNode?.children || []).filter((c: any) => c.type === "for_index");
@@ -3302,6 +3492,8 @@ export function extractClassEquations(
                   }
                 }
 
+                // Infers `1:maxIdx` (or `firstEnum:lastEnum`) when a `for` index omits an explicit range
+                // by inspecting which array dimension is indexed by `varName` inside `bodyStmts`.
                 const deduceRange = (varName: string): number => {
                   let targetArr = "";
                   let targetDimIdx = -1;
@@ -3394,6 +3586,7 @@ export function extractClassEquations(
                   return -1;
                 };
 
+                // Recursively emits one `StmtKind.For` header per multi-index `for i in ..., j in ...` level.
                 const lowerForIndexAt = (idx: number) => {
                   if (idx >= forIndices.length) {
                     for (const s of bodyStmts) {
@@ -3444,6 +3637,8 @@ export function extractClassEquations(
                 return;
               }
 
+              // `while` statement: emits `StmtKind.While` with condition expression ID and body statement count,
+              // followed immediately in the statement arena by its lowered body statements.
               if (Cst.WhileStatement.is(sNode) || sNode.type === "while_statement") {
                 const cond =
                   Cst.WhileStatement.condition(sNode) ??
@@ -3485,6 +3680,9 @@ export function extractClassEquations(
                 return;
               }
 
+              // `if` statement: collects `then`, `elseif`, and `else` branches, prunes branches
+              // whose conditions fold to `ExprKind.BoolLiteral`, and emits `StmtKind.If` followed
+              // by `StmtKind.Block` headers for any remaining `elseif`/`else` clauses.
               if (Cst.IfStatement.is(sNode) || sNode.type === "if_statement") {
                 const cond =
                   Cst.IfStatement.condition(sNode) ?? (sNode.children || []).find((c: any) => c.type === "expression");
@@ -3573,6 +3771,7 @@ export function extractClassEquations(
                   allBranches.push({ condNode: b.condNode, condId: bCondId, stmts: b.stmts, condVal: bCondVal });
                 }
 
+                // Skip leading branches whose conditions are statically false.
                 let startIdx = 0;
                 while (startIdx < allBranches.length && allBranches[startIdx]!.condVal === false) {
                   startIdx++;
@@ -3615,6 +3814,9 @@ export function extractClassEquations(
                 return;
               }
 
+              // Scalar/array/tuple assignment statement (`lhs := rhs`):
+              // Validates LHS mutability, array rank/dimension compatibility, and type conversions
+              // before emitting `StmtKind.Assignment`.
               if (sNode.type === "assignment_statement") {
                 const exprs = (sNode.children || []).filter(
                   (c: any) => c.type === "expression" || c.type === "component_reference",
@@ -3656,7 +3858,7 @@ export function extractClassEquations(
                     if (!typeName) typeName = (targetCompSym.metadata as any)?.typeSpecifier;
                     let classSym: SymbolEntry | null = null;
                     const typeClassId = db.query<SymbolId | null>("classInstance", targetCompSym.id);
-                    if (typeClassId) classSym = db.symbol(typeClassId);
+                    if (typeClassId) classSym = db.symbol(typeClassId) ?? null;
                     if (!classSym && targetCompSym.parentId !== null && typeName) {
                       const simpleResolver = db.query<(n: string) => SymbolEntry | null>(
                         "resolveSimpleName",
@@ -3706,7 +3908,8 @@ export function extractClassEquations(
                   const isTupleTarget = dae.getExprKind(targetId) === ExprKind.Tuple;
                   let valId = flattener.lowerExpr(exprs[1], dae, prefix, substitutions, isTupleTarget);
 
-                  // 3. Check assignment to constant or parameter
+                  // 3. Check assignment to constant or parameter, and propagate deduced array shapes
+                  // from the RHS expression onto dynamically sized output variables.
                   const printer = new ArenaDAEPrinter({ write: () => {} }, dae, true);
                   const targetStr = printer.printExprToString(targetId);
                   let valStr = printer.printExprToString(valId);
@@ -3715,8 +3918,16 @@ export function extractClassEquations(
                   if (vIdx < 0 && cleanTargetText) vIdx = dae.getVarIdxByName(cleanTargetText);
                   if (vIdx < 0 && cleanTargetText && prefix) vIdx = dae.getVarIdxByName(`${prefix}.${cleanTargetText}`);
                   if (vIdx >= 0 && state.lastLoweredShape) {
+                    const existingShape = dae.getVarShape(vIdx);
+                    const hasConcreteExisting =
+                      existingShape && existingShape.length > 0 && existingShape.every((d: number) => d > 0);
                     const deducedShape = state.lastLoweredShape;
-                    if (deducedShape && deducedShape.length > 0 && deducedShape.every((d: number) => d > 0)) {
+                    if (
+                      !hasConcreteExisting &&
+                      deducedShape &&
+                      deducedShape.length > 0 &&
+                      deducedShape.every((d: number) => d > 0)
+                    ) {
                       state.deducedOutputShapes.set(dae.getVarName(vIdx), deducedShape);
                       if (cleanTargetText !== dae.getVarName(vIdx)) {
                         state.deducedOutputShapes.set(cleanTargetText, deducedShape);
@@ -3734,7 +3945,7 @@ export function extractClassEquations(
                         valStr = `${valStr}.0`;
                       }
                       if (variability === Variability.Constant) {
-                        const msg = dae.extensionMetadata?.isOldFrontend
+                        const msg = dae.extensionMetadata?.["isOldFrontend"]
                           ? `Trying to assign to constant component ${displayTarget}.`
                           : ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(displayTarget, valStr);
                         dae.diagnostics.push({
@@ -3767,6 +3978,7 @@ export function extractClassEquations(
                     }
                   }
 
+                  // 4. Verify array dimension compatibility between target and value expressions.
                   const targetDims = getExprDims(targetId, dae, flattener.db);
                   if (targetDims && targetDims.length > 0 && targetDims[0] === 0 && !exprs[1]?.text?.includes("[")) {
                     return;
@@ -3801,6 +4013,7 @@ export function extractClassEquations(
                     return;
                   }
 
+                  // 5. Apply Real promotion, Enumeration integer-index coercion, and type checks.
                   if (isRealExpr(targetId, dae) && !isRealExpr(valId, dae)) {
                     valId = castToRealExpr(valId, dae);
                   }
@@ -3852,6 +4065,7 @@ export function extractClassEquations(
                     });
                     return;
                   }
+                  // When assigning a multi-output function call to a single scalar LHS, bind to output #1 (`call[1]`).
                   if (dae.getExprKind(valId) === ExprKind.Call) {
                     const fnName = dae.interner.resolve(dae.getExprData1(valId));
                     const fn = fnName
@@ -3872,11 +4086,26 @@ export function extractClassEquations(
                   if (valId >= 0) {
                     valId = simplifyArenaExpr(dae, valId);
                   }
+                  if (dae.getExprKind(targetId) === ExprKind.Tuple && dae.getExprKind(valId) === ExprKind.Tuple) {
+                    const targetElems = getArrayCtorElements(targetId, dae);
+                    const valElems = getArrayCtorElements(valId, dae);
+                    if (targetElems.length === valElems.length) {
+                      for (let i = 0; i < targetElems.length; i++) {
+                        if (targetElems[i]! >= 0) {
+                          dae.addStatement(StmtKind.Assignment, targetElems[i]!, valElems[i]!);
+                        }
+                      }
+                      return;
+                    }
+                  }
                   dae.addStatement(StmtKind.Assignment, targetId, valId);
                 }
                 return;
               }
 
+              // `when` statement in algorithms: validates discrete-time Boolean conditions
+              // (rejecting `noEvent(...)` and `Clock(...)`) and enforces that every `elsewhen`
+              // branch assigns to the exact same set of target variables as the primary `when` branch.
               if (Cst.WhenStatement.is(sNode) || sNode.type === "when_statement") {
                 const cond =
                   Cst.WhenStatement.condition(sNode) ??
@@ -4065,7 +4294,7 @@ export function extractClassEquations(
               );
             for (const kid of node.children || []) {
               if (
-                dae.extensionMetadata?.isOldFrontend &&
+                dae.extensionMetadata?.["isOldFrontend"] &&
                 dae.diagnostics.some((d) => d.code === ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code)
               ) {
                 break;
@@ -4114,6 +4343,7 @@ export function extractClassEquations(
     }
   }
 
+  // If this class is a short class definition (`model Sub = Base(...)`), inherit equations from the base class.
   const specShort = cst
     ? cst._cachedShortSpec !== undefined
       ? cst._cachedShortSpec
@@ -4126,20 +4356,22 @@ export function extractClassEquations(
     const typeName = typeSpec?.text?.trim();
     if (typeName) {
       const matches = db.byName(typeName);
-      if (matches.length > 0 && matches[0].kind === "Class") {
+      if (matches.length > 0 && matches[0]!.kind === "Class") {
         const shortMod = db.query<any>("effectiveModification", classId);
         const shortArgs = shortMod?.args ?? [];
         const combinedMods = {
           args: [...shortArgs, ...(parentMods?.args ?? [])],
           ownerClassId: parentMods?.ownerClassId ?? classId,
         };
-        if (!curVisited.has(matches[0].id)) {
-          extractClassEquations(flattener, matches[0].id, prefix, dae, curBreakContext, combinedMods, curVisited);
+        if (!curVisited.has(matches[0]!.id)) {
+          extractClassEquations(flattener, matches[0]!.id, prefix, dae, curBreakContext, combinedMods, curVisited);
         }
       }
     }
   }
 
+  // Recursively extract equations from `extends` base classes, propagating `break` inheritance
+  // modifications (`break_connect:` and broken component names) into `curBreakContext`.
   for (const child of children) {
     if (child.kind === "Extends") {
       const extendsModParsedRaw = db.query<any>("extendsModificationParsed", child.id);
@@ -4162,7 +4394,11 @@ export function extractClassEquations(
       }
 
       const extSubMod = {
-        args: [...(extendsModParsed || []), ...(parentMods?.args || [])],
+        args: [
+          ...(extendsModParsed || []).map((a: any) => ({ ...a, ownerClassId: a.ownerClassId ?? classId })),
+          ...(parentMods?.args || []),
+        ],
+        ownerClassId: parentMods?.ownerClassId ?? classId,
       };
       const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
       const baseTargets = baseClass
@@ -4213,6 +4449,19 @@ export function extractClassEquations(
   }
 }
 
+/**
+ * Expands a connector reference string (e.g. `c` or `arr.pin`) into all concrete scalarized
+ * connector endpoint paths in `dae` when the reference denotes an unsubscripted connector array.
+ *
+ * Resolution strategy:
+ * 1. Fast path for an exact variable match in `dae`.
+ * 2. Named array shape lookup via `getNamedArrayShape`, generating `[1]..[N]` suffixes.
+ * 3. Prefix-set and regex scan across `dae` variables to discover intermediate subscripted prefixes.
+ *
+ * @param refStr - Qualified connector reference path (with or without explicit subscripts).
+ * @param dae - Target `DAEBuilder` containing instantiated connector variables and shapes.
+ * @returns Ordered list of scalarized connector endpoint strings (or `[refStr]` if scalar).
+ */
 export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
   // 1. Direct scalar or exact variable reference
   if (dae.getVarIdxByName(refStr) >= 0) {
@@ -4243,8 +4492,8 @@ export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
     if (dae.isVarRemoved(i)) continue;
     const vn = dae.getVarName(i);
     const m = vn.match(pattern);
-    if (m && m[1].includes("[")) {
-      found.add(m[1]);
+    if (m && m[1]!.includes("[")) {
+      found.add(m[1]!);
     }
   }
   if (found.size === 0) return [refStr];

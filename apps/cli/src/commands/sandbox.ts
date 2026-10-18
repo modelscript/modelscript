@@ -56,7 +56,7 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
         const module = (await jiti.import(absoluteEntry)) as Record<string, unknown>;
         const lang = Object.values(module).find((val: unknown) => {
           const v = val as Record<string, unknown>;
-          return v && v.name && v.rules;
+          return v && v["name"] && v["rules"];
         }) as any;
 
         if (lang) {

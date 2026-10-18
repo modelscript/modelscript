@@ -27,7 +27,7 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
   const regex = /(\w+)\s*=\s*(?:"([^"]*)"|\{([^}]*)\}|(true|false)|([0-9.eE+-]+))/g;
   let match;
   while ((match = regex.exec(inner)) !== null) {
-    const key = match[1];
+    const key = match[1]!;
     if (match[2] !== undefined) {
       // String value
       result[key] = match[2];
@@ -87,7 +87,7 @@ export function extractCadComponents(daeVariables: any[]): CadComponent[] {
       // CADPort annotations are on leaf variables like "body.port1"
       const parts = (v.name as string).split(".");
       const parentName = parts.slice(0, -1).join(".");
-      const portName = parts[parts.length - 1];
+      const portName = parts[parts.length - 1]!;
       if (!portsByParent.has(parentName)) portsByParent.set(parentName, []);
       portsByParent.get(parentName)!.push({
         name: portName,

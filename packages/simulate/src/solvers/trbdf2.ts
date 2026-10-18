@@ -35,14 +35,14 @@ export const TRBDF2_GAMMA = 2.0 - Math.SQRT2; // ≈ 0.585786437626905
 export const TRBDF2_D = TRBDF2_GAMMA / 2.0; // = 1 - 1/√2 ≈ 0.2928932188134524
 
 export interface TrBdf2Options {
-  atol?: number;
-  rtol?: number;
-  initialStep?: number;
-  maxStep?: number;
-  minStep?: number;
-  maxSteps?: number;
-  maxNewtonIters?: number;
-  linearSolver?: "auto" | "dense" | "sparse";
+  atol?: number | undefined;
+  rtol?: number | undefined;
+  initialStep?: number | undefined;
+  maxStep?: number | undefined;
+  minStep?: number | undefined;
+  maxSteps?: number | undefined;
+  maxNewtonIters?: number | undefined;
+  linearSolver?: "auto" | "dense" | "sparse" | undefined;
 }
 
 export interface TrBdf2Result extends CommonSolverResult {

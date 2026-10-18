@@ -159,9 +159,9 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     points: PointLike[];
     stroke: string;
     strokeWidth: number;
-    dash?: string;
-    markerEnd?: string;
-    markerStart?: string;
+    dash?: string | undefined;
+    markerEnd?: string | undefined;
+    markerStart?: string | undefined;
   }[] = [];
 
   for (const edge of diagram.edges) {
@@ -220,7 +220,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
 
     // Register segments
     for (let i = 0; i < points.length - 1; i++) {
-      edgeSegments.push({ p1: points[i], p2: points[i + 1] });
+      edgeSegments.push({ p1: points[i]!, p2: points[i + 1]! });
     }
 
     const stroke = (edge.attrs?.line?.stroke as string) || defaultEdgeStroke;
@@ -267,9 +267,9 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     } else if (isSmooth) {
       d = computeSmoothBezierPath(ep.points);
     } else {
-      d = `M ${ep.points[0].x} ${ep.points[0].y}`;
+      d = `M ${ep.points[0]!.x} ${ep.points[0]!.y}`;
       for (let i = 1; i < ep.points.length; i++) {
-        d += ` L ${ep.points[i].x} ${ep.points[i].y}`;
+        d += ` L ${ep.points[i]!.x} ${ep.points[i]!.y}`;
       }
     }
 
@@ -283,7 +283,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     // Edge label if present
     if (ep.edge.labels && ep.edge.labels.length > 0) {
       const midIdx = Math.floor(ep.points.length / 2);
-      const lp = ep.points[midIdx];
+      const lp = ep.points[midIdx]!;
       const labelText = ep.edge.labels[0].attrs?.text?.text || "";
       if (labelText) {
         const textStr = escapeXml(String(labelText));

@@ -11,13 +11,16 @@
 import { parseSsd } from "./ssd-parser.js";
 import type { SspConnector, SspSystem } from "./types.js";
 
+/**
+ * Configuration options for projecting an SSP system structure into a Modelica `block`.
+ */
 export interface SspProjectionOptions {
   /** Target Modelica block name (defaults to system.name) */
-  blockName?: string;
+  blockName?: string | undefined;
   /** Relative or absolute path to the .ssp container file */
-  sspFilePath?: string;
+  sspFilePath?: string | undefined;
   /** Enclosing Modelica package name */
-  packageName?: string;
+  packageName?: string | undefined;
 }
 
 /**
@@ -50,7 +53,7 @@ export function sspToModelicaBlock(input: SspSystem | string, options: SspProjec
   if (inputs.length > 0) {
     lines.push("  // ── Inputs ──");
     for (let i = 0; i < inputs.length; i++) {
-      const conn = inputs[i];
+      const conn = inputs[i]!;
       const y = calculatePortY(i, inputs.length);
       const placement = `annotation(Placement(transformation(extent={{-120,${y - 10}},{-100,${y + 10}}})))`;
       const unitAttr = conn.unit ? `(unit="${escapeString(conn.unit)}")` : "";
@@ -63,7 +66,7 @@ export function sspToModelicaBlock(input: SspSystem | string, options: SspProjec
   if (outputs.length > 0) {
     lines.push("  // ── Outputs ──");
     for (let i = 0; i < outputs.length; i++) {
-      const conn = outputs[i];
+      const conn = outputs[i]!;
       const y = calculatePortY(i, outputs.length);
       const placement = `annotation(Placement(transformation(extent={{100,${y - 10}},{120,${y + 10}}})))`;
       const unitAttr = conn.unit ? `(unit="${escapeString(conn.unit)}")` : "";
@@ -78,6 +81,36 @@ export function sspToModelicaBlock(input: SspSystem | string, options: SspProjec
     for (const param of parameters) {
       const unitAttr = param.unit ? `(unit="${escapeString(param.unit)}")` : "";
       lines.push(`  parameter ${param.type} ${sanitizeIdentifier(param.name)}${unitAttr};`);
+    }
+    lines.push("");
+  }
+
+  // 3b. Declarations: Sub-Components (FMUs / Sub-Systems)
+  if (system.components && system.components.length > 0) {
+    lines.push("  // ── Sub-Components ──");
+    for (const comp of system.components) {
+      const compId = sanitizeIdentifier(comp.name);
+      const srcComment = comp.source ? ` "${escapeString(comp.source)}"` : "";
+      lines.push(`  // Component ${compId}${srcComment}`);
+    }
+    lines.push("");
+  }
+
+  // 3c. Connection Equations
+  if (system.connections && system.connections.length > 0) {
+    lines.push("equation");
+    for (const conn of system.connections) {
+      const startRef = conn.startElement
+        ? `${sanitizeIdentifier(conn.startElement)}.${sanitizeIdentifier(conn.startConnector)}`
+        : sanitizeIdentifier(conn.startConnector);
+      const endRef = conn.endElement
+        ? `${sanitizeIdentifier(conn.endElement)}.${sanitizeIdentifier(conn.endConnector)}`
+        : sanitizeIdentifier(conn.endConnector);
+      if (!conn.startElement && !conn.endElement) {
+        lines.push(`  ${endRef} = ${startRef};`);
+      } else {
+        lines.push(`  // connect(${startRef}, ${endRef});`);
+      }
     }
     lines.push("");
   }
@@ -104,11 +137,17 @@ export function sspToModelicaBlock(input: SspSystem | string, options: SspProjec
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Compute evenly spaced vertical Modelica diagram coordinates (`[-100, 100]`) for `total` ports.
+ */
 function calculatePortY(index: number, total: number): number {
   if (total <= 1) return 0;
   return Math.round(100 - ((index + 1) * 200) / (total + 1));
 }
 
+/**
+ * Sanitize an arbitrary SSP element or connector name into a valid Modelica identifier.
+ */
 function sanitizeIdentifier(name: string): string {
   if (!name) return "unnamed";
   let sanitized = name.replace(/[^a-zA-Z0-9_]/g, "_");
@@ -118,6 +157,9 @@ function sanitizeIdentifier(name: string): string {
   return sanitized;
 }
 
+/**
+ * Escape backslashes and double quotes for safe inclusion in a Modelica string literal.
+ */
 function escapeString(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }

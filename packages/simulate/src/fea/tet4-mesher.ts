@@ -10,19 +10,21 @@ export interface BoxMeshOptions {
   ny: number;
   nz: number;
   /** Optional origin offset [ox, oy, oz] (default: [0, 0, 0] at box corner or centered). */
-  origin?: [number, number, number];
-  centered?: boolean;
+  origin?: [number, number, number] | undefined;
+  centered?: boolean | undefined;
   /** Element formulation order: 'linear' (default) or 'quadratic' (Tet10). */
-  order?: "linear" | "quadratic";
+  order?: "linear" | "quadratic" | undefined;
   /** Tag names for the 6 outer faces. */
-  faceTags?: {
-    minX?: string;
-    maxX?: string;
-    minY?: string;
-    maxY?: string;
-    minZ?: string;
-    maxZ?: string;
-  };
+  faceTags?:
+    | {
+        minX?: string | undefined;
+        maxX?: string | undefined;
+        minY?: string | undefined;
+        maxY?: string | undefined;
+        minZ?: string | undefined;
+        maxZ?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface VoxelMeshOptions {
@@ -32,16 +34,18 @@ export interface VoxelMeshOptions {
   ny: number;
   nz: number;
   /** Physical lattice cell size in meters (e.g. 0.005 = 5mm). Default: 1.0. */
-  dx?: number;
+  dx?: number | undefined;
   /** Physical origin offset [ox, oy, oz]. Defaults to [0, 0, 0]. */
-  origin?: [number, number, number];
+  origin?: [number, number, number] | undefined;
   /** Element formulation order: 'linear' (default) or 'quadratic' (Tet10). */
-  order?: "linear" | "quadratic";
+  order?: "linear" | "quadratic" | undefined;
   /** Optional boundary tag rules or semantic spatial predicates. */
-  tagRules?: {
-    name: string;
-    predicate: (x: number, y: number, z: number, isBoundary: boolean) => boolean;
-  }[];
+  tagRules?:
+    | {
+        name: string;
+        predicate: (x: number, y: number, z: number, isBoundary: boolean) => boolean;
+      }[]
+    | undefined;
 }
 
 export interface SurfaceMeshOptions {
@@ -50,14 +54,16 @@ export interface SurfaceMeshOptions {
   /** Triangle indices [t0_a, t0_b, t0_c, t1_a, ...]. */
   indices: Uint32Array | number[];
   /** Grid resolution along the longest bounding box dimension. Default: 20. */
-  resolution?: number;
+  resolution?: number | undefined;
   /** Element formulation order: 'linear' (default) or 'quadratic' (Tet10). */
-  order?: "linear" | "quadratic";
+  order?: "linear" | "quadratic" | undefined;
   /** Optional boundary tag rules or semantic spatial predicates. */
-  tagRules?: {
-    name: string;
-    predicate: (x: number, y: number, z: number, isBoundary: boolean) => boolean;
-  }[];
+  tagRules?:
+    | {
+        name: string;
+        predicate: (x: number, y: number, z: number, isBoundary: boolean) => boolean;
+      }[]
+    | undefined;
 }
 
 /**
@@ -208,9 +214,9 @@ export class Tet4Mesher {
         midIdx = numNodes + edgeMap.size;
         edgeMap.set(key, midIdx);
         midCoords.push(
-          (nodeCoords[minN * 3 + 0] + nodeCoords[maxN * 3 + 0]) / 2.0,
-          (nodeCoords[minN * 3 + 1] + nodeCoords[maxN * 3 + 1]) / 2.0,
-          (nodeCoords[minN * 3 + 2] + nodeCoords[maxN * 3 + 2]) / 2.0,
+          (nodeCoords[minN * 3 + 0]! + nodeCoords[maxN * 3 + 0]!) / 2.0,
+          (nodeCoords[minN * 3 + 1]! + nodeCoords[maxN * 3 + 1]!) / 2.0,
+          (nodeCoords[minN * 3 + 2]! + nodeCoords[maxN * 3 + 2]!) / 2.0,
         );
       }
       return midIdx;
@@ -218,10 +224,10 @@ export class Tet4Mesher {
 
     const quadElements = new Uint32Array(numElements * 10);
     for (let e = 0; e < numElements; e++) {
-      const n0 = elements[e * 4 + 0];
-      const n1 = elements[e * 4 + 1];
-      const n2 = elements[e * 4 + 2];
-      const n3 = elements[e * 4 + 3];
+      const n0 = elements[e * 4 + 0]!;
+      const n1 = elements[e * 4 + 1]!;
+      const n2 = elements[e * 4 + 2]!;
+      const n3 = elements[e * 4 + 3]!;
 
       const n4 = getMidEdgeNode(n0, n1);
       const n5 = getMidEdgeNode(n1, n2);
@@ -254,8 +260,8 @@ export class Tet4Mesher {
       const quadList = [...nodes];
       for (const [key, midIdx] of edgeMap.entries()) {
         const [aStr, bStr] = key.split("_");
-        const a = parseInt(aStr, 10);
-        const b = parseInt(bStr, 10);
+        const a = parseInt(aStr!, 10);
+        const b = parseInt(bStr!, 10);
         if (nodeSet.has(a) && nodeSet.has(b)) {
           quadList.push(midIdx);
         }
@@ -307,7 +313,7 @@ export class Tet4Mesher {
 
     const getOrCreateNode = (ix: number, iy: number, iz: number): number => {
       const cIdx = cornerIndex(ix, iy, iz);
-      let nIdx = cornerToActiveNode[cIdx];
+      let nIdx = cornerToActiveNode[cIdx]!;
       if (nIdx === -1) {
         nIdx = activeCoords.length / 3;
         cornerToActiveNode[cIdx] = nIdx;
@@ -320,18 +326,18 @@ export class Tet4Mesher {
 
     // Helper: ensure positive orientation (n1 - n0) x (n2 - n0) . (n3 - n0) > 0
     const addTet = (n0: number, n1: number, n2: number, n3: number) => {
-      const x0 = activeCoords[n0 * 3 + 0],
-        y0 = activeCoords[n0 * 3 + 1],
-        z0 = activeCoords[n0 * 3 + 2];
-      const x1 = activeCoords[n1 * 3 + 0],
-        y1 = activeCoords[n1 * 3 + 1],
-        z1 = activeCoords[n1 * 3 + 2];
-      const x2 = activeCoords[n2 * 3 + 0],
-        y2 = activeCoords[n2 * 3 + 1],
-        z2 = activeCoords[n2 * 3 + 2];
-      const x3 = activeCoords[n3 * 3 + 0],
-        y3 = activeCoords[n3 * 3 + 1],
-        z3 = activeCoords[n3 * 3 + 2];
+      const x0 = activeCoords[n0 * 3 + 0]!,
+        y0 = activeCoords[n0 * 3 + 1]!,
+        z0 = activeCoords[n0 * 3 + 2]!;
+      const x1 = activeCoords[n1 * 3 + 0]!,
+        y1 = activeCoords[n1 * 3 + 1]!,
+        z1 = activeCoords[n1 * 3 + 2]!;
+      const x2 = activeCoords[n2 * 3 + 0]!,
+        y2 = activeCoords[n2 * 3 + 1]!,
+        z2 = activeCoords[n2 * 3 + 2]!;
+      const x3 = activeCoords[n3 * 3 + 0]!,
+        y3 = activeCoords[n3 * 3 + 1]!,
+        z3 = activeCoords[n3 * 3 + 2]!;
 
       const v1x = x1 - x0,
         v1y = y1 - y0,
@@ -445,9 +451,9 @@ export class Tet4Mesher {
     // Classify boundary nodes
     if (opts.tagRules && opts.tagRules.length > 0) {
       for (let n = 0; n < totalActiveNodes; n++) {
-        const x = activeCoords[n * 3 + 0];
-        const y = activeCoords[n * 3 + 1];
-        const z = activeCoords[n * 3 + 2];
+        const x = activeCoords[n * 3 + 0]!;
+        const y = activeCoords[n * 3 + 1]!;
+        const z = activeCoords[n * 3 + 2]!;
         for (const rule of opts.tagRules) {
           if (rule.predicate(x, y, z, true)) {
             let list = boundaryNodes.get(rule.name);
@@ -465,7 +471,7 @@ export class Tet4Mesher {
       const minXVal = ox + minSolidX * dx;
       const maxXVal = ox + (maxSolidX + 1) * dx;
       for (let n = 0; n < totalActiveNodes; n++) {
-        const x = activeCoords[n * 3 + 0];
+        const x = activeCoords[n * 3 + 0]!;
         if (Math.abs(x - minXVal) <= tol) {
           let list = boundaryNodes.get("fixed_support");
           if (!list) {
@@ -524,9 +530,9 @@ export class Tet4Mesher {
       maxZ = -Infinity;
 
     for (let i = 0; i < numVerts; i++) {
-      const x = vertices[i * 3 + 0];
-      const y = vertices[i * 3 + 1];
-      const z = vertices[i * 3 + 2];
+      const x = vertices[i * 3 + 0]!;
+      const y = vertices[i * 3 + 1]!;
+      const z = vertices[i * 3 + 2]!;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
@@ -557,16 +563,16 @@ export class Tet4Mesher {
     // 2. Precompute per-triangle AABB extents for fast ray candidate filtering
     const triAABB = new Float32Array(numTriangles * 4); // [minY, maxY, minZ, maxZ]
     for (let t = 0; t < numTriangles; t++) {
-      const i0 = indices[t * 3 + 0];
-      const i1 = indices[t * 3 + 1];
-      const i2 = indices[t * 3 + 2];
+      const i0 = indices[t * 3 + 0]!;
+      const i1 = indices[t * 3 + 1]!;
+      const i2 = indices[t * 3 + 2]!;
 
-      const y0 = vertices[i0 * 3 + 1],
-        y1 = vertices[i1 * 3 + 1],
-        y2 = vertices[i2 * 3 + 1];
-      const z0 = vertices[i0 * 3 + 2],
-        z1 = vertices[i1 * 3 + 2],
-        z2 = vertices[i2 * 3 + 2];
+      const y0 = vertices[i0 * 3 + 1]!,
+        y1 = vertices[i1 * 3 + 1]!,
+        y2 = vertices[i2 * 3 + 1]!;
+      const z0 = vertices[i0 * 3 + 2]!,
+        z1 = vertices[i1 * 3 + 2]!,
+        z2 = vertices[i2 * 3 + 2]!;
 
       triAABB[t * 4 + 0] = Math.min(y0, y1, y2);
       triAABB[t * 4 + 1] = Math.max(y0, y1, y2);
@@ -590,27 +596,27 @@ export class Tet4Mesher {
         const hitX: number[] = [];
 
         for (let t = 0; t < numTriangles; t++) {
-          const tMinY = triAABB[t * 4 + 0];
-          const tMaxY = triAABB[t * 4 + 1];
-          const tMinZ = triAABB[t * 4 + 2];
-          const tMaxZ = triAABB[t * 4 + 3];
+          const tMinY = triAABB[t * 4 + 0]!;
+          const tMaxY = triAABB[t * 4 + 1]!;
+          const tMinZ = triAABB[t * 4 + 2]!;
+          const tMaxZ = triAABB[t * 4 + 3]!;
 
           // AABB rejection
           if (cy < tMinY || cy > tMaxY || cz < tMinZ || cz > tMaxZ) continue;
 
-          const i0 = indices[t * 3 + 0];
-          const i1 = indices[t * 3 + 1];
-          const i2 = indices[t * 3 + 2];
+          const i0 = indices[t * 3 + 0]!;
+          const i1 = indices[t * 3 + 1]!;
+          const i2 = indices[t * 3 + 2]!;
 
-          const v0x = vertices[i0 * 3 + 0],
-            v0y = vertices[i0 * 3 + 1],
-            v0z = vertices[i0 * 3 + 2];
-          const v1x = vertices[i1 * 3 + 0],
-            v1y = vertices[i1 * 3 + 1],
-            v1z = vertices[i1 * 3 + 2];
-          const v2x = vertices[i2 * 3 + 0],
-            v2y = vertices[i2 * 3 + 1],
-            v2z = vertices[i2 * 3 + 2];
+          const v0x = vertices[i0 * 3 + 0]!,
+            v0y = vertices[i0 * 3 + 1]!,
+            v0z = vertices[i0 * 3 + 2]!;
+          const v1x = vertices[i1 * 3 + 0]!,
+            v1y = vertices[i1 * 3 + 1]!,
+            v1z = vertices[i1 * 3 + 2]!;
+          const v2x = vertices[i2 * 3 + 0]!,
+            v2y = vertices[i2 * 3 + 1]!,
+            v2z = vertices[i2 * 3 + 2]!;
 
           const e1x = v1x - v0x,
             e1y = v1y - v0y,
@@ -654,8 +660,8 @@ export class Tet4Mesher {
 
         // Fill interior intervals [hitX[2k], hitX[2k+1]]
         for (let k = 0; k < hitX.length - 1; k += 2) {
-          const xStart = hitX[k];
-          const xEnd = hitX[k + 1];
+          const xStart = hitX[k]!;
+          const xEnd = hitX[k + 1]!;
 
           const startCell = Math.max(0, Math.floor((xStart - ox) / dx));
           const endCell = Math.min(nx - 1, Math.ceil((xEnd - ox) / dx) - 1);

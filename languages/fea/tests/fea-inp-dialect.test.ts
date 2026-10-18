@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
   applyBoundaryActionToDeck,
+  extractFeaSlicingProperties,
   getFeaDialect,
   synthesizeFeaBoundary,
   type BoundaryActionPayload,
@@ -294,5 +295,80 @@ Multiline Element and Sets Test
     const updated = applyBoundaryActionToDeck(deckLower, momentAction, "calculix");
     assert.ok(updated.includes("*CLOAD\n10, 5, 250"));
     assert.ok(updated.indexOf("*CLOAD") < updated.toLowerCase().indexOf("*end step"));
+  });
+
+  it("assembles and solves 3D linear elasticity stiffness K*u=F to compute mass, nodal displacements, and Von Mises stress", () => {
+    const tetDeck = `*HEADING
+3D Tetrahedron Linear Elasticity Test
+*NODE
+1, 0.0, 0.0, 0.0
+2, 0.1, 0.0, 0.0
+3, 0.0, 0.1, 0.0
+4, 0.0, 0.0, 0.1
+*ELEMENT, TYPE=C3D4, ELSET=EALL
+1, 1, 2, 3, 4
+*MATERIAL, NAME=ALUMINUM
+*ELASTIC
+7.0e10, 0.33
+*DENSITY
+2700.0
+*PLASTIC
+250.0e6, 0.0
+*BOUNDARY
+1, 1, 3, 0.0
+2, 1, 3, 0.0
+3, 1, 3, 0.0
+*STEP
+*STATIC
+*CLOAD
+4, 3, 5000.0
+*END STEP
+`;
+    const props = extractFeaSlicingProperties(tetDeck);
+    // Exact volume of right tetrahedron with legs 0.1m = (0.1^3)/6 = 1.6667e-4 m^3
+    assert.ok(props.totalVolumeM3 !== undefined && Math.abs(props.totalVolumeM3 - 1e-3 / 6) < 1e-8);
+    // Exact mass = 2700 * (1e-3 / 6) = 0.45 kg
+    assert.strictEqual(props.mass, 0.45);
+    assert.strictEqual(props.yieldStrengthPa, 250.0e6);
+    assert.ok(props.maxDisplacementM !== undefined && props.maxDisplacementM > 0);
+    assert.ok(props.maxVonMisesPa > 0);
+    assert.ok(props.nodalDisplacements && props.nodalDisplacements[4]![2] > 0);
+    assert.ok(props.elementVonMisesPa && props.elementVonMisesPa[1]! > 0);
+  });
+
+  it("parses *PLASTIC yield strength, prescribed *BOUNDARY displacements, and multi-line BDF CTETRA/CHEXA continuations", () => {
+    const inpDialect = getFeaDialect("inp");
+    const inpDeck = `*HEADING
+Plastic and Prescribed Boundary Test
+*NODE
+1, 0.0, 0.0, 0.0
+2, 1.0, 0.0, 0.0
+*MATERIAL, NAME=TI6AL4V
+*ELASTIC
+1.14e11, 0.34
+*PLASTIC
+880.0e6, 0.0
+*BOUNDARY
+1, 1, 3, 0.0
+2, 3, 3, 0.0025
+`;
+    const parsedInp = inpDialect.parse(inpDeck);
+    assert.strictEqual(parsedInp.materials.get("TI6AL4V")?.yieldStrength, 880.0e6);
+    assert.ok(parsedInp.fixedNodes.has(1));
+    assert.strictEqual(parsedInp.fixedNodes.has(2), false);
+    assert.deepStrictEqual(parsedInp.displacements?.get(2), [0, 0, 0.0025]);
+
+    const bdfDialect = getFeaDialect("bdf");
+    const bdfDeck = [
+      "$ Multi-line BDF continuation test",
+      "CTETRA, 10, 1, 1, 2, 3, 4, 5, 6, +CT10",
+      "+CT10, 7, 8, 9, 10",
+      "CHEXA, 20, 1, 1, 2, 3, 4, 5, 6, +CH20",
+      "+CH20, 7, 8",
+      "ENDDATA",
+    ].join("\n");
+    const parsedBdf = bdfDialect.parse(bdfDeck);
+    assert.deepStrictEqual(parsedBdf.elements.get(10)?.nodes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepStrictEqual(parsedBdf.elements.get(20)?.nodes, [1, 2, 3, 4, 5, 6, 7, 8]);
   });
 });

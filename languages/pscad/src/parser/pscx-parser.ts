@@ -207,6 +207,9 @@ function parseParamValue(raw: string): string | number {
   return !isNaN(num) ? num : raw;
 }
 
+/**
+ * Checks whether a byte/character offset falls within any excluded XML range (e.g., `StationDefn` or sub-module blocks).
+ */
 function isOffsetInRanges(offset: number, ranges: { start: number; end: number }[]): boolean {
   for (let i = 0; i < ranges.length; i++) {
     const r = ranges[i]!;
@@ -216,7 +219,8 @@ function isOffsetInRanges(offset: number, ranges: { start: number; end: number }
 }
 
 /**
- * Parses a PSCAD .pscx / .pslx / .pswx XML string.
+ * Parses a PSCAD `.pscx` / `.pslx` / `.pswx` XML string into a structured `PscxProject`,
+ * extracting project settings, user definitions, root/sub-module schematics, and spatially snapped wire nets.
  */
 export function parsePscx(xmlContent: string): PscxProject {
   const lineStarts = computeLineStarts(xmlContent);
@@ -713,6 +717,9 @@ export function parsePscx(xmlContent: string): PscxProject {
  */
 const SNAP_TOLERANCE = 15.0; // 15 pixels/units snap radius
 
+/**
+ * Euclidean distance between two 2D schematic canvas points.
+ */
 function distance(p1: Point2D, p2: Point2D): number {
   const dx = p1.x - p2.x;
   const dy = p1.y - p2.y;
@@ -742,6 +749,7 @@ export function computePortWorldPosition(
   rotationDeg = 0,
   mirror = false,
 ): Point2D {
+  // Apply horizontal reflection before 2D rotation matrix R(theta)
   const lx = mirror ? -portOffset.x : portOffset.x;
   const ly = portOffset.y;
   const rad = ((rotationDeg % 360) * Math.PI) / 180;
@@ -753,6 +761,11 @@ export function computePortWorldPosition(
   };
 }
 
+/**
+ * Resolves schematic electrical and control connectivity by snapping `<Wire>` vertices
+ * to component ports and `<Bus>` segments within `SNAP_TOLERANCE`, grouping wireless
+ * Data Labels / XNodes by name, and merging transitive multi-segment wire chains via Union-Find.
+ */
 function snapWireConnections(mod: PscxModule): void {
   // Precompute world positions for all component ports
   const allPorts: { id: string; world: Point2D }[] = [];

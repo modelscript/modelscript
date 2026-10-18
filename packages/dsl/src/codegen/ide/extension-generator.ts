@@ -9,32 +9,34 @@ import { discoverWorkspaceLanguages } from "./language-discovery.js";
  */
 export interface ExtensionOptions {
   /** Extension unique identifier (e.g. "modelscript", "calc-lang") */
-  name?: string;
+  name?: string | undefined;
   /** Human-readable display name (e.g. "ModelScript — Polyglot Systems IDE") */
-  displayName?: string;
+  displayName?: string | undefined;
   /** Semantic version string */
-  version?: string;
+  version?: string | undefined;
   /** Publisher name */
-  publisher?: string;
+  publisher?: string | undefined;
   /** Extension description */
-  description?: string;
+  description?: string | undefined;
   /** Homepage URL */
-  homepage?: string;
+  homepage?: string | undefined;
   /** Repository URL */
-  repository?: string;
+  repository?: string | undefined;
   /** Minimum VS Code engine version (default: "^1.80.0") */
-  vscodeEngine?: string;
+  vscodeEngine?: string | undefined;
   /** Output mode: "web" (pure browser) | "node" (desktop) | "universal" (both) */
-  target?: "web" | "node" | "universal";
+  target?: "web" | "node" | "universal" | undefined;
   /** Feature toggles */
-  features?: {
-    diagramEditor?: boolean;
-    cad3dViewer?: boolean;
-    simulationPanels?: boolean;
-    notebooks?: boolean;
-    mcpBridge?: boolean;
-    chatParticipant?: boolean;
-  };
+  features?:
+    | {
+        diagramEditor?: boolean | undefined;
+        cad3dViewer?: boolean | undefined;
+        simulationPanels?: boolean | undefined;
+        notebooks?: boolean | undefined;
+        mcpBridge?: boolean | undefined;
+        chatParticipant?: boolean | undefined;
+      }
+    | undefined;
 }
 
 export interface ExtensionGeneratedFile {
@@ -52,9 +54,9 @@ export interface NormalizedLanguage {
   fileExtensions: string[];
   primaryExtension: string;
   options: LanguageOptions;
-  lineComment?: string;
-  blockComment?: { open: string; close: string };
-  icon?: { light: string; dark: string };
+  lineComment?: string | undefined;
+  blockComment?: { open: string; close: string } | undefined;
+  icon?: { light: string; dark: string } | undefined;
 }
 
 /**
@@ -833,7 +835,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
   // Add notebook controller if enabled
   if (options?.features?.notebooks) {
-    contributes.notebooks = [
+    contributes["notebooks"] = [
       {
         type: "modelscript-notebook",
         displayName: "ModelScript Notebook",
@@ -843,7 +845,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     ];
   }
 
-  contributes.debuggers = [
+  contributes["debuggers"] = [
     {
       type: "modelscript",
       label: "ModelScript Simulator",
@@ -867,7 +869,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     },
   ];
-  contributes.viewsContainers = {
+  contributes["viewsContainers"] = {
     activitybar: [
       {
         id: "modelscript-sidebar",
@@ -876,7 +878,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     ],
   };
-  contributes.views = {
+  contributes["views"] = {
     explorer: [
       {
         id: "modelscript.libraryTree",
@@ -924,7 +926,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     ],
   };
-  contributes.configuration = {
+  contributes["configuration"] = {
     title: "ModelScript",
     properties: {
       "modelscript.registryUrl": {
@@ -1382,7 +1384,7 @@ export function bundleExtension(
   // 5. README.md & LICENSE.md
   files.push({
     path: "README.md",
-    content: `# ${packageJson.displayName || "ModelScript"}\n\n${packageJson.description || ""}\n`,
+    content: `# ${packageJson["displayName"] || "ModelScript"}\n\n${packageJson["description"] || ""}\n`,
   });
   files.push({
     path: "LICENSE.md",
@@ -1451,7 +1453,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   });
 
   // Set browser client entry point
-  pkg.browser = "./dist/browserClientMain.js";
+  pkg["browser"] = "./dist/browserClientMain.js";
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkg, null, 2), "utf-8");
   fs.writeFileSync(path.join(outDir, "package.nls.json"), "{}", "utf-8");
   fs.writeFileSync(
@@ -1459,7 +1461,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     "GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright (C) 2026 ModelScript Contributors\n",
     "utf-8",
   );
-  fs.writeFileSync(path.join(outDir, "README.md"), `# ${pkg.displayName}\n\n${pkg.description}\n`, "utf-8");
+  fs.writeFileSync(path.join(outDir, "README.md"), `# ${pkg["displayName"]}\n\n${pkg["description"]}\n`, "utf-8");
 
   // 3. Write language configs and syntaxes
   for (const lang of languages) {
@@ -2016,10 +2018,10 @@ module.exports.default = module.exports;
   ];
 
   for (const [src, dest] of candidateAssets) {
-    const destPath = path.join(outDir, dest);
-    if (fs.existsSync(src)) {
+    const destPath = path.join(outDir, dest!);
+    if (fs.existsSync(src!)) {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.cpSync(src, destPath, { recursive: true });
+      fs.cpSync(src!, destPath, { recursive: true });
     }
   }
 

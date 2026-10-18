@@ -15,13 +15,13 @@ interface GradArgs {
   name: string;
   paths: string[];
   params: string;
-  target?: string;
-  "start-time"?: number;
-  startTime?: number;
-  "stop-time"?: number;
-  stopTime?: number;
-  step?: number;
-  json?: boolean;
+  target?: string | undefined;
+  "start-time"?: number | undefined;
+  startTime?: number | undefined;
+  "stop-time"?: number | undefined;
+  stopTime?: number | undefined;
+  step?: number | undefined;
+  json?: boolean | undefined;
 }
 
 export const Grad: CommandModule<{}, GradArgs> = {

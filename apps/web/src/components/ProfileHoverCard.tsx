@@ -27,8 +27,8 @@ const PopoverContainer = styled.div`
 `;
 
 interface AvatarProps {
-  $url?: string;
-  $letter?: string;
+  $url?: string | undefined;
+  $letter?: string | undefined;
 }
 const Avatar = styled.div<AvatarProps>`
   width: 64px;
@@ -52,7 +52,7 @@ const Avatar = styled.div<AvatarProps>`
 
 interface FollowButtonProps {
   $following: boolean;
-  $blocked?: boolean;
+  $blocked?: boolean | undefined;
 }
 const FollowButton = styled.button<FollowButtonProps>`
   border-radius: 9999px;
@@ -132,7 +132,7 @@ export default function ProfileHoverCard({
 }: {
   username: string;
   children: React.ReactNode;
-  showProfileSummaryBtn?: boolean;
+  showProfileSummaryBtn?: boolean | undefined;
 }) {
   const [show, setShow] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);

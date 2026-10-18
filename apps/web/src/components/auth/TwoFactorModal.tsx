@@ -11,7 +11,7 @@ interface TwoFactorModalProps {
   onClose: () => void;
   isEnabled: boolean;
   onStatusChange: (enabled: boolean) => void;
-  hasPassword?: boolean;
+  hasPassword?: boolean | undefined;
 }
 
 const Overlay = styled.div`
@@ -164,7 +164,7 @@ const BackupCodeItem = styled.div`
   color: var(--color-accent-cyan, #06b6d4);
 `;
 
-const ActionButton = styled.button<{ $variant?: "primary" | "danger" }>`
+const ActionButton = styled.button<{ $variant?: "primary" | "danger" | undefined }>`
   width: 100%;
   padding: 12px;
   border-radius: 8px;

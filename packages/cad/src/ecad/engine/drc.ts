@@ -331,13 +331,21 @@ function minTraceToTraceClearance(t1: RenderTrace, t2: RenderTrace): number {
   return minDist;
 }
 
-/** Minimum clearance between a trace and a pad (approximate). */
+/** Minimum clearance between a trace (segments + vertices) and a pad. */
 function minTraceToPadClearance(trace: RenderTrace, pad: RenderPad): number {
   let minDist = Infinity;
+  const padRadius = Math.max(pad.width, pad.height) / 2;
 
   for (const pt of trace.points) {
-    const d = distance(pt, pad.center) - trace.width / 2 - pad.width / 2;
+    const d = distance(pt, pad.center) - trace.width / 2 - padRadius;
     if (d < minDist) minDist = d;
+  }
+
+  for (let i = 0; i < trace.points.length - 1; i++) {
+    const a = trace.points[i]!;
+    const b = trace.points[i + 1]!;
+    const segDist = pointToSegmentDist(pad.center, a, b) - trace.width / 2 - padRadius;
+    if (segDist < minDist) minDist = segDist;
   }
 
   return minDist;

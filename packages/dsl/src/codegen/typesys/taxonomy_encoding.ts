@@ -7,8 +7,8 @@ export interface TaxonomyInterval {
 
 export interface TaxonomyClassDef {
   name: string;
-  superclasses?: string[];
-  children?: string[];
+  superclasses?: string[] | undefined;
+  children?: string[] | undefined;
 }
 
 /**

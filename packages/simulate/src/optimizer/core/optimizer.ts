@@ -44,40 +44,40 @@ export interface OptimizationProblem {
   /** Box constraints on controls: name → { min, max } */
   controlBounds: Map<string, { min: number; max: number }>;
   /** Optional Mayer terminal cost expression string or arena ExprId handle */
-  terminalCost?: string | number;
+  terminalCost?: string | number | undefined;
   startTime: number;
   stopTime: number;
   /** Number of collocation intervals */
   numIntervals: number;
   /** NLP convergence tolerance (default 1e-6) */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Maximum SQP iterations (default 200) */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** Override parameters for the simulation */
-  parameterOverrides?: Map<string, number>;
+  parameterOverrides?: Map<string, number> | undefined;
   /** Solver options for optimization and simulation */
-  solverOptions?: SolverOptions;
+  solverOptions?: SolverOptions | undefined;
   /** Transcription method (default: "trapezoidal") */
-  method?: TranscriptionMethod;
+  method?: TranscriptionMethod | undefined;
   /** Random variables with uncertainty distributions */
-  randomVariables?: RandomVariable[];
+  randomVariables?: RandomVariable[] | undefined;
   /** Robust/stochastic optimization formulation */
-  robustMethod?: RobustMethod;
+  robustMethod?: RobustMethod | undefined;
   /** Conditional Value at Risk (CVaR) confidence level (e.g. 0.95) */
-  cvarLevel?: number;
+  cvarLevel?: number | undefined;
   /** Chance constraint probability level (default: 0.95) */
-  chanceLevel?: number;
+  chanceLevel?: number | undefined;
   /** Monte Carlo options (for SAA-based methods) */
-  monteCarloOptions?: MonteCarloOptions;
+  monteCarloOptions?: MonteCarloOptions | undefined;
   /** Whether to use analytical uncertainty propagation in the NLP (default: true) */
-  analyticalUncertainty?: boolean;
+  analyticalUncertainty?: boolean | undefined;
   /**
    * External state-variable inequality constraints.
    * Each entry maps a state variable name to upper/lower bounds that will
    * be applied at every collocation grid point.
    * Typically injected from SysML2 requirement constraints.
    */
-  stateConstraints?: { variable: string; bound: number; type: "<=" | ">=" }[];
+  stateConstraints?: { variable: string; bound: number; type: "<=" | ">=" }[] | undefined;
 }
 
 /**
@@ -280,7 +280,7 @@ function sqpSolve(
   const c = new Float64Array(nEq);
   const cTrial = new Float64Array(nEq);
 
-  // Penalty parameter for augmented Lagrangian merit function
+  // Penalty parameter for L1 exact merit function
   let mu = 10.0;
   // Lagrange multiplier estimates
   const lambda = new Float64Array(nEq);
@@ -302,14 +302,68 @@ function sqpSolve(
     }
   }
 
+  function computeJacobianAt(zz: Float64Array, cc: Float64Array, Jout: Float64Array[]): void {
+    if (evalJacobian) {
+      evalJacobian(zz, Jout);
+    } else {
+      const c0 = new Float64Array(cc);
+      const cPerturbed = new Float64Array(nEq);
+      for (let j = 0; j < n; j++) {
+        const orig = zz[j]!;
+        const h = Math.max(FD_EPS, Math.abs(orig) * FD_EPS);
+        zz[j] = orig + h;
+        evalConstraints(zz, cPerturbed);
+        zz[j] = orig;
+        for (let i = 0; i < nEq; i++) {
+          Jout[i]![j] = (cPerturbed[i]! - c0[i]!) / h;
+        }
+      }
+    }
+  }
+
+  function computeLagrangianGrad(
+    g: Float64Array,
+    Jmat: Float64Array[],
+    lam: Float64Array,
+    outLagGrad: Float64Array,
+  ): void {
+    for (let j = 0; j < n; j++) {
+      let sum = g[j]!;
+      for (let i = 0; i < nEq; i++) {
+        sum += Jmat[i]![j]! * lam[i]!;
+      }
+      outLagGrad[j] = sum;
+    }
+  }
+
+  function computeKKTStationarity(zz: Float64Array, g: Float64Array, Jmat: Float64Array[], lam: Float64Array): number {
+    let maxRes = 0;
+    for (let j = 0; j < n; j++) {
+      // Pinned variables (lb[j] == ub[j]) have unrestricted bound multiplier nu = nu_L - nu_U
+      if (ub[j]! - lb[j]! <= 1e-12) continue;
+      let lagGradJ = g[j]!;
+      for (let i = 0; i < nEq; i++) {
+        lagGradJ += Jmat[i]![j]! * lam[i]!;
+      }
+      // Project onto active lower/upper bounds (complementary slackness nu_L >= 0, nu_U >= 0)
+      if (zz[j]! <= lb[j]! + 1e-9 && lagGradJ > 0) {
+        lagGradJ = 0;
+      } else if (zz[j]! >= ub[j]! - 1e-9 && lagGradJ < 0) {
+        lagGradJ = 0;
+      }
+      maxRes = Math.max(maxRes, Math.abs(lagGradJ));
+    }
+    return maxRes;
+  }
+
   function meritFunction(zz: Float64Array): number {
     const f = evalObjective(zz);
     evalConstraints(zz, cTrial);
-    let penalty = 0;
+    let l1Norm = 0;
     for (let i = 0; i < nEq; i++) {
-      penalty += cTrial[i]! * cTrial[i]!;
+      l1Norm += Math.abs(cTrial[i]!);
     }
-    return f + (mu / 2) * penalty;
+    return f + mu * l1Norm;
   }
 
   let cost = evalObjective(z);
@@ -318,40 +372,29 @@ function sqpSolve(
   let converged = false;
   let iter: number;
 
+  const J = new Array<Float64Array>(nEq);
+  for (let i = 0; i < nEq; i++) J[i] = new Float64Array(n);
+  const JNext = new Array<Float64Array>(nEq);
+  for (let i = 0; i < nEq; i++) JNext[i] = new Float64Array(n);
+  const lagGradPrev = new Float64Array(n);
+  const lagGradCurr = new Float64Array(n);
+
+  evalConstraints(z, c);
+  computeGrad(z, grad);
+  computeJacobianAt(z, c, J);
+
   for (iter = 0; iter < maxIter; iter++) {
-    evalConstraints(z, c);
-    computeGrad(z, grad);
-
-    // Compute constraint Jacobian
-    const J = new Array<Float64Array>(nEq);
-    for (let i = 0; i < nEq; i++) J[i] = new Float64Array(n);
-
-    if (evalJacobian) {
-      // Use AD-based exact Jacobian
-      evalJacobian(z, J);
-    } else {
-      // Fallback: finite differences
-      const c0 = new Float64Array(c);
-      const cPerturbed = new Float64Array(nEq);
-      for (let j = 0; j < n; j++) {
-        const orig = z[j]!;
-        const h = Math.max(FD_EPS, Math.abs(orig) * FD_EPS);
-        z[j] = orig + h;
-        evalConstraints(z, cPerturbed);
-        z[j] = orig;
-        for (let i = 0; i < nEq; i++) {
-          J[i]![j] = (cPerturbed[i]! - c0[i]!) / h;
-        }
-      }
+    let constraintViol = 0;
+    let cL1 = 0;
+    for (let i = 0; i < nEq; i++) {
+      const absCi = Math.abs(c[i]!);
+      constraintViol = Math.max(constraintViol, absCi);
+      cL1 += absCi;
     }
 
-    // Check KKT conditions for convergence
-    let kktResidual = 0;
-    for (let i = 0; i < n; i++) kktResidual = Math.max(kktResidual, Math.abs(grad[i]!));
-    let constraintViol = 0;
-    for (let i = 0; i < nEq; i++) constraintViol = Math.max(constraintViol, Math.abs(c[i]!));
-
-    if (kktResidual < tol && constraintViol < tol) {
+    // Check KKT conditions with current multiplier estimates
+    const kktResidualPre = computeKKTStationarity(z, grad, J, lambda);
+    if (kktResidualPre < tol && constraintViol < tol) {
       converged = true;
       break;
     }
@@ -361,7 +404,7 @@ function sqpSolve(
     // s.t. c + J·d = 0
     //      lb - z ≤ d ≤ ub - z
     //
-    // Simplified: solve the KKT system directly
+    // Solve the KKT system:
     //   [H   J'] [d     ]   [-grad]
     //   [J   0 ] [lambda] = [-c   ]
 
@@ -393,7 +436,7 @@ function sqpSolve(
     luSolve(lu, rhs);
 
     const d = rhs.subarray(0, n);
-    // Update multiplier estimates
+    // Update multiplier estimates from QP KKT solution
     for (let i = 0; i < nEq; i++) lambda[i] = rhs[n + i]!;
 
     // Project step onto box constraints
@@ -403,10 +446,23 @@ function sqpSolve(
       if (newZ > ub[i]!) d[i] = ub[i]! - z[i]!;
     }
 
-    // ── Armijo backtracking line search on merit function ──
-    const m0 = meritFunction(z);
-    let dirDeriv = 0;
-    for (let i = 0; i < n; i++) dirDeriv += grad[i]! * d[i]!;
+    // Re-check KKT stationarity with updated QP multipliers
+    const kktResidualPost = computeKKTStationarity(z, grad, J, lambda);
+    if (kktResidualPost < tol && constraintViol < tol) {
+      converged = true;
+      break;
+    }
+
+    // Ensure penalty parameter mu dominates dual multiplier infinity-norm
+    for (let i = 0; i < nEq; i++) {
+      mu = Math.max(mu, Math.abs(lambda[i]!) + 1.0);
+    }
+
+    // ── Armijo backtracking line search on L1 exact merit function ──
+    const m0 = cost + mu * cL1;
+    let gradDotD = 0;
+    for (let i = 0; i < n; i++) gradDotD += grad[i]! * d[i]!;
+    const dirDeriv = gradDotD - mu * cL1;
 
     let alpha = 1.0;
     const zTrial = new Float64Array(n);
@@ -419,8 +475,9 @@ function sqpSolve(
       alpha *= 0.5;
     }
 
-    // Save previous gradient for BFGS
+    // Save previous Lagrangian gradient at (z_k, lambda_{k+1}) for BFGS curvature
     gradPrev.set(grad);
+    computeLagrangianGrad(gradPrev, J, lambda, lagGradPrev);
 
     // Take step
     for (let i = 0; i < n; i++) {
@@ -430,29 +487,48 @@ function sqpSolve(
     cost = evalObjective(z);
     costHistory.push(cost);
 
-    // ── BFGS update ──
+    // Evaluate constraints, gradient, and Jacobian at new iterate z_{k+1}
+    evalConstraints(z, c);
     computeGrad(z, grad);
+    computeJacobianAt(z, c, JNext);
+    computeLagrangianGrad(grad, JNext, lambda, lagGradCurr);
+
+    for (let i = 0; i < nEq; i++) {
+      J[i]!.set(JNext[i]!);
+    }
+
+    // ── BFGS update using Lagrangian gradient difference ──
     const s = new Float64Array(n);
     const y = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       s[i] = alpha * d[i]!;
-      y[i] = grad[i]! - gradPrev[i]!;
+      y[i] = lagGradCurr[i]! - lagGradPrev[i]!;
     }
+
+    const Hs = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      for (let j = 0; j < n; j++) sum += H[i]![j]! * s[j]!;
+      Hs[i] = sum;
+    }
+    let sHs = 0;
     let sy = 0;
-    for (let i = 0; i < n; i++) sy += s[i]! * y[i]!;
+    for (let i = 0; i < n; i++) {
+      sHs += s[i]! * Hs[i]!;
+      sy += s[i]! * y[i]!;
+    }
 
-    if (sy > 1e-12) {
-      // H ← H + (y·y')/(y'·s) - (H·s·s'·H)/(s'·H·s)
-      const Hs = new Float64Array(n);
-      for (let i = 0; i < n; i++) {
-        let sum = 0;
-        for (let j = 0; j < n; j++) sum += H[i]![j]! * s[j]!;
-        Hs[i] = sum;
+    // Powell's damped BFGS modification to maintain positive definiteness
+    if (sHs > 1e-12) {
+      if (sy < 0.2 * sHs) {
+        const theta = (0.8 * sHs) / (sHs - sy);
+        sy = 0;
+        for (let i = 0; i < n; i++) {
+          y[i] = theta * y[i]! + (1 - theta) * Hs[i]!;
+          sy += s[i]! * y[i]!;
+        }
       }
-      let sHs = 0;
-      for (let i = 0; i < n; i++) sHs += s[i]! * Hs[i]!;
-
-      if (sHs > 1e-12) {
+      if (sy > 1e-12) {
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < n; j++) {
             H[i]![j] = H[i]![j]! + (y[i]! * y[j]!) / sy - (Hs[i]! * Hs[j]!) / sHs;
@@ -762,19 +838,19 @@ export class ModelicaOptimizer {
           for (let i = 0; i < nStates; i++) {
             const sName = stateNames[i]!;
             const gVal = grads.get(sName) ?? 0;
-            g[k * varsPerPoint + i] += w * dt * gVal;
+            g[k * varsPerPoint + i] = g[k * varsPerPoint + i]! + w * dt * gVal;
           }
           for (let j = 0; j < nControls; j++) {
             const cName = controls[j]!;
             const gVal = grads.get(cName) ?? 0;
-            g[k * varsPerPoint + nStates + j] += w * dt * gVal;
+            g[k * varsPerPoint + nStates + j] = g[k * varsPerPoint + nStates + j]! + w * dt * gVal;
           }
         } else {
           for (let j = 0; j < nControls; j++) {
             const idx = k * varsPerPoint + nStates + j;
             const uVal = z[idx] ?? 0;
             // ∂(w * dt * u^2)/∂u = 2 * w * dt * u
-            g[idx] += 2 * w * dt * uVal;
+            g[idx] = g[idx]! + 2 * w * dt * uVal;
           }
         }
       }
@@ -866,34 +942,46 @@ export class ModelicaOptimizer {
     const stateTrajectories = new Map<string, number[]>();
     const controlTrajectories = new Map<string, number[]>();
 
-    const finalSimOpts = {
-      startTime,
-      stopTime,
-      step: dt,
-      parameterOverrides: new Map<string, number>(this.problem.parameterOverrides ?? []),
-      ...(this.problem.solverOptions
-        ? {
-            solver: this.problem.solverOptions.integrator as "euler" | "rk4" | "dopri5" | "bdf" | "auto" | undefined,
-            atol: this.problem.solverOptions.atol,
-            rtol: this.problem.solverOptions.rtol,
-          }
-        : {}),
-    };
-    for (let k = 0; k < N; k++) {
-      for (const name of controls) {
-        finalSimOpts.parameterOverrides.set(name, optControls.get(name)![k]!);
-      }
-    }
+    const solverOpts = this.problem.solverOptions
+      ? {
+          solver: this.problem.solverOptions.integrator as "euler" | "rk4" | "dopri5" | "bdf" | "auto" | undefined,
+          atol: this.problem.solverOptions.atol,
+          rtol: this.problem.solverOptions.rtol,
+        }
+      : {};
 
-    const simResult = simulateArena(this.dae, finalSimOpts);
-
+    const currentStateOverrides = new Map<string, number>();
     for (let i = 0; i < nStates; i++) {
       const name = stateNames[i]!;
-      const vals: number[] = [];
-      for (let k = 0; k < nPoints; k++) {
-        vals.push(simResult.y[k]![i]!);
+      currentStateOverrides.set(name, result.z[i]!);
+      stateTrajectories.set(name, [result.z[i]!]);
+    }
+
+    for (let k = 0; k < N; k++) {
+      const intervalParamOverrides = new Map<string, number>(this.problem.parameterOverrides ?? []);
+      for (const name of controls) {
+        intervalParamOverrides.set(name, optControls.get(name)![k]!);
       }
-      stateTrajectories.set(name, vals);
+
+      const tStart = tGrid[k]!;
+      const tEnd = tGrid[k + 1]!;
+      const simResult = simulateArena(this.dae, {
+        startTime: tStart,
+        stopTime: tEnd,
+        step: tEnd - tStart,
+        numberOfIntervals: 1,
+        parameterOverrides: intervalParamOverrides,
+        initialStateOverrides: new Map<string, number>(currentStateOverrides),
+        ...solverOpts,
+      });
+
+      const lastRow = simResult.y[simResult.y.length - 1] ?? [];
+      for (let i = 0; i < nStates; i++) {
+        const name = stateNames[i]!;
+        const nextVal = lastRow[i] ?? result.z[(k + 1) * varsPerPoint + i]!;
+        stateTrajectories.get(name)!.push(nextVal);
+        currentStateOverrides.set(name, nextVal);
+      }
     }
 
     for (let j = 0; j < nControls; j++) {

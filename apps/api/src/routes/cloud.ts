@@ -96,7 +96,7 @@ export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
   return activeJobs.get(jobId);
 }
 
-export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
+export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
   const router = express.Router();
   const hpcEngine = new HpcEngine();
   const caeRunner = new CaeSolverRunner(hpcEngine);
@@ -404,6 +404,12 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
               `tolerance=${tolerance}`,
               `outputFormat="csv"`,
             ];
+            if (payload.parameters && Object.keys(payload.parameters).length > 0) {
+              const overrides = Object.entries(payload.parameters)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(",");
+              simArgs.push(`simflags="-override=${overrides}"`);
+            }
 
             const mosContents = `
 loadFile("${adhocMoPath}");
@@ -578,7 +584,7 @@ getErrorString();
   // ── 4. GET /api/v1/cloud/jobs ──
   // List active and historical jobs
   router.get("/cloud/jobs", (req: Request, res: Response): void => {
-    const reqAny = req as { user?: { id?: number }; userId?: number };
+    const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
     const authUserId = reqAny.user?.id ?? reqAny.userId;
 
     const list: {
@@ -616,9 +622,9 @@ getErrorString();
   // ── 5. GET /api/v1/cloud/jobs/:id ──
   // Inspect single job details and status
   router.get("/cloud/jobs/:id", (req: Request, res: Response): void => {
-    const job = activeJobs.get(req.params.id as string);
+    const job = activeJobs.get(req.params["id"] as string);
     if (!job) {
-      res.status(404).json({ error: `Job '${req.params.id}' not found` });
+      res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
 
@@ -641,9 +647,9 @@ getErrorString();
   // ── 6. GET /api/v1/cloud/jobs/:id/logs ──
   // Tail execution logs
   router.get("/cloud/jobs/:id/logs", (req: Request, res: Response): void => {
-    const job = activeJobs.get(req.params.id as string);
+    const job = activeJobs.get(req.params["id"] as string);
     if (!job) {
-      res.status(404).json({ error: `Job '${req.params.id}' not found` });
+      res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
 
@@ -657,9 +663,9 @@ getErrorString();
   // ── 7. GET /api/v1/cloud/jobs/:id/events ──
   // Real-time Server-Sent Events (SSE) stream for terminal, webview, and morsel
   router.get("/cloud/jobs/:id/events", (req: Request, res: Response): void => {
-    const job = activeJobs.get(req.params.id as string);
+    const job = activeJobs.get(req.params["id"] as string);
     if (!job) {
-      res.status(404).json({ error: `Job '${req.params.id}' not found` });
+      res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
 
@@ -694,9 +700,9 @@ getErrorString();
   // ── 8. GET /api/v1/cloud/jobs/:id/result ──
   // Stream or download result file (CSV or VTU)
   router.get("/cloud/jobs/:id/result", (req: Request, res: Response): void => {
-    const job = activeJobs.get(req.params.id as string);
+    const job = activeJobs.get(req.params["id"] as string);
     if (!job || !job.resultPath || !fs.existsSync(job.resultPath)) {
-      res.status(404).json({ error: `Results for job '${req.params.id}' not available or job still in progress` });
+      res.status(404).json({ error: `Results for job '${req.params["id"]}' not available or job still in progress` });
       return;
     }
 
@@ -717,9 +723,9 @@ getErrorString();
   // ── 9. POST /api/v1/cloud/jobs/:id/cancel ──
   // Cancel active job
   router.post("/cloud/jobs/:id/cancel", async (req: Request, res: Response): Promise<void> => {
-    const job = activeJobs.get(req.params.id as string);
+    const job = activeJobs.get(req.params["id"] as string);
     if (!job) {
-      res.status(404).json({ error: `Job '${req.params.id}' not found` });
+      res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
 

@@ -33,17 +33,17 @@ export function quaternionFromMatrix3x3(r: number[] | Float64Array | Float32Arra
   // Row 1: m00, m01, m02
   // Row 2: m10, m11, m12
   // Row 3: m20, m21, m22
-  const m00 = isTranspose ? r[0] : r[0];
-  const m01 = isTranspose ? r[3] : r[1];
-  const m02 = isTranspose ? r[6] : r[2];
+  const m00 = isTranspose ? r[0]! : r[0]!;
+  const m01 = isTranspose ? r[3]! : r[1]!;
+  const m02 = isTranspose ? r[6]! : r[2]!;
 
-  const m10 = isTranspose ? r[1] : r[3];
-  const m11 = isTranspose ? r[4] : r[4];
-  const m12 = isTranspose ? r[7] : r[5];
+  const m10 = isTranspose ? r[1]! : r[3]!;
+  const m11 = isTranspose ? r[4]! : r[4]!;
+  const m12 = isTranspose ? r[7]! : r[5]!;
 
-  const m20 = isTranspose ? r[2] : r[6];
-  const m21 = isTranspose ? r[5] : r[7];
-  const m22 = isTranspose ? r[8] : r[8];
+  const m20 = isTranspose ? r[2]! : r[6]!;
+  const m21 = isTranspose ? r[5]! : r[7]!;
+  const m22 = isTranspose ? r[8]! : r[8]!;
 
   const trace = m00 + m11 + m22;
   let qx = 0,

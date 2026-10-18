@@ -172,18 +172,32 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 
 /* Incremental parsing — cache last tree per document for reuse */
 
+/**
+ * Cached instantiation and diagnostic entry for a single class within a parsed document.
+ */
 interface CachedClassEntry {
+  /** Parsed CST or symbol definition reference for the class. */
   classDef: any;
+  /** Flattened or instantiated class representation. */
   instance: any;
+  /** Semantic diagnostics associated with this class definition. */
   diagnostics: Diagnostic[];
 }
 
-interface CachedTree {
+/**
+ * Per-document incremental parse cache storing the latest CST, source text, and line index.
+ */
+export interface CachedTree {
+  /** Full source text corresponding to the cached parse tree. */
   text: string;
+  /** Parsed WebAssembly GLR syntax tree. */
   tree: TreeSitterTree;
+  /** Per-class instantiation cache keyed by class name. */
   classCache: Map<string, CachedClassEntry>;
-  lineIndex?: LineIndex;
-  tokens?: SyntaxNode[];
+  /** Optional precomputed line offset index for fast UTF-16 position lookups. */
+  lineIndex?: LineIndex | undefined;
+  /** Optional cached list of leaf syntax tokens. */
+  tokens?: SyntaxNode[] | undefined;
 }
 
 import { DocumentManager } from "./services/document-manager.js";
@@ -195,6 +209,7 @@ const workspaceManager = new WorkspaceManager(documentManager);
 const parserService = new ParserService(connection, documentManager, workspaceManager, documents);
 const validationService = new ValidationService(connection, documentManager, workspaceManager, parserService);
 const hierarchyService = new HierarchyService(connection, documentManager, workspaceManager);
+void hierarchyService;
 
 // Expose state to globalThis for loosely-coupled extracted services
 globalThis.documents = documents;
@@ -304,6 +319,9 @@ if (owlWs) {
   workspaceManager.unifiedWorkspace.registerWorkspace("owl2", owlWs, owl2LangFallback);
 }
 
+/**
+ * Formats a status bar readiness summary string showing loaded MSL and SysML v2 file counts.
+ */
 const getReadyMessage = () => {
   const parts = [];
   const mslCount = workspaceManager.getWorkspaceIndex("modelica")?.fileCount ?? 0;
@@ -320,6 +338,7 @@ globalThis.documentLSPBridges = validationService.documentLSPBridges;
 /** Global QueryEngines for cross-file dependency tracking and memoization */
 // Global Query Engines are now managed by workspaceManager
 let globalOWL2QueryEngine: QueryEngine | null = null;
+void globalOWL2QueryEngine;
 
 Object.defineProperty(globalThis, "csvParser", {
   get: () => parserService.csvParser,
@@ -345,6 +364,7 @@ Object.defineProperty(globalThis, "registryUrl", {
 
 /* SysML2 layout data — stores diagram positions in-memory (sidecar to .sysml files) */
 const sysml2Layouts = new Map<string, SysML2Layout>();
+void sysml2Layouts;
 
 /* Resolve a modification/annotation path element to its named element */
 
@@ -362,7 +382,8 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
 
   let serverDistBase = `${extensionUri}/server/dist`;
   if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
-    const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
+    const origin = (globalThis as unknown as { location?: { origin?: string | undefined } | undefined }).location
+      ?.origin;
     if (origin && (origin.startsWith("http://") || origin.startsWith("https://"))) {
       serverDistBase = `${origin}/static/devextensions/server/dist`;
     }
@@ -703,7 +724,8 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
 
         // Attempt to fetch user-registered languages from Web IDE express endpoint
         try {
-          const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
+          const origin = (globalThis as unknown as { location?: { origin?: string | undefined } | undefined }).location
+            ?.origin;
           if (origin) {
             const resp = await fetch(`${origin}/api/languages/user`);
             if (resp.ok) {
@@ -1171,6 +1193,7 @@ import { cadComponentsCache } from "./handlers/diagramHandler.js";
 
 // Lazy-initialized dispatch — backends require runtime state that isn't available at import time.
 let diagramDispatch: ReturnType<typeof createDiagramDispatch> | null = null;
+void diagramDispatch;
 // New unified methods — clients should migrate to these
 // Custom request: simulate a model
 // Custom request: train a surrogate ROM from a Modelica model
@@ -1191,35 +1214,63 @@ const cosimSimulators = new Map<
 >();
 // ── Co-simulation graph extraction from Modelica wrapper model ──
 
+/**
+ * Metadata for an individual participant in a co-simulation topology.
+ */
 interface CosimParticipantInfo {
+  /** Unique identifier of the participant component instance. */
   id: string;
+  /** Participant execution type (`"modelica"` sub-model or imported `"fmu"`). */
   type: "modelica" | "fmu";
+  /** Fully qualified Modelica class name of the participant. */
   className: string;
   /** For FMU participants, the fileName parameter value. */
-  fileName?: string;
+  fileName?: string | undefined;
 }
 
+/**
+ * Directed signal coupling between two co-simulation participants.
+ */
 interface CosimCouplingInfo {
+  /** Source participant and output port/variable name. */
   from: { participantId: string; variable: string };
+  /** Target participant and input port/variable name. */
   to: { participantId: string; variable: string };
 }
 
-interface CosimGraphResult {
+/**
+ * Extracted co-simulation architecture graph from a composite Modelica model.
+ */
+export interface CosimGraphResult {
+  /** Whether extraction succeeded. */
   ok: boolean;
-  participants?: CosimParticipantInfo[];
-  couplings?: CosimCouplingInfo[];
-  error?: string;
+  /** Discovered co-simulation participants. */
+  participants?: CosimParticipantInfo[] | undefined;
+  /** Directed couplings connecting participant inputs and outputs. */
+  couplings?: CosimCouplingInfo[] | undefined;
+  /** Error message if graph extraction failed. */
+  error?: string | undefined;
 }
 
 // Custom request: get library tree children (lazy loading)
-interface TreeNodeInfo {
+/**
+ * Node descriptor for lazy-loaded library tree explorer views.
+ */
+export interface TreeNodeInfo {
+  /** Unique symbol or node identifier. */
   id: string;
+  /** Unqualified display name of the package or class. */
   name: string;
+  /** Fully qualified dot-separated composite name. */
   compositeName: string;
+  /** Restricted class kind (e.g., `"package"`, `"model"`, `"block"`). */
   classKind: string;
+  /** Whether this node contains nested child classes or packages. */
   hasChildren: boolean;
-  iconSvg?: string;
-  language?: string;
+  /** Optional rendered SVG icon markup. */
+  iconSvg?: string | undefined;
+  /** Source modeling language identifier. */
+  language?: string | undefined;
 }
 
 // ── Fast library tree: works directly from SymbolIndex metadata ──
@@ -1280,17 +1331,28 @@ globalThis.SYSML2_TREE_KINDS = SYSML2_TREE_KINDS;
 
 // Custom request: search classes by name across the workspace index
 // Custom request: get project tree (workspace files and their classes)
-interface ProjectTreeNodeInfo {
+/**
+ * Node descriptor for workspace project tree views (files and their declared classes).
+ */
+export interface ProjectTreeNodeInfo {
+  /** Unique node identifier. */
   id: string;
+  /** File basename or class identifier. */
   name: string;
-  uri?: string;
-  compositeName?: string;
-  classKind?: string;
+  /** Document URI associated with the node. */
+  uri?: string | undefined;
+  /** Fully qualified class name when `isFile` is false. */
+  compositeName?: string | undefined;
+  /** Class restriction kind when `isFile` is false. */
+  classKind?: string | undefined;
+  /** Whether the file or class has nested children. */
   hasChildren: boolean;
+  /** True if this node represents a workspace file; false if it represents a class. */
   isFile: boolean;
-  iconSvg?: string;
+  /** Optional rendered SVG icon markup. */
+  iconSvg?: string | undefined;
   /** 0-based line number of the class definition */
-  line?: number;
+  line?: number | undefined;
 }
 
 // Custom request: get class icon SVG
@@ -1298,6 +1360,7 @@ interface ProjectTreeNodeInfo {
 // Custom request: run a .mos script file
 // ── Notebook API: session-scoped cell execution ──
 const notebookSessions = new Map<string, ArenaScriptInterpreter>();
+void notebookSessions;
 // Custom request: add a component to a model (drag-drop from library tree)
 // ── MCP Bridge: custom requests for AI chat integration ──
 // List all top-level classes across all loaded documents (for AI chat context)
@@ -1309,87 +1372,158 @@ const notebookSessions = new Map<string, ArenaScriptInterpreter>();
 // ── Inlay Hints Provider ──
 // ── Class Hierarchy RPC ──
 
-interface ClassHierarchyNode {
+/**
+ * Recursive node representing an inheritance hierarchy entry (`extends` tree).
+ */
+export interface ClassHierarchyNode {
+  /** Class name. */
   name: string;
+  /** Restricted class kind (e.g., `"model"`, `"block"`, `"connector"`). */
   kind: string;
+  /** Optional documentation string attached to the class. */
   description: string | null;
+  /** Base classes or derived classes in the hierarchy tree. */
   children: ClassHierarchyNode[];
 }
 
 // ── BLT Analysis RPC ──
 
-interface BltAnalysisResult {
+/**
+ * Block Lower Triangular (BLT) causalization and structural diagnostics result.
+ */
+export interface BltAnalysisResult {
+  /** Name of the flattened class analyzed. */
   className: string;
+  /** Ordered list of unknown state and algebraic variable names. */
   variables: string[];
+  /** Formatted equation strings in causal execution order. */
   equations: string[];
+  /** Coupled algebraic loop blocks (strongly connected components with size > 1). */
   algebraicLoops: { variables: string[]; equations: string[] }[];
+  /** Total scalar equation count. */
   equationCount: number;
+  /** Total scalar unknown variable count. */
   unknownCount: number;
 }
 
 // ── Component Tree RPC ──
 
-interface ComponentTreeNode {
+/**
+ * Hierarchical component instance node within an instantiated model.
+ */
+export interface ComponentTreeNode {
+  /** Component instance identifier. */
   name: string;
+  /** Declared type or class name of the component. */
   typeName: string;
+  /** Element kind (`"component"`, `"parameter"`, `"connector"`, etc.). */
   kind: string;
+  /** Variability prefix (`"constant"`, `"parameter"`, `"discrete"`, `"continuous"`). */
   variability: string | null;
+  /** Causality prefix (`"input"`, `"output"`, or `null`). */
   causality: string | null;
+  /** Description comment string if present. */
   description: string | null;
+  /** Nested sub-components of this component instance. */
   children: ComponentTreeNode[];
 }
 
 // ── Interval Analysis RPC ──
 
+/**
+ * Computed or declared interval enclosure `[lower, upper]` for a single model variable.
+ */
 interface IntervalBound {
+  /** Variable name. */
   variable: string;
+  /** Lower interval bound. */
   lower: number;
+  /** Upper interval bound. */
   upper: number;
+  /** Whether the bound was derived via interval propagation rather than explicitly declared. */
   isComputed: boolean;
 }
 
-interface IntervalAnalysisResult {
+/**
+ * Result of static interval abstract interpretation over a flattened model.
+ */
+export interface IntervalAnalysisResult {
+  /** Analyzed class name. */
   className: string;
+  /** Variable interval enclosures. */
   bounds: IntervalBound[];
+  /** Total number of variables inspected. */
   totalVariables: number;
+  /** Number of variables with finite lower and upper bounds. */
   boundedCount: number;
 }
 
 // ── Optimization RPC ──
 
-interface OptimizationResult {
+/**
+ * Result of a numerical design optimization or trajectory optimization run.
+ */
+export interface OptimizationResult {
+  /** Target class name. */
   className: string;
+  /** Termination status of the optimizer. */
   status: "optimal" | "infeasible" | "error";
+  /** Final objective cost value, or `null` if infeasible/errored. */
   objectiveValue: number | null;
+  /** Optimal decision variable assignments. */
   parameters: { name: string; value: number }[];
+  /** Number of solver iterations executed. */
   iterations: number;
+  /** Human-readable solver convergence summary. */
   message: string;
 }
 
 // ── Model Calibration RPC ──
 // ── System Identification RPC ──
 
-interface SysIdResult {
+/**
+ * Result of system identification / parameter estimation against measured time series.
+ */
+export interface SysIdResult {
+  /** Target class name. */
   className: string;
+  /** Convergence status of the parameter fitting solver. */
   status: "converged" | "failed" | "error";
+  /** Estimated parameters with their initial guesses and fitted values. */
   fittedParameters: { name: string; initial: number; fitted: number }[];
+  /** Final L2 residual norm between simulated and measured trajectories. */
   residualNorm: number;
+  /** Number of optimizer iterations performed. */
   iterations: number;
+  /** Solver status message. */
   message: string;
 }
 
 // ── Symbolic Trace RPC ──
 
+/**
+ * Single algebraic term-rewriting step applied during symbolic equation simplification.
+ */
 interface SymbolicRewriteStep {
+  /** Expression string before rewriting. */
   from: string;
+  /** Expression string after rewriting. */
   to: string;
+  /** Name of the algebraic rewrite rule applied. */
   rule: string;
 }
 
-interface SymbolicTraceResult {
+/**
+ * Complete trace of symbolic transformations applied to an equation.
+ */
+export interface SymbolicTraceResult {
+  /** Enclosing class name. */
   className: string;
+  /** Original un-simplified equation string. */
   equation: string;
+  /** Sequence of intermediate rewrite steps. */
   steps: SymbolicRewriteStep[];
+  /** Final simplified canonical equation string. */
   simplified: string;
 }
 
@@ -1450,7 +1584,7 @@ connection.listen();
 let debuggerResumeCallback: (() => void) | undefined;
 let currentDebugEnv: Map<string, number> | undefined;
 let stepMode = true; // Initially true to stop on first statement
-const breakpointsMap = new Map<string, { line: number; column?: number }[]>();
+const breakpointsMap = new Map<string, { line: number; column?: number | undefined }[]>();
 
 // Expose debugger and co-sim state to extracted handlers
 globalThis.cosimSimulators = cosimSimulators;
@@ -1462,7 +1596,10 @@ Object.defineProperty(globalThis, "debuggerResumeCallback", {
 Object.defineProperty(globalThis, "currentDebugEnv", { get: () => currentDebugEnv, set: (v) => (currentDebugEnv = v) });
 Object.defineProperty(globalThis, "stepMode", { get: () => stepMode, set: (v) => (stepMode = v) });
 
-function formatDebugValue(val: unknown): string {
+/**
+ * Formats a runtime debugger value (scalar or array wrapper) into a human-readable string.
+ */
+export function formatDebugValue(val: unknown): string {
   if (val !== null && typeof val === "object" && "elements" in val) {
     const arrVal = val as { elements: unknown[] };
     if (Array.isArray(arrVal.elements)) {
@@ -1493,18 +1630,29 @@ const VALUE_CARRYING_RULES = new Set([
   "ComponentDeclaration",
   "ShortClassDefinition",
 ]);
+void VALUE_CARRYING_RULES;
 
 // Cache for resolveMarkdownVars — avoids re-iterating all symbols on repeated calls.
 let markdownVarsCache: { version: string; result: { values: Record<string, string> } } | null = null;
+void markdownVarsCache;
 // Cache for resolveMarkdownContent — avoids re-iterating all symbols on repeated calls.
 let markdownContentCache: { version: string; result: any } | null = null;
+void markdownContentCache;
 
+/**
+ * Semantic AST diff entry describing an insertion, deletion, update, or move between model revisions.
+ */
 export interface FlatSemanticEdit {
+  /** Diff operation kind. */
   action: "insert" | "delete" | "update" | "none" | "move";
+  /** Human-readable summary of the semantic change. */
   description: string;
-  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
-  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
-  kind?: string;
+  /** Source range in the prior revision, if applicable. */
+  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
+  /** Source range in the updated revision, if applicable. */
+  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
+  /** Optional AST node or declaration kind affected by the edit. */
+  kind?: string | undefined;
 }
 
 // Auto-generated exports for extracted handlers

@@ -27,6 +27,10 @@ import type { ClassMetadata } from "./database.js";
 import { LibraryDatabase } from "./database.js";
 import { LibraryStorage } from "./storage.js";
 import { convertStepBufferToJson } from "./util/cad-converter.js";
+import {
+  extractModelicaComponentsFromSource,
+  extractSysmlComponentsFromSource,
+} from "./util/class-source-inspector.js";
 import { exportLspBundle } from "./util/lsp-bundle-exporter.js";
 import { exportSalsaIndex } from "./util/salsa-index-exporter.js";
 import { processLibrary } from "./util/svg-renderer.js";
@@ -48,7 +52,13 @@ function getArtifactType(filename: string): string | null {
 
 process.on(
   "message",
-  async (data: { name: string; version: string; libraryPath: string; storageDir?: string; dbDir?: string }) => {
+  async (data: {
+    name: string;
+    version: string;
+    libraryPath: string;
+    storageDir?: string | undefined;
+    dbDir?: string | undefined;
+  }) => {
     const { name, version, libraryPath, storageDir, dbDir } = data;
 
     const database = new LibraryDatabase(dbDir);
@@ -186,13 +196,21 @@ process.on(
               const baseClasses = baseClassMatch ? [baseClassMatch[1]!] : [];
 
               if (!processedClassNames.has(className)) {
+                const extractedComps = extractModelicaComponentsFromSource(content).map((c) => ({
+                  name: c.component_name,
+                  typeName: c.type_name,
+                  description: c.description,
+                  causality: c.causality,
+                  variability: c.variability,
+                  modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
+                }));
                 metadataBatch.push({
                   className,
                   classKind: "model",
                   description: `Modelica model: ${className}`,
                   documentation: null,
                   baseClasses,
-                  components: [],
+                  components: extractedComps,
                 });
                 processedClassNames.add(className);
               }
@@ -253,10 +271,12 @@ process.on(
           loadEmbeddedKerMLStdlib(sysmlWs, sysmlParser);
         }
 
+        const sysmlTextByUri = new Map<string, string>();
         for (const file of sysmlFiles) {
           try {
             const text = fs.readFileSync(file, "utf-8");
             const fileUri = "file://" + path.resolve(file);
+            sysmlTextByUri.set(fileUri, text);
             if (sysmlParser) {
               const tree = sysmlParser.parse(text);
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -275,13 +295,45 @@ process.on(
           if (entry.resourceId && !entry.resourceId.startsWith("sysml2://stdlib/")) {
             if (entry.parentId === null || entry.parentId === 0) {
               if (!processedClassNames.has(entry.name)) {
+                const childIds = sysmlIndex.childrenOf.get(entry.id) || [];
+                const sysmlComps = childIds
+                  .map((cid) => sysmlIndex.symbols.get(cid))
+                  .filter((c): c is NonNullable<typeof c> => Boolean(c && c.name))
+                  .map((c) => ({
+                    name: c.name,
+                    typeName:
+                      (c.metadata?.["typeSpecifier"] as string) ||
+                      (c.metadata?.["type"] as string) ||
+                      c.inherits?.[0] ||
+                      c.kind,
+                    description: (c.metadata?.["description"] as string) || null,
+                    causality: c.kind.toLowerCase().includes("port") ? "connector" : null,
+                    variability: c.kind.toLowerCase().includes("attribute") ? "parameter" : null,
+                    modifiers: [],
+                  }));
+                const fileText = sysmlTextByUri.get(entry.resourceId) || "";
+                const fallbackComps =
+                  sysmlComps.length > 0
+                    ? sysmlComps
+                    : extractSysmlComponentsFromSource(fileText).map((c) => ({
+                        name: c.component_name,
+                        typeName: c.type_name,
+                        description: c.description,
+                        causality: c.causality,
+                        variability: c.variability,
+                        modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
+                      }));
+                const docCommentMatch = fileText.match(/doc\s*\/\*\s*([\s\S]*?)\s*\*\//);
+                const docText = docCommentMatch?.[1]?.trim() || null;
+
                 metadataBatch.push({
                   className: entry.name,
                   classKind: entry.kind.toLowerCase(),
-                  description: (entry.metadata?.description as string) || null,
-                  documentation: null,
+                  description:
+                    (entry.metadata?.["description"] as string) || docText || `SysML v2 ${entry.kind}: ${entry.name}`,
+                  documentation: docText ? `<p>${docText}</p>` : null,
                   baseClasses: entry.inherits || [],
-                  components: [],
+                  components: fallbackComps,
                 });
                 processedClassNames.add(entry.name);
               }
@@ -320,13 +372,25 @@ process.on(
         for (const entry of stepIndex.symbols.values()) {
           if (entry.parentId === null || entry.parentId === 0) {
             if (!processedClassNames.has(entry.name)) {
+              const childIds = stepIndex.childrenOf.get(entry.id) || [];
+              const stepComps = childIds
+                .map((cid) => stepIndex.symbols.get(cid))
+                .filter((c): c is NonNullable<typeof c> => Boolean(c && c.name))
+                .map((c) => ({
+                  name: c.name,
+                  typeName: c.kind || "STEPPart",
+                  description: (c.metadata?.["description"] as string) || null,
+                  causality: null,
+                  variability: null,
+                  modifiers: [],
+                }));
               metadataBatch.push({
                 className: entry.name,
                 classKind: "cad-assembly",
                 description: `STEP CAD assembly: ${entry.name}`,
                 documentation: null,
                 baseClasses: [],
-                components: [],
+                components: stepComps,
               });
               processedClassNames.add(entry.name);
             }

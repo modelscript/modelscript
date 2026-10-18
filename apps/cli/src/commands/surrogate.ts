@@ -15,35 +15,35 @@ const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface SurrogateArgs {
   name: string;
-  paths?: string[];
-  inputs?: string;
-  "input-bounds"?: string;
-  inputBounds?: string;
-  outputs?: string;
+  paths?: string[] | undefined;
+  inputs?: string | undefined;
+  "input-bounds"?: string | undefined;
+  inputBounds?: string | undefined;
+  outputs?: string | undefined;
   strategy: "full-factorial" | "latin-hypercube" | "sobol" | "central-composite";
   "num-samples": number;
   numSamples: number;
   architecture: "mlp" | "polynomial" | "rbf";
-  "start-time"?: number;
-  startTime?: number;
-  "stop-time"?: number;
-  stopTime?: number;
+  "start-time"?: number | undefined;
+  startTime?: number | undefined;
+  "stop-time"?: number | undefined;
+  stopTime?: number | undefined;
   format: "c" | "onnx" | "mo" | "all";
-  "from-onnx"?: string;
-  fromOnnx?: string;
-  "extrapolation-guardrails"?: boolean;
-  extrapolationGuardrails?: boolean;
-  "extrapolation-level"?: "warning" | "error";
-  extrapolationLevel?: "warning" | "error";
-  "extrapolation-flag"?: boolean;
-  extrapolationFlag?: boolean;
-  "out-file"?: string;
-  outFile?: string;
-  "replace-component"?: string;
-  replaceComponent?: string;
-  "replace-out"?: string;
-  replaceOut?: string;
-  report?: string;
+  "from-onnx"?: string | undefined;
+  fromOnnx?: string | undefined;
+  "extrapolation-guardrails"?: boolean | undefined;
+  extrapolationGuardrails?: boolean | undefined;
+  "extrapolation-level"?: "warning" | "error" | undefined;
+  extrapolationLevel?: "warning" | "error" | undefined;
+  "extrapolation-flag"?: boolean | undefined;
+  extrapolationFlag?: boolean | undefined;
+  "out-file"?: string | undefined;
+  outFile?: string | undefined;
+  "replace-component"?: string | undefined;
+  replaceComponent?: string | undefined;
+  "replace-out"?: string | undefined;
+  replaceOut?: string | undefined;
+  report?: string | undefined;
 }
 
 export const Surrogate: CommandModule<{}, SurrogateArgs> = {
@@ -168,9 +168,9 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
       const outputNames = args.outputs ? args.outputs.split(",").map((s) => s.trim()) : undefined;
 
       const importOpts: {
-        inputNames?: string[];
-        outputNames?: string[];
-        parameterBounds?: Record<string, { min: number; max: number }>;
+        inputNames?: string[] | undefined;
+        outputNames?: string[] | undefined;
+        parameterBounds?: Record<string, { min: number; max: number }> | undefined;
       } = { parameterBounds: inputBoundsMap };
       if (inputNames) importOpts.inputNames = inputNames;
       if (outputNames) importOpts.outputNames = outputNames;

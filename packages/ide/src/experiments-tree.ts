@@ -14,10 +14,10 @@ interface ExperimentInfo {
   /** "simulation" or "calibration". */
   type: "simulation" | "calibration";
   /** Experiment annotation fields. */
-  startTime?: number;
-  stopTime?: number;
-  interval?: number;
-  tolerance?: number;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  interval?: number | undefined;
+  tolerance?: number | undefined;
 }
 
 class ExperimentItem extends vscode.TreeItem {
@@ -31,7 +31,7 @@ class ExperimentItem extends vscode.TreeItem {
     );
 
     this.tooltip = info.name;
-    this.description = info.type === "calibration" ? "calibration" : undefined;
+    if (info.type === "calibration") this.description = "calibration";
     this.iconPath = new vscode.ThemeIcon(info.type === "calibration" ? "beaker" : "play-circle");
 
     this.command = {

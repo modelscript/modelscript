@@ -16,8 +16,8 @@ import type {
   IGitProvider,
 } from "../interfaces/git-provider.js";
 
-const GITLAB_URL = process.env.GITLAB_URL || "https://gitlab.com";
-const GITLAB_TOKEN = process.env.GITLAB_TOKEN || "";
+const GITLAB_URL = process.env["GITLAB_URL"] || "https://gitlab.com";
+const GITLAB_TOKEN = process.env["GITLAB_TOKEN"] || "";
 
 export class GitlabError extends Error {
   constructor(

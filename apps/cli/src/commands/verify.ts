@@ -27,35 +27,35 @@ const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 interface VerifyArgs {
-  target?: string;
+  target?: string | undefined;
   paths: string[];
-  all?: boolean;
-  decisions?: boolean;
-  contracts?: boolean;
-  stateMachines?: boolean;
-  flowpipe?: boolean;
-  order?: number;
-  dt?: number;
-  horizon?: number;
-  initialSet?: string;
-  barriers?: boolean;
-  falsify?: boolean;
-  simulation?: boolean;
-  clearance?: boolean;
-  mcdc?: boolean;
-  b2b?: boolean;
-  b2bTol?: number;
-  b2bCompiler?: string;
-  b2bDt?: number;
-  algorithms?: boolean;
+  all?: boolean | undefined;
+  decisions?: boolean | undefined;
+  contracts?: boolean | undefined;
+  stateMachines?: boolean | undefined;
+  flowpipe?: boolean | undefined;
+  order?: number | undefined;
+  dt?: number | undefined;
+  horizon?: number | undefined;
+  initialSet?: string | undefined;
+  barriers?: boolean | undefined;
+  falsify?: boolean | undefined;
+  simulation?: boolean | undefined;
+  clearance?: boolean | undefined;
+  mcdc?: boolean | undefined;
+  b2b?: boolean | undefined;
+  b2bTol?: number | undefined;
+  b2bCompiler?: string | undefined;
+  b2bDt?: number | undefined;
+  algorithms?: boolean | undefined;
   engine: string;
-  timing?: boolean;
-  format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf";
-  report?: string;
-  export?: string;
-  exportDir?: string;
-  updateHypergraph?: boolean;
-  flattener?: "ts" | "wasm" | "hybrid" | "diff";
+  timing?: boolean | undefined;
+  format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf" | undefined;
+  report?: string | undefined;
+  export?: string | undefined;
+  exportDir?: string | undefined;
+  updateHypergraph?: boolean | undefined;
+  flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
 }
 
 export const Verify: CommandModule<{}, VerifyArgs> = {
@@ -311,7 +311,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
           ensureDocument(entry.resourceId);
           return u.cstTextProvider ? u.cstTextProvider(startByte, endByte, entry) : null;
         },
-        getNode: (startByte: number, endByte: number, entry?: any) => {
+        getNode: (_startByte: number, _endByte: number, entry?: any) => {
           if (!entry?.resourceId) return null;
           ensureDocument(entry.resourceId);
           return u.cstNodeProvider ? u.cstNodeProvider(entry.id) : null;

@@ -15,22 +15,24 @@ export interface HtmlReportStageInput {
   stage: string;
   name: string;
   passed: boolean;
-  certified?: boolean;
+  certified?: boolean | undefined;
   durationMs: number;
   summary: string;
-  violations?: {
-    id?: string;
-    message: string;
-    severity?: "error" | "warning" | "note";
-    location?: { uri?: string; line?: number; column?: number };
-    witness?: any;
-  }[];
+  violations?:
+    | {
+        id?: string | undefined;
+        message: string;
+        severity?: "error" | "warning" | "note" | undefined;
+        location?: { uri?: string | undefined; line?: number | undefined; column?: number | undefined } | undefined;
+        witness?: any;
+      }[]
+    | undefined;
   details?: any;
 }
 
 export interface HtmlReportInput {
   timestamp: string;
-  target?: string;
+  target?: string | undefined;
   summary: {
     totalStages: number;
     passedStages: number;

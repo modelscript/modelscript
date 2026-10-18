@@ -1,7 +1,6 @@
 // name:     TestRedeclareTypeWithArrayDimensions.mo [BUG: #2418]
 // keywords: redeclare,type
 // status:   correct
-// xfail:    true
 //
 // Redeclaration with array dimensions
 //

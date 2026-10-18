@@ -116,49 +116,49 @@ export type LpMethod =
  */
 export interface SolverOptions {
   /** ODE/DAE integration method (default: "dopri5"). */
-  integrator?: IntegratorMethod;
+  integrator?: IntegratorMethod | undefined;
 
   /** Nonlinear solver for algebraic loops & initialization (default: "newton"). */
-  nonlinear?: NonlinearMethod;
+  nonlinear?: NonlinearMethod | undefined;
 
   /** Linear solver for Jacobian systems (default: "dense-lu"). */
-  linear?: LinearMethod;
+  linear?: LinearMethod | undefined;
 
   /** Jacobian computation method (default: "finite-difference"). */
-  jacobian?: JacobianMethod;
+  jacobian?: JacobianMethod | undefined;
 
   /** Optimization solver (default: "sqp"). */
-  optimizer?: OptimizerMethod;
+  optimizer?: OptimizerMethod | undefined;
 
   /** LP/MILP solver (default: "built-in"). */
-  lpSolver?: LpMethod;
+  lpSolver?: LpMethod | undefined;
 
   /** Absolute tolerance for integrators and nonlinear solvers (default: 1e-6). */
-  atol?: number;
+  atol?: number | undefined;
 
   /** Relative tolerance for integrators and nonlinear solvers (default: 1e-6). */
-  rtol?: number;
+  rtol?: number | undefined;
 
   /** Maximum Newton/KINSOL iterations for nonlinear solvers (default: 20). */
-  maxNonlinearIterations?: number;
+  maxNonlinearIterations?: number | undefined;
 
   /** Maximum integrator steps (default: 100000). */
-  maxSteps?: number;
+  maxSteps?: number | undefined;
 
   /** Maximum integrator step size (0 = unlimited). */
-  maxStep?: number;
+  maxStep?: number | undefined;
 
   /** Initial integrator step size (0 = auto). */
-  initialStep?: number;
+  initialStep?: number | undefined;
 
   /** Uncertainty propagation method (default: "auto"). */
-  uncertainty?: UncertaintyMethod;
+  uncertainty?: UncertaintyMethod | undefined;
 
   /** Monte Carlo sample count (default: 1000). */
-  mcSamples?: number;
+  mcSamples?: number | undefined;
 
   /** Monte Carlo seed for reproducibility (default: undefined = random). */
-  mcSeed?: number;
+  mcSeed?: number | undefined;
 }
 
 /** Default solver options — pure TS methods, no WASM dependencies. */

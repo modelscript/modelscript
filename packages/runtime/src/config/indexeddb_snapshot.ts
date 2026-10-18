@@ -10,7 +10,7 @@ export interface CachedIndexSnapshot {
   version: number;
   timestamp: number;
   data: Uint8Array;
-  workspaceFqnMap?: Record<string, number>;
+  workspaceFqnMap?: Record<string, number> | undefined;
 }
 
 export class IndexedDbSnapshotStore {

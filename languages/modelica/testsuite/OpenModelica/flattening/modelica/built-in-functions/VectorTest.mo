@@ -1,7 +1,6 @@
 // name:     VectorTest
 // keywords: vector wholedim bug1170
 // status:   correct
-// xfail:    true
 // Tests the vector function, and determination of unspecified vector dimensions
 // from a function call.
 //

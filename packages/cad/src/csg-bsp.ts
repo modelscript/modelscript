@@ -11,25 +11,38 @@
 import type { ManifoldSurfaceMesh } from "./manifold-worker.js";
 import type { Vec3 } from "./types.js";
 
+/** Coplanarity distance tolerance in world units for BSP plane classification. */
 const CSG_EPSILON = 1e-5;
+/** Maximum recursion depth when building a `CsgBspNode` tree to guard against stack overflow on dense meshes. */
 const MAX_BSP_DEPTH = 64;
 
+/** A 3D vertex with position and outward unit normal used during BSP polygon clipping. */
 export interface CsgVertex {
+  /** 3D Cartesian coordinates `[x, y, z]`. */
   pos: [number, number, number];
+  /** Outward unit normal vector `[nx, ny, nz]`. */
   normal: [number, number, number];
 }
 
+/** Oriented 3D plane defined by `normal · x - w = 0`. */
 export interface CsgPlane {
+  /** Unit normal vector `[nx, ny, nz]`. */
   normal: [number, number, number];
+  /** Signed distance from the origin along `normal`. */
   w: number;
 }
 
+/** Convex 3D polygon with coplanar vertices, supporting plane, and boundary-patch tag index. */
 export interface CsgPolygon {
+  /** Ordered counter-clockwise vertices forming the polygon loop. */
   vertices: CsgVertex[];
+  /** Supporting plane of the polygon. */
   plane: CsgPlane;
+  /** Index into the mesh's boundary patch tag table (`-1` if untagged). */
   tagIndex: number;
 }
 
+/** Returns a deep copy of a {@link CsgVertex}. */
 function cloneVertex(v: CsgVertex): CsgVertex {
   return {
     pos: [v.pos[0], v.pos[1], v.pos[2]],
@@ -37,6 +50,7 @@ function cloneVertex(v: CsgVertex): CsgVertex {
   };
 }
 
+/** Returns a copy of `v` with its normal vector inverted. */
 function flipVertex(v: CsgVertex): CsgVertex {
   return {
     pos: [v.pos[0], v.pos[1], v.pos[2]],
@@ -44,6 +58,7 @@ function flipVertex(v: CsgVertex): CsgVertex {
   };
 }
 
+/** Linearly interpolates position and normal between vertices `a` and `b` at parameter `t` in `[0, 1]`. */
 function interpolateVertex(a: CsgVertex, b: CsgVertex, t: number): CsgVertex {
   const px = a.pos[0] + (b.pos[0] - a.pos[0]) * t;
   const py = a.pos[1] + (b.pos[1] - a.pos[1]) * t;
@@ -60,6 +75,7 @@ function interpolateVertex(a: CsgVertex, b: CsgVertex, t: number): CsgVertex {
   };
 }
 
+/** Computes a normalized {@link CsgPlane} from three non-collinear 3D points, or returns `null` if degenerate. */
 export function planeFromPoints(a: Vec3, b: Vec3, c: Vec3): CsgPlane | null {
   const ux = b[0] - a[0];
   const uy = b[1] - a[1];
@@ -79,6 +95,7 @@ export function planeFromPoints(a: Vec3, b: Vec3, c: Vec3): CsgPlane | null {
   return { normal, w };
 }
 
+/** Returns a copy of plane `p` with inverted normal and negated offset `w`. */
 function flipPlane(p: CsgPlane): CsgPlane {
   return {
     normal: [-p.normal[0], -p.normal[1], -p.normal[2]],
@@ -86,6 +103,7 @@ function flipPlane(p: CsgPlane): CsgPlane {
   };
 }
 
+/** Constructs a validated {@link CsgPolygon} from an ordered vertex loop, aligning winding with vertex normals. */
 export function createPolygon(vertices: CsgVertex[], tagIndex: number, plane?: CsgPlane): CsgPolygon | null {
   if (vertices.length < 3) return null;
   if (plane) {
@@ -98,11 +116,11 @@ export function createPolygon(vertices: CsgVertex[], tagIndex: number, plane?: C
       tagIndex,
     };
   }
-  let computedPlane = planeFromPoints(vertices[0].pos, vertices[1].pos, vertices[2].pos);
+  let computedPlane = planeFromPoints(vertices[0]!.pos, vertices[1]!.pos, vertices[2]!.pos);
   if (!computedPlane) return null;
 
   // Ensure geometric winding and plane normal match the vertex outward normal if provided
-  const vn = vertices[0].normal;
+  const vn = vertices[0]!.normal;
   const dot = computedPlane.normal[0] * vn[0] + computedPlane.normal[1] * vn[1] + computedPlane.normal[2] * vn[2];
   if (dot < 0) {
     vertices.reverse();
@@ -116,6 +134,7 @@ export function createPolygon(vertices: CsgVertex[], tagIndex: number, plane?: C
   };
 }
 
+/** Returns a deep copy of a {@link CsgPolygon}. */
 function clonePolygon(p: CsgPolygon): CsgPolygon {
   return {
     vertices: p.vertices.map(cloneVertex),
@@ -127,19 +146,22 @@ function clonePolygon(p: CsgPolygon): CsgPolygon {
   };
 }
 
+/** Reverses the vertex winding, vertex normals, and supporting plane of `p` in place. */
 function flipPolygon(p: CsgPolygon): void {
   p.vertices.reverse();
   for (let i = 0; i < p.vertices.length; i++) {
-    p.vertices[i] = flipVertex(p.vertices[i]);
+    p.vertices[i] = flipVertex(p.vertices[i]!);
   }
   p.plane = flipPlane(p.plane);
 }
 
+/** Vertex/polygon classification bitflags relative to a splitting plane. */
 const COPLANAR = 0;
 const FRONT = 1;
 const BACK = 2;
 const SPANNING = 3;
 
+/** Cached WebAssembly linear-memory scratch buffers for `cad_bsp_split_polygon`. */
 let bspWasmScratch: {
   wasm: any;
   inVertsPtr: number;
@@ -149,6 +171,7 @@ let bspWasmScratch: {
   outCountsPtr: number;
 } | null = null;
 
+/** Lazily allocates or reuses linear-memory scratch buffers in `wasm` for polygon splitting. */
 function ensureBspWasmScratch(wasm: any) {
   if (bspWasmScratch && bspWasmScratch.wasm === wasm) {
     return bspWasmScratch;
@@ -165,6 +188,13 @@ function ensureBspWasmScratch(wasm: any) {
   return bspWasmScratch;
 }
 
+/**
+ * Splits a convex `CsgPolygon` against a partitioning `CsgPlane`, routing the polygon
+ * (or its clipped fragments) into `coplanarFront`, `coplanarBack`, `front`, or `back`.
+ *
+ * Uses the WebAssembly `cad_bsp_split_polygon` kernel for polygons with `<= 32` vertices
+ * and falls back to an exact Sutherland-Hodgman edge-clipping loop in TypeScript.
+ */
 function splitPolygon(
   plane: CsgPlane,
   polygon: CsgPolygon,
@@ -179,13 +209,14 @@ function splitPolygon(
   const w = plane.w;
   const nVerts = polygon.vertices.length;
 
+  // 1. WebAssembly fast-path for convex polygons with up to 32 vertices
   const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
   if (wasm && typeof wasm.cad_bsp_split_polygon === "function" && nVerts <= 32) {
     const sc = ensureBspWasmScratch(wasm);
     const buf = wasm.memory.buffer as ArrayBuffer;
     const inView = new Float64Array(buf, sc.inVertsPtr, nVerts * 3);
     for (let i = 0; i < nVerts; i++) {
-      const v = polygon.vertices[i];
+      const v = polygon.vertices[i]!;
       const off = i * 3;
       inView[off] = v.pos[0];
       inView[off + 1] = v.pos[1];
@@ -196,6 +227,7 @@ function splitPolygon(
     pnView[1] = ny;
     pnView[2] = nz;
 
+    // Classify and clip the polygon in linear memory; returns bitmask of {COPLANAR, FRONT, BACK, SPANNING}
     const polyType: number = wasm.cad_bsp_split_polygon(
       nVerts,
       sc.inVertsPtr,
@@ -207,6 +239,7 @@ function splitPolygon(
     );
 
     if (polyType === COPLANAR) {
+      // Orient coplanar polygon by normal alignment with the splitting plane
       const dot = nx * polygon.plane.normal[0] + ny * polygon.plane.normal[1] + nz * polygon.plane.normal[2];
       if (dot > 0) coplanarFront.push(polygon);
       else coplanarBack.push(polygon);
@@ -221,9 +254,10 @@ function splitPolygon(
       return;
     }
     if (polyType === SPANNING) {
+      // Reconstruct clipped front and back polygons from the WASM output buffers
       const counts = new Int32Array(wasm.memory.buffer, sc.outCountsPtr, 2);
-      const fCount = counts[0];
-      const bCount = counts[1];
+      const fCount = counts[0]!;
+      const bCount = counts[1]!;
       const pNorm = polygon.plane.normal;
       if (fCount >= 3) {
         const fView = new Float64Array(wasm.memory.buffer, sc.outFrontPtr, fCount * 3);
@@ -231,7 +265,7 @@ function splitPolygon(
         for (let i = 0; i < fCount; i++) {
           const off = i * 3;
           fVerts[i] = {
-            pos: [fView[off], fView[off + 1], fView[off + 2]],
+            pos: [fView[off]!, fView[off + 1]!, fView[off + 2]!],
             normal: [pNorm[0], pNorm[1], pNorm[2]],
           };
         }
@@ -244,7 +278,7 @@ function splitPolygon(
         for (let i = 0; i < bCount; i++) {
           const off = i * 3;
           bVerts[i] = {
-            pos: [bView[off], bView[off + 1], bView[off + 2]],
+            pos: [bView[off]!, bView[off + 1]!, bView[off + 2]!],
             normal: [pNorm[0], pNorm[1], pNorm[2]],
           };
         }
@@ -255,17 +289,19 @@ function splitPolygon(
     }
   }
 
+  // 2. TypeScript fallback: classify each vertex against the plane with tolerance CSG_EPSILON
   let polygonType = 0;
   const types: number[] = [];
 
   for (let i = 0; i < nVerts; i++) {
-    const pos = polygon.vertices[i].pos;
+    const pos = polygon.vertices[i]!.pos;
     const t = nx * pos[0] + ny * pos[1] + nz * pos[2] - w;
     const type = t < -CSG_EPSILON ? BACK : t > CSG_EPSILON ? FRONT : COPLANAR;
     polygonType |= type;
     types.push(type);
   }
 
+  // 3. Dispatch according to the combined vertex classification bitmask
   switch (polygonType) {
     case COPLANAR: {
       const dot = nx * polygon.plane.normal[0] + ny * polygon.plane.normal[1] + nz * polygon.plane.normal[2];
@@ -285,15 +321,16 @@ function splitPolygon(
       break;
     }
     case SPANNING: {
+      // Walk polygon edges and linearly interpolate intersection vertices where an edge crosses the plane
       const f: CsgVertex[] = [];
       const b: CsgVertex[] = [];
       const len = polygon.vertices.length;
       for (let i = 0; i < len; i++) {
         const j = (i + 1) % len;
-        const ti = types[i];
-        const tj = types[j];
-        const vi = polygon.vertices[i];
-        const vj = polygon.vertices[j];
+        const ti = types[i]!;
+        const tj = types[j]!;
+        const vi = polygon.vertices[i]!;
+        const vj = polygon.vertices[j]!;
 
         if (ti !== BACK) f.push(vi);
         if (ti !== FRONT) b.push(ti !== BACK ? cloneVertex(vi) : vi);
@@ -321,21 +358,31 @@ function splitPolygon(
   }
 }
 
+/**
+ * 3D Binary Space Partitioning (BSP) tree node used for exact polygon clipping
+ * in constructive solid geometry boolean operations (`Union`, `Subtract`, `Intersect`).
+ */
 export class CsgBspNode {
+  /** Splitting plane for this BSP subtree. */
   private plane: CsgPlane | null = null;
+  /** Front half-space child subtree (`normal · x - w > 0`). */
   private front: CsgBspNode | null = null;
+  /** Back half-space child subtree (`normal · x - w < 0`). */
   private back: CsgBspNode | null = null;
+  /** Coplanar polygons lying on `plane`. */
   private polygons: CsgPolygon[] = [];
 
+  /** Creates a BSP node and optionally partitions `polygons` into the subtree. */
   constructor(polygons?: CsgPolygon[]) {
     if (polygons && polygons.length > 0) {
       this.build(polygons, 0);
     }
   }
 
+  /** Flips solid and empty space across the entire BSP subtree in place. */
   public invert(): void {
     for (let i = 0; i < this.polygons.length; i++) {
-      flipPolygon(this.polygons[i]);
+      flipPolygon(this.polygons[i]!);
     }
     if (this.plane) {
       this.plane = flipPlane(this.plane);
@@ -347,13 +394,14 @@ export class CsgBspNode {
     this.back = temp;
   }
 
+  /** Recursively removes all fragments of `polygons` that lie inside this BSP tree's solid volume. */
   public clipPolygons(polygons: CsgPolygon[]): CsgPolygon[] {
     if (!this.plane) return polygons.slice();
     let front: CsgPolygon[] = [];
     let back: CsgPolygon[] = [];
 
     for (let i = 0; i < polygons.length; i++) {
-      splitPolygon(this.plane, polygons[i], front, back, front, back);
+      splitPolygon(this.plane, polygons[i]!, front, back, front, back);
     }
 
     if (this.front) {
@@ -368,12 +416,14 @@ export class CsgBspNode {
     return front.concat(back);
   }
 
+  /** Clips all polygons stored in this BSP tree against another BSP tree `bsp`. */
   public clipTo(bsp: CsgBspNode): void {
     this.polygons = bsp.clipPolygons(this.polygons);
     if (this.front) this.front.clipTo(bsp);
     if (this.back) this.back.clipTo(bsp);
   }
 
+  /** Collects and returns all polygons stored in this BSP subtree. */
   public allPolygons(): CsgPolygon[] {
     let polys = this.polygons.slice();
     if (this.front) polys = polys.concat(this.front.allPolygons());
@@ -381,6 +431,7 @@ export class CsgBspNode {
     return polys;
   }
 
+  /** Incrementally inserts `polygons` into this BSP subtree up to `MAX_BSP_DEPTH`. */
   public build(polygons: CsgPolygon[], depth = 0): void {
     if (polygons.length === 0) return;
     if (depth >= MAX_BSP_DEPTH) {
@@ -392,8 +443,12 @@ export class CsgBspNode {
       // Choose a balanced splitting plane near the middle of the polygon list
       const midIdx = Math.floor(polygons.length / 2);
       this.plane = {
-        normal: [polygons[midIdx].plane.normal[0], polygons[midIdx].plane.normal[1], polygons[midIdx].plane.normal[2]],
-        w: polygons[midIdx].plane.w,
+        normal: [
+          polygons[midIdx]!.plane.normal[0],
+          polygons[midIdx]!.plane.normal[1],
+          polygons[midIdx]!.plane.normal[2],
+        ],
+        w: polygons[midIdx]!.plane.w,
       };
     }
 
@@ -401,7 +456,7 @@ export class CsgBspNode {
     const back: CsgPolygon[] = [];
 
     for (let i = 0; i < polygons.length; i++) {
-      splitPolygon(this.plane, polygons[i], this.polygons, this.polygons, front, back);
+      splitPolygon(this.plane, polygons[i]!, this.polygons, this.polygons, front, back);
     }
 
     if (front.length > 0) {
@@ -415,6 +470,7 @@ export class CsgBspNode {
   }
 }
 
+/** Axis-aligned bounding box of a polygon soup for broad-phase CSG culling. */
 interface PolyBounds {
   minX: number;
   minY: number;
@@ -424,6 +480,7 @@ interface PolyBounds {
   maxZ: number;
 }
 
+/** Computes the axis-aligned bounding box enclosing all vertices in `polys`. */
 function computePolygonBounds(polys: CsgPolygon[]): PolyBounds {
   let minX = Infinity,
     minY = Infinity,
@@ -432,9 +489,9 @@ function computePolygonBounds(polys: CsgPolygon[]): PolyBounds {
     maxY = -Infinity,
     maxZ = -Infinity;
   for (let i = 0; i < polys.length; i++) {
-    const verts = polys[i].vertices;
+    const verts = polys[i]!.vertices;
     for (let j = 0; j < verts.length; j++) {
-      const p = verts[j].pos;
+      const p = verts[j]!.pos;
       if (p[0] < minX) minX = p[0];
       if (p[0] > maxX) maxX = p[0];
       if (p[1] < minY) minY = p[1];
@@ -446,6 +503,7 @@ function computePolygonBounds(polys: CsgPolygon[]): PolyBounds {
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
 
+/** Returns true if two axis-aligned bounding boxes overlap within `CSG_EPSILON`. */
 function boundsOverlap(a: PolyBounds, b: PolyBounds): boolean {
   return (
     a.maxX >= b.minX - CSG_EPSILON &&
@@ -457,6 +515,7 @@ function boundsOverlap(a: PolyBounds, b: PolyBounds): boolean {
   );
 }
 
+/** Computes the boolean CSG union ($A \cup B$) of two closed polygon meshes using 3D BSP clipping. */
 export function csgUnion(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): CsgPolygon[] {
   if (leftPolys.length === 0) return rightPolys.map(clonePolygon);
   if (rightPolys.length === 0) return leftPolys.map(clonePolygon);
@@ -478,6 +537,7 @@ export function csgUnion(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): Csg
   return a.allPolygons();
 }
 
+/** Computes the boolean CSG difference ($A \setminus B$) of two closed polygon meshes using 3D BSP clipping. */
 export function csgSubtract(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): CsgPolygon[] {
   if (leftPolys.length === 0) return [];
   if (rightPolys.length === 0) return leftPolys.map(clonePolygon);
@@ -501,6 +561,7 @@ export function csgSubtract(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): 
   return a.allPolygons();
 }
 
+/** Computes the boolean CSG intersection ($A \cap B$) of two closed polygon meshes using 3D BSP clipping. */
 export function csgIntersect(leftPolys: CsgPolygon[], rightPolys: CsgPolygon[]): CsgPolygon[] {
   if (leftPolys.length === 0 || rightPolys.length === 0) return [];
 
@@ -535,19 +596,19 @@ export function computeMeshVolumeAndArea(mesh: ManifoldSurfaceMesh): {
   let totalArea = 0;
 
   for (let i = 0; i < indices.length; i += 3) {
-    const i0 = indices[i] * 3;
-    const i1 = indices[i + 1] * 3;
-    const i2 = indices[i + 2] * 3;
+    const i0 = indices[i]! * 3;
+    const i1 = indices[i + 1]! * 3;
+    const i2 = indices[i + 2]! * 3;
 
-    const x0 = vertices[i0],
-      y0 = vertices[i0 + 1],
-      z0 = vertices[i0 + 2];
-    const x1 = vertices[i1],
-      y1 = vertices[i1 + 1],
-      z1 = vertices[i1 + 2];
-    const x2 = vertices[i2],
-      y2 = vertices[i2 + 1],
-      z2 = vertices[i2 + 2];
+    const x0 = vertices[i0]!,
+      y0 = vertices[i0 + 1]!,
+      z0 = vertices[i0 + 2]!;
+    const x1 = vertices[i1]!,
+      y1 = vertices[i1 + 1]!,
+      z1 = vertices[i1 + 2]!;
+    const x2 = vertices[i2]!,
+      y2 = vertices[i2 + 1]!,
+      z2 = vertices[i2 + 2]!;
 
     // Cross product p1 x p2 for signed tetrahedron volume with origin
     const cx = y1 * z2 - z1 * y2;

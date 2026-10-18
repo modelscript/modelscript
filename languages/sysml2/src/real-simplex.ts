@@ -14,12 +14,12 @@ export interface LinearTerm {
 }
 
 export interface LinearConstraint {
-  id?: string;
-  requirementName?: string;
+  id?: string | undefined;
+  requirementName?: string | undefined;
   terms: LinearTerm[];
   operator: "<=" | "<" | ">=" | ">" | "==";
   rhs: number;
-  expression?: string;
+  expression?: string | undefined;
 }
 
 export interface InfNumber {
@@ -69,10 +69,10 @@ export interface SimplexVariableBound {
 
 export interface SimplexResult {
   isFeasible: boolean;
-  assignment?: Record<string, number>;
-  unsatCore?: string[];
-  conflictExplanation?: string;
-  violatedConstraint?: LinearConstraint;
+  assignment?: Record<string, number> | undefined;
+  unsatCore?: string[] | undefined;
+  conflictExplanation?: string | undefined;
+  violatedConstraint?: LinearConstraint | undefined;
 }
 
 /**

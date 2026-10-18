@@ -8,41 +8,45 @@ import api from "../../api";
 import Box from "../Box";
 
 export interface DigitalTwinViewerConfig {
-  twinId?: number;
-  twinName?: string;
-  instanceSerial?: string;
-  modelicaClass?: string;
-  channel?: string;
-  severity?: "low" | "medium" | "high";
-  healthScore?: number;
-  rulHours?: number;
-  adaptationId?: number;
-  proposalId?: number;
-  driftMetrics?: {
-    score: number;
-    direction: string;
-    magnitude: number;
-  };
-  parameterDeltas?: Record<
-    string,
-    {
-      prior: number;
-      calibrated: number;
-      deltaPct: number;
-    }
-  >;
-  calibratedParameters?: Record<string, number>;
-  alertTime?: string;
+  twinId?: number | undefined;
+  twinName?: string | undefined;
+  instanceSerial?: string | undefined;
+  modelicaClass?: string | undefined;
+  channel?: string | undefined;
+  severity?: "low" | "medium" | "high" | undefined;
+  healthScore?: number | undefined;
+  rulHours?: number | undefined;
+  adaptationId?: number | undefined;
+  proposalId?: number | undefined;
+  driftMetrics?:
+    | {
+        score: number;
+        direction: string;
+        magnitude: number;
+      }
+    | undefined;
+  parameterDeltas?:
+    | Record<
+        string,
+        {
+          prior: number;
+          calibrated: number;
+          deltaPct: number;
+        }
+      >
+    | undefined;
+  calibratedParameters?: Record<string, number> | undefined;
+  alertTime?: string | undefined;
 }
 
 interface DigitalTwinDashboardViewerProps {
   viewConfig: DigitalTwinViewerConfig;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 interface LoadedTwinData {
-  proposals?: { id: number; status: "open" | "approved" | "rejected" }[];
-  activeSession?: { healthScore?: number };
+  proposals?: { id: number; status: "open" | "approved" | "rejected" }[] | undefined;
+  activeSession?: { healthScore?: number | undefined } | undefined;
 }
 
 export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProps> = ({ viewConfig }) => {
@@ -112,7 +116,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
       setActionMessage("Physics Pull Request approved! Active model baseline updated.");
     } catch (err: unknown) {
       const msg =
-        (axios.isAxiosError(err) && (err.response?.data as { error?: string })?.error) ||
+        (axios.isAxiosError(err) && (err.response?.data as { error?: string | undefined })?.error) ||
         (err instanceof Error ? err.message : "Unknown error");
       setActionMessage(`Approval failed: ${msg}`);
     } finally {
@@ -133,7 +137,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
       setActionMessage("Proposal rejected.");
     } catch (err: unknown) {
       const msg =
-        (axios.isAxiosError(err) && (err.response?.data as { error?: string })?.error) ||
+        (axios.isAxiosError(err) && (err.response?.data as { error?: string | undefined })?.error) ||
         (err instanceof Error ? err.message : String(err));
       setActionMessage(`Error: ${msg}`);
     } finally {

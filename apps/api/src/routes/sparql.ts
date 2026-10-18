@@ -7,6 +7,10 @@ import { DataFactory } from "n3";
 import { SqliteRdfSource } from "../database-rdf.js";
 import type { LibraryDatabase } from "../database.js";
 
+/**
+ * Creates the Express router exposing W3C SPARQL 1.1 `SELECT` and `ASK` query endpoints
+ * (`/api/v1/libraries/sparql/:name/:version/sparql`) backed by `SqliteRdfSource` and Comunica.
+ */
 export function sparqlRouter(database: LibraryDatabase): Router {
   const router = createRouter();
 

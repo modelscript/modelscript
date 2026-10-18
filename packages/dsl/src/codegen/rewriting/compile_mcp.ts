@@ -9,23 +9,23 @@ export interface McpManifestTool {
   category: string;
   inputSchema: Record<string, McpPropertySchema>;
   pure: boolean;
-  targetQuery?: string;
-  targetAction?: string;
-  inWasmHandler?: string;
+  targetQuery?: string | undefined;
+  targetAction?: string | undefined;
+  inWasmHandler?: string | undefined;
 }
 
 export interface McpManifestResource {
   uriTemplate: string;
   name: string;
-  mimeType?: string;
-  description?: string;
-  inWasmProvider?: string;
+  mimeType?: string | undefined;
+  description?: string | undefined;
+  inWasmProvider?: string | undefined;
 }
 
 export interface McpManifestPrompt {
   name: string;
   description: string;
-  arguments?: { name: string; description: string; required?: boolean }[];
+  arguments?: { name: string; description: string; required?: boolean | undefined }[] | undefined;
 }
 
 export interface McpManifest {
@@ -109,8 +109,8 @@ export function compileMcpConfig(
   code += `export function mcp_getToolNameHash(index: u32): u32 {\n`;
   code += `  switch (index) {\n`;
   for (let i = 0; i < tools.length; i++) {
-    const hash = getDJB2Hash(tools[i].name);
-    code += `    case ${i}: return ${hash}; // ${tools[i].name}\n`;
+    const hash = getDJB2Hash(tools[i]!.name);
+    code += `    case ${i}: return ${hash}; // ${tools[i]!.name}\n`;
   }
   code += `    default: return 0;\n`;
   code += `  }\n`;
@@ -122,7 +122,7 @@ export function compileMcpConfig(
   code += `  t_mcpOutputBuffer.clear();\n\n`;
   code += `  switch (toolIndex) {\n`;
   for (let i = 0; i < tools.length; i++) {
-    const tool = tools[i];
+    const tool = tools[i]!;
     code += `    case ${i}: { // ${tool.name}\n`;
     if (tool.inWasmHandler) {
       code += `      return ${tool.inWasmHandler}(arg1, arg2, arg3);\n`;

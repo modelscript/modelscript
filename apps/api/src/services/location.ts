@@ -33,7 +33,7 @@ class LocationService {
     return this.cityReader !== null;
   }
 
-  public lookupIp(ip: string): { countryCode: string; regionCode?: string } | null {
+  public lookupIp(ip: string): { countryCode: string; regionCode?: string | undefined } | null {
     if (!this.cityReader) {
       // Graceful fallback for testing and offline resilience when DB-IP database is missing
       if (ip === "1.1.1.1" || ip === "8.8.8.8") return { countryCode: "US", regionCode: "CA" };

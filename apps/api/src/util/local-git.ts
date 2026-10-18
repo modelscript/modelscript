@@ -14,7 +14,7 @@ import type {
   IGitProvider,
 } from "../interfaces/git-provider.js";
 
-const CACHE_DIR = process.env.GIT_CACHE_DIR || path.join(os.tmpdir(), "modelscript-git-cache");
+const CACHE_DIR = process.env["GIT_CACHE_DIR"] || path.join(os.tmpdir(), "modelscript-git-cache");
 
 export class LocalGitProvider implements IGitProvider {
   private async getRepoPath(url: string): Promise<string> {

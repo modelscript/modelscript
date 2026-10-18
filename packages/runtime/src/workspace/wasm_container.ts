@@ -58,7 +58,7 @@ export function readZipEntries(zipData: Uint8Array): ContainerEntryMeta[] {
     if (pos + 46 + fileNameLength > zipData.byteLength) break;
     const nameBytes = zipData.subarray(pos + 46, pos + 46 + fileNameLength);
     const name = decoder.decode(nameBytes);
-    const isDirectory = name.endsWith("/") || (zipData[pos + 38] & 0x10) !== 0;
+    const isDirectory = name.endsWith("/") || (zipData[pos + 38]! & 0x10) !== 0;
 
     entries.push({
       name,
@@ -222,9 +222,9 @@ export function createZipArchive(
 
   // Write central directory records
   for (let i = 0; i < fileEntries.length; i++) {
-    const entry = fileEntries[i];
+    const entry = fileEntries[i]!;
     const nameBytes = encoder.encode(entry.name);
-    const entryLocalOffset = localOffsets[i];
+    const entryLocalOffset = localOffsets[i]!;
 
     view.setUint32(cdOffset, 0x02014b50, true); // Central directory signature
     view.setUint16(cdOffset + 4, 20, true); // Version made by
@@ -323,7 +323,7 @@ export function parseXmlSimple(xml: string): Record<string, any> {
   const attrRegex = /\b([a-zA-Z0-9_:-]+)\s*=\s*"([^"]*)"/g;
   let attrMatch: RegExpExecArray | null;
   while ((attrMatch = attrRegex.exec(rootAttrs)) !== null) {
-    result[attrMatch[1]] = attrMatch[2];
+    result[attrMatch[1]!] = attrMatch[2];
   }
 
   return result;
@@ -360,7 +360,7 @@ for (let n = 0; n < 256; n++) {
 function computeCrc32(bytes: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of bytes) {
-    crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    crc = crcTable[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
   }
   return (crc ^ 0xffffffff) >>> 0;
 }

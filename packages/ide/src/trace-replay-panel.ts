@@ -14,13 +14,13 @@ export interface ReplayTraceData {
   status: "FALSIFIED" | "UNSAT" | "CERTIFIED_SAFE";
   times: number[];
   continuousSignals: Record<string, number[]>;
-  discreteSignals?: Record<string, (string | number | boolean)[]>;
-  violatingTimeIndex?: number;
-  violatingProperty?: string;
-  parameters?: Record<string, number>;
-  nominalSignals?: Record<string, number[]>;
-  divergenceTime?: number;
-  divergingVariable?: string;
+  discreteSignals?: Record<string, (string | number | boolean)[]> | undefined;
+  violatingTimeIndex?: number | undefined;
+  violatingProperty?: string | undefined;
+  parameters?: Record<string, number> | undefined;
+  nominalSignals?: Record<string, number[]> | undefined;
+  divergenceTime?: number | undefined;
+  divergingVariable?: string | undefined;
 }
 
 export class TraceReplayPanel {
@@ -28,10 +28,10 @@ export class TraceReplayPanel {
   public static readonly viewType = "modelscript.traceReplay";
 
   private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
-  private readonly _client?: LanguageClient;
+  public readonly _extensionUri: vscode.Uri;
+  private readonly _client?: LanguageClient | undefined;
   private _disposables: vscode.Disposable[] = [];
-  private _currentTrace?: ReplayTraceData;
+  private _currentTrace?: ReplayTraceData | undefined;
 
   public static createOrShow(extensionUri: vscode.Uri, client?: LanguageClient, trace?: ReplayTraceData) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
@@ -262,7 +262,7 @@ export class TraceReplayPanel {
 
     const rows = [headers.join(",")];
     for (let i = 0; i < trace.times.length; i++) {
-      const row: (string | number | boolean)[] = [trace.times[i]];
+      const row: (string | number | boolean)[] = [trace.times[i]!];
       for (const k of contKeys) row.push(trace.continuousSignals[k]?.[i] ?? "");
       for (const k of discKeys) row.push(trace.discreteSignals?.[k]?.[i] ?? "");
       rows.push(row.join(","));

@@ -57,10 +57,10 @@ interface PackageCoverage {
 interface CliOptions {
   searchDir: string;
   githubStepSummary: boolean;
-  outputLcov?: string;
-  outputJson?: string;
-  outputMd?: string;
-  threshold?: number;
+  outputLcov?: string | undefined;
+  outputJson?: string | undefined;
+  outputMd?: string | undefined;
+  threshold?: number | undefined;
   silent: boolean;
 }
 
@@ -453,9 +453,9 @@ export function main() {
     fs.writeFileSync(options.outputMd, md, "utf-8");
   }
 
-  if (options.githubStepSummary && process.env.GITHUB_STEP_SUMMARY) {
+  if (options.githubStepSummary && process.env["GITHUB_STEP_SUMMARY"]) {
     try {
-      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "\n" + md + "\n", "utf-8");
+      fs.appendFileSync(process.env["GITHUB_STEP_SUMMARY"], "\n" + md + "\n", "utf-8");
     } catch (err) {
       console.error("[consolidate-coverage] Failed to write to GITHUB_STEP_SUMMARY:", err);
     }

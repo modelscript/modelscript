@@ -64,7 +64,7 @@ export function serializeMemo(memo: Memo): Record<string, unknown> {
           : [],
   };
   if (memo.byNameLookups !== undefined) {
-    out.byNameLookups =
+    out["byNameLookups"] =
       memo.byNameLookups instanceof Set
         ? Array.from(memo.byNameLookups)
         : Array.isArray(memo.byNameLookups)
@@ -72,7 +72,7 @@ export function serializeMemo(memo: Memo): Record<string, unknown> {
           : [];
   }
   if ((memo as any).lookups !== undefined) {
-    out.lookups =
+    out["lookups"] =
       (memo as any).lookups instanceof Set
         ? Array.from((memo as any).lookups)
         : Array.isArray((memo as any).lookups)
@@ -80,7 +80,7 @@ export function serializeMemo(memo: Memo): Record<string, unknown> {
           : [];
   }
   if (memo.reverseDependencies !== undefined) {
-    out.reverseDependencies =
+    out["reverseDependencies"] =
       memo.reverseDependencies instanceof Set
         ? Array.from(memo.reverseDependencies)
         : Array.isArray(memo.reverseDependencies)

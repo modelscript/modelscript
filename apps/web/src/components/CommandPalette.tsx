@@ -24,7 +24,7 @@ interface CommandItem {
   id: string;
   category: "AI Copilot" | "Navigation" | "Actions" | "Users" | "Packages" | "Repositories";
   title: string;
-  subtitle?: string;
+  subtitle?: string | undefined;
   icon: React.ReactNode;
   action: () => void;
 }
@@ -222,19 +222,19 @@ const Footer = styled.div`
 
 interface UserCompletion {
   username: string;
-  display_name?: string;
+  display_name?: string | undefined;
 }
 
 interface PackageCompletion {
   name: string;
-  description?: string;
-  latestVersion?: string;
+  description?: string | undefined;
+  latestVersion?: string | undefined;
 }
 
 interface RepoCompletion {
-  id?: string;
-  project?: string;
-  name?: string;
+  id?: string | undefined;
+  project?: string | undefined;
+  name?: string | undefined;
   provider: string;
   namespace: string;
 }
@@ -242,7 +242,7 @@ interface RepoCompletion {
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenCompose?: () => void;
+  onOpenCompose?: (() => void) | undefined;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onOpenCompose }) => {
@@ -276,9 +276,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       try {
         const data = await getSearchCompletions(query, 6);
         const res = data as unknown as {
-          users?: UserCompletion[];
-          packages?: PackageCompletion[];
-          repositories?: RepoCompletion[];
+          users?: UserCompletion[] | undefined;
+          packages?: PackageCompletion[] | undefined;
+          repositories?: RepoCompletion[] | undefined;
         };
         setCompletions({
           users: res.users || [],
@@ -518,7 +518,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         action: () => {
           onClose();
           if (onOpenCompose) {
-            (onOpenCompose as (initial?: { content?: string }) => void)({ content: `/synthesize ${query}` });
+            (onOpenCompose as (initial?: { content?: string | undefined }) => void)({
+              content: `/synthesize ${query}`,
+            });
           } else {
             window.dispatchEvent(
               new CustomEvent("modelscript:open-compose", { detail: { content: `/synthesize ${query}` } }),
@@ -580,7 +582,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             </div>
           ) : (
             allItems.map((item, index) => {
-              const isFirstInCategory = index === 0 || allItems[index - 1].category !== item.category;
+              const isFirstInCategory = index === 0 || allItems[index - 1]!.category !== item.category;
               return (
                 <React.Fragment key={item.id}>
                   {isFirstInCategory && <CategoryHeader>{item.category}</CategoryHeader>}

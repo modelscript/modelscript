@@ -139,6 +139,40 @@ export class WasmStringPool implements IStringInterner {
     for (const kw of MODELICA_KEYWORDS) {
       this.intern(kw);
     }
+
+    // Pre-intern canonical BuiltinMathFunc names at deterministic IDs (56 + BuiltinMathFunc.*)
+    const BUILTIN_MATH_FUNCS = [
+      "sin", // 56 + 0
+      "cos", // 56 + 1
+      "tan", // 56 + 2
+      "asin", // 56 + 3
+      "acos", // 56 + 4
+      "atan", // 56 + 5
+      "atan2", // 56 + 6
+      "sinh", // 56 + 7
+      "cosh", // 56 + 8
+      "tanh", // 56 + 9
+      "exp", // 56 + 10
+      "log", // 56 + 11
+      "log10", // 56 + 12
+      "sqrt", // 56 + 13
+      "abs", // 56 + 14
+      "sign", // 56 + 15
+      "min", // 56 + 16
+      "max", // 56 + 17
+      "floor", // 56 + 18
+      "ceil", // 56 + 19
+      "mod", // 56 + 20
+      "pow", // 56 + 21
+      "noEvent", // 56 + 22
+      "smooth", // 56 + 23
+      "homotopy", // 56 + 24
+      "semiLinear", // 56 + 25
+    ];
+
+    for (const fn of BUILTIN_MATH_FUNCS) {
+      this.intern(fn);
+    }
   }
 
   private _internPredefined(s: string, expectedId: number) {

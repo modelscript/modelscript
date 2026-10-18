@@ -51,6 +51,9 @@ const VerifyEmailPage = React.lazy(() => import("./pages/VerifyEmailPage"));
 const TemplateDetailPage = React.lazy(() => import("./pages/TemplateDetailPage"));
 const WorkspacePage = React.lazy(() => import("./pages/WorkspacePage"));
 
+/**
+ * Skeleton loading placeholder rendered while lazy-loaded route bundles are fetched.
+ */
 function PageLoadingFallback() {
   return (
     <div
@@ -72,6 +75,10 @@ function PageLoadingFallback() {
   );
 }
 
+/**
+ * Global keyboard shortcut listener (`Cmd/Ctrl+K` command palette, `?` shortcuts modal,
+ * `/` search focus, and `g + <key>` chord navigation) and modal host.
+ */
 function GlobalModals() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = React.useState(false);
@@ -191,6 +198,9 @@ function GlobalModals() {
   );
 }
 
+/**
+ * Core ModelScript Hub React router and layout shell.
+ */
 function App() {
   const { theme } = useTheme();
   const { user, isLoading } = useAuth();
@@ -240,11 +250,14 @@ function App() {
                     <Route path="/bookmarks" element={<BookmarksPage />} />
                     <Route path="/feeds" element={<FeedsPage />} />
 
-                    {/* Package browser */}
+                    {/* Package browser (unscoped & @scope/name) */}
                     <Route path="/packages" element={<LibraryListPage />} />
                     <Route path="/packages/:name" element={<LibraryVersionPage />} />
+                    <Route path="/packages/:scope/:name" element={<LibraryVersionPage />} />
                     <Route path="/packages/:name/:version" element={<PackageDetailPage />} />
+                    <Route path="/packages/:scope/:name/:version" element={<PackageDetailPage />} />
                     <Route path="/packages/:name/:version/classes/:className" element={<ClassDetailPage />} />
+                    <Route path="/packages/:scope/:name/:version/classes/:className" element={<ClassDetailPage />} />
 
                     {/* ModelScript IDE Workbench */}
                     <Route
@@ -316,6 +329,10 @@ function App() {
   );
 }
 
+/**
+ * Top-level application wrapper providing theme, authentication, feature flag,
+ * and modeling preference contexts around {@link App}.
+ */
 function AppWithTheme() {
   return (
     <ThemeContextProvider>

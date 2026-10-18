@@ -15,7 +15,7 @@ export function lttbDecimate(data: { x: number; y: number }[], threshold: number
 
   // Always keep first point
   let aIdx = 0;
-  sampled.push(data[aIdx]);
+  sampled.push(data[aIdx]!);
 
   for (let i = 0; i < threshold - 2; i++) {
     // Calculate point average for next bucket (bucket C)
@@ -26,26 +26,26 @@ export function lttbDecimate(data: { x: number; y: number }[], threshold: number
     const cLen = cEnd - cStart;
     if (cLen > 0) {
       for (let c = cStart; c < cEnd; c++) {
-        avgX += data[c].x;
-        avgY += data[c].y;
+        avgX += data[c]!.x;
+        avgY += data[c]!.y;
       }
       avgX /= cLen;
       avgY /= cLen;
     } else {
-      avgX = data[Math.min(cStart, data.length - 1)].x;
-      avgY = data[Math.min(cStart, data.length - 1)].y;
+      avgX = data[Math.min(cStart, data.length - 1)]!.x;
+      avgY = data[Math.min(cStart, data.length - 1)]!.y;
     }
 
     // Find point in current bucket (bucket B) with maximum triangle area
     const bStart = Math.floor(i * bucketSize) + 1;
     const bEnd = Math.min(Math.floor((i + 1) * bucketSize) + 1, data.length);
 
-    const aPt = data[aIdx];
+    const aPt = data[aIdx]!;
     let maxArea = -1;
     let maxAreaIdx = bStart;
 
     for (let b = bStart; b < bEnd; b++) {
-      const bPt = data[b];
+      const bPt = data[b]!;
       // Area of triangle formed by A, B, and avg(C)
       const area = Math.abs((aPt.x - avgX) * (bPt.y - aPt.y) - (aPt.x - bPt.x) * (avgY - aPt.y)) * 0.5;
 
@@ -55,11 +55,11 @@ export function lttbDecimate(data: { x: number; y: number }[], threshold: number
       }
     }
 
-    sampled.push(data[maxAreaIdx]);
+    sampled.push(data[maxAreaIdx]!);
     aIdx = maxAreaIdx;
   }
 
   // Always keep last point
-  sampled.push(data[data.length - 1]);
+  sampled.push(data[data.length - 1]!);
   return sampled;
 }

@@ -13,7 +13,7 @@ export default function ProfilePosts({
   type = "posts",
 }: {
   username: string;
-  type?: "posts" | "replies" | "artifacts";
+  type?: "posts" | "replies" | "artifacts" | undefined;
 }) {
   const { token } = useAuth();
   const [posts, setPosts] = useState<PostItem[]>([]);

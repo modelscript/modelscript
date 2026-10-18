@@ -34,8 +34,8 @@ export interface LoweredDaeSystem {
 export interface DaeFlowpipeBridgeOptions {
   tSpan: [number, number];
   dt: number;
-  initialBounds?: Map<number, NumericalInterval>;
-  order?: number;
+  initialBounds?: Map<number, NumericalInterval> | undefined;
+  order?: number | undefined;
 }
 
 export class DaeFlowpipeBridge {
@@ -44,7 +44,7 @@ export class DaeFlowpipeBridge {
    */
   public static lowerDaeToSystem(
     arena: DAEBuilder,
-    options?: { stateVars?: Set<number>; algVars?: Set<number> },
+    options?: { stateVars?: Set<number> | undefined; algVars?: Set<number> | undefined },
   ): LoweredDaeSystem {
     const diffVarIndices: number[] = [];
     const algVarIndices: number[] = [];
@@ -55,6 +55,7 @@ export class DaeFlowpipeBridge {
     const algEqIndices: number[] = [];
 
     const _stateVarSet = options?.stateVars ?? new Set<number>();
+    void _stateVarSet;
     const algVarSet = options?.algVars ?? new Set<number>();
 
     // 1. Identify differential equations (der(x) = expr)

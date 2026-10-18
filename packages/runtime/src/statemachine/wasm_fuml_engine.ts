@@ -12,11 +12,18 @@
  *   - Reversible step execution (stepForward, stepBack, run, pause) for interactive IDE debugging
  */
 
+/** Unique numeric identifier for an activity node in the fUML graph. */
 export type NodeId = number;
+/** Unique numeric identifier for a control or object flow edge in the fUML graph. */
 export type EdgeId = number;
+/** Unique numeric identifier for an action input or output pin. */
 export type PinId = number;
+/** Unique numeric identifier for a runtime control or object token instance. */
 export type TokenId = number;
 
+/**
+ * Classification of executable fUML activity nodes.
+ */
 export enum ActivityNodeKind {
   Initial = 0,
   Action = 1,
@@ -28,24 +35,36 @@ export enum ActivityNodeKind {
   FlowFinal = 7,
 }
 
+/**
+ * Directionality of an `ActivityPin` attached to an `Action` node.
+ */
 export enum PinDirection {
   Input = 0,
   Output = 1,
 }
 
+/**
+ * Flow category of an `ActivityEdge` (control token routing vs. typed object token routing).
+ */
 export enum ActivityEdgeKind {
   Control = 0,
   Object = 1,
 }
 
+/**
+ * Represents a typed input or output pin attached to an fUML `Action` node.
+ */
 export interface ActivityPin {
   id: PinId;
   nodeId: NodeId;
   name: string;
   direction: PinDirection;
-  type?: string;
+  type?: string | undefined;
 }
 
+/**
+ * Represents a node in the executable fUML activity graph, including its incident edges, pins, and optional action callback.
+ */
 export interface ActivityNode {
   id: NodeId;
   name: string;
@@ -55,33 +74,47 @@ export interface ActivityNode {
   inputPins: PinId[];
   outputPins: PinId[];
   /** Optional behavior executed when an Action node fires */
-  behavior?: (inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined;
+  behavior?:
+    | ((inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined)
+    | undefined;
 }
 
+/**
+ * Represents a directed control or object flow edge between two activity nodes (and optional pins), with an optional boolean guard.
+ */
 export interface ActivityEdge {
   id: EdgeId;
-  name?: string;
+  name?: string | undefined;
   kind: ActivityEdgeKind;
   sourceNodeId: NodeId;
   targetNodeId: NodeId;
-  sourcePinId?: PinId;
-  targetPinId?: PinId;
+  sourcePinId?: PinId | undefined;
+  targetPinId?: PinId | undefined;
   /** Optional guard condition for decision routing */
-  guard?: (context: Record<string, any>, tokenValue?: any) => boolean;
+  guard?: ((context: Record<string, any>, tokenValue?: any) => boolean) | undefined;
 }
 
+/**
+ * Runtime control or object token flowing across nodes, pins, and edges during fUML execution.
+ */
 export interface Token {
   id: TokenId;
   kind: "control" | "object";
   value?: any;
 }
 
+/**
+ * Deep-cloned snapshot of the Petri-net token marking across all edges, pins, and nodes.
+ */
 export interface SerializedMarking {
   edgeTokens: Record<EdgeId, Token[]>;
   pinTokens: Record<PinId, Token[]>;
   nodeTokens: Record<NodeId, Token[]>;
 }
 
+/**
+ * Execution trace entry for a single discrete step, recording fired nodes, token movements, and pre/post state for reversible debugging.
+ */
 export interface StepRecord {
   stepIndex: number;
   firedNodes: { nodeId: NodeId; nodeName: string; kind: ActivityNodeKind }[];
@@ -89,14 +122,17 @@ export interface StepRecord {
     tokenId: TokenId;
     kind: "control" | "object";
     value?: any;
-    from?: string;
-    to?: string;
+    from?: string | undefined;
+    to?: string | undefined;
   }[];
   preMarking: SerializedMarking;
   preVariables: Record<string, any>;
   postVariables: Record<string, any>;
 }
 
+/**
+ * Result returned after advancing the fUML engine by a single discrete step.
+ */
 export interface StepResult {
   stepIndex: number;
   firedNodeIds: NodeId[];
@@ -105,6 +141,9 @@ export interface StepResult {
   activeTokenCount: number;
 }
 
+/**
+ * Summary returned after running an fUML activity to completion or step limit.
+ */
 export interface ExecutionSummary {
   totalSteps: number;
   status: "completed" | "terminated" | "suspended" | "max_steps_reached";
@@ -112,27 +151,47 @@ export interface ExecutionSummary {
   historyLength: number;
 }
 
+/**
+ * Discrete fUML activity and token-flow execution engine supporting Petri-net markings,
+ * structured control nodes, pin buffering, and reversible time-travel debugging (`stepForward`/`stepBack`).
+ */
 export class WasmFumlEngine {
+  /** Registered activity nodes indexed by `NodeId`. */
   private nodes: Map<NodeId, ActivityNode> = new Map();
+  /** Registered control and object edges indexed by `EdgeId`. */
   private edges: Map<EdgeId, ActivityEdge> = new Map();
+  /** Registered input and output pins indexed by `PinId`. */
   private pins: Map<PinId, ActivityPin> = new Map();
 
+  /** Lookup table mapping node names to their `NodeId`. */
   private nodeNameToId: Map<string, NodeId> = new Map();
+  /** Lookup table mapping qualified pin names (`"NodeName.pinName"`) to their `PinId`. */
   private pinNameToId: Map<string, PinId> = new Map();
 
+  /** Monotonically increasing counter for assigning `NodeId` values. */
   private nextNodeId: NodeId = 1;
+  /** Monotonically increasing counter for assigning `EdgeId` values. */
   private nextEdgeId: EdgeId = 1;
+  /** Monotonically increasing counter for assigning `PinId` values. */
   private nextPinId: PinId = 1;
+  /** Monotonically increasing counter for assigning runtime `TokenId` values. */
   private nextTokenId: TokenId = 1;
 
   // Active Execution State
+  /** Active tokens currently residing on each `EdgeId`. */
   private edgeTokens: Map<EdgeId, Token[]> = new Map();
+  /** Active object tokens currently buffered on each `PinId`. */
   private pinTokens: Map<PinId, Token[]> = new Map();
+  /** Active control tokens currently held at each `NodeId` (e.g., `Initial` nodes). */
   private nodeTokens: Map<NodeId, Token[]> = new Map();
 
+  /** Mutable execution context variables shared across action behaviors and edge guards. */
   private variables: Record<string, any> = {};
+  /** Chronological stack of `StepRecord` snapshots enabling `stepBack()` time-travel debugging. */
   private history: StepRecord[] = [];
+  /** Number of discrete execution steps completed in the current run. */
   private stepCounter = 0;
+  /** Current lifecycle status of the activity execution. */
   private status: "ready" | "running" | "suspended" | "completed" | "terminated" = "ready";
 
   /**
@@ -194,10 +253,10 @@ export class WasmFumlEngine {
     targetNodeId: NodeId,
     kind: ActivityEdgeKind = ActivityEdgeKind.Control,
     options?: {
-      name?: string;
-      sourcePinId?: PinId;
-      targetPinId?: PinId;
-      guard?: (context: Record<string, any>, tokenValue?: any) => boolean;
+      name?: string | undefined;
+      sourcePinId?: PinId | undefined;
+      targetPinId?: PinId | undefined;
+      guard?: ((context: Record<string, any>, tokenValue?: any) => boolean) | undefined;
     },
   ): EdgeId {
     const sourceNode = this.nodes.get(sourceNodeId);
@@ -231,18 +290,30 @@ export class WasmFumlEngine {
     return this.nodeNameToId.get(name);
   }
 
+  /**
+   * Retrieves an `ActivityNode` descriptor by its `NodeId`.
+   */
   getNode(id: NodeId): ActivityNode | undefined {
     return this.nodes.get(id);
   }
 
+  /**
+   * Returns an array of all registered `ActivityNode` descriptors in the activity graph.
+   */
   getAllNodes(): ActivityNode[] {
     return Array.from(this.nodes.values());
   }
 
+  /**
+   * Retrieves an `ActivityEdge` descriptor by its `EdgeId`.
+   */
   getEdge(id: EdgeId): ActivityEdge | undefined {
     return this.edges.get(id);
   }
 
+  /**
+   * Resolves a qualified pin name (`"NodeName.pinName"`) to its `PinId`.
+   */
   getPinId(qualifiedName: string): PinId | undefined {
     return this.pinNameToId.get(qualifiedName);
   }
@@ -502,7 +573,7 @@ export class WasmFumlEngine {
         for (const edgeId of node.incomingEdges) {
           const toks = this.edgeTokens.get(edgeId);
           if (toks && toks.length > 0) {
-            const token = toks[0];
+            const token = toks[0]!;
             const hasPassingGuard = node.outgoingEdges.some((outEdgeId) => {
               const outEdge = this.edges.get(outEdgeId)!;
               return !outEdge.guard || outEdge.guard(this.variables, token.value);
@@ -863,6 +934,7 @@ export class WasmFumlEngine {
     }
   }
 
+  /** Appends a token to the active token list on `edgeId`. */
   private pushEdgeToken(edgeId: EdgeId, token: Token): void {
     let list = this.edgeTokens.get(edgeId);
     if (!list) {
@@ -872,6 +944,7 @@ export class WasmFumlEngine {
     list.push(token);
   }
 
+  /** Appends an object token to the buffer on `pinId`. */
   private pushPinToken(pinId: PinId, token: Token): void {
     let list = this.pinTokens.get(pinId);
     if (!list) {
@@ -881,6 +954,7 @@ export class WasmFumlEngine {
     list.push(token);
   }
 
+  /** Computes the total number of active tokens currently held across all edges, pins, and nodes. */
   private countActiveTokens(): number {
     let count = 0;
     for (const list of this.edgeTokens.values()) count += list.length;
@@ -889,6 +963,7 @@ export class WasmFumlEngine {
     return count;
   }
 
+  /** Creates a deep-cloned `SerializedMarking` snapshot of all current edge, pin, and node tokens. */
   private serializeMarking(): SerializedMarking {
     const edgeTokens: Record<EdgeId, Token[]> = {};
     for (const [id, toks] of this.edgeTokens.entries()) {
@@ -908,6 +983,7 @@ export class WasmFumlEngine {
     return { edgeTokens, pinTokens, nodeTokens };
   }
 
+  /** Restores the active edge, pin, and node token maps from a previously captured `SerializedMarking`. */
   private restoreMarking(marking: SerializedMarking): void {
     this.edgeTokens.clear();
     for (const [k, v] of Object.entries(marking.edgeTokens)) {

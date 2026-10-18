@@ -16,9 +16,9 @@ export interface BlackBoxProblem {
   dimension: number;
   bounds: BlackBoxBounds;
   fitness: (x: Float64Array) => Promise<number> | number;
-  batchFitness?: (X: Float64Array[]) => Promise<number[]> | number[];
-  initialGuess?: Float64Array;
-  initialSigma?: number;
+  batchFitness?: ((X: Float64Array[]) => Promise<number[]> | number[]) | undefined;
+  initialGuess?: Float64Array | undefined;
+  initialSigma?: number | undefined;
 }
 
 export interface MultiObjectiveProblem {
@@ -26,16 +26,16 @@ export interface MultiObjectiveProblem {
   numObjectives: number;
   bounds: BlackBoxBounds;
   fitness: (x: Float64Array) => Promise<Float64Array> | Float64Array;
-  batchFitness?: (X: Float64Array[]) => Promise<Float64Array[]> | Float64Array[];
-  initialGuess?: Float64Array;
+  batchFitness?: ((X: Float64Array[]) => Promise<Float64Array[]> | Float64Array[]) | undefined;
+  initialGuess?: Float64Array | undefined;
 }
 
 export interface SingleObjectiveOptions {
-  maxGenerations?: number;
-  populationSize?: number;
-  tolerance?: number;
-  seed?: number;
-  onGeneration?: (gen: number, bestFitness: number, bestSolution: Float64Array) => void;
+  maxGenerations?: number | undefined;
+  populationSize?: number | undefined;
+  tolerance?: number | undefined;
+  seed?: number | undefined;
+  onGeneration?: ((gen: number, bestFitness: number, bestSolution: Float64Array) => void) | undefined;
 }
 
 export interface SingleObjectiveResult {
@@ -56,19 +56,19 @@ export interface MultiObjectiveCandidate {
 }
 
 export interface MultiObjectiveOptions {
-  maxGenerations?: number;
-  populationSize?: number;
-  crossoverProb?: number;
-  mutationProb?: number;
-  crossoverDistIndex?: number;
-  mutationDistIndex?: number;
-  seed?: number;
-  onGeneration?: (gen: number, paretoCount: number) => void;
+  maxGenerations?: number | undefined;
+  populationSize?: number | undefined;
+  crossoverProb?: number | undefined;
+  mutationProb?: number | undefined;
+  crossoverDistIndex?: number | undefined;
+  mutationDistIndex?: number | undefined;
+  seed?: number | undefined;
+  onGeneration?: ((gen: number, paretoCount: number) => void) | undefined;
 }
 
 export interface MultiObjectiveResult {
   paretoFront: MultiObjectiveCandidate[];
-  allCandidates?: MultiObjectiveCandidate[];
+  allCandidates?: MultiObjectiveCandidate[] | undefined;
   evaluations: number;
   iterations: number;
   message: string;
@@ -99,7 +99,7 @@ export async function evaluateBatchOrSingle(problem: BlackBoxProblem, candidates
     const res = await problem.batchFitness(candidates);
     return Array.from(res);
   }
-  const promises = candidates.map((c) => problem.fitness(c));
+  const promises = candidates.map((c) => Promise.resolve(problem.fitness(c)));
   return Promise.all(promises);
 }
 
@@ -115,6 +115,6 @@ export async function evaluateMultiObjectiveBatchOrSingle(
     const res = await problem.batchFitness(candidates);
     return res;
   }
-  const promises = candidates.map((c) => problem.fitness(c));
+  const promises = candidates.map((c) => Promise.resolve(problem.fitness(c)));
   return Promise.all(promises);
 }

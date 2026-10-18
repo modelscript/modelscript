@@ -55,6 +55,7 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
     let currentMesh: Tet4Mesh | null = null;
     let currentMaterial: MaterialProperties | null = null;
     let currentNodeIdToIdx = new Map<number, number>();
+    let currentSurfaceIndices: number[] = [];
 
     const parseAndSendDeck = async () => {
       if (disposed) return;
@@ -119,10 +120,10 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
           const faceMap = new Map<string, { count: number; face: [number, number, number] }>();
           for (let e = 0; e < numElems; e++) {
             const base = e * nodesPerElem;
-            const n0 = elements[base + 0];
-            const n1 = elements[base + 1];
-            const n2 = elements[base + 2];
-            const n3 = elements[base + 3];
+            const n0 = elements[base + 0]!;
+            const n1 = elements[base + 1]!;
+            const n2 = elements[base + 2]!;
+            const n3 = elements[base + 3]!;
 
             const faces: [number, number, number][] = [
               [n0, n2, n1],
@@ -174,6 +175,7 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
           webviewPanel.webview.postMessage({ type: "inpMeshData", data: payload });
           webviewPanel.webview.postMessage({ type: "setLoading", data: false });
         }
+        currentSurfaceIndices = payload.indices;
       } catch (err: any) {
         console.warn("[InpEditorProvider] Failed to parse deck:", err);
         if (!disposed) {
@@ -252,19 +254,19 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
             const numNodes = currentMesh.numNodes;
             const nodalStress = new Float64Array(numNodes);
             const nodeElemCount = new Int32Array(numNodes);
-            const npe = currentMesh.nodesPerElement;
+            const npe = currentMesh.nodesPerElement ?? 4;
 
             for (let e = 0; e < currentMesh.numElements; e++) {
-              const s = stepResult.elementVonMises[e];
+              const s = stepResult.elementVonMises[e]!;
               const base = e * npe;
               for (let i = 0; i < npe; i++) {
-                const n = currentMesh.elements[base + i];
-                nodalStress[n] += s;
-                nodeElemCount[n]++;
+                const n = currentMesh.elements[base + i]!;
+                nodalStress[n] = nodalStress[n]! + s;
+                nodeElemCount[n] = nodeElemCount[n]! + 1;
               }
             }
             for (let n = 0; n < numNodes; n++) {
-              if (nodeElemCount[n] > 0) nodalStress[n] /= nodeElemCount[n];
+              if (nodeElemCount[n]! > 0) nodalStress[n] = nodalStress[n]! / nodeElemCount[n]!;
             }
 
             // Displacement magnitudes
@@ -275,7 +277,10 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
               time: 0,
               geometry: {
                 positions: Array.from(currentMesh.nodeCoords),
-                indices: Array.from(currentMesh.elements.slice(0, currentMesh.numElements * 3)),
+                indices:
+                  currentSurfaceIndices.length > 0
+                    ? currentSurfaceIndices
+                    : Array.from(currentMesh.elements.slice(0, currentMesh.numElements * 3)),
               },
               fields: {
                 vonMisesStress: Array.from(stepResult.nodalVonMises ?? nodalStress),
@@ -500,7 +505,7 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
                 });
 
                 const baselineEval = surrogate.evaluate({ loadScale: 1.0, youngsModulus: 210e9 });
-                const predictedMaxStressMpa = (baselineEval.scalarOutputs.maxStress ?? 214.2e6) / 1e6;
+                const predictedMaxStressMpa = (baselineEval.scalarOutputs["maxStress"] ?? 214.2e6) / 1e6;
                 const stressThresholdMpa = 250.0;
                 const isSatisfied = predictedMaxStressMpa <= stressThresholdMpa;
                 const marginPercent = ((stressThresholdMpa - predictedMaxStressMpa) / stressThresholdMpa) * 100;

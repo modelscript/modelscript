@@ -325,7 +325,7 @@ export class DimensionalTheoryOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     // Check that all aliased variables share the identical dimension (O(V) using root map)
     const rootDims = new Map<string, { varName: string; dim: DimensionVector }>();
     for (const [varA, dimA] of this.varDimensions.entries()) {

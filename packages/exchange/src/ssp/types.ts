@@ -73,8 +73,8 @@ export interface SspParameterBinding {
 
 /** Default experiment annotation. */
 export interface SspDefaultExperiment {
-  startTime?: number;
-  stopTime?: number;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
 }
 
 /** Root system structure from SystemStructure.ssd. */

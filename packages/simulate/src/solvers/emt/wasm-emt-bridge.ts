@@ -12,18 +12,18 @@ import { getDefaultWasmExports } from "@modelscript/runtime";
 export interface WasmEmtBranchDef {
   from: number;
   to: number;
-  r?: number;
-  l?: number;
-  c?: number;
+  r?: number | undefined;
+  l?: number | undefined;
+  c?: number | undefined;
 }
 
 export interface WasmEmtSourceDef {
   node: number;
   vPeakKv: number;
   freqHz: number;
-  phaseRad?: number;
-  gSource?: number;
-  isDc?: boolean;
+  phaseRad?: number | undefined;
+  gSource?: number | undefined;
+  isDc?: boolean | undefined;
 }
 
 export interface WasmEmtSimulationResult {
@@ -42,7 +42,7 @@ export class WasmEmtBridge {
   private readonly memory: WebAssembly.Memory;
   private readonly solverPtr: number;
   private readonly nNodes: number;
-  private readonly dt: number;
+  public readonly dt: number;
 
   private trajectoryPtr: number = 0;
   private maxTrajectorySteps: number = 0;
@@ -127,12 +127,12 @@ export class WasmEmtBridge {
     fromNode: number,
     toNode: number,
     options?: {
-      rClosedOhm?: number;
-      rOpenOhm?: number;
-      closedInitially?: boolean;
-      openTimeSec?: number;
-      closeTimeSec?: number;
-      choppingCurrentAmp?: number;
+      rClosedOhm?: number | undefined;
+      rOpenOhm?: number | undefined;
+      closedInitially?: boolean | undefined;
+      openTimeSec?: number | undefined;
+      closeTimeSec?: number | undefined;
+      choppingCurrentAmp?: number | undefined;
     },
   ): number {
     const gClosed = 1.0 / Math.max(1e-6, options?.rClosedOhm ?? 1e-3);
@@ -179,20 +179,20 @@ export class WasmEmtBridge {
     nodeC: number;
     sBaseMva: number;
     vBaseKvLL: number;
-    freqHz?: number;
-    xd?: number;
-    xq?: number;
-    xdPrime?: number;
-    xqPrime?: number;
-    xdSub?: number;
-    td0Prime?: number;
-    tq0Prime?: number;
-    td0Sub?: number;
-    tq0Sub?: number;
-    hInertia?: number;
-    dampingD?: number;
-    pmPu?: number;
-    efPu?: number;
+    freqHz?: number | undefined;
+    xd?: number | undefined;
+    xq?: number | undefined;
+    xdPrime?: number | undefined;
+    xqPrime?: number | undefined;
+    xdSub?: number | undefined;
+    td0Prime?: number | undefined;
+    tq0Prime?: number | undefined;
+    td0Sub?: number | undefined;
+    tq0Sub?: number | undefined;
+    hInertia?: number | undefined;
+    dampingD?: number | undefined;
+    pmPu?: number | undefined;
+    efPu?: number | undefined;
   }): number {
     return this.wasm.emt_add_sync_machine(
       this.solverPtr,
@@ -247,15 +247,15 @@ export class WasmEmtBridge {
     nodeC: number;
     nodeDcPos: number;
     nodeDcNeg: number;
-    mode?: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin";
-    freqHz?: number;
-    modulationIndex?: number;
-    firingAngleDeg?: number;
-    nSubmodulesPerArm?: number;
-    cSubmoduleFarad?: number;
-    vSmInitVolts?: number;
-    lArmHenry?: number;
-    rArmOhm?: number;
+    mode?: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" | undefined;
+    freqHz?: number | undefined;
+    modulationIndex?: number | undefined;
+    firingAngleDeg?: number | undefined;
+    nSubmodulesPerArm?: number | undefined;
+    cSubmoduleFarad?: number | undefined;
+    vSmInitVolts?: number | undefined;
+    lArmHenry?: number | undefined;
+    rArmOhm?: number | undefined;
   }): number {
     const modeCode = options.mode === "lcc_6pulse" ? 2 : options.mode === "mmc_thevenin" ? 3 : 1;
     return this.wasm.emt_add_converter_bridge(
@@ -297,17 +297,17 @@ export class WasmEmtBridge {
     nodeC: number;
     sBaseMva: number;
     vBaseKvLL: number;
-    freqHz?: number;
-    rsPu?: number;
-    xsPu?: number;
-    xmPu?: number;
-    rrPu?: number;
-    xrPu?: number;
-    hInertia?: number;
-    dampingD?: number;
-    tmLoadPu?: number;
-    isDfig?: boolean;
-    crowbarThresholdPu?: number;
+    freqHz?: number | undefined;
+    rsPu?: number | undefined;
+    xsPu?: number | undefined;
+    xmPu?: number | undefined;
+    rrPu?: number | undefined;
+    xrPu?: number | undefined;
+    hInertia?: number | undefined;
+    dampingD?: number | undefined;
+    tmLoadPu?: number | undefined;
+    isDfig?: boolean | undefined;
+    crowbarThresholdPu?: number | undefined;
   }): number {
     return this.wasm.emt_add_induction_machine(
       this.solverPtr,
@@ -369,8 +369,8 @@ export class WasmEmtBridge {
     toNode: number;
     gInf: number;
     tauSec: number;
-    yPoles?: { pole: number; residue: number }[];
-    hPoles?: { pole: number; residue: number }[];
+    yPoles?: { pole: number; residue: number }[] | undefined;
+    hPoles?: { pole: number; residue: number }[] | undefined;
   }): number {
     const yPoles = options.yPoles ?? [];
     const hPoles = options.hPoles ?? [];
@@ -446,17 +446,17 @@ export class WasmEmtBridge {
       | "cmp"
       | "node_v_sensor"
       | "branch_i_sensor";
-    in1?: number;
-    in2?: number;
-    k1?: number;
-    k2?: number;
-    t1?: number;
-    t2?: number;
-    p0?: number;
-    p1?: number;
-    p2?: number;
-    minOut?: number;
-    maxOut?: number;
+    in1?: number | undefined;
+    in2?: number | undefined;
+    k1?: number | undefined;
+    k2?: number | undefined;
+    t1?: number | undefined;
+    t2?: number | undefined;
+    p0?: number | undefined;
+    p1?: number | undefined;
+    p2?: number | undefined;
+    minOut?: number | undefined;
+    maxOut?: number | undefined;
   }): number {
     const typeMap: Record<string, number> = {
       const: 0,
@@ -517,11 +517,11 @@ export class WasmEmtBridge {
     nodeA: number;
     nodeB: number;
     nodeC: number;
-    vBaseKvLL?: number;
-    vBasePeak?: number;
-    fNomHz?: number;
-    kp?: number;
-    ki?: number;
+    vBaseKvLL?: number | undefined;
+    vBasePeak?: number | undefined;
+    fNomHz?: number | undefined;
+    kp?: number | undefined;
+    ki?: number | undefined;
   }): number {
     const vBaseKvLL =
       options.vBaseKvLL ??

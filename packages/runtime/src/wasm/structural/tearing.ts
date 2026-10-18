@@ -53,20 +53,34 @@ import { UnmanagedMap64, createMap64 } from "../core/hashmap";
  */
 @unmanaged
 export class TornBlock {
+  /** Total number of equations and variables in the strongly connected component (SCC). */
   blockSize: u32;
+  /** Number of selected tearing (iteration) variables $k$. */
   nTear: u32;
+  /** Number of explicitly causalized inner variables $N - k$. */
   nInner: u32;
 
+  /** Indices of the $k$ tearing variables iterated by the outer Newton-Raphson solver. */
   tearVarIndices: ChunkedInt32Array;
+  /** Ordered sequence of $N - k$ inner variable indices evaluated explicitly along the forward chain. */
   innerVarIndices: ChunkedInt32Array;
+  /** Ordered sequence of $N - k$ inner equation indices solved sequentially for `innerVarIndices`. */
   innerEqIndices: ChunkedInt32Array;
+  /** Indices of the $k$ residual constraint equations evaluated to drive the tearing iteration. */
   residualEqIndices: ChunkedInt32Array;
 
+  /** Returns the chunked array of tearing variable indices. */
   @inline getTearVarIndices(): ChunkedInt32Array { return this.tearVarIndices; }
+  /** Returns the chunked array of inner forward-chain variable indices. */
   @inline getInnerVarIndices(): ChunkedInt32Array { return this.innerVarIndices; }
+  /** Returns the chunked array of inner forward-chain equation indices. */
   @inline getInnerEqIndices(): ChunkedInt32Array { return this.innerEqIndices; }
+  /** Returns the chunked array of residual equation indices. */
   @inline getResidualEqIndices(): ChunkedInt32Array { return this.residualEqIndices; }
 
+  /**
+   * Initializes the torn block metadata and allocates unmanaged index arrays.
+   */
   init(): void {
     this.blockSize = 0;
     this.nTear = 0;
@@ -109,53 +123,115 @@ export function createTornBlock(
     return torn;
   }
 
-  // Minimum Degree Heuristic:
-  // Select tearing variable with lowest non-zero incidence degree
-  let minDegree: u32 = 0xffffffff;
-  let selectedTearVar: u32 = varIndices[0];
-  let selectedTearIdx: u32 = 0;
+  // Allocate incidence matrix (n * n bytes) + varAssigned (n) + eqUsed (n) + isTearVar (n)
+  let totalBytes = n * n + 3 * n;
+  let tmpPtr = atomicChunkAlloc(totalBytes);
+  memory.fill(tmpPtr, 0, totalBytes);
+  let incPtr = tmpPtr;
+  let varAssignedPtr = incPtr + n * n;
+  let eqUsedPtr = varAssignedPtr + n;
+  let isTearVarPtr = eqUsedPtr + n;
 
-  for (let i: u32 = 0; i < n; i++) {
-    let varIdx = varIndices[i];
-    let degree: u32 = 0;
-
-    for (let j: u32 = 0; j < n; j++) {
-      let eqIdx = eqIndices[j];
-      let eqOffset = eqIdx * EQ_STRIDE;
-      let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
-      let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
+  for (let e: u32 = 0; e < n; e++) {
+    let eqIdx = eqIndices[e];
+    let eqOffset = eqIdx * EQ_STRIDE;
+    let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
+    let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
+    for (let v: u32 = 0; v < n; v++) {
+      let varIdx = varIndices[v];
       if (exprContainsVar(dae, lhs, varIdx) || exprContainsVar(dae, rhs, varIdx)) {
-        degree++;
+        store<u8>(incPtr + e * n + v, 1);
       }
-    }
-
-    if (degree > 0 && degree < minDegree) {
-      minDegree = degree;
-      selectedTearVar = varIdx;
-      selectedTearIdx = i;
     }
   }
 
-  // Register tearing variable
-  torn.getTearVarIndices().push(selectedTearVar as i32);
-  torn.nTear = 1;
+  let assignedCount: u32 = 0;
+  while (assignedCount < n) {
+    // 1. Greedy forward causalization once at least one tearing variable has broken a cycle
+    let progress = true;
+    while (progress && torn.nTear > 0) {
+      progress = false;
+      let bestE: i32 = -1;
+      let bestV: i32 = -1;
+      let bestScore: i32 = -1;
 
-  let offset = selectedTearVar * VAR_STRIDE;
-  let curFlags = dae.getVarData().get(offset + VAR_FLAGS);
-  dae.getVarData().set(offset + VAR_FLAGS, curFlags | FLAG_TEARING_VAR);
+      for (let e: u32 = 0; e < n; e++) {
+        if (load<u8>(eqUsedPtr + e) != 0) continue;
+        let unassignedCount: u32 = 0;
+        let lastV: u32 = 0;
+        for (let v: u32 = 0; v < n; v++) {
+          if (load<u8>(varAssignedPtr + v) == 0 && load<u8>(incPtr + e * n + v) != 0) {
+            unassignedCount++;
+            lastV = v;
+          }
+        }
+        if (unassignedCount == 1) {
+          let score: i32 = load<u8>(isTearVarPtr + e) == 0 ? 1 : 0;
+          if (e == lastV) score += 2;
+          let eqIdx = eqIndices[e];
+          let lhs = dae.getEqData().get(eqIdx * EQ_STRIDE + EQ_LHS) as u32;
+          if (lhs < dae.exprCount && dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
+            let rawV = dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_DATA1) as u32;
+            if (rawV >= dae.varCount) {
+              let res = dae.lookupVariableByName(rawV);
+              if (res >= 0) rawV = res as u32;
+            }
+            if (rawV == varIndices[lastV]) score += 4;
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestE = e as i32;
+            bestV = lastV as i32;
+          }
+        }
+      }
 
-  // Partition the remaining equations into inner forward chain and residual
-  // Equations 0 to n-2 -> Inner chain; Equation n-1 -> Residual equation
-  for (let i: u32 = 0; i < n; i++) {
-    let vIdx = varIndices[i];
-    let eIdx = eqIndices[i];
+      if (bestE >= 0 && bestV >= 0) {
+        store<u8>(eqUsedPtr + (bestE as u32), 1);
+        store<u8>(varAssignedPtr + (bestV as u32), 1);
+        torn.getInnerVarIndices().push(varIndices[bestV as u32] as i32);
+        torn.getInnerEqIndices().push(eqIndices[bestE as u32] as i32);
+        torn.nInner++;
+        assignedCount++;
+        progress = true;
+      }
+    }
 
-    if (i != selectedTearIdx) {
-      torn.getInnerVarIndices().push(vIdx as i32);
-      torn.getInnerEqIndices().push(eIdx as i32);
-      torn.nInner++;
-    } else {
-      torn.getResidualEqIndices().push(eIdx as i32);
+    if (assignedCount >= n) break;
+
+    // 2. Select next tearing variable to break remaining cycle(s)
+    let bestTearIdx: u32 = 0;
+    let bestDegree: i32 = -1;
+    for (let v: u32 = 0; v < n; v++) {
+      if (load<u8>(varAssignedPtr + v) != 0) continue;
+      let degree: i32 = 0;
+      for (let e: u32 = 0; e < n; e++) {
+        if (load<u8>(eqUsedPtr + e) == 0 && load<u8>(incPtr + e * n + v) != 0) {
+          degree++;
+        }
+      }
+      if (degree > bestDegree) {
+        bestDegree = degree;
+        bestTearIdx = v;
+      }
+    }
+
+    let selectedTearVar = varIndices[bestTearIdx];
+    store<u8>(varAssignedPtr + bestTearIdx, 1);
+    store<u8>(isTearVarPtr + bestTearIdx, 1);
+    torn.getTearVarIndices().push(selectedTearVar as i32);
+    torn.nTear++;
+    assignedCount++;
+
+    let offset = selectedTearVar * VAR_STRIDE;
+    let curFlags = dae.getVarData().get(offset + VAR_FLAGS);
+    dae.getVarData().set(offset + VAR_FLAGS, curFlags | FLAG_TEARING_VAR);
+  }
+
+  // Remaining unused equations form the k residual equations
+  for (let e: u32 = 0; e < n; e++) {
+    if (load<u8>(eqUsedPtr + e) == 0) {
+      torn.getResidualEqIndices().push(eqIndices[e] as i32);
     }
   }
 
@@ -272,10 +348,28 @@ export function evalInnerChain(dae: DaeBuilder, torn: TornBlock, varValuesPtr: u
 
     if (lhs < dae.exprCount && dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
       let targetV = dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_DATA1) as u32;
-      if (targetV == varIdx) {
+      if (targetV >= dae.varCount) {
+        let resolved = dae.lookupVariableByName(targetV);
+        if (resolved >= 0) targetV = resolved as u32;
+      }
+      if (targetV == varIdx && !exprContainsVar(dae, rhs, varIdx)) {
         // Direct assignment: x_inner = RHS
         let rhsVal = evalExpr(rhs, dae, varValuesPtr);
         varValues[varIdx] = rhsVal;
+        continue;
+      }
+    }
+
+    if (rhs < dae.exprCount && dae.getExprData().get(rhs * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
+      let targetV = dae.getExprData().get(rhs * EXPR_STRIDE + EXPR_DATA1) as u32;
+      if (targetV >= dae.varCount) {
+        let resolved = dae.lookupVariableByName(targetV);
+        if (resolved >= 0) targetV = resolved as u32;
+      }
+      if (targetV == varIdx && !exprContainsVar(dae, lhs, varIdx)) {
+        // Direct assignment: LHS = x_inner
+        let lhsVal = evalExpr(lhs, dae, varValuesPtr);
+        varValues[varIdx] = lhsVal;
         continue;
       }
     }
@@ -442,23 +536,40 @@ export function solveTornBlock(
 // Exported C/WASM Bridge Functions & Incremental Tearing Cache
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Unmanaged hash cache mapping 64-bit structural SCC hashes to pre-computed `TornBlock` pointers.
+ * Enables incremental reuse of tearing partitions across minor model edits.
+ */
 @unmanaged
 export class TearingCache {
+  /** Underlying 64-bit key-to-pointer hash map in WebAssembly linear memory. */
   map: UnmanagedMap64;
 
+  /**
+   * Initializes the tearing cache with the specified bucket capacity.
+   */
   init(capacity: u32 = 256): void {
     this.map = changetype<UnmanagedMap64>(createMap64(capacity));
   }
 
+  /**
+   * Looks up a cached `TornBlock` pointer by its 64-bit structural SCC hash, returning 0 on miss.
+   */
   get(sccHash: u64): u32 {
     return this.map.get(sccHash);
   }
 
+  /**
+   * Inserts or updates a `TornBlock` pointer for the given 64-bit structural SCC hash.
+   */
   set(sccHash: u64, tornBlockPtr: u32): void {
     this.map.set(sccHash, tornBlockPtr);
   }
 }
 
+/**
+ * Allocates and initializes a new incremental `TearingCache` in WebAssembly linear memory.
+ */
 export function dae_createTearingCache(capacity: u32 = 256): u32 {
   let ptr = atomicChunkAlloc(offsetof<TearingCache>());
   let cache = changetype<TearingCache>(ptr);
@@ -466,6 +577,10 @@ export function dae_createTearingCache(capacity: u32 = 256): u32 {
   return ptr as u32;
 }
 
+/**
+ * Retrieves a cached `TornBlock` for the given 64-bit SCC hash (`sccHashHi:sccHashLo`),
+ * or computes and caches a new tearing partition if not found.
+ */
 export function dae_getOrCacheTornBlock(
   cachePtr: u32,
   sccHashHi: u32,
@@ -490,11 +605,17 @@ export function dae_getOrCacheTornBlock(
   return resPtr;
 }
 
+/**
+ * Computes a `TornBlock` partition for an SCC block of size `n` and returns its linear memory pointer.
+ */
 export function dae_createTornBlock(daePtr: u32, eqIndicesPtr: u32, varIndicesPtr: u32, n: u32): u32 {
   let block = createTornBlock(changetype<DaeBuilder>(daePtr), eqIndicesPtr, varIndicesPtr, n);
   return changetype<usize>(block) as u32;
 }
 
+/**
+ * Solves a `TornBlock` algebraic loop in-place using damped Newton-Raphson iteration on the tearing variables.
+ */
 export function dae_solveTornBlock(daePtr: u32, tornBlockPtr: u32, varValuesPtr: u32, scratchPtr: u32): bool {
   return solveTornBlock(changetype<DaeBuilder>(daePtr), changetype<TornBlock>(tornBlockPtr), varValuesPtr, scratchPtr);
 }

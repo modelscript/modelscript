@@ -15,7 +15,7 @@ export interface WritebackContext {
   /** Optional Salsa query engine or workspace index */
   queryEngine?: any;
   /** Document URI */
-  uri?: string;
+  uri?: string | undefined;
 }
 
 /**
@@ -29,9 +29,9 @@ export interface WritebackEdit {
   /** End byte/character offset in the document */
   endByte: number;
   /** Start character offset in the document */
-  startOffset?: number;
+  startOffset?: number | undefined;
   /** End character offset in the document */
-  endOffset?: number;
+  endOffset?: number | undefined;
   /** Replacement text to insert across [startByte, endByte] */
   newText: string;
 }
@@ -50,13 +50,13 @@ export interface WritebackConfig {
    * Declarative name of the CST field holding the value/initializer expression
    * (e.g. 'value', 'expression', 'initializer', 'defaultValue').
    */
-  valueField?: string;
+  valueField?: string | undefined;
   /**
    * Declarative assignment operators recognized in this language (e.g. ['=', ':=']).
    */
-  operators?: string[];
+  operators?: string[] | undefined;
   /**
    * Custom writeback handler function implemented by the language package.
    */
-  handler?: WritebackHandler;
+  handler?: WritebackHandler | undefined;
 }

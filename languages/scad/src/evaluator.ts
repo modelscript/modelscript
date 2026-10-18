@@ -48,10 +48,17 @@ import {
   type Vec3,
 } from "@modelscript/cad";
 
+/**
+ * Options for configuring an OpenSCAD evaluation run, such as externally injected variables.
+ */
 export interface ScadEvaluationOptions {
-  variables?: Record<string, any>;
+  /** Optional map of initial variable bindings (e.g., synchronized from Modelica parameters). */
+  variables?: Record<string, any> | undefined;
 }
 
+/**
+ * Standard named color palette mapped to normalized RGBA `[r, g, b, a]` tuples in `[0, 1]`.
+ */
 const NAMED_COLORS: Record<string, [number, number, number, number]> = {
   red: [0.9, 0.2, 0.2, 1],
   green: [0.2, 0.8, 0.3, 1],
@@ -69,6 +76,10 @@ const NAMED_COLORS: Record<string, [number, number, number, number]> = {
   steelblue: [0.27, 0.51, 0.71, 1],
 };
 
+/**
+ * Parses an OpenSCAD `color()` argument (named color string, hex string, or RGB/RGBA array)
+ * into a normalized `[r, g, b, a]` tuple with components clamped to `[0, 1]`.
+ */
 function parseScadColor(arg0: any, alphaArg?: any): [number, number, number, number] | undefined {
   const alpha = typeof alphaArg === "number" ? Math.max(0, Math.min(1, alphaArg)) : undefined;
   if (typeof arg0 === "string") {
@@ -105,6 +116,9 @@ function parseScadColor(arg0: any, alphaArg?: any): [number, number, number, num
   return undefined;
 }
 
+/**
+ * Returns a shallow frozen copy of `solid` with an updated RGBA `color` attached to `sourceMetadata`.
+ */
 function withSolidColor(solid: Solid, color?: [number, number, number, number]): Solid {
   if (!color) return solid;
   return Object.freeze({
@@ -116,6 +130,9 @@ function withSolidColor(solid: Solid, color?: [number, number, number, number]):
   }) as Solid;
 }
 
+/**
+ * Hierarchical lexical environment storing OpenSCAD variables, functions, and modules.
+ */
 class Scope {
   public variables = new Map<string, any>();
   public functions = new Map<string, { params: string[]; defaults: Map<string, any>; bodyNode: any; scope: Scope }>();
@@ -127,6 +144,9 @@ class Scope {
     }
   }
 
+  /**
+   * Initializes OpenSCAD special variables (`$fn`, `$fa`, `$fs`, `$t`) and `PI` in the root scope.
+   */
   private initBuiltins(): void {
     this.variables.set("$fn", 32);
     this.variables.set("$fa", 12);
@@ -135,22 +155,34 @@ class Scope {
     this.variables.set("PI", Math.PI);
   }
 
+  /**
+   * Resolves a variable value by walking up the lexical scope chain.
+   */
   getVar(name: string): any {
     if (this.variables.has(name)) return this.variables.get(name);
     if (this.parent) return this.parent.getVar(name);
     return undefined;
   }
 
+  /**
+   * Binds or updates a variable in the current scope.
+   */
   setVar(name: string, val: any): void {
     this.variables.set(name, val);
   }
 
+  /**
+   * Resolves a user-defined function signature by walking up the scope chain.
+   */
   getFunc(name: string): { params: string[]; defaults: Map<string, any>; bodyNode: any; scope: Scope } | undefined {
     if (this.functions.has(name)) return this.functions.get(name);
     if (this.parent) return this.parent.getFunc(name);
     return undefined;
   }
 
+  /**
+   * Resolves a user-defined module signature by walking up the scope chain.
+   */
   getModule(name: string): { params: string[]; defaults: Map<string, any>; bodyNode: any; scope: Scope } | undefined {
     if (this.modules.has(name)) return this.modules.get(name);
     if (this.parent) return this.parent.getModule(name);
@@ -158,6 +190,9 @@ class Scope {
   }
 }
 
+/**
+ * Applies OpenSCAD intrinsic XYZ Euler angle rotations (`[rx, ry, rz]` in degrees) sequentially to a solid.
+ */
 function applyEulerRotation(solid: Solid, rot: Vec3, sourceMeta?: SolidSourceMetadata): Solid {
   let s = solid;
   if (rot[0]) s = rotate(s, [1, 0, 0], rot[0], sourceMeta);
@@ -169,6 +204,9 @@ function applyEulerRotation(solid: Solid, rot: Vec3, sourceMeta?: SolidSourceMet
   return s;
 }
 
+/**
+ * Interpreter that evaluates OpenSCAD CST nodes into `@modelscript/cad` CSG `Solid` trees.
+ */
 export class ScadEvaluator {
   private globalScope: Scope;
 
@@ -197,16 +235,19 @@ export class ScadEvaluator {
     const solids = this.evaluateParts(rootNode);
 
     if (solids.length === 0) return null;
-    if (solids.length === 1) return solids[0];
+    if (solids.length === 1) return solids[0]!;
 
     // Combine multiple top-level solids via union
-    let acc = solids[0];
+    let acc = solids[0]!;
     for (let i = 1; i < solids.length; i++) {
-      acc = union(acc, solids[i]);
+      acc = union(acc, solids[i]!);
     }
     return acc;
   }
 
+  /**
+   * Evaluates all child statements of a block or root node in order, appending resulting solids to `outSolids`.
+   */
   private evaluateStatements(containerNode: any, scope: Scope, outSolids: Solid[]): void {
     for (let i = 0; i < containerNode.childCount; i++) {
       const stmt = containerNode.child(i);
@@ -215,6 +256,9 @@ export class ScadEvaluator {
     }
   }
 
+  /**
+   * Dispatches evaluation for a single statement node (declarations, control flow, prefix or chained solids).
+   */
   private evaluateStatement(stmtNode: any, scope: Scope, outSolids: Solid[]): void {
     const type = stmtNode.type;
 
@@ -315,6 +359,10 @@ export class ScadEvaluator {
     if (solid) outSolids.push(solid);
   }
 
+  /**
+   * Evaluates a fluent method-chained solid expression (`cube(...).translate(...).fillet(...)`),
+   * recording source byte ranges on each transformation step for interactive 3D gizmo writeback.
+   */
   private evaluateChainedSolid(chainedNode: any, scope: Scope): Solid | null {
     const primaryNode = this.findChildByType(chainedNode, "PrimarySolid");
     if (!primaryNode) return null;
@@ -350,6 +398,10 @@ export class ScadEvaluator {
     return currentSolid;
   }
 
+  /**
+   * Applies a single fluent CAD transformation or feature operation (`fillet`, `chamfer`, `translate`,
+   * `rotate`, `scale`, `mirror`, `color`) to `target`.
+   */
   private applyMethod(
     target: Solid,
     method: string,
@@ -397,12 +449,19 @@ export class ScadEvaluator {
     }
   }
 
+  /**
+   * Unwraps a `PrimarySolid` CST node and evaluates its underlying primitive or module call.
+   */
   private evaluatePrimarySolid(primaryNode: any, scope: Scope): Solid | null {
     const inner = primaryNode.child(0);
     if (!inner) return null;
     return this.tryEvaluateSolid(inner, scope);
   }
 
+  /**
+   * Evaluates a prefix-style OpenSCAD operation (`linear_extrude`, `tag_port`, `union`, `difference`,
+   * `intersection`, `translate`, `rotate`, `scale`, `mirror`, `color`) applied to a child statement or block.
+   */
   private evaluatePrefixSolid(prefixNode: any, scope: Scope): Solid | null {
     const opNode =
       this.findChildByType(prefixNode, "TransformOp") ??
@@ -427,7 +486,7 @@ export class ScadEvaluator {
       const childSolids: Solid[] = [];
       this.evaluateStatement(childNode, scope, childSolids);
       if (childSolids.length > 0) {
-        const first = childSolids[0];
+        const first = childSolids[0]!;
         if (first.kind === SolidKind.Extrusion) {
           return linearExtrude(first.polygon, height, {
             twist,
@@ -456,9 +515,9 @@ export class ScadEvaluator {
         ? [rawNorm[0] ?? 0, rawNorm[1] ?? 0, rawNorm[2] ?? 1]
         : undefined;
 
-      let combinedChild = childSolids[0];
+      let combinedChild = childSolids[0]!;
       for (let i = 1; i < childSolids.length; i++) {
-        combinedChild = union(combinedChild, childSolids[i]);
+        combinedChild = union(combinedChild, childSolids[i]!);
       }
       return tagPatch(combinedChild, { portName, portType, normal });
     }
@@ -466,23 +525,23 @@ export class ScadEvaluator {
     // 2. BooleanOp: union, difference, intersection
     if (opNode.type === "BooleanOp" || /^(union|difference|intersection)/.test(opText)) {
       if (opText.startsWith("union")) {
-        let acc = childSolids[0];
+        let acc = childSolids[0]!;
         for (let i = 1; i < childSolids.length; i++) {
-          acc = union(acc, childSolids[i]);
+          acc = union(acc, childSolids[i]!);
         }
         return acc;
       }
       if (opText.startsWith("difference")) {
-        let acc = childSolids[0];
+        let acc = childSolids[0]!;
         for (let i = 1; i < childSolids.length; i++) {
-          acc = subtract(acc, childSolids[i]);
+          acc = subtract(acc, childSolids[i]!);
         }
         return acc;
       }
       if (opText.startsWith("intersection")) {
-        let acc = childSolids[0];
+        let acc = childSolids[0]!;
         for (let i = 1; i < childSolids.length; i++) {
-          acc = intersect(acc, childSolids[i]);
+          acc = intersect(acc, childSolids[i]!);
         }
         return acc;
       }
@@ -492,9 +551,9 @@ export class ScadEvaluator {
     const argListNode = this.findChildByType(opNode, "ArgumentList");
     const args = this.evaluateArgumentList(argListNode, scope);
 
-    let combinedChild = childSolids[0];
+    let combinedChild = childSolids[0]!;
     for (let i = 1; i < childSolids.length; i++) {
-      combinedChild = union(combinedChild, childSolids[i]);
+      combinedChild = union(combinedChild, childSolids[i]!);
     }
 
     if (opText.startsWith("color")) {
@@ -551,8 +610,13 @@ export class ScadEvaluator {
     return combinedChild;
   }
 
+  /**
+   * Collects all `IDENTIFIER` token texts within a subtree, using fast zero-allocation
+   * WASM linear-memory traversal when available.
+   */
   private collectIdentifiers(node: any): string[] {
     const list: string[] = [];
+    // Fast path: walk WASM linear-memory CST directly without allocating intermediate wrapper nodes
     if (node && typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
       const mem32: Uint32Array = node.tree.mem32;
       const syntaxNames: string[] = node.tree.facade.syntaxNames;
@@ -620,6 +684,10 @@ export class ScadEvaluator {
     return list;
   }
 
+  /**
+   * Evaluates a 3D/2D primitive (`cube`, `cylinder`, `sphere`, `polyhedron`, `polygon`, `square`, `circle`)
+   * or user-defined `ModuleInstantiation` into a `Solid` with attached source metadata.
+   */
   private tryEvaluateSolid(node: any, scope: Scope): Solid | null {
     const type = node.type;
 
@@ -857,7 +925,7 @@ export class ScadEvaluator {
 
       const modScope = new Scope(modDef.scope);
       for (let i = 0; i < modDef.params.length; i++) {
-        const pName = modDef.params[i];
+        const pName = modDef.params[i]!;
         let val = args.positional[i];
         if (val === undefined && args.named.has(pName)) val = args.named.get(pName);
         if (val === undefined && modDef.defaults.has(pName)) val = modDef.defaults.get(pName);
@@ -867,11 +935,11 @@ export class ScadEvaluator {
       const modSolids: Solid[] = [];
       this.evaluateStatement(modDef.bodyNode, modScope, modSolids);
       if (modSolids.length === 0) return null;
-      if (modSolids.length === 1) return modSolids[0];
+      if (modSolids.length === 1) return modSolids[0]!;
 
-      let acc = modSolids[0];
+      let acc = modSolids[0]!;
       for (let i = 1; i < modSolids.length; i++) {
-        acc = union(acc, modSolids[i]);
+        acc = union(acc, modSolids[i]!);
       }
       return acc;
     }
@@ -881,6 +949,10 @@ export class ScadEvaluator {
 
   // ── Expressions ──────────────────────────────────────────────────────────
 
+  /**
+   * Evaluates an OpenSCAD expression CST node (literals, vectors, ranges, arithmetic, conditionals,
+   * built-in math/vector/string functions, and user-defined function calls) within `scope`.
+   */
   public evaluateExpression(exprNode: any, scope: Scope): any {
     const type = exprNode.type;
 
@@ -1097,15 +1169,125 @@ export class ScadEvaluator {
             return Math.ceil(x);
           case "round":
             return Math.round(x);
+          case "ln":
+            return Math.log(x);
+          case "log":
+            return Math.log10(x);
+          case "exp":
+            return Math.exp(x);
+          case "sign":
+            return Math.sign(x);
           case "len":
-            return Array.isArray(x) ? x.length : 0;
+            return Array.isArray(x) || typeof x === "string" ? x.length : 0;
+          case "norm":
+            return Array.isArray(x) ? Math.hypot(...x.map((v: any) => Number(v) || 0)) : Math.abs(Number(x) || 0);
+          case "cross": {
+            const b = args.positional[1];
+            if (Array.isArray(x) && Array.isArray(b)) {
+              if (x.length === 3 && b.length === 3) {
+                return [x[1] * b[2] - x[2] * b[1], x[2] * b[0] - x[0] * b[2], x[0] * b[1] - x[1] * b[0]];
+              }
+              if (x.length === 2 && b.length === 2) {
+                return x[0] * b[1] - x[1] * b[0];
+              }
+            }
+            return [0, 0, 0];
+          }
+          case "concat": {
+            const out: any[] = [];
+            for (const item of args.positional) {
+              if (Array.isArray(item)) out.push(...item);
+              else if (item !== undefined) out.push(item);
+            }
+            return out;
+          }
+          case "lookup": {
+            const key = Number(x);
+            const table = args.positional[1];
+            if (!Array.isArray(table) || table.length === 0) return 0;
+            const sorted = [...table]
+              .filter((row) => Array.isArray(row) && row.length >= 2)
+              .sort((a, b) => Number(a[0]) - Number(b[0]));
+            if (sorted.length === 0) return 0;
+            if (key <= Number(sorted[0][0])) return Number(sorted[0][1]);
+            if (key >= Number(sorted[sorted.length - 1][0])) return Number(sorted[sorted.length - 1][1]);
+            for (let i = 0; i < sorted.length - 1; i++) {
+              const x0 = Number(sorted[i][0]);
+              const y0 = Number(sorted[i][1]);
+              const x1 = Number(sorted[i + 1][0]);
+              const y1 = Number(sorted[i + 1][1]);
+              if (key >= x0 && key <= x1) {
+                if (x1 === x0) return y0;
+                return y0 + ((key - x0) / (x1 - x0)) * (y1 - y0);
+              }
+            }
+            return 0;
+          }
+          case "str":
+            return args.positional.map((v) => (v === undefined ? "undef" : String(v))).join("");
+          case "chr":
+            return args.positional
+              .flat()
+              .map((code) => String.fromCharCode(Number(code) || 0))
+              .join("");
+          case "ord":
+            return typeof x === "string" && x.length > 0 ? x.charCodeAt(0) : undefined;
+          case "search": {
+            const matchVal = x;
+            const target = args.positional[1];
+            if (typeof matchVal === "string" && typeof target === "string") {
+              const idx = target.indexOf(matchVal);
+              return idx >= 0 ? [idx] : [];
+            }
+            if (Array.isArray(target)) {
+              const indices: number[] = [];
+              for (let i = 0; i < target.length; i++) {
+                const elem = target[i];
+                if (elem === matchVal || (Array.isArray(elem) && elem[0] === matchVal)) {
+                  indices.push(i);
+                  break;
+                }
+              }
+              return indices;
+            }
+            return [];
+          }
+          case "version":
+            return [2024, 1, 0];
+          case "version_num":
+            return 20240100;
+          case "is_undef":
+            return x === undefined;
+          case "is_bool":
+            return typeof x === "boolean";
+          case "is_num":
+            return typeof x === "number" && !Number.isNaN(x);
+          case "is_string":
+            return typeof x === "string";
+          case "is_list":
+            return Array.isArray(x);
+          case "is_function":
+            return typeof x === "function";
+          case "rands": {
+            const minVal = Number(x) || 0;
+            const maxVal = Number(args.positional[1]) || 1;
+            const count = Math.max(0, Math.floor(Number(args.positional[2]) || 0));
+            let seed = Number(args.positional[3] ?? 12345) || 12345;
+            const out: number[] = [];
+            for (let i = 0; i < count; i++) {
+              seed = (seed * 1664525 + 1013904223) >>> 0;
+              const u = seed / 0xffffffff;
+              out.push(minVal + u * (maxVal - minVal));
+            }
+            return out;
+          }
         }
 
         const userFunc = scope.getFunc(funcName);
         if (userFunc) {
           const fnScope = new Scope(userFunc.scope);
           for (let i = 0; i < userFunc.params.length; i++) {
-            const p = userFunc.params[i];
+            const p = userFunc.params[i]!;
             let v = args.positional[i];
             if (v === undefined && args.named.has(p)) v = args.named.get(p);
             if (v === undefined && userFunc.defaults.has(p)) v = userFunc.defaults.get(p);
@@ -1126,6 +1308,9 @@ export class ScadEvaluator {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
+  /**
+   * Evaluates an `ArgumentList` CST node into positional values and named `key = value` bindings.
+   */
   private evaluateArgumentList(argListNode: any, scope: Scope): { positional: any[]; named: Map<string, any> } {
     const positional: any[] = [];
     const named = new Map<string, any>();
@@ -1147,6 +1332,9 @@ export class ScadEvaluator {
     return { positional, named };
   }
 
+  /**
+   * Parses a `ParameterList` CST node into ordered parameter names and evaluated default values.
+   */
   private parseParameters(paramListNode: any, scope: Scope): { params: string[]; defaults: Map<string, any> } {
     const params: string[] = [];
     const defaults = new Map<string, any>();
@@ -1170,6 +1358,10 @@ export class ScadEvaluator {
     return { params, defaults };
   }
 
+  /**
+   * Finds the first direct child node matching `targetType`, utilizing WASM linear-memory
+   * pointer traversal when uncached to avoid allocating sibling CST node wrappers.
+   */
   private findChildByType(node: any, targetType: string): any {
     if (!node) return null;
     if (

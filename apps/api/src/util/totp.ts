@@ -69,7 +69,7 @@ export function generateTotpSecret(numBytes: number = 20): string {
 /**
  * Generates an otpauth://totp/... URI suitable for scanning in standard authenticator apps.
  */
-export function generateTotpUri(options: { accountName: string; issuer?: string; secret: string }): string {
+export function generateTotpUri(options: { accountName: string; issuer?: string | undefined; secret: string }): string {
   const issuer = options.issuer || "ModelScript";
   const account = options.accountName;
   const secret = options.secret;
@@ -177,7 +177,7 @@ export function generateBackupCodes(count: number = 10): {
 export function verifyAndConsumeBackupCode(
   inputCode: string,
   storedHashedCodes: string[],
-): { valid: boolean; matchedHash?: string; remainingHashes: string[] } {
+): { valid: boolean; matchedHash?: string | undefined; remainingHashes: string[] } {
   if (!inputCode || !Array.isArray(storedHashedCodes) || storedHashedCodes.length === 0) {
     return { valid: false, remainingHashes: storedHashedCodes || [] };
   }

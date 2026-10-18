@@ -223,7 +223,7 @@ export function computeSysML2ElementInsert(
       // Find the last closing `}` in the document (end of the outermost package body)
       targetLine = -1;
       for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].trim() === "}") {
+        if (lines[i]!.trim() === "}") {
           targetLine = i;
           break;
         }
@@ -299,7 +299,7 @@ export function computeSysML2ElementDelete(docText: string, elementNames: string
     }
   } else {
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+      const line = lines[i]!.trim();
       if (line.startsWith("connection") && line.includes("connect")) {
         for (const name of nameSet) {
           if (line.includes(name)) {
@@ -330,7 +330,7 @@ function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: a
   if (elementName) {
     let declLine = -1;
     for (let i = 0; i < lines.length; i++) {
-      if (new RegExp(`\\b${elementName}\\b`).test(lines[i])) {
+      if (new RegExp(`\\b${elementName}\\b`).test(lines[i]!)) {
         declLine = i;
         break;
       }
@@ -338,7 +338,7 @@ function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: a
     if (declLine !== -1) {
       let depth = 0;
       for (let i = declLine; i < lines.length; i++) {
-        const line = lines[i];
+        const line = lines[i]!;
         for (const ch of line) {
           if (ch === "{") depth++;
           else if (ch === "}") {
@@ -354,7 +354,7 @@ function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: a
 
   // Fallback: search backwards for the last closing brace
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].trim() === "}") {
+    if (lines[i]!.trim() === "}") {
       return i;
     }
   }
@@ -456,7 +456,7 @@ export function computeSysML2ConnectionDelete(docText: string, source: string, t
 
   // Fallback: line scanning
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = lines[i]!.trim();
     if (
       line.includes("connect") &&
       ((line.includes(source) && line.includes(target)) || (line.includes(target) && line.includes(source)))
@@ -507,8 +507,8 @@ export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: s
     }
   }
 
-  if (tree && (tree as Record<string, unknown>).rootNode) {
-    findName((tree as Record<string, unknown>).rootNode);
+  if (tree && (tree as Record<string, unknown>)["rootNode"]) {
+    findName((tree as Record<string, unknown>)["rootNode"]);
   }
 
   if (edits.length === 0) {
@@ -529,7 +529,7 @@ export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: s
 // ── Update Component Description ──
 
 export function computeSysML2DescriptionEdit(
-  tree: unknown,
+  _tree: unknown,
   docText: string,
   elementName: string,
   newDescription: string,
@@ -544,9 +544,9 @@ export function computeSysML2DescriptionEdit(
 
   // Check if there is an existing doc inside the element body
   for (let i = startLine; i <= endLine; i++) {
-    if (lines[i].includes("doc /*") || lines[i].match(/^\s*doc\s+/)) {
-      const docStart = lines[i].indexOf("doc");
-      const docEndIdx = lines[i].indexOf("*/");
+    if (lines[i]!.includes("doc /*") || lines[i]!.match(/^\s*doc\s+/)) {
+      const docStart = lines[i]!.indexOf("doc");
+      const docEndIdx = lines[i]!.indexOf("*/");
       if (docEndIdx !== -1) {
         edits.push(TextEdit.replace(Range.create(i, docStart, i, docEndIdx + 2), docString));
         return edits;
@@ -555,7 +555,7 @@ export function computeSysML2DescriptionEdit(
   }
 
   // If no existing doc, if it's a block with `{`, insert after `{`
-  const declLine = lines[startLine];
+  const declLine = lines[startLine]!;
   if (declLine.includes("{")) {
     const braceCol = declLine.indexOf("{");
     edits.push(
@@ -577,7 +577,7 @@ export function computeSysML2DescriptionEdit(
 // ── Update Component Parameter ──
 
 export function computeSysML2ParameterEdit(
-  tree: unknown,
+  _tree: unknown,
   docText: string,
   elementName: string,
   parameterName: string,
@@ -591,12 +591,12 @@ export function computeSysML2ParameterEdit(
   let paramLineIdx = -1;
   // A common syntax for redefinition in usages is `:>> param = value;`
   for (let i = startLine; i <= endLine; i++) {
-    if (lines[i].includes(`:>> ${parameterName}`) || lines[i].includes(` ${parameterName} =`)) {
+    if (lines[i]!.includes(`:>> ${parameterName}`) || lines[i]!.includes(` ${parameterName} =`)) {
       paramLineIdx = i;
       // E.g. `:>> p = 6;`
-      const match = lines[i].match(new RegExp(`(:>>\\s*${escapeRegex(parameterName)}\\s*=\\s*)[^;]+(;)`));
+      const match = lines[i]!.match(new RegExp(`(:>>\\s*${escapeRegex(parameterName)}\\s*=\\s*)[^;]+(;)`));
       if (match) {
-        const repStart = lines[i].indexOf(match[0]);
+        const repStart = lines[i]!.indexOf(match[0]);
         edits.push(
           TextEdit.replace(
             Range.create(i, repStart, i, repStart + match[0].length),
@@ -610,7 +610,7 @@ export function computeSysML2ParameterEdit(
 
   // Insert if missing
   if (paramLineIdx === -1) {
-    const declLine = lines[startLine];
+    const declLine = lines[startLine]!;
     const paramStr = `:>> ${parameterName} = ${newValue};`;
     if (declLine.includes("{")) {
       const braceCol = declLine.indexOf("{");
@@ -702,7 +702,7 @@ function findElementRange(lines: string[], name: string): { startLine: number; e
   ];
 
   for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
+    const trimmed = lines[i]!.trim();
     for (const kw of keywords) {
       // Match: keyword name { or keyword name ;
       const pattern = new RegExp(`^${kw.replace(/ /g, "\\s+")}\\s+${escapeRegex(name)}\\s*[{;]`);
@@ -727,7 +727,7 @@ function findElementRange(lines: string[], name: string): { startLine: number; e
 function findStatementRange(lines: string[], startLine: number): { startLine: number; endLine: number } {
   let endLine = startLine;
   // Walk backwards to find statement start (if the current line is a continuation)
-  let line = lines[startLine].trim();
+  let line = lines[startLine]!.trim();
   while (
     startLine > 0 &&
     !line.match(
@@ -735,14 +735,14 @@ function findStatementRange(lines: string[], startLine: number): { startLine: nu
     )
   ) {
     startLine--;
-    line = lines[startLine].trim();
+    line = lines[startLine]!.trim();
   }
 
   // Walk forward to find the statement end (`;` or matching `}`)
   if (lines[endLine]?.trim().includes("{")) {
     endLine = findMatchingBrace(lines, endLine);
   } else {
-    while (endLine < lines.length - 1 && !lines[endLine].trim().endsWith(";")) {
+    while (endLine < lines.length - 1 && !lines[endLine]!.trim().endsWith(";")) {
       endLine++;
     }
   }
@@ -756,7 +756,7 @@ function findStatementRange(lines: string[], startLine: number): { startLine: nu
 function findMatchingBrace(lines: string[], startLine: number): number {
   let depth = 0;
   for (let i = startLine; i < lines.length; i++) {
-    for (const ch of lines[i]) {
+    for (const ch of lines[i]!) {
       if (ch === "{") depth++;
       if (ch === "}") {
         depth--;
@@ -772,7 +772,7 @@ function findMatchingBrace(lines: string[], startLine: number): number {
  */
 function getIndentAt(lines: string[], line: number): string {
   if (line < 0 || line >= lines.length) return INDENT;
-  return lines[line].match(/^(\s*)/)?.[1] ?? "";
+  return lines[line]!.match(/^(\s*)/)?.[1] ?? "";
 }
 
 /**
@@ -793,7 +793,7 @@ function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
 
   return edits.filter((edit, i) => {
     if (i === 0) return true;
-    const prev = edits[i - 1];
+    const prev = edits[i - 1]!;
     return !(
       edit.range.start.line < prev.range.end.line ||
       (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)

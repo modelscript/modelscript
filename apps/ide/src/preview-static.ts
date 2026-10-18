@@ -8,7 +8,7 @@ import express from "express";
 import { resolve } from "path";
 
 const __dirname = import.meta.dirname;
-const PORT = parseInt(process.env.PORT || "3000", 10);
+const PORT = parseInt(process.env["PORT"] || "3000", 10);
 const STATIC_DIR = resolve(__dirname, "..", "dist", "static");
 
 const app = express();

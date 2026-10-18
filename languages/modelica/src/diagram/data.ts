@@ -126,8 +126,8 @@ function collectAllConnectEquations(ci: ModelicaClassInstance, visited = new Set
       result.push(...collectAllConnectEquations(base, visited));
     }
   }
-  if (ci.connectEquations) {
-    result.push(...ci.connectEquations);
+  if (ci["connectEquations"]) {
+    result.push(...ci["connectEquations"]);
   }
   return result;
 }
@@ -189,7 +189,7 @@ export function inferModelicaDomainColor(
     let compTypeName = "";
     if (classInstance && compName) {
       const comp = (classInstance.components || []).find((c: any) => c.name === compName);
-      compTypeName = (comp?.typeName || comp?.className || comp?.name || "").toLowerCase();
+      compTypeName = (comp?.["typeName"] || comp?.["className"] || comp?.name || "").toLowerCase();
     }
     const combined = `${port} ${compTypeName}`;
 
@@ -200,11 +200,11 @@ export function inferModelicaDomainColor(
         compTypeName.includes("thermal") ||
         compTypeName.includes("heat")
       ) {
-        return MSL_DOMAIN_COLORS.thermal;
+        return MSL_DOMAIN_COLORS["thermal"];
       }
     }
     if (port.includes("heat") || port.includes("thermal")) {
-      return MSL_DOMAIN_COLORS.thermal;
+      return MSL_DOMAIN_COLORS["thermal"];
     }
     if (
       port.includes("flange_b") ||
@@ -215,24 +215,24 @@ export function inferModelicaDomainColor(
       port.includes("housing")
     ) {
       if (port.includes("translat") || compTypeName.includes("translat")) {
-        return MSL_DOMAIN_COLORS.translational;
+        return MSL_DOMAIN_COLORS["translational"];
       }
-      return MSL_DOMAIN_COLORS.rotational;
+      return MSL_DOMAIN_COLORS["rotational"];
     }
     if (port.includes("translat")) {
-      return MSL_DOMAIN_COLORS.translational;
+      return MSL_DOMAIN_COLORS["translational"];
     }
     if (port.includes("fluid") || port.includes("flow") || port.includes("inlet") || port.includes("outlet")) {
-      return MSL_DOMAIN_COLORS.fluid;
+      return MSL_DOMAIN_COLORS["fluid"];
     }
     if (port.includes("mag") || port.includes("flux")) {
-      return MSL_DOMAIN_COLORS.magnetic;
+      return MSL_DOMAIN_COLORS["magnetic"];
     }
     if (port.includes("bool") || port.includes("boolean")) {
-      return MSL_DOMAIN_COLORS.control;
+      return MSL_DOMAIN_COLORS["control"];
     }
     if (port.includes("pin") || port === "p" || port === "n" || port.includes("plug") || port.includes("terminal")) {
-      return MSL_DOMAIN_COLORS.electrical;
+      return MSL_DOMAIN_COLORS["electrical"];
     }
     return null;
   };
@@ -243,7 +243,7 @@ export function inferModelicaDomainColor(
     const c2 = checkStr(target);
     if (c2) return c2;
   }
-  return MSL_DOMAIN_COLORS.default;
+  return MSL_DOMAIN_COLORS["default"]!;
 }
 
 export async function buildDiagramData(classInstance: ModelicaClassInstance): Promise<DiagramData> {
@@ -534,10 +534,10 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         const p2 =
           eq.rhs ?? eq.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
         if (typeof p1 === "string" && p1.startsWith(`${component.name}.`)) {
-          referencedPorts.add(p1.substring(component.name.length + 1).split(".")[0]);
+          referencedPorts.add(p1.substring(component.name.length + 1).split(".")[0]!);
         }
         if (typeof p2 === "string" && p2.startsWith(`${component.name}.`)) {
-          referencedPorts.add(p2.substring(component.name.length + 1).split(".")[0]);
+          referencedPorts.add(p2.substring(component.name.length + 1).split(".")[0]!);
         }
       }
       if (referencedPorts.size === 0) {
@@ -574,9 +574,9 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         const connectorClassInstance = connector.classInstance;
         if (
           !connectorClassInstance ||
-          (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
-            connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
-            connectorClassInstance.classKind !== undefined)
+          (connectorClassInstance["classKind"] !== ModelicaClassKind.CONNECTOR &&
+            connectorClassInstance["classKind"] !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+            connectorClassInstance["classKind"] !== undefined)
         )
           continue;
         const connectorTransform = computePortPlacement(connector);
@@ -843,8 +843,8 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   function collectGraphics(ci: ModelicaClassInstance) {
     const extendsList = ci?.extendsClassInstances ?? [];
     for (const extendsClassInstance of extendsList) {
-      if (extendsClassInstance?.classInstance) {
-        collectGraphics(extendsClassInstance.classInstance);
+      if (extendsClassInstance?.["classInstance"]) {
+        collectGraphics(extendsClassInstance["classInstance"]);
       }
     }
     const diagram: IDiagram | null = typeof ci?.annotation === "function" ? ci.annotation("Diagram", ci) : null;
@@ -950,11 +950,11 @@ export function renderIconX6(
   let modKey = "";
   if (componentInstance) {
     if (componentInstance.name) modKey += `|${componentInstance.name}`;
-    if (componentInstance.modification) {
+    if (componentInstance["modification"]) {
       try {
-        modKey += `|${JSON.stringify(componentInstance.modification)}`;
+        modKey += `|${JSON.stringify(componentInstance["modification"])}`;
       } catch {
-        modKey += `|${String(componentInstance.modification)}`;
+        modKey += `|${String(componentInstance["modification"])}`;
       }
     }
   }
@@ -989,8 +989,8 @@ export function renderIconX6(
   const extendsList = classInstance.extendsClassInstances ?? [];
   let renderedBaseIcon = false;
   for (const extendsClassInstance of extendsList) {
-    if (extendsClassInstance.classInstance && svg.children) {
-      svg.children.push(renderIconX6(extendsClassInstance.classInstance, componentInstance, ports, localDefs));
+    if (extendsClassInstance["classInstance"] && svg.children) {
+      svg.children.push(renderIconX6(extendsClassInstance["classInstance"], componentInstance, ports, localDefs));
       renderedBaseIcon = true;
     } else if (
       extendsClassInstance.name &&
@@ -1011,19 +1011,19 @@ export function renderIconX6(
   const hasAnnotationFn = typeof classInstance.annotation === "function";
   const ownIcon: IIcon | null = hasExtends
     ? hasAnnotationFn
-      ? classInstance.annotation("Icon", {
+      ? classInstance.annotation?.("Icon", {
           ...(typeof componentInstance === "object" ? componentInstance : {}),
           ownOnly: true,
         })
       : null
     : hasAnnotationFn
-      ? classInstance.annotation("Icon", componentInstance)
+      ? classInstance.annotation?.("Icon", componentInstance)
       : null;
   const icon: IIcon | null =
-    ownIcon ?? (hasExtends || !hasAnnotationFn ? null : classInstance.annotation("Icon", componentInstance));
+    ownIcon ?? (hasExtends || !hasAnnotationFn ? null : classInstance.annotation?.("Icon", componentInstance));
   const coordSys =
     ownIcon?.coordinateSystem ??
-    (hasAnnotationFn ? classInstance.annotation("Icon", componentInstance)?.coordinateSystem : null);
+    (hasAnnotationFn ? classInstance.annotation?.("Icon", componentInstance)?.coordinateSystem : null);
 
   if (isRoot) {
     applyCoordinateSystemX6(svg, coordSys, true);
@@ -1055,9 +1055,9 @@ export function renderIconX6(
       const connectorClassInstance = component.classInstance;
       if (
         !connectorClassInstance ||
-        (connectorClassInstance.classKind !== ModelicaClassKind.CONNECTOR &&
-          connectorClassInstance.classKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
-          connectorClassInstance.classKind !== undefined)
+        (connectorClassInstance["classKind"] !== ModelicaClassKind.CONNECTOR &&
+          connectorClassInstance["classKind"] !== ModelicaClassKind.EXPANDABLE_CONNECTOR &&
+          connectorClassInstance["classKind"] !== undefined)
       )
         continue;
 
@@ -1194,7 +1194,7 @@ function renderBitmapX6(graphicItem: IBitmap, defs: X6Markup[], classInstance?: 
   const shape: X6Markup = {
     tagName: "image",
     attrs: {
-      href,
+      href: href ?? "",
       width: computeWidth(graphicItem.extent),
       height: computeHeight(graphicItem.extent),
       x,
@@ -1233,7 +1233,7 @@ function renderLineX6(graphicItem: ILine): X6Markup {
     } else {
       shape = {
         tagName: "polyline",
-        attrs: { points: graphicItem.points?.map((p: IPoint) => convertPoint(p, [0, 0]) ?? []).join(" ") },
+        attrs: { points: graphicItem.points?.map((p: IPoint) => convertPoint(p, [0, 0]) ?? []).join(" ") ?? "" },
       };
     }
   } else {
@@ -1262,7 +1262,7 @@ function renderPolygonX6(graphicItem: IPolygon, defs: X6Markup[]): X6Markup {
   } else {
     shape = {
       tagName: "polygon",
-      attrs: { points: graphicItem.points?.map((p: IPoint) => convertPoint(p, [0, 0]) ?? []).join(" ") },
+      attrs: { points: graphicItem.points?.map((p: IPoint) => convertPoint(p, [0, 0]) ?? []).join(" ") ?? "" },
     };
   }
   renderFilledShapeX6(shape, graphicItem, defs);
@@ -1277,7 +1277,7 @@ function renderRectangleX6(graphicItem: IRectangle, defs: X6Markup[]): X6Markup 
   const width = computeWidth(graphicItem.extent);
   const height = computeHeight(graphicItem.extent);
 
-  const rawRadius = graphicItem.radius ?? (graphicItem as { cornerRadius?: number }).cornerRadius ?? 0;
+  const rawRadius = graphicItem.radius ?? (graphicItem as { cornerRadius?: number | undefined }).cornerRadius ?? 0;
   let d: string;
 
   if (rawRadius > 0) {
@@ -1329,8 +1329,8 @@ export function evalMacroCondition(
     if (c.includes(op)) {
       const parts = c.split(op).map((s) => s.trim());
       if (parts.length === 2) {
-        const lhs = stripQuotes(evaluateMacroExpression(parts[0], classInstance, componentInstance));
-        const rhs = stripQuotes(evaluateMacroExpression(parts[1], classInstance, componentInstance));
+        const lhs = stripQuotes(evaluateMacroExpression(parts[0]!, classInstance, componentInstance));
+        const rhs = stripQuotes(evaluateMacroExpression(parts[1]!, classInstance, componentInstance));
         let res = false;
         if (op === "==") res = lhs === rhs;
         else if (op === "!=") res = lhs !== rhs;
@@ -1472,7 +1472,7 @@ export function evaluateMacroExpression(
 
   const name = trimmed.startsWith("%") ? trimmed.slice(1) : trimmed;
   // 1. Check if the specific component instance overrides this parameter
-  const compArgExpr = (componentInstance?.modification as any)?.getModificationArgument?.(name)?.expression;
+  const compArgExpr = (componentInstance?.["modification"] as any)?.getModificationArgument?.(name)?.expression;
   let compVal = formatPropertyValue(compArgExpr);
   if (!compVal) {
     const compCst = (componentInstance as any)?.cstNode ?? (componentInstance as any)?.abstractSyntaxNode;
@@ -1489,7 +1489,7 @@ export function evaluateMacroExpression(
   }
 
   const namedElement =
-    typeof classInstance?.resolveName === "function" ? classInstance.resolveName(name.split(".")) : null;
+    typeof classInstance?.["resolveName"] === "function" ? classInstance["resolveName"](name.split(".")) : null;
 
   // 2. Check if the class provides a default value for this parameter
   const elemMod = (namedElement as any)?.modification;
@@ -1513,7 +1513,7 @@ export function evaluateMacroExpression(
 
   let unitString = "";
   if (namedElement && "classInstance" in namedElement) {
-    const mod = (namedElement as ModelicaComponentInstance).classInstance?.modification as any;
+    const mod = (namedElement as ModelicaComponentInstance).classInstance?.["modification"] as any;
     const unitExpr = mod?.getModificationArgument?.("unit")?.expression;
     const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
     if (rawUnit) unitString = " " + formatUnit(rawUnit);
@@ -1546,7 +1546,9 @@ function renderTextX6(
   const [x1, y1] = convertPoint(graphicItem?.extent?.[0], [0, 0]);
   const [x2, y2] = convertPoint(graphicItem?.extent?.[1], [0, 0]);
   const _x = Math.min(x1, x2);
+  void _x;
   const _y = Math.min(y1, y2);
+  void _y;
   const width = computeWidth(graphicItem.extent);
   const height = computeHeight(graphicItem.extent);
 
@@ -1558,7 +1560,7 @@ function renderTextX6(
   const ESCAPED_PERCENT = "__PERCENT__";
   const nameText = componentInstance?.name ?? classInstance?.name ?? "";
   const classText = classInstance?.name ?? "";
-  const commentText = componentInstance?.description ?? classInstance?.description ?? "";
+  const commentText = componentInstance?.["description"] ?? classInstance?.["description"] ?? "";
   const textContent = rawText
     .replace(/%%/g, ESCAPED_PERCENT)
     .replace(/%name\b/g, nameText)
@@ -1607,6 +1609,7 @@ function renderTextX6(
   const transform = componentInstance ? computeIconPlacement(componentInstance) : null;
   const _invScaleRatio =
     transform && transform.scaleX !== 0 ? Math.abs(transform.scaleY) / Math.abs(transform.scaleX) : 1;
+  void _invScaleRatio;
 
   return {
     tagName: "g",
@@ -1712,9 +1715,9 @@ function applyFillX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[
       fillValue = "none";
   }
 
-  shape.attrs.fill = fillValue;
-  if (!shape.attrs.style) shape.attrs.style = "";
-  shape.attrs.style = (shape.attrs.style as string) + `; fill: ${fillValue} !important;`;
+  shape.attrs["fill"] = fillValue;
+  if (!shape.attrs["style"]) shape.attrs["style"] = "";
+  shape.attrs["style"] = (shape.attrs["style"] as string) + `; fill: ${fillValue} !important;`;
 }
 
 function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): void {
@@ -1759,18 +1762,18 @@ function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): v
       strokeDasharray = "4, 2, 1, 2, 1, 2";
       break;
     case "none":
-      shape.attrs.stroke = "none";
-      if (!shape.attrs.style) shape.attrs.style = "";
-      shape.attrs.style = (shape.attrs.style as string) + "; stroke: none !important;";
+      shape.attrs["stroke"] = "none";
+      if (!shape.attrs["style"]) shape.attrs["style"] = "";
+      shape.attrs["style"] = (shape.attrs["style"] as string) + "; stroke: none !important;";
       return;
   }
 
-  shape.attrs.stroke = strokeColor;
+  shape.attrs["stroke"] = strokeColor;
   shape.attrs["stroke-width"] = strokeWidth;
   if (strokeDasharray !== "none") shape.attrs["stroke-dasharray"] = strokeDasharray;
-  if (!shape.attrs.style) shape.attrs.style = "";
-  shape.attrs.style =
-    (shape.attrs.style as string) +
+  if (!shape.attrs["style"]) shape.attrs["style"] = "";
+  shape.attrs["style"] =
+    (shape.attrs["style"] as string) +
     `; stroke: ${strokeColor} !important; stroke-width: ${strokeWidth}px !important; stroke-dasharray: ${strokeDasharray} !important;`;
   shape.attrs["vector-effect"] = "non-scaling-stroke";
 }
@@ -1798,14 +1801,14 @@ function getStableId(prefix: string, params: unknown, defs: X6Markup[]): string 
 }
 
 function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
-  const id = def.attrs?.id;
+  const id = def.attrs?.["id"];
   if (!id) {
     defs.push(def);
     return;
   }
   let idSet: Set<string | number> = (defs as any).__idSet;
   if (!idSet) {
-    idSet = new Set(defs.map((d) => d.attrs?.id).filter((v): v is string | number => v !== undefined && v !== ""));
+    idSet = new Set(defs.map((d) => d.attrs?.["id"]).filter((v): v is string | number => v !== undefined && v !== ""));
     Object.defineProperty(defs, "__idSet", { value: idSet, enumerable: false, writable: true });
   }
   if (!idSet.has(id)) {
@@ -1909,13 +1912,13 @@ function unflipText(node: X6Markup, sx: number, sy: number): void {
   for (const child of node.children) {
     if (child.tagName === "text") {
       if (!child.attrs) child.attrs = {};
-      const textX = Number(child.attrs.x ?? 0);
-      const textY = Number(child.attrs.y ?? 0);
+      const textX = Number(child.attrs["x"] ?? 0);
+      const textY = Number(child.attrs["y"] ?? 0);
       const existingTransform = (child.attrs["transform"] as string) || "";
       const scaleTransform = `translate(${textX} ${textY}) scale(${sx} ${sy}) translate(${-textX} ${-textY})`;
       child.attrs["transform"] = existingTransform ? `${existingTransform} ${scaleTransform}` : scaleTransform;
-      if (child.attrs.style && typeof child.attrs.style === "string") {
-        child.attrs.style = child.attrs.style
+      if (child.attrs["style"] && typeof child.attrs["style"] === "string") {
+        child.attrs["style"] = child.attrs["style"]
           .replace(/transform-origin:[^;]+;?/g, "")
           .replace(/transform:\s*scale\([^)]+\);?/g, "")
           .trim();
@@ -1930,8 +1933,8 @@ function unrotateText(node: X6Markup, rotateAngle: number): void {
   for (const child of node.children) {
     if (child.tagName === "text") {
       if (!child.attrs) child.attrs = {};
-      const textX = Number(child.attrs.x ?? 0);
-      const textY = Number(child.attrs.y ?? 0);
+      const textX = Number(child.attrs["x"] ?? 0);
+      const textY = Number(child.attrs["y"] ?? 0);
       let rot = -rotateAngle % 360;
       if (rot < 0) rot += 360;
       // Keep text right-side up and readable from left-to-right or bottom-to-top
@@ -1941,8 +1944,8 @@ function unrotateText(node: X6Markup, rotateAngle: number): void {
       const existingTransform = (child.attrs["transform"] as string) || "";
       const rotTransform = `rotate(${rot} ${textX} ${textY})`;
       child.attrs["transform"] = existingTransform ? `${existingTransform} ${rotTransform}` : rotTransform;
-      if (child.attrs.style && typeof child.attrs.style === "string") {
-        child.attrs.style = child.attrs.style
+      if (child.attrs["style"] && typeof child.attrs["style"] === "string") {
+        child.attrs["style"] = child.attrs["style"]
           .replace(/transform-origin:[^;]+;?/g, "")
           .replace(/transform:\s*rotate\([^)]+\);?/g, "")
           .trim();
@@ -2028,7 +2031,7 @@ function bakeVectorEffect(markup: X6Markup, scale: number): void {
         sw = parseFloat(String(markup.attrs["stroke-width"]));
       } else if (typeof markup.attrs["style"] === "string") {
         const match = markup.attrs["style"].match(/stroke-width:\s*([\d.]+)px/);
-        if (match) sw = parseFloat(match[1]);
+        if (match) sw = parseFloat(match[1]!);
       }
 
       const newSw = sw * scale;
@@ -2070,10 +2073,10 @@ export function getClassIconSvg(cls: ModelicaClassInstance, size = 16, includePo
       if (typeof markup.attrs["viewBox"] === "string") {
         const vbMatch = markup.attrs["viewBox"].match(/^([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)$/);
         if (vbMatch) {
-          const vx = parseFloat(vbMatch[1]);
-          const vy = parseFloat(vbMatch[2]);
-          const vw = parseFloat(vbMatch[3]);
-          const vh = parseFloat(vbMatch[4]);
+          const vx = parseFloat(vbMatch[1]!);
+          const vy = parseFloat(vbMatch[2]!);
+          const vw = parseFloat(vbMatch[3]!);
+          const vh = parseFloat(vbMatch[4]!);
 
           // Pad the viewbox by 2% to ensure Chromium doesn't clip outer stroke bounds
           const padX = vw * 0.02;
@@ -2226,7 +2229,7 @@ function processHtml(html: string | undefined, context: any): string | undefined
   const stripped = stripHtmlEnvelope(html);
   if (!context) return stripped;
 
-  return stripped.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
+  return stripped.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, _quote, uriPath) => {
     const uri = `modelica://${uriPath}`;
     const resolvedPath = context.resolveURI(uri);
     if (resolvedPath) {
@@ -2284,7 +2287,7 @@ export function buildComponentProperties(
   const tabMap = new Map<string, Map<string, PropertyFieldConfig[]>>();
   const values: Record<string, any> = {
     name: component.name ?? "",
-    description: component.description ?? "",
+    description: component["description"] ?? "",
   };
 
   const getOrCreateGroup = (tabName: string, groupName: string): PropertyFieldConfig[] => {
@@ -2302,8 +2305,8 @@ export function buildComponentProperties(
   const candidateElements: any[] = [];
   const visitedNames = new Set<string>();
 
-  if (Array.isArray(componentClassInstance.elements)) {
-    for (const el of componentClassInstance.elements) {
+  if (Array.isArray(componentClassInstance["elements"])) {
+    for (const el of componentClassInstance["elements"]) {
       if (el && el.name && !visitedNames.has(el.name)) {
         visitedNames.add(el.name);
         candidateElements.push(el);
@@ -2372,7 +2375,7 @@ export function buildComponentProperties(
     if (isComp && isParameter) {
       // 1. Caller override (e.g. R(R = 100))
       let value: string | undefined = undefined;
-      const compArgExpr = (component.modification as any)?.getModificationArgument?.(element.name ?? "")?.expression;
+      const compArgExpr = (component["modification"] as any)?.getModificationArgument?.(element.name ?? "")?.expression;
       if (compArgExpr != null) {
         value = formatPropertyValue(compArgExpr);
       }
@@ -2380,8 +2383,8 @@ export function buildComponentProperties(
         const compCst = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
         value = extractCstModifierValue(compCst, element.name ?? "");
       }
-      if (!value && component.cstNode) {
-        const compCstText = component.cstNode.text ?? "";
+      if (!value && component["cstNode"]) {
+        const compCstText = component["cstNode"].text ?? "";
         const escapedName = (element.name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const argRegex = new RegExp(`\\b${escapedName}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i");
         const m = compCstText.match(argRegex);
@@ -2565,7 +2568,7 @@ export function buildComponentProperties(
         const startMod =
           (element.classInstance?.modification as any)?.getModificationArgument?.("start") ??
           (element.modification as any)?.getModificationArgument?.("start");
-        const compStartArg = (component.modification as any)
+        const compStartArg = (component["modification"] as any)
           ?.getModificationArgument?.(element.name ?? "")
           ?.classModification?.getModificationArgument?.("start");
         let startVal = formatPropertyValue(compStartArg?.expression) ?? formatPropertyValue(startMod?.expression);
@@ -2605,8 +2608,8 @@ export function buildComponentProperties(
   const docAnnotation =
     typeof componentClassInstance.annotation === "function"
       ? (componentClassInstance.annotation("Documentation") as {
-          info?: string;
-          revisions?: string;
+          info?: string | undefined;
+          revisions?: string | undefined;
         } | null)
       : null;
 
@@ -2683,10 +2686,10 @@ export function buildComponentProperties(
   };
 
   return {
-    classKind: componentClassInstance.classKind,
+    classKind: componentClassInstance["classKind"],
     className: componentClassInstance.name ?? "",
     name: component.name ?? "",
-    description: component.description ?? "",
+    description: component["description"] ?? "",
     parameters,
     docInfo,
     docRevisions,

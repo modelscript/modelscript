@@ -217,7 +217,7 @@ const TabContainer = styled.div`
   }
 `;
 
-const TabButton = styled.button<{ $active?: boolean }>`
+const TabButton = styled.button<{ $active?: boolean | undefined }>`
   flex: 1;
   min-width: 80px;
   background: none;
@@ -285,33 +285,33 @@ const ExplorePage: React.FC = () => {
 
   interface TopicData {
     name: string;
-    tag?: string;
-    postsCount?: number;
+    tag?: string | undefined;
+    postsCount?: number | undefined;
     [key: string]: unknown;
   }
 
   interface PackageData {
     name: string;
-    version?: string;
-    description?: string;
+    version?: string | undefined;
+    description?: string | undefined;
     [key: string]: unknown;
   }
 
   interface RepoData {
-    id?: string;
-    provider?: string;
+    id?: string | undefined;
+    provider?: string | undefined;
     namespace: string;
     project: string;
-    description?: string;
-    avatar_url?: string;
+    description?: string | undefined;
+    avatar_url?: string | undefined;
     [key: string]: unknown;
   }
 
   interface PersonData {
-    id?: string;
-    username?: string;
-    name?: string;
-    avatar?: string;
+    id?: string | undefined;
+    username?: string | undefined;
+    name?: string | undefined;
+    avatar?: string | undefined;
     [key: string]: unknown;
   }
 
@@ -471,7 +471,7 @@ const ExplorePage: React.FC = () => {
         try {
           const data = await getSearchCompletions(query, 30);
           setMatchedPeople(
-            (data.suggestions || (data as { users?: PersonData[] }).users || []) as unknown as PersonData[],
+            (data.suggestions || (data as { users?: PersonData[] | undefined }).users || []) as unknown as PersonData[],
           );
         } catch (err) {
           console.error("Failed to fetch search users:", err);
@@ -521,7 +521,7 @@ const ExplorePage: React.FC = () => {
     const TOPIC_ARTIFACT_TABS: {
       id: string;
       label: string;
-      icon?: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+      icon?: React.ComponentType<{ size?: number | undefined; style?: React.CSSProperties | undefined }> | undefined;
     }[] = [
       { id: "all", label: "All Posts" },
       { id: "cad", label: "CAD 3D", icon: PackageIcon },
@@ -1210,7 +1210,7 @@ const ExplorePage: React.FC = () => {
                               flexShrink: 0,
                             }}
                           >
-                            {!u.avatar_url && u.username.charAt(0).toUpperCase()}
+                            {!u.avatar_url && u.username!.charAt(0).toUpperCase()}
                           </Box>
                           <Box flex={1}>
                             <Heading
@@ -1242,7 +1242,7 @@ const ExplorePage: React.FC = () => {
                             )}
                           </Box>
                         </Link>
-                        <FollowButton username={u.username} initialIsFollowing={u.isFollowing || false} size="small" />
+                        <FollowButton username={u.username!} initialIsFollowing={u.isFollowing || false} size="small" />
                       </Box>
                     ))}
                     {matchedPeople.length === 0 && (

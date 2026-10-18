@@ -26,7 +26,7 @@ class CompactProtocolWriter {
   }
 
   writeFieldHeader(fieldId: number, typeCode: number): void {
-    const lastId = this.#lastFieldIdStack[this.#lastFieldIdStack.length - 1];
+    const lastId = this.#lastFieldIdStack[this.#lastFieldIdStack.length - 1]!;
     const delta = fieldId - lastId;
     if (delta > 0 && delta <= 15) {
       this.#bytes.push((delta << 4) | typeCode);
@@ -71,7 +71,7 @@ class CompactProtocolWriter {
     const utf8 = encoder.encode(str);
     this.writeVarint(utf8.length);
     for (let i = 0; i < utf8.length; i++) {
-      this.#bytes.push(utf8[i]);
+      this.#bytes.push(utf8[i]!);
     }
   }
 
@@ -104,7 +104,7 @@ export function generateParquetBuffer(records: Record<string, number | string>[]
     return new Uint8Array([0x50, 0x41, 0x52, 0x31, 0, 0, 0, 0, 0x50, 0x41, 0x52, 0x31]);
   }
 
-  const colNames = columns || Object.keys(records[0]);
+  const colNames = columns || Object.keys(records[0]!);
   const numRows = records.length;
 
   const chunks: Uint8Array[] = [];
@@ -124,7 +124,7 @@ export function generateParquetBuffer(records: Record<string, number | string>[]
   for (const colName of colNames) {
     const values = new Float64Array(numRows);
     for (let i = 0; i < numRows; i++) {
-      const val = records[i][colName];
+      const val = records[i]![colName];
       values[i] = typeof val === "number" ? val : parseFloat(String(val)) || 0;
     }
 

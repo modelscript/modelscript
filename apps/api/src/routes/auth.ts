@@ -474,7 +474,7 @@ export function authRouter(database: LibraryDatabase): Router {
         id: number;
         email: string;
         scope: string;
-        tokenVersion?: number;
+        tokenVersion?: number | undefined;
       };
 
       if (decoded.scope !== "2fa_challenge") {
@@ -893,7 +893,8 @@ export function authRouter(database: LibraryDatabase): Router {
    * GET /api/v1/auth/login/:provider
    */
   router.get("/login/:provider", (req: Request, res: Response) => {
-    const provider = typeof req.params.provider === "string" ? req.params.provider : String(req.params.provider ?? "");
+    const provider =
+      typeof req.params["provider"] === "string" ? req.params["provider"] : String(req.params["provider"] ?? "");
     const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
     if (process.env["NODE_ENV"] === "production" && !clientId) {
       res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
@@ -922,13 +923,14 @@ export function authRouter(database: LibraryDatabase): Router {
    * Initiated from the browser via an href link. Accepts token via query param or session cookie to verify user.
    */
   router.get("/link/:provider", (req: Request, res: Response) => {
-    const provider = typeof req.params.provider === "string" ? req.params.provider : String(req.params.provider ?? "");
+    const provider =
+      typeof req.params["provider"] === "string" ? req.params["provider"] : String(req.params["provider"] ?? "");
     const cookieHeader = req.headers.cookie || "";
     const cookieMatch = cookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
     const cookieToken = cookieMatch?.[1] ? decodeURIComponent(cookieMatch[1]) : "";
     const authHeader = req.headers.authorization || "";
     const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    const token = (req.query.token as string) || cookieToken || bearerToken;
+    const token = (req.query["token"] as string) || cookieToken || bearerToken;
     const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
 
     if (!token) {
@@ -964,9 +966,9 @@ export function authRouter(database: LibraryDatabase): Router {
    * GET /api/v1/auth/callback/:provider
    */
   router.get("/callback/:provider", async (req: Request, res: Response) => {
-    const provider = req.params.provider as string;
-    const stateParam = req.query.state as string;
-    const code = req.query.code as string | undefined;
+    const provider = req.params["provider"] as string;
+    const stateParam = req.query["state"] as string;
+    const code = req.query["code"] as string | undefined;
     const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
 
     let email = `mockuser@${provider}.com`;
@@ -998,13 +1000,17 @@ export function authRouter(database: LibraryDatabase): Router {
             headers: { "Content-Type": "application/json", Accept: "application/json" },
             body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
           });
-          const tokenData = (await tokenRes.json()) as { access_token?: string };
+          const tokenData = (await tokenRes.json()) as { access_token?: string | undefined };
           if (tokenData.access_token) {
             accessToken = tokenData.access_token;
             const userRes = await fetch("https://api.github.com/user", {
               headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ModelScript" },
             });
-            const userData = (await userRes.json()) as { id?: number; login?: string; email?: string };
+            const userData = (await userRes.json()) as {
+              id?: number | undefined;
+              login?: string | undefined;
+              email?: string | undefined;
+            };
             if (userData.id && userData.login) {
               providerUserId = String(userData.id);
               username = userData.login;
@@ -1025,14 +1031,21 @@ export function authRouter(database: LibraryDatabase): Router {
               redirect_uri: `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/gitlab`,
             }),
           });
-          const tokenData = (await tokenRes.json()) as { access_token?: string; refresh_token?: string };
+          const tokenData = (await tokenRes.json()) as {
+            access_token?: string | undefined;
+            refresh_token?: string | undefined;
+          };
           if (tokenData.access_token) {
             accessToken = tokenData.access_token;
             if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
             const userRes = await fetch("https://gitlab.com/api/v4/user", {
               headers: { Authorization: `Bearer ${accessToken}` },
             });
-            const userData = (await userRes.json()) as { id?: number; username?: string; email?: string };
+            const userData = (await userRes.json()) as {
+              id?: number | undefined;
+              username?: string | undefined;
+              email?: string | undefined;
+            };
             if (userData.id && userData.username) {
               providerUserId = String(userData.id);
               username = userData.username;
@@ -1046,7 +1059,7 @@ export function authRouter(database: LibraryDatabase): Router {
           return;
         }
       } catch (oauthErr) {
-        if (process.env.NODE_ENV === "production") {
+        if (process.env["NODE_ENV"] === "production") {
           console.error(`[OAuth] Live provider exchange failed in production:`, oauthErr);
           res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
           return;
@@ -1056,13 +1069,17 @@ export function authRouter(database: LibraryDatabase): Router {
     }
 
     try {
-      let stateData: { action?: string; userId?: number; provider?: string } | null = null;
+      let stateData: {
+        action?: string | undefined;
+        userId?: number | undefined;
+        provider?: string | undefined;
+      } | null = null;
       if (stateParam) {
         try {
           stateData = jwt.verify(decodeURIComponent(stateParam), JWT_SECRET) as {
-            action?: string;
-            userId?: number;
-            provider?: string;
+            action?: string | undefined;
+            userId?: number | undefined;
+            provider?: string | undefined;
           };
         } catch {
           res.redirect(`${frontendUrl}/settings?error=InvalidState`);
@@ -1445,7 +1462,7 @@ export function authRouter(database: LibraryDatabase): Router {
    */
   router.delete("/keys/:id", requireAuth, (req: Request, res: Response): void => {
     try {
-      database.revokePublicKey(req.user!.id, Number(req.params.id));
+      database.revokePublicKey(req.user!.id, Number(req.params["id"]));
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to revoke public key" });

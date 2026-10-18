@@ -10,13 +10,13 @@ export interface Tet4Mesh {
   /** Total number of elements. */
   numElements: number;
   /** Element formulation order: 'linear' (Tet4, 4 nodes) or 'quadratic' (Tet10, 10 nodes). Default: 'linear'. */
-  elementOrder?: "linear" | "quadratic";
+  elementOrder?: "linear" | "quadratic" | undefined;
   /** Number of nodes per element (4 for Tet4, 10 for Tet10). Default: 4. */
-  nodesPerElement?: number;
+  nodesPerElement?: number | undefined;
   /** Mapping from boundary patch / port name to node indices on that boundary. */
   boundaryNodes: Map<string, number[]>;
   /** Mapping from boundary patch / port name to surface triangular face node triples. */
-  boundaryFaces?: Map<string, [number, number, number][]>;
+  boundaryFaces?: Map<string, [number, number, number][]> | undefined;
 }
 
 export interface MaterialProperties {
@@ -25,13 +25,13 @@ export interface MaterialProperties {
   /** Poisson's ratio (e.g., 0.33 for Aluminum, 0.30 for Steel). */
   nu: number;
   /** Material density in kg/m^3 (e.g., 2700 for Aluminum). */
-  rho?: number;
+  rho?: number | undefined;
   /** Yield strength in Pa (e.g., 270e6 for Aluminum 6061-T6). */
-  yieldStrength?: number;
+  yieldStrength?: number | undefined;
   /** Mass-proportional Rayleigh damping coefficient (alpha_M in C = alpha_M * M + beta_K * K). */
-  alphaM?: number;
+  alphaM?: number | undefined;
   /** Stiffness-proportional Rayleigh damping coefficient (beta_K in C = alpha_M * M + beta_K * K). */
-  betaK?: number;
+  betaK?: number | undefined;
 }
 
 export interface FeaBoundaryConditions {
@@ -40,22 +40,22 @@ export interface FeaBoundaryConditions {
   /** Applied point loads: nodeIndex -> [Fx, Fy, Fz] in Newtons. */
   nodalLoads: Map<number, [number, number, number]>;
   /** Enable geometrically non-linear corotational kinematics to eliminate artificial stress under rigid rotations. */
-  corotational?: boolean;
+  corotational?: boolean | undefined;
   /** Enable transient dynamic elastodynamics (M*u'' + C*u' + K*u = F) via Newmark-beta integration. */
-  transient?: boolean;
+  transient?: boolean | undefined;
   /** Transient time step size in seconds (e.g., 0.005 = 5ms). */
-  dt?: number;
+  dt?: number | undefined;
   /** Whether to reset velocity and acceleration states to zero. */
-  resetDynamics?: boolean;
+  resetDynamics?: boolean | undefined;
 }
 
 export interface FeaStepResult {
   /** Nodal displacement vectors [ux0, uy0, uz0, ux1, uy1, uz1, ...]. */
   displacements: Float32Array;
   /** Nodal velocity vectors [vx0, vy0, vz0, vx1, vy1, vz1, ...]. Present when transient is true. */
-  velocities?: Float32Array;
+  velocities?: Float32Array | undefined;
   /** Nodal acceleration vectors [ax0, ay0, az0, ax1, ay1, az1, ...]. Present when transient is true. */
-  accelerations?: Float32Array;
+  accelerations?: Float32Array | undefined;
   /** Per-element von Mises stresses in Pa. */
   elementVonMises: Float32Array;
   /** Per-node interpolated von Mises stresses in Pa (for vertex color rendering). */
@@ -65,7 +65,7 @@ export interface FeaStepResult {
   /** Maximum von Mises stress in Pa. */
   maxVonMisesStress: number;
   /** Safety factor relative to yield strength (if specified). */
-  safetyFactor?: number;
+  safetyFactor?: number | undefined;
 }
 
 export interface MeshQualityMetrics {

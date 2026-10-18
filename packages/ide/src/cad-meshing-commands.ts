@@ -16,6 +16,7 @@ async function resolveStepBytes(targetUri: vscode.Uri, rawBytes: Uint8Array): Pr
       const { compileToStep } = await import("@modelscript/cad");
       const parser = await getScadParser();
       const tree = parser.parse(text);
+      if (!tree) return rawBytes;
       const evaluator = new ScadEvaluator();
       const solid = evaluator.evaluate(tree.rootNode);
       if (solid) {

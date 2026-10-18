@@ -585,7 +585,7 @@ export interface LUFactorization {
   /** Matrix dimension. */
   n: number;
   /** Whether the underlying matrix is flat 1D contiguous. */
-  isFlat?: boolean;
+  isFlat?: boolean | undefined;
 }
 
 export interface LUFactorizationFlat {

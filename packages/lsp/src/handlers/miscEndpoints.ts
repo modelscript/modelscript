@@ -15,9 +15,9 @@ import { loadDependencyFromRegistry, type RegistryPackageInfo } from "../vfs/lib
 export interface FlatSemanticEdit {
   action: "insert" | "delete" | "update" | "none" | "move";
   description: string;
-  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
-  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
-  kind?: string;
+  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
+  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
+  kind?: string | undefined;
   regulatoryImpact?: any;
 }
 
@@ -150,7 +150,7 @@ export function registerMiscEndpoints(context: LspContext) {
           message: `Indexing ${params.name}...`,
         });
         const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
-        await moIdx?.indexRemainingInBackground?.(100, (indexed, total) => {
+        await moIdx?.indexRemainingInBackground?.(100, (indexed: number, total: number) => {
           if (indexed % 100 === 0) {
             context.connection.sendNotification("modelscript/status", {
               state: "loading",
@@ -179,7 +179,7 @@ export function registerMiscEndpoints(context: LspContext) {
     },
   );
 
-  context.connection.onRequest("modelscript/getTraceabilityMatrix", (params: { uri: string }) => {
+  context.connection.onRequest("modelscript/getTraceabilityMatrix", (_params: { uri: string }) => {
     try {
       const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       return getTraceabilityMatrix(db); // Do not filter by uri to show workspace-level traceability
@@ -298,8 +298,8 @@ export function registerMiscEndpoints(context: LspContext) {
 
           const maxLen = Math.max(oldRootEntries.length, newRootEntries.length);
           for (let i = 0; i < maxLen; i++) {
-            const oldId = i < oldRootEntries.length ? oldRootEntries[i] : null;
-            const newId = i < newRootEntries.length ? newRootEntries[i] : null;
+            const oldId = i < oldRootEntries.length ? oldRootEntries[i]! : null;
+            const newId = i < newRootEntries.length ? newRootEntries[i]! : null;
 
             if (oldId === null && newId === null) continue;
 
@@ -377,13 +377,19 @@ export function registerMiscEndpoints(context: LspContext) {
 
         for (const entry of newIndex.symbols.values()) {
           const rule = entry.ruleName ?? "";
-          if (rule.includes("Hazard") || entry.metadata?.defKind === "hazard" || entry.metadata?.hazardId) {
+          if (rule.includes("Hazard") || entry.metadata?.["defKind"] === "hazard" || entry.metadata?.["hazardId"]) {
             hazardSymbols.set(entry.name, entry);
-            if (entry.metadata?.mitigates) {
-              mitigatedReqs.set(String(entry.metadata.mitigates), String(entry.metadata?.hazardId ?? entry.name));
+            if (entry.metadata?.["mitigates"]) {
+              mitigatedReqs.set(
+                String(entry.metadata["mitigates"]),
+                String(entry.metadata?.["hazardId"] ?? entry.name),
+              );
             }
-            if (entry.metadata?.mitigatedBy) {
-              mitigatedReqs.set(String(entry.metadata.mitigatedBy), String(entry.metadata?.hazardId ?? entry.name));
+            if (entry.metadata?.["mitigatedBy"]) {
+              mitigatedReqs.set(
+                String(entry.metadata["mitigatedBy"]),
+                String(entry.metadata?.["hazardId"] ?? entry.name),
+              );
             }
           }
         }
@@ -392,8 +398,8 @@ export function registerMiscEndpoints(context: LspContext) {
         const diffs: FlatSemanticEdit[] = [];
 
         for (let i = 0; i < maxLen; i++) {
-          const oldId = i < oldRootEntries.length ? oldRootEntries[i] : null;
-          const newId = i < newRootEntries.length ? newRootEntries[i] : null;
+          const oldId = i < oldRootEntries.length ? oldRootEntries[i]! : null;
+          const newId = i < newRootEntries.length ? newRootEntries[i]! : null;
 
           if (oldId === null && newId === null) continue;
 
@@ -442,23 +448,23 @@ export function registerMiscEndpoints(context: LspContext) {
                 const isHazard =
                   hazardSymbols.has(entryName) ||
                   targetEntry.ruleName?.includes("Hazard") ||
-                  Boolean(targetEntry.metadata?.hazardId);
+                  Boolean(targetEntry.metadata?.["hazardId"]);
                 const isMitigated =
                   mitigatedReqs.has(entryName) ||
-                  Boolean(targetEntry.metadata?.mitigates) ||
-                  Boolean(targetEntry.metadata?.mitigatedBy);
-                const isReq = targetEntry.ruleName?.includes("Requirement") || Boolean(targetEntry.metadata?.reqId);
+                  Boolean(targetEntry.metadata?.["mitigates"]) ||
+                  Boolean(targetEntry.metadata?.["mitigatedBy"]);
+                const isReq = targetEntry.ruleName?.includes("Requirement") || Boolean(targetEntry.metadata?.["reqId"]);
 
                 if (isHazard || isMitigated || isReq) {
                   const hId = isHazard
-                    ? (targetEntry.metadata?.hazardId ?? targetEntry.name)
-                    : (mitigatedReqs.get(entryName) ?? (targetEntry.metadata?.mitigates as string) ?? undefined);
+                    ? (targetEntry.metadata?.["hazardId"] ?? targetEntry.name)
+                    : (mitigatedReqs.get(entryName) ?? (targetEntry.metadata?.["mitigates"] as string) ?? undefined);
                   flatEdit.regulatoryImpact = {
                     isSafetyCritical: true,
                     hazardId: hId ? String(hId) : undefined,
                     hazardName: isHazard ? targetEntry.name : undefined,
-                    requirementId: isReq ? String(targetEntry.metadata?.reqId ?? targetEntry.name) : undefined,
-                    riskSeverity: Number(targetEntry.metadata?.severity ?? 4),
+                    requirementId: isReq ? String(targetEntry.metadata?.["reqId"] ?? targetEntry.name) : undefined,
+                    riskSeverity: Number(targetEntry.metadata?.["severity"] ?? 4),
                     invalidatedLinks: [
                       {
                         targetName: `${entryName}_verification`,
@@ -512,8 +518,8 @@ export function registerMiscEndpoints(context: LspContext) {
     "modelscript/reconcileThreadSlot",
     async (params: {
       slot: number;
-      strategy?: "physics-simplex" | "source-wins" | "target-wins" | "custom";
-      customValue?: number;
+      strategy?: "physics-simplex" | "source-wins" | "target-wins" | "custom" | undefined;
+      customValue?: number | undefined;
     }) => {
       const { slot, strategy = "physics-simplex", customValue } = params;
       const isConflicted = sharedHypergraph.isConflicted(slot);
@@ -529,7 +535,7 @@ export function registerMiscEndpoints(context: LspContext) {
         const elements = context.workspaceManager.findAlignedElementsBySlot(slot);
         const vals: number[] = [];
         for (const el of elements) {
-          const m = el.properties?.mass ?? el.properties?.voltage ?? el.properties?.value;
+          const m = el.properties?.["mass"] ?? el.properties?.["voltage"] ?? el.properties?.["value"];
           if (typeof m === "number") vals.push(m);
         }
         if (vals.length >= 2) {
@@ -552,9 +558,9 @@ export function registerMiscEndpoints(context: LspContext) {
           const key = `${domName}:${nodeId}`;
           const meta = sharedMetadataMap.get(key);
           if (meta && meta.properties) {
-            if (meta.properties.mass !== undefined) meta.properties.mass = consensusVal;
-            if (meta.properties.voltage !== undefined) meta.properties.voltage = consensusVal;
-            if (meta.properties.value !== undefined) meta.properties.value = consensusVal;
+            if (meta.properties["mass"] !== undefined) meta.properties["mass"] = consensusVal;
+            if (meta.properties["voltage"] !== undefined) meta.properties["voltage"] = consensusVal;
+            if (meta.properties["value"] !== undefined) meta.properties["value"] = consensusVal;
           }
         }
       }

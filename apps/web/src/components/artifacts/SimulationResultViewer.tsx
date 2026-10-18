@@ -33,11 +33,11 @@ import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraContr
 // ── Types ───────────────────────────────────────────────────────
 
 interface SimulationResultViewerProps {
-  artifactId?: number;
+  artifactId?: number | undefined;
   viewConfig: any;
-  isFullScreen?: boolean;
-  onPinCreated?: (pin: SpatialPin) => void;
-  onThreadNodeSelected?: (threadId: string | number) => void;
+  isFullScreen?: boolean | undefined;
+  onPinCreated?: ((pin: SpatialPin) => void) | undefined;
+  onThreadNodeSelected?: ((threadId: string | number) => void) | undefined;
 }
 
 interface FieldMeta {
@@ -45,7 +45,7 @@ interface FieldMeta {
   association: "point" | "cell";
   numComponents: number;
   range: [number, number];
-  unit?: string;
+  unit?: string | undefined;
 }
 
 // ── Loader ──────────────────────────────────────────────────────
@@ -81,10 +81,10 @@ const ScalarMesh: React.FC<{
   displacementData: Float32Array | null;
   displacementScale: number;
   loadFactor: number;
-  onPinCreated?: (pin: SpatialPin) => void;
+  onPinCreated?: ((pin: SpatialPin) => void) | undefined;
   activeField: string;
-  isWireframe?: boolean;
-  onProbePoint?: (data: { point: [number, number, number]; value: number } | null) => void;
+  isWireframe?: boolean | undefined;
+  onProbePoint?: ((data: { point: [number, number, number]; value: number } | null) => void) | undefined;
 }> = ({
   geometry,
   scalarData,
@@ -135,18 +135,18 @@ const ScalarMesh: React.FC<{
       for (let i = 0; i < posArray.length / 3; i++) {
         if (displacementData.length === posArray.length) {
           // 3D vector displacement
-          newPositions[i * 3] = posArray[i * 3] + displacementData[i * 3] * displacementScale;
-          newPositions[i * 3 + 1] = posArray[i * 3 + 1] + displacementData[i * 3 + 1] * displacementScale;
-          newPositions[i * 3 + 2] = posArray[i * 3 + 2] + displacementData[i * 3 + 2] * displacementScale;
+          newPositions[i * 3] = posArray[i * 3]! + displacementData[i * 3]! * displacementScale;
+          newPositions[i * 3 + 1] = posArray[i * 3 + 1]! + displacementData[i * 3 + 1]! * displacementScale;
+          newPositions[i * 3 + 2] = posArray[i * 3 + 2]! + displacementData[i * 3 + 2]! * displacementScale;
         } else if (displacementData.length > i) {
           // Scalar displacement: apply along the normal (approximated as Z)
-          newPositions[i * 3] = posArray[i * 3];
-          newPositions[i * 3 + 1] = posArray[i * 3 + 1];
-          newPositions[i * 3 + 2] = posArray[i * 3 + 2] + displacementData[i] * displacementScale;
+          newPositions[i * 3] = posArray[i * 3]!;
+          newPositions[i * 3 + 1] = posArray[i * 3 + 1]!;
+          newPositions[i * 3 + 2] = posArray[i * 3 + 2]! + displacementData[i]! * displacementScale;
         } else {
-          newPositions[i * 3] = posArray[i * 3];
-          newPositions[i * 3 + 1] = posArray[i * 3 + 1];
-          newPositions[i * 3 + 2] = posArray[i * 3 + 2];
+          newPositions[i * 3] = posArray[i * 3]!;
+          newPositions[i * 3 + 1] = posArray[i * 3 + 1]!;
+          newPositions[i * 3 + 2] = posArray[i * 3 + 2]!;
         }
       }
       geo.setAttribute("position", new THREE.Float32BufferAttribute(newPositions, 3));
@@ -171,10 +171,10 @@ const ScalarMesh: React.FC<{
 
   // Update uniforms when they change
   useEffect(() => {
-    material.uniforms.scalarMin.value = scalarMin;
-    material.uniforms.scalarMax.value = scalarMax;
-    material.uniforms.colormap.value = colormapTexture;
-    material.uniforms.loadFactor.value = loadFactor / 100.0;
+    material.uniforms.scalarMin!.value = scalarMin;
+    material.uniforms.scalarMax!.value = scalarMax;
+    material.uniforms.colormap!.value = colormapTexture;
+    material.uniforms.loadFactor!.value = loadFactor / 100.0;
     material.needsUpdate = true;
   }, [material, scalarMin, scalarMax, colormapTexture, loadFactor]);
 
@@ -185,7 +185,7 @@ const ScalarMesh: React.FC<{
     // Find scalar value at this face (approximate by taking the first vertex of the face)
     let scalarValue = 0;
     if (e.face && e.face.a !== undefined && scalarData) {
-      scalarValue = scalarData[e.face.a];
+      scalarValue = scalarData[e.face.a]!;
     }
 
     // Determine camera target (simplified: look directly along the ray from camera to point)
@@ -208,7 +208,7 @@ const ScalarMesh: React.FC<{
     e.stopPropagation();
     let scalarValue = 0;
     if (e.face && e.face.a !== undefined && scalarData) {
-      scalarValue = scalarData[e.face.a];
+      scalarValue = scalarData[e.face.a]!;
     }
     onProbePoint?.({
       point: [e.point.x, e.point.y, e.point.z],
@@ -241,9 +241,9 @@ const FlowStreaks: React.FC<{
   vMin: number;
   vMax: number;
   colormapTexture: THREE.DataTexture;
-  scale?: number;
-  animate?: boolean;
-  downsampleFactor?: number;
+  scale?: number | undefined;
+  animate?: boolean | undefined;
+  downsampleFactor?: number | undefined;
 }> = ({
   geometry,
   velocityData,
@@ -296,16 +296,16 @@ const FlowStreaks: React.FC<{
 
       let px: number, py: number, pz: number;
       if (isCellData && indices && idx * 3 + 2 < indices.length) {
-        const a = indices[idx * 3];
-        const b = indices[idx * 3 + 1];
-        const c = indices[idx * 3 + 2];
-        px = (posOriginal[a * 3] + posOriginal[b * 3] + posOriginal[c * 3]) / 3.0;
-        py = (posOriginal[a * 3 + 1] + posOriginal[b * 3 + 1] + posOriginal[c * 3 + 1]) / 3.0;
-        pz = (posOriginal[a * 3 + 2] + posOriginal[b * 3 + 2] + posOriginal[c * 3 + 2]) / 3.0;
+        const a = indices[idx * 3]!;
+        const b = indices[idx * 3 + 1]!;
+        const c = indices[idx * 3 + 2]!;
+        px = (posOriginal[a * 3]! + posOriginal[b * 3]! + posOriginal[c * 3]!) / 3.0;
+        py = (posOriginal[a * 3 + 1]! + posOriginal[b * 3 + 1]! + posOriginal[c * 3 + 1]!) / 3.0;
+        pz = (posOriginal[a * 3 + 2]! + posOriginal[b * 3 + 2]! + posOriginal[c * 3 + 2]!) / 3.0;
       } else {
-        px = posOriginal[idx * 3];
-        py = posOriginal[idx * 3 + 1];
-        pz = posOriginal[idx * 3 + 2];
+        px = posOriginal[idx * 3]!;
+        py = posOriginal[idx * 3 + 1]!;
+        pz = posOriginal[idx * 3 + 2]!;
       }
 
       const vx = velocityData[idx * 3];
@@ -411,7 +411,7 @@ const FlowStreaks: React.FC<{
 
   useFrame((state) => {
     if (material.uniforms) {
-      material.uniforms.time.value = state.clock.elapsedTime * 0.5;
+      material.uniforms.time!.value = state.clock.elapsedTime * 0.5;
     }
   });
 
@@ -425,7 +425,7 @@ const ColorLegend: React.FC<{
   min: number;
   max: number;
   fieldName: string;
-  unit?: string;
+  unit?: string | undefined;
 }> = ({ preset, min, max, fieldName, unit }) => {
   const steps = 8;
   const formatValue = (v: number) => {
@@ -548,7 +548,7 @@ const sliderLabelStyle: React.CSSProperties = {
 
 const CameraController: React.FC<{
   orbitControlsRef: any;
-  presetTrigger?: { preset: CameraPreset; timestamp: number } | null;
+  presetTrigger?: { preset: CameraPreset; timestamp: number } | null | undefined;
 }> = ({ orbitControlsRef, presetTrigger }) => {
   const { camera } = useThree();
   const [targetPin, setTargetPin] = useState<SpatialPin | null>(null);
@@ -698,7 +698,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
         // Default to first scalar field
         const scalarFields = parsed.fields.filter((f) => f.numComponents === 1 && f.association === "point");
         if (scalarFields.length > 0) {
-          setActiveField(scalarFields[0].name);
+          setActiveField(scalarFields[0]!.name);
         }
       } catch (err: any) {
         if (active) setError(err.message || "Failed to parse simulation data");

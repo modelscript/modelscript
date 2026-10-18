@@ -60,23 +60,39 @@ import {
 import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "../core/array";
 import { debugLog } from "./engine";
 
+/** Maximum number of GSS parse heads stored per frontier buffer. */
 export const ARENA_BUFFER_SIZE: i32 = 16384;
+/** Safety upper bound on tree-cursor stack depth during GSS ancestor walks. */
 const MAX_CURSOR_DEPTH: i32 = 999999;
 
+/** Linear-memory array of active GSS head pointers for the current token frontier. */
 export let t_activeHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Linear-memory array of shifted GSS head pointers for the next token frontier. */
 export let t_nextHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Scratch buffer for temporarily extracted GSS heads during reduction/recovery passes. */
 export let t_extractedHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Number of live heads currently stored in `t_activeHeads`. */
 export let activeHeadsCount: u32 = 0;
+/** Number of live heads currently stored in `t_nextHeads`. */
 export let nextHeadsCount: u32 = 0;
+/** Buffer of GSS heads paused at sub-token split boundaries awaiting alignment. */
 export let t_pausedHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Number of live heads currently stored in `t_pausedHeads`. */
 export let pausedHeadsCount: u32 = 0;
+/** Monotonically increasing generation counter for expected-token bitset memoization. */
 export let g_expectedVersion: u32 = 0;
 
+/** Bucket count (power of two) for the open-addressing GSS head deduplication hash table. */
 export const HEAD_PROBE_SIZE: u32 = 2048;
+/** Bitmask (`HEAD_PROBE_SIZE - 1`) for indexing into `t_activeHeadProbe` and `t_nextHeadProbe`. */
 export const HEAD_PROBE_MASK: u32 = 2047;
+/** Hash bucket head indices (1-based; 0 = empty) for deduplicating `t_activeHeads`. */
 export let t_activeHeadProbe: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Hash bucket head indices (1-based; 0 = empty) for deduplicating `t_nextHeads`. */
 export let t_nextHeadProbe: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Intrusive hash-chain next-index links parallel to `t_activeHeads`. */
 export let t_activeHeadNext: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Intrusive hash-chain next-index links parallel to `t_nextHeads`. */
 export let t_nextHeadNext: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 /**
@@ -122,6 +138,7 @@ export function initGSS(): void {
   pausedHeadsCount = 0;
 }
 
+/** Clears both `t_activeHeadProbe` and `t_nextHeadProbe` hash bucket tables to zero. */
 export function resetGSSProbe(): void {
   if (changetype<usize>(t_activeHeadProbe) != 0) {
     memory.fill(changetype<usize>(t_activeHeadProbe), 0, HEAD_PROBE_SIZE * 4);
@@ -131,57 +148,94 @@ export function resetGSSProbe(): void {
   }
 }
 
+/** Resets the count of paused sub-token GSS heads to zero. */
 export function resetPausedHeads(): void {
   pausedHeadsCount = 0;
 }
 
+/** Maximum cumulative error-recovery cost difference tolerated above the best frontier head before pruning. */
 export const MAX_COST_DIFFERENCE: i32 = 7000;
 
+/** When true, cross-checks fast `FrontierSummary` pruning against an exhaustive head scan. */
 export let debugVerifyFrontierPruning: bool = false;
+/** Enables dominance-based Pareto frontier pruning of suboptimal GSS heads. */
 export let configEnableActivePruning: bool = true;
+/** Pointer to the lowest-cost GSS head that has reached an `ACCEPT` action. */
 export let gssBestAcceptingHead: u32 = 0;
+/** Pointer to the furthest-progressed GSS head that died without shifting or accepting (used for fallback trees). */
 export let gssBestDyingHead: u32 = 0;
 
-/**
- * FrontierSummary byte layout. The class lives in a raw `FS_SIZE`-byte block (see initGSS):
- * a 64-byte scalar header (fields below, hasOverflow at 64), then eight-slot (32-byte)
- * arrays, then the unconfirmed-repair counter. Keep these in sync with the field list.
- */
+/** Byte offset in `FrontierSummary` for the 8-element `u32` array of healthy head byte positions. */
 const FS_OFF_HEALTHY_POS: usize = 68;
+/** Byte offset in `FrontierSummary` for the 8-element `i32` array of minimum healthy costs per position. */
 const FS_OFF_HEALTHY_COST: usize = FS_OFF_HEALTHY_POS + 32;
+/** Byte offset in `FrontierSummary` for the 8-element `u32` array of non-paused head byte positions. */
 const FS_OFF_NONPAUSED_POS: usize = FS_OFF_HEALTHY_COST + 32;
+/** Byte offset in `FrontierSummary` for the 8-element `i32` array of minimum non-paused costs per position. */
 const FS_OFF_NONPAUSED_COST: usize = FS_OFF_NONPAUSED_POS + 32;
+/** Byte offset in `FrontierSummary` for the 8-element `i32` Pareto frontier of error-state head costs. */
 const FS_OFF_PARETO_ERR_COST: usize = FS_OFF_NONPAUSED_COST + 32;
+/** Byte offset in `FrontierSummary` for the 8-element `u32` Pareto frontier of error-state node counts. */
 const FS_OFF_PARETO_ERR_NODES: usize = FS_OFF_PARETO_ERR_COST + 32;
+/** Byte offset in `FrontierSummary` for the 8-element `i32` Pareto frontier of healthy head costs. */
 const FS_OFF_PARETO_HEALTHY_COST: usize = FS_OFF_PARETO_ERR_NODES + 32;
+/** Byte offset in `FrontierSummary` for the 8-element `u32` Pareto frontier of healthy head node counts. */
 const FS_OFF_PARETO_HEALTHY_NODES: usize = FS_OFF_PARETO_HEALTHY_COST + 32;
+/** Byte offset in `FrontierSummary` for the `u32` count of heads with unconfirmed error repairs. */
 const FS_OFF_UNCONFIRMED_REPAIRS: usize = FS_OFF_PARETO_HEALTHY_NODES + 32;
+/** Total allocation size in bytes for a `FrontierSummary` block in WASM linear memory. */
 const FS_SIZE: usize = 512;
 // The scalar header must end before the first array, and everything must fit in the block.
 assert(offsetof<FrontierSummary>("hasOverflow") < FS_OFF_HEALTHY_POS);
 assert(FS_OFF_UNCONFIRMED_REPAIRS + 4 <= FS_SIZE);
 
+/**
+ * Compact summary of the active or next GSS frontier used for $O(1)$ dominance pruning.
+ *
+ * Lives in a raw `FS_SIZE` (512-byte) linear-memory block allocated in `initGSS`:
+ * - Bytes `0..64`: Scalar header fields (`healthyCount` through `hasOverflow`).
+ * - Bytes `68..323`: Eight-slot (`32`-byte) inline arrays at `FS_OFF_*` offsets tracking
+ *   per-position minimum costs and 2D `(cost, nodeCount)` Pareto frontiers.
+ * - Bytes `324..327`: Counter of heads with unconfirmed repairs (`FS_OFF_UNCONFIRMED_REPAIRS`).
+ */
 @unmanaged
 export class FrontierSummary {
+  /** Number of healthy (not currently in error recovery) heads in the frontier. */
   healthyCount: u32;
+  /** Minimum dynamic/recovery cost among all healthy heads. */
   minHealthyCost: i32;
+  /** Byte position of the minimum-cost healthy head. */
   minHealthyCostPos: u32;
+  /** Maximum byte position reached by any healthy head. */
   maxHealthyPos: u32;
+  /** Maximum AST node count among healthy heads. */
   maxHealthyNodeCount: u32;
 
+  /** Number of non-paused heads (both healthy and in-error). */
   nonPausedCount: u32;
+  /** Minimum cost among all non-paused heads. */
   minNonPausedCost: i32;
+  /** Byte position of the minimum-cost non-paused head. */
   minNonPausedCostPos: u32;
+  /** Maximum byte position reached by any non-paused head. */
   maxNonPausedPos: u32;
 
+  /** Number of heads currently in an error-recovery state. */
   inErrorCount: u32;
+  /** Minimum cost among heads in an error-recovery state. */
   minInErrorCost: i32;
+  /** Maximum AST node count among heads in an error-recovery state. */
   maxInErrorNodeCount: u32;
 
+  /** Number of occupied slots (up to 8) in the `HealthyPos`/`HealthyCost` arrays. */
   posHealthyCount: u32;
+  /** Number of occupied slots (up to 8) in the `NonPausedPos`/`NonPausedCost` arrays. */
   posNonPausedCount: u32;
+  /** Number of points (up to 8) on the error-state `(cost, nodeCount)` Pareto frontier. */
   paretoErrCount: u32;
+  /** Number of points (up to 8) on the healthy `(cost, nodeCount)` Pareto frontier. */
   paretoHealthyCount: u32;
+  /** True if any 8-slot fixed array overflowed, requiring fallback to `slowBetterVersionExists`. */
   hasOverflow: bool;
 
   @inline getHealthyPos(i: i32): u32 {

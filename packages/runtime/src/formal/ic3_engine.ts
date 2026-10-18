@@ -49,15 +49,15 @@ export interface TransitionSystem {
 export interface IC3ProofResult {
   isProvenInvariant: boolean;
   depthReached: number;
-  invariantClauses?: LitId[][];
-  counterexampleTrace?: Map<VarId, boolean>[];
+  invariantClauses?: LitId[][] | undefined;
+  counterexampleTrace?: Map<VarId, boolean>[] | undefined;
   summary: string;
 }
 
 interface ProofObligation {
   cube: LitId[]; // Cube of state literals (conjunction) representing bad states
   level: number;
-  model?: Map<VarId, boolean>;
+  model?: Map<VarId, boolean> | undefined;
 }
 
 export class IC3Engine {
@@ -91,7 +91,7 @@ export class IC3Engine {
     return lit > 0 ? vPrime : -vPrime;
   }
 
-  private primeClause(clause: LitId[]): LitId[] {
+  public primeClause(clause: LitId[]): LitId[] {
     return clause.map((l) => this.primeLit(l));
   }
 

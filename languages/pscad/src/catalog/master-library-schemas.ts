@@ -20,16 +20,16 @@ export interface PscadParameterOption {
 
 export interface PscadParameterSchema {
   key: string;
-  aliases?: string[];
+  aliases?: string[] | undefined;
   label: string;
   tab: "General" | "Ratings" | "Impedances" | "Control" | "Geometry" | "Protection";
   group: string;
   kind: "number" | "string" | "boolean" | "select";
-  unit?: string;
+  unit?: string | undefined;
   defaultValue: string | number | boolean;
-  min?: number;
-  max?: number;
-  options?: PscadParameterOption[];
+  min?: number | undefined;
+  max?: number | undefined;
+  options?: PscadParameterOption[] | undefined;
   description: string;
 }
 
@@ -2065,7 +2065,7 @@ export function getPscadCompletions(text: string, offset: number) {
 /**
  * Generates a rich Markdown Hover card with computed electrical impedances & topology for `.pscx` elements.
  */
-export function getPscadHover(text: string, offset: number): { contents: string; line?: number } | null {
+export function getPscadHover(text: string, offset: number): { contents: string; line?: number | undefined } | null {
   try {
     const project = parsePscx(text);
     const netlist = extractEmtNetlist(project);
@@ -2474,9 +2474,11 @@ export function getPscadQuickFixes(text: string, uri: string) {
  * Computes LSP `FoldingRange[]` for `.pscx` / `.pslx` XML elements (`<Definition>`, `<schematic>`,
  * `<User>`, `<Component>`, `<Bus>`, `<Wire>`, `<paramlist>`, `<Sticky>`).
  */
-export function getPscadFoldingRanges(text: string): { startLine: number; endLine: number; kind?: string }[] {
+export function getPscadFoldingRanges(
+  text: string,
+): { startLine: number; endLine: number; kind?: string | undefined }[] {
   const lines = text.split(/\r?\n/);
-  const ranges: { startLine: number; endLine: number; kind?: string }[] = [];
+  const ranges: { startLine: number; endLine: number; kind?: string | undefined }[] = [];
   const stack: { tag: string; startLine: number }[] = [];
   const foldableTags = new Set([
     "definition",

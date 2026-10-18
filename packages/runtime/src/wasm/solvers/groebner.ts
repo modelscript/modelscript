@@ -661,11 +661,14 @@ export function polynomialToDaeExpr(dae: DaeBuilder, poly: Polynomial): u32 {
 }
 
 function isolateLeadingVariable(dae: DaeBuilder, p: Polynomial): u32 {
-  // p = LT(p) + tail = 0 => LT(p) = -tail
+  // p = c * x_v + tail = 0 => x_v = -tail / c
+  let lt = p.LT();
+  let ltCoeff = lt ? lt.coeff : 1.0;
+  let invCoeff = Math.abs(ltCoeff) > 1e-15 ? 1.0 / ltCoeff : 1.0;
   let tailTerms = new Array<Term>();
   for (let i = 1; i < p.terms.length; i++) {
     let t = p.terms[i];
-    tailTerms.push(new Term(-t.coeff, t.degrees));
+    tailTerms.push(new Term(-t.coeff * invCoeff, t.degrees));
   }
   let tailPoly = new Polynomial(tailTerms, p.nVars, p.vars);
   tailPoly.simplify(ORDER_LEX);
@@ -702,20 +705,32 @@ export function groebnerTriangularizeLoop(
   let basis = computeGroebnerBasis(polys, ORDER_LEX);
   if (basis.length < nVars) return false;
 
-  // Verify triangular structure: each equation eliminates one variable
+  // Verify triangular structure: each equation eliminates one variable linearly
   for (let i = 0; i < nVars && i < basis.length; i++) {
     let p = basis[i];
     let lt = p.LT();
     if (!lt) return false;
 
     let targetVarIdx = -1;
+    let totalLtDegree = 0;
     for (let v = 0; v < p.nVars; v++) {
-      if (lt.degrees[v] > 0) {
+      let deg = lt.degrees[v];
+      totalLtDegree += deg;
+      if (deg > 0 && targetVarIdx == -1) {
         targetVarIdx = v;
-        break;
       }
     }
     if (targetVarIdx == -1) continue;
+    // Only rewrite into an explicit assignment x_v = -tail/c if LT(p) has total degree 1 in x_v
+    // and x_v does not appear anywhere in the tail terms.
+    if (totalLtDegree != 1 || lt.degrees[targetVarIdx] != 1) {
+      return false;
+    }
+    for (let tIdx = 1; tIdx < p.terms.length; tIdx++) {
+      if (p.terms[tIdx].degrees[targetVarIdx] > 0) {
+        return false;
+      }
+    }
 
     let targetVar = varIdxs[targetVarIdx] as u32;
     let isolatedRhs = isolateLeadingVariable(dae, p);

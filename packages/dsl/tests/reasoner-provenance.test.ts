@@ -69,4 +69,30 @@ describe("Tier 1: Semiring Provenance & Stratified Datalog Reasoner", () => {
     expect(code).toContain("factProvTable[writeIdx] = factProvTable[i];");
     expect(code).toContain("factProvTable[factIdx] = 0;");
   });
+
+  it("isolates negation cycles via Tarjan SCC without collapsing independent downstream strata to 0", () => {
+    const sccOpts: LanguageOptions = {
+      name: "SccTestLang",
+      fileExtensions: [".scc"],
+      semantics: {
+        reasoner: {
+          rules: [
+            // Base EDB -> BaseDerived (stratum 0)
+            "BaseDerived(?x) :- Edge(?x, ?y).",
+            // Mutual negation cycle between CycleA and CycleB (shared SCC at stratum 1)
+            "CycleA(?x) :- BaseDerived(?x), !CycleB(?x).",
+            "CycleB(?x) :- BaseDerived(?x), !CycleA(?x).",
+            // Downstream predicate depending negatively on CycleA (must be placed in stratum 2, not collapsed to 0)
+            "Downstream(?x) :- BaseDerived(?x), !CycleA(?x).",
+          ],
+        },
+      },
+    };
+
+    const code = generateReasoner(sccOpts, sampleGrammar);
+    expect(code).toContain("// 3 stratum/strata computed from negation dependencies.");
+    expect(code).toContain("// ---- Stratum 0 (1 rule(s)) ----");
+    expect(code).toContain("// ---- Stratum 1 (2 rule(s)) ----");
+    expect(code).toContain("// ---- Stratum 2 (1 rule(s)) ----");
+  });
 });

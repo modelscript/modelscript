@@ -101,7 +101,7 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
  * Extract metadata for a single component instance.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function _extractComponentMetadata(component: any): ComponentMetadata | null {
+export function _extractComponentMetadata(component: any): ComponentMetadata | null {
   const name = component.name;
   if (!name) return null;
 
@@ -114,7 +114,7 @@ function _extractComponentMetadata(component: any): ComponentMetadata | null {
     component.causality?.toString() ??
     component.declaration?.metadata?.causality?.toString() ??
     (
-      component.abstractSyntaxNode?.parent as { causality?: { toString(): string } | null } | undefined
+      component.abstractSyntaxNode?.parent as { causality?: { toString(): string } | null | undefined } | undefined
     )?.causality?.toString() ??
     null;
   if (!causality && cst) {
@@ -134,7 +134,7 @@ function _extractComponentMetadata(component: any): ComponentMetadata | null {
     component.variability?.toString() ??
     component.declaration?.metadata?.variability?.toString() ??
     (
-      component.abstractSyntaxNode?.parent as { variability?: { toString(): string } | null } | undefined
+      component.abstractSyntaxNode?.parent as { variability?: { toString(): string } | null | undefined } | undefined
     )?.variability?.toString() ??
     null;
   if (!variability && cst) {
@@ -220,6 +220,7 @@ function buildClassAdapter(
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
       const _childCst = queryDB.cstNode(child.id) as any;
+      void _childCst;
       const childClassId = queryDB.query("classInstance", child.id) as number | undefined;
       const compCls =
         typeof childClassId === "number"
@@ -262,8 +263,8 @@ function buildClassAdapter(
         if (cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
         if (cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
       }
-      if (!lhs && child.metadata?.lhs) lhs = String(child.metadata.lhs);
-      if (!rhs && child.metadata?.rhs) rhs = String(child.metadata.rhs);
+      if (!lhs && child.metadata?.["lhs"]) lhs = String(child.metadata["lhs"]);
+      if (!rhs && child.metadata?.["rhs"]) rhs = String(child.metadata["rhs"]);
       connectEquations.push({
         lhs,
         rhs,
@@ -404,11 +405,11 @@ export async function processLibrary(
 
         for (const child of children) {
           if (child.kind === "Extends") {
-            const baseName = (child.metadata?.typeSpecifier as string) || child.name;
+            const baseName = (child.metadata?.["typeSpecifier"] as string) || child.name;
             if (baseName) baseClasses.push(baseName);
           } else if (child.kind === "Component" || child.kind === "Variable") {
             const compCst = queryDB.cstNode(child.id) as any;
-            let compDesc: string | null = (child.metadata?.description as string) ?? null;
+            let compDesc: string | null = (child.metadata?.["description"] as string) ?? null;
             if (!compDesc && compCst?.children) {
               const descChild = compCst.children.find((c: any) => c.type === "description" || c.type === "comment");
               if (descChild?.text) {
@@ -430,7 +431,7 @@ export async function processLibrary(
 
             components.push({
               name: child.name ?? "",
-              typeName: (child.metadata?.typeSpecifier as string) ?? "unknown",
+              typeName: (child.metadata?.["typeSpecifier"] as string) ?? "unknown",
               description: compDesc,
               causality,
               variability,
@@ -439,7 +440,7 @@ export async function processLibrary(
           }
         }
 
-        let description: string | null = (sym.metadata?.description as string) ?? null;
+        let description: string | null = (sym.metadata?.["description"] as string) ?? null;
         if (!description && cstNode?.children) {
           // Check for description_string in long_class_specifier or children
           const walkForDesc = (n: any): string | null => {
@@ -542,7 +543,7 @@ export async function processLibrary(
     if (
       sym.kind === "Class" &&
       (sym.parentId === null || sym.parentId === sym.id) &&
-      !sym.metadata?.isPredefined &&
+      !sym.metadata?.["isPredefined"] &&
       sym.id > 0
     ) {
       if (sym.name === library.name || (sym.resourceId && sym.resourceId.startsWith(libraryPath))) {

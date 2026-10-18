@@ -2,9 +2,9 @@
 
 import type { CommandModule } from "yargs";
 
-interface LspArgs {
+export interface LspArgs {
   stdio: boolean;
-  port?: number;
+  port?: number | undefined;
 }
 
 export const Lsp: CommandModule<any, any> = {
@@ -22,7 +22,7 @@ export const Lsp: CommandModule<any, any> = {
         type: "number",
       });
   },
-  handler: async (args) => {
+  handler: async (_args) => {
     const { startNodeServer } = await import("@modelscript/lsp");
     startNodeServer();
   },

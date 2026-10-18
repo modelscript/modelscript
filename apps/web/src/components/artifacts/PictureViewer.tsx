@@ -10,11 +10,11 @@ import type { AnySpatialPin, SpatialPin2D } from "./spatial-pin";
 
 interface PictureViewerProps {
   viewConfig: any; // expects { url: string, title?: string }
-  isFullScreen?: boolean;
-  onPinCreated?: (pin: AnySpatialPin) => void;
+  isFullScreen?: boolean | undefined;
+  onPinCreated?: ((pin: AnySpatialPin) => void) | undefined;
 }
 
-const Wrapper = styled.div<{ $isFullScreen?: boolean }>`
+const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
   background: var(--color-canvas-default, #0d1117);

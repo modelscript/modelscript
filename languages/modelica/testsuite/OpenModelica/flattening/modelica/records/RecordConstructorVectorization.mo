@@ -1,7 +1,6 @@
 // name:     RecordConstructorVectorization.mo
 // keywords: tests the vectorization of records
 // status:   correct
-// xfail:    true
 //
 // tests the vectorization of records. this is used in Modelica.Media
 //

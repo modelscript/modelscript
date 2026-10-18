@@ -14,7 +14,7 @@ import { generateSbatchScript } from "../sbatch-generator.js";
 
 export interface SlurmRestOptions {
   baseUrl: string; // e.g. "http://localhost:6820" or "https://slurm.cluster.internal"
-  apiVersion?: "v0.0.38" | "v0.0.39" | "v0.0.40" | string; // default: "v0.0.39"
+  apiVersion?: "v0.0.38" | "v0.0.39" | "v0.0.40" | string | undefined; // default: "v0.0.39"
   jwtToken?: string | undefined; // Slurm JWT auth token
   username?: string | undefined; // Slurm user name (default: "slurm")
   timeoutMs?: number | undefined; // HTTP timeout in ms (default: 10000)
@@ -272,7 +272,7 @@ export class SlurmRestDriver implements HpcDriver {
 
   // ── Cluster Introspection & Diagnostics ──────────────────────────────
 
-  public async ping(): Promise<{ ok: boolean; latencyMs: number; version?: string }> {
+  public async ping(): Promise<{ ok: boolean; latencyMs: number; version?: string | undefined }> {
     const start = performance.now();
     try {
       const res = await this.request<any>("/ping", "GET");

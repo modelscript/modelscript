@@ -7,8 +7,8 @@ import styled from "styled-components";
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
-  name?: string;
+  fallback?: ReactNode | undefined;
+  name?: string | undefined;
 }
 
 interface State {

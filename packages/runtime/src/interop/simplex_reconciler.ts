@@ -21,17 +21,19 @@ export interface DomainProposal {
   domain: string; // e.g. "sysml2", "modelica", "cad", "fea", "requirements"
   value: number;
   unit: string;
-  weight?: number; // default: 1.0
-  tolerance?: number;
+  weight?: number | undefined; // default: 1.0
+  tolerance?: number | undefined;
 }
 
 export interface ParameterConflictDefinition {
   name: string;
   unit: string;
-  bounds?: {
-    min?: number;
-    max?: number;
-  };
+  bounds?:
+    | {
+        min?: number | undefined;
+        max?: number | undefined;
+      }
+    | undefined;
   proposals: DomainProposal[];
 }
 
@@ -40,14 +42,14 @@ export interface PhysicalLinearConstraint {
   type: "le" | "ge" | "eq";
   coefficients: Record<string, number>; // parameterName -> coefficient
   rhs: number;
-  unit?: string;
+  unit?: string | undefined;
 }
 
 export interface ReconcileProblem {
-  name?: string;
+  name?: string | undefined;
   parameters: Record<string, ParameterConflictDefinition>;
-  constraints?: PhysicalLinearConstraint[];
-  tolerance?: number;
+  constraints?: PhysicalLinearConstraint[] | undefined;
+  tolerance?: number | undefined;
 }
 
 export interface ParameterReconcileResult {
@@ -67,7 +69,7 @@ export interface ParameterReconcileResult {
 
 export interface SimplexReconcileResult {
   status: "OPTIMAL" | "INFEASIBLE" | "UNBOUNDED";
-  problemName?: string;
+  problemName?: string | undefined;
   parameters: Record<string, ParameterReconcileResult>;
   totalWeightedDeviation: number;
   activeConstraints: string[];
@@ -443,14 +445,14 @@ function solveSimplexTableau(
   const pivot = (leaveRow: number, enterCol: number) => {
     const pivotVal = T[leaveRow]![enterCol]!;
     for (let c = 0; c <= numCols; c++) {
-      T[leaveRow]![c] /= pivotVal;
+      T[leaveRow]![c] = T[leaveRow]![c]! / pivotVal;
     }
     for (let r = 0; r <= numRows; r++) {
       if (r !== leaveRow) {
         const factor = T[r]![enterCol]!;
         if (Math.abs(factor) > 1e-15) {
           for (let c = 0; c <= numCols; c++) {
-            T[r]![c] -= factor * T[leaveRow]![c]!;
+            T[r]![c] = T[r]![c]! - factor * T[leaveRow]![c]!;
           }
         }
       }
@@ -465,9 +467,9 @@ function solveSimplexTableau(
     for (let r = 0; r < numRows; r++) {
       if (rowNeedsArtificial[r]) {
         for (let c = 0; c < numEligibleCols; c++) {
-          T[numRows]![c] -= T[r]![c]!;
+          T[numRows]![c] = T[numRows]![c]! - T[r]![c]!;
         }
-        T[numRows]![numCols] -= T[r]![numCols]!;
+        T[numRows]![numCols] = T[numRows]![numCols]! - T[r]![numCols]!;
       }
     }
 
@@ -535,7 +537,7 @@ function solveSimplexTableau(
     const coeff = T[numRows]![basicCol]!;
     if (Math.abs(coeff) > 1e-12) {
       for (let c = 0; c <= numCols; c++) {
-        T[numRows]![c] -= coeff * T[r]![c]!;
+        T[numRows]![c] = T[numRows]![c]! - coeff * T[r]![c]!;
       }
     }
   }

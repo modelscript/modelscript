@@ -26,7 +26,7 @@ const TabBar = styled.div`
   background: rgba(6, 8, 15, 0.85);
 `;
 
-const Tab = styled.button<{ $active?: boolean }>`
+const Tab = styled.button<{ $active?: boolean | undefined }>`
   flex: 1;
   display: flex;
   align-items: center;
@@ -192,7 +192,7 @@ const RepositoryListPage: React.FC = () => {
       setActiveTab("my");
     } catch (e: unknown) {
       if (e && typeof e === "object" && "response" in e) {
-        const axErr = e as { response?: { data?: { error?: string } } };
+        const axErr = e as { response?: { data?: { error?: string | undefined } | undefined } | undefined };
         setError(axErr.response?.data?.error || "Failed to add repository");
       } else if (e instanceof Error) {
         setError(e.message);

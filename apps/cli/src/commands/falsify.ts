@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 
 import { ParameterInversionEngine } from "@modelscript/cad";
 import { TraceRecordNormalizer, type CanonicalTraceRecord, type STLFormula } from "@modelscript/runtime";
@@ -7,18 +8,18 @@ import fs from "node:fs";
 import type { ArgumentsCamelCase, CommandModule } from "yargs";
 
 export interface FalsifyArgs {
-  property?: string;
-  sysml?: string;
-  modelica?: string;
-  cad?: string;
-  params?: string;
-  formula?: string;
-  algorithm?: "de" | "cem" | "cmaes" | "cma-es" | "pso";
-  generations?: number;
-  population?: number;
-  outTrace?: string;
-  outCad?: string;
-  concurrency?: number;
+  property?: string | undefined;
+  sysml?: string | undefined;
+  modelica?: string | undefined;
+  cad?: string | undefined;
+  params?: string | undefined;
+  formula?: string | undefined;
+  algorithm?: "de" | "cem" | "cmaes" | "cma-es" | "pso" | undefined;
+  generations?: number | undefined;
+  population?: number | undefined;
+  outTrace?: string | undefined;
+  outCad?: string | undefined;
+  concurrency?: number | undefined;
 }
 
 export async function runMultidomainFalsification(args: FalsifyArgs): Promise<{
@@ -82,24 +83,67 @@ export async function runMultidomainFalsification(args: FalsifyArgs): Promise<{
     };
   }
 
-  // 3. Define multi-domain simulation evaluator
+  // 3. Pre-load Modelica / SysML equations if model files are provided
+  const modelEquations = new Map<string, string>();
+  for (const modelPath of [args.modelica, args.sysml]) {
+    if (modelPath && fs.existsSync(modelPath)) {
+      const content = fs.readFileSync(modelPath, "utf-8");
+      const eqRegex = /\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;{}\n]+)[;\n]/g;
+      let m: RegExpExecArray | null;
+      while ((m = eqRegex.exec(content)) !== null) {
+        const lhs = m[1]!;
+        const rhs = m[2]!.trim();
+        if (!["parameter", "Real", "Integer", "Boolean", "attribute", "in", "out"].includes(lhs)) {
+          modelEquations.set(lhs, rhs);
+        }
+      }
+    }
+  }
+
+  // 4. Define multi-domain simulation evaluator
   const simulate = async (params: Record<string, number>) => {
     const times = [0, 1, 2, 3, 4, 5];
-    const thickness = params.wall_thickness ?? 4.0;
-    const load = params.external_load ?? 1000.0;
+    const thickness = params["wall_thickness"] ?? 4.0;
+    const load = params["external_load"] ?? 1000.0;
 
     // Multi-physics model: bending stress sigma = M / Z = (load * L) / (thickness * width^2)
     // If external_load is high and wall_thickness is thin => stress shoots above threshold!
     const peakStress = (load * 0.8) / Math.max(0.1, thickness);
     const stress = times.map((t) => peakStress * (1 - Math.exp(-t / 1.5)));
 
+    const signals: Record<string, number[]> = {
+      stress,
+      load: times.map((_t) => load),
+      thickness: times.map((_t) => thickness),
+    };
+
+    for (const [k, v] of Object.entries(params)) {
+      if (!(k in signals)) {
+        signals[k] = times.map(() => v);
+      }
+    }
+
+    for (const [varName, rhsExpr] of modelEquations.entries()) {
+      if (varName in params) continue;
+      try {
+        const argNames = Object.keys(params);
+        const argVals = Object.values(params);
+        if (/^[0-9a-zA-Z_+\-*/().\s]+$/.test(rhsExpr)) {
+          const fn = new Function(...argNames, "t", `return (${rhsExpr});`);
+          const series = times.map((t) => {
+            const val = Number(fn(...argVals, t));
+            return Number.isFinite(val) ? val : 0;
+          });
+          signals[varName] = series;
+        }
+      } catch {
+        // Ignore unparseable expressions and keep default signals
+      }
+    }
+
     return {
       times,
-      signals: {
-        stress,
-        load: times.map((_t) => load),
-        thickness: times.map((_t) => thickness),
-      },
+      signals,
     };
   };
 

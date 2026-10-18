@@ -202,7 +202,7 @@ const definitionStructuralQueries = {
 
       if (implementsTarget) {
         const res = db.byName(implementsTarget);
-        if (res && res.length > 0) node.targetClassId = res[0].id;
+        if (res && res.length > 0) node.targetClassId = res[0]!.id;
       }
 
       const parts = db
@@ -236,9 +236,9 @@ const definitionStructuralQueries = {
       for (const conn of connects) {
         // extract endpoints
         const refs = db.childrenOf(conn.id).filter((c) => c.kind === "Reference");
-        if (refs.length >= 2 && refs[0].name && refs[1].name) {
-          const src = resolveFeatureInScope(db, conn.parentId, refs[0].name);
-          const tgt = resolveFeatureInScope(db, conn.parentId, refs[1].name);
+        if (refs.length >= 2 && refs[0]!.name && refs[1]!.name) {
+          const src = resolveFeatureInScope(db, conn.parentId, refs[0]!.name);
+          const tgt = resolveFeatureInScope(db, conn.parentId, refs[1]!.name);
           if (src && tgt) {
             edges.push({
               sourceId: src.id,
@@ -337,7 +337,7 @@ const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string
   // 1. Multi-segment qualified name lookup (e.g. "ScalarValues::Real", "A::B::C::D")
   if (name.includes("::")) {
     const parts = name.split("::");
-    const rootName = parts[0];
+    const rootName = parts[0]!;
     const rest = parts.slice(1);
 
     const rootCandidates: SymbolEntry[] = [];
@@ -447,7 +447,7 @@ const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string
           if (importTarget.endsWith("::" + name) || importTarget === name) {
             const parts = importTarget.split("::");
             if (parts.length > 1) {
-              const pkgName = parts[parts.length - 2];
+              const pkgName = parts[parts.length - 2]!;
               const pkgs = db.byName(pkgName);
               for (const p of pkgs) {
                 for (const member of db.childrenOf(p.id)) {
@@ -456,7 +456,7 @@ const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string
               }
             } else {
               const candidates = db.byName(name);
-              if (candidates && candidates.length > 0) return candidates[0];
+              if (candidates && candidates.length > 0) return candidates[0]!;
             }
           }
         }
@@ -470,10 +470,10 @@ const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name: string
   const globals = db.byName(name);
   if (!globals || globals.length === 0) return null;
 
-  if (scopeId === null) return globals[0];
+  if (scopeId === null) return globals[0]!;
 
   const standardTypes = new Set(["Real", "Integer", "Boolean", "String", "Natural", "Complex", "Rational", "Anything"]);
-  if (standardTypes.has(name)) return globals[0];
+  if (standardTypes.has(name)) return globals[0]!;
 
   const rootGlobal = globals.find((g) => g.parentId === null || g.kind === "Package");
   return rootGlobal ?? null;
@@ -618,7 +618,7 @@ const getFeatureValue = (db: QueryDB, entry: SymbolEntry): EvalResult => {
   if (text) {
     const eqMatch = text.match(/=\s*([0-9]+(?:\.[0-9]+)?)\s*;?\s*$/);
     if (eqMatch) {
-      const num = parseFloat(eqMatch[1]);
+      const num = parseFloat(eqMatch[1]!);
       if (!isNaN(num)) return num;
     }
   }
@@ -636,7 +636,7 @@ const resolveFeaturePath = (db: QueryDB, names: string[], scopeId: number | null
   if (names.length === 0) return undefined;
 
   // Resolve the base name
-  let current = resolveFeatureInScope(db, scopeId, names[0]);
+  let current = resolveFeatureInScope(db, scopeId, names[0]!);
   if (!current) return undefined;
 
   // If single name, return its value directly
@@ -668,12 +668,12 @@ const resolveFeaturePath = (db: QueryDB, names: string[], scopeId: number | null
         let implementsTarget: string | undefined = undefined;
 
         // Fast path for native SysML items
-        if (meta?.implementsTarget === typeDef.name) {
+        if (meta?.["implementsTarget"] === typeDef.name) {
           implementsTarget = typeDef.name;
         }
         // Fallback for external languages like Modelica
-        else if (meta?.annotationClause && typeof meta.annotationClause === "string") {
-          const match = meta.annotationClause.match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
+        else if (meta?.["annotationClause"] && typeof meta["annotationClause"] === "string") {
+          const match = meta["annotationClause"].match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
           if (match && match[1] === typeDef.name) implementsTarget = match[1];
         }
 
@@ -808,10 +808,10 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
       const operands = node.childrenForFieldName("operand");
       const operators = node.childrenForFieldName("operator").map((op) => op.text);
       if (operands.length < 2 || operators.length === 0) return undefined;
-      let result = evaluateExpressionNode(db, operands[0], scopeId);
+      let result = evaluateExpressionNode(db, operands[0]!, scopeId);
       if (typeof result !== "number") return undefined;
       for (let i = 0; i < operators.length; i++) {
-        const right = evaluateExpressionNode(db, operands[i + 1], scopeId);
+        const right = evaluateExpressionNode(db, operands[i + 1]!, scopeId);
         if (typeof right !== "number") return undefined;
         switch (operators[i]) {
           case "+":
@@ -874,12 +874,12 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
         .childrenForFieldName("operator")
         .map((op) => (op.text ?? op.children?.[0]?.text ?? "").trim());
       if (operands.length < 2 && node.children.length === 3) {
-        operands = [node.children[0], node.children[2]];
-        operators = [(node.children[1].text ?? "").trim()];
+        operands = [node.children[0]!, node.children[2]!];
+        operators = [(node.children[1]!.text ?? "").trim()];
       }
       if (operands.length < 2 || operators.length === 0) return undefined;
-      const left = evaluateExpressionNode(db, operands[0], scopeId);
-      const right = evaluateExpressionNode(db, operands[1], scopeId);
+      const left = evaluateExpressionNode(db, operands[0]!, scopeId);
+      const right = evaluateExpressionNode(db, operands[1]!, scopeId);
       if (typeof left !== "number" || typeof right !== "number") return undefined;
       const opText = operators[0];
       switch (opText) {
@@ -903,8 +903,8 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
         .childrenForFieldName("operator")
         .map((op) => (op.text ?? op.children?.[0]?.text ?? "").trim());
       if (operands.length < 2 || operators.length === 0) return undefined;
-      const left = evaluateExpressionNode(db, operands[0], scopeId);
-      const right = evaluateExpressionNode(db, operands[1], scopeId);
+      const left = evaluateExpressionNode(db, operands[0]!, scopeId);
+      const right = evaluateExpressionNode(db, operands[1]!, scopeId);
       if (left === undefined || right === undefined) return undefined;
       const opText = operators[0];
       switch (opText) {
@@ -925,10 +925,10 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     case "AndExpression": {
       const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
-      let result = evaluateExpressionNode(db, operands[0], scopeId);
+      let result = evaluateExpressionNode(db, operands[0]!, scopeId);
       if (typeof result !== "boolean") return undefined;
       for (let i = 1; i < operands.length; i++) {
-        const right = evaluateExpressionNode(db, operands[i], scopeId);
+        const right = evaluateExpressionNode(db, operands[i]!, scopeId);
         if (typeof right !== "boolean") return undefined;
         result = (result as boolean) && right;
       }
@@ -938,10 +938,10 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     case "OrExpression": {
       const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
-      let result = evaluateExpressionNode(db, operands[0], scopeId);
+      let result = evaluateExpressionNode(db, operands[0]!, scopeId);
       if (typeof result !== "boolean") return undefined;
       for (let i = 1; i < operands.length; i++) {
-        const right = evaluateExpressionNode(db, operands[i], scopeId);
+        const right = evaluateExpressionNode(db, operands[i]!, scopeId);
         if (typeof right !== "boolean") return undefined;
         result = (result as boolean) || right;
       }
@@ -951,10 +951,10 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     case "XorExpression": {
       const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
-      let result = evaluateExpressionNode(db, operands[0], scopeId);
+      let result = evaluateExpressionNode(db, operands[0]!, scopeId);
       if (typeof result !== "boolean") return undefined;
       for (let i = 1; i < operands.length; i++) {
-        const right = evaluateExpressionNode(db, operands[i], scopeId);
+        const right = evaluateExpressionNode(db, operands[i]!, scopeId);
         if (typeof right !== "boolean") return undefined;
         result = (result as boolean) !== right;
       }
@@ -964,9 +964,9 @@ const evaluateExpressionNode = (db: QueryDB, node: CSTNode, scopeId: number | nu
     case "ImpliesExpression": {
       const operands = node.childrenForFieldName("operand");
       if (operands.length < 2) return undefined;
-      const left = evaluateExpressionNode(db, operands[0], scopeId);
+      const left = evaluateExpressionNode(db, operands[0]!, scopeId);
       // For implies references, we need to unwrap the ImpliesExpressionReference
-      let rightNode = operands[1];
+      let rightNode = operands[1]!;
       if (rightNode.type === "ImpliesExpressionReference") {
         const inner = rightNode.childForFieldName("ownedRelationship");
         if (inner) {
@@ -1144,7 +1144,6 @@ const calculationUsageQueries = {
 };
 
 const calculationQueries = calculationDefinitionQueries;
-const calculationModel = calculationDefinitionModel;
 
 // ---------------------------------------------------------------------------
 // Constraint Evaluation — computed fields
@@ -1289,7 +1288,7 @@ const getRelationshipTargetName = (db: QueryDB, entry: SymbolEntry): string | nu
   // If the symbol has a declared name that is not its internal rule name, it's using the `requirement <name>` branch
   if (entry.name && entry.name !== entry.ruleName) {
     const parts = entry.name.split("::");
-    return parts[parts.length - 1];
+    return parts[parts.length - 1]!;
   }
 
   // Otherwise, extract from OwnedReferenceSubsetting CST child.
@@ -1299,7 +1298,7 @@ const getRelationshipTargetName = (db: QueryDB, entry: SymbolEntry): string | nu
       const raw = db.cstText(child.startByte, child.endByte);
       if (raw) {
         const parts = raw.trim().split("::");
-        return parts[parts.length - 1];
+        return parts[parts.length - 1]!;
       }
     }
   }
@@ -1313,8 +1312,8 @@ const getRelationshipTargetName = (db: QueryDB, entry: SymbolEntry): string | nu
       /(?:verify|satisfy)\s+(?:requirement\s+)?([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)/,
     );
     if (match) {
-      const parts = match[1].split("::");
-      return parts[parts.length - 1];
+      const parts = match[1]!.split("::");
+      return parts[parts.length - 1]!;
     }
   }
   return null;
@@ -1681,10 +1680,10 @@ const usageLints = {
   symbolNotFound: (db: QueryDB, self: SymbolEntry) => checkSymbolResolution(db, self),
   multiplicityBounds: (_db: QueryDB, self: SymbolEntry) => {
     // metadata fields are extracted as strings from the CST if they existed
-    const lowerStr = self.metadata?.multiplicityLower as string | undefined;
+    const lowerStr = self.metadata?.["multiplicityLower"] as string | undefined;
     if (!lowerStr) return null; // No multiplicity declared
 
-    let upperStr = self.metadata?.multiplicityUpper as string | undefined;
+    let upperStr = self.metadata?.["multiplicityUpper"] as string | undefined;
     if (!upperStr) upperStr = lowerStr; // e.g. [3] means lower=3, upper=3
 
     const parseBound = (s: string) => (s.trim() === "*" || s.includes("Infinity") ? Infinity : parseFloat(s));
@@ -1709,8 +1708,8 @@ const usageLints = {
         break;
       }
     }
-    if (!typeName && self.metadata?.typeSpecifier) {
-      typeName = String(self.metadata.typeSpecifier);
+    if (!typeName && self.metadata?.["typeSpecifier"]) {
+      typeName = String(self.metadata["typeSpecifier"]);
     }
     if (!typeName) return null;
 
@@ -1884,16 +1883,6 @@ const requirementLints = {
   },
 };
 
-const requirementDefinitionLints = {
-  ...definitionLints,
-  ...requirementLints,
-};
-
-const requirementUsageLints = {
-  ...usageLints,
-  ...requirementLints,
-};
-
 const satisfyRequirementLints = {
   ...usageLints,
   invalidTarget: (db: QueryDB, self: SymbolEntry) => {
@@ -2027,7 +2016,7 @@ const verificationCaseUsageLints = {
     return null;
   },
   /** Provide a hook into the VerificationRunner for incremental verification */
-  verificationResult: (db: QueryDB, self: SymbolEntry) => {
+  verificationResult: (_db: QueryDB, _self: SymbolEntry) => {
     // Requires a SimulationResult object to evaluate.
     // In practice, this would look up another query that returns the simulation object:
     // const simResult = db.query<SimulationResult>("simulationData", self.id);
@@ -2889,10 +2878,10 @@ const sysmlNodeGraphics = (opts: {
   stereotype: string;
   fill: string;
   stroke: string;
-  iconHref?: string;
-  width?: number;
-  height?: number;
-  portQuery?: string;
+  iconHref?: string | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  portQuery?: string | undefined;
 }): GraphicsConfig => ({
   role: "node",
   node: {
@@ -2957,7 +2946,7 @@ const sysmlUsageGraphics = (opts: {
   stereotype: string;
   fill: string;
   stroke: string;
-  iconHref?: string;
+  iconHref?: string | undefined;
 }): GraphicsConfig => ({
   role: "node",
   node: {
@@ -3043,12 +3032,12 @@ const sysmlGroupGraphics = (opts: { fill: string; stroke: string; tabText: strin
 
 /** Create a SysML edge GraphicsConfig */
 const sysmlEdgeGraphics = (opts: {
-  label?: string;
-  stroke?: string;
-  strokeDasharray?: string;
+  label?: string | undefined;
+  stroke?: string | undefined;
+  strokeDasharray?: string | undefined;
   targetMarker?: any;
-  router?: string | { name: string; args?: Record<string, unknown> };
-  connector?: string | { name: string; args?: Record<string, unknown> };
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  connector?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
 }): GraphicsConfig => ({
   role: "edge",
   edge: {
@@ -3087,6 +3076,16 @@ const sysmlEdgeGraphics = (opts: {
   },
 });
 
+/**
+ * Complete SysML v2 & KerML declarative language definition for ModelScript.
+ *
+ * Integrates the Xtext-derived GLR grammar, Salsa incremental semantic queries,
+ * CST-based expression evaluation, multi-tier static and formal verification lints
+ * (type/dimensional checking, Octagon DBM/Simplex requirement consistency, state-machine
+ * determinism, OCRA contract verification, activity soundness, and OWL2 DL reasoning),
+ * X6 diagram graphics, and polyglot Triple Graph Grammar (TGG) rules targeting Modelica,
+ * OWL2, and ISO 10303 STEP.
+ */
 export const sysml2Language = language({
   name: "sysml2",
   displayName: "SysML v2",
@@ -3102,6 +3101,7 @@ export const sysml2Language = language({
 
   writeback: sysml2Writeback,
 
+  // Configure background SMT theories (Linear Real Arithmetic + Equality with Uninterpreted Functions)
   semantics: {
     reasoner: {
       smt: {
@@ -3111,10 +3111,12 @@ export const sysml2Language = language({
     } as any,
   },
 
+  // Relational Octagon abstract domain (±x ± y <= c) for static interval and difference bound analysis
   domains: {
     bounds: domain.octagon(),
   },
 
+  // Control-flow graph (CFG) node descriptors for activity and state-machine static analysis
   cfgNodes: {
     IfNode: {
       condition: "condition",
@@ -3190,7 +3192,7 @@ export const sysml2Language = language({
       inputs: {
         partName: { type: "string", description: "Part name to verify" },
       },
-      execute: async (ctx: any, params: { partName?: string }) => {
+      execute: async (ctx: any, params: { partName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { checkRequirementConsistency } = await import("./smt-bridge.js");
@@ -3223,7 +3225,7 @@ export const sysml2Language = language({
       inputs: {
         stateName: { type: "string", description: "State or package name to verify" },
       },
-      execute: async (ctx: any, params: { stateName?: string }) => {
+      execute: async (ctx: any, params: { stateName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { verifyAllStateMachineTransitions } = await import("./state-machine-verifier.js");
@@ -3252,7 +3254,7 @@ export const sysml2Language = language({
       inputs: {
         connectionName: { type: "string", description: "Connection or package name to verify" },
       },
-      execute: async (ctx: any, params: { connectionName?: string }) => {
+      execute: async (ctx: any, params: { connectionName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { verifyAllInterfaceContracts } = await import("./contract-verifier.js");
@@ -3281,7 +3283,7 @@ export const sysml2Language = language({
       inputs: {
         scope: { type: "string", description: "Target package or part scope" },
       },
-      execute: async (ctx: any, params: { scope?: string }) => {
+      execute: async (ctx: any, params: { scope?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { exportToSmtLib } = await import("./exporters/smtlib-exporter.js");
@@ -3309,7 +3311,7 @@ export const sysml2Language = language({
       inputs: {
         stateMachineName: { type: "string", description: "State machine name" },
       },
-      execute: async (ctx: any, params: { stateMachineName?: string }) => {
+      execute: async (ctx: any, params: { stateMachineName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { exportToNuXmv } = await import("./exporters/nuxmv-exporter.js");
@@ -3339,7 +3341,7 @@ export const sysml2Language = language({
         hazardName: { type: "string", description: "Target hazard name or condition" },
         maxOrder: { type: "number", description: "Maximum cut set order to explore", default: 4 },
       },
-      execute: async (ctx: any, params: { hazardName?: string; maxOrder?: number }) => {
+      execute: async (ctx: any, params: { hazardName?: string | undefined; maxOrder?: number | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         const { analyzeSafetyAndFaultTree } = await import("./safety-analyzer.js");
         return analyzeSafetyAndFaultTree(queryDB, {
@@ -3382,12 +3384,12 @@ export const sysml2Language = language({
       execute: async (
         ctx: any,
         params: {
-          modelName?: string;
-          timeSpan?: string;
-          dt?: number;
-          order?: number;
-          adaptive?: boolean;
-          useQrPreconditioning?: boolean;
+          modelName?: string | undefined;
+          timeSpan?: string | undefined;
+          dt?: number | undefined;
+          order?: number | undefined;
+          adaptive?: boolean | undefined;
+          useQrPreconditioning?: boolean | undefined;
         },
       ) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
@@ -3420,7 +3422,15 @@ export const sysml2Language = language({
         startTime: { type: "number", description: "Simulation start time", default: 0 },
         stopTime: { type: "number", description: "Simulation stop time", default: 10 },
       },
-      execute: async (ctx: any, params: { name?: string; startTime?: number; stopTime?: number; step?: number }) => {
+      execute: async (
+        ctx: any,
+        params: {
+          name?: string | undefined;
+          startTime?: number | undefined;
+          stopTime?: number | undefined;
+          step?: number | undefined;
+        },
+      ) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         const { SysML2DaeLowerer } = await import("./sysml2-dae-lowerer.js");
         const { simulateArena } = await import("@modelscript/simulate");
@@ -3475,7 +3485,7 @@ export const sysml2Language = language({
       inputs: {
         actionName: { type: "string", description: "Target action or activity name" },
       },
-      execute: async (ctx: any, params: { actionName?: string }) => {
+      execute: async (ctx: any, params: { actionName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { checkActivitySoundnessForSymbol } = await import("./activity-soundness.js");
@@ -3556,7 +3566,7 @@ export const sysml2Language = language({
         name: "sysml2_trace_requirements",
         description: "Trace requirements from high-level system requirements down to behavioral parts",
         arguments: [{ name: "requirementId", description: "Target requirement ID", required: true }],
-        template: (args: Record<string, string>) => `Trace requirements from ${args.requirementId}`,
+        template: (args: Record<string, string>) => `Trace requirements from ${args["requirementId"]}`,
       },
     ],
   },
@@ -3566,118 +3576,118 @@ export const sysml2Language = language({
     lineComment: "//",
   },
 
-  extras: ($) => [/\s/],
+  extras: (_$) => [/\s/],
 
   conflicts: ($) => [
-    [$.LiteralInteger, $.RealValue],
-    [$.FeatureReferenceMember, $.ElementReferenceMember, $.OwnedFeatureChaining],
-    [$.Qualification],
-    [$.FeatureChainMember, $.OwnedFeatureChaining],
-    [$._FeatureChain],
-    [$._postfix_operation],
-    [$.MeasurementExpression, $.PrimaryExpression],
+    [$["LiteralInteger"]!, $["RealValue"]!],
+    [$["FeatureReferenceMember"]!, $["ElementReferenceMember"]!, $["OwnedFeatureChaining"]!],
+    [$["Qualification"]!],
+    [$["FeatureChainMember"]!, $["OwnedFeatureChaining"]!],
+    [$["_FeatureChain"]!],
+    [$["_postfix_operation"]!],
+    [$["MeasurementExpression"]!, $["PrimaryExpression"]!],
     // All definition and usage rules share modifier keyword prefixes
     [
-      $.DefaultReferenceUsage,
-      $.ReferenceUsage,
-      $.AttributeDefinition,
-      $.AttributeUsage,
-      $.EnumerationDefinition,
-      $.EnumerationUsage,
-      $.EnumeratedValue,
-      $.OccurrenceDefinition,
-      $.OccurrenceUsage,
-      $.ItemDefinition,
-      $.ItemUsage,
-      $.PartDefinition,
-      $.PartUsage,
-      $.PortDefinition,
-      $.PortUsage,
-      $.ConnectionDefinition,
-      $.ConnectionUsage,
-      $.InterfaceDefinition,
-      $.InterfaceUsage,
-      $.AllocationDefinition,
-      $.AllocationUsage,
-      $.FlowDefinition,
-      $.FlowUsage,
-      $.SuccessionFlowUsage,
-      $.BindingConnectorAsUsage,
-      $.SuccessionAsUsage,
-      $.ActionDefinition,
-      $.ActionUsage,
-      $.PerformActionUsage,
-      $.CalculationDefinition,
-      $.CalculationUsage,
-      $.ConstraintDefinition,
-      $.ConstraintUsage,
-      $.AssertConstraintUsage,
-      $.RequirementDefinition,
-      $.RequirementUsage,
-      $.SatisfyRequirementUsage,
-      $.ConcernDefinition,
-      $.ConcernUsage,
-      $.CaseDefinition,
-      $.CaseUsage,
-      $.AnalysisCaseDefinition,
-      $.AnalysisCaseUsage,
-      $.VerificationCaseDefinition,
-      $.VerificationCaseUsage,
-      $.UseCaseDefinition,
-      $.UseCaseUsage,
-      $.IncludeUseCaseUsage,
-      $.StateDefinition,
-      $.StateUsage,
-      $.ExhibitStateUsage,
-      $.ViewDefinition,
-      $.ViewUsage,
-      $.ViewpointDefinition,
-      $.ViewpointUsage,
-      $.RenderingDefinition,
-      $.RenderingUsage,
-      $.MetadataDefinition,
-      $.MergeNode,
-      $.DecisionNode,
-      $.JoinNode,
-      $.ForkNode,
-      $.AcceptActionNode,
-      $.SendActionNode,
-      $.AssignActionNode,
-      $.VerifyRequirementUsage,
-      $.ObjectiveRequirementUsage,
+      $["DefaultReferenceUsage"]!,
+      $["ReferenceUsage"]!,
+      $["AttributeDefinition"]!,
+      $["AttributeUsage"]!,
+      $["EnumerationDefinition"]!,
+      $["EnumerationUsage"]!,
+      $["EnumeratedValue"]!,
+      $["OccurrenceDefinition"]!,
+      $["OccurrenceUsage"]!,
+      $["ItemDefinition"]!,
+      $["ItemUsage"]!,
+      $["PartDefinition"]!,
+      $["PartUsage"]!,
+      $["PortDefinition"]!,
+      $["PortUsage"]!,
+      $["ConnectionDefinition"]!,
+      $["ConnectionUsage"]!,
+      $["InterfaceDefinition"]!,
+      $["InterfaceUsage"]!,
+      $["AllocationDefinition"]!,
+      $["AllocationUsage"]!,
+      $["FlowDefinition"]!,
+      $["FlowUsage"]!,
+      $["SuccessionFlowUsage"]!,
+      $["BindingConnectorAsUsage"]!,
+      $["SuccessionAsUsage"]!,
+      $["ActionDefinition"]!,
+      $["ActionUsage"]!,
+      $["PerformActionUsage"]!,
+      $["CalculationDefinition"]!,
+      $["CalculationUsage"]!,
+      $["ConstraintDefinition"]!,
+      $["ConstraintUsage"]!,
+      $["AssertConstraintUsage"]!,
+      $["RequirementDefinition"]!,
+      $["RequirementUsage"]!,
+      $["SatisfyRequirementUsage"]!,
+      $["ConcernDefinition"]!,
+      $["ConcernUsage"]!,
+      $["CaseDefinition"]!,
+      $["CaseUsage"]!,
+      $["AnalysisCaseDefinition"]!,
+      $["AnalysisCaseUsage"]!,
+      $["VerificationCaseDefinition"]!,
+      $["VerificationCaseUsage"]!,
+      $["UseCaseDefinition"]!,
+      $["UseCaseUsage"]!,
+      $["IncludeUseCaseUsage"]!,
+      $["StateDefinition"]!,
+      $["StateUsage"]!,
+      $["ExhibitStateUsage"]!,
+      $["ViewDefinition"]!,
+      $["ViewUsage"]!,
+      $["ViewpointDefinition"]!,
+      $["ViewpointUsage"]!,
+      $["RenderingDefinition"]!,
+      $["RenderingUsage"]!,
+      $["MetadataDefinition"]!,
+      $["MergeNode"]!,
+      $["DecisionNode"]!,
+      $["JoinNode"]!,
+      $["ForkNode"]!,
+      $["AcceptActionNode"]!,
+      $["SendActionNode"]!,
+      $["AssignActionNode"]!,
+      $["VerifyRequirementUsage"]!,
+      $["ObjectiveRequirementUsage"]!,
     ],
-    [$._usage_modifier, $.ReferenceUsage],
-    [$.PrefixMetadataAnnotation, $.PrefixMetadataMember],
-    [$.OwnedReferenceSubsetting, $.OwnedFeatureChaining],
-    [$.OwnedFeatureTyping, $.OwnedFeatureChaining],
-    [$.OwnedSubsetting, $.OwnedFeatureChaining],
-    [$.OwnedSubclassification, $.OwnedSubsetting, $.OwnedFeatureChaining],
-    [$.OwnedSubclassification, $.OwnedFeatureChaining],
-    [$.OwnedRedefinition, $.OwnedFeatureChaining],
-    [$.OwnedCrossSubsetting, $.OwnedFeatureChaining],
-    [$.Qualification, $.QualifiedName],
-    [$._FeatureSpecializationPart],
-    [$._SubclassificationPart, $._FeatureSpecializationPart],
-    [$._SubclassificationPart, $._Subsettings],
-    [$.MetadataUsage, $.ClassificationTestOperator],
-    [$._Identification, $.QualifiedName],
-    [$._Identification],
-    [$._ActionBody, $.StateActionUsage],
-    [$._ActionBodyItem, $._CalculationBody],
-    [$.FeatureReferenceMember, $.InstantiatedTypeMember],
+    [$["_usage_modifier"]!, $["ReferenceUsage"]!],
+    [$["PrefixMetadataAnnotation"]!, $["PrefixMetadataMember"]!],
+    [$["OwnedReferenceSubsetting"]!, $["OwnedFeatureChaining"]!],
+    [$["OwnedFeatureTyping"]!, $["OwnedFeatureChaining"]!],
+    [$["OwnedSubsetting"]!, $["OwnedFeatureChaining"]!],
+    [$["OwnedSubclassification"]!, $["OwnedSubsetting"]!, $["OwnedFeatureChaining"]!],
+    [$["OwnedSubclassification"]!, $["OwnedFeatureChaining"]!],
+    [$["OwnedRedefinition"]!, $["OwnedFeatureChaining"]!],
+    [$["OwnedCrossSubsetting"]!, $["OwnedFeatureChaining"]!],
+    [$["Qualification"]!, $["QualifiedName"]!],
+    [$["_FeatureSpecializationPart"]!],
+    [$["_SubclassificationPart"]!, $["_FeatureSpecializationPart"]!],
+    [$["_SubclassificationPart"]!, $["_Subsettings"]!],
+    [$["MetadataUsage"]!, $["ClassificationTestOperator"]!],
+    [$["_Identification"]!, $["QualifiedName"]!],
+    [$["_Identification"]!],
+    [$["_ActionBody"]!, $["StateActionUsage"]!],
+    [$["_ActionBodyItem"]!, $["_CalculationBody"]!],
+    [$["FeatureReferenceMember"]!, $["InstantiatedTypeMember"]!],
   ],
 
-  word: ($) => $.ID,
+  word: ($) => $["ID"]!,
 
   rules: {
     // =====================================================================
     // ROOT
     // =====================================================================
 
-    RootNamespace: ($) => repeat($._PackageBodyElement),
+    RootNamespace: ($) => repeat($["_PackageBodyElement"]!),
 
     _PackageBodyElement: ($) =>
-      choice($.PackageMember, $.ElementFilterMember, $.AliasMember, $.Import, $.AnnotatingMember),
+      choice($["PackageMember"]!, $["ElementFilterMember"]!, $["AliasMember"]!, $["Import"]!, $["AnnotatingMember"]!),
 
     // =====================================================================
     // BASIC ELEMENTS
@@ -3685,11 +3695,11 @@ export const sysml2Language = language({
 
     _Identification: ($) =>
       choice(
-        seq("<", field("declaredShortName", $.Name), ">", optional(field("declaredName", $.Name))),
-        field("declaredName", $.Name),
+        seq("<", field("declaredShortName", $["Name"]!), ">", optional(field("declaredName", $["Name"]!))),
+        field("declaredName", $["Name"]!),
       ),
 
-    _RelationshipBody: ($) => choice(";", seq("{", repeat($.OwnedAnnotation), "}")),
+    _RelationshipBody: ($) => choice(";", seq("{", repeat($["OwnedAnnotation"]!), "}")),
 
     // =====================================================================
     // VISIBILITY
@@ -3703,15 +3713,15 @@ export const sysml2Language = language({
 
     Dependency: ($) =>
       seq(
-        repeat($.PrefixMetadataAnnotation),
+        repeat($["PrefixMetadataAnnotation"]!),
         "dependency",
-        optional(seq(optional($._Identification), "from")),
-        field("client", $.QualifiedName),
-        repeat(seq(",", field("client", $.QualifiedName))),
+        optional(seq(optional($["_Identification"]!), "from")),
+        field("client", $["QualifiedName"]!),
+        repeat(seq(",", field("client", $["QualifiedName"]!))),
         "to",
-        field("supplier", $.QualifiedName),
-        repeat(seq(",", field("supplier", $.QualifiedName))),
-        $._RelationshipBody,
+        field("supplier", $["QualifiedName"]!),
+        repeat(seq(",", field("supplier", $["QualifiedName"]!))),
+        $["_RelationshipBody"]!,
       ),
 
     // =====================================================================
@@ -3720,31 +3730,32 @@ export const sysml2Language = language({
 
     Annotation: ($) =>
       ref({
-        syntax: field("annotatedElement", $.QualifiedName),
+        syntax: field("annotatedElement", $["QualifiedName"]!),
         name: (self) => self.annotatedElement,
         targetKinds: ["Element"],
         resolve: "qualified",
       }),
 
-    OwnedAnnotation: ($) => field("ownedRelatedElement", $._AnnotatingElement),
+    OwnedAnnotation: ($) => field("ownedRelatedElement", $["_AnnotatingElement"]!),
 
-    AnnotatingMember: ($) => field("ownedRelatedElement", $._AnnotatingElement),
+    AnnotatingMember: ($) => field("ownedRelatedElement", $["_AnnotatingElement"]!),
 
-    _AnnotatingElement: ($) => choice($.Comment, $.Documentation, $.TextualRepresentation, $.MetadataUsage),
+    _AnnotatingElement: ($) =>
+      choice($["Comment"]!, $["Documentation"]!, $["TextualRepresentation"]!, $["MetadataUsage"]!),
 
     Comment: ($) =>
       seq(
         choice(
           seq(
             "comment",
-            optional($._Identification),
-            optional(seq("about", $.Annotation, repeat(seq(",", $.Annotation)))),
-            optional(seq("locale", field("locale", $.STRING_VALUE))),
-            optional(field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE))),
+            optional($["_Identification"]!),
+            optional(seq("about", $["Annotation"]!, repeat(seq(",", $["Annotation"]!)))),
+            optional(seq("locale", field("locale", $["STRING_VALUE"]!))),
+            optional(field("body", choice($["REGULAR_COMMENT"]!, $["STRING_VALUE"]!))),
           ),
           seq(
-            optional(seq("locale", field("locale", $.STRING_VALUE))),
-            field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE)),
+            optional(seq("locale", field("locale", $["STRING_VALUE"]!))),
+            field("body", choice($["REGULAR_COMMENT"]!, $["STRING_VALUE"]!)),
           ),
         ),
         optional(";"),
@@ -3755,14 +3766,14 @@ export const sysml2Language = language({
         choice(
           seq(
             "doc",
-            optional($._Identification),
-            optional(seq("locale", field("locale", $.STRING_VALUE))),
-            field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE)),
+            optional($["_Identification"]!),
+            optional(seq("locale", field("locale", $["STRING_VALUE"]!))),
+            field("body", choice($["REGULAR_COMMENT"]!, $["STRING_VALUE"]!)),
           ),
           seq(
             "doc",
-            optional(seq("<", field("declaredShortName", $.Name), ">")),
-            optional(seq("locale", field("locale", $.STRING_VALUE))),
+            optional(seq("<", field("declaredShortName", $["Name"]!), ">")),
+            optional(seq("locale", field("locale", $["STRING_VALUE"]!))),
           ),
         ),
         optional(";"),
@@ -3770,10 +3781,10 @@ export const sysml2Language = language({
 
     TextualRepresentation: ($) =>
       seq(
-        optional(seq("rep", optional($._Identification))),
+        optional(seq("rep", optional($["_Identification"]!))),
         "language",
-        field("language", $.STRING_VALUE),
-        optional(field("body", choice($.REGULAR_COMMENT, $.STRING_VALUE))),
+        field("language", $["STRING_VALUE"]!),
+        optional(field("body", choice($["REGULAR_COMMENT"]!, $["STRING_VALUE"]!))),
         optional(";"),
       ),
 
@@ -3781,21 +3792,21 @@ export const sysml2Language = language({
     // METADATA
     // =====================================================================
 
-    PrefixMetadataAnnotation: ($) => seq("#", field("ownedRelatedElement", $.PrefixMetadataUsage)),
+    PrefixMetadataAnnotation: ($) => seq("#", field("ownedRelatedElement", $["PrefixMetadataUsage"]!)),
 
-    PrefixMetadataMember: ($) => seq("#", field("ownedRelatedElement", $.PrefixMetadataUsage)),
+    PrefixMetadataMember: ($) => seq("#", field("ownedRelatedElement", $["PrefixMetadataUsage"]!)),
 
-    PrefixMetadataUsage: ($) => field("ownedRelationship", $.MetadataTyping),
+    PrefixMetadataUsage: ($) => field("ownedRelationship", $["MetadataTyping"]!),
 
     MetadataUsage: ($) =>
       def({
         syntax: seq(
-          repeat($.PrefixMetadataMember),
+          repeat($["PrefixMetadataMember"]!),
           choice("metadata", "@"),
-          optional(seq(optional($._Identification), optional(seq(choice(":", seq("defined", "by")))))),
-          field("ownedRelationship", $.MetadataTyping),
-          optional(seq("about", $.Annotation, repeat(seq(",", $.Annotation)))),
-          $._MetadataBody,
+          optional(seq(optional($["_Identification"]!), optional(seq(choice(":", seq("defined", "by")))))),
+          field("ownedRelationship", $["MetadataTyping"]!),
+          optional(seq("about", $["Annotation"]!, repeat(seq(",", $["Annotation"]!)))),
+          $["_MetadataBody"]!,
         ),
         symbol: usageAttrs("metadata"),
         queries: usageQueries,
@@ -3805,7 +3816,7 @@ export const sysml2Language = language({
 
     MetadataTyping: ($) =>
       ref({
-        syntax: field("type", $.QualifiedName),
+        syntax: field("type", $["QualifiedName"]!),
         name: (self) => self.type,
         targetKinds: ["Metaclass"],
         resolve: "qualified",
@@ -3814,24 +3825,28 @@ export const sysml2Language = language({
     _MetadataBody: ($) =>
       choice(
         ";",
-        seq("{", repeat(choice($.DefinitionMember, $.MetadataBodyUsageMember, $.AliasMember, $.Import)), "}"),
+        seq(
+          "{",
+          repeat(choice($["DefinitionMember"]!, $["MetadataBodyUsageMember"]!, $["AliasMember"]!, $["Import"]!)),
+          "}",
+        ),
       ),
 
-    MetadataBodyUsageMember: ($) => field("ownedRelatedElement", $.MetadataBodyUsage),
+    MetadataBodyUsageMember: ($) => field("ownedRelatedElement", $["MetadataBodyUsage"]!),
 
     MetadataBodyUsage: ($) =>
       seq(
         optional("ref"),
         optional(choice(":>>", "redefines")),
-        field("ownedRelationship", $.OwnedRedefinition),
-        optional($._FeatureSpecializationPart),
-        optional($._ValuePart),
-        $._MetadataBody,
+        field("ownedRelationship", $["OwnedRedefinition"]!),
+        optional($["_FeatureSpecializationPart"]!),
+        optional($["_ValuePart"]!),
+        $["_MetadataBody"]!,
       ),
 
     MetadataDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "metadata", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "metadata", "def", $["_Definition"]!),
         symbol: defAttrs("metadata"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -3844,7 +3859,12 @@ export const sysml2Language = language({
 
     Package: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "package", optional($._Identification), field("body", $._PackageBody)),
+        syntax: seq(
+          repeat($["_usage_modifier"]!),
+          "package",
+          optional($["_Identification"]!),
+          field("body", $["_PackageBody"]!),
+        ),
         symbol: (self: any) => ({
           kind: "Package",
           name: self.declaredName,
@@ -3861,10 +3881,10 @@ export const sysml2Language = language({
         syntax: seq(
           optional(field("isStandard", "standard")),
           "library",
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "package",
-          optional($._Identification),
-          field("body", $._PackageBody),
+          optional($["_Identification"]!),
+          field("body", $["_PackageBody"]!),
         ),
         symbol: (self: any) => ({
           kind: "Package",
@@ -3878,32 +3898,35 @@ export const sysml2Language = language({
         graphics: () => sysmlGroupGraphics({ fill: "#f8fafc", stroke: "#475569", tabText: "library" }),
       }),
 
-    _PackageBody: ($) => choice(";", seq("{", repeat($._PackageBodyElement), "}")),
+    _PackageBody: ($) => choice(";", seq("{", repeat($["_PackageBodyElement"]!), "}")),
 
     PackageMember: ($) =>
       seq(
-        optional($.VisibilityIndicator),
-        choice(field("ownedRelatedElement", $._DefinitionElement), field("ownedRelatedElement", $._UsageElement)),
+        optional($["VisibilityIndicator"]!),
+        choice(
+          field("ownedRelatedElement", $["_DefinitionElement"]!),
+          field("ownedRelatedElement", $["_UsageElement"]!),
+        ),
       ),
 
     ElementFilterMember: ($) =>
-      seq(optional($.VisibilityIndicator), "filter", field("ownedRelatedElement", $.OwnedExpression), ";"),
+      seq(optional($["VisibilityIndicator"]!), "filter", field("ownedRelatedElement", $["OwnedExpression"]!), ";"),
 
     AliasMember: ($) =>
       def({
         syntax: seq(
-          optional($.VisibilityIndicator),
+          optional($["VisibilityIndicator"]!),
           "alias",
-          optional(seq("<", field("memberShortName", $.Name), ">")),
-          optional(field("memberName", $.Name)),
+          optional(seq("<", field("memberShortName", $["Name"]!), ">")),
+          optional(field("memberName", $["Name"]!)),
           "for",
           ref({
-            syntax: field("memberElement", $.QualifiedName),
+            syntax: field("memberElement", $["QualifiedName"]!),
             name: (self) => self.memberElement,
             targetKinds: ["Element"],
             resolve: "qualified",
           }),
-          $._RelationshipBody,
+          $["_RelationshipBody"]!,
         ),
         symbol: (self) => ({ kind: "Alias", name: self.memberName }),
         model: {
@@ -3916,13 +3939,13 @@ export const sysml2Language = language({
     // IMPORTS
     // =====================================================================
 
-    _ImportPrefix: ($) => seq(optional($.VisibilityIndicator), "import", optional(field("isImportAll", "all"))),
+    _ImportPrefix: ($) => seq(optional($["VisibilityIndicator"]!), "import", optional(field("isImportAll", "all"))),
 
-    Import: ($) => seq(choice($.MembershipImport, $.NamespaceImport), $._RelationshipBody),
+    Import: ($) => seq(choice($["MembershipImport"]!, $["NamespaceImport"]!), $["_RelationshipBody"]!),
 
     MembershipImport: ($) =>
       def({
-        syntax: seq($._ImportPrefix, $._ImportedMembership),
+        syntax: seq($["_ImportPrefix"]!, $["_ImportedMembership"]!),
         symbol: (self) => ({
           kind: "Import",
           name: self.importedMembership,
@@ -3938,7 +3961,7 @@ export const sysml2Language = language({
     _ImportedMembership: ($) =>
       seq(
         ref({
-          syntax: field("importedMembership", $.QualifiedName),
+          syntax: field("importedMembership", $["QualifiedName"]!),
           name: (self) => self.importedMembership,
           targetKinds: ["Membership"],
           resolve: "qualified",
@@ -3948,7 +3971,10 @@ export const sysml2Language = language({
 
     NamespaceImport: ($) =>
       def({
-        syntax: seq($._ImportPrefix, choice($._ImportedNamespace, field("ownedRelatedElement", $.FilterPackage))),
+        syntax: seq(
+          $["_ImportPrefix"]!,
+          choice($["_ImportedNamespace"]!, field("ownedRelatedElement", $["FilterPackage"]!)),
+        ),
         symbol: (self: any) => ({
           kind: "Import",
           name: self.importedNamespace,
@@ -3964,7 +3990,7 @@ export const sysml2Language = language({
     _ImportedNamespace: ($) =>
       seq(
         ref({
-          syntax: field("importedNamespace", $.QualifiedName),
+          syntax: field("importedNamespace", $["QualifiedName"]!),
           name: (self) => self.importedNamespace,
           targetKinds: ["Namespace"],
           resolve: "qualified",
@@ -3974,14 +4000,14 @@ export const sysml2Language = language({
         optional(seq("::", field("isRecursive", "**"))),
       ),
 
-    FilterPackage: ($) => seq($.FilterPackageImport, repeat1($.FilterPackageMember)),
+    FilterPackage: ($) => seq($["FilterPackageImport"]!, repeat1($["FilterPackageMember"]!)),
 
-    FilterPackageImport: ($) => choice($.FilterPackageMembershipImport, $.FilterPackageNamespaceImport),
+    FilterPackageImport: ($) => choice($["FilterPackageMembershipImport"]!, $["FilterPackageNamespaceImport"]!),
 
-    FilterPackageMembershipImport: ($) => $._ImportedMembership,
-    FilterPackageNamespaceImport: ($) => $._ImportedNamespace,
+    FilterPackageMembershipImport: ($) => $["_ImportedMembership"]!,
+    FilterPackageNamespaceImport: ($) => $["_ImportedNamespace"]!,
 
-    FilterPackageMember: ($) => seq("[", field("ownedRelatedElement", $.OwnedExpression), "]"),
+    FilterPackageMember: ($) => seq("[", field("ownedRelatedElement", $["OwnedExpression"]!), "]"),
 
     // =====================================================================
     // DEFINITION & USAGE ELEMENTS (dispatch)
@@ -3989,82 +4015,82 @@ export const sysml2Language = language({
 
     _DefinitionElement: ($) =>
       choice(
-        $.Package,
-        $.LibraryPackage,
-        $.Dependency,
-        $.AttributeDefinition,
-        $.EnumerationDefinition,
-        $.OccurrenceDefinition,
-        $.ItemDefinition,
-        $.MetadataDefinition,
-        $.PartDefinition,
-        $.ConnectionDefinition,
-        $.FlowDefinition,
-        $.InterfaceDefinition,
-        $.AllocationDefinition,
-        $.PortDefinition,
-        $.ActionDefinition,
-        $.CalculationDefinition,
-        $.StateDefinition,
-        $.ConstraintDefinition,
-        $.RequirementDefinition,
-        $.ConcernDefinition,
-        $.CaseDefinition,
-        $.AnalysisCaseDefinition,
-        $.VerificationCaseDefinition,
-        $.UseCaseDefinition,
-        $.ViewDefinition,
-        $.ViewpointDefinition,
-        $.RenderingDefinition,
+        $["Package"]!,
+        $["LibraryPackage"]!,
+        $["Dependency"]!,
+        $["AttributeDefinition"]!,
+        $["EnumerationDefinition"]!,
+        $["OccurrenceDefinition"]!,
+        $["ItemDefinition"]!,
+        $["MetadataDefinition"]!,
+        $["PartDefinition"]!,
+        $["ConnectionDefinition"]!,
+        $["FlowDefinition"]!,
+        $["InterfaceDefinition"]!,
+        $["AllocationDefinition"]!,
+        $["PortDefinition"]!,
+        $["ActionDefinition"]!,
+        $["CalculationDefinition"]!,
+        $["StateDefinition"]!,
+        $["ConstraintDefinition"]!,
+        $["RequirementDefinition"]!,
+        $["ConcernDefinition"]!,
+        $["CaseDefinition"]!,
+        $["AnalysisCaseDefinition"]!,
+        $["VerificationCaseDefinition"]!,
+        $["UseCaseDefinition"]!,
+        $["ViewDefinition"]!,
+        $["ViewpointDefinition"]!,
+        $["RenderingDefinition"]!,
       ),
 
-    _UsageElement: ($) => choice($._NonOccurrenceUsageElement, $._OccurrenceUsageElement),
+    _UsageElement: ($) => choice($["_NonOccurrenceUsageElement"]!, $["_OccurrenceUsageElement"]!),
 
     _NonOccurrenceUsageElement: ($) =>
       choice(
-        $.DefaultReferenceUsage,
-        $.ReferenceUsage,
-        $.AttributeUsage,
-        $.EnumerationUsage,
-        $.BindingConnectorAsUsage,
-        $.SuccessionAsUsage,
+        $["DefaultReferenceUsage"]!,
+        $["ReferenceUsage"]!,
+        $["AttributeUsage"]!,
+        $["EnumerationUsage"]!,
+        $["BindingConnectorAsUsage"]!,
+        $["SuccessionAsUsage"]!,
       ),
 
-    _OccurrenceUsageElement: ($) => choice($._StructureUsageElement, $._BehaviorUsageElement),
+    _OccurrenceUsageElement: ($) => choice($["_StructureUsageElement"]!, $["_BehaviorUsageElement"]!),
 
     _StructureUsageElement: ($) =>
       choice(
-        $.OccurrenceUsage,
-        $.ItemUsage,
-        $.PartUsage,
-        $.PortUsage,
-        $.ConnectionUsage,
-        $.InterfaceUsage,
-        $.AllocationUsage,
-        $.FlowUsage,
-        $.SuccessionFlowUsage,
-        $.ViewUsage,
-        $.RenderingUsage,
+        $["OccurrenceUsage"]!,
+        $["ItemUsage"]!,
+        $["PartUsage"]!,
+        $["PortUsage"]!,
+        $["ConnectionUsage"]!,
+        $["InterfaceUsage"]!,
+        $["AllocationUsage"]!,
+        $["FlowUsage"]!,
+        $["SuccessionFlowUsage"]!,
+        $["ViewUsage"]!,
+        $["RenderingUsage"]!,
       ),
 
     _BehaviorUsageElement: ($) =>
       choice(
-        $.ActionUsage,
-        $.CalculationUsage,
-        $.StateUsage,
-        $.ConstraintUsage,
-        $.RequirementUsage,
-        $.ConcernUsage,
-        $.CaseUsage,
-        $.AnalysisCaseUsage,
-        $.VerificationCaseUsage,
-        $.UseCaseUsage,
-        $.ViewpointUsage,
-        $.PerformActionUsage,
-        $.ExhibitStateUsage,
-        $.IncludeUseCaseUsage,
-        $.AssertConstraintUsage,
-        $.SatisfyRequirementUsage,
+        $["ActionUsage"]!,
+        $["CalculationUsage"]!,
+        $["StateUsage"]!,
+        $["ConstraintUsage"]!,
+        $["RequirementUsage"]!,
+        $["ConcernUsage"]!,
+        $["CaseUsage"]!,
+        $["AnalysisCaseUsage"]!,
+        $["VerificationCaseUsage"]!,
+        $["UseCaseUsage"]!,
+        $["ViewpointUsage"]!,
+        $["PerformActionUsage"]!,
+        $["ExhibitStateUsage"]!,
+        $["IncludeUseCaseUsage"]!,
+        $["AssertConstraintUsage"]!,
+        $["SatisfyRequirementUsage"]!,
       ),
 
     // =====================================================================
@@ -4072,11 +4098,11 @@ export const sysml2Language = language({
     // =====================================================================
 
     _SubclassificationPart: ($) =>
-      seq(choice(":>", "specializes"), $.OwnedSubclassification, repeat(seq(",", $.OwnedSubclassification))),
+      seq(choice(":>", "specializes"), $["OwnedSubclassification"]!, repeat(seq(",", $["OwnedSubclassification"]!))),
 
     OwnedSubclassification: ($) =>
       ref({
-        syntax: field("superclassifier", $.QualifiedName),
+        syntax: field("superclassifier", $["QualifiedName"]!),
         name: (self) => self.superclassifier,
         targetKinds: ["Classifier"],
         resolve: "qualified",
@@ -4087,15 +4113,15 @@ export const sysml2Language = language({
     // =====================================================================
 
     _FeatureDeclaration: ($) =>
-      choice(seq($._Identification, optional($._FeatureSpecializationPart)), $._FeatureSpecializationPart),
+      choice(seq($["_Identification"]!, optional($["_FeatureSpecializationPart"]!)), $["_FeatureSpecializationPart"]!),
 
-    _FeatureSpecializationPart: ($) => repeat1(choice($._FeatureSpecialization, $._MultiplicityPart)),
+    _FeatureSpecializationPart: ($) => repeat1(choice($["_FeatureSpecialization"]!, $["_MultiplicityPart"]!)),
 
     _MultiplicityPart: ($) =>
       choice(
-        $.OwnedMultiplicity,
+        $["OwnedMultiplicity"]!,
         seq(
-          optional($.OwnedMultiplicity),
+          optional($["OwnedMultiplicity"]!),
           choice(
             seq(field("isOrdered", "ordered"), optional(field("isNonunique", "nonunique"))),
             seq(field("isNonunique", "nonunique"), optional(field("isOrdered", "ordered"))),
@@ -4103,122 +4129,126 @@ export const sysml2Language = language({
         ),
       ),
 
-    _FeatureSpecialization: ($) => choice($._Typings, $._Subsettings, $._References, $._Crosses, $._Redefinitions),
+    _FeatureSpecialization: ($) =>
+      choice($["_Typings"]!, $["_Subsettings"]!, $["_References"]!, $["_Crosses"]!, $["_Redefinitions"]!),
 
-    _Typings: ($) => seq(choice(":", seq("defined", "by")), $.FeatureTyping, repeat(seq(",", $.FeatureTyping))),
+    _Typings: ($) => seq(choice(":", seq("defined", "by")), $["FeatureTyping"]!, repeat(seq(",", $["FeatureTyping"]!))),
 
-    _Subsettings: ($) => seq(choice(":>", "subsets", "subset"), $.OwnedSubsetting, repeat(seq(",", $.OwnedSubsetting))),
+    _Subsettings: ($) =>
+      seq(choice(":>", "subsets", "subset"), $["OwnedSubsetting"]!, repeat(seq(",", $["OwnedSubsetting"]!))),
 
-    _References: ($) => seq(choice("::>", "references", "reference"), $.OwnedReferenceSubsetting),
+    _References: ($) => seq(choice("::>", "references", "reference"), $["OwnedReferenceSubsetting"]!),
 
-    _Crosses: ($) => seq(choice("=>", "crosses"), $.OwnedCrossSubsetting),
+    _Crosses: ($) => seq(choice("=>", "crosses"), $["OwnedCrossSubsetting"]!),
 
     _Redefinitions: ($) =>
-      seq(choice(":>>", "redefines", "redefine"), $.OwnedRedefinition, repeat(seq(",", $.OwnedRedefinition))),
+      seq(choice(":>>", "redefines", "redefine"), $["OwnedRedefinition"]!, repeat(seq(",", $["OwnedRedefinition"]!))),
 
-    FeatureTyping: ($) => choice($.OwnedFeatureTyping, $.ConjugatedPortTyping),
+    FeatureTyping: ($) => choice($["OwnedFeatureTyping"]!, $["ConjugatedPortTyping"]!),
 
     OwnedFeatureTyping: ($) =>
       choice(
         ref({
-          syntax: field("type", $.QualifiedName),
+          syntax: field("type", $["QualifiedName"]!),
           name: (self) => self.type,
           targetKinds: ["Type"],
           resolve: "qualified",
         }),
-        field("ownedRelatedElement", $.OwnedFeatureChain),
+        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
       ),
 
     OwnedSubsetting: ($) =>
       choice(
         ref({
-          syntax: field("subsettedFeature", $.QualifiedName),
+          syntax: field("subsettedFeature", $["QualifiedName"]!),
           name: (self) => self.subsettedFeature,
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
-        field("ownedRelatedElement", $.OwnedFeatureChain),
+        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
       ),
 
     OwnedReferenceSubsetting: ($) =>
       choice(
         ref({
-          syntax: field("referencedFeature", $.QualifiedName),
+          syntax: field("referencedFeature", $["QualifiedName"]!),
           name: (self) => self.referencedFeature,
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
-        field("ownedRelatedElement", $.OwnedFeatureChain),
+        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
       ),
 
     OwnedCrossSubsetting: ($) =>
       choice(
         ref({
-          syntax: field("crossedFeature", $.QualifiedName),
+          syntax: field("crossedFeature", $["QualifiedName"]!),
           name: (self) => self.crossedFeature,
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
-        field("ownedRelatedElement", $.OwnedFeatureChain),
+        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
       ),
 
     OwnedRedefinition: ($) =>
       choice(
         ref({
-          syntax: field("redefinedFeature", $.QualifiedName),
+          syntax: field("redefinedFeature", $["QualifiedName"]!),
           name: (self) => self.redefinedFeature,
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
-        field("ownedRelatedElement", $.OwnedFeatureChain),
+        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
       ),
 
     // =====================================================================
     // MULTIPLICITY
     // =====================================================================
 
-    OwnedMultiplicity: ($) => field("ownedRelatedElement", $.MultiplicityRange),
+    OwnedMultiplicity: ($) => field("ownedRelatedElement", $["MultiplicityRange"]!),
 
     MultiplicityRange: ($) =>
       seq(
         "[",
-        field("lowerBound", $.MultiplicityExpressionMember),
-        optional(seq("..", field("upperBound", $.MultiplicityExpressionMember))),
+        field("lowerBound", $["MultiplicityExpressionMember"]!),
+        optional(seq("..", field("upperBound", $["MultiplicityExpressionMember"]!))),
         "]",
       ),
 
     MultiplicityExpressionMember: ($) =>
-      field("ownedRelatedElement", choice($._LiteralExpression, $.FeatureReferenceExpression)),
+      field("ownedRelatedElement", choice($["_LiteralExpression"]!, $["FeatureReferenceExpression"]!)),
 
     // =====================================================================
     // DEFINITIONS
     // =====================================================================
 
-    _Definition: ($) => seq(optional($._Identification), optional($._SubclassificationPart), $._DefinitionBody),
+    _Definition: ($) =>
+      seq(optional($["_Identification"]!), optional($["_SubclassificationPart"]!), $["_DefinitionBody"]!),
 
-    _DefinitionBody: ($) => choice(";", seq("{", repeat($._DefinitionBodyItem), "}")),
+    _DefinitionBody: ($) => choice(";", seq("{", repeat($["_DefinitionBodyItem"]!), "}")),
 
     _DefinitionBodyItem: ($) =>
       choice(
-        $.DefinitionMember,
-        $.VariantUsageMember,
-        $.NonOccurrenceUsageMember,
-        seq(optional($.EmptySuccessionMember), $.OccurrenceUsageMember),
-        $.AliasMember,
-        $.Import,
-        $.AnnotatingMember,
+        $["DefinitionMember"]!,
+        $["VariantUsageMember"]!,
+        $["NonOccurrenceUsageMember"]!,
+        seq(optional($["EmptySuccessionMember"]!), $["OccurrenceUsageMember"]!),
+        $["AliasMember"]!,
+        $["Import"]!,
+        $["AnnotatingMember"]!,
       ),
 
-    DefinitionMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._DefinitionElement)),
+    DefinitionMember: ($) =>
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["_DefinitionElement"]!)),
 
     VariantUsageMember: ($) =>
-      seq(optional($.VisibilityIndicator), "variant", field("ownedRelatedElement", $._UsageElement)),
+      seq(optional($["VisibilityIndicator"]!), "variant", field("ownedRelatedElement", $["_UsageElement"]!)),
 
     NonOccurrenceUsageMember: ($) =>
-      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._NonOccurrenceUsageElement)),
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["_NonOccurrenceUsageElement"]!)),
 
     OccurrenceUsageMember: ($) =>
-      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._OccurrenceUsageElement)),
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["_OccurrenceUsageElement"]!)),
 
     // =====================================================================
     // USAGES
@@ -4242,16 +4272,16 @@ export const sysml2Language = language({
         "individual",
         "snapshot",
         "timeslice",
-        $.PrefixMetadataMember,
+        $["PrefixMetadataMember"]!,
       ),
 
-    _UsageDeclaration: ($) => $._FeatureDeclaration,
+    _UsageDeclaration: ($) => $["_FeatureDeclaration"]!,
 
-    _UsageCompletion: ($) => seq(optional($._ValuePart), $._DefinitionBody),
+    _UsageCompletion: ($) => seq(optional($["_ValuePart"]!), $["_DefinitionBody"]!),
 
-    _Usage: ($) => seq(optional($._UsageDeclaration), $._UsageCompletion),
+    _Usage: ($) => seq(optional($["_UsageDeclaration"]!), $["_UsageCompletion"]!),
 
-    _ValuePart: ($) => $.FeatureValue,
+    _ValuePart: ($) => $["FeatureValue"]!,
 
     FeatureValue: ($) =>
       seq(
@@ -4260,7 +4290,7 @@ export const sysml2Language = language({
           field("isInitial", ":="),
           seq(field("isDefault", "default"), optional(choice("=", field("isInitial", ":=")))),
         ),
-        field("ownedRelatedElement", $.OwnedExpression),
+        field("ownedRelatedElement", $["OwnedExpression"]!),
       ),
 
     // =====================================================================
@@ -4269,7 +4299,12 @@ export const sysml2Language = language({
 
     DefaultReferenceUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), $._UsageDeclaration, optional($._ValuePart), $._DefinitionBody),
+        syntax: seq(
+          repeat($["_usage_modifier"]!),
+          $["_UsageDeclaration"]!,
+          optional($["_ValuePart"]!),
+          $["_DefinitionBody"]!,
+        ),
         symbol: usageAttrs("ref"),
         queries: usageQueries,
         model: usageModel,
@@ -4278,7 +4313,7 @@ export const sysml2Language = language({
 
     ReferenceUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "ref", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "ref", $["_Usage"]!),
         symbol: usageAttrs("ref"),
         queries: usageQueries,
         model: usageModel,
@@ -4291,7 +4326,7 @@ export const sysml2Language = language({
 
     AttributeDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "attribute", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "attribute", "def", $["_Definition"]!),
         symbol: defAttrs("attribute"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4301,7 +4336,7 @@ export const sysml2Language = language({
 
     AttributeUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "attribute", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "attribute", $["_Usage"]!),
         symbol: usageAttrs("attribute"),
         queries: usageQueries,
         model: usageModel,
@@ -4316,12 +4351,12 @@ export const sysml2Language = language({
     EnumerationDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "enum",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          field("body", $._EnumerationBody),
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          field("body", $["_EnumerationBody"]!),
         ),
         symbol: (self: any) => ({ kind: "Enumeration", name: self.declaredName, exports: ["body"] as any[] }),
         queries: definitionStructuralQueries,
@@ -4341,14 +4376,15 @@ export const sysml2Language = language({
         graphics: () => sysmlNodeGraphics({ stereotype: "enum def", fill: "#f3e5f5", stroke: "#7b1fa2" }),
       }),
 
-    _EnumerationBody: ($) => choice(";", seq("{", repeat(choice($.AnnotatingMember, $.EnumerationUsageMember)), "}")),
+    _EnumerationBody: ($) =>
+      choice(";", seq("{", repeat(choice($["AnnotatingMember"]!, $["EnumerationUsageMember"]!)), "}")),
 
     EnumerationUsageMember: ($) =>
-      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.EnumeratedValue)),
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["EnumeratedValue"]!)),
 
     EnumeratedValue: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), optional("enum"), $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), optional("enum"), $["_Usage"]!),
         symbol: (self) => ({ kind: "EnumerationValue", name: self.declaredName }),
         model: {
           name: "EnumerationValueNode" as const,
@@ -4359,7 +4395,7 @@ export const sysml2Language = language({
 
     EnumerationUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "enum", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "enum", $["_Usage"]!),
         symbol: usageAttrs("enumeration"),
         queries: usageQueries,
         model: usageModel,
@@ -4372,7 +4408,7 @@ export const sysml2Language = language({
 
     OccurrenceDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "occurrence", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "occurrence", "def", $["_Definition"]!),
         symbol: defAttrs("occurrence"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4382,7 +4418,7 @@ export const sysml2Language = language({
 
     OccurrenceUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "occurrence", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "occurrence", $["_Usage"]!),
         symbol: usageAttrs("occurrence"),
         queries: usageQueries,
         model: usageModel,
@@ -4395,7 +4431,7 @@ export const sysml2Language = language({
 
     ItemDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "item", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "item", "def", $["_Definition"]!),
         symbol: defAttrs("item"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4405,7 +4441,7 @@ export const sysml2Language = language({
 
     ItemUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "item", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "item", $["_Usage"]!),
         symbol: usageAttrs("item"),
         queries: usageQueries,
         model: usageModel,
@@ -4415,7 +4451,7 @@ export const sysml2Language = language({
 
     PartDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "part", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "part", "def", $["_Definition"]!),
         symbol: defAttrs("part"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4430,7 +4466,7 @@ export const sysml2Language = language({
 
     PartUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "part", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "part", $["_Usage"]!),
         symbol: usageAttrs("part"),
         queries: usageQueries,
         model: usageModel,
@@ -4444,7 +4480,7 @@ export const sysml2Language = language({
 
     PortDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "port", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "port", "def", $["_Definition"]!),
         symbol: defAttrs("port"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4458,7 +4494,7 @@ export const sysml2Language = language({
 
     PortUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "port", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "port", $["_Usage"]!),
         symbol: usageAttrs("port"),
         queries: usageQueries,
         model: usageModel,
@@ -4492,7 +4528,7 @@ export const sysml2Language = language({
       seq(
         "~",
         ref({
-          syntax: field("conjugatedPortDefinition", $.QualifiedName),
+          syntax: field("conjugatedPortDefinition", $["QualifiedName"]!),
           name: (self) => self.conjugatedPortDefinition,
           targetKinds: ["ConjugatedPortDefinition"],
           resolve: "qualified",
@@ -4503,18 +4539,18 @@ export const sysml2Language = language({
     // CONNECTIONS
     // =====================================================================
 
-    ConnectorEndMember: ($) => field("ownedRelatedElement", $.ConnectorEnd),
+    ConnectorEndMember: ($) => field("ownedRelatedElement", $["ConnectorEnd"]!),
 
     ConnectorEnd: ($) =>
       seq(
-        optional(field("ownedRelationship", $.OwnedMultiplicity)),
-        optional(seq(field("declaredName", $.Name), choice("::>", "references"))),
-        $.OwnedReferenceSubsetting,
+        optional(field("ownedRelationship", $["OwnedMultiplicity"]!)),
+        optional(seq(field("declaredName", $["Name"]!), choice("::>", "references"))),
+        $["OwnedReferenceSubsetting"]!,
       ),
 
     ConnectionDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "connection", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "connection", "def", $["_Definition"]!),
         symbol: defAttrs("connection"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4525,17 +4561,17 @@ export const sysml2Language = language({
     ConnectionUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           choice(
             seq(
               "connection",
-              optional($._UsageDeclaration),
-              optional($._ValuePart),
-              optional(seq("connect", $._ConnectorPart)),
+              optional($["_UsageDeclaration"]!),
+              optional($["_ValuePart"]!),
+              optional(seq("connect", $["_ConnectorPart"]!)),
             ),
-            seq("connect", $._ConnectorPart),
+            seq("connect", $["_ConnectorPart"]!),
           ),
-          $._DefinitionBody,
+          $["_DefinitionBody"]!,
         ),
         symbol: usageAttrs("connection"),
         queries: usageQueries,
@@ -4547,23 +4583,30 @@ export const sysml2Language = language({
         },
       }),
 
-    _ConnectorPart: ($) => choice($._BinaryConnectorPart, $._NaryConnectorPart),
+    _ConnectorPart: ($) => choice($["_BinaryConnectorPart"]!, $["_NaryConnectorPart"]!),
 
-    _BinaryConnectorPart: ($) => seq($.ConnectorEndMember, "to", $.ConnectorEndMember),
+    _BinaryConnectorPart: ($) => seq($["ConnectorEndMember"]!, "to", $["ConnectorEndMember"]!),
 
     _NaryConnectorPart: ($) =>
-      seq("(", $.ConnectorEndMember, ",", $.ConnectorEndMember, repeat(seq(",", $.ConnectorEndMember)), ")"),
+      seq(
+        "(",
+        $["ConnectorEndMember"]!,
+        ",",
+        $["ConnectorEndMember"]!,
+        repeat(seq(",", $["ConnectorEndMember"]!)),
+        ")",
+      ),
 
     BindingConnectorAsUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
-          optional(seq("binding", optional($._UsageDeclaration))),
+          repeat($["_usage_modifier"]!),
+          optional(seq("binding", optional($["_UsageDeclaration"]!))),
           "bind",
-          $.ConnectorEndMember,
+          $["ConnectorEndMember"]!,
           "=",
-          $.ConnectorEndMember,
-          $._DefinitionBody,
+          $["ConnectorEndMember"]!,
+          $["_DefinitionBody"]!,
         ),
         symbol: usageAttrs("binding"),
         queries: usageQueries,
@@ -4575,14 +4618,14 @@ export const sysml2Language = language({
     SuccessionAsUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
-          optional(seq("succession", optional($._UsageDeclaration))),
+          repeat($["_usage_modifier"]!),
+          optional(seq("succession", optional($["_UsageDeclaration"]!))),
           optional("first"),
-          $.ConnectorEndMember,
+          $["ConnectorEndMember"]!,
           "then",
-          $.ConnectorEndMember,
-          optional(seq("if", field("guard", $.OwnedExpression))),
-          $._DefinitionBody,
+          $["ConnectorEndMember"]!,
+          optional(seq("if", field("guard", $["OwnedExpression"]!))),
+          $["_DefinitionBody"]!,
         ),
         symbol: (self: any) => ({
           ...usageAttrs("succession")(self),
@@ -4604,12 +4647,12 @@ export const sysml2Language = language({
     InterfaceDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "interface",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._DefinitionBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_DefinitionBody"]!,
         ),
         symbol: defAttrs("interface"),
         queries: definitionStructuralQueries,
@@ -4621,11 +4664,11 @@ export const sysml2Language = language({
     InterfaceUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "interface",
-          optional($._UsageDeclaration),
-          optional(seq("connect", $._ConnectorPart)),
-          $._DefinitionBody,
+          optional($["_UsageDeclaration"]!),
+          optional(seq("connect", $["_ConnectorPart"]!)),
+          $["_DefinitionBody"]!,
         ),
         symbol: usageAttrs("interface"),
         queries: usageQueries,
@@ -4640,7 +4683,7 @@ export const sysml2Language = language({
 
     AllocationDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "allocation", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "allocation", "def", $["_Definition"]!),
         symbol: defAttrs("allocation"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4651,12 +4694,12 @@ export const sysml2Language = language({
     AllocationUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           choice(
-            seq("allocation", optional($._UsageDeclaration), optional(seq("allocate", $._ConnectorPart))),
-            seq("allocate", $._ConnectorPart),
+            seq("allocation", optional($["_UsageDeclaration"]!), optional(seq("allocate", $["_ConnectorPart"]!))),
+            seq("allocate", $["_ConnectorPart"]!),
           ),
-          $._DefinitionBody,
+          $["_DefinitionBody"]!,
         ),
         symbol: usageAttrs("allocation"),
         queries: allocationQueries,
@@ -4671,7 +4714,7 @@ export const sysml2Language = language({
 
     FlowDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "flow", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "flow", "def", $["_Definition"]!),
         symbol: defAttrs("flow"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4682,18 +4725,18 @@ export const sysml2Language = language({
     FlowUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "flow",
           choice(
-            seq($.FlowEndMember, "to", $.FlowEndMember),
+            seq($["FlowEndMember"]!, "to", $["FlowEndMember"]!),
             seq(
-              optional($._UsageDeclaration),
-              optional($._ValuePart),
-              optional(seq("of", $.PayloadFeatureMember)),
-              optional(seq("from", $.FlowEndMember, "to", $.FlowEndMember)),
+              optional($["_UsageDeclaration"]!),
+              optional($["_ValuePart"]!),
+              optional(seq("of", $["PayloadFeatureMember"]!)),
+              optional(seq("from", $["FlowEndMember"]!, "to", $["FlowEndMember"]!)),
             ),
           ),
-          $._DefinitionBody,
+          $["_DefinitionBody"]!,
         ),
         symbol: usageAttrs("flow"),
         queries: usageQueries,
@@ -4705,19 +4748,19 @@ export const sysml2Language = language({
     SuccessionFlowUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "succession",
           "flow",
           choice(
-            seq($.FlowEndMember, "to", $.FlowEndMember),
+            seq($["FlowEndMember"]!, "to", $["FlowEndMember"]!),
             seq(
-              optional($._UsageDeclaration),
-              optional($._ValuePart),
-              optional(seq("of", $.PayloadFeatureMember)),
-              optional(seq("from", $.FlowEndMember, "to", $.FlowEndMember)),
+              optional($["_UsageDeclaration"]!),
+              optional($["_ValuePart"]!),
+              optional(seq("of", $["PayloadFeatureMember"]!)),
+              optional(seq("from", $["FlowEndMember"]!, "to", $["FlowEndMember"]!)),
             ),
           ),
-          $._DefinitionBody,
+          $["_DefinitionBody"]!,
         ),
         symbol: usageAttrs("flow"),
         queries: usageQueries,
@@ -4731,26 +4774,26 @@ export const sysml2Language = language({
           }),
       }),
 
-    PayloadFeatureMember: ($) => field("ownedRelatedElement", $.PayloadFeature),
+    PayloadFeatureMember: ($) => field("ownedRelatedElement", $["PayloadFeature"]!),
 
     PayloadFeature: ($) =>
       choice(
-        seq(optional($._Identification), $._FeatureSpecializationPart, optional($._ValuePart)),
-        seq(optional($._Identification), $._ValuePart),
-        seq($.OwnedFeatureTyping, optional($.OwnedMultiplicity)),
-        seq($.OwnedMultiplicity, $.OwnedFeatureTyping),
+        seq(optional($["_Identification"]!), $["_FeatureSpecializationPart"]!, optional($["_ValuePart"]!)),
+        seq(optional($["_Identification"]!), $["_ValuePart"]!),
+        seq($["OwnedFeatureTyping"]!, optional($["OwnedMultiplicity"]!)),
+        seq($["OwnedMultiplicity"]!, $["OwnedFeatureTyping"]!),
       ),
 
-    FlowEndMember: ($) => field("ownedRelatedElement", $.FlowEnd),
+    FlowEndMember: ($) => field("ownedRelatedElement", $["FlowEnd"]!),
 
     FlowEnd: ($) =>
-      seq(optional(seq($.OwnedReferenceSubsetting, ".")), field("ownedRelationship", $.FlowFeatureMember)),
+      seq(optional(seq($["OwnedReferenceSubsetting"]!, ".")), field("ownedRelationship", $["FlowFeatureMember"]!)),
 
-    FlowFeatureMember: ($) => field("ownedRelatedElement", $.FlowFeature),
+    FlowFeatureMember: ($) => field("ownedRelatedElement", $["FlowFeature"]!),
 
     FlowFeature: ($) =>
       ref({
-        syntax: field("ownedRelationship", $.QualifiedName),
+        syntax: field("ownedRelationship", $["QualifiedName"]!),
         name: (self) => self.ownedRelationship,
         targetKinds: ["Feature"],
         resolve: "qualified",
@@ -4763,13 +4806,13 @@ export const sysml2Language = language({
     ActionDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "action",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          optional($._ParameterList),
-          $._ActionBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          optional($["_ParameterList"]!),
+          $["_ActionBody"]!,
         ),
         symbol: defAttrs("action"),
         queries: definitionStructuralQueries,
@@ -4778,79 +4821,79 @@ export const sysml2Language = language({
         graphics: () => sysmlNodeGraphics({ stereotype: "action def", fill: "#f0f9ff", stroke: "#0284c7" }),
       }),
 
-    _ActionBody: ($) => choice(";", seq("{", repeat($._ActionBodyItem), "}")),
+    _ActionBody: ($) => choice(";", seq("{", repeat($["_ActionBodyItem"]!), "}")),
 
     _ActionBodyItem: ($) =>
       choice(
-        $.Import,
-        $.AliasMember,
-        $.DefinitionMember,
-        $.VariantUsageMember,
-        $.NonOccurrenceUsageMember,
-        $.OccurrenceUsageMember,
-        seq(optional($.EmptySuccessionMember), $._OccurrenceUsageElement),
-        $.ActionNodeMember,
-        $.ReturnParameterMember,
-        $.AnnotatingMember,
+        $["Import"]!,
+        $["AliasMember"]!,
+        $["DefinitionMember"]!,
+        $["VariantUsageMember"]!,
+        $["NonOccurrenceUsageMember"]!,
+        $["OccurrenceUsageMember"]!,
+        seq(optional($["EmptySuccessionMember"]!), $["_OccurrenceUsageElement"]!),
+        $["ActionNodeMember"]!,
+        $["ReturnParameterMember"]!,
+        $["AnnotatingMember"]!,
       ),
 
-    EmptySuccessionMember: ($) => seq("then", field("ownedRelatedElement", $.MultiplicitySourceEnd)),
+    EmptySuccessionMember: ($) => seq("then", field("ownedRelatedElement", $["MultiplicitySourceEnd"]!)),
 
-    MultiplicitySourceEnd: ($) => field("ownedRelationship", $.OwnedMultiplicity),
+    MultiplicitySourceEnd: ($) => field("ownedRelationship", $["OwnedMultiplicity"]!),
 
-    ActionNodeMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._ActionNode)),
+    ActionNodeMember: ($) => seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["_ActionNode"]!)),
 
     _ActionNode: ($) =>
       choice(
-        $.IfNode,
-        $.WhileLoopNode,
-        $.ForLoopNode,
-        $.ControlNode,
-        $.AcceptActionNode,
-        $.SendActionNode,
-        $.AssignActionNode,
+        $["IfNode"]!,
+        $["WhileLoopNode"]!,
+        $["ForLoopNode"]!,
+        $["ControlNode"]!,
+        $["AcceptActionNode"]!,
+        $["SendActionNode"]!,
+        $["AssignActionNode"]!,
       ),
 
     IfNode: ($) =>
       seq(
-        repeat($._usage_modifier),
-        optional(seq("action", optional($._UsageDeclaration))),
+        repeat($["_usage_modifier"]!),
+        optional(seq("action", optional($["_UsageDeclaration"]!))),
         "if",
-        field("condition", $.OwnedExpression),
-        field("thenBody", $.ActionBodyParameter),
-        optional(seq("else", choice(field("elseBody", $.ActionBodyParameter), $.IfNode))),
+        field("condition", $["OwnedExpression"]!),
+        field("thenBody", $["ActionBodyParameter"]!),
+        optional(seq("else", choice(field("elseBody", $["ActionBodyParameter"]!), $["IfNode"]!))),
       ),
 
     ActionBodyParameter: ($) =>
-      seq(optional(seq("action", optional($._UsageDeclaration))), "{", repeat($._ActionBodyItem), "}"),
+      seq(optional(seq("action", optional($["_UsageDeclaration"]!))), "{", repeat($["_ActionBodyItem"]!), "}"),
 
     WhileLoopNode: ($) =>
       seq(
-        repeat($._usage_modifier),
-        optional(seq("action", optional($._UsageDeclaration))),
-        choice(seq("while", field("condition", $.OwnedExpression)), "loop"),
-        $.ActionBodyParameter,
-        optional(seq("until", field("untilCondition", $.OwnedExpression), ";")),
+        repeat($["_usage_modifier"]!),
+        optional(seq("action", optional($["_UsageDeclaration"]!))),
+        choice(seq("while", field("condition", $["OwnedExpression"]!)), "loop"),
+        $["ActionBodyParameter"]!,
+        optional(seq("until", field("untilCondition", $["OwnedExpression"]!), ";")),
       ),
 
     ForLoopNode: ($) =>
       seq(
-        repeat($._usage_modifier),
-        optional(seq("action", optional($._UsageDeclaration))),
+        repeat($["_usage_modifier"]!),
+        optional(seq("action", optional($["_UsageDeclaration"]!))),
         "for",
-        field("variable", $.ForVariableDeclaration),
+        field("variable", $["ForVariableDeclaration"]!),
         "in",
-        field("range", $.OwnedExpression),
-        $.ActionBodyParameter,
+        field("range", $["OwnedExpression"]!),
+        $["ActionBodyParameter"]!,
       ),
 
-    ForVariableDeclaration: ($) => $._UsageDeclaration,
+    ForVariableDeclaration: ($) => $["_UsageDeclaration"]!,
 
-    ControlNode: ($) => choice($.MergeNode, $.DecisionNode, $.JoinNode, $.ForkNode),
+    ControlNode: ($) => choice($["MergeNode"]!, $["DecisionNode"]!, $["JoinNode"]!, $["ForkNode"]!),
 
     MergeNode: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "merge", optional($._UsageDeclaration), $._ActionBody),
+        syntax: seq(repeat($["_usage_modifier"]!), "merge", optional($["_UsageDeclaration"]!), $["_ActionBody"]!),
         symbol: usageAttrs("merge"),
         graphics: () => ({
           role: "node",
@@ -4879,7 +4922,7 @@ export const sysml2Language = language({
 
     DecisionNode: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "decide", optional($._UsageDeclaration), $._ActionBody),
+        syntax: seq(repeat($["_usage_modifier"]!), "decide", optional($["_UsageDeclaration"]!), $["_ActionBody"]!),
         symbol: usageAttrs("decide"),
         graphics: () => ({
           role: "node",
@@ -4908,7 +4951,7 @@ export const sysml2Language = language({
 
     JoinNode: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "join", optional($._UsageDeclaration), $._ActionBody),
+        syntax: seq(repeat($["_usage_modifier"]!), "join", optional($["_UsageDeclaration"]!), $["_ActionBody"]!),
         symbol: usageAttrs("join"),
         graphics: () => ({
           role: "node",
@@ -4929,7 +4972,7 @@ export const sysml2Language = language({
 
     ForkNode: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "fork", optional($._UsageDeclaration), $._ActionBody),
+        syntax: seq(repeat($["_usage_modifier"]!), "fork", optional($["_UsageDeclaration"]!), $["_ActionBody"]!),
         symbol: usageAttrs("fork"),
         graphics: () => ({
           role: "node",
@@ -4951,12 +4994,12 @@ export const sysml2Language = language({
     ActionUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "action",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          optional($._ParameterList),
-          $._ActionBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          optional($["_ParameterList"]!),
+          $["_ActionBody"]!,
         ),
         symbol: usageAttrs("action"),
         queries: usageQueries,
@@ -4972,12 +5015,12 @@ export const sysml2Language = language({
     AcceptActionNode: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
-          optional(seq("action", optional($._UsageDeclaration))),
+          repeat($["_usage_modifier"]!),
+          optional(seq("action", optional($["_UsageDeclaration"]!))),
           "accept",
-          $.PayloadFeatureMember,
-          optional(seq("via", $.OwnedReferenceSubsetting)),
-          $._ActionBody,
+          $["PayloadFeatureMember"]!,
+          optional(seq("via", $["OwnedReferenceSubsetting"]!)),
+          $["_ActionBody"]!,
         ),
         symbol: usageAttrs("action"),
         queries: usageQueries,
@@ -5021,13 +5064,13 @@ export const sysml2Language = language({
     SendActionNode: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
-          optional(seq("action", optional($._UsageDeclaration))),
+          repeat($["_usage_modifier"]!),
+          optional(seq("action", optional($["_UsageDeclaration"]!))),
           "send",
-          field("sentItem", $.OwnedExpression),
-          optional(seq("via", $.OwnedReferenceSubsetting)),
-          optional(seq("to", field("receiver", $.OwnedExpression))),
-          $._ActionBody,
+          field("sentItem", $["OwnedExpression"]!),
+          optional(seq("via", $["OwnedReferenceSubsetting"]!)),
+          optional(seq("to", field("receiver", $["OwnedExpression"]!))),
+          $["_ActionBody"]!,
         ),
         symbol: usageAttrs("action"),
         queries: usageQueries,
@@ -5071,13 +5114,13 @@ export const sysml2Language = language({
     AssignActionNode: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
-          optional(seq("action", optional($._UsageDeclaration))),
+          repeat($["_usage_modifier"]!),
+          optional(seq("action", optional($["_UsageDeclaration"]!))),
           "assign",
-          field("assignedValue", $.OwnedExpression),
+          field("assignedValue", $["OwnedExpression"]!),
           "=:",
-          field("targetFeature", $.OwnedExpression),
-          $._ActionBody,
+          field("targetFeature", $["OwnedExpression"]!),
+          $["_ActionBody"]!,
         ),
         symbol: usageAttrs("action"),
         queries: usageQueries,
@@ -5088,14 +5131,14 @@ export const sysml2Language = language({
     PerformActionUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "perform",
           choice(
-            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
-            seq("action", optional($._UsageDeclaration)),
+            seq($["OwnedReferenceSubsetting"]!, optional($["_FeatureSpecializationPart"]!)),
+            seq("action", optional($["_UsageDeclaration"]!)),
           ),
-          optional($._ValuePart),
-          $._ActionBody,
+          optional($["_ValuePart"]!),
+          $["_ActionBody"]!,
         ),
         symbol: usageAttrs("action"),
         queries: usageQueries,
@@ -5111,13 +5154,13 @@ export const sysml2Language = language({
     CalculationDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "calc",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          optional($._ParameterList),
-          $._CalculationBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          optional($["_ParameterList"]!),
+          $["_CalculationBody"]!,
         ),
         symbol: defAttrs("calc"),
         queries: calculationQueries,
@@ -5129,28 +5172,33 @@ export const sysml2Language = language({
     _CalculationBody: ($) =>
       choice(
         ";",
-        seq("{", repeat(choice($._ActionBodyItem, $.ReturnParameterMember)), optional($.ResultExpressionMember), "}"),
+        seq(
+          "{",
+          repeat(choice($["_ActionBodyItem"]!, $["ReturnParameterMember"]!)),
+          optional($["ResultExpressionMember"]!),
+          "}",
+        ),
       ),
 
-    _ParameterList: ($) => seq("(", optional(seq($.ParameterMember, repeat(seq(",", $.ParameterMember)))), ")"),
+    _ParameterList: ($) => seq("(", optional(seq($["ParameterMember"]!, repeat(seq(",", $["ParameterMember"]!)))), ")"),
 
-    ParameterMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._UsageElement)),
+    ParameterMember: ($) => seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["_UsageElement"]!)),
 
     ReturnParameterMember: ($) =>
-      seq(optional($.VisibilityIndicator), "return", field("ownedRelatedElement", $._UsageElement)),
+      seq(optional($["VisibilityIndicator"]!), "return", field("ownedRelatedElement", $["_UsageElement"]!)),
 
     ResultExpressionMember: ($) =>
-      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.OwnedExpression)),
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["OwnedExpression"]!)),
 
     CalculationUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "calc",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          optional($._ParameterList),
-          $._CalculationBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          optional($["_ParameterList"]!),
+          $["_CalculationBody"]!,
         ),
         symbol: usageAttrs("calc"),
         queries: calculationUsageQueries,
@@ -5166,12 +5214,12 @@ export const sysml2Language = language({
     ConstraintDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "constraint",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._CalculationBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_CalculationBody"]!,
         ),
         symbol: defAttrs("constraint"),
         queries: constraintDefinitionQueries,
@@ -5183,11 +5231,11 @@ export const sysml2Language = language({
     ConstraintUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "constraint",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._CalculationBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_CalculationBody"]!,
         ),
         symbol: usageAttrs("constraint"),
         queries: constraintUsageQueries,
@@ -5199,14 +5247,14 @@ export const sysml2Language = language({
     AssertConstraintUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "assert",
           optional(field("isNegated", "not")),
           choice(
-            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
-            seq("constraint", optional($._UsageDeclaration), optional($._ValuePart)),
+            seq($["OwnedReferenceSubsetting"]!, optional($["_FeatureSpecializationPart"]!)),
+            seq("constraint", optional($["_UsageDeclaration"]!), optional($["_ValuePart"]!)),
           ),
-          $._CalculationBody,
+          $["_CalculationBody"]!,
         ),
         symbol: usageAttrs("constraint"),
         queries: constraintUsageQueries,
@@ -5221,22 +5269,22 @@ export const sysml2Language = language({
     RequirementDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "requirement",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._RequirementBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: defAttrs("requirement"),
         queries: requirementQueries,
         model: requirementDefinitionModel,
         lints: {
           ...requirementDefinitionLintsEnhanced,
-          evolutionCheck: (db, self, previous) => {
+          evolutionCheck: (_db: any, self: any, previous?: any) => {
             if (previous) {
-              const prevIsAbstract = (previous.metadata as Record<string, unknown>)?.isAbstract;
-              const currIsAbstract = (self.metadata as Record<string, unknown>)?.isAbstract;
+              const prevIsAbstract = (previous.metadata as Record<string, unknown>)?.["isAbstract"];
+              const currIsAbstract = (self.metadata as Record<string, unknown>)?.["isAbstract"];
               if (currIsAbstract && !prevIsAbstract) {
                 return error(SysML2ErrorCode.ABSTRACT_REQUIREMENT_VIOLATION.message(), {
                   code: SysML2ErrorCode.ABSTRACT_REQUIREMENT_VIOLATION.code,
@@ -5261,16 +5309,22 @@ export const sysml2Language = language({
         },
       }),
 
-    _RequirementBody: ($) => choice(";", seq("{", repeat($._RequirementBodyItem), "}")),
+    _RequirementBody: ($) => choice(";", seq("{", repeat($["_RequirementBodyItem"]!), "}")),
 
     _RequirementBodyItem: ($) =>
-      choice($._DefinitionBodyItem, $.SubjectMember, $.RequirementConstraintMember, $.ActorMember, $.StakeholderMember),
+      choice(
+        $["_DefinitionBodyItem"]!,
+        $["SubjectMember"]!,
+        $["RequirementConstraintMember"]!,
+        $["ActorMember"]!,
+        $["StakeholderMember"]!,
+      ),
 
-    SubjectMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.SubjectUsage)),
+    SubjectMember: ($) => seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["SubjectUsage"]!)),
 
     SubjectUsage: ($) =>
       def({
-        syntax: seq("subject", repeat($._usage_modifier), $._Usage),
+        syntax: seq("subject", repeat($["_usage_modifier"]!), $["_Usage"]!),
         symbol: usageAttrs("subject"),
         model: usageModel,
         lints: usageLints,
@@ -5279,21 +5333,21 @@ export const sysml2Language = language({
 
     RequirementConstraintMember: ($) =>
       seq(
-        optional($.VisibilityIndicator),
+        optional($["VisibilityIndicator"]!),
         field("constraintKind", choice("assume", "require")),
-        field("ownedRelatedElement", $.RequirementConstraintUsage),
+        field("ownedRelatedElement", $["RequirementConstraintUsage"]!),
       ),
 
     RequirementConstraintUsage: ($) =>
       def({
         syntax: choice(
-          seq($.OwnedReferenceSubsetting, repeat($._FeatureSpecialization), $._CalculationBody),
+          seq($["OwnedReferenceSubsetting"]!, repeat($["_FeatureSpecialization"]!), $["_CalculationBody"]!),
           seq(
-            repeat($._usage_modifier),
+            repeat($["_usage_modifier"]!),
             optional("constraint"),
-            optional($._UsageDeclaration),
-            optional($._ValuePart),
-            $._CalculationBody,
+            optional($["_UsageDeclaration"]!),
+            optional($["_ValuePart"]!),
+            $["_CalculationBody"]!,
           ),
         ),
         symbol: usageAttrs("constraint"),
@@ -5301,11 +5355,11 @@ export const sysml2Language = language({
         model: constraintUsageModel,
       }),
 
-    ActorMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.ActorUsage)),
+    ActorMember: ($) => seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["ActorUsage"]!)),
 
     ActorUsage: ($) =>
       def({
-        syntax: seq("actor", repeat($._usage_modifier), $._Usage),
+        syntax: seq("actor", repeat($["_usage_modifier"]!), $["_Usage"]!),
         symbol: usageAttrs("actor"),
         model: usageModel,
         graphics: () => ({
@@ -5351,11 +5405,12 @@ export const sysml2Language = language({
         }),
       }),
 
-    StakeholderMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.StakeholderUsage)),
+    StakeholderMember: ($) =>
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["StakeholderUsage"]!)),
 
     StakeholderUsage: ($) =>
       def({
-        syntax: seq("stakeholder", repeat($._usage_modifier), $._Usage),
+        syntax: seq("stakeholder", repeat($["_usage_modifier"]!), $["_Usage"]!),
         symbol: usageAttrs("stakeholder"),
         model: usageModel,
         graphics: () => sysmlUsageGraphics({ stereotype: "stakeholder", fill: "#fbe9e7", stroke: "#bf360c" }),
@@ -5364,11 +5419,11 @@ export const sysml2Language = language({
     RequirementUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "requirement",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._RequirementBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: usageAttrs("requirement"),
         queries: requirementUsageQueries,
@@ -5380,17 +5435,17 @@ export const sysml2Language = language({
     SatisfyRequirementUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           optional("assert"),
           optional(field("isNegated", "not")),
           "satisfy",
           choice(
-            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
-            seq("requirement", optional($._UsageDeclaration)),
+            seq($["OwnedReferenceSubsetting"]!, optional($["_FeatureSpecializationPart"]!)),
+            seq("requirement", optional($["_UsageDeclaration"]!)),
           ),
-          optional($._ValuePart),
-          optional(seq("by", field("satisfyingFeature", $.OwnedReferenceSubsetting))),
-          $._RequirementBody,
+          optional($["_ValuePart"]!),
+          optional(seq("by", field("satisfyingFeature", $["OwnedReferenceSubsetting"]!))),
+          $["_RequirementBody"]!,
         ),
         symbol: usageAttrs("requirement"),
         queries: satisfyRequirementQueries,
@@ -5406,12 +5461,12 @@ export const sysml2Language = language({
     ConcernDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "concern",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._RequirementBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: defAttrs("concern"),
         queries: definitionStructuralQueries,
@@ -5423,11 +5478,11 @@ export const sysml2Language = language({
     ConcernUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "concern",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._RequirementBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: usageAttrs("concern"),
         queries: usageQueries,
@@ -5443,12 +5498,12 @@ export const sysml2Language = language({
     CaseDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "case",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._CaseBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_CaseBody"]!,
         ),
         symbol: defAttrs("case"),
         queries: definitionStructuralQueries,
@@ -5462,8 +5517,16 @@ export const sysml2Language = language({
         ";",
         seq(
           "{",
-          repeat(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember, $.ObjectiveMember)),
-          optional($.ResultExpressionMember),
+          repeat(
+            choice(
+              $["_ActionBodyItem"]!,
+              $["SubjectMember"]!,
+              $["ActorMember"]!,
+              $["StakeholderMember"]!,
+              $["ObjectiveMember"]!,
+            ),
+          ),
+          optional($["ResultExpressionMember"]!),
           "}",
         ),
       ),
@@ -5471,11 +5534,11 @@ export const sysml2Language = language({
     CaseUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "case",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._CaseBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_CaseBody"]!,
         ),
         symbol: usageAttrs("case"),
         queries: usageQueries,
@@ -5487,12 +5550,12 @@ export const sysml2Language = language({
     AnalysisCaseDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "analysis",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._CaseBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_CaseBody"]!,
         ),
         symbol: defAttrs("analysisCase"),
         queries: definitionStructuralQueries,
@@ -5504,11 +5567,11 @@ export const sysml2Language = language({
     AnalysisCaseUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "analysis",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._CaseBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_CaseBody"]!,
         ),
         symbol: usageAttrs("analysisCase"),
         queries: usageQueries,
@@ -5520,12 +5583,12 @@ export const sysml2Language = language({
     VerificationCaseDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "verification",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._VerificationBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_VerificationBody"]!,
         ),
         symbol: defAttrs("verificationCase"),
         queries: verificationCaseQueries,
@@ -5537,11 +5600,11 @@ export const sysml2Language = language({
     VerificationCaseUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "verification",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._VerificationBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_VerificationBody"]!,
         ),
         symbol: usageAttrs("verificationCase"),
         queries: verificationCaseUsageQueries,
@@ -5551,25 +5614,25 @@ export const sysml2Language = language({
       }),
 
     _VerificationBody: ($) =>
-      choice(";", seq("{", repeat($._VerificationBodyItem), optional($.ResultExpressionMember), "}")),
+      choice(";", seq("{", repeat($["_VerificationBodyItem"]!), optional($["ResultExpressionMember"]!), "}")),
 
     _VerificationBodyItem: ($) =>
-      choice($._ActionBodyItem, $.VerifyRequirementUsageMember, $.ObjectiveMember, $.AnnotatingMember),
+      choice($["_ActionBodyItem"]!, $["VerifyRequirementUsageMember"]!, $["ObjectiveMember"]!, $["AnnotatingMember"]!),
 
     VerifyRequirementUsageMember: ($) =>
-      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.VerifyRequirementUsage)),
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["VerifyRequirementUsage"]!)),
 
     VerifyRequirementUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "verify",
           choice(
-            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
-            seq("requirement", optional($._UsageDeclaration)),
+            seq($["OwnedReferenceSubsetting"]!, optional($["_FeatureSpecializationPart"]!)),
+            seq("requirement", optional($["_UsageDeclaration"]!)),
           ),
-          optional($._ValuePart),
-          $._RequirementBody,
+          optional($["_ValuePart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: usageAttrs("verification"),
         queries: usageQueries,
@@ -5579,16 +5642,16 @@ export const sysml2Language = language({
       }),
 
     ObjectiveMember: ($) =>
-      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.ObjectiveRequirementUsage)),
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["ObjectiveRequirementUsage"]!)),
 
     ObjectiveRequirementUsage: ($) =>
       def({
         syntax: seq(
           "objective",
-          repeat($._usage_modifier),
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._RequirementBody,
+          repeat($["_usage_modifier"]!),
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: usageAttrs("objective"),
         model: usageModel,
@@ -5597,13 +5660,13 @@ export const sysml2Language = language({
     UseCaseDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "use",
           "case",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._CaseBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_CaseBody"]!,
         ),
         symbol: defAttrs("useCase"),
         queries: definitionStructuralQueries,
@@ -5655,12 +5718,12 @@ export const sysml2Language = language({
     UseCaseUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "use",
           "case",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._CaseBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_CaseBody"]!,
         ),
         symbol: usageAttrs("useCase"),
         queries: usageQueries,
@@ -5713,14 +5776,14 @@ export const sysml2Language = language({
     IncludeUseCaseUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "include",
           choice(
-            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
-            seq("use", "case", optional($._UsageDeclaration)),
+            seq($["OwnedReferenceSubsetting"]!, optional($["_FeatureSpecializationPart"]!)),
+            seq("use", "case", optional($["_UsageDeclaration"]!)),
           ),
-          optional($._ValuePart),
-          $._CaseBody,
+          optional($["_ValuePart"]!),
+          $["_CaseBody"]!,
         ),
         symbol: usageAttrs("useCase"),
         queries: usageQueries,
@@ -5776,12 +5839,12 @@ export const sysml2Language = language({
     StateDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "state",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($._StateBodyItem), "}")),
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($["_StateBodyItem"]!), "}")),
         ),
         symbol: (self: any) => ({
           kind: "Definition" as const,
@@ -5801,38 +5864,40 @@ export const sysml2Language = language({
 
     _StateBodyItem: ($) =>
       choice(
-        $.Import,
-        $.AliasMember,
-        $.DefinitionMember,
-        $.VariantUsageMember,
-        $.NonOccurrenceUsageMember,
-        $.OccurrenceUsageMember,
-        seq(optional($.EmptySuccessionMember), $._OccurrenceUsageElement),
-        $.TransitionUsageMember,
-        $.EntryActionMember,
-        $.DoActionMember,
-        $.ExitActionMember,
-        $.AnnotatingMember,
+        $["Import"]!,
+        $["AliasMember"]!,
+        $["DefinitionMember"]!,
+        $["VariantUsageMember"]!,
+        $["NonOccurrenceUsageMember"]!,
+        $["OccurrenceUsageMember"]!,
+        seq(optional($["EmptySuccessionMember"]!), $["_OccurrenceUsageElement"]!),
+        $["TransitionUsageMember"]!,
+        $["EntryActionMember"]!,
+        $["DoActionMember"]!,
+        $["ExitActionMember"]!,
+        $["AnnotatingMember"]!,
       ),
 
     EntryActionMember: ($) =>
-      seq(optional($.VisibilityIndicator), "entry", field("ownedRelatedElement", $.StateActionUsage)),
+      seq(optional($["VisibilityIndicator"]!), "entry", field("ownedRelatedElement", $["StateActionUsage"]!)),
 
-    DoActionMember: ($) => seq(optional($.VisibilityIndicator), "do", field("ownedRelatedElement", $.StateActionUsage)),
+    DoActionMember: ($) =>
+      seq(optional($["VisibilityIndicator"]!), "do", field("ownedRelatedElement", $["StateActionUsage"]!)),
 
     ExitActionMember: ($) =>
-      seq(optional($.VisibilityIndicator), "exit", field("ownedRelatedElement", $.StateActionUsage)),
+      seq(optional($["VisibilityIndicator"]!), "exit", field("ownedRelatedElement", $["StateActionUsage"]!)),
 
-    StateActionUsage: ($) => choice(";", seq(optional($._UsageDeclaration), optional($._ValuePart), $._ActionBody)),
+    StateActionUsage: ($) =>
+      choice(";", seq(optional($["_UsageDeclaration"]!), optional($["_ValuePart"]!), $["_ActionBody"]!)),
 
     StateUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "state",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($._StateBodyItem), "}")),
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($["_StateBodyItem"]!), "}")),
         ),
         symbol: (self: any) => ({
           kind: "Usage" as const,
@@ -5851,14 +5916,14 @@ export const sysml2Language = language({
     ExhibitStateUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "exhibit",
           choice(
-            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
-            seq("state", optional($._UsageDeclaration)),
+            seq($["OwnedReferenceSubsetting"]!, optional($["_FeatureSpecializationPart"]!)),
+            seq("state", optional($["_UsageDeclaration"]!)),
           ),
-          optional($._ValuePart),
-          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($._StateBodyItem), "}")),
+          optional($["_ValuePart"]!),
+          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($["_StateBodyItem"]!), "}")),
         ),
         symbol: (self: any) => ({
           kind: "Usage" as const,
@@ -5874,25 +5939,26 @@ export const sysml2Language = language({
         lints: stateUsageLints,
       }),
 
-    TransitionUsageMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.TransitionUsage)),
+    TransitionUsageMember: ($) =>
+      seq(optional($["VisibilityIndicator"]!), field("ownedRelatedElement", $["TransitionUsage"]!)),
 
     TransitionUsage: ($) =>
       def({
         syntax: seq(
           "transition",
-          optional(seq(optional($._UsageDeclaration), "first")),
+          optional(seq(optional($["_UsageDeclaration"]!), "first")),
           ref({
-            syntax: field("source", $.QualifiedName),
+            syntax: field("source", $["QualifiedName"]!),
             name: (self) => self.source,
             targetKinds: ["Feature"],
             resolve: "qualified",
           }),
-          optional(seq("accept", field("trigger", $.PayloadFeatureMember))),
-          optional(seq("if", field("guard", $.OwnedExpression))),
-          optional(seq("do", field("effect", $.StateActionUsage))),
+          optional(seq("accept", field("trigger", $["PayloadFeatureMember"]!))),
+          optional(seq("if", field("guard", $["OwnedExpression"]!))),
+          optional(seq("do", field("effect", $["StateActionUsage"]!))),
           "then",
-          $.ConnectorEndMember,
-          $._ActionBody,
+          $["ConnectorEndMember"]!,
+          $["_ActionBody"]!,
         ),
         symbol: (self: any) => ({
           ...usageAttrs("transition")(self),
@@ -5923,12 +5989,12 @@ export const sysml2Language = language({
     ViewDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "view",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          choice(";", seq("{", repeat(choice($._DefinitionBodyItem, $.ElementFilterMember)), "}")),
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          choice(";", seq("{", repeat(choice($["_DefinitionBodyItem"]!, $["ElementFilterMember"]!)), "}")),
         ),
         symbol: defAttrs("view"),
         queries: definitionStructuralQueries,
@@ -5940,11 +6006,11 @@ export const sysml2Language = language({
     ViewUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "view",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          choice(";", seq("{", repeat(choice($._DefinitionBodyItem, $.ElementFilterMember)), "}")),
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          choice(";", seq("{", repeat(choice($["_DefinitionBodyItem"]!, $["ElementFilterMember"]!)), "}")),
         ),
         symbol: usageAttrs("view"),
         queries: usageQueries,
@@ -5956,12 +6022,12 @@ export const sysml2Language = language({
     ViewpointDefinition: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "viewpoint",
           "def",
-          optional($._Identification),
-          optional($._SubclassificationPart),
-          $._RequirementBody,
+          optional($["_Identification"]!),
+          optional($["_SubclassificationPart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: defAttrs("viewpoint"),
         queries: definitionStructuralQueries,
@@ -5973,11 +6039,11 @@ export const sysml2Language = language({
     ViewpointUsage: ($) =>
       def({
         syntax: seq(
-          repeat($._usage_modifier),
+          repeat($["_usage_modifier"]!),
           "viewpoint",
-          optional($._UsageDeclaration),
-          optional($._ValuePart),
-          $._RequirementBody,
+          optional($["_UsageDeclaration"]!),
+          optional($["_ValuePart"]!),
+          $["_RequirementBody"]!,
         ),
         symbol: usageAttrs("viewpoint"),
         queries: usageQueries,
@@ -5992,7 +6058,7 @@ export const sysml2Language = language({
 
     RenderingDefinition: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "rendering", "def", $._Definition),
+        syntax: seq(repeat($["_usage_modifier"]!), "rendering", "def", $["_Definition"]!),
         symbol: defAttrs("rendering"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -6002,7 +6068,7 @@ export const sysml2Language = language({
 
     RenderingUsage: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "rendering", $._Usage),
+        syntax: seq(repeat($["_usage_modifier"]!), "rendering", $["_Usage"]!),
         symbol: usageAttrs("rendering"),
         queries: usageQueries,
         model: usageModel,
@@ -6014,44 +6080,44 @@ export const sysml2Language = language({
     // EXPRESSIONS (copied from KerML Expressions, flattened)
     // =====================================================================
 
-    OwnedExpressionMember: ($) => field("ownedRelatedElement", $.OwnedExpression),
+    OwnedExpressionMember: ($) => field("ownedRelatedElement", $["OwnedExpression"]!),
 
-    OwnedExpression: ($) => $._Expression,
+    OwnedExpression: ($) => $["_Expression"]!,
 
     _Expression: ($) =>
       choice(
-        $.ConditionalExpression,
-        $.NullCoalescingExpression,
-        $.ImpliesExpression,
-        $.OrExpression,
-        $.XorExpression,
-        $.AndExpression,
-        $.EqualityExpression,
-        $.ClassificationExpression,
-        $.RelationalExpression,
-        $.RangeExpression,
-        $.AdditiveExpression,
-        $.MultiplicativeExpression,
-        $.ExponentiationExpression,
-        $.UnaryExpression,
-        $.ExtentExpression,
-        $.MeasurementExpression,
-        $.PrimaryExpression,
-        $._BaseExpression,
+        $["ConditionalExpression"]!,
+        $["NullCoalescingExpression"]!,
+        $["ImpliesExpression"]!,
+        $["OrExpression"]!,
+        $["XorExpression"]!,
+        $["AndExpression"]!,
+        $["EqualityExpression"]!,
+        $["ClassificationExpression"]!,
+        $["RelationalExpression"]!,
+        $["RangeExpression"]!,
+        $["AdditiveExpression"]!,
+        $["MultiplicativeExpression"]!,
+        $["ExponentiationExpression"]!,
+        $["UnaryExpression"]!,
+        $["ExtentExpression"]!,
+        $["MeasurementExpression"]!,
+        $["PrimaryExpression"]!,
+        $["_BaseExpression"]!,
       ),
 
-    OwnedExpressionReference: ($) => field("ownedRelationship", $.OwnedExpressionMember),
+    OwnedExpressionReference: ($) => field("ownedRelationship", $["OwnedExpressionMember"]!),
 
     ConditionalExpression: ($) =>
       prec.right(
         PREC.CONDITIONAL,
         seq(
           field("operator", "if"),
-          field("operand", $._Expression),
+          field("operand", $["_Expression"]!),
           "?",
-          field("thenOperand", $.OwnedExpressionReference),
+          field("thenOperand", $["OwnedExpressionReference"]!),
           "else",
-          field("elseOperand", $.OwnedExpressionReference),
+          field("elseOperand", $["OwnedExpressionReference"]!),
         ),
       ),
 
@@ -6059,72 +6125,75 @@ export const sysml2Language = language({
       prec.left(
         PREC.NULL_COALESCING,
         seq(
-          field("operand", $._Expression),
-          repeat1(seq(field("operator", "??"), field("operand", $.ImpliesExpressionReference))),
+          field("operand", $["_Expression"]!),
+          repeat1(seq(field("operator", "??"), field("operand", $["ImpliesExpressionReference"]!))),
         ),
       ),
 
-    ImpliesExpressionReference: ($) => field("ownedRelationship", $.ImpliesExpressionMember),
-    ImpliesExpressionMember: ($) => field("ownedRelatedElement", $._Expression),
+    ImpliesExpressionReference: ($) => field("ownedRelationship", $["ImpliesExpressionMember"]!),
+    ImpliesExpressionMember: ($) => field("ownedRelatedElement", $["_Expression"]!),
 
     ImpliesExpression: ($) =>
       prec.left(
         PREC.IMPLIES,
         seq(
-          field("operand", $._Expression),
-          repeat1(seq(field("operator", "implies"), field("operand", $.ImpliesExpressionReference))),
+          field("operand", $["_Expression"]!),
+          repeat1(seq(field("operator", "implies"), field("operand", $["ImpliesExpressionReference"]!))),
         ),
       ),
 
-    OrExpressionReference: ($) => field("ownedRelationship", $.OrExpressionMember),
-    OrExpressionMember: ($) => field("ownedRelatedElement", $._Expression),
+    OrExpressionReference: ($) => field("ownedRelationship", $["OrExpressionMember"]!),
+    OrExpressionMember: ($) => field("ownedRelatedElement", $["_Expression"]!),
 
     OrExpression: ($) =>
       prec.left(
         PREC.OR,
         seq(
-          field("operand", $._Expression),
+          field("operand", $["_Expression"]!),
           repeat1(
             choice(
-              seq(field("operator", "|"), field("operand", $._Expression)),
-              seq(field("operator", "or"), field("operand", $.XorExpressionReference)),
+              seq(field("operator", "|"), field("operand", $["_Expression"]!)),
+              seq(field("operator", "or"), field("operand", $["XorExpressionReference"]!)),
             ),
           ),
         ),
       ),
 
-    XorExpressionReference: ($) => field("ownedRelationship", $.XorExpressionMember),
-    XorExpressionMember: ($) => field("ownedRelatedElement", $._Expression),
+    XorExpressionReference: ($) => field("ownedRelationship", $["XorExpressionMember"]!),
+    XorExpressionMember: ($) => field("ownedRelatedElement", $["_Expression"]!),
 
     XorExpression: ($) =>
       prec.left(
         PREC.XOR,
-        seq(field("operand", $._Expression), repeat1(seq(field("operator", "xor"), field("operand", $._Expression)))),
+        seq(
+          field("operand", $["_Expression"]!),
+          repeat1(seq(field("operator", "xor"), field("operand", $["_Expression"]!))),
+        ),
       ),
 
     AndExpression: ($) =>
       prec.left(
         PREC.AND,
         seq(
-          field("operand", $._Expression),
+          field("operand", $["_Expression"]!),
           repeat1(
             choice(
-              seq(field("operator", "&"), field("operand", $._Expression)),
-              seq(field("operator", "and"), field("operand", $.EqualityExpressionReference)),
+              seq(field("operator", "&"), field("operand", $["_Expression"]!)),
+              seq(field("operator", "and"), field("operand", $["EqualityExpressionReference"]!)),
             ),
           ),
         ),
       ),
 
-    EqualityExpressionReference: ($) => field("ownedRelationship", $.EqualityExpressionMember),
-    EqualityExpressionMember: ($) => field("ownedRelatedElement", $._Expression),
+    EqualityExpressionReference: ($) => field("ownedRelationship", $["EqualityExpressionMember"]!),
+    EqualityExpressionMember: ($) => field("ownedRelatedElement", $["_Expression"]!),
 
     EqualityExpression: ($) =>
       prec.left(
         PREC.EQUALITY,
         seq(
-          field("operand", $._Expression),
-          repeat1(seq(field("operator", $.EqualityOperator), field("operand", $._Expression))),
+          field("operand", $["_Expression"]!),
+          repeat1(seq(field("operator", $["EqualityOperator"]!), field("operand", $["_Expression"]!))),
         ),
       ),
 
@@ -6135,23 +6204,26 @@ export const sysml2Language = language({
         PREC.CLASSIFICATION,
         choice(
           seq(
-            field("operand", $._Expression),
+            field("operand", $["_Expression"]!),
             choice(
-              seq(field("operator", $.ClassificationTestOperator), field("typeReference", $.TypeReferenceMember)),
-              seq(field("operator", $.CastOperator), field("typeResult", $.TypeResultMember)),
+              seq(
+                field("operator", $["ClassificationTestOperator"]!),
+                field("typeReference", $["TypeReferenceMember"]!),
+              ),
+              seq(field("operator", $["CastOperator"]!), field("typeResult", $["TypeResultMember"]!)),
             ),
           ),
-          seq(field("operator", $.ClassificationTestOperator), field("typeReference", $.TypeReferenceMember)),
+          seq(field("operator", $["ClassificationTestOperator"]!), field("typeReference", $["TypeReferenceMember"]!)),
           seq(
-            field("operand", $.MetadataReference),
-            field("operator", $.MetaClassificationTestOperator),
-            field("typeReference", $.TypeReferenceMember),
+            field("operand", $["MetadataReference"]!),
+            field("operator", $["MetaClassificationTestOperator"]!),
+            field("typeReference", $["TypeReferenceMember"]!),
           ),
-          seq(field("operator", $.CastOperator), field("typeResult", $.TypeResultMember)),
+          seq(field("operator", $["CastOperator"]!), field("typeResult", $["TypeResultMember"]!)),
           seq(
-            field("operand", $.MetadataReference),
-            field("operator", $.MetaCastOperator),
-            field("typeResult", $.TypeResultMember),
+            field("operand", $["MetadataReference"]!),
+            field("operator", $["MetaCastOperator"]!),
+            field("typeResult", $["TypeResultMember"]!),
           ),
         ),
       ),
@@ -6161,15 +6233,15 @@ export const sysml2Language = language({
     CastOperator: () => "as",
     MetaCastOperator: () => "meta",
 
-    MetadataReference: ($) => field("ownedRelationship", $.ElementReferenceMember),
+    MetadataReference: ($) => field("ownedRelationship", $["ElementReferenceMember"]!),
 
-    TypeReferenceMember: ($) => field("ownedRelatedElement", $.TypeReference),
-    TypeResultMember: ($) => field("ownedRelatedElement", $.TypeReference),
-    TypeReference: ($) => field("ownedRelationship", $.ReferenceTyping),
+    TypeReferenceMember: ($) => field("ownedRelatedElement", $["TypeReference"]!),
+    TypeResultMember: ($) => field("ownedRelatedElement", $["TypeReference"]!),
+    TypeReference: ($) => field("ownedRelationship", $["ReferenceTyping"]!),
 
     ReferenceTyping: ($) =>
       ref({
-        syntax: field("type", $.QualifiedName),
+        syntax: field("type", $["QualifiedName"]!),
         name: (self) => self.type,
         targetKinds: ["Type"],
         resolve: "qualified",
@@ -6179,8 +6251,8 @@ export const sysml2Language = language({
       prec.left(
         PREC.RELATIONAL,
         seq(
-          field("operand", $._Expression),
-          repeat1(seq(field("operator", $.RelationalOperator), field("operand", $._Expression))),
+          field("operand", $["_Expression"]!),
+          repeat1(seq(field("operator", $["RelationalOperator"]!), field("operand", $["_Expression"]!))),
         ),
       ),
     RelationalOperator: () => choice("<", ">", "<=", ">="),
@@ -6188,15 +6260,15 @@ export const sysml2Language = language({
     RangeExpression: ($) =>
       prec.left(
         PREC.RANGE,
-        seq(field("operand", $._Expression), field("operator", ".."), field("operand", $._Expression)),
+        seq(field("operand", $["_Expression"]!), field("operator", ".."), field("operand", $["_Expression"]!)),
       ),
 
     AdditiveExpression: ($) =>
       prec.left(
         PREC.ADDITIVE,
         seq(
-          field("operand", $._Expression),
-          repeat1(seq(field("operator", $.AdditiveOperator), field("operand", $._Expression))),
+          field("operand", $["_Expression"]!),
+          repeat1(seq(field("operator", $["AdditiveOperator"]!), field("operand", $["_Expression"]!))),
         ),
       ),
     AdditiveOperator: () => choice("+", "-"),
@@ -6205,8 +6277,8 @@ export const sysml2Language = language({
       prec.left(
         PREC.MULTIPLICATIVE,
         seq(
-          field("operand", $._Expression),
-          repeat1(seq(field("operator", $.MultiplicativeOperator), field("operand", $._Expression))),
+          field("operand", $["_Expression"]!),
+          repeat1(seq(field("operator", $["MultiplicativeOperator"]!), field("operand", $["_Expression"]!))),
         ),
       ),
     MultiplicativeOperator: () => choice("*", "/", "%"),
@@ -6215,220 +6287,231 @@ export const sysml2Language = language({
       prec.right(
         PREC.EXPONENTIATION,
         seq(
-          field("base", $._Expression),
-          field("operator", $.ExponentiationOperator),
-          field("exponent", $._Expression),
+          field("base", $["_Expression"]!),
+          field("operator", $["ExponentiationOperator"]!),
+          field("exponent", $["_Expression"]!),
         ),
       ),
     ExponentiationOperator: () => choice("**", "^"),
 
-    UnaryExpression: ($) => prec(PREC.UNARY, seq(field("operator", $.UnaryOperator), field("operand", $._Expression))),
+    UnaryExpression: ($) =>
+      prec(PREC.UNARY, seq(field("operator", $["UnaryOperator"]!), field("operand", $["_Expression"]!))),
     UnaryOperator: () => choice("+", "-", "~", "not"),
 
-    ExtentExpression: ($) => prec(PREC.EXTENT, seq(field("operator", "all"), field("typeResult", $.TypeResultMember))),
+    ExtentExpression: ($) =>
+      prec(PREC.EXTENT, seq(field("operator", "all"), field("typeResult", $["TypeResultMember"]!))),
 
     _postfix_operation: ($) =>
       seq(
         choice(
-          seq("#", "(", field("indexOperand", $.SequenceExpression), ")"),
-          seq(field("operator", "["), field("filterOperand", $.SequenceExpression), "]"),
+          seq("#", "(", field("indexOperand", $["SequenceExpression"]!), ")"),
+          seq(field("operator", "["), field("filterOperand", $["SequenceExpression"]!), "]"),
           seq(
             "->",
-            field("invocationType", $.InstantiatedTypeMember),
+            field("invocationType", $["InstantiatedTypeMember"]!),
             choice(
-              field("body", $.BodyExpression),
-              field("functionRef", $.FunctionReferenceExpression),
-              $._ArgumentList,
+              field("body", $["BodyExpression"]!),
+              field("functionRef", $["FunctionReferenceExpression"]!),
+              $["_ArgumentList"]!,
             ),
           ),
-          seq(".", field("collect", $.BodyExpression)),
-          seq(".?", field("select", $.BodyExpression)),
+          seq(".", field("collect", $["BodyExpression"]!)),
+          seq(".?", field("select", $["BodyExpression"]!)),
         ),
-        optional(seq(".", field("featureChain", $.FeatureChainMember))),
+        optional(seq(".", field("featureChain", $["FeatureChainMember"]!))),
       ),
 
     MeasurementExpression: ($) =>
       prec.left(
         PREC.PRIMARY,
         seq(
-          field("value", choice($._LiteralExpression, $.FeatureReferenceExpression)),
+          field("value", choice($["_LiteralExpression"]!, $["FeatureReferenceExpression"]!)),
           "[",
-          field("unit", $._UnitExpression),
+          field("unit", $["_UnitExpression"]!),
           "]",
         ),
       ),
 
-    _UnitExpression: ($) => choice($.UnitBinaryExpression, $.UnitExponentExpression, $._UnitPrimaryExpression),
+    _UnitExpression: ($) =>
+      choice($["UnitBinaryExpression"]!, $["UnitExponentExpression"]!, $["_UnitPrimaryExpression"]!),
 
     UnitBinaryExpression: ($) =>
       prec.left(
         PREC.MULTIPLICATIVE,
-        seq(field("left", $._UnitExpression), field("operator", choice("*", "/")), field("right", $._UnitExpression)),
+        seq(
+          field("left", $["_UnitExpression"]!),
+          field("operator", choice("*", "/")),
+          field("right", $["_UnitExpression"]!),
+        ),
       ),
 
     UnitExponentExpression: ($) =>
       prec.right(
         PREC.EXPONENTIATION,
         seq(
-          field("base", $._UnitPrimaryExpression),
+          field("base", $["_UnitPrimaryExpression"]!),
           field("operator", choice("^", "**")),
-          field("exponent", choice($.LiteralInteger, seq("-", $.LiteralInteger))),
+          field("exponent", choice($["LiteralInteger"]!, seq("-", $["LiteralInteger"]!))),
         ),
       ),
 
-    _UnitPrimaryExpression: ($) => choice($.FeatureReferenceExpression, seq("(", $._UnitExpression, ")")),
+    _UnitPrimaryExpression: ($) => choice($["FeatureReferenceExpression"]!, seq("(", $["_UnitExpression"]!, ")")),
 
     PrimaryExpression: ($) =>
       prec.left(
         PREC.PRIMARY,
         choice(
           seq(
-            field("base", $._BaseExpression),
-            seq(".", field("featureChain", $.FeatureChainMember)),
-            repeat($._postfix_operation),
+            field("base", $["_BaseExpression"]!),
+            seq(".", field("featureChain", $["FeatureChainMember"]!)),
+            repeat($["_postfix_operation"]!),
           ),
-          seq(field("base", $._BaseExpression), repeat1($._postfix_operation)),
+          seq(field("base", $["_BaseExpression"]!), repeat1($["_postfix_operation"]!)),
         ),
       ),
 
-    FunctionReferenceExpression: ($) => field("ownedRelationship", $.FunctionReferenceMember),
-    FunctionReferenceMember: ($) => field("ownedRelatedElement", $.FunctionReference),
-    FunctionReference: ($) => field("ownedRelationship", $.ReferenceTyping),
+    FunctionReferenceExpression: ($) => field("ownedRelationship", $["FunctionReferenceMember"]!),
+    FunctionReferenceMember: ($) => field("ownedRelatedElement", $["FunctionReference"]!),
+    FunctionReference: ($) => field("ownedRelationship", $["ReferenceTyping"]!),
 
     FeatureChainMember: ($) =>
       choice(
         ref({
-          syntax: field("memberElement", $.QualifiedName),
+          syntax: field("memberElement", $["QualifiedName"]!),
           name: (self) => self.memberElement,
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
-        field("ownedRelatedElement", $.OwnedFeatureChain),
+        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
       ),
 
-    OwnedFeatureChain: ($) => $._FeatureChain,
+    OwnedFeatureChain: ($) => $["_FeatureChain"]!,
 
     _BaseExpression: ($) =>
       choice(
-        $.NullExpression,
-        $._LiteralExpression,
-        $.FeatureReferenceExpression,
-        $.MetadataAccessExpression,
-        $.InvocationExpression,
-        $.ConstructorExpression,
-        $.BodyExpression,
-        seq("(", $.SequenceExpression, ")"),
+        $["NullExpression"]!,
+        $["_LiteralExpression"]!,
+        $["FeatureReferenceExpression"]!,
+        $["MetadataAccessExpression"]!,
+        $["InvocationExpression"]!,
+        $["ConstructorExpression"]!,
+        $["BodyExpression"]!,
+        seq("(", $["SequenceExpression"]!, ")"),
       ),
 
     // SysML2 overrides ExpressionBody to use CalculationBody
-    BodyExpression: ($) => field("ownedRelationship", $.ExpressionBodyMember),
-    ExpressionBodyMember: ($) => field("ownedRelatedElement", $.ExpressionBody),
-    ExpressionBody: ($) => $._CalculationBody,
+    BodyExpression: ($) => field("ownedRelationship", $["ExpressionBodyMember"]!),
+    ExpressionBodyMember: ($) => field("ownedRelatedElement", $["ExpressionBody"]!),
+    ExpressionBody: ($) => $["_CalculationBody"]!,
 
     SequenceExpression: ($) =>
       seq(
-        $.OwnedExpression,
-        optional(choice(",", seq(field("operator", ","), field("operand", $.SequenceExpression)))),
+        $["OwnedExpression"]!,
+        optional(choice(",", seq(field("operator", ","), field("operand", $["SequenceExpression"]!)))),
       ),
 
-    FeatureReferenceExpression: ($) => field("ownedRelationship", $.FeatureReferenceMember),
+    FeatureReferenceExpression: ($) => field("ownedRelationship", $["FeatureReferenceMember"]!),
     FeatureReferenceMember: ($) =>
       ref({
-        syntax: field("memberElement", $.QualifiedName),
+        syntax: field("memberElement", $["QualifiedName"]!),
         name: (self) => self.memberElement,
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),
 
-    MetadataAccessExpression: ($) => seq(field("ownedRelationship", $.ElementReferenceMember), ".", "metadata"),
+    MetadataAccessExpression: ($) => seq(field("ownedRelationship", $["ElementReferenceMember"]!), ".", "metadata"),
     ElementReferenceMember: ($) =>
       ref({
-        syntax: field("memberElement", $.QualifiedName),
+        syntax: field("memberElement", $["QualifiedName"]!),
         name: (self) => self.memberElement,
         targetKinds: ["Element"],
         resolve: "qualified",
       }),
 
-    InvocationExpression: ($) => seq(field("type", $.InstantiatedTypeMember), $._ArgumentList),
+    InvocationExpression: ($) => seq(field("type", $["InstantiatedTypeMember"]!), $["_ArgumentList"]!),
     ConstructorExpression: ($) =>
-      seq("new", field("type", $.InstantiatedTypeMember), field("result", $.ConstructorResultMember)),
-    ConstructorResultMember: ($) => field("ownedRelatedElement", $.ConstructorResult),
-    ConstructorResult: ($) => $._ArgumentList,
+      seq("new", field("type", $["InstantiatedTypeMember"]!), field("result", $["ConstructorResultMember"]!)),
+    ConstructorResultMember: ($) => field("ownedRelatedElement", $["ConstructorResult"]!),
+    ConstructorResult: ($) => $["_ArgumentList"]!,
 
     InstantiatedTypeMember: ($) =>
       choice(
         ref({
-          syntax: field("memberElement", $.QualifiedName),
+          syntax: field("memberElement", $["QualifiedName"]!),
           name: (self) => self.memberElement,
           targetKinds: ["Type"],
           resolve: "qualified",
         }),
-        field("ownedRelatedElement", $.OwnedFeatureChain),
+        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
       ),
 
     _FeatureChain: ($) =>
-      seq(field("chaining", $.OwnedFeatureChaining), repeat1(seq(".", field("chaining", $.OwnedFeatureChaining)))),
+      seq(
+        field("chaining", $["OwnedFeatureChaining"]!),
+        repeat1(seq(".", field("chaining", $["OwnedFeatureChaining"]!))),
+      ),
 
     OwnedFeatureChaining: ($) =>
       ref({
-        syntax: field("chainingFeature", $.QualifiedName),
+        syntax: field("chainingFeature", $["QualifiedName"]!),
         name: (self) => self.chainingFeature,
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),
 
-    _ArgumentList: ($) => seq("(", optional(choice($._PositionalArgumentList, $._NamedArgumentList)), ")"),
+    _ArgumentList: ($) => seq("(", optional(choice($["_PositionalArgumentList"]!, $["_NamedArgumentList"]!)), ")"),
 
     _PositionalArgumentList: ($) =>
-      seq(field("argument", $.ArgumentMember), repeat(seq(",", field("argument", $.ArgumentMember)))),
+      seq(field("argument", $["ArgumentMember"]!), repeat(seq(",", field("argument", $["ArgumentMember"]!)))),
 
-    ArgumentMember: ($) => field("ownedRelatedElement", $.Argument),
-    Argument: ($) => field("ownedRelationship", $.ArgumentValue),
+    ArgumentMember: ($) => field("ownedRelatedElement", $["Argument"]!),
+    Argument: ($) => field("ownedRelationship", $["ArgumentValue"]!),
 
     _NamedArgumentList: ($) =>
       seq(
-        field("namedArgument", $.NamedArgumentMember),
-        repeat(seq(",", field("namedArgument", $.NamedArgumentMember))),
+        field("namedArgument", $["NamedArgumentMember"]!),
+        repeat(seq(",", field("namedArgument", $["NamedArgumentMember"]!))),
       ),
 
-    NamedArgumentMember: ($) => field("ownedRelatedElement", $.NamedArgument),
+    NamedArgumentMember: ($) => field("ownedRelatedElement", $["NamedArgument"]!),
     NamedArgument: ($) =>
-      seq(field("parameterRedefinition", $.ParameterRedefinition), "=", field("value", $.ArgumentValue)),
+      seq(field("parameterRedefinition", $["ParameterRedefinition"]!), "=", field("value", $["ArgumentValue"]!)),
 
     ParameterRedefinition: ($) =>
       ref({
-        syntax: field("redefinedFeature", $.QualifiedName),
+        syntax: field("redefinedFeature", $["QualifiedName"]!),
         name: (self) => self.redefinedFeature,
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),
 
-    ArgumentValue: ($) => field("ownedRelatedElement", $.OwnedExpression),
+    ArgumentValue: ($) => field("ownedRelatedElement", $["OwnedExpression"]!),
 
     NullExpression: () => choice("null", seq("(", ")")),
 
     _LiteralExpression: ($) =>
-      choice($.LiteralBoolean, $.LiteralString, $.LiteralInteger, $.LiteralReal, $.LiteralInfinity),
+      choice($["LiteralBoolean"]!, $["LiteralString"]!, $["LiteralInteger"]!, $["LiteralReal"]!, $["LiteralInfinity"]!),
 
-    LiteralBoolean: ($) => field("value", $.BooleanValue),
+    LiteralBoolean: ($) => field("value", $["BooleanValue"]!),
     BooleanValue: () => choice("true", "false"),
-    LiteralString: ($) => field("value", $.STRING_VALUE),
-    LiteralInteger: ($) => field("value", $.DECIMAL_VALUE),
-    LiteralReal: ($) => field("value", $.RealValue),
-    RealValue: ($) => choice(seq(optional($.DECIMAL_VALUE), ".", choice($.DECIMAL_VALUE, $.EXP_VALUE)), $.EXP_VALUE),
+    LiteralString: ($) => field("value", $["STRING_VALUE"]!),
+    LiteralInteger: ($) => field("value", $["DECIMAL_VALUE"]!),
+    LiteralReal: ($) => field("value", $["RealValue"]!),
+    RealValue: ($) =>
+      choice(seq(optional($["DECIMAL_VALUE"]!), ".", choice($["DECIMAL_VALUE"]!, $["EXP_VALUE"]!)), $["EXP_VALUE"]!),
     LiteralInfinity: () => "*",
 
     // =====================================================================
     // NAMES
     // =====================================================================
 
-    Name: ($) => choice($.ID, $.UNRESTRICTED_NAME),
+    Name: ($) => choice($["ID"]!, $["UNRESTRICTED_NAME"]!),
     GlobalQualification: () => seq("$", "::"),
-    Qualification: ($) => seq($.Name, "::"),
+    Qualification: ($) => seq($["Name"]!, "::"),
     QualifiedName: ($) =>
       choice(
-        seq(optional($.GlobalQualification), field("name", $.Name)),
-        prec.left(1, seq($.QualifiedName, "::", field("name", $.Name))),
+        seq(optional($["GlobalQualification"]!), field("name", $["Name"]!)),
+        prec.left(1, seq($["QualifiedName"]!, "::", field("name", $["Name"]!))),
       ),
 
     // =====================================================================

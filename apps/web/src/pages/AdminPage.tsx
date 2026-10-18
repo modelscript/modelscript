@@ -53,7 +53,7 @@ const AdminContainer = styled.div`
   min-height: calc(100vh - var(--dev-header-height, 0px));
 `;
 
-const MenuColumn = styled.div<{ $hideOnMobile?: boolean }>`
+const MenuColumn = styled.div<{ $hideOnMobile?: boolean | undefined }>`
   flex: 0 0 320px;
   border-right: 1px solid var(--color-border-default);
   display: flex;
@@ -66,7 +66,7 @@ const MenuColumn = styled.div<{ $hideOnMobile?: boolean }>`
   }
 `;
 
-const DetailColumn = styled.div<{ $hideOnMobile?: boolean }>`
+const DetailColumn = styled.div<{ $hideOnMobile?: boolean | undefined }>`
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -100,7 +100,7 @@ const Header = styled.div`
   z-index: 10;
 `;
 
-const TabButton = styled.button<{ $active?: boolean }>`
+const TabButton = styled.button<{ $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   gap: 12px;
@@ -135,7 +135,7 @@ const Card = styled.div`
   gap: 10px;
 `;
 
-const Badge = styled.span<{ $variant?: "success" | "warning" | "danger" | "neutral" }>`
+const Badge = styled.span<{ $variant?: "success" | "warning" | "danger" | "neutral" | undefined }>`
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -170,7 +170,7 @@ const Badge = styled.span<{ $variant?: "success" | "warning" | "danger" | "neutr
   }};
 `;
 
-const ActionButton = styled.button<{ $variant?: "primary" | "danger" | "secondary" }>`
+const ActionButton = styled.button<{ $variant?: "primary" | "danger" | "secondary" | undefined }>`
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 13px;
@@ -207,7 +207,7 @@ const ActionButton = styled.button<{ $variant?: "primary" | "danger" | "secondar
   }
 `;
 
-const FilterPill = styled.button<{ $active?: boolean }>`
+const FilterPill = styled.button<{ $active?: boolean | undefined }>`
   background: ${(props) => (props.$active ? "var(--color-accent-purple)" : "rgba(255, 255, 255, 0.05)")};
   color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-muted)")};
   border: 1px solid ${(props) => (props.$active ? "transparent" : "var(--color-border-default)")};
@@ -404,7 +404,7 @@ export const AdminPage: React.FC = () => {
 
   // Database state
   const [dbStatus, setDbStatus] = useState<AdminDbStatus | null>(null);
-  const [dbVerifyResult, setDbVerifyResult] = useState<{ valid: boolean; issues?: string[] } | null>(null);
+  const [dbVerifyResult, setDbVerifyResult] = useState<{ valid: boolean; issues?: string[] | undefined } | null>(null);
   const [dbUpgradeResult, setDbUpgradeResult] = useState<any | null>(null);
   const [dbDryRun, setDbDryRun] = useState(false);
 
@@ -1097,9 +1097,9 @@ export const AdminPage: React.FC = () => {
               const currentVer = dbStatus?.currentVersion
                 ? String(dbStatus.currentVersion)
                 : appliedList.length > 0
-                  ? appliedList[appliedList.length - 1].name
+                  ? appliedList[appliedList.length - 1]!.name
                   : "Baseline";
-              const latestVer = pendingList.length > 0 ? pendingList[pendingList.length - 1].name : currentVer;
+              const latestVer = pendingList.length > 0 ? pendingList[pendingList.length - 1]!.name : currentVer;
               const pendingCount = dbStatus?.pendingCount ?? pendingList.length;
 
               return (
@@ -1161,7 +1161,7 @@ export const AdminPage: React.FC = () => {
                   {dbVerifyResult &&
                     (() => {
                       const isSound =
-                        dbVerifyResult.valid ?? (dbVerifyResult.foreignKeysOk && dbVerifyResult.integrityOk);
+                        dbVerifyResult.valid ?? (dbVerifyResult.foreignKeysOk! && dbVerifyResult.integrityOk!);
                       return (
                         <Card>
                           <span style={{ fontWeight: 700, fontSize: "14px" }}>Integrity Verification Report</span>

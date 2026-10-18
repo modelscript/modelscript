@@ -24,6 +24,10 @@ export interface HjiProblem {
   disturbanceBounds: [number, number];
   /** Target / Unsafe surface level-set function: l(x) <= 0 is unsafe */
   targetLevelSet: (x: number[]) => number;
+  /** Optional initial state x0 to check against the final backward reachable tube */
+  initialState?: number[] | undefined;
+  /** Optional initial set level-set function: l0(x) <= 0 is inside the initial set */
+  initialLevelSet?: ((x: number[]) => number) | undefined;
 }
 
 export interface HjiResult {
@@ -119,24 +123,25 @@ export class HjiLevelSetSolver {
     const dy = dims > 1 && bounds[1] ? (bounds[1][1] - bounds[1][0]) / Math.max(1, ny - 1) : 1.0;
 
     // Initial level-set values V(x, 0) = l(x)
-    let V = new Float64Array(totalPts);
+    const V0 = new Float64Array(totalPts);
+    let initialUnsafePts = 0;
     for (let j = 0; j < ny; j++) {
       const y = dims > 1 && bounds[1] ? bounds[1][0] + j * dy : 0.0;
       for (let i = 0; i < nx; i++) {
         const x = bounds[0]![0] + i * dx;
         const pt = dims > 1 ? [x, y] : [x];
-        V[j * nx + i] = targetLevelSet(pt);
+        const val = targetLevelSet(pt);
+        V0[j * nx + i] = val;
+        if (val <= 0) initialUnsafePts++;
       }
     }
+    let V = new Float64Array(V0);
 
     const uCandidates = [controlBounds[0], controlBounds[1]];
     const wCandidates = [disturbanceBounds[0], disturbanceBounds[1]];
 
-    let t = 0;
-    while (t < tEnd - 1e-10) {
-      const currentDt = Math.min(dt, tEnd - t);
-      const nextV = new Float64Array(totalPts);
-
+    const eulerForwardOperator = (stageV: Float64Array, stepDt: number): Float64Array => {
+      const outV = new Float64Array(totalPts);
       for (let j = 0; j < ny; j++) {
         const y = dims > 1 && bounds[1] ? bounds[1][0] + j * dy : 0.0;
         for (let i = 0; i < nx; i++) {
@@ -144,12 +149,12 @@ export class HjiLevelSetSolver {
           const x = bounds[0]![0] + i * dx;
           const pt = dims > 1 ? [x, y] : [x];
 
-          const wenoX = HjiLevelSetSolver.weno5Derivatives(V, idx, 1, dx, nx);
+          const wenoX = HjiLevelSetSolver.weno5Derivatives(stageV, idx, 1, dx, nx);
           const pAvgX = 0.5 * (wenoX.derivMinus + wenoX.derivPlus);
 
           const wenoY =
             dims >= 2 && ny > 1
-              ? HjiLevelSetSolver.weno5Derivatives(V, idx, nx, dy, ny)
+              ? HjiLevelSetSolver.weno5Derivatives(stageV, idx, nx, dy, ny)
               : { derivMinus: 0, derivPlus: 0 };
           const pAvgY = 0.5 * (wenoY.derivMinus + wenoY.derivPlus);
 
@@ -181,10 +186,36 @@ export class HjiLevelSetSolver {
             (dims >= 2 ? 0.5 * alphaY * (wenoY.derivPlus - wenoY.derivMinus) : 0);
           const dVdt = -(minMaxHamiltonian - dissipation);
 
-          // TVD Euler step backward in time (BRT keeps min over time to accumulate unsafe set)
-          const updated = V[idx]! - currentDt * dVdt;
-          nextV[idx] = Math.min(V[idx]!, updated);
+          outV[idx] = stageV[idx]! - stepDt * dVdt;
         }
+      }
+      return outV;
+    };
+
+    let t = 0;
+    while (t < tEnd - 1e-10) {
+      const currentDt = Math.min(dt, tEnd - t);
+
+      // 3-stage Shu-Osher TVD-RK3 time stepping with BRT min-with-target enforcement:
+      // Stage 1: V^(1) = min(V, E(V, dt))
+      const e1 = eulerForwardOperator(V, currentDt);
+      const v1 = new Float64Array(totalPts);
+      for (let k = 0; k < totalPts; k++) {
+        v1[k] = Math.min(V[k]!, e1[k]!);
+      }
+
+      // Stage 2: V^(2) = min(V, 3/4 * V + 1/4 * E(V^(1), dt))
+      const e2 = eulerForwardOperator(v1, currentDt);
+      const v2 = new Float64Array(totalPts);
+      for (let k = 0; k < totalPts; k++) {
+        v2[k] = Math.min(V[k]!, 0.75 * V[k]! + 0.25 * e2[k]!);
+      }
+
+      // Stage 3: V^(n+1) = min(V, 1/3 * V + 2/3 * E(V^(2), dt))
+      const e3 = eulerForwardOperator(v2, currentDt);
+      const nextV = new Float64Array(totalPts);
+      for (let k = 0; k < totalPts; k++) {
+        nextV[k] = Math.min(V[k]!, V0[k]!, (1.0 / 3.0) * V[k]! + (2.0 / 3.0) * e3[k]!);
       }
 
       V = nextV;
@@ -198,8 +229,34 @@ export class HjiLevelSetSolver {
 
     const unsafeFraction = unsafePts / totalPts;
 
+    let isSafe: boolean;
+    if (problem.initialState) {
+      const x0 = problem.initialState[0] ?? 0;
+      const i0 = Math.max(0, Math.min(nx - 1, Math.round((x0 - bounds[0]![0]) / dx)));
+      const y0 = dims > 1 ? (problem.initialState[1] ?? 0) : 0;
+      const j0 = dims > 1 && bounds[1] ? Math.max(0, Math.min(ny - 1, Math.round((y0 - bounds[1][0]) / dy))) : 0;
+      isSafe = V[j0 * nx + i0]! > 0;
+    } else if (problem.initialLevelSet) {
+      isSafe = true;
+      for (let j = 0; j < ny && isSafe; j++) {
+        const y = dims > 1 && bounds[1] ? bounds[1][0] + j * dy : 0.0;
+        for (let i = 0; i < nx; i++) {
+          const x = bounds[0]![0] + i * dx;
+          const pt = dims > 1 ? [x, y] : [x];
+          if (problem.initialLevelSet(pt) <= 0 && V[j * nx + i]! <= 0) {
+            isSafe = false;
+            break;
+          }
+        }
+      }
+    } else if (initialUnsafePts === 0) {
+      isSafe = unsafePts === 0;
+    } else {
+      isSafe = unsafePts < totalPts;
+    }
+
     return {
-      isSafe: unsafeFraction < 1.0,
+      isSafe,
       times: [0, tEnd],
       finalLevelSet: V,
       gridPoints,

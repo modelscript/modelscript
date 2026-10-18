@@ -111,7 +111,11 @@ export class Tet10Element {
     const wasm: any = getDefaultWasmExports();
     if (wasm && typeof wasm.fea_compute_tet10_stiffness === "function" && typeof wasm.__new === "function") {
       if (!wasmTet10Scratch || wasmTet10Scratch.wasm !== wasm) {
-        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        const alloc = (bytes: number): number => {
+          const ptr = wasm.__new(bytes, 0);
+          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          return ptr;
+        };
         wasmTet10Scratch = {
           wasm,
           coordsPtr: alloc(30 * 8),
@@ -123,9 +127,9 @@ export class Tet10Element {
       const s = wasmTet10Scratch;
       const coordsView = new Float64Array(wasm.memory.buffer, s.coordsPtr, 30);
       for (let i = 0; i < 10; i++) {
-        coordsView[i * 3 + 0] = nodes[i][0];
-        coordsView[i * 3 + 1] = nodes[i][1];
-        coordsView[i * 3 + 2] = nodes[i][2];
+        coordsView[i * 3 + 0] = nodes[i]![0];
+        coordsView[i * 3 + 1] = nodes[i]![1];
+        coordsView[i * 3 + 2] = nodes[i]![2];
       }
       new Float64Array(wasm.memory.buffer, s.dPtr, 36).set(D.subarray(0, 36));
       const volume: number = wasm.fea_compute_tet10_stiffness(s.coordsPtr, s.dPtr, s.kePtr, s.bGaussPtr);
@@ -148,7 +152,7 @@ export class Tet10Element {
 
     // Loop over 4 Gauss integration points
     for (let g = 0; g < 4; g++) {
-      const [L0, L1, L2, L3] = GAUSS_POINTS[g];
+      const [L0, L1, L2, L3] = GAUSS_POINTS[g]!;
       const { dNdr, dNds, dNdt } = this.computeNaturalDerivatives(L0, L1, L2, L3);
 
       // Compute Jacobian J (3x3)
@@ -163,16 +167,16 @@ export class Tet10Element {
         J33 = 0;
 
       for (let i = 0; i < 10; i++) {
-        const [x, y, z] = nodes[i];
-        J11 += dNdr[i] * x;
-        J12 += dNdr[i] * y;
-        J13 += dNdr[i] * z;
-        J21 += dNds[i] * x;
-        J22 += dNds[i] * y;
-        J23 += dNds[i] * z;
-        J31 += dNdt[i] * x;
-        J32 += dNdt[i] * y;
-        J33 += dNdt[i] * z;
+        const [x, y, z] = nodes[i]!;
+        J11 += dNdr[i]! * x;
+        J12 += dNdr[i]! * y;
+        J13 += dNdr[i]! * z;
+        J21 += dNds[i]! * x;
+        J22 += dNds[i]! * y;
+        J23 += dNds[i]! * z;
+        J31 += dNdt[i]! * x;
+        J32 += dNdt[i]! * y;
+        J33 += dNdt[i]! * z;
       }
 
       // det(J)
@@ -201,9 +205,9 @@ export class Tet10Element {
       const dNdz = new Float64Array(10);
 
       for (let i = 0; i < 10; i++) {
-        const dr = dNdr[i],
-          ds = dNds[i],
-          dt = dNdt[i];
+        const dr = dNdr[i]!,
+          ds = dNds[i]!,
+          dt = dNdt[i]!;
         dNdx[i] = invJ11 * dr + invJ12 * ds + invJ13 * dt;
         dNdy[i] = invJ21 * dr + invJ22 * ds + invJ23 * dt;
         dNdz[i] = invJ31 * dr + invJ32 * ds + invJ33 * dt;
@@ -213,9 +217,9 @@ export class Tet10Element {
       const B = new Float64Array(180); // 6 rows, 30 cols
       for (let i = 0; i < 10; i++) {
         const col = i * 3;
-        const b = dNdx[i],
-          c = dNdy[i],
-          d = dNdz[i];
+        const b = dNdx[i]!,
+          c = dNdy[i]!,
+          d = dNdz[i]!;
 
         B[0 * 30 + col + 0] = b;
         B[1 * 30 + col + 1] = c;
@@ -239,7 +243,7 @@ export class Tet10Element {
         for (let c = 0; c < 30; c++) {
           let sum = 0.0;
           for (let k = 0; k < 6; k++) {
-            sum += D[r * 6 + k] * B[k * 30 + c];
+            sum += D[r * 6 + k]! * B[k * 30 + c]!;
           }
           DB[r * 30 + c] = sum;
         }
@@ -251,9 +255,9 @@ export class Tet10Element {
         for (let c = 0; c < 30; c++) {
           let sum = 0.0;
           for (let k = 0; k < 6; k++) {
-            sum += B[k * 30 + r] * DB[k * 30 + c];
+            sum += B[k * 30 + r]! * DB[k * 30 + c]!;
           }
-          Ke[r * 30 + c] += dV * sum;
+          Ke[r * 30 + c] = Ke[r * 30 + c]! + dV * sum;
         }
       }
     }
@@ -272,13 +276,13 @@ export class Tet10Element {
     const avgStress = new Float64Array(6);
 
     for (let g = 0; g < B_gauss.length; g++) {
-      const B = B_gauss[g];
+      const B = B_gauss[g]!;
       // eps = B * ue (6x1)
       const eps = new Float64Array(6);
       for (let r = 0; r < 6; r++) {
         let sum = 0.0;
         for (let c = 0; c < 30; c++) {
-          sum += B[r * 30 + c] * ue[c];
+          sum += B[r * 30 + c]! * ue[c]!;
         }
         eps[r] = sum;
       }
@@ -287,18 +291,18 @@ export class Tet10Element {
       for (let r = 0; r < 6; r++) {
         let sum = 0.0;
         for (let c = 0; c < 6; c++) {
-          sum += D[r * 6 + c] * eps[c];
+          sum += D[r * 6 + c]! * eps[c]!;
         }
-        avgStress[r] += sum / B_gauss.length;
+        avgStress[r] = avgStress[r]! + sum / B_gauss.length;
       }
     }
 
-    const sxx = avgStress[0],
-      syy = avgStress[1],
-      szz = avgStress[2];
-    const sxy = avgStress[3],
-      syz = avgStress[4],
-      szx = avgStress[5];
+    const sxx = avgStress[0]!,
+      syy = avgStress[1]!,
+      szz = avgStress[2]!;
+    const sxy = avgStress[3]!,
+      syz = avgStress[4]!,
+      szx = avgStress[5]!;
 
     const d1 = sxx - syy,
       d2 = syy - szz,
@@ -342,7 +346,7 @@ export class Tet10Element {
     let totalVolume = 0.0;
 
     for (let g = 0; g < 4; g++) {
-      const [L0, L1, L2, L3] = GAUSS_POINTS[g];
+      const [L0, L1, L2, L3] = GAUSS_POINTS[g]!;
       const { dNdr, dNds, dNdt } = this.computeNaturalDerivatives(L0, L1, L2, L3);
       const N = this.computeShapeFunctions(L0, L1, L2, L3);
 
@@ -357,18 +361,18 @@ export class Tet10Element {
         J33 = 0;
 
       for (let i = 0; i < 10; i++) {
-        const x = nodes[i][0],
-          y = nodes[i][1],
-          z = nodes[i][2];
-        J11 += dNdr[i] * x;
-        J12 += dNdr[i] * y;
-        J13 += dNdr[i] * z;
-        J21 += dNds[i] * x;
-        J22 += dNds[i] * y;
-        J23 += dNds[i] * z;
-        J31 += dNdt[i] * x;
-        J32 += dNdt[i] * y;
-        J33 += dNdt[i] * z;
+        const x = nodes[i]![0],
+          y = nodes[i]![1],
+          z = nodes[i]![2];
+        J11 += dNdr[i]! * x;
+        J12 += dNdr[i]! * y;
+        J13 += dNdr[i]! * z;
+        J21 += dNds[i]! * x;
+        J22 += dNds[i]! * y;
+        J23 += dNds[i]! * z;
+        J31 += dNdt[i]! * x;
+        J32 += dNdt[i]! * y;
+        J33 += dNdt[i]! * z;
       }
 
       const detJ = J11 * (J22 * J33 - J23 * J32) - J12 * (J21 * J33 - J23 * J31) + J13 * (J21 * J32 - J22 * J31);
@@ -379,11 +383,11 @@ export class Tet10Element {
       // Me += rho * dV * (N^T * N) tensor I_3
       const factor = rho * dV;
       for (let i = 0; i < 10; i++) {
-        const Ni = N[i];
+        const Ni = N[i]!;
         for (let j = 0; j < 10; j++) {
-          const val = factor * Ni * N[j];
+          const val = factor * Ni * N[j]!;
           for (let d = 0; d < 3; d++) {
-            Me[(i * 3 + d) * 30 + (j * 3 + d)] += val;
+            Me[(i * 3 + d) * 30 + (j * 3 + d)] = Me[(i * 3 + d) * 30 + (j * 3 + d)]! + val;
           }
         }
       }

@@ -38,16 +38,18 @@ export interface WebSerialOptions {
   /** Participant identifier. */
   id: string;
   /** Serial port baud rate. Default: 115200. */
-  baudRate?: number;
+  baudRate?: number | undefined;
   /** Framing protocol. Default: "slcan". */
-  protocol?: SerialProtocol;
+  protocol?: SerialProtocol | undefined;
   /** Optional FMI-LS-BUS frame definitions to auto-decode CAN/serial payloads into variables. */
-  busFrames?: FmiLsBusFrame[];
+  busFrames?: FmiLsBusFrame[] | undefined;
   /** Mock or custom stream reader/writer for headless or testing environments. */
-  customStream?: {
-    readable: ReadableStream<Uint8Array>;
-    writable: WritableStream<Uint8Array>;
-  };
+  customStream?:
+    | {
+        readable: ReadableStream<Uint8Array>;
+        writable: WritableStream<Uint8Array>;
+      }
+    | undefined;
 }
 
 /**
@@ -69,7 +71,7 @@ export class WebSerialParticipant implements CoSimParticipant {
   private port: any = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
-  private customStream?: WebSerialOptions["customStream"];
+  private customStream?: WebSerialOptions["customStream"] | undefined;
 
   // State
   private inputValues = new Map<string, CosimValue>();
@@ -122,7 +124,7 @@ export class WebSerialParticipant implements CoSimParticipant {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
+  async initialize(_startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     if (this.customStream) {
       this.reader = this.customStream.readable.getReader();
       this.writer = this.customStream.writable.getWriter();
@@ -160,7 +162,7 @@ export class WebSerialParticipant implements CoSimParticipant {
     await this.transmitOutputs();
 
     // 2. Poll inputs (read from physical hardware)
-    await this.pollHardwareInputs();
+    this.pollHardwareInputs();
   }
 
   async setInputs(values: Map<string, CosimValue>): Promise<void> {

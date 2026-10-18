@@ -1,7 +1,6 @@
 // name:
 // keywords:
 // status:   correct
-// xfail:    true
 // cflags: -d=-newInst
 //
 

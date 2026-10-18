@@ -308,15 +308,17 @@ export class ParserService {
               lazyLibTrees?.set(uri, lazyCache);
               if (lazyLibTrees && lazyLibTrees.size > 50) {
                 const oldest = lazyLibTrees.keys().next().value;
-                const oldCache = lazyLibTrees.get(oldest);
-                if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
-                  try {
-                    oldCache.tree.delete();
-                  } catch {
-                    /* ignore */
+                if (oldest !== undefined) {
+                  const oldCache = lazyLibTrees.get(oldest);
+                  if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
+                    try {
+                      oldCache.tree.delete();
+                    } catch {
+                      /* ignore */
+                    }
                   }
+                  lazyLibTrees.delete(oldest);
                 }
-                lazyLibTrees.delete(oldest);
               }
             }
           } catch {
@@ -371,15 +373,17 @@ export class ParserService {
               this.documentManager.lazyLibTrees.set(uri, lazyCache);
               if (this.documentManager.lazyLibTrees.size > 50) {
                 const oldest = this.documentManager.lazyLibTrees.keys().next().value;
-                const oldCache = this.documentManager.lazyLibTrees.get(oldest);
-                if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
-                  try {
-                    oldCache.tree.delete();
-                  } catch {
-                    /* ignore */
+                if (oldest !== undefined) {
+                  const oldCache = this.documentManager.lazyLibTrees.get(oldest);
+                  if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
+                    try {
+                      oldCache.tree.delete();
+                    } catch {
+                      /* ignore */
+                    }
                   }
+                  this.documentManager.lazyLibTrees.delete(oldest);
                 }
-                this.documentManager.lazyLibTrees.delete(oldest);
               }
             } else {
               this.connection.console.error(`[cstTreeWrapper] failed to read fsPath: ${fsPath}`);
@@ -453,6 +457,7 @@ export class ParserService {
     } else {
       // First parse — no old tree available
       const tParse0 = performance.now();
+      void tParse0;
       // Attempt to set timeout to 1000ms if supported
       if (typeof (this.parser as any).setTimeoutMicros === "function") {
         (this.parser as any).setTimeoutMicros(1000000);
@@ -570,7 +575,8 @@ export class ParserService {
       // If the URI isn't HTTP(S), try to construct an HTTP URL from the worker's location
       if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
         // Fallback: use the worker's origin with the known static path
-        const origin = (globalThis as unknown as { location?: { origin?: string } }).location?.origin;
+        const origin = (globalThis as unknown as { location?: { origin?: string | undefined } | undefined }).location
+          ?.origin;
         if (origin && (origin.startsWith("http://") || origin.startsWith("https://"))) {
           serverDistBase = `${origin}/static/devextensions/server/dist`;
           this.connection.console.info(`[wasm-parser] Using fallback serverDistBase: ${serverDistBase}`);
@@ -590,11 +596,11 @@ export class ParserService {
       // Load languages from languages-manifest.json if present
       let manifest: {
         id: string;
-        wasm?: string;
-        displayName?: string;
-        fileExtensions?: string[];
-        syntaxNames?: string[];
-        fieldNames?: Record<string, number>;
+        wasm?: string | undefined;
+        displayName?: string | undefined;
+        fileExtensions?: string[] | undefined;
+        syntaxNames?: string[] | undefined;
+        fieldNames?: Record<string, number> | undefined;
       }[] = [];
       try {
         const manifestUrl = `${serverDistBase}/languages-manifest.json`;
@@ -944,9 +950,10 @@ export class ParserService {
     if (nameIds && nameIds.length > 0) {
       for (const id of nameIds) {
         const entry = db.symbols.get(id);
+        if (!entry) continue;
         const startOff = typeof entry.startOffset === "number" ? entry.startOffset : entry.startByte;
         const endOff = typeof entry.endOffset === "number" ? entry.endOffset : entry.endByte;
-        if (entry && entry.resourceId === currentUri && typeof startOff === "number" && typeof endOff === "number") {
+        if (entry.resourceId === currentUri && typeof startOff === "number" && typeof endOff === "number") {
           const bridge = documentLSPBridges.get(currentUri);
           if (bridge) {
             return bridge["positions"].rangeFromOffsets(startOff, endOff);
@@ -1012,7 +1019,7 @@ export class ParserService {
 
     if (className) {
       const parts = className.split(".");
-      const entries = unifiedIndex.byName.get(parts[parts.length - 1]);
+      const entries = unifiedIndex.byName.get(parts[parts.length - 1]!);
       const entryId = entries?.find((id) => {
         const e = unifiedIndex.symbols.get(id);
         return e && getCompositeName(e, unifiedIndex) === className;

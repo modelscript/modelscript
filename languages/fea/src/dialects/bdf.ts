@@ -11,10 +11,17 @@ export class BdfDialect implements FeaDialect {
   public readonly name = "FEA Bulk Data Deck (.bdf / .dat)";
   public readonly extensions = [".bdf", ".dat"];
 
+  /**
+   * Materializes a NASTRAN Bulk Data `.bdf` template by evaluating embedded `{{ ... }}` expressions.
+   */
   public materialize(templateText: string, options?: MaterializeOptions): string {
     return materializeFeaDeck(templateText, options);
   }
 
+  /**
+   * Parses a NASTRAN Bulk Data (`.bdf` / `.dat`) deck (supporting both free-field comma-separated
+   * and 8-column small-field formats with continuation cards) into `FeaModelData`.
+   */
   public parse(deckText: string): FeaModelData {
     const lines = deckText.split(/\r?\n/);
     const data: FeaModelData = {
@@ -28,6 +35,9 @@ export class BdfDialect implements FeaDialect {
       nodalLoads: new Map(),
     };
 
+    /**
+     * Parses a floating-point value supporting NASTRAN short-field scientific notation (e.g., `2.1+11` -> `2.1e11`).
+     */
     function parseNastranFloat(val: string): number {
       const trimmed = val.trim();
       if (!trimmed) return NaN;
@@ -40,20 +50,27 @@ export class BdfDialect implements FeaDialect {
       return parseFloat(trimmed);
     }
 
+    const cardTokensList: string[][] = [];
     for (const rawLine of lines) {
       // Strip comments starting with $
       const commentIdx = rawLine.indexOf("$");
       const cleanLine = commentIdx !== -1 ? rawLine.slice(0, commentIdx) : rawLine;
       if (!cleanLine.trim()) continue;
 
+      const isContinuation =
+        cleanLine.startsWith("+") ||
+        cleanLine.startsWith("*") ||
+        cleanLine.startsWith("        ") ||
+        cleanLine.trimStart().startsWith(",");
+
       let tokens: string[];
       if (cleanLine.includes(",")) {
         tokens = cleanLine.split(",").map((t) => t.trim());
       } else if (cleanLine.length >= 8) {
-        // Standard NASTRAN small field format: 8 characters per column
+        // Standard NASTRAN small field format: 8 characters per column (fields 1..9 in cols 0..72)
         tokens = [];
-        tokens.push(cleanLine.slice(0, 8).trim());
-        for (let i = 8; i < cleanLine.length; i += 8) {
+        const maxLen = Math.min(cleanLine.length, 72);
+        for (let i = 0; i < maxLen; i += 8) {
           tokens.push(cleanLine.slice(i, i + 8).trim());
         }
       } else {
@@ -62,23 +79,38 @@ export class BdfDialect implements FeaDialect {
           .split(/\s+/)
           .map((t) => t.trim());
       }
+
+      if (isContinuation && cardTokensList.length > 0) {
+        const prev = cardTokensList[cardTokensList.length - 1]!;
+        // Remove trailing continuation marker on previous line if present (e.g. "+C1" at index 9)
+        if (prev.length >= 10 && (prev[prev.length - 1]!.startsWith("+") || prev[prev.length - 1]!.startsWith("*"))) {
+          prev.pop();
+        }
+        // Skip leading continuation marker in tokens[0]
+        prev.push(...tokens.slice(1));
+      } else {
+        cardTokensList.push(tokens);
+      }
+    }
+
+    for (const tokens of cardTokensList) {
       if (tokens.length === 0 || !tokens[0]) continue;
       const card = tokens[0].toUpperCase();
 
       if (card === "GRID" && tokens.length >= 6) {
-        const id = parseInt(tokens[1], 10);
-        const x = parseNastranFloat(tokens[3]);
-        const y = parseNastranFloat(tokens[4]);
-        const z = parseNastranFloat(tokens[5]);
+        const id = parseInt(tokens[1]!, 10);
+        const x = parseNastranFloat(tokens[3]!);
+        const y = parseNastranFloat(tokens[4]!);
+        const z = parseNastranFloat(tokens[5]!);
         if (!isNaN(id)) {
           data.nodes.set(id, { id, x: isNaN(x) ? 0 : x, y: isNaN(y) ? 0 : y, z: isNaN(z) ? 0 : z });
         }
-      } else if (card === "CQUAD4" && tokens.length >= 6) {
-        const id = parseInt(tokens[1], 10);
-        const n1 = parseInt(tokens[3], 10);
-        const n2 = parseInt(tokens[4], 10);
-        const n3 = parseInt(tokens[5], 10);
-        const n4 = parseInt(tokens[6], 10);
+      } else if (card === "CQUAD4" && tokens.length >= 7) {
+        const id = parseInt(tokens[1]!, 10);
+        const n1 = parseInt(tokens[3]!, 10);
+        const n2 = parseInt(tokens[4]!, 10);
+        const n3 = parseInt(tokens[5]!, 10);
+        const n4 = parseInt(tokens[6]!, 10);
         if (!isNaN(id)) {
           data.elements.set(id, {
             id,
@@ -87,11 +119,11 @@ export class BdfDialect implements FeaDialect {
             nodes: [n1, n2, n3, n4].filter((n) => !isNaN(n)),
           });
         }
-      } else if (card === "CTRIA3" && tokens.length >= 5) {
-        const id = parseInt(tokens[1], 10);
-        const n1 = parseInt(tokens[3], 10);
-        const n2 = parseInt(tokens[4], 10);
-        const n3 = parseInt(tokens[5], 10);
+      } else if (card === "CTRIA3" && tokens.length >= 6) {
+        const id = parseInt(tokens[1]!, 10);
+        const n1 = parseInt(tokens[3]!, 10);
+        const n2 = parseInt(tokens[4]!, 10);
+        const n3 = parseInt(tokens[5]!, 10);
         if (!isNaN(id)) {
           data.elements.set(id, {
             id,
@@ -100,22 +132,23 @@ export class BdfDialect implements FeaDialect {
             nodes: [n1, n2, n3].filter((n) => !isNaN(n)),
           });
         }
-      } else if (card === "CTETRA" && tokens.length >= 6) {
-        const id = parseInt(tokens[1], 10);
-        const n1 = parseInt(tokens[3], 10);
-        const n2 = parseInt(tokens[4], 10);
-        const n3 = parseInt(tokens[5], 10);
-        const n4 = parseInt(tokens[6], 10);
-        if (!isNaN(id)) {
+      } else if (card === "CTETRA" && tokens.length >= 7) {
+        const id = parseInt(tokens[1]!, 10);
+        const maxNodeIdx = tokens.length >= 13 ? 13 : 7;
+        const nodes = tokens
+          .slice(3, maxNodeIdx)
+          .map((t) => parseInt(t, 10))
+          .filter((n) => !isNaN(n));
+        if (!isNaN(id) && (nodes.length === 4 || nodes.length === 10)) {
           data.elements.set(id, {
             id,
-            type: "CTETRA",
+            type: nodes.length === 10 ? "C3D10" : "CTETRA",
             family: "solid",
-            nodes: [n1, n2, n3, n4].filter((n) => !isNaN(n)),
+            nodes,
           });
         }
-      } else if (card === "CHEXA" && tokens.length >= 10) {
-        const id = parseInt(tokens[1], 10);
+      } else if (card === "CHEXA" && tokens.length >= 11) {
+        const id = parseInt(tokens[1]!, 10);
         const nodes = tokens
           .slice(3, 11)
           .map((t) => parseInt(t, 10))
@@ -124,10 +157,10 @@ export class BdfDialect implements FeaDialect {
           data.elements.set(id, { id, type: "CHEXA", family: "solid", nodes });
         }
       } else if (card === "MAT1" && tokens.length >= 3) {
-        const mid = tokens[1];
-        const E = parseNastranFloat(tokens[2]);
-        const nu = tokens.length >= 5 ? parseNastranFloat(tokens[4]) : undefined;
-        const rho = tokens.length >= 6 ? parseNastranFloat(tokens[5]) : undefined;
+        const mid = tokens[1]!;
+        const E = parseNastranFloat(tokens[2]!);
+        const nu = tokens.length >= 5 ? parseNastranFloat(tokens[4]!) : undefined;
+        const rho = tokens.length >= 6 ? parseNastranFloat(tokens[5]!) : undefined;
         data.materials.set(mid, {
           name: mid,
           E: isNaN(E) ? undefined : E,
@@ -138,9 +171,9 @@ export class BdfDialect implements FeaDialect {
         const startIdx = card === "SPC1" ? 3 : 2;
         let lastGrid: number | null = null;
         for (let j = startIdx; j < tokens.length; j += card === "SPC" ? 3 : 1) {
-          const tokenStr = tokens[j].toUpperCase();
+          const tokenStr = tokens[j]!.toUpperCase();
           if (tokenStr === "THRU" && lastGrid !== null && j + 1 < tokens.length) {
-            const endGrid = parseInt(tokens[j + 1], 10);
+            const endGrid = parseInt(tokens[j + 1]!, 10);
             if (!isNaN(endGrid) && endGrid >= lastGrid) {
               for (let g = lastGrid + 1; g <= endGrid; g++) {
                 data.fixedNodes.add(g);
@@ -156,11 +189,11 @@ export class BdfDialect implements FeaDialect {
           }
         }
       } else if (card === "FORCE" && tokens.length >= 8) {
-        const g = parseInt(tokens[2], 10);
-        const f = parseNastranFloat(tokens[4]);
-        const n1 = parseNastranFloat(tokens[5]) || 0;
-        const n2 = parseNastranFloat(tokens[6]) || 0;
-        const n3 = parseNastranFloat(tokens[7]) || 0;
+        const g = parseInt(tokens[2]!, 10);
+        const f = parseNastranFloat(tokens[4]!);
+        const n1 = parseNastranFloat(tokens[5]!) || 0;
+        const n2 = parseNastranFloat(tokens[6]!) || 0;
+        const n3 = parseNastranFloat(tokens[7]!) || 0;
         if (!isNaN(g) && !isNaN(f)) {
           if (!data.nodalLoads.has(g)) data.nodalLoads.set(g, [0, 0, 0]);
           const loadVec = data.nodalLoads.get(g)!;

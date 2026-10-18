@@ -45,7 +45,7 @@ const TabBar = styled.div`
   margin-top: 24px;
 `;
 
-const Tab = styled.button<{ $active?: boolean }>`
+const Tab = styled.button<{ $active?: boolean | undefined }>`
   flex: 1;
   display: flex;
   align-items: center;

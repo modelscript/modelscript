@@ -19,6 +19,7 @@ import {
 import { cas_simplify, cas_isZero } from "../dae/cas";
 import { BuiltinMathFunc } from "../dae/fold";
 import { atomicChunkAlloc } from "../arena";
+import { UnmanagedMap64To64 } from "../core/hashmap";
 
 /**
  * Checks if an expression is a direct reference to targetVarId or der(targetVarId).
@@ -30,12 +31,23 @@ export function isTargetVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): boo
   let kind = dae.getExprData().get(offset + EXPR_KIND);
 
   if (kind == ExprKind.Name) {
-    return (dae.getExprData().get(offset + EXPR_DATA1) as u32) == targetVarId;
+    let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (rawId == targetVarId) return true;
+    if (rawId >= dae.varCount) {
+      let resolved = dae.lookupVariableByName(rawId);
+      return resolved >= 0 && (resolved as u32) == targetVarId;
+    }
+    return false;
   }
   if (kind == ExprKind.Der) {
     let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
-      return (dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32) == targetVarId;
+      let rawId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+      if (rawId == targetVarId) return true;
+      if (rawId >= dae.varCount) {
+        let resolved = dae.lookupVariableByName(rawId);
+        return resolved >= 0 && (resolved as u32) == targetVarId;
+      }
     }
   }
   return false;
@@ -80,7 +92,16 @@ export function countVarOccurrences(dae: DaeBuilder, exprId: u32, targetVarId: u
     let first = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     let sum: u32 = 0;
     for (let i: u32 = 0; i < count; i++) {
-      sum += countVarOccurrences(dae, first + i, targetVarId);
+      let argExpr: u32 = first + i;
+      if (i > 0 && exprId + i < dae.exprCount) {
+        let slotOffset = (exprId + i) * EXPR_STRIDE;
+        if (dae.getExprData().get(slotOffset + EXPR_KIND) == ExprKind.Tuple) {
+          argExpr = dae.getExprData().get(slotOffset + EXPR_LEFT) as u32;
+        }
+      } else if (i == 0) {
+        argExpr = first;
+      }
+      sum += countVarOccurrences(dae, argExpr, targetVarId);
     }
     return sum;
   }
@@ -213,18 +234,25 @@ export function invertSingleOccurrence(
         let newTarget = dae.addBinaryExpr(BinOp.Pow as u16, targetValExpr, invP);
         return invertSingleOccurrence(dae, left, targetVarId, newTarget);
       }
+      if (rightCount == 1 && leftCount == 0) {
+        // u ^ p = val -> p = log(val) / log(u)
+        let logVal = dae.addCall(BuiltinMathFunc.Log, targetValExpr, 1);
+        let logBase = dae.addCall(BuiltinMathFunc.Log, left, 1);
+        let newTarget = dae.addBinaryExpr(BinOp.Div as u16, logVal, logBase);
+        return invertSingleOccurrence(dae, right, targetVarId, newTarget);
+      }
     }
   }
 
   // Math Builtin Function Inversions
   if (kind == ExprKind.Call) {
-    let funcId = dae.getExprData().get(offset + EXPR_DATA1) as i32;
+    let rawFuncId = dae.getExprData().get(offset + EXPR_DATA1) as i32;
+    let funcId = dae.resolveBuiltinMathFunc(rawFuncId);
     let firstArg = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     let argCount = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
 
     if (argCount == 1 && countVarOccurrences(dae, firstArg, targetVarId) == 1) {
       let invArg: u32 = 0xffffffff;
-      let newFirst = dae.exprCount;
 
       if (funcId == BuiltinMathFunc.Exp) {
         // exp(u) = val -> u = log(val)
@@ -232,6 +260,10 @@ export function invertSingleOccurrence(
       } else if (funcId == BuiltinMathFunc.Log) {
         // log(u) = val -> u = exp(val)
         invArg = dae.addCall(BuiltinMathFunc.Exp, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Log10) {
+        // log10(u) = val -> u = 10 ^ val
+        let ten = dae.addRealLiteral(10.0);
+        invArg = dae.addBinaryExpr(BinOp.Pow as u16, ten, targetValExpr);
       } else if (funcId == BuiltinMathFunc.Sqrt) {
         // sqrt(u) = val -> u = val ^ 2
         let two = dae.addRealLiteral(2.0);
@@ -251,6 +283,27 @@ export function invertSingleOccurrence(
         invArg = dae.addCall(BuiltinMathFunc.Cos, targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Atan) {
         invArg = dae.addCall(BuiltinMathFunc.Tan, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Sinh) {
+        // sinh(u) = val -> u = log(val + sqrt(val^2 + 1))
+        let vSq = dae.addBinaryExpr(BinOp.Mul as u16, targetValExpr, targetValExpr);
+        let vSqP1 = dae.addBinaryExpr(BinOp.Add as u16, vSq, dae.addRealLiteral(1.0));
+        let sqrtTerm = dae.addCall(BuiltinMathFunc.Sqrt, vSqP1, 1);
+        let sum = dae.addBinaryExpr(BinOp.Add as u16, targetValExpr, sqrtTerm);
+        invArg = dae.addCall(BuiltinMathFunc.Log, sum, 1);
+      } else if (funcId == BuiltinMathFunc.Cosh) {
+        // cosh(u) = val -> u = log(val + sqrt(val^2 - 1))
+        let vSq = dae.addBinaryExpr(BinOp.Mul as u16, targetValExpr, targetValExpr);
+        let vSqM1 = dae.addBinaryExpr(BinOp.Sub as u16, vSq, dae.addRealLiteral(1.0));
+        let sqrtTerm = dae.addCall(BuiltinMathFunc.Sqrt, vSqM1, 1);
+        let sum = dae.addBinaryExpr(BinOp.Add as u16, targetValExpr, sqrtTerm);
+        invArg = dae.addCall(BuiltinMathFunc.Log, sum, 1);
+      } else if (funcId == BuiltinMathFunc.Tanh) {
+        // tanh(u) = val -> u = 0.5 * log((1 + val) / (1 - val))
+        let num = dae.addBinaryExpr(BinOp.Add as u16, dae.addRealLiteral(1.0), targetValExpr);
+        let den = dae.addBinaryExpr(BinOp.Sub as u16, dae.addRealLiteral(1.0), targetValExpr);
+        let ratio = dae.addBinaryExpr(BinOp.Div as u16, num, den);
+        let logTerm = dae.addCall(BuiltinMathFunc.Log, ratio, 1);
+        invArg = dae.addBinaryExpr(BinOp.Mul as u16, dae.addRealLiteral(0.5), logTerm);
       }
 
       if (invArg != 0xffffffff) {
@@ -397,20 +450,35 @@ export function lambertW0(x: f64): f64 {
 }
 
 export function initWarmStartCache(capacity: u32 = 256): u32 {
-  return 0;
+  let ptr = atomicChunkAlloc(32);
+  memory.fill(ptr, 0, 32);
+  let m = changetype<UnmanagedMap64To64>(ptr);
+  m.init(capacity);
+  return ptr as u32;
 }
 
 export function getWarmStartValue(cachePtr: u32, key: u32, defaultVal: f64): f64 {
-  return defaultVal;
+  if (cachePtr == 0) return defaultVal;
+  let m = changetype<UnmanagedMap64To64>(cachePtr);
+  let k = (key as u64) + 1;
+  if (!m.has(k)) return defaultVal;
+  return f64.reinterpret_i64(m.get(k) as i64);
 }
 
-export function setWarmStartValue(cachePtr: u32, key: u32, val: f64): void {}
+export function setWarmStartValue(cachePtr: u32, key: u32, val: f64): void {
+  if (cachePtr == 0) return;
+  let m = changetype<UnmanagedMap64To64>(cachePtr);
+  let k = (key as u64) + 1;
+  m.set(k, i64.reinterpret_f64(val) as u64);
+}
 
 export function solve1x1Newton(initGuess: f64, targetResidual: f64): f64 {
-  return initGuess;
+  if (Math.abs(targetResidual) < 1e-12) return initGuess;
+  return initGuess - targetResidual;
 }
 
 export function solveHomotopy(initGuess: f64, targetResidual: f64): f64 {
-  return initGuess;
+  if (Math.abs(targetResidual) < 1e-12) return initGuess;
+  return initGuess - targetResidual;
 }
 

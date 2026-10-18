@@ -31,21 +31,21 @@ export interface CadDynamicBinding {
   /** Property being animated: position, rotation, scale, or deformation */
   property: "position" | "rotation" | "scale" | "deformation" | "color";
   /** Index within property array (0=x, 1=y, 2=z, or 0..8 for 3×3 matrix) */
-  index?: number;
+  index?: number | undefined;
   /** Variable name in DAE simulation result (e.g. "body1.frame_a.r_0[1]") */
   variable: string;
   /** Optional unit of the simulation variable (for auto-scaling) */
-  unit?: string;
+  unit?: string | undefined;
   /** Scale factor applied to variable before setting transform */
-  scaleFactor?: number;
+  scaleFactor?: number | undefined;
 }
 
 /** Dynamic deformation configuration for compliant soft-tissue and organ structures. */
 export interface DynamicDeformationConfig {
-  mode?: "volume_radial" | "anisotropic" | "modal";
-  referenceVolume?: number;
-  volumeVariable?: string;
-  anchorOrigin?: [number, number, number];
+  mode?: "volume_radial" | "anisotropic" | "modal" | undefined;
+  referenceVolume?: number | undefined;
+  volumeVariable?: string | undefined;
+  anchorOrigin?: [number, number, number] | undefined;
 }
 
 /** Dynamic spatial clearance segment between two interacting CAD bodies. */
@@ -64,9 +64,9 @@ export interface AnimationBinding {
   /** Dynamic variable bindings */
   bindings: CadDynamicBinding[];
   /** Optional deformation parameters */
-  deformationConfig?: DynamicDeformationConfig;
+  deformationConfig?: DynamicDeformationConfig | undefined;
   /** Alias for deformationConfig */
-  deformation?: DynamicDeformationConfig;
+  deformation?: DynamicDeformationConfig | undefined;
 }
 
 export type AnimationMode = "stopped" | "playing" | "paused" | "live";
@@ -184,11 +184,11 @@ export class AnimationController {
       for (let ti = 0; ti < timeCount; ti++) {
         data[ti] = y[ti]?.[vi] ?? 0;
       }
-      this.variableData.set(states[vi], data);
+      this.variableData.set(states[vi]!, data);
     }
 
-    this._startTime = t[0];
-    this._stopTime = t[timeCount - 1];
+    this._startTime = t[0]!;
+    this._stopTime = t[timeCount - 1]!;
     this._currentTime = this._startTime;
 
     this.notify();
@@ -216,10 +216,10 @@ export class AnimationController {
   setDefault(
     componentName: string,
     transform: {
-      position?: [number, number, number];
-      rotation?: [number, number, number]; // in degrees
-      quaternion?: Quat;
-      scale?: [number, number, number];
+      position?: [number, number, number] | undefined;
+      rotation?: [number, number, number] | undefined; // in degrees
+      quaternion?: Quat | undefined;
+      scale?: [number, number, number] | undefined;
     },
   ): void {
     const pos: [number, number, number] = transform.position ? [...transform.position] : [0, 0, 0];
@@ -259,7 +259,7 @@ export class AnimationController {
       }
     } else {
       for (const k of Object.keys(values)) {
-        this.liveValues.set(k, values[k]);
+        this.liveValues.set(k, values[k]!);
       }
     }
     this.liveTime = time;
@@ -499,24 +499,24 @@ export class AnimationController {
     const t = this.timeArray;
     const n = t.length;
 
-    if (time <= t[0]) return varData[0];
-    if (time >= t[n - 1]) return varData[n - 1];
+    if (time <= t[0]!) return varData[0]!;
+    if (time >= t[n - 1]!) return varData[n - 1]!;
 
     let lo = 0;
     let hi = n - 1;
     while (lo < hi - 1) {
       const mid = (lo + hi) >>> 1;
-      if (t[mid] <= time) {
+      if (t[mid]! <= time) {
         lo = mid;
       } else {
         hi = mid;
       }
     }
 
-    const dt = t[hi] - t[lo];
-    if (dt === 0) return varData[lo];
-    const alpha = (time - t[lo]) / dt;
-    return varData[lo] + alpha * (varData[hi] - varData[lo]);
+    const dt = t[hi]! - t[lo]!;
+    if (dt === 0) return varData[lo]!;
+    const alpha = (time - t[lo]!) / dt;
+    return varData[lo]! + alpha * (varData[hi]! - varData[lo]!);
   }
 
   private notify(): void {

@@ -29,7 +29,7 @@ export interface GdtDatum {
   partId: string;
   featureName: string;
   featureType: "plane" | "cylinder" | "axis" | "point";
-  precedence?: number; // 1 = primary, 2 = secondary, 3 = tertiary
+  precedence?: number | undefined; // 1 = primary, 2 = secondary, 3 = tertiary
 }
 
 export interface GdtToleranceSpecification {
@@ -40,10 +40,10 @@ export interface GdtToleranceSpecification {
   nominalValue: number;
   plusTolerance: number;
   minusTolerance: number;
-  materialCondition?: MaterialCondition;
-  datumReferences?: string[];
-  zoneShape?: "planar" | "cylindrical" | "spherical";
-  unit?: "mm" | "m" | "inch";
+  materialCondition?: MaterialCondition | undefined;
+  datumReferences?: string[] | undefined;
+  zoneShape?: "planar" | "cylindrical" | "spherical" | undefined;
+  unit?: "mm" | "m" | "inch" | undefined;
 }
 
 export interface StackDimensionContributor {
@@ -52,7 +52,7 @@ export interface StackDimensionContributor {
   direction: 1 | -1; // +1 increases gap, -1 decreases gap
   nominal: number;
   tolerance: number; // bilateral ±tolerance value (e.g. 0.025 mm)
-  cpk?: number; // Process capability index (default 1.33 for standard manufacturing)
+  cpk?: number | undefined; // Process capability index (default 1.33 for standard manufacturing)
 }
 
 export interface ToleranceChainSpec {
@@ -62,9 +62,9 @@ export interface ToleranceChainSpec {
   targetClearance: {
     min: number; // e.g. 0.010 mm (minimum required to prevent interference / seizure)
     max: number; // e.g. 0.080 mm (maximum allowed to prevent pressure loss / vibration)
-    name?: string;
+    name?: string | undefined;
   };
-  method?: "worst_case" | "rss" | "six_sigma";
+  method?: "worst_case" | "rss" | "six_sigma" | undefined;
 }
 
 export interface ToleranceStackResult {
@@ -74,7 +74,7 @@ export interface ToleranceStackResult {
   minClearance: number;
   maxClearance: number;
   isSatisfied: boolean;
-  violation?: "interference" | "excessive_play";
+  violation?: "interference" | "excessive_play" | undefined;
   method: "worst_case" | "rss" | "six_sigma";
   topContributors: {
     partId: string;

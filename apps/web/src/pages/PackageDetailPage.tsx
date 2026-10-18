@@ -5,6 +5,7 @@ import {
   AlertIcon,
   ArrowLeftIcon,
   BookIcon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CodeIcon,
@@ -12,38 +13,63 @@ import {
   CpuIcon,
   DatabaseIcon,
   DependabotIcon,
+  DownloadIcon,
   FileCodeIcon,
   FileIcon,
+  FileZipIcon,
   GearIcon,
   GitCompareIcon,
   GlobeIcon,
   HistoryIcon,
   LinkIcon,
   PackageIcon,
+  PeopleIcon,
+  PlusIcon,
   SearchIcon,
   ShareIcon,
+  ShieldCheckIcon,
   SyncIcon,
+  TrashIcon,
   VerifiedIcon,
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, Dialog, Flash, Heading, Label, Spinner, Text, TextInput } from "@primer/react";
+import {
+  ActionList,
+  ActionMenu,
+  Button,
+  Dialog,
+  Flash,
+  Heading,
+  Label,
+  Select,
+  Spinner,
+  Text,
+  TextInput,
+} from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
 import type {
   ArtifactViewerInfo,
   ClassDetail,
   ClassSummary,
+  CollaboratorPermission,
   JobInfo,
+  LibraryVersion,
   NpmPackument,
   NpmVersionManifest,
+  PackageCollaborator,
   PackageDependent,
   PackageStats,
+  PendingPackageTransfer,
 } from "../api";
 import {
+  acceptPackageTransfer,
+  addPackageCollaborator,
+  cancelPackageTransfer,
   deprecatePackage,
   getArtifactViewers,
   getClassDetail,
@@ -51,28 +77,47 @@ import {
   getDiagramUrl,
   getIconUrl,
   getJobStatus,
+  getLibraryDetail,
+  getPackageAasxExportUrl,
+  getPackageCollaborators,
   getPackageDependents,
+  getPackageDownloadUrl,
+  getPackageOkhExportUrl,
+  getPackageSalsaIndexUrl,
   getPackageStats,
   getPackument,
+  getPendingPackageTransfers,
+  removePackageCollaborator,
   rewriteModelicaUris,
   transferPackageOwnership,
   undeprecatePackage,
+  unpublishPackageRelease,
   unyankPackage,
   yankPackage,
 } from "../api";
 import { useAuth } from "../AuthContext";
+import AasPackageViewer from "../components/artifacts/AasPackageViewer";
 import CadStepViewer from "../components/artifacts/CadStepViewer";
+import CfdAnimationViewer from "../components/artifacts/CfdAnimationViewer";
+import FmuViewer from "../components/artifacts/FmuViewer";
+import GCodeViewer from "../components/artifacts/GCodeViewer";
+import MermaidViewer from "../components/artifacts/MermaidViewer";
+import SimulationResultViewer from "../components/artifacts/SimulationResultViewer";
+import SysmlViewer from "../components/artifacts/SysmlViewer";
+import TeiViewer from "../components/artifacts/TeiViewer";
+import UsdViewer from "../components/artifacts/UsdViewer";
+import VegaViewer from "../components/artifacts/VegaViewer";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
 import { ComposeContext } from "../components/ComposeContext";
 import DatasetTableViewer from "../components/DatasetTableViewer";
 import DigitalThreadExplorer from "../components/DigitalThreadExplorer";
-import FmuSimulatorViewer from "../components/FmuSimulatorViewer";
 import InvertedSvg from "../components/InvertedSvg";
 import { PolyglotVersionDiffView } from "../components/PolyglotVersionDiffView";
-import SysmlViewer from "../components/SysmlViewer";
+import PublishPackageModal from "../components/PublishPackageModal";
 import { TerminalLogViewer } from "../components/TerminalLogViewer";
 import { usePageTitle } from "../util/title";
+import { resolvePackageParams } from "../util/url";
 
 /* ─── animations ─── */
 
@@ -123,7 +168,7 @@ const MobileTreeToggle = styled.button`
   }
 `;
 
-const TreeSidebar = styled.div<{ $mobileOpen?: boolean }>`
+const TreeSidebar = styled.div<{ $mobileOpen?: boolean | undefined }>`
   width: 260px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
@@ -595,7 +640,7 @@ const DomainNavWrap = styled.div`
   }
 `;
 
-const DomainPill = styled.button<{ $active: boolean; $color?: string }>`
+const DomainPill = styled.button<{ $active: boolean; $color?: string | undefined }>`
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -651,7 +696,7 @@ const DomainSectionHeader = styled.div`
   }
 `;
 
-const ArtifactSidebarItem = styled.div<{ $active?: boolean }>`
+const ArtifactSidebarItem = styled.div<{ $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   gap: 8px;
@@ -722,7 +767,7 @@ const SparklineContainer = styled.div`
   padding-bottom: 4px;
 `;
 
-const SparklineBar = styled.div<{ $heightPct: number; $active?: boolean }>`
+const SparklineBar = styled.div<{ $heightPct: number; $active?: boolean | undefined }>`
   flex: 1;
   min-width: 3px;
   max-width: 8px;
@@ -833,7 +878,7 @@ const ClassTreeNode: React.FC<{
   depth: number;
   libraryName: string;
   version: string;
-  isFiltered?: boolean;
+  isFiltered?: boolean | undefined;
 }> = ({ node, depth, libraryName, version, isFiltered }) => {
   const [expanded, setExpanded] = useState(depth < 1 || Boolean(isFiltered));
 
@@ -998,7 +1043,13 @@ const PackageDetailSkeleton: React.FC = () => (
 /* ─── main page ─── */
 
 const PackageDetailPage: React.FC = () => {
-  const { name, version } = useParams<{ name: string; version: string }>();
+  const rawParams = useParams<{
+    scope?: string | undefined;
+    name?: string | undefined;
+    version?: string | undefined;
+  }>();
+  const { name, version } = resolvePackageParams(rawParams);
+  const navigate = useNavigate();
   usePageTitle(name && version ? `${name}@${version}` : "Package Details");
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("tab") as TabId) || "readme";
@@ -1016,9 +1067,11 @@ const PackageDetailPage: React.FC = () => {
   const [diagramError, setDiagramError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
 
-  // npm packument data
+  // npm packument & library detail data
   const [packument, setPackument] = useState<NpmPackument | null>(null);
+  const [libraryDetail, setLibraryDetail] = useState<LibraryVersion | null>(null);
 
   // Enriched artifact data from artifact viewer API
   const [artifactViewers, setArtifactViewers] = useState<ArtifactViewerInfo[]>([]);
@@ -1032,15 +1085,28 @@ const PackageDetailPage: React.FC = () => {
   const [packageStats, setPackageStats] = useState<PackageStats | null>(null);
   const [dependents, setDependents] = useState<PackageDependent[]>([]);
 
-  // Auth & governance states
+  // Auth, RBAC collaborators & governance states
   const { user } = useAuth();
-  const [manageModal, setManageModal] = useState<"yank" | "deprecate" | "transfer" | null>(null);
+  const [collaborators, setCollaborators] = useState<PackageCollaborator[]>([]);
+  const [canManageServer, setCanManageServer] = useState(false);
+  const [pendingTransfers, setPendingTransfers] = useState<PendingPackageTransfer[]>([]);
+  const [manageModal, setManageModal] = useState<
+    "yank" | "deprecate" | "transfer" | "collaborators" | "unpublish" | null
+  >(null);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [yankReasonInput, setYankReasonInput] = useState("");
   const [deprecateReasonInput, setDeprecateReasonInput] = useState("");
   const [transferTargetInput, setTransferTargetInput] = useState("");
+  const [collaboratorUsernameInput, setCollaboratorUsernameInput] = useState("");
+  const [collaboratorPermissionInput, setCollaboratorPermissionInput] = useState<CollaboratorPermission>("write");
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  const rootClassName = useMemo(() => {
+    if (!name) return "";
+    return name.includes("/") ? name.split("/")[1]! : name;
+  }, [name]);
 
   const setTab = (tab: TabId) => {
     setSearchParams({ tab });
@@ -1049,27 +1115,37 @@ const PackageDetailPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     if (!name || !version) return;
     try {
-      const [rootCls, classList, npmData, viewers, stats, depData] = await Promise.all([
-        getClassDetail(name, version, name).catch(() => null),
-        getClasses(name, version),
-        getPackument(name).catch(() => null),
-        getArtifactViewers(name, version).catch(() => []),
-        getPackageStats(name, 30).catch(() => null),
-        getPackageDependents(name).catch(() => null),
-      ]);
+      const [rootCls, classList, npmData, viewers, stats, depData, libDetail, collabData, transfers] =
+        await Promise.all([
+          getClassDetail(name, version, name)
+            .catch(() => (rootClassName !== name ? getClassDetail(name, version, rootClassName) : null))
+            .catch(() => null),
+          getClasses(name, version),
+          getPackument(name).catch(() => null),
+          getArtifactViewers(name, version).catch(() => []),
+          getPackageStats(name, 30).catch(() => null),
+          getPackageDependents(name).catch(() => null),
+          getLibraryDetail(name, version).catch(() => null),
+          getPackageCollaborators(name).catch(() => null),
+          user ? getPendingPackageTransfers().catch(() => []) : Promise.resolve([]),
+        ]);
       setRootClass(rootCls);
       setClasses(classList);
       setPackument(npmData);
       setArtifactViewers(viewers);
       setPackageStats(stats);
       setDependents(depData?.dependents || []);
+      setLibraryDetail(libDetail);
+      setCollaborators(collabData?.collaborators || []);
+      setCanManageServer(Boolean(libDetail?.canManage || collabData?.canManage));
+      setPendingTransfers(transfers.filter((t) => t.package_name === name));
     } catch (err) {
       setError("Failed to load artifact details");
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [name, version]);
+  }, [name, version, rootClassName, user]);
 
   useEffect(() => {
     setLoading(true);
@@ -1088,7 +1164,7 @@ const PackageDetailPage: React.FC = () => {
           fetchData();
         }
       } catch (err: unknown) {
-        const error = err as { response?: { status?: number } };
+        const error = err as { response?: { status?: number | undefined } | undefined };
         if (error?.response?.status === 404) {
           setJobInfo({ status: "failed" }); // No job exists, don't poll forever
         } else {
@@ -1114,7 +1190,20 @@ const PackageDetailPage: React.FC = () => {
     : [];
   const artifacts = currentManifest?.modelscript?.artifacts ?? [];
   const dependencies = currentManifest?.dependencies ?? {};
-  const publishedAt = packument?.time?.[version ?? ""] ?? packument?.time?.modified ?? "";
+  const publishedAt = libraryDetail?.publishedAt ?? packument?.time?.[version ?? ""] ?? packument?.time?.modified ?? "";
+  const contentHash = libraryDetail?.contentHash ?? currentManifest?.dist?.shasum ?? null;
+  const packageSignature = libraryDetail?.signature ?? null;
+  const packageOwner = libraryDetail?.author ?? (name?.startsWith("@") ? name.split("/")[0]?.slice(1) : null);
+
+  const canManage = useMemo(() => {
+    if (!user) return false;
+    if (canManageServer || user.isAdmin) return true;
+    if (packageOwner && packageOwner === user.username) return true;
+    if (name?.startsWith(`@${user.username}/`)) return true;
+    return collaborators.some(
+      (c) => c.username === user.username && (c.permission === "admin" || c.permission === "write"),
+    );
+  }, [user, canManageServer, packageOwner, name, collaborators]);
 
   // Install command
   const installCmd = `msx install ${name}`;
@@ -1125,7 +1214,17 @@ const PackageDetailPage: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const tree = useMemo(() => (name ? buildClassTree(classes, name) : []), [classes, name]);
+  const handleCopyHash = () => {
+    if (!contentHash) return;
+    navigator.clipboard.writeText(contentHash);
+    setCopiedHash(true);
+    setTimeout(() => setCopiedHash(false), 2000);
+  };
+
+  const tree = useMemo(
+    () => (name ? buildClassTree(classes, rootClassName || name) : []),
+    [classes, name, rootClassName],
+  );
   const filteredTree = useMemo(() => filterClassTree(tree, treeSearchFilter), [tree, treeSearchFilter]);
 
   const sysmlArtifacts = useMemo(
@@ -1180,7 +1279,7 @@ const PackageDetailPage: React.FC = () => {
     const list: {
       id: PolyglotDomain;
       label: string;
-      icon: React.ComponentType<{ size?: number }>;
+      icon: React.ComponentType<{ size?: number | undefined }>;
       count: number;
       color: string;
     }[] = [];
@@ -1253,13 +1352,16 @@ const PackageDetailPage: React.FC = () => {
     }, 100);
   };
 
-  const isCurrentYanked = Boolean(currentManifest?.yanked || currentManifest?.is_yanked);
+  const isCurrentYanked = Boolean(libraryDetail?.isYanked || currentManifest?.yanked || currentManifest?.is_yanked);
   const currentYankReason =
-    typeof currentManifest?.yanked === "string"
+    libraryDetail?.yankReason ??
+    (typeof currentManifest?.yanked === "string"
       ? currentManifest.yanked
-      : (currentManifest?.yank_reason as string | undefined);
-  const isCurrentDeprecated = Boolean(currentManifest?.deprecated);
-  const currentDeprecateReason = typeof currentManifest?.deprecated === "string" ? currentManifest.deprecated : null;
+      : (currentManifest?.yank_reason as string | undefined));
+  const isCurrentDeprecated = Boolean(libraryDetail?.isDeprecated || currentManifest?.deprecated);
+  const currentDeprecateReason =
+    libraryDetail?.deprecationReason ??
+    (typeof currentManifest?.deprecated === "string" ? currentManifest.deprecated : null);
 
   const handleToggleYank = async () => {
     if (!name || !version) return;
@@ -1277,7 +1379,10 @@ const PackageDetailPage: React.FC = () => {
       setYankReasonInput("");
       await fetchData();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      const e = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
       setActionError(e.response?.data?.error || e.message || "Failed to update yank status");
     } finally {
       setActionLoading(false);
@@ -1300,7 +1405,10 @@ const PackageDetailPage: React.FC = () => {
       setDeprecateReasonInput("");
       await fetchData();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      const e = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
       setActionError(e.response?.data?.error || e.message || "Failed to update deprecation status");
     } finally {
       setActionLoading(false);
@@ -1316,15 +1424,117 @@ const PackageDetailPage: React.FC = () => {
       setActionSuccess(`Ownership transfer request sent to @${transferTargetInput.trim()}.`);
       setManageModal(null);
       setTransferTargetInput("");
+      await fetchData();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      const e = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
       setActionError(e.response?.data?.error || e.message || "Failed to transfer ownership");
     } finally {
       setActionLoading(false);
     }
   };
 
-  const description = packument?.description ?? rootClass?.description ?? null;
+  const handleAcceptPendingTransfer = async (transferId: number) => {
+    if (!name) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await acceptPackageTransfer(name, transferId);
+      setActionSuccess(`You have accepted ownership of ${name}.`);
+      await fetchData();
+    } catch (err: unknown) {
+      const e = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
+      setActionError(e.response?.data?.error || e.message || "Failed to accept transfer");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelPendingTransfer = async (transferId: number) => {
+    if (!name) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await cancelPackageTransfer(name, transferId);
+      setActionSuccess(`Pending ownership transfer for ${name} has been cancelled.`);
+      await fetchData();
+    } catch (err: unknown) {
+      const e = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
+      setActionError(e.response?.data?.error || e.message || "Failed to cancel transfer");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAddCollaborator = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !collaboratorUsernameInput.trim()) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const targetUser = collaboratorUsernameInput.trim().replace(/^@/, "");
+      await addPackageCollaborator(name, targetUser, collaboratorPermissionInput);
+      setCollaboratorUsernameInput("");
+      setActionSuccess(`Collaborator @${targetUser} granted '${collaboratorPermissionInput}' access.`);
+      await fetchData();
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
+      setActionError(axiosErr.response?.data?.error || axiosErr.message || "Failed to add collaborator");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRemoveCollaborator = async (usernameToRemove: string) => {
+    if (!name) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await removePackageCollaborator(name, usernameToRemove);
+      setActionSuccess(`Removed collaborator @${usernameToRemove}.`);
+      await fetchData();
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
+      setActionError(axiosErr.response?.data?.error || axiosErr.message || "Failed to remove collaborator");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    if (!name || !version) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await unpublishPackageRelease(name, version);
+      setManageModal(null);
+      navigate("/packages");
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
+      setActionError(axiosErr.response?.data?.error || axiosErr.message || "Failed to unpublish release");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const description = libraryDetail?.description ?? packument?.description ?? rootClass?.description ?? null;
 
   if (loading) {
     return <PackageDetailSkeleton />;
@@ -1393,7 +1603,7 @@ const PackageDetailPage: React.FC = () => {
             }}
           >
             <InvertedSvg
-              src={getIconUrl(name!, version!, name!)}
+              src={getIconUrl(name!, version!, rootClassName || name!)}
               alt=""
               width={32}
               height={32}
@@ -1723,7 +1933,7 @@ const PackageDetailPage: React.FC = () => {
           <Box display="flex" alignItems="center" gap="16px" mb={3}>
             {/* Package icon */}
             <InvertedSvg
-              src={getIconUrl(name!, version!, name!)}
+              src={getIconUrl(name!, version!, rootClassName || name!)}
               alt=""
               width={48}
               height={48}
@@ -1787,14 +1997,40 @@ const PackageDetailPage: React.FC = () => {
                     Share to Feed
                   </Button>
                 )}
-                {user && (
+                {canManage && (
                   <Box style={{ marginLeft: openCompose ? 8 : "auto" }}>
                     <ActionMenu>
                       <ActionMenu.Button size="small" leadingVisual={GearIcon}>
                         Manage Release
                       </ActionMenu.Button>
-                      <ActionMenu.Overlay>
+                      <ActionMenu.Overlay align="end">
                         <ActionList>
+                          <ActionList.Item
+                            onSelect={() => {
+                              setActionError(null);
+                              setPublishModalOpen(true);
+                            }}
+                          >
+                            <ActionList.LeadingVisual>
+                              <PlusIcon size={14} />
+                            </ActionList.LeadingVisual>
+                            Publish New Version
+                          </ActionList.Item>
+
+                          <ActionList.Item
+                            onSelect={() => {
+                              setActionError(null);
+                              setManageModal("collaborators");
+                            }}
+                          >
+                            <ActionList.LeadingVisual>
+                              <PeopleIcon size={14} />
+                            </ActionList.LeadingVisual>
+                            Manage Collaborators ({collaborators.length})
+                          </ActionList.Item>
+
+                          <ActionList.Divider />
+
                           <ActionList.Item
                             onSelect={() => {
                               setActionError(null);
@@ -1839,6 +2075,19 @@ const PackageDetailPage: React.FC = () => {
                             </ActionList.LeadingVisual>
                             Transfer Ownership
                           </ActionList.Item>
+
+                          <ActionList.Item
+                            variant="danger"
+                            onSelect={() => {
+                              setActionError(null);
+                              setManageModal("unpublish");
+                            }}
+                          >
+                            <ActionList.LeadingVisual>
+                              <TrashIcon size={14} />
+                            </ActionList.LeadingVisual>
+                            Unpublish Release (v{version})
+                          </ActionList.Item>
                         </ActionList>
                       </ActionMenu.Overlay>
                     </ActionMenu>
@@ -1868,6 +2117,67 @@ const PackageDetailPage: React.FC = () => {
               </Flash>
             </Box>
           )}
+
+          {user &&
+            pendingTransfers.map((tr) => {
+              const isIncoming = tr.to_user_id === user.id || tr.to_username === user.username;
+              return (
+                <Box
+                  key={tr.id}
+                  mb={3}
+                  p={3}
+                  style={{
+                    borderRadius: 8,
+                    background: "rgba(139, 92, 246, 0.12)",
+                    border: "1px solid rgba(139, 92, 246, 0.4)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 12,
+                  }}
+                >
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <SyncIcon size={18} fill="#a855f7" />
+                    <Text style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
+                      {isIncoming ? (
+                        <>
+                          <strong>@{tr.from_username || "Owner"}</strong> requested to transfer ownership of{" "}
+                          <strong>{name}</strong> to you.
+                        </>
+                      ) : (
+                        <>
+                          Pending ownership transfer of <strong>{name}</strong> to{" "}
+                          <strong>@{tr.to_username || "recipient"}</strong>.
+                        </>
+                      )}
+                    </Text>
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    {isIncoming && (
+                      <Button
+                        size="small"
+                        variant="primary"
+                        leadingVisual={CheckIcon}
+                        disabled={actionLoading}
+                        onClick={() => handleAcceptPendingTransfer(tr.id)}
+                      >
+                        Accept Ownership
+                      </Button>
+                    )}
+                    <Button
+                      size="small"
+                      variant="danger"
+                      leadingVisual={XIcon}
+                      disabled={actionLoading}
+                      onClick={() => handleCancelPendingTransfer(tr.id)}
+                    >
+                      {isIncoming ? "Decline" : "Cancel Transfer"}
+                    </Button>
+                  </Box>
+                </Box>
+              );
+            })}
 
           {isCurrentYanked && (
             <Box
@@ -2035,6 +2345,149 @@ const PackageDetailPage: React.FC = () => {
           </Dialog>
         )}
 
+        {manageModal === "collaborators" && (
+          <Dialog title={`Collaborators & Permissions — ${name}`} onClose={() => setManageModal(null)} width="large">
+            <Box p={3} display="flex" flexDirection="column" gap={3}>
+              <Text style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
+                Grant team members granular access to <strong>{name}</strong>. <code>write</code> allows publishing and
+                deprecating releases; <code>admin</code> also allows managing collaborators.
+              </Text>
+
+              <form onSubmit={handleAddCollaborator} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <TextInput
+                  placeholder="Username (e.g. bob)"
+                  value={collaboratorUsernameInput}
+                  onChange={(e) => setCollaboratorUsernameInput(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <Select
+                  value={collaboratorPermissionInput}
+                  onChange={(e) => setCollaboratorPermissionInput(e.target.value as CollaboratorPermission)}
+                  aria-label="Collaborator permission"
+                >
+                  <Select.Option value="read">read</Select.Option>
+                  <Select.Option value="write">write</Select.Option>
+                  <Select.Option value="admin">admin</Select.Option>
+                </Select>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  leadingVisual={PlusIcon}
+                  disabled={actionLoading || !collaboratorUsernameInput.trim()}
+                >
+                  Add
+                </Button>
+              </form>
+
+              {actionError && <Flash variant="danger">{actionError}</Flash>}
+
+              <Box
+                style={{
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                }}
+              >
+                {packageOwner && (
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    p={2}
+                    style={{ borderBottom: collaborators.length > 0 ? "1px solid var(--color-border)" : "none" }}
+                  >
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <Text style={{ fontWeight: 600, fontSize: 13 }}>@{packageOwner}</Text>
+                      <Label variant="accent" style={{ fontSize: 10 }}>
+                        owner
+                      </Label>
+                    </Box>
+                    <Text style={{ fontSize: 12, color: "var(--color-text-muted)" }}>Full package control</Text>
+                  </Box>
+                )}
+
+                {collaborators.length > 0 ? (
+                  collaborators.map((collab) => (
+                    <Box
+                      key={collab.username}
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      p={2}
+                      style={{ borderBottom: "1px solid var(--color-border)" }}
+                    >
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <Text style={{ fontWeight: 600, fontSize: 13 }}>@{collab.username}</Text>
+                        <Label
+                          variant={
+                            collab.permission === "admin"
+                              ? "attention"
+                              : collab.permission === "write"
+                                ? "success"
+                                : "secondary"
+                          }
+                          style={{ fontSize: 10 }}
+                        >
+                          {collab.permission}
+                        </Label>
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="danger"
+                        leadingVisual={TrashIcon}
+                        disabled={actionLoading}
+                        onClick={() => handleRemoveCollaborator(collab.username)}
+                      >
+                        Remove
+                      </Button>
+                    </Box>
+                  ))
+                ) : (
+                  <Box p={3} style={{ textAlign: "center" }}>
+                    <Text style={{ fontSize: 13, color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                      No additional collaborators added yet.
+                    </Text>
+                  </Box>
+                )}
+              </Box>
+
+              <Box display="flex" justifyContent="flex-end" mt={1}>
+                <Button onClick={() => setManageModal(null)}>Done</Button>
+              </Box>
+            </Box>
+          </Dialog>
+        )}
+
+        {manageModal === "unpublish" && (
+          <Dialog title={`Unpublish ${name}@${version}`} onClose={() => setManageModal(null)}>
+            <Box p={3} display="flex" flexDirection="column" gap={3}>
+              <Text style={{ fontSize: 14, color: "var(--color-text-secondary)" }}>
+                Are you sure you want to permanently unpublish{" "}
+                <strong>
+                  {name}@{version}
+                </strong>
+                ? Unlike yanking, unpublishing removes the archive and indexed classes from the registry.
+              </Text>
+              {actionError && <Flash variant="danger">{actionError}</Flash>}
+              <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+                <Button onClick={() => setManageModal(null)}>Cancel</Button>
+                <Button variant="danger" onClick={handleUnpublish} disabled={actionLoading}>
+                  {actionLoading ? <Spinner size="small" /> : `Unpublish v${version}`}
+                </Button>
+              </Box>
+            </Box>
+          </Dialog>
+        )}
+
+        <PublishPackageModal
+          isOpen={publishModalOpen}
+          onClose={() => setPublishModalOpen(false)}
+          defaultPackageName={name}
+          onPublished={() => {
+            fetchData();
+          }}
+        />
+
         {/* ── Background Ingestion & Indexer Logs ── */}
         {name && version && (
           <TerminalLogViewer
@@ -2113,7 +2566,7 @@ const PackageDetailPage: React.FC = () => {
                   <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
                     <DiagramWrap>
                       <InvertedSvg
-                        src={`${getDiagramUrl(name!, version!, name!)}?t=${retryCount}`}
+                        src={`${getDiagramUrl(name!, version!, rootClassName || name!)}?t=${retryCount}`}
                         alt={`${name} diagram`}
                         onLoad={() => setDiagramLoaded(true)}
                         onError={() => {
@@ -2365,73 +2818,45 @@ const PackageDetailPage: React.FC = () => {
                 {/* Render enriched artifact viewers from the API */}
                 {displayedArtifactViewers.length > 0 ? (
                   displayedArtifactViewers.map((av) => {
+                    const viewerId = av.viewer?.viewer;
+                    const cfg = (av.viewer?.config || {}) as Record<string, unknown>;
+                    const resolvedUrl = (cfg.resourceUrl as string) || (cfg.url as string) || av.path;
+
                     // Render interactive viewers based on handler-provided descriptors
-                    if (av.viewer?.viewer === "fmu-simulator") {
+                    if (viewerId === "fmu-simulator" || av.type === "fmu") {
                       return (
-                        <div id={`artifact-${av.id}`} key={av.id}>
-                          <FmuSimulatorViewer
-                            config={
-                              av.viewer.config as Record<string, unknown> & {
-                                fmiVersion?: string;
-                                modelName?: string;
-                                hasWasm?: boolean;
-                                inputs?: {
-                                  name: string;
-                                  valueReference: number;
-                                  causality: string;
-                                  variability: string;
-                                  type: string;
-                                  start?: string;
-                                  unit?: string;
-                                  description?: string;
-                                }[];
-                                outputs?: {
-                                  name: string;
-                                  valueReference: number;
-                                  causality: string;
-                                  variability: string;
-                                  type: string;
-                                  start?: string;
-                                  unit?: string;
-                                  description?: string;
-                                }[];
-                                parameters?: {
-                                  name: string;
-                                  valueReference: number;
-                                  causality: string;
-                                  variability: string;
-                                  type: string;
-                                  start?: string;
-                                  unit?: string;
-                                  description?: string;
-                                }[];
-                                platforms?: string[];
-                              }
-                            }
-                            artifactPath={av.path}
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <FmuViewer
+                            viewConfig={{
+                              url: resolvedUrl,
+                              modelName: av.displayName,
+                              ...cfg,
+                            }}
                           />
                         </div>
                       );
                     }
 
-                    if (av.viewer?.viewer === "dataset-table") {
+                    if (viewerId === "dataset-table" || av.type === "dataset" || av.type === "csv") {
                       return (
-                        <div id={`artifact-${av.id}`} key={av.id}>
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
                           <DatasetTableViewer
                             config={
-                              av.viewer.config as Record<string, unknown> & {
-                                columns?: {
-                                  name: string;
-                                  type: "number" | "string" | "boolean";
-                                  min?: number;
-                                  max?: number;
-                                  mean?: number;
-                                  unique?: number;
-                                }[];
-                                rowCount?: number;
-                                format?: string;
-                                previewRows?: string[][];
-                                hasHeader?: boolean;
+                              cfg as Record<string, unknown> & {
+                                columns?:
+                                  | {
+                                      name: string;
+                                      type: "number" | "string" | "boolean";
+                                      min?: number | undefined;
+                                      max?: number | undefined;
+                                      mean?: number | undefined;
+                                      unique?: number | undefined;
+                                    }[]
+                                  | undefined;
+                                rowCount?: number | undefined;
+                                format?: string | undefined;
+                                previewRows?: string[][] | undefined;
+                                hasHeader?: boolean | undefined;
                               }
                             }
                             artifactPath={av.path}
@@ -2440,18 +2865,105 @@ const PackageDetailPage: React.FC = () => {
                       );
                     }
 
-                    if (av.viewer?.viewer === "cad-3d-viewer") {
+                    if (viewerId === "cad-3d-viewer" || av.type === "cad") {
                       return (
-                        <div id={`artifact-${av.id}`} key={av.id}>
-                          <CadStepViewer viewConfig={{ url: av.path, ...(av.viewer.config || {}) }} />
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <CadStepViewer viewConfig={{ url: resolvedUrl, ...cfg }} />
                         </div>
                       );
                     }
 
-                    if (av.viewer?.viewer === "sysml-architecture-viewer") {
+                    if (viewerId === "sysml-architecture-viewer" || av.type === "sysml2" || av.type === "sysml") {
                       return (
-                        <div id={`artifact-${av.id}`} key={av.id}>
-                          <SysmlViewer config={av.viewer.config} artifactPath={av.path} />
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <SysmlViewer
+                            viewConfig={{
+                              title: av.displayName,
+                              ...cfg,
+                            }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "vega-plot" || av.type === "vega") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <VegaViewer
+                            viewConfig={{
+                              title: av.displayName,
+                              specUrl: resolvedUrl,
+                              ...cfg,
+                            }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "mermaid-diagram" || av.type === "mermaid") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <MermaidViewer
+                            viewConfig={{
+                              title: av.displayName,
+                              codeUrl: resolvedUrl,
+                              ...cfg,
+                            }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "simulation-result" || av.type === "simulation-result") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <SimulationResultViewer viewConfig={{ url: resolvedUrl, ...cfg }} />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "cfd-animation" || av.type === "cfd-animation") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <CfdAnimationViewer viewConfig={{ url: resolvedUrl, ...cfg }} />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "aas-package" || av.type === "aasx" || av.type === "aas") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <AasPackageViewer
+                            viewConfig={{
+                              packageName: name || "",
+                              version: version || "",
+                              ...cfg,
+                            }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "gcode-viewer" || av.type === "gcode") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <GCodeViewer viewConfig={{ url: resolvedUrl, ...cfg }} />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "usd-viewer" || av.type === "usd") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <UsdViewer viewConfig={{ url: resolvedUrl, ...cfg }} />
+                        </div>
+                      );
+                    }
+
+                    if (viewerId === "tei-viewer" || viewerId === "tei-document" || av.type === "tei") {
+                      return (
+                        <div id={`artifact-${av.id}`} key={av.id} style={{ marginBottom: 16 }}>
+                          <TeiViewer viewConfig={{ url: resolvedUrl, ...cfg }} />
                         </div>
                       );
                     }
@@ -2582,7 +3094,7 @@ const PackageDetailPage: React.FC = () => {
                 fontSize: "14px",
                 fontWeight: 600,
                 textDecoration: "none",
-                marginBottom: "20px",
+                marginBottom: "16px",
                 boxShadow: "var(--glow-ai-sm)",
                 boxSizing: "border-box",
               }}
@@ -2590,6 +3102,100 @@ const PackageDetailPage: React.FC = () => {
               <CodeIcon size={16} />
               Open in ModelScript IDE
             </Link>
+
+            {/* Direct Exports & Downloads */}
+            {name && version && (
+              <MetaBlock style={{ marginBottom: 16 }}>
+                <MetaLabel style={{ marginBottom: 8 }}>Download &amp; Export</MetaLabel>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  <a
+                    href={getPackageDownloadUrl(name, version)}
+                    download
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text-primary)",
+                      textDecoration: "none",
+                    }}
+                    title="Download raw package ZIP archive"
+                  >
+                    <FileZipIcon size={13} />
+                    <span>Archive (.zip)</span>
+                  </a>
+                  <a
+                    href={getPackageAasxExportUrl(name, version)}
+                    download
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text-primary)",
+                      textDecoration: "none",
+                    }}
+                    title="Export Industry 4.0 Asset Administration Shell (.aasx)"
+                  >
+                    <DownloadIcon size={13} />
+                    <span>Twin (.aasx)</span>
+                  </a>
+                  <a
+                    href={getPackageOkhExportUrl(name, version)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text-primary)",
+                      textDecoration: "none",
+                    }}
+                    title="Export Open Know-How hardware manifest (okh.json)"
+                  >
+                    <FileCodeIcon size={13} />
+                    <span>OKH (.json)</span>
+                  </a>
+                  <a
+                    href={getPackageSalsaIndexUrl(name, version)}
+                    download
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text-primary)",
+                      textDecoration: "none",
+                    }}
+                    title="Download precompiled Salsa compiler index (.db)"
+                  >
+                    <DatabaseIcon size={13} />
+                    <span>Salsa (.db)</span>
+                  </a>
+                </div>
+              </MetaBlock>
+            )}
 
             {packument?.repository?.url && (
               <MetaBlock>
@@ -2632,10 +3238,10 @@ const PackageDetailPage: React.FC = () => {
                 <MetaLabel>Version</MetaLabel>
                 <MetaValue>{version}</MetaValue>
               </MetaBlock>
-              {packument?.license && (
+              {(libraryDetail?.license || packument?.license) && (
                 <MetaBlock style={{ marginBottom: 0 }}>
                   <MetaLabel>License</MetaLabel>
-                  <MetaValue>{packument.license}</MetaValue>
+                  <MetaValue>{libraryDetail?.license || packument?.license}</MetaValue>
                 </MetaBlock>
               )}
             </MetaGrid>
@@ -2649,6 +3255,46 @@ const PackageDetailPage: React.FC = () => {
               <MetaBlock>
                 <MetaLabel>Modelica Version</MetaLabel>
                 <MetaValue>{currentManifest.modelscript.modelicaVersion}</MetaValue>
+              </MetaBlock>
+            )}
+
+            {/* Cryptographic Provenance */}
+            {(contentHash || packageSignature) && (
+              <MetaBlock>
+                <MetaLabel style={{ marginBottom: 6 }}>Provenance &amp; Integrity</MetaLabel>
+                {contentHash && (
+                  <div
+                    onClick={handleCopyHash}
+                    title={`Click to copy full digest: ${contentHash}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      background: "#020408",
+                      border: "1px solid var(--color-border)",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      color: "var(--color-text-primary)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <ShieldCheckIcon size={13} fill="var(--color-success-fg, #2da44e)" />
+                      <span>sha256:{contentHash.slice(0, 14)}…</span>
+                    </span>
+                    {copiedHash ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+                  </div>
+                )}
+                {packageSignature && (
+                  <div style={{ marginTop: 6 }}>
+                    <Label variant="success" style={{ fontSize: 10 }}>
+                      <VerifiedIcon size={11} /> Signed Release
+                    </Label>
+                  </div>
+                )}
               </MetaBlock>
             )}
 
@@ -2754,6 +3400,76 @@ const PackageDetailPage: React.FC = () => {
             </MetaBlock>
 
             <Divider />
+
+            {/* Maintainers & Collaborators */}
+            <MetaBlock>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <MetaLabel>Maintainers ({(packageOwner ? 1 : 0) + collaborators.length})</MetaLabel>
+                {canManage && (
+                  <Button
+                    size="small"
+                    variant="invisible"
+                    onClick={() => {
+                      setActionError(null);
+                      setManageModal("collaborators");
+                    }}
+                    style={{ fontSize: 11, padding: "2px 6px" }}
+                  >
+                    Manage
+                  </Button>
+                )}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {packageOwner && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
+                    <PeopleIcon size={12} />
+                    <span>@{packageOwner}</span>
+                    <Label variant="accent" style={{ fontSize: 9, padding: "0 4px" }}>
+                      owner
+                    </Label>
+                  </span>
+                )}
+                {collaborators.map((c) => (
+                  <span
+                    key={c.username}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
+                    <PeopleIcon size={12} />
+                    <span>@{c.username}</span>
+                    <Label variant="secondary" style={{ fontSize: 9, padding: "0 4px" }}>
+                      {c.permission}
+                    </Label>
+                  </span>
+                ))}
+                {!packageOwner && collaborators.length === 0 && (
+                  <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                    Core registry library
+                  </Text>
+                )}
+              </div>
+            </MetaBlock>
           </aside>
         </ContentGrid>
       </MainContentWrap>

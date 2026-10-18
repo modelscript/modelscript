@@ -150,4 +150,29 @@ describe("TGG Critical Pair Analysis (CPA) & Confluence Checker", () => {
       "strictCpa must throw an error when forward overlap ambiguity is detected",
     );
   });
+
+  it("should infer source and target domains from AST node types and explicit metadata rather than rule names", () => {
+    // Rules use opaque names ("RuleAlpha", "RuleBeta") that do not match <Source>To<Target>,
+    // both matching PartDefinition (sysml2) with equal priority, but producing ClassDefinition (modelica)
+    // and OWLClass (owl2). Because inferRuleLanguages resolves targetLang from AST node types,
+    // CPA recognizes they target distinct languages and does not report a false-positive overlap.
+    const rules = [
+      tggRule({
+        name: "RuleAlpha",
+        priority: 0,
+        source: ($, v) => $.PartDefinition({ name: v("n") }),
+        target: ($, v) => $.ClassDefinition({ name: v("n") }),
+      }),
+      tggRule({
+        name: "RuleBeta",
+        priority: 0,
+        source: ($, v) => $.PartDefinition({ name: v("n") }),
+        target: ($, v) => $.ClassDeclaration({ iri: v("n") }),
+      }),
+    ];
+
+    const report = runCPA(rules);
+    expect(report.hasConflicts).toBe(false);
+    expect(report.conflicts).toHaveLength(0);
+  });
 });

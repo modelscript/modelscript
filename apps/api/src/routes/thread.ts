@@ -13,6 +13,8 @@ import {
   DOMAIN_NAME_TO_INDEX,
   PhysicsSimplexReconciler,
   ThreadDomain,
+  ThreadRelation,
+  ThreadSerializer,
   TradeStudyEngine,
 } from "@modelscript/runtime";
 import { Router, type Response } from "express";
@@ -20,11 +22,11 @@ import crypto from "node:crypto";
 import type { Database, ThreadAuditLogEntry, ThreadProposal } from "../database.js";
 
 export interface ThreadMetadata {
-  name?: string;
-  uri?: string;
-  line?: number;
-  column?: number;
-  properties?: Record<string, any>;
+  name?: string | undefined;
+  uri?: string | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  properties?: Record<string, any> | undefined;
 }
 
 export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: Database): Router {
@@ -47,6 +49,20 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
   const memAuditLogs: ThreadAuditLogEntry[] = [];
   const metadataMap = new Map<string, ThreadMetadata>();
   const sseClients = new Set<Response>();
+
+  function persistSnapshot(): void {
+    if (!db || typeof (db as any).saveThreadSnapshot !== "function") return;
+    try {
+      const nodeMetadata: Record<string, ThreadMetadata> = {};
+      for (const [k, v] of metadataMap.entries()) {
+        nodeMetadata[k] = v;
+      }
+      const jsonStr = ThreadSerializer.serialize(hypergraph, { nodeMetadata });
+      db.saveThreadSnapshot(jsonStr, nodeMetadata, "default");
+    } catch {
+      // Ignore persistence errors in read-only or mock environments
+    }
+  }
 
   function broadcastThreadEvent(event: string, data: unknown): void {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -91,6 +107,7 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     string,
     {
       slot: number;
+      threadId: number;
       sourceDomain: string;
       sourceValue: number;
       sourceUnit: string;
@@ -102,77 +119,152 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     }
   >();
 
-  // Seed default demonstration threads if hypergraph is empty
+  // Hydrate from SQLite snapshot if available, otherwise seed default demonstration threads
   if (hypergraph.getThreadCount() === 0) {
-    // Thread 101: Powertrain Inverter (Synced across 6 domains)
-    const s0 = hypergraph.createThread(101, 1);
-    hypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
-    hypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
-    hypergraph.bindDomainNode(s0, ThreadDomain.Modelica, 3001);
-    hypergraph.bindDomainNode(s0, ThreadDomain.CAD, 4001);
-    hypergraph.bindDomainNode(s0, ThreadDomain.FEA, 5001);
-    hypergraph.bindDomainNode(s0, ThreadDomain.BOM, 6001);
+    const savedSnapshot =
+      db && typeof (db as any).loadThreadSnapshot === "function" ? db.loadThreadSnapshot("default") : undefined;
 
-    metadataMap.set("requirements:1001", {
-      name: "REQ-TORQUE-01 (Peak Torque >= 350Nm)",
-      line: 12,
-      column: 1,
-      properties: { status: "Verified" },
-    });
-    metadataMap.set("sysml2:2001", { name: "part def PowertrainInverter", line: 45, column: 5 });
-    metadataMap.set("modelica:3001", { name: "model InverterDrive", line: 14, column: 1, properties: { mass: 1.0 } });
-    metadataMap.set("cad:4001", { name: "Inverter_Chassis.step", line: 1, column: 1, properties: { mass: 1.02 } });
-    metadataMap.set("fea:5001", { name: "InverterMount_CalculiX.inp", line: 1, column: 1 });
-    metadataMap.set("bom:6001", { name: "P/N 840-0219 (Inverter Assy)", line: 1, column: 1 });
+    if (savedSnapshot && savedSnapshot.serializedJson) {
+      try {
+        if (savedSnapshot.metadata && typeof savedSnapshot.metadata === "object") {
+          for (const [k, v] of Object.entries(savedSnapshot.metadata)) {
+            metadataMap.set(k, v as ThreadMetadata);
+          }
+        }
+        const parsed = JSON.parse(savedSnapshot.serializedJson);
+        if (parsed?.metadata?.nodeMetadata && typeof parsed.metadata.nodeMetadata === "object") {
+          for (const [k, v] of Object.entries(parsed.metadata.nodeMetadata)) {
+            metadataMap.set(k, v as ThreadMetadata);
+          }
+        }
+        ThreadSerializer.deserialize(savedSnapshot.serializedJson, hypergraph);
 
-    // Thread 102: Cooling Plate (Stale)
-    const s1 = hypergraph.createThread(102, 2);
-    hypergraph.bindDomainNode(s1, ThreadDomain.Requirements, 1002);
-    hypergraph.bindDomainNode(s1, ThreadDomain.SysML2, 2002);
-    hypergraph.bindDomainNode(s1, ThreadDomain.Modelica, 3002);
-    hypergraph.bindDomainNode(s1, ThreadDomain.CAD, 4002);
-    hypergraph.bindDomainNode(s1, ThreadDomain.CFD, 7002);
-    hypergraph.markStale(s1);
+        if (db && typeof (db as any).getThreadConflicts === "function") {
+          const dbConflicts = db.getThreadConflicts("default");
+          for (const c of dbConflicts) {
+            const slot = c.slot ?? 0;
+            const rec = hypergraph.getAllRecords().find((r) => r.slot === slot);
+            const tIdNum = rec?.threadId ?? slot;
+            conflictRegistry.set(c.conflictId, {
+              slot,
+              threadId: tIdNum,
+              sourceDomain: c.sourceDomain,
+              sourceValue: c.sourceValue,
+              sourceUnit: c.sourceUnit,
+              targetDomain: c.targetDomain,
+              targetValue: c.targetValue,
+              targetUnit: c.targetUnit,
+              min: c.min,
+              max: c.max,
+            });
+            if (c.status === "resolved") {
+              hypergraph.clearConflict(slot);
+            }
+          }
+        }
+      } catch {
+        // Fallback to seed if snapshot is corrupted
+      }
+    }
 
-    metadataMap.set("requirements:1002", { name: "REQ-THERMAL-02 (Junction Temp <= 85C)", line: 28, column: 1 });
-    metadataMap.set("sysml2:2002", { name: "part def CoolingPlate", line: 88, column: 5 });
-    metadataMap.set("modelica:3002", { name: "model CoolingCircuit", line: 32, column: 1, properties: { mass: 0.8 } });
-    metadataMap.set("cad:4002", { name: "CoolingPlate.step", line: 1, column: 1, properties: { mass: 1.15 } });
-    metadataMap.set("cfd:7002", { name: "cooling_channel_su2.cfg", line: 10, column: 1 });
+    if (hypergraph.getThreadCount() === 0) {
+      // Thread 101: Powertrain Inverter (Synced across 6 domains)
+      const s0 = hypergraph.createThread(101, 1);
+      hypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
+      hypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
+      hypergraph.bindDomainNode(s0, ThreadDomain.Modelica, 3001);
+      hypergraph.bindDomainNode(s0, ThreadDomain.CAD, 4001);
+      hypergraph.bindDomainNode(s0, ThreadDomain.FEA, 5001);
+      hypergraph.bindDomainNode(s0, ThreadDomain.BOM, 6001);
 
-    // Thread 103: Battery Bus Voltage (Conflicted: SysML 24V vs Modelica 12V)
-    const s2 = hypergraph.createThread(103, 3);
-    hypergraph.bindDomainNode(s2, ThreadDomain.Requirements, 1003);
-    hypergraph.bindDomainNode(s2, ThreadDomain.SysML2, 2003);
-    hypergraph.bindDomainNode(s2, ThreadDomain.Modelica, 3003);
-    hypergraph.markConflict(s2);
+      metadataMap.set("requirements:1001", {
+        name: "REQ-TORQUE-01 (Peak Torque >= 350Nm)",
+        line: 12,
+        column: 1,
+        properties: { status: "Verified" },
+      });
+      metadataMap.set("sysml2:2001", { name: "part def PowertrainInverter", line: 45, column: 5 });
+      metadataMap.set("modelica:3001", { name: "model InverterDrive", line: 14, column: 1, properties: { mass: 1.0 } });
+      metadataMap.set("cad:4001", { name: "Inverter_Chassis.step", line: 1, column: 1, properties: { mass: 1.02 } });
+      metadataMap.set("fea:5001", { name: "InverterMount_CalculiX.inp", line: 1, column: 1 });
+      metadataMap.set("bom:6001", { name: "P/N 840-0219 (Inverter Assy)", line: 1, column: 1 });
 
-    metadataMap.set("requirements:1003", { name: "REQ-VOLT-03 (Bus Voltage 10-48V)", line: 5, column: 1 });
-    metadataMap.set("sysml2:2003", {
-      name: "attribute def busVoltage = 24.0V",
-      line: 55,
-      column: 5,
-      properties: { voltage: 24.0 },
-    });
-    metadataMap.set("modelica:3003", {
-      name: "parameter Real V_bus = 12.0",
-      line: 20,
-      column: 1,
-      properties: { voltage: 12.0 },
-    });
+      // Thread 102: Cooling Plate (Stale)
+      const s1 = hypergraph.createThread(102, 2);
+      hypergraph.bindDomainNode(s1, ThreadDomain.Requirements, 1002);
+      hypergraph.bindDomainNode(s1, ThreadDomain.SysML2, 2002);
+      hypergraph.bindDomainNode(s1, ThreadDomain.Modelica, 3002);
+      hypergraph.bindDomainNode(s1, ThreadDomain.CAD, 4002);
+      hypergraph.bindDomainNode(s1, ThreadDomain.CFD, 7002);
+      hypergraph.markStale(s1);
 
-    conflictRegistry.set("conflict_bus_voltage", {
-      slot: s2,
-      sourceDomain: "sysml2",
-      sourceValue: 24.0,
-      sourceUnit: "V",
-      targetDomain: "modelica",
-      targetValue: 12.0,
-      targetUnit: "V",
-      min: 10.0,
-      max: 48.0,
-    });
+      metadataMap.set("requirements:1002", { name: "REQ-THERMAL-02 (Junction Temp <= 85C)", line: 28, column: 1 });
+      metadataMap.set("sysml2:2002", { name: "part def CoolingPlate", line: 88, column: 5 });
+      metadataMap.set("modelica:3002", {
+        name: "model CoolingCircuit",
+        line: 32,
+        column: 1,
+        properties: { mass: 0.8 },
+      });
+      metadataMap.set("cad:4002", { name: "CoolingPlate.step", line: 1, column: 1, properties: { mass: 1.15 } });
+      metadataMap.set("cfd:7002", { name: "cooling_channel_su2.cfg", line: 10, column: 1 });
+
+      // Thread 103: Battery Bus Voltage (Conflicted: SysML 24V vs Modelica 12V)
+      const s2 = hypergraph.createThread(103, 3);
+      hypergraph.bindDomainNode(s2, ThreadDomain.Requirements, 1003);
+      hypergraph.bindDomainNode(s2, ThreadDomain.SysML2, 2003);
+      hypergraph.bindDomainNode(s2, ThreadDomain.Modelica, 3003);
+      hypergraph.markConflict(s2);
+
+      metadataMap.set("requirements:1003", { name: "REQ-VOLT-03 (Bus Voltage 10-48V)", line: 5, column: 1 });
+      metadataMap.set("sysml2:2003", {
+        name: "attribute def busVoltage = 24.0V",
+        line: 55,
+        column: 5,
+        properties: { voltage: 24.0 },
+      });
+      metadataMap.set("modelica:3003", {
+        name: "parameter Real V_bus = 12.0",
+        line: 20,
+        column: 1,
+        properties: { voltage: 12.0 },
+      });
+
+      conflictRegistry.set("conflict_bus_voltage", {
+        slot: s2,
+        threadId: 103,
+        sourceDomain: "sysml2",
+        sourceValue: 24.0,
+        sourceUnit: "V",
+        targetDomain: "modelica",
+        targetValue: 12.0,
+        targetUnit: "V",
+        min: 10.0,
+        max: 48.0,
+      });
+
+      if (db && typeof (db as any).saveThreadConflict === "function") {
+        db.saveThreadConflict({
+          conflictId: "conflict_bus_voltage",
+          slot: s2,
+          sourceDomain: "sysml2",
+          sourceValue: 24.0,
+          sourceUnit: "V",
+          targetDomain: "modelica",
+          targetValue: 12.0,
+          targetUnit: "V",
+          min: 10.0,
+          max: 48.0,
+          status: "conflicted",
+        });
+      }
+      persistSnapshot();
+    }
   }
+
+  hypergraph.addListener(() => {
+    persistSnapshot();
+  });
 
   // ── GET /api/v1/threads/graph ──────────────────────────────────────────
   router.get("/graph", (_req, res) => {
@@ -336,13 +428,18 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
       if (strategy === "target-wins") resolvedValue = 12.0;
     }
 
+    if (db && typeof (db as any).resolveThreadConflict === "function") {
+      db.resolveThreadConflict(conflictId, resolvedValue);
+    }
+    persistSnapshot();
+
     // Broadcast live collaborative thread mutation to all connected clients
     broadcastThreadEvent("thread_updated", {
       conflictId,
       status: "resolved",
       strategy,
       resolvedValue,
-      threadId: entry?.slot,
+      threadId: entry?.threadId ?? entry?.slot,
       timestamp: new Date().toISOString(),
     });
 
@@ -353,6 +450,7 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
       resolvedValue,
       isSynchronized: true,
     });
+    return;
   });
 
   // ── POST /api/v1/threads/trade-study ──────────────────────────────────
@@ -441,6 +539,25 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     return entry;
   }
 
+  function applyProposalToHypergraph(proposal: ThreadProposal): void {
+    const tIdNum = parseInt(String(proposal.thread_id).replace(/\D/g, ""), 10);
+    if (!Number.isNaN(tIdNum)) {
+      const slot = hypergraph.findSlotByThreadId(tIdNum);
+      if (slot !== undefined) {
+        hypergraph.clearConflict(slot);
+        hypergraph.recordTheorySat(slot);
+      }
+      for (const [cId, cEntry] of conflictRegistry.entries()) {
+        if (cEntry.threadId === tIdNum || cEntry.slot === slot) {
+          if (db && typeof (db as any).resolveThreadConflict === "function") {
+            db.resolveThreadConflict(cId, (cEntry.sourceValue + cEntry.targetValue) / 2);
+          }
+        }
+      }
+      persistSnapshot();
+    }
+  }
+
   function reviewProposal(
     id: number,
     status: "approved" | "rejected" | "applied",
@@ -448,7 +565,13 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     comment?: string,
     safetyStandard?: string,
   ): ThreadProposal | undefined {
-    if (db) return db.reviewThreadProposal(id, status, resolvedBy, comment, safetyStandard);
+    if (db) {
+      const updated = db.reviewThreadProposal(id, status, resolvedBy, comment, safetyStandard);
+      if (updated && status === "applied") {
+        applyProposalToHypergraph(updated);
+      }
+      return updated;
+    }
 
     const p = memProposals.find((x) => x.id === id);
     if (!p) return undefined;
@@ -456,6 +579,10 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     p.resolved_at = new Date().toISOString();
     p.resolved_by = resolvedBy;
     p.review_comment = comment || null;
+
+    if (status === "applied") {
+      applyProposalToHypergraph(p);
+    }
 
     logAudit({
       threadId: p.thread_id,
@@ -470,11 +597,11 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
 
   function logAudit(entry: {
     threadId: string;
-    proposalId?: number | null;
+    proposalId?: number | null | undefined;
     action: string;
     actor: string;
-    safetyStandard?: string | null;
-    metadata?: string | object;
+    safetyStandard?: string | null | undefined;
+    metadata?: string | object | undefined;
   }): ThreadAuditLogEntry {
     if (db) return db.logThreadAudit(entry);
 
@@ -509,7 +636,11 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     return [...memAuditLogs];
   }
 
-  function verifyAuditChain(threadId: string): { valid: boolean; totalEntries: number; brokenAtId?: number } {
+  function verifyAuditChain(threadId: string): {
+    valid: boolean;
+    totalEntries: number;
+    brokenAtId?: number | undefined;
+  } {
     if (db) return db.verifyThreadAuditChain(threadId);
     const logs = memAuditLogs.filter((x) => x.thread_id === threadId);
     let prevChecksum = "GENESIS_ROOT";
@@ -550,12 +681,13 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     });
 
     res.status(201).json({ proposal });
+    return;
   });
 
   // ── GET /api/v1/threads/proposals ─────────────────────────────────────
   router.get("/proposals", (req, res) => {
-    const threadId = req.query.threadId as string | undefined;
-    const status = req.query.status as string | undefined;
+    const threadId = req.query["threadId"] as string | undefined;
+    const status = req.query["status"] as string | undefined;
     const proposals = getProposals(threadId, status);
     res.json({ proposals });
   });
@@ -569,6 +701,7 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     }
     const auditLogs = getAuditLogs(proposal.thread_id).filter((x) => x.proposal_id === id);
     res.json({ proposal, auditLogs });
+    return;
   });
 
   // ── POST /api/v1/threads/proposals/:id/review ─────────────────────────
@@ -594,11 +727,12 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
     });
 
     res.json({ proposal: updated });
+    return;
   });
 
   // ── GET /api/v1/threads/audit-log ─────────────────────────────────────
   router.get("/audit-log", (req, res) => {
-    const threadId = req.query.threadId as string | undefined;
+    const threadId = req.query["threadId"] as string | undefined;
     const auditLogs = getAuditLogs(threadId);
     const verification = threadId ? verifyAuditChain(threadId) : { valid: true, totalEntries: auditLogs.length };
     res.json({ auditLogs, verification });
@@ -606,12 +740,139 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
 
   // ── GET /api/v1/threads/audit-log/verify ──────────────────────────────
   router.get("/audit-log/verify", (req, res) => {
-    const threadId = req.query.threadId as string | undefined;
+    const threadId = req.query["threadId"] as string | undefined;
     if (!threadId) {
       return res.status(400).json({ error: "threadId is required to verify cryptographic audit chain" });
     }
     const verification = verifyAuditChain(threadId);
     res.json(verification);
+    return;
+  });
+
+  // ── POST /api/v1/threads/nodes ────────────────────────────────────────
+  router.post("/nodes", (req, res) => {
+    const { threadId, revision, relation, branchId, status, domains, metadata, conflict } = req.body ?? {};
+    const tIdNum = typeof threadId === "number" ? threadId : parseInt(String(threadId || "0").replace(/\D/g, ""), 10);
+    if (!tIdNum || Number.isNaN(tIdNum)) {
+      return res.status(400).json({ error: "Valid numeric threadId is required" });
+    }
+
+    let rel = ThreadRelation.Aligned;
+    if (typeof relation === "string" && (ThreadRelation as any)[relation] !== undefined) {
+      rel = (ThreadRelation as any)[relation];
+    } else if (typeof relation === "number") {
+      rel = relation as ThreadRelation;
+    }
+
+    const slot = hypergraph.createThread(
+      tIdNum,
+      typeof revision === "number" ? revision : 1,
+      rel,
+      typeof branchId === "number" ? branchId : 0,
+    );
+
+    if (domains && typeof domains === "object") {
+      for (const [domName, rawNodeId] of Object.entries(domains)) {
+        const domIdx = DOMAIN_NAME_TO_INDEX[domName.toLowerCase()];
+        if (domIdx !== undefined) {
+          const nId =
+            typeof rawNodeId === "number" ? rawNodeId : parseInt(String(rawNodeId).replace(/\D/g, "") || "1", 10);
+          hypergraph.bindDomainNode(slot, domIdx, nId);
+        }
+      }
+    }
+
+    if (metadata && typeof metadata === "object") {
+      for (const [metaKey, metaVal] of Object.entries(metadata)) {
+        metadataMap.set(metaKey, metaVal as ThreadMetadata);
+      }
+    }
+
+    if (status === "stale") hypergraph.markStale(slot);
+    else if (status === "conflict") hypergraph.markConflict(slot);
+    else if (status === "synced") {
+      hypergraph.clearConflict(slot);
+      hypergraph.recordTheorySat(slot);
+    }
+
+    if (conflict && typeof conflict === "object" && conflict.conflictId) {
+      const cId = String(conflict.conflictId);
+      const sourceDomain = String(conflict.sourceDomain || "sysml2");
+      const sourceValue = Number(conflict.sourceValue ?? 0);
+      const sourceUnit = String(conflict.sourceUnit || "");
+      const targetDomain = String(conflict.targetDomain || "modelica");
+      const targetValue = Number(conflict.targetValue ?? 0);
+      const targetUnit = String(conflict.targetUnit || sourceUnit);
+      const min = Number(conflict.min ?? Math.min(sourceValue, targetValue));
+      const max = Number(conflict.max ?? Math.max(sourceValue, targetValue));
+
+      hypergraph.markConflict(slot);
+      conflictRegistry.set(cId, {
+        slot,
+        threadId: tIdNum,
+        sourceDomain,
+        sourceValue,
+        sourceUnit,
+        targetDomain,
+        targetValue,
+        targetUnit,
+        min,
+        max,
+      });
+
+      if (db && typeof (db as any).saveThreadConflict === "function") {
+        db.saveThreadConflict({
+          conflictId: cId,
+          slot,
+          sourceDomain,
+          sourceValue,
+          sourceUnit,
+          targetDomain,
+          targetValue,
+          targetUnit,
+          min,
+          max,
+          status: "conflicted",
+        });
+      }
+    }
+
+    persistSnapshot();
+    broadcastThreadEvent("thread_node_upserted", {
+      threadId: tIdNum,
+      slot,
+      status: status || "synced",
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(201).json({
+      threadId: tIdNum,
+      slot,
+      status: hypergraph.isConflicted(slot) ? "conflict" : hypergraph.isStale(slot) ? "stale" : "synced",
+    });
+    return;
+  });
+
+  // ── POST /api/v1/threads/import ───────────────────────────────────────
+  router.post("/import", (req, res) => {
+    try {
+      const payload = req.body?.threadFile ?? req.body;
+      const jsonStr = typeof payload === "string" ? payload : JSON.stringify(payload);
+      const parsed = JSON.parse(jsonStr);
+      if (parsed?.metadata?.nodeMetadata && typeof parsed.metadata.nodeMetadata === "object") {
+        for (const [k, v] of Object.entries(parsed.metadata.nodeMetadata)) {
+          metadataMap.set(k, v as ThreadMetadata);
+        }
+      }
+      ThreadSerializer.deserialize(jsonStr, hypergraph);
+      persistSnapshot();
+      res.status(200).json({
+        imported: true,
+        totalThreads: hypergraph.getThreadCount(),
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || "Failed to import .ms-thread payload" });
+    }
   });
 
   return router;

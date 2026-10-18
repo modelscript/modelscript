@@ -62,7 +62,7 @@ export class SqliteMigrationRunner {
     }
   }
 
-  runPendingSync(allMigrations: Migration[], options?: { dryRun?: boolean }): { appliedCount: number } {
+  runPendingSync(allMigrations: Migration[], options?: { dryRun?: boolean | undefined }): { appliedCount: number } {
     const { pending } = this.getStatus(allMigrations);
 
     if (pending.length === 0) {
@@ -129,7 +129,7 @@ export class SqliteMigrationRunner {
 
   async runPending(
     allMigrations: Migration[],
-    options?: { dryRun?: boolean; skipBackup?: boolean },
+    options?: { dryRun?: boolean | undefined; skipBackup?: boolean | undefined },
   ): Promise<{ appliedCount: number; backupPath: string | null }> {
     const { pending } = this.getStatus(allMigrations);
 
@@ -163,7 +163,9 @@ export class SqliteMigrationRunner {
 
   verifyIntegrity(): { foreignKeysOk: boolean; integrityOk: boolean } {
     const fkErrors = this.#db.prepare("PRAGMA foreign_key_check").all();
-    const integrity = this.#db.prepare("PRAGMA integrity_check").get() as { integrity_check?: string } | undefined;
+    const integrity = this.#db.prepare("PRAGMA integrity_check").get() as
+      | { integrity_check?: string | undefined }
+      | undefined;
 
     const foreignKeysOk = !fkErrors || fkErrors.length === 0;
     const integrityOk = integrity?.integrity_check === "ok";

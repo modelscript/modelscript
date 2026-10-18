@@ -6,7 +6,7 @@
 export interface PoEntry {
   msgid: string;
   msgstr: string;
-  msgctxt?: string;
+  msgctxt?: string | undefined;
 }
 
 /**

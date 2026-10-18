@@ -6,7 +6,7 @@ import type { CommandModule } from "yargs";
 
 export interface VerifyDecisionsArgs {
   paths: string[];
-  json?: boolean;
+  json?: boolean | undefined;
 }
 
 export const VerifyDecisions: CommandModule<{}, VerifyDecisionsArgs> = {

@@ -48,7 +48,7 @@ export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
 
   return edits.filter((edit, i) => {
     if (i === 0) return true;
-    const prev = edits[i - 1];
+    const prev = edits[i - 1]!;
     if (
       edit.range.start.line < prev.range.end.line ||
       (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
@@ -188,14 +188,14 @@ export interface SysML2BackendDeps {
   createEmptyLayout: () => any;
   updateElementPositions: (
     layout: any,
-    items: { name: string; x: number; y: number; width: number; height: number; rotation?: number }[],
+    items: { name: string; x: number; y: number; width: number; height: number; rotation?: number | undefined }[],
   ) => any;
   updateConnectionVertices: (layout: any, updates: { id: string; vertices: { x: number; y: number }[] }[]) => any;
   removeElements: (layout: any, names: string[]) => any;
-  renameElement?: (layout: any, oldName: string, newName: string) => any;
-  serializeLayout?: (layout: any) => string;
-  parseLayout?: (text: string) => any;
-  getSidecarUri?: (uri: string) => string;
+  renameElement?: ((layout: any, oldName: string, newName: string) => any) | undefined;
+  serializeLayout?: ((layout: any) => string) | undefined;
+  parseLayout?: ((text: string) => any) | undefined;
+  getSidecarUri?: ((uri: string) => string) | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   buildDiagramData: (params: DiagramGetDataParams) => any;
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;
@@ -214,15 +214,25 @@ export interface SysML2BackendDeps {
   computeDescriptionEdit: (tree: unknown, text: string, name: string, desc: string) => TextEdit[];
   computeParameterEdit: (tree: unknown, text: string, name: string, param: string, value: string) => TextEdit[];
   /** Query symbol data from the unified index for the component properties panel. */
-  getSymbolData?: (
-    uri: string,
-    componentName: string,
-  ) => {
-    ruleName: string;
-    name: string;
-    description?: string;
-    children?: { name: string; ruleName: string; value?: string; description?: string; direction?: string }[];
-  } | null;
+  getSymbolData?:
+    | ((
+        uri: string,
+        componentName: string,
+      ) => {
+        ruleName: string;
+        name: string;
+        description?: string | undefined;
+        children?:
+          | {
+              name: string;
+              ruleName: string;
+              value?: string | undefined;
+              description?: string | undefined;
+              direction?: string | undefined;
+            }[]
+          | undefined;
+      } | null)
+    | undefined;
 }
 
 export class SysML2DiagramBackend implements DiagramBackend {
@@ -545,31 +555,41 @@ export class SysML2DiagramBackend implements DiagramBackend {
 export interface Owl2BackendDeps {
   getDocumentText: (uri: string) => string | undefined;
   getAxioms: (uri: string) => any[];
-  getInferredSubClassOf?: (uri: string, axioms: any[]) => { subClassIri: string; superClassIri: string }[];
-  getLayout?: (uri: string) => any;
-  setLayout?: (uri: string, layout: any) => void;
-  createEmptyLayout?: () => any;
-  updateElementPositions?: (
-    layout: any,
-    items: { name: string; x: number; y: number; width: number; height: number; rotation?: number }[],
-  ) => any;
-  updateConnectionVertices?: (layout: any, updates: { id: string; vertices: { x: number; y: number }[] }[]) => any;
-  removeElements?: (layout: any, names: string[]) => any;
-  computeConnectionInsert?: (text: string, source: string, target: string, edgeType?: string) => TextEdit[];
-  computeConnectionDelete?: (text: string, source: string, target: string) => TextEdit[];
-  computeElementInsert?: (text: string, elementType: string, name: string) => TextEdit[];
-  computeElementDelete?: (text: string, names: string[]) => TextEdit[];
-  computeNameEdit?: (text: string, oldIri: string, newIri: string) => TextEdit[];
-  buildDiagramData?: (axioms: any[], layout?: any, diagramType?: string, options?: any) => DiagramData;
-  getEntityData?: (
-    uri: string,
-    entityIri: string,
-  ) => {
-    iri: string;
-    type: string;
-    axioms?: string[];
-    annotations?: Record<string, string>;
-  } | null;
+  getInferredSubClassOf?:
+    | ((uri: string, axioms: any[]) => { subClassIri: string; superClassIri: string }[])
+    | undefined;
+  getLayout?: ((uri: string) => any) | undefined;
+  setLayout?: ((uri: string, layout: any) => void) | undefined;
+  createEmptyLayout?: (() => any) | undefined;
+  updateElementPositions?:
+    | ((
+        layout: any,
+        items: { name: string; x: number; y: number; width: number; height: number; rotation?: number | undefined }[],
+      ) => any)
+    | undefined;
+  updateConnectionVertices?:
+    | ((layout: any, updates: { id: string; vertices: { x: number; y: number }[] }[]) => any)
+    | undefined;
+  removeElements?: ((layout: any, names: string[]) => any) | undefined;
+  computeConnectionInsert?:
+    | ((text: string, source: string, target: string, edgeType?: string) => TextEdit[])
+    | undefined;
+  computeConnectionDelete?: ((text: string, source: string, target: string) => TextEdit[]) | undefined;
+  computeElementInsert?: ((text: string, elementType: string, name: string) => TextEdit[]) | undefined;
+  computeElementDelete?: ((text: string, names: string[]) => TextEdit[]) | undefined;
+  computeNameEdit?: ((text: string, oldIri: string, newIri: string) => TextEdit[]) | undefined;
+  buildDiagramData?: ((axioms: any[], layout?: any, diagramType?: string, options?: any) => DiagramData) | undefined;
+  getEntityData?:
+    | ((
+        uri: string,
+        entityIri: string,
+      ) => {
+        iri: string;
+        type: string;
+        axioms?: string[] | undefined;
+        annotations?: Record<string, string> | undefined;
+      } | null)
+    | undefined;
 }
 
 export class Owl2DiagramBackend implements DiagramBackend {
@@ -820,13 +840,13 @@ export class Owl2DiagramBackend implements DiagramBackend {
 
 export interface GenericDSLBackendDeps {
   getDocumentText: (uri: string) => string | undefined;
-  getDiagramConfig?: (uri: string) => any;
-  getSyntaxNames?: (uri: string) => Record<number, string> | string[] | undefined;
-  getRawAstData?: (uri: string) => { nodes: any[]; edges: any[] } | null;
-  getSymbolIndex?: (uri: string) => any;
-  getScopeResolver?: (uri: string) => any;
-  layoutStorage?: SidecarLayoutStorage;
-  fsBridge?: FileSystemBridge;
+  getDiagramConfig?: ((uri: string) => any) | undefined;
+  getSyntaxNames?: ((uri: string) => Record<number, string> | string[] | undefined) | undefined;
+  getRawAstData?: ((uri: string) => { nodes: any[]; edges: any[] } | null) | undefined;
+  getSymbolIndex?: ((uri: string) => any) | undefined;
+  getScopeResolver?: ((uri: string) => any) | undefined;
+  layoutStorage?: SidecarLayoutStorage | undefined;
+  fsBridge?: FileSystemBridge | undefined;
 }
 
 function findSectionClosingLine(lines: string[], sectionName: string): number | null {
@@ -834,7 +854,7 @@ function findSectionClosingLine(lines: string[], sectionName: string): number | 
   let inSection = false;
   let depth = 0;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     if (!inSection) {
       if (secRegex.test(line)) {
         inSection = true;
@@ -873,7 +893,7 @@ function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content:
     } else {
       let insertLine = lines.length;
       for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].trim() === "}") {
+        if (lines[i]!.trim() === "}") {
           insertLine = i;
           break;
         }
@@ -891,7 +911,7 @@ function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content:
 
   let insertLine = lines.length;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].trim() === "}") {
+    if (lines[i]!.trim() === "}") {
       insertLine = i;
       break;
     }
@@ -1149,7 +1169,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       targetUri,
       targetClassName: targetName,
       breadcrumbs,
-      data: childData ?? undefined,
+      data: childData ?? null,
     };
   }
 
@@ -1172,8 +1192,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const nameRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (nameRegex.test(maskedLines[i])) {
-                  const line = lines[i];
+                if (nameRegex.test(maskedLines[i]!)) {
+                  const line = lines[i]!;
                   const placementStr = config.placement.formatPlacement
                     ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
                     : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
@@ -1224,8 +1244,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             const escName = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const nameRegex = new RegExp(`\\b${escName}\\b`);
             for (let i = 0; i < lines.length; i++) {
-              if (nameRegex.test(maskedLines[i])) {
-                const line = lines[i];
+              if (nameRegex.test(maskedLines[i]!)) {
+                const line = lines[i]!;
                 const placementStr = config.placement.formatPlacement
                   ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
                   : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
@@ -1305,7 +1325,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         case "disconnect": {
           if (docText !== undefined) {
             for (let i = 0; i < lines.length; i++) {
-              if (maskedLines[i].includes(action.source) && maskedLines[i].includes(action.target)) {
+              if (maskedLines[i]!.includes(action.source) && maskedLines[i]!.includes(action.target)) {
                 allEdits.push({
                   range: {
                     start: { line: i, character: 0 },
@@ -1323,8 +1343,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           if (docText !== undefined) {
             let replaced = false;
             for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
-              if (maskedLines[i].includes(action.oldSource) && maskedLines[i].includes(action.oldTarget)) {
+              const line = lines[i]!;
+              if (maskedLines[i]!.includes(action.oldSource) && maskedLines[i]!.includes(action.oldTarget)) {
                 let newEdgeText = "";
                 const edgeTemplates = mutations?.edgeTemplates;
                 const edgeTemplate =
@@ -1429,7 +1449,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const declRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (declRegex.test(maskedLines[i])) {
+                if (declRegex.test(maskedLines[i]!)) {
                   allEdits.push({
                     range: {
                       start: { line: i, character: 0 },
@@ -1470,7 +1490,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             const regex = new RegExp(`\\b${escOld}\\b`, "g");
             for (let i = 0; i < lines.length; i++) {
               let match: RegExpExecArray | null;
-              while ((match = regex.exec(maskedLines[i])) !== null) {
+              while ((match = regex.exec(maskedLines[i]!)) !== null) {
                 allEdits.push({
                   range: {
                     start: { line: i, character: match.index },
@@ -1528,12 +1548,12 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               const escName = action.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const nameRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (nameRegex.test(maskedLines[i])) {
+                if (nameRegex.test(maskedLines[i]!)) {
                   for (let j = i; j < Math.min(lines.length, i + 6); j++) {
-                    const m = paramRegex.exec(maskedLines[j]);
+                    const m = paramRegex.exec(maskedLines[j]!);
                     if (m) {
-                      const startCol = m.index + m[1].length;
-                      const endCol = startCol + m[2].trimEnd().length;
+                      const startCol = m.index + m[1]!.length;
+                      const endCol = startCol + m[2]!.trimEnd().length;
                       allEdits.push({
                         range: {
                           start: { line: j, character: startCol },
@@ -1552,10 +1572,10 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
             if (!matched) {
               for (let i = 0; i < lines.length; i++) {
-                const m = paramRegex.exec(maskedLines[i]);
+                const m = paramRegex.exec(maskedLines[i]!);
                 if (m) {
-                  const startCol = m.index + m[1].length;
-                  const endCol = startCol + m[2].trimEnd().length;
+                  const startCol = m.index + m[1]!.length;
+                  const endCol = startCol + m[2]!.trimEnd().length;
                   allEdits.push({
                     range: {
                       start: { line: i, character: startCol },
@@ -1574,11 +1594,11 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               const escName = action.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const nameRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (nameRegex.test(maskedLines[i])) {
-                  const openParen = lines[i].indexOf("(", lines[i].indexOf(action.name));
-                  const closeParen = lines[i].lastIndexOf(")");
+                if (nameRegex.test(maskedLines[i]!)) {
+                  const openParen = lines[i]!.indexOf("(", lines[i]!.indexOf(action.name));
+                  const closeParen = lines[i]!.lastIndexOf(")");
                   if (openParen !== -1 && closeParen !== -1 && closeParen > openParen) {
-                    const hasArgs = lines[i].substring(openParen + 1, closeParen).trim().length > 0;
+                    const hasArgs = lines[i]!.substring(openParen + 1, closeParen).trim().length > 0;
                     allEdits.push({
                       range: {
                         start: { line: i, character: closeParen },
@@ -1628,11 +1648,11 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 // ── Dispatch Factory ──
 
 export interface DiagramDispatchDeps {
-  modelica?: DiagramBackend;
-  sysml2?: DiagramBackend;
-  generic?: DiagramBackend;
-  owl2?: DiagramBackend;
-  customBackends?: Map<string | RegExp, DiagramBackend>;
+  modelica?: DiagramBackend | undefined;
+  sysml2?: DiagramBackend | undefined;
+  generic?: DiagramBackend | undefined;
+  owl2?: DiagramBackend | undefined;
+  customBackends?: Map<string | RegExp, DiagramBackend> | undefined;
 }
 
 /**

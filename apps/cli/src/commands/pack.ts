@@ -15,10 +15,10 @@ import { parsePackageMo } from "../util/package-mo.js";
 import { computePackageContentHash } from "../util/package-verify.js";
 
 export interface PackArgs {
-  path?: string;
-  out?: string;
-  dryRun?: boolean;
-  json?: boolean;
+  path?: string | undefined;
+  out?: string | undefined;
+  dryRun?: boolean | undefined;
+  json?: boolean | undefined;
 }
 
 export function formatArchiveFilename(name: string, version: string): string {

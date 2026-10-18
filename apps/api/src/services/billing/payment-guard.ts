@@ -34,7 +34,7 @@ export class PaymentFraudGuard {
     return record.count >= PAYMENT_LIMITS.MAX_PAYMENT_FAILURES;
   }
 
-  public recordFailure(key: string): { locked: boolean; count: number; lockedUntil?: number } {
+  public recordFailure(key: string): { locked: boolean; count: number; lockedUntil?: number | undefined } {
     const now = Date.now();
     const existing = this.records.get(key);
 
@@ -65,10 +65,10 @@ export const defaultPaymentGuard = new PaymentFraudGuard();
 export interface CreatePaymentIntentOptions {
   userId: number;
   amountCredits: number;
-  clientIp?: string;
-  customerCountry?: string;
-  cardCountry?: string;
-  simulateRadarScore?: number;
+  clientIp?: string | undefined;
+  customerCountry?: string | undefined;
+  cardCountry?: string | undefined;
+  simulateRadarScore?: number | undefined;
 }
 
 export interface PaymentIntentResult {
@@ -162,9 +162,9 @@ export function handleStripeWebhookEvent(
   event: StripeWebhookEvent,
   database: LibraryDatabase,
   guard: PaymentFraudGuard = defaultPaymentGuard,
-): { handled: boolean; action: string; userId?: number; details?: Record<string, any> } {
+): { handled: boolean; action: string; userId?: number | undefined; details?: Record<string, any> | undefined } {
   const obj = event.data?.object || {};
-  const userId = (obj.metadata?.userId ? parseInt(obj.metadata.userId, 10) : undefined) || obj.customer_id;
+  const userId = (obj["metadata"]?.userId ? parseInt(obj["metadata"].userId, 10) : undefined) || obj["customer_id"];
 
   switch (event.type) {
     // 1. Chargeback / Dispute Quarantine
@@ -173,7 +173,7 @@ export function handleStripeWebhookEvent(
         return { handled: false, action: "missing_user_id" };
       }
 
-      const reason = obj.reason || "Fraudulent transaction chargeback";
+      const reason = obj["reason"] || "Fraudulent transaction chargeback";
       const freezeResult = database.freezeUserForDispute(userId, reason);
 
       return {
@@ -182,7 +182,7 @@ export function handleStripeWebhookEvent(
         userId,
         details: {
           previousBalance: freezeResult.previousBalance,
-          disputeId: obj.id,
+          disputeId: obj["id"],
           reason,
         },
       };
@@ -194,9 +194,9 @@ export function handleStripeWebhookEvent(
         return { handled: false, action: "missing_user_id" };
       }
 
-      const credits = (obj.amount || 0) / 100;
-      database.grantUserCredits(userId, credits, "top_up", `Stripe Top-Up (${obj.id})`, {
-        paymentIntentId: obj.id,
+      const credits = (obj["amount"] || 0) / 100;
+      database.grantUserCredits(userId, credits, "top_up", `Stripe Top-Up (${obj["id"]})`, {
+        paymentIntentId: obj["id"],
         "3dsVerified": true,
       });
 
@@ -207,7 +207,7 @@ export function handleStripeWebhookEvent(
         handled: true,
         action: "credits_granted",
         userId,
-        details: { credits, paymentIntentId: obj.id },
+        details: { credits, paymentIntentId: obj["id"] },
       };
     }
 

@@ -2,14 +2,14 @@
 
 export interface I18nTextConfig {
   field: string;
-  context?: "self" | "scope";
+  context?: "self" | "scope" | undefined;
 }
 
 export interface I18nConfig {
-  texts?: (string | I18nTextConfig)[];
-  traverse?: string[];
-  scope?: (self: any) => string | null;
-  extract?: (db: any, self: any) => any;
+  texts?: (string | I18nTextConfig)[] | undefined;
+  traverse?: string[] | undefined;
+  scope?: ((self: any) => string | null) | undefined;
+  extract?: ((db: any, self: any) => any) | undefined;
 }
 
 export interface TSPoint {
@@ -85,7 +85,7 @@ export class I18nExtractor {
     // 1. Handle scope stack pushing
     if (config?.scope) {
       try {
-        const scopeFn = (config as { scope?: (self: TSNode) => string | null }).scope;
+        const scopeFn = (config as { scope?: ((self: TSNode) => string | null) | undefined }).scope;
         const scopeName = scopeFn ? scopeFn(node) : null;
         if (scopeName) {
           const cleanedName = this.cleanString(scopeName);

@@ -21,13 +21,13 @@ import { computeMatrixExponential } from "./wasm_zonotope_reach.js";
 
 export interface HybridMode {
   id: string;
-  name?: string;
+  name?: string | undefined;
   /** Continuous dynamics: dy/dt = f(t, y) returning an array of TaylorModels */
   dynamics: (t: TaylorModel, y: TaylorModel[]) => TaylorModel[];
   /** Optional linear dynamics A where dy/dt = A y for wrapping-free ConstrainedZonotope propagation */
-  linearDynamics?: { A: number[][]; B?: number[][] };
+  linearDynamics?: { A: number[][]; B?: number[][] | undefined } | undefined;
   /** Invariants: state bounds that must hold while active in this mode */
-  invariants?: { stateIndex: number; min?: number; max?: number }[];
+  invariants?: { stateIndex: number; min?: number | undefined; max?: number | undefined }[] | undefined;
 }
 
 export interface HybridTransition {
@@ -40,15 +40,15 @@ export interface HybridTransition {
    */
   guard: (y: TaylorModel[]) => TaylorModel;
   /** Optional linear guard hyperplane for exact CZ slicing: h^T x == gamma or h^T x <= gamma */
-  linearGuard?: { normal: number[]; threshold: number; operator?: "==" | "<=" };
+  linearGuard?: { normal: number[]; threshold: number; operator?: "==" | "<=" | undefined } | undefined;
   /** Optional point evaluator for nominal trajectory checks: g(y) <= 0 */
-  guardPoint?: (y: number[]) => number;
+  guardPoint?: ((y: number[]) => number) | undefined;
   /** State reset map: computes post-jump state enclosure from pre-jump enclosure */
-  reset?: (preState: Interval[]) => Interval[];
+  reset?: ((preState: Interval[]) => Interval[]) | undefined;
   /** Nominal state reset map */
-  resetPoint?: (prePoint: number[]) => number[];
+  resetPoint?: ((prePoint: number[]) => number[]) | undefined;
   /** Transition description/label */
-  label?: string;
+  label?: string | undefined;
 }
 
 export interface HybridAutomaton {
@@ -70,7 +70,7 @@ export interface HybridJumpEvent {
 
 export interface HybridFlowpipeModeSegment {
   modeId: string;
-  modeName?: string;
+  modeName?: string | undefined;
   startTime: number;
   endTime: number;
   steps: FlowpipeStepResult[];
@@ -98,21 +98,21 @@ export interface HybridFlowpipeProblemOptions {
   nominalInitial: number[];
   tSpan: [number, number];
   dt: number;
-  order?: number;
-  minOrder?: number;
-  maxOrder?: number;
-  adaptive?: boolean;
-  tol?: number;
-  minDt?: number;
-  maxDt?: number;
-  useQrPreconditioning?: boolean;
-  useConstrainedZonotopes?: boolean;
-  maxConstrainedGenerators?: number;
-  requirements?: FlowpipeRequirement[];
-  maxPicardIterations?: number;
-  maxJumps?: number;
-  enableSetBranching?: boolean;
-  maxBranches?: number;
+  order?: number | undefined;
+  minOrder?: number | undefined;
+  maxOrder?: number | undefined;
+  adaptive?: boolean | undefined;
+  tol?: number | undefined;
+  minDt?: number | undefined;
+  maxDt?: number | undefined;
+  useQrPreconditioning?: boolean | undefined;
+  useConstrainedZonotopes?: boolean | undefined;
+  maxConstrainedGenerators?: number | undefined;
+  requirements?: FlowpipeRequirement[] | undefined;
+  maxPicardIterations?: number | undefined;
+  maxJumps?: number | undefined;
+  enableSetBranching?: boolean | undefined;
+  maxBranches?: number | undefined;
 }
 
 /**

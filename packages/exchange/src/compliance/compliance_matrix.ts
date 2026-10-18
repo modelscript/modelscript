@@ -28,14 +28,14 @@ export interface ComplianceTraceItem {
   safetyLevel: SafetyIntegrityLevel;
   sysmlRequirementId: string;
   allocatedComponent: string;
-  modelicaModelRef?: string;
-  caeDeckRef?: string;
+  modelicaModelRef?: string | undefined;
+  caeDeckRef?: string | undefined;
   verificationMethod: "FormalProof" | "SimulationRobustness" | "PhysicalTelemetryTest" | "FaultInjectionFTA";
   verificationArtifactRef: string;
   verificationStatus: "VERIFIED" | "FAILED" | "PENDING";
-  evidenceHash?: string;
-  signOffEngineer?: string;
-  timestamp?: string;
+  evidenceHash?: string | undefined;
+  signOffEngineer?: string | undefined;
+  timestamp?: string | undefined;
 }
 
 export interface ComplianceSummary {

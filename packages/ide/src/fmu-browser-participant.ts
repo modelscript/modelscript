@@ -40,11 +40,13 @@ interface FmiModelDescription {
   guid: string;
   description: string | undefined;
   supportsCoSimulation: boolean;
-  defaultExperiment?: {
-    startTime?: number;
-    stopTime?: number;
-    stepSize?: number;
-  };
+  defaultExperiment?:
+    | {
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        stepSize?: number | undefined;
+      }
+    | undefined;
   variables: FmiScalarVariable[];
 }
 
@@ -71,7 +73,7 @@ function parseModelDescription(xml: string): FmiModelDescription {
   const supportsCoSimulation = /<CoSimulation\s+/.test(xml);
 
   let defaultExperiment: FmiModelDescription["defaultExperiment"];
-  const expMatch = xml.match(/<DefaultExperiment\s+([^>]*)\/?\\s*>/);
+  const expMatch = xml.match(/<DefaultExperiment\s+([^>]*)\/?\s*>/);
   if (expMatch) {
     const attrs = expMatch[1] ?? "";
     const startStr = extractAttrFromStr(attrs, "startTime");
@@ -103,7 +105,7 @@ function parseModelDescription(xml: string): FmiModelDescription {
     let start: number | string | boolean | undefined;
     let unit: string | undefined;
 
-    const typeMatch = body.match(/<(Real|Integer|Boolean|String|Enumeration)\s*([^>]*)\/?\\s*>/);
+    const typeMatch = body.match(/<(Real|Integer|Boolean|String|Enumeration)\s*([^>]*)\/?\s*>/);
     if (typeMatch) {
       type = (typeMatch[1] ?? "Real") as FmiScalarVariable["type"];
       const typeAttrs = typeMatch[2] ?? "";
@@ -559,8 +561,8 @@ export interface FmuVariable {
   name: string;
   causality: string;
   type: string;
-  unit?: string;
-  start?: number | string | boolean;
+  unit?: string | undefined;
+  start?: number | string | boolean | undefined;
 }
 
 /**

@@ -27,6 +27,9 @@ import { WHOLE_LINE, evalArenaExpr } from "./arena_eval.js";
 import { blockFingerprint } from "./arena_fingerprint.js";
 import { DaeEvaluatorOptions, DaeIntervalEvaluator, DaeSingularityIssue } from "./dae_interval_evaluator.js";
 
+/**
+ * Time-series state trajectory and enclosure bounds for a continuous variable.
+ */
 export interface StateTrajectory {
   time: number[];
   nominal: number[];
@@ -34,41 +37,50 @@ export interface StateTrajectory {
   upper: number[];
 }
 
+/**
+ * Reachability and regularity analysis result for a single BLT block.
+ */
 export interface BlockReachabilityResult {
   blockId: number;
   isAlgebraicLoop: boolean;
   equations: number[];
   variables: number[];
   variableBounds: Map<number, NumericalInterval>;
-  jacobianDeterminant?: NumericalInterval;
-  isRegular?: boolean;
-  isUniqueSolutionProven?: boolean;
-  derivativeBounds?: Map<number, NumericalInterval>;
+  jacobianDeterminant?: NumericalInterval | undefined;
+  isRegular?: boolean | undefined;
+  isUniqueSolutionProven?: boolean | undefined;
+  derivativeBounds?: Map<number, NumericalInterval> | undefined;
   issues: DaeSingularityIssue[];
   recomputed: boolean;
 }
 
+/**
+ * Configuration options for BLT-driven incremental DAE reachability analysis.
+ */
 export interface DaeBltReachabilityOptions {
   /** Time horizon \Delta t for continuous state derivative reachability (default 1.0s) */
-  timeHorizon?: number;
+  timeHorizon?: number | undefined;
   /** Explicit initial/parameter bounds */
-  initialBounds?: Map<number, NumericalInterval>;
+  initialBounds?: Map<number, NumericalInterval> | undefined;
   /** Specific state variable indices x where der(x) represents the derivative */
-  stateVars?: Set<number>;
+  stateVars?: Set<number> | undefined;
   /** General evaluator options */
-  evaluatorOptions?: DaeEvaluatorOptions;
+  evaluatorOptions?: DaeEvaluatorOptions | undefined;
   /** Keystroke time budget in ms (default 150 ms) */
-  budgetMs?: number;
+  budgetMs?: number | undefined;
   /** Formal safety requirements to check against reachability tubes */
-  requirements?: LinearSafetyRequirement[];
+  requirements?: LinearSafetyRequirement[] | undefined;
   /** Optional SysML requirements to bind dynamically against state variables */
-  sysmlRequirements?: SysmlRequirement[];
+  sysmlRequirements?: SysmlRequirement[] | undefined;
   /** Optional Modelica twin annotations map (varName -> twinTarget) */
-  twinMap?: Map<string, string>;
+  twinMap?: Map<string, string> | undefined;
   /** Whether to record per-step trajectory points */
-  recordTrajectory?: boolean;
+  recordTrajectory?: boolean | undefined;
 }
 
+/**
+ * Aggregate reachability summary across all BLT blocks and continuous state enclosures.
+ */
 export interface DaeReachabilitySummary {
   isFullyCertified: boolean;
   totalBlocks: number;
@@ -81,15 +93,17 @@ export interface DaeReachabilitySummary {
   recomputedBlocks: number;
   cachedBlocks: number;
   verdict: VerificationVerdict;
-  trajectories?: Map<
-    string,
-    {
-      zonotope?: StateTrajectory;
-      interval?: StateTrajectory;
-      taylor?: StateTrajectory;
-    }
-  >;
-  continuousReachResult?: NonlinearZonotopeReachResult;
+  trajectories?:
+    | Map<
+        string,
+        {
+          zonotope?: StateTrajectory | undefined;
+          interval?: StateTrajectory | undefined;
+          taylor?: StateTrajectory | undefined;
+        }
+      >
+    | undefined;
+  continuousReachResult?: NonlinearZonotopeReachResult | undefined;
 }
 
 /**
@@ -102,10 +116,19 @@ function computeInputFingerprint(inputs: [number, NumericalInterval][]): string 
   return inputs.map(([id, iv]) => `${id}:${iv.low},${iv.high}`).join(";");
 }
 
+/**
+ * Incremental BLT-driven reachability engine that evaluates causal blocks and algebraic loops
+ * over interval/affine domains and caches block results keyed by input interval fingerprints.
+ */
 export class DaeBltReachabilityEngine {
+  /** Cache mapping BLT block IDs to their last input fingerprint and computed reachability result. */
   private blockCache = new Map<number, { fingerprint: string; result: BlockReachabilityResult }>();
+  /** Underlying interval evaluator for DAE expressions and singularity detection. */
   public evaluator: DaeIntervalEvaluator;
 
+  /**
+   * Initializes the reachability engine for a flattened DAE arena.
+   */
   constructor(
     public readonly arena: DAEBuilder,
     public readonly options: DaeBltReachabilityOptions = {},
@@ -240,7 +263,14 @@ export class DaeBltReachabilityEngine {
     let continuousSolverVerdict: VerificationVerdict | null = null;
     let usedConservativeLinearization = false;
     let recordedTrajectories:
-      | Map<string, { zonotope?: StateTrajectory; interval?: StateTrajectory; taylor?: StateTrajectory }>
+      | Map<
+          string,
+          {
+            zonotope?: StateTrajectory | undefined;
+            interval?: StateTrajectory | undefined;
+            taylor?: StateTrajectory | undefined;
+          }
+        >
       | undefined;
     let continuousReachResult: NonlinearZonotopeReachResult | undefined;
 
@@ -529,6 +559,7 @@ export class DaeBltReachabilityEngine {
     // Check if LHS is der(x)
     if (lhsKind === ExprKind.Der) {
       const _inner = this.arena.getExprData1(lhs);
+      void _inner;
       const rhsEval = this.evaluator.evaluateExpr(rhs, globalBounds);
       issues.push(...rhsEval.issues);
       derBounds.set(varIdx, rhsEval.interval);
@@ -939,6 +970,9 @@ export class DaeBltReachabilityEngine {
     return deps;
   }
 
+  /**
+   * Recursively collects all variable indices referenced within an arena expression tree.
+   */
   private collectExprVarDeps(exprId: number, deps: Set<number>): void {
     if (exprId < 0) return;
     const kind = this.arena.getExprKind(exprId);

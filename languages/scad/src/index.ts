@@ -17,25 +17,25 @@ export interface ScadCadComponent {
   name: string;
   cad: {
     uri: string;
-    position?: [number, number, number];
-    rotation?: [number, number, number];
-    scale?: [number, number, number];
+    position?: [number, number, number] | undefined;
+    rotation?: [number, number, number] | undefined;
+    scale?: [number, number, number] | undefined;
   };
   proceduralMesh: {
     vertices: number[];
     indices: number[];
     normals: number[];
-    color?: [number, number, number, number];
+    color?: [number, number, number, number] | undefined;
   };
   ports: {
     name: string;
     port: {
       feature: string;
-      offsetPosition?: [number, number, number];
+      offsetPosition?: [number, number, number] | undefined;
     };
   }[];
   dynamicBindings: any[];
-  sourceMetadata?: SolidSourceMetadata;
+  sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
 let cachedParser: TreeSitterParser | null = null;
@@ -46,7 +46,7 @@ function findFile(relativePaths: string[]): string {
     const candidate = path.resolve(currentDir, rel);
     if (fs.existsSync(candidate)) return candidate;
   }
-  return path.resolve(currentDir, relativePaths[0]);
+  return path.resolve(currentDir, relativePaths[0]!);
 }
 
 /**
@@ -123,7 +123,7 @@ export async function extractScadCadComponents(
 
   const components: ScadCadComponent[] = [];
   for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
+    const part = parts[i]!;
     const mesh = ManifoldWorker.evaluateSolid(part);
     if (mesh.indices.length === 0) continue;
 
@@ -136,9 +136,9 @@ export async function extractScadCadComponents(
     // places the TransformControls gizmo at `userPos` without double-translating the mesh.
     const shiftedVerts = new Array<number>(mesh.vertices.length);
     for (let v = 0; v < mesh.vertices.length; v += 3) {
-      shiftedVerts[v] = mesh.vertices[v] - userPos[0];
-      shiftedVerts[v + 1] = mesh.vertices[v + 1] - userPos[1];
-      shiftedVerts[v + 2] = mesh.vertices[v + 2] - userPos[2];
+      shiftedVerts[v] = mesh.vertices[v]! - userPos[0];
+      shiftedVerts[v + 1] = mesh.vertices[v + 1]! - userPos[1];
+      shiftedVerts[v + 2] = mesh.vertices[v + 2]! - userPos[2];
     }
 
     const ports = mesh.tags.map((t) => ({

@@ -78,33 +78,36 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
   if (kind == ExprKind.Call) {
     let left = e.left;
     let right = e.right;
-    let funcId = e.funcId as i32;
+    let funcId = dae.resolveBuiltinMathFunc(e.funcId as i32);
     let v1 = evalExpr(left, dae, varValuesPtr);
 
-    if (funcId == BuiltinMathFunc.Sin)   return Math.sin(v1);
-    if (funcId == BuiltinMathFunc.Cos)   return Math.cos(v1);
-    if (funcId == BuiltinMathFunc.Tan)   return Math.tan(v1);
-    if (funcId == BuiltinMathFunc.Asin)  return Math.asin(v1);
-    if (funcId == BuiltinMathFunc.Acos)  return Math.acos(v1);
-    if (funcId == BuiltinMathFunc.Atan)  return Math.atan(v1);
-    if (funcId == BuiltinMathFunc.Sinh)  return Math.sinh(v1);
-    if (funcId == BuiltinMathFunc.Cosh)  return Math.cosh(v1);
-    if (funcId == BuiltinMathFunc.Tanh)  return Math.tanh(v1);
-    if (funcId == BuiltinMathFunc.Exp)   return Math.exp(v1);
-    if (funcId == BuiltinMathFunc.Log)   return Math.log(v1);
-    if (funcId == BuiltinMathFunc.Log10) return Math.log10(v1);
-    if (funcId == BuiltinMathFunc.Sqrt)  return Math.sqrt(v1);
-    if (funcId == BuiltinMathFunc.Abs)   return Math.abs(v1);
-    if (funcId == BuiltinMathFunc.Sign)  return v1 > 0.0 ? 1.0 : v1 < 0.0 ? -1.0 : 0.0;
-    if (funcId == BuiltinMathFunc.Floor) return Math.floor(v1);
-    if (funcId == BuiltinMathFunc.Ceil)  return Math.ceil(v1);
+    if (funcId == BuiltinMathFunc.Sin)     return Math.sin(v1);
+    if (funcId == BuiltinMathFunc.Cos)     return Math.cos(v1);
+    if (funcId == BuiltinMathFunc.Tan)     return Math.tan(v1);
+    if (funcId == BuiltinMathFunc.Asin)    return Math.asin(v1);
+    if (funcId == BuiltinMathFunc.Acos)    return Math.acos(v1);
+    if (funcId == BuiltinMathFunc.Atan)    return Math.atan(v1);
+    if (funcId == BuiltinMathFunc.Sinh)    return Math.sinh(v1);
+    if (funcId == BuiltinMathFunc.Cosh)    return Math.cosh(v1);
+    if (funcId == BuiltinMathFunc.Tanh)    return Math.tanh(v1);
+    if (funcId == BuiltinMathFunc.Exp)     return Math.exp(v1);
+    if (funcId == BuiltinMathFunc.Log)     return Math.log(v1);
+    if (funcId == BuiltinMathFunc.Log10)   return Math.log10(v1);
+    if (funcId == BuiltinMathFunc.Sqrt)    return Math.sqrt(v1);
+    if (funcId == BuiltinMathFunc.Abs)     return Math.abs(v1);
+    if (funcId == BuiltinMathFunc.Sign)    return v1 > 0.0 ? 1.0 : v1 < 0.0 ? -1.0 : 0.0;
+    if (funcId == BuiltinMathFunc.Floor)   return Math.floor(v1);
+    if (funcId == BuiltinMathFunc.Ceil)    return Math.ceil(v1);
+    if (funcId == BuiltinMathFunc.NoEvent || funcId == BuiltinMathFunc.Homotopy) return v1;
 
     if (
       funcId == BuiltinMathFunc.Atan2 ||
       funcId == BuiltinMathFunc.Min ||
       funcId == BuiltinMathFunc.Max ||
       funcId == BuiltinMathFunc.Fmod ||
-      funcId == BuiltinMathFunc.Pow
+      funcId == BuiltinMathFunc.Pow ||
+      funcId == BuiltinMathFunc.Smooth ||
+      funcId == BuiltinMathFunc.SemiLinear
     ) {
       let secondArgId = right;
       if (exprId + 1 < dae.exprCount) {
@@ -117,11 +120,23 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
         secondArgId = left + 1;
       }
       let v2 = evalExpr(secondArgId, dae, varValuesPtr);
-      if (funcId == BuiltinMathFunc.Atan2) return Math.atan2(v1, v2);
-      if (funcId == BuiltinMathFunc.Min)   return Math.min(v1, v2);
-      if (funcId == BuiltinMathFunc.Max)   return Math.max(v1, v2);
-      if (funcId == BuiltinMathFunc.Fmod)  return v2 != 0.0 ? v1 % v2 : 0.0;
-      if (funcId == BuiltinMathFunc.Pow)   return Math.pow(v1, v2);
+      if (funcId == BuiltinMathFunc.Atan2)  return Math.atan2(v1, v2);
+      if (funcId == BuiltinMathFunc.Min)    return Math.min(v1, v2);
+      if (funcId == BuiltinMathFunc.Max)    return Math.max(v1, v2);
+      if (funcId == BuiltinMathFunc.Fmod)   return v2 != 0.0 ? v1 % v2 : 0.0;
+      if (funcId == BuiltinMathFunc.Pow)    return Math.pow(v1, v2);
+      if (funcId == BuiltinMathFunc.Smooth) return v2;
+      if (funcId == BuiltinMathFunc.SemiLinear) {
+        let thirdArgId: u32 = 0xffffffff;
+        if (exprId + 2 < dae.exprCount) {
+          let next2Acc = ExprAccessor.at(dae.getExprData(), exprId + 2);
+          if (next2Acc.kind == ExprKind.Tuple) {
+            thirdArgId = next2Acc.left;
+          }
+        }
+        let v3 = thirdArgId < dae.exprCount ? evalExpr(thirdArgId, dae, varValuesPtr) : 0.0;
+        return v1 >= 0.0 ? v2 * v1 : v3 * v1;
+      }
     }
   }
 

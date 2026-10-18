@@ -20,15 +20,15 @@ export interface CanonicalTraceRecord {
   /** Continuous time-series signals: signalName -> values of length T */
   continuousSignals: Record<string, number[]>;
   /** Discrete state signals: variableName -> state value at each time index */
-  discreteSignals?: Record<string, (string | number | boolean)[]>;
+  discreteSignals?: Record<string, (string | number | boolean)[]> | undefined;
   /** Index k in times where requirement/property violation occurs */
-  violatingTimeIndex?: number;
+  violatingTimeIndex?: number | undefined;
   /** Property, contract, or STL requirement name violated */
-  violatingProperty?: string;
+  violatingProperty?: string | undefined;
   /** Parameter assignment vector associated with this trace */
-  parameters?: Record<string, number>;
+  parameters?: Record<string, number> | undefined;
   /** Additional diagnostic metadata */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export class TraceRecordNormalizer {
@@ -68,10 +68,10 @@ export class TraceRecordNormalizer {
   public static fromFalsificationTrajectory(options: {
     times: number[];
     signals: Record<string, number[]>;
-    parameters?: Record<string, number>;
-    propertyName?: string;
+    parameters?: Record<string, number> | undefined;
+    propertyName?: string | undefined;
     minRobustness: number;
-    violatingTimeIndex?: number;
+    violatingTimeIndex?: number | undefined;
   }): CanonicalTraceRecord {
     const {
       times,
@@ -104,8 +104,8 @@ export class TraceRecordNormalizer {
     times: number[];
     variableNames: string[];
     tubes: { lo: number; hi: number }[][];
-    propertyName?: string;
-    violatingStepIndex?: number;
+    propertyName?: string | undefined;
+    violatingStepIndex?: number | undefined;
   }): CanonicalTraceRecord {
     const { times, variableNames, tubes, propertyName = "FlowpipeSafetyInclusion", violatingStepIndex } = options;
 

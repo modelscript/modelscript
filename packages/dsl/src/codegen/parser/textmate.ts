@@ -65,13 +65,13 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
   const $ = new Proxy(
     {},
     {
-      get(target, prop) {
+      get(_target, prop) {
         return { type: "REF", value: prop as string };
       },
     },
   );
 
-  for (const ruleFn of Object.values(langConfig.rules)) {
+  for (const ruleFn of Object.values(langConfig.rules ?? {})) {
     const rule = (ruleFn as any)($);
     collectTokens(rule, acc);
   }

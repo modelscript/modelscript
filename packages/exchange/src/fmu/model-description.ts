@@ -25,12 +25,14 @@ export interface FmiDefaultExperiment {
 
 /** Parsed FMU model description. */
 export interface FmiModelDescription {
-  /** FMI version string (e.g. "2.0"). */
+  /** FMI version string (e.g. "2.0" or "3.0"). */
   fmiVersion: string;
   /** Model name. */
   modelName: string;
-  /** Globally unique identifier. */
+  /** Globally unique identifier (or instantiationToken in FMI 3.0). */
   guid: string;
+  /** FMI 3.0 instantiationToken if present. */
+  instantiationToken?: string | undefined;
   /** Description of the model. */
   description: string | undefined;
   /** Author. */
@@ -41,18 +43,30 @@ export interface FmiModelDescription {
   coSimulationModelIdentifier: string | undefined;
   /** Model identifier for model exchange. */
   modelExchangeModelIdentifier: string | undefined;
+  /** Model identifier for scheduled execution (FMI 3.0). */
+  scheduledExecutionModelIdentifier?: string | undefined;
   /** Whether co-simulation is supported. */
   supportsCoSimulation: boolean;
   /** Whether model exchange is supported. */
   supportsModelExchange: boolean;
+  /** Whether scheduled execution is supported (FMI 3.0). */
+  supportsScheduledExecution?: boolean | undefined;
   /** Default experiment settings. */
   defaultExperiment: FmiDefaultExperiment | undefined;
   /** All scalar variables. */
   variables: FmiScalarVariable[];
   /** Number of event indicators. */
   numberOfEventIndicators: number | undefined;
+  /** Parsed ModelStructure section (outputs, derivatives, initialUnknowns). */
+  modelStructure?:
+    | {
+        outputs: number[];
+        derivatives: number[];
+        initialUnknowns: number[];
+      }
+    | undefined;
   /** FMI 3.0 Terminals and Icons (if present in modelDescription or archive). */
-  terminals?: FmiTerminal[];
+  terminals?: FmiTerminal[] | undefined;
 }
 
 /**
@@ -65,7 +79,9 @@ export function parseModelDescription(xml: string): FmiModelDescription {
   // Extract root attributes
   const fmiVersion = extractAttr(xml, "fmiModelDescription", "fmiVersion") ?? "2.0";
   const modelName = extractAttr(xml, "fmiModelDescription", "modelName") ?? "Unknown";
-  const guid = extractAttr(xml, "fmiModelDescription", "guid") ?? "";
+  const rawGuid = extractAttr(xml, "fmiModelDescription", "guid");
+  const instantiationToken = extractAttr(xml, "fmiModelDescription", "instantiationToken");
+  const guid = rawGuid ?? instantiationToken ?? "";
   const description = extractAttr(xml, "fmiModelDescription", "description");
   const author = extractAttr(xml, "fmiModelDescription", "author");
   const generationTool = extractAttr(xml, "fmiModelDescription", "generationTool");
@@ -80,6 +96,11 @@ export function parseModelDescription(xml: string): FmiModelDescription {
   const meBlock = extractTagBlock(xml, "ModelExchange");
   const supportsModelExchange = meBlock !== null;
   const modelExchangeModelIdentifier = meBlock ? extractAttrFromStr(meBlock.attrs, "modelIdentifier") : undefined;
+
+  // Scheduled Execution support (FMI 3.0)
+  const seBlock = extractTagBlock(xml, "ScheduledExecution");
+  const supportsScheduledExecution = seBlock !== null;
+  const scheduledExecutionModelIdentifier = seBlock ? extractAttrFromStr(seBlock.attrs, "modelIdentifier") : undefined;
 
   // Default experiment
   const expBlock = extractTagBlock(xml, "DefaultExperiment");
@@ -98,7 +119,7 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     };
   }
 
-  // Parse scalar variables
+  // Parse scalar variables (FMI 2.0)
   const variables: FmiScalarVariable[] = [];
   const svElements = extractTagElements(xml, "ScalarVariable");
 
@@ -108,12 +129,14 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     const svDescription = extractAttrFromStr(attrs, "description");
     const causality = (extractAttrFromStr(attrs, "causality") ?? "local") as FmiCausality;
     const variability = (extractAttrFromStr(attrs, "variability") ?? "continuous") as FmiVariability;
+    const initial = extractAttrFromStr(attrs, "initial") as FmiScalarVariable["initial"];
 
     // Determine type and start value from child element
     let type: FmiScalarVariable["type"] = "Real";
     let start: number | string | boolean | undefined;
     let unit: string | undefined;
     let displayUnit: string | undefined;
+    let derivative: number | undefined;
 
     let typeBlock: { attrs: string; body: string } | null = null;
     for (const t of ["Real", "Integer", "Boolean", "String", "Enumeration"] as const) {
@@ -141,6 +164,10 @@ export function parseModelDescription(xml: string): FmiModelDescription {
 
       unit = extractAttrFromStr(typeAttrs, "unit");
       displayUnit = extractAttrFromStr(typeAttrs, "displayUnit");
+      const derStr = extractAttrFromStr(typeAttrs, "derivative");
+      if (derStr !== undefined) {
+        derivative = parseInt(derStr, 10);
+      }
     }
 
     variables.push({
@@ -153,10 +180,12 @@ export function parseModelDescription(xml: string): FmiModelDescription {
       start,
       unit,
       displayUnit,
+      initial,
+      derivative,
     });
   }
 
-  // Parse FMI 3.0 typed variables (Float64, Float32, Int32, Boolean, etc.)
+  // Parse FMI 3.0 typed variables (Float64, Float32, Int32, Boolean, Clock, etc.)
   const fmi3TypeTags: { tag: string; moType: FmiScalarVariable["type"] }[] = [
     { tag: "Float32", moType: "Real" },
     { tag: "Float64", moType: "Real" },
@@ -170,12 +199,16 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     { tag: "UInt64", moType: "Integer" },
     { tag: "Boolean", moType: "Boolean" },
     { tag: "String", moType: "String" },
+    { tag: "Binary", moType: "String" },
     { tag: "Enumeration", moType: "Enumeration" },
+    { tag: "Clock", moType: "Clock" },
   ];
+
+  const pendingDims: { sv: FmiScalarVariable; dims: { start?: number; vr?: number }[] }[] = [];
 
   for (const { tag, moType } of fmi3TypeTags) {
     const elements = extractTagElements(xml, tag);
-    for (const { attrs } of elements) {
+    for (const { attrs, body } of elements) {
       const name = extractAttrFromStr(attrs, "name");
       const vrStr = extractAttrFromStr(attrs, "valueReference");
       // Ensure this is a ModelVariable element (has name and valueReference)
@@ -185,24 +218,34 @@ export function parseModelDescription(xml: string): FmiModelDescription {
       const svDescription = extractAttrFromStr(attrs, "description");
       const causality = (extractAttrFromStr(attrs, "causality") ?? "local") as FmiCausality;
       const variability = (extractAttrFromStr(attrs, "variability") ?? "continuous") as FmiVariability;
+      const initial = extractAttrFromStr(attrs, "initial") as FmiScalarVariable["initial"];
       const unit = extractAttrFromStr(attrs, "unit");
       const displayUnit = extractAttrFromStr(attrs, "displayUnit");
+      const derStr = extractAttrFromStr(attrs, "derivative");
+      const derivative = derStr !== undefined ? parseInt(derStr, 10) : undefined;
 
       let start: number | string | boolean | undefined;
-      const startStr = extractAttrFromStr(attrs, "start");
+      let startStr = extractAttrFromStr(attrs, "start");
+      if (startStr === undefined && body) {
+        const startBlock = extractTagBlock(body, "Start");
+        if (startBlock) {
+          startStr = extractAttrFromStr(startBlock.attrs, "value");
+        }
+      }
       if (startStr !== undefined) {
+        const firstToken = startStr.trim().split(/\s+/)[0] ?? startStr;
         if (moType === "Real") {
-          start = parseFloat(startStr);
+          start = parseFloat(firstToken);
         } else if (moType === "Integer" || moType === "Enumeration") {
-          start = parseInt(startStr, 10);
+          start = parseInt(firstToken, 10);
         } else if (moType === "Boolean") {
-          start = startStr === "true" || startStr === "1";
+          start = firstToken === "true" || firstToken === "1";
         } else {
           start = startStr;
         }
       }
 
-      variables.push({
+      const sv: FmiScalarVariable = {
         name,
         valueReference,
         description: svDescription,
@@ -212,7 +255,86 @@ export function parseModelDescription(xml: string): FmiModelDescription {
         start,
         unit,
         displayUnit,
+        initial,
+        derivative,
+      };
+      if (body) {
+        const dimElems = extractTagElements(body, "Dimension");
+        if (dimElems.length > 0) {
+          const dims: { start?: number; vr?: number }[] = [];
+          for (const d of dimElems) {
+            const dStart = extractAttrFromStr(d.attrs, "start");
+            const dVr = extractAttrFromStr(d.attrs, "valueReference");
+            if (dStart !== undefined) {
+              dims.push({ start: parseInt(dStart, 10) });
+            } else if (dVr !== undefined) {
+              dims.push({ vr: parseInt(dVr, 10) });
+            }
+          }
+          if (dims.length > 0) {
+            pendingDims.push({ sv, dims });
+          }
+        }
+      }
+      variables.push(sv);
+    }
+  }
+
+  if (pendingDims.length > 0) {
+    const byVr = new Map<number, FmiScalarVariable>();
+    for (const v of variables) byVr.set(v.valueReference, v);
+    for (const { sv, dims } of pendingDims) {
+      sv.dimensions = dims.map((d) => {
+        if (d.start !== undefined && d.start > 0) return d.start;
+        if (d.vr !== undefined) {
+          const refVar = byVr.get(d.vr);
+          const n = Number(refVar?.start ?? 1);
+          return Number.isFinite(n) && n > 0 ? n : 1;
+        }
+        return 1;
       });
+    }
+  }
+
+  // Parse ModelStructure (FMI 2.0 and FMI 3.0)
+  const outputs: number[] = [];
+  const derivatives: number[] = [];
+  const initialUnknowns: number[] = [];
+  const msBlock = extractTagBlock(xml, "ModelStructure");
+  if (msBlock) {
+    const outputsBlock = extractTagBlock(msBlock.body, "Outputs");
+    if (outputsBlock) {
+      for (const u of extractTagElements(outputsBlock.body, "Unknown")) {
+        const idx = extractAttrFromStr(u.attrs, "index");
+        if (idx !== undefined) outputs.push(parseInt(idx, 10));
+      }
+    }
+    const derivsBlock = extractTagBlock(msBlock.body, "Derivatives");
+    if (derivsBlock) {
+      for (const u of extractTagElements(derivsBlock.body, "Unknown")) {
+        const idx = extractAttrFromStr(u.attrs, "index");
+        if (idx !== undefined) derivatives.push(parseInt(idx, 10));
+      }
+    }
+    const initBlock = extractTagBlock(msBlock.body, "InitialUnknowns");
+    if (initBlock) {
+      for (const u of extractTagElements(initBlock.body, "Unknown")) {
+        const idx = extractAttrFromStr(u.attrs, "index");
+        if (idx !== undefined) initialUnknowns.push(parseInt(idx, 10));
+      }
+    }
+    // FMI 3.0 tags
+    for (const o of extractTagElements(msBlock.body, "Output")) {
+      const vr = extractAttrFromStr(o.attrs, "valueReference");
+      if (vr !== undefined) outputs.push(parseInt(vr, 10));
+    }
+    for (const d of extractTagElements(msBlock.body, "ContinuousStateDerivative")) {
+      const vr = extractAttrFromStr(d.attrs, "valueReference");
+      if (vr !== undefined) derivatives.push(parseInt(vr, 10));
+    }
+    for (const iu of extractTagElements(msBlock.body, "InitialUnknown")) {
+      const vr = extractAttrFromStr(iu.attrs, "valueReference");
+      if (vr !== undefined) initialUnknowns.push(parseInt(vr, 10));
     }
   }
 
@@ -232,16 +354,20 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     fmiVersion,
     modelName,
     guid,
+    instantiationToken,
     description,
     author,
     generationTool,
     coSimulationModelIdentifier,
     modelExchangeModelIdentifier,
+    scheduledExecutionModelIdentifier,
     supportsCoSimulation,
     supportsModelExchange,
+    supportsScheduledExecution,
     defaultExperiment,
     variables,
     numberOfEventIndicators: numberOfEventIndicatorsStr ? parseInt(numberOfEventIndicatorsStr, 10) : undefined,
+    modelStructure: { outputs, derivatives, initialUnknowns },
     terminals,
   };
 }
@@ -349,12 +475,12 @@ function extractAttrFromStr(attrs: string, attr: string): string | undefined {
 
 /** Graphical placement coordinates for an FMI 3.0 Terminal. */
 export interface FmiTerminalGraphicalRepresentation {
-  x1?: number;
-  y1?: number;
-  x2?: number;
-  y2?: number;
-  x?: number;
-  y?: number;
+  x1?: number | undefined;
+  y1?: number | undefined;
+  x2?: number | undefined;
+  y2?: number | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
 }
 
 /** Member variable of an FMI 3.0 Terminal. */
@@ -367,11 +493,11 @@ export interface FmiTerminalMemberVariable {
 /** FMI 3.0 Graphical Terminal node. */
 export interface FmiTerminal {
   name: string;
-  terminalKind?: string;
-  matchingRule?: string;
-  description?: string;
+  terminalKind?: string | undefined;
+  matchingRule?: string | undefined;
+  description?: string | undefined;
   memberVariables: FmiTerminalMemberVariable[];
-  graphicalRepresentation?: FmiTerminalGraphicalRepresentation;
+  graphicalRepresentation?: FmiTerminalGraphicalRepresentation | undefined;
 }
 
 /**

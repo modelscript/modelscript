@@ -28,20 +28,20 @@ import {
 import { SysML2DaeLowerer } from "./sysml2-dae-lowerer.js";
 
 export interface HybridReachabilityBridgeOptions {
-  modelName?: string;
-  sourceText?: string;
-  timeSpan?: string | [number, number];
-  dt?: number;
-  order?: number;
-  minOrder?: number;
-  maxOrder?: number;
-  adaptive?: boolean;
-  tol?: number;
-  reachabilityEngine?: "taylor" | "zonotope";
-  useConstrainedZonotopes?: boolean;
-  maxConstrainedGenerators?: number;
-  linearMatrixA?: number[][];
-  linearMatrixB?: number[][];
+  modelName?: string | undefined;
+  sourceText?: string | undefined;
+  timeSpan?: string | [number, number] | undefined;
+  dt?: number | undefined;
+  order?: number | undefined;
+  minOrder?: number | undefined;
+  maxOrder?: number | undefined;
+  adaptive?: boolean | undefined;
+  tol?: number | undefined;
+  reachabilityEngine?: "taylor" | "zonotope" | undefined;
+  useConstrainedZonotopes?: boolean | undefined;
+  maxConstrainedGenerators?: number | undefined;
+  linearMatrixA?: number[][] | undefined;
+  linearMatrixB?: number[][] | undefined;
 }
 
 export interface HybridReachabilityBridgeResult {
@@ -52,7 +52,7 @@ export interface HybridReachabilityBridgeResult {
   jumpCount: number;
   segments: {
     modeId: string;
-    modeName?: string;
+    modeName?: string | undefined;
     startTime: number;
     endTime: number;
     stepCount: number;
@@ -77,6 +77,144 @@ export interface HybridReachabilityBridgeResult {
     reason: string;
   }[];
   summary: string;
+}
+
+function buildBenchmarkThermostatAutomaton(order: number): {
+  modes: HybridMode[];
+  transitions: HybridTransition[];
+} {
+  const heatingMode: HybridMode = {
+    id: "Heating",
+    name: "Heating Phase",
+    dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
+      const const3 = TaylorModel.constant(3.0, y[0]!.numVars, y[0]!.domain, order);
+      const decr = y[0]!.scale(-0.1);
+      return [const3.add(decr)];
+    },
+  };
+
+  const coolingMode: HybridMode = {
+    id: "Cooling",
+    name: "Cooling Phase",
+    dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
+      const const1 = TaylorModel.constant(1.0, y[0]!.numVars, y[0]!.domain, order);
+      const decr = y[0]!.scale(-0.1);
+      return [const1.add(decr)];
+    },
+  };
+
+  const transitions: HybridTransition[] = [
+    {
+      id: "HeatToCool",
+      sourceModeId: "Heating",
+      targetModeId: "Cooling",
+      guard: (y: TaylorModel[]) => {
+        const const22 = TaylorModel.constant(22.0, y[0]!.numVars, y[0]!.domain, order);
+        return const22.sub(y[0]!);
+      },
+      guardPoint: (pt: number[]) => 22.0 - pt[0]!,
+      reset: (preState: Interval[]) => [new Interval(preState[0]!.lo, preState[0]!.hi)],
+      resetPoint: (pt: number[]) => [pt[0]!],
+      label: "TurnOffHeater",
+    },
+    {
+      id: "CoolToHeat",
+      sourceModeId: "Cooling",
+      targetModeId: "Heating",
+      guard: (y: TaylorModel[]) => {
+        const const18 = TaylorModel.constant(18.0, y[0]!.numVars, y[0]!.domain, order);
+        return y[0]!.sub(const18);
+      },
+      guardPoint: (pt: number[]) => pt[0]! - 18.0,
+      reset: (preState: Interval[]) => [new Interval(preState[0]!.lo, preState[0]!.hi)],
+      resetPoint: (pt: number[]) => [pt[0]!],
+      label: "TurnOnHeater",
+    },
+  ];
+
+  return { modes: [heatingMode, coolingMode], transitions };
+}
+
+function buildHybridModeFromLoweredDae(
+  modeId: string,
+  lowered: Awaited<ReturnType<typeof SysML2DaeLowerer.lowerConstraint>>,
+  defaultOrder: number,
+): HybridMode {
+  const diffEquations = new Map<string, number>();
+  for (let eqIdx = 0; eqIdx < lowered.arena.eqCount; eqIdx++) {
+    const lhs = lowered.arena.getEqLhs(eqIdx);
+    const rhs = lowered.arena.getEqRhs(eqIdx);
+    if (lowered.arena.getExprKind(lhs) === ExprKind.Der) {
+      const inner = lowered.arena.getExprData1(lhs);
+      if (lowered.arena.getExprKind(inner) === ExprKind.Name) {
+        const nameId = lowered.arena.getExprData1(inner);
+        const varName = lowered.arena.interner.resolve(nameId) || "";
+        diffEquations.set(varName, rhs);
+        diffEquations.set(varName.split("::").pop()!, rhs);
+      }
+    } else if (lowered.arena.getExprKind(rhs) === ExprKind.Der) {
+      const inner = lowered.arena.getExprData1(rhs);
+      if (lowered.arena.getExprKind(inner) === ExprKind.Name) {
+        const nameId = lowered.arena.getExprData1(inner);
+        const varName = lowered.arena.interner.resolve(nameId) || "";
+        diffEquations.set(varName, lhs);
+        diffEquations.set(varName.split("::").pop()!, lhs);
+      }
+    }
+  }
+
+  return {
+    id: modeId,
+    name: `${modeId} Phase`,
+    dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
+      if (y.length === 0) return [];
+      const domainBoxes = y[0]!.domain;
+      const currentOrder = y[0]!.order ?? defaultOrder;
+      const domain = new TaylorDomain(domainBoxes, currentOrder);
+
+      const stateNames = lowered.states.length > 0 ? lowered.states : ["x"];
+      const stateIndexMap = new Map<string, number>();
+      for (let idx = 0; idx < stateNames.length; idx++) {
+        const sn = stateNames[idx]!;
+        stateIndexMap.set(sn, idx);
+        stateIndexMap.set(sn.split("::").pop()!, idx);
+      }
+
+      const env: ArenaEvalEnv<TaylorModel> = {
+        variable: (varIdx: number, _name: string) => {
+          const vName = lowered.arena.getVarName(varIdx);
+          const shortName = vName.split("::").pop() || vName;
+          const sIdx = stateIndexMap.get(vName) ?? stateIndexMap.get(shortName);
+          if (sIdx !== undefined && sIdx < y.length && y[sIdx]) {
+            return y[sIdx]!;
+          }
+          const startVal = lowered.arena.getVarStartValue(varIdx);
+          return domain.constant(isNaN(startVal) ? 0 : startVal);
+        },
+        derivative: () => domain.constant(0),
+      };
+
+      const derivativesOut: TaylorModel[] = [];
+      for (let i = 0; i < stateNames.length; i++) {
+        const sName = stateNames[i]!;
+        const rhsExprId = diffEquations.get(sName) ?? diffEquations.get(sName.split("::").pop()!);
+        if (rhsExprId !== undefined) {
+          try {
+            const evalRes = evalArenaExpr<TaylorModel>(lowered.arena, rhsExprId, env, domain);
+            if (evalRes && evalRes.value) {
+              derivativesOut.push(evalRes.value);
+              continue;
+            }
+          } catch {
+            // Fall through to zero derivative
+          }
+        }
+        // State without an explicit derivative equation has zero rate of change (dx/dt = 0)
+        derivativesOut.push(domain.constant(0));
+      }
+      return derivativesOut.length > 0 ? derivativesOut : [domain.constant(0)];
+    },
+  };
 }
 
 /**
@@ -121,61 +259,6 @@ export async function verifyHybridSysml2Reachability(
     }
   }
 
-  // Construct canonical hybrid automaton representing hybrid continuous/discrete dynamics
-  // Default benchmark: 2-mode switching system (e.g. heating/cooling or bounce)
-  const heatingMode: HybridMode = {
-    id: "Heating",
-    name: "Heating Phase",
-    dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
-      // dT/dt = -0.1 * (T - 30) => 3.0 - 0.1 * T
-      const const3 = TaylorModel.constant(3.0, y[0]!.numVars, y[0]!.domain, order);
-      const decr = y[0]!.scale(-0.1);
-      return [const3.add(decr)];
-    },
-  };
-
-  const coolingMode: HybridMode = {
-    id: "Cooling",
-    name: "Cooling Phase",
-    dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
-      // dT/dt = -0.1 * (T - 10) => 1.0 - 0.1 * T
-      const const1 = TaylorModel.constant(1.0, y[0]!.numVars, y[0]!.domain, order);
-      const decr = y[0]!.scale(-0.1);
-      return [const1.add(decr)];
-    },
-  };
-
-  const transitions: HybridTransition[] = [
-    {
-      id: "HeatToCool",
-      sourceModeId: "Heating",
-      targetModeId: "Cooling",
-      guard: (y: TaylorModel[]) => {
-        // Guard: T >= 22 => 22 - T <= 0
-        const const22 = TaylorModel.constant(22.0, y[0]!.numVars, y[0]!.domain, order);
-        return const22.sub(y[0]!);
-      },
-      guardPoint: (pt: number[]) => 22.0 - pt[0]!,
-      reset: (preState: Interval[]) => [new Interval(preState[0]!.lo, preState[0]!.hi)],
-      resetPoint: (pt: number[]) => [pt[0]!],
-      label: "TurnOffHeater",
-    },
-    {
-      id: "CoolToHeat",
-      sourceModeId: "Cooling",
-      targetModeId: "Heating",
-      guard: (y: TaylorModel[]) => {
-        // Guard: T <= 18 => T - 18 <= 0
-        const const18 = TaylorModel.constant(18.0, y[0]!.numVars, y[0]!.domain, order);
-        return y[0]!.sub(const18);
-      },
-      guardPoint: (pt: number[]) => pt[0]! - 18.0,
-      reset: (preState: Interval[]) => [new Interval(preState[0]!.lo, preState[0]!.hi)],
-      resetPoint: (pt: number[]) => [pt[0]!],
-      label: "TurnOnHeater",
-    },
-  ];
-
   // Dynamically lower custom state definitions and equations when source text is provided
   const sourceText = options.sourceText || queryDB?.source || (queryDB?.doc?.text ? queryDB.doc.text : "");
   const customModes: HybridMode[] = [];
@@ -188,98 +271,57 @@ export async function verifyHybridSysml2Reachability(
         const stateBody = sm[2]!;
         const lowered = await SysML2DaeLowerer.lowerConstraint(`constraint def ${stateName} { ${stateBody} }`);
         if (lowered.derivatives.length > 0) {
-          // Map each state variable to its RHS expression ID in the lowered arena
-          const diffEquations = new Map<string, number>();
-          for (let eqIdx = 0; eqIdx < lowered.arena.eqCount; eqIdx++) {
-            const lhs = lowered.arena.getEqLhs(eqIdx);
-            const rhs = lowered.arena.getEqRhs(eqIdx);
-            if (lowered.arena.getExprKind(lhs) === ExprKind.Der) {
-              const inner = lowered.arena.getExprData1(lhs);
-              if (lowered.arena.getExprKind(inner) === ExprKind.Name) {
-                const nameId = lowered.arena.getExprData1(inner);
-                const varName = lowered.arena.interner.resolve(nameId) || "";
-                diffEquations.set(varName, rhs);
-                diffEquations.set(varName.split("::").pop()!, rhs);
-              }
-            } else if (lowered.arena.getExprKind(rhs) === ExprKind.Der) {
-              const inner = lowered.arena.getExprData1(rhs);
-              if (lowered.arena.getExprKind(inner) === ExprKind.Name) {
-                const nameId = lowered.arena.getExprData1(inner);
-                const varName = lowered.arena.interner.resolve(nameId) || "";
-                diffEquations.set(varName, lhs);
-                diffEquations.set(varName.split("::").pop()!, lhs);
-              }
-            }
-          }
-
-          customModes.push({
-            id: stateName,
-            name: `${stateName} Phase`,
-            dynamics: (_t: TaylorModel, y: TaylorModel[]) => {
-              if (y.length === 0) return [];
-              const numVars = y[0]!.numVars;
-              const domainBoxes = y[0]!.domain;
-              const currentOrder = y[0]!.order ?? order;
-              const domain = new TaylorDomain(domainBoxes, currentOrder);
-
-              const stateNames = lowered.states.length > 0 ? lowered.states : ["T"];
-              const stateIndexMap = new Map<string, number>();
-              for (let idx = 0; idx < stateNames.length; idx++) {
-                const sn = stateNames[idx]!;
-                stateIndexMap.set(sn, idx);
-                stateIndexMap.set(sn.split("::").pop()!, idx);
-              }
-
-              const env: ArenaEvalEnv<TaylorModel> = {
-                variable: (varIdx: number, _name: string) => {
-                  const vName = lowered.arena.getVarName(varIdx);
-                  const shortName = vName.split("::").pop() || vName;
-                  const sIdx = stateIndexMap.get(vName) ?? stateIndexMap.get(shortName);
-                  if (sIdx !== undefined && sIdx < y.length && y[sIdx]) {
-                    return y[sIdx]!;
-                  }
-                  const startVal = lowered.arena.getVarStartValue(varIdx);
-                  return domain.constant(isNaN(startVal) ? 0 : startVal);
-                },
-                derivative: () => domain.constant(0),
-              };
-
-              const derivativesOut: TaylorModel[] = [];
-              for (let i = 0; i < stateNames.length; i++) {
-                const sName = stateNames[i]!;
-                const rhsExprId = diffEquations.get(sName) ?? diffEquations.get(sName.split("::").pop()!);
-                if (rhsExprId !== undefined) {
-                  try {
-                    const evalRes = evalArenaExpr<TaylorModel>(lowered.arena, rhsExprId, env, domain);
-                    if (evalRes && evalRes.value) {
-                      derivativesOut.push(evalRes.value);
-                      continue;
-                    }
-                  } catch {
-                    // Fallback to linear
-                  }
-                }
-                const fallbackConst = TaylorModel.constant(
-                  stateName.toLowerCase().includes("heat") ? 3.0 : 1.0,
-                  numVars,
-                  domainBoxes,
-                  currentOrder,
-                );
-                derivativesOut.push(fallbackConst.add(y[i] ? y[i]!.scale(-0.1) : y[0]!.scale(-0.1)));
-              }
-              return derivativesOut.length > 0 ? derivativesOut : [y[0]!.scale(-0.1)];
-            },
-          });
+          customModes.push(buildHybridModeFromLoweredDae(stateName, lowered, order));
+        }
+      }
+      // If no `state def` blocks had derivatives, check if the model defines continuous ODEs in a constraint/part def
+      if (customModes.length === 0) {
+        const loweredWhole = await SysML2DaeLowerer.lowerConstraint(sourceText);
+        if (loweredWhole.derivatives.length > 0) {
+          customModes.push(buildHybridModeFromLoweredDae(targetName, loweredWhole, order));
         }
       }
     } catch {
-      // Fallback cleanly to default benchmark modes
+      // Fallback cleanly to default benchmark modes when no custom dynamics can be lowered
     }
   }
 
-  const modes = customModes.length >= 2 ? customModes : [heatingMode, coolingMode];
+  const benchmark = customModes.length === 0 ? buildBenchmarkThermostatAutomaton(order) : null;
+  const modes = customModes.length >= 1 ? customModes : benchmark!.modes;
   const modeIdSet = new Set(modes.map((m) => m.id));
-  const validTransitions = transitions.filter((t) => modeIdSet.has(t.sourceModeId) && modeIdSet.has(t.targetModeId));
+  const validTransitions = benchmark
+    ? benchmark.transitions.filter((t) => modeIdSet.has(t.sourceModeId) && modeIdSet.has(t.targetModeId))
+    : [];
+
+  if (sourceText && customModes.length >= 2) {
+    const transRegex =
+      /\btransition\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s+)?first\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:if\s+([^{;\n]+?)\s+)?then\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+    let tm: RegExpExecArray | null;
+    while ((tm = transRegex.exec(sourceText)) !== null) {
+      const transName = tm[1] || `${tm[2]}To${tm[4]}`;
+      const srcMode = tm[2]!;
+      const guardExpr = (tm[3] || "").trim();
+      const dstMode = tm[4]!;
+      if (!modeIdSet.has(srcMode) || !modeIdSet.has(dstMode)) continue;
+      const numMatch = guardExpr.match(/([<>]=?)\s*([+-]?\d+(?:\.\d+)?)/);
+      const op = numMatch?.[1] ?? ">=";
+      const thresholdVal = numMatch?.[2] !== undefined ? parseFloat(numMatch[2]) : 25.0;
+      const isGreater = op.startsWith(">");
+      validTransitions.push({
+        id: transName,
+        sourceModeId: srcMode,
+        targetModeId: dstMode,
+        guard: (y: TaylorModel[]) => {
+          const threshold = TaylorModel.constant(thresholdVal, y[0]!.numVars, y[0]!.domain, order);
+          return isGreater ? threshold.sub(y[0]!) : y[0]!.sub(threshold);
+        },
+        guardPoint: (pt: number[]) => (isGreater ? thresholdVal - pt[0]! : pt[0]! - thresholdVal),
+        reset: (preState: Interval[]) => preState.map((iv) => new Interval(iv.lo, iv.hi)),
+        resetPoint: (pt: number[]) => [...pt],
+        label: transName,
+      });
+    }
+  }
 
   if (validTransitions.length === 0 && customModes.length >= 2) {
     validTransitions.push({
@@ -301,10 +343,42 @@ export async function verifyHybridSysml2Reachability(
     modes,
     transitions: validTransitions,
   };
-  const initialModeId = automaton.modes[0]?.id ?? "Heating";
+  const initialModeId =
+    (Array.isArray(automaton.modes) ? automaton.modes[0]?.id : automaton.modes.values().next().value?.id) ?? "Heating";
 
   const initialEnclosure = [new Interval(19.8, 20.2)];
   const nominalInitial = [20.0];
+
+  const extractedReqs: { stateIndex: number; stateName: string; operator: "<=" | ">="; limitValue: number }[] = [];
+  if (sourceText) {
+    const reqBlockRegex = /\brequirement\s+(?:def\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\{([^}]*)\}/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = reqBlockRegex.exec(sourceText)) !== null) {
+      const body = rm[1]!;
+      const boundRegex = /\b([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|<|>)\s*([+-]?\d+(?:\.\d+)?)/g;
+      let bm: RegExpExecArray | null;
+      while ((bm = boundRegex.exec(body)) !== null) {
+        const varName = bm[1]!;
+        const rawOp = bm[2]!;
+        const limitVal = parseFloat(bm[3]!);
+        if (!isNaN(limitVal)) {
+          extractedReqs.push({
+            stateIndex: 0,
+            stateName: varName,
+            operator: rawOp.startsWith("<") ? "<=" : ">=",
+            limitValue: limitVal,
+          });
+        }
+      }
+    }
+  }
+  const activeRequirements =
+    extractedReqs.length > 0
+      ? extractedReqs
+      : [
+          { stateIndex: 0, stateName: "temperature", operator: "<=" as const, limitValue: 24.0 },
+          { stateIndex: 0, stateName: "temperature", operator: ">=" as const, limitValue: 16.0 },
+        ];
 
   if (options.reachabilityEngine === "zonotope") {
     const A = options.linearMatrixA || [[-0.1]];
@@ -314,10 +388,11 @@ export async function verifyHybridSysml2Reachability(
       initialSet: initialEnclosure,
       tSpan,
       dt,
-      requirements: [
-        { stateIndex: 0, operator: "<=", limitValue: 24.0 },
-        { stateIndex: 0, operator: ">=", limitValue: 16.0 },
-      ],
+      requirements: activeRequirements.map((r) => ({
+        stateIndex: r.stateIndex,
+        operator: r.operator,
+        limitValue: r.limitValue,
+      })),
     });
 
     const isLinearFallback = !options.linearMatrixA;
@@ -377,23 +452,10 @@ export async function verifyHybridSysml2Reachability(
     useConstrainedZonotopes: options.useConstrainedZonotopes,
     maxConstrainedGenerators: options.maxConstrainedGenerators,
     maxJumps,
-    requirements: [
-      {
-        stateIndex: 0,
-        stateName: "temperature",
-        operator: "<=",
-        limitValue: 24.0,
-      },
-      {
-        stateIndex: 0,
-        stateName: "temperature",
-        operator: ">=",
-        limitValue: 16.0,
-      },
-    ],
+    requirements: activeRequirements,
   });
 
-  const isBenchmarkFallback = customModes.length < 2;
+  const isBenchmarkFallback = customModes.length === 0;
   const verdict: VerificationVerdict = isBenchmarkFallback
     ? {
         kind: "unknown",

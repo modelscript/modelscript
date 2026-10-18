@@ -8,22 +8,33 @@ import { getSysmlParser } from "./sysml2-dae-lowerer.js";
  * Diagnostic emitted when a state machine transition hazard is identified.
  */
 export interface StateDeterminismDiagnostic {
+  /** Hazard category: overlapping transition guards (`nondeterminism`) or uncovered guard range (`deadlock`). */
   type: "nondeterminism" | "deadlock";
+  /** Name of the source state exhibiting the transition hazard. */
   stateName: string;
-  transitionA?: string;
-  transitionB?: string;
-  guardA?: string;
-  guardB?: string;
+  /** First conflicting outgoing transition name when `type === "nondeterminism"`. */
+  transitionA?: string | undefined;
+  /** Second conflicting outgoing transition name when `type === "nondeterminism"`. */
+  transitionB?: string | undefined;
+  /** Guard condition string of `transitionA`. */
+  guardA?: string | undefined;
+  /** Guard condition string of `transitionB`. */
+  guardB?: string | undefined;
+  /** Human-readable explanation of the overlapping witness interval or unhandled domain gap. */
   message: string;
-  unhandledRange?: string;
+  /** Interval notation describing the uncovered variable range when `type === "deadlock"`. */
+  unhandledRange?: string | undefined;
 }
 
 /**
  * Full result of state machine determinism and completeness verification.
  */
 export interface StateDeterminismResult {
+  /** True if all pairwise outgoing transition guards from every verified state are mutually exclusive. */
   isDeterministic: boolean;
+  /** True if every verified state with guarded transitions covers the entire real domain (or has an unguarded fallback). */
   isComplete: boolean;
+  /** List of nondeterminism and deadlock diagnostics discovered across verified states. */
   diagnostics: StateDeterminismDiagnostic[];
 }
 
@@ -31,10 +42,14 @@ export interface StateDeterminismResult {
  * Normalized representation of a single comparison constraint.
  */
 export interface GuardConstraint {
+  /** Canonical variable identifier referenced by the comparison (or primary variable for nonlinear constraints). */
   variable: string;
+  /** Relational comparison operator. */
   operator: "<=" | "<" | ">=" | ">" | "==" | "!=";
+  /** Numeric right-hand side constant threshold. */
   value: number;
-  nonlinear?: NonlinearConstraint;
+  /** Optional AST-backed nonlinear constraint payload for DPLL(T) + HC4 interval contractor solving. */
+  nonlinear?: NonlinearConstraint | undefined;
 }
 
 /**
@@ -329,7 +344,7 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
       consume(); // '('
       const arg = parseExpr();
       if (!arg || consume() !== ")") return undefined;
-      const lower = fn.toLowerCase();
+      const lower = fn!.toLowerCase();
       if (lower === "sin") return { kind: "sin", child: arg };
       if (lower === "cos") return { kind: "cos", child: arg };
       if (lower === "sqrt") return { kind: "sqrt", child: arg };
@@ -424,9 +439,9 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
     const match = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(<=|>=|==|!=|<|>)\s*(-?[0-9]+(?:\.[0-9]+)?)$/);
     if (match) {
       constraints.push({
-        variable: match[1],
+        variable: match[1]!,
         operator: match[2] as GuardConstraint["operator"],
-        value: parseFloat(match[3]),
+        value: parseFloat(match[3]!),
       });
       continue;
     }
@@ -434,9 +449,9 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
     // Pattern: value op variable e.g. "0 < fuelLevel", "10 >= x"
     const revMatch = trimmed.match(/^(-?[0-9]+(?:\.[0-9]+)?)\s*(<=|>=|==|!=|<|>)\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/);
     if (revMatch) {
-      const val = parseFloat(revMatch[1]);
+      const val = parseFloat(revMatch[1]!);
       const op = revMatch[2];
-      const variable = revMatch[3];
+      const variable = revMatch[3]!;
       let invertedOp: GuardConstraint["operator"];
       switch (op) {
         case "<":
@@ -538,7 +553,7 @@ export function parseGuardDNF(guardText: string): GuardDNF {
 function checkConjunctPairMutuallyExclusive(
   conjA: GuardConstraint[],
   conjB: GuardConstraint[],
-): { mutuallyExclusive: boolean; overlap?: string } {
+): { mutuallyExclusive: boolean; overlap?: string | undefined } {
   const allConstraints = [...conjA, ...conjB];
   const hasNonlinear = allConstraints.some((c) => c.nonlinear !== undefined);
 
@@ -614,6 +629,7 @@ function checkConjunctPairMutuallyExclusive(
     };
   }
 
+  // Fast-path for purely univariate linear comparisons: intersect strict/non-strict intervals per variable
   interface RealBound {
     lower: number;
     lowerStrict: boolean;
@@ -674,6 +690,7 @@ function checkConjunctPairMutuallyExclusive(
         break;
     }
 
+    // Empty intersection check: lower > upper, degenerate open interval (x < c && x > c), or point excluded by `!=`
     if (
       b.lower > b.upper ||
       (b.lower === b.upper && (b.lowerStrict || b.upperStrict)) ||
@@ -705,7 +722,7 @@ function checkConjunctPairMutuallyExclusive(
 export function checkGuardsMutuallyExclusive(
   guardA: string,
   guardB: string,
-): { mutuallyExclusive: boolean; overlap?: string } {
+): { mutuallyExclusive: boolean; overlap?: string | undefined } {
   // Try DNF parsing first (handles both simple and disjunctive guards)
   const dnfA = parseGuardDNF(guardA);
   const dnfB = parseGuardDNF(guardB);
@@ -738,7 +755,7 @@ export function checkGuardsMutuallyExclusive(
 export function checkSingleVarExhaustive(
   variable: string,
   constraintsList: GuardConstraint[][],
-): { exhaustive: boolean; unhandledRange?: string } {
+): { exhaustive: boolean; unhandledRange?: string | undefined } {
   // Collect intervals [lo, hi] permitted by each transition
   interface IntervalItem {
     lo: number;
@@ -775,7 +792,7 @@ export function checkSingleVarExhaustive(
   // Sort intervals by lower bound
   intervals.sort((a, b) => a.lo - b.lo);
 
-  // Check coverage
+  // Sweep-line coverage check from -∞ to +∞ across sorted guard intervals
   let currentCoverage = -Infinity;
   for (const interval of intervals) {
     if (interval.lo > currentCoverage) {
@@ -800,13 +817,22 @@ export function checkSingleVarExhaustive(
   return { exhaustive: true };
 }
 
+/**
+ * Descriptor for a state machine transition extracted from the symbol table or CST.
+ */
 export interface TransitionDescriptor {
+  /** Unique symbol ID or synthetic identifier for the transition. */
   id: string | number;
+  /** Transition usage name (or synthesized fallback name). */
   name: string;
+  /** Name of the source state from which this transition originates. */
   source: string;
-  target?: string;
-  guardText?: string;
-  cstText?: string;
+  /** Optional name of the destination target state. */
+  target?: string | undefined;
+  /** Optional guard expression string (`if <guardText>`) governing transition firing. */
+  guardText?: string | undefined;
+  /** Optional raw CST source slice for the transition declaration. */
+  cstText?: string | undefined;
 }
 
 /**
@@ -915,7 +941,7 @@ export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: stri
     const outgoing: TransitionDescriptor[] = [];
 
     for (const t of transitionEntries) {
-      const metaSource = t.metadata?.source;
+      const metaSource = t.metadata?.["source"];
       let matches = metaSource === stateName;
 
       // Also check CST text if metadata isn't fully resolved
@@ -927,13 +953,13 @@ export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: stri
       }
 
       if (matches) {
-        let guardText = t.metadata?.guard;
+        let guardText = t.metadata?.["guard"];
         if (!guardText) {
           // Extract "if <guard>" from CST
           const cstText = db.cstText(t.startByte, t.endByte, t);
           if (cstText) {
             const ifMatch = cstText.match(/\bif\s+([^{;do]+?)(?:\s+do|\s+then|[;{]|$)/);
-            if (ifMatch) guardText = ifMatch[1].trim();
+            if (ifMatch) guardText = ifMatch[1]!.trim();
           }
         }
 
@@ -941,7 +967,7 @@ export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: stri
           id: t.id,
           name: t.name || `transition_${t.id}`,
           source: stateName,
-          target: typeof t.metadata?.target === "string" ? t.metadata.target : undefined,
+          target: typeof t.metadata?.["target"] === "string" ? t.metadata["target"] : undefined,
           guardText: typeof guardText === "string" ? guardText : undefined,
         });
       }

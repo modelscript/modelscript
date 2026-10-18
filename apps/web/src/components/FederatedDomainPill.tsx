@@ -37,9 +37,9 @@ const PillContainer = styled.a`
 
 interface FederatedDomainPillProps {
   domain: string;
-  className?: string;
-  style?: React.CSSProperties;
-  linkToDomain?: boolean;
+  className?: string | undefined;
+  style?: React.CSSProperties | undefined;
+  linkToDomain?: boolean | undefined;
 }
 
 export const FederatedDomainPill: React.FC<FederatedDomainPillProps> = ({

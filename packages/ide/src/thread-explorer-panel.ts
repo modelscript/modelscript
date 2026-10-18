@@ -8,7 +8,7 @@ export class ThreadExplorerPanel {
   public static readonly viewType = "modelscript.threadExplorer";
 
   private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
+  public readonly _extensionUri: vscode.Uri;
   private readonly _client: LanguageClient;
   private _disposables: vscode.Disposable[] = [];
 

@@ -390,7 +390,7 @@ export class ConstrainedZonotope {
     for (const rIdx of reducedIndices) {
       const g = this.generators[rIdx]!;
       for (let i = 0; i < n; i++) {
-        boxRadii[i] += Math.abs(g[i] ?? 0);
+        boxRadii[i] = boxRadii[i]! + Math.abs(g[i] ?? 0);
       }
     }
 
@@ -587,14 +587,14 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
   const pivot = (leaveRow: number, enterCol: number) => {
     const pivotVal = T[leaveRow]![enterCol]!;
     for (let c = 0; c <= numCols; c++) {
-      T[leaveRow]![c] /= pivotVal;
+      T[leaveRow]![c] = T[leaveRow]![c]! / pivotVal;
     }
     for (let r = 0; r <= numRows; r++) {
       if (r !== leaveRow) {
         const factor = T[r]![enterCol]!;
         if (Math.abs(factor) > 1e-15) {
           for (let c = 0; c <= numCols; c++) {
-            T[r]![c] -= factor * T[leaveRow]![c]!;
+            T[r]![c] = T[r]![c]! - factor * T[leaveRow]![c]!;
           }
         }
       }
@@ -607,9 +607,9 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
     for (let r = 0; r < numRows; r++) {
       if (rowNeedsArtificial[r]) {
         for (let c = 0; c < numStructuralVars; c++) {
-          T[numRows]![c] -= T[r]![c]!;
+          T[numRows]![c] = T[numRows]![c]! - T[r]![c]!;
         }
-        T[numRows]![numCols] -= T[r]![numCols]!;
+        T[numRows]![numCols] = T[numRows]![numCols]! - T[r]![numCols]!;
       }
     }
 
@@ -676,7 +676,7 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
     if (bVar < p) {
       const coeff = T[numRows]![bVar]!;
       for (let c = 0; c <= numCols; c++) {
-        T[numRows]![c] -= coeff * T[r]![c]!;
+        T[numRows]![c] = T[numRows]![c]! - coeff * T[r]![c]!;
       }
     }
   }

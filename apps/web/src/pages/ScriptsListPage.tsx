@@ -73,7 +73,7 @@ const MetricCard = styled.div`
   }
 `;
 
-const TabButton = styled.button<{ $isActive: boolean; $activeColor?: string }>`
+const TabButton = styled.button<{ $isActive: boolean; $activeColor?: string | undefined }>`
   padding: 12px 18px;
   background: none;
   border: none;
@@ -95,7 +95,7 @@ const TabButton = styled.button<{ $isActive: boolean; $activeColor?: string }>`
   }
 `;
 
-const FilterChip = styled.button<{ $isSelected: boolean; $activeColor?: string }>`
+const FilterChip = styled.button<{ $isSelected: boolean; $activeColor?: string | undefined }>`
   background: ${(props) =>
     props.$isSelected
       ? props.$activeColor || "var(--color-accent-cyan, #06b6d4)"
@@ -135,11 +135,11 @@ interface ScriptTemplate {
 }
 
 interface ScriptTemplateConfig {
-  solver?: string;
-  estimatedDuration?: string;
-  steps?: unknown[];
-  computeProfile?: string;
-  partitions?: string[];
+  solver?: string | undefined;
+  estimatedDuration?: string | undefined;
+  steps?: unknown[] | undefined;
+  computeProfile?: string | undefined;
+  partitions?: string[] | undefined;
 }
 
 interface UnifiedJobItem {
@@ -150,10 +150,10 @@ interface UnifiedJobItem {
   solver: string;
   profile: string;
   progress: number;
-  costCredits?: number;
+  costCredits?: number | undefined;
   started_at: string;
-  completed_at?: string | null;
-  metadata?: string | null;
+  completed_at?: string | null | undefined;
+  metadata?: string | null | undefined;
 }
 
 // ── Helper functions ───────────────────────────────────────────────
@@ -275,7 +275,11 @@ const ScriptsListPage: React.FC = () => {
         for (const dj of dbJobsRes.value.jobs) {
           const idKey = String(dj.id);
           const norm = normalizeStatus(dj.status);
-          const meta = safeJsonParse<{ templateSlug?: string; solver?: string; profile?: string }>(dj.metadata, {});
+          const meta = safeJsonParse<{
+            templateSlug?: string | undefined;
+            solver?: string | undefined;
+            profile?: string | undefined;
+          }>(dj.metadata, {});
           const existing = mergedMap.get(idKey);
 
           mergedMap.set(idKey, {

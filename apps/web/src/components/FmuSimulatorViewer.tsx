@@ -19,21 +19,21 @@ interface FmuVariable {
   valueReference: number;
   causality: string;
   variability: string;
-  description?: string;
+  description?: string | undefined;
   type: string;
-  start?: string;
-  unit?: string;
+  start?: string | undefined;
+  unit?: string | undefined;
 }
 
 interface FmuViewerProps {
   config: {
-    fmiVersion?: string;
-    modelName?: string;
-    hasWasm?: boolean;
-    inputs?: FmuVariable[];
-    outputs?: FmuVariable[];
-    parameters?: FmuVariable[];
-    platforms?: string[];
+    fmiVersion?: string | undefined;
+    modelName?: string | undefined;
+    hasWasm?: boolean | undefined;
+    inputs?: FmuVariable[] | undefined;
+    outputs?: FmuVariable[] | undefined;
+    parameters?: FmuVariable[] | undefined;
+    platforms?: string[] | undefined;
   };
   artifactPath: string;
 }

@@ -7,24 +7,24 @@
 
 export interface DynamicBindingConfig {
   property: "position" | "rotation" | "scale" | "deformation";
-  index?: number; // 0=X, 1=Y, 2=Z
+  index?: number | undefined; // 0=X, 1=Y, 2=Z
   variable: string;
-  unit?: string;
-  scale?: number;
-  offset?: number;
-  format?: "euler" | "matrix3x3" | "quaternion" | "axisAngle";
+  unit?: string | undefined;
+  scale?: number | undefined;
+  offset?: number | undefined;
+  format?: "euler" | "matrix3x3" | "quaternion" | "axisAngle" | undefined;
 }
 
 export interface CadAnnotationConfig {
-  uri?: string;
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-  scale?: [number, number, number];
-  dynamicBindings?: DynamicBindingConfig[];
-  dynamicPosition?: string;
-  dynamicRotation?: string;
-  dynamicScale?: string;
-  dynamicDeformation?: string;
+  uri?: string | undefined;
+  position?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined;
+  scale?: [number, number, number] | undefined;
+  dynamicBindings?: DynamicBindingConfig[] | undefined;
+  dynamicPosition?: string | undefined;
+  dynamicRotation?: string | undefined;
+  dynamicScale?: string | undefined;
+  dynamicDeformation?: string | undefined;
 }
 
 /**
@@ -64,7 +64,7 @@ export function parseCadBindings(cadStr: string): DynamicBindingConfig[] {
   const bindingRegex = /CADBinding\s*\(([^)]+)\)/g;
   let match;
   while ((match = bindingRegex.exec(cadStr)) !== null) {
-    const args = match[1];
+    const args = match[1]!;
     const item: Partial<DynamicBindingConfig> = {};
 
     const propMatch = args.match(/property\s*=\s*"([^"]+)"/);
@@ -72,21 +72,21 @@ export function parseCadBindings(cadStr: string): DynamicBindingConfig[] {
 
     const idxMatch = args.match(/index\s*=\s*([0-9]+)/);
     if (idxMatch) {
-      const idx = parseInt(idxMatch[1], 10);
+      const idx = parseInt(idxMatch[1]!, 10);
       item.index = idx >= 1 ? idx - 1 : idx; // normalize to 0-based for JS
     }
 
     const varMatch = args.match(/variable\s*=\s*"([^"]+)"/);
-    if (varMatch) item.variable = varMatch[1];
+    if (varMatch) item.variable = varMatch[1]!;
 
     const unitMatch = args.match(/unit\s*=\s*"([^"]+)"/);
     if (unitMatch) item.unit = unitMatch[1];
 
     const scaleMatch = args.match(/scale\s*=\s*([0-9.eE+-]+)/);
-    if (scaleMatch) item.scale = parseFloat(scaleMatch[1]);
+    if (scaleMatch) item.scale = parseFloat(scaleMatch[1]!);
 
     const offsetMatch = args.match(/offset\s*=\s*([0-9.eE+-]+)/);
-    if (offsetMatch) item.offset = parseFloat(offsetMatch[1]);
+    if (offsetMatch) item.offset = parseFloat(offsetMatch[1]!);
 
     const formatMatch = args.match(/format\s*=\s*"([^"]+)"/);
     if (formatMatch) item.format = formatMatch[1] as DynamicBindingConfig["format"];
@@ -100,19 +100,19 @@ export function parseCadBindings(cadStr: string): DynamicBindingConfig[] {
   if (bindings.length === 0) {
     const posMatch = cadStr.match(/dynamicPosition\s*=\s*"\{([^,]+),\s*([^,]+),\s*([^}]+)\}"/);
     if (posMatch) {
-      bindings.push({ property: "position", index: 0, variable: posMatch[1].trim() });
-      bindings.push({ property: "position", index: 1, variable: posMatch[2].trim() });
-      bindings.push({ property: "position", index: 2, variable: posMatch[3].trim() });
+      bindings.push({ property: "position", index: 0, variable: posMatch[1]!.trim() });
+      bindings.push({ property: "position", index: 1, variable: posMatch[2]!.trim() });
+      bindings.push({ property: "position", index: 2, variable: posMatch[3]!.trim() });
     }
 
     const rotMatch = cadStr.match(/dynamicRotation\s*=\s*"([^"]+)"/);
     if (rotMatch) {
-      bindings.push({ property: "rotation", variable: rotMatch[1].trim(), format: "matrix3x3" });
+      bindings.push({ property: "rotation", variable: rotMatch[1]!.trim(), format: "matrix3x3" });
     }
 
     const scaleMatch = cadStr.match(/dynamicScale\s*=\s*"([^"]+)"/);
     if (scaleMatch) {
-      bindings.push({ property: "scale", variable: scaleMatch[1].trim() });
+      bindings.push({ property: "scale", variable: scaleMatch[1]!.trim() });
     }
   }
 
@@ -163,13 +163,13 @@ export function patchModelicaCadAnnotation(
   source: string,
   componentName: string,
   config: {
-    uri?: string;
-    position?: [number, number, number];
-    rotation?: [number, number, number];
-    scale?: [number, number, number];
+    uri?: string | undefined;
+    position?: [number, number, number] | undefined;
+    rotation?: [number, number, number] | undefined;
+    scale?: [number, number, number] | undefined;
     bindings: DynamicBindingConfig[];
   },
-): { updatedSource: string; replacedRange?: { start: number; end: number }; newText?: string } {
+): { updatedSource: string; replacedRange?: { start: number; end: number } | undefined; newText?: string | undefined } {
   // Regex to match component declaration: e.g. "BodyBox body(" or "BodyBox body;"
   // Captures up to the semicolon or next declaration
   const compRegex = new RegExp(`\\b${componentName}\\b([\\s\\S]*?)(;)`, "m");
@@ -179,7 +179,7 @@ export function patchModelicaCadAnnotation(
     return { updatedSource: source };
   }
 
-  const compBody = compMatch[1];
+  const compBody = compMatch[1]!;
   const compStart = compMatch.index;
   const compEnd = compStart + compMatch[0].length;
 
@@ -188,7 +188,7 @@ export function patchModelicaCadAnnotation(
   const cadMatch = cadRegex.exec(compBody);
 
   if (cadMatch) {
-    const existingCadInner = cadMatch[1];
+    const existingCadInner = cadMatch[1]!;
     // Extract existing uri, position, rotation, scale if not provided
     const uriMatch = existingCadInner.match(/uri\s*=\s*"([^"]+)"/);
     const existingUri = config.uri ?? (uriMatch ? uriMatch[1] : undefined);
@@ -196,18 +196,18 @@ export function patchModelicaCadAnnotation(
     const posMatch = existingCadInner.match(/position\s*=\s*\{([^}]+)\}/);
     const existingPos =
       config.position ??
-      (posMatch ? (posMatch[1].split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
+      (posMatch ? (posMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
 
     const rotMatch = existingCadInner.match(/rotation\s*=\s*\{([^}]+)\}/);
     const existingRot =
       config.rotation ??
-      (rotMatch ? (rotMatch[1].split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
+      (rotMatch ? (rotMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
 
     const scaleMatch = existingCadInner.match(/scale\s*=\s*\{([^}]+)\}/);
     const existingScale =
       config.scale ??
       (scaleMatch
-        ? (scaleMatch[1].split(",").map((s) => parseFloat(s.trim())) as [number, number, number])
+        ? (scaleMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number])
         : undefined);
 
     const newCadStr = serializeCadAnnotation({
@@ -246,7 +246,7 @@ export function patchModelicaCadAnnotation(
       dynamicBindings: config.bindings,
     });
 
-    const existingContent = annotMatch[1].trim();
+    const existingContent = annotMatch[1]!.trim();
     const updatedAnnot = `annotation(${existingContent ? existingContent + ",\n  " : ""}${newCadStr})`;
     const updatedCompBody = compBody.replace(annotRegex, updatedAnnot);
     const bodyStart = compStart + compMatch[0].indexOf(compBody);

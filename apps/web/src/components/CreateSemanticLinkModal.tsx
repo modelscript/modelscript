@@ -99,9 +99,9 @@ export interface CreateSemanticLinkModalProps {
   onSave: (newTwin: DigitalThreadTwin) => void;
   packageName: string;
   packageVersion: string;
-  classes?: ClassSummary[];
-  rootClass?: ClassDetail | null;
-  artifactViewers?: ArtifactViewerInfo[];
+  classes?: ClassSummary[] | undefined;
+  rootClass?: ClassDetail | null | undefined;
+  artifactViewers?: ArtifactViewerInfo[] | undefined;
 }
 
 export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = ({

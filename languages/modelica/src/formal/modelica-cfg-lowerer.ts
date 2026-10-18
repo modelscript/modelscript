@@ -4,24 +4,24 @@ import { BasicBlock, CFGEdgeKind, GenericCFG } from "@modelscript/runtime";
 
 export interface ModelicaStatement {
   kind: "assignment" | "if" | "for" | "while" | "when" | "return" | "break" | "call";
-  targetVar?: string;
-  valExpr?: string;
-  condExpr?: string;
-  loopVar?: string;
-  rangeStart?: string;
-  rangeEnd?: string;
-  rangeStep?: string;
-  thenStmts?: ModelicaStatement[];
-  elseStmts?: ModelicaStatement[];
-  elseIfs?: { condExpr: string; stmts: ModelicaStatement[] }[];
-  loopBody?: ModelicaStatement[];
-  whileBody?: ModelicaStatement[];
-  whenBody?: ModelicaStatement[];
-  callFn?: string;
-  callArgs?: string[];
-  startByte?: number;
-  endByte?: number;
-  rawText?: string;
+  targetVar?: string | undefined;
+  valExpr?: string | undefined;
+  condExpr?: string | undefined;
+  loopVar?: string | undefined;
+  rangeStart?: string | undefined;
+  rangeEnd?: string | undefined;
+  rangeStep?: string | undefined;
+  thenStmts?: ModelicaStatement[] | undefined;
+  elseStmts?: ModelicaStatement[] | undefined;
+  elseIfs?: { condExpr: string; stmts: ModelicaStatement[] }[] | undefined;
+  loopBody?: ModelicaStatement[] | undefined;
+  whileBody?: ModelicaStatement[] | undefined;
+  whenBody?: ModelicaStatement[] | undefined;
+  callFn?: string | undefined;
+  callArgs?: string[] | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  rawText?: string | undefined;
 }
 
 function trimSemicolons(s: string): string {

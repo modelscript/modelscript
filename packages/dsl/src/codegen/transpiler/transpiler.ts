@@ -4,13 +4,13 @@ import * as ts from "typescript";
 import { getDJB2Hash } from "../shared/utils.js";
 
 export interface TranspileOptions {
-  context?: "query" | "lint" | "lsp" | "subtyping" | "dataflow" | "scanner";
-  queryIdMap?: Map<string, number>;
-  hostQueryIdMap?: Map<string, number>;
-  attrIdMap?: Map<string, number>;
-  rules?: Record<string, any>;
-  externals?: string[] | Set<string>;
-  fieldToInt?: Map<string, number> | Set<string>;
+  context?: "query" | "lint" | "lsp" | "subtyping" | "dataflow" | "scanner" | undefined;
+  queryIdMap?: Map<string, number> | undefined;
+  hostQueryIdMap?: Map<string, number> | undefined;
+  attrIdMap?: Map<string, number> | undefined;
+  rules?: Record<string, any> | undefined;
+  externals?: string[] | Set<string> | undefined;
+  fieldToInt?: Map<string, number> | Set<string> | undefined;
 }
 
 /**
@@ -88,7 +88,7 @@ export function transpileQuery(
         lexerName = originalParams[1] || "lexer";
         validName = originalParams[2] || "valid";
       } else {
-        lexerName = originalParams[0];
+        lexerName = originalParams[0]!;
         validName = originalParams[1] || "valid";
       }
     }
@@ -150,7 +150,7 @@ export function transpileQuery(
         ) {
           const meth = node.expression.name.getText(sourceFile);
           if (meth === "peek") {
-            const offsetArg = node.arguments.length > 0 ? (visitNode(node.arguments[0]) as ts.Expression) : undefined;
+            const offsetArg = node.arguments.length > 0 ? (visitNode(node.arguments[0]!) as ts.Expression) : undefined;
             const posArg = offsetArg
               ? ts.factory.createBinaryExpression(
                   ts.factory.createIdentifier("lexPos"),
@@ -170,7 +170,7 @@ export function transpileQuery(
             return ts.factory.createCallExpression(ts.factory.createIdentifier("scanSkipWhitespace"), undefined, []);
           }
           if (meth === "isExpected") {
-            const tokArg = visitNode(node.arguments[0]) as ts.Expression;
+            const tokArg = visitNode(node.arguments[0]!) as ts.Expression;
             return ts.factory.createCallExpression(ts.factory.createIdentifier("scanIsExpected"), undefined, [
               ts.factory.createTypeAssertion(ts.factory.createTypeReferenceNode("u32"), tokArg),
             ]);
@@ -187,7 +187,7 @@ export function transpileQuery(
           node.expression.expression.getText(sourceFile) === validName &&
           node.expression.name.getText(sourceFile) === "has"
         ) {
-          const tokArg = visitNode(node.arguments[0]) as ts.Expression;
+          const tokArg = visitNode(node.arguments[0]!) as ts.Expression;
           return ts.factory.createCallExpression(ts.factory.createIdentifier("scanIsExpected"), undefined, [
             ts.factory.createTypeAssertion(ts.factory.createTypeReferenceNode("u32"), tokArg),
           ]);
@@ -224,7 +224,7 @@ export function transpileQuery(
 
         let varName = "child";
         if (ts.isVariableDeclarationList(node.initializer)) {
-          varName = node.initializer.declarations[0].name.getText();
+          varName = node.initializer.declarations[0]!.name.getText();
         } else {
           varName = node.initializer.getText();
         }
@@ -303,15 +303,15 @@ export function transpileQuery(
             propAccess.name.getText() === "unroll" &&
             call.arguments.length >= 4
           ) {
-            const iterVarArg = call.arguments[0];
-            const startArg = call.arguments[1];
-            const endArg = call.arguments[2];
-            const fnArg = call.arguments[3];
+            const iterVarArg = call.arguments[0]!;
+            const startArg = call.arguments[1]!;
+            const endArg = call.arguments[2]!;
+            const fnArg = call.arguments[3]!;
 
             let iterName = "i";
             if (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg)) {
               if (fnArg.parameters.length > 0) {
-                iterName = fnArg.parameters[0].name.getText();
+                iterName = fnArg.parameters[0]!.name.getText();
               }
             } else if (ts.isStringLiteral(iterVarArg)) {
               iterName = iterVarArg.text;
@@ -361,8 +361,8 @@ export function transpileQuery(
             propAccess.name.text === "enter" &&
             call.arguments.length >= 2
           ) {
-            const prefixArg = call.arguments[0];
-            const fnArg = call.arguments[1];
+            const prefixArg = call.arguments[0]!;
+            const fnArg = call.arguments[1]!;
 
             let bodyStmts: ts.Statement[] = [];
             if (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg)) {
@@ -456,7 +456,7 @@ export function transpileQuery(
           const args = node.arguments;
 
           if (methodName === "runQuery" && args.length >= 1) {
-            const queryArg = args[0];
+            const queryArg = args[0]!;
             if (ts.isStringLiteral(queryArg)) {
               const queryName = queryArg.text;
               const id = queryIdMap.get(queryName);
@@ -464,7 +464,7 @@ export function transpileQuery(
 
               const callArgs: ts.Expression[] = [ts.factory.createNumericLiteral(id)];
               for (let i = 1; i < args.length; i++) {
-                callArgs.push(visitNode(args[i]) as ts.Expression);
+                callArgs.push(visitNode(args[i]!) as ts.Expression);
               }
 
               return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, callArgs);
@@ -476,15 +476,18 @@ export function transpileQuery(
           }
 
           if (methodName === "runHostQuery" && args.length >= 1) {
-            const queryArg = args[0];
+            const queryArg = args[0]!;
             if (ts.isStringLiteral(queryArg)) {
               const queryName = queryArg.text;
               const id = hostQueryIdMap.get(queryName);
               if (id === undefined) throw new Error(`Host Query ${queryName} not defined`);
 
-              const arg1 = args.length > 1 ? (visitNode(args[1]) as ts.Expression) : ts.factory.createNumericLiteral(0);
-              const arg2 = args.length > 2 ? (visitNode(args[2]) as ts.Expression) : ts.factory.createNumericLiteral(0);
-              const arg3 = args.length > 3 ? (visitNode(args[3]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+              const arg1 =
+                args.length > 1 ? (visitNode(args[1]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+              const arg2 =
+                args.length > 2 ? (visitNode(args[2]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+              const arg3 =
+                args.length > 3 ? (visitNode(args[3]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
 
               return ts.factory.createCallExpression(
                 ts.factory.createPropertyAccessExpression(
@@ -501,9 +504,9 @@ export function transpileQuery(
             const targetArg = args.length > 0 ? args[0] : undefined;
             const targetNodeExpr = targetArg ? (visitNode(targetArg) as ts.Expression) : undefined;
             const arg0 = targetNodeExpr || ts.factory.createNumericLiteral(0);
-            const arg1 = args.length > 1 ? (visitNode(args[1]) as ts.Expression) : ts.factory.createNumericLiteral(0);
-            const arg2 = args.length > 2 ? (visitNode(args[2]) as ts.Expression) : ts.factory.createNumericLiteral(0);
-            const arg3 = args.length > 3 ? (visitNode(args[3]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg1 = args.length > 1 ? (visitNode(args[1]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg2 = args.length > 2 ? (visitNode(args[2]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg3 = args.length > 3 ? (visitNode(args[3]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
 
             return ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_allocDiagnostic"), undefined, [
               ts.factory.createIdentifier("nodeStart"),
@@ -527,7 +530,7 @@ export function transpileQuery(
 
           if (namespace === "model") {
             if (methodName === "create" && args.length >= 1) {
-              const typeArg = args[0];
+              const typeArg = args[0]!;
               if (ts.isStringLiteral(typeArg)) {
                 let typeName = typeArg.text.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
                 if (/^[0-9]/.test(typeName)) typeName = "_" + typeName;
@@ -553,8 +556,8 @@ export function transpileQuery(
                 );
               }
             } else if (methodName === "compute" && args.length >= 2) {
-              const nodeArg = args[0];
-              const attrArg = args[1];
+              const nodeArg = args[0]!;
+              const attrArg = args[1]!;
               if (ts.isStringLiteral(attrArg)) {
                 const attrName = attrArg.text;
                 const id = attrIdMap.get(attrName);
@@ -565,8 +568,8 @@ export function transpileQuery(
                 ]);
               }
             } else if ((methodName === "getProperty" || methodName === "setProperty") && args.length >= 2) {
-              const nodeArg = args[0];
-              const propArg = args[1];
+              const nodeArg = args[0]!;
+              const propArg = args[1]!;
               if (ts.isStringLiteral(propArg)) {
                 let propName = propArg.text.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
                 propName = propName.replace(/[^A-Z0-9_]/g, "_");
@@ -582,7 +585,7 @@ export function transpileQuery(
                     ),
                   ),
                 ];
-                if (args.length > 2) callArgs.push(visitNode(args[2]) as ts.Expression);
+                if (args.length > 2) callArgs.push(visitNode(args[2]!) as ts.Expression);
 
                 const typeArgs = node.typeArguments
                   ? node.typeArguments.map((t) => visitNode(t) as ts.TypeNode)
@@ -604,8 +607,8 @@ export function transpileQuery(
               (methodName === "setFlag" || methodName === "clearFlag" || methodName === "hasFlag") &&
               args.length >= 2
             ) {
-              const nodeArg = args[0];
-              const flagArg = args[1];
+              const nodeArg = args[0]!;
+              const flagArg = args[1]!;
               if (ts.isStringLiteral(flagArg)) {
                 let flagName = flagArg.text.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
                 flagName = flagName.replace(/[^A-Z0-9_]/g, "_");
@@ -647,8 +650,8 @@ export function transpileQuery(
             );
           } else if (namespace === "ast") {
             if ((methodName === "getChildByFieldId" || methodName === "getChildrenByFieldId") && args.length >= 2) {
-              const nodeArg = args[0];
-              const fieldArg = args[1];
+              const nodeArg = args[0]!;
+              const fieldArg = args[1]!;
               if (ts.isStringLiteral(fieldArg)) {
                 const fieldName = fieldArg.text;
                 const safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
@@ -678,9 +681,9 @@ export function transpileQuery(
             } else if (
               (methodName === "textEquals" || methodName === "startsWith") &&
               args.length === 2 &&
-              ts.isStringLiteral(args[1])
+              ts.isStringLiteral(args[1]!)
             ) {
-              const nodeArg = visitNode(args[0]) as ts.Expression;
+              const nodeArg = visitNode(args[0]!) as ts.Expression;
               return ts.factory.createCallExpression(
                 ts.factory.createPropertyAccessExpression(
                   ts.factory.createPropertyAccessExpression(
@@ -707,8 +710,8 @@ export function transpileQuery(
             }
           } else if (namespace === "tensor") {
             if (methodName === "create" && args.length === 2) {
-              const typeArg = args[0];
-              const dimsArg = args[1];
+              const typeArg = args[0]!;
+              const dimsArg = args[1]!;
               if (ts.isArrayLiteralExpression(dimsArg)) {
                 const rank = dimsArg.elements.length;
 
@@ -717,7 +720,7 @@ export function transpileQuery(
                   totalElementsExpr = ts.factory.createBinaryExpression(
                     totalElementsExpr,
                     ts.SyntaxKind.AsteriskToken,
-                    dimsArg.elements[i],
+                    dimsArg.elements[i]!,
                   );
                 }
 
@@ -792,7 +795,7 @@ export function transpileQuery(
         node.arguments.length === 1
       ) {
         const targetObj = visitNode(node.expression.expression) as ts.Expression;
-        const arg = visitNode(node.arguments[0]) as ts.Expression;
+        const arg = visitNode(node.arguments[0]!) as ts.Expression;
         return ts.factory.createBinaryExpression(targetObj, ts.SyntaxKind.EqualsEqualsToken, arg);
       }
 
@@ -877,7 +880,7 @@ export function transpileQuery(
   };
 
   const result = ts.transform(sourceFile, [transformer]);
-  const printed = ts.createPrinter().printFile(result.transformed[0]);
+  const printed = ts.createPrinter().printFile(result.transformed[0]!);
 
   // Parse again to extract body and parameters
   const transformedSource = ts.createSourceFile("temp.ts", printed, ts.ScriptTarget.Latest, true);
@@ -1024,7 +1027,7 @@ export function transpileClass(
         node.arguments.length === 1
       ) {
         const targetObj = visitNode(node.expression.expression) as ts.Expression;
-        const arg = visitNode(node.arguments[0]) as ts.Expression;
+        const arg = visitNode(node.arguments[0]!) as ts.Expression;
         return ts.factory.createBinaryExpression(targetObj, ts.SyntaxKind.EqualsEqualsToken, arg);
       }
 
@@ -1052,7 +1055,7 @@ export function transpileClass(
   };
 
   const result = ts.transform(sourceFile, [transformer]);
-  let printed = ts.createPrinter().printFile(result.transformed[0]).trim();
+  let printed = ts.createPrinter().printFile(result.transformed[0]!).trim();
 
   let formatted = printed.replace(/@unmanaged\s*/g, "");
   if (formatted.startsWith("export default class ")) {

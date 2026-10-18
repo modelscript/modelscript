@@ -28,15 +28,15 @@ export interface CoinorCodegenOptions {
   /** Solver to use: "clp", "cbc", "ipopt", "bonmin", or "couenne". */
   solver: "clp" | "cbc" | "ipopt" | "bonmin" | "couenne";
   /** NLP convergence tolerance (default: 1e-8). */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Maximum iterations (default: 3000). */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** IPOPT print level: 0-12 (default: 0). */
-  printLevel?: number;
+  printLevel?: number | undefined;
   /** Use exact Hessian for IPOPT (default: true). */
-  useExactHessian?: boolean;
+  useExactHessian?: boolean | undefined;
   /** Generic solver options (overrides specific options). */
-  solverOptions?: SolverOptions;
+  solverOptions?: SolverOptions | undefined;
 }
 
 /** Generated COIN-OR C files. */
@@ -58,7 +58,7 @@ export interface NlpProblemDef {
   /** Initial guess. */
   x0: number[];
   /** DAE instance containing expression arena metadata (when using ExprId handles). */
-  dae?: DAEBuilder;
+  dae?: DAEBuilder | undefined;
   /** Objective expression (ExprId in dae). */
   objectiveExpr: number;
   /** Constraint expressions (each evaluates to a residual that should be zero). */
@@ -92,7 +92,7 @@ export interface LpProblemDef {
     colPointers: number[];
   };
   /** Integer variable flags (for CBC). null = all continuous. */
-  isInteger?: boolean[];
+  isInteger?: boolean[] | undefined;
 }
 
 // ── LP/MILP codegen ──

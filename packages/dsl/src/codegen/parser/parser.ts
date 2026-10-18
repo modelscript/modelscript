@@ -127,6 +127,18 @@ export interface GeneratedFile {
  * into executable AssemblyScript source files. Generates static WASM
  * arrays and injects token/preprocessor hooks into the runtime templates.
  *
+ * Key algorithmic responsibilities:
+ * 1. Encodes `ACTION` and `GOTO` tables into flat hex-decoded linear memory arrays,
+ *    sorting `REDUCE` actions by dynamic precedence and production ID.
+ * 2. Computes Minimum Repair Distance (`mrd_data`), token insertion/deletion cost tables,
+ *    and the bounded 64-step lookahead reachability relaxation (`reachability_matrix` and
+ *    1-token `precomputed_repairs`) used by the GLR error recovery engine.
+ * 3. Precomputes structural field projection tables (`type_fields` / `type_field_data`),
+ *    tagging indirect synthetic (`_`-prefixed) child hops with the `0x8000` bitflag so
+ *    `FieldCursor._advance` can transparently traverse hidden grammar rules at runtime.
+ * 4. Emits LSP semantic token tables, bracket balance deltas, compiled CST lint dispatchers,
+ *    E-graph equality saturation hooks, TGG reconcilers, and abstract interpretation domains.
+ *
  * @param originalGrammar The original DSL definition block
  * @param grammar The normalized grammar representation
  * @param table The precomputed GLR tables
@@ -152,6 +164,8 @@ export function generateParserTables(
   code += `\n// GLR Parser Tables\n`;
   code += `// Generated for ${grammar.productions.length} productions and ${table.actionTable.size} states\n\n`;
 
+  // Section 1: Symbol & State Count Validation
+  // AST node types are packed into a 10-bit field in the 32-bit node header, capping grammar symbols at 1023.
   const symToInt = grammar.symToInt;
   let maxSymbolId = 0;
   for (const [sym, id] of symToInt.entries()) {
@@ -164,12 +178,15 @@ export function generateParserTables(
       `Grammar '${originalGrammar.name}' exceeds maximum supported symbol count of 1023 (has ${maxSymbolId}). AST node type is packed into 10 bits.`,
     );
   }
-  const startSymName = Object.keys(originalGrammar.rules)[0] || "Program";
+  const startSymName = Object.keys(originalGrammar.rules ?? {})[0] || "Program";
   const startSymId = symToInt.get(startSymName) || 1;
   code += `export const SYMBOL_COUNT = ${maxSymbolId};\n`;
   code += `export const STATE_COUNT = ${table.actionTable.size};\n`;
   code += `export const START_SYMBOL_ID = ${startSymId};\n\n`;
 
+  // Section 2: Flatten GLR ACTION Table
+  // Group actions by state and lookahead symbol, sorting REDUCE actions by descending dynamic precedence
+  // (and breaking ties by production ID) so higher-priority reductions are explored first.
   const actionOffsets: number[] = [];
   const actionData: number[] = [];
   const actionEntryOffsets: number[] = [];
@@ -210,6 +227,7 @@ export function generateParserTables(
     }
   }
 
+  // Helpers to serialize numeric tables as compact hex strings decoded into WASM linear memory at startup.
   const generateStaticArray = (arr: number[], name: string) => {
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
     let hex = "";
@@ -224,7 +242,7 @@ export function generateParserTables(
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
     let hex = "";
     for (let i = 0; i < arr.length; i++) {
-      const val = arr[i] === undefined ? 0 : arr[i] & 0xffff;
+      const val = arr[i] === undefined ? 0 : arr[i]! & 0xffff;
       hex += val.toString(16).padStart(4, "0");
     }
     return `export const ${name}: usize = decodeHexU16Array("${hex}", ${arr.length});\n`;
@@ -234,7 +252,7 @@ export function generateParserTables(
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
     let hex = "";
     for (let i = 0; i < arr.length; i++) {
-      const val = arr[i] === undefined ? 0 : arr[i] & 0xff;
+      const val = arr[i] === undefined ? 0 : arr[i]! & 0xff;
       hex += val.toString(16).padStart(2, "0");
     }
     return `export const ${name}: usize = decodeHexByteArray("${hex}", ${arr.length});\n`;
@@ -245,6 +263,8 @@ export function generateParserTables(
   code += generateStaticArray(actionEntryOffsets, "action_entry_offsets");
   code += generateStaticArray(actionEntryData, "action_entry_data");
 
+  // Section 3: Flatten GLR GOTO Table
+  // Entries are sorted by non-terminal symbol ID to allow binary search during `constructReducedParentNode` / GOTO lookup.
   const gotoOffsets: number[] = [];
   const gotoData: number[] = [];
 
@@ -264,6 +284,7 @@ export function generateParserTables(
   code += generateStaticArray(gotoOffsets, "goto_offsets");
   code += generateStaticArray(gotoData, "goto_data");
 
+  // Section 4: Error Recovery Cost & Reachability Tables
   const mrd = table.automaton.computeMRD().map((v) => Math.min(255, v));
   code += generateStaticByteArray(mrd, "mrd_data");
 
@@ -271,7 +292,7 @@ export function generateParserTables(
   const tokenInsertCosts: number[] = new Array(termList.length + 5).fill(1);
 
   for (let i = 0; i < termList.length; i++) {
-    const sym = termList[i];
+    const sym = termList[i]!;
     const symId = symToInt.get(sym) ?? i;
     const cleanSym = sym.replace(/^"|"$/g, "");
 
@@ -344,6 +365,8 @@ export function generateParserTables(
     }
   }
 
+  // Initialize the `[stateId, terminalId]` reachability distance matrix to `254` (infinity),
+  // seeding all direct `SHIFT` transitions in `stateId` with distance `0`.
   const MAX_REACHABILITY_DEPTH = Math.min(64, table.actionTable.size);
   const reachabilityMatrix = new Uint8Array(table.actionTable.size * (maxTerminalId + 1));
   reachabilityMatrix.fill(254);
@@ -404,13 +427,16 @@ export function generateParserTables(
     }
   }
 
+  // Helper that walks backward through `reverseTransitions` for each symbol on the RHS of `prodIdx`
+  // from `stateId` to find all valid source states, then resolves their post-reduction `GOTO(sourceState, prod.left)` targets.
   const reduceGotoTargets = new Map<string, number[]>();
   const getReduceTargets = (stateId: number, prodIdx: number): number[] => {
     const cacheKey = `${stateId}:${prodIdx}`;
     const cached = reduceGotoTargets.get(cacheKey);
     if (cached) return cached;
-    const prod = table.grammar.productions[prodIdx];
+    const prod = table.grammar.productions[prodIdx]!;
     let currStates = [stateId];
+    // Walk RHS symbols in reverse order to simulate popping `prod.right.length` states off the LR automaton stack.
     for (let i = prod.right.length - 1; i >= 0; i--) {
       const rhsSym = prod.right[i];
       const prevStates: number[] = [];
@@ -425,6 +451,7 @@ export function generateParserTables(
       currStates = prevStates;
       if (currStates.length === 0) break;
     }
+    // From each reachable stack bottom state, follow the non-terminal GOTO transition for `prod.left`.
     const targets: number[] = [];
     for (const sourceState of currStates) {
       const nextState = table.gotoTable.get(sourceState)?.get(prod.left);
@@ -436,6 +463,13 @@ export function generateParserTables(
     return targets;
   };
 
+  // Bounded 64-step Bellman-Ford minimum repair distance reachability relaxation:
+  // Iteratively relaxes `reachabilityMatrix[stateId, t]` (up to `MAX_REACHABILITY_DEPTH = min(64, stateCount)` hops)
+  // to compute the minimum number of token insertions required to reach a valid shift of terminal `t` from `stateId`:
+  // - Across a `SHIFT` transition `stateId -> nextState`: adds `+1` token insertion cost (`1 + baseCost`).
+  // - Across a `REDUCE` action to post-reduction GOTO target `nextState`: adds `0` cost if `t` matches the reduction's
+  //   valid lookahead symbol (`sym === "$default" || t === symId`), or `Math.max(1, baseCost)` otherwise.
+  // - Across a non-terminal `GOTO` transition `stateId -> nextState`: adds `Math.max(1, minYieldLength(sym))`.
   let matrixChanged = true;
   for (let iter = 0; iter < MAX_REACHABILITY_DEPTH; iter++) {
     if (!matrixChanged) break;
@@ -449,12 +483,13 @@ export function generateParserTables(
           const symId = sym === "$default" ? 0 : (symToInt.get(sym) ?? -1);
           for (const act of acts) {
             if (act.type === 0 && act.target !== undefined) {
+              // SHIFT transition: consuming the shifted terminal costs 1 repair step plus remaining distance from `nextState`.
               const nextState = act.target;
               for (let t = 1; t <= maxTerminalId; t++) {
-                const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+                const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t]!;
                 if (baseCost >= 254) continue;
                 const altCost = 1 + baseCost;
-                if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
+                if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]!) {
                   newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
                   matrixChanged = true;
                 }
@@ -465,10 +500,10 @@ export function generateParserTables(
               const targets = getReduceTargets(stateId, act.target);
               for (const nextState of targets) {
                 for (let t = 1; t <= maxTerminalId; t++) {
-                  const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+                  const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t]!;
                   if (baseCost >= 254) continue;
                   const altCost = sym === "$default" || t === symId ? baseCost : Math.max(1, baseCost);
-                  if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
+                  if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]!) {
                     newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
                     matrixChanged = true;
                   }
@@ -479,14 +514,15 @@ export function generateParserTables(
         }
       }
       if (gotos) {
+        // Non-terminal GOTO transition: weighted by the minimum terminal yield length of `sym`.
         for (const [sym, nextState] of gotos.entries()) {
           const yieldLen = minYieldMap.get(sym)?.length ?? 1;
           const cost = Math.max(1, yieldLen);
           for (let t = 1; t <= maxTerminalId; t++) {
-            const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+            const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t]!;
             if (baseCost >= 254) continue;
             const altCost = Math.min(254, cost + baseCost);
-            if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
+            if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]!) {
               newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
               matrixChanged = true;
             }
@@ -519,7 +555,7 @@ export function generateParserTables(
       let minCost = 254;
 
       for (const { symId, targetState } of validShiftSyms) {
-        const cost = reachabilityMatrix[targetState * (maxTerminalId + 1) + unexpectedTok];
+        const cost = reachabilityMatrix[targetState * (maxTerminalId + 1) + unexpectedTok]!;
         if (cost < minCost) {
           minCost = cost;
           bestRepairTok = symId;
@@ -535,7 +571,7 @@ export function generateParserTables(
   const reachabilityBitset = new Uint8Array((reachabilityMatrix.length + 7) >> 3);
   for (let i = 0; i < reachabilityMatrix.length; i++) {
     if (reachabilityMatrix[i] === 0) {
-      reachabilityBitset[i >> 3] |= 1 << (i & 7);
+      reachabilityBitset[i >> 3] = reachabilityBitset[i >> 3]! | (1 << (i & 7));
     }
   }
   code += generateStaticByteArray(reachabilityBitset, "reachability_matrix");
@@ -562,7 +598,7 @@ export function generateParserTables(
   const listSeparators = new Set<string>();
   for (const p of grammar.productions) {
     if (p.isList && p.right.length >= 2 && p.right[0] === p.left) {
-      const potentialSeparator = p.right[1];
+      const potentialSeparator = p.right[1]!;
       if (grammar.terminals.has(potentialSeparator)) {
         listSeparators.add(potentialSeparator);
       }
@@ -589,6 +625,7 @@ export function generateParserTables(
 
   code += generateStaticU16Array(tokenDeleteCosts, "token_delete_costs");
 
+  // Section 5: Production Metadata & Aliasing Tables
   const prodLengths: number[] = [];
   const prodRightOffsets: number[] = [];
   const prodRightSymbols: number[] = [];
@@ -627,12 +664,29 @@ export function generateParserTables(
     }
   }
 
+  // Section 6: Named Field Projection Tables (`type_fields` & `type_field_data`)
   const maxSymId = Math.max(0, ...Array.from(symToInt.values()));
   const typeFields: number[] = new Array(maxSymId + 1).fill(-1);
   const typeFieldData: number[] = [];
 
   let maxSyntheticDepth = 0;
 
+  /**
+   * Computes the mapping from `fieldId` to candidate `(childIndex, expectedType)` pairs for
+   * all productions of `symName`.
+   *
+   * Direct fields on `p` record their physical RHS index `f.index` (`0 <= f.index < 0x8000`).
+   * When a production's RHS contains a synthetic/auxiliary rule (`childSym.startsWith("_")`,
+   * generated by `.optional()`, `.repeat()`, or `.choice()` combinators), `getFieldsForSymbol`
+   * recursively collects fields declared inside `childSym` and records the parent's RHS slot `i`
+   * with the `0x8000` indirect-hop bitflag (`idx = i | 0x8000`).
+   *
+   * At runtime in WASM, `FieldCursor._advance` checks `(entryIndex & 0x8000) !== 0`:
+   * - If clear (`0`), the child at `entryIndex` is the target field node itself.
+   * - If set (`0x8000`), `FieldCursor._advance` strips the flag (`entryIndex & 0x7FFF`),
+   *   pushes the synthetic intermediate child node onto its traversal stack, and continues
+   *   searching `type_fields[childType]` for `fieldId` until it reaches the concrete leaf field.
+   */
   function getFieldsForSymbol(
     symName: string,
     visited = new Set<string>(),
@@ -648,10 +702,11 @@ export function generateParserTables(
     const symId = symToInt.get(symName) || 0;
     for (const p of grammar.productions) {
       if ((symToInt.get(p.left) || 0) === symId) {
+        // 1. Direct fields attached to this production rule.
         if (p.fields) {
           for (const f of p.fields) {
             if (!map.has(f.fieldId)) map.set(f.fieldId, []);
-            const childSym = p.right[f.index];
+            const childSym = p.right[f.index]!;
             const expectedType = symToInt.get(childSym) || 0;
             const list = map.get(f.fieldId)!;
             if (!list.some((e) => e.index === f.index && e.expectedType === expectedType)) {
@@ -659,8 +714,10 @@ export function generateParserTables(
             }
           }
         }
+        // 2. Indirect fields nested inside synthetic (`_`-prefixed) child non-terminals:
+        // tag the child index with `0x8000` so `FieldCursor._advance` descends into child `i`.
         for (let i = 0; i < p.right.length; i++) {
-          const childSym = p.right[i];
+          const childSym = p.right[i]!;
           if (childSym.startsWith("_")) {
             const childFields = getFieldsForSymbol(childSym, new Set(visited), depth + 1);
             const expectedType = symToInt.get(childSym) || 0;
@@ -679,6 +736,7 @@ export function generateParserTables(
     return map;
   }
 
+  // Flatten each symbol's field map into `typeFields` (offset table) and `typeFieldData` (packed entries).
   for (const [symName, symId] of symToInt.entries()) {
     const fieldsMap = getFieldsForSymbol(symName);
 
@@ -698,6 +756,7 @@ export function generateParserTables(
 
   const maxFieldCursorDepth = Math.max(16, maxSyntheticDepth + 8);
 
+  // Section 7: LSP Semantic Highlighting, Folding, Outline & Scope Indexing Tables
   const tokenTypesMap = new Map<string, number>();
   const tokenModifiersMap = new Map<string, number>();
 
@@ -758,7 +817,7 @@ export function generateParserTables(
 
   const typeIsList: number[] = new Array(maxSymbolId + 1).fill(0);
   for (let p = 0; p < prodLhs.length; p++) {
-    if (prodIsList[p] === 1) typeIsList[prodLhs[p]] = 1;
+    if (prodIsList[p] === 1) typeIsList[prodLhs[p]!] = 1;
   }
   code += generateStaticByteArray(typeIsList, "type_is_list");
 
@@ -801,6 +860,7 @@ export function generateParserTables(
   code += generateStaticArray(symbolNameField, "symbol_name_field");
   code += generateStaticArray(symbolIsScope, "symbol_is_scope");
 
+  // Section 8: Bracket Balancing & Lexer Codegen
   const defaultBrackets: [string, string][] = [
     ["{", "}"],
     ["[", "]"],
@@ -841,6 +901,7 @@ export function generateParserTables(
   code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\nexport const MAX_SYMBOL_ID = ${maxSymbolId};\nexport const MAX_FIELD_CURSOR_DEPTH: i32 = ${maxFieldCursorDepth};\n`;
   code += `\nexport function invokeLexer(pos: u32): i32 { return ${LEX_FN}(pos); }\n`;
 
+  // Section 9: Compiled CST Linter Dispatch Generation (`executeLints`)
   let lintSwitchStr = "";
   if (originalGrammar.lints) {
     const validLintFns: string[] = [];
@@ -888,6 +949,7 @@ export function generateParserTables(
   }
   code += lintSwitchStr;
 
+  // Section 10: Runtime Module Re-exports & Subsystem Wiring
   const extractExports = (codeStr: string, moduleName: string) => {
     const exports: string[] = [];
     const regex =
@@ -940,26 +1002,26 @@ export function generateParserTables(
     for (const t of runtimeTemplateFiles) {
       const classMatches = t.content.matchAll(/\b(?:class|interface)\s+([a-zA-Z0-9_]+)/g);
       for (const m of classMatches) {
-        ignoreList.add(m[1]);
+        ignoreList.add(m[1]!);
       }
     }
     const localClassMatches = codeStr.matchAll(/\b(?:class|interface)\s+([a-zA-Z0-9_]+)/g);
     for (const m of localClassMatches) {
-      ignoreList.add(m[1]);
+      ignoreList.add(m[1]!);
     }
     while ((match = regex.exec(codeStr)) !== null) {
-      if (!ignoreList.has(match[2])) {
-        exports.push(match[2]);
+      if (!ignoreList.has(match[2]!)) {
+        exports.push(match[2]!);
       }
     }
     const reexportRegex = /^export\s+\{([^}]+)\}/gm;
     let reexportMatch;
     while ((reexportMatch = reexportRegex.exec(codeStr)) !== null) {
-      const items = reexportMatch[1].split(",");
+      const items = reexportMatch[1]!.split(",");
       for (const item of items) {
         const trimmed = item
           .trim()
-          .split(/\bas\b/)[0]
+          .split(/\bas\b/)[0]!
           .trim();
         if (trimmed && !ignoreList.has(trimmed) && !exports.includes(trimmed)) {
           exports.push(trimmed);
@@ -1215,7 +1277,8 @@ export function generateParserTables(
   code += extractExports(statementsCode, "./dae/statements");
   code += extractExports(verifierCode, "./simulation/verifier");
 
-  if (originalGrammar.cfgNodes || originalGrammar.analysis || Boolean(originalGrammar.domains?.bounds)) {
+  // Section 11: Abstract Interpretation, CFG/SSA, and Custom Runtime Transpilation
+  if (originalGrammar.cfgNodes || originalGrammar.analysis || Boolean(originalGrammar.domains?.["bounds"])) {
     let layoutContent = generateBlockLayoutConstants();
     let cfgContent = generateCFG(originalGrammar, grammar);
     let ssaContent = generateSSA();

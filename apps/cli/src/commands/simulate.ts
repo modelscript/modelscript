@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { generateFmu } from "@modelscript/exchange/fmu";
+import { formatFmuSimulateResult, generateFmu, simulateFmuArchive } from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { foldArenaConstants, initBltWasm, scalarizeArena, type DAEBuilder } from "@modelscript/runtime";
+import {
+  foldArenaConstants,
+  hasArrayEquations,
+  initBltWasm,
+  scalarizeArena,
+  type DAEBuilder,
+} from "@modelscript/runtime";
 import { simulateArena, simulateArenaAsync, snapshotMemory, type MemorySnapshot } from "@modelscript/simulate";
 import { execFileSync, execSync, spawn } from "node:child_process";
 import fs from "node:fs";
@@ -13,61 +19,123 @@ import path from "node:path";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
+import { parseStartValueArgs } from "./fmu.js";
 import { generateSimulationC } from "./sim-c-codegen.js";
 import { simulateCloud } from "./simulate-cloud.js";
 
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
+/** CLI arguments and flags for the `msx simulate` command. */
 export interface SimulateArgs {
+  /** Fully-qualified name of the Modelica/SysML class to simulate, or path to a `.fmu` archive. */
   name: string;
-  paths: string[];
-  "start-time"?: number;
-  startTime?: number;
-  "stop-time"?: number;
-  stopTime?: number;
-  tolerance?: number;
-  interval?: number;
+  /** Additional library or module file paths to load. */
+  paths?: string[] | undefined;
+  /** Optional output file path for writing simulation results. */
+  output?: string | undefined;
+  "start-time"?: number | undefined;
+  /** Experiment start time override in seconds. */
+  startTime?: number | undefined;
+  "stop-time"?: number | undefined;
+  /** Experiment stop time override in seconds. */
+  stopTime?: number | undefined;
+  /** Relative/absolute integration tolerance override. */
+  tolerance?: number | undefined;
+  /** Output communication interval / step size in seconds. */
+  interval?: number | undefined;
+  "step-size"?: number | undefined;
+  stepSize?: number | undefined;
+  "output-interval"?: number | undefined;
+  outputInterval?: number | undefined;
+  /** Output serialization format (`"csv"`, `"json"`, or `"none"`). */
   format: string;
+  /** Numerical ODE/DAE solver algorithm name (`"dopri5"`, `"cvode"`, `"bdf"`, `"rodas4p"`, etc.). */
   solver: string;
-  realtime?: number;
+  /** Real-time pacing scale factor (e.g., `1.0` for 1x wall-clock speed). */
+  realtime?: number | undefined;
+  /** Simulation execution backend (`"js"`, `"arena"`, `"wasm"`, `"c"`, or `"jit"`). */
   engine: string;
-  timing?: boolean;
-  "memory-profile"?: boolean;
-  memoryProfile?: boolean;
+  /** Whether to emit stage timing metrics as JSON to stderr. */
+  timing?: boolean | undefined;
+  "memory-profile"?: boolean | undefined;
+  /** Whether to profile heap/linear-memory consumption across compilation and simulation phases. */
+  memoryProfile?: boolean | undefined;
+  /** Jacobian evaluation strategy (`"dense"`, `"sparse"`, or `"fd"`). */
   jacobian: "dense" | "sparse" | "fd";
-  flattener?: "ts" | "wasm" | "hybrid" | "diff";
-  "steady-state"?: boolean;
-  steadyState?: boolean;
-  jit?: boolean;
+  /** Flattener backend (`"ts"`, `"wasm"`, `"hybrid"`, or `"diff"`). */
+  flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
+  "steady-state"?: boolean | undefined;
+  /** Whether to solve only the initial steady-state equilibrium without time integration. */
+  steadyState?: boolean | undefined;
+  /** Whether to use the in-memory JIT compilation engine. */
+  jit?: boolean | undefined;
+
+  // FMU direct simulation options
+  "interface-type"?: "cs" | "me" | "auto" | undefined;
+  /** FMI interface mode (`"cs"` Co-Simulation, `"me"` Model Exchange, or `"auto"`). */
+  interfaceType?: "cs" | "me" | "auto" | undefined;
+  "start-value"?: string[] | undefined;
+  /** Variable start-value overrides (`name=value`). */
+  startValue?: string[] | undefined;
+  "input-file"?: string | undefined;
+  /** Path to a CSV file containing time-varying input trajectories. */
+  inputFile?: string | undefined;
+  "output-variable"?: string[] | undefined;
+  /** Specific variable names to record in FMU simulation output. */
+  outputVariable?: string[] | undefined;
+  "initial-fmu-state-file"?: string | undefined;
+  /** Path to a serialized FMU state file to restore before integration. */
+  initialFmuStateFile?: string | undefined;
+  "final-fmu-state-file"?: string | undefined;
+  /** Path where the final serialized FMU state should be saved after integration. */
+  finalFmuStateFile?: string | undefined;
+  "log-fmi-calls"?: boolean | undefined;
+  /** Whether to log all FMI C API calls and diagnostic callbacks to stderr. */
+  logFmiCalls?: boolean | undefined;
 
   // Cloud bursting options
-  cloud?: boolean;
-  profile?: string;
-  async?: boolean;
-  "poll-interval"?: number;
-  pollInterval?: number;
-  "output-dir"?: string;
-  outputDir?: string;
-  "api-url"?: string;
-  apiUrl?: string;
+  /** Whether to dispatch the simulation job to the ModelScript Cloud HPC cluster. */
+  cloud?: boolean | undefined;
+  /** Cloud compute profile (`"standard"`, `"high-memory"`, `"gpu-a100"`, `"hpc-mpi-64"`). */
+  profile?: string | undefined;
+  /** Whether to submit the cloud job asynchronously and return the Job ID immediately. */
+  async?: boolean | undefined;
+  "poll-interval"?: number | undefined;
+  /** Polling interval in milliseconds when waiting for cloud simulation completion. */
+  pollInterval?: number | undefined;
+  "output-dir"?: string | undefined;
+  /** Local directory for downloaded cloud simulation result artifacts. */
+  outputDir?: string | undefined;
+  "api-url"?: string | undefined;
+  /** Override base URL for the ModelScript Cloud API server. */
+  apiUrl?: string | undefined;
 }
 
+/**
+ * `msx simulate <name> [paths..]` CLI command module supporting Modelica, SysML v2, and FMU
+ * simulation across JS, linear-memory Arena, Emscripten WASM, native C, JIT, and Cloud HPC backends.
+ */
 export const Simulate: CommandModule<{}, SimulateArgs> = {
-  command: "simulate <name> <paths..>",
-  describe: "Simulate a Modelica model and output results",
+  command: "simulate <name> [paths..]",
+  describe: "Simulate a Modelica model, SysML v2 system, or FMU archive and output results",
 
   builder: ((yargs: any) => {
     return yargs
       .positional("name", {
         demandOption: true,
-        description: "name of class to simulate",
+        description: "name of class to simulate, or path to a .fmu archive",
         type: "string",
       })
       .positional("paths", {
         array: true,
-        demandOption: true,
+        demandOption: false,
         description: "paths of libraries and modules to load",
+        type: "string",
+      })
+      .option("output", {
+        alias: "o",
+        description: "output file path for simulation results",
         type: "string",
       })
       .option("start-time", {
@@ -83,7 +151,8 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         type: "number",
       })
       .option("interval", {
-        description: "override experiment output interval",
+        alias: ["step-size", "output-interval"],
+        description: "override experiment output interval / step size",
         type: "number",
       })
       .option("format", {
@@ -97,6 +166,38 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         type: "string",
         choices: ["euler", "rk4", "dopri5", "tsit5", "trbdf2", "rodas4p", "bdf", "auto", "cvode", "webgpu"],
         default: "dopri5",
+      })
+      .option("interface-type", {
+        description: "FMI interface type when simulating an FMU: 'cs', 'me', or 'auto'",
+        type: "string",
+        choices: ["cs", "me", "auto"],
+      })
+      .option("start-value", {
+        array: true,
+        description: "override FMU variable start value as name=value (repeatable)",
+        type: "string",
+      })
+      .option("input-file", {
+        description: "CSV file providing time-varying input trajectories (time,u1,u2,...)",
+        type: "string",
+      })
+      .option("output-variable", {
+        array: true,
+        description: "variable name(s) to record in FMU simulation output (repeatable)",
+        type: "string",
+      })
+      .option("initial-fmu-state-file", {
+        description: "restore serialized FMU state from file before stepping",
+        type: "string",
+      })
+      .option("final-fmu-state-file", {
+        description: "save serialized FMU state to file after simulation finishes",
+        type: "string",
+      })
+      .option("log-fmi-calls", {
+        description: "log all FMI C API calls and logger callbacks to stderr",
+        type: "boolean",
+        default: false,
       })
       .option("realtime", {
         description: "run simulation in real-time mode with given scale factor (e.g., 1.0 for 1x)",
@@ -173,21 +274,60 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       });
   }) as CommandModule<{}, SimulateArgs>["builder"],
   handler: async (args) => {
-    if (args.cloud) {
-      await simulateCloud(args);
+    const fmuCandidate = args.name.endsWith(".fmu") ? args.name : args.paths?.find((p) => p.endsWith(".fmu"));
+    if (fmuCandidate) {
+      try {
+        const meSolver = args.solver === "euler" || args.solver === "cvode" ? args.solver : "rk4";
+        const simRes = await simulateFmuArchive(fmuCandidate, {
+          interfaceType: args.interfaceType ?? args["interface-type"] ?? "auto",
+          solver: meSolver,
+          startTime: args.startTime ?? args["start-time"],
+          stopTime: args.stopTime ?? args["stop-time"],
+          stepSize:
+            args.interval ?? args.stepSize ?? args["step-size"] ?? args.outputInterval ?? args["output-interval"],
+          tolerance: args.tolerance,
+          startValues: parseStartValueArgs(args.startValue ?? args["start-value"]),
+          inputFile: args.inputFile ?? args["input-file"],
+          outputVariables: args.outputVariable ?? args["output-variable"],
+          initialStateFile: args.initialFmuStateFile ?? args["initial-fmu-state-file"],
+          finalStateFile: args.finalFmuStateFile ?? args["final-fmu-state-file"],
+          logFmiCalls: Boolean(args.logFmiCalls ?? args["log-fmi-calls"]),
+        });
+        const formatted = formatFmuSimulateResult(simRes, (args.format as "csv" | "json" | "none") ?? "csv");
+        if (args.output) {
+          fs.writeFileSync(path.resolve(args.output), formatted, "utf-8");
+        } else if (formatted) {
+          process.stdout.write(formatted);
+        }
+      } catch (err) {
+        console.error(`FMU simulation failed: ${err instanceof Error ? err.message : String(err)}`);
+        process.exitCode = 1;
+      }
       return;
     }
+
+    if (args.cloud) {
+      await simulateCloud(args as any);
+      return;
+    }
+    const paths = args.paths ?? [];
+    if (paths.length === 0) {
+      console.error("Error: Please provide at least one Modelica/SysML file or a .fmu archive.");
+      process.exitCode = 1;
+      return;
+    }
+
     const profiler = new Profiler();
     const memProfiles: Record<string, unknown> = {};
     let lastSnap = args.memoryProfile ? snapshotMemory(true) : null;
 
-    const isSysml = args.paths.some((p) => p.endsWith(".sysml") || p.endsWith(".kerml"));
+    const isSysml = paths.some((p) => p.endsWith(".sysml") || p.endsWith(".kerml"));
     let arena: DAEBuilder | null = null;
 
     if (isSysml) {
       profiler.start("parsing");
       let combinedSource = "";
-      for (const p of args.paths) {
+      for (const p of paths) {
         if (p.endsWith(".sysml") || p.endsWith(".kerml")) {
           combinedSource += fs.readFileSync(p, "utf-8") + "\n";
         }
@@ -205,12 +345,12 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
       // Build mapping from absolute resolved paths to user-provided paths
       const pathMap = new Map<string, string>();
-      for (const p of args.paths) {
+      for (const p of paths) {
         pathMap.set(path.resolve(p), p);
       }
 
       profiler.start("parsing");
-      for (const p of args.paths) await context.addLibrary(p);
+      for (const p of paths) await context.addLibrary(p);
       profiler.end("parsing");
 
       if (args.memoryProfile && lastSnap) {
@@ -228,15 +368,17 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     }
 
     if (arena) {
-      let hasArrays = false;
-      for (let i = 0; i < arena.varCount; i++) {
-        if (arena.getVarShape(i).length > 0) {
-          hasArrays = true;
-          break;
+      let hasArrays = hasArrayEquations(arena);
+      if (!hasArrays) {
+        for (let i = 0; i < arena.varCount; i++) {
+          if (arena.getVarShape(i).length > 0) {
+            hasArrays = true;
+            break;
+          }
         }
       }
       if (hasArrays) {
-        arena = scalarizeArena(arena);
+        arena = scalarizeArena(arena, true);
         foldArenaConstants(arena);
       }
     }
@@ -298,6 +440,9 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
 // ── JS Engine ──
 
+/**
+ * Executes synchronous JavaScript/Arena DAE simulation via `simulateArena` and formats trajectories to stdout.
+ */
 function simulateJs(
   arena: DAEBuilder,
   args: SimulateArgs,
@@ -351,6 +496,10 @@ function simulateJs(
 
 // ── Arena Engine ──
 
+/**
+ * Executes asynchronous linear-memory DAE simulation (supporting CVODE WASM and WebGPU solvers)
+ * via `simulateArenaAsync`.
+ */
 async function simulateArenaEngine(
   arena: DAEBuilder,
   args: SimulateArgs,
@@ -408,6 +557,10 @@ async function simulateArenaEngine(
 
 // ── WASM Engine ──
 
+/**
+ * Generates standalone C simulation source from the DAE arena, compiles it to WebAssembly
+ * via Emscripten (`emcc`), and runs the compiled module under Node.js.
+ */
 async function simulateWasm(
   arena: DAEBuilder,
   args: SimulateArgs,
@@ -444,9 +597,9 @@ async function simulateWasm(
 
     fs.writeFileSync(cFile, cSource);
 
-    const rawEmcc = process.env.EMCC ?? "emcc";
+    const rawEmcc = process.env["EMCC"] ?? "emcc";
     const emcc = /^[a-zA-Z0-9_./-]+$/.test(rawEmcc) ? rawEmcc : "emcc";
-    const optFlag = process.env.EMCC_CFLAGS ?? (process.env.CFLAGS ? process.env.CFLAGS : "-O3");
+    const optFlag = process.env["EMCC_CFLAGS"] ?? (process.env["CFLAGS"] ? process.env["CFLAGS"] : "-O3");
     const emccArgs: string[] = [...optFlag.split(/\s+/).filter(Boolean), "-w", cFile];
     if (isCvode) {
       const sundialsInstall = path.resolve(
@@ -529,6 +682,9 @@ async function simulateWasm(
 
 // ── JIT Engine ──
 
+/**
+ * Generates standalone C source from the DAE arena and executes it via the in-memory JIT engine (`simulateArenaJit`).
+ */
 async function simulateJit(
   arena: DAEBuilder,
   args: SimulateArgs,
@@ -582,6 +738,10 @@ async function simulateJit(
 
 // ── C Engine ──
 
+/**
+ * Generates standalone C simulation source from the DAE arena, compiles a native binary via `$CC` (`gcc`),
+ * and executes the native binary to stream CSV/JSON trajectories.
+ */
 async function simulateC(
   arena: DAEBuilder,
   args: SimulateArgs,
@@ -618,8 +778,8 @@ async function simulateC(
 
     fs.writeFileSync(cFile, cSource);
 
-    const cc = process.env.CC ?? "gcc";
-    const optFlag = process.env.CFLAGS ? process.env.CFLAGS : "-O3 -fno-math-errno";
+    const cc = process.env["CC"] ?? "gcc";
+    const optFlag = process.env["CFLAGS"] ? process.env["CFLAGS"] : "-O3 -fno-math-errno";
     const cvodeFlags = isCvode
       ? "-I/usr/include/omc/sundials -L/usr/lib/x86_64-linux-gnu/omc -Wl,-rpath=/usr/lib/x86_64-linux-gnu/omc -lsundials_cvode -lsundials_nvecserial"
       : "";
@@ -698,6 +858,10 @@ async function simulateC(
 
 // ── Output helpers ──
 
+/**
+ * Formats and writes time-series simulation trajectories (`t`, `y`, `varNames`) to `process.stdout`
+ * as CSV or JSON.
+ */
 function outputResults(t: number[], y: number[][], varNames: string[], format: string): void {
   if (format === "none") return;
   if (format === "json") {

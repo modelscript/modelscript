@@ -190,8 +190,8 @@ export interface RegionStat {
 
 interface WorldMapProps {
   data: LocationStat[];
-  regionData?: RegionStat[];
-  totalViews?: number;
+  regionData?: RegionStat[] | undefined;
+  totalViews?: number | undefined;
 }
 
 // Comprehensive ISO 3166-1 alpha-2 to UN M.49 3-digit numeric code map

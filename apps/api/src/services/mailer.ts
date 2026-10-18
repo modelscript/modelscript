@@ -4,8 +4,8 @@ export interface SendMailOptions {
   to: string;
   subject: string;
   text: string;
-  html?: string;
-  from?: string;
+  html?: string | undefined;
+  from?: string | undefined;
 }
 
 export interface SentMailRecord extends SendMailOptions {
@@ -19,7 +19,11 @@ export class MailerService {
   private defaultFrom: string;
   private publicUrl: string;
 
-  constructor(options?: { driver?: "console" | "smtp" | "sendgrid"; defaultFrom?: string; publicUrl?: string }) {
+  constructor(options?: {
+    driver?: "console" | "smtp" | "sendgrid" | undefined;
+    defaultFrom?: string | undefined;
+    publicUrl?: string | undefined;
+  }) {
     this.driver =
       options?.driver || (process.env["SENDGRID_API_KEY"] ? "sendgrid" : process.env["SMTP_HOST"] ? "smtp" : "console");
     this.defaultFrom =
@@ -39,7 +43,9 @@ export class MailerService {
     this.sentMails = [];
   }
 
-  public async sendMail(opts: SendMailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  public async sendMail(
+    opts: SendMailOptions,
+  ): Promise<{ success: boolean; messageId?: string | undefined; error?: string | undefined }> {
     const id = `mail_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const record: SentMailRecord = {
       ...opts,
@@ -108,7 +114,7 @@ export class MailerService {
     to: string,
     username: string,
     verificationToken: string,
-  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  ): Promise<{ success: boolean; messageId?: string | undefined; error?: string | undefined }> {
     const verifyUrl = `${this.publicUrl}/verify-email?token=${encodeURIComponent(verificationToken)}`;
 
     const subject = "Verify your ModelScript account";
@@ -154,7 +160,7 @@ The ModelScript Team`;
     to: string,
     username: string,
     resetToken: string,
-  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  ): Promise<{ success: boolean; messageId?: string | undefined; error?: string | undefined }> {
     const resetUrl = `${this.publicUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
     const subject = "Reset your ModelScript password";

@@ -56,13 +56,13 @@ export type SatStatus = "SAT" | "UNSAT" | "UNKNOWN";
 
 export interface SatResult {
   status: SatStatus;
-  model?: Map<VarId, boolean>;
-  unsatCore?: LitId[];
+  model?: Map<VarId, boolean> | undefined;
+  unsatCore?: LitId[] | undefined;
 }
 
 /** Propositional AST for Tseitin transformation */
 export type PropExpr =
-  | { op: "var"; name?: string; id?: VarId }
+  | { op: "var"; name?: string | undefined; id?: VarId | undefined }
   | { op: "const"; value: boolean }
   | { op: "not"; child: PropExpr }
   | { op: "and"; children: PropExpr[] }

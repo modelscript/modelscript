@@ -6,12 +6,12 @@ import React, { useEffect, useRef, useState } from "react";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 
 export interface SafeOrbitControlsProps {
-  isFullScreen?: boolean;
-  controlsRef?: React.RefObject<OrbitControlsImpl | null>;
-  enableDamping?: boolean;
-  dampingFactor?: number;
-  minDistance?: number;
-  maxDistance?: number;
+  isFullScreen?: boolean | undefined;
+  controlsRef?: React.RefObject<OrbitControlsImpl | null> | undefined;
+  enableDamping?: boolean | undefined;
+  dampingFactor?: number | undefined;
+  minDistance?: number | undefined;
+  maxDistance?: number | undefined;
 }
 
 export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({

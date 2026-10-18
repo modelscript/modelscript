@@ -29,10 +29,10 @@ export function registerRtmEndpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/getRtmMatrix",
     async (params: {
-      uri?: string;
-      rowDomain?: RtmDomain;
-      colDomain?: RtmDomain;
-      filter?: string;
+      uri?: string | undefined;
+      rowDomain?: RtmDomain | undefined;
+      colDomain?: RtmDomain | undefined;
+      filter?: string | undefined;
     }): Promise<RtmMatrixPayload> => {
       try {
         const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
@@ -72,8 +72,8 @@ export function registerRtmEndpoints(context: LspContext): void {
       sourceUri: string;
       sourceName: string;
       targetName: string;
-      linkKind?: RtmLinkKind;
-    }): Promise<{ success: boolean; error?: string }> => {
+      linkKind?: RtmLinkKind | undefined;
+    }): Promise<{ success: boolean; error?: string | undefined }> => {
       try {
         const doc = context.documentManager.documents.get(params.sourceUri);
         if (!doc) {
@@ -115,9 +115,9 @@ export function registerRtmEndpoints(context: LspContext): void {
       declarationUri: string;
       sourceName: string;
       targetName: string;
-      linkKind?: RtmLinkKind;
-      declarationRange?: [number, number];
-    }): Promise<{ success: boolean; error?: string }> => {
+      linkKind?: RtmLinkKind | undefined;
+      declarationRange?: [number, number] | undefined;
+    }): Promise<{ success: boolean; error?: string | undefined }> => {
       try {
         const doc = context.documentManager.documents.get(params.declarationUri);
         if (!doc) {
@@ -162,19 +162,23 @@ export function registerRtmEndpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/batchUpdateTraceLinks",
     async (params: {
-      creations?: {
-        sourceUri: string;
-        sourceName: string;
-        targetName: string;
-        linkKind?: RtmLinkKind;
-      }[];
-      deletions?: {
-        declarationUri: string;
-        sourceName: string;
-        targetName: string;
-        linkKind?: RtmLinkKind;
-      }[];
-    }): Promise<{ success: boolean; createdCount: number; deletedCount: number; error?: string }> => {
+      creations?:
+        | {
+            sourceUri: string;
+            sourceName: string;
+            targetName: string;
+            linkKind?: RtmLinkKind | undefined;
+          }[]
+        | undefined;
+      deletions?:
+        | {
+            declarationUri: string;
+            sourceName: string;
+            targetName: string;
+            linkKind?: RtmLinkKind | undefined;
+          }[]
+        | undefined;
+    }): Promise<{ success: boolean; createdCount: number; deletedCount: number; error?: string | undefined }> => {
       try {
         let createdCount = 0;
         let deletedCount = 0;
@@ -255,7 +259,10 @@ export function registerRtmEndpoints(context: LspContext): void {
   // ── 5. Re-verify Link (On-Demand Verification Trigger) ──────────────────
   context.connection.onRequest(
     "modelscript/reverifyLink",
-    async (params: { targetUri: string; targetName?: string }): Promise<{ ok: boolean; error?: string }> => {
+    async (params: {
+      targetUri: string;
+      targetName?: string | undefined;
+    }): Promise<{ ok: boolean; error?: string | undefined }> => {
       try {
         if (typeof globalThis.runVerificationForUri === "function") {
           const res = await globalThis.runVerificationForUri(params.targetUri);
@@ -275,9 +282,9 @@ export function registerRtmEndpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/exportRtm",
     async (params: {
-      uri?: string;
-      rowDomain?: RtmDomain;
-      colDomain?: RtmDomain;
+      uri?: string | undefined;
+      rowDomain?: RtmDomain | undefined;
+      colDomain?: RtmDomain | undefined;
     }): Promise<{ csv: string; filename: string }> => {
       const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const matrix = RtmIndexEngine.buildMatrix(
@@ -314,7 +321,11 @@ export function registerRtmEndpoints(context: LspContext): void {
   // ── 7. Get General-Purpose Elements Table ────────────────────────────────
   context.connection.onRequest(
     "modelscript/getElementsTable",
-    async (params: { uri?: string; metaclass?: string; filter?: string }): Promise<ElementsTablePayload> => {
+    async (params: {
+      uri?: string | undefined;
+      metaclass?: string | undefined;
+      filter?: string | undefined;
+    }): Promise<ElementsTablePayload> => {
       try {
         const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         const metaclass = params.metaclass ?? "part";
@@ -339,7 +350,7 @@ export function registerRtmEndpoints(context: LspContext): void {
       qualifiedName: string;
       attributeName: string;
       newValue: string;
-    }): Promise<{ success: boolean; error?: string }> => {
+    }): Promise<{ success: boolean; error?: string | undefined }> => {
       try {
         const doc = context.documentManager.documents.get(params.uri);
         if (!doc) {
@@ -378,10 +389,10 @@ export function registerRtmEndpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/tableCellComplete",
     async (params: {
-      uri?: string;
-      metaclass?: string;
+      uri?: string | undefined;
+      metaclass?: string | undefined;
       attributeName: string;
-      prefix?: string;
+      prefix?: string | undefined;
     }): Promise<TableCellCompletionItem[]> => {
       try {
         const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
@@ -401,7 +412,10 @@ export function registerRtmEndpoints(context: LspContext): void {
   // ── 10. In-Cell Table Validation ─────────────────────────────────────────
   context.connection.onRequest(
     "modelscript/validateTableCell",
-    async (params: { attributeName: string; value: string }): Promise<{ valid: boolean; error?: string }> => {
+    async (params: {
+      attributeName: string;
+      value: string;
+    }): Promise<{ valid: boolean; error?: string | undefined }> => {
       return ElementTableEngine.validateTableCell(params.attributeName, params.value);
     },
   );

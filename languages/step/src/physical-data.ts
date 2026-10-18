@@ -3,7 +3,7 @@
 export interface StepPart {
   id: string; // STEP entity instance ID (#N)
   name: string; // PRODUCT name
-  shapeId?: string; // Reference to SHAPE_DEFINITION_REPRESENTATION
+  shapeId?: string | undefined; // Reference to SHAPE_DEFINITION_REPRESENTATION
 }
 
 export interface StepAssemblyEdge {
@@ -21,15 +21,17 @@ export interface StepPlacement {
 export interface StepMassProperties {
   mass: number; // kg
   centerOfMass: [number, number, number]; // m
-  inertiaTensor?: {
-    // kg·m² (w.r.t. CoM, principal axes)
-    I_11: number;
-    I_22: number;
-    I_33: number;
-    I_21: number;
-    I_31: number;
-    I_32: number;
-  };
+  inertiaTensor?:
+    | {
+        // kg·m² (w.r.t. CoM, principal axes)
+        I_11: number;
+        I_22: number;
+        I_33: number;
+        I_21: number;
+        I_31: number;
+        I_32: number;
+      }
+    | undefined;
   volume: number; // m³
 }
 
@@ -39,8 +41,8 @@ export interface StepKinematicJoint {
   partB: string; // Child part ID
   axis: [number, number, number];
   origin: [number, number, number];
-  initialValue?: number; // Initial angle (rad) or displacement (m)
-  limits?: { lower: number; upper: number };
+  initialValue?: number | undefined; // Initial angle (rad) or displacement (m)
+  limits?: { lower: number; upper: number } | undefined;
 }
 
 export type StepToleranceType =
@@ -56,25 +58,25 @@ export type StepToleranceType =
 
 export interface StepGeometricTolerance {
   id: string; // Entity ID (e.g. #105)
-  name?: string;
+  name?: string | undefined;
   type: StepToleranceType;
   magnitude: number; // Tolerance magnitude (e.g. 0.05)
   datumReferences: string[]; // Ordered datum identifiers (e.g. ["A", "B", "C"])
-  appliedShapeAspect?: string; // Target shape aspect / face reference
+  appliedShapeAspect?: string | undefined; // Target shape aspect / face reference
 }
 
 export interface StepDatum {
   id: string; // Entity ID
   name: string; // Datum label (e.g. "A")
-  featureRef?: string; // Associated feature/shape reference
+  featureRef?: string | undefined; // Associated feature/shape reference
 }
 
 export interface StepDatumSystem {
   id: string;
-  name?: string;
+  name?: string | undefined;
   primaryDatum: string;
-  secondaryDatum?: string;
-  tertiaryDatum?: string;
+  secondaryDatum?: string | undefined;
+  tertiaryDatum?: string | undefined;
 }
 
 export interface StepAssemblyModel {
@@ -82,7 +84,7 @@ export interface StepAssemblyModel {
   edges: StepAssemblyEdge[];
   joints: StepKinematicJoint[];
   massProperties: Map<string, StepMassProperties>; // partId → properties
-  tolerances?: StepGeometricTolerance[];
-  datums?: Map<string, StepDatum>;
-  datumSystems?: StepDatumSystem[];
+  tolerances?: StepGeometricTolerance[] | undefined;
+  datums?: Map<string, StepDatum> | undefined;
+  datumSystems?: StepDatumSystem[] | undefined;
 }

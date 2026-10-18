@@ -93,7 +93,7 @@ export class LRAutomaton {
           let i = 0;
           let allEmpty = true;
           while (i < prod.right.length) {
-            const Y = prod.right[i];
+            const Y = prod.right[i]!;
             const Y_first = this.firstSets.get(Y);
             if (!Y_first) {
               i++;
@@ -137,12 +137,12 @@ export class LRAutomaton {
 
     // 2. Build states iteratively in a single worklist pass
     for (let i = 0; i < this.states.length; i++) {
-      const state = this.states[i];
+      const state = this.states[i]!;
 
       const nextSymbols = new Set<SymbolName>();
       for (const item of state.items) {
         if (item.dot < item.production.right.length) {
-          nextSymbols.add(item.production.right[item.dot]);
+          nextSymbols.add(item.production.right[item.dot]!);
         }
       }
 
@@ -199,7 +199,7 @@ export class LRAutomaton {
     // DR (Directly Reads): terminals reachable from GOTO(p, A) state
     const drSets = new Map<string, Set<SymbolName>>();
     for (const nt of ntTransitions) {
-      const targetState = this.states[nt.stateId].transitions.get(nt.symbol);
+      const targetState = this.states[nt.stateId]!.transitions.get(nt.symbol);
       if (!targetState) continue;
       const dr = new Set<SymbolName>();
       for (const [sym] of targetState.transitions) {
@@ -220,7 +220,7 @@ export class LRAutomaton {
     // READS relation
     const reads = new Map<string, string[]>();
     for (const nt of ntTransitions) {
-      const r = this.states[nt.stateId].transitions.get(nt.symbol);
+      const r = this.states[nt.stateId]!.transitions.get(nt.symbol);
       if (!r) continue;
       const readsList: string[] = [];
       for (const [sym] of r.transitions) {
@@ -254,20 +254,20 @@ export class LRAutomaton {
         let nullSoFar = true;
         for (let i = len - 1; i >= 0; i--) {
           suffixNullable[i] = nullSoFar;
-          if (nullSoFar && !this.isNullable(rhs[i])) {
+          if (nullSoFar && !this.isNullable(rhs[i]!)) {
             nullSoFar = false;
           }
         }
 
         let cursor: LRState | undefined = startState;
         for (let i = 0; i < len; i++) {
-          const sym = rhs[i];
+          const sym = rhs[i]!;
           if (suffixNullable[i] && this.grammar.nonTerminals.has(sym)) {
-            const childKey = ntKey({ stateId: cursor.id, symbol: sym });
+            const childKey = ntKey({ stateId: cursor!.id, symbol: sym });
             const inc = includes.get(childKey);
             if (inc) inc.push(parentKey);
           }
-          cursor = cursor.transitions.get(sym);
+          cursor = cursor!.transitions.get(sym);
           if (!cursor) break;
         }
 
@@ -414,7 +414,7 @@ export class LRAutomaton {
 
     let head = 0;
     while (head < queue.length) {
-      const u = queue[head++];
+      const u = queue[head++]!;
       const distU = mrd[u];
 
       const incoming = reverseEdges.get(u);
@@ -452,9 +452,9 @@ export class LRAutomaton {
     }
 
     for (let i = 0; i < result.length; i++) {
-      const item = result[i];
+      const item = result[i]!;
       if (item.dot < item.production.right.length) {
-        const nextSym = item.production.right[item.dot];
+        const nextSym = item.production.right[item.dot]!;
         if (!expandedNonTerminals.has(nextSym) && this.grammar.nonTerminals.has(nextSym)) {
           expandedNonTerminals.add(nextSym);
           const prods = this.prodsByLhs.get(nextSym);
@@ -488,11 +488,11 @@ export enum ActionType {
 export interface Action {
   type: ActionType;
   /** State id for SHIFT, Production id for REDUCE. Undefined for ACCEPT. */
-  target?: number;
+  target?: number | undefined;
   /** The precedence of this action, used for conflict resolution. */
-  prec?: number;
+  prec?: number | undefined;
   /** The associativity of this action, used for conflict resolution. */
-  assoc?: "left" | "right";
+  assoc?: "left" | "right" | undefined;
 }
 
 /**
@@ -510,17 +510,25 @@ export interface ConflictReport {
 }
 
 /**
+ * Structured diagnostic describing a shift/reduce or reduce/reduce conflict
+ * encountered while building the GLR parse table, including a counterexample sequence.
+ */
+export interface GrammarConflictDiagnostic {
+  /** Whether the conflict is between a shift and a reduce, or two distinct reductions. */
+  type: "shift/reduce" | "reduce/reduce";
+  /** Human-readable formatted conflict explanation and derivation tree. */
+  output: string;
+  /** Names of the grammar rules participating in the conflict. */
+  rules: string[];
+  /** Minimal unifying symbol sequence that reaches the conflicting state and lookahead. */
+  symbolSequence?: string | undefined;
+}
+
+/**
  * Generates the Generalized LR (GLR) Action and Goto tables.
  * Unlike strict LR parsers, GLR tables permit multiple actions per cell
  * to support forking parser execution on ambiguous inputs.
  */
-export interface GrammarConflictDiagnostic {
-  type: "shift/reduce" | "reduce/reduce";
-  output: string;
-  rules: string[];
-  symbolSequence?: string;
-}
-
 export class GLRTable {
   /**
    * The Action table mapping State ID -> Terminal Symbol -> Array of Actions.
@@ -537,6 +545,10 @@ export class GLRTable {
   /** Structured diagnostics for grammar conflicts. */
   diagnostics: GrammarConflictDiagnostic[] = [];
 
+  /**
+   * Constructs the GLR Action/Goto tables from a normalized grammar and LR automaton,
+   * and populates conflict reports and counterexample diagnostics.
+   */
   constructor(
     public grammar: NormalizedGrammar,
     public automaton: LRAutomaton,
@@ -545,6 +557,11 @@ export class GLRTable {
     this.reportConflicts();
   }
 
+  /**
+   * Populates `actionTable`, `gotoTable`, and `conflicts` by iterating over all
+   * automaton states, transitions, and completed LR items, applying precedence
+   * and associativity disambiguation rules where configured.
+   */
   private buildTable() {
     for (const state of this.automaton.states) {
       this.actionTable.set(state.id, new Map());
@@ -683,7 +700,7 @@ export class GLRTable {
         }
 
         const group = groupedConflicts.get(key)!;
-        const state = this.automaton.states[conflict.stateId];
+        const state = this.automaton.states[conflict.stateId]!;
 
         const rItems = state.items.filter(
           (i) => i.dot === i.production.right.length && i.lookahead.has(conflict.terminal),
@@ -713,7 +730,7 @@ export class GLRTable {
           if (visited.has(curr.stateId)) continue;
           visited.add(curr.stateId);
 
-          const s = this.automaton.states[curr.stateId];
+          const s = this.automaton.states[curr.stateId]!;
           for (const [sym, nextState] of s.transitions) {
             queue.push({ stateId: nextState.id, path: [...curr.path, formatRule(sym)] });
           }
@@ -792,7 +809,7 @@ export class GLRTable {
       console.warn(
         `Found ${diagnostics.length} unresolved conflict${diagnostics.length === 1 ? "" : "s"} (${numReduceReduce} reduce/reduce, ${numShiftReduce} shift/reduce).\n`,
       );
-      if (this.grammar.strictConflicts || process.env.STRICT_GRAMMAR_CONFLICTS === "true") {
+      if (this.grammar.strictConflicts || process.env["STRICT_GRAMMAR_CONFLICTS"] === "true") {
         throw new Error(
           `Grammar '${this.grammar.name}' has ${diagnostics.length} unresolved conflict(s). Resolve with explicit precedence or whitelist in 'conflicts':\n` +
             diagnostics.map((d, i) => `Conflict ${i + 1}:\n${d.output}`).join("\n"),
@@ -812,7 +829,7 @@ export class GLRTable {
 
     // Precedence resolution for Shift vs Reduce
     for (let i = 0; i < list.length; i++) {
-      const exist = list[i];
+      const exist = list[i]!;
       if (action.prec !== undefined || exist.prec !== undefined) {
         const actionPrec = action.prec ?? 0;
         const existPrec = exist.prec ?? 0;
@@ -891,7 +908,7 @@ function invertRanges(ranges: [number, number][]): [number, number][] {
     if (merged.length === 0) {
       merged.push([r[0], r[1]]);
     } else {
-      const last = merged[merged.length - 1];
+      const last = merged[merged.length - 1]!;
       if (r[0] <= last[1] + 1) {
         last[1] = Math.max(last[1], r[1]);
       } else {
@@ -977,9 +994,9 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
         if (endPos > -1) {
           const rangeStr = pattern.substring(pos + 1, endPos);
           const parts = rangeStr.split(",");
-          if (parts.length > 0 && !isNaN(parseInt(parts[0], 10))) {
-            const min = parseInt(parts[0], 10);
-            const max = parts.length > 1 ? (parts[1].trim() === "" ? Infinity : parseInt(parts[1], 10)) : min;
+          if (parts.length > 0 && !isNaN(parseInt(parts[0]!, 10))) {
+            const min = parseInt(parts[0]!, 10);
+            const max = parts.length > 1 ? (parts[1]!.trim() === "" ? Infinity : parseInt(parts[1]!, 10)) : min;
             pos = endPos + 1;
             if (pos < pattern.length && pattern[pos] === "?") pos++;
 
@@ -1023,10 +1040,14 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
       }
       const ranges: [number, number][] = [];
 
-      function parseClassItem(): { isClass: boolean; ranges?: [number, number][]; char?: number } {
+      function parseClassItem(): {
+        isClass: boolean;
+        ranges?: [number, number][] | undefined;
+        char?: number | undefined;
+      } {
         if (pattern[pos] === "\\") {
           pos++;
-          const esc = pattern[pos++];
+          const esc = pattern[pos++]!;
           if (esc === "u") {
             if (pattern[pos] === "{") {
               pos++;
@@ -1129,7 +1150,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
       }
       return { type: "CLASS", ranges, invert: false };
     } else if (ch === "\\") {
-      const esc = pattern[pos++];
+      const esc = pattern[pos++]!;
       if (esc === "u") {
         if (pattern[pos] === "{") {
           pos++;
@@ -1227,7 +1248,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
 interface NFAState {
   id: number;
   transitions: Map<number, NFAState[]>; // char -> states, -1 = epsilon
-  accepts?: string;
+  accepts?: string | undefined;
 }
 
 /**
@@ -1275,8 +1296,8 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
       r = numIntervals - 1;
     while (l <= r) {
       const m = (l + r) >> 1;
-      if (cp < p[m]) r = m - 1;
-      else if (cp >= p[m + 1]) l = m + 1;
+      if (cp < p[m]!) r = m - 1;
+      else if (cp >= p[m + 1]!) l = m + 1;
       else return m;
     }
     return 0;
@@ -1414,7 +1435,7 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
           dfaMap.set(nextKey, nextId);
           queue.push({ id: nextId, closure: nextClosure });
         }
-        dfaStates[current.id].transitions.set(ch, nextId);
+        dfaStates[current.id]!.transitions.set(ch, nextId);
       }
     }
   }
@@ -1480,15 +1501,15 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
 
   const stateToPartition = new Map<number, number>();
   for (let i = 0; i < P.length; i++) {
-    for (const s of P[i]) {
+    for (const s of P[i]!) {
       stateToPartition.set(s, i);
     }
   }
 
   const minDfaStates: { id: number; accepts: string[] | null; transitions: Map<number, number> }[] = [];
   for (let i = 0; i < P.length; i++) {
-    const rep = Array.from(P[i])[0];
-    const oldState = dfaStates[rep];
+    const rep = Array.from(P[i]!)[0]!;
+    const oldState = dfaStates[rep]!;
 
     const newTrans = new Map<number, number>();
     for (const [ch, to] of oldState.transitions.entries()) {
@@ -1504,12 +1525,12 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
 
   const startPartitionId = stateToPartition.get(0)!;
   if (startPartitionId !== 0) {
-    const tmp = minDfaStates[0];
-    minDfaStates[0] = minDfaStates[startPartitionId];
+    const tmp = minDfaStates[0]!;
+    minDfaStates[0] = minDfaStates[startPartitionId]!;
     minDfaStates[startPartitionId] = tmp;
 
-    minDfaStates[0].id = 0;
-    minDfaStates[startPartitionId].id = startPartitionId;
+    minDfaStates[0]!.id = 0;
+    minDfaStates[startPartitionId]!.id = startPartitionId;
 
     for (const s of minDfaStates) {
       for (const [ch, to] of s.transitions.entries()) {
@@ -1550,12 +1571,12 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
   // Merge contiguous intervals that map to the same equivalence class
   const classRanges: { s: number; e: number; c: number }[] = [];
   let curStart = 0;
-  let curClass = intervalToClass[0];
+  let curClass = intervalToClass[0]!;
   for (let k = 1; k < numIntervals; k++) {
     if (intervalToClass[k] !== curClass) {
-      classRanges.push({ s: curStart, e: p[k] - 1, c: curClass });
-      curStart = p[k];
-      curClass = intervalToClass[k];
+      classRanges.push({ s: curStart, e: p[k]! - 1, c: curClass });
+      curStart = p[k]!;
+      curClass = intervalToClass[k]!;
     }
   }
   classRanges.push({ s: curStart, e: 0x10ffff, c: curClass });
@@ -1564,7 +1585,7 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
   const table = new Int32Array(minDfaStates.length * numClasses);
   for (let s = 0; s < minDfaStates.length; s++) {
     for (let c = 0; c < numClasses; c++) {
-      table[s * numClasses + c] = classVectors[c][s];
+      table[s * numClasses + c] = classVectors[c]![s]!;
     }
   }
 

@@ -9,7 +9,7 @@ import { isSupportedModelFile } from "./utils/file-utils";
 interface SemanticEditNode {
   action: "insert" | "delete" | "update" | "none";
   description: string;
-  kind?: string;
+  kind?: string | undefined;
   uri: vscode.Uri;
 }
 
@@ -32,7 +32,7 @@ class SemanticDiffTreeItem extends vscode.TreeItem {
 
     // Add file context
     const filename = edit.uri.path.split("/").pop();
-    this.description = filename;
+    if (filename !== undefined) this.description = filename;
   }
 }
 

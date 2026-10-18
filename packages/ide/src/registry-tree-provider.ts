@@ -4,7 +4,7 @@
 import * as vscode from "vscode";
 
 export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
-  private _view?: vscode.WebviewView;
+  private _view?: vscode.WebviewView | undefined;
   private registryUrl: string;
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -15,7 +15,7 @@ export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
+    _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ) {
     this._view = webviewView;

@@ -19,21 +19,22 @@ export interface ParameterRange {
 }
 
 export interface CfdSurrogateParticipantConfig {
-  id?: string;
-  patchNames?: string[];
+  id?: string | undefined;
+  patchNames?: string[] | undefined;
   /** Optional parameter extractor from boundary conditions map. */
-  parameterExtractor?: (
-    boundaryConditions: Map<string, ContinuumBoundaryCondition>,
-    time: number,
-  ) => Record<string, number>;
+  parameterExtractor?:
+    | ((boundaryConditions: Map<string, ContinuumBoundaryCondition>, time: number) => Record<string, number>)
+    | undefined;
   /** Optional scalar outputs mapper to Vector3D force. */
-  scalarOutputsMapper?: (scalarOutputs: Record<string, number>) => {
-    aerodynamicForceN: Vector3D;
-    maxVelocity?: number;
-    pressureDropPa?: number;
-  };
+  scalarOutputsMapper?:
+    | ((scalarOutputs: Record<string, number>) => {
+        aerodynamicForceN: Vector3D;
+        maxVelocity?: number | undefined;
+        pressureDropPa?: number | undefined;
+      })
+    | undefined;
   /** Training dataset for parameter bounding and confidence evaluation. */
-  trainingDataset?: SnapshotMatrixDataset;
+  trainingDataset?: SnapshotMatrixDataset | undefined;
 }
 
 /**
@@ -51,8 +52,8 @@ export class CfdSurrogateParticipant implements ICfdContinuumParticipant {
   private boundaryConditions: Map<string, ContinuumBoundaryCondition> = new Map();
   private currentTime: number = 0.0;
   private parameterRanges: Map<string, ParameterRange> = new Map();
-  private lastPrediction?: PodSurrogatePrediction;
-  private lastOutput?: CfdStepOutput;
+  private lastPrediction?: PodSurrogatePrediction | undefined;
+  public lastOutput?: CfdStepOutput | undefined;
   private patchMetricsCache: Map<string, ContinuumPatchMetrics> = new Map();
 
   constructor(surrogate: CfdPodSurrogate | TrainedCaeSurrogate, config: CfdSurrogateParticipantConfig = {}) {
@@ -272,15 +273,17 @@ export type FidelityMode = "adaptive" | "surrogate" | "continuum";
 
 export interface MultiFidelityManagerConfig {
   /** Fidelity mode (default: 'adaptive'). */
-  mode?: FidelityMode;
+  mode?: FidelityMode | undefined;
   /** Trust region confidence threshold gamma_th in (0, 1] (default: 0.85). */
-  confidenceThreshold?: number;
+  confidenceThreshold?: number | undefined;
   /** Periodic high-fidelity validation & snapshot enrichment interval in macro-steps (default: 50). */
-  enrichmentInterval?: number;
+  enrichmentInterval?: number | undefined;
   /** Optional snapshot collector to record new snapshots during high-fidelity steps. */
-  snapshotCollector?: CfdSnapshotCollector;
+  snapshotCollector?: CfdSnapshotCollector | undefined;
   /** Callback fired whenever fidelity mode transitions occur. */
-  onFidelityTransition?: (from: "surrogate" | "continuum", to: "surrogate" | "continuum", reason: string) => void;
+  onFidelityTransition?:
+    | ((from: "surrogate" | "continuum", to: "surrogate" | "continuum", reason: string) => void)
+    | undefined;
 }
 
 /**

@@ -10,6 +10,9 @@
  * AST token ranges.
  */
 
+/**
+ * Diagnostic emitted by the OpenSCAD semantic linter with 0-indexed byte offsets and 1-indexed line/column spans.
+ */
 export interface ScadDiagnostic {
   code: string;
   severity: "error" | "warning" | "info";
@@ -28,6 +31,9 @@ export interface ScadDiagnostic {
   endColumn: number;
 }
 
+/**
+ * Built-in OpenSCAD special variables and constants that are always defined in scope.
+ */
 const BUILTIN_VARIABLES = new Set<string>([
   "$fn",
   "$fa",
@@ -45,6 +51,9 @@ const BUILTIN_VARIABLES = new Set<string>([
   "false",
 ]);
 
+/**
+ * Built-in OpenSCAD mathematical, string, list, and type-predicate functions.
+ */
 const BUILTIN_FUNCTIONS = new Set<string>([
   "sin",
   "cos",
@@ -86,6 +95,9 @@ const BUILTIN_FUNCTIONS = new Set<string>([
   "rands",
 ]);
 
+/**
+ * Built-in OpenSCAD geometric primitives, boolean operators, extrusions, and ModelScript `tag_port`.
+ */
 const BUILTIN_MODULES = new Set<string>([
   "cube",
   "cylinder",
@@ -120,8 +132,14 @@ const BUILTIN_MODULES = new Set<string>([
   "tag_port",
 ]);
 
+/**
+ * Supported fluent CAD transformation and feature-modeling methods on `ChainedSolid` expressions.
+ */
 const BUILTIN_METHODS = new Set<string>(["translate", "rotate", "scale", "mirror", "color", "fillet", "chamfer"]);
 
+/**
+ * Signature metadata for a user-defined OpenSCAD module or function used for call-site validation.
+ */
 interface CallableSignature {
   name: string;
   params: string[];
@@ -131,6 +149,9 @@ interface CallableSignature {
   declScope: LintScope;
 }
 
+/**
+ * Lexical scope frame tracking variable bindings, constant-folded values, and callable signatures during linting.
+ */
 class LintScope {
   public vars = new Map<string, { value: any; node: any }>();
   public modules = new Map<string, CallableSignature>();
@@ -138,12 +159,18 @@ class LintScope {
 
   constructor(public parent: LintScope | null = null) {}
 
+  /**
+   * Checks whether `name` is a built-in variable or declared in this scope or an enclosing parent scope.
+   */
   hasVar(name: string): boolean {
     if (BUILTIN_VARIABLES.has(name)) return true;
     if (this.vars.has(name)) return true;
     return this.parent ? this.parent.hasVar(name) : false;
   }
 
+  /**
+   * Retrieves the constant-folded value of `name` if statically known, or `undefined` otherwise.
+   */
   getVarValue(name: string): any {
     if (name === "PI") return Math.PI;
     if (name === "true") return true;
@@ -153,15 +180,24 @@ class LintScope {
     return this.parent ? this.parent.getVarValue(name) : undefined;
   }
 
+  /**
+   * Looks up a user-defined module signature in the lexical scope chain.
+   */
   getModule(name: string): CallableSignature | undefined {
     return this.modules.get(name) ?? (this.parent ? this.parent.getModule(name) : undefined);
   }
 
+  /**
+   * Looks up a user-defined function signature in the lexical scope chain.
+   */
   getFunction(name: string): CallableSignature | undefined {
     return this.functions.get(name) ?? (this.parent ? this.parent.getFunction(name) : undefined);
   }
 }
 
+/**
+ * Binary-search line-start index converting 0-indexed byte offsets into 1-indexed `(line, column)` coordinates.
+ */
 class LineLocator {
   private lineStarts: number[] = [0];
 
@@ -173,6 +209,9 @@ class LineLocator {
     }
   }
 
+  /**
+   * Converts a 0-indexed character offset to a 1-indexed `{ line, column }` position.
+   */
   offsetToPos(offset: number): { line: number; column: number } {
     const clamped = Math.max(0, Math.min(offset, this.source.length));
     let low = 0;
@@ -193,14 +232,23 @@ class LineLocator {
   }
 }
 
+/**
+ * Returns the 0-indexed start byte offset of a CST node.
+ */
 function getNodeStart(node: any): number {
   return node?.startIndex ?? node?.startByte ?? 0;
 }
 
+/**
+ * Returns the 0-indexed end byte offset of a CST node.
+ */
 function getNodeEnd(node: any): number {
   return node?.endIndex ?? node?.endByte ?? 0;
 }
 
+/**
+ * Finds the first direct child of `node` whose CST type matches `targetType`.
+ */
 function findChildByType(node: any, targetType: string): any {
   if (!node) return null;
   for (let i = 0; i < node.childCount; i++) {
@@ -210,6 +258,10 @@ function findChildByType(node: any, targetType: string): any {
   return null;
 }
 
+/**
+ * Extracts ordered parameter names, identifier AST nodes, required parameters, and default expressions
+ * from a `ParameterList` CST node.
+ */
 function parseParameterList(paramListNode: any): {
   params: string[];
   paramNodes: Map<string, any>;
@@ -241,13 +293,19 @@ function parseParameterList(paramListNode: any): {
   return { params, paramNodes, requiredParams, defaultExprs };
 }
 
+/**
+ * Parsed positional or named argument node from a module or function call site.
+ */
 interface ParsedArg {
-  name?: string;
+  name?: string | undefined;
   nameNode?: any;
   valueNode: any;
   argNode: any;
 }
 
+/**
+ * Separates an `ArgumentList` CST node into positional arguments, named arguments, and the complete ordered list.
+ */
 function parseArgumentList(argListNode: any): {
   positional: ParsedArg[];
   named: Map<string, ParsedArg>;

@@ -28,7 +28,10 @@ import {
   isRealExpr,
 } from "./eval.js";
 
-export const SCALAR_VECTORIZABLE_FUNCTIONS = new Map<string, { arity: number; fold?: (...args: number[]) => number }>([
+export const SCALAR_VECTORIZABLE_FUNCTIONS = new Map<
+  string,
+  { arity: number; fold?: ((...args: number[]) => number) | undefined }
+>([
   ["sin", { arity: 1, fold: Math.sin }],
   ["cos", { arity: 1, fold: Math.cos }],
   ["tan", { arity: 1, fold: Math.tan }],
@@ -57,7 +60,7 @@ export function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
   if (!sym) return "";
   if ((sym as any)._fqn !== undefined) return (sym as any)._fqn;
   const parts: string[] = [];
-  let curr: SymbolEntry | null = sym;
+  let curr: SymbolEntry | null | undefined = sym;
   while (curr) {
     parts.unshift(curr.name);
     curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
@@ -132,6 +135,9 @@ export function vectorizeFunctionCall(
   const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(fnName);
   let isScalarFn = Boolean(scalarBuiltin);
   let fnDae: DAEBuilder | undefined;
+  let pendingSym: any = null;
+  let pendingQualifiedFnName = "";
+  let pendingFnBase = "";
   if (!isScalarFn) {
     const hasArrayArg = argExprIds.some((aid) => (getExprDims(aid, dae, db)?.length ?? 0) > 0);
     if (!hasArrayArg) return null;
@@ -140,15 +146,27 @@ export function vectorizeFunctionCall(
       const parts = fnName.split(".");
       const fnBase = parts[parts.length - 1]!;
       let sym: any = null;
+      let enclosingScopeId: SymbolId | undefined = undefined;
       const currentScopeId =
         flattener.currentClassId ?? getFlatteningState(dae).currentClassId ?? flattener.currentRootClassId;
+      let resolvedLookupName = fnName;
+      if (parts.length > 1 && flattener.currentImports?.has(parts[0]!)) {
+        resolvedLookupName = [flattener.currentImports.get(parts[0]!)!, ...parts.slice(1)].join(".");
+      }
+      if (currentScopeId && parts.length > 1) {
+        const prefixStr = parts.slice(0, -1).join(".");
+        const prefixSym = (db.query as any)("resolveName", currentScopeId)?.(prefixStr);
+        if (prefixSym && (prefixSym.kind === "Class" || prefixSym.kind === "Package")) {
+          enclosingScopeId = prefixSym.id;
+        }
+      }
       if (currentScopeId) {
         const resolver = (
-          fnName.includes(".")
+          resolvedLookupName.includes(".")
             ? (db.query as any)("resolveName", currentScopeId)
             : (db.query as any)("resolveSimpleName", currentScopeId)
         ) as ((n: string) => any) | undefined;
-        const resSym = resolver?.(fnName);
+        const resSym = resolver?.(resolvedLookupName) ?? (resolvedLookupName !== fnName ? resolver?.(fnName) : null);
         if (
           resSym &&
           (resSym.kind === "Function" || flattener.isFunctionSym?.(resSym)) &&
@@ -157,6 +175,18 @@ export function vectorizeFunctionCall(
         ) {
           sym = resSym;
         }
+      }
+      if (!sym && resolvedLookupName.includes(".")) {
+        sym = db
+          .byName(fnBase)
+          .find(
+            (e: any) =>
+              (e.kind === "Class" || e.kind === "Function") &&
+              flattener.isFunctionSym?.(e) &&
+              !flattener.isExternalObject?.(e.id) &&
+              !flattener.isRecordSym?.(e) &&
+              getSymbolQualifiedName(db, e.id).endsWith(resolvedLookupName),
+          );
       }
       if (!sym) {
         sym = db
@@ -173,26 +203,15 @@ export function vectorizeFunctionCall(
         return null;
       }
       if (sym && flattener.flattenFunction) {
-        const qualifiedFnName = getSymbolQualifiedName(db, sym.id);
-        flattener.calledFunctionSymIds?.add(sym.id);
-        fnDae = flattener.flattenFunction(sym.id, qualifiedFnName, undefined, dae);
+        const qualifiedFnName = enclosingScopeId
+          ? `${getSymbolQualifiedName(db, enclosingScopeId)}.${fnBase}`
+          : getSymbolQualifiedName(db, sym.id);
+        fnDae = flattener.flattenFunction(sym.id, qualifiedFnName, undefined, undefined, enclosingScopeId);
         if (fnDae && !fnDae.diagnostics.some((d: any) => d.severity === "error")) {
-          dae.addFunction(qualifiedFnName, fnDae);
-          dae.addFunction(fnName, fnDae);
-          if (fnBase) dae.addFunction(fnBase, fnDae);
-          if (fnDae.functions && fnDae.functions.size > 0) {
-            for (const [nestedName, nestedFn] of fnDae.functions.entries()) {
-              dae.addFunction(nestedName, nestedFn);
-            }
-          }
+          pendingSym = sym;
+          pendingQualifiedFnName = qualifiedFnName;
+          pendingFnBase = parts.length === 1 ? fnBase : "";
         } else {
-          if (fnDae) {
-            for (const d of fnDae.diagnostics) {
-              if (d.severity === "error" && !dae.diagnostics.some((existing: any) => existing.message === d.message)) {
-                dae.diagnostics.push(d);
-              }
-            }
-          }
           fnDae = undefined;
         }
       }
@@ -205,15 +224,39 @@ export function vectorizeFunctionCall(
     isScalarFn = true;
     inputShapes = argExprIds.map(() => []);
   } else if (fnDae) {
+    const inputMap = new Map<string, number[]>();
     for (let i = 0; i < fnDae.varCount; i++) {
       if (fnDae.getVarCausality(i) === Causality.Input) {
-        const shape = fnDae.getVarShape(i) ?? [];
-        inputShapes.push(shape);
-        if (shape.length > 0 || fnDae.getVarName(i).includes("[")) {
+        const vName = fnDae.getVarName(i);
+        const isRecordField = vName.includes(".");
+        const firstPart = vName.split(".")[0]!;
+        const bracketIdx = firstPart.indexOf("[");
+        const baseName = bracketIdx >= 0 ? firstPart.slice(0, bracketIdx) : firstPart;
+        const shape = isRecordField ? [] : (fnDae.getVarShape(i) ?? []);
+        if (shape.length > 0) {
+          inputMap.set(baseName, shape);
           allScalarInputs = false;
+        } else if (bracketIdx >= 0 && firstPart.endsWith("]")) {
+          const idxNums = firstPart
+            .slice(bracketIdx + 1, -1)
+            .split(",")
+            .map((s) => Number(s.trim()));
+          const prev = inputMap.get(baseName) ?? [];
+          const next = [...prev];
+          for (let d = 0; d < idxNums.length; d++) {
+            const val = idxNums[d]!;
+            if (!isNaN(val)) {
+              next[d] = Math.max(next[d] ?? 0, val);
+            }
+          }
+          inputMap.set(baseName, next);
+          allScalarInputs = false;
+        } else if (!inputMap.has(baseName)) {
+          inputMap.set(baseName, []);
         }
       }
     }
+    inputShapes = [...inputMap.values()];
   } else if (
     fnName === "backSample" ||
     fnName === "shiftSample" ||
@@ -224,6 +267,10 @@ export function vectorizeFunctionCall(
     isScalarFn = true;
     inputShapes = argExprIds.map(() => []);
   } else {
+    return null;
+  }
+
+  if (!isScalarFn && inputShapes.length !== argExprIds.length) {
     return null;
   }
 
@@ -261,8 +308,8 @@ export function vectorizeFunctionCall(
         len = dae.getExprData1(id);
       } else {
         const dims = getExprDims(id, dae, db);
-        if (dims && dims.length > 0 && dims[0] > 0) {
-          len = dims[0];
+        if (dims && dims.length > 0 && dims[0]! > 0) {
+          len = dims[0]!;
         }
       }
       if (len > 0) {
@@ -277,8 +324,8 @@ export function vectorizeFunctionCall(
       arrLen = dae.getExprData1(id);
     } else {
       const dims = getExprDims(id, dae, db);
-      if (dims && dims.length > 0 && dims[0] > 0) {
-        arrLen = dims[0];
+      if (dims && dims.length > 0 && dims[0]! > 0) {
+        arrLen = dims[0]!;
       } else {
         return null;
       }
@@ -304,6 +351,18 @@ export function vectorizeFunctionCall(
       return dae.addComprehensionExpr("array", scalarCall, [{ name: tmpVarName, rangeId: targetArgId }]);
     }
     return null;
+  }
+
+  if (pendingSym && fnDae) {
+    flattener?.calledFunctionSymIds?.add(pendingSym.id);
+    dae.addFunction(pendingQualifiedFnName, fnDae);
+    dae.addFunction(fnName, fnDae);
+    if (pendingFnBase) dae.addFunction(pendingFnBase, fnDae);
+    if (fnDae.functions && fnDae.functions.size > 0) {
+      for (const [nestedName, nestedFn] of fnDae.functions.entries()) {
+        dae.addFunction(nestedName, nestedFn);
+      }
+    }
   }
 
   const elemResults: number[] = [];

@@ -38,7 +38,6 @@ export function readComtrade(cfgContent: string, datContent: string | Uint8Array
 
   // Line 2: Channel totals: total, ##A, ##D
   const line2Parts = cfgLines[1]!.split(",").map((s) => s.trim());
-  const _nTotal = parseInt(line2Parts[0] || "0", 10);
   const nAnalog = parseInt(line2Parts[1]?.replace(/[^0-9]/g, "") || "0", 10);
   const nDigital = parseInt(line2Parts[2]?.replace(/[^0-9]/g, "") || "0", 10);
 
@@ -174,11 +173,13 @@ export function readComtrade(cfgContent: string, datContent: string | Uint8Array
   for (let i = 0; i < nSamples; i++) {
     const parts = datLines[i]!.split(",").map((s) => s.trim());
     const timeUs = parseFloat(parts[1] || "0");
+    // Convert timestamp from scaled microseconds to seconds: t_sec = t_raw * timeMult * 1e-6
     timeSec[i] = timeUs * timeMultiplicationFactor * 1e-6;
 
     let col = 2;
     for (const ch of analogChannels) {
       const rawVal = parseFloat(parts[col++] || "0");
+      // IEEE C37.111 linear scaling conversion: y = a * x + b
       const physicalVal = ch.multiplierA * rawVal + ch.offsetB;
       analogData.get(ch.name)![i] = physicalVal;
     }
@@ -197,10 +198,15 @@ export function readComtrade(cfgContent: string, datContent: string | Uint8Array
   };
 }
 
+/**
+ * Decodes an IEEE C37.111 binary `.dat` payload (`BINARY` 16-bit int, `BINARY32` 32-bit int, or `FLOAT32`)
+ * into scaled physical engineering units and unpacked digital status channels.
+ */
 function parseBinaryDat(config: ComtradeConfig, bytes: Uint8Array): ComtradeRecord {
   const format = config.dataFormat === "ASCII" ? "BINARY" : config.dataFormat;
   const nAnalog = config.analogChannels.length;
   const nDigital = config.digitalChannels.length;
+  // Each sample contains: 4B sample index + 4B timestamp + nAnalog*(2B or 4B) + ceil(nDigital/16)*2B status words
   const analogBytesPerCh = format === "BINARY" ? 2 : 4;
   const statusWordsPerSample = Math.ceil(nDigital / 16);
   const bytesPerSample = 8 + nAnalog * analogBytesPerCh + statusWordsPerSample * 2;
@@ -220,7 +226,7 @@ function parseBinaryDat(config: ComtradeConfig, bytes: Uint8Array): ComtradeReco
 
   let offset = 0;
   for (let i = 0; i < nSamples; i++) {
-    const _sampleNum = view.getUint32(offset, true);
+    // Skip 4-byte little-endian sample number (uint32) and read 4-byte timestamp (uint32)
     offset += 4;
     const timeUs = view.getUint32(offset, true);
     offset += 4;
@@ -243,6 +249,7 @@ function parseBinaryDat(config: ComtradeConfig, bytes: Uint8Array): ComtradeReco
       analogData.get(ch.name)![i] = ch.multiplierA * rawVal + ch.offsetB;
     }
 
+    // Unpack 16-bit little-endian status words (LSB = first digital channel in group of 16)
     for (let w = 0; w < statusWordsPerSample; w++) {
       const word = view.getUint16(offset, true);
       offset += 2;
@@ -268,6 +275,7 @@ function parseBinaryDat(config: ComtradeConfig, bytes: Uint8Array): ComtradeReco
  * Parses an IEEE C37.111-2013 Annex B Single-File Common Format (`.cff`) string into a ComtradeRecord.
  */
 export function readComtradeCff(cffContent: string): ComtradeRecord {
+  // Extract "--- file type: CFG ---", optional "--- file type: INF ---", and "--- file type: DAT ---" sections
   const cfgMatch = /---\s*file type:\s*CFG\s*---\r?\n([\s\S]*?)(?=---\s*file type:|$)/i.exec(cffContent);
   const infMatch = /---\s*file type:\s*INF\s*---\r?\n([\s\S]*?)(?=---\s*file type:|$)/i.exec(cffContent);
   const datMatch = /---\s*file type:\s*DAT(?:\s+ASCII)?\s*---\r?\n([\s\S]*?)(?=---\s*file type:|$)/i.exec(cffContent);

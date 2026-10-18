@@ -93,9 +93,18 @@ import {
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 
 /**
- * Starts a headless Language Server Protocol server over Node.js standard I/O or IPC.
+ * Starts a headless Language Server Protocol server over Node.js standard I/O, IPC, or custom streams.
+ *
+ * Initializes all language workspaces (Modelica, SysML v2, OWL2, STEP, PSCAD, CSV, OpenSCAD, FEA, CFD),
+ * loads native WASM GLR parsers, configures the 3-tier incremental keystroke/index/semantic validation
+ * pipeline, and registers all standard LSP feature providers and custom ModelScript JSON-RPC endpoints.
+ *
+ * @param input - Optional readable stream for custom JSON-RPC transport.
+ * @param output - Optional writable stream for custom JSON-RPC transport.
+ * @returns Server handle bundling the connection, document store, and core services.
  */
 export function startNodeServer(input?: any, output?: any) {
+  // Select transport mode based on explicit streams or CLI flags (--stdio, --node-ipc, --socket)
   let connection: any;
   if (input && output) {
     connection = createConnection(ProposedFeatures.all, input, output);
@@ -109,6 +118,7 @@ export function startNodeServer(input?: any, output?: any) {
 
   const documents = new TextDocuments(TextDocument);
 
+  // Instantiate core LSP services
   const documentManager = new DocumentManager(documents, () => parserService.getSharedCstTreeWrapper());
   const workspaceManager = new WorkspaceManager(documentManager);
   const parserService = new ParserService(connection, documentManager, workspaceManager, documents);
@@ -118,6 +128,10 @@ export function startNodeServer(input?: any, output?: any) {
 
   /**
    * Flatten a class instance using the arena-native pipeline.
+   *
+   * @param classInstance - Resolved class instance descriptor containing a symbol `id` and `name`.
+   * @param _context - Optional legacy context parameter (unused in arena-native mode).
+   * @returns Populated `DAEBuilder` arena containing flattened variables and equations.
    */
   function flattenArenaFromInstance(classInstance: any, _context?: any): DAEBuilder {
     const className = classInstance.compositeName || classInstance.name;
@@ -164,6 +178,7 @@ export function startNodeServer(input?: any, output?: any) {
   globalThis.buildComponentTree = buildComponentTree;
 
   // Expose constants for extracted handlers
+  /** Ordered list of Modelica restricted class keywords used to classify symbol declarations. */
   const CLASS_KIND_KEYWORDS = [
     "class",
     "model",
@@ -176,6 +191,7 @@ export function startNodeServer(input?: any, output?: any) {
     "operator",
     "optimization",
   ];
+  /** Mapping from SysML v2 CST rule names to human-readable definition kind labels. */
   const SYSML2_RULE_TO_KIND: Record<string, string> = {
     Package: "package",
     LibraryPackage: "package",
@@ -204,15 +220,20 @@ export function startNodeServer(input?: any, output?: any) {
     MetadataDefinition: "metadata def",
     EnumerationDefinition: "enumeration",
   };
+  /** Set of SysML v2 symbol kinds visible in the workspace library tree. */
   const SYSML2_TREE_KINDS = new Set(["Definition", "Package", "Enumeration"]);
 
   globalThis.CLASS_KIND_KEYWORDS = CLASS_KIND_KEYWORDS;
   globalThis.SYSML2_RULE_TO_KIND = SYSML2_RULE_TO_KIND;
   globalThis.SYSML2_TREE_KINDS = SYSML2_TREE_KINDS;
 
+  /** Global diagram payload cache keyed by URI and version hash. */
   const diagramCache = new Map<string, { version: number | string; data: any }>();
   globalThis.diagramCache = diagramCache;
 
+  /**
+   * Computes an unsigned 32-bit DJB2 hash for cache key generation.
+   */
   function simpleHash(str: string): number {
     let hash = 5381;
     for (let i = 0; i < str.length; i++) {
@@ -223,7 +244,7 @@ export function startNodeServer(input?: any, output?: any) {
   globalThis.simpleHash = simpleHash;
 
   const cosimSimulators = new Map<string, any>();
-  const breakpointsMap = new Map<string, { line: number; column?: number }[]>();
+  const breakpointsMap = new Map<string, { line: number; column?: number | undefined }[]>();
   let debuggerResumeCallback: (() => void) | undefined;
   let currentDebugEnv: Map<string, number> | undefined;
   let stepMode = true;
@@ -471,15 +492,22 @@ export function startNodeServer(input?: any, output?: any) {
     connection.console.warn(`[NodeServer] Could not register PSCAD plugin: ${err.message}`);
   }
 
-  // Helper to load user languages from registry directory (~/.modelscript/languages/)
+  /**
+   * Resolves the filesystem directory containing user-registered custom language plugins
+   * (`$MODELSCRIPT_LANGUAGES_DIR` or `~/.modelscript/languages`).
+   */
   function getUserLanguagesDir(): string {
-    if (process.env.MODELSCRIPT_LANGUAGES_DIR) {
-      return path.resolve(process.env.MODELSCRIPT_LANGUAGES_DIR);
+    if (process.env["MODELSCRIPT_LANGUAGES_DIR"]) {
+      return path.resolve(process.env["MODELSCRIPT_LANGUAGES_DIR"]);
     }
-    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const home = process.env["HOME"] || process.env["USERPROFILE"] || "";
     return path.join(home, ".modelscript", "languages");
   }
 
+  /**
+   * Reads `registry.json` from the user languages directory and dynamically loads and registers
+   * any custom WASM GLR language parsers into `parserService` and `globalLanguageRegistry`.
+   */
   async function loadUserRegisteredLanguages(): Promise<void> {
     const regDir = getUserLanguagesDir();
     const regPath = path.join(regDir, "registry.json");

@@ -6,16 +6,21 @@ import {
   FMI2_FUNCTION_TYPES_H,
   FMI2_TYPES_PLATFORM_H,
   buildFmuArchive,
+  buildSourceFmuArchive,
   compileAsToWasm,
   compileToWasm,
+  formatFmuSimulateResult,
   generateFmu,
   generateFmuAsSources,
   generateFmuCSources,
   generateFmuWasmSource,
+  inspectFmuArchive,
+  simulateFmuArchive,
+  validateFmuArchive,
 } from "@modelscript/exchange/fmu";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { ExprKind, foldArenaConstants, initBltWasm, scalarizeArena } from "@modelscript/runtime";
+import { ExprKind, foldArenaConstants, hasArrayEquations, initBltWasm, scalarizeArena } from "@modelscript/runtime";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -28,45 +33,117 @@ import { Profiler } from "../util/timing.js";
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
+/** CLI arguments and flags for the `msx fmu` command. */
 interface FmuArgs {
+  /** Modelica class name to export, or FMU subcommand (`"import"`, `"validate"`, `"info"`, `"list"`, `"build"`, `"simulate"`). */
   name: string;
-  paths: string[];
-  output?: string;
-  description?: string;
-  "start-time"?: number;
-  startTime?: number;
-  "stop-time"?: number;
-  stopTime?: number;
-  "step-size"?: number;
-  stepSize?: number;
-  "xml-only"?: boolean;
-  xmlOnly?: boolean;
-  type?: string;
-  target?: "wasm" | "c" | "js" | "all";
-  source?: boolean;
-  compile?: boolean;
+  /** Library/module paths to load, or `.fmu` archive path when running a subcommand. */
+  paths?: string[] | undefined;
+  /** Output file path for the generated `.fmu` or `.fmu.xml`. */
+  output?: string | undefined;
+  /** Human-readable model description string embedded in `modelDescription.xml`. */
+  description?: string | undefined;
+  "start-time"?: number | undefined;
+  /** Default experiment start time in seconds. */
+  startTime?: number | undefined;
+  "stop-time"?: number | undefined;
+  /** Default experiment stop time in seconds. */
+  stopTime?: number | undefined;
+  "step-size"?: number | undefined;
+  /** Default experiment communication step size in seconds. */
+  stepSize?: number | undefined;
+  "output-interval"?: number | undefined;
+  outputInterval?: number | undefined;
+  /** Solver relative tolerance. */
+  tolerance?: number | undefined;
+  "xml-only"?: boolean | undefined;
+  /** Whether to emit only `modelDescription.xml` without building a ZIP archive. */
+  xmlOnly?: boolean | undefined;
+  /** FMU capability type (`"me"` Model Exchange, `"cs"` Co-Simulation, or `"both"`). */
+  type?: string | undefined;
+  "interface-type"?: "cs" | "me" | "auto" | undefined;
+  /** FMI interface mode when simulating an FMU (`"cs"`, `"me"`, or `"auto"`). */
+  interfaceType?: "cs" | "me" | "auto" | undefined;
+  /** ODE solver when simulating an FMU in Model Exchange mode (`"euler"`, `"rk4"`, `"cvode"`). */
+  solver?: string | undefined;
+  "start-value"?: string[] | undefined;
+  /** Variable start-value overrides (`name=value`). */
+  startValue?: string[] | undefined;
+  "input-file"?: string | undefined;
+  /** CSV file providing time-varying input trajectories. */
+  inputFile?: string | undefined;
+  "output-variable"?: string[] | undefined;
+  /** Variable names to record in simulation output. */
+  outputVariable?: string[] | undefined;
+  "initial-fmu-state-file"?: string | undefined;
+  /** Serialized FMU state file to restore before stepping. */
+  initialFmuStateFile?: string | undefined;
+  "final-fmu-state-file"?: string | undefined;
+  /** File path where serialized FMU state is saved after simulation. */
+  finalFmuStateFile?: string | undefined;
+  "log-fmi-calls"?: boolean | undefined;
+  /** Whether to log all FMI C API calls and logger callbacks to stderr. */
+  logFmiCalls?: boolean | undefined;
+  /** Simulation output format (`"csv"`, `"json"`, or `"none"`). */
+  format?: "csv" | "json" | "none" | undefined;
+  /** Export target (`"wasm"`, `"c"`, `"js"`, or `"all"`). */
+  target?: "wasm" | "c" | "js" | "all" | undefined;
+  /** Whether to include generated C source files in `sources/` inside the FMU archive. */
+  source?: boolean | undefined;
+  /** Whether to compile C sources into a platform-native shared library (`.so`/`.dylib`/`.dll`). */
+  compile?: boolean | undefined;
+  /** FMI standard version (`"2"`, `"3"`, or `"both"`). */
   "fmi-version": string;
+  /** Whether to compile the model to WebAssembly and include it in the FMU archive. */
   wasm: boolean;
+  /** Whether to report stage timing metrics as JSON to stderr. */
   timing: boolean;
-  flattener?: "ts" | "wasm" | "hybrid" | "diff";
+  /** Flattener backend (`"ts"`, `"wasm"`, `"hybrid"`, or `"diff"`). */
+  flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
 }
 
+/**
+ * Parses repeatable `--start-value name=value` CLI arguments into a typed map of boolean,
+ * numeric, or string overrides.
+ */
+export function parseStartValueArgs(raw?: string | string[]): Record<string, number | string | boolean> {
+  const result: Record<string, number | string | boolean> = {};
+  if (!raw) return result;
+  const items = Array.isArray(raw) ? raw : [raw];
+  for (const item of items) {
+    const eqIdx = item.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = item.slice(0, eqIdx).trim();
+    const valStr = item.slice(eqIdx + 1).trim();
+    if (!key) continue;
+    if (valStr === "true") result[key] = true;
+    else if (valStr === "false") result[key] = false;
+    else if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(valStr)) result[key] = Number(valStr);
+    else result[key] = valStr.replace(/^['"]|['"]$/g, "");
+  }
+  return result;
+}
+
+/**
+ * `msx fmu <name> [paths..]` CLI command module for exporting FMI 2.0/3.0 FMU archives
+ * (with C, JS, WASM, and native binaries) as well as validating, inspecting, building, and simulating FMUs.
+ */
 export const Fmu: CommandModule<{}, FmuArgs> = {
-  command: "fmu <name> <paths..>",
+  command: "fmu <name> [paths..]",
   aliases: ["export-fmu"], // Keep old name for backward compatibility
-  describe: "Export a Modelica model as an FMU archive",
+  describe: "Export, validate, inspect, build, or simulate an FMU archive",
 
   builder: ((yargs: any) => {
     return yargs
       .positional("name", {
         demandOption: true,
-        description: "name of class to export",
+        description: "class name to export, or subcommand ('import', 'validate', 'info', 'list', 'build', 'simulate')",
         type: "string",
       })
       .positional("paths", {
         array: true,
-        demandOption: true,
-        description: "paths of libraries and modules to load",
+        demandOption: false,
+        description: "paths of libraries/modules to load, or .fmu path when using a subcommand",
         type: "string",
       })
       .option("output", {
@@ -87,7 +164,12 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         type: "number",
       })
       .option("step-size", {
-        description: "default experiment step size",
+        alias: ["output-interval"],
+        description: "default experiment step size / output interval",
+        type: "number",
+      })
+      .option("tolerance", {
+        description: "solver relative tolerance",
         type: "number",
       })
       .option("xml-only", {
@@ -100,6 +182,49 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         type: "string",
         default: "both",
         choices: ["me", "cs", "both"],
+      })
+      .option("interface-type", {
+        description: "FMI interface type when simulating an FMU: 'cs', 'me', or 'auto'",
+        type: "string",
+        choices: ["cs", "me", "auto"],
+      })
+      .option("solver", {
+        description: "ODE solver when simulating an FMU in Model Exchange mode ('euler', 'rk4', 'cvode')",
+        type: "string",
+        default: "rk4",
+      })
+      .option("start-value", {
+        array: true,
+        description: "override FMU variable start value as name=value (repeatable)",
+        type: "string",
+      })
+      .option("input-file", {
+        description: "CSV file providing time-varying input trajectories (time,u1,u2,...)",
+        type: "string",
+      })
+      .option("output-variable", {
+        array: true,
+        description: "variable name(s) to record in simulation output (repeatable)",
+        type: "string",
+      })
+      .option("initial-fmu-state-file", {
+        description: "restore serialized FMU state from file before stepping",
+        type: "string",
+      })
+      .option("final-fmu-state-file", {
+        description: "save serialized FMU state to file after simulation finishes",
+        type: "string",
+      })
+      .option("log-fmi-calls", {
+        description: "log all FMI C API calls and logger callbacks to stderr",
+        type: "boolean",
+        default: false,
+      })
+      .option("format", {
+        description: "simulation output format ('csv', 'json', 'none')",
+        type: "string",
+        choices: ["csv", "json", "none"],
+        default: "csv",
       })
       .option("target", {
         description: "export target: 'wasm' (WebAssembly), 'c' (C sources), 'js' (JavaScript), or 'all' (multi-target)",
@@ -144,22 +269,142 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
   }) as any,
 
   handler: async (args) => {
-    if (args.name === "import") {
-      const { runImportFmu } = await import("./import-fmu.js");
+    const fmuSubcommands = new Set(["import", "validate", "info", "list", "build", "simulate"]);
+    if (fmuSubcommands.has(args.name)) {
       const fmuTarget = args.paths?.[0];
       if (!fmuTarget) {
-        console.error("Error: Please provide the path to the .fmu file (e.g. msx fmu import <path.fmu>)");
+        console.error(`Error: Please provide the path to the .fmu file (e.g. msx fmu ${args.name} <path.fmu>)`);
         process.exitCode = 1;
         return;
       }
-      const code = await runImportFmu({
-        fmu: fmuTarget,
-        output: args.output,
-        verbose: false,
-      });
-      if (code !== 0) {
-        process.exitCode = code;
+
+      if (args.name === "import") {
+        const { runImportFmu } = await import("./import-fmu.js");
+        const code = await runImportFmu({
+          fmu: fmuTarget,
+          output: args.output,
+          verbose: false,
+        });
+        if (code !== 0) process.exitCode = code;
+        return;
       }
+
+      const absPath = path.resolve(fmuTarget);
+      if (!fs.existsSync(absPath)) {
+        console.error(`Error: FMU archive not found at '${absPath}'`);
+        process.exitCode = 1;
+        return;
+      }
+
+      if (args.name === "validate") {
+        const res = validateFmuArchive(fs.readFileSync(absPath));
+        console.log(`Validating FMU: ${absPath}`);
+        if (res.modelDescription) {
+          console.log(`  Model: ${res.modelDescription.modelName} (FMI ${res.modelDescription.fmiVersion})`);
+        }
+        for (const w of res.warnings) {
+          console.warn(`  [WARN ${w.code}] ${w.message}`);
+        }
+        for (const e of res.errors) {
+          console.error(`  [ERROR ${e.code}] ${e.message}`);
+        }
+        if (res.valid) {
+          console.log(`Validation PASSED (${res.warnings.length} warning(s), 0 errors).`);
+        } else {
+          console.error(`Validation FAILED (${res.errors.length} error(s), ${res.warnings.length} warning(s)).`);
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (args.name === "info") {
+        const info = inspectFmuArchive(fs.readFileSync(absPath));
+        console.log(`FMU Information: ${path.basename(absPath)}`);
+        console.log(`  FMI Version:     ${info.fmiVersion}`);
+        console.log(`  Model Name:      ${info.modelName}`);
+        console.log(`  GUID / Token:    ${info.guid}`);
+        if (info.generationTool) console.log(`  Generation Tool: ${info.generationTool}`);
+        if (info.description) console.log(`  Description:     ${info.description}`);
+        console.log(
+          `  Interfaces:      ${info.interfaces.map((i) => `${i.type} (${i.modelIdentifier})`).join(", ") || "None"}`,
+        );
+        console.log(`  Platforms:       ${info.platforms.join(", ") || "None (source/WASM/JS only)"}`);
+        console.log(
+          `  Artifacts:       sources=${info.hasSources}, buildDescription=${info.hasBuildDescription}, wasm=${info.hasWasm}, js=${info.hasJs}`,
+        );
+        if (info.defaultExperiment) {
+          const de = info.defaultExperiment;
+          console.log(
+            `  Experiment:      startTime=${de.startTime ?? 0}, stopTime=${de.stopTime ?? 1}, stepSize=${de.stepSize ?? "auto"}, tolerance=${de.tolerance ?? "default"}`,
+          );
+        }
+        console.log(
+          `  Variables:       ${info.counts.total} total (${info.counts.inputs} inputs, ${info.counts.outputs} outputs, ${info.counts.parameters} parameters, ${info.counts.states} states, ${info.counts.eventIndicators} event indicators)`,
+        );
+        return;
+      }
+
+      if (args.name === "list") {
+        const info = inspectFmuArchive(fs.readFileSync(absPath));
+        console.log("VR\tType\tCausality\tVariability\tStart\tName");
+        for (const v of info.variables) {
+          console.log(
+            `${v.valueReference}\t${v.type}\t${v.causality}\t${v.variability}\t${v.start !== undefined ? String(v.start) : "-"}\t${v.name}`,
+          );
+        }
+        return;
+      }
+
+      if (args.name === "build") {
+        try {
+          const built = buildSourceFmuArchive(fs.readFileSync(absPath));
+          const outPath = args.output ? path.resolve(args.output) : absPath;
+          fs.writeFileSync(outPath, built.archive);
+          console.log(`Built native shared library '${built.binaryPath}' (${built.platform}) -> ${outPath}`);
+        } catch (err) {
+          console.error(`Error building source FMU: ${err instanceof Error ? err.message : String(err)}`);
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (args.name === "simulate") {
+        try {
+          const interfaceType =
+            args.interfaceType ??
+            args["interface-type"] ??
+            (args.type === "me" || args.type === "cs" ? (args.type as "me" | "cs") : "auto");
+          const simRes = await simulateFmuArchive(absPath, {
+            interfaceType,
+            solver: args.solver,
+            startTime: args.startTime ?? args["start-time"],
+            stopTime: args.stopTime ?? args["stop-time"],
+            stepSize: args.stepSize ?? args["step-size"] ?? args.outputInterval ?? args["output-interval"],
+            tolerance: args.tolerance,
+            startValues: parseStartValueArgs(args.startValue ?? args["start-value"]),
+            inputFile: args.inputFile ?? args["input-file"],
+            outputVariables: args.outputVariable ?? args["output-variable"],
+            initialStateFile: args.initialFmuStateFile ?? args["initial-fmu-state-file"],
+            finalStateFile: args.finalFmuStateFile ?? args["final-fmu-state-file"],
+            logFmiCalls: Boolean(args.logFmiCalls ?? args["log-fmi-calls"]),
+          });
+          const formatted = formatFmuSimulateResult(simRes, args.format ?? "csv");
+          if (args.output) {
+            fs.writeFileSync(path.resolve(args.output), formatted, "utf-8");
+          } else if (formatted) {
+            process.stdout.write(formatted);
+          }
+        } catch (err) {
+          console.error(`FMU simulation failed: ${err instanceof Error ? err.message : String(err)}`);
+          process.exitCode = 1;
+        }
+        return;
+      }
+    }
+
+    if (!args.paths || args.paths.length === 0) {
+      console.error("Error: Please provide at least one Modelica file or library path.");
+      process.exitCode = 1;
       return;
     }
 
@@ -187,15 +432,17 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       return;
     }
 
-    let hasArrays = false;
-    for (let i = 0; i < arena.varCount; i++) {
-      if (arena.getVarShape(i).length > 0) {
-        hasArrays = true;
-        break;
+    let hasArrays = hasArrayEquations(arena);
+    if (!hasArrays) {
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.getVarShape(i).length > 0) {
+          hasArrays = true;
+          break;
+        }
       }
     }
     if (hasArrays) {
-      arena = scalarizeArena(arena);
+      arena = scalarizeArena(arena, true);
       foldArenaConstants(arena);
     }
 
@@ -355,7 +602,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         const ext = process.platform === "win32" ? ".dll" : process.platform === "darwin" ? ".dylib" : ".so";
 
         // Compile
-        const cc = process.env.CC ?? "gcc";
+        const cc = process.env["CC"] ?? "gcc";
         // Just build to temp dir first
         const sharedLib = path.join(tmpDir, `${modelIdentifier}${ext}`);
 

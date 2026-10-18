@@ -33,7 +33,7 @@ export class ManifestLensEngine {
    */
   static projectToPackageJson(
     manifest: CanonicalWorkspaceManifest,
-    options?: { mainFile?: string; dependencies?: Record<string, string> },
+    options?: { mainFile?: string | undefined; dependencies?: Record<string, string> | undefined },
   ): PackageJsonProjection {
     const pkgName = manifest.scope ? `${manifest.scope}/${manifest.idShort}` : manifest.idShort;
 
@@ -93,7 +93,7 @@ export class ManifestLensEngine {
    */
   static projectToAasJson(
     manifest: CanonicalWorkspaceManifest,
-    options?: { assetKind?: "Type" | "Instance" },
+    options?: { assetKind?: "Type" | "Instance" | undefined },
   ): AasJsonProjection {
     const shellId = `${manifest.globalAssetId}/shell`;
     const assetKind = options?.assetKind ?? "Type";
@@ -220,9 +220,9 @@ export class ManifestLensEngine {
   static projectToOkhJson(
     manifest: CanonicalWorkspaceManifest,
     options?: {
-      cadFiles?: { path: string; type?: string; description?: string }[];
-      schematicsFile?: string;
-      firmwareEntry?: string;
+      cadFiles?: { path: string; type?: string | undefined; description?: string | undefined }[] | undefined;
+      schematicsFile?: string | undefined;
+      firmwareEntry?: string | undefined;
     },
   ): OkhJsonProjection {
     const manufacturingFiles: OkhJsonProjection["manufacturing-files"] = [];
@@ -282,9 +282,9 @@ export class ManifestLensEngine {
   static projectToDdp(
     manifest: CanonicalWorkspaceManifest,
     options?: {
-      creator?: DdpManifest["creator"];
-      recipient?: DdpManifest["recipient"];
-      securityClassification?: string;
+      creator?: DdpManifest["creator"] | undefined;
+      recipient?: DdpManifest["recipient"] | undefined;
+      securityClassification?: string | undefined;
     },
   ): DdpManifest {
     const requirements: DdpArtifactDescriptor[] = [];
@@ -423,7 +423,7 @@ export class ManifestLensEngine {
    */
   static bridgeDdpToAasx(
     ddpPackage: Uint8Array | DdpPackageContent,
-    options?: { assetKind?: "Type" | "Instance" },
+    options?: { assetKind?: "Type" | "Instance" | undefined },
   ): Uint8Array {
     const content = ddpPackage instanceof Uint8Array ? DdpPackager.extractDdp(ddpPackage) : ddpPackage;
     const canonical = ManifestLensEngine.parseFromDdp(content.manifest);

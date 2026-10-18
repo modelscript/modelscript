@@ -7,7 +7,7 @@ import styled from "styled-components";
 import Box from "../Box";
 
 // Provide some document-like typography styling
-const TeiContainer = styled.div<{ $isFullScreen?: boolean }>`
+const TeiContainer = styled.div<{ $isFullScreen?: boolean | undefined }>`
   font-family: "Georgia", "Times New Roman", serif;
   line-height: 1.6;
   color: var(--color-fg-default);
@@ -63,7 +63,7 @@ const TeiContainer = styled.div<{ $isFullScreen?: boolean }>`
 
 interface TeiViewerProps {
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {

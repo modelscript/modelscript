@@ -12,7 +12,7 @@
 export interface BuiltinParam {
   readonly name: string;
   readonly type: "Real" | "Integer" | "Boolean" | "String" | "TypeName";
-  readonly defaultValue?: number | boolean;
+  readonly defaultValue?: number | boolean | undefined;
 }
 
 /** A single signature (set of inputs + output type). */
@@ -30,21 +30,21 @@ export interface BuiltinSignature {
 export interface BuiltinFunctionDef {
   readonly inputs: readonly BuiltinParam[];
   readonly outputType: string | null;
-  readonly overloads?: readonly BuiltinSignature[];
+  readonly overloads?: readonly BuiltinSignature[] | undefined;
   /** Whether this function can be used as a reduction operator (e.g., `max(i for i in range)`). */
-  readonly reduction?: true;
+  readonly reduction?: true | undefined;
   /** Fold an array of numeric constants for reduction (e.g., Math.max for max, Math.min for min). */
-  readonly foldConstants?: (values: number[]) => number;
+  readonly foldConstants?: ((values: number[]) => number) | undefined;
   /** Identity value returned when the reduction function is called with zero arguments. */
-  readonly identityValue?: number;
+  readonly identityValue?: number | undefined;
   /** Evaluate a single-argument call at compile time with a numeric literal input. */
-  readonly fold1?: (x: number) => number;
+  readonly fold1?: ((x: number) => number) | undefined;
   /** Evaluate a two-argument call at compile time with numeric literal inputs. */
-  readonly fold2?: (a: number, b: number) => number;
+  readonly fold2?: ((a: number, b: number) => number) | undefined;
   /** Domain validation for a single numeric argument. Throws if invalid. */
-  readonly domainCheck?: (x: number) => void;
+  readonly domainCheck?: ((x: number) => void) | undefined;
   /** If true, abs/sign-style: output type matches input type (Integer→Integer, Real→Real). */
-  readonly preserveIntegerType?: true;
+  readonly preserveIntegerType?: true | undefined;
 }
 
 /**

@@ -146,7 +146,7 @@ export function buildSysML2DiagramData(
 export function emitVerificationDiagnostics(
   results: VerificationResult[],
   db: any,
-  documentUri: string,
+  _documentUri: string,
   positions: {
     charOffsetToPosition?(offset: number): { line: number; character: number };
     offsetToPosition?(offset: number): { line: number; character: number };

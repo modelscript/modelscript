@@ -15,28 +15,36 @@
  * separate MANIFOLD_SOLID_BREP.  Phase 4 will add exact BREP booleans.
  */
 
+import { ManifoldWorker } from "./manifold-worker.js";
 import type { Assembly, Mat4, Solid, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
 
 // ── Entity allocator ─────────────────────────────────────────────────────
 
+/** Mutable accumulator holding the next STEP entity ID (`#N`) and emitted DATA lines. */
 interface StepContext {
+  /** Next available 1-based STEP entity ID. */
   nextId: number;
+  /** Emitted ISO-10303-21 entity assignment records (`#id=ENTITY(...);`). */
   entities: string[];
 }
 
+/** Creates an empty {@link StepContext} starting at entity ID `#10`. */
 function createContext(): StepContext {
   return { nextId: 10, entities: [] };
 }
 
+/** Allocates and returns the next sequential STEP entity ID in `ctx`. */
 function allocId(ctx: StepContext): number {
   return ctx.nextId++;
 }
 
+/** Formats a numeric STEP entity ID `n` as a `#n` reference string. */
 function ref(n: number): string {
   return `#${n}`;
 }
 
+/** Appends a `#eid=body;` record to `ctx.entities` and returns `#eid`. */
 function emit(ctx: StepContext, eid: number, body: string): string {
   ctx.entities.push(`${ref(eid)}=${body};`);
   return ref(eid);
@@ -44,6 +52,7 @@ function emit(ctx: StepContext, eid: number, body: string): string {
 
 // ── Number formatting ────────────────────────────────────────────────────
 
+/** Formats a floating-point coordinate or measure for ISO-10303-21 output. */
 function fmt(n: number): string {
   if (Number.isInteger(n) && Math.abs(n) < 1e6) return n.toFixed(1);
   return n.toPrecision(15).replace(/\.?0+$/, "") || "0.";
@@ -51,16 +60,19 @@ function fmt(n: number): string {
 
 // ── Low-level STEP entity builders ───────────────────────────────────────
 
+/** Emits a `CARTESIAN_POINT` entity for 3D point `p` and returns its `#id` reference. */
 function cartesianPoint(ctx: StepContext, p: Vec3): string {
   const eid = allocId(ctx);
   return emit(ctx, eid, `CARTESIAN_POINT('',(${p.map(fmt).join(",")}))`);
 }
 
+/** Emits a `DIRECTION` entity for 3D direction vector `d` and returns its `#id` reference. */
 function direction(ctx: StepContext, d: Vec3): string {
   const eid = allocId(ctx);
   return emit(ctx, eid, `DIRECTION('',(${d.map(fmt).join(",")}))`);
 }
 
+/** Emits an `AXIS2_PLACEMENT_3D` coordinate frame at `origin` with Z `axis` and X `refDir`. */
 function axis2Placement3d(ctx: StepContext, origin: Vec3, axis: Vec3, refDir: Vec3): string {
   const o = cartesianPoint(ctx, origin);
   const a = direction(ctx, axis);
@@ -69,24 +81,28 @@ function axis2Placement3d(ctx: StepContext, origin: Vec3, axis: Vec3, refDir: Ve
   return emit(ctx, eid, `AXIS2_PLACEMENT_3D('',${o},${a},${r})`);
 }
 
+/** Emits a `CIRCLE` curve entity centered at `center` with `radius` and frame `(axis, refDir)`. */
 function circle(ctx: StepContext, center: Vec3, radius: number, axis: Vec3, refDir: Vec3): string {
   const place = axis2Placement3d(ctx, center, axis, refDir);
   const cid = allocId(ctx);
   return emit(ctx, cid, `CIRCLE('',${place},${fmt(radius)})`);
 }
 
+/** Emits a `CYLINDRICAL_SURFACE` entity at `origin` with `radius` and axis frame `(axis, refDir)`. */
 function cylindricalSurface(ctx: StepContext, origin: Vec3, radius: number, axis: Vec3, refDir: Vec3): string {
   const place = axis2Placement3d(ctx, origin, axis, refDir);
   const sid = allocId(ctx);
   return emit(ctx, sid, `CYLINDRICAL_SURFACE('',${place},${fmt(radius)})`);
 }
 
+/** Emits a `SPHERICAL_SURFACE` entity centered at `center` with `radius` and frame `(axis, refDir)`. */
 function sphericalSurface(ctx: StepContext, center: Vec3, radius: number, axis: Vec3, refDir: Vec3): string {
   const place = axis2Placement3d(ctx, center, axis, refDir);
   const sid = allocId(ctx);
   return emit(ctx, sid, `SPHERICAL_SURFACE('',${place},${fmt(radius)})`);
 }
 
+/** Emits a `TOROIDAL_SURFACE` entity centered at `center` with `major` and `minor` radii. */
 function toroidalSurface(
   ctx: StepContext,
   center: Vec3,
@@ -102,6 +118,7 @@ function toroidalSurface(
 
 // ── Box BREP ─────────────────────────────────────────────────────────────
 
+/** Applies a 4x4 column-major affine matrix `m` to 3D point `p`. */
 function transformPoint(m: Mat4, p: Vec3): Vec3 {
   return [
     (m[0] as number) * p[0] + (m[4] as number) * p[1] + (m[8] as number) * p[2] + (m[12] as number),
@@ -110,6 +127,7 @@ function transformPoint(m: Mat4, p: Vec3): Vec3 {
   ];
 }
 
+/** Applies the linear 3x3 upper-left block of `m` to direction `d` and normalizes the result. */
 function transformDir(m: Mat4, d: Vec3): Vec3 {
   const x = (m[0] as number) * d[0] + (m[4] as number) * d[1] + (m[8] as number) * d[2];
   const y = (m[1] as number) * d[0] + (m[5] as number) * d[1] + (m[9] as number) * d[2];
@@ -118,6 +136,10 @@ function transformDir(m: Mat4, d: Vec3): Vec3 {
   return len > 0 ? [x / len, y / len, z / len] : [0, 0, 1];
 }
 
+/**
+ * Emits an exact 8-vertex, 12-edge, 6-planar-face `MANIFOLD_SOLID_BREP` for an axis-aligned box
+ * centered at `(cx, cy, cz)` with half-extents `(hw, hh, hd)` transformed by `worldMatrix`.
+ */
 function buildBoxBrep(
   ctx: StepContext,
   name: string,
@@ -251,6 +273,10 @@ function buildBoxBrep(
 
 // ── Cylinder Analytical BREP ─────────────────────────────────────────────
 
+/**
+ * Emits an analytical `MANIFOLD_SOLID_BREP` for a cylinder of `radius` and `height`
+ * composed of two planar circular end-cap faces and two semi-cylindrical lateral faces.
+ */
 function buildCylinderBrep(ctx: StepContext, name: string, radius: number, height: number, worldMatrix?: Mat4): string {
   const hh = height / 2;
 
@@ -372,6 +398,10 @@ function buildCylinderBrep(ctx: StepContext, name: string, radius: number, heigh
 
 // ── Sphere Analytical BREP ───────────────────────────────────────────────
 
+/**
+ * Emits an analytical `MANIFOLD_SOLID_BREP` for a sphere of `radius` composed of
+ * north/south pole vertices, two meridian semicircle edges, and two hemispherical faces.
+ */
 function buildSphereBrep(ctx: StepContext, name: string, radius: number, worldMatrix?: Mat4): string {
   const localV: Vec3[] = [
     [0, 0, -radius], // south pole
@@ -426,15 +456,22 @@ function buildSphereBrep(ctx: StepContext, name: string, radius: number, worldMa
 
 // ── Torus Analytical BREP ────────────────────────────────────────────────
 
+/**
+ * Emits an analytical ISO-10303-21 `MANIFOLD_SOLID_BREP` for a torus with `major` and `minor` radii,
+ * partitioned into two hemispherical `ADVANCED_FACE` patches over a shared `TOROIDAL_SURFACE`.
+ */
 function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: number, worldMatrix?: Mat4): string {
+  // 1. Transform local origin and orthonormal frame axes into world space
   const effCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, 0]) : [0, 0, 0];
   const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
   const effXAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
   const effYAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 1, 0]) : [0, 1, 0];
 
+  // Centers of the +X and -X minor cross-section circles
   const p_pos: Vec3 = worldMatrix ? transformPoint(worldMatrix, [major, 0, 0]) : [major, 0, 0];
   const p_neg: Vec3 = worldMatrix ? transformPoint(worldMatrix, [-major, 0, 0]) : [-major, 0, 0];
 
+  // 4 seam vertices at top/bottom of the +X and -X cross-sections
   const localV: Vec3[] = [
     [major, 0, minor],
     [major, 0, -minor],
@@ -448,6 +485,7 @@ function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: nu
     return emit(ctx, allocId(ctx), `VERTEX_POINT('tv${i}',${cp})`);
   });
 
+  // 2. Emit minor cross-section circles and half-circle edge curves at +X and -X
   const circlePos = circle(ctx, p_pos, minor, effYAxis, effZAxis);
   const ec_pos0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${circlePos},.T.)`);
   const ec_pos1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[0]},${circlePos},.T.)`);
@@ -456,6 +494,7 @@ function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: nu
   const ec_neg0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[3]},${circleNeg},.T.)`);
   const ec_neg1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[3]},${vp[2]},${circleNeg},.T.)`);
 
+  // 3. Emit top (+minor Z) and bottom (-minor Z) major longitudinal circles and half-circle edges
   const p_topCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, minor]) : [0, 0, minor];
   const p_botCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, -minor]) : [0, 0, -minor];
   const topCircle = circle(ctx, p_topCenter, major, effZAxis, effXAxis);
@@ -470,6 +509,7 @@ function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: nu
     return emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
   }
 
+  // 4. Bind the two 4-edge toroidal patches into a closed manifold shell
   const torSurf = toroidalSurface(ctx, effCenter, major, minor, effZAxis, effXAxis);
 
   const loop1 = emit(
@@ -504,8 +544,10 @@ function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: nu
 
 // ── Solid tree → BREP refs ───────────────────────────────────────────────
 
+/** 4x4 column-major identity transformation matrix. */
 const IDENTITY: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
+/** Multiplies two 4x4 column-major homogeneous transformation matrices (`a * b`). */
 function mat4Multiply(a: Mat4, b: Mat4): Mat4 {
   const r = new Array<number>(16);
   for (let col = 0; col < 4; col++) {
@@ -557,6 +599,7 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     }
 
     case SolidKind.Extrusion: {
+      // Emit exact prism B-Rep when polygon has >= 3 vertices; otherwise approximate via bounding box
       if (solid.polygon.length >= 3) {
         const brepRef = buildExtrusionBrep(
           ctx,
@@ -591,6 +634,11 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
 
     case SolidKind.Polyhedron: {
       if (solid.points.length === 0) return [];
+      // Emit faceted planar B-Rep when explicit face loops are provided; fallback to AABB box otherwise
+      if (solid.faces && solid.faces.length > 0) {
+        const brepRef = buildPolyhedronBrep(ctx, solid.name, solid.points, solid.faces, parentMatrix);
+        if (brepRef) return [brepRef];
+      }
       let minX = Infinity,
         maxX = -Infinity,
         minY = Infinity,
@@ -616,6 +664,7 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     }
 
     case SolidKind.Transform: {
+      // Accumulate local transform into parentMatrix and recurse into child solid
       const combined = mat4Multiply(parentMatrix, solid.matrix);
       return flattenSolid(ctx, solid.child, combined);
     }
@@ -625,17 +674,160 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     case SolidKind.Intersect: {
       const left = flattenSolid(ctx, solid.left, parentMatrix);
       const right = flattenSolid(ctx, solid.right, parentMatrix);
+      const opName =
+        solid.kind === SolidKind.Union ? "UNION" : solid.kind === SolidKind.Subtract ? "DIFFERENCE" : "INTERSECTION";
+      if (left[0] && right[0]) {
+        emit(ctx, allocId(ctx), `BOOLEAN_RESULT('${solid.name}',.${opName}.,${left[0]},${right[0]})`);
+      }
+      const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix);
+      if (brepRef) return [brepRef];
       return [...left, ...right];
     }
 
-    case SolidKind.TaggedPatch:
+    case SolidKind.TaggedPatch: {
+      return flattenSolid(ctx, solid.child, parentMatrix);
+    }
+
     case SolidKind.Fillet:
     case SolidKind.Chamfer: {
+      const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix);
+      if (brepRef) return [brepRef];
       return flattenSolid(ctx, solid.child, parentMatrix);
     }
   }
 }
 
+/**
+ * Evaluates a solid (boolean CSG or fillet/chamfer) via {@link ManifoldWorker.evaluateSolid},
+ * deduplicates its vertices, and emits a faceted `MANIFOLD_SOLID_BREP`.
+ */
+function buildEvaluatedSolidBrep(ctx: StepContext, solid: Solid, worldMatrix?: Mat4): string | null {
+  const mesh = ManifoldWorker.evaluateSolid(solid);
+  if (mesh.vertices.length < 9 || mesh.indices.length < 3) return null;
+
+  const points: Vec3[] = [];
+  const vertMap = new Map<string, number>();
+  const getVertexIndex = (x: number, y: number, z: number): number => {
+    const key = `${Math.round(x * 1e5)}_${Math.round(y * 1e5)}_${Math.round(z * 1e5)}`;
+    const existing = vertMap.get(key);
+    if (existing !== undefined) return existing;
+    const idx = points.length;
+    points.push([x, y, z]);
+    vertMap.set(key, idx);
+    return idx;
+  };
+
+  const faceLoops: [number, number, number][] = [];
+  for (let i = 0; i < mesh.indices.length; i += 3) {
+    const i0 = mesh.indices[i]! * 3;
+    const i1 = mesh.indices[i + 1]! * 3;
+    const i2 = mesh.indices[i + 2]! * 3;
+    const v0 = getVertexIndex(mesh.vertices[i0]!, mesh.vertices[i0 + 1]!, mesh.vertices[i0 + 2]!);
+    const v1 = getVertexIndex(mesh.vertices[i1]!, mesh.vertices[i1 + 1]!, mesh.vertices[i1 + 2]!);
+    const v2 = getVertexIndex(mesh.vertices[i2]!, mesh.vertices[i2 + 1]!, mesh.vertices[i2 + 2]!);
+    if (v0 !== v1 && v1 !== v2 && v2 !== v0) {
+      faceLoops.push([v0, v1, v2]);
+    }
+  }
+
+  if (points.length < 4 || faceLoops.length < 4) return null;
+  return buildPolyhedronBrep(ctx, solid.name, points, faceLoops, worldMatrix);
+}
+
+/**
+ * Emits a faceted planar `MANIFOLD_SOLID_BREP` from an indexed vertex array (`points`)
+ * and polygonal `faceLoops`, deduplicating shared undirected `EDGE_CURVE` entities.
+ */
+function buildPolyhedronBrep(
+  ctx: StepContext,
+  name: string,
+  points: readonly Vec3[],
+  faceLoops: readonly (readonly number[])[],
+  worldMatrix?: Mat4,
+): string | null {
+  // 1. Transform vertices to world coordinates and emit VERTEX_POINT entities
+  const verts = worldMatrix ? points.map((v) => transformPoint(worldMatrix, v)) : [...points];
+  const vp: string[] = verts.map((c, i) => {
+    const cp = cartesianPoint(ctx, c);
+    return emit(ctx, allocId(ctx), `VERTEX_POINT('v${i}',${cp})`);
+  });
+
+  // 2. Deduplicate undirected edges (min(v0, v1), max(v0, v1)) and orient per half-edge traversal direction
+  const edgeCache = new Map<string, { ec: string; forward: boolean }>();
+  function getOrientedEdge(v0: number, v1: number): string {
+    const lo = Math.min(v0, v1);
+    const hi = Math.max(v0, v1);
+    const key = `${lo}_${hi}`;
+    let cached = edgeCache.get(key);
+    if (!cached) {
+      const p0 = verts[lo] as Vec3;
+      const p1 = verts[hi] as Vec3;
+      const dx = p1[0] - p0[0];
+      const dy = p1[1] - p0[1];
+      const dz = p1[2] - p0[2];
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const d: Vec3 = len > 0 ? [dx / len, dy / len, dz / len] : [1, 0, 0];
+      const dir = direction(ctx, d);
+      const vec = emit(ctx, allocId(ctx), `VECTOR('',${dir},${fmt(len)})`);
+      const lineOrigin = cartesianPoint(ctx, p0);
+      const line = emit(ctx, allocId(ctx), `LINE('',${lineOrigin},${vec})`);
+      const ec = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[lo]},${vp[hi]},${line},.T.)`);
+      cached = { ec, forward: true };
+      edgeCache.set(key, cached);
+    }
+    const isForward = v0 === lo;
+    return emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${cached.ec},${isForward ? ".T." : ".F."})`);
+  }
+
+  // 3. Emit an ADVANCED_FACE backed by a PLANE for each valid polygonal loop
+  const stepFaces: string[] = [];
+  for (const loop of faceLoops) {
+    if (!loop || loop.length < 3) continue;
+    const valid = loop.every((idx) => idx >= 0 && idx < verts.length);
+    if (!valid) continue;
+    const oes: string[] = [];
+    for (let i = 0; i < loop.length; i++) {
+      const v0 = loop[i]!;
+      const v1 = loop[(i + 1) % loop.length]!;
+      if (v0 === v1) continue;
+      oes.push(getOrientedEdge(v0, v1));
+    }
+    if (oes.length < 3) continue;
+
+    // Compute outward face normal (u x v) and reference tangent direction from the first 3 vertices
+    const p0 = verts[loop[0]!]!;
+    const p1 = verts[loop[1]!]!;
+    const p2 = verts[loop[2]!]!;
+    const ux = p1[0] - p0[0],
+      uy = p1[1] - p0[1],
+      uz = p1[2] - p0[2];
+    const vx = p2[0] - p0[0],
+      vy = p2[1] - p0[1],
+      vz = p2[2] - p0[2];
+    const nx = uy * vz - uz * vy;
+    const ny = uz * vx - ux * vz;
+    const nz = ux * vy - uy * vx;
+    const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const normal: Vec3 = nLen > 1e-12 ? [nx / nLen, ny / nLen, nz / nLen] : [0, 0, 1];
+    const uLen = Math.sqrt(ux * ux + uy * uy + uz * uz);
+    const refDir: Vec3 = uLen > 1e-12 ? [ux / uLen, uy / uLen, uz / uLen] : [1, 0, 0];
+
+    const edgeLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${oes.join(",")}))`);
+    const bound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${edgeLoop},.T.)`);
+    const placeRef = axis2Placement3d(ctx, p0, normal, refDir);
+    const plane = emit(ctx, allocId(ctx), `PLANE('',${placeRef})`);
+    stepFaces.push(emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bound}),${plane},.T.)`));
+  }
+
+  if (stepFaces.length === 0) return null;
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${stepFaces.join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${name}',${shell})`);
+}
+
+/**
+ * Emits a faceted `MANIFOLD_SOLID_BREP` for a linear 2D polygon extrusion of `height` along Z,
+ * with optional top-cap `twist` (degrees) and uniform `scaleFactor`.
+ */
 function buildExtrusionBrep(
   ctx: StepContext,
   name: string,
@@ -649,13 +841,13 @@ function buildExtrusionBrep(
   let signedArea = 0;
   for (let i = 0; i < N; i++) {
     const j = (i + 1) % N;
-    signedArea += polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1];
+    signedArea += polygon[i]![0] * polygon[j]![1] - polygon[j]![0] * polygon[i]![1];
   }
   const pts2d: [number, number][] = [];
   if (signedArea < 0) {
-    for (let i = N - 1; i >= 0; i--) pts2d.push([polygon[i][0], polygon[i][1]]);
+    for (let i = N - 1; i >= 0; i--) pts2d.push([polygon[i]![0], polygon[i]![1]]);
   } else {
-    for (let i = 0; i < N; i++) pts2d.push([polygon[i][0], polygon[i][1]]);
+    for (let i = 0; i < N; i++) pts2d.push([polygon[i]![0], polygon[i]![1]]);
   }
 
   const rad = twist ? (twist * Math.PI) / 180.0 : 0;
@@ -666,11 +858,11 @@ function buildExtrusionBrep(
   const localVerts: Vec3[] = [];
   // 0 .. N-1: bottom vertices
   for (let i = 0; i < N; i++) {
-    localVerts.push([pts2d[i][0], pts2d[i][1], 0]);
+    localVerts.push([pts2d[i]![0], pts2d[i]![1], 0]);
   }
   // N .. 2N-1: top vertices
   for (let i = 0; i < N; i++) {
-    const [x, y] = pts2d[i];
+    const [x, y] = pts2d[i]!;
     const tx = (x * cosT - y * sinT) * scl;
     const ty = (x * sinT + y * cosT) * scl;
     localVerts.push([tx, ty, height]);
@@ -726,34 +918,34 @@ function buildExtrusionBrep(
   // Bottom cap face (normal [0, 0, -1])
   const botOes: string[] = [];
   for (let i = N - 1; i >= 0; i--) {
-    botOes.push(orientedEdge(botEdges[i], false));
+    botOes.push(orientedEdge(botEdges[i]!, false));
   }
-  faces.push(buildFace(botOes, localVerts[0], [0, 0, -1], [1, 0, 0]));
+  faces.push(buildFace(botOes, localVerts[0]!, [0, 0, -1], [1, 0, 0]));
 
   // Top cap face (normal [0, 0, 1])
   const topOes: string[] = [];
   for (let i = 0; i < N; i++) {
-    topOes.push(orientedEdge(topEdges[i], true));
+    topOes.push(orientedEdge(topEdges[i]!, true));
   }
-  faces.push(buildFace(topOes, localVerts[N], [0, 0, 1], [1, 0, 0]));
+  faces.push(buildFace(topOes, localVerts[N]!, [0, 0, 1], [1, 0, 0]));
 
   // Side quad faces
   for (let i = 0; i < N; i++) {
     const j = (i + 1) % N;
-    const dx = pts2d[j][0] - pts2d[i][0];
-    const dy = pts2d[j][1] - pts2d[i][1];
+    const dx = pts2d[j]![0] - pts2d[i]![0];
+    const dy = pts2d[j]![1] - pts2d[i]![1];
     const len = Math.hypot(dx, dy) || 1.0;
     const sideNormal: Vec3 = [dy / len, -dx / len, 0];
     const sideRefDir: Vec3 = [dx / len, dy / len, 0];
     faces.push(
       buildFace(
         [
-          orientedEdge(botEdges[i], true),
-          orientedEdge(vertEdges[j], true),
-          orientedEdge(topEdges[i], false),
-          orientedEdge(vertEdges[i], false),
+          orientedEdge(botEdges[i]!, true),
+          orientedEdge(vertEdges[j]!, true),
+          orientedEdge(topEdges[i]!, false),
+          orientedEdge(vertEdges[i]!, false),
         ],
-        localVerts[i],
+        localVerts[i]!,
         sideNormal,
         sideRefDir,
       ),
@@ -766,6 +958,7 @@ function buildExtrusionBrep(
 
 // ── Product definition boilerplate ───────────────────────────────────────
 
+/** Emits STEP AP214 `PRODUCT_DEFINITION` and `ADVANCED_BREP_SHAPE_REPRESENTATION` entities linking `brepRefs`. */
 function emitProductDefinition(
   ctx: StepContext,
   productName: string,
@@ -803,6 +996,7 @@ function emitProductDefinition(
 
 // ── Global context entities ──────────────────────────────────────────────
 
+/** Emits SI unit (mm, rad, sr), uncertainty, and AP214 application context entities. */
 function emitGlobalContext(ctx: StepContext): { geomCtx: string; appCtx: string } {
   const luId = allocId(ctx);
   emit(ctx, luId, `(\nLENGTH_UNIT()\nNAMED_UNIT(*)\nSI_UNIT(.MILLI.,.METRE.)\n)`);
@@ -867,6 +1061,7 @@ export function compileAssemblyToStep(asm: Assembly): string {
   return wrapStep(ctx, asm.name);
 }
 
+/** Wraps emitted STEP entity records in an ISO-10303-21 `HEADER` and `DATA` envelope. */
 function wrapStep(ctx: StepContext, name: string): string {
   const header = `ISO-10303-21;
 HEADER;

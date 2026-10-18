@@ -41,7 +41,7 @@ export class TransformationPipeline {
 
   recordStageTrace(stageIndex: number, sourceName: string, targetName: string): void {
     if (stageIndex >= 0 && stageIndex < this.stages.length) {
-      this.stages[stageIndex].traceMap.set(sourceName, targetName);
+      this.stages[stageIndex]!.traceMap.set(sourceName, targetName);
     }
   }
 
@@ -66,7 +66,7 @@ export class TransformationPipeline {
     let current = finalNodeName;
 
     for (let i = this.stages.length - 1; i >= 0; i--) {
-      const stage = this.stages[i];
+      const stage = this.stages[i]!;
       let foundSource: string | undefined;
       for (const [src, tgt] of stage.traceMap.entries()) {
         if (tgt === current) {

@@ -9,12 +9,12 @@ export type JobStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface JobInfo {
   status: JobStatus;
-  error?: string;
-  resultPath?: string;
-  classesProcessed?: number;
-  logs?: string[];
-  profile?: string;
-  usage?: HpcUsageMetrics;
+  error?: string | undefined;
+  resultPath?: string | undefined;
+  classesProcessed?: number | undefined;
+  logs?: string[] | undefined;
+  profile?: string | undefined;
+  usage?: HpcUsageMetrics | undefined;
 }
 
 type JobFn = () => Promise<void>;
@@ -155,7 +155,7 @@ export class JobQueue extends EventEmitter {
         this.appendLog(key, chunk);
       });
 
-      child.on("message", (msg: { type: string; classesProcessed?: number }) => {
+      child.on("message", (msg: { type: string; classesProcessed?: number | undefined }) => {
         if (msg.type === "progress" && msg.classesProcessed !== undefined) {
           this.updateProgress(key, msg.classesProcessed);
         } else if (msg.type === "complete" && msg.classesProcessed !== undefined) {

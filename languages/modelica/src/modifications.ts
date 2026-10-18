@@ -38,10 +38,10 @@ export type ModificationValue =
   | {
       readonly kind: "expression";
       readonly cstBytes: readonly [number, number];
-      readonly text?: string;
-      readonly evaluationScopeId?: SymbolId | null;
+      readonly text?: string | undefined;
+      readonly evaluationScopeId?: SymbolId | null | undefined;
     }
-  | { readonly kind: "break"; readonly target?: string }
+  | { readonly kind: "break"; readonly target?: string | undefined }
   | { readonly kind: "literal"; readonly value: number | string | boolean };
 
 /**
@@ -70,30 +70,32 @@ export interface ModificationArg {
   /** Nested sub-modifications (e.g., `T(a = 1, b = 2)` → T has nested args). */
   readonly nestedArgs: readonly ModificationArg[];
   /** Byte range of the modifier name in the source text (start, end). */
-  readonly nameRange?: readonly [number, number];
+  readonly nameRange?: readonly [number, number] | undefined;
   /** Byte range of the entire modifier in the source text (start, end). */
-  readonly modRange?: readonly [number, number];
+  readonly modRange?: readonly [number, number] | undefined;
   /** Whether this is a redeclaration (replaces a class/component definition). */
   readonly isRedeclaration: boolean;
   /** For redeclarations: the new class prefixes (e.g., "model", "type"). */
-  readonly redeclaredClassPrefixes?: string;
+  readonly redeclaredClassPrefixes?: string | undefined;
   /** For redeclarations: the new type specifier. */
-  readonly redeclaredTypeSpecifier?: string;
+  readonly redeclaredTypeSpecifier?: string | undefined;
   /** For redeclarations: whether it redeclares as a component or class. */
-  readonly redeclaredKind?: "component" | "class";
+  readonly redeclaredKind?: "component" | "class" | undefined;
   /** For redeclarations: the new prefix (e.g. "parameter", "flow", "stream"). */
-  readonly redeclaredPrefix?: string;
+  readonly redeclaredPrefix?: string | undefined;
   /** For redeclarations: the raw array dimensions of the new type specifier. */
-  readonly redeclaredArrayDimensionsRaw?: any[];
+  readonly redeclaredArrayDimensionsRaw?: any[] | undefined;
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
-  readonly evaluationScopeId?: number;
+  readonly evaluationScopeId?: number | undefined;
   /** Exact text of the modification (e.g. '= 30', ' = 30', '(x = 2.0)'). */
-  readonly modText?: string;
+  readonly modText?: string | undefined;
   /** Line and column position of the modifier. */
-  readonly modPosition?: {
-    startPosition?: { row: number; column: number };
-    endPosition?: { row: number; column: number };
-  };
+  readonly modPosition?:
+    | {
+        startPosition?: { row: number; column: number } | undefined;
+        endPosition?: { row: number; column: number } | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -112,15 +114,15 @@ export interface ModelicaModArgs {
   /** Top-level binding expression (the `= expr` part). */
   readonly bindingExpression: ModificationValue | null;
   /** Whether this component was redeclared. */
-  readonly isRedeclaration?: boolean;
+  readonly isRedeclaration?: boolean | undefined;
   /** The new type specifier if redeclared. */
-  readonly redeclaredTypeSpecifier?: string;
+  readonly redeclaredTypeSpecifier?: string | undefined;
   /** The new prefix if redeclared. */
-  readonly redeclaredPrefix?: string;
+  readonly redeclaredPrefix?: string | undefined;
   /** The raw array dimensions of the new type specifier if redeclared. */
-  readonly redeclaredArrayDimensionsRaw?: any[];
+  readonly redeclaredArrayDimensionsRaw?: any[] | undefined;
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
-  readonly evaluationScopeId?: number | null;
+  readonly evaluationScopeId?: number | null | undefined;
 }
 
 /** The empty modification (no args, no binding). */

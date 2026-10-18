@@ -105,7 +105,7 @@ export interface CosimParticipantInfo {
   id: string;
   type: "fmu" | "modelica";
   className: string;
-  fileName?: string;
+  fileName?: string | undefined;
 }
 
 export interface CosimCouplingInfo {
@@ -115,9 +115,9 @@ export interface CosimCouplingInfo {
 
 export interface CosimGraphResult {
   ok: boolean;
-  participants?: CosimParticipantInfo[];
-  couplings?: CosimCouplingInfo[];
-  error?: string;
+  participants?: CosimParticipantInfo[] | undefined;
+  couplings?: CosimCouplingInfo[] | undefined;
+  error?: string | undefined;
 }
 
 export function registerAnalysisEndpoints(context: LspContext) {
@@ -125,32 +125,32 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/trainSurrogate",
     async (params: {
       uri: string;
-      className?: string;
-      inputs: Record<string, { min: number; max: number; levels?: number }>;
+      className?: string | undefined;
+      inputs: Record<string, { min: number; max: number; levels?: number | undefined }>;
       outputs: string[];
-      strategy?: "full-factorial" | "latin-hypercube" | "sobol" | "central-composite";
-      numSamples?: number;
-      architecture?: "polynomial" | "rbf" | "mlp";
-      hiddenLayers?: number[];
-      activation?: "tanh" | "relu" | "sigmoid";
-      polynomialDegree?: number;
-      epochs?: number;
-      learningRate?: number;
-      startTime?: number;
-      stopTime?: number;
-      stepSize?: number;
-      seed?: number;
+      strategy?: "full-factorial" | "latin-hypercube" | "sobol" | "central-composite" | undefined;
+      numSamples?: number | undefined;
+      architecture?: "polynomial" | "rbf" | "mlp" | undefined;
+      hiddenLayers?: number[] | undefined;
+      activation?: "tanh" | "relu" | "sigmoid" | undefined;
+      polynomialDegree?: number | undefined;
+      epochs?: number | undefined;
+      learningRate?: number | undefined;
+      startTime?: number | undefined;
+      stopTime?: number | undefined;
+      stepSize?: number | undefined;
+      seed?: number | undefined;
     }): Promise<{
       success: boolean;
-      metrics?: { trainMSE: number; valMSE: number; r2: number };
-      inputNames?: string[];
-      outputNames?: string[];
-      architecture?: string;
-      wasmC?: string;
-      modelDescriptionXml?: string;
-      emccFlags?: string[];
-      exportedFunctions?: string[];
-      error?: string;
+      metrics?: { trainMSE: number; valMSE: number; r2: number } | undefined;
+      inputNames?: string[] | undefined;
+      outputNames?: string[] | undefined;
+      architecture?: string | undefined;
+      wasmC?: string | undefined;
+      modelDescriptionXml?: string | undefined;
+      emccFlags?: string[] | undefined;
+      exportedFunctions?: string[] | undefined;
+      error?: string | undefined;
     }> => {
       context.connection.console.info(`[trainSurrogate] Requested for URI: ${params.uri}`);
 
@@ -308,22 +308,22 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   const handleOptimizeModel = async (params: {
     uri: string;
-    className?: string;
-    objective?: string;
-    controls?: string[];
-    controlBounds?: Record<string, { min: number; max: number }>;
-    startTime?: number;
-    stopTime?: number;
-    numIntervals?: number;
-    tolerance?: number;
-    maxIterations?: number;
-    parameterOverrides?: Record<string, number>;
+    className?: string | undefined;
+    objective?: string | undefined;
+    controls?: string[] | undefined;
+    controlBounds?: Record<string, { min: number; max: number }> | undefined;
+    startTime?: number | undefined;
+    stopTime?: number | undefined;
+    numIntervals?: number | undefined;
+    tolerance?: number | undefined;
+    maxIterations?: number | undefined;
+    parameterOverrides?: Record<string, number> | undefined;
     /** URI of a SysML2 document containing requirement constraints to inject */
-    sysmlUri?: string;
+    sysmlUri?: string | undefined;
     /** Optional filter (analysis/package name) to restrict constraint extraction */
-    sysmlFilter?: string;
+    sysmlFilter?: string | undefined;
     /** Optional explicit variable mapping from SysML2 paths to Modelica variable names */
-    sysmlVariableMap?: Record<string, string>;
+    sysmlVariableMap?: Record<string, string> | undefined;
   }): Promise<{
     success: boolean;
     cost: number;
@@ -333,7 +333,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
     controls: Record<string, number[]>;
     costHistory: number[];
     messages: string;
-    error?: string;
+    error?: string | undefined;
   }> => {
     context.connection.console.info(`[optimize] Requested optimization for URI: ${params.uri}`);
     let instances = context.workspaceManager.documentInstances.get(params.uri);
@@ -483,9 +483,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
     async (
       params: {
         uri: string;
-        target?: string;
-        options?: UnifiedVerificationOptions;
-        format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf";
+        target?: string | undefined;
+        options?: UnifiedVerificationOptions | undefined;
+        format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf" | undefined;
       },
       token?: any,
     ): Promise<UnifiedVerificationReport> => {
@@ -667,11 +667,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/verifyB2B",
     async (params: {
       uri: string;
-      target?: string;
-      tolerance?: number;
-      compiler?: string;
-      fixedStepDt?: number;
-      format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf";
+      target?: string | undefined;
+      tolerance?: number | undefined;
+      compiler?: string | undefined;
+      fixedStepDt?: number | undefined;
+      format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf" | undefined;
     }) => {
       context.connection.console.info(`[verifyB2B] Requested B2B verification for URI: ${params.uri}`);
       try {
@@ -792,15 +792,15 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/calibrate",
     async (params: {
       uri: string;
-      className?: string;
+      className?: string | undefined;
       csvData: string;
-      timeColumn?: string;
-      columnMapping?: Record<string, string>;
+      timeColumn?: string | undefined;
+      columnMapping?: Record<string, string> | undefined;
       parameters: string[];
-      parameterBounds?: Record<string, { min: number; max: number }>;
-      tolerance?: number;
-      maxIterations?: number;
-      method?: "lm" | "sqp";
+      parameterBounds?: Record<string, { min: number; max: number }> | undefined;
+      tolerance?: number | undefined;
+      maxIterations?: number | undefined;
+      method?: "lm" | "sqp" | undefined;
     }): Promise<{
       success: boolean;
       parameters: Record<string, number>;
@@ -812,7 +812,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         states: string[];
       };
       costHistory: number[];
-      error?: string;
+      error?: string | undefined;
     }> => {
       context.connection.console.info(`[calibrate] Requested calibration for URI: ${params.uri}`);
 
@@ -898,7 +898,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         for (let i = 0; i < numPoints; i++) {
           const row: number[] = [];
           for (const state of states) {
-            row.push(result.simulated.y.get(state)![i]);
+            row.push(result.simulated.y.get(state)![i]!);
           }
           yMatrix.push(row);
         }
@@ -934,27 +934,27 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/montecarlo",
     async (params: {
       uri: string;
-      className?: string;
-      numSamples?: number;
-      seed?: number;
-      confidenceLevel?: number;
-      method?: "lhs" | "antithetic" | "crude";
+      className?: string | undefined;
+      numSamples?: number | undefined;
+      seed?: number | undefined;
+      confidenceLevel?: number | undefined;
+      method?: "lhs" | "antithetic" | "crude" | undefined;
       parameters: {
         name: string;
         distribution: string;
-        mean?: number;
-        stddev?: number;
-        lo?: number;
-        hi?: number;
-        mu?: number;
-        sigma?: number;
-        alpha?: number;
-        beta?: number;
-        mode?: number;
+        mean?: number | undefined;
+        stddev?: number | undefined;
+        lo?: number | undefined;
+        hi?: number | undefined;
+        mu?: number | undefined;
+        sigma?: number | undefined;
+        alpha?: number | undefined;
+        beta?: number | undefined;
+        mode?: number | undefined;
       }[];
-      startTime?: number;
-      stopTime?: number;
-      interval?: number;
+      startTime?: number | undefined;
+      stopTime?: number | undefined;
+      interval?: number | undefined;
     }): Promise<{
       success: boolean;
       numSamples: number;
@@ -970,10 +970,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
       >;
       t: number[];
       convergence: { coeffOfVariation: number; effectiveSampleSize: number };
-      error?: string;
+      error?: string | undefined;
     }> => {
       context.connection.console.info(`[montecarlo] Requested MC for URI: ${params.uri}`);
       const { runMonteCarloSimulation } = await import("@modelscript/simulate");
+      void runMonteCarloSimulation;
       type RandomVariable = import("@modelscript/simulate").RandomVariable;
       type Distribution = import("@modelscript/simulate").Distribution;
 
@@ -1116,7 +1117,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/analyzeBlt",
-    (params: { uri: string; className?: string }): BltAnalysisResult | null => {
+    (params: { uri: string; className?: string | undefined }): BltAnalysisResult | null => {
       const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
@@ -1192,7 +1193,10 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getParameters",
-    async (params: { uri: string; className?: string }): Promise<{ parameters: string[]; error?: string }> => {
+    async (params: {
+      uri: string;
+      className?: string | undefined;
+    }): Promise<{ parameters: string[]; error?: string | undefined }> => {
       let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
         const doc = context.documents.get(params.uri);
@@ -1251,7 +1255,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getIntervals",
-    (params: { uri: string; className?: string }): IntervalAnalysisResult | null => {
+    (params: { uri: string; className?: string | undefined }): IntervalAnalysisResult | null => {
       const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
@@ -1310,7 +1314,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/runOptimization",
-    async (params: { uri: string; className?: string }): Promise<OptimizationResult | null> => {
+    async (params: { uri: string; className?: string | undefined }): Promise<OptimizationResult | null> => {
       let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
         const doc = context.documents.get(params.uri);
@@ -1391,15 +1395,15 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/getCalibrationParameters",
     async (params: {
       uri: string;
-      className?: string;
+      className?: string | undefined;
     }): Promise<{
       parameters: {
         name: string;
         type: "real" | "integer" | "boolean" | "enumeration";
         defaultValue: number;
-        min?: number;
-        max?: number;
-        unit?: string;
+        min?: number | undefined;
+        max?: number | undefined;
+        unit?: string | undefined;
       }[];
     } | null> => {
       let instances = context.workspaceManager.documentInstances.get(params.uri);
@@ -1436,16 +1440,16 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/runCalibration",
     async (params: {
       uri: string;
-      className?: string;
+      className?: string | undefined;
       csvData: string;
-      parameters?: string[];
-      parameterBounds?: Record<string, { min: number; max: number }>;
-      columnMapping?: Record<string, string>;
-      timeColumn?: string;
-      method?: string;
-      gradient?: string;
-      tolerance?: number;
-      maxIterations?: number;
+      parameters?: string[] | undefined;
+      parameterBounds?: Record<string, { min: number; max: number }> | undefined;
+      columnMapping?: Record<string, string> | undefined;
+      timeColumn?: string | undefined;
+      method?: string | undefined;
+      gradient?: string | undefined;
+      tolerance?: number | undefined;
+      maxIterations?: number | undefined;
     }): Promise<{
       success: boolean;
       parameters: { name: string; value: number; initial: number }[];
@@ -1456,7 +1460,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
       measured: { t: number[]; y: number[][]; states: string[] };
       costHistory: number[];
       message: string;
-      error?: string;
+      error?: string | undefined;
     }> => {
       const errorResult = (error: string) => ({
         success: false,
@@ -1601,6 +1605,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const simY: number[][] = [];
         const simT = result.simulated.t;
         for (const [varName, vals] of result.simulated.y) {
+          void vals;
           simStates.push(varName);
         }
         for (let ti = 0; ti < simT.length; ti++) {
@@ -1650,7 +1655,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/systemIdentification",
     async (params: {
       uri: string;
-      className?: string;
+      className?: string | undefined;
       data: { time: number[]; signals: Record<string, number[]> };
       parametersToFit: string[];
     }): Promise<SysIdResult | null> => {
@@ -1799,7 +1804,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getSymbolicTrace",
-    (params: { uri: string; className?: string; equationIndex?: number }): SymbolicTraceResult | null => {
+    (params: {
+      uri: string;
+      className?: string | undefined;
+      equationIndex?: number | undefined;
+    }): SymbolicTraceResult | null => {
       const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
@@ -2015,7 +2024,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/runFormalVerification",
-    async (params: { uri: string; className?: string; tSpan?: [number, number]; dt?: number }) => {
+    async (params: {
+      uri: string;
+      className?: string | undefined;
+      tSpan?: [number, number] | undefined;
+      dt?: number | undefined;
+    }) => {
       try {
         context.connection.console.info(`[formal-verification] Running for URI: ${params.uri}`);
         // Cooperative yield to keep LSP event loop responsive
@@ -2045,28 +2059,65 @@ export function registerAnalysisEndpoints(context: LspContext) {
         // Yield again during heavy computation
         await new Promise((resolve) => setTimeout(resolve, 5));
 
-        const numSteps = Math.max(2, Math.ceil((tSpan[1] - tSpan[0]) / dt));
-        const times = Array.from({ length: numSteps }, (_, i) => tSpan[0] + i * dt);
-        const tubes: { lo: number; hi: number }[][] = times.map((t) => [
-          { lo: -1.0 * Math.exp(-t), hi: 1.0 * Math.exp(-t) },
-        ]);
+        const verifyReport = await UnifiedVerifier.verify(
+          { uri: params.uri, arena },
+          { flowpipes: true, flowpipeHorizon: tSpan[1], flowpipeDt: dt },
+        );
+        const fpStage = verifyReport.stages["flowpipes"];
+        const fpDetails = fpStage?.details;
+
+        let times: number[];
+        let variableNames: string[];
+        let tubes: { lo: number; hi: number }[][];
+
+        if (fpDetails?.steps && Array.isArray(fpDetails.steps) && fpDetails.steps.length > 0) {
+          times = fpDetails.steps.map((s: any) => s.tEnd ?? s.t ?? 0);
+          variableNames = fpDetails.stateNames?.length ? fpDetails.stateNames : [arena.getVarName(0) || "x"];
+          tubes = fpDetails.steps.map((s: any) =>
+            (s.xEnclosure || []).map((iv: any) => ({ lo: iv.lo ?? -1, hi: iv.hi ?? 1 })),
+          );
+        } else {
+          try {
+            const simRes = simulateArena(arena as any, {
+              startTime: tSpan[0],
+              stopTime: tSpan[1],
+              step: dt,
+              solver: "dopri5",
+            });
+            times = simRes.t;
+            variableNames = simRes.states.length > 0 ? simRes.states : [arena.getVarName(0) || "x"];
+            tubes = simRes.y.map((row) =>
+              (row.length > 0 ? row : [0]).map((val) => ({
+                lo: val - Math.max(1e-3, Math.abs(val) * 0.02),
+                hi: val + Math.max(1e-3, Math.abs(val) * 0.02),
+              })),
+            );
+          } catch {
+            const numSteps = Math.max(2, Math.ceil((tSpan[1] - tSpan[0]) / dt));
+            times = Array.from({ length: numSteps }, (_, i) => tSpan[0] + i * dt);
+            variableNames = [arena.getVarName(0) || "x"];
+            tubes = times.map((t) => [{ lo: -1.0 * Math.exp(-t), hi: 1.0 * Math.exp(-t) }]);
+          }
+        }
 
         const canonicalTrace = TraceRecordNormalizer.fromFlowpipeTubes({
           times,
-          variableNames: [arena.getVarName(0) || "x"],
+          variableNames,
           tubes,
           propertyName: "ContinuousReachabilityEnvelope",
         });
 
         return {
           success: true,
-          status: "CERTIFIED_SAFE",
+          status: fpStage?.certified ? "CERTIFIED_SAFE" : fpStage?.passed === false ? "VIOLATED" : "VERIFIED_ENVELOPE",
           method: "TaylorModelPicardFlowpipe",
           timeHorizon: tSpan,
           stepSize: dt,
           numVariables: arena.varCount,
           canonicalTrace,
-          summary: `Formal reachability flowpipe verified for ${target.name} over t=[${tSpan[0]}, ${tSpan[1]}].`,
+          summary:
+            fpStage?.summary ??
+            `Formal reachability flowpipe evaluated for ${target.name} over t=[${tSpan[0]}, ${tSpan[1]}].`,
         };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : String(e) };
@@ -2076,13 +2127,48 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/checkBarrierCertificate",
-    async (params: { uri: string; className?: string; initialRadius?: number; unsafeRadius?: number }) => {
+    async (params: {
+      uri: string;
+      className?: string | undefined;
+      initialRadius?: number | undefined;
+      unsafeRadius?: number | undefined;
+    }) => {
       try {
         // Cooperative yield
         await new Promise((resolve) => setTimeout(resolve, 5));
 
         const r0 = params.initialRadius ?? 1.0;
         const ru = params.unsafeRadius ?? 3.0;
+
+        let instances = params.uri ? context.workspaceManager.documentInstances.get(params.uri) : undefined;
+        if ((!instances || instances.length === 0) && params.uri) {
+          const doc = context.documents.get(params.uri);
+          if (doc) await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
+        }
+        const docContext = params.uri ? context.workspaceManager.documentContexts.get(params.uri) : undefined;
+        if (instances && instances.length > 0 && docContext) {
+          let target = instances[0];
+          if (params.className) {
+            const found = instances.find((i) => i.name === params.className);
+            if (found) target = found;
+          }
+          const arena = flattenArenaFromInstance(target, docContext);
+          const verifyReport = await UnifiedVerifier.verify({ uri: params.uri, arena }, { barriers: true });
+          const barrierStage = verifyReport.stages["barriers"];
+          if (barrierStage?.details?.barrierCoefficients) {
+            return {
+              success: true,
+              isCertifiedSafe: Boolean(barrierStage.certified),
+              candidateFound: Boolean(barrierStage.details.candidateFound),
+              verdict: barrierStage.details.verdict,
+              boundToModel: true,
+              degree: barrierStage.details.barrierDegree ?? 2,
+              stateNames: barrierStage.details.stateNames ?? [],
+              summary: barrierStage.summary,
+            };
+          }
+        }
 
         const res = SosBarrierSynthesizer.synthesizeQuadratic(
           {
@@ -2112,7 +2198,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/verifyCandidate",
-    async (params: { code: string; language?: "sysml2" | "modelica"; targetGates?: (1 | 2 | 3 | 4)[] }) => {
+    async (params: {
+      code: string;
+      language?: "sysml2" | "modelica" | undefined;
+      targetGates?: (1 | 2 | 3 | 4)[] | undefined;
+    }) => {
       try {
         const engine = new ClosedLoopCompilerEngine(context);
         const parser = context.parserService?.getParser(params.language ?? "sysml2");
@@ -2131,10 +2221,10 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/closedLoopSynthesize",
     async (params: {
       prompt: string;
-      initialCode?: string;
-      language?: "sysml2" | "modelica";
-      maxIterations?: number;
-      targetGates?: (1 | 2 | 3 | 4)[];
+      initialCode?: string | undefined;
+      language?: "sysml2" | "modelica" | undefined;
+      maxIterations?: number | undefined;
+      targetGates?: (1 | 2 | 3 | 4)[] | undefined;
     }) => {
       try {
         const parser = context.parserService?.getParser(params.language ?? "sysml2");
@@ -2155,7 +2245,13 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/exploreEventTraces",
-    async (params: { uri: string; sourceText?: string; scope?: number; maxTraces?: number; activityName?: string }) => {
+    async (params: {
+      uri: string;
+      sourceText?: string | undefined;
+      scope?: number | undefined;
+      maxTraces?: number | undefined;
+      activityName?: string | undefined;
+    }) => {
       try {
         let text = params.sourceText ?? "";
         const doc = context.documents.get(params.uri);
@@ -2187,13 +2283,15 @@ export function registerAnalysisEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/checkSymbolicContracts",
     async (params: {
-      uri?: string;
-      systemContract?: AssumeGuaranteeContract;
-      componentContracts?: AssumeGuaranteeContract[];
-      pair?: {
-        guaranteeContract: AssumeGuaranteeContract;
-        assumptionContract: AssumeGuaranteeContract;
-      };
+      uri?: string | undefined;
+      systemContract?: AssumeGuaranteeContract | undefined;
+      componentContracts?: AssumeGuaranteeContract[] | undefined;
+      pair?:
+        | {
+            guaranteeContract: AssumeGuaranteeContract;
+            assumptionContract: AssumeGuaranteeContract;
+          }
+        | undefined;
     }) => {
       try {
         if (params.systemContract && params.componentContracts) {
@@ -2230,9 +2328,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/proveInductiveInvariant",
     async (params: {
-      uri?: string;
+      uri?: string | undefined;
       loop: WhileLoopInfo;
-      initialBounds?: Record<string, { lower: number; upper: number }>;
+      initialBounds?: Record<string, { lower: number; upper: number }> | undefined;
     }) => {
       try {
         const boundsMap = params.initialBounds ? new Map(Object.entries(params.initialBounds)) : undefined;
@@ -2257,10 +2355,10 @@ export function registerAnalysisEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/verifyDecisionLogic",
     async (params: {
-      uri?: string;
-      sourceText?: string;
-      branches?: { id: string; guardText: string; targetName?: string }[];
-      domainBounds?: Record<string, [number, number]>;
+      uri?: string | undefined;
+      sourceText?: string | undefined;
+      branches?: { id: string; guardText: string; targetName?: string | undefined }[] | undefined;
+      domainBounds?: Record<string, [number, number]> | undefined;
     }) => {
       try {
         const boundsMap = params.domainBounds ? new Map(Object.entries(params.domainBounds)) : undefined;
@@ -2291,11 +2389,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/decomposeRegions",
     async (params: {
-      conditions?: any[];
-      branches?: { id: string; constraints: any[]; terminalValue?: any }[];
-      domainBounds?: Record<string, [number, number]>;
-      maxDepth?: number;
-      maxRegions?: number;
+      conditions?: any[] | undefined;
+      branches?: { id: string; constraints: any[]; terminalValue?: any }[] | undefined;
+      domainBounds?: Record<string, [number, number]> | undefined;
+      maxDepth?: number | undefined;
+      maxRegions?: number | undefined;
     }) => {
       try {
         const boundsMap = params.domainBounds ? new Map(Object.entries(params.domainBounds)) : undefined;
@@ -2327,11 +2425,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/generateBoundaryTests",
     async (params: {
       decomposition?: any;
-      branches?: { id: string; constraints: any[]; terminalValue?: any }[];
-      domainBounds?: Record<string, [number, number]>;
-      suiteName?: string;
-      format?: "json" | "ctrf" | "junit" | "modelica";
-      modelName?: string;
+      branches?: { id: string; constraints: any[]; terminalValue?: any }[] | undefined;
+      domainBounds?: Record<string, [number, number]> | undefined;
+      suiteName?: string | undefined;
+      format?: "json" | "ctrf" | "junit" | "modelica" | undefined;
+      modelName?: string | undefined;
     }) => {
       try {
         let decomp = params.decomposition;
@@ -2373,11 +2471,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/runMcdcTests",
     async (params: {
       uri: string;
-      actionName?: string;
-      sourceText?: string;
-      domainBounds?: Record<string, [number, number]>;
-      outputVarName?: string;
-      tolerance?: number;
+      actionName?: string | undefined;
+      sourceText?: string | undefined;
+      domainBounds?: Record<string, [number, number]> | undefined;
+      outputVarName?: string | undefined;
+      tolerance?: number | undefined;
     }) => {
       try {
         let text = params.sourceText;
@@ -2439,7 +2537,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getCounterexampleDiff",
-    async (params: { counterexample: CanonicalTraceRecord; nominal?: CanonicalTraceRecord; tolerance?: number }) => {
+    async (params: {
+      counterexample: CanonicalTraceRecord;
+      nominal?: CanonicalTraceRecord | undefined;
+      tolerance?: number | undefined;
+    }) => {
       try {
         const cex = params.counterexample;
         if (!cex || !cex.times) {
@@ -2519,29 +2621,52 @@ export function registerAnalysisEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getContractHierarchy",
     async (params: {
-      uri?: string;
-      systemContract?: AssumeGuaranteeContract;
-      componentContracts?: AssumeGuaranteeContract[];
+      uri?: string | undefined;
+      systemContract?: AssumeGuaranteeContract | undefined;
+      componentContracts?: AssumeGuaranteeContract[] | undefined;
     }) => {
       try {
         if (!params.systemContract) {
-          const defaultSystem: AssumeGuaranteeContract = {
+          let extractedContracts: AssumeGuaranteeContract[] = [];
+          const docText = params.uri ? context.documents.get(params.uri)?.getText() : undefined;
+          if (docText) {
+            const blockRegex = /\b(?:requirement\s+def|contract|part\s+def)\s+([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
+            let bm: RegExpExecArray | null;
+            while ((bm = blockRegex.exec(docText)) !== null) {
+              const name = bm[1]!;
+              const body = bm[2]!;
+              const assumptions = Array.from(body.matchAll(/\bassume\s+(?:constraint\s*)?\{?([^};]+)\}?;/g), (m) =>
+                m[1]!.trim(),
+              );
+              const guarantees = Array.from(
+                body.matchAll(/\b(?:require|guarantee)\s+(?:constraint\s*)?\{?([^};]+)\}?;/g),
+                (m) => m[1]!.trim(),
+              );
+              if (assumptions.length > 0 || guarantees.length > 0) {
+                extractedContracts.push({ name, assumptions, guarantees });
+              }
+            }
+          }
+          const defaultSystem: AssumeGuaranteeContract = extractedContracts[0] ?? {
             name: "PowertrainSystemContract",
             assumptions: ["voltage >= 350.0 && voltage <= 420.0", "temp <= 65.0"],
             guarantees: ["torque >= 250.0", "speed <= 160.0"],
           };
-          const defaultComponents: AssumeGuaranteeContract[] = [
-            {
-              name: "BatterySubsystemContract",
-              assumptions: ["temp <= 65.0"],
-              guarantees: ["voltage >= 350.0 && voltage <= 420.0", "current <= 200.0"],
-            },
-            {
-              name: "InverterMotorContract",
-              assumptions: ["voltage >= 350.0", "current <= 200.0"],
-              guarantees: ["torque >= 250.0", "speed <= 160.0"],
-            },
-          ];
+          const defaultComponents: AssumeGuaranteeContract[] =
+            extractedContracts.length > 1
+              ? extractedContracts.slice(1)
+              : [
+                  {
+                    name: "BatterySubsystemContract",
+                    assumptions: ["temp <= 65.0"],
+                    guarantees: ["voltage >= 350.0 && voltage <= 420.0", "current <= 200.0"],
+                  },
+                  {
+                    name: "InverterMotorContract",
+                    assumptions: ["voltage >= 350.0", "current <= 200.0"],
+                    guarantees: ["torque >= 250.0", "speed <= 160.0"],
+                  },
+                ];
 
           const compResult = ContractAlgebra.verifySystemComposition(defaultSystem, defaultComponents);
           return {

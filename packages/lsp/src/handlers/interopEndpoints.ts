@@ -10,7 +10,7 @@ import { flattenTargetClass } from "./simulationEndpoints.js";
 export function registerInteropEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/exportFmu",
-    async (params: { uri: string; fmiVersion: "2.0" | "3.0"; includeWasm?: boolean }) => {
+    async (params: { uri: string; fmiVersion: "2.0" | "3.0"; includeWasm?: boolean | undefined }) => {
       let doc = context.documents.get(params.uri);
       if (!doc) {
         for (const d of context.documents.all()) {
@@ -131,7 +131,7 @@ export function registerInteropEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/registerFmu",
-    (params: { name: string; data: string }): { ok: boolean; error?: string } => {
+    (params: { name: string; data: string }): { ok: boolean; error?: string | undefined } => {
       try {
         const sharedCtx = context.state.sharedContext;
         if (!sharedCtx) return { ok: false, error: "Context not initialized" };
@@ -168,22 +168,22 @@ export function registerInteropEndpoints(context: LspContext) {
       /** Base64-encoded .fmu archive data */
       data: string;
       /** Optional target URI for the generated .mo wrapper file */
-      targetUri?: string;
+      targetUri?: string | undefined;
       /** Optional enclosing Modelica package name */
-      packageName?: string;
+      packageName?: string | undefined;
     }): Promise<{
       ok: boolean;
       /** Generated Modelica source code */
-      source?: string;
+      source?: string | undefined;
       /** URI where the wrapper was written (if auto-injected) */
-      uri?: string;
+      uri?: string | undefined;
       /** Extracted model name */
-      modelName?: string;
+      modelName?: string | undefined;
       /** Number of input variables */
-      inputCount?: number;
+      inputCount?: number | undefined;
       /** Number of output variables */
-      outputCount?: number;
-      error?: string;
+      outputCount?: number | undefined;
+      error?: string | undefined;
     }> => {
       try {
         // Dynamically import exchange for model description parsing, terminals, and wrapper generation

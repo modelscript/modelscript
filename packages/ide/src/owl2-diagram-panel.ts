@@ -18,7 +18,7 @@ export interface OWL2DiagramNode {
   id: string;
   label: string;
   type: "class" | "objectProperty" | "dataProperty" | "individual";
-  isDefinedClass?: boolean;
+  isDefinedClass?: boolean | undefined;
 }
 
 export interface OWL2DiagramEdge {

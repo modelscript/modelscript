@@ -41,8 +41,8 @@ export interface SpatialClearanceReport {
 }
 
 export interface ClearanceConstraint {
-  partA?: string;
-  partB?: string;
+  partA?: string | undefined;
+  partB?: string | undefined;
   minClearance: number;
 }
 
@@ -266,14 +266,14 @@ export function computeAABBClosestPoints(a: AABB, b: AABB): [[number, number, nu
   const ptB: [number, number, number] = [0, 0, 0];
 
   for (let i = 0; i < 3; i++) {
-    if (a.max[i] < b.min[i]) {
-      ptA[i] = a.max[i];
-      ptB[i] = b.min[i];
-    } else if (b.max[i] < a.min[i]) {
-      ptA[i] = a.min[i];
-      ptB[i] = b.max[i];
+    if (a.max[i]! < b.min[i]!) {
+      ptA[i] = a.max[i]!;
+      ptB[i] = b.min[i]!;
+    } else if (b.max[i]! < a.min[i]!) {
+      ptA[i] = a.min[i]!;
+      ptB[i] = b.max[i]!;
     } else {
-      const mid = (Math.max(a.min[i], b.min[i]) + Math.min(a.max[i], b.max[i])) / 2;
+      const mid = (Math.max(a.min[i]!, b.min[i]!) + Math.min(a.max[i]!, b.max[i]!)) / 2;
       ptA[i] = mid;
       ptB[i] = mid;
     }
@@ -304,8 +304,8 @@ export function verifyAssemblyClearance(
 
   for (let i = 0; i < partBoxes.length; i++) {
     for (let j = i + 1; j < partBoxes.length; j++) {
-      const pA = partBoxes[i];
-      const pB = partBoxes[j];
+      const pA = partBoxes[i]!;
+      const pB = partBoxes[j]!;
 
       const distance = computeAABBDistance(pA.box, pB.box);
       pairEvaluations.push({

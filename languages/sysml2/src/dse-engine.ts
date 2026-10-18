@@ -14,14 +14,14 @@ export interface DSEParameter {
   name: string;
   min: number;
   max: number;
-  step?: number;
-  isInteger?: boolean;
+  step?: number | undefined;
+  isInteger?: boolean | undefined;
 }
 
 export interface DSEObjective {
   name: string;
   direction: "minimize" | "maximize";
-  weight?: number;
+  weight?: number | undefined;
 }
 
 export interface DSEConstraint {
@@ -34,24 +34,24 @@ export interface DSECandidate {
   parameters: Record<string, number>;
   objectives: Record<string, number>;
   isFeasible: boolean;
-  rank?: number;
-  topsisScore?: number;
+  rank?: number | undefined;
+  topsisScore?: number | undefined;
 }
 
 export interface DSEProblem {
-  name?: string;
+  name?: string | undefined;
   parameters: DSEParameter[];
   objectives: DSEObjective[];
-  constraints?: DSEConstraint[];
+  constraints?: DSEConstraint[] | undefined;
   evaluate: (params: Record<string, number>) => Promise<Record<string, number>> | Record<string, number>;
-  sampleCount?: number;
-  seed?: number;
+  sampleCount?: number | undefined;
+  seed?: number | undefined;
 }
 
 export interface DSEResult {
   candidates: DSECandidate[];
   paretoFrontier: DSECandidate[];
-  recommendedCandidate?: DSECandidate;
+  recommendedCandidate?: DSECandidate | undefined;
   summary: string;
 }
 

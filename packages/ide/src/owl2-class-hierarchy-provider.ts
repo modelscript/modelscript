@@ -29,7 +29,7 @@ function classNodeIcon(node: OWL2ClassNode): vscode.ThemeIcon {
 export class OWL2ClassItem extends vscode.TreeItem {
   constructor(
     public readonly node: OWL2ClassNode,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+    public override readonly collapsibleState: vscode.TreeItemCollapsibleState,
   ) {
     super(node.label, collapsibleState);
     this.tooltip = node.iri;

@@ -56,6 +56,7 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
         error: err instanceof Error ? err.message : "Failed to process FMU archive",
       });
     }
+    return;
   });
 
   // GET /api/v1/fmus — List all uploaded FMUs
@@ -82,6 +83,7 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
       return res.status(404).json({ error: "FMU not found" });
     }
     res.json(fmu);
+    return;
   });
 
   // GET /api/v1/fmus/:id/variables — Get FMU variables grouped by causality
@@ -100,6 +102,7 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
       local: variables.filter((v: FmiScalarVariable) => v.causality === "local"),
       total: variables.length,
     });
+    return;
   });
 
   // GET /api/v1/fmus/:id/description — Get raw modelDescription.xml
@@ -110,6 +113,7 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
       return res.status(404).json({ error: "FMU not found" });
     }
     res.type("application/xml").send(xml);
+    return;
   });
 
   // GET /api/v1/fmus/:id/download — Download the raw FMU archive
@@ -123,6 +127,7 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
     res.set("Content-Type", "application/octet-stream");
     res.set("Content-Disposition", `attachment; filename="${fmu.filename}"`);
     res.send(archive);
+    return;
   });
 
   // DELETE /api/v1/fmus/:id — Delete an FMU
@@ -133,6 +138,7 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
       return res.status(404).json({ error: "FMU not found" });
     }
     res.json({ ok: true, id });
+    return;
   });
 
   return router;

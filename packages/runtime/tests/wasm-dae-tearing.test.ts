@@ -152,4 +152,71 @@ describe("WASM DaeBuilder Algebraic Loop Tearing Engine", () => {
     expect(solvedX1).toBeCloseTo(-2.0, 5);
     expect(solvedX2).toBeCloseTo(-5.0, 5);
   });
+
+  it("should causally order inner forward chain for 3x3 loop in reversed equation order and support warm-start cache", () => {
+    const b = wasmExports.dae_createBuilder();
+
+    // System: 3 coupled variables (x1, x2, x3) with equations in reversed order:
+    // Eq 0: x1 = x3 + 1.0
+    // Eq 1: x3 = 2.0 * x2
+    // Eq 2: x2 = x1 - 3.0
+    // Solution: x1 = 2*(x1 - 3) + 1 = 2*x1 - 5 => x1 = 5, x2 = 2, x3 = 4
+    const varX1 = wasmExports.dae_addVariable(b, 201, 0, 0, 0, 0.0, 0);
+    const varX2 = wasmExports.dae_addVariable(b, 202, 0, 0, 0, 0.0, 0);
+    const varX3 = wasmExports.dae_addVariable(b, 203, 0, 0, 0, 0.0, 0);
+
+    const exprX1 = wasmExports.dae_addExpression(b, 0, varX1);
+    const exprX2 = wasmExports.dae_addExpression(b, 0, varX2);
+    const exprX3 = wasmExports.dae_addExpression(b, 0, varX3);
+
+    const one = wasmExports.dae_addRealLiteral(b, 1.0);
+    const two = wasmExports.dae_addRealLiteral(b, 2.0);
+    const three = wasmExports.dae_addRealLiteral(b, 3.0);
+
+    // Eq 0: x1 = x3 + 1.0
+    const rhs0 = wasmExports.dae_addExpression(b, 5, 0, exprX3, one);
+    const eq0 = wasmExports.dae_addEquation(b, 0, exprX1, rhs0, 0);
+
+    // Eq 1: x3 = 2.0 * x2
+    const rhs1 = wasmExports.dae_addExpression(b, 5, 2, two, exprX2);
+    const eq1 = wasmExports.dae_addEquation(b, 0, exprX3, rhs1, 0);
+
+    // Eq 2: x2 = x1 - 3.0
+    const rhs2 = wasmExports.dae_addExpression(b, 5, 1, exprX1, three);
+    const eq2 = wasmExports.dae_addEquation(b, 0, exprX2, rhs2, 0);
+
+    const eqIndicesPtr = wasmExports.atomicChunkAlloc(12);
+    const varIndicesPtr = wasmExports.atomicChunkAlloc(12);
+    const mem32 = new Uint32Array(wasmExports.memory.buffer);
+    mem32[eqIndicesPtr >> 2] = eq0;
+    mem32[(eqIndicesPtr >> 2) + 1] = eq1;
+    mem32[(eqIndicesPtr >> 2) + 2] = eq2;
+    mem32[varIndicesPtr >> 2] = varX1;
+    mem32[(varIndicesPtr >> 2) + 1] = varX2;
+    mem32[(varIndicesPtr >> 2) + 2] = varX3;
+
+    const tornBlock = wasmExports.dae_createTornBlock(b, eqIndicesPtr, varIndicesPtr, 3);
+    const varValuesPtr = wasmExports.atomicChunkAlloc(24);
+    const scratchPtr = wasmExports.atomicChunkAlloc(1024);
+
+    const memF64 = new Float64Array(wasmExports.memory.buffer);
+    memF64[varValuesPtr >> 3] = 0.0;
+    memF64[(varValuesPtr >> 3) + 1] = 0.0;
+    memF64[(varValuesPtr >> 3) + 2] = 0.0;
+
+    const converged = wasmExports.dae_solveTornBlock(b, tornBlock, varValuesPtr, scratchPtr);
+    expect(converged).toBeTruthy();
+
+    expect(memF64[varValuesPtr >> 3]).toBeCloseTo(5.0, 5);
+    expect(memF64[(varValuesPtr >> 3) + 1]).toBeCloseTo(2.0, 5);
+    expect(memF64[(varValuesPtr >> 3) + 2]).toBeCloseTo(4.0, 5);
+
+    // Verify WarmStartCache and solve1x1Newton
+    const cachePtr = wasmExports.initWarmStartCache(64);
+    expect(cachePtr).toBeGreaterThan(0);
+    expect(wasmExports.getWarmStartValue(cachePtr, 0, -1.0)).toBeCloseTo(-1.0, 6);
+    wasmExports.setWarmStartValue(cachePtr, 0, 5.0);
+    expect(wasmExports.getWarmStartValue(cachePtr, 0, -1.0)).toBeCloseTo(5.0, 6);
+    expect(wasmExports.solve1x1Newton(3.0, 0.5)).toBeCloseTo(2.5, 6);
+  });
 });

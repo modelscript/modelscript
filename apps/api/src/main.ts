@@ -16,6 +16,7 @@ import "./setup.js";
 
 import { CosimMqttClient, HistorianRecorder, attachCosimWebSocket } from "@modelscript/exchange/cosim";
 import { createApp } from "./app.js";
+import { attachCollabWebSocket } from "./routes/collab-ws.js";
 import { locationService } from "./services/location.js";
 
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
@@ -95,23 +96,29 @@ const server = app.listen(port, () => {
 // ── WebSocket streaming ──
 
 attachCosimWebSocket(server, mqttClient);
+attachCollabWebSocket(server);
 console.log("WebSocket co-simulation stream available at /api/v1/cosim/stream");
+console.log("WebSocket collaboration stream available at /api/v1/collab/stream");
 
 // ── Graceful shutdown ──
 
+/**
+ * Gracefully stops background worker intervals, flushes the TimescaleDB historian recorder,
+ * disconnects MQTT and PostgreSQL clients, and closes the HTTP server upon receiving `SIGINT`/`SIGTERM`.
+ */
 async function shutdown(signal: string): Promise<void> {
   console.log(`\n${signal} received. Shutting down gracefully...`);
 
-  if (app.locals.decayWorkerInterval) {
-    clearInterval(app.locals.decayWorkerInterval);
+  if (app.locals["decayWorkerInterval"]) {
+    clearInterval(app.locals["decayWorkerInterval"]);
   }
 
-  if (app.locals.rssWorkerInterval) {
-    clearInterval(app.locals.rssWorkerInterval);
+  if (app.locals["rssWorkerInterval"]) {
+    clearInterval(app.locals["rssWorkerInterval"]);
   }
 
-  if (app.locals.jobQueue) {
-    app.locals.jobQueue.clear();
+  if (app.locals["jobQueue"]) {
+    app.locals["jobQueue"].clear();
   }
 
   server.close();

@@ -29,10 +29,10 @@ export interface SynthesizedTestCase {
   description: string;
   inputs: Record<string, number>;
   expectedRegionId: string;
-  expectedOutcome?: string | number | ExprNode;
-  boundaryCondition?: string;
-  independentCondition?: string;
-  pairedTestId?: string;
+  expectedOutcome?: string | number | ExprNode | undefined;
+  boundaryCondition?: string | undefined;
+  independentCondition?: string | undefined;
+  pairedTestId?: string | undefined;
 }
 
 export interface CoverageMetrics {
@@ -56,9 +56,9 @@ export interface TestCaseExecutionResult {
   category: "nominal" | "boundary" | "mcdc";
   passed: boolean;
   inputs: Record<string, number>;
-  expectedOutcome?: string | number | ExprNode;
-  actualOutcome?: number;
-  error?: string;
+  expectedOutcome?: string | number | ExprNode | undefined;
+  actualOutcome?: number | undefined;
+  error?: string | undefined;
   durationMs: number;
 }
 
@@ -74,11 +74,11 @@ export interface TestExecutionReport {
 }
 
 export interface SynthesizerOptions {
-  suiteName?: string;
-  includeNominal?: boolean;
-  includeBoundary?: boolean;
-  includeMcdc?: boolean;
-  targetModelName?: string;
+  suiteName?: string | undefined;
+  includeNominal?: boolean | undefined;
+  includeBoundary?: boolean | undefined;
+  includeMcdc?: boolean | undefined;
+  targetModelName?: string | undefined;
 }
 
 export class BoundaryTestSynthesizer {

@@ -8,13 +8,13 @@ import * as vscode from "vscode";
 interface RawNotebookCell {
   cell_type: "code" | "markdown";
   source: string[];
-  language?: string;
-  outputs?: RawCellOutput[];
+  language?: string | undefined;
+  outputs?: RawCellOutput[] | undefined;
 }
 
 interface RawCellOutput {
   output_type: "text" | "json" | "error";
-  text?: string;
+  text?: string | undefined;
   data?: unknown;
 }
 

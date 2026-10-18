@@ -7,15 +7,17 @@ import styled, { css, keyframes } from "styled-components";
 export type ToastType = "success" | "error" | "info" | "warning";
 
 export interface ToastOptions {
-  id?: string;
-  type?: ToastType;
-  title?: string;
+  id?: string | undefined;
+  type?: ToastType | undefined;
+  title?: string | undefined;
   message: string;
-  duration?: number; // ms, defaults to 4000
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
+  duration?: number | undefined; // ms, defaults to 4000
+  action?:
+    | {
+        label: string;
+        onClick: () => void;
+      }
+    | undefined;
 }
 
 interface ToastItem extends ToastOptions {

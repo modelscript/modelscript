@@ -30,5 +30,6 @@ export * from "./standalone-codegen.js";
 export * from "./storage.js";
 export * from "./sundials-codegen.js";
 export * from "./transpiler-utils.js";
+export * from "./validator.js";
 export * from "./wrapper-gen.js";
 export * from "./wrapper-template.js";

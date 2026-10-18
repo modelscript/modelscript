@@ -112,7 +112,7 @@ export class EntailmentTheoryOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     this.certifiedManifests = [];
     for (const q of this.queries) {
       const parent = this.requirements.get(q.parentReqId);

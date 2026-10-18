@@ -14,9 +14,9 @@ interface ParticipantVariable {
   name: string;
   causality: "input" | "output" | "parameter" | "local";
   type: string;
-  unit?: string;
-  start?: number;
-  description?: string;
+  unit?: string | undefined;
+  start?: number | undefined;
+  description?: string | undefined;
 }
 
 interface ParticipantInfo {
@@ -24,9 +24,9 @@ interface ParticipantInfo {
   modelName: string;
   type: string;
   classKind: string;
-  description?: string;
+  description?: string | undefined;
   variables: ParticipantVariable[];
-  iconSvg?: string;
+  iconSvg?: string | undefined;
   timestamp: string;
 }
 
@@ -110,7 +110,7 @@ export class MqttTreeProvider
 
   constructor(
     private readonly client: LanguageClient,
-    private readonly context: vscode.ExtensionContext,
+    _context: vscode.ExtensionContext,
     private readonly pollIntervalMs = 5000,
   ) {
     // Read API URL from settings

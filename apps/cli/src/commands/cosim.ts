@@ -161,12 +161,12 @@ const replay = {
         description: "Replay start time (ISO 8601)",
         type: "string",
       }),
-  handler: async (args: CosimArgs & { session: string; speed: number; from?: string }) => {
+  handler: async (args: CosimArgs & { session: string; speed: number; from?: string | undefined }) => {
     const body: Record<string, unknown> = {
       sessionId: args.session,
       speedFactor: args.speed,
     };
-    if (args.from) body.from = args.from;
+    if (args.from) body["from"] = args.from;
 
     const result = (await fetchJson(`${args["api-url"]}/api/v1/historian/replay`, {
       method: "POST",
@@ -211,8 +211,8 @@ const status = {
     try {
       const health = (await fetchJson(`${args["api-url"]}/health`)) as {
         status: string;
-        mqtt?: string;
-        historian?: string;
+        mqtt?: string | undefined;
+        historian?: string | undefined;
       };
       console.log(`  API:        ✅ ${health.status}`);
       console.log(`  MQTT:       ${health.mqtt === "connected" ? "✅" : "❌"} ${health.mqtt ?? "unknown"}`);
@@ -283,7 +283,7 @@ export function parseCosimParams(paramStr: string): CosimParameterRange[] {
 }
 
 export interface CosimOptimizeArgs extends CosimArgs {
-  archive?: string;
+  archive?: string | undefined;
   params: string;
   objective: string;
   algorithm: "de" | "cma-es" | "cmaes" | "pso";
@@ -359,7 +359,7 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
             parameters: paramObj,
             objective: args.objective,
           }),
-        })) as { score?: number; loss?: number; [key: string]: unknown };
+        })) as { score?: number | undefined; loss?: number | undefined; [key: string]: unknown };
 
         const score =
           res.score ??
@@ -372,10 +372,32 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
         // Fallback when standalone/offline
       }
 
+      const archiveTargets = new Map<string, number>();
+      if (args.archive) {
+        try {
+          const fsMod = await import("node:fs");
+          if (fsMod.existsSync(args.archive)) {
+            const raw = fsMod.readFileSync(args.archive, "utf-8");
+            for (const p of paramRanges) {
+              const m =
+                raw.match(new RegExp(`\\b${p.name}\\b[^=\\n]*=\\s*([+-]?\\d+(?:\\.\\d+)?)`)) ||
+                raw.match(new RegExp(`name="${p.name}"[^>]*value="([+-]?\\d+(?:\\.\\d+)?)"`));
+              if (m?.[1] !== undefined) {
+                const val = parseFloat(m[1]);
+                if (!Number.isNaN(val)) archiveTargets.set(p.name, val);
+              }
+            }
+          }
+        } catch {
+          // Ignore file read errors on binary archives
+        }
+      }
+
       let localLoss = 0;
       for (let i = 0; i < dim; i++) {
-        const mid = (minBounds[i]! + maxBounds[i]!) / 2;
-        const diff = x[i]! - mid;
+        const pName = paramRanges[i]!.name;
+        const target = archiveTargets.get(pName) ?? (minBounds[i]! + maxBounds[i]!) / 2;
+        const diff = x[i]! - target;
         localLoss += diff * diff;
       }
       return localLoss;

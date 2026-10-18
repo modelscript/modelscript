@@ -42,22 +42,22 @@ export interface PlacementItem {
   y: number;
   width: number;
   height: number;
-  rotation?: number;
-  edges?: EdgeUpdate[];
-  connectedOnly?: boolean;
+  rotation?: number | undefined;
+  edges?: EdgeUpdate[] | undefined;
+  connectedOnly?: boolean | undefined;
 }
 
 // ── X6 Markup (DOM-free SVG tree for webview rendering) ──
 
 export interface X6Markup {
   tagName: string;
-  selector?: string;
-  groupSelector?: string;
-  attrs?: Record<string, string | number>;
-  style?: Record<string, string | number>;
-  className?: string;
-  children?: X6Markup[];
-  textContent?: string;
+  selector?: string | undefined;
+  groupSelector?: string | undefined;
+  attrs?: Record<string, string | number> | undefined;
+  style?: Record<string, string | number> | undefined;
+  className?: string | undefined;
+  children?: X6Markup[] | undefined;
+  textContent?: string | undefined;
 }
 
 // ── Property Inspector Schema ──
@@ -80,93 +80,95 @@ export type PropertyFieldKind =
 export interface PropertyChoiceOption {
   label: string;
   value: any;
-  description?: string;
-  icon?: string;
+  description?: string | undefined;
+  icon?: string | undefined;
 }
 
 export interface PropertyFieldValidation {
-  min?: number;
-  max?: number;
-  pattern?: string;
-  validate?: (value: any, ctx: any) => string | null;
+  min?: number | undefined;
+  max?: number | undefined;
+  pattern?: string | undefined;
+  validate?: ((value: any, ctx: any) => string | null) | undefined;
 }
 
 export interface PropertyFieldConfig {
   key: string;
   label: string;
   kind: PropertyFieldKind;
-  description?: string;
-  placeholder?: string;
+  description?: string | undefined;
+  placeholder?: string | undefined;
   defaultValue?: any;
-  unit?: string;
-  choices?: (string | PropertyChoiceOption)[];
-  enabledIf?: string;
-  visibleIf?: string;
-  required?: boolean;
-  validation?: PropertyFieldValidation;
-  readOnly?: boolean;
+  unit?: string | undefined;
+  choices?: (string | PropertyChoiceOption)[] | undefined;
+  enabledIf?: string | undefined;
+  visibleIf?: string | undefined;
+  required?: boolean | undefined;
+  validation?: PropertyFieldValidation | undefined;
+  readOnly?: boolean | undefined;
 }
 
 export interface PropertyGroupConfig {
   id: string;
   label: string;
-  description?: string;
-  collapsedByDefault?: boolean;
-  visibleIf?: string;
+  description?: string | undefined;
+  collapsedByDefault?: boolean | undefined;
+  visibleIf?: string | undefined;
   fields: PropertyFieldConfig[];
 }
 
 export interface PropertyTabConfig {
   id: string;
   label: string;
-  icon?: string;
-  visibleIf?: string;
+  icon?: string | undefined;
+  visibleIf?: string | undefined;
   groups: PropertyGroupConfig[];
 }
 
 export interface EntityPropertySchema {
-  title?: string;
-  icon?: string;
+  title?: string | undefined;
+  icon?: string | undefined;
   tabs: PropertyTabConfig[];
 }
 
 // ── Diagram Data (read model) ──
 
 export interface ComponentPropertyData {
-  classKind?: string;
+  classKind?: string | undefined;
   className: string;
-  localizedClassName?: string;
+  localizedClassName?: string | undefined;
   name: string;
-  localizedName?: string;
+  localizedName?: string | undefined;
   description: string;
-  localizedDescription?: string;
+  localizedDescription?: string | undefined;
   parameters: {
     name: string;
-    localizedName?: string;
+    localizedName?: string | undefined;
     value: string;
-    defaultValue?: string;
-    description?: string;
-    localizedDescription?: string;
-    isBoolean?: boolean;
-    unit?: string;
-    tab?: string;
-    group?: string;
-    enable?: string;
+    defaultValue?: string | undefined;
+    description?: string | undefined;
+    localizedDescription?: string | undefined;
+    isBoolean?: boolean | undefined;
+    unit?: string | undefined;
+    tab?: string | undefined;
+    group?: string | undefined;
+    enable?: string | undefined;
   }[];
-  documentation?: {
-    info?: string;
-    revisions?: string;
-  };
-  docInfo?: string;
-  docRevisions?: string;
-  iconSvg?: string;
-  icon?: string;
+  documentation?:
+    | {
+        info?: string | undefined;
+        revisions?: string | undefined;
+      }
+    | undefined;
+  docInfo?: string | undefined;
+  docRevisions?: string | undefined;
+  iconSvg?: string | undefined;
+  icon?: string | undefined;
   /** Structured schema-driven property definition */
-  schema?: EntityPropertySchema;
+  schema?: EntityPropertySchema | undefined;
   /** Property values map (key -> value) */
-  values?: Record<string, any>;
+  values?: Record<string, any> | undefined;
   /** Validation error map (key -> error message) */
-  errors?: Record<string, string>;
+  errors?: Record<string, string> | undefined;
 }
 
 export interface DiagramPort {
@@ -180,7 +182,7 @@ export interface ReactiveAnimationBinding {
   componentName: string;
   property: string;
   variableName: string;
-  transform?: string;
+  transform?: string | undefined;
 }
 
 export interface DiagramNode {
@@ -197,13 +199,15 @@ export interface DiagramNode {
     items: DiagramPort[];
     groups: Record<string, { position: string; zIndex: number }>;
   };
-  properties?: ComponentPropertyData;
-  autoLayout?: boolean;
-  animations?: ReactiveAnimationBinding[];
-  compartments?: {
-    header: string;
-    entries: string[];
-  }[];
+  properties?: ComponentPropertyData | undefined;
+  autoLayout?: boolean | undefined;
+  animations?: ReactiveAnimationBinding[] | undefined;
+  compartments?:
+    | {
+        header: string;
+        entries: string[];
+      }[]
+    | undefined;
   attrs?: any;
   data?: any;
 }
@@ -212,19 +216,19 @@ export interface DiagramEdge {
   id: string;
   source: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
   target: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
-  vertices?: { x: number; y: number }[];
-  connector?: string;
-  router?: string | { name: string; args?: Record<string, unknown> };
+  vertices?: { x: number; y: number }[] | undefined;
+  connector?: string | undefined;
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
   zIndex: number;
-  animations?: ReactiveAnimationBinding[];
+  animations?: ReactiveAnimationBinding[] | undefined;
   style?: any;
-  labels?: any[];
+  labels?: any[] | undefined;
   data?: any;
   attrs: {
     line: {
       stroke: string;
       strokeWidth: number;
-      strokeDasharray?: string;
+      strokeDasharray?: string | undefined;
       sourceMarker?: any;
       targetMarker?: any;
       "vector-effect": string;
@@ -245,9 +249,9 @@ export interface DiagramData {
   edges: DiagramEdge[];
   coordinateSystem: CoordinateSystem;
   diagramBackground: X6Markup | null;
-  isLoading?: boolean;
-  availableViews?: { id: string; label: string; description?: string }[];
-  activeView?: string;
+  isLoading?: boolean | undefined;
+  availableViews?: { id: string; label: string; description?: string | undefined }[] | undefined;
+  activeView?: string | undefined;
 }
 
 // ── Diagram Edit Actions ──
@@ -257,35 +261,42 @@ export type DiagramEditAction =
       type: "connect";
       source: string;
       target: string;
-      points?: Point[];
-      color?: [number, number, number];
-      edgeType?: string;
-      sourcePort?: string;
-      targetPort?: string;
-      section?: string;
+      points?: Point[] | undefined;
+      color?: [number, number, number] | undefined;
+      edgeType?: string | undefined;
+      sourcePort?: string | undefined;
+      targetPort?: string | undefined;
+      section?: string | undefined;
     }
-  | { type: "disconnect"; source: string; target: string; edgeType?: string }
+  | { type: "disconnect"; source: string; target: string; edgeType?: string | undefined }
   | { type: "move"; items: PlacementItem[] }
   | { type: "resize"; item: PlacementItem }
   | { type: "rotate"; item: PlacementItem }
   | { type: "moveEdge"; edges: EdgeUpdate[] }
-  | { type: "addComponent"; className: string; x: number; y: number; name?: string; section?: string }
+  | {
+      type: "addComponent";
+      className: string;
+      x: number;
+      y: number;
+      name?: string | undefined;
+      section?: string | undefined;
+    }
   | { type: "deleteComponents"; names: string[] }
   | {
       type: "reconnect";
-      edgeId?: string;
+      edgeId?: string | undefined;
       oldSource: string;
       oldTarget: string;
       newSource: string;
       newTarget: string;
-      points?: Point[];
-      color?: [number, number, number];
-      oldSourcePort?: string;
-      oldTargetPort?: string;
-      newSourcePort?: string;
-      newTargetPort?: string;
-      edgeType?: string;
-      section?: string;
+      points?: Point[] | undefined;
+      color?: [number, number, number] | undefined;
+      oldSourcePort?: string | undefined;
+      oldTargetPort?: string | undefined;
+      newSourcePort?: string | undefined;
+      newTargetPort?: string | undefined;
+      edgeType?: string | undefined;
+      section?: string | undefined;
     }
   | { type: "updateName"; oldName: string; newName: string }
   | { type: "updateDescription"; name: string; description: string }
@@ -295,11 +306,11 @@ export type DiagramEditAction =
 // ── SVG Export Options ──
 
 export interface SvgExportOptions {
-  theme?: "dark" | "light" | "blueprint" | string;
-  padding?: number;
-  scale?: number;
-  embedFonts?: boolean;
-  background?: string;
+  theme?: "dark" | "light" | "blueprint" | string | undefined;
+  padding?: number | undefined;
+  scale?: number | undefined;
+  embedFonts?: boolean | undefined;
+  background?: string | undefined;
 }
 
 // ── Stencil / Palette ──
@@ -307,9 +318,9 @@ export interface SvgExportOptions {
 export interface DiagramPaletteItem {
   label: string;
   className: string;
-  iconSvg?: string;
-  description?: string;
-  defaultProps?: Record<string, any>;
+  iconSvg?: string | undefined;
+  description?: string | undefined;
+  defaultProps?: Record<string, any> | undefined;
 }
 
 export interface DiagramPaletteCategory {
@@ -329,17 +340,17 @@ export interface DiagramGetPaletteParams {
 
 export interface DiagramDrillDownParams {
   uri: string;
-  componentId?: string;
-  className?: string;
-  componentName?: string;
-  nodeId?: string;
+  componentId?: string | undefined;
+  className?: string | undefined;
+  componentName?: string | undefined;
+  nodeId?: string | undefined;
 }
 
 export interface DiagramDrillDownResult {
   data: DiagramData | null;
-  breadcrumbs: { id: string; label: string; uri?: string }[];
-  targetUri?: string;
-  targetClassName?: string;
+  breadcrumbs: { id: string; label: string; uri?: string | undefined }[];
+  targetUri?: string | undefined;
+  targetClassName?: string | undefined;
 }
 
 // ── Request / Response Types ──
@@ -347,11 +358,11 @@ export interface DiagramDrillDownResult {
 // getData
 export interface DiagramGetDataParams {
   uri: string;
-  className?: string;
+  className?: string | undefined;
   /** One of "All" | "BDD" | "IBD" | "StateMachine". Accepts string for LSP wire compat. */
-  diagramType?: string;
+  diagramType?: string | undefined;
   /** Optional sidecar file content passed by the client (e.g. from IDE's virtual filesystem / workspace) */
-  sidecarContent?: string;
+  sidecarContent?: string | undefined;
 }
 
 // applyEdits
@@ -371,25 +382,25 @@ export interface DiagramApplyEditsResult {
   /** Hint to the client on how to react after applying edits */
   renderHint: "none" | "immediate" | "debounced";
   /** Optional sidecar file URI to persist layout changes (for DSLs using external layout files like SysML2/OWL2) */
-  sidecarUri?: string;
+  sidecarUri?: string | undefined;
   /** Optional sidecar file serialized content to write to sidecarUri */
-  sidecarContent?: string;
+  sidecarContent?: string | undefined;
 }
 
 // getComponentProperties
 export interface DiagramGetComponentPropertiesParams {
   uri: string;
   componentName: string;
-  className?: string;
+  className?: string | undefined;
 }
 
 // exportDiagram
 export interface DiagramExportParams {
-  uri?: string;
+  uri?: string | undefined;
   format: "svg" | "png" | "jpeg";
-  theme?: "dark" | "light";
-  scale?: number;
-  padding?: number;
+  theme?: "dark" | "light" | undefined;
+  scale?: number | undefined;
+  padding?: number | undefined;
 }
 
 export interface DiagramExportResult {
@@ -403,9 +414,9 @@ export interface PeerPresence {
   peerId: string;
   name: string;
   color: string;
-  cursor?: Point;
-  selection?: string[];
-  viewport?: { x: number; y: number; zoom: number };
+  cursor?: Point | undefined;
+  selection?: string[] | undefined;
+  viewport?: { x: number; y: number; zoom: number } | undefined;
   lastActive: number;
 }
 
@@ -431,7 +442,7 @@ export interface DiagramComment {
   y: number;
   text: string;
   timestamp: number;
-  resolved?: boolean;
+  resolved?: boolean | undefined;
 }
 
 export type CollabMessage =

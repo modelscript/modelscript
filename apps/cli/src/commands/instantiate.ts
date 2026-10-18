@@ -10,11 +10,18 @@ import { NodeFileSystem } from "../util/filesystem.js";
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
+/** CLI arguments for the `msx instantiate` command. */
 interface InstantiateArgs {
+  /** Fully-qualified name of the Modelica class to instantiate. */
   name: string;
+  /** File or library paths to load into the compilation context. */
   paths: string[];
 }
 
+/**
+ * `msx instantiate <name> <paths...>` CLI command module for instantiating a Modelica class
+ * and dumping its resolved structural AST representation as JSON.
+ */
 export const Instantiate: CommandModule<{}, InstantiateArgs> = {
   command: "instantiate <name> <paths...>",
   describe: "Instantiate and query AST structure of a Modelica model",

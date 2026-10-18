@@ -30,59 +30,67 @@ import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
  */
 export interface PolyglotNode {
   /** Optional unique identifier of the node within its domain. */
-  id?: number;
+  id?: number | undefined;
   /** The primary unqualified identifier or name of the model element. */
   name: string;
   /** Optional syntactic or semantic kind (e.g., `"model"`, `"block"`, `"class"`, `"part def"`). */
-  kind?: string;
+  kind?: string | undefined;
   /** Whether the model definition represents an abstract or uninstantiable type. */
-  isAbstract?: boolean;
+  isAbstract?: boolean | undefined;
   /** Whether the model is declared as a partial class. */
-  isPartial?: boolean;
+  isPartial?: boolean | undefined;
   /** Superclass or base type names inherited by this model. */
-  superclasses?: string[];
+  superclasses?: string[] | undefined;
   /** Base class or inheritance clauses. */
-  extends?: string[];
+  extends?: string[] | undefined;
   /** Primitive or structured attribute fields defined on the node. */
-  attributes?: {
-    name: string;
-    type: string;
-    value?: string;
-    isInherited?: boolean;
-  }[];
+  attributes?:
+    | {
+        name: string;
+        type: string;
+        value?: string | undefined;
+        isInherited?: boolean | undefined;
+      }[]
+    | undefined;
   /** Interaction points, flow ports, or physical connectors. */
-  ports?: {
-    name: string;
-    type: string;
-    isInherited?: boolean;
-    acrossVar?: string;
-    flowVar?: string;
-    domain?: string;
-    isConjugated?: boolean;
-    direction?: "in" | "out" | "inout";
-  }[];
+  ports?:
+    | {
+        name: string;
+        type: string;
+        isInherited?: boolean | undefined;
+        acrossVar?: string | undefined;
+        flowVar?: string | undefined;
+        domain?: string | undefined;
+        isConjugated?: boolean | undefined;
+        direction?: "in" | "out" | "inout" | undefined;
+      }[]
+    | undefined;
   /** Sub-components, inner declarations, or child instances. */
-  components?: {
-    name: string;
-    typeSpecifier: string;
-    variability?: string;
-    causality?: string;
-    defaultValue?: string;
-    isInherited?: boolean;
-    dimensions?: string;
-    multiplicity?: string;
-    modifications?: Record<string, string | number>;
-  }[];
+  components?:
+    | {
+        name: string;
+        typeSpecifier: string;
+        variability?: string | undefined;
+        causality?: string | undefined;
+        defaultValue?: string | undefined;
+        isInherited?: boolean | undefined;
+        dimensions?: string | undefined;
+        multiplicity?: string | undefined;
+        modifications?: Record<string, string | number> | undefined;
+      }[]
+    | undefined;
   /** Topological bindings or connector equations between sub-elements. */
-  connections?: {
-    source: string;
-    target: string;
-    kind?: "flow" | "binding" | "physical";
-  }[];
+  connections?:
+    | {
+        source: string;
+        target: string;
+        kind?: "flow" | "binding" | "physical" | undefined;
+      }[]
+    | undefined;
   /** Mathematical equations (DAE/ODE relations). */
-  equations?: string[];
+  equations?: string[] | undefined;
   /** Formal constraints or invariant assertions. */
-  constraints?: string[];
+  constraints?: string[] | undefined;
   /** Dynamic extension properties for custom language schemas. */
   [key: string]: any;
 }
@@ -506,8 +514,8 @@ export class PolyglotTransformer {
       .map((f) => {
         const parts = f.object.split(":");
         return {
-          name: parts[0],
-          type: parts[1] || "Real",
+          name: parts[0]!,
+          type: parts[1]! || "Real",
         };
       });
   }
@@ -519,7 +527,7 @@ export class PolyglotTransformer {
       id: string;
       sourceVal: any;
       targetVal: any;
-      ruleName?: string;
+      ruleName?: string | undefined;
       resolved?: any;
       isResolved: boolean;
     }
@@ -624,7 +632,14 @@ export class PolyglotTransformer {
   /** CST source ranges for live bi-directional IDE spans */
   private cstSpans = new Map<
     string,
-    { startByte: number; endByte: number; startOffset?: number; endOffset?: number; line: number; column: number }
+    {
+      startByte: number;
+      endByte: number;
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
+      line: number;
+      column: number;
+    }
   >();
 
   /**
@@ -713,8 +728,8 @@ export class PolyglotTransformer {
     span: {
       startByte: number;
       endByte: number;
-      startOffset?: number;
-      endOffset?: number;
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
       line: number;
       column: number;
     },
@@ -733,10 +748,15 @@ export class PolyglotTransformer {
   /**
    * Retrieves the source byte span for an element.
    */
-  getCstSpan(
-    id: string,
-  ):
-    | { startByte: number; endByte: number; startOffset?: number; endOffset?: number; line: number; column: number }
+  getCstSpan(id: string):
+    | {
+        startByte: number;
+        endByte: number;
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
+        line: number;
+        column: number;
+      }
     | undefined {
     return this.cstSpans.get(id);
   }
@@ -1066,7 +1086,7 @@ export class PolyglotTransformer {
     // 1. Check Identification Condition
     const matchedNames = new Set<string>();
     for (const spec of [...deleteSpecs, ...preserveSpecs]) {
-      const boundName = matchBindings[spec.nodeType] || spec.bindings?.name;
+      const boundName = matchBindings[spec.nodeType] || spec.bindings?.["name"];
       if (boundName) {
         if (matchedNames.has(boundName) && spec.action === "delete") {
           return {
@@ -1083,12 +1103,12 @@ export class PolyglotTransformer {
     if (rule.danglingEdgePolicy === "strict" || !rule.danglingEdgePolicy) {
       const knownNodeNames = new Set<string>();
       for (const spec of [...deleteSpecs, ...preserveSpecs]) {
-        const boundName = matchBindings[spec.nodeType] || spec.bindings?.name;
+        const boundName = matchBindings[spec.nodeType] || spec.bindings?.["name"];
         if (boundName) knownNodeNames.add(boundName);
       }
 
       for (const delSpec of deleteSpecs) {
-        const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.name;
+        const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.["name"];
         if (!targetName) continue;
 
         const connections = (containerNode as any).connections || [];
@@ -1122,7 +1142,7 @@ export class PolyglotTransformer {
     const recycledNodes: string[] = [];
 
     for (const delSpec of deleteSpecs) {
-      const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.name;
+      const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.["name"];
       if (!targetName) continue;
 
       if (containerNode.components) {
@@ -1155,17 +1175,17 @@ export class PolyglotTransformer {
     for (const createSpec of createSpecs) {
       if (createSpec.nodeType.toLowerCase().includes("connect")) {
         const connObj = {
-          from: createSpec.bindings?.from,
-          to: createSpec.bindings?.to,
+          from: createSpec.bindings?.["from"],
+          to: createSpec.bindings?.["to"],
         };
         (containerNode as any).connections = (containerNode as any).connections || [];
         (containerNode as any).connections.push(connObj);
       } else {
         const newComp: any = {
-          name: createSpec.bindings?.name || `created_${createSpec.nodeType}`,
+          name: createSpec.bindings?.["name"] || `created_${createSpec.nodeType}`,
           typeSpecifier: createSpec.nodeType,
-          attributes: createSpec.bindings?.attributes || [],
-          value: createSpec.bindings?.value,
+          attributes: createSpec.bindings?.["attributes"] || [],
+          value: createSpec.bindings?.["value"],
         };
         containerNode.components = containerNode.components || [];
         containerNode.components.push(newComp);
@@ -1186,7 +1206,7 @@ export class PolyglotTransformer {
       status: "SUCCESS",
       recycledNodes,
       createdNodes,
-      preservedNodes: preserveSpecs.map((s) => matchBindings[s.nodeType] || s.bindings?.name || s.nodeType),
+      preservedNodes: preserveSpecs.map((s) => matchBindings[s.nodeType] || s.bindings?.["name"] || s.nodeType),
       negativeDelta,
       positiveDelta,
       targetSyncResult,
@@ -1198,10 +1218,10 @@ export interface DpoExecutionResult {
   success: boolean;
   ruleName: string;
   status: "SUCCESS" | "DANGLING_EDGE_VIOLATION" | "IDENTIFICATION_VIOLATION" | "MATCH_FAILED";
-  recycledNodes?: string[];
-  createdNodes?: PolyglotNode[];
-  preservedNodes?: string[];
-  negativeDelta?: string[];
-  positiveDelta?: PolyglotNode[];
+  recycledNodes?: string[] | undefined;
+  createdNodes?: PolyglotNode[] | undefined;
+  preservedNodes?: string[] | undefined;
+  negativeDelta?: string[] | undefined;
+  positiveDelta?: PolyglotNode[] | undefined;
   targetSyncResult?: any;
 }

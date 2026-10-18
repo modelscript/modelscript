@@ -18,14 +18,14 @@ interface DdpInspectArgs {
 
 interface DdpPackArgs {
   manifest: string;
-  output?: string;
-  files?: string[];
+  output?: string | undefined;
+  files?: string[] | undefined;
 }
 
 interface DdpToAasxArgs {
   file: string;
-  output?: string;
-  kind?: "Type" | "Instance";
+  output?: string | undefined;
+  kind?: "Type" | "Instance" | undefined;
 }
 
 const DdpInspectCommand: CommandModule<{}, DdpInspectArgs> = {

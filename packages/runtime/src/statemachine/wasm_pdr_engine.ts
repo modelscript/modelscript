@@ -22,12 +22,14 @@ export interface PdrSafetyProperty {
 
 export interface PdrResult {
   isProvenUniversal: boolean;
-  convergedDepth?: number;
-  inductiveLemmas?: string[];
-  counterexample?: {
-    step: number;
-    stateName: string;
-  }[];
+  convergedDepth?: number | undefined;
+  inductiveLemmas?: string[] | undefined;
+  counterexample?:
+    | {
+        step: number;
+        stateName: string;
+      }[]
+    | undefined;
   framesCount: number;
   summary: string;
 }

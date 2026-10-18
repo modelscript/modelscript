@@ -25,15 +25,15 @@ export interface DesignCandidate {
   objectives: Record<string, number>; // e.g. { mass: 1.4, drag: 12.5, margin: 0.18 }
   tier1Passed: boolean;
   tier2Passed: boolean;
-  tier3Status?: "unverified" | "running" | "confirmed" | "refuted";
+  tier3Status?: "unverified" | "running" | "confirmed" | "refuted" | undefined;
   tier3Witness?: any;
-  rank?: number;
-  crowdingDistance?: number;
+  rank?: number | undefined;
+  crowdingDistance?: number | undefined;
 }
 
 export interface CandidateFilterOptions {
-  targetCount?: number;
-  directions?: Record<string, ObjectiveDirection>; // default: "min" for all objectives
+  targetCount?: number | undefined;
+  directions?: Record<string, ObjectiveDirection> | undefined; // default: "min" for all objectives
 }
 
 export interface PhysicalRefutationWitness {
@@ -41,8 +41,8 @@ export interface PhysicalRefutationWitness {
   failedProperty: string; // e.g. "vonMisesStress"
   actualValue: number; // e.g. 582 MPa
   thresholdValue: number; // e.g. 553 MPa
-  criticalCoordinates?: [number, number, number];
-  sensitivityGradients?: Record<string, number>; // ∂g/∂p_i
+  criticalCoordinates?: [number, number, number] | undefined;
+  sensitivityGradients?: Record<string, number> | undefined; // ∂g/∂p_i
   parameters: Record<string, number>;
 }
 
@@ -54,7 +54,7 @@ export interface RefinementInvariant {
     coefficients: Record<string, number>;
     constant: number; // ∑ a_i * p_i >= constant
   };
-  suggestedBounds: Record<string, { min?: number; max?: number }>;
+  suggestedBounds: Record<string, { min?: number | undefined; max?: number | undefined }>;
   explanation: string;
 }
 
@@ -107,7 +107,7 @@ export class CandidateFilter {
         if (dominates(candP, candQ, directions)) {
           dominatedSets[p]!.push(q);
         } else if (dominates(candQ, candP, directions)) {
-          dominationCounts[p]++;
+          dominationCounts[p] = dominationCounts[p]! + 1;
         }
       }
 
@@ -123,7 +123,7 @@ export class CandidateFilter {
       for (const pCand of fronts[i]!) {
         const pIdx = candidates.indexOf(pCand);
         for (const qIdx of dominatedSets[pIdx]!) {
-          dominationCounts[qIdx]--;
+          dominationCounts[qIdx] = dominationCounts[qIdx]! - 1;
           if (dominationCounts[qIdx] === 0) {
             const qCand = candidates[qIdx]!;
             qCand.rank = i + 2;
@@ -229,7 +229,7 @@ export class CegarRefinementSynthesizer {
   public static synthesizeRefinement(witness: PhysicalRefutationWitness): RefinementInvariant {
     const id = `cegar_inv_${this.nextId++}`;
     const delta = witness.actualValue - witness.thresholdValue; // > 0 means violation
-    const suggestedBounds: Record<string, { min?: number; max?: number }> = {};
+    const suggestedBounds: Record<string, { min?: number | undefined; max?: number | undefined }> = {};
     const coefficients: Record<string, number> = {};
 
     if (witness.sensitivityGradients && Object.keys(witness.sensitivityGradients).length > 0) {

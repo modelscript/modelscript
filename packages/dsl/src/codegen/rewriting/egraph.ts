@@ -13,7 +13,7 @@ import { compileRewriteRules, DEFAULT_REWRITE_RULES } from "../transpiler/compil
  * @param rules Array of rewrite rule definitions.
  * @returns AssemblyScript source code string for the e-graph runtime module.
  */
-export function generateEGraphEngine(grammar: LanguageOptions, rules?: any[]): string {
+export function generateEGraphEngine(_grammar: LanguageOptions, rules?: any[]): string {
   let out = egraph_engineCode.replace(/from "\.\.\//g, 'from "./') + "\n\n";
 
   const effectiveRules = rules && rules.length > 0 ? rules : DEFAULT_REWRITE_RULES;

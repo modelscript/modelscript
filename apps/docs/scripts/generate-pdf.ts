@@ -151,7 +151,7 @@ function preprocessAndParseMarkdown(raw: string, currentRelativePath: string): s
   });
 
   // 6. Restore fenced and inline code blocks for marked.parse
-  raw = raw.replace(/<!--CODE_PLACEHOLDER_(\d+)-->/g, (_, idxStr) => codePlaceholders[Number(idxStr)]);
+  raw = raw.replace(/<!--CODE_PLACEHOLDER_(\d+)-->/g, (_, idxStr) => codePlaceholders[Number(idxStr)]!);
 
   // 7. Normalize relative markdown links: [foo](./bar.md) or [foo](../dir/bar.md#anchor) -> [foo](#resolved-section-id)
   const currentDir = path.posix.dirname(currentRelativePath.replace(/\\/g, "/"));
@@ -164,7 +164,7 @@ function preprocessAndParseMarkdown(raw: string, currentRelativePath: string): s
   const parsedHtml = marked.parse(raw, { async: false }) as string;
   const withMath = parsedHtml.replace(
     /<!--MATH_PLACEHOLDER_(\d+)-->/g,
-    (_, idxStr) => mathPlaceholders[Number(idxStr)],
+    (_, idxStr) => mathPlaceholders[Number(idxStr)]!,
   );
   return processAlerts(withMath);
 }
@@ -707,8 +707,8 @@ ${bodyHtml}
 }
 
 function getBrowserExecutable(): string {
-  if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
-    return process.env.CHROME_BIN;
+  if (process.env["CHROME_BIN"] && fs.existsSync(process.env["CHROME_BIN"])) {
+    return process.env["CHROME_BIN"];
   }
   const candidates = [
     "chromium",

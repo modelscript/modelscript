@@ -12,7 +12,7 @@ export interface WASMMemoryLike {
 export class RuntimeConfigClient {
   private memory: WASMMemoryLike;
   private layout: ConfigLayoutResult;
-  private getPtrFn?: () => number;
+  private getPtrFn?: (() => number) | undefined;
 
   constructor(memory: WASMMemoryLike, layout: ConfigLayoutResult, getPtrFn?: () => number) {
     this.memory = memory;

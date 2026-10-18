@@ -35,21 +35,23 @@ export interface DynamicDeformationBinding {
    * - "anisotropic": independent directional scaling along x, y, and z axes
    * - "modal": displacement along pre-computed shape modes
    */
-  mode?: "volume_radial" | "anisotropic" | "modal";
+  mode?: "volume_radial" | "anisotropic" | "modal" | undefined;
   /** Reference initial volume V0 for volume_radial scaling (default: 1.0) */
-  referenceVolume?: number;
+  referenceVolume?: number | undefined;
   /** State variable or constant driving cavity volume V(t) */
-  volume?: string | number;
+  volume?: string | number | undefined;
   /** Explicit anisotropic scale factors or state variable names */
-  scale?: {
-    x?: string | number;
-    y?: string | number;
-    z?: string | number;
-  };
+  scale?:
+    | {
+        x?: string | number | undefined;
+        y?: string | number | undefined;
+        z?: string | number | undefined;
+      }
+    | undefined;
   /** Anchor point / center of deformation (default: center of initial bounding box) */
-  anchorOrigin?: [number, number, number];
+  anchorOrigin?: [number, number, number] | undefined;
   /** Modal displacement weights mapped to state variables (for modal skinning) */
-  modalWeights?: Record<string, string | number>;
+  modalWeights?: Record<string, string | number> | undefined;
 }
 
 export interface DynamicTransformBinding {
@@ -60,23 +62,27 @@ export interface DynamicTransformBinding {
    * - A numeric index into the state vector (e.g. 0)
    * - A static numeric offset
    */
-  translation?: {
-    x?: string | number;
-    y?: string | number;
-    z?: string | number;
-  };
+  translation?:
+    | {
+        x?: string | number | undefined;
+        y?: string | number | undefined;
+        z?: string | number | undefined;
+      }
+    | undefined;
   /**
    * Rotation offset binding around an axis. Angle can be state variable name or index in radians or degrees.
    */
-  rotation?: {
-    axis: [number, number, number];
-    angle: string | number;
-    inDegrees?: boolean;
-  };
+  rotation?:
+    | {
+        axis: [number, number, number];
+        angle: string | number;
+        inDegrees?: boolean | undefined;
+      }
+    | undefined;
   /**
    * Optional deformation/morphing binding for soft-tissue or compliant organ bodies.
    */
-  deformation?: DynamicDeformationBinding;
+  deformation?: DynamicDeformationBinding | undefined;
 }
 
 export interface TrajectoryStepEnclosure {
@@ -84,15 +90,15 @@ export interface TrajectoryStepEnclosure {
   /** Enclosure bounds per state variable name or array index */
   states: Record<string, IntervalBox> | IntervalBox[];
   /** Nominal center trajectory values */
-  nominal?: Record<string, number> | number[];
+  nominal?: Record<string, number> | number[] | undefined;
 }
 
 export interface DynamicClearanceOptions {
   assembly: Assembly;
   bindings: DynamicTransformBinding[];
   trajectory: TrajectoryStepEnclosure[];
-  defaultMinClearance?: number;
-  specificRules?: ClearanceConstraint[];
+  defaultMinClearance?: number | undefined;
+  specificRules?: ClearanceConstraint[] | undefined;
 }
 
 export interface DynamicClearanceViolation {
@@ -109,15 +115,15 @@ export interface DynamicClearanceReport {
   assemblyName: string;
   isCertifiedSafe: boolean;
   worstMargin: number;
-  worstCaseTime?: number;
+  worstCaseTime?: number | undefined;
   violations: DynamicClearanceViolation[];
   timeHistory: {
     time: number;
     minDistance: number;
     closestPair: [string, string];
-    closestPoints?: [[number, number, number], [number, number, number]];
+    closestPoints?: [[number, number, number], [number, number, number]] | undefined;
   }[];
-  counterexampleAssembly?: Assembly;
+  counterexampleAssembly?: Assembly | undefined;
   summary: string;
 }
 

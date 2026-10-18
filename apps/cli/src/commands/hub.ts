@@ -10,14 +10,14 @@ import type { CommandModule } from "yargs";
 export type HubProfile = "standalone" | "internal" | "federated";
 
 export interface HubInitArgs {
-  profile?: string;
-  dir?: string;
-  port?: number;
-  domain?: string;
-  adminUser?: string;
-  adminEmail?: string;
-  adminPass?: string;
-  yes?: boolean;
+  profile?: string | undefined;
+  dir?: string | undefined;
+  port?: number | undefined;
+  domain?: string | undefined;
+  adminUser?: string | undefined;
+  adminEmail?: string | undefined;
+  adminPass?: string | undefined;
+  yes?: boolean | undefined;
 }
 
 function prompt(question: string, defaultValue = ""): Promise<string> {
@@ -255,7 +255,7 @@ export const HubInit: CommandModule<{}, HubInitArgs> = {
   },
 };
 
-export const HubStatus: CommandModule<{}, { url?: string }> = {
+export const HubStatus: CommandModule<{}, { url?: string | undefined }> = {
   command: "status [url]",
   describe: "Query the compliance and health readiness probe of a ModelScript node",
   builder: (yargs) => {

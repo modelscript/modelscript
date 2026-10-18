@@ -286,19 +286,34 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
   currentParserMode = MODE_GLR;
 }
 
+/** Input byte offset (`frontierPos`) for which the current lookahead token is memoized (`0xffffffff` if invalid). */
 let g_memoFrontierPos: u32 = 0xffffffff;
+/** Lexer/scanner mode (`scannerState`) corresponding to the memoized frontier lookahead token. */
 let g_memoScannerState: u32 = 0xffffffff;
+/** Version of the `expected_tokens` bitset (`g_expectedVersion`) when the lookahead token was memoized. */
 let g_memoExpectedVersion: u32 = 0xffffffff;
+/** Memoized terminal symbol ID (`tok`) returned by `invokeLexer` at `(g_memoFrontierPos, g_memoScannerState)`. */
 let g_memoTok: i32 = 0;
+/** Memoized byte length (`lexLen`) of the matched lookahead token. */
 let g_memoLexLen: u32 = 0;
+/** Memoized start byte offset (`lexPos`) of the matched lookahead token after skipping trivia. */
 let g_memoLexPos: u32 = 0;
+/** Memoized raw source start offset (`srcLexPos`) before trivia/preprocessor adjustments. */
 let g_memoSrcLexPos: u32 = 0;
+/** Memoized trivia skip start offset (`g_skipPos`) preceding the lookahead token. */
 let g_memoSkipPos: u32 = 0;
+/** Memoized leading trivia/whitespace byte length (`g_skipPad`) preceding the lookahead token. */
 let g_memoSkipPad: u32 = 0;
 
+/** Frontier byte position for which the `expected_tokens` lookahead bitset was last populated. */
 let g_expectedFrontierPos: u32 = 0xffffffff;
+/** Monotonically increasing version tag for the active frontier's `expected_tokens` bitset. */
 let g_expectedFrontierVersion: u32 = 0xffffffff;
 
+/**
+ * Invalidates the single-slot frontier lexer memoization cache when advancing
+ * the GLR frontier or switching parser modes.
+ */
 export function resetFrontierLexMemo(): void {
   g_memoFrontierPos = 0xffffffff;
   g_memoScannerState = 0xffffffff;
@@ -2608,15 +2623,23 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
 
 
 /**
- * Processes a REDUCE action in the GLR parser.
- * Pops nodes off the GSS stack according to the production length, groups them
- * under a new non-terminal parent node, and shifts the parent node into the 
- * state returned by the GOTO table.
- * 
- * @param head The current parsing head.
- * @param reduceProd The index of the production rule to reduce.
- * @param pos The current byte offset in the input stream.
- * @returns True if a valid GOTO transition was found, false if the path is dead.
+ * Constructs a reduced non-terminal parent CST node from popped GSS child nodes.
+ *
+ * Computes aggregate byte spans and leading padding, optimizes left-recursive
+ * list productions in-place via {@link appendToList}, allocates a new parent node
+ * when not appending, shallow-clones and links non-empty child nodes while applying
+ * production symbol aliases and propagating error flags, and finally computes a
+ * 64-bit FNV-1a Merkle structural hash over the parent and its children.
+ *
+ * @param lhsSym The non-terminal symbol ID produced by the reduction.
+ * @param reduceProd The production rule index being reduced.
+ * @param childNodes Buffer containing popped child node pointers.
+ * @param childOffset Starting index of this reduction's children in `childNodes`.
+ * @param actualCount Number of child nodes popped along this GSS path.
+ * @param bottomState The automaton state at the bottom of the reduced GSS path.
+ * @param balanceHash Accumulated delimiter balance hash for error recovery ranking.
+ * @param isFragile True if the reduction occurred under fragile/speculative recovery.
+ * @returns The arena pointer (`u32`) to the newly constructed or appended parent CST node.
  */
 function constructReducedParentNode(
   lhsSym: i32,
@@ -2628,6 +2651,9 @@ function constructReducedParentNode(
   balanceHash: u32,
   isFragile: bool
 ): u32 {
+  // Step 1: Compute the parent's leading padding (inherited from the first child)
+  // and total byte length (first child's byte length plus all subsequent children's
+  // leading padding + byte length).
   let totalByteLength: u32 = 0;
   let firstChildPadding: u32 = 0;
   if (actualCount > 0) {
@@ -2640,6 +2666,10 @@ function constructReducedParentNode(
     }
   }
   diag_count_reduce++;
+
+  // Step 2: Fast-path for left-recursive list productions (e.g., `List -> List Elem`
+  // or `List -> List Sep Elem`). Instead of building a deeply nested O(N) binary spine,
+  // flatten the new element(s) directly onto the existing list node via `appendToList`.
   if (actualCount > 0) {
     let isListAppend = false;
     let popCount = prod_lengths[reduceProd];
@@ -2673,6 +2703,8 @@ function constructReducedParentNode(
     }
   }
 
+  // Step 3: Allocate a fresh parent non-terminal node and propagate production flags
+  // (`FLAG_IS_LIST`, `FLAG_INVISIBLE`, `FLAG_FRAGILE`) and reduction lookahead state.
   let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, balanceHash & 0xff, false, bottomState as u32);
   if (g_reduceLookahead != 0) setNodeReductionLookahead(parentNode, g_reduceLookahead);
 
@@ -2689,6 +2721,10 @@ function constructReducedParentNode(
     setNodeFlags(parentNode, flags | FLAG_FRAGILE);
   }
 
+  // Step 4: Shallow-clone each non-null child so it can have independent sibling pointers
+  // under this parent (preserving DAG sharing of deeper subtrees), zero out the first child's
+  // padding (since it was hoisted to `parentNode`), apply per-position symbol aliases from
+  // `prod_aliases`, and bubble up `FLAG_HAS_ERROR`.
   if (actualCount > 0) {
     let lastChild = 0;
     let logicalChildIndex = 0;
@@ -2734,6 +2770,9 @@ function constructReducedParentNode(
     }
   }
 
+  // Step 5: Compute a 64-bit FNV-1a Merkle hash combining the parent's symbol ID,
+  // non-ephemeral semantic flags (`~EPHEMERAL_FLAGS`), total byte length, and each
+  // child's precomputed 64-bit Merkle hash for O(1) incremental subtree equality checks.
   let ph: u64 = 0xcbf29ce484222325;
   let semFlags = getNodeFlags(parentNode) & ~EPHEMERAL_FLAGS;
   ph ^= (lhsSym as u64) | ((semFlags as u64) << 16);

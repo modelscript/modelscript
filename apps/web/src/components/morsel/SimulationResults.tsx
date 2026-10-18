@@ -11,8 +11,8 @@ import { downloadParquetFile } from "../../util/binary-export";
 import { SIMULATION_COLORS } from "./constants";
 
 interface CustomInspectionTooltipProps {
-  active?: boolean;
-  payload?: any[];
+  active?: boolean | undefined;
+  payload?: any[] | undefined;
   label?: any;
   xAxisVar: string;
   minMaxMap: Record<string, { min: number; max: number }>;
@@ -167,14 +167,14 @@ function CustomInspectionTooltip({
 }
 
 interface SimulationResultsProps {
-  jobId?: string | null;
-  localData?: Record<string, number | string>[] | null;
-  sweepResults?: { value: number; y: number[][] }[] | null;
-  simulationVariables?: string[];
-  error?: string | null;
+  jobId?: string | null | undefined;
+  localData?: Record<string, number | string>[] | null | undefined;
+  sweepResults?: { value: number; y: number[][] }[] | null | undefined;
+  simulationVariables?: string[] | undefined;
+  error?: string | null | undefined;
   selectedVariables: string[];
   onVariablesLoaded: (variables: string[]) => void;
-  colorMode?: "light" | "dark";
+  colorMode?: "light" | "dark" | undefined;
 }
 
 export function SimulationResults({
@@ -234,16 +234,16 @@ export function SimulationResults({
 
         if (localData) {
           if (localData.length > 0) {
-            const headers = Object.keys(localData[0]);
-            const timeCol = headers[0]; // Assuming first column is time
+            const headers = Object.keys(localData[0]!);
+            const timeCol = headers[0]!; // Assuming first column is time
             const vars = simulationVariables ?? headers.filter((h) => h !== timeCol);
 
             onVariablesLoaded(vars);
 
             const chartData = localData.map((row) => {
-              const newRow: Record<string, number | string> = { time: row[timeCol] };
+              const newRow: Record<string, number | string> = { time: row[timeCol]! };
               vars.forEach((v) => {
-                newRow[v] = row[v];
+                newRow[v] = row[v]!;
               });
               return newRow;
             });
@@ -277,16 +277,16 @@ export function SimulationResults({
 
             const parsedData = results.data as Record<string, number | string>[];
             if (parsedData.length > 0) {
-              const headers = Object.keys(parsedData[0]);
-              const timeCol = headers[0];
+              const headers = Object.keys(parsedData[0]!);
+              const timeCol = headers[0]!;
               const vars = headers.filter((h) => h !== timeCol);
 
               onVariablesLoaded(vars);
 
               const chartData = parsedData.map((row) => {
-                const newRow: Record<string, number | string> = { time: row[timeCol] };
+                const newRow: Record<string, number | string> = { time: row[timeCol]! };
                 vars.forEach((v) => {
-                  newRow[v] = row[v];
+                  newRow[v] = row[v]!;
                 });
                 return newRow;
               });
@@ -421,7 +421,7 @@ export function SimulationResults({
       let validCount = 0;
 
       for (let i = 0; i < data.length; i++) {
-        const val = Number(data[i][v]);
+        const val = Number(data[i]![v]);
         if (!isNaN(val)) {
           if (val < min) min = val;
           if (val > max) max = val;
@@ -430,7 +430,7 @@ export function SimulationResults({
         }
       }
 
-      const finalVal = data.length > 0 ? Number(data[data.length - 1][v]) : NaN;
+      const finalVal = data.length > 0 ? Number(data[data.length - 1]![v]) : NaN;
 
       if (validCount > 0) {
         res[v] = {
@@ -455,9 +455,9 @@ export function SimulationResults({
 
     const findNearest = (tTarget: number) => {
       let closest = data[0];
-      let minDiff = Math.abs(Number(data[0].time) - tTarget);
+      let minDiff = Math.abs(Number(data[0]!.time) - tTarget);
       for (let i = 1; i < data.length; i++) {
-        const diff = Math.abs(Number(data[i].time) - tTarget);
+        const diff = Math.abs(Number(data[i]!.time) - tTarget);
         if (diff < minDiff) {
           minDiff = diff;
           closest = data[i];
@@ -471,8 +471,8 @@ export function SimulationResults({
 
     const deltas: Record<string, { y1: number; y2: number; dy: number; slope: number }> = {};
     for (const v of selectedVariables) {
-      const y1 = Number(row1[v]);
-      const y2 = Number(row2[v]);
+      const y1 = Number(row1![v]);
+      const y2 = Number(row2![v]);
       if (!isNaN(y1) && !isNaN(y2)) {
         const dy = y2 - y1;
         const slope = dt > 1e-6 ? dy / dt : 0;
@@ -750,8 +750,8 @@ export function SimulationResults({
                 const nextMode = !cursorMode;
                 setCursorMode(nextMode);
                 if (nextMode && cursor1Time === null && data.length > 1) {
-                  const tStart = Number(data[0].time) || 0;
-                  const tEnd = Number(data[data.length - 1].time) || 1;
+                  const tStart = Number(data[0]!.time) || 0;
+                  const tEnd = Number(data[data.length - 1]!.time) || 1;
                   setCursor1Time(tStart + (tEnd - tStart) * 0.25);
                   setCursor2Time(tStart + (tEnd - tStart) * 0.75);
                 }

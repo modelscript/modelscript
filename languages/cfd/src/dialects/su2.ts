@@ -11,10 +11,16 @@ export class Su2Dialect implements CfdDialect {
   public readonly name = "SU2 CFD Configuration";
   public readonly extensions = [".cfg"];
 
+  /**
+   * Materializes an SU2 configuration template by evaluating all embedded `{{ ... }}` expressions.
+   */
   public materialize(templateText: string, options?: MaterializeOptions): string {
     return materializeCfdConfig(templateText, options);
   }
 
+  /**
+   * Parses an SU2 `.cfg` deck into structured directives, flow conditions, and boundary markers.
+   */
   public parse(cfgText: string): CfdModelData {
     const lines = cfgText.split(/\r?\n/);
 
@@ -69,8 +75,8 @@ export class Su2Dialect implements CfdDialect {
       } else if (key === "FREESTREAM_VELOCITY") {
         const tupleMatch = val.match(/\(\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)(?:\s*,\s*([0-9.eE+-]+))?\s*\)/);
         if (tupleMatch) {
-          const vx = parseFloat(tupleMatch[1]);
-          const vy = parseFloat(tupleMatch[2]);
+          const vx = parseFloat(tupleMatch[1]!);
+          const vy = parseFloat(tupleMatch[2]!);
           const vz = tupleMatch[3] !== undefined ? parseFloat(tupleMatch[3]) : 0.0;
           data.inletVelocity = [vx, vy, vz];
           data.freestreamVelocity = Math.sqrt(vx * vx + vy * vy + vz * vz);
@@ -100,23 +106,23 @@ export class Su2Dialect implements CfdDialect {
             // Can specify pairs: ( name1, val1, name2, val2 ) or single name, val
             if (parts.length >= 2) {
               for (let p = 0; p < parts.length; p += 2) {
-                const markerName = parts[p];
+                const markerName = parts[p]!;
                 const optVal =
                   p + 1 < parts.length ? (!isNaN(Number(parts[p + 1])) ? Number(parts[p + 1]) : parts[p + 1]) : 0;
-                markers.set(markerName, { name: markerName, type, options: [optVal] });
+                markers.set(markerName, { name: markerName, type, options: [optVal!] });
                 if (!wallMarkers.includes(markerName)) {
                   wallMarkers.push(markerName);
                 }
               }
             } else {
-              const markerName = parts[0];
+              const markerName = parts[0]!;
               markers.set(markerName, { name: markerName, type, options: [0] });
               if (!wallMarkers.includes(markerName)) {
                 wallMarkers.push(markerName);
               }
             }
           } else {
-            const markerName = parts[0];
+            const markerName = parts[0]!;
             const options = parts.slice(1).map((s) => (!isNaN(Number(s)) ? Number(s) : s));
             markers.set(markerName, { name: markerName, type, options });
 
@@ -162,4 +168,7 @@ export function materializeSu2Config(templateText: string, options?: Materialize
   return new Su2Dialect().materialize(templateText, options);
 }
 
+/**
+ * Type alias for parsed SU2 configuration model data.
+ */
 export type Su2ConfigData = CfdModelData;

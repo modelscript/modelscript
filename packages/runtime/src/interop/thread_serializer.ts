@@ -80,12 +80,12 @@ export interface SerializedThreadFile {
   "@type": "ms:DigitalThreadCollection";
   version: string;
   generatedAt: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> | undefined;
   threads: {
     threadId: number | string;
     revision: number;
-    relation?: string | number;
-    branchId?: number;
+    relation?: string | number | undefined;
+    branchId?: number | undefined;
     status: "synced" | "stale" | "conflict" | "removed";
     domains: Record<string, number | string>;
   }[];

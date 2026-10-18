@@ -95,7 +95,7 @@ export class WorkspaceEdit {
 export class CodeLens {
   constructor(
     public range: Range,
-    public command?: { title: string; command: string; arguments?: any[] },
+    public command?: { title: string; command: string; arguments?: any[] | undefined },
   ) {}
 }
 

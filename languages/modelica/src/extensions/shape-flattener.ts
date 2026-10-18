@@ -95,7 +95,7 @@ export class ShapeFlattener {
     const localTransform = this.evaluatePlacement(entry);
     const globalTransform = localTransform ? mat4Multiply(parentTransform, localTransform) : parentTransform;
 
-    const classPrefixes = (classEntry.metadata as Record<string, unknown>)?.classPrefixes as string | undefined;
+    const classPrefixes = (classEntry.metadata as Record<string, unknown>)?.["classPrefixes"] as string | undefined;
 
     // 5. Evaluate material if present
     const material = this.evaluateMaterial(entry);

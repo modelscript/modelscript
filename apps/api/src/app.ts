@@ -79,6 +79,11 @@ export interface AppOptions {
   dbPool?: Pool | null | undefined;
 }
 
+/**
+ * Creates and configures the ModelScript Cloud Express application, mounting all REST, GraphQL,
+ * SPARQL, SysML v2 OMG, npm registry, ActivityPub federation, and simulation routers, along with
+ * security/CORS headers, rate limiting, and background maintenance workers.
+ */
 export function createApp(options?: AppOptions | LibraryStorage): express.Express {
   const app = express();
 
@@ -87,21 +92,21 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   const libraryStorage = opts.storage ?? new LibraryStorage();
   const jobQueue = opts.jobQueue ?? new JobQueue();
-  app.locals.jobQueue = jobQueue;
+  app.locals["jobQueue"] = jobQueue;
 
   const database = opts.database ?? new LibraryDatabase();
-  app.locals.database = database;
+  app.locals["database"] = database;
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
 
   const featureFlagService = new FeatureFlagService(database);
-  app.locals.featureFlagService = featureFlagService;
+  app.locals["featureFlagService"] = featureFlagService;
 
   const federationWorker = new FederationWorker(database);
   if (featureFlagService.isEnabled("activitypub_federation")) {
     federationWorker.start();
   }
-  app.locals.federationWorker = federationWorker;
+  app.locals["federationWorker"] = federationWorker;
 
   setAuthDatabase(database);
 
@@ -171,7 +176,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     });
 
     if (process.env["NODE_ENV"] !== "production") {
-      app.post("/api/v1/dev/reset", async (req, res) => {
+      app.post("/api/v1/dev/reset", async (_req, res) => {
         console.log("[DevServer] Resetting database and re-seeding...");
         try {
           jobQueue.clear();
@@ -352,7 +357,7 @@ graph TD
       },
       15 * 60 * 1000,
     );
-    app.locals.decayWorkerInterval = decayWorkerInterval;
+    app.locals["decayWorkerInterval"] = decayWorkerInterval;
 
     const runRssWorker = () => {
       import("./util/rss-worker.js")
@@ -364,7 +369,7 @@ graph TD
 
     runRssWorker();
     const rssWorkerInterval = setInterval(runRssWorker, 15 * 60 * 1000);
-    app.locals.rssWorkerInterval = rssWorkerInterval;
+    app.locals["rssWorkerInterval"] = rssWorkerInterval;
 
     // Automated GDPR / Security Log Retention Worker (Daily purge of expired logs > 30 days)
     const runLogPurgeWorker = () => {
@@ -386,7 +391,7 @@ graph TD
 
     runLogPurgeWorker();
     const logPurgeInterval = setInterval(runLogPurgeWorker, 24 * 60 * 60 * 1000);
-    app.locals.logPurgeInterval = logPurgeInterval;
+    app.locals["logPurgeInterval"] = logPurgeInterval;
   }
 
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)

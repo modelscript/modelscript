@@ -342,12 +342,12 @@ export function registerCodeLensProvider(context: LspContext) {
       if (text) {
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx];
+          const line = lines[lineIdx]!;
 
           // Part Def: DroneAssembly or standard
           const partMatch = /^\s*(?:abstract\s+)?part\s+def\s+([A-Za-z0-9_]+)/.exec(line);
           if (partMatch) {
-            const name = partMatch[1];
+            const name = partMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
@@ -407,7 +407,7 @@ export function registerCodeLensProvider(context: LspContext) {
           // Requirement Def: FlightCeilingRequirement or standard
           const reqMatch = /^\s*(?:abstract\s+)?requirement\s+def\s+([A-Za-z0-9_]+)/.exec(line);
           if (reqMatch) {
-            const name = reqMatch[1];
+            const name = reqMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
@@ -455,7 +455,7 @@ export function registerCodeLensProvider(context: LspContext) {
           // Verification Def
           const verifMatch = /^\s*(?:abstract\s+)?verification\s+def\s+([A-Za-z0-9_]+)/.exec(line);
           if (verifMatch) {
-            const name = verifMatch[1];
+            const name = verifMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
@@ -472,7 +472,7 @@ export function registerCodeLensProvider(context: LspContext) {
           // Action / Calc Def
           const actionMatch = /^\s*(?:abstract\s+)?(?:action|calc)\s+def\s+([A-Za-z0-9_]+)/.exec(line);
           if (actionMatch) {
-            const name = actionMatch[1];
+            const name = actionMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
@@ -497,7 +497,7 @@ export function registerCodeLensProvider(context: LspContext) {
           // State Def / Activity
           const stateMatch = /^\s*(?:state|activity)\s+def\s+([A-Za-z0-9_]+)/.exec(line);
           if (stateMatch) {
-            const name = stateMatch[1];
+            const name = stateMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
@@ -585,10 +585,10 @@ export function registerCodeLensProvider(context: LspContext) {
 
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx];
+          const line = lines[lineIdx]!;
           const tagMatch = /tag_port\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/.exec(line);
           if (tagMatch) {
-            const portName = tagMatch[1];
+            const portName = tagMatch[1]!;
             const portType = tagMatch[2];
             const col = line.indexOf(portName);
             const range = Range.create(lineIdx, col, lineIdx, col + portName.length);
@@ -639,7 +639,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx];
+          const line = lines[lineIdx]!;
           if (/^\*SOLID SECTION/i.test(line)) {
             const range = Range.create(lineIdx, 0, lineIdx, line.length);
             lenses.push({
@@ -681,7 +681,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx];
+          const line = lines[lineIdx]!;
           if (/^\s*REF_AREA\s*=/i.test(line)) {
             const range = Range.create(lineIdx, 0, lineIdx, line.length);
             lenses.push({

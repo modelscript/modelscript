@@ -15,9 +15,9 @@ import type { SspParameterValue, SspSystem } from "./types.js";
 /** Options for SSP export. */
 export interface SspExportOptions {
   /** SSP version string. Default: "1.0". */
-  version?: string;
+  version?: string | undefined;
   /** System description text. */
-  description?: string;
+  description?: string | undefined;
 }
 
 /**

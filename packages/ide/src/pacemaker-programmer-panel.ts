@@ -51,9 +51,9 @@ export class PacemakerProgrammerPanel {
   public static readonly viewType = "modelscript.pacemakerProgrammer";
 
   private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
-  public client?: LanguageClient;
-  public sourceUri?: string;
+  public readonly _extensionUri: vscode.Uri;
+  public client?: LanguageClient | undefined;
+  public sourceUri?: string | undefined;
   private _disposables: vscode.Disposable[] = [];
 
   private _state: PacemakerProgrammerState = {

@@ -1,7 +1,6 @@
 // name: Symmetric2
 // keywords: symmetric builtin bug2126
 // status: correct
-// xfail:    true
 //
 // Testing the built-in symmetric function.
 //

@@ -272,7 +272,7 @@ export function processExpandableConnectors(
           }
         }
       } else if (
-        !dae.extensionMetadata?.isOldFrontend &&
+        !dae.extensionMetadata?.["isOldFrontend"] &&
         ((matchL && matchL.relPath === "" && matchR && matchR.relPath !== "") ||
           (matchR && matchR.relPath === "" && matchL && matchL.relPath !== "")) &&
         busConnections.some(([a, b]) => {

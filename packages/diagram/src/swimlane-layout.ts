@@ -30,7 +30,7 @@ const DEFAULT_SWIMLANE_CONFIG: SwimlaneConfig = {
 export interface SwimlanePartition {
   id: string;
   name: string;
-  stereotype?: string;
+  stereotype?: string | undefined;
   nodeIds: string[];
 }
 
@@ -66,7 +66,7 @@ export function applySwimlaneLayout(
 
   // Second pass: position lane container nodes and member action nodes
   for (let i = 0; i < laneMetrics.length; i++) {
-    const { partition, members, width } = laneMetrics[i];
+    const { partition, members, width } = laneMetrics[i]!;
     const laneX = currentX;
     const laneY = cfg.topMargin;
     const laneHeight = maxTotalHeight;

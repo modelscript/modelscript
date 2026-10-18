@@ -18,11 +18,11 @@ import type { SspSystem } from "./types.js";
 /** Options for SSP import. */
 export interface SspImportOptions {
   /** Override session experiment start time. */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Override session experiment stop time. */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Communication step size. */
-  stepSize?: number;
+  stepSize?: number | undefined;
 }
 
 /** Result of an SSP import operation. */

@@ -8,10 +8,10 @@ import { LanguageResolver } from "../util/language-registry.js";
 
 declare const WebAssembly: any;
 
-interface ParseArgs {
+export interface ParseArgs {
   file: string;
-  encoding?: string;
-  language?: string;
+  encoding?: string | undefined;
+  language?: string | undefined;
 }
 
 export const Parse: CommandModule<any, any> = {
@@ -266,6 +266,7 @@ export const Parse: CommandModule<any, any> = {
       const indent = "  ".repeat(depth);
 
       const isInvisible = (typeFlags & (1 << 12)) !== 0;
+      void isInvisible;
 
       let child = node.getFirstChild();
 

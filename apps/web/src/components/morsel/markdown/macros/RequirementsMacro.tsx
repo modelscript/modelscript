@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 interface RequirementsMacroProps {
-  target?: string;
+  target?: string | undefined;
 }
 
 export function RequirementsMacro(props: RequirementsMacroProps) {

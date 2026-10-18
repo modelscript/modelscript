@@ -93,8 +93,8 @@ function buildBoxBrep(name: string, cx: number, cy: number, cz: number, hw: numb
 
   // Helper to create an edge curve between two vertex points
   function edgeCurve(v0idx: number, v1idx: number): string {
-    const p0 = corners[v0idx];
-    const p1 = corners[v1idx];
+    const p0 = corners[v0idx]!;
+    const p1 = corners[v1idx]!;
     const dx = p1[0] - p0[0],
       dy = p1[1] - p0[1],
       dz = p1[2] - p0[2];

@@ -95,8 +95,8 @@ export interface HypergraphStatusEvent {
   type: "sat" | "conflict" | "stale" | "removed";
   slot: number;
   threadId: number;
-  conflict?: ConflictClause;
-  equalities?: SharedEquality[];
+  conflict?: ConflictClause | undefined;
+  equalities?: SharedEquality[] | undefined;
 }
 
 export type HypergraphStatusListener = (event: HypergraphStatusEvent) => void;
@@ -201,14 +201,14 @@ export class DigitalThreadHypergraph {
 
   getBranch(slot: number): number {
     if (slot >= this.count) return 0;
-    return this.data[slot * THREAD_STRIDE + THREAD_FIELD_BRANCH];
+    return this.data[slot * THREAD_STRIDE + THREAD_FIELD_BRANCH]!;
   }
 
   bindDomainNode(slot: number, domainIdx: ThreadDomain | number, nodeId: number): void {
     if (slot >= this.count || domainIdx >= MAX_THREAD_DOMAINS) return;
     const offset = slot * THREAD_STRIDE;
 
-    let mask = this.data[offset + THREAD_FIELD_MASK];
+    let mask = this.data[offset + THREAD_FIELD_MASK]!;
     mask |= 1 << domainIdx;
     this.data[offset + THREAD_FIELD_MASK] = mask;
     this.data[offset + THREAD_HEADER_WORDS + domainIdx] = nodeId;
@@ -223,7 +223,7 @@ export class DigitalThreadHypergraph {
 
   getDomainNode(slot: number, domainIdx: ThreadDomain | number): number {
     if (slot >= this.count || domainIdx >= MAX_THREAD_DOMAINS) return 0;
-    return this.data[slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx];
+    return this.data[slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx]!;
   }
 
   findSlotsByDomainNode(domainIdx: ThreadDomain | number, nodeId: number, branchId?: number): number[] {
@@ -250,42 +250,42 @@ export class DigitalThreadHypergraph {
   markStale(slot: number): void {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
-    this.data[offset] |= THREAD_STATUS_STALE;
-    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    this.data[offset] = this.data[offset]! | THREAD_STATUS_STALE;
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID]!;
     this.notifyListeners({ type: "stale", slot, threadId });
   }
 
   clearStale(slot: number): void {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
-    this.data[offset] &= ~THREAD_STATUS_STALE;
+    this.data[offset] = this.data[offset]! & ~THREAD_STATUS_STALE;
   }
 
   isStale(slot: number): boolean {
     if (slot >= this.count) return false;
-    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_STALE) !== 0;
+    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS]! & THREAD_STATUS_STALE) !== 0;
   }
 
   markConflict(slot: number): void {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
-    this.data[offset] |= THREAD_STATUS_CONFLICT;
+    this.data[offset] = this.data[offset]! | THREAD_STATUS_CONFLICT;
   }
 
   clearConflict(slot: number): void {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
-    this.data[offset] &= ~THREAD_STATUS_CONFLICT;
+    this.data[offset] = this.data[offset]! & ~THREAD_STATUS_CONFLICT;
   }
 
   isSynced(slot: number): boolean {
     if (slot >= this.count) return false;
-    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_SYNCED) !== 0;
+    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS]! & THREAD_STATUS_SYNCED) !== 0;
   }
 
   isConflicted(slot: number): boolean {
     if (slot >= this.count) return false;
-    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_CONFLICT) !== 0;
+    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS]! & THREAD_STATUS_CONFLICT) !== 0;
   }
 
   recordTheorySat(slot: number, equalities?: SharedEquality[]): void {
@@ -293,22 +293,22 @@ export class DigitalThreadHypergraph {
     this.clearConflict(slot);
     this.clearStale(slot);
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
-    this.data[offset] |= THREAD_STATUS_SYNCED;
+    this.data[offset] = this.data[offset]! | THREAD_STATUS_SYNCED;
     this.slotConflicts.delete(slot);
     if (equalities && equalities.length > 0) {
       this.slotEqualities.set(slot, equalities);
     }
-    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID]!;
     this.notifyListeners({ type: "sat", slot, threadId, equalities });
   }
 
   recordTheoryConflict(slot: number, conflict: ConflictClause): void {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
-    this.data[offset] &= ~THREAD_STATUS_SYNCED;
-    this.data[offset] |= THREAD_STATUS_CONFLICT;
+    this.data[offset] = this.data[offset]! & ~THREAD_STATUS_SYNCED;
+    this.data[offset] = this.data[offset]! | THREAD_STATUS_CONFLICT;
     this.slotConflicts.set(slot, conflict);
-    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID]!;
     this.notifyListeners({ type: "conflict", slot, threadId, conflict });
   }
 
@@ -333,14 +333,14 @@ export class DigitalThreadHypergraph {
   markRemoved(slot: number): void {
     if (slot >= this.count) return;
     const offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
-    this.data[offset] |= THREAD_STATUS_REMOVED;
-    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID];
+    this.data[offset] = this.data[offset]! | THREAD_STATUS_REMOVED;
+    const threadId = this.data[slot * THREAD_STRIDE + THREAD_FIELD_ID]!;
     this.notifyListeners({ type: "removed", slot, threadId });
   }
 
   isRemoved(slot: number): boolean {
     if (slot >= this.count) return false;
-    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS] & THREAD_STATUS_REMOVED) !== 0;
+    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS]! & THREAD_STATUS_REMOVED) !== 0;
   }
 
   /**
@@ -368,17 +368,17 @@ export class DigitalThreadHypergraph {
   getRecord(slot: number): ThreadRecord | undefined {
     if (slot >= this.count) return undefined;
     const offset = slot * THREAD_STRIDE;
-    const threadId = this.data[offset + THREAD_FIELD_ID];
-    const domainMask = this.data[offset + THREAD_FIELD_MASK];
-    const status = this.data[offset + THREAD_FIELD_STATUS];
-    const revision = this.data[offset + THREAD_FIELD_REVISION];
+    const threadId = this.data[offset + THREAD_FIELD_ID]!;
+    const domainMask = this.data[offset + THREAD_FIELD_MASK]!;
+    const status = this.data[offset + THREAD_FIELD_STATUS]!;
+    const revision = this.data[offset + THREAD_FIELD_REVISION]!;
     const relation = this.data[offset + THREAD_FIELD_RELATION] as ThreadRelation;
-    const branchId = this.data[offset + THREAD_FIELD_BRANCH];
+    const branchId = this.data[offset + THREAD_FIELD_BRANCH]!;
 
     const domainNodes: Record<number, number> = {};
     for (let d = 0; d < MAX_THREAD_DOMAINS; d++) {
       if ((domainMask & (1 << d)) !== 0) {
-        domainNodes[d] = this.data[offset + THREAD_HEADER_WORDS + d];
+        domainNodes[d] = this.data[offset + THREAD_HEADER_WORDS + d]!;
       }
     }
 
@@ -429,7 +429,7 @@ export class DigitalThreadHypergraph {
 
   mergeBranch(
     sourceBranchId: number,
-    targetBranchId: number,
+    _targetBranchId: number,
     idOffset = 1_000_000,
   ): { mergedCount: number; conflictCount: number } {
     let mergedCount = 0;
@@ -462,7 +462,7 @@ export class DigitalThreadHypergraph {
   computeBlastRadius(
     startDomain: ThreadDomain | number,
     startNodeId: number,
-    options?: { branchId?: number; filterRelation?: ThreadRelation },
+    options?: { branchId?: number | undefined; filterRelation?: ThreadRelation | undefined },
   ): BlastRadiusResult {
     const root = { domain: startDomain as ThreadDomain, nodeId: startNodeId };
     const initialSlots = this.findSlotsByDomainNode(startDomain, startNodeId, options?.branchId);
@@ -548,7 +548,7 @@ export class DigitalThreadHypergraph {
   markBlastRadiusStale(
     startDomain: ThreadDomain | number,
     startNodeId: number,
-    options?: { branchId?: number },
+    options?: { branchId?: number | undefined },
   ): number {
     const radius = this.computeBlastRadius(startDomain, startNodeId, options);
     let marked = 0;

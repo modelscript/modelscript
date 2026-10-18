@@ -10,11 +10,11 @@ import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyInte
 import { parsePackageMo } from "../util/package-mo.js";
 
 interface InstallArgs {
-  package?: string;
-  save?: boolean;
-  frozenLockfile?: boolean;
-  frozen?: boolean;
-  ci?: boolean;
+  package?: string | undefined;
+  save?: boolean | undefined;
+  frozenLockfile?: boolean | undefined;
+  frozen?: boolean | undefined;
+  ci?: boolean | undefined;
 }
 
 function extractDomainSummaryFromZip(zip: AdmZip): Record<string, { files: string[] }> {
@@ -171,7 +171,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
       }) as any;
   },
   handler: async (args) => {
-    const API_URL = process.env.MODELSCRIPT_API_URL || "http://localhost:3000";
+    const API_URL = process.env["MODELSCRIPT_API_URL"] || "http://localhost:3000";
     const cwd = process.cwd();
     const isFrozen = Boolean(args.frozenLockfile || args.frozen || args.ci);
     const lockfile = readLockfile(cwd);

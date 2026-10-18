@@ -11,7 +11,7 @@ export interface ContainerEntryMeta {
   compressedSize: number;
   isDirectory: boolean;
   compressionMethod: number;
-  offset?: number;
+  offset?: number | undefined;
 }
 
 /** Toolkit supplied to custom container extractors */
@@ -48,31 +48,33 @@ export interface ContainerFileEntry {
   /** Relative path inside the virtual container mount */
   path: string;
   /** Size in bytes if known */
-  size?: number;
+  size?: number | undefined;
   /** Lazy reader returning the raw byte content */
   read: () => Uint8Array | null;
   /** Optional lazy reader returning text content */
-  readText?: () => string | null;
+  readText?: (() => string | null) | undefined;
   /** Handling action for the workspace index */
-  action?: "parse_as_language" | "mount_vfs" | "binary_blob" | "extract_nested";
+  action?: "parse_as_language" | "mount_vfs" | "binary_blob" | "extract_nested" | undefined;
   /** Target language identifier if action is 'parse_as_language' */
-  targetLanguage?: string;
+  targetLanguage?: string | undefined;
 }
 
 /** Result returned by a container extractor lambda */
 export interface ContainerExtractionResult {
   /** Primary manifest or virtual entry (e.g. SystemStructure.ssd, modelDescription.xml, package.mo) */
-  manifest?: {
-    path: string;
-    content: string | Uint8Array;
-    language?: string;
-  };
+  manifest?:
+    | {
+        path: string;
+        content: string | Uint8Array;
+        language?: string | undefined;
+      }
+    | undefined;
   /** Member entries exposed to the virtual file system / workspace */
-  entries?: ContainerFileEntry[];
+  entries?: ContainerFileEntry[] | undefined;
   /** Optional metadata dictionary */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> | undefined;
   /** Optional projection callback to synthesize virtual target language source (e.g. Modelica block) */
-  project?: (targetLanguage: string) => string | any | null;
+  project?: ((targetLanguage: string) => string | any | null) | undefined;
 }
 
 /** Function signature for custom container extractor lambdas */
@@ -88,9 +90,9 @@ export interface ContainerDeclaration<RuleName extends string = string> {
   /** Custom extraction lambda with supplied generic extraction toolkit */
   extract: ContainerExtractor;
   /** Optional declarative manifest specification for standard inspection */
-  manifestPath?: string | RegExp;
+  manifestPath?: string | RegExp | undefined;
   /** Optional default entry rule */
-  entryRule?: RuleName;
+  entryRule?: RuleName | undefined;
 }
 
 export function containerDeclaration<RuleName extends string = string>(

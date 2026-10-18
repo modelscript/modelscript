@@ -189,11 +189,11 @@ Test Deck
     const nodalStresses = [100.0, 200.0, 300.0];
 
     // Centroid probe with equal barycentric weights (1/3, 1/3, 1/3)
-    const centroidStress = (nodalStresses[0] + nodalStresses[1] + nodalStresses[2]) / 3;
+    const centroidStress = (nodalStresses[0]! + nodalStresses[1]! + nodalStresses[2]!) / 3;
     assert.strictEqual(centroidStress, 200.0);
 
     // Probe near vertex 2 with weights (0.1, 0.1, 0.8)
-    const nearN2Stress = 0.1 * nodalStresses[0] + 0.1 * nodalStresses[1] + 0.8 * nodalStresses[2];
+    const nearN2Stress = 0.1 * nodalStresses[0]! + 0.1 * nodalStresses[1]! + 0.8 * nodalStresses[2]!;
     assert.strictEqual(nearN2Stress, 270.0);
   });
 

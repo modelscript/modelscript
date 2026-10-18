@@ -25,8 +25,11 @@ import {
   UnaryOp,
   Variability,
   differentiateArenaExpressionWrt,
+  foldArenaConstants,
+  hasArrayEquations,
   pantelidesIndexReductionArena,
   performBltTransformationArena,
+  scalarizeArena,
   simplifyArenaExpression,
 } from "@modelscript/runtime";
 import type { FmuOptions, FmuResult } from "./fmi.js";
@@ -50,13 +53,26 @@ let spatialDistCounter = 0;
  * Generate FMI 2.0 C source files from a DAE and FMU result.
  */
 export function generateFmuCSources(dae: DAEBuilder, fmuResult: FmuResult, options: FmuOptions): FmuCSourceFiles {
+  let hasArrays = hasArrayEquations(dae);
+  if (!hasArrays) {
+    for (let i = 0; i < dae.varCount; i++) {
+      if (dae.getVarShape(i).length > 0) {
+        hasArrays = true;
+        break;
+      }
+    }
+  }
+  if (hasArrays) {
+    dae = scalarizeArena(dae, true);
+    foldArenaConstants(dae);
+  }
   const id = options.modelIdentifier;
   const vars = fmuResult.scalarVariables;
   let maxVr = 0;
   let nStringVars = 0;
   for (const v of vars) {
     maxVr = Math.max(maxVr, v.valueReference);
-    if (v.name.includes("_string_")) nStringVars++; // basic check or just check types if FMI had it
+    if (v.type === "String" || v.name.includes("_string_")) nStringVars++;
   }
   const nVars = vars.length > 0 ? maxVr + 1 : 0;
   const nStates = fmuResult.modelStructure.derivatives.length;
@@ -136,6 +152,9 @@ function exprToC(dae: DAEBuilder, id: number): string {
         const bufIdx = delayBufferCounter++;
         return `delay_lookup(&inst->delayBuf[${bufIdx}], inst->time - (${delayTime}), ${delayVal})`;
       }
+      if (fname === "pre" && argCount === 1) {
+        return exprToC(dae, dae.getExprLeft(id));
+      }
       if (fname === "/*Real*/" && argCount === 1) {
         return `((double)(${exprToC(dae, dae.getExprLeft(id))}))`;
       }
@@ -173,7 +192,7 @@ function varToC(name: string): string {
   return sanitizeIdentifier(name);
 }
 
-function conditionToZeroCrossingC(dae: DAEBuilder, id: number): string {
+export function conditionToZeroCrossingC(dae: DAEBuilder, id: number): string {
   if (id < 0) return "0.0";
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
@@ -468,6 +487,9 @@ function generateAlgebraicLoopSolvers(id: string, dae: DAEBuilder, result: FmuRe
     const sv = result.scalarVariables.find((v) => v.name === assign.varName);
     if (sv) {
       lines.push(`  inst->vars[${sv.valueReference}] = ${exprToC(dae, assign.exprId)}; /* ${assign.varName} */`);
+      if (referencedNames.has(assign.varName)) {
+        lines.push(`  ${varToC(assign.varName)} = inst->vars[${sv.valueReference}];`);
+      }
     }
   }
 
@@ -498,7 +520,9 @@ function generateAlgebraicLoopSolvers(id: string, dae: DAEBuilder, result: FmuRe
       tapes.push(tape);
     }
 
-    lines.push(`    /* Algebraic Loop ${loopIdx} (${N} variables, exact AD Jacobian) */`);
+    lines.push(
+      `    /* Algebraic Loop ${loopIdx} (${N} variables, ${method === "finite-difference" ? "Finite-Difference" : "exact AD"} Jacobian) */`,
+    );
     lines.push(`  {`);
     lines.push(`    int iter;`);
     lines.push(`    for (iter = 0; iter < 100; iter++) {`);
@@ -521,34 +545,60 @@ function generateAlgebraicLoopSolvers(id: string, dae: DAEBuilder, result: FmuRe
     lines.push(`      for (int i = 0; i < ${N}; i++) err += fabs(F[i]);`);
     lines.push(`      if (err < 1e-10) break;`);
 
-    // Compute exact Jacobian via reverse-mode AD
-    lines.push(`      /* Exact Analytical Jacobian via Reverse-Mode AD */`);
-    for (let row = 0; row < tapes.length; row++) {
-      const tape = tapes[row];
-      if (!tape) continue;
-      const outIdx = residualOutputIndices[row];
-      if (outIdx === undefined) continue;
-
-      lines.push(`      { /* J row ${row}: d(residual_${row})/d(vars) */`);
-      // Re-emit forward pass (values needed by reverse pass)
-      const fwdCode = tape.emitForwardC(varResolver);
-      lines.push(...fwdCode.map((c) => "      " + c));
-      // Reverse pass to get gradients
-      const { code: revCode, gradients } = tape.emitReverseC(outIdx);
-      lines.push(...revCode.map((c) => "      " + c));
-
-      // Extract Jacobian entries for the loop variables
+    if (method === "finite-difference") {
+      lines.push(`      /* Finite-Difference Jacobian */`);
       for (let col = 0; col < loop.variables.length; col++) {
         const varName = loop.variables[col];
         if (!varName) continue;
-        const gradIdx = gradients.get(varName);
-        if (gradIdx !== undefined) {
-          lines.push(`        J[${row * N + col}] = dt[${gradIdx}]; /* d(res_${row})/d(${varName}) */`);
-        } else {
-          lines.push(`        J[${row * N + col}] = 0.0;`);
+        const colVr = result.scalarVariables.find((sv) => sv.name === varName)?.valueReference ?? -1;
+        if (colVr < 0) continue;
+        lines.push(`      {`);
+        lines.push(`        double origVal = inst->vars[${colVr}];`);
+        lines.push(`        double eps = 1e-8 * (1.0 + fabs(origVal));`);
+        lines.push(`        inst->vars[${colVr}] = origVal + eps;`);
+        for (let row = 0; row < tapes.length; row++) {
+          const tape = tapes[row];
+          const outIdx = residualOutputIndices[row];
+          if (!tape || outIdx === undefined) continue;
+          lines.push(`        {`);
+          const fwdCode = tape.emitForwardC(varResolver);
+          lines.push(...fwdCode.map((c) => "        " + c));
+          lines.push(`          J[${row * N + col}] = (t[${outIdx}] - F[${row}]) / eps;`);
+          lines.push(`        }`);
         }
+        lines.push(`        inst->vars[${colVr}] = origVal;`);
+        lines.push(`      }`);
       }
-      lines.push(`      }`);
+    } else {
+      // Compute exact Jacobian via reverse-mode AD
+      lines.push(`      /* Exact Analytical Jacobian via Reverse-Mode AD */`);
+      for (let row = 0; row < tapes.length; row++) {
+        const tape = tapes[row];
+        if (!tape) continue;
+        const outIdx = residualOutputIndices[row];
+        if (outIdx === undefined) continue;
+
+        lines.push(`      { /* J row ${row}: d(residual_${row})/d(vars) */`);
+        // Re-emit forward pass (values needed by reverse pass)
+        const fwdCode = tape.emitForwardC(varResolver);
+        lines.push(...fwdCode.map((c) => "      " + c));
+        // Reverse pass to get gradients
+        const { code: revCode, gradients } = tape.emitReverseC(outIdx);
+        lines.push(...revCode.map((c) => "      " + c));
+
+        // Extract Jacobian entries for the loop variables
+        for (let col = 0; col < loop.variables.length; col++) {
+          const varName = loop.variables[col];
+          if (!varName) continue;
+          const gradIdx = gradients.get(varName);
+          if (gradIdx !== undefined) {
+            lines.push(`        J[${row * N + col}] = dt[${gradIdx}]; /* d(res_${row})/d(${varName}) */`);
+          } else {
+            lines.push(`        J[${row * N + col}] = 0.0;`);
+          }
+        }
+        lines.push(`      }`);
+      }
     }
 
     // Newton update: solve J * dx = -F
@@ -802,6 +852,37 @@ function generateModelC(id: string, dae: DAEBuilder, result: FmuResult): string 
     vrMap.set(sv.name, sv.valueReference);
   }
 
+  // Helper to convert an initialization expression to C using inst->vars[vr]
+  const initExprToC = (exprId: number, targetVarName: string): string | null => {
+    const subMatch = targetVarName.match(/(\[[0-9,]+\])$/);
+    const subSuffix = subMatch ? subMatch[1]! : "";
+    if (dae.getExprKind(exprId) === ExprKind.Name) {
+      const refName = dae.interner.resolve(dae.getExprData1(exprId));
+      if (!refName) return null;
+      const directVr = vrMap.get(refName);
+      if (directVr !== undefined) return `inst->vars[${directVr}]`;
+      if (subSuffix) {
+        const subVr = vrMap.get(`${refName}${subSuffix}`);
+        if (subVr !== undefined) return `inst->vars[${subVr}]`;
+      }
+      return null;
+    }
+    const refs = new Set<string>();
+    collectReferencedNames(dae, exprId, refs);
+    let cExpr = exprToC(dae, exprId);
+    for (const rName of refs) {
+      if (rName === "time") continue;
+      let rVr = vrMap.get(rName);
+      if (rVr === undefined && subSuffix) {
+        rVr = vrMap.get(`${rName}${subSuffix}`);
+      }
+      if (rVr === undefined) return null;
+      const cIdent = varToC(rName);
+      cExpr = cExpr.replace(new RegExp(`\\b${cIdent}\\b`, "g"), `inst->vars[${rVr}]`);
+    }
+    return cExpr;
+  };
+
   // ── Initialize function ──
   lines.push(`void ${id}_initialize(${id}_Instance* inst) {`);
   lines.push("  memset(inst, 0, sizeof(*inst));");
@@ -821,8 +902,8 @@ function generateModelC(id: string, dae: DAEBuilder, result: FmuResult): string 
               ? startAttr
               : -1;
 
-        if (initExpr >= 0) {
-          const cExpr = exprToC(dae, initExpr);
+        const cExpr = initExpr >= 0 ? initExprToC(initExpr, vName) : null;
+        if (cExpr !== null) {
           lines.push(`  inst->vars[${ref}] = ${cExpr};  /* ${vName} */`);
         } else {
           const startVal = dae.getVarStartValue(i);
@@ -849,8 +930,9 @@ function generateModelC(id: string, dae: DAEBuilder, result: FmuResult): string 
         const startAttr = dae.getVarAttrExprId(i, "start");
         const expr = dae.getVarExpression(i) as number | undefined;
         const initExpr = startAttr !== undefined && startAttr >= 0 ? startAttr : expr;
-        if (initExpr !== undefined && typeof initExpr === "number" && initExpr >= 0) {
-          const cExpr = exprToC(dae, initExpr);
+        const cExpr =
+          initExpr !== undefined && typeof initExpr === "number" && initExpr >= 0 ? initExprToC(initExpr, vName) : null;
+        if (cExpr !== null) {
           lines.push(`  inst->vars[${ref}] = ${cExpr};  /* ${vName} */`);
         } else {
           const startVal = dae.getVarStartValue(i);
@@ -924,11 +1006,19 @@ function generateModelC(id: string, dae: DAEBuilder, result: FmuResult): string 
       const derIdx = derMap.get(lhsDer);
       if (derIdx !== undefined) {
         lines.push(`  inst->derivatives[${derIdx}] = ${exprToC(dae, rhs)};  /* der(${lhsDer}) */`);
+        const derVR = derVars[derIdx]?.valueReference;
+        if (derVR !== undefined && derVR >= 0) {
+          lines.push(`  inst->vars[${derVR}] = inst->derivatives[${derIdx}];`);
+        }
       }
     } else if (rhsDer) {
       const derIdx = derMap.get(rhsDer);
       if (derIdx !== undefined) {
         lines.push(`  inst->derivatives[${derIdx}] = ${exprToC(dae, lhs)};  /* der(${rhsDer}) */`);
+        const derVR = derVars[derIdx]?.valueReference;
+        if (derVR !== undefined && derVR >= 0) {
+          lines.push(`  inst->vars[${derVR}] = inst->derivatives[${derIdx}];`);
+        }
       }
     }
   }
@@ -1083,9 +1173,9 @@ function generateModelC(id: string, dae: DAEBuilder, result: FmuResult): string 
 
 function generateFmi2FunctionsC(
   id: string,
-  nVars: number,
-  nStates: number,
-  nStringVars: number,
+  _nVars: number,
+  _nStates: number,
+  _nStringVars: number,
   dae: DAEBuilder,
   result: FmuResult,
 ): string {
@@ -1151,25 +1241,62 @@ function generateFmi2FunctionsC(
   lines.push('const char* fmi2GetVersion(void) { return "2.0"; }');
   lines.push("");
 
-  // ── State saving stubs ──
+  // ── State saving & serialization ──
+  lines.push("fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* state) {");
+  lines.push("  if (!c || !state) return fmi2Error;");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  FMUInstance* copy = (FMUInstance*)calloc(1, sizeof(FMUInstance));");
+  lines.push("  if (!copy) return fmi2Error;");
+  lines.push("  memcpy(copy, inst, sizeof(FMUInstance));");
+  lines.push("  *state = (fmi2FMUstate)copy;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate state) {");
+  lines.push("  if (!c || !state) return fmi2Error;");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  FMUInstance* copy = (FMUInstance*)state;");
+  lines.push("  fmi2String savedName = inst->instanceName;");
+  lines.push("  fmi2CallbackFunctions savedCallbacks = inst->callbacks;");
+  lines.push("  fmi2Boolean savedLoggingOn = inst->loggingOn;");
+  lines.push("  memcpy(inst, copy, sizeof(FMUInstance));");
+  lines.push("  inst->instanceName = savedName;");
+  lines.push("  inst->callbacks = savedCallbacks;");
+  lines.push("  inst->loggingOn = savedLoggingOn;");
+  lines.push("  inst->model.fmuInstance = inst;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* state) {");
+  lines.push("  (void)c;");
+  lines.push("  if (!state || !*state) return fmi2Error;");
+  lines.push("  free(*state);");
+  lines.push("  *state = NULL;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
+  lines.push("fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate state, size_t* size) {");
+  lines.push("  (void)c;");
+  lines.push("  if (!state || !size) return fmi2Error;");
+  lines.push("  *size = sizeof(FMUInstance);");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push(
-    "fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* state) { (void)c; (void)state; return fmi2Error; }",
+    "fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate state, fmi2Byte serializedState[], size_t size) {",
   );
+  lines.push("  (void)c;");
+  lines.push("  if (!state || !serializedState || size < sizeof(FMUInstance)) return fmi2Error;");
+  lines.push("  memcpy(serializedState, state, sizeof(FMUInstance));");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push(
-    "fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate state) { (void)c; (void)state; return fmi2Error; }",
+    "fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte serializedState[], size_t size, fmi2FMUstate* state) {",
   );
-  lines.push(
-    "fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* state) { (void)c; (void)state; return fmi2Error; }",
-  );
-  lines.push(
-    "fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate state, size_t* size) { (void)c; (void)state; (void)size; return fmi2Error; }",
-  );
-  lines.push(
-    "fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate state, fmi2Byte serializedState[], size_t size) { (void)c; (void)state; (void)serializedState; (void)size; return fmi2Error; }",
-  );
-  lines.push(
-    "fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte serializedState[], size_t size, fmi2FMUstate* state) { (void)c; (void)serializedState; (void)size; (void)state; return fmi2Error; }",
-  );
+  lines.push("  (void)c;");
+  lines.push("  if (!serializedState || !state || size < sizeof(FMUInstance)) return fmi2Error;");
+  lines.push("  FMUInstance* copy = (FMUInstance*)calloc(1, sizeof(FMUInstance));");
+  lines.push("  if (!copy) return fmi2Error;");
+  lines.push("  memcpy(copy, serializedState, sizeof(FMUInstance));");
+  lines.push("  *state = (fmi2FMUstate)copy;");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push("fmi2Status fmi2EnterEventMode(fmi2Component c) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
   lines.push(`  if (inst) ${id}_checkWhenEvents(&inst->model);`);
@@ -1180,11 +1307,26 @@ function generateFmi2FunctionsC(
     "fmi2Status fmi2GetNominalsOfContinuousStates(fmi2Component c, fmi2Real x_nominal[], size_t nx) { (void)c; for(size_t i=0;i<nx;i++) x_nominal[i]=1.0; return fmi2OK; }",
   );
   lines.push(
-    "fmi2Status fmi2SetRealInputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], const fmi2Real value[]) { (void)c; (void)vr; (void)nvr; (void)order; (void)value; return fmi2Error; }",
+    "fmi2Status fmi2SetRealInputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], const fmi2Real value[]) {",
   );
+  lines.push("  if (!c) return fmi2Error;");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (order[i] == 1 && vr[i] <= N_VARS) inst->inputDerivatives[vr[i]] = value[i];");
+  lines.push("  }");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push(
-    "fmi2Status fmi2GetRealOutputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], fmi2Real value[]) { (void)c; (void)vr; (void)nvr; (void)order; (void)value; return fmi2Error; }",
+    "fmi2Status fmi2GetRealOutputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], fmi2Real value[]) {",
   );
+  lines.push("  if (!c) return fmi2Error;");
+  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  (void)order;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    value[i] = (vr[i] <= N_VARS) ? inst->inputDerivatives[vr[i]] : 0.0;");
+  lines.push("  }");
+  lines.push("  return fmi2OK;");
+  lines.push("}");
   lines.push("");
 
   // ── Logger & Terminate Impl ──
@@ -1217,21 +1359,18 @@ function generateFmi2FunctionsC(
   lines.push("  inst->model.logger = fmi2_logger_impl;");
   lines.push("  inst->model.terminate = fmi2_terminate_impl;");
   lines.push(`  ${id}_initialize(&inst->model);`);
-  lines.push("  return (fmi2Component)inst;");
-  lines.push("}");
-  lines.push("");
-
-  // Emit ExternalObject constructor calls right after fmi2Instantiate
   if (dae.externalObjects.length > 0) {
     lines.push("  /* --- ExternalObject constructors --- */");
     for (let ei = 0; ei < dae.externalObjects.length; ei++) {
       const eo = dae.externalObjects[ei];
       if (!eo) continue;
-      const ctorName = sanitizeIdentifier(eo.constructorName);
+      const ctorName = sanitizeIdentifier(eo.constructorName ?? "");
       lines.push(`  inst->model.extObj_${ei} = (void*)${ctorName}();  /* ${eo.className} */`);
     }
-    lines.push("");
   }
+  lines.push("  return (fmi2Component)inst;");
+  lines.push("}");
+  lines.push("");
 
   // ── fmi2SetupExperiment ──
   lines.push("fmi2Status fmi2SetupExperiment(fmi2Component c, fmi2Boolean toleranceDefined,");
@@ -1690,7 +1829,7 @@ function generateFmi2FunctionsC(
     for (let ei = 0; ei < dae.externalObjects.length; ei++) {
       const eo = dae.externalObjects[ei];
       if (!eo) continue;
-      const dtorName = sanitizeIdentifier(eo.destructorName);
+      const dtorName = sanitizeIdentifier(eo.destructorName ?? "");
       lines.push(`  ${dtorName}(inst->model.extObj_${ei});`);
     }
   }
@@ -1705,8 +1844,8 @@ function generateFmi2FunctionsC(
   for (let ei = 0; ei < dae.externalObjects.length; ei++) {
     const eo = dae.externalObjects[ei];
     if (!eo) continue;
-    const ctorName = sanitizeIdentifier(eo.constructorName);
-    const dtorName = sanitizeIdentifier(eo.destructorName);
+    const ctorName = sanitizeIdentifier(eo.constructorName ?? "");
+    const dtorName = sanitizeIdentifier(eo.destructorName ?? "");
     lines.push(`  if (inst->model.extObj_${ei}) {`);
     lines.push(`    ${dtorName}(inst->model.extObj_${ei});`);
     lines.push(`  }`);
@@ -2021,6 +2160,12 @@ function generateIntegratorCode(
     }
   }
   lines.push("");
+  lines.push("      int stiff_reject = 0;");
+  lines.push("      for (int i = 0; i < n; i++) {");
+  lines.push("        double err = fabs(k4[i] - k2[i]) * h;");
+  lines.push("        double tol = 1e-3 * (1.0 + fabs(y0[i]));");
+  lines.push("        if (isnan(tmp_states[i]) || isinf(tmp_states[i]) || err > tol) { stiff_reject = 1; break; }");
+  lines.push("      }");
   lines.push("      int crossing = 0;");
   lines.push("      if (N_EVENT_INDICATORS > 0) {");
   lines.push("        inst->model.time = t + h;");
@@ -2036,7 +2181,7 @@ function generateIntegratorCode(
   lines.push("          if (z_prev[i] * z_curr[i] < 0.0) { crossing = 1; break; }");
   lines.push("        }");
   lines.push("      }");
-  lines.push("      if (crossing && h > 1e-7) {");
+  lines.push("      if ((crossing || stiff_reject) && h > 1e-7) {");
   lines.push("        h *= 0.5;");
   lines.push("      } else {");
   lines.push("        step_accepted = 1;");
@@ -2064,6 +2209,8 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push(`#include "${id}_model.h"`);
   lines.push("#include <string.h>");
   lines.push("#include <stdlib.h>");
+  lines.push("#include <stdbool.h>");
+  lines.push("#include <math.h>");
   lines.push("");
   lines.push("/* Typedefs for FMI 3.0 */");
   lines.push("typedef void* fmi3Instance;");
@@ -2080,11 +2227,13 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push("typedef unsigned int fmi3UInt32;");
   lines.push("typedef unsigned short fmi3UInt16;");
   lines.push("typedef unsigned char fmi3UInt8;");
-  lines.push("typedef int fmi3Boolean;");
-  lines.push("#define fmi3True 1");
-  lines.push("#define fmi3False 0");
+  lines.push("typedef bool fmi3Boolean;");
+  lines.push("#define fmi3True true");
+  lines.push("#define fmi3False false");
   lines.push("typedef char fmi3Byte;");
   lines.push("typedef fmi3Boolean fmi3Clock;");
+  lines.push("#define fmi3ClockActive true");
+  lines.push("#define fmi3ClockInactive false");
   lines.push("typedef unsigned int fmi3ValueReference;");
   lines.push("typedef enum { fmi3OK, fmi3Warning, fmi3Discard, fmi3Error, fmi3Fatal } fmi3Status;");
   lines.push(
@@ -2099,6 +2248,14 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push("  fmi3LogMessageCallback logMessage;");
   lines.push("  fmi3Boolean loggingOn;");
   lines.push("  fmi3Boolean terminateRequested;");
+  lines.push("  fmi3Boolean eventModeUsed;");
+  lines.push("  fmi3Boolean earlyReturnAllowed;");
+  lines.push("  fmi3Boolean eventDetected;");
+  lines.push("  int mode;");
+  lines.push("  fmi3Clock clocks[N_VARS + 1];");
+  lines.push("  fmi3Float64 clockIntervals[N_VARS + 1];");
+  lines.push("  fmi3Float64 clockShifts[N_VARS + 1];");
+  lines.push("  fmi3UInt64 clockResolutions[N_VARS + 1];");
   lines.push("} FMI3InstanceData;");
   lines.push("");
   lines.push("/* Forward declarations */");
@@ -2116,7 +2273,7 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   });
 
   const discreteUpdateCall3 =
-    "fmi3Boolean dummy; fmi3Float64 tDummy; fmi3UpdateDiscreteStates((fmi3Instance)inst, &dummy, &dummy, &dummy, &dummy, &dummy, &tDummy);";
+    "if (!inst->eventModeUsed) { fmi3Boolean dummy; fmi3Float64 tDummy; fmi3UpdateDiscreteStates((fmi3Instance)inst, &dummy, &dummy, &dummy, &dummy, &dummy, &tDummy); }";
   lines.push(...generateIntegratorCode(id, "FMI3InstanceData", stateVRs, discreteUpdateCall3));
 
   lines.push("fmi3Instance fmi3InstantiateModelExchange(");
@@ -2131,6 +2288,7 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push("  inst->env = env;");
   lines.push("  inst->logMessage = logMessage;");
   lines.push("  inst->loggingOn = loggingOn;");
+  lines.push("  for (int i = 0; i <= N_VARS; i++) inst->clockResolutions[i] = 1000000ULL;");
   lines.push(`  ${id}_initialize(&inst->model);`);
   lines.push("  return (fmi3Instance)inst;");
   lines.push("}");
@@ -2142,21 +2300,24 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push("  fmi3Boolean earlyReturnAllowed, const fmi3ValueReference requiredIntermediateVariables[],");
   lines.push("  size_t nRequiredIntermediateVariables, fmi3InstanceEnvironment env,");
   lines.push("  fmi3LogMessageCallback logMessage, void* intermediateUpdate) {");
+  lines.push("  (void)requiredIntermediateVariables; (void)nRequiredIntermediateVariables; (void)intermediateUpdate;");
   lines.push(
-    "  (void)eventModeUsed; (void)earlyReturnAllowed; (void)requiredIntermediateVariables; (void)nRequiredIntermediateVariables; (void)intermediateUpdate;",
+    "  FMI3InstanceData* inst = (FMI3InstanceData*)fmi3InstantiateModelExchange(instanceName, instantiationToken, resourcePath, visible, loggingOn, env, logMessage);",
   );
-  lines.push(
-    "  return fmi3InstantiateModelExchange(instanceName, instantiationToken, resourcePath, visible, loggingOn, env, logMessage);",
-  );
+  lines.push("  if (inst) {");
+  lines.push("    inst->eventModeUsed = eventModeUsed;");
+  lines.push("    inst->earlyReturnAllowed = earlyReturnAllowed;");
+  lines.push("  }");
+  lines.push("  return (fmi3Instance)inst;");
   lines.push("}");
   lines.push("fmi3Instance fmi3InstantiateScheduledExecution(");
   lines.push("  fmi3String instanceName, fmi3String instantiationToken,");
   lines.push("  fmi3String resourcePath, fmi3Boolean visible,");
   lines.push("  fmi3Boolean loggingOn, fmi3InstanceEnvironment env,");
   lines.push("  fmi3LogMessageCallback logMessage) {");
-  lines.push("  (void)instanceName; (void)instantiationToken; (void)resourcePath;");
-  lines.push("  (void)visible; (void)loggingOn; (void)env; (void)logMessage;");
-  lines.push("  return NULL;");
+  lines.push(
+    "  return fmi3InstantiateModelExchange(instanceName, instantiationToken, resourcePath, visible, loggingOn, env, logMessage);",
+  );
   lines.push("}");
   lines.push("");
   lines.push("void fmi3FreeInstance(fmi3Instance instance) {");
@@ -2236,15 +2397,31 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push("");
+  lines.push("fmi3Status fmi3SerializedFMUStateSize(fmi3Instance instance, fmi3FMUState state, size_t* size) {");
+  lines.push("  (void)instance;");
+  lines.push("  if (!state || !size) return fmi3Error;");
+  lines.push("  *size = sizeof(FMI3InstanceData);");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3SerializedFMUStateSize(fmi3Instance instance, fmi3FMUState state, size_t* size) { (void)instance; (void)state; *size = 0; return fmi3Error; }",
+    "fmi3Status fmi3SerializeFMUState(fmi3Instance instance, fmi3FMUState state, fmi3Byte serializedState[], size_t size) {",
   );
+  lines.push("  (void)instance;");
+  lines.push("  if (!state || !serializedState || size < sizeof(FMI3InstanceData)) return fmi3Error;");
+  lines.push("  memcpy(serializedState, state, sizeof(FMI3InstanceData));");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3SerializeFMUState(fmi3Instance instance, fmi3FMUState state, fmi3Byte serializedState[], size_t size) { (void)instance; (void)state; (void)serializedState; (void)size; return fmi3Error; }",
+    "fmi3Status fmi3DeserializeFMUState(fmi3Instance instance, const fmi3Byte serializedState[], size_t size, fmi3FMUState* state) {",
   );
-  lines.push(
-    "fmi3Status fmi3DeserializeFMUState(fmi3Instance instance, const fmi3Byte serializedState[], size_t size, fmi3FMUState* state) { (void)instance; (void)serializedState; (void)size; (void)state; return fmi3Error; }",
-  );
+  lines.push("  (void)instance;");
+  lines.push("  if (!serializedState || !state || size < sizeof(FMI3InstanceData)) return fmi3Error;");
+  lines.push("  FMI3InstanceData* copy = (FMI3InstanceData*)calloc(1, sizeof(FMI3InstanceData));");
+  lines.push("  if (!copy) return fmi3Error;");
+  lines.push("  memcpy(copy, serializedState, sizeof(FMI3InstanceData));");
+  lines.push("  *state = (fmi3FMUState)copy;");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push("");
   lines.push(
     "fmi3Status fmi3EnterInitializationMode(fmi3Instance instance, fmi3Boolean toleranceDefined, fmi3Float64 tolerance, fmi3Float64 startTime, fmi3Boolean stopTimeDefined, fmi3Float64 stopTime) {",
@@ -2421,75 +2598,281 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
   lines.push("  if (!inst) return fmi3Fatal;");
   lines.push("  (void)noSetFMUStatePriorToCurrentPoint;");
-  lines.push("  if (terminateSimulation) *terminateSimulation = inst->terminateRequested ? fmi3True : fmi3False;");
+  lines.push("  double t = currentCommunicationPoint;");
   lines.push("  double tEnd = currentCommunicationPoint + communicationStepSize;");
+  lines.push("  double h = 1e-3;");
+  lines.push("  inst->eventDetected = 0;");
   lines.push("");
-  lines.push("  if (N_STATES > 0) {");
-  lines.push(`    inst->model.time = currentCommunicationPoint;`);
-  lines.push(`    ${id}_getDerivatives(&inst->model);`);
+  lines.push("  while (t < tEnd - 1e-13) {");
+  lines.push("    double hStep = h;");
+  lines.push("    if (t + hStep > tEnd) hStep = tEnd - t;");
+  lines.push("    double zBefore[N_EVENT_INDICATORS + 1];");
+  lines.push("    if (N_EVENT_INDICATORS > 0) {");
+  lines.push("      inst->model.time = t;");
+  lines.push(`      ${id}_getEventIndicators(&inst->model, zBefore);`);
+  lines.push("    }");
+  lines.push("    integrate_rk4(inst, t, t + hStep, hStep);");
+  lines.push("    t += hStep;");
+  lines.push("    if (N_EVENT_INDICATORS > 0 && inst->eventModeUsed) {");
+  lines.push("      double zAfter[N_EVENT_INDICATORS + 1];");
+  lines.push("      inst->model.time = t;");
+  lines.push(`      ${id}_getEventIndicators(&inst->model, zAfter);`);
+  lines.push("      for (int i = 0; i < N_EVENT_INDICATORS; i++) {");
+  lines.push("        if (zBefore[i] * zAfter[i] < 0.0) { inst->eventDetected = 1; break; }");
+  lines.push("      }");
+  lines.push("      if (inst->eventDetected && inst->earlyReturnAllowed && t < tEnd - 1e-13) break;");
+  lines.push("    }");
   lines.push("  }");
   lines.push("");
-  lines.push("  integrate_rk4(inst, currentCommunicationPoint, tEnd, communicationStepSize);");
-  lines.push("");
-  lines.push("  inst->model.time = tEnd;");
-  lines.push("  if (eventHandlingNeeded) *eventHandlingNeeded = 0;");
-  lines.push("  if (earlyReturn) *earlyReturn = 0;");
-  lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = tEnd;");
-
+  lines.push("  inst->model.time = t;");
+  lines.push(`  ${id}_getDerivatives(&inst->model);`);
+  lines.push("  if (inst->eventModeUsed && N_WHEN_CONDITIONS > 0) {");
+  lines.push(`    if (${id}_checkWhenEvents(&inst->model)) inst->eventDetected = 1;`);
+  lines.push("  }");
+  lines.push("  if (terminateSimulation) *terminateSimulation = inst->terminateRequested ? fmi3True : fmi3False;");
+  lines.push(
+    "  if (eventHandlingNeeded) *eventHandlingNeeded = (inst->eventModeUsed && inst->eventDetected) ? fmi3True : fmi3False;",
+  );
+  lines.push(
+    "  if (earlyReturn) *earlyReturn = (inst->eventModeUsed && inst->earlyReturnAllowed && inst->eventDetected && t < tEnd - 1e-13) ? fmi3True : fmi3False;",
+  );
+  lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = t;");
   lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push("");
 
-  // Missing FMI 3.0 types (Binary, Clock)
+  // FMI 3.0 Binary and Clock getters/setters
   lines.push("typedef const char* fmi3Binary;");
   lines.push(
-    "fmi3Status fmi3GetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, size_t valueSize[], fmi3Binary value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)valueSize; (void)value; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3GetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, size_t valueSize[], fmi3Binary value[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (vr[i] < N_STRING_VARS && inst->model.stringVars[vr[i]]) {");
+  lines.push("      value[i] = (fmi3Binary)inst->model.stringVars[vr[i]];");
+  lines.push("      if (valueSize) valueSize[i] = strlen(inst->model.stringVars[vr[i]]);");
+  lines.push("    } else {");
+  lines.push('      value[i] = (fmi3Binary)"";');
+  lines.push("      if (valueSize) valueSize[i] = 0;");
+  lines.push("    }");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3SetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const size_t valueSize[], const fmi3Binary value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)valueSize; (void)value; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3SetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const size_t valueSize[], const fmi3Binary value[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (vr[i] < N_STRING_VARS) {");
+  lines.push("      if (inst->model.stringVars[vr[i]]) free(inst->model.stringVars[vr[i]]);");
+  lines.push("      size_t sz = valueSize ? valueSize[i] : 0;");
+  lines.push("      char* buf = (char*)calloc(sz + 1, 1);");
+  lines.push("      if (buf && value && value[i] && sz > 0) memcpy(buf, value[i], sz);");
+  lines.push("      inst->model.stringVars[vr[i]] = buf;");
+  lines.push("    }");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3GetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Clock value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)value; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3GetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Clock value[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    value[i] = (vr[i] <= N_VARS) ? inst->clocks[vr[i]] : fmi3ClockInactive;");
+  lines.push("    if (vr[i] <= N_VARS) inst->clocks[vr[i]] = fmi3ClockInactive;");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3SetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Clock value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)value; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3SetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Clock value[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (vr[i] <= N_VARS) inst->clocks[vr[i]] = value[i];");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
 
-  // Advanced / Optional FMI 3.0 functions
+  // Directional & Adjoint derivatives via finite differences
   lines.push(
-    "fmi3Status fmi3GetDirectionalDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) { (void)instance; (void)unknowns; (void)nUnknowns; (void)knowns; (void)nKnowns; (void)seed; (void)nSeed; (void)sensitivity; (void)nSensitivity; return fmi3Error; }",
+    "fmi3Status fmi3GetDirectionalDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst || !unknowns || !knowns || !seed || !sensitivity) return fmi3Error;");
+  lines.push("  (void)nSeed; (void)nSensitivity;");
+  lines.push("  const double eps = 1e-7;");
+  lines.push(`  ${id}_Instance baseModel = inst->model;`);
+  lines.push(`  ${id}_getDerivatives(&baseModel);`);
+  lines.push(`  ${id}_Instance pertModel = baseModel;`);
+  lines.push("  for (size_t j = 0; j < nKnowns; j++) {");
+  lines.push("    if (knowns[j] < N_VARS) pertModel.vars[knowns[j]] += eps * seed[j];");
+  lines.push("  }");
+  lines.push(`  ${id}_getDerivatives(&pertModel);`);
+  lines.push("  for (size_t i = 0; i < nUnknowns; i++) {");
+  lines.push("    if (unknowns[i] < N_VARS) {");
+  lines.push("      sensitivity[i] = (pertModel.vars[unknowns[i]] - baseModel.vars[unknowns[i]]) / eps;");
+  lines.push("    } else {");
+  lines.push("      sensitivity[i] = 0.0;");
+  lines.push("    }");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3GetAdjointDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) { (void)instance; (void)unknowns; (void)nUnknowns; (void)knowns; (void)nKnowns; (void)seed; (void)nSeed; (void)sensitivity; (void)nSensitivity; return fmi3Error; }",
+    "fmi3Status fmi3GetAdjointDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) {",
   );
-  lines.push("fmi3Status fmi3EnterConfigurationMode(fmi3Instance instance) { (void)instance; return fmi3Error; }");
-  lines.push("fmi3Status fmi3ExitConfigurationMode(fmi3Instance instance) { (void)instance; return fmi3Error; }");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst || !unknowns || !knowns || !seed || !sensitivity) return fmi3Error;");
+  lines.push("  (void)nSeed; (void)nSensitivity;");
+  lines.push("  const double eps = 1e-7;");
+  lines.push(`  ${id}_Instance baseModel = inst->model;`);
+  lines.push(`  ${id}_getDerivatives(&baseModel);`);
+  lines.push("  for (size_t j = 0; j < nKnowns; j++) {");
+  lines.push("    double acc = 0.0;");
+  lines.push("    if (knowns[j] < N_VARS) {");
+  lines.push(`      ${id}_Instance pertModel = baseModel;`);
+  lines.push("      pertModel.vars[knowns[j]] += eps;");
+  lines.push(`      ${id}_getDerivatives(&pertModel);`);
+  lines.push("      for (size_t i = 0; i < nUnknowns; i++) {");
+  lines.push("        if (unknowns[i] < N_VARS) {");
+  lines.push("          double df = (pertModel.vars[unknowns[i]] - baseModel.vars[unknowns[i]]) / eps;");
+  lines.push("          acc += seed[i] * df;");
+  lines.push("        }");
+  lines.push("      }");
+  lines.push("    }");
+  lines.push("    sensitivity[j] = acc;");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push("fmi3Status fmi3EnterConfigurationMode(fmi3Instance instance) {");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error;");
+  lines.push("  inst->mode = 5;");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push("fmi3Status fmi3ExitConfigurationMode(fmi3Instance instance) {");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error;");
+  lines.push(`  ${id}_solveAlgebraicLoops(&inst->model);`);
+  lines.push("  inst->mode = 2;");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3GetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 interval[], int qualifier[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)interval; (void)qualifier; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3GetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 interval[], int qualifier[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (interval) interval[i] = (vr[i] <= N_VARS) ? inst->clockIntervals[vr[i]] : 0.0;");
+  lines.push("    if (qualifier) qualifier[i] = 2; /* fmi3IntervalUnchanged */");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3GetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3UInt64 intervalCounter[], fmi3UInt64 resolution[], int qualifier[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)intervalCounter; (void)resolution; (void)qualifier; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3GetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3UInt64 intervalCounter[], fmi3UInt64 resolution[], int qualifier[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push(
-    "fmi3Status fmi3GetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 shift[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shift; (void)nValues; return fmi3Error; }",
+    "    fmi3UInt64 res = (vr[i] <= N_VARS && inst->clockResolutions[vr[i]] > 0) ? inst->clockResolutions[vr[i]] : 1000000ULL;",
   );
+  lines.push("    if (resolution) resolution[i] = res;");
   lines.push(
-    "fmi3Status fmi3GetShiftFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3UInt64 shiftCounter[], fmi3UInt64 resolution[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shiftCounter; (void)resolution; (void)nValues; return fmi3Error; }",
+    "    if (intervalCounter) intervalCounter[i] = (vr[i] <= N_VARS) ? (fmi3UInt64)(inst->clockIntervals[vr[i]] * (double)res) : 0ULL;",
   );
+  lines.push("    if (qualifier) qualifier[i] = 2;");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3SetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 interval[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)interval; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3GetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 shift[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (shift) shift[i] = (vr[i] <= N_VARS) ? inst->clockShifts[vr[i]] : 0.0;");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
-    "fmi3Status fmi3SetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3UInt64 intervalCounter[], const fmi3UInt64 resolution[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)intervalCounter; (void)resolution; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3GetShiftFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3UInt64 shiftCounter[], fmi3UInt64 resolution[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push(
-    "fmi3Status fmi3SetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 shift[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shift; (void)nValues; return fmi3Error; }",
+    "    fmi3UInt64 res = (vr[i] <= N_VARS && inst->clockResolutions[vr[i]] > 0) ? inst->clockResolutions[vr[i]] : 1000000ULL;",
   );
+  lines.push("    if (resolution) resolution[i] = res;");
   lines.push(
-    "fmi3Status fmi3SetShiftFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3UInt64 shiftCounter[], const fmi3UInt64 resolution[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shiftCounter; (void)resolution; (void)nValues; return fmi3Error; }",
+    "    if (shiftCounter) shiftCounter[i] = (vr[i] <= N_VARS) ? (fmi3UInt64)(inst->clockShifts[vr[i]] * (double)res) : 0ULL;",
   );
-  lines.push("fmi3Status fmi3EvaluateDiscreteStates(fmi3Instance instance) { (void)instance; return fmi3Error; }");
-  lines.push("fmi3Status fmi3EnterStepMode(fmi3Instance instance) { (void)instance; return fmi3Error; }");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push(
+    "fmi3Status fmi3SetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 interval[], size_t nValues) {",
+  );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst || !interval) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (vr[i] <= N_VARS) inst->clockIntervals[vr[i]] = interval[i];");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push(
+    "fmi3Status fmi3SetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3UInt64 intervalCounter[], const fmi3UInt64 resolution[], size_t nValues) {",
+  );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst || !intervalCounter || !resolution) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (vr[i] <= N_VARS && resolution[i] > 0) {");
+  lines.push("      inst->clockResolutions[vr[i]] = resolution[i];");
+  lines.push("      inst->clockIntervals[vr[i]] = (double)intervalCounter[i] / (double)resolution[i];");
+  lines.push("    }");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push(
+    "fmi3Status fmi3SetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 shift[], size_t nValues) {",
+  );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst || !shift) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (vr[i] <= N_VARS) inst->clockShifts[vr[i]] = shift[i];");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push(
+    "fmi3Status fmi3SetShiftFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3UInt64 shiftCounter[], const fmi3UInt64 resolution[], size_t nValues) {",
+  );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst || !shiftCounter || !resolution) return fmi3Error; (void)nValues;");
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (vr[i] <= N_VARS && resolution[i] > 0) {");
+  lines.push("      inst->clockResolutions[vr[i]] = resolution[i];");
+  lines.push("      inst->clockShifts[vr[i]] = (double)shiftCounter[i] / (double)resolution[i];");
+  lines.push("    }");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push("fmi3Status fmi3EvaluateDiscreteStates(fmi3Instance instance) {");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error;");
+  lines.push(`  ${id}_checkWhenEvents(&inst->model);`);
+  lines.push(`  ${id}_getDerivatives(&inst->model);`);
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push("fmi3Status fmi3EnterStepMode(fmi3Instance instance) {");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Error;");
+  lines.push("  inst->mode = 4;");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push("fmi3Status fmi3EnterEventMode(fmi3Instance instance) {");
   lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
   lines.push(`  if (inst) ${id}_checkWhenEvents(&inst->model);`);
@@ -2506,8 +2889,25 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
   lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push(
-    "fmi3Status fmi3GetOutputDerivatives(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Int32 order[], fmi3Float64 value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)order; (void)value; (void)nValues; return fmi3Error; }",
+    "fmi3Status fmi3GetOutputDerivatives(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Int32 order[], fmi3Float64 value[], size_t nValues) {",
   );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst || !vr || !order || !value) return fmi3Error; (void)nValues;");
+  lines.push("  const double dt = 1e-6;");
+  lines.push(`  ${id}_Instance baseModel = inst->model;`);
+  lines.push(`  ${id}_getDerivatives(&baseModel);`);
+  lines.push(`  ${id}_Instance nextModel = baseModel;`);
+  lines.push("  nextModel.time += dt;");
+  lines.push(`  ${id}_getDerivatives(&nextModel);`);
+  lines.push("  for (size_t i = 0; i < nvr; i++) {");
+  lines.push("    if (order[i] == 1 && vr[i] < N_VARS) {");
+  lines.push("      value[i] = (nextModel.vars[vr[i]] - baseModel.vars[vr[i]]) / dt;");
+  lines.push("    } else {");
+  lines.push("      value[i] = 0.0;");
+  lines.push("    }");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
     "fmi3Status fmi3GetNumberOfContinuousStates(fmi3Instance instance, size_t* nContinuousStates) { (void)instance; *nContinuousStates = N_STATES; return fmi3OK; }",
   );
@@ -2521,8 +2921,14 @@ export function generateFmi3FunctionsC(id: string, dae: DAEBuilder, result: FmuR
     "fmi3Status fmi3GetNumberOfVariableDependencies(fmi3Instance instance, fmi3ValueReference valueReference, size_t* nDependencies) { (void)instance; (void)valueReference; *nDependencies = 0; return fmi3OK; }",
   );
   lines.push(
-    "fmi3Status fmi3GetVariableDependencies(fmi3Instance instance, fmi3ValueReference dependent, size_t elementIndicesOfDependent[], fmi3ValueReference independents[], size_t elementIndicesOfIndependents[], fmi3DependencyKind dependencyKinds[], size_t ndependencies) { (void)instance; (void)dependent; (void)elementIndicesOfDependent; (void)independents; (void)elementIndicesOfIndependents; (void)dependencyKinds; (void)ndependencies; return fmi3Error; }",
+    "fmi3Status fmi3GetVariableDependencies(fmi3Instance instance, fmi3ValueReference dependent, size_t elementIndicesOfDependent[], fmi3ValueReference independents[], size_t elementIndicesOfIndependents[], fmi3DependencyKind dependencyKinds[], size_t ndependencies) {",
   );
+  lines.push("  if (!instance) return fmi3Error;");
+  lines.push(
+    "  (void)dependent; (void)elementIndicesOfDependent; (void)independents; (void)elementIndicesOfIndependents; (void)dependencyKinds; (void)ndependencies;",
+  );
+  lines.push("  return fmi3OK;");
+  lines.push("}");
   lines.push(
     "fmi3Status fmi3ActivateModelPartition(fmi3Instance instance, fmi3ValueReference clockReference, fmi3Float64 activationTime) {",
   );

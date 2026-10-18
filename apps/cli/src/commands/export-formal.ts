@@ -17,14 +17,14 @@ import type { CommandModule } from "yargs";
 export interface ExportFormalArgs {
   paths: string[];
   format: "smt2" | "nuxmv" | "ocra";
-  output?: string;
-  logic?: "QF_LRA" | "QF_NRA" | "QF_IDL" | "ALL";
-  module?: string;
-  scope?: string;
-  invariants?: string[];
-  ltl?: string[];
-  minimize?: string[];
-  maximize?: string[];
+  output?: string | undefined;
+  logic?: "QF_LRA" | "QF_NRA" | "QF_IDL" | "ALL" | undefined;
+  module?: string | undefined;
+  scope?: string | undefined;
+  invariants?: string[] | undefined;
+  ltl?: string[] | undefined;
+  minimize?: string[] | undefined;
+  maximize?: string[] | undefined;
 }
 
 export const ExportFormal: CommandModule<{}, ExportFormalArgs> = {

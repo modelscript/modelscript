@@ -14,11 +14,17 @@ export { OctagonDBM as SmtOctagonDBM };
  * Result of SMT requirement consistency verification.
  */
 export interface SMTRequirementCheckResult {
+  /** True if all requirement constraints are mutually satisfiable. */
   isConsistent: boolean;
+  /** Names of requirements participating in an unsatisfiable conflict core. */
   conflictingRequirements: string[];
+  /** Detailed list of violated or contradictory constraint expressions. */
   violatedConstraints: {
+    /** Original constraint expression text. */
     expression: string;
-    requirementName?: string;
+    /** Enclosing requirement name, if known. */
+    requirementName?: string | undefined;
+    /** Human-readable explanation of why the constraint is unsatisfiable. */
     reason: string;
   }[];
 }
@@ -26,22 +32,30 @@ export interface SMTRequirementCheckResult {
 /**
  * Verifies consistency of a set of SysML v2 extracted constraints.
  * Encodes numeric bounds and difference constraints into an Octagon DBM
- * to detect contradictory intervals, impossible budgets, or cycle violations.
+ * and a Linear Real Arithmetic (LRA) Simplex solver to detect contradictory
+ * intervals, impossible budgets, or cycle violations.
+ *
+ * @param constraints - Extracted linear and bound constraints from SysML v2 requirements.
+ * @returns Consistency check result with conflicting requirement names and explanations.
  */
 export function verifyConstraintSet(constraints: ExtractedConstraint[]): SMTRequirementCheckResult {
   const solver = new RealSimplexSolver();
   const conflictingReqs = new Set<string>();
-  const violatedConstraints: { expression: string; requirementName?: string; reason: string }[] = [];
-  const bounds = new Map<string, { lower: number; upper: number; lowerSourceReq?: string; upperSourceReq?: string }>();
+  const violatedConstraints: { expression: string; requirementName?: string | undefined; reason: string }[] = [];
+  const bounds = new Map<
+    string,
+    { lower: number; upper: number; lowerSourceReq?: string | undefined; upperSourceReq?: string | undefined }
+  >();
 
   for (const c of constraints) {
     if (typeof c.rhs !== "number") continue;
 
+    // Normalize linear expression c.lhs into sum(coeff_i * var_i) + constant <=/>=/== rhs
     const rhs = c.rhs;
     const { terms, constant } = parseLinearExpression(c.lhs);
     const effectiveRhs = rhs - constant;
 
-    // Check single-variable bound consistency
+    // Fast-path: check single-variable interval bound consistency [lower, upper]
     if (terms.length === 1 && Math.abs((terms[0]?.coeff ?? 0) - 1.0) < 1e-12) {
       const varName = terms[0]!.varName;
       const b = bounds.get(varName) ?? { lower: -Infinity, upper: Infinity };
@@ -93,7 +107,7 @@ export function verifyConstraintSet(constraints: ExtractedConstraint[]): SMTRequ
       }
     }
 
-    // Add to RealSimplexSolver
+    // Encode multi-variable linear constraint into the Dual Simplex tableau and check feasibility
     solver.addConstraint({
       requirementName: c.requirementName,
       terms: terms.length > 0 ? terms : [{ varName: c.lhs, coeff: 1 }],
@@ -127,6 +141,10 @@ export function verifyConstraintSet(constraints: ExtractedConstraint[]): SMTRequ
 
 /**
  * Validates the requirement consistency for a package or analysis scope via QueryDB.
+ *
+ * @param db - Active Salsa `QueryDB` containing indexed SysML v2 symbols.
+ * @param scopeFilter - Optional package or requirement name prefix to restrict extraction.
+ * @returns Consistency verification result across all extracted requirement constraints.
  */
 export function checkRequirementConsistency(db: QueryDB, scopeFilter?: string): SMTRequirementCheckResult {
   const constraints = extractSysML2Constraints(db, scopeFilter);

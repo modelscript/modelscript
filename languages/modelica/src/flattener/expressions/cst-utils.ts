@@ -324,8 +324,9 @@ export function copyExprBetweenDaes(
             for (let el = 1; el <= maxDims[0]!; el++) {
               const elName = `${prefixed}[${el}]`;
               const elIdx = dst.getVarIdxByName(elName);
-              if (elIdx >= 0 && dst.getVarExpression(elIdx) >= 0) {
-                elems.push(dst.getVarExpression(elIdx));
+              const elExpr = elIdx >= 0 ? dst.getVarExpression(elIdx) : undefined;
+              if (elExpr !== undefined && elExpr >= 0) {
+                elems.push(elExpr);
               } else {
                 elems.push(dst.addNameExpr(elName));
               }
@@ -468,7 +469,7 @@ export function getIndexedElementText(text: string, indices: number[]): string {
     depth++;
     const elems = parseArrayLiteralElements(probe);
     if (elems.length === 0 || elems[0] === probe) break;
-    probe = elems[0];
+    probe = elems[0]!;
   }
   const topElems = parseArrayLiteralElements(curr);
   const effectiveIndices =
@@ -512,9 +513,9 @@ export function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): stri
   const cstText = cstNode?.text ?? "";
   const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
   if (enumMatch) {
-    return enumMatch[1]
+    return enumMatch[1]!
       .split(",")
-      .map((x: string) => x.trim().split(/\s+/)[0])
+      .map((x: string) => x.trim().split(/\s+/)[0]!)
       .filter(Boolean);
   }
   return null;
@@ -807,6 +808,33 @@ export function evaluateEnumRange(
   const enumInfo = resolveEnumType(typeText, scopeId, db);
   if (enumInfo) {
     return enumInfo.literals.map((l) => `${enumInfo.qual}.${l}`);
+  }
+  if (dae) {
+    const candidates = prefix ? [`${prefix}.${typeText}`, typeText] : [typeText];
+    for (const cand of candidates) {
+      if (dae.hasArrayElements(cand)) {
+        const elemIndices = dae.getArrayElementIndices(cand);
+        if (elemIndices.length > 0) {
+          const enumLits: string[] = [];
+          let allEnum = true;
+          for (const eIdx of elemIndices) {
+            const vExpr = dae.getVarExpression(eIdx);
+            if (vExpr !== undefined && vExpr >= 0 && dae.getExprKind(vExpr) === ExprKind.EnumLiteral) {
+              const litPath = dae.interner.resolve(dae.getExprLeft(vExpr));
+              if (litPath) {
+                enumLits.push(litPath);
+                continue;
+              }
+            }
+            allEnum = false;
+            break;
+          }
+          if (allEnum && enumLits.length > 0) {
+            return enumLits;
+          }
+        }
+      }
+    }
   }
   return null;
 }
@@ -1172,15 +1200,18 @@ export function evaluateCSTNumber(
 ): number | null {
   if (!node) return null;
   if (typeof node !== "string") {
-    while (node.childCount === 1) {
+    while (node && node.childCount === 1) {
       node = node.child(0);
     }
+    if (!node) return null;
     if (node.childCount === 3 && Cst.kind(node.child(0)) === "(" && Cst.kind(node.child(2)) === ")") {
       return evaluateCSTNumber(node.child(1), subs, scopeId, db, dae, prefix);
     }
   }
 
-  const text = (typeof node === "string" ? node : node.text)?.trim() ?? "";
+  const text = (typeof node === "string" ? node : node.text)?.replace(/\s*\bannotation\b[\s\S]*$/, "")?.trim() ?? "";
+  if (text === "true") return 1;
+  if (text === "false") return 0;
   if (subs && subs.has(text)) {
     const sv = subs.get(text)! as any;
     if (typeof sv === "number") return sv;
@@ -1195,6 +1226,93 @@ export function evaluateCSTNumber(
   const floatNum = parseFloat(text);
   if (!isNaN(floatNum) && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
 
+  if (text.startsWith("if ")) {
+    const normalizedIf = text.replace(/\belseif\b/g, "else if");
+    const ifMatch = normalizedIf.match(/^if\s+(.+?)\s+then\s+(.+?)\s+else\s+([\s\S]+)$/);
+    if (ifMatch) {
+      const condVal = evaluateCSTNumber(ifMatch[1]!.trim(), subs, scopeId, db, dae, prefix);
+      if (condVal !== null) {
+        return evaluateCSTNumber(
+          condVal !== 0 ? ifMatch[2]!.trim() : ifMatch[3]!.trim(),
+          subs,
+          scopeId,
+          db,
+          dae,
+          prefix,
+        );
+      }
+    }
+  }
+
+  const findInheritedModExpr = (
+    startScopeId: SymbolId,
+    targetName: string,
+  ): { exprText: string; modScopeId: SymbolId } | null => {
+    if (!db) return null;
+    const visited = new Set<SymbolId>();
+    const queue: SymbolId[] = [startScopeId];
+    while (queue.length > 0) {
+      const sid = queue.shift()!;
+      if (visited.has(sid)) continue;
+      visited.add(sid);
+      const selfMod = db.query("effectiveModification", sid);
+      const selfArg = selfMod?.args?.find(
+        (a: any) => a && !a.isBreak && a.name === targetName && (a.value || a.bindingExpression),
+      );
+      if (selfArg) {
+        const txt = (
+          selfArg.value?.text ??
+          selfArg.bindingExpression?.text ??
+          (typeof selfArg.value?.value === "number" ? String(selfArg.value.value) : "")
+        )?.trim();
+        if (txt) return { exprText: txt, modScopeId: sid };
+      }
+      const extChildren = db.childrenOf?.(sid)?.filter((c: any) => c.kind === "Extends") ?? [];
+      for (const ext of extChildren) {
+        const extMod = db.query("extendsModificationParsed", ext.id);
+        const matchingArg = extMod?.args?.find(
+          (a: any) => a && !a.isBreak && a.name === targetName && (a.value || a.bindingExpression),
+        );
+        if (matchingArg) {
+          const txt = (
+            matchingArg.value?.text ??
+            matchingArg.bindingExpression?.text ??
+            (typeof matchingArg.value?.value === "number" ? String(matchingArg.value.value) : "")
+          )?.trim();
+          if (txt) return { exprText: txt, modScopeId: sid };
+        }
+        const baseCls: SymbolEntry | null = db.query("resolvedBaseClass", ext.id);
+        if (baseCls && !visited.has(baseCls.id)) {
+          queue.push(baseCls.id);
+        }
+      }
+      const directBase: SymbolEntry | null = db.query("resolvedBaseClass", sid);
+      if (directBase && !visited.has(directBase.id)) {
+        queue.push(directBase.id);
+      }
+    }
+    return null;
+  };
+
+  const evalArrayBindingDim = (rawBText: string, dim: number, evalSid: SymbolId | undefined): number | null => {
+    const cleanB = rawBText
+      .replace(/\s*\bannotation\b[\s\S]*$/, "")
+      .replace(/^=/, "")
+      .trim();
+    if (dim === 1 && cleanB.startsWith("{") && cleanB.endsWith("}")) {
+      const inner = cleanB.slice(1, -1).trim();
+      return inner === "" ? 0 : parseArrayLiteralElements(cleanB).length;
+    }
+    const fillMatch = cleanB.match(/^fill\s*\(([\s\S]+)\)$/);
+    if (fillMatch) {
+      const fillArgs = parseArrayLiteralElements(`{${fillMatch[1]!}}`);
+      if (fillArgs.length >= 1 + dim) {
+        return evaluateCSTNumber(fillArgs[dim]!.trim(), subs, evalSid, db, dae, prefix);
+      }
+    }
+    return null;
+  };
+
   const resolveSizeCall = (arrName: string, dim: number): number | null => {
     if (dae) {
       const resolvedName = resolveScopedName(arrName, prefix, dae);
@@ -1202,13 +1320,17 @@ export function evaluateCSTNumber(
       if (dimSize !== null && dimSize > 0) return dimSize;
     }
     if (db) {
+      if (scopeId !== undefined) {
+        const modHit = findInheritedModExpr(scopeId, arrName);
+        if (modHit) {
+          const modDim = evalArrayBindingDim(modHit.exprText, dim, modHit.modScopeId);
+          if (modDim !== null) return modDim;
+        }
+      }
       let sym: any = null;
       if (scopeId) {
-        const resolver = db.query("resolveName", scopeId) ?? db.query("resolveSimpleName", scopeId);
-        if (resolver) {
-          const res = resolver(arrName);
-          if (res) sym = res;
-        }
+        const res = db.query("resolveName", scopeId)?.(arrName) ?? db.query("resolveSimpleName", scopeId)?.(arrName);
+        if (res) sym = res;
       }
       const syms = sym ? [sym] : db.byName(arrName);
       for (const s of syms) {
@@ -1221,12 +1343,20 @@ export function evaluateCSTNumber(
           const d = dims[dim - 1];
           if (d?.kind === "literal" && typeof d.value === "number") return d.value;
         }
+        const sMod = db.query("effectiveModification", s.id);
+        const sBText = sMod?.bindingExpression?.text?.trim();
+        if (sBText) {
+          const bDim = evalArrayBindingDim(sBText, dim, scopeId ?? s.parentId ?? undefined);
+          if (bDim !== null) return bDim;
+        }
       }
     }
     return null;
   };
 
   const resolveIdentConstant = (ident: string, requireConstOrParamVariability: boolean): number | null => {
+    if (ident === "true") return 1;
+    if (ident === "false") return 0;
     if (subs && subs.has(ident)) {
       const sv = subs.get(ident)! as any;
       if (typeof sv === "number") return sv;
@@ -1265,42 +1395,91 @@ export function evaluateCSTNumber(
       }
     }
     if (scopeId !== undefined && db) {
-      let curScopeId: SymbolId | null | undefined = scopeId;
-      while (curScopeId !== undefined && curScopeId !== null) {
-        const extChildren = db.childrenOf?.(curScopeId)?.filter((c: any) => c.kind === "Extends") ?? [];
-        for (const ext of extChildren) {
-          const extMod = db.query("extendsModificationParsed", ext.id);
-          const matchingArg = extMod?.args?.find((a: any) => a.name === ident && a.value);
-          if (matchingArg?.value) {
-            if (matchingArg.value.kind === "literal" && typeof matchingArg.value.value === "number") {
-              return matchingArg.value.value;
-            }
-            if (matchingArg.value.text) {
-              const bStr = matchingArg.value.text.trim();
-              const bVal = parseInt(bStr, 10);
-              if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
-              if (bStr && bStr !== ident && bStr !== text) {
-                const evalVal = evaluateCSTNumber(bStr, subs, curScopeId, db, dae, prefix);
-                if (evalVal !== null) return evalVal;
-              }
+      const state = dae ? getFlatteningState(dae) : null;
+      const flat = state?.flattener ?? (dae as any)?.flattener;
+      let resolvedIdent = ident;
+      if (ident.includes(".") && flat?.currentParentMods?.args) {
+        const parts = ident.split(".");
+        const firstSeg = parts[0]!;
+        const parentRedecl = [...flat.currentParentMods.args]
+          .reverse()
+          .find((a: any) => a && !a.isBreak && a.name === firstSeg && a.redeclaredTypeSpecifier);
+        if (parentRedecl?.redeclaredTypeSpecifier) {
+          resolvedIdent = [parentRedecl.redeclaredTypeSpecifier, ...parts.slice(1)].join(".");
+        }
+      }
+      if (resolvedIdent === ident) {
+        let curScopeId: SymbolId | null | undefined = scopeId;
+        while (curScopeId !== undefined && curScopeId !== null) {
+          const modHit = findInheritedModExpr(curScopeId, ident);
+          if (modHit) {
+            const bStr = modHit.exprText;
+            if (bStr === "true") return 1;
+            if (bStr === "false") return 0;
+            const bVal = parseInt(bStr, 10);
+            if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
+            if (bStr && bStr !== ident && bStr !== text) {
+              const evalVal = evaluateCSTNumber(bStr, subs, curScopeId, db, dae, prefix);
+              if (evalVal !== null) return evalVal;
             }
           }
+          curScopeId = db.symbol?.(curScopeId)?.parentId;
         }
-        curScopeId = db.symbol?.(curScopeId)?.parentId;
-      }
-      const resolver = db.query("resolveSimpleName", scopeId);
-      if (resolver) {
-        const resolved = resolver(ident);
+        const resolved = db.query("resolveName", scopeId)?.(ident) ?? db.query("resolveSimpleName", scopeId)?.(ident);
         if (resolved) {
           const mod = db.query("effectiveModification", resolved.id);
           if (mod?.bindingExpression?.text) {
-            const bStr = mod.bindingExpression.text.trim();
+            const bStr = mod.bindingExpression.text.replace(/\s*\bannotation\b[\s\S]*$/, "").trim();
+            if (bStr === "true") return 1;
+            if (bStr === "false") return 0;
             const bVal = parseInt(bStr, 10);
             if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
             if (bStr && bStr !== ident && bStr !== text) {
               const evalVal = evaluateCSTNumber(bStr, subs, scopeId, db, dae, prefix);
               if (evalVal !== null) return evalVal;
             }
+          }
+        }
+      }
+      const candidateScopes = [scopeId, flat?.currentClassId, flat?.currentRootClassId].filter(
+        (id, idx, arr): id is SymbolId => id != null && arr.indexOf(id) === idx,
+      );
+      for (const sId of candidateScopes) {
+        const dbConst =
+          (resolvedIdent !== ident ? lookupDbConstant(resolvedIdent, db, sId) : null) ??
+          (resolvedIdent === ident ? lookupDbConstant(ident, db, sId) : null);
+        if (dbConst && typeof dbConst.value === "number") {
+          return dbConst.value;
+        }
+      }
+      if (ident.includes(".")) {
+        const idParts = resolvedIdent.split(".");
+        const memberIdent = idParts.pop()!;
+        const pkgPath = idParts.join(".");
+        let pkgSym: SymbolEntry | null = null;
+        for (const sId of candidateScopes) {
+          const res = db.query("resolveName", sId)?.(pkgPath) ?? db.query("resolveSimpleName", sId)?.(pkgPath);
+          if (res && (res.kind === "Class" || res.kind === "Package")) {
+            pkgSym = res;
+            break;
+          }
+        }
+        if (!pkgSym) {
+          pkgSym =
+            db.byName(pkgPath.split(".").pop()!).find((e: any) => e.kind === "Class" || e.kind === "Package") ?? null;
+        }
+        if (pkgSym) {
+          const visitedAliases = new Set<SymbolId>();
+          while (pkgSym && !visitedAliases.has(pkgSym.id)) {
+            visitedAliases.add(pkgSym.id);
+            if (!getShortClassSpecifierNode(db.cstNode(pkgSym.id) as any)) break;
+            const nextBase: SymbolEntry | null = db.query("resolvedBaseClass", pkgSym.id);
+            if (nextBase) pkgSym = nextBase;
+            else break;
+          }
+          if (pkgSym && memberIdent !== text) {
+            const evalVal = evaluateCSTNumber(memberIdent, subs, pkgSym.id, db, dae, prefix);
+            if (evalVal !== null) return evalVal;
           }
         }
       }
@@ -1314,6 +1493,24 @@ export function evaluateCSTNumber(
     const dim = sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 1;
     const sizeVal = resolveSizeCall(arrName, dim);
     if (sizeVal !== null) return sizeVal;
+  }
+
+  const minMaxMatch = text.match(/^(min|max)\s*\(\s*[[{]?\s*([^()[{}]+?)\s*[\]}]?\s*\)$/);
+  if (minMaxMatch) {
+    const fn = minMaxMatch[1]!;
+    const argsList = minMaxMatch[2]!.split(",").map((s) => s.trim());
+    const argVals: number[] = [];
+    for (const argStr of argsList) {
+      const av = evaluateCSTNumber(argStr, subs, scopeId, db, dae, prefix);
+      if (av === null) {
+        argVals.length = 0;
+        break;
+      }
+      argVals.push(av);
+    }
+    if (argVals.length > 0) {
+      return fn === "min" ? Math.min(...argVals) : Math.max(...argVals);
+    }
   }
 
   // Binary expression
@@ -1373,18 +1570,45 @@ export function resolveScopedName(
   recordDiagnostics = false,
 ): string {
   const state = getFlatteningState(dae);
-  if (state.outerToInner) {
-    const full = prefix ? `${prefix}.${name}` : name;
-    const isStateOutput =
-      !state.isInsidePrevious && (state.stateOutputVars?.has(name) || state.stateOutputVars?.has(full));
-    if (!isStateOutput) {
-      if (state.outerToInner.has(name)) {
-        return state.outerToInner.get(name)!;
-      }
-      if (state.outerToInner.has(full)) {
-        return state.outerToInner.get(full)!;
+  const remapOuter = (candidate: string): string | null => {
+    if (!state.outerToInner || state.outerToInner.size === 0) return null;
+    if (state.outerToInner.has(candidate)) {
+      const isStateOut = !state.isInsidePrevious && state.stateOutputVars?.has(candidate);
+      if (!isStateOut) return state.outerToInner.get(candidate)!;
+    }
+    const baseCand = candidate.replace(/\[[^\]]*\]/g, "");
+    if (baseCand !== candidate && state.outerToInner.has(baseCand)) {
+      const isStateOut = !state.isInsidePrevious && state.stateOutputVars?.has(baseCand);
+      if (!isStateOut) {
+        const mapped = state.outerToInner.get(baseCand)!;
+        const candTail = candidate.match(/(\[[^\]]*\])+$/)?.[0] ?? "";
+        if (candTail && !mapped.endsWith("]")) return mapped + candTail;
+        return mapped;
       }
     }
+    let dot = candidate.lastIndexOf(".");
+    while (dot > 0) {
+      const sub = candidate.slice(0, dot);
+      const baseSub = sub.replace(/\[[^\]]*\]/g, "");
+      const exactMapped = state.outerToInner.get(sub);
+      const baseMapped = exactMapped === undefined ? state.outerToInner.get(baseSub) : undefined;
+      const mapped = exactMapped ?? baseMapped;
+      if (mapped) {
+        const isStateOut =
+          !state.isInsidePrevious && (state.stateOutputVars?.has(sub) || state.stateOutputVars?.has(baseSub));
+        if (!isStateOut) {
+          const subTail = exactMapped === undefined ? (sub.match(/(\[[^\]]*\])+$/)?.[0] ?? "") : "";
+          const effectiveMapped = subTail && !mapped.endsWith("]") ? mapped + subTail : mapped;
+          return effectiveMapped + candidate.slice(dot);
+        }
+      }
+      dot = candidate.lastIndexOf(".", dot - 1);
+    }
+    return null;
+  };
+  if (state.outerToInner) {
+    const mappedName = remapOuter(name);
+    if (mappedName) return mappedName;
   }
   if (state.constantAliases?.has(name)) {
     return state.constantAliases.get(name)!;
@@ -1394,17 +1618,31 @@ export function resolveScopedName(
     return state.constantAliases.get(prefixedCandidate)!;
   }
   if (!prefix) return name;
-  if (name.startsWith(prefix + ".")) return name;
+  const basePrefixedCandidate = stripArraySubscripts(prefixedCandidate);
+  const initialPrefixSet = getVarPrefixSet(dae);
+  const prefixedExistsInDae =
+    dae.getVarIdxByName(prefixedCandidate) >= 0 ||
+    dae.getVarIdxByName(basePrefixedCandidate) >= 0 ||
+    initialPrefixSet.has(prefixedCandidate) ||
+    initialPrefixSet.has(basePrefixedCandidate) ||
+    dae.hasArrayElements(prefixedCandidate);
+  if (!prefixedExistsInDae) {
+    if (name.startsWith(prefix + ".")) return name;
 
-  let anc = prefix;
-  while (anc) {
-    if (name.startsWith(anc + ".")) return name;
-    const dot = anc.lastIndexOf(".");
-    if (dot < 0) break;
-    anc = anc.slice(0, dot);
+    let anc = prefix;
+    while (anc) {
+      if (name.startsWith(anc + ".")) return name;
+      const dot = anc.lastIndexOf(".");
+      if (dot < 0) break;
+      anc = anc.slice(0, dot);
+    }
+  }
+  if (state.outerToInner) {
+    const mappedFull = remapOuter(prefixedCandidate);
+    if (mappedFull) return mappedFull;
   }
 
-  const rootComp = name.split(".")[0].split("[")[0];
+  const rootComp = name.split(".")[0]!.split("[")[0]!;
   const fullLocalRoot = `${prefix}.${rootComp}`;
   const isStateOutput = Boolean(state.stateOutputVars?.has(fullLocalRoot));
   const isInnerOuter = innerOuterComponents?.has(fullLocalRoot) || (Boolean(state.isInsidePrevious) && isStateOutput);
@@ -1502,7 +1740,7 @@ export function resolveScopedName(
 
   if (!resolvedName && name.includes(".")) {
     const parts = name.split(".");
-    if (parts.length >= 2 && !parts[0].includes("[")) {
+    if (parts.length >= 2 && !parts[0]!.includes("[")) {
       const withIdx1 = `${prefix}.${parts[0]}[1].${parts.slice(1).join(".")}`;
       if (dae.getVarIdxByName(withIdx1) >= 0) {
         resolvedName = withIdx1;
@@ -1540,7 +1778,7 @@ export function isIntegerTypeSpec(
           if (isIntegerTypeSpec(baseClass.name, db, visited, tm.id)) return true;
         }
         const meta = tm.metadata as Record<string, unknown> | undefined;
-        if (meta?.baseType === "Integer" || meta?.primitiveType === "Integer") return true;
+        if (meta?.["baseType"] === "Integer" || meta?.["primitiveType"] === "Integer") return true;
         const cst = db.cstNode(tm.id) as any;
         const txt = cst?.text ?? "";
         if (/\b(?:extends\s+)?(?:Modelica\.Icons\.)?TypeInteger\b/.test(txt) || /\bextends\s+Integer\b/.test(txt))
@@ -1551,68 +1789,230 @@ export function isIntegerTypeSpec(
   return false;
 }
 
+const KNOWN_MODELICA_CONSTANTS: Record<string, number> = {
+  pi: Math.PI,
+  "Modelica.Constants.pi": Math.PI,
+  "Constants.pi": Math.PI,
+  e: Math.E,
+  "Modelica.Constants.e": Math.E,
+  "Constants.e": Math.E,
+  c: 299792458,
+  "Modelica.Constants.c": 299792458,
+  g_n: 9.80665,
+  "Modelica.Constants.g_n": 9.80665,
+  G: 6.6743e-11,
+  "Modelica.Constants.G": 6.6743e-11,
+  q: 1.602176634e-19,
+  "Modelica.Constants.q": 1.602176634e-19,
+  h: 6.62607015e-34,
+  "Modelica.Constants.h": 6.62607015e-34,
+  k: 1.380649e-23,
+  "Modelica.Constants.k": 1.380649e-23,
+  N_A: 6.02214076e23,
+  "Modelica.Constants.N_A": 6.02214076e23,
+  F: 1.602176634e-19 * 6.02214076e23,
+  "Modelica.Constants.F": 1.602176634e-19 * 6.02214076e23,
+  R: 1.380649e-23 * 6.02214076e23,
+  "Modelica.Constants.R": 1.380649e-23 * 6.02214076e23,
+  mu_0: 4 * Math.PI * 1.00000000055e-7,
+  "Modelica.Constants.mu_0": 4 * Math.PI * 1.00000000055e-7,
+  sigma: 5.670374419e-8,
+  "Modelica.Constants.sigma": 5.670374419e-8,
+  T_zero: -273.15,
+  "Modelica.Constants.T_zero": -273.15,
+  eps: Number.EPSILON,
+  "Modelica.Constants.eps": Number.EPSILON,
+  "ModelicaServices.Machine.eps": Number.EPSILON,
+  small: Number.MIN_VALUE,
+  "Modelica.Constants.small": Number.MIN_VALUE,
+  "ModelicaServices.Machine.small": Number.MIN_VALUE,
+  inf: 1e60,
+  "Modelica.Constants.inf": 1e60,
+  "ModelicaServices.Machine.inf": 1e60,
+  Integer_inf: 2147483647,
+  "Modelica.Constants.Integer_inf": 2147483647,
+  "ModelicaServices.Machine.Integer_inf": 2147483647,
+};
+
+const KNOWN_MATH_UNARY_FUNCS: Record<string, (x: number) => number> = {
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  sinh: Math.sinh,
+  cosh: Math.cosh,
+  tanh: Math.tanh,
+  exp: Math.exp,
+  log: Math.log,
+  log10: Math.log10,
+  sqrt: Math.sqrt,
+  abs: Math.abs,
+};
+
 function evalKnownConstantExprText(exprText: string): number | null {
-  const clean = exprText.replace(/\s+/g, "");
-  if (
-    clean === "2*Modelica.Math.asin(1.0)" ||
-    clean === "2*Modelica.Math.asin(1)" ||
-    clean === "2*Math.asin(1.0)" ||
-    clean === "2*Math.asin(1)" ||
-    clean === "2*asin(1.0)" ||
-    clean === "2*asin(1)" ||
-    clean === "2.0*Modelica.Math.asin(1.0)"
-  ) {
-    return Math.PI;
+  const s = exprText.trim();
+  if (!s) return null;
+  if (Object.prototype.hasOwnProperty.call(KNOWN_MODELICA_CONSTANTS, s)) {
+    return KNOWN_MODELICA_CONSTANTS[s]!;
   }
-  if (
-    clean === "Modelica.Math.exp(1.0)" ||
-    clean === "Modelica.Math.exp(1)" ||
-    clean === "Math.exp(1.0)" ||
-    clean === "Math.exp(1)" ||
-    clean === "exp(1.0)" ||
-    clean === "exp(1)"
-  ) {
-    return Math.E;
+  let pos = 0;
+  const skipWs = () => {
+    while (pos < s.length && /\s/.test(s[pos]!)) pos++;
+  };
+  const parseExpr = (): number | null => {
+    let left = parseTerm();
+    if (left === null) return null;
+    while (true) {
+      skipWs();
+      const ch = s[pos];
+      if (ch === "+" || ch === "-") {
+        pos++;
+        const right = parseTerm();
+        if (right === null) return null;
+        left = ch === "+" ? left + right : left - right;
+      } else {
+        break;
+      }
+    }
+    return left;
+  };
+  const parseTerm = (): number | null => {
+    let left = parsePower();
+    if (left === null) return null;
+    while (true) {
+      skipWs();
+      const ch = s[pos];
+      if (ch === "*" || ch === "/") {
+        pos++;
+        const right = parsePower();
+        if (right === null) return null;
+        if (ch === "/" && right === 0) return null;
+        left = ch === "*" ? left * right : left / right;
+      } else {
+        break;
+      }
+    }
+    return left;
+  };
+  const parsePower = (): number | null => {
+    const base = parseUnary();
+    if (base === null) return null;
+    skipWs();
+    if (s[pos] === "^") {
+      pos++;
+      const exp = parsePower();
+      if (exp === null) return null;
+      return Math.pow(base, exp);
+    }
+    return base;
+  };
+  const parseUnary = (): number | null => {
+    skipWs();
+    if (s[pos] === "+") {
+      pos++;
+      return parseUnary();
+    }
+    if (s[pos] === "-") {
+      pos++;
+      const v = parseUnary();
+      return v === null ? null : -v;
+    }
+    return parsePrimary();
+  };
+  const parsePrimary = (): number | null => {
+    skipWs();
+    if (s[pos] === "(") {
+      pos++;
+      const val = parseExpr();
+      skipWs();
+      if (s[pos] !== ")") return null;
+      pos++;
+      return val;
+    }
+    const numMatch = s.slice(pos).match(/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/);
+    if (numMatch) {
+      pos += numMatch[0].length;
+      const n = Number(numMatch[0]);
+      return Number.isNaN(n) ? null : n;
+    }
+    const idMatch = s.slice(pos).match(/^[a-zA-Z_][a-zA-Z0-9_.]*/);
+    if (idMatch) {
+      const ident = idMatch[0];
+      pos += ident.length;
+      skipWs();
+      if (s[pos] === "(") {
+        pos++;
+        const arg1 = parseExpr();
+        if (arg1 === null) return null;
+        skipWs();
+        const shortFn = ident.replace(/^(?:Modelica\.)?Math\./, "");
+        if (s[pos] === "," && shortFn === "atan2") {
+          pos++;
+          const arg2 = parseExpr();
+          if (arg2 === null) return null;
+          skipWs();
+          if (s[pos] !== ")") return null;
+          pos++;
+          return Math.atan2(arg1, arg2);
+        }
+        if (s[pos] !== ")") return null;
+        pos++;
+        const fn = KNOWN_MATH_UNARY_FUNCS[shortFn];
+        if (!fn) return null;
+        return fn(arg1);
+      }
+      if (Object.prototype.hasOwnProperty.call(KNOWN_MODELICA_CONSTANTS, ident)) {
+        return KNOWN_MODELICA_CONSTANTS[ident]!;
+      }
+      return null;
+    }
+    return null;
+  };
+  const result = parseExpr();
+  skipWs();
+  if (result === null || pos !== s.length || !Number.isFinite(result)) {
+    return null;
   }
-  if (clean === "pi/180" || clean === "pi/180.0" || clean === "Modelica.Constants.pi/180") {
-    return Math.PI / 180;
-  }
-  if (clean === "180/pi" || clean === "180.0/pi" || clean === "180/Modelica.Constants.pi") {
-    return 180 / Math.PI;
-  }
-  if (clean === "ModelicaServices.Machine.eps") return Number.EPSILON;
-  if (clean === "ModelicaServices.Machine.small") return Number.MIN_VALUE;
-  if (clean === "ModelicaServices.Machine.inf") return 1e60;
-  if (clean === "ModelicaServices.Machine.Integer_inf") return 2147483647;
-  if (clean === "q*N_A") return 1.602176634e-19 * 6.02214076e23;
-  if (clean === "k*N_A") return 1.380649e-23 * 6.02214076e23;
-  if (clean === "4*pi*1.00000000055e-7") return 4 * Math.PI * 1.00000000055e-7;
-  if (clean === "1/(mu_0*c*c)") return 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458);
-  if (clean === "2*pi^5*k^4/(15*h^3*c^2)") {
-    return (
-      (2 * Math.pow(Math.PI, 5) * Math.pow(1.380649e-23, 4)) /
-      (15 * Math.pow(6.62607015e-34, 3) * Math.pow(299792458, 2))
-    );
-  }
-  return null;
+  return result;
 }
 
 export function extractDbConstantValue(
   c: SymbolEntry,
   db: QueryDB,
+  ownerScopeId?: SymbolId,
 ): { value: number | number[]; isInteger: boolean } | null {
   const variability = db.query<string | null>("variability", c.id);
   if (variability !== "constant") {
     return null;
   }
+  const evalScope = ownerScopeId ?? c.parentId ?? undefined;
   const typeSpec = db.query<string | null>("typeSpecifier", c.id);
-  const isInteger = isIntegerTypeSpec(typeSpec, db, undefined, c.parentId ?? undefined);
-  const mod = db.query<any>("effectiveModification", c.id);
-  const bText = mod?.bindingExpression?.text?.trim();
-  if (bText) {
-    if (bText.startsWith("{") && bText.endsWith("}")) {
-      const inner = bText.slice(1, -1).trim();
-      const elemStrs = inner.split(",").map((s) => s.trim());
+  const isInteger = isIntegerTypeSpec(typeSpec, db, undefined, evalScope);
+  const evalExprStr = (rawStr: string): { value: number | number[]; isInteger: boolean } | null => {
+    const str = rawStr.replace(/\s*\bannotation\b[\s\S]*$/, "").trim();
+    if (!str) return null;
+    if (str === "true") return { value: 1, isInteger: true };
+    if (str === "false") return { value: 0, isInteger: true };
+    const ifMatch = str.match(/^if\s+(.+?)\s+then\s+(.+?)\s+else\s+(.+)$/);
+    if (ifMatch) {
+      const condStr = ifMatch[1]!.trim();
+      const thenStr = ifMatch[2]!.trim();
+      const elseStr = ifMatch[3]!.trim();
+      const condVal =
+        condStr === "true"
+          ? 1
+          : condStr === "false"
+            ? 0
+            : (lookupDbConstant(condStr, db, evalScope)?.value ?? evalExprStr(condStr)?.value ?? null);
+      if (typeof condVal === "number") {
+        return evalExprStr(condVal !== 0 ? thenStr : elseStr);
+      }
+    }
+    if (str.startsWith("{") && str.endsWith("}")) {
+      const inner = str.slice(1, -1).trim();
+      const elemStrs = inner.split(",").map((s: string) => s.trim());
       const nums: number[] = [];
       let allNums = true;
       for (const es of elemStrs) {
@@ -1627,59 +2027,79 @@ export function extractDbConstantValue(
         return { value: nums, isInteger };
       }
     }
-    const num = parseFloat(bText);
-    if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(bText)) {
+    const num = parseFloat(str);
+    if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(str)) {
       return { value: num, isInteger: isInteger && Number.isInteger(num) };
     }
-    const knownVal = evalKnownConstantExprText(bText);
-    if (knownVal !== null) {
-      return { value: knownVal, isInteger: isInteger && Number.isInteger(knownVal) };
-    }
-    if (/^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(bText)) {
-      const chained = lookupDbConstant(bText, db, c.parentId ?? undefined);
+    if (/^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(str)) {
+      const chained = lookupDbConstant(str, db, evalScope);
       if (chained) {
         return { value: chained.value, isInteger: isInteger && chained.isInteger };
       }
     }
+    const knownVal = evalKnownConstantExprText(str);
+    if (knownVal !== null) {
+      return { value: knownVal, isInteger: isInteger && Number.isInteger(knownVal) };
+    }
+    let guardSet = (db as any)._inExtractDbConst as Set<SymbolId> | undefined;
+    if (!guardSet) {
+      guardSet = new Set();
+      (db as any)._inExtractDbConst = guardSet;
+    }
+    if (!guardSet.has(c.id) && str !== c.name) {
+      guardSet.add(c.id);
+      try {
+        const cstNum = evaluateCSTNumber(str, undefined, evalScope, db);
+        if (cstNum !== null && !isNaN(cstNum)) {
+          return { value: cstNum, isInteger: isInteger && Number.isInteger(cstNum) };
+        }
+      } finally {
+        guardSet.delete(c.id);
+      }
+    }
+    return null;
+  };
+  if (ownerScopeId && ownerScopeId !== c.parentId) {
+    const ownerMod = db.query<any>("effectiveModification", ownerScopeId);
+    const matchingOwnerArg = ownerMod?.args
+      ? [...ownerMod.args].reverse().find((a: any) => a && !a.isBreak && a.name === c.name)
+      : null;
+    const ownerBText = (matchingOwnerArg?.value?.text ?? matchingOwnerArg?.bindingExpression?.text)?.trim();
+    if (ownerBText) {
+      const res = evalExprStr(ownerBText);
+      if (res) return res;
+    } else if (matchingOwnerArg?.value?.kind === "literal" && typeof matchingOwnerArg.value.value === "number") {
+      return {
+        value: matchingOwnerArg.value.value,
+        isInteger: isInteger && Number.isInteger(matchingOwnerArg.value.value),
+      };
+    }
+    const ownerCst = db.cstNode(ownerScopeId) as any;
+    const ownerCstText = (ownerCst?.text ?? "").replace(/\s*\bannotation\b[\s\S]*$/, "");
+    const parenIdx = ownerCstText.indexOf("(");
+    if (parenIdx >= 0) {
+      const modSlice = ownerCstText.slice(parenIdx);
+      const argMatch = modSlice.match(new RegExp(`\\b${c.name}\\s*=\\s*([^,)]+)`));
+      if (argMatch) {
+        const res = evalExprStr(argMatch[1]!.trim());
+        if (res) return res;
+      }
+    }
+  }
+  const mod = db.query<any>("effectiveModification", c.id);
+  const bText = mod?.bindingExpression?.text?.trim();
+  if (bText) {
+    const res = evalExprStr(bText);
+    if (res) return res;
   }
   const cst = db.cstNode(c.id) as any;
   const cstText = cst?.text ?? "";
   // Strip attributes in parentheses so min=0 inside (min=0) doesn't match the binding '='
-  const strippedCstText = cstText.replace(/\([^)]*\)/g, " ");
+  const strippedCstText = cstText.replace(/\s*\bannotation\b[\s\S]*$/, "").replace(/\([^)]*\)/g, " ");
   const eqMatch = strippedCstText.match(/=\s*([^;,]+)/);
   if (eqMatch) {
-    const mText = eqMatch[1].trim();
-    if (mText.startsWith("{") && mText.endsWith("}")) {
-      const inner = mText.slice(1, -1).trim();
-      const elemStrs = inner.split(",").map((s) => s.trim());
-      const nums: number[] = [];
-      let allNums = true;
-      for (const es of elemStrs) {
-        const n = parseFloat(es);
-        if (isNaN(n)) {
-          allNums = false;
-          break;
-        }
-        nums.push(n);
-      }
-      if (allNums && nums.length > 0) {
-        return { value: nums, isInteger };
-      }
-    }
-    const num = parseFloat(mText);
-    if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(mText)) {
-      return { value: num, isInteger: isInteger && Number.isInteger(num) };
-    }
-    const knownVal = evalKnownConstantExprText(mText);
-    if (knownVal !== null) {
-      return { value: knownVal, isInteger: isInteger && Number.isInteger(knownVal) };
-    }
-    if (/^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(mText)) {
-      const chained = lookupDbConstant(mText, db, c.parentId ?? undefined);
-      if (chained) {
-        return { value: chained.value, isInteger: isInteger && chained.isInteger };
-      }
-    }
+    const res = evalExprStr(eqMatch[1].trim());
+    if (res) return res;
   }
   return null;
 }
@@ -1705,30 +2125,64 @@ export function lookupDbConstant(
   const compute = (): { value: number | number[]; isInteger: boolean } | null => {
     const hasLeadingDot = rawFullName.startsWith(".");
     const cleanFullName = hasLeadingDot ? rawFullName.slice(1) : rawFullName;
-    if (scopeId && !hasLeadingDot && cleanFullName.includes(".")) {
+    const parseModValText = (
+      valTextRaw: string,
+      forceIsInt?: boolean,
+    ): { value: number | number[]; isInteger: boolean } | null => {
+      const valText = valTextRaw.trim();
+      if (valText === "true") return { value: 1, isInteger: true };
+      if (valText === "false") return { value: 0, isInteger: true };
+      const num = parseFloat(valText);
+      if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(valText)) {
+        return {
+          value: num,
+          isInteger: forceIsInt !== undefined ? forceIsInt : Number.isInteger(num) && !valText.includes("."),
+        };
+      }
+      return null;
+    };
+    if (scopeId && !hasLeadingDot) {
       const parts = cleanFullName.split(".");
-      const children = db.childrenOf(scopeId) || [];
-      for (const child of children) {
-        if (child.kind !== "Extends") continue;
-        const extModRaw = db.query<any>("extendsModificationParsed", child.id);
-        let currArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
+      const checkArgsList = (currArgsInit: any[]): { value: number | number[]; isInteger: boolean } | null => {
+        let currArgs = currArgsInit;
         let matchedArg: any = null;
         for (let i = 0; i < parts.length; i++) {
           const seg = parts[i]!.replace(/\[.*\]$/, "");
-          matchedArg = currArgs.find((a: any) => a && !a.isBreak && a.name === seg);
+          matchedArg = [...currArgs].reverse().find((a: any) => a && !a.isBreak && a.name === seg);
           if (!matchedArg) break;
           if (i < parts.length - 1) {
+            if (matchedArg.redeclaredTypeSpecifier) {
+              const nextName = [matchedArg.redeclaredTypeSpecifier, ...parts.slice(i + 1)].join(".");
+              const res =
+                lookupDbConstant(nextName, db, scopeId) ??
+                (matchedArg.evaluationScopeId && matchedArg.evaluationScopeId !== scopeId
+                  ? lookupDbConstant(nextName, db, matchedArg.evaluationScopeId)
+                  : null);
+              if (res) return res;
+            }
             currArgs = matchedArg.nestedArgs ?? matchedArg.args ?? [];
           }
         }
         if (matchedArg) {
           const valObj = matchedArg.value ?? matchedArg.bindingExpression;
           const valText = typeof valObj === "string" ? valObj : (valObj?.text ?? String(valObj?.value ?? ""));
-          const num = parseFloat(valText.trim());
-          if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(valText.trim())) {
-            return { value: num, isInteger: Number.isInteger(num) && !valText.includes(".") };
-          }
+          const parsed = parseModValText(valText);
+          if (parsed) return parsed;
         }
+        return null;
+      };
+      const selfMod = db.query<any>("effectiveModification", scopeId);
+      if (selfMod?.args) {
+        const res = checkArgsList(selfMod.args);
+        if (res) return res;
+      }
+      const children = db.childrenOf(scopeId) || [];
+      for (const child of children) {
+        if (child.kind !== "Extends") continue;
+        const extModRaw = db.query<any>("extendsModificationParsed", child.id);
+        const currArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
+        const res = checkArgsList(currArgs);
+        if (res) return res;
       }
     }
     const parts = cleanFullName.split(".");
@@ -1738,7 +2192,7 @@ export function lookupDbConstant(
       if (resolver) {
         const resolved = resolver(hasLeadingDot ? rawFullName : cleanFullName);
         if (resolved && resolved.kind === "Component") {
-          return extractDbConstantValue(resolved, db);
+          return extractDbConstantValue(resolved, db, scopeId);
         }
       }
       const children = db.childrenOf(scopeId) || [];
@@ -1748,13 +2202,13 @@ export function lookupDbConstant(
           if (base && base.id !== scopeId) {
             const baseRes = db.query<any>("resolveName", base.id)?.(hasLeadingDot ? rawFullName : cleanFullName);
             if (baseRes && baseRes.kind === "Component") {
-              return extractDbConstantValue(baseRes, db);
+              return extractDbConstantValue(baseRes, db, scopeId);
             }
           }
         }
       }
       const scopeResId = db.symbol(scopeId)?.resourceId;
-      const candidates = db.byName(parts[0]);
+      const candidates = db.byName(parts[0]!);
       for (const c of candidates) {
         if (c.kind === "Component" && c.resourceId === scopeResId) {
           const res = extractDbConstantValue(c, db);
@@ -1764,12 +2218,90 @@ export function lookupDbConstant(
       return null;
     }
     if (parts.length >= 2) {
+      const resolveThroughComponent = (
+        compSym: SymbolEntry,
+      ): { value: number | number[]; isInteger: boolean } | null => {
+        const compMod =
+          db.query<any>("effectiveModification", compSym.id) ??
+          db.query<any>("componentInstance", compSym.id)?.modification;
+        let currArgs: any[] = compMod?.args ? [...compMod.args] : [];
+        let currComp: SymbolEntry | null = compSym;
+        let currClassId: SymbolId | null = null;
+        const resolveCompClassId = (cSym: SymbolEntry): SymbolId | null => {
+          const ci = db.query<SymbolId | null>("classInstance", cSym.id);
+          if (ci) return ci;
+          const tSpec = db.query<string | null>("typeSpecifier", cSym.id);
+          if (tSpec && cSym.parentId !== null) {
+            const r =
+              db.query<any>("resolveName", cSym.parentId)?.(tSpec) ??
+              db.query<any>("resolveSimpleName", cSym.parentId)?.(tSpec);
+            if (r && (r.kind === "Class" || r.kind === "Package")) return r.id;
+          }
+          return null;
+        };
+        currClassId = resolveCompClassId(compSym);
+        for (let i = 1; i < parts.length; i++) {
+          const seg = parts[i]!.replace(/\[.*\]$/, "");
+          const matchedArg = currArgs.find((a: any) => a && !a.isBreak && a.name === seg);
+          let memberSym: SymbolEntry | null = null;
+          if (currClassId) {
+            memberSym =
+              db.query<any>("resolveSimpleName", currClassId)?.(seg) ??
+              db.childrenOf(currClassId).find((c) => c.name === seg) ??
+              null;
+          }
+          if (i === parts.length - 1) {
+            if (matchedArg) {
+              const valObj = matchedArg.value ?? matchedArg.bindingExpression;
+              const valText = typeof valObj === "string" ? valObj : (valObj?.text ?? String(valObj?.value ?? ""));
+              const memberTypeSpec = memberSym ? db.query<string | null>("typeSpecifier", memberSym.id) : null;
+              const forceInt = memberTypeSpec
+                ? isIntegerTypeSpec(memberTypeSpec, db, undefined, memberSym?.parentId ?? undefined)
+                : undefined;
+              const parsed = parseModValText(valText, forceInt);
+              if (parsed) return parsed;
+            }
+            if (memberSym && memberSym.kind === "Component") {
+              const res = extractDbConstantValue(memberSym, db, currClassId ?? undefined);
+              if (res) return res;
+            }
+            return null;
+          }
+          if (matchedArg?.isRedeclaration && matchedArg.redeclaredTypeSpecifier) {
+            const evalScope = matchedArg.evaluationScopeId ?? compSym.parentId ?? scopeId;
+            const redeclTarget: SymbolEntry | null =
+              (evalScope ? db.query<any>("resolveName", evalScope)?.(matchedArg.redeclaredTypeSpecifier) : null) ??
+              db
+                .byName(matchedArg.redeclaredTypeSpecifier.split(".").pop()!)
+                .find((e) => e.kind === "Class" || e.kind === "Package") ??
+              null;
+            if (redeclTarget) {
+              return lookupDbConstant(parts.slice(i + 1).join("."), db, redeclTarget.id);
+            }
+          }
+          currArgs = matchedArg ? (matchedArg.nestedArgs ?? matchedArg.args ?? []) : [];
+          if (memberSym && memberSym.kind === "Component") {
+            currComp = memberSym;
+            currClassId = resolveCompClassId(currComp);
+          } else if (memberSym && (memberSym.kind === "Class" || memberSym.kind === "Package")) {
+            currClassId = memberSym.id;
+          } else {
+            return null;
+          }
+        }
+        return null;
+      };
       const roots: SymbolEntry[] = [];
       if (scopeId) {
         const resolver = db.query<any>("resolveName", scopeId) ?? db.query<any>("resolveSimpleName", scopeId);
         const firstResolved = resolver?.(hasLeadingDot ? `.${parts[0]!}` : parts[0]!);
-        if (firstResolved && firstResolved.kind !== "Component") {
-          roots.push(firstResolved);
+        if (firstResolved) {
+          if (firstResolved.kind === "Component") {
+            const compRes = resolveThroughComponent(firstResolved);
+            if (compRes) return compRes;
+          } else {
+            roots.push(firstResolved);
+          }
         }
       }
       for (const r of db.byName(parts[0]!)) {
@@ -1781,10 +2313,14 @@ export function lookupDbConstant(
         if (root.kind === "Component") continue;
         if (hasLeadingDot && root.parentId !== null) continue;
         let currList: SymbolEntry[] = [root];
+        let lastClassId: SymbolId | undefined = root.id;
         for (let i = 1; i < parts.length; i++) {
           const seg = parts[i]!;
           const nextList: SymbolEntry[] = [];
           for (const p of currList) {
+            if (p.kind === "Class" || p.kind === "Package") {
+              lastClassId = p.id;
+            }
             for (const ch of db.childrenOf(p.id)) {
               if (ch.name === seg) {
                 nextList.push(ch);
@@ -1806,7 +2342,7 @@ export function lookupDbConstant(
         }
         for (const c of currList) {
           if (c.kind === "Component") {
-            const res = extractDbConstantValue(c, db);
+            const res = extractDbConstantValue(c, db, lastClassId);
             if (res) return res;
           }
         }
@@ -1873,6 +2409,14 @@ export function getDaeDimSize(prefix: string, partIdent: string, dimIdx: number,
   const namedShape = getNamedArrayShape(dae, fullIdent) ?? getNamedArrayShape(dae, partIdent);
   if (namedShape && dimIdx >= 0 && dimIdx < namedShape.length && namedShape[dimIdx]! > 0) {
     return namedShape[dimIdx]!;
+  }
+  const directVarIdx =
+    dae.lookupVariable(fullIdent) >= 0 ? dae.lookupVariable(fullIdent) : dae.lookupVariable(partIdent);
+  if (directVarIdx >= 0) {
+    const varShape = dae.getVarShape(directVarIdx);
+    if (varShape && dimIdx >= 0 && dimIdx < varShape.length && varShape[dimIdx]! > 0) {
+      return varShape[dimIdx]!;
+    }
   }
   const hasFullFast = dae.getArrayElementIndices(fullIdent).length > 0;
   const matchedFastPrefix = hasFullFast ? fullIdent : partIdent;
@@ -2020,6 +2564,33 @@ export function getDaeArrayDimCount(prefix: string, partIdent: string, dae: DAEB
     return 0;
   }
   if (db) {
+    if (partIdent.includes(".")) {
+      const dotIdx = partIdent.indexOf(".");
+      const basePart = partIdent.slice(0, dotIdx);
+      const restPart = partIdent.slice(dotIdx + 1);
+      const baseResolved = prefix ? `${prefix}.${basePart}` : basePart;
+      const baseVarIdx =
+        dae.getVarIdxByName(baseResolved) >= 0 ? dae.getVarIdxByName(baseResolved) : dae.getVarIdxByName(basePart);
+      if (baseVarIdx >= 0) {
+        const cType = dae.getVarCustomType(baseVarIdx);
+        if (cType) {
+          const recLeaf = cType.split(".").pop()!;
+          const recSym =
+            db.byName(recLeaf).find((s: any) => s.kind === "Class" && getSymbolQualifiedName(db, s.id) === cType) ??
+            db.byName(recLeaf).find((s: any) => s.kind === "Class");
+          if (recSym) {
+            const fieldSym = db.childrenOf(recSym.id).find((c: any) => c.name === restPart && c.kind === "Component");
+            if (fieldSym) {
+              const dims = db.query("arrayDimensions", fieldSym.id);
+              if (dims && Array.isArray(dims) && dims.length > 0) {
+                return dims.length;
+              }
+              return 0;
+            }
+          }
+        }
+      }
+    }
     const syms = db.byName(partIdent);
     for (const s of syms) {
       if (s.kind === "Component") {
@@ -2087,7 +2658,18 @@ export function expandVarToArrayCtor(baseName: string, dae: DAEBuilder): number 
     const vIdx = dae.getVarIdxByName(baseName);
     if (vIdx >= 0) {
       const shape = dae.getVarShape(vIdx);
-      if (shape && shape.length > 0 && shape.every((d) => d > 0)) {
+      const shapeExprs = dae.getVarShapeExprs ? dae.getVarShapeExprs(vIdx) : null;
+      const hasSymbolicDim =
+        dae.classKind === "function" &&
+        Boolean(
+          shapeExprs &&
+          shapeExprs.some((se: any) =>
+            typeof se === "number"
+              ? se >= 0 && dae.getExprKind(se) !== ExprKind.IntLiteral
+              : Boolean(se && !/^\d+$/.test(String(se).trim())),
+          ),
+        );
+      if (!hasSymbolicDim && shape && shape.length > 0 && shape.every((d) => d > 0)) {
         const baseExpr = dae.addNameExpr(baseName);
         const buildCtorForShape = (currentDim: number, currentIndices: number[]): number => {
           if (currentDim === shape.length) {

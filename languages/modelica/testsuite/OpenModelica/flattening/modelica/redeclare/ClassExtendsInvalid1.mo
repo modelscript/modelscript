@@ -1,7 +1,6 @@
 // name:     ClassExtendsInvalid1
 // keywords: class,extends
 // status:   incorrect
-// xfail:    true
 //
 // Checks that it's not allowed to class extend a non-replaceable class.
 //

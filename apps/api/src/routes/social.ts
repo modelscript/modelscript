@@ -22,6 +22,161 @@ const optionalAuth = (req: Request, res: Response, next: any) => {
   next();
 };
 
+const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^\]]*)\])?\{([^}]*)\}/g;
+
+function parseNotebookPayload(
+  rawContent: string | null | undefined,
+  rawNotebook: any,
+  fallbackArtifactId?: number,
+): {
+  effectiveContent: string | null | undefined;
+  notebookMeta: {
+    isNotebook: boolean;
+    title?: string | undefined;
+    cells: Array<
+      | { id: string; type: "markdown"; content: string }
+      | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined }
+    >;
+    artifactIds: number[];
+  } | null;
+} {
+  const inputCells = Array.isArray(rawNotebook?.cells) ? rawNotebook.cells : null;
+  const notebookTitle =
+    typeof rawNotebook?.title === "string" && rawNotebook.title.trim() ? rawNotebook.title.trim() : undefined;
+
+  if (inputCells && inputCells.length > 0) {
+    const normalizedCells: Array<
+      | { id: string; type: "markdown"; content: string }
+      | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined }
+    > = [];
+    const artifactIds: number[] = [];
+
+    inputCells.forEach((cell: any, idx: number) => {
+      if (cell?.type === "markdown") {
+        normalizedCells.push({
+          id: cell.id || `md-${idx}`,
+          type: "markdown",
+          content: typeof cell.content === "string" ? cell.content : "",
+        });
+      } else if (cell?.type === "artifact" && Number.isFinite(Number(cell.artifactId))) {
+        const aid = Number(cell.artifactId);
+        normalizedCells.push({
+          id: cell.id || `art-${idx}`,
+          type: "artifact",
+          artifactId: aid,
+          ...(cell.title ? { title: String(cell.title) } : {}),
+          ...(cell.caption ? { caption: String(cell.caption) } : {}),
+        });
+        if (!artifactIds.includes(aid)) {
+          artifactIds.push(aid);
+        }
+      }
+    });
+
+    let effectiveContent = rawContent;
+    if (!effectiveContent || !effectiveContent.trim()) {
+      const blocks: string[] = [];
+      if (notebookTitle) {
+        blocks.push(`# ${notebookTitle}`);
+      }
+      for (const c of normalizedCells) {
+        if (c.type === "markdown" && c.content.trim()) {
+          blocks.push(c.content.trim());
+        } else if (c.type === "artifact") {
+          const label = c.title ? `[${c.title.replace(/\]/g, "")}]` : "";
+          const captionAttr = c.caption ? ` caption="${c.caption.replace(/"/g, "'")}"` : "";
+          blocks.push(`::artifact${label}{id=${c.artifactId}${captionAttr}}`);
+        }
+      }
+      effectiveContent = blocks.join("\n\n");
+    }
+
+    return {
+      effectiveContent,
+      notebookMeta: {
+        isNotebook: Boolean(
+          rawNotebook?.isNotebook ?? (normalizedCells.length > 1 || artifactIds.length > 1 || notebookTitle),
+        ),
+        ...(notebookTitle ? { title: notebookTitle } : {}),
+        cells: normalizedCells,
+        artifactIds,
+      },
+    };
+  }
+
+  if (typeof rawContent === "string" && rawContent.includes("::artifact")) {
+    ARTIFACT_DIRECTIVE_RE.lastIndex = 0;
+    const cells: Array<
+      | { id: string; type: "markdown"; content: string }
+      | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined }
+    > = [];
+    const artifactIds: number[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let idx = 0;
+
+    while ((match = ARTIFACT_DIRECTIVE_RE.exec(rawContent)) !== null) {
+      const before = rawContent.slice(lastIndex, match.index).trim();
+      if (before) {
+        cells.push({ id: `md-${idx++}`, type: "markdown", content: before });
+      }
+      const bracketTitle = match[1]?.trim();
+      const attrStr = match[2] || "";
+      const idMatch = attrStr.match(/(?:^|\s)id\s*=\s*["']?(\d+)["']?/);
+      const captionMatch = attrStr.match(/(?:^|\s)caption\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+      if (idMatch && idMatch[1]) {
+        const aid = Number(idMatch[1]);
+        const caption = captionMatch ? (captionMatch[1] ?? captionMatch[2]) : undefined;
+        cells.push({
+          id: `art-${idx++}`,
+          type: "artifact",
+          artifactId: aid,
+          ...(bracketTitle ? { title: bracketTitle } : {}),
+          ...(caption ? { caption } : {}),
+        });
+        if (!artifactIds.includes(aid)) {
+          artifactIds.push(aid);
+        }
+      }
+      lastIndex = match.index + match[0].length;
+    }
+
+    const tail = rawContent.slice(lastIndex).trim();
+    if (tail) {
+      cells.push({ id: `md-${idx++}`, type: "markdown", content: tail });
+    }
+
+    if (artifactIds.length > 0) {
+      return {
+        effectiveContent: rawContent,
+        notebookMeta: {
+          isNotebook: true,
+          ...(notebookTitle ? { title: notebookTitle } : {}),
+          cells,
+          artifactIds,
+        },
+      };
+    }
+  }
+
+  if (fallbackArtifactId && rawNotebook?.isNotebook) {
+    return {
+      effectiveContent: rawContent,
+      notebookMeta: {
+        isNotebook: true,
+        ...(notebookTitle ? { title: notebookTitle } : {}),
+        cells: [
+          ...(rawContent ? [{ id: "md-0", type: "markdown" as const, content: rawContent }] : []),
+          { id: "art-0", type: "artifact" as const, artifactId: Number(fallbackArtifactId) },
+        ],
+        artifactIds: [Number(fallbackArtifactId)],
+      },
+    };
+  }
+
+  return { effectiveContent: rawContent, notebookMeta: null };
+}
+
 export function socialRouter(database: LibraryDatabase, worker?: FederationWorker): Router {
   const router = createRouter();
 
@@ -31,7 +186,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.post("/posts", requireAuth, (req: Request, res: Response) => {
     const authorId = req.user!.id;
     const {
-      content,
+      content: rawContent,
       artifact_view_id: raw_artifact_view_id,
       artifactId,
       reply_to_id,
@@ -42,16 +197,32 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       metadata: rawMetadata,
       reply_visibility,
       content_warning,
+      notebook: topLevelNotebook,
+      cells: topLevelCells,
     } = req.body;
-    const artifact_view_id = raw_artifact_view_id ?? artifactId;
+
+    const explicitArtifactId = raw_artifact_view_id ?? artifactId;
+    const rawNotebookInput =
+      topLevelNotebook ||
+      (Array.isArray(topLevelCells) ? { isNotebook: true, cells: topLevelCells } : null) ||
+      (typeof rawMetadata === "object" && rawMetadata !== null ? (rawMetadata as any).notebook : null);
+
+    const { effectiveContent: content, notebookMeta } = parseNotebookPayload(
+      rawContent,
+      rawNotebookInput,
+      explicitArtifactId,
+    );
+
+    const artifact_view_id = explicitArtifactId ?? notebookMeta?.artifactIds?.[0];
     const metadata = {
       ...(typeof rawMetadata === "object" && rawMetadata !== null ? rawMetadata : {}),
+      ...(notebookMeta ? { notebook: notebookMeta } : {}),
       ...(content_warning ? { contentWarning: content_warning } : {}),
       ...(client_signature ? { clientSignature: client_signature, client_signature } : {}),
       ...(key_id_string ? { keyIdString: key_id_string, key_id_string } : {}),
     };
 
-    if (!content && !repost_of_id && !artifact_view_id) {
+    if (!content && !repost_of_id && !artifact_view_id && !notebookMeta?.cells?.length) {
       res.status(400).json({ error: "Content, artifact, or repost target is required" });
       return;
     }
@@ -89,7 +260,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       }
       const { id } = database.createPost(
         authorId,
-        content,
+        content ?? null,
         artifact_view_id,
         reply_to_id,
         quote_post_id,
@@ -135,7 +306,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                 // Find remote followers
                 const remoteFollowers = database.getRemoteFollowersInboxes(authorId);
                 const mentionTags: any[] = [];
-                const additionalInboxes: { inbox_url: string; shared_inbox_url?: string; remote_domain: string }[] = [];
+                const additionalInboxes: {
+                  inbox_url: string;
+                  shared_inbox_url?: string | undefined;
+                  remote_domain: string;
+                }[] = [];
 
                 for (const username of mentions) {
                   if (username.includes("@")) {
@@ -151,16 +326,16 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                             name: `@${resolved.user.username}`,
                           });
                           const inbox =
-                            (resolved.actor?.endpoints as any)?.sharedInbox ||
-                            (resolved.actor?.sharedInbox as string) ||
-                            (resolved.actor?.inbox as string) ||
+                            (resolved.actor?.["endpoints"] as any)?.sharedInbox ||
+                            (resolved.actor?.["sharedInbox"] as string) ||
+                            (resolved.actor?.["inbox"] as string) ||
                             `${resolved.actorUrl}/inbox`;
                           const domain = new URL(resolved.actorUrl).hostname;
                           additionalInboxes.push({
                             inbox_url: inbox,
                             shared_inbox_url:
-                              (resolved.actor?.endpoints as any)?.sharedInbox ||
-                              (resolved.actor?.sharedInbox as string) ||
+                              (resolved.actor?.["endpoints"] as any)?.sharedInbox ||
+                              (resolved.actor?.["sharedInbox"] as string) ||
                               undefined,
                             remote_domain: domain,
                           });
@@ -208,13 +383,24 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     };
                   }
 
-                  if (artifact_view_id) {
-                    const artifact = database.getArtifactView(artifact_view_id);
+                  const allArtifactIds = Array.from(
+                    new Set(
+                      [artifact_view_id, ...(notebookMeta?.artifactIds || [])].filter(
+                        (aid): aid is number => typeof aid === "number" && Number.isFinite(aid),
+                      ),
+                    ),
+                  );
+                  if (allArtifactIds.length > 0) {
                     const { serializeArtifactAttachment } = await import("./federation.js");
-                    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
-                    const attachment = serializeArtifactAttachment(artifact, publicUrl);
-                    if (attachment) {
-                      noteObject.attachment = [attachment];
+                    const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+                    const attachments = allArtifactIds
+                      .map((aid) => {
+                        const artifact = database.getArtifactView(aid);
+                        return serializeArtifactAttachment(artifact, publicUrl);
+                      })
+                      .filter(Boolean);
+                    if (attachments.length > 0) {
+                      noteObject.attachment = attachments;
                     }
                   }
 
@@ -344,7 +530,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * DELETE /api/v1/social/posts/:id
    */
   router.delete("/posts/:id", requireAuth, async (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     const userId = req.user!.id;
 
     try {
@@ -399,7 +585,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/posts/:id
    */
   router.get("/posts/:id", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     const currentUserId = req.user?.id;
     try {
       const post = database.getPost(postId, currentUserId);
@@ -417,7 +603,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * POST /api/v1/social/posts/:id/view
    */
   router.post("/posts/:id/view", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     try {
       // Check CDN headers first (Cloudflare, AWS CloudFront, Nginx reverse proxy)
       const cfCountry = req.headers["cf-ipcountry"] as string | undefined;
@@ -473,7 +659,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/posts/:id/analytics
    */
   router.get("/posts/:id/analytics", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     try {
       const post = database.getPost(postId);
       if (!post) {
@@ -498,9 +684,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/posts/:id/replies
    */
   router.get("/posts/:id/replies", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     const currentUserId = req.user?.id;
-    const limit = Number(req.query.limit) || 50;
+    const limit = Number(req.query["limit"]) || 50;
     try {
       const posts = database.getReplies(postId, currentUserId, limit);
       res.json({ posts });
@@ -513,7 +699,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/posts/:id/parents
    */
   router.get("/posts/:id/parents", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     const currentUserId = req.user?.id;
     try {
       const posts = database.getPostParents(postId, currentUserId);
@@ -528,10 +714,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/timeline", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query.limit) || 20;
-    const offset = Number(req.query.offset) || 0;
-    const artifactType = (req.query.artifactType as string) || undefined;
-    const tag = (req.query.tag as string) || undefined;
+    const limit = Number(req.query["limit"]) || 20;
+    const offset = Number(req.query["offset"]) || 0;
+    const artifactType = (req.query["artifactType"] as string) || undefined;
+    const tag = (req.query["tag"] as string) || undefined;
     try {
       const posts = database.getHomeTimeline(userId, limit, offset, artifactType, tag);
       res.json({ posts });
@@ -545,11 +731,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/timeline/following", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query.limit) || 20;
-    const sort = req.query.sort as string;
-    const offset = Number(req.query.offset) || 0;
-    const artifactType = (req.query.artifactType as string) || undefined;
-    const tag = (req.query.tag as string) || undefined;
+    const limit = Number(req.query["limit"]) || 20;
+    const sort = req.query["sort"] as string;
+    const offset = Number(req.query["offset"]) || 0;
+    const artifactType = (req.query["artifactType"] as string) || undefined;
+    const tag = (req.query["tag"] as string) || undefined;
     try {
       const posts = database.getFollowingTimeline(userId, limit, sort, offset, artifactType, tag);
       res.json({ posts });
@@ -563,10 +749,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/timeline/federated", optionalAuth, (req: Request, res: Response) => {
     const currentUserId = req.user?.id;
-    const limit = Number(req.query.limit) || 20;
-    const offset = Number(req.query.offset) || 0;
-    const artifactType = (req.query.artifactType as string) || undefined;
-    const tag = (req.query.tag as string) || undefined;
+    const limit = Number(req.query["limit"]) || 20;
+    const offset = Number(req.query["offset"]) || 0;
+    const artifactType = (req.query["artifactType"] as string) || undefined;
+    const tag = (req.query["tag"] as string) || undefined;
     try {
       const posts = database.getFederatedTimeline(currentUserId, limit, offset, artifactType, tag);
       res.json({ posts });
@@ -580,10 +766,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/explore", optionalAuth, (req: Request, res: Response) => {
     const currentUserId = req.user?.id;
-    const limit = Number(req.query.limit) || 20;
-    const offset = Number(req.query.offset) || 0;
-    const artifactType = (req.query.artifactType as string) || undefined;
-    const tag = (req.query.tag as string) || undefined;
+    const limit = Number(req.query["limit"]) || 20;
+    const offset = Number(req.query["offset"]) || 0;
+    const artifactType = (req.query["artifactType"] as string) || undefined;
+    const tag = (req.query["tag"] as string) || undefined;
     try {
       const posts = database.getExploreTimeline(currentUserId, limit, offset, artifactType, tag);
       res.json({ posts });
@@ -596,10 +782,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/users/:username/posts
    */
   router.get("/users/:username/posts", optionalAuth, (req: Request, res: Response) => {
-    const username = req.params.username as string;
+    const username = req.params["username"] as string;
     const currentUserId = req.user?.id;
-    const limit = Number(req.query.limit) || 20;
-    const type = req.query.type as string | undefined;
+    const limit = Number(req.query["limit"]) || 20;
+    const type = req.query["type"] as string | undefined;
 
     try {
       const posts = database.getUserTimeline(username, currentUserId, limit, type);
@@ -614,7 +800,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.post("/posts/:id/like", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     try {
       const liked = database.toggleLike(userId, postId);
       res.json({ liked });
@@ -628,7 +814,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.post("/posts/:id/bookmark", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     try {
       const bookmarked = database.toggleBookmark(userId, postId);
       res.json({ bookmarked });
@@ -642,7 +828,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.post("/posts/:id/repost", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     try {
       const reposted = database.toggleRepost(userId, postId);
       res.json({ reposted });
@@ -657,7 +843,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.post("/posts/:id/report", requireAuth, (req: Request, res: Response) => {
     const reporterId = req.user!.id;
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     const { reason, details } = req.body;
 
     if (!reason || typeof reason !== "string") {
@@ -704,7 +890,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/posts/:id/quotes
    */
   router.get("/posts/:id/quotes", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     const userId = req.user?.id;
     try {
       const quotes = database.getQuotes(postId, userId);
@@ -719,7 +905,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/posts/:id/reposts
    */
   router.get("/posts/:id/reposts", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     const userId = req.user?.id;
     try {
       const reposts = database.getReposts(postId, userId);
@@ -734,7 +920,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/artifact-views/:id
    */
   router.get("/artifact-views/:id", optionalAuth, (req: Request, res: Response) => {
-    const id = Number(req.params.id);
+    const id = Number(req.params["id"]);
     try {
       const artifactView = database.getArtifactView(id);
       if (!artifactView) {
@@ -766,7 +952,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     }
 
     try {
-      if (!req.user && process.env.NODE_ENV === "production") {
+      if (!req.user && process.env["NODE_ENV"] === "production") {
         res.status(401).json({ error: "Authentication required" });
         return;
       }
@@ -834,7 +1020,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * POST /api/v1/social/artifact-views/from-hpc-job
    */
   router.post("/artifact-views/from-hpc-job", optionalAuth, (req: Request, res: Response) => {
-    if (!req.user && process.env.NODE_ENV === "production") {
+    if (!req.user && process.env["NODE_ENV"] === "production") {
       return res.status(401).json({ error: "Authentication required" });
     }
     const userId = req.user?.id || 1;
@@ -869,6 +1055,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       console.error("[SocialRouter] POST /artifact-views/from-hpc-job error:", err);
       res.status(500).json({ error: err.message || "Failed to create artifact view from HPC job" });
     }
+    return;
   });
 
   /**
@@ -876,7 +1063,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/bookmarks", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query.limit) || 20;
+    const limit = Number(req.query["limit"]) || 20;
     try {
       const posts = database.getBookmarks(userId, limit);
       res.json({ posts });
@@ -890,8 +1077,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/notifications", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query.limit) || 20;
-    const category = typeof req.query.category === "string" ? req.query.category : undefined;
+    const limit = Number(req.query["limit"]) || 20;
+    const category = typeof req.query["category"] === "string" ? req.query["category"] : undefined;
     try {
       const notifications = database.getNotifications(userId, limit, category);
       const unreadCount = database.getUnreadNotificationCount(userId);
@@ -919,7 +1106,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/trending
    */
   router.get("/trending", optionalAuth, (req: Request, res: Response) => {
-    const limit = Number(req.query.limit) || 10;
+    const limit = Number(req.query["limit"]) || 10;
     try {
       const topics = database.getTopTrendingTopics(limit);
       res.json({ topics });
@@ -932,11 +1119,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * GET /api/v1/social/topics/:concept/posts
    */
   router.get("/topics/:concept/posts", optionalAuth, (req: Request, res: Response) => {
-    const concept = req.params.concept as string;
+    const concept = req.params["concept"] as string;
     const currentUserId = req.user?.id;
-    const limit = Number(req.query.limit) || 20;
-    const offset = Number(req.query.offset) || 0;
-    const artifactType = (req.query.artifactType as string) || undefined;
+    const limit = Number(req.query["limit"]) || 20;
+    const offset = Number(req.query["offset"]) || 0;
+    const artifactType = (req.query["artifactType"] as string) || undefined;
 
     try {
       const posts = database.getTopicPosts(concept, currentUserId, limit, offset, artifactType);
@@ -1052,6 +1239,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
           avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=random&color=fff`;
 
         const feedId = database.createRssProfile(targetUrl, title, description, siteUrl, avatarUrl, customUsername);
+        void feedId;
         feed = database.getRssFeedByUrl(targetUrl);
       }
 
@@ -1089,7 +1277,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.delete("/feeds/:id/unsubscribe", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const feedId = Number(req.params.id);
+    const feedId = Number(req.params["id"]);
     try {
       database.unsubscribeFromRssFeed(userId, feedId);
       res.json({ success: true });

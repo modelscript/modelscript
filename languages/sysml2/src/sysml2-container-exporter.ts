@@ -36,7 +36,16 @@ import {
   type SspParameterValue,
   type SspSystem,
 } from "@modelscript/exchange";
-import { BinOp, Causality, DAEBuilder, EqKind, initBltWasm, Variability, VarType } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  DAEBuilder,
+  EqKind,
+  ExprKind,
+  initBltWasm,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
 import {
   GenericModelicaBridge,
   type SysML2GenericDefinition,
@@ -48,23 +57,23 @@ export type { SspSystem };
 /** Options for SysML v2 container export. */
 export interface Sysml2ContainerExportOptions extends SspExportOptions {
   /** Target SSP version (default "1.0"). */
-  version?: string;
+  version?: string | undefined;
   /** System description text. */
-  description?: string;
+  description?: string | undefined;
   /** Target FMI version for internal or monolithic FMUs ("2" | "3" | "both", default "3"). */
-  fmiVersion?: "2" | "3" | "both";
+  fmiVersion?: "2" | "3" | "both" | undefined;
   /** Include C sources in FMUs (default true). */
-  includeSources?: boolean;
+  includeSources?: boolean | undefined;
   /** Include WASM binary / source in FMUs (default true). */
-  includeWasm?: boolean;
+  includeWasm?: boolean | undefined;
   /** Custom modelica implementations or pre-built DAEs for parts (partTypeName -> DAEBuilder | string). */
-  partBehaviors?: Map<string, DAEBuilder | string>;
+  partBehaviors?: Map<string, DAEBuilder | string> | undefined;
   /** Default experiment start time. */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Default experiment stop time. */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Default experiment step size. */
-  stepSize?: number;
+  stepSize?: number | undefined;
 }
 
 /** Result of an SSP multi-physics package export. */
@@ -304,8 +313,10 @@ export class SysML2ContainerExporter {
   static async exportToDdp(
     sysmlSource: string | SysML2GenericDefinition,
     options?: Sysml2ContainerExportOptions & {
-      geometryFiles?: { id: string; path: string; data: Uint8Array | string; format?: string }[];
-      author?: { name: string; organization?: string; email?: string };
+      geometryFiles?:
+        | { id: string; path: string; data: Uint8Array | string; format?: string | undefined }[]
+        | undefined;
+      author?: { name: string; organization?: string | undefined; email?: string | undefined } | undefined;
     },
   ): Promise<{ archive: Uint8Array; manifest: DdpManifest }> {
     const sspResult = await this.exportToSsp(sysmlSource, options);
@@ -457,6 +468,118 @@ export class SysML2ContainerExporter {
     return parts;
   }
 
+  private static parseBehaviorStringToDae(part: SysML2PartUsage, behaviorText: string): DAEBuilder {
+    const dae = new DAEBuilder();
+    dae.addVariable("time", VarType.Real, Variability.Continuous, Causality.Local);
+
+    const ensureVar = (
+      rawName: string,
+      variability: Variability = Variability.Continuous,
+      causality: Causality = Causality.Local,
+      startVal?: number,
+    ): number => {
+      const existing = dae.getVarIdxByName(rawName);
+      if (existing !== -1) return existing;
+      return dae.addVariable(rawName, VarType.Real, variability, causality, startVal);
+    };
+
+    if (part.attributes) {
+      for (const [attrName, val] of Object.entries(part.attributes)) {
+        if (typeof val === "number") {
+          const p = ensureVar(`${part.name}_${attrName}`, Variability.Parameter, Causality.Local, val);
+          dae.setVarExpression(p, dae.addRealLiteral(val));
+        }
+      }
+    }
+
+    const parseSimpleExpr = (exprStr: string): number => {
+      const s = exprStr.trim();
+      if (!s) return dae.addRealLiteral(0);
+      if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(s)) {
+        return dae.addRealLiteral(parseFloat(s));
+      }
+      const derMatch = s.match(/^der\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)$/);
+      if (derMatch) {
+        const base = derMatch[1]!.includes(part.name) ? derMatch[1]! : `${part.name}_${derMatch[1]!}`;
+        ensureVar(base, Variability.Continuous, Causality.Local, 1.0);
+        ensureVar(`der(${base})`, Variability.Continuous, Causality.Local);
+        return dae.addNameExpr(`der(${base})`);
+      }
+      // Split on top-level + or -
+      let depth = 0;
+      for (let i = s.length - 1; i > 0; i--) {
+        const ch = s[i]!;
+        if (ch === ")") depth++;
+        else if (ch === "(") depth--;
+        else if (depth === 0 && (ch === "+" || ch === "-") && s[i - 1] !== "e" && s[i - 1] !== "E") {
+          const left = parseSimpleExpr(s.slice(0, i));
+          const right = parseSimpleExpr(s.slice(i + 1));
+          return dae.addBinaryExpr(ch === "+" ? BinOp.Add : BinOp.Sub, left, right);
+        }
+      }
+      for (let i = s.length - 1; i > 0; i--) {
+        const ch = s[i]!;
+        if (ch === ")") depth++;
+        else if (ch === "(") depth--;
+        else if (depth === 0 && (ch === "*" || ch === "/")) {
+          const left = parseSimpleExpr(s.slice(0, i));
+          const right = parseSimpleExpr(s.slice(i + 1));
+          return dae.addBinaryExpr(ch === "*" ? BinOp.Mul : BinOp.Div, left, right);
+        }
+      }
+      if (s.startsWith("-")) {
+        return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), parseSimpleExpr(s.slice(1)));
+      }
+      if (s.startsWith("(") && s.endsWith(")")) {
+        return parseSimpleExpr(s.slice(1, -1));
+      }
+      const varName = s === "time" || s.startsWith(`${part.name}_`) ? s : `${part.name}_${s}`;
+      const isInput = /(?:^|_)(?:u|in|input|cmd)$/i.test(varName);
+      const isOutput = /(?:^|_)(?:y|out|output)$/i.test(varName);
+      ensureVar(
+        varName,
+        Variability.Continuous,
+        isInput ? Causality.Input : isOutput ? Causality.Output : Causality.Local,
+      );
+      return dae.addNameExpr(varName);
+    };
+
+    const stmts = behaviorText
+      .split(/[;\n]+/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith("//"));
+
+    for (const stmt of stmts) {
+      const paramMatch = stmt.match(
+        /^(?:parameter|attribute|const)\s+(?:Real\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([+-]?[\d.eE+-]+)$/i,
+      );
+      if (paramMatch) {
+        const pName = paramMatch[1]!.startsWith(`${part.name}_`) ? paramMatch[1]! : `${part.name}_${paramMatch[1]!}`;
+        const val = parseFloat(paramMatch[2]!);
+        const pIdx = ensureVar(pName, Variability.Parameter, Causality.Local, val);
+        dae.setVarExpression(pIdx, dae.addRealLiteral(val));
+        continue;
+      }
+      const ioMatch = stmt.match(/^(input|output)\s+(?:Real\s+)?([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (ioMatch) {
+        const causality = ioMatch[1]!.toLowerCase() === "input" ? Causality.Input : Causality.Output;
+        const vName = ioMatch[2]!.startsWith(`${part.name}_`) ? ioMatch[2]! : `${part.name}_${ioMatch[2]!}`;
+        ensureVar(vName, Variability.Continuous, causality);
+        continue;
+      }
+      const eqIdx = stmt.indexOf("=");
+      if (eqIdx > 0 && stmt[eqIdx - 1] !== "<" && stmt[eqIdx - 1] !== ">" && stmt[eqIdx + 1] !== "=") {
+        const lhsStr = stmt.slice(0, eqIdx).trim();
+        const rhsStr = stmt.slice(eqIdx + 1).trim();
+        const lhsExpr = parseSimpleExpr(lhsStr);
+        const rhsExpr = parseSimpleExpr(rhsStr);
+        dae.addEquation(EqKind.Simple, lhsExpr, rhsExpr);
+      }
+    }
+
+    return dae;
+  }
+
   private static resolvePartDae(part: SysML2PartUsage, partBehaviors?: Map<string, DAEBuilder | string>): DAEBuilder {
     if (partBehaviors) {
       const behavior = partBehaviors.get(part.name) ?? partBehaviors.get(part.type);
@@ -464,20 +587,23 @@ export class SysML2ContainerExporter {
         if (behavior instanceof DAEBuilder) {
           return behavior;
         }
+        if (typeof behavior === "string" && behavior.trim().length > 0) {
+          return this.parseBehaviorStringToDae(part, behavior);
+        }
       }
     }
 
-    // Build synthetic DAE for this part
+    // Build default 1st-order DAE for this part
     const dae = new DAEBuilder();
     dae.addVariable("time", VarType.Real, Variability.Continuous, Causality.Local);
 
     // Add state variable and derivative
     dae.addVariable(`${part.name}_x`, VarType.Real, Variability.Continuous, Causality.Local, 1.0);
-    const derX = dae.addVariable(`der(${part.name}_x)`, VarType.Real, Variability.Continuous, Causality.Local);
+    dae.addVariable(`der(${part.name}_x)`, VarType.Real, Variability.Continuous, Causality.Local);
 
     // Add inputs/outputs based on common naming
     dae.addVariable(`${part.name}_u`, VarType.Real, Variability.Continuous, Causality.Input);
-    const y = dae.addVariable(`${part.name}_y`, VarType.Real, Variability.Continuous, Causality.Output);
+    dae.addVariable(`${part.name}_y`, VarType.Real, Variability.Continuous, Causality.Output);
 
     // Add parameters from part attributes
     if (part.attributes) {
@@ -502,66 +628,114 @@ export class SysML2ContainerExporter {
     const term1 = dae.addBinaryExpr(BinOp.Mul, negHalf, xRef);
     const uRef = dae.addNameExpr(`${part.name}_u`);
     const rhsDer = dae.addBinaryExpr(BinOp.Add, term1, uRef);
-    dae.addEquation(EqKind.Simple, derX, rhsDer);
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(`der(${part.name}_x)`), rhsDer);
 
     // y = x
-    dae.addEquation(EqKind.Simple, y, xRef);
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(`${part.name}_y`), xRef);
 
     return dae;
   }
 
+  private static cloneExprIntoDae(srcDae: DAEBuilder, dstDae: DAEBuilder, exprId: number, prefix: string): number {
+    const kind = srcDae.getExprKind(exprId);
+    const d1 = srcDae.getExprData1(exprId);
+    const left = srcDae.getExprLeft(exprId);
+    const right = srcDae.getExprRight(exprId);
+
+    switch (kind) {
+      case ExprKind.RealLiteral:
+        return dstDae.addRealLiteral(srcDae.getExprRealValue(exprId));
+      case ExprKind.IntLiteral:
+        return dstDae.addIntLiteral(d1);
+      case ExprKind.BoolLiteral:
+        return dstDae.addBoolLiteral(d1 !== 0);
+      case ExprKind.Name: {
+        const rawName = srcDae.interner.resolve(d1) || "";
+        const qualified =
+          rawName === "time" || rawName.startsWith(`${prefix}_`) || rawName.startsWith(`der(${prefix}_`)
+            ? rawName
+            : rawName.startsWith("der(") && rawName.endsWith(")")
+              ? `der(${prefix}_${rawName.slice(4, -1)})`
+              : `${prefix}_${rawName}`;
+        return dstDae.addNameExpr(qualified);
+      }
+      case ExprKind.Der: {
+        const innerId = this.cloneExprIntoDae(srcDae, dstDae, d1, prefix);
+        return dstDae.addDerExpr(innerId);
+      }
+      case ExprKind.Negate:
+      case ExprKind.Unary: {
+        const innerId = this.cloneExprIntoDae(srcDae, dstDae, d1, prefix);
+        return dstDae.addUnaryExpr(1, innerId);
+      }
+      case ExprKind.Binary: {
+        const lId = this.cloneExprIntoDae(srcDae, dstDae, left, prefix);
+        const rId = this.cloneExprIntoDae(srcDae, dstDae, right, prefix);
+        return dstDae.addBinaryExpr((d1 as BinOp) ?? BinOp.Add, lId, rId);
+      }
+      default:
+        return dstDae.addRealLiteral(0);
+    }
+  }
+
   private static buildCompositeDae(
     sysmlDef: SysML2GenericDefinition,
-    _partBehaviors?: Map<string, DAEBuilder | string>,
+    partBehaviors?: Map<string, DAEBuilder | string>,
   ): DAEBuilder {
     const dae = new DAEBuilder();
     dae.addVariable("time", VarType.Real, Variability.Continuous, Causality.Local);
 
     const parts = sysmlDef.parts && sysmlDef.parts.length > 0 ? sysmlDef.parts : this.synthesizeDefaultParts(sysmlDef);
 
-    // Build variables and equations for each part directly in composite DAE
+    // Build variables and equations for each part in composite DAE, honoring partBehaviors when provided
     for (const part of parts) {
-      // Add state variable and derivative
-      dae.addVariable(`${part.name}_x`, VarType.Real, Variability.Continuous, Causality.Local, 1.0);
-      dae.addVariable(`der(${part.name}_x)`, VarType.Real, Variability.Continuous, Causality.Local);
+      const partDae = this.resolvePartDae(part, partBehaviors);
 
-      // Add inputs/outputs based on common naming
-      dae.addVariable(`${part.name}_u`, VarType.Real, Variability.Continuous, Causality.Input);
-      dae.addVariable(`${part.name}_y`, VarType.Real, Variability.Continuous, Causality.Output);
+      for (let vIdx = 0; vIdx < partDae.varCount; vIdx++) {
+        const rawName = partDae.getVarName(vIdx);
+        if (rawName === "time") continue;
+        const qualifiedName =
+          rawName.startsWith(`${part.name}_`) || rawName.startsWith(`der(${part.name}_`)
+            ? rawName
+            : rawName.startsWith("der(") && rawName.endsWith(")")
+              ? `der(${part.name}_${rawName.slice(4, -1)})`
+              : `${part.name}_${rawName}`;
 
-      // Add parameters from part attributes
-      if (part.attributes) {
-        for (const [attrName, val] of Object.entries(part.attributes)) {
-          if (typeof val === "number") {
-            const p = dae.addVariable(
-              `${part.name}_${attrName}`,
-              VarType.Real,
-              Variability.Parameter,
-              Causality.Local,
-              val,
-            );
-            dae.setVarExpression(p, dae.addRealLiteral(val));
+        if (dae.getVarIdxByName(qualifiedName) === -1) {
+          const vType = partDae.getVarType(vIdx);
+          const variability = partDae.getVarVariability(vIdx);
+          const causality = partDae.getVarCausality(vIdx);
+          const startVal = partDae.getVarStartValue(vIdx);
+          const newVarIdx = dae.addVariable(
+            qualifiedName,
+            vType,
+            variability,
+            causality,
+            Number.isFinite(startVal) ? startVal : undefined,
+          );
+          const bindingExpr = partDae.getVarExpression(vIdx);
+          if (bindingExpr !== undefined && bindingExpr !== -1) {
+            const clonedBinding = this.cloneExprIntoDae(partDae, dae, bindingExpr, part.name);
+            dae.setVarExpression(newVarIdx, clonedBinding);
           }
         }
       }
 
-      // der(x) = -0.5 * x + u
-      const negHalf = dae.addRealLiteral(-0.5);
-      const xRef = dae.addNameExpr(`${part.name}_x`);
-      const term1 = dae.addBinaryExpr(BinOp.Mul, negHalf, xRef);
-      const uRef = dae.addNameExpr(`${part.name}_u`);
-      const rhsDer = dae.addBinaryExpr(BinOp.Add, term1, uRef);
-      dae.addEquation(EqKind.Simple, dae.addNameExpr(`der(${part.name}_x)`), rhsDer);
-
-      // y = x
-      dae.addEquation(EqKind.Simple, dae.addNameExpr(`${part.name}_y`), xRef);
+      for (let eqIdx = 0; eqIdx < partDae.eqCount; eqIdx++) {
+        const eqKind = partDae.getEqKind(eqIdx);
+        const lhs = this.cloneExprIntoDae(partDae, dae, partDae.getEqLhs(eqIdx), part.name);
+        const rhs = this.cloneExprIntoDae(partDae, dae, partDae.getEqRhs(eqIdx), part.name);
+        dae.addEquation(eqKind, lhs, rhs);
+      }
     }
 
     // Add top-level system ports as boundary variables
     for (const port of sysmlDef.ports) {
       const causality =
         port.direction === "in" ? Causality.Input : port.direction === "out" ? Causality.Output : Causality.Local;
-      dae.addVariable(port.name, VarType.Real, Variability.Continuous, causality);
+      if (dae.getVarIdxByName(port.name) === -1) {
+        dae.addVariable(port.name, VarType.Real, Variability.Continuous, causality);
+      }
     }
 
     // Add inter-part connection equations

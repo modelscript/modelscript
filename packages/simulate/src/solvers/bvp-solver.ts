@@ -192,7 +192,7 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
         if (numIntervals === 1) {
           const s0_pert = new Array<number>(n);
           for (let i = 0; i < n; i++) s0_pert[i] = S[i] ?? 0;
-          s0_pert[k] += hPert;
+          s0_pert[k] = s0_pert[k]! + hPert;
           const bc_pert = problem.bc(s0_pert, phi_pert, problem.p);
           for (let i = 0; i < n; i++) {
             Jac[i]![j] = ((bc_pert[i] ?? 0) - (R[i] ?? 0)) / hPert;
@@ -201,7 +201,7 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
           if (m === 0) {
             const s0_pert = new Array<number>(n);
             for (let i = 0; i < n; i++) s0_pert[i] = S[i] ?? 0;
-            s0_pert[k] += hPert;
+            s0_pert[k] = s0_pert[k]! + hPert;
             const bc_pert = problem.bc(s0_pert, endStates[numIntervals - 1]!, problem.p);
             for (let i = 0; i < n; i++) {
               Jac[(numIntervals - 1) * n + i]![j] = ((bc_pert[i] ?? 0) - (R[(numIntervals - 1) * n + i] ?? 0)) / hPert;

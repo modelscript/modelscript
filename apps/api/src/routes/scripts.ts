@@ -14,7 +14,7 @@ export function scriptsRouter(db: LibraryDatabase) {
   const router = express.Router();
 
   // ── Script Templates ─────────────────────────────────────────────
-  router.get("/templates", (req, res) => {
+  router.get("/templates", (_req, res) => {
     try {
       const templates = db.getScriptTemplates();
       res.json({ templates });
@@ -34,6 +34,7 @@ export function scriptsRouter(db: LibraryDatabase) {
       console.error("Error fetching template:", error);
       res.status(500).json({ error: "Failed to fetch template" });
     }
+    return;
   });
 
   router.post(
@@ -42,7 +43,7 @@ export function scriptsRouter(db: LibraryDatabase) {
     enforceExportCompliance(() => db),
     (req, res) => {
       try {
-        const id = parseInt(req.params.id as string);
+        const id = parseInt(req.params["id"] as string);
         const template = db.getScriptTemplate(id);
         if (!template) return res.status(404).json({ error: "Template not found" });
 
@@ -110,14 +111,15 @@ export function scriptsRouter(db: LibraryDatabase) {
         console.error("Error running template:", error);
         res.status(500).json({ error: "Failed to run template" });
       }
+      return;
     },
   );
 
   // ── Job Instances ────────────────────────────────────────────────
   router.get("/", optionalAuth, (req, res) => {
     try {
-      const limit = parseInt(req.query.limit as string) || 50;
-      const offset = parseInt(req.query.offset as string) || 0;
+      const limit = parseInt(req.query["limit"] as string) || 50;
+      const offset = parseInt(req.query["offset"] as string) || 0;
       const reqUser = (req as any).user as AuthUser | undefined;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const userId = isAdmin ? null : (reqUser?.id ?? null);
@@ -131,7 +133,7 @@ export function scriptsRouter(db: LibraryDatabase) {
 
   router.post("/:id/cancel", requireAuth, (req, res) => {
     try {
-      const paramId = req.params.id as string;
+      const paramId = req.params["id"] as string;
       const job = db.getJob(paramId);
       const reqUser = (req as any).user as AuthUser | undefined;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
@@ -181,6 +183,7 @@ export function scriptsRouter(db: LibraryDatabase) {
       console.error("Error cancelling job:", error);
       res.status(500).json({ error: "Failed to cancel job" });
     }
+    return;
   });
 
   router.get("/:id", (req, res) => {
@@ -213,11 +216,12 @@ export function scriptsRouter(db: LibraryDatabase) {
       console.error("Error fetching job details:", error);
       res.status(500).json({ error: "Failed to fetch job details" });
     }
+    return;
   });
 
   router.get("/:id/logs", requireAuth, (req, res) => {
     try {
-      const paramId = req.params.id as string;
+      const paramId = req.params["id"] as string;
       const job = db.getJob(paramId);
 
       const cloudJob = getActiveCloudJob(paramId);
@@ -262,7 +266,7 @@ export function scriptsRouter(db: LibraryDatabase) {
 
   router.get("/:id/stream", requireAuth, (req, res) => {
     try {
-      const paramId = req.params.id as string;
+      const paramId = req.params["id"] as string;
       const job = db.getJob(paramId);
       const cloudJob = !job ? getActiveCloudJob(paramId) : undefined;
 
@@ -381,11 +385,12 @@ export function scriptsRouter(db: LibraryDatabase) {
       console.error("Error in stream:", error);
       res.status(500).end();
     }
+    return;
   });
 
   router.get("/:id/result", optionalAuth, (req, res) => {
     try {
-      const paramId = req.params.id as string;
+      const paramId = req.params["id"] as string;
       const job = db.getJob(paramId);
 
       // Check active cloud job
@@ -433,6 +438,7 @@ export function scriptsRouter(db: LibraryDatabase) {
       console.error("Error streaming job result:", error);
       res.status(500).json({ error: "Failed to download result" });
     }
+    return;
   });
 
   return router;

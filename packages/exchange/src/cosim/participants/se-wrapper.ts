@@ -29,6 +29,13 @@ export interface ClockConfig {
   nextActivation: number;
 }
 
+/** Callback invoked when a scheduled model partition is activated. */
+export type PartitionHandler = (
+  clockRef: number,
+  activationTime: number,
+  variables: Map<string, CosimValue>,
+) => void | Promise<void>;
+
 /**
  * FMI 3.0 Scheduled Execution participant.
  *
@@ -41,19 +48,58 @@ export class ScheduledExecutionParticipant implements CoSimParticipant {
   readonly metadata: ParticipantMetadata;
   private clocks: ClockConfig[];
   private variables = new Map<string, CosimValue>();
+  private partitionHandlers = new Map<number, PartitionHandler>();
+  private activationCounts = new Map<number, number>();
+  private lastActivationTimes = new Map<number, number>();
+  private defaultHandler?: PartitionHandler | undefined;
 
-  constructor(id: string, modelName: string, metadata: ParticipantMetadata, clocks: ClockConfig[]) {
+  constructor(
+    id: string,
+    modelName: string,
+    metadata: ParticipantMetadata,
+    clocks: ClockConfig[],
+    defaultHandler?: PartitionHandler,
+  ) {
     this.id = id;
     this.modelName = modelName;
     this.metadata = metadata;
     this.clocks = clocks.map((c) => ({ ...c }));
+    this.defaultHandler = defaultHandler;
+  }
+
+  /** Register a partition handler for a specific clock value reference. */
+  registerPartitionHandler(clockRef: number, handler: PartitionHandler): void {
+    this.partitionHandlers.set(clockRef, handler);
+  }
+
+  /** Get the number of times a clock partition (or all partitions if omitted) has been activated. */
+  getActivationCount(clockRef?: number): number {
+    if (clockRef !== undefined) {
+      return this.activationCounts.get(clockRef) ?? 0;
+    }
+    let total = 0;
+    for (const c of this.activationCounts.values()) total += c;
+    return total;
+  }
+
+  /** Get the last activation time for a clock partition. */
+  getLastActivationTime(clockRef: number): number | undefined {
+    return this.lastActivationTimes.get(clockRef);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
-    // Initialize all clock activation times
+  async initialize(startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
+    this.activationCounts.clear();
+    this.lastActivationTimes.clear();
+    for (const v of this.metadata.variables) {
+      if (v.start !== undefined) {
+        this.variables.set(v.name, v.start);
+      }
+    }
+    // Initialize all clock activation times relative to startTime
     for (const clock of this.clocks) {
-      clock.nextActivation = clock.interval;
+      clock.nextActivation = startTime + clock.interval;
+      this.activationCounts.set(clock.valueReference, 0);
     }
   }
 
@@ -73,20 +119,26 @@ export class ScheduledExecutionParticipant implements CoSimParticipant {
     activations.sort((a, b) => a.time - b.time);
 
     // Process each clock activation in chronological order
-    for (const { clock } of activations) {
-      // In a real FMI 3.0 implementation, this would call:
-      //   fmi3ActivateModelPartition(instance, clock.valueReference, activationTime)
-      await this.activatePartition(clock.valueReference);
+    for (const { clock, time } of activations) {
+      await this.activatePartition(clock.valueReference, time);
     }
   }
 
   /**
    * Activate a clock partition. Override in native implementations
-   * to call fmi3ActivateModelPartition on the FMU instance.
+   * to call fmi3ActivateModelPartition on the FMU instance, or register
+   * a partition handler via registerPartitionHandler().
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  protected async activatePartition(clockRef: number): Promise<void> {
-    // Base implementation — no-op. Native wrapper overrides this.
+  protected async activatePartition(clockRef: number, activationTime = 0): Promise<void> {
+    const prevCount = this.activationCounts.get(clockRef) ?? 0;
+    const nextCount = prevCount + 1;
+    this.activationCounts.set(clockRef, nextCount);
+    this.lastActivationTimes.set(clockRef, activationTime);
+
+    const handler = this.partitionHandlers.get(clockRef) ?? this.defaultHandler;
+    if (handler) {
+      await handler(clockRef, activationTime, this.variables);
+    }
   }
 
   async setInputs(values: Map<string, CosimValue>): Promise<void> {
@@ -101,5 +153,7 @@ export class ScheduledExecutionParticipant implements CoSimParticipant {
 
   async terminate(): Promise<void> {
     this.variables.clear();
+    this.activationCounts.clear();
+    this.lastActivationTimes.clear();
   }
 }

@@ -10,30 +10,30 @@
 export interface ProvEntity {
   id: string;
   type: string;
-  label?: string;
-  contentHash?: string;
-  wasDerivedFrom?: string[];
-  wasGeneratedBy?: string;
-  wasAttributedTo?: string;
-  attributes?: Record<string, any>;
+  label?: string | undefined;
+  contentHash?: string | undefined;
+  wasDerivedFrom?: string[] | undefined;
+  wasGeneratedBy?: string | undefined;
+  wasAttributedTo?: string | undefined;
+  attributes?: Record<string, any> | undefined;
 }
 
 export interface ProvActivity {
   id: string;
   type: string;
-  label?: string;
+  label?: string | undefined;
   startedAtTime: string;
-  endedAtTime?: string;
+  endedAtTime?: string | undefined;
   used: string[];
-  wasAssociatedWith?: string;
-  parameters?: Record<string, any>;
+  wasAssociatedWith?: string | undefined;
+  parameters?: Record<string, any> | undefined;
 }
 
 export interface ProvAgent {
   id: string;
   type: "Person" | "SoftwareAgent" | "Organization";
   name: string;
-  actedOnBehalfOf?: string;
+  actedOnBehalfOf?: string | undefined;
 }
 
 export class ProvenanceGraph {

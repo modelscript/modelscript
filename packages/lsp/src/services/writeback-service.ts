@@ -9,13 +9,13 @@ import { getCompositeName } from "../utils/hierarchy-utils.js";
 export interface ComputeWritebackEditParams {
   target: string;
   newValue: string;
-  documentUri?: string;
+  documentUri?: string | undefined;
 }
 
 export interface ComputeWritebackEditResult {
   success: boolean;
-  workspaceEdit?: WorkspaceEdit;
-  error?: string;
+  workspaceEdit?: WorkspaceEdit | undefined;
+  error?: string | undefined;
 }
 
 function escapeRegex(str: string): string {
@@ -77,7 +77,7 @@ function computeGenericWriteback(
     const regex = new RegExp(`(${opPattern})\\s*([^;}\\r\\n,]+)`);
     const match = declText.match(regex);
     if (match && match.index !== undefined) {
-      const rawVal = match[2].trimEnd();
+      const rawVal = match[2]!.trimEnd();
       const valOffsetInDecl = match.index + declText.substring(match.index).indexOf(rawVal);
       const valStartOffset = entryStart + valOffsetInDecl;
       const valEndOffset = valStartOffset + rawVal.length;
@@ -95,8 +95,8 @@ function computeGenericWriteback(
     const regex = new RegExp(`(\\b${escapeRegex(name)}\\s*(?:${opPattern})\\s*)([^;}\\r\\n,]+)`);
     const match = fullText.match(regex);
     if (match && match.index !== undefined) {
-      const valStart = match.index + match[1].length;
-      const valEnd = valStart + match[2].trimEnd().length;
+      const valStart = match.index + match[1]!.length;
+      const valEnd = valStart + match[2]!.trimEnd().length;
       const startPos = doc ? doc.positionAt(valStart) : offsetToPosition(fullText, valStart);
       const endPos = doc ? doc.positionAt(valEnd) : offsetToPosition(fullText, valEnd);
       return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];

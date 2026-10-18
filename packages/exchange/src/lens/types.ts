@@ -88,13 +88,15 @@ export interface CanonicalWorkspaceManifest {
       }[]
     | undefined;
   /** Engineering requirements models (SysML v2, ReqIF) */
-  requirements?: { id: string; path: string; format?: string; description?: string }[] | undefined;
+  requirements?:
+    | { id: string; path: string; format?: string | undefined; description?: string | undefined }[]
+    | undefined;
   /** 3D CAD/MBD geometry models (STEP AP242, JT) */
-  geometry?: { id: string; path: string; format?: string; description?: string }[] | undefined;
+  geometry?: { id: string; path: string; format?: string | undefined; description?: string | undefined }[] | undefined;
   /** Behavioral and physics simulation models (SSP, FMU, Modelica) */
-  behavior?: { id: string; path: string; format?: string; description?: string }[] | undefined;
+  behavior?: { id: string; path: string; format?: string | undefined; description?: string | undefined }[] | undefined;
   /** Semantic traceability relationships across domains */
-  relations?: { relationType: string; source: string; target: string; description?: string }[] | undefined;
+  relations?: { relationType: string; source: string; target: string; description?: string | undefined }[] | undefined;
 }
 
 /** NPM-compatible package.json projection */
@@ -103,7 +105,7 @@ export interface PackageJsonProjection {
   version: string;
   description?: string | undefined;
   main?: string | undefined;
-  author?: string | { name: string; email?: string } | undefined;
+  author?: string | { name: string; email?: string | undefined } | undefined;
   license?: string | undefined;
   homepage?: string | undefined;
   repository?: { type: string; url: string } | undefined;

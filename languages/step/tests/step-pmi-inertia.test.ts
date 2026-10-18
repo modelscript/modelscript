@@ -124,4 +124,64 @@ END-ISO-10303-21;
     assert.ok(modelicaCode.includes("I_11 = 0.045, I_22 = 0.082, I_33 = 0.115"));
     assert.ok(modelicaCode.includes("r_CM = {0.12, 0.05, 0.08}"));
   });
+
+  it("associates mass properties with their respective parts in multi-part STEP assemblies and generates valid meshes", async () => {
+    const multiPartStep = `
+ISO-10303-21;
+HEADER;
+ENDSEC;
+DATA;
+#10 = PRODUCT('BaseLink','Base Link','',(#1));
+#11 = PRODUCT_DEFINITION_FORMATION('1.0','',#10);
+#12 = PRODUCT_DEFINITION('design','',#11,#1);
+#13 = PROPERTY_DEFINITION('mass property','',#12);
+#14 = PROPERTY_DEFINITION_REPRESENTATION(#13,#15);
+#15 = REPRESENTATION('mass rep',(#16,#17),#1);
+#16 = MASS_MEASURE_WITH_UNIT(MASS_MEASURE(2.5),#1);
+#17 = CARTESIAN_POINT('centre of mass', (0.0, 0.0, 0.05));
+
+#20 = PRODUCT('UpperArm','Upper Arm','',(#1));
+#21 = PRODUCT_DEFINITION_FORMATION('1.0','',#20);
+#22 = PRODUCT_DEFINITION('design','',#21,#1);
+#23 = PROPERTY_DEFINITION('mass property','',#22);
+#24 = PROPERTY_DEFINITION_REPRESENTATION(#23,#25);
+#25 = REPRESENTATION('mass rep',(#26,#27),#1);
+#26 = MASS_MEASURE_WITH_UNIT(MASS_MEASURE(0.75),#1);
+#27 = CARTESIAN_POINT('centre of mass', (0.25, 0.0, 0.15));
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const assembly = extractStepAssembly(multiPartStep);
+    assert.strictEqual(assembly.parts.size, 2);
+    assert.strictEqual(assembly.massProperties.get("#10")?.mass, 2.5);
+    assert.deepStrictEqual(assembly.massProperties.get("#10")?.centerOfMass, [0.0, 0.0, 0.05]);
+    assert.strictEqual(assembly.massProperties.get("#20")?.mass, 0.75);
+    assert.deepStrictEqual(assembly.massProperties.get("#20")?.centerOfMass, [0.25, 0.0, 0.15]);
+
+    const { stepLanguage } = await import("../src/language.js");
+    const mbAction = stepLanguage.actions?.find((a) => a.id === "generate_multibody");
+    const mbRes = await mbAction!.execute({ uri: "robot_arm.stp" }, { documentText: multiPartStep });
+    assert.ok(mbRes.source.includes("BaseLink"));
+    assert.ok(mbRes.source.includes("UpperArm"));
+    assert.ok(!mbRes.source.includes("rotor1"));
+
+    const feaAction = stepLanguage.actions?.find((a) => a.id === "generate_fea_mesh");
+    const feaRes = await feaAction!.execute({ uri: "robot_arm.stp" }, { documentText: multiPartStep });
+    assert.ok(feaRes.deckText.includes("*ELEMENT, TYPE=C3D8"));
+    // Verify C3D8 elements have 8 distinct node IDs
+    const elemBlock = feaRes.deckText.split("*ELEMENT")[1]!.split("*MATERIAL")[0]!;
+    const firstElemLine = elemBlock.trim().split("\n")[1]!;
+    const elemNodes = firstElemLine
+      .split(",")
+      .slice(1)
+      .map((s: string) => parseInt(s.trim(), 10));
+    assert.strictEqual(new Set(elemNodes).size, 8);
+
+    const cfdAction = stepLanguage.actions?.find((a) => a.id === "generate_cfd_mesh");
+    const cfdRes = await cfdAction!.execute({ uri: "robot_arm.stp" }, { documentText: multiPartStep });
+    assert.ok(cfdRes.meshText.includes("NDIME= 3"));
+    assert.ok(cfdRes.meshText.includes("NELEM="));
+    assert.ok(cfdRes.meshText.includes("NPOIN="));
+    assert.ok(cfdRes.meshText.includes("MARKER_TAG= wall"));
+  });
 });

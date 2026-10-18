@@ -16,6 +16,9 @@ import {
 } from "@modelscript/dsl";
 import { scadWriteback } from "./writeback.js";
 
+/**
+ * Operator precedence levels for OpenSCAD expressions (from lowest to highest binding strength).
+ */
 const PREC = {
   CONDITIONAL: 1,
   OR: 2,
@@ -30,6 +33,13 @@ const PREC = {
   PRIMARY: 11,
 } as const;
 
+/**
+ * OpenSCAD (`.scad`) language definition for ModelScript.
+ *
+ * Defines the GLR grammar (supporting both traditional OpenSCAD prefix transforms and
+ * fluent method-chaining syntax), LSP custom request handlers, 3D CSG preview/STEP export actions,
+ * bidirectional writeback, and polyglot TGG rules linking SCAD geometry to SysML v2, STEP, and Modelica.
+ */
 export const scadLanguage = language({
   name: "scad",
   fileExtensions: [".scad"],
@@ -40,7 +50,8 @@ export const scadLanguage = language({
       dark: "./assets/scad/icon-dark.png",
     },
     handlers: {
-      "modelscript/getCadComponents": async (ctx: any, params: { uri: string; documentText?: string }) => {
+      // Custom LSP request to extract parametric CAD components and source ranges for the 3D viewport
+      "modelscript/getCadComponents": async (ctx: any, params: { uri: string; documentText?: string | undefined }) => {
         const uri = params?.uri ?? ctx.uri;
         let source = params?.documentText ?? ctx.documentText;
         if (!source && uri && ctx.documents) {
@@ -73,15 +84,18 @@ export const scadLanguage = language({
     },
   },
 
+  // Bidirectional writeback handler for updating SCAD source dimensions and transforms from 3D gizmos
   writeback: scadWriteback,
 
+  // IDE and AI agent actions for 3D CSG evaluation and ISO 10303 STEP export
   actions: [
     {
       id: "preview_csg",
       title: "Preview 3D CSG Model",
       description: "Evaluates constructive solid geometry boolean trees and renders 3D polygonal meshes.",
       category: "geometry",
-      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+        // Resolve document text from request parameters, open editor buffers, or virtual filesystem
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -98,6 +112,7 @@ export const scadLanguage = language({
           throw new Error("No OpenSCAD source code found to evaluate.");
         }
 
+        // Reuse cached CST root node when available, or parse on-demand via WASM GLR parser
         let rootNode: any = ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode;
         if (!rootNode && ctx.parserService) {
           try {
@@ -117,6 +132,7 @@ export const scadLanguage = language({
           } catch {}
         }
 
+        // Evaluate the CST into a normalized CSG Solid tree
         let solid: any = null;
         if (rootNode) {
           const { ScadEvaluator } = await import("./evaluator.js");
@@ -167,7 +183,7 @@ export const scadLanguage = language({
       title: "Export Shape to STEP CAD (.step)",
       description: "Converts OpenSCAD boundary representations into standard ISO 10303 STEP solid bodies.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -247,6 +263,7 @@ export const scadLanguage = language({
     },
   ],
 
+  // Triple Graph Grammar (TGG) rules synchronizing OpenSCAD with SysML v2, STEP, and Modelica
   polyglot: {
     languages: ["sysml2", "step", "modelica"],
     rules: [
@@ -386,31 +403,32 @@ export const scadLanguage = language({
   extras: () => [/\s+/],
 
   rules: {
-    SourceFile: ($) => repeat($.Statement),
+    SourceFile: ($) => repeat($["Statement"]!),
 
     Statement: ($) =>
       choice(
-        $.VariableDeclaration,
-        $.ModuleDeclaration,
-        $.FunctionDeclaration,
-        $.IfStatement,
-        $.ForStatement,
-        $.BlockStatement,
-        $.PrefixSolid,
-        $.ChainedSolidStatement,
-        $._EmptyStatement,
+        $["VariableDeclaration"]!,
+        $["ModuleDeclaration"]!,
+        $["FunctionDeclaration"]!,
+        $["IfStatement"]!,
+        $["ForStatement"]!,
+        $["BlockStatement"]!,
+        $["PrefixSolid"]!,
+        $["ChainedSolidStatement"]!,
+        $["_EmptyStatement"]!,
       ),
 
     _EmptyStatement: () => ";",
 
-    BlockStatement: ($) => seq("{", repeat($.Statement), "}"),
+    BlockStatement: ($) => seq("{", repeat($["Statement"]!), "}"),
 
+    // Variable assignment statement (`name = expr;`) with duplicate-assignment lint query
     VariableDeclaration: ($) =>
       def({
-        syntax: seq(field("name", $.IDENTIFIER), "=", field("value", $.Expression), ";"),
+        syntax: seq(field("name", $["IDENTIFIER"]!), "=", field("value", $["Expression"]!), ";"),
         symbol: (self: Record<string, string>) => ({
           kind: "Variable",
-          name: self.name ?? "",
+          name: self["name"] ?? "",
         }),
         queries: {
           lint__duplicateVariable: (db: any, self: any) => {
@@ -441,19 +459,20 @@ export const scadLanguage = language({
         },
       }),
 
+    // Parametric module definition (`module name(params) body`)
     ModuleDeclaration: ($) =>
       def({
         syntax: seq(
           "module",
-          field("name", $.IDENTIFIER),
+          field("name", $["IDENTIFIER"]!),
           "(",
-          optional(field("parameters", $.ParameterList)),
+          optional(field("parameters", $["ParameterList"]!)),
           ")",
-          field("body", $.Statement),
+          field("body", $["Statement"]!),
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Module",
-          name: self.name ?? "",
+          name: self["name"] ?? "",
           exports: ["body"],
         }),
         queries: {
@@ -485,21 +504,22 @@ export const scadLanguage = language({
         },
       }),
 
+    // Pure mathematical function definition (`function name(params) = expr;`)
     FunctionDeclaration: ($) =>
       def({
         syntax: seq(
           "function",
-          field("name", $.IDENTIFIER),
+          field("name", $["IDENTIFIER"]!),
           "(",
-          optional(field("parameters", $.ParameterList)),
+          optional(field("parameters", $["ParameterList"]!)),
           ")",
           "=",
-          field("body", $.Expression),
+          field("body", $["Expression"]!),
           ";",
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Function",
-          name: self.name ?? "",
+          name: self["name"] ?? "",
         }),
         queries: {
           lint__duplicateFunction: (db: any, self: any) => {
@@ -535,169 +555,206 @@ export const scadLanguage = language({
         seq(
           "if",
           "(",
-          field("condition", $.Expression),
+          field("condition", $["Expression"]!),
           ")",
-          field("consequence", $.Statement),
-          optional(seq("else", field("alternative", $.Statement))),
+          field("consequence", $["Statement"]!),
+          optional(seq("else", field("alternative", $["Statement"]!))),
         ),
       ),
 
     ForStatement: ($) =>
-      seq("for", "(", field("var", $.IDENTIFIER), "=", field("range", $.Expression), ")", field("body", $.Statement)),
+      seq(
+        "for",
+        "(",
+        field("var", $["IDENTIFIER"]!),
+        "=",
+        field("range", $["Expression"]!),
+        ")",
+        field("body", $["Statement"]!),
+      ),
 
-    ParameterList: ($) => seq($.Parameter, repeat(seq(",", $.Parameter))),
+    ParameterList: ($) => seq($["Parameter"]!, repeat(seq(",", $["Parameter"]!))),
 
-    Parameter: ($) => seq(field("name", $.IDENTIFIER), optional(seq("=", field("default", $.Expression)))),
+    Parameter: ($) => seq(field("name", $["IDENTIFIER"]!), optional(seq("=", field("default", $["Expression"]!)))),
 
-    ArgumentList: ($) => seq($.Argument, repeat(seq(",", $.Argument))),
+    ArgumentList: ($) => seq($["Argument"]!, repeat(seq(",", $["Argument"]!))),
 
     Argument: ($) =>
-      choice(seq(field("name", $.IDENTIFIER), "=", field("value", $.Expression)), field("value", $.Expression)),
+      choice(
+        seq(field("name", $["IDENTIFIER"]!), "=", field("value", $["Expression"]!)),
+        field("value", $["Expression"]!),
+      ),
 
     // ── Solid Statements & Hybrid Chaining ─────────────────────────────────
 
+    // Traditional OpenSCAD prefix operator syntax (`translate(...) rotate(...) cube(...);`)
     PrefixSolid: ($) =>
       seq(
-        field("operator", choice($.TransformOp, $.BooleanOp, $.TagPortOp, $.LinearExtrudeOp)),
-        field("child", $.Statement),
+        field("operator", choice($["TransformOp"]!, $["BooleanOp"]!, $["TagPortOp"]!, $["LinearExtrudeOp"]!)),
+        field("child", $["Statement"]!),
       ),
 
     TransformOp: ($) =>
       choice(
-        seq("translate", "(", optional(field("args", $.ArgumentList)), ")"),
-        seq("rotate", "(", optional(field("args", $.ArgumentList)), ")"),
-        seq("scale", "(", optional(field("args", $.ArgumentList)), ")"),
-        seq("mirror", "(", optional(field("args", $.ArgumentList)), ")"),
-        seq("color", "(", optional(field("args", $.ArgumentList)), ")"),
+        seq("translate", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("rotate", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("scale", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("mirror", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("color", "(", optional(field("args", $["ArgumentList"]!)), ")"),
       ),
 
-    LinearExtrudeOp: ($) => seq("linear_extrude", "(", optional(field("args", $.ArgumentList)), ")"),
+    LinearExtrudeOp: ($) => seq("linear_extrude", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
     BooleanOp: () => choice(seq("union", "(", ")"), seq("difference", "(", ")"), seq("intersection", "(", ")")),
 
+    // ModelScript extension for tagging boundary patches/ports on 3D solids
     TagPortOp: ($) =>
       def({
-        syntax: seq("tag_port", "(", field("args", $.ArgumentList), ")"),
+        syntax: seq("tag_port", "(", field("args", $["ArgumentList"]!), ")"),
         symbol: (self: Record<string, string>) => ({
           kind: "TaggedPort",
-          name: self.args ?? "",
+          name: self["args"] ?? "",
         }),
       }),
 
-    ChainedSolidStatement: ($) => seq(field("solid", $.ChainedSolid), ";"),
+    // Fluent method-chained solid syntax (`cube([10, 10, 10]).translate([0, 0, 5]).fillet(1);`)
+    ChainedSolidStatement: ($) => seq(field("solid", $["ChainedSolid"]!), ";"),
 
-    ChainedSolid: ($) => seq(field("receiver", $.PrimarySolid), repeat(field("method", $.MethodCall))),
+    ChainedSolid: ($) => seq(field("receiver", $["PrimarySolid"]!), repeat(field("method", $["MethodCall"]!))),
 
-    MethodCall: ($) => seq(".", field("name", $.MethodName), "(", optional(field("args", $.ArgumentList)), ")"),
+    MethodCall: ($) => seq(".", field("name", $["MethodName"]!), "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    MethodName: ($) => choice($.IDENTIFIER, "translate", "rotate", "scale", "mirror", "color", "fillet", "chamfer"),
+    MethodName: ($) => choice($["IDENTIFIER"]!, "translate", "rotate", "scale", "mirror", "color", "fillet", "chamfer"),
 
     PrimarySolid: ($) =>
       choice(
-        $.CubePrimitive,
-        $.CylinderPrimitive,
-        $.SpherePrimitive,
-        $.PolyhedronPrimitive,
-        $.PolygonPrimitive,
-        $.CirclePrimitive,
-        $.SquarePrimitive,
-        $.ModuleInstantiation,
+        $["CubePrimitive"]!,
+        $["CylinderPrimitive"]!,
+        $["SpherePrimitive"]!,
+        $["PolyhedronPrimitive"]!,
+        $["PolygonPrimitive"]!,
+        $["CirclePrimitive"]!,
+        $["SquarePrimitive"]!,
+        $["ModuleInstantiation"]!,
       ),
 
-    CubePrimitive: ($) => seq("cube", "(", optional(field("args", $.ArgumentList)), ")"),
+    CubePrimitive: ($) => seq("cube", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    CylinderPrimitive: ($) => seq("cylinder", "(", optional(field("args", $.ArgumentList)), ")"),
+    CylinderPrimitive: ($) => seq("cylinder", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    SpherePrimitive: ($) => seq("sphere", "(", optional(field("args", $.ArgumentList)), ")"),
+    SpherePrimitive: ($) => seq("sphere", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    PolyhedronPrimitive: ($) => seq("polyhedron", "(", optional(field("args", $.ArgumentList)), ")"),
+    PolyhedronPrimitive: ($) => seq("polyhedron", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    PolygonPrimitive: ($) => seq("polygon", "(", optional(field("args", $.ArgumentList)), ")"),
+    PolygonPrimitive: ($) => seq("polygon", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    CirclePrimitive: ($) => seq("circle", "(", optional(field("args", $.ArgumentList)), ")"),
+    CirclePrimitive: ($) => seq("circle", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    SquarePrimitive: ($) => seq("square", "(", optional(field("args", $.ArgumentList)), ")"),
+    SquarePrimitive: ($) => seq("square", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    ModuleInstantiation: ($) => seq(field("name", $.IDENTIFIER), "(", optional(field("args", $.ArgumentList)), ")"),
+    ModuleInstantiation: ($) =>
+      seq(field("name", $["IDENTIFIER"]!), "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
     // ── Expressions ────────────────────────────────────────────────────────
 
     Expression: ($) =>
-      choice($.ConditionalExpression, $.BinaryExpression, $.UnaryExpression, $.PostfixExpression, $.PrimaryExpression),
+      choice(
+        $["ConditionalExpression"]!,
+        $["BinaryExpression"]!,
+        $["UnaryExpression"]!,
+        $["PostfixExpression"]!,
+        $["PrimaryExpression"]!,
+      ),
 
     ConditionalExpression: ($) =>
       prec.right(
         PREC.CONDITIONAL,
         seq(
-          field("condition", $.Expression),
+          field("condition", $["Expression"]!),
           "?",
-          field("consequence", $.Expression),
+          field("consequence", $["Expression"]!),
           ":",
-          field("alternative", $.Expression),
+          field("alternative", $["Expression"]!),
         ),
       ),
 
     BinaryExpression: ($) =>
       choice(
-        prec.left(PREC.OR, seq(field("left", $.Expression), field("operator", "||"), field("right", $.Expression))),
-        prec.left(PREC.AND, seq(field("left", $.Expression), field("operator", "&&"), field("right", $.Expression))),
+        prec.left(
+          PREC.OR,
+          seq(field("left", $["Expression"]!), field("operator", "||"), field("right", $["Expression"]!)),
+        ),
+        prec.left(
+          PREC.AND,
+          seq(field("left", $["Expression"]!), field("operator", "&&"), field("right", $["Expression"]!)),
+        ),
         prec.left(
           PREC.EQUALITY,
-          seq(field("left", $.Expression), field("operator", choice("==", "!=")), field("right", $.Expression)),
+          seq(field("left", $["Expression"]!), field("operator", choice("==", "!=")), field("right", $["Expression"]!)),
         ),
         prec.left(
           PREC.RELATIONAL,
           seq(
-            field("left", $.Expression),
+            field("left", $["Expression"]!),
             field("operator", choice("<", "<=", ">", ">=")),
-            field("right", $.Expression),
+            field("right", $["Expression"]!),
           ),
         ),
         prec.left(
           PREC.ADDITIVE,
-          seq(field("left", $.Expression), field("operator", choice("+", "-")), field("right", $.Expression)),
+          seq(field("left", $["Expression"]!), field("operator", choice("+", "-")), field("right", $["Expression"]!)),
         ),
         prec.left(
           PREC.MULTIPLICATIVE,
-          seq(field("left", $.Expression), field("operator", choice("*", "/", "%")), field("right", $.Expression)),
+          seq(
+            field("left", $["Expression"]!),
+            field("operator", choice("*", "/", "%")),
+            field("right", $["Expression"]!),
+          ),
         ),
-        prec.right(PREC.POWER, seq(field("left", $.Expression), field("operator", "^"), field("right", $.Expression))),
+        prec.right(
+          PREC.POWER,
+          seq(field("left", $["Expression"]!), field("operator", "^"), field("right", $["Expression"]!)),
+        ),
       ),
 
     UnaryExpression: ($) =>
-      prec(PREC.UNARY, seq(field("operator", choice("!", "-", "+")), field("operand", $.Expression))),
+      prec(PREC.UNARY, seq(field("operator", choice("!", "-", "+")), field("operand", $["Expression"]!))),
 
     PostfixExpression: ($) =>
       choice(
-        prec(PREC.POSTFIX, seq(field("operand", $.Expression), "[", field("index", $.Expression), "]")),
+        prec(PREC.POSTFIX, seq(field("operand", $["Expression"]!), "[", field("index", $["Expression"]!), "]")),
         prec(
           PREC.POSTFIX,
-          seq(field("function", $.Expression), "(", optional(field("arguments", $.ArgumentList)), ")"),
+          seq(field("function", $["Expression"]!), "(", optional(field("arguments", $["ArgumentList"]!)), ")"),
         ),
       ),
 
     PrimaryExpression: ($) =>
       choice(
-        $.NUMBER,
-        $.STRING,
-        $.BOOLEAN,
-        $.UNDEF,
-        $.IDENTIFIER,
-        $.VectorLiteral,
-        $.RangeLiteral,
-        $.ParenthesizedExpression,
+        $["NUMBER"]!,
+        $["STRING"]!,
+        $["BOOLEAN"]!,
+        $["UNDEF"]!,
+        $["IDENTIFIER"]!,
+        $["VectorLiteral"]!,
+        $["RangeLiteral"]!,
+        $["ParenthesizedExpression"]!,
       ),
 
-    ParenthesizedExpression: ($) => seq("(", field("expression", $.Expression), ")"),
+    ParenthesizedExpression: ($) => seq("(", field("expression", $["Expression"]!), ")"),
 
-    VectorLiteral: ($) => seq("[", optional(seq($.Expression, repeat(seq(",", $.Expression)))), "]"),
+    VectorLiteral: ($) => seq("[", optional(seq($["Expression"]!, repeat(seq(",", $["Expression"]!)))), "]"),
 
     RangeLiteral: ($) =>
       seq(
         "[",
-        field("start", $.Expression),
+        field("start", $["Expression"]!),
         ":",
-        choice(seq(field("step", $.Expression), ":", field("end", $.Expression)), field("end", $.Expression)),
+        choice(
+          seq(field("step", $["Expression"]!), ":", field("end", $["Expression"]!)),
+          field("end", $["Expression"]!),
+        ),
         "]",
       ),
 

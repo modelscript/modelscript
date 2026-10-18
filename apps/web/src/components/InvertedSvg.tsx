@@ -7,13 +7,13 @@ import { useTheme } from "../theme";
 
 interface InvertedSvgProps {
   src: string;
-  alt?: string;
-  width?: number | string;
-  height?: number | string;
-  style?: React.CSSProperties;
-  fallback?: React.ReactNode;
-  onLoad?: () => void;
-  onError?: (e: unknown) => void;
+  alt?: string | undefined;
+  width?: number | string | undefined;
+  height?: number | string | undefined;
+  style?: React.CSSProperties | undefined;
+  fallback?: React.ReactNode | undefined;
+  onLoad?: (() => void) | undefined;
+  onError?: ((e: unknown) => void) | undefined;
 }
 
 interface State {

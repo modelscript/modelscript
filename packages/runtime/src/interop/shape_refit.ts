@@ -43,7 +43,7 @@ export interface GeometricWritebackPatch {
   nominalValue: number;
   optimizedValue: number;
   delta: number;
-  unit?: string;
+  unit?: string | undefined;
   sourceDomain: "CFD_Adjoint" | "FEA_TopologyOptimization";
   openScadPatch: {
     targetFile: string;
@@ -227,10 +227,10 @@ export class ShapeRefitEngine {
     nominalValue: number,
     optimizedValue: number,
     options: {
-      targetFile?: string;
-      unit?: string;
-      sourceDomain?: "CFD_Adjoint" | "FEA_TopologyOptimization";
-      meshHash?: string;
+      targetFile?: string | undefined;
+      unit?: string | undefined;
+      sourceDomain?: "CFD_Adjoint" | "FEA_TopologyOptimization" | undefined;
+      meshHash?: string | undefined;
     } = {},
   ): GeometricWritebackPatch {
     const unit = options.unit || "mm";

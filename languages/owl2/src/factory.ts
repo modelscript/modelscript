@@ -24,10 +24,10 @@ const refAsIndexerHooks = (refHooks ?? [])
   }));
 const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
 
-const cstByUri = new Map<string, { getRootNode: () => any; sourceText?: string }>();
+const cstByUri = new Map<string, { getRootNode: () => any; sourceText?: string | undefined }>();
 
 const docHooks = queryHooks.get("OntologyDocument") ?? {};
-docHooks.lint__owl2Document = (db: any, entryOrId: any) => {
+docHooks["lint__owl2Document"] = (db: any, entryOrId: any) => {
   const sym = typeof entryOrId === "object" && entryOrId !== null ? entryOrId : db.symbol(entryOrId);
   if (!sym) return [];
   const symId = sym.id;

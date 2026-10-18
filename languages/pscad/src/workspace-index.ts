@@ -41,8 +41,19 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(_uri: string, _loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => any): void {
     this._version++;
+    if (loader) {
+      try {
+        const res = loader();
+        const text = typeof res === "string" ? res : (res?.sourceText ?? res?.text);
+        if (typeof text === "string") {
+          this.indexFile(uri, text);
+        }
+      } catch {
+        // Ignore loader errors during incremental re-indexing
+      }
+    }
   }
 
   /**
@@ -63,15 +74,15 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
 
     // 1. Extract project name and type
     const projectMatch = /<project\s+([^>]*?)>/i.exec(text);
-    const projAttrs = projectMatch ? projectMatch[1] : "";
+    const projAttrs = projectMatch ? projectMatch[1]! : "";
     const nameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(projAttrs);
     const targetMatch =
       /target\s*=\s*["']([^"']+)["']/i.exec(projAttrs) || /type\s*=\s*["']([^"']+)["']/i.exec(projAttrs);
 
     const isLibrary =
-      uri.toLowerCase().endsWith(".pslx") || (targetMatch ? targetMatch[1].toLowerCase().includes("library") : false);
+      uri.toLowerCase().endsWith(".pslx") || (targetMatch ? targetMatch[1]!.toLowerCase().includes("library") : false);
 
-    const projectName = nameMatch && nameMatch[1].trim() !== "" ? nameMatch[1].trim() : this.deriveNameFromUri(uri);
+    const projectName = nameMatch && nameMatch[1]!.trim() !== "" ? nameMatch[1]!.trim() : this.deriveNameFromUri(uri);
 
     // Root symbol (e.g. Component_Lib)
     const rootId = idCounter++;
@@ -108,8 +119,8 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
     let defMatch: RegExpExecArray | null;
 
     while ((defMatch = defRegex.exec(text)) !== null) {
-      const dAttrs = defMatch[1];
-      const dBody = defMatch[2];
+      const dAttrs = defMatch[1]!;
+      const dBody = defMatch[2]!;
       const defName = /name\s*=\s*["']([^"']+)["']/i.exec(dAttrs)?.[1];
       const classId = /classid\s*=\s*["']([^"']+)["']/i.exec(dAttrs)?.[1];
 
@@ -224,7 +235,7 @@ function escapeXml(str: string): string {
 export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string | undefined {
   const graphicsMatch = /<graphics\s*[^>]*>([\s\S]*?)<\/graphics>/i.exec(dBody);
   if (!graphicsMatch) return undefined;
-  const gXml = graphicsMatch[1];
+  const gXml = graphicsMatch[1]!;
 
   let minX = Infinity;
   let minY = Infinity;
@@ -234,7 +245,7 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
   interface SvgItem {
     type: "rect" | "line" | "circle" | "text";
     attrs: Record<string, string | number>;
-    content?: string;
+    content?: string | undefined;
   }
   const items: SvgItem[] = [];
 
@@ -242,8 +253,8 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
   const portRegex = /<Port\s+[^>]*?x\s*=\s*["']([^"']+)["'][^>]*?y\s*=\s*["']([^"']+)["'][^>]*?>/gi;
   let pMatch: RegExpExecArray | null;
   while ((pMatch = portRegex.exec(gXml)) !== null) {
-    const px = parseFloat(pMatch[1]);
-    const py = parseFloat(pMatch[2]);
+    const px = parseFloat(pMatch[1]!);
+    const py = parseFloat(pMatch[2]!);
     minX = Math.min(minX, px);
     maxX = Math.max(maxX, px);
     minY = Math.min(minY, py);
@@ -259,10 +270,10 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
     /<Gfx\s+classid=["']Graphics\.Rectangle["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?w=["']([^"']+)["'][^>]*?h=["']([^"']+)["']/gi;
   let rMatch: RegExpExecArray | null;
   while ((rMatch = rectRegex.exec(gXml)) !== null) {
-    const rx = parseFloat(rMatch[1]);
-    const ry = parseFloat(rMatch[2]);
-    const rw = parseFloat(rMatch[3]);
-    const rh = parseFloat(rMatch[4]);
+    const rx = parseFloat(rMatch[1]!);
+    const ry = parseFloat(rMatch[2]!);
+    const rw = parseFloat(rMatch[3]!);
+    const rh = parseFloat(rMatch[4]!);
     minX = Math.min(minX, rx);
     maxX = Math.max(maxX, rx + rw);
     minY = Math.min(minY, ry);
@@ -288,15 +299,15 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
     /<Gfx\s+classid=["']Graphics\.Line["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
   let lMatch: RegExpExecArray | null;
   while ((lMatch = lineRegex.exec(gXml)) !== null) {
-    const lx = parseFloat(lMatch[1]);
-    const ly = parseFloat(lMatch[2]);
-    const lBody = lMatch[3];
+    const lx = parseFloat(lMatch[1]!);
+    const ly = parseFloat(lMatch[2]!);
+    const lBody = lMatch[3]!;
     const vertRegex = /<vertex\s+x=["']([^"']+)["']\s+y=["']([^"']+)["']/gi;
     let vMatch: RegExpExecArray | null;
     const pts: string[] = [];
     while ((vMatch = vertRegex.exec(lBody)) !== null) {
-      const vx = lx + parseFloat(vMatch[1]);
-      const vy = ly + parseFloat(vMatch[2]);
+      const vx = lx + parseFloat(vMatch[1]!);
+      const vy = ly + parseFloat(vMatch[2]!);
       minX = Math.min(minX, vx);
       maxX = Math.max(maxX, vx);
       minY = Math.min(minY, vy);
@@ -322,9 +333,9 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
     /<Gfx\s+classid=["']Graphics\.Text["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
   let tMatch: RegExpExecArray | null;
   while ((tMatch = textRegex.exec(gXml)) !== null) {
-    const tx = parseFloat(tMatch[1]);
-    const ty = parseFloat(tMatch[2]);
-    const tBody = tMatch[3];
+    const tx = parseFloat(tMatch[1]!);
+    const ty = parseFloat(tMatch[2]!);
+    const tBody = tMatch[3]!;
     const valMatch = /<param\s+name=["']text["']\s+value=["']([^"']*)["']/i.exec(tBody);
     const textVal = valMatch ? valMatch[1] : "";
     if (textVal && textVal.length <= 4 && !textVal.startsWith("%")) {

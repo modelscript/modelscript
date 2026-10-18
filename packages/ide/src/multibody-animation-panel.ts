@@ -12,7 +12,7 @@ export class MultiBodyAnimationPanel {
   private readonly _client: LanguageClient;
   private _disposables: vscode.Disposable[] = [];
 
-  public sourceUri?: string;
+  public sourceUri?: string | undefined;
 
   public static async createOrShow(
     extensionUri: vscode.Uri,

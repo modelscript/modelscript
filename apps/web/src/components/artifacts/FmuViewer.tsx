@@ -12,29 +12,29 @@ export interface FmuScalarVariable {
   valueReference: number;
   causality: "input" | "output" | "parameter" | "local" | "independent" | string;
   variability: "constant" | "fixed" | "tunable" | "discrete" | "continuous" | string;
-  description?: string;
+  description?: string | undefined;
   type: "Real" | "Integer" | "Boolean" | "String" | string;
-  start?: string | number;
-  unit?: string;
+  start?: string | number | undefined;
+  unit?: string | undefined;
 }
 
 export interface FmuViewerProps {
   viewConfig: {
-    fmiVersion?: string;
-    modelName?: string;
-    modelDescription?: string;
-    generationTool?: string;
-    guid?: string;
-    platforms?: string[];
-    hasWasm?: boolean;
-    variables?: FmuScalarVariable[];
-    inputs?: FmuScalarVariable[];
-    outputs?: FmuScalarVariable[];
-    parameters?: FmuScalarVariable[];
-    url?: string;
+    fmiVersion?: string | undefined;
+    modelName?: string | undefined;
+    modelDescription?: string | undefined;
+    generationTool?: string | undefined;
+    guid?: string | undefined;
+    platforms?: string[] | undefined;
+    hasWasm?: boolean | undefined;
+    variables?: FmuScalarVariable[] | undefined;
+    inputs?: FmuScalarVariable[] | undefined;
+    outputs?: FmuScalarVariable[] | undefined;
+    parameters?: FmuScalarVariable[] | undefined;
+    url?: string | undefined;
     [key: string]: unknown;
   };
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
@@ -80,7 +80,7 @@ const ModelTitle = styled.div`
   text-overflow: ellipsis;
 `;
 
-const PillBadge = styled.span<{ $variant?: "fmi" | "wasm" | "native" | "causality" }>`
+const PillBadge = styled.span<{ $variant?: "fmi" | "wasm" | "native" | "causality" | undefined }>`
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -223,7 +223,7 @@ const VariableInput = styled.input`
   }
 `;
 
-const CausalityBadge = styled.span<{ $causality?: string }>`
+const CausalityBadge = styled.span<{ $causality?: string | undefined }>`
   display: inline-block;
   font-size: 10px;
   font-family: var(--font-mono, monospace);
@@ -378,10 +378,11 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
   const handleRunSimulation = () => {
     setIsSimulating(true);
     setTimeout(() => {
-      // Generate realistic second-order response curve
+      // Generate second-order response curve parameterized by current inputs & parameters
       const steps = 100;
       const t: number[] = [];
       const y: number[] = [];
+      const uStep = Number(paramValues["u"] ?? 1.0) || 1.0;
       const R = Number(paramValues["R"] || 10);
       const J = Number(paramValues["J"] || 0.05);
       const tau = Math.max(0.1, (J * R) / 2);
@@ -389,7 +390,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
       for (let i = 0; i <= steps; i++) {
         const time = (i / steps) * 5.0;
         t.push(time);
-        const val = 1.0 - Math.exp(-time / tau) * Math.cos(2.5 * time);
+        const val = uStep * (1.0 - Math.exp(-time / tau) * Math.cos(2.5 * time));
         y.push(val);
       }
 
@@ -630,7 +631,6 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
           </Box>
         )}
 
-        {activeTab === "metadata"}
         {activeTab === "metadata" && (
           <Box display="flex" flexDirection="column" gap={2} fontSize="12.5px">
             <Box

@@ -70,7 +70,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
   function getFieldSiblingIndex(ruleName: string, fieldName: string): number {
     const rule = normalized.evaluatedRules[ruleName];
     if (!rule) return -1;
-    let seqRule = rule.type === "DEF" ? rule.children![0] : rule;
+    let seqRule = rule.type === "DEF" ? rule.children![0]! : rule;
     if (seqRule.type !== "SEQ") return -1;
     let idx = 0;
     for (const child of seqRule.children || []) {
@@ -103,8 +103,8 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
       if (mappedInt !== undefined) {
         let match = (factStr as string).match(/^(\w+)\(([^)]+)\)$/);
         if (match) {
-          let pred = match[1].trim();
-          let argsStr = match[2];
+          let pred = match[1]!.trim();
+          let argsStr = match[2]!;
           let args = argsStr.split(",").map((s: string) => s.trim());
           let predHash = getDJB2Hash(pred);
           predHashes.add(predHash);
@@ -141,8 +141,8 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     for (const [key, factStr] of Object.entries(grammar.semantics.typeExtraction)) {
       let match = (factStr as string).match(/^(\w+)\(([^)]+)\)$/);
       if (match) {
-        let pred = match[1].trim();
-        let argsStr = match[2];
+        let pred = match[1]!.trim();
+        let argsStr = match[2]!;
         let args = argsStr.split(",").map((s: string) => s.trim());
         let predHash = getDJB2Hash(pred);
         predHashes.add(predHash);
@@ -236,9 +236,9 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     const ruleMatch = withoutDot.match(/^(\w+)\(([^)]+)\)\s*:-\s*(.+)$/);
     if (!ruleMatch) continue;
 
-    let headPred = ruleMatch[1];
-    let headArgs = ruleMatch[2].split(",").map((s) => s.trim());
-    let bodyStr = ruleMatch[3];
+    let headPred = ruleMatch[1]!;
+    let headArgs = ruleMatch[2]!.split(",").map((s) => s.trim());
+    let bodyStr = ruleMatch[3]!;
 
     // Split body atoms, handling commas inside parentheses
     let bodyAtoms = bodyStr.split("),").map((s: string) => s.trim().replace(/\)$/, "") + ")");
@@ -248,18 +248,21 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
       let trimmed = atom.trim();
       let negated = false;
 
-      // Task 4.1: Recognize NOT prefix
+      // Task 4.1: Recognize NOT / ! prefix
       if (trimmed.startsWith("NOT ") || trimmed.startsWith("not ")) {
         negated = true;
         trimmed = trimmed.substring(4).trim();
+      } else if (trimmed.startsWith("!")) {
+        negated = true;
+        trimmed = trimmed.substring(1).trim();
       }
 
       let m = trimmed.match(/^(\w+)\(([^)]+)\)$/);
       if (m) {
-        let args = m[2].split(",").map((s) => s.trim());
+        let args = m[2]!.split(",").map((s) => s.trim());
         body.push({
-          pred: getDJB2Hash(m[1]),
-          predName: m[1],
+          pred: getDJB2Hash(m[1]!),
+          predName: m[1]!,
           args,
           negated,
         });
@@ -295,48 +298,99 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     }
   }
 
-  // Compute strata: topological sort where negation edges increment stratum
-  const predStratum = new Map<string, number>();
-  for (const p of allPreds) predStratum.set(p, 0);
+  // Compute Strongly Connected Components (Tarjan's algorithm) so that if a negation
+  // cycle exists, only predicates within the cyclic SCC share a stratum while all
+  // upstream and downstream SCCs in the condensation DAG preserve their stratified order.
+  const adj = new Map<string, { to: string; isNeg: boolean }[]>();
+  for (const p of allPreds) adj.set(p, []);
+  for (const edge of depEdges) {
+    adj.get(edge.from)!.push({ to: edge.to, isNeg: edge.isNeg });
+  }
 
-  // Iterative fixpoint: stratum(head) >= stratum(body) for positive,
-  //                     stratum(head) > stratum(body) for negation
-  let stratChanged = true;
-  let stratIter = 0;
-  const maxStrata = allPreds.size + 1;
+  let tarjanIndex = 0;
+  const nodeIndex = new Map<string, number>();
+  const nodeLowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const tarjanStack: string[] = [];
+  const sccs: string[][] = [];
+  const predScc = new Map<string, number>();
 
-  while (stratChanged && stratIter < maxStrata) {
-    stratChanged = false;
-    stratIter++;
+  function strongConnect(v: string): void {
+    nodeIndex.set(v, tarjanIndex);
+    nodeLowlink.set(v, tarjanIndex);
+    tarjanIndex++;
+    tarjanStack.push(v);
+    onStack.add(v);
+
+    for (const edge of adj.get(v) || []) {
+      const w = edge.to;
+      if (!nodeIndex.has(w)) {
+        strongConnect(w);
+        nodeLowlink.set(v, Math.min(nodeLowlink.get(v)!, nodeLowlink.get(w)!));
+      } else if (onStack.has(w)) {
+        nodeLowlink.set(v, Math.min(nodeLowlink.get(v)!, nodeIndex.get(w)!));
+      }
+    }
+
+    if (nodeLowlink.get(v) === nodeIndex.get(v)) {
+      const scc: string[] = [];
+      const sccId = sccs.length;
+      while (true) {
+        const w = tarjanStack.pop()!;
+        onStack.delete(w);
+        scc.push(w);
+        predScc.set(w, sccId);
+        if (w === v) break;
+      }
+      sccs.push(scc);
+    }
+  }
+
+  for (const p of allPreds) {
+    if (!nodeIndex.has(p)) {
+      strongConnect(p);
+    }
+  }
+
+  // Detect intra-SCC negation cycles and compute strata over the SCC condensation DAG
+  const unstratifiableSccs = new Set<number>();
+  for (const edge of depEdges) {
+    const fromScc = predScc.get(edge.from)!;
+    const toScc = predScc.get(edge.to)!;
+    if (edge.isNeg && fromScc === toScc) {
+      unstratifiableSccs.add(fromScc);
+    }
+  }
+
+  const sccStratum = new Array<number>(sccs.length).fill(0);
+  let sccChanged = true;
+  let sccPass = 0;
+  while (sccChanged && sccPass <= sccs.length) {
+    sccChanged = false;
+    sccPass++;
     for (const edge of depEdges) {
-      const fromStratum = predStratum.get(edge.from)!;
-      const toStratum = predStratum.get(edge.to)!;
-
-      if (edge.isNeg) {
-        // Negation: head must be strictly higher than negated body
-        if (fromStratum <= toStratum) {
-          predStratum.set(edge.from, toStratum + 1);
-          stratChanged = true;
-        }
-      } else {
-        // Positive: head must be at least as high as body
-        if (fromStratum < toStratum) {
-          predStratum.set(edge.from, toStratum);
-          stratChanged = true;
-        }
+      const fromScc = predScc.get(edge.from)!;
+      const toScc = predScc.get(edge.to)!;
+      if (fromScc === toScc) continue; // Intra-SCC edges share the SCC's stratum
+      const required = edge.isNeg || unstratifiableSccs.has(fromScc) ? sccStratum[toScc]! + 1 : sccStratum[toScc]!;
+      if (sccStratum[fromScc]! < required) {
+        sccStratum[fromScc] = required;
+        sccChanged = true;
       }
     }
   }
 
-  // Check for negation cycles (unstratifiable)
-  if (stratChanged) {
-    console.error("⚠️  Negation cycle detected in Datalog rules — stratification failed.");
-    console.error("   Rules with NOT must not form cycles through negated predicates.");
-    console.error("   Falling back to single-stratum evaluation (negation may be unsound).");
-    // Fallback: collapse all predicates into stratum 0.
-    // This means negated atoms are evaluated in the same fixpoint as positive atoms,
-    // which is semantically equivalent to "well-founded" semantics without stratification.
-    for (const p of allPreds) predStratum.set(p, 0);
+  const predStratum = new Map<string, number>();
+  for (const p of allPreds) {
+    predStratum.set(p, sccStratum[predScc.get(p)!]!);
+  }
+
+  if (unstratifiableSccs.size > 0) {
+    const cyclicPredLists = Array.from(unstratifiableSccs).map((id) => `[${sccs[id]!.join(", ")}]`);
+    console.warn(
+      `⚠️  Intra-SCC negation cycle detected in Datalog component(s) ${cyclicPredLists.join(", ")}; ` +
+        `isolating cycle within its SCC stratum while preserving stratification across remaining ${sccs.length - unstratifiableSccs.size} component(s).`,
+    );
   }
 
   // Group rules by stratum
@@ -344,7 +398,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
   const rulesByStratum: ParsedRule[][] = Array.from({ length: numStrata }, () => []);
   for (const r of parsedRules) {
     const s = predStratum.get(r.headPred) || 0;
-    rulesByStratum[s].push(r);
+    rulesByStratum[s]!.push(r);
   }
 
   // ---- Task 4.4-4.5: Generate per-stratum evaluation code ----
@@ -358,7 +412,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
 
     if (positiveAtoms.length < 1) return ""; // Shouldn't happen
 
-    const b0 = positiveAtoms[0];
+    const b0 = positiveAtoms[0]!;
 
     out += `        let ${prefix}_chain0 = predIndexHead[(${b0.pred} >>> 0) & PRED_INDEX_MASK];\n`;
     out += `        while (${prefix}_chain0 != 0) {\n`;
@@ -370,7 +424,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     // Build variable-to-position map and handle constants in b0
     const varMap: Record<string, string[]> = {};
     for (let ai = 0; ai < b0.args.length; ai++) {
-      const v = b0.args[ai];
+      const v = b0.args[ai]!;
       out += `            let ${prefix}_arg0_${ai + 1} = factTable[${prefix}_idx0 + ${ai + 1}];\n`;
       if (v.startsWith("'") && v.endsWith("'")) {
         const hashVal = getDJB2Hash(v.substring(1, v.length - 1));
@@ -385,7 +439,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
 
     // Inner loops for positive atoms 1 to N-1
     for (let k = 1; k < positiveAtoms.length; k++) {
-      const bk = positiveAtoms[k];
+      const bk = positiveAtoms[k]!;
       out += `            let ${prefix}_chain${k} = predIndexHead[(${bk.pred} >>> 0) & PRED_INDEX_MASK];\n`;
       out += `            while (${prefix}_chain${k} != 0) {\n`;
       out += `                let ${prefix}_i${k} = ${prefix}_chain${k} - 1;\n`;
@@ -394,7 +448,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
       out += `                if (factTable[${prefix}_idx${k}] != ${bk.pred}) continue;\n`;
 
       for (let ai = 0; ai < bk.args.length; ai++) {
-        const v = bk.args[ai];
+        const v = bk.args[ai]!;
         out += `                let ${prefix}_arg${k}_${ai + 1} = factTable[${prefix}_idx${k} + ${ai + 1}];\n`;
         if (v.startsWith("'") && v.endsWith("'")) {
           const hashVal = getDJB2Hash(v.substring(1, v.length - 1));
@@ -410,7 +464,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
       let levelJoinChecks: string[] = [];
       for (const [, positions] of Object.entries(varMap)) {
         if (positions.length >= 2) {
-          const lastPos = positions[positions.length - 1];
+          const lastPos = positions[positions.length - 1]!;
           if (lastPos.startsWith(`${prefix}_arg${k}_`)) {
             for (let pi = 0; pi < positions.length - 1; pi++) {
               levelJoinChecks.push(`${lastPos} == ${positions[pi]}`);
@@ -424,13 +478,13 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
 
     // Task 4.5: Negation checks — scan fact table to verify absence
     for (let ni = 0; ni < negativeAtoms.length; ni++) {
-      const neg = negativeAtoms[ni];
+      const neg = negativeAtoms[ni]!;
       const negLabel = `${prefix}_neg${ni}`;
 
       // Build negation arg expressions by binding from the varMap or handling constants
       let negArgChecks: string[] = [`factTable[${negLabel}_idx] == ${neg.pred}`];
       for (let ai = 0; ai < neg.args.length; ai++) {
-        const argVar = neg.args[ai];
+        const argVar = neg.args[ai]!;
         if (argVar.startsWith("'") && argVar.endsWith("'")) {
           const hashVal = getDJB2Hash(argVar.substring(1, argVar.length - 1));
           negArgChecks.push(`factTable[${negLabel}_idx + ${ai + 1}] == ${hashVal}`);
@@ -505,12 +559,12 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
   // Generate stratified materialization function
   let stratifiedCode = "";
   for (let si = 0; si < numStrata; si++) {
-    const stratumRules = rulesByStratum[si];
+    const stratumRules = rulesByStratum[si]!;
     if (stratumRules.length === 0) continue;
 
     let rulesInStratum = "";
     for (let ri = 0; ri < stratumRules.length; ri++) {
-      rulesInStratum += generateRuleCode(stratumRules[ri], `s${si}r${ri}`);
+      rulesInStratum += generateRuleCode(stratumRules[ri]!, `s${si}r${ri}`);
     }
 
     stratifiedCode += `
@@ -688,7 +742,7 @@ function factHashKey(${addFactParams.join(", ")}): u32 {
 }
 
 export function findFactIndex(${factExistsParams.join(", ")}): i32 {
-    let hk = factHashKey(${factExistsParams.map((p) => p.split(":")[0].trim()).join(", ")});
+    let hk = factHashKey(${factExistsParams.map((p) => p.split(":")[0]!.trim()).join(", ")});
     let guard: u32 = 0;
     while (guard < FACT_HASH_CAPACITY) {
         let slot = factHashTable[hk];
@@ -703,7 +757,7 @@ export function findFactIndex(${factExistsParams.join(", ")}): i32 {
 
 export function addFactWithProv(${addFactParams.join(", ")}, provMask: u32 = 1): u32 {
     if (factCount >= MAX_FACTS) return 0;
-    let existingIdx = findFactIndex(${factExistsParams.map((p) => p.split(":")[0].trim()).join(", ")});
+    let existingIdx = findFactIndex(${factExistsParams.map((p) => p.split(":")[0]!.trim()).join(", ")});
     if (existingIdx >= 0) {
         factProvTable[existingIdx as u32] |= provMask;
         return existingIdx as u32;
@@ -713,7 +767,7 @@ ${addFactStores.join("")}   let factIdx = factCount;
     factProvTable[factIdx] = provMask != 0 ? provMask : 1;
     factCount++;
     // Insert into hash index (1-based index to distinguish from empty=0)
-    let hk = factHashKey(${addFactParams.map((p) => p.split(":")[0].trim()).join(", ")});
+    let hk = factHashKey(${addFactParams.map((p) => p.split(":")[0]!.trim()).join(", ")});
     let guard: u32 = 0;
     while (factHashTable[hk] != 0 && guard < FACT_HASH_CAPACITY) {
         hk = (hk + 1) % FACT_HASH_CAPACITY;
@@ -728,11 +782,11 @@ ${addFactStores.join("")}   let factIdx = factCount;
 }
 
 export function addFact(${addFactParams.join(", ")}): void {
-    addFactWithProv(${addFactParams.map((p) => p.split(":")[0].trim()).join(", ")}, 1);
+    addFactWithProv(${addFactParams.map((p) => p.split(":")[0]!.trim()).join(", ")}, 1);
 }
 
 export function factExists(${factExistsParams.join(", ")}): boolean {
-    return findFactIndex(${factExistsParams.map((p) => p.split(":")[0].trim()).join(", ")}) >= 0;
+    return findFactIndex(${factExistsParams.map((p) => p.split(":")[0]!.trim()).join(", ")}) >= 0;
 }
 
 export function getFactProvenance(factIdx: u32): u32 {

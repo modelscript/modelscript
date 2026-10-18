@@ -63,7 +63,7 @@ export interface CoSimParticipant {
   // ── Optional: FMU state save/restore (for advanced master algorithms) ──
 
   /** Whether this participant supports state save/restore. */
-  readonly canGetAndSetState?: boolean;
+  readonly canGetAndSetState?: boolean | undefined;
 
   /**
    * Save a snapshot of the current FMU state.
@@ -101,7 +101,7 @@ export interface CoSimParticipant {
   // ── Optional: Directional derivatives (for implicit master algorithms) ──
 
   /** Whether this participant can provide directional derivatives. */
-  readonly providesDirectionalDerivatives?: boolean;
+  readonly providesDirectionalDerivatives?: boolean | undefined;
 
   /**
    * Compute directional derivatives: dv_unknown = (∂unknown/∂known) · dv_known.

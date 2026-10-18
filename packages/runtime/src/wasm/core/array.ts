@@ -4,12 +4,21 @@
 
 export function atomicChunkAlloc(size: u32): u32 {
   if (size == 0) return 0;
-  let ptr = heap.alloc(size + 32);
-  if (ptr == 0) return 0;
-  let rem = ptr % 16;
-  if (rem != 0) ptr += 16 - rem;
-  memory.fill(ptr, 0, size);
-  return ptr as u32;
+  let rawPtr = heap.alloc(size + 32);
+  if (rawPtr == 0) return 0;
+  let alignedPtr = (rawPtr + sizeof<usize>() + 15) & ~15;
+  store<usize>(alignedPtr - sizeof<usize>(), rawPtr);
+  memory.fill(alignedPtr, 0, size);
+  return alignedPtr as u32;
+}
+
+export function atomicChunkFree(ptr: usize): void {
+  if (ptr == 0) return;
+  let rawPtr = load<usize>(ptr - sizeof<usize>());
+  if (rawPtr != 0) {
+    store<usize>(ptr - sizeof<usize>(), 0);
+    heap.free(rawPtr);
+  }
 }
 
 // 2^12 = 4096. Used for fast division to find the chunk index.
@@ -70,6 +79,7 @@ export class ChunkedArray<T> {
       let newDirectory = atomicChunkAlloc(newDirCapacity * sizeof<usize>()) as usize;
       if (this.directory != 0) {
         memory.copy(newDirectory, this.directory, this.dirCapacity * sizeof<usize>());
+        atomicChunkFree(this.directory);
       }
       this.directory = newDirectory;
       this.dirCapacity = newDirCapacity;
@@ -178,12 +188,18 @@ export class ChunkedArray<T> {
   }
 
   /**
-   * Frees the directory buffer to prevent memory leaks when the array is no longer needed.
-   * Note: Chunks allocated via atomicChunkAlloc are not freed individually.
+   * Frees the allocated chunks and directory buffer to prevent memory leaks when the array is no longer needed.
    */
   @inline
   public dispose(): void {
     if (this.directory != 0) {
+      for (let i: u32 = 0; i < this.allocatedChunks; i++) {
+        let chunkPtr = load<usize>(this.directory + i * sizeof<usize>());
+        if (chunkPtr != 0) {
+          atomicChunkFree(chunkPtr);
+        }
+      }
+      atomicChunkFree(this.directory);
       this.directory = 0;
       this.dirCapacity = 0;
       this.allocatedChunks = 0;

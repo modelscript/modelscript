@@ -63,7 +63,7 @@ function domainToLang(domainName: string): string {
 
 function enhanceWithDigitalThreadTwin(
   hoverContent: string,
-  token: string,
+  _token: string,
   text: string,
   offset: number,
   documentUri: string,
@@ -228,7 +228,7 @@ function enhanceWithCadLink(hoverContent: string, token: string, text: string, o
     lineText.match(/__modelscript_cad\([^)]*?part\s*=\s*"([^"]+)"/i);
 
   if (cadMatch) {
-    coupledPartName = cadMatch[1];
+    coupledPartName = cadMatch[1]!;
   } else {
     const lowerToken = token.toLowerCase();
     const bioCadKeywords = [
@@ -290,9 +290,9 @@ export function registerHoverProvider(
     if (isStepDocument(document)) {
       // Expand token boundaries to include # for entity IDs and uppercase for type names
       let start = offset;
-      while (start > 0 && /[A-Z0-9_#]/.test(text[start - 1])) start--;
+      while (start > 0 && /[A-Z0-9_#]/.test(text[start - 1]!)) start--;
       let end = offset;
-      while (end < text.length && /[A-Z0-9_]/.test(text[end])) end++;
+      while (end < text.length && /[A-Z0-9_]/.test(text[end]!)) end++;
 
       const token = text.slice(start, end);
 
@@ -548,7 +548,7 @@ export function registerHoverProvider(
               const node = taxonomy.get(iri);
 
               if (node && node.superClasses.size > 0) {
-                const inferred = Array.from(node.superClasses).filter(
+                const inferred = Array.from<string>(node.superClasses).filter(
                   (superIri: string) => superIri !== "owl:Thing" && superIri !== iri,
                 );
                 if (inferred.length > 0) {
@@ -556,7 +556,7 @@ export function registerHoverProvider(
                 }
 
                 // If there are subclasses, we can show them too
-                const subclasses = Array.from(node.subClasses).filter(
+                const subclasses = Array.from<string>(node.subClasses).filter(
                   (subIri: string) => subIri !== "owl:Nothing" && subIri !== iri,
                 );
                 if (subclasses.length > 0) {

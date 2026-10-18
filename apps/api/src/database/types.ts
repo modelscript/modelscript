@@ -2,12 +2,12 @@
 
 export interface UserFederationInfo {
   id: number;
-  actor_url?: string | null;
-  inbox_url?: string | null;
-  outbox_url?: string | null;
-  remote_domain?: string | null;
-  rsa_public_key?: string | null;
-  rsa_private_key?: string | null;
+  actor_url?: string | null | undefined;
+  inbox_url?: string | null | undefined;
+  outbox_url?: string | null | undefined;
+  remote_domain?: string | null | undefined;
+  rsa_public_key?: string | null | undefined;
+  rsa_private_key?: string | null | undefined;
 }
 
 export interface UserArchiveData {

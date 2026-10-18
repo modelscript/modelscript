@@ -16,12 +16,12 @@ function formatUnit(unit: string): string {
 
 interface PropertiesWidgetProps {
   properties: ComponentProperties | null;
-  isLoading?: boolean;
+  isLoading?: boolean | undefined;
   context?: any;
-  width?: number;
-  onNameChange?: (name: string) => void;
-  onDescriptionChange?: (description: string) => void;
-  onParameterChange?: (name: string, value: string) => void;
+  width?: number | undefined;
+  onNameChange?: ((name: string) => void) | undefined;
+  onDescriptionChange?: ((description: string) => void) | undefined;
+  onParameterChange?: ((name: string, value: string) => void) | undefined;
   translations: Translations;
 }
 
@@ -30,8 +30,8 @@ function ParameterRow({
   onParameterChange,
 }: {
   parameter: PropertyData;
-  colorMode?: string;
-  onParameterChange?: (name: string, value: string) => void;
+  colorMode?: string | undefined;
+  onParameterChange?: ((name: string, value: string) => void) | undefined;
 }) {
   const { value, unit, isBoolean } = parameter;
   const [localValue, setLocalValue] = useState(value);
@@ -154,7 +154,7 @@ function SchemaFieldRow({
   field: any;
   currentValue: any;
   contextValues: Record<string, any>;
-  onParameterChange?: (name: string, value: string) => void;
+  onParameterChange?: ((name: string, value: string) => void) | undefined;
 }) {
   const isEnabled = evaluatePropertyPredicate(field.enabledIf, contextValues) && !field.readOnly;
   const [localVal, setLocalVal] = useState<string>(String(currentValue ?? field.defaultValue ?? ""));
@@ -362,7 +362,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
   useEffect(() => {
     if (visibleTabs.length > 0 && !visibleTabs.some((t: any) => t.id === activeTabId)) {
-      setActiveTabId(visibleTabs[0].id);
+      setActiveTabId(visibleTabs[0]!.id);
     }
   }, [visibleTabs, activeTabId]);
 

@@ -38,24 +38,53 @@ interface TimeTableEntry {
 const table1DStore = new Map<number, Table1DEntry>();
 const table2DStore = new Map<number, Table2DEntry>();
 const timeTableStore = new Map<number, TimeTableEntry>();
+const ioMatrixStore = new Map<string, number[][]>();
 let nextHandleId = 1;
 
-/** Linear interpolation on 1D table: x is col 0, y is col colIdx (1-based) */
-function interpolate1D(table: number[][], colIdx: number, u: number): number {
+/** Interpolation on 1D table: x is col 0, y is col colIdx (1-based) */
+function interpolate1D(table: number[][], colIdx: number, u: number, smoothness = 1, extrapolation = 1): number {
   if (!table || table.length === 0) return 0.0;
   const n = table.length;
   if (n === 1) return table[0]![colIdx] ?? 0.0;
 
-  // Clamp or extrapolate
-  if (u <= table[0]![0]!) return table[0]![colIdx] ?? 0.0;
-  if (u >= table[n - 1]![0]!) return table[n - 1]![colIdx] ?? 0.0;
+  const xMin = table[0]![0]!;
+  const xMax = table[n - 1]![0]!;
+  let uEff = u;
+
+  if (extrapolation === 3 && xMax - xMin > 1e-15) {
+    // Periodic extrapolation
+    const period = xMax - xMin;
+    uEff = xMin + ((((u - xMin) % period) + period) % period);
+  } else if (u <= xMin) {
+    if (extrapolation === 2 && n >= 2) {
+      // Linear extrapolation through first two points
+      const x0 = table[0]![0]!;
+      const x1 = table[1]![0]!;
+      const y0 = table[0]![colIdx] ?? 0.0;
+      const y1 = table[1]![colIdx] ?? 0.0;
+      if (smoothness === 2 || Math.abs(x1 - x0) < 1e-15) return y0;
+      return y0 + ((u - x0) / (x1 - x0)) * (y1 - y0);
+    }
+    return table[0]![colIdx] ?? 0.0;
+  } else if (u >= xMax) {
+    if (extrapolation === 2 && n >= 2) {
+      // Linear extrapolation through last two points
+      const x0 = table[n - 2]![0]!;
+      const x1 = table[n - 1]![0]!;
+      const y0 = table[n - 2]![colIdx] ?? 0.0;
+      const y1 = table[n - 1]![colIdx] ?? 0.0;
+      if (smoothness === 2 || Math.abs(x1 - x0) < 1e-15) return y1;
+      return y0 + ((u - x0) / (x1 - x0)) * (y1 - y0);
+    }
+    return table[n - 1]![colIdx] ?? 0.0;
+  }
 
   // Binary search interval
   let lo = 0;
   let hi = n - 1;
   while (lo < hi - 1) {
     const mid = (lo + hi) >> 1;
-    if (table[mid]![0]! <= u) lo = mid;
+    if (table[mid]![0]! <= uEff) lo = mid;
     else hi = mid;
   }
 
@@ -64,8 +93,9 @@ function interpolate1D(table: number[][], colIdx: number, u: number): number {
   const y0 = table[lo]![colIdx] ?? 0.0;
   const y1 = table[hi]![colIdx] ?? 0.0;
 
-  if (Math.abs(x1 - x0) < 1e-15) return y0;
-  const t = (u - x0) / (x1 - x0);
+  // Smoothness.ConstantSegments === 2
+  if (smoothness === 2 || Math.abs(x1 - x0) < 1e-15) return y0;
+  const t = (uEff - x0) / (x1 - x0);
   return y0 + t * (y1 - y0);
 }
 
@@ -168,7 +198,7 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const u = Number(args[2] ?? 0.0);
       const entry = table1DStore.get(handle);
       if (!entry) return 0.0;
-      return interpolate1D(entry.table, icol, u);
+      return interpolate1D(entry.table, icol, u, entry.smoothness, 1);
     }
     case "ModelicaStandardTables_CombiTable1D_close": {
       const handle = Number(args[0] ?? 0);
@@ -207,7 +237,7 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const entry = timeTableStore.get(handle);
       if (!entry) return 0.0;
       const effectiveTime = timeIn - entry.shiftTime;
-      return interpolate1D(entry.table, icol, effectiveTime);
+      return interpolate1D(entry.table, icol, effectiveTime, entry.smoothness, entry.extrapolation);
     }
     case "ModelicaStandardTables_CombiTimeTable_minimumTime": {
       const handle = Number(args[0] ?? 0);
@@ -222,7 +252,31 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       return entry.table[entry.table.length - 1]![0]! + entry.shiftTime;
     }
     case "ModelicaStandardTables_CombiTimeTable_nextTimeEvent": {
-      return 1e100; // No discrete time events scheduled
+      const handle = Number(args[0] ?? 0);
+      const timeIn = Number(args[1] ?? 0.0);
+      const entry = timeTableStore.get(handle);
+      if (!entry || entry.table.length === 0) return 1e100;
+      const effectiveTime = timeIn - entry.shiftTime;
+      const tMin = entry.table[0]![0]!;
+      const tMax = entry.table[entry.table.length - 1]![0]!;
+      if (entry.extrapolation === 3 && entry.table.length >= 2 && tMax - tMin > 1e-15) {
+        const period = tMax - tMin;
+        const k = Math.floor((effectiveTime - tMin) / period);
+        for (const row of entry.table) {
+          const candidate = row[0]! + k * period;
+          if (candidate > effectiveTime + 1e-12) {
+            return candidate + entry.shiftTime;
+          }
+        }
+        return tMin + (k + 1) * period + entry.shiftTime;
+      }
+      for (const row of entry.table) {
+        const tRow = row[0]!;
+        if (tRow > effectiveTime + 1e-12) {
+          return tRow + entry.shiftTime;
+        }
+      }
+      return 1e100;
     }
     case "ModelicaStandardTables_CombiTimeTable_close": {
       const handle = Number(args[0] ?? 0);
@@ -288,11 +342,46 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
     }
 
     // ── ModelicaIO ──
+    case "ModelicaIO_readMatrixSizes": {
+      const fileName = String(args[0] ?? "");
+      const matrixName = String(args[1] ?? "");
+      const stored = ioMatrixStore.get(`${fileName}::${matrixName}`);
+      if (stored && stored.length > 0) {
+        return [stored.length, stored[0]?.length ?? 0];
+      }
+      return [1, 1];
+    }
     case "ModelicaIO_readRealMatrix": {
-      return [[0.0]];
+      const fileName = String(args[0] ?? "");
+      const matrixName = String(args[1] ?? "");
+      const nrow = Math.max(1, Number(args[2] ?? 1));
+      const ncol = Math.max(1, Number(args[3] ?? 1));
+      const stored = ioMatrixStore.get(`${fileName}::${matrixName}`);
+      if (stored) {
+        const out: number[][] = [];
+        for (let r = 0; r < nrow; r++) {
+          const srcRow = stored[r] ?? [];
+          const row: number[] = [];
+          for (let c = 0; c < ncol; c++) {
+            row.push(Number(srcRow[c] ?? 0.0));
+          }
+          out.push(row);
+        }
+        return out;
+      }
+      return Array.from({ length: nrow }, () => new Array<number>(ncol).fill(0.0));
     }
     case "ModelicaIO_writeRealMatrix": {
-      return 1;
+      const fileName = String(args[0] ?? "");
+      const matrixName = String(args[1] ?? "");
+      const rawMatrix = args[2];
+      if (Array.isArray(rawMatrix)) {
+        const normalized: number[][] = rawMatrix.map((row: any) =>
+          Array.isArray(row) ? row.map((v: any) => Number(v ?? 0.0)) : [Number(row ?? 0.0)],
+        );
+        ioMatrixStore.set(`${fileName}::${matrixName}`, normalized);
+      }
+      return 0;
     }
 
     default:

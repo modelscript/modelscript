@@ -144,6 +144,7 @@ function exprToC(dae: DAEBuilder, id: number): string {
 // ── DAE Analysis Helpers ──
 
 function conditionToZeroCrossingC(dae: DAEBuilder, id: number): string {
+  void conditionToZeroCrossingC;
   if (id < 0) return "0.0";
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
@@ -159,6 +160,7 @@ function conditionToZeroCrossingC(dae: DAEBuilder, id: number): string {
   }
   return `(${exprToC(dae, id)} ? 1.0 : -1.0)`;
 }
+void conditionToZeroCrossingC;
 
 function extractAssignmentTarget(dae: DAEBuilder, id: number): string | null {
   if (id >= 0 && dae.getExprKind(id) === ExprKind.Name) {
@@ -240,7 +242,7 @@ function collectReferencedNames(dae: DAEBuilder, id: number, names: Set<string>)
 // ── Main C Source Generator ──
 
 function generateWasmC(
-  id: string,
+  _id: string,
   nVars: number,
   nStates: number,
   nEventIndicators: number,

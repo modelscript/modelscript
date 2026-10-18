@@ -14,9 +14,9 @@ import SafeOrbitControls from "./SafeOrbitControls";
 import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraControls";
 
 interface GCodeViewerProps {
-  artifactId?: number;
+  artifactId?: number | undefined;
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
 function Loader() {

@@ -13,16 +13,18 @@ export interface ClassifiedPatches {
 
 export interface PatchClassificationRules {
   /** Tolerance threshold for identifying planar boundary faces (fraction of dimension). Default: 0.02. */
-  toleranceFraction?: number;
+  toleranceFraction?: number | undefined;
   /** Custom name overrides for extremal planes. */
-  tags?: {
-    minX?: string; // e.g. "INLET"
-    maxX?: string; // e.g. "OUTLET"
-    minY?: string; // e.g. "SIDE_WALL_YMIN"
-    maxY?: string; // e.g. "SIDE_WALL_YMAX"
-    minZ?: string; // e.g. "FIXED_SUPPORT"
-    maxZ?: string; // e.g. "LOAD_SURFACE"
-  };
+  tags?:
+    | {
+        minX?: string | undefined; // e.g. "INLET"
+        maxX?: string | undefined; // e.g. "OUTLET"
+        minY?: string | undefined; // e.g. "SIDE_WALL_YMIN"
+        maxY?: string | undefined; // e.g. "SIDE_WALL_YMAX"
+        minZ?: string | undefined; // e.g. "FIXED_SUPPORT"
+        maxZ?: string | undefined; // e.g. "LOAD_SURFACE"
+      }
+    | undefined;
 }
 
 /**
@@ -46,9 +48,9 @@ export class PatchClassifier {
       maxZ = -Infinity;
 
     for (let i = 0; i < numNodes; i++) {
-      const x = nodeCoords[i * 3 + 0];
-      const y = nodeCoords[i * 3 + 1];
-      const z = nodeCoords[i * 3 + 2];
+      const x = nodeCoords[i * 3 + 0]!;
+      const y = nodeCoords[i * 3 + 1]!;
+      const z = nodeCoords[i * 3 + 2]!;
 
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
@@ -98,13 +100,13 @@ export class PatchClassifier {
     };
 
     for (let t = 0; t < numTriangles; t++) {
-      const n0 = triangles[t * 3 + 0];
-      const n1 = triangles[t * 3 + 1];
-      const n2 = triangles[t * 3 + 2];
+      const n0 = triangles[t * 3 + 0]!;
+      const n1 = triangles[t * 3 + 1]!;
+      const n2 = triangles[t * 3 + 2]!;
 
-      const xMid = (nodeCoords[n0 * 3] + nodeCoords[n1 * 3] + nodeCoords[n2 * 3]) / 3;
-      const yMid = (nodeCoords[n0 * 3 + 1] + nodeCoords[n1 * 3 + 1] + nodeCoords[n2 * 3 + 1]) / 3;
-      const zMid = (nodeCoords[n0 * 3 + 2] + nodeCoords[n1 * 3 + 2] + nodeCoords[n2 * 3 + 2]) / 3;
+      const xMid = (nodeCoords[n0 * 3]! + nodeCoords[n1 * 3]! + nodeCoords[n2 * 3]!) / 3;
+      const yMid = (nodeCoords[n0 * 3 + 1]! + nodeCoords[n1 * 3 + 1]! + nodeCoords[n2 * 3 + 1]!) / 3;
+      const zMid = (nodeCoords[n0 * 3 + 2]! + nodeCoords[n1 * 3 + 2]! + nodeCoords[n2 * 3 + 2]!) / 3;
 
       let tagAssigned = "WALL_BODY";
 

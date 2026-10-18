@@ -14,7 +14,7 @@ export class SimpleHash {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  digest(encoding?: string): string {
+  digest(_encoding?: string): string {
     const str = this.#parts.join("\0");
     // FNV-1a 64-bit hash (as two 32-bit halves for precision)
     let h1 = 0x811c9dc5 >>> 0;
@@ -35,6 +35,6 @@ export class SimpleHash {
  * Returns a `SimpleHash` instance with `.update()` and `.digest()` methods.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function createHash(algorithm?: string): SimpleHash {
+export function createHash(_algorithm?: string): SimpleHash {
   return new SimpleHash();
 }

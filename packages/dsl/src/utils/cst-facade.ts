@@ -159,12 +159,12 @@ export interface QueryMatch {
 }
 
 export interface QueryOptions {
-  startPosition?: Point;
-  endPosition?: Point;
-  startIndex?: number;
-  endIndex?: number;
-  matchLimit?: number;
-  maxStartDepth?: number;
+  startPosition?: Point | undefined;
+  endPosition?: Point | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  matchLimit?: number | undefined;
+  maxStartDepth?: number | undefined;
 }
 
 export interface LookaheadIterator {

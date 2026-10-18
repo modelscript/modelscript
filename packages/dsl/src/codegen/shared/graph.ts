@@ -95,7 +95,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
     while (curr.parent) curr = curr.parent;
     if (ts.isSourceFile(curr)) return curr;
     if (node.getSourceFile && node.getSourceFile()) return node.getSourceFile();
-    return ast.sourceFile;
+    return ast!.sourceFile;
   }
 
   // 1. Emit Top-Level Constants (e.g. VARIABILITY_CONTINUOUS, TYPE_REAL, etc.)

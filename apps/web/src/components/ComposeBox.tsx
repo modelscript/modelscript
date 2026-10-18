@@ -5,6 +5,8 @@ import {
   BeakerIcon,
   BookIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CircleIcon,
   CodeIcon,
   GlobeIcon,
@@ -14,11 +16,13 @@ import {
   PaperclipIcon,
   PersonIcon,
   PinIcon,
+  PlusIcon,
   PulseIcon,
   ServerIcon,
   SlidersIcon,
   SmileyIcon,
   SparkleIcon,
+  TrashIcon,
   XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
@@ -37,6 +41,14 @@ import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { getAvatarUrl } from "../util/avatar";
 import { getAllPrivateKeyIds, getPrivateKey, migrateLegacyKeys } from "../util/keystore";
+import {
+  createCellId,
+  extractArtifactIdsFromCells,
+  hasArtifactDirectives,
+  type NotebookCell,
+  parseNotebookFromContent,
+  serializeCellsToMarkdown,
+} from "../util/notebook";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import Box from "./Box";
 import HpcArtifactPickerModal from "./HpcArtifactPickerModal";
@@ -198,6 +210,130 @@ const QuoteWrapper = styled.div`
   background-color: rgba(255, 255, 255, 0.02);
 `;
 
+const NotebookContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+`;
+
+const NotebookTitleInput = styled.input`
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-fg-default);
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  border-radius: 10px;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:focus {
+    border-color: var(--color-accent-cyan);
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+  }
+
+  &::placeholder {
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+`;
+
+const NotebookCellCard = styled.div<{ $active?: boolean | undefined; $isArtifact?: boolean | undefined }>`
+  border: 1px solid
+    ${(props) =>
+      props.$active
+        ? "var(--color-accent-cyan, #06b6d4)"
+        : props.$isArtifact
+          ? "rgba(139, 92, 246, 0.28)"
+          : "var(--color-border-default, rgba(255, 255, 255, 0.12))"};
+  border-radius: 12px;
+  background: ${(props) => (props.$isArtifact ? "rgba(139, 92, 246, 0.04)" : "rgba(255, 255, 255, 0.02)")};
+  overflow: hidden;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+`;
+
+const NotebookCellHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--color-text-muted);
+`;
+
+const CellActionBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--color-fg-default);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+`;
+
+const NotebookCellTextarea = styled.textarea`
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 15.5px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 68px;
+  background: transparent;
+  color: var(--color-fg-default);
+  font-family: inherit;
+  box-sizing: border-box;
+
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+`;
+
+const ArtifactCaptionInput = styled.input`
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+  outline: none;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--color-fg-default);
+  font-family: inherit;
+  box-sizing: border-box;
+
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+`;
+
 import type { SpatialPin } from "./artifacts/spatial-pin";
 
 function formatRelativeTime(dateString: string): string {
@@ -216,18 +352,24 @@ function formatRelativeTime(dateString: string): string {
 }
 
 interface ComposeBoxProps {
-  onPostCreated?: (post: any) => void;
+  onPostCreated?: ((post: any) => void) | undefined;
   quotePost?: any;
   replyToPost?: any;
-  placeholder?: string;
-  minRows?: number;
-  autoFocus?: boolean;
-  pendingPin?: SpatialPin;
-  content?: string;
-  setContent?: (val: string) => void;
-  artifactId?: number | null;
-  setArtifactId?: (val: number | null) => void;
-  isModal?: boolean;
+  placeholder?: string | undefined;
+  minRows?: number | undefined;
+  autoFocus?: boolean | undefined;
+  pendingPin?: SpatialPin | undefined;
+  content?: string | undefined;
+  setContent?: ((val: string) => void) | undefined;
+  artifactId?: number | null | undefined;
+  setArtifactId?: ((val: number | null) => void) | undefined;
+  isModal?: boolean | undefined;
+  notebookMode?: boolean | undefined;
+  setNotebookMode?: ((val: boolean) => void) | undefined;
+  notebookTitle?: string | undefined;
+  setNotebookTitle?: ((val: string) => void) | undefined;
+  notebookCells?: NotebookCell[] | undefined;
+  setNotebookCells?: ((cells: NotebookCell[]) => void) | undefined;
 }
 
 export default function ComposeBox({
@@ -243,6 +385,12 @@ export default function ComposeBox({
   artifactId: controlledArtifactId,
   setArtifactId: setControlledArtifactId,
   isModal,
+  notebookMode: controlledNotebookMode,
+  setNotebookMode: setControlledNotebookMode,
+  notebookTitle: controlledNotebookTitle,
+  setNotebookTitle: setControlledNotebookTitle,
+  notebookCells: controlledNotebookCells,
+  setNotebookCells: setControlledNotebookCells,
 }: ComposeBoxProps) {
   const { user, token } = useAuth();
 
@@ -253,6 +401,23 @@ export default function ComposeBox({
   const [internalArtifactId, setInternalArtifactId] = useState<number | null>(null);
   const artifactId = controlledArtifactId !== undefined ? controlledArtifactId : internalArtifactId;
   const setArtifactId = setControlledArtifactId || setInternalArtifactId;
+
+  const [internalNotebookMode, setInternalNotebookMode] = useState(false);
+  const isNotebookMode = controlledNotebookMode !== undefined ? controlledNotebookMode : internalNotebookMode;
+  const setIsNotebookMode = setControlledNotebookMode || setInternalNotebookMode;
+
+  const [internalNotebookTitle, setInternalNotebookTitle] = useState("");
+  const notebookTitle = controlledNotebookTitle !== undefined ? controlledNotebookTitle : internalNotebookTitle;
+  const setNotebookTitle = setControlledNotebookTitle || setInternalNotebookTitle;
+
+  const [internalNotebookCells, setInternalNotebookCells] = useState<NotebookCell[]>([
+    { id: createCellId("md"), type: "markdown", content: "" },
+  ]);
+  const notebookCells = controlledNotebookCells !== undefined ? controlledNotebookCells : internalNotebookCells;
+  const setNotebookCells = setControlledNotebookCells || setInternalNotebookCells;
+
+  const [activeCellId, setActiveCellId] = useState<string | null>(null);
+  const [pendingInsertAfterCellId, setPendingInsertAfterCellId] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -268,6 +433,128 @@ export default function ComposeBox({
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const syncNotebookToContentAndArtifact = (cells: NotebookCell[], title: string) => {
+    setNotebookCells(cells);
+    const serialized = serializeCellsToMarkdown(cells, title);
+    setContent(serialized);
+    const artIds = extractArtifactIdsFromCells(cells);
+    setArtifactId(artIds[0] ?? null);
+  };
+
+  const handleToggleNotebookMode = () => {
+    if (!isNotebookMode) {
+      const parsed = parseNotebookFromContent(content, artifactId);
+      const nextCells = [...parsed.cells];
+      if (nextCells.length === 0 || nextCells[nextCells.length - 1]!.type === "artifact") {
+        nextCells.push({ id: createCellId("md"), type: "markdown", content: "" });
+      }
+      if (parsed.title && !notebookTitle) {
+        setNotebookTitle(parsed.title);
+      }
+      setNotebookCells(nextCells);
+      setActiveCellId(nextCells[nextCells.length - 1]?.id || null);
+      setIsNotebookMode(true);
+    } else {
+      const serialized = serializeCellsToMarkdown(notebookCells, notebookTitle);
+      setContent(serialized);
+      const artIds = extractArtifactIdsFromCells(notebookCells);
+      setArtifactId(artIds[0] ?? null);
+      setIsNotebookMode(false);
+    }
+  };
+
+  const updateMarkdownCell = (cellId: string, newText: string) => {
+    const nextCells = notebookCells.map((c) =>
+      c.id === cellId && c.type === "markdown" ? { ...c, content: newText } : c,
+    );
+    syncNotebookToContentAndArtifact(nextCells, notebookTitle);
+  };
+
+  const updateArtifactCellCaption = (cellId: string, caption: string) => {
+    const nextCells = notebookCells.map((c) => (c.id === cellId && c.type === "artifact" ? { ...c, caption } : c));
+    syncNotebookToContentAndArtifact(nextCells, notebookTitle);
+  };
+
+  const addMarkdownCellAfter = (afterCellId?: string | null) => {
+    const newCell: NotebookCell = { id: createCellId("md"), type: "markdown", content: "" };
+    const nextCells = [...notebookCells];
+    if (afterCellId) {
+      const idx = nextCells.findIndex((c) => c.id === afterCellId);
+      if (idx !== -1) {
+        nextCells.splice(idx + 1, 0, newCell);
+      } else {
+        nextCells.push(newCell);
+      }
+    } else {
+      nextCells.push(newCell);
+    }
+    syncNotebookToContentAndArtifact(nextCells, notebookTitle);
+    setActiveCellId(newCell.id);
+  };
+
+  const moveCell = (cellId: string, direction: -1 | 1) => {
+    const idx = notebookCells.findIndex((c) => c.id === cellId);
+    if (idx === -1) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= notebookCells.length) return;
+    const nextCells = [...notebookCells];
+    const [removed] = nextCells.splice(idx, 1);
+    nextCells.splice(targetIdx, 0, removed!);
+    syncNotebookToContentAndArtifact(nextCells, notebookTitle);
+  };
+
+  const removeCell = (cellId: string) => {
+    const nextCells = notebookCells.filter((c) => c.id !== cellId);
+    if (nextCells.length === 0) {
+      nextCells.push({ id: createCellId("md"), type: "markdown", content: "" });
+    }
+    syncNotebookToContentAndArtifact(nextCells, notebookTitle);
+  };
+
+  const attachArtifactToComposer = (newArtifactId: number, title?: string, suggestedCaption?: string) => {
+    if (!isNotebookMode && artifactId === null && !hasArtifactDirectives(content)) {
+      setArtifactId(newArtifactId);
+      if (!content.trim() && suggestedCaption) {
+        setContent(suggestedCaption);
+      }
+      return;
+    }
+
+    // Either already in Notebook Mode or attaching a 2nd+ artifact: build/update cells
+    const baseCells = isNotebookMode ? [...notebookCells] : parseNotebookFromContent(content, artifactId).cells;
+
+    const newArtCell: NotebookCell = {
+      id: createCellId("art"),
+      type: "artifact",
+      artifactId: newArtifactId,
+      ...(title ? { title } : {}),
+      ...(suggestedCaption ? { caption: suggestedCaption } : {}),
+    };
+
+    const insertAfterId = pendingInsertAfterCellId || activeCellId;
+    if (insertAfterId) {
+      const idx = baseCells.findIndex((c) => c.id === insertAfterId);
+      if (idx !== -1) {
+        baseCells.splice(idx + 1, 0, newArtCell);
+      } else {
+        baseCells.push(newArtCell);
+      }
+    } else {
+      baseCells.push(newArtCell);
+    }
+
+    // Ensure there's always a trailing markdown cell so the user can keep typing below the artifact
+    if (baseCells.length === 0 || baseCells[baseCells.length - 1]!.type === "artifact") {
+      baseCells.push({ id: createCellId("md"), type: "markdown", content: "" });
+    }
+
+    setPendingInsertAfterCellId(null);
+    if (!isNotebookMode) {
+      setIsNotebookMode(true);
+    }
+    syncNotebookToContentAndArtifact(baseCells, notebookTitle);
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -313,7 +600,7 @@ export default function ComposeBox({
     if (!mentionQuery || !mentionQuery.query.includes("@")) return;
     const handle = mentionQuery.query;
     const parts = handle.split("@");
-    if (parts.length < 2 || !parts[0] || parts[1].length < 2) return;
+    if (parts.length < 2 || !parts[0] || parts[1]!.length < 2) return;
 
     const timer = setTimeout(() => {
       resolveFederatedActor(handle)
@@ -361,7 +648,7 @@ export default function ComposeBox({
     const mentionMatch = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]*)?)$/);
     if (mentionMatch) {
       const atIndex = textBeforeCursor.lastIndexOf("@");
-      setMentionQuery({ query: mentionMatch[1], index: atIndex });
+      setMentionQuery({ query: mentionMatch[1]!, index: atIndex });
       setHashtagQuery(null);
       return;
     } else {
@@ -371,7 +658,7 @@ export default function ComposeBox({
     const hashMatch = textBeforeCursor.match(/(?:^|\s)#([a-zA-Z0-9_-]*)$/);
     if (hashMatch) {
       const hashIndex = textBeforeCursor.lastIndexOf("#");
-      setHashtagQuery({ query: hashMatch[1], index: hashIndex });
+      setHashtagQuery({ query: hashMatch[1]!, index: hashIndex });
     } else {
       setHashtagQuery(null);
     }
@@ -388,6 +675,16 @@ export default function ComposeBox({
 
   const insertMention = (username: string) => {
     if (!mentionQuery) return;
+    if (isNotebookMode && activeCellId) {
+      const targetCell = notebookCells.find((c) => c.id === activeCellId);
+      if (targetCell && targetCell.type === "markdown") {
+        const before = targetCell.content.slice(0, mentionQuery.index);
+        const after = targetCell.content.slice(mentionQuery.index + mentionQuery.query.length + 1);
+        updateMarkdownCell(activeCellId, `${before}@${username} ${after}`);
+        setMentionQuery(null);
+        return;
+      }
+    }
     const before = content.slice(0, mentionQuery.index);
     const after = content.slice(textareaRef.current?.selectionStart || content.length);
     const newContent = `${before}@${username} ${after}`;
@@ -404,6 +701,16 @@ export default function ComposeBox({
 
   const insertHashtag = (tag: string) => {
     if (!hashtagQuery) return;
+    if (isNotebookMode && activeCellId) {
+      const targetCell = notebookCells.find((c) => c.id === activeCellId);
+      if (targetCell && targetCell.type === "markdown") {
+        const before = targetCell.content.slice(0, hashtagQuery.index);
+        const after = targetCell.content.slice(hashtagQuery.index + hashtagQuery.query.length + 1);
+        updateMarkdownCell(activeCellId, `${before}#${tag} ${after}`);
+        setHashtagQuery(null);
+        return;
+      }
+    }
     const before = content.slice(0, hashtagQuery.index);
     const after = content.slice(textareaRef.current?.selectionStart || content.length);
     const newContent = `${before}#${tag} ${after}`;
@@ -424,7 +731,7 @@ export default function ComposeBox({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!token || !e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
+    const file = e.target.files[0]!;
     setUploadingFile(true);
     try {
       const formData = new FormData();
@@ -438,7 +745,7 @@ export default function ComposeBox({
         view_config,
         title: file.name,
       });
-      setArtifactId(artifactData.id);
+      attachArtifactToComposer(artifactData.id, file.name);
     } catch (err) {
       console.error(err);
     } finally {
@@ -485,12 +792,13 @@ export default function ComposeBox({
         });
       }
 
+      const title = `Example ${type}`;
       const data = await createArtifactView({
         artifact_type: type,
         view_config,
-        title: `Example ${type}`,
+        title,
       });
-      setArtifactId(data.id);
+      attachArtifactToComposer(data.id, title);
     } catch (err) {
       console.error(err);
     }
@@ -502,7 +810,7 @@ export default function ComposeBox({
       const keyIds = await getAllPrivateKeyIds();
       if (keyIds.length === 0) return null;
 
-      const keyIdString = keyIds[0];
+      const keyIdString = keyIds[0]!;
       const cryptoKey = await getPrivateKey(keyIdString);
       if (!cryptoKey) return null;
 
@@ -520,23 +828,51 @@ export default function ComposeBox({
     }
   };
 
+  const hasNotebookContent =
+    isNotebookMode &&
+    (notebookTitle.trim().length > 0 ||
+      notebookCells.some((c) => (c.type === "markdown" ? c.content.trim().length > 0 : Boolean(c.artifactId))));
+
   const handleSubmit = async () => {
-    if ((!content.trim() && !artifactId) || !token) return;
+    if ((!content.trim() && !artifactId && !hasNotebookContent) || !token) return;
     setSubmitting(true);
     try {
-      const text = content.trim();
+      const effectiveCells = isNotebookMode
+        ? notebookCells.filter((c) => (c.type === "markdown" ? c.content.trim().length > 0 : Boolean(c.artifactId)))
+        : hasArtifactDirectives(content)
+          ? parseNotebookFromContent(content, artifactId).cells
+          : null;
+
+      const effectiveArtIds = effectiveCells ? extractArtifactIdsFromCells(effectiveCells) : [];
+      const primaryArtifactId = effectiveArtIds[0] ?? artifactId ?? undefined;
+      const text = isNotebookMode
+        ? serializeCellsToMarkdown(effectiveCells || [], notebookTitle).trim()
+        : content.trim();
+
       const signatureObj = await signContent(text);
+
+      const notebookPayload =
+        effectiveCells && (isNotebookMode || effectiveArtIds.length > 1 || hasArtifactDirectives(text))
+          ? {
+              isNotebook: true,
+              ...(notebookTitle.trim() ? { title: notebookTitle.trim() } : {}),
+              cells: effectiveCells,
+              artifactIds: effectiveArtIds,
+            }
+          : undefined;
 
       const payload: any = {
         content: text,
         content_warning: contentWarning.trim() || undefined,
-        artifact_view_id: artifactId,
+        artifact_view_id: primaryArtifactId,
         quote_post_id: quotePost?.id,
         reply_to_id: replyToPost?.id,
         reply_visibility: replyVisibility,
+        ...(notebookPayload ? { notebook: notebookPayload } : {}),
         metadata: {
           ...(pendingPin ? { spatialPin: pendingPin } : {}),
           ...(contentWarning.trim() ? { contentWarning: contentWarning.trim() } : {}),
+          ...(notebookPayload ? { notebook: notebookPayload } : {}),
         },
       };
 
@@ -550,6 +886,9 @@ export default function ComposeBox({
       setContentWarning("");
       setShowContentWarning(false);
       setArtifactId(null);
+      setNotebookTitle("");
+      setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
+      setIsNotebookMode(false);
       onPostCreated?.(data.post);
     } catch (err) {
       console.error(err);
@@ -755,47 +1094,272 @@ export default function ComposeBox({
                 />
               </Box>
             )}
-            <OverlayWrapper>
-              <Backdrop>
-                {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
-                  part.startsWith("@") ? (
-                    <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
-                      {part}
+            {isNotebookMode ? (
+              <NotebookContainer>
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  px={2}
+                  py={1}
+                  borderRadius="8px"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(6, 182, 212, 0.08))",
+                    border: "1px solid rgba(139, 92, 246, 0.25)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      fontFamily: "var(--font-mono, monospace)",
+                      color: "var(--color-accent-cyan)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <BookIcon size={13} />
+                    <span>Engineering Notebook Mode · Interleaved Prose & Artifacts</span>
+                  </span>
+                  <CellActionBtn type="button" onClick={handleToggleNotebookMode} title="Switch to raw Markdown view">
+                    Raw Markdown (`::artifact`)
+                  </CellActionBtn>
+                </Box>
+
+                <NotebookTitleInput
+                  type="text"
+                  placeholder="Notebook / Article Title (optional)..."
+                  value={notebookTitle}
+                  onChange={(e) => {
+                    const nextTitle = e.target.value;
+                    setNotebookTitle(nextTitle);
+                    syncNotebookToContentAndArtifact(notebookCells, nextTitle);
+                  }}
+                />
+
+                {notebookCells.map((cell, idx) => {
+                  const isFirst = idx === 0;
+                  const isLast = idx === notebookCells.length - 1;
+                  return (
+                    <NotebookCellCard
+                      key={cell.id}
+                      $active={activeCellId === cell.id}
+                      $isArtifact={cell.type === "artifact"}
+                      onClick={() => setActiveCellId(cell.id)}
+                    >
+                      <NotebookCellHeader>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontWeight: 600 }}>
+                          <span
+                            style={{
+                              color:
+                                cell.type === "artifact"
+                                  ? "var(--color-accent-purple, #a855f7)"
+                                  : "var(--color-accent-cyan, #06b6d4)",
+                            }}
+                          >
+                            {cell.type === "artifact" ? `⚡ Artifact Cell #${idx + 1}` : `📝 Markdown Cell #${idx + 1}`}
+                          </span>
+                          {cell.type === "artifact" && (
+                            <span style={{ opacity: 0.75 }}>({cell.title || `id=${cell.artifactId}`})</span>
+                          )}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <CellActionBtn
+                            type="button"
+                            disabled={isFirst}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCell(cell.id, -1);
+                            }}
+                            title="Move cell up"
+                            aria-label="Move cell up"
+                          >
+                            <ChevronUpIcon size={12} />
+                          </CellActionBtn>
+                          <CellActionBtn
+                            type="button"
+                            disabled={isLast}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveCell(cell.id, 1);
+                            }}
+                            title="Move cell down"
+                            aria-label="Move cell down"
+                          >
+                            <ChevronDownIcon size={12} />
+                          </CellActionBtn>
+                          <CellActionBtn
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addMarkdownCellAfter(cell.id);
+                            }}
+                            title="Insert Markdown section below"
+                          >
+                            <PlusIcon size={11} /> Text
+                          </CellActionBtn>
+                          <CellActionBtn
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingInsertAfterCellId(cell.id);
+                              setShowMorselModal(true);
+                            }}
+                            title="Insert interactive Morsel model below"
+                          >
+                            <PlusIcon size={11} /> Morsel
+                          </CellActionBtn>
+                          <CellActionBtn
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeCell(cell.id);
+                            }}
+                            title="Remove cell"
+                            aria-label="Remove cell"
+                          >
+                            <TrashIcon size={12} />
+                          </CellActionBtn>
+                        </div>
+                      </NotebookCellHeader>
+
+                      {cell.type === "markdown" ? (
+                        <NotebookCellTextarea
+                          value={cell.content}
+                          placeholder={
+                            idx === 0
+                              ? "Write introduction, equations, or # section headings... (@mention, #hashtag)"
+                              : "Continue your engineering narrative, analysis, or observations..."
+                          }
+                          onFocus={() => setActiveCellId(cell.id)}
+                          onChange={(e) => {
+                            setActiveCellId(cell.id);
+                            updateMarkdownCell(cell.id, e.target.value);
+                            updateTokenState(e.target.value, e.target.selectionStart);
+                          }}
+                          onKeyUp={handleInteraction}
+                          onClick={handleInteraction}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                              handleSubmit();
+                            }
+                          }}
+                          onBlur={() => {
+                            setTimeout(() => {
+                              setMentionQuery(null);
+                              setHashtagQuery(null);
+                            }, 150);
+                          }}
+                        />
+                      ) : (
+                        <div>
+                          <div style={{ padding: "8px" }}>
+                            <ArtifactViewCard artifactId={cell.artifactId} />
+                          </div>
+                          <ArtifactCaptionInput
+                            type="text"
+                            placeholder="Add figure caption or engineering note for this artifact (optional)..."
+                            value={cell.caption || ""}
+                            onChange={(e) => updateArtifactCellCaption(cell.id, e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </NotebookCellCard>
+                  );
+                })}
+
+                <Box display="flex" gap={2} flexWrap="wrap" alignItems="center" pt={1}>
+                  <CommandPill
+                    type="button"
+                    onClick={() => addMarkdownCellAfter(notebookCells[notebookCells.length - 1]?.id)}
+                  >
+                    <span className="pill-icon">
+                      <PlusIcon size={11} />
                     </span>
-                  ) : part.startsWith("#") ? (
-                    <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
-                      {part}
+                    <span>Add Text Section</span>
+                  </CommandPill>
+                  <CommandPill
+                    type="button"
+                    onClick={() => {
+                      setPendingInsertAfterCellId(notebookCells[notebookCells.length - 1]?.id || null);
+                      setShowMorselModal(true);
+                    }}
+                  >
+                    <span className="pill-icon">
+                      <PulseIcon size={11} />
                     </span>
-                  ) : (
-                    part
-                  ),
-                )}
-                {/* Add an invisible newline if content ends with one so Backdrop height matches textarea */}
-                {content.endsWith("\n") && <br />}
-              </Backdrop>
-              <ComposeInput
-                ref={textareaRef}
-                value={content}
-                onChange={handleContentChange}
-                onKeyUp={handleInteraction}
-                onClick={handleInteraction}
-                placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
-                rows={minRows}
-                autoFocus={autoFocus}
-                style={{ marginBottom: replyToPost ? "0px" : "12px" }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                    handleSubmit();
-                  }
-                }}
-                onBlur={() => {
-                  setTimeout(() => {
-                    setMentionQuery(null);
-                    setHashtagQuery(null);
-                  }, 150);
-                }}
-              />
-            </OverlayWrapper>
+                    <span>Insert Morsel Cell</span>
+                  </CommandPill>
+                  <CommandPill
+                    type="button"
+                    onClick={() => {
+                      setPendingInsertAfterCellId(notebookCells[notebookCells.length - 1]?.id || null);
+                      createDummyArtifact("simulation-plot");
+                    }}
+                  >
+                    <span className="pill-icon">
+                      <SlidersIcon size={11} />
+                    </span>
+                    <span>Insert Plot Cell</span>
+                  </CommandPill>
+                  <CommandPill
+                    type="button"
+                    onClick={() => {
+                      setPendingInsertAfterCellId(notebookCells[notebookCells.length - 1]?.id || null);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    <span className="pill-icon">
+                      <PaperclipIcon size={11} />
+                    </span>
+                    <span>Insert CAD / Media Cell</span>
+                  </CommandPill>
+                </Box>
+              </NotebookContainer>
+            ) : (
+              <OverlayWrapper>
+                <Backdrop>
+                  {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
+                    part.startsWith("@") ? (
+                      <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
+                        {part}
+                      </span>
+                    ) : part.startsWith("#") ? (
+                      <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
+                        {part}
+                      </span>
+                    ) : (
+                      part
+                    ),
+                  )}
+                  {/* Add an invisible newline if content ends with one so Backdrop height matches textarea */}
+                  {content.endsWith("\n") && <br />}
+                </Backdrop>
+                <ComposeInput
+                  ref={textareaRef}
+                  value={content}
+                  onChange={handleContentChange}
+                  onKeyUp={handleInteraction}
+                  onClick={handleInteraction}
+                  placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
+                  rows={minRows}
+                  autoFocus={autoFocus}
+                  style={{ marginBottom: replyToPost ? "0px" : "12px" }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      handleSubmit();
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setMentionQuery(null);
+                      setHashtagQuery(null);
+                    }, 150);
+                  }}
+                />
+              </OverlayWrapper>
+            )}
             {mentionQuery && mentionSuggestions.length > 0 && (
               <Box
                 position="absolute"
@@ -898,7 +1462,7 @@ export default function ComposeBox({
                 })}
               </Box>
             )}
-            {artifactId !== null && (
+            {!isNotebookMode && artifactId !== null && (
               <div
                 style={{
                   position: "relative",
@@ -1146,6 +1710,25 @@ export default function ComposeBox({
               <Box display="flex" gap={1} mb={2} flexWrap="wrap">
                 <CommandPill
                   type="button"
+                  onClick={handleToggleNotebookMode}
+                  title="Toggle long-form Notebook Mode with interspersed Markdown & interactive Artifacts"
+                  style={
+                    isNotebookMode
+                      ? {
+                          background: "rgba(139, 92, 246, 0.16)",
+                          borderColor: "var(--color-accent-cyan)",
+                          color: "var(--color-fg-default)",
+                        }
+                      : undefined
+                  }
+                >
+                  <span className="pill-icon">
+                    <BookIcon size={11} />
+                  </span>
+                  <span>{isNotebookMode ? "Notebook Mode: ON" : "📓 Notebook Mode"}</span>
+                </CommandPill>
+                <CommandPill
+                  type="button"
                   onClick={() => setContent(content ? `${content} /synthesize model ` : "/synthesize model ")}
                   title="Generate a physics-informed Modelica or DAE model"
                 >
@@ -1191,15 +1774,13 @@ export default function ComposeBox({
                 <Box display="flex" gap={2} alignItems="center">
                   <ActionIconButton
                     onClick={() => setShowMorselModal(true)}
-                    disabled={artifactId !== null}
                     aria-label="Add Morsel Diagram"
-                    title="Add Morsel Diagram & Simulation"
+                    title="Add Morsel Diagram & Simulation (attach multiple to build a Notebook)"
                   >
                     <PulseIcon size={20} />
                   </ActionIconButton>
                   <ActionIconButton
                     onClick={() => setShowPackageRepoPicker(true)}
-                    disabled={artifactId !== null}
                     aria-label="Attach Package or Repository"
                     title="Attach Package or Repository"
                   >
@@ -1207,16 +1788,14 @@ export default function ComposeBox({
                   </ActionIconButton>
                   <ActionIconButton
                     onClick={() => createDummyArtifact("modelica-code")}
-                    disabled={artifactId !== null}
                     aria-label="Add Code"
-                    title="Add Code"
+                    title="Add Code Cell"
                   >
                     <CodeIcon size={20} />
                   </ActionIconButton>
                   {hasHpc && (
                     <ActionIconButton
                       onClick={() => setShowHpcPicker(true)}
-                      disabled={artifactId !== null}
                       aria-label="Attach HPC Artifact"
                       title="Attach HPC Simulation Artifact (FEA, CFD, DOEs)"
                     >
@@ -1229,11 +1808,11 @@ export default function ComposeBox({
                     ref={fileInputRef}
                     accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.mo,.tei,.xml"
                     onChange={handleFileUpload}
-                    disabled={artifactId !== null || uploadingFile}
+                    disabled={uploadingFile}
                   />
                   <ActionIconButton
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={artifactId !== null || uploadingFile}
+                    disabled={uploadingFile}
                     aria-label="Upload Media"
                     title="Upload Media (Images, Videos, USDZ 3D, CAD, PDFs, CSV, TEI)"
                   >
@@ -1283,16 +1862,14 @@ export default function ComposeBox({
                   </div>
                   <ActionIconButton
                     onClick={() => createDummyArtifact("simulation-plot")}
-                    disabled={artifactId !== null}
                     aria-label="Add Params"
-                    title="Add Params"
+                    title="Add Simulation Plot / Params Cell"
                   >
                     <SlidersIcon size={20} />
                   </ActionIconButton>
                   {hasExperimental && (
                     <ActionIconButton
                       onClick={() => createDummyArtifact("tei-document")}
-                      disabled={artifactId !== null}
                       aria-label="Add TEI Document"
                       title="Add TEI Document"
                     >
@@ -1305,8 +1882,11 @@ export default function ComposeBox({
                     </span>
                   )}
                 </Box>
-                <TweetButton onClick={handleSubmit} disabled={(!content.trim() && !artifactId) || submitting}>
-                  {replyToPost ? "Reply" : "⚡ Publish & Run"}
+                <TweetButton
+                  onClick={handleSubmit}
+                  disabled={(!content.trim() && !artifactId && !hasNotebookContent) || submitting}
+                >
+                  {replyToPost ? "Reply" : isNotebookMode ? "📓 Publish Notebook" : "⚡ Publish & Run"}
                 </TweetButton>
               </Box>
             </Box>
@@ -1319,10 +1899,7 @@ export default function ComposeBox({
           isOpen={showHpcPicker}
           onClose={() => setShowHpcPicker(false)}
           onSelect={(res) => {
-            setArtifactId(res.artifactId);
-            if (!content.trim() && res.suggestedCaption) {
-              setContent(res.suggestedCaption);
-            }
+            attachArtifactToComposer(res.artifactId, undefined, res.suggestedCaption);
           }}
         />
       )}
@@ -1338,7 +1915,7 @@ export default function ComposeBox({
               view_config: JSON.stringify({ code, dialect, title }),
               title: `⚡ ${title}`,
             });
-            setArtifactId(data.id);
+            attachArtifactToComposer(data.id, title);
           } catch (err) {
             console.error("Failed to attach morsel artifact:", err);
           }
@@ -1349,10 +1926,7 @@ export default function ComposeBox({
         isOpen={showPackageRepoPicker}
         onClose={() => setShowPackageRepoPicker(false)}
         onSelect={(res) => {
-          setArtifactId(res.artifactId);
-          if (!content.trim() && res.suggestedCaption) {
-            setContent(res.suggestedCaption);
-          }
+          attachArtifactToComposer(res.artifactId, undefined, res.suggestedCaption);
         }}
       />
     </>

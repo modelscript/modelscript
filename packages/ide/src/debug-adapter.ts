@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @module @modelscript/ide-client/debug-adapter
+ *
+ * In-process Debug Adapter Protocol (DAP) implementation for ModelScript simulations.
+ * Bridges VS Code's debugging UI (breakpoints, stepping, stack frames, variable inspection,
+ * and hover expression evaluation) to the LSP server's interactive simulation debugger.
+ */
+
 import {
   Breakpoint,
   InitializedEvent,
@@ -12,24 +20,33 @@ import {
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
 
+/** Currently active in-process DAP debug session instance, if one is running. */
 export let activeDebugSession: ModelScriptDebugSession | undefined;
+/** Callback registered by the LSP client to launch a debugged simulation for a model URI/path. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export let startLspDebugSession: ((program: string) => Promise<any>) | undefined;
+/** Callback registered by the LSP client to resume simulation execution from a breakpoint. */
 export let continueLspDebugSession: (() => Promise<void>) | undefined;
+/** Callback registered by the LSP client to inspect current variable values at a paused step. */
 export let getLspDebugVariables:
   | (() => Promise<{ name: string; value: string; variablesReference: number }[]>)
   | undefined;
+/** Callback registered by the LSP client to synchronize source breakpoints with the simulator. */
 export let setLspBreakpoints:
-  | ((program: string, breakpoints: { line: number; column?: number }[]) => Promise<void>)
+  | ((program: string, breakpoints: { line: number; column?: number | undefined }[]) => Promise<void>)
   | undefined;
+/** Callback registered by the LSP client to advance the simulation by a single statement/step. */
 export let nextLspDebugSession: (() => Promise<void>) | undefined;
 
+/**
+ * Registers the LSP-backed simulation control callbacks invoked by `ModelScriptDebugSession`.
+ */
 export function setLspDebugCallbacks(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   start: (program: string) => Promise<any>,
   cont: () => Promise<void>,
   getVars: () => Promise<{ name: string; value: string; variablesReference: number }[]>,
-  setBps: (program: string, bps: { line: number; column?: number }[]) => Promise<void>,
+  setBps: (program: string, bps: { line: number; column?: number | undefined }[]) => Promise<void>,
   next: () => Promise<void>,
 ) {
   startLspDebugSession = start;
@@ -45,22 +62,28 @@ export function setLspDebugCallbacks(
  * asynchronously yielding `SimulationDebugger`.
  */
 export class ModelScriptDebugSession extends LoggingDebugSession {
-  private _runtime: unknown; // Will hold a reference to ModelicaSimulator or the LSP Simulation Manager
+  /** Reference to the active `ModelicaSimulator` or LSP Simulation Manager instance. */
+  public _runtime: unknown;
 
-  public lastStoppedUri?: string;
-  public lastStoppedLine?: number;
-  public lastStoppedColumn?: number;
+  /** Document URI where the simulation debugger most recently paused. */
+  public lastStoppedUri?: string | undefined;
+  /** 1-based source line number where the simulation debugger most recently paused. */
+  public lastStoppedLine?: number | undefined;
+  /** 1-based source column number where the simulation debugger most recently paused. */
+  public lastStoppedColumn?: number | undefined;
 
+  /** Initializes a new DAP session with 1-based line and column indexing. */
   public constructor() {
     super();
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     activeDebugSession = this;
-    // This debugger uses zero-based lines and columns
+    // This debugger uses 1-based lines and columns matching LSP/OMC diagnostics
     this.setDebuggerLinesStartAt1(true);
     this.setDebuggerColumnsStartAt1(true);
   }
 
-  protected initializeRequest(response: DebugProtocol.InitializeResponse): void {
+  /** Declares supported DAP capabilities (configurationDone, hover evaluation) and emits `InitializedEvent`. */
+  protected override initializeRequest(response: DebugProtocol.InitializeResponse): void {
     response.body = response.body || {};
 
     // We support basic capabilities
@@ -75,11 +98,12 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendEvent(new InitializedEvent());
   }
 
-  protected async launchRequest(
+  /** Launches the target ModelScript program in the LSP simulation debugger and emits `TerminatedEvent` on completion. */
+  protected override async launchRequest(
     response: DebugProtocol.LaunchResponse,
     args: DebugProtocol.LaunchRequestArguments,
   ): Promise<void> {
-    const program = (args as Record<string, string>).program;
+    const program = (args as Record<string, string>)["program"];
 
     if (program && startLspDebugSession) {
       // Must send the launch response BEFORE events or it hangs
@@ -98,7 +122,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     }
   }
 
-  protected async setBreakPointsRequest(
+  /** Registers source line/column breakpoints for the given file path with the LSP simulation debugger. */
+  protected override async setBreakPointsRequest(
     response: DebugProtocol.SetBreakpointsResponse,
     args: DebugProtocol.SetBreakpointsArguments,
   ): Promise<void> {
@@ -127,7 +152,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
+  /** Returns the single conceptual simulation execution thread. */
+  protected override threadsRequest(response: DebugProtocol.ThreadsResponse): void {
     // We run simulation in a single conceptual thread
     response.body = {
       threads: [new Thread(1, "ModelScript Simulator")],
@@ -135,7 +161,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected stackTraceRequest(response: DebugProtocol.StackTraceResponse): void {
+  /** Constructs a single-frame call stack pointing to `lastStoppedUri`, `lastStoppedLine`, and `lastStoppedColumn`. */
+  protected override stackTraceRequest(response: DebugProtocol.StackTraceResponse): void {
     let source: Source | undefined;
     if (this.lastStoppedUri) {
       // Create a vscode.Uri-like representation depending on whether it's file:// or memfs://
@@ -159,14 +186,16 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected scopesRequest(response: DebugProtocol.ScopesResponse): void {
+  /** Returns the single `"Local"` variable scope for the paused simulation frame. */
+  protected override scopesRequest(response: DebugProtocol.ScopesResponse): void {
     response.body = {
       scopes: [new Scope("Local", 1, false)],
     };
     this.sendResponse(response);
   }
 
-  protected async variablesRequest(response: DebugProtocol.VariablesResponse): Promise<void> {
+  /** Fetches the current DAE state, algebraic, and parameter variable values from the LSP simulator. */
+  protected override async variablesRequest(response: DebugProtocol.VariablesResponse): Promise<void> {
     if (getLspDebugVariables) {
       try {
         const vars = await getLspDebugVariables();
@@ -180,7 +209,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected async continueRequest(response: DebugProtocol.ContinueResponse): Promise<void> {
+  /** Resumes simulation execution until the next breakpoint or end of simulation. */
+  protected override async continueRequest(response: DebugProtocol.ContinueResponse): Promise<void> {
     if (continueLspDebugSession) {
       await continueLspDebugSession();
     }
@@ -188,14 +218,16 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected async nextRequest(response: DebugProtocol.NextResponse): Promise<void> {
+  /** Advances the simulation debugger by one statement or integration step (Step Over). */
+  protected override async nextRequest(response: DebugProtocol.NextResponse): Promise<void> {
     if (nextLspDebugSession) {
       await nextLspDebugSession();
     }
     this.sendResponse(response);
   }
 
-  protected async stepInRequest(response: DebugProtocol.StepInResponse): Promise<void> {
+  /** Advances the simulation debugger by one step (identical to Step Over because flattened functions are inlined). */
+  protected override async stepInRequest(response: DebugProtocol.StepInResponse): Promise<void> {
     // In flattened ModelScript, Step Into is the same as Step Over because functions are inlined
     if (nextLspDebugSession) {
       await nextLspDebugSession();
@@ -203,7 +235,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected async evaluateRequest(
+  /** Evaluates a watched or hovered variable name against the current simulation state table. */
+  protected override async evaluateRequest(
     response: DebugProtocol.EvaluateResponse,
     args: DebugProtocol.EvaluateArguments,
   ): Promise<void> {
@@ -230,7 +263,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  protected async disconnectRequest(response: DebugProtocol.DisconnectResponse): Promise<void> {
+  /** Unblocks any paused simulation loop and disconnects the debug adapter session. */
+  protected override async disconnectRequest(response: DebugProtocol.DisconnectResponse): Promise<void> {
     // If the user stops the debugger while execution is paused on a breakpoint,
     // the LSP simulator will be hung waiting indefinitely on the `debuggerResumeCallback` Promise.
     // We send a final 'continue' signal before terminating to unblock the simulation loop.

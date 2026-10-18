@@ -19,31 +19,33 @@ export interface DimensionTolerance {
    * -1 = decreases gap (e.g. pin diameter, inserted component length)
    */
   direction: 1 | -1;
-  material?: {
-    name: string;
-    /** Coefficient of thermal expansion in ppm/K (1e-6 / K) */
-    ctePpmK: number;
-    /** Young's Modulus in GPa */
-    elasticModulusGpa?: number;
-    /** Cross-sectional area in mm^2 for axial compliance */
-    crossSectionAreaMm2?: number;
-  };
+  material?:
+    | {
+        name: string;
+        /** Coefficient of thermal expansion in ppm/K (1e-6 / K) */
+        ctePpmK: number;
+        /** Young's Modulus in GPa */
+        elasticModulusGpa?: number | undefined;
+        /** Cross-sectional area in mm^2 for axial compliance */
+        crossSectionAreaMm2?: number | undefined;
+      }
+    | undefined;
 }
 
 export interface OperationalEnvironment {
   /** Reference room assembly temperature in degC (default: 20) */
-  refTempC?: number;
+  refTempC?: number | undefined;
   /** Operating temperature range [T_min, T_max] in degC */
-  operatingTempRange?: [number, number];
+  operatingTempRange?: [number, number] | undefined;
   /** Dynamic axial mechanical load range [F_min, F_max] in Newtons */
-  dynamicLoadRangeN?: [number, number];
+  dynamicLoadRangeN?: [number, number] | undefined;
 }
 
 export interface ToleranceStackOptions {
   name: string;
   dimensions: DimensionTolerance[];
-  environment?: OperationalEnvironment;
-  minRequiredClearance?: number; // default: 0.0 mm
+  environment?: OperationalEnvironment | undefined;
+  minRequiredClearance?: number | undefined; // default: 0.0 mm
 }
 
 export interface ToleranceContributor {

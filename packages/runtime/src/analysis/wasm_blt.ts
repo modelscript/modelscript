@@ -3,6 +3,7 @@ import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "../dae/wasm_da
 
 // WASM Exports mapped globally within this module
 export let alloc: (size: number) => number;
+export let free: (ptr: number) => void;
 export let computeBlt: (
   varCount: number,
   eqCount: number,
@@ -25,7 +26,7 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
   const isNodeOrBun =
     typeof process != "undefined" &&
     process.versions != null &&
-    (process.versions.node != null || process.versions.bun != null);
+    (process.versions.node != null || process.versions["bun"] != null);
 
   if (urlOverride) {
     url = urlOverride;
@@ -59,9 +60,10 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
     },
   });
   const exports = instance.exports as Record<string, unknown>;
-  alloc = exports.alloc as (size: number) => number;
-  computeBlt = exports.computeBlt as typeof computeBlt;
-  memory = exports.memory as WebAssembly.Memory;
+  alloc = exports["alloc"] as (size: number) => number;
+  free = exports["free"] as (ptr: number) => void;
+  computeBlt = exports["computeBlt"] as typeof computeBlt;
+  memory = exports["memory"] as WebAssembly.Memory;
   isInitialized = true;
 }
 
@@ -165,11 +167,12 @@ export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Se
       collectArenaExprDeps(arena, arena.getExprRight(exprId), deps, excludeDer);
       break;
     case ExprKind.Call: {
-      // Function call: left is first arg, right is arg count
+      // Function call: left is first arg, right is arg count; trailing args stored in left of (exprId + i)
       const argCount = arena.getExprRight(exprId);
       const firstArg = arena.getExprLeft(exprId);
       for (let i = 0; i < argCount; i++) {
-        collectArenaExprDeps(arena, firstArg + i, deps, excludeDer);
+        const argExpr = i === 0 ? firstArg : arena.getExprLeft(exprId + i);
+        if (argExpr >= 0) collectArenaExprDeps(arena, argExpr, deps, excludeDer);
       }
       break;
     }
@@ -273,8 +276,8 @@ export function performBltTransformationArena(
   const activeEqIndices: number[] = [];
   for (let i = 0; i < arena.eqCount; i++) {
     const kind = arena.getEqKind(i);
-    // Include dynamic Simple and InitialSimple equations
-    if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
+    // Include only dynamic Simple and For equations (exclude InitialSimple and InitialFor)
+    if (kind === EqKind.Simple) {
       const lhs = arena.getEqLhs(i);
       const rhs = arena.getEqRhs(i);
       if (lhs === rhs) continue;
@@ -287,6 +290,8 @@ export function performBltTransformationArena(
       ) {
         continue;
       }
+      activeEqIndices.push(i);
+    } else if (kind === EqKind.For) {
       activeEqIndices.push(i);
     }
   }
@@ -304,12 +309,26 @@ export function performBltTransformationArena(
 
   for (let e = 0; e < eqCount; e++) {
     const eqIdx = activeEqIndices[e]!;
-    const lhs = arena.getEqLhs(eqIdx);
-    const rhs = arena.getEqRhs(eqIdx);
-
+    const kind = arena.getEqKind(eqIdx);
     const deps = new Set<number>();
-    collectArenaExprDeps(arena, lhs, deps, true);
-    collectArenaExprDeps(arena, rhs, deps, true);
+
+    if (kind === EqKind.For) {
+      const meta = arena.getForEquationMeta?.(eqIdx);
+      if (meta) {
+        const bodyEqs = meta.equations ?? meta.bodyEquations ?? [];
+        for (const bEq of bodyEqs) {
+          const bLhs = "lhs" in bEq ? bEq.lhs : (bEq as any).lhsExprId;
+          const bRhs = "rhs" in bEq ? bEq.rhs : (bEq as any).rhsExprId;
+          collectArenaExprDeps(arena, bLhs, deps, true);
+          collectArenaExprDeps(arena, bRhs, deps, true);
+        }
+      }
+    } else {
+      const lhs = arena.getEqLhs(eqIdx);
+      const rhs = arena.getEqRhs(eqIdx);
+      collectArenaExprDeps(arena, lhs, deps, true);
+      collectArenaExprDeps(arena, rhs, deps, true);
+    }
 
     const activeList: number[] = [];
     for (const varIdx of deps) {
@@ -322,61 +341,72 @@ export function performBltTransformationArena(
     totalInts += 1 + activeList.length;
   }
 
-  const adjPtr = alloc(totalInts * 4);
-  const adjView = new Int32Array(memory.buffer, adjPtr, totalInts);
-  let cursor = 0;
-  for (let e = 0; e < eqCount; e++) {
-    const list = eqActiveDeps[e]!;
-    adjView[cursor++] = list.length;
-    for (const activeIdx of list) {
-      adjView[cursor++] = activeIdx;
-    }
-  }
-
-  // 3. Allocate outputs
-  // outEqs: i32[eqCount]
-  // outBlocks: i32[1 + eqCount * 2 + varCount * 2]
-  const blocksBufCapacity = 1 + (eqCount + varCount) * 2;
-  const outEqsPtr = alloc(eqCount * 4);
-  const outBlocksPtr = alloc(blocksBufCapacity * 4);
-
-  // 4. Compute BLT in WASM
-  const numBlocks = computeBlt(varCount, eqCount, adjPtr, outEqsPtr, outBlocksPtr);
-
-  // 5. Read back results
-  const outEqsView = new Int32Array(memory.buffer, outEqsPtr, eqCount);
+  let adjPtr = 0;
+  let outEqsPtr = 0;
+  let outBlocksPtr = 0;
   const sortedEquations: number[] = [];
-  for (let i = 0; i < eqCount; i++) {
-    const activeEqIdx = outEqsView[i]!;
-    const origIdx = activeEqIndices[activeEqIdx];
-    if (origIdx !== undefined) {
-      sortedEquations.push(origIdx);
-    }
-  }
-
-  const outBlocksView = new Int32Array(memory.buffer, outBlocksPtr, blocksBufCapacity);
   const blocks: { eqIdxs: number[]; vars: number[] }[] = [];
 
-  let blocksCursor = 1;
-  for (let b = 0; b < numBlocks; b++) {
-    const bEqCount = outBlocksView[blocksCursor++] ?? 0;
-    const bVarCount = outBlocksView[blocksCursor++] ?? 0;
-
-    const bEqs: number[] = [];
-    for (let k = 0; k < bEqCount; k++) {
-      const activeEqIdx = outBlocksView[blocksCursor++] ?? 0;
-      const origEqIdx = activeEqIndices[activeEqIdx];
-      if (origEqIdx !== undefined) bEqs.push(origEqIdx);
+  try {
+    adjPtr = alloc(totalInts * 4);
+    const adjView = new Int32Array(memory.buffer, adjPtr, totalInts);
+    let cursor = 0;
+    for (let e = 0; e < eqCount; e++) {
+      const list = eqActiveDeps[e]!;
+      adjView[cursor++] = list.length;
+      for (const activeIdx of list) {
+        adjView[cursor++] = activeIdx;
+      }
     }
 
-    const bVars: number[] = [];
-    for (let k = 0; k < bVarCount; k++) {
-      const activeVarIdx = outBlocksView[blocksCursor++] ?? 0;
-      const origVarIdx = activeVarIndices[activeVarIdx];
-      if (origVarIdx !== undefined) bVars.push(origVarIdx);
+    // 3. Allocate outputs
+    // outEqs: i32[eqCount]
+    // outBlocks: i32[1 + (eqCount + varCount) * 4]
+    const blocksBufCapacity = 1 + (eqCount + varCount) * 4;
+    outEqsPtr = alloc(eqCount * 4);
+    outBlocksPtr = alloc(blocksBufCapacity * 4);
+
+    // 4. Compute BLT in WASM
+    const numBlocks = computeBlt(varCount, eqCount, adjPtr, outEqsPtr, outBlocksPtr);
+
+    // 5. Read back results
+    const outEqsView = new Int32Array(memory.buffer, outEqsPtr, eqCount);
+    for (let i = 0; i < eqCount; i++) {
+      const activeEqIdx = outEqsView[i]!;
+      const origIdx = activeEqIndices[activeEqIdx];
+      if (origIdx !== undefined) {
+        sortedEquations.push(origIdx);
+      }
     }
 
-    blocks.push({ eqIdxs: bEqs, vars: bVars });
+    const outBlocksView = new Int32Array(memory.buffer, outBlocksPtr, blocksBufCapacity);
+    let blocksCursor = 1;
+    for (let b = 0; b < numBlocks; b++) {
+      const bEqCount = outBlocksView[blocksCursor++] ?? 0;
+      const bVarCount = outBlocksView[blocksCursor++] ?? 0;
+
+      const bEqs: number[] = [];
+      for (let k = 0; k < bEqCount; k++) {
+        const activeEqIdx = outBlocksView[blocksCursor++] ?? 0;
+        const origEqIdx = activeEqIndices[activeEqIdx];
+        if (origEqIdx !== undefined) bEqs.push(origEqIdx);
+      }
+
+      const bVars: number[] = [];
+      for (let k = 0; k < bVarCount; k++) {
+        const activeVarIdx = outBlocksView[blocksCursor++] ?? 0;
+        const origVarIdx = activeVarIndices[activeVarIdx];
+        if (origVarIdx !== undefined) bVars.push(origVarIdx);
+      }
+
+      blocks.push({ eqIdxs: bEqs, vars: bVars });
+    }
+  } finally {
+    if (typeof free === "function") {
+      if (outBlocksPtr !== 0) free(outBlocksPtr);
+      if (outEqsPtr !== 0) free(outEqsPtr);
+      if (adjPtr !== 0) free(adjPtr);
+    }
   }
 
   const result = {

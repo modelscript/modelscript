@@ -8,7 +8,7 @@
  * or steady-state limits hold across all parameter uncertainties ahead of simulation.
  */
 
-import { StaticTapeBuilder } from "../autodiff/wasm_tape.js";
+import { StaticTapeBuilder, TapeOpKind } from "../autodiff/wasm_tape.js";
 import {
   type DomainBox,
   Interval,
@@ -19,13 +19,13 @@ import {
 } from "./wasm_interval.js";
 
 export interface ParametricRequirement {
-  name?: string;
+  name?: string | undefined;
   operator: "<=" | ">=" | "<" | ">";
   limitValue: number;
 }
 
 export interface ParametricProofResult {
-  requirementName?: string;
+  requirementName?: string | undefined;
   isCertified: boolean;
   worstCaseValue: number;
   limitValue: number;
@@ -72,11 +72,26 @@ export function verifyParametricBound(
   let optimal = true;
 
   if (isUpperBound) {
-    worstCaseValue = rootInterval.hi;
-    // Parameter point discovery via corner/midpoint check
+    // For upper bound (f(p) <= limit), minimize -f(p) via spatial branch-and-bound
+    const negOutputIndex = objectiveTape.ops.pushScalarOp(TapeOpKind.Neg, objectiveTape.outputIndex);
+    const negTape = { ops: objectiveTape.ops, outputIndex: negOutputIndex };
+    const sbbResult: SbbResult = solveSBB(negTape, [], variables, initialBox, options);
+    const refinedUpper = Number.isFinite(sbbResult.lowerBound)
+      ? -sbbResult.lowerBound
+      : Number.isFinite(sbbResult.objectiveValue)
+        ? -sbbResult.objectiveValue
+        : rootInterval.hi;
+    worstCaseValue = Number.isFinite(refinedUpper) ? Math.min(rootInterval.hi, refinedUpper) : rootInterval.hi;
+    nodesExplored = sbbResult.nodesExplored;
+    optimal = sbbResult.optimal;
+    for (const [k, v] of sbbResult.solution.entries()) {
+      worstCaseParams[k] = v;
+    }
     for (const v of variables) {
-      const b = paramBounds[v] ?? [0, 1];
-      worstCaseParams[v] = b[1]; // default heuristic for upper bound
+      if (worstCaseParams[v] === undefined) {
+        const b = paramBounds[v] ?? [0, 1];
+        worstCaseParams[v] = b[1];
+      }
     }
   } else {
     // For lower bound (f(p) >= limit), solve SBB directly

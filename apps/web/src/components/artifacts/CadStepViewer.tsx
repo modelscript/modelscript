@@ -24,10 +24,10 @@ import ViewportCameraControls, { type CameraPreset, type RenderMode } from "./Vi
 import type { SpatialPin } from "./spatial-pin";
 
 interface CadStepViewerProps {
-  artifactId?: number;
+  artifactId?: number | undefined;
   viewConfig: any;
-  isFullScreen?: boolean;
-  onPinCreated?: (pin: SpatialPin) => void;
+  isFullScreen?: boolean | undefined;
+  onPinCreated?: ((pin: SpatialPin) => void) | undefined;
 }
 
 function Loader() {

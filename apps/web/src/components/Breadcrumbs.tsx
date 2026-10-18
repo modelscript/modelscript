@@ -35,7 +35,7 @@ const Chevron = styled(ChevronRightIcon)`
 
 export interface BreadcrumbItem {
   label: string;
-  href?: string;
+  href?: string | undefined;
 }
 
 const Breadcrumbs: React.FC<{ items: BreadcrumbItem[] }> = ({ items }) => (

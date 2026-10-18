@@ -937,14 +937,52 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
   const msPeakMemMB = Number((process.memoryUsage().rss / (1024 * 1024)).toFixed(2));
   const msParsed = parseFlatModel(msFlatText);
 
+  const extractVarName = (decl: string): string => {
+    const noComment = decl
+      .replace(/\s*"[^"]*"\s*;?$/, "")
+      .replace(/;$/, "")
+      .trim();
+    const beforeEq = noComment.split("=")[0]!.trim();
+    const beforeParen = beforeEq.split("(")[0]!.trim();
+    const tokens = beforeParen.split(/\s+/);
+    return tokens[tokens.length - 1] ?? beforeParen;
+  };
+  const omcVarNameSet = new Set(omcParsed.vars.map(extractVarName).filter(Boolean));
+  const msVarNameSet = new Set(msParsed.vars.map(extractVarName).filter(Boolean));
+  let unmatchedVarNames = 0;
+  for (const v of omcVarNameSet) {
+    if (!msVarNameSet.has(v)) unmatchedVarNames++;
+  }
+  for (const v of msVarNameSet) {
+    if (!omcVarNameSet.has(v)) unmatchedVarNames++;
+  }
+  const varNamesMatch = unmatchedVarNames === 0;
+
+  const normEq = (e: string) => e.replace(/\s+/g, "").replace(/;$/, "");
+  const omcEqSet = new Set(omcParsed.eqs.map(normEq).filter(Boolean));
+  const msEqSet = new Set(msParsed.eqs.map(normEq).filter(Boolean));
+  let unmatchedEquations = 0;
+  for (const e of omcEqSet) {
+    if (!msEqSet.has(e)) unmatchedEquations++;
+  }
+
   const varCountMatch = omcParsed.vars.length === msParsed.vars.length;
   const eqCountMatch = omcParsed.eqs.length === msParsed.eqs.length;
   const diffLines =
     Math.abs(omcParsed.vars.length - msParsed.vars.length) + Math.abs(omcParsed.eqs.length - msParsed.eqs.length);
-  const diffSummary =
-    diffLines > 0
-      ? `Variables: OMC=${omcParsed.vars.length}, MS=${msParsed.vars.length} (Δ${msParsed.vars.length - omcParsed.vars.length}) | Equations: OMC=${omcParsed.eqs.length}, MS=${msParsed.eqs.length} (Δ${msParsed.eqs.length - omcParsed.eqs.length})`
-      : undefined;
+  const diffParts: string[] = [];
+  if (diffLines > 0) {
+    diffParts.push(
+      `Variables: OMC=${omcParsed.vars.length}, MS=${msParsed.vars.length} (Δ${msParsed.vars.length - omcParsed.vars.length}) | Equations: OMC=${omcParsed.eqs.length}, MS=${msParsed.eqs.length} (Δ${msParsed.eqs.length - omcParsed.eqs.length})`,
+    );
+  }
+  if (unmatchedVarNames > 0) {
+    diffParts.push(`Unmatched variable names: ${unmatchedVarNames}`);
+  }
+  if (unmatchedEquations > 0) {
+    diffParts.push(`Unmatched equations: ${unmatchedEquations}`);
+  }
+  const diffSummary = diffParts.length > 0 ? diffParts.join(" | ") : undefined;
 
   return {
     omc: {
@@ -969,6 +1007,9 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
     comparison: {
       varCountMatch,
       eqCountMatch,
+      varNamesMatch,
+      unmatchedVarNames,
+      unmatchedEquations,
       diffLines,
       diffSummary,
     },
@@ -1090,7 +1131,7 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
 
     let valAtT = t <= omcTimes[0] ? vals[0]! : vals[last]!;
 
-    // Check if there is an exact duplicate timestamp around t (discontinuity event)
+    // Check if there is an exact duplicate timestamp around t (discontinuity event in OMC CSV)
     let exactIdx = -1;
     let lo = 0,
       hi = last;
@@ -1120,17 +1161,17 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
             closestVal = vals[k]!;
           }
         }
-        const r = minDiff / (1 + Math.abs(closestVal));
-        if (r <= tolerance) return closestVal;
-        valAtT = closestVal;
+        return closestVal;
       }
     }
 
+    let bracketIdx = -1;
     let low = 0;
     let high = last - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
       if (omcTimes[mid] <= t && t <= omcTimes[mid + 1]) {
+        bracketIdx = mid;
         const dt = omcTimes[mid + 1] - omcTimes[mid];
         if (dt === 0) {
           if (msVal !== undefined) {
@@ -1151,39 +1192,33 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       }
     }
 
-    if (msVal === undefined) return valAtT;
-    const diffAtT = Math.abs(msVal - valAtT);
-    const relAtT = diffAtT / (1 + Math.abs(valAtT));
-    if (relAtT <= tolerance) return valAtT;
+    if (msVal === undefined || bracketIdx === -1) return valAtT;
 
-    // Discontinuity / phase shift / event window matching within tau:
-    // When solvers use different adaptive step sizes or fixed steps near discrete events / rest transitions,
-    // a small sub-step phase difference can occur.
-    const tau = 0.2; // 200ms window
-    let startIdx = 0;
-    while (startIdx < last && omcTimes[startIdx] < t - tau - 1e-5) startIdx++;
-    let endIdx = startIdx;
-    while (endIdx < last && omcTimes[endIdx] <= t + tau + 1e-5) endIdx++;
-
-    let minV = vals[startIdx]!;
-    let maxV = vals[startIdx]!;
-    for (let k = startIdx + 1; k <= endIdx; k++) {
-      const v = vals[k]!;
-      if (v < minV) minV = v;
-      if (v > maxV) maxV = v;
+    // Only if the bracketing interval contains an actual duplicate-timestamp event nearby (within 1 output step),
+    // pick the pre- or post-event sample closest to msVal instead of fabricated window matching.
+    const checkStart = Math.max(0, bracketIdx - 1);
+    const checkEnd = Math.min(last - 1, bracketIdx + 1);
+    let hasNearbyEvent = false;
+    for (let k = checkStart; k <= checkEnd; k++) {
+      if (Math.abs(omcTimes[k + 1]! - omcTimes[k]!) < 1e-9) {
+        hasNearbyEvent = true;
+        break;
+      }
+    }
+    if (hasNearbyEvent) {
+      let bestVal = valAtT;
+      let bestDiff = Math.abs(msVal - valAtT);
+      for (let k = checkStart; k <= checkEnd + 1; k++) {
+        const d = Math.abs(msVal - vals[k]!);
+        if (d < bestDiff) {
+          bestDiff = d;
+          bestVal = vals[k]!;
+        }
+      }
+      return bestVal;
     }
 
-    if (msVal >= minV && msVal <= maxV) {
-      return msVal; // Continuous Intermediate Value match within tau window
-    }
-
-    // At local extrema (peaks/troughs), discrete OMC grid points straddle the continuous peak
-    // and BDF/DASSL exhibits slight numerical damping on undamped resonant oscillators.
-    const closestV = msVal < minV ? minV : maxV;
-    const rClosest = Math.abs(msVal - closestV) / (1 + Math.abs(closestV));
-    if (rClosest <= tolerance * 1.1) return msVal;
-
-    return closestV;
+    return valAtT;
   };
 
   let maxRelErr = 0;
@@ -1553,7 +1588,13 @@ async function runTask(task: WorkerTask): Promise<WorkerResult> {
     flattenRes = executeFlattenStage(context, task);
     if (!flattenRes.omc.success) status = "OMC_ERROR";
     else if (!flattenRes.modelscript.success) status = "MS_ERROR";
-    else if (!flattenRes.comparison.varCountMatch || !flattenRes.comparison.eqCountMatch) status = "DIFF";
+    else if (
+      !flattenRes.comparison.varCountMatch ||
+      !flattenRes.comparison.eqCountMatch ||
+      !flattenRes.comparison.varNamesMatch
+    ) {
+      status = "DIFF";
+    }
   }
 
   if (stage === "simulate" || stage === "all") {

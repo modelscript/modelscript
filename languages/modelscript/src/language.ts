@@ -2,6 +2,10 @@
 
 import { choice, def, field, language, optional, prec, repeat, repeat1, seq, tggEq, tggRule } from "@modelscript/dsl";
 
+/**
+ * Operator precedence levels for the ModelScript GLR grammar, ordered from
+ * lowest binding power (FLWOR queries) to highest (postfix and primary expressions).
+ */
 const PREC = {
   FLWOR: 1,
   CONDITIONAL: 2,
@@ -17,6 +21,11 @@ const PREC = {
   IF: 1,
 } as const;
 
+/**
+ * Language definition for ModelScript (`.modelscript`, `.msx`), providing the
+ * native grammar, symbol indexing rules, IDE execution actions, and polyglot
+ * Triple Graph Grammar (TGG) synchronization rules with Modelica and SysML v2.
+ */
 export const modelscriptLanguage = language({
   name: "modelscript",
   displayName: "ModelScript",
@@ -29,6 +38,7 @@ export const modelscriptLanguage = language({
     },
   },
 
+  // Bi-directional source writeback for in-place symbol value edits
   writeback: (ctx) => {
     const { entry, newValue } = ctx;
     if (entry?.startByte != null && entry?.endByte != null && entry.endByte >= entry.startByte) {
@@ -37,6 +47,7 @@ export const modelscriptLanguage = language({
     return null;
   },
 
+  // IDE and AI agent actions for executing active ModelScript files
   actions: [
     {
       id: "run_modelscript",
@@ -60,6 +71,7 @@ export const modelscriptLanguage = language({
     },
   ],
 
+  // Indexed CST node kinds mapped to WorkspaceIndex symbol categories
   symbols: {
     StructDeclaration: { name: "name", kind: "Struct", scope: true, icon: "symbol-structure" },
     FunctionDeclaration: { name: "name", kind: "Function", scope: true, icon: "symbol-function" },
@@ -71,116 +83,128 @@ export const modelscriptLanguage = language({
     lineComment: "//",
   },
 
-  conflicts: ($) => [[$.BlockStatement, $.ObjectLiteral]],
+  // Resolve LR ambiguity between empty block statements `{}` and empty object literals `{}`
+  conflicts: ($) => [[$["BlockStatement"]!, $["ObjectLiteral"]!]],
 
   extras: () => [/\s+/],
 
   rules: {
-    SourceFile: ($) => repeat(choice($.TopLevelDeclaration, $._EmptyStatement)),
+    SourceFile: ($) => repeat(choice($["TopLevelDeclaration"]!, $["_EmptyStatement"]!)),
 
-    TopLevelDeclaration: ($) => choice($.ImportDeclaration, $.StructDeclaration, $.Statement),
+    TopLevelDeclaration: ($) => choice($["ImportDeclaration"]!, $["StructDeclaration"]!, $["Statement"]!),
 
     // ── Declarations ─────────────────────────────────────────────────────────
 
     ImportDeclaration: ($) =>
-      seq("import", "{", field("specifiers", $.ImportSpecifierList), "}", "from", field("source", $.STRING), ";"),
+      seq(
+        "import",
+        "{",
+        field("specifiers", $["ImportSpecifierList"]!),
+        "}",
+        "from",
+        field("source", $["STRING"]!),
+        ";",
+      ),
 
-    ImportSpecifierList: ($) => seq($.ImportSpecifier, repeat(seq(",", $.ImportSpecifier))),
+    ImportSpecifierList: ($) => seq($["ImportSpecifier"]!, repeat(seq(",", $["ImportSpecifier"]!))),
 
     ImportSpecifier: ($) =>
-      choice(seq(field("imported", $.IDENTIFIER), "as", field("local", $.IDENTIFIER)), field("name", $.IDENTIFIER)),
+      choice(
+        seq(field("imported", $["IDENTIFIER"]!), "as", field("local", $["IDENTIFIER"]!)),
+        field("name", $["IDENTIFIER"]!),
+      ),
 
     StructDeclaration: ($) =>
       def({
         syntax: seq(
           optional("@unmanaged"),
           "struct",
-          field("name", $.IDENTIFIER),
+          field("name", $["IDENTIFIER"]!),
           "{",
-          repeat(field("fields", $.StructField)),
+          repeat(field("fields", $["StructField"]!)),
           "}",
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Struct",
-          name: self.name ?? "",
+          name: self["name"] ?? "",
         }),
       }),
 
-    StructField: ($) => seq(field("name", $.IDENTIFIER), ":", field("type", $.Type), ";"),
+    StructField: ($) => seq(field("name", $["IDENTIFIER"]!), ":", field("type", $["Type"]!), ";"),
 
     FunctionDeclaration: ($) =>
       def({
         syntax: seq(
           "function",
-          field("name", $.IDENTIFIER),
+          field("name", $["IDENTIFIER"]!),
           "(",
-          optional(field("parameters", $.ParameterList)),
+          optional(field("parameters", $["ParameterList"]!)),
           ")",
-          optional(seq(":", field("returnType", $.Type))),
-          field("body", $.BlockStatement),
+          optional(seq(":", field("returnType", $["Type"]!))),
+          field("body", $["BlockStatement"]!),
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Function",
-          name: self.name ?? "",
+          name: self["name"] ?? "",
         }),
       }),
 
-    ParameterList: ($) => seq($.Parameter, repeat(seq(",", $.Parameter))),
+    ParameterList: ($) => seq($["Parameter"]!, repeat(seq(",", $["Parameter"]!))),
 
-    Parameter: ($) => seq(field("name", $.IDENTIFIER), ":", field("type", $.Type)),
+    Parameter: ($) => seq(field("name", $["IDENTIFIER"]!), ":", field("type", $["Type"]!)),
 
     // ── Types ────────────────────────────────────────────────────────────────
 
-    Type: ($) => choice($.PrimitiveType, $.GenericType, $.CustomType),
+    Type: ($) => choice($["PrimitiveType"]!, $["GenericType"]!, $["CustomType"]!),
 
     PrimitiveType: () => choice("i32", "u32", "i64", "u64", "f32", "f64", "bool", "string", "usize", "void"),
 
     GenericType: ($) =>
-      seq(field("genericName", choice("Array", "Slice", "ptr")), "<", field("elementType", $.Type), ">"),
+      seq(field("genericName", choice("Array", "Slice", "ptr")), "<", field("elementType", $["Type"]!), ">"),
 
-    CustomType: ($) => field("name", $.IDENTIFIER),
+    CustomType: ($) => field("name", $["IDENTIFIER"]!),
 
     // ── Statements ───────────────────────────────────────────────────────────
 
     Statement: ($) =>
       choice(
-        $.BlockStatement,
-        $.VariableDeclaration,
-        $.FunctionDeclaration,
-        $.AssignmentStatement,
-        $.ReturnStatement,
-        $.IfStatement,
-        $.WhileStatement,
-        $.ForStatement,
-        $.ExpressionStatement,
+        $["BlockStatement"]!,
+        $["VariableDeclaration"]!,
+        $["FunctionDeclaration"]!,
+        $["AssignmentStatement"]!,
+        $["ReturnStatement"]!,
+        $["IfStatement"]!,
+        $["WhileStatement"]!,
+        $["ForStatement"]!,
+        $["ExpressionStatement"]!,
       ),
 
-    BlockStatement: ($) => seq("{", repeat($.Statement), "}"),
+    BlockStatement: ($) => seq("{", repeat($["Statement"]!), "}"),
 
     VariableDeclaration: ($) =>
       def({
         syntax: seq(
           choice("let", "const"),
-          field("name", $.IDENTIFIER),
-          optional(seq(":", field("type", $.Type))),
-          optional(seq("=", field("value", $.Expression))),
+          field("name", $["IDENTIFIER"]!),
+          optional(seq(":", field("type", $["Type"]!))),
+          optional(seq("=", field("value", $["Expression"]!))),
           ";",
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Variable",
-          name: self.name ?? "",
+          name: self["name"] ?? "",
         }),
       }),
 
     AssignmentStatement: ($) =>
       seq(
-        field("target", choice($.IDENTIFIER, $.PostfixExpression)),
+        field("target", choice($["IDENTIFIER"]!, $["PostfixExpression"]!)),
         field("operator", choice("=", "+=", "-=", "*=", "/=")),
-        field("value", $.Expression),
+        field("value", $["Expression"]!),
         ";",
       ),
 
-    ReturnStatement: ($) => seq("return", optional(field("value", $.Expression)), ";"),
+    ReturnStatement: ($) => seq("return", optional(field("value", $["Expression"]!)), ";"),
 
     IfStatement: ($) =>
       prec.right(
@@ -188,28 +212,28 @@ export const modelscriptLanguage = language({
         seq(
           "if",
           "(",
-          field("condition", $.Expression),
+          field("condition", $["Expression"]!),
           ")",
-          field("consequence", $.Statement),
-          optional(seq("else", field("alternative", $.Statement))),
+          field("consequence", $["Statement"]!),
+          optional(seq("else", field("alternative", $["Statement"]!))),
         ),
       ),
 
-    WhileStatement: ($) => seq("while", "(", field("condition", $.Expression), ")", field("body", $.Statement)),
+    WhileStatement: ($) => seq("while", "(", field("condition", $["Expression"]!), ")", field("body", $["Statement"]!)),
 
     ForStatement: ($) =>
       seq(
         "for",
         "(",
-        field("init", choice($.VariableDeclaration, $.ExpressionStatement, $._EmptyStatement)),
-        field("condition", optional($.Expression)),
+        field("init", choice($["VariableDeclaration"]!, $["ExpressionStatement"]!, $["_EmptyStatement"]!)),
+        field("condition", optional($["Expression"]!)),
         ";",
-        field("update", optional($.Expression)),
+        field("update", optional($["Expression"]!)),
         ")",
-        field("body", $.Statement),
+        field("body", $["Statement"]!),
       ),
 
-    ExpressionStatement: ($) => seq(field("expression", $.Expression), ";"),
+    ExpressionStatement: ($) => seq(field("expression", $["Expression"]!), ";"),
 
     _EmptyStatement: () => ";",
 
@@ -217,100 +241,126 @@ export const modelscriptLanguage = language({
 
     Expression: ($) =>
       choice(
-        $.FLWORExpression,
-        $.BinaryExpression,
-        $.UnaryExpression,
-        $.NewExpression,
-        $.PostfixExpression,
-        $.PrimaryExpression,
+        $["FLWORExpression"]!,
+        $["BinaryExpression"]!,
+        $["UnaryExpression"]!,
+        $["NewExpression"]!,
+        $["PostfixExpression"]!,
+        $["PrimaryExpression"]!,
       ),
 
     NewExpression: ($) =>
-      seq("new", field("constructor", $.IDENTIFIER), "(", optional(field("arguments", $.ArgumentList)), ")"),
+      seq("new", field("constructor", $["IDENTIFIER"]!), "(", optional(field("arguments", $["ArgumentList"]!)), ")"),
 
+    // XQuery-inspired FLWOR comprehension: for ... let ... where ... order by ... return ...
     FLWORExpression: ($) =>
       prec(
         PREC.FLWOR,
         seq(
-          repeat1(field("forClauses", $.ForClause)),
-          repeat(field("letClauses", $.LetClause)),
-          optional(field("whereClause", $.WhereClause)),
-          optional(field("orderByClause", $.OrderByClause)),
-          field("returnClause", $.ReturnClause),
+          repeat1(field("forClauses", $["ForClause"]!)),
+          repeat(field("letClauses", $["LetClause"]!)),
+          optional(field("whereClause", $["WhereClause"]!)),
+          optional(field("orderByClause", $["OrderByClause"]!)),
+          field("returnClause", $["ReturnClause"]!),
         ),
       ),
 
-    ForClause: ($) => seq("for", field("variable", $.IDENTIFIER), "in", field("collection", $.Expression)),
+    ForClause: ($) => seq("for", field("variable", $["IDENTIFIER"]!), "in", field("collection", $["Expression"]!)),
 
-    LetClause: ($) => seq("let", field("variable", $.IDENTIFIER), choice(":=", "="), field("value", $.Expression)),
+    LetClause: ($) =>
+      seq("let", field("variable", $["IDENTIFIER"]!), choice(":=", "="), field("value", $["Expression"]!)),
 
-    WhereClause: ($) => seq("where", field("condition", $.Expression)),
+    WhereClause: ($) => seq("where", field("condition", $["Expression"]!)),
 
     OrderByClause: ($) =>
       seq(
         "order",
         "by",
-        field("criteria", $.Expression),
+        field("criteria", $["Expression"]!),
         optional(field("direction", choice("ascending", "descending", "asc", "desc"))),
       ),
 
-    ReturnClause: ($) => seq("return", field("value", $.Expression)),
+    ReturnClause: ($) => seq("return", field("value", $["Expression"]!)),
 
     BinaryExpression: ($) =>
       choice(
-        prec.left(PREC.OR, seq(field("left", $.Expression), field("operator", "||"), field("right", $.Expression))),
-        prec.left(PREC.AND, seq(field("left", $.Expression), field("operator", "&&"), field("right", $.Expression))),
+        prec.left(
+          PREC.OR,
+          seq(field("left", $["Expression"]!), field("operator", "||"), field("right", $["Expression"]!)),
+        ),
+        prec.left(
+          PREC.AND,
+          seq(field("left", $["Expression"]!), field("operator", "&&"), field("right", $["Expression"]!)),
+        ),
         prec.left(
           PREC.EQUALITY,
-          seq(field("left", $.Expression), field("operator", choice("==", "!=")), field("right", $.Expression)),
+          seq(field("left", $["Expression"]!), field("operator", choice("==", "!=")), field("right", $["Expression"]!)),
         ),
         prec.left(
           PREC.RELATIONAL,
           seq(
-            field("left", $.Expression),
+            field("left", $["Expression"]!),
             field("operator", choice("<", "<=", ">", ">=")),
-            field("right", $.Expression),
+            field("right", $["Expression"]!),
           ),
         ),
         prec.left(
           PREC.ADDITIVE,
-          seq(field("left", $.Expression), field("operator", choice("+", "-")), field("right", $.Expression)),
+          seq(field("left", $["Expression"]!), field("operator", choice("+", "-")), field("right", $["Expression"]!)),
         ),
         prec.left(
           PREC.MULTIPLICATIVE,
-          seq(field("left", $.Expression), field("operator", choice("*", "/", "%")), field("right", $.Expression)),
+          seq(
+            field("left", $["Expression"]!),
+            field("operator", choice("*", "/", "%")),
+            field("right", $["Expression"]!),
+          ),
         ),
       ),
 
     UnaryExpression: ($) =>
-      prec(PREC.UNARY, seq(field("operator", choice("!", "-", "+", "~")), field("operand", $.Expression))),
+      prec(PREC.UNARY, seq(field("operator", choice("!", "-", "+", "~")), field("operand", $["Expression"]!))),
 
     PostfixExpression: ($) =>
       choice(
-        prec.left(PREC.POSTFIX, seq(field("object", $.Expression), ".", field("property", $.IDENTIFIER))),
+        prec.left(PREC.POSTFIX, seq(field("object", $["Expression"]!), ".", field("property", $["IDENTIFIER"]!))),
         prec.left(
           PREC.POSTFIX,
-          seq(field("callee", $.Expression), "(", optional(field("arguments", $.ArgumentList)), ")"),
+          seq(field("callee", $["Expression"]!), "(", optional(field("arguments", $["ArgumentList"]!)), ")"),
         ),
-        prec.left(PREC.POSTFIX, seq(field("array", $.Expression), "[", field("index", $.Expression), "]")),
+        prec.left(PREC.POSTFIX, seq(field("array", $["Expression"]!), "[", field("index", $["Expression"]!), "]")),
       ),
 
-    ArgumentList: ($) => seq($.Argument, repeat(seq(",", $.Argument))),
+    ArgumentList: ($) => seq($["Argument"]!, repeat(seq(",", $["Argument"]!))),
 
     Argument: ($) =>
-      choice(seq(field("name", $.IDENTIFIER), ":", field("value", $.Expression)), field("value", $.Expression)),
+      choice(
+        seq(field("name", $["IDENTIFIER"]!), ":", field("value", $["Expression"]!)),
+        field("value", $["Expression"]!),
+      ),
 
     PrimaryExpression: ($) =>
-      choice($.NUMBER, $.STRING, $.BOOLEAN, $.IDENTIFIER, $.ArrayLiteral, $.ObjectLiteral, $.ParenthesizedExpression),
+      choice(
+        $["NUMBER"]!,
+        $["STRING"]!,
+        $["BOOLEAN"]!,
+        $["IDENTIFIER"]!,
+        $["ArrayLiteral"]!,
+        $["ObjectLiteral"]!,
+        $["ParenthesizedExpression"]!,
+      ),
 
-    ArrayLiteral: ($) => seq("[", optional(seq($.Expression, repeat(seq(",", $.Expression)))), "]"),
+    ArrayLiteral: ($) => seq("[", optional(seq($["Expression"]!, repeat(seq(",", $["Expression"]!)))), "]"),
 
-    ObjectLiteral: ($) => seq("{", optional(seq($.ObjectField, repeat(seq(",", $.ObjectField)))), "}"),
+    ObjectLiteral: ($) => seq("{", optional(seq($["ObjectField"]!, repeat(seq(",", $["ObjectField"]!)))), "}"),
 
     ObjectField: ($) =>
-      choice(seq(field("key", $.IDENTIFIER), ":", field("value", $.Expression)), field("shorthand", $.IDENTIFIER)),
+      choice(
+        seq(field("key", $["IDENTIFIER"]!), ":", field("value", $["Expression"]!)),
+        field("shorthand", $["IDENTIFIER"]!),
+      ),
 
-    ParenthesizedExpression: ($) => seq("(", field("expression", $.Expression), ")"),
+    ParenthesizedExpression: ($) => seq("(", field("expression", $["Expression"]!), ")"),
 
     // ── Terminals ────────────────────────────────────────────────────────────
 
@@ -323,6 +373,7 @@ export const modelscriptLanguage = language({
     BOOLEAN: () => choice("true", "false"),
   },
 
+  // Cross-language type mappings and TGG rules linking ModelScript to Modelica and SysML v2
   polyglot: {
     languages: ["modelica", "sysml2"],
     typeMaps: {
@@ -343,6 +394,7 @@ export const modelscriptLanguage = language({
       },
     },
     rules: [
+      // Synchronizes a ModelScript struct declaration with a Modelica record definition
       tggRule({
         name: "ModelScriptStructToModelicaRecord",
         sourceLang: "modelscript",
@@ -352,6 +404,7 @@ export const modelscriptLanguage = language({
         target: ($, v) => $.ClassDefinition({ name: v("name"), classKind: "record" }),
         where: (v) => [tggEq(v("name"), v("name"))],
       }),
+      // Synchronizes a ModelScript variable binding with a Modelica component modification
       tggRule({
         name: "ModelScriptParamToModelicaMod",
         sourceLang: "modelscript",

@@ -37,7 +37,7 @@ export async function seedDroneCfd(db: LibraryDatabase) {
     return;
   }
 
-  const vtuPath = "/home/omar/git/modelscript/packages/examples/drone-chassis/drone_cfd.vtu";
+  const vtuPath = new URL("../../../packages/examples/drone-chassis/drone_cfd.vtu", import.meta.url).pathname;
   if (!fs.existsSync(vtuPath)) {
     console.error(`VTU file not found at ${vtuPath}`);
     process.exit(1);

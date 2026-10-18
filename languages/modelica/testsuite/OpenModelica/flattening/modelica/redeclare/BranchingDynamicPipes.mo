@@ -1,7 +1,6 @@
 // name:     BranchingDynamicPipes.mo
 // keywords: chained redeclares
 // status:   correct
-// xfail:    true
 //
 
 connector FluidPort

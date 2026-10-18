@@ -66,10 +66,10 @@ export function initializePhasorSteadyState(
 
   const addComplexEntry = (r: number, c: number, g: number, b: number) => {
     if (r < 0 || r >= nNodes || c < 0 || c >= nNodes) return;
-    dense[r]![c] += g;
-    dense[r]![c + nNodes] -= b;
-    dense[r + nNodes]![c] += b;
-    dense[r + nNodes]![c + nNodes] += g;
+    dense[r]![c] = dense[r]![c]! + g;
+    dense[r]![c + nNodes] = dense[r]![c + nNodes]! - b;
+    dense[r + nNodes]![c] = dense[r + nNodes]![c]! + b;
+    dense[r + nNodes]![c + nNodes] = dense[r + nNodes]![c + nNodes]! + g;
   };
 
   const stampComplexTwoTerminal = (i: number, j: number, g: number, b: number) => {
@@ -199,14 +199,14 @@ export function initializePhasorSteadyState(
       const vPeak = src.vPeakKv * 1e3;
       const vRe = vPeak * Math.cos(src.phase);
       const vIm = vPeak * Math.sin(src.phase);
-      rhs[src.node] += src.gSource * vRe;
-      rhs[src.node + nNodes] += src.gSource * vIm;
+      rhs[src.node] = rhs[src.node]! + src.gSource * vRe;
+      rhs[src.node + nNodes] = rhs[src.node + nNodes]! + src.gSource * vIm;
     }
   }
 
   // Ground regularizer
   for (let i = 0; i < dim; i++) {
-    dense[i]![i] += 1e-7;
+    dense[i]![i] = dense[i]![i]! + 1e-7;
   }
 
   // Solve 2N x 2N linear system for steady-state phasors (V_re, V_im)

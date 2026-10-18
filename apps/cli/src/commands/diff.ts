@@ -22,13 +22,13 @@ import { LanguageResolver } from "../util/language-registry.js";
 interface DiffArgs {
   file1: string;
   file2: string;
-  orderAgnostic?: boolean;
-  breakingOnly?: boolean;
+  orderAgnostic?: boolean | undefined;
+  breakingOnly?: boolean | undefined;
   "order-agnostic": boolean;
   "breaking-only": boolean;
   format: string;
-  language?: string;
-  output?: string;
+  language?: string | undefined;
+  output?: string | undefined;
 }
 
 export const Diff: CommandModule<{}, DiffArgs> = {

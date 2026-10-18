@@ -52,9 +52,13 @@ console.log("Testing Pantelides Index Reduction & WASM Runtime...");
   assert.strictEqual(result.generatedEquations.length, 1, "Expected 1 differentiated constraint equation");
   assert.strictEqual(result.structuralIndex, 2, "Expected structural index 2");
 
-  // Check generated equation (new eq index should be 1)
+  // Check generated equation (new eq index should be 1): der(x) - der(y) = 0
   const newEqIdx = result.generatedEquations[0]!;
   assert.strictEqual(arena.getEqKind(newEqIdx), EqKind.Simple);
+  const diffLhs = arena.getEqLhs(newEqIdx);
+  assert.strictEqual(arena.getExprData1(diffLhs), BinOp.Sub);
+  assert.strictEqual(containsDerivative(arena, arena.getExprLeft(diffLhs)), true);
+  assert.strictEqual(containsDerivative(arena, arena.getExprRight(diffLhs)), true);
   console.log("  ✔ Pantelides index reduction on constrained states passed");
 }
 
@@ -111,6 +115,37 @@ console.log("Testing Pantelides Index Reduction & WASM Runtime...");
   assert(resultB.dummyDerivatives.has(xB), "Mattsson-Söderlind must pick prioritized state x as dummy derivative");
   assert.strictEqual(resultB.stateSelectionMap?.get(0), xB, "Mapping must record eq 0 -> state x");
   console.log("  ✔ Mattsson-Söderlind dynamic state selection passed");
+}
+
+// Test 5: Multi-step Index-3 holonomic constraint (der(x) = vx, der(y) = vy, x + y = 1)
+{
+  const arena = new DAEBuilder();
+  const x = arena.addVariable("x", VarType.Real, Variability.Continuous);
+  const y = arena.addVariable("y", VarType.Real, Variability.Continuous);
+  const vx = arena.addVariable("vx", VarType.Real, Variability.Continuous);
+  const vy = arena.addVariable("vy", VarType.Real, Variability.Continuous);
+  const derX = arena.addVariable("der(x)", VarType.Real, Variability.Continuous);
+  const derY = arena.addVariable("der(y)", VarType.Real, Variability.Continuous);
+  const derVx = arena.addVariable("der(vx)", VarType.Real, Variability.Continuous);
+  const derVy = arena.addVariable("der(vy)", VarType.Real, Variability.Continuous);
+
+  const stateVars = new Set<number>([x, y, vx, vy]);
+  const derivativeVars = new Set<number>([derX, derY, derVx, derVy]);
+  const parameters = new Set<number>();
+
+  // der(x) = vx
+  arena.addEquation(EqKind.Simple, arena.addDerExpr(arena.addNameExpr("x")), arena.addNameExpr("vx"));
+  // der(y) = vy
+  arena.addEquation(EqKind.Simple, arena.addDerExpr(arena.addNameExpr("y")), arena.addNameExpr("vy"));
+  // Position constraint: x + y = 1.0 (Index-3 constraint because der(x)=vx, der(y)=vy)
+  const posConstraint = arena.addBinaryExpr(BinOp.Add, arena.addNameExpr("x"), arena.addNameExpr("y"));
+  arena.addEquation(EqKind.Simple, posConstraint, arena.addRealLiteral(1.0));
+
+  const res = pantelidesIndexReductionArena(arena, stateVars, derivativeVars, parameters);
+  assert.strictEqual(res.structuralIndex, 3, "Expected structural index 3 for holonomic position constraint");
+  assert.strictEqual(res.dummyDerivatives.size, 2, "Expected 2 dummy derivatives (1 position + 1 velocity)");
+  assert.strictEqual(res.generatedEquations.length, 2, "Expected 2 differentiated equations (velocity + acceleration)");
+  console.log("  ✔ Multi-step Index-3 holonomic constraint Pantelides reduction passed");
 }
 
 console.log("=== All Pantelides Index Reduction Tests Passed Cleanly ===");

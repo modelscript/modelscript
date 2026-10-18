@@ -42,6 +42,12 @@ let largeResistors =
 return largeResistors;
 `;
 
+  const { js } = compiler.compileToJs(modelScriptCode);
+  assert.ok(
+    js.includes('import { ElectricalCircuit } from "./models/ElectricalCircuit.mo";'),
+    "JS emitter should emit valid ES module import statement",
+  );
+
   const results = compiler.executeJs(modelScriptCode, { circuit }) as any[];
 
   assert.ok(Array.isArray(results), "Results should be an array");

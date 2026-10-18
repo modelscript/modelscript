@@ -31,6 +31,7 @@ export interface CaeExecutionResult {
   durationMs: number;
   usage?: HpcUsageMetrics | undefined;
   profile?: string | undefined;
+  simulatedFallback?: boolean | undefined;
 }
 
 export function getValidatedGeometryPath(rawPath: string): string {
@@ -126,7 +127,15 @@ export class CaeSolverRunner {
       }
 
       // 2. Select execution command
-      const { command, args } = this.resolveExecutionCommand(spec, tmpDir, deckFileName);
+      const { command, args, simulatedFallback } = this.resolveExecutionCommand(spec, tmpDir, deckFileName);
+      if (simulatedFallback) {
+        telemetryStreamer.emit("telemetry", {
+          type: "phase",
+          phase: "Fallback",
+          message: `Native ${spec.solver.toUpperCase()} binary not found in PATH; running built-in synthetic solver fallback.`,
+          timestamp: Date.now(),
+        });
+      }
 
       // 3. Resolve profile & build HPC spec
       const profile = getComputeProfile(spec.profile);
@@ -195,6 +204,7 @@ export class CaeSolverRunner {
         durationMs: Date.now() - startTime,
         usage,
         profile: profile.id,
+        simulatedFallback,
       };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -233,7 +243,7 @@ export class CaeSolverRunner {
     spec: CaeJobSpec,
     tmpDir: string,
     deckFileName: string,
-  ): { command: string; args: string[] } {
+  ): { command: string; args: string[]; simulatedFallback?: boolean | undefined } {
     // Check if Docker is available and explicitly enabled or requested
     const hasDocker = this.isExecutableInPath("docker");
     const useDocker = spec.runner === "docker" || (hasDocker && process.env["CAE_USE_DOCKER"] === "true");
@@ -265,15 +275,15 @@ export class CaeSolverRunner {
         dockerArgs.push("simpleFoam");
       }
 
-      return { command: "docker", args: dockerArgs };
+      return { command: "docker", args: dockerArgs, simulatedFallback: false };
     }
 
     // Check host binaries
     if (spec.solver === "calculix" && this.isExecutableInPath("ccx")) {
-      return { command: "ccx", args: ["-i", "job"] };
+      return { command: "ccx", args: ["-i", "job"], simulatedFallback: false };
     }
     if (spec.solver === "su2" && this.isExecutableInPath("SU2_CFD")) {
-      return { command: "SU2_CFD", args: [deckFileName] };
+      return { command: "SU2_CFD", args: [deckFileName], simulatedFallback: false };
     }
 
     // Built-in synthetic fallback runner for CI / local test
@@ -282,6 +292,7 @@ export class CaeSolverRunner {
     return {
       command: process.execPath,
       args: [scriptPath],
+      simulatedFallback: true,
     };
   }
 

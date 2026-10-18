@@ -30,7 +30,7 @@ export interface DiscreteResetEvent {
   /** Gradient of indicator w.r.t states: dh/dx_i */
   gradIndicatorState: (t: number, x: Map<string, number>, p: Map<string, number>) => Map<string, number>;
   /** Gradient of indicator w.r.t parameters: dh/dp_k */
-  gradIndicatorParam?: (t: number, x: Map<string, number>, p: Map<string, number>) => Map<string, number>;
+  gradIndicatorParam?: ((t: number, x: Map<string, number>, p: Map<string, number>) => Map<string, number>) | undefined;
   /** Discrete reset map: x^+ = Delta(x^-, p) */
   resetMap: (t: number, xMinus: Map<string, number>, p: Map<string, number>) => Map<string, number>;
   /** Jacobian of reset map w.r.t states: dDelta_i / dx_j */
@@ -40,18 +40,16 @@ export interface DiscreteResetEvent {
     p: Map<string, number>,
   ) => Map<string, Map<string, number>>;
   /** Jacobian of reset map w.r.t parameters: dDelta_i / dp_k */
-  jacobianResetParam?: (
-    t: number,
-    xMinus: Map<string, number>,
-    p: Map<string, number>,
-  ) => Map<string, Map<string, number>>;
+  jacobianResetParam?:
+    | ((t: number, xMinus: Map<string, number>, p: Map<string, number>) => Map<string, Map<string, number>>)
+    | undefined;
 }
 
 export interface HybridAdjointOptions extends DaeAdjointSolverOptions {
   /** Registered discrete reset events. */
-  events?: DiscreteResetEvent[];
+  events?: DiscreteResetEvent[] | undefined;
   /** Optional sigmoidal switch relaxation configuration for non-smooth if/abs/min/max. */
-  relaxation?: EventRelaxerOptions;
+  relaxation?: EventRelaxerOptions | undefined;
 }
 
 interface RecordedOccurrence {
@@ -61,12 +59,12 @@ interface RecordedOccurrence {
   xPlus: Map<string, number>;
   dxMinus: Map<string, number>;
   dxPlus: Map<string, number>;
-  applied?: boolean;
+  applied?: boolean | undefined;
 }
 
 export class HybridAdjointSolver {
   private sim: ArenaSimulator;
-  private relaxation?: EventRelaxerOptions;
+  private relaxation?: EventRelaxerOptions | undefined;
   private stateNames: string[] = [];
   private stateNameIds: number[] = [];
   private derivNameIds: number[] = [];
@@ -75,7 +73,7 @@ export class HybridAdjointSolver {
 
   constructor(
     public arena: DAEBuilder,
-    options?: { relaxation?: EventRelaxerOptions },
+    options?: { relaxation?: EventRelaxerOptions | undefined },
   ) {
     this.relaxation = options?.relaxation;
     if (this.relaxation) {

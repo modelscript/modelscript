@@ -67,11 +67,11 @@ export type { DigitalThreadMetrics, DigitalThreadTwin, DomainType };
 export interface DigitalThreadExplorerProps {
   packageName: string;
   packageVersion: string;
-  classes?: ClassSummary[];
-  rootClass?: ClassDetail | null;
-  artifactViewers?: ArtifactViewerInfo[];
-  onNavigateToArtifact?: (artifactPath: string) => void;
-  onNavigateToClass?: (className: string) => void;
+  classes?: ClassSummary[] | undefined;
+  rootClass?: ClassDetail | null | undefined;
+  artifactViewers?: ArtifactViewerInfo[] | undefined;
+  onNavigateToArtifact?: ((artifactPath: string) => void) | undefined;
+  onNavigateToClass?: ((className: string) => void) | undefined;
 }
 
 /* ─── Animations & Styles ─── */
@@ -145,7 +145,7 @@ const FilterPillGroup = styled.div`
   flex-wrap: wrap;
 `;
 
-const FilterPill = styled.button<{ $active: boolean; $color?: string }>`
+const FilterPill = styled.button<{ $active: boolean; $color?: string | undefined }>`
   border: 1px solid
     ${(props) =>
       props.$active ? props.$color || "var(--color-accent-emphasis, #0969da)" : "var(--color-border-default, #30363d)"};

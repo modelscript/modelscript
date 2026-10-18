@@ -1,6 +1,5 @@
 // name: TrigIdentity
 // status: correct
-// xfail:    true
 
 model TrigIdentity
   Real x = sin(time)^2 + cos(time)^2;

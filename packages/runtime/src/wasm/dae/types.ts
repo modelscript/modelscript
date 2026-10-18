@@ -41,15 +41,25 @@ export const VAR_FLAGS: u32 = 7;
 // Variable Flags
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Variable selected as a tearing variable during algebraic loop tearing (`1 << 0`). */
 export const FLAG_TEARING_VAR: i32 = 1 << 0;
+/** Connector `flow` variable obeying Kirchhoff's zero-sum conservation law (`1 << 1`). */
 export const FLAG_VAR_FLOW: i32 = 1 << 1;
+/** Connector `stream` variable transported by an associated `flow` variable (`1 << 2`). */
 export const FLAG_VAR_STREAM: i32 = 1 << 2;
+/** Continuous differential state variable $x$ differentiated by `der(x)` (`1 << 3`). */
 export const FLAG_VAR_STATE: i32 = 1 << 3;
+/** State derivative variable $\dot{x} = \text{der}(x)$ (`1 << 4`). */
 export const FLAG_VAR_STATE_DER: i32 = 1 << 4;
+/** Variable whose `fixed = true` initial value attribute is enforced at $t_0$ (`1 << 5`). */
 export const FLAG_VAR_FIXED: i32 = 1 << 5;
+/** Variable eliminated during alias elimination or dead-variable pruning (`1 << 6`). */
 export const FLAG_VAR_REMOVED: i32 = 1 << 6;
+/** Variable declared inside a `protected` class section (`1 << 7`). */
 export const FLAG_VAR_PROTECTED: i32 = 1 << 7;
+/** Variable declared with the `final` prefix prohibiting further modification (`1 << 8`). */
 export const FLAG_VAR_FINAL: i32 = 1 << 8;
+/** Compiler-synthesized virtual/auxiliary variable (`1 << 9`). */
 export const FLAG_VAR_VIRTUAL: i32 = 1 << 9;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,9 +81,14 @@ export const EQ_AUX: u32 = 3;
 // Equation Flags
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Equation belongs to an `initial equation` section (`1 << 0`). */
 export const FLAG_EQ_INITIAL: i32 = 1 << 0;
+/** Overconstrained connection equation subject to `Connections.branch`/`root` spanning-tree pruning (`1 << 1`). */
 export const FLAG_EQ_OVERCONSTRAINED: i32 = 1 << 1;
+/** Equation synthesized from a stream connector `connect()` clause (`1 << 2`). */
 export const FLAG_EQ_STREAM_CONNECT: i32 = 1 << 2;
+/** Equation differentiated or constrained during Pantelides high-index reduction (`1 << 3`). */
+export const FLAG_HIGH_INDEX_EQ: i32 = 1 << 3;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Expression SoA Layout
@@ -96,26 +111,41 @@ export const EXPR_RIGHT: u32 = 3;
 
 /** Number of i32 words per statement row. */
 export const STMT_STRIDE: u32 = 4;
+/** Word offset: `StmtKind` enum discriminator. */
 export const STMT_KIND: u32 = 0;
+/** Word offset: primary statement payload (target variable/expr ID, condition expr ID, or loop variable StringId). */
 export const STMT_DATA1: u32 = 1;
+/** Word offset: secondary statement payload (RHS expr ID, range expr ID, or body start index). */
 export const STMT_LEFT: u32 = 2;
+/** Word offset: tertiary statement payload (body statement count, `else` branch index, or auxiliary metadata). */
 export const STMT_RIGHT: u32 = 3;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Compound Equation & State Machine Layout
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Number of `i32` words per variable attribute row (`VarAttrKind` indexed: `min`, `max`, `unit`, `displayUnit`, `nominal`, `start`, `fixed`, `binding`, `quantity`, `description`). */
 export const VAR_ATTR_STRIDE: u32 = 10;
+/** Number of `i32` words per synchronous clock row (`[clockId, kind, intervalExprId, resolutionExprId]`). */
 export const CLOCK_STRIDE: u32 = 4;
+/** Number of `i32` words per `when`-equation metadata row (`[condExprId, bodyEqStart, bodyEqCount, elseWhenIdx]`). */
 export const WHEN_STRIDE: u32 = 4;
+/** Number of `i32` words per `for`-equation metadata row (`[iterNameId, rangeExprId, bodyEqStart, bodyEqCount]`). */
 export const FOR_STRIDE: u32 = 4;
+/** Number of `i32` words per `if`-equation metadata row (`[condExprId, thenStart, thenCount, elseStart, elseCount, elseIfIdx]`). */
 export const IF_STRIDE: u32 = 6;
+/** Number of `i32` words per state machine header row (`[smId, initialStateId, stateStart, stateCount]`). */
 export const SM_STRIDE: u32 = 4;
+/** Number of `i32` words per state machine state row (`[stateId, nameId, eqStart, eqCount, transStart, transCount]`). */
 export const STATE_STRIDE: u32 = 6;
+/** Number of `i32` words per state machine transition row (`[fromStateId, toStateId, condExprId, priority, flags, ticksExprId]`). */
 export const TRANSITION_STRIDE: u32 = 6;
 
+/** Transition fires immediately in the same clock tick when its guard becomes true (`1 << 0`). */
 export const FLAG_TRANSITION_IMMEDIATE: i32 = 1 << 0;
+/** Transition resets the target state's internal variables upon entry (`1 << 1`). */
 export const FLAG_TRANSITION_RESET: i32 = 1 << 1;
+/** Transition waits for sub-state machines in the source state to reach final states (`1 << 2`). */
 export const FLAG_TRANSITION_SYNCHRONIZE: i32 = 1 << 2;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,6 +159,7 @@ export const NULL_ID: u32 = 0xffffffff;
 // Enum Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Fundamental primitive or clock type of a DAE variable. */
 export enum VarType {
   Real = 0,
   Integer = 1,
@@ -138,6 +169,7 @@ export enum VarType {
   Clock = 5,
 }
 
+/** Temporal variability of a DAE variable (Modelica Specification §4.4.4). */
 export enum Variability {
   Continuous = 0,
   Discrete = 1,
@@ -145,12 +177,23 @@ export enum Variability {
   Constant = 3,
 }
 
+/** Interface causality of a DAE variable (`local`, `input`, or `output`). */
 export enum Causality {
   Local = 0,
   Input = 1,
   Output = 2,
 }
 
+/**
+ * Discriminator for rows in the DAE equation table (`EQ_STRIDE = 4`: `[EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX]`).
+ * - `Simple` / `InitialSimple`: `EQ_LHS` = left expr ID, `EQ_RHS` = right expr ID, `EQ_AUX` = `FLAG_EQ_*`.
+ * - `Array`: `EQ_LHS` = array LHS expr ID, `EQ_RHS` = array RHS expr ID, `EQ_AUX` = element count.
+ * - `For` / `InitialFor`: `EQ_LHS` = `FOR_STRIDE` metadata index.
+ * - `If`: `EQ_LHS` = `IF_STRIDE` metadata index.
+ * - `When`: `EQ_LHS` = `WHEN_STRIDE` metadata index.
+ * - `FunctionCall` / `InitialFunctionCall`: `EQ_LHS` = call expr ID, `EQ_RHS` = `NULL_ID` (or tuple LHS expr ID).
+ * - `Connect`: `EQ_LHS` = connector A expr ID, `EQ_RHS` = connector B expr ID.
+ */
 export enum EqKind {
   Simple = 0,
   Array = 1,
@@ -164,6 +207,24 @@ export enum EqKind {
   InitialFunctionCall = 9,
 }
 
+/**
+ * Discriminator for rows in the DAE expression table (`EXPR_STRIDE = 4`: `[EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT]`).
+ * - `Name`: `DATA1` = interned variable `StringId`, `LEFT` = resolved `varId` (or `NULL_ID`).
+ * - `IntLiteral`: `DATA1` = 32-bit signed integer value.
+ * - `RealLiteral`: `LEFT` = high 32 bits of `f64`, `RIGHT` = low 32 bits of `f64` (or `DATA1` = float pool index).
+ * - `BoolLiteral`: `DATA1` = `0` (`false`) or `1` (`true`).
+ * - `StringLiteral`: `DATA1` = interned `StringId`.
+ * - `Binary`: `DATA1` = `BinOp`, `LEFT` = left operand `ExprId`, `RIGHT` = right operand `ExprId`.
+ * - `Unary` / `Negate`: `DATA1` = `UnaryOp`, `LEFT` = operand `ExprId`.
+ * - `Call`: `DATA1` = function name `StringId`, `LEFT` = arg list start offset, `RIGHT` = arg count.
+ * - `Subscript`: `DATA1` = base `ExprId`, `LEFT` = subscript list start offset, `RIGHT` = subscript count.
+ * - `ArrayCtor` / `Tuple`: `LEFT` = element list start offset, `RIGHT` = element count.
+ * - `Range`: `DATA1` = start `ExprId`, `LEFT` = step `ExprId` (or `NULL_ID`), `RIGHT` = stop `ExprId`.
+ * - `IfElse`: `DATA1` = condition `ExprId`, `LEFT` = then `ExprId`, `RIGHT` = else `ExprId`.
+ * - `Der` / `Pre`: `LEFT` = argument `ExprId`, `DATA1` = derivative order (for `Der`).
+ * - `EnumLiteral`: `DATA1` = qualified literal `StringId`, `LEFT` = 1-based ordinal index.
+ * - `Comprehension`: `DATA1` = body `ExprId`, `LEFT` = iterator variable `StringId`, `RIGHT` = range `ExprId`.
+ */
 export enum ExprKind {
   Name = 0,
   IntLiteral = 1,
@@ -188,6 +249,7 @@ export enum ExprKind {
   Object = 20,
 }
 
+/** Binary operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.Binary`. */
 export enum BinOp {
   Add = 0,
   Sub = 1,
@@ -210,11 +272,21 @@ export enum BinOp {
   Colon = 18,
 }
 
+/** Unary operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.Unary`. */
 export enum UnaryOp {
   Negate = 0,
   Not = 1,
 }
 
+/**
+ * Discriminator for rows in the DAE algorithm statement table (`STMT_STRIDE = 4`: `[STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT]`).
+ * - `Assignment`: `DATA1` = target `ExprId` (or `StringId`), `LEFT` = RHS `ExprId`.
+ * - `For`: `DATA1` = loop variable `StringId`, `LEFT` = range `ExprId`, `RIGHT` = packed body `(start, count)`.
+ * - `While`: `DATA1` = condition `ExprId`, `LEFT` = body start index, `RIGHT` = body statement count.
+ * - `If` / `When`: `DATA1` = condition `ExprId`, `LEFT` = then-branch block, `RIGHT` = else/elsewhen link.
+ * - `ProcedureCall`: `DATA1` = call `ExprId`.
+ * - `ComplexAssignment`: `DATA1` = tuple LHS `ExprId`, `LEFT` = call RHS `ExprId`.
+ */
 export enum StmtKind {
   Assignment = 0,
   For = 1,
@@ -228,6 +300,7 @@ export enum StmtKind {
   Block = 9,
 }
 
+/** Column index within each `VAR_ATTR_STRIDE` (10-word) variable attribute row. */
 export enum VarAttrKind {
   Min = 0,
   Max = 1,
@@ -241,6 +314,7 @@ export enum VarAttrKind {
   Description = 9,
 }
 
+/** Fast-path numeric IDs for standard Modelica mathematical intrinsic functions. */
 export enum BuiltinMathFunc {
   Sin = 0,
   Cos = 1,
@@ -263,6 +337,12 @@ export enum BuiltinMathFunc {
   Floor = 18,
   Ceil = 19,
   Fmod = 20,
+  Mod = 20,
   Pow = 21,
+  NoEvent = 22,
+  Smooth = 23,
+  Homotopy = 24,
+  SemiLinear = 25,
 }
+
 

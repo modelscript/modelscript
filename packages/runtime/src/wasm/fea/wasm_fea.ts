@@ -329,6 +329,10 @@ export function fea_compute_tet4_von_mises(
   return maxStress;
 }
 
+const TET10_DNDR = new StaticArray<f64>(10);
+const TET10_DNDS = new StaticArray<f64>(10);
+const TET10_DNDT = new StaticArray<f64>(10);
+
 /**
  * Computes the 30x30 element stiffness matrix K_e (`keOutPtr`, 900 f64s) and
  * 4x(6x30) Gauss-point strain-displacement matrices (`bGaussOutPtr`, 720 f64s)
@@ -354,9 +358,9 @@ export function fea_compute_tet10_stiffness(
   }
 
   let totalVolume: f64 = 0.0;
-  const dNdr = new StaticArray<f64>(10);
-  const dNds = new StaticArray<f64>(10);
-  const dNdt = new StaticArray<f64>(10);
+  const dNdr = TET10_DNDR;
+  const dNds = TET10_DNDS;
+  const dNdt = TET10_DNDT;
 
   for (let q: i32 = 0; q < 4; q++) {
     const r: f64 = q == 0 ? ALPHA : BETA;

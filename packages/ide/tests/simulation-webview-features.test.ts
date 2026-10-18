@@ -101,7 +101,7 @@ describe("Simulation Results Webview Upgrades (P0-P3 Features)", () => {
     const headers = ["time", ...states];
     const rows = [headers.join(",")];
     for (let i = 0; i < t.length; i++) {
-      rows.push([t[i], ...y[i]].join(","));
+      rows.push([t[i], ...y[i]!].join(","));
     }
     const csv = rows.join("\n");
 

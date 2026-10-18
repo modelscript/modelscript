@@ -6,11 +6,11 @@
  */
 
 export interface SimulationOptions {
-  startTime?: number;
-  stopTime?: number;
-  stepSize?: number;
-  tolerance?: number;
-  maxSteps?: number;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  stepSize?: number | undefined;
+  tolerance?: number | undefined;
+  maxSteps?: number | undefined;
 }
 
 export interface SimulationResult {
@@ -45,7 +45,7 @@ export class SolversBridge {
     const times: number[] = [t0];
     const trajectories: Record<string, number[]> = {};
     for (let i = 0; i < n; i++) {
-      trajectories[`x_${i}`] = [y0[i]];
+      trajectories[`x_${i}`] = [y0[i]!];
     }
 
     let t = t0;
@@ -61,21 +61,21 @@ export class SolversBridge {
       const k1 = derivativesFn(t, y);
 
       // k2 = f(t + h/2, y + h*k1/2)
-      const yTemp2 = y.map((yi, i) => yi + (h * k1[i]) / 2);
+      const yTemp2 = y.map((yi, i) => yi + (h * k1[i]!) / 2);
       const k2 = derivativesFn(t + h / 2, yTemp2);
 
       // k3 = f(t + h/2, y + h*k2/2)
-      const yTemp3 = y.map((yi, i) => yi + (h * k2[i]) / 2);
+      const yTemp3 = y.map((yi, i) => yi + (h * k2[i]!) / 2);
       const k3 = derivativesFn(t + h / 2, yTemp3);
 
       // k4 = f(t + h, y + h*k3)
-      const yTemp4 = y.map((yi, i) => yi + h * k3[i]);
+      const yTemp4 = y.map((yi, i) => yi + h * k3[i]!);
       const k4 = derivativesFn(t + h, yTemp4);
 
       // y_{n+1} = y_n + (h/6)*(k1 + 2*k2 + 2*k3 + k4)
       for (let i = 0; i < n; i++) {
-        y[i] += (h / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
-        trajectories[`x_${i}`].push(y[i]);
+        y[i] = y[i]! + (h / 6) * (k1[i]! + 2 * k2[i]! + 2 * k3[i]! + k4[i]!);
+        trajectories[`x_${i}`]!.push(y[i]!);
       }
 
       t += h;
@@ -201,7 +201,8 @@ export class SolversBridge {
       return _sundialsDaeRunner(sundialsModule, this.wasmExports, daePtr, stateVarIds, derivEqIds, y0, options);
     }
     try {
-      const { simulateDaeWithSundials } = await (Function('return import("@modelscript/simulate")')() as Promise<any>);
+      const simPkg = "@modelscript/simulate";
+      const { simulateDaeWithSundials } = (await import(simPkg)) as any;
       return simulateDaeWithSundials(sundialsModule, this.wasmExports, daePtr, stateVarIds, derivEqIds, y0, options);
     } catch {
       throw new Error(

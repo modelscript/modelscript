@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @module lints/types-expressions
+ *
+ * CST-level linter rules for Modelica type checking, dimensional unit consistency,
+ * array subscripts and shapes, equation/assignment type compatibility, and parameter bounds
+ * (MLS §6, §8, §10, §11, §15, §19).
+ */
+
 import type { CodeGraph, CompilerLint, i32, u16, u32 } from "@modelscript/dsl";
 import { unitsCompatible } from "../units.js";
 import {
@@ -22,11 +30,20 @@ import {
   TYPE_UNKNOWN,
 } from "./helpers.js";
 
+/**
+ * Sentinel infinity bound used for integer interval/octagon abstract domain checks (`2^30 - 1`).
+ */
 const OCTAGON_INF: i32 = 0x3fffffff;
 
+/**
+ * Compiler lint rules enforcing type safety, array shapes/bounds, unit compatibility, and assignment restrictions.
+ */
 export const modelicaTypeLints: Record<string, CompilerLint> = {
   /**
-   * M3001: Type mismatch in binding equation.
+   * M3001: Type mismatch in binding equation (MLS §6.6, §8.3.1).
+   *
+   * Verifies that component declaration bindings (`Real x = expr`) have a value type
+   * compatible with the declared primitive or derived base type.
    */
   typeMismatchBinding: {
     nodes: ["component_declaration"],
@@ -43,7 +60,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       }
       return `Type mismatch in binding or modification expression '${target.text}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Resolve the primitive base type of the enclosing component clause
       let expectedType: u16 = TYPE_UNKNOWN;
       for (const anc of db.ast.getAncestors(node)) {
         const ancType = db.ast.getType(anc);
@@ -105,7 +123,13 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 ($.function_arguments != 0 && t == $.function_arguments) ||
                 ($.named_argument != 0 && t == $.named_argument) ||
                 ($.subscript != 0 && t == $.subscript) ||
-                ($.array_subscripts != 0 && t == $.array_subscripts)
+                ($.array_subscripts != 0 && t == $.array_subscripts) ||
+                (expectedType == TYPE_BOOLEAN &&
+                  (($.binary_expression != 0 && t == $.binary_expression) ||
+                    ($.relation != 0 && t == $.relation) ||
+                    ($.logical_factor != 0 && t == $.logical_factor) ||
+                    ($.logical_term != 0 && t == $.logical_term) ||
+                    ($.logical_expression != 0 && t == $.logical_expression)))
               ) {
                 isDesc = true;
                 break;
@@ -226,14 +250,18 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M3001: Type mismatch in element modification expression.
+   * M3002: Type mismatch in element modification expression (MLS §7.2).
+   *
+   * Checks that built-in attribute modifications (`start`, `min`, `max`, `fixed`, `unit`, etc.)
+   * and class component modifications match their declared types.
    */
   typeMismatchModification: {
     nodes: ["element_modification"],
     severity: "error",
     code: 3002,
     message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Skip modifications inside graphical/documentation annotations
       for (const anc of db.ast.getAncestors(node)) {
         const t = db.ast.getType(anc);
         if (($.annotation != 0 && t == $.annotation) || ($.annotation_clause != 0 && t == $.annotation_clause)) {
@@ -486,14 +514,17 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M3009: Array index must be Integer or Boolean.
+   * M3009: Array index must be Integer or Boolean (MLS §10.1, §10.5).
+   *
+   * Rejects `Real` or `String` expressions used as array subscripts.
    */
   arrayIndexTypeMismatch: {
     nodes: ["subscript"],
     severity: "error",
     code: 3009,
     message: (target) => `Array index '${target.text}' has invalid type: expected Integer or Boolean.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Infer subscript expression type and ensure it is Integer, Boolean, or Enumeration
       const idxType = inferExprType(db, node, $);
       if (idxType != TYPE_UNKNOWN && idxType != TYPE_INTEGER && idxType != 2 /* Boolean */) {
         db.diagnostic(node);
@@ -502,7 +533,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4003: Array shape mismatch between declared dimension and initializer.
+   * M4003: Array shape mismatch between declared dimension and initializer (MLS §10.3, §10.4).
    * e.g. `Real x[9] = {8};`
    */
   arrayShapeMismatch: {
@@ -511,7 +542,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 4003,
     message: (target) =>
       `Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       // 1. Find array_subscripts on node or ancestor component_clause
       let subNode: u32 = 0;
       if ($.array_subscripts != 0) {
@@ -580,14 +611,17 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M3018: Array element type mismatch.
+   * M3018: Array element type mismatch (MLS §10.4).
+   *
+   * Ensures all literal elements inside an array constructor `{ ... }` are type-compatible
+   * with the declared array component type.
    */
   arrayElementTypeMismatch: {
     nodes: ["component_declaration", "component_declaration1"],
     severity: "error",
     code: 3018,
     message: (target) => `Array element type mismatch in '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       let arrayArgs: u32 = 0;
       for (const args of db.ast.getDescendants(node, $.array_arguments)) {
         arrayArgs = args;
@@ -664,7 +698,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M5001: Type mismatch in equation `lhs = rhs`.
+   * M5001: Type mismatch in equation `lhs = rhs` (MLS §8.3.1).
+   *
+   * Both sides of a simple equation must have compatible types (accounting for
+   * `Integer` to `Real` coercion).
    */
   equationTypeMismatch: {
     nodes: ["simple_equation"],
@@ -684,7 +721,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const eqText = target.text.replace(/\s+/g, " ").trim();
       return `Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Extract LHS and RHS expression nodes around the '=' token
       let lhs = db.ast.getFirstChild(node);
       if (lhs == 0) return;
       let eqToken = db.ast.getNextSibling(lhs);
@@ -722,7 +760,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M5005: Division by literal zero.
+   * M5005: Division by literal zero (MLS §10.6).
+   *
+   * Flags binary division (`/`) or element-wise division (`./`) where the denominator
+   * is the literal `0` or `0.0`.
    */
   divisionByZero: {
     nodes: ["expression"],
@@ -730,6 +771,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5005,
     message: (target) => `Division by literal zero in '${target.text}'.`,
     query: (db: CodeGraph, node: u32) => {
+      // Check binary operator code (3 = '/', 8 = './') and literal zero denominator
       const leftChild = db.ast.getChildByFieldId(node, "left");
       const rightChild = db.ast.getChildByFieldId(node, "right");
       if (leftChild != 0 && rightChild != 0) {
@@ -744,7 +786,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M5006: Type mismatch in assignment `target := expr`.
+   * M5006: Type mismatch in assignment `target := expr` (MLS §11.2.1).
+   *
+   * Ensures the value expression on the RHS of an algorithmic assignment is type-compatible
+   * with the LHS target reference.
    */
   assignmentTypeMismatch: {
     nodes: ["assignment_statement"],
@@ -758,7 +803,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const vName = vIdx >= 0 && vIdx < typeNames.length ? typeNames[vIdx] : "Unknown";
       return `Type mismatch in assignment in ${target.text} of ${tName} := ${vName}`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Infer LHS target and RHS value types and verify assignment compatibility
       const target = db.ast.getChildByFieldId(node, "target");
       const value = db.ast.getChildByFieldId(node, "value");
       if (target != 0 && value != 0) {
@@ -774,7 +820,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M5008: Assignment to constant component.
+   * M5008: Assignment to constant component (MLS §4.4.4, §11.2.1).
+   *
+   * Disallows algorithmic `:=` assignments to components declared with the `constant` prefix.
    */
   assignmentToConstant: {
     nodes: ["assignment_statement"],
@@ -782,7 +830,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5008,
     message: (node, idNode) =>
       `Trying to assign to constant component ${idNode && idNode.text ? idNode.text : node.text}.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Extract the root target identifier and check if its declaration has the `constant` prefix
       const target = db.ast.getChildByFieldId(node, "target");
       if (target == 0) return;
       let idNode: u32 = 0;
@@ -819,7 +868,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M5009: Assignment to function input parameter.
+   * M5009: Assignment to function input parameter (MLS §12.2).
+   *
+   * Formal `input` parameters of a `function` are read-only and cannot appear on the LHS
+   * of an assignment statement.
    */
   assignmentToInput: {
     nodes: ["assignment_statement"],
@@ -827,7 +879,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5009,
     message: (node, idNode) =>
       `Trying to assign to input component ${idNode && idNode.text ? idNode.text : node.text}.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Verify the statement is inside a `function` and check if the target carries `input`
       const target = db.ast.getChildByFieldId(node, "target");
       if (target == 0) return;
       let idNode: u32 = 0;
@@ -865,7 +918,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M5013: Argument to inStream() must be a stream variable.
+   * M5013: Argument to inStream() or actualStream() must be a stream variable (MLS §15.2, §15.3).
+   *
+   * Stream operators may only be applied to connector components declared with the `stream` prefix.
    */
   notAStreamVariable: {
     nodes: ["component_reference"],
@@ -876,7 +931,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const fText = fnName && fnName.text ? fnName.text : "inStream";
       return `Operand '${aText}' to operator '${fText}' is not a stream variable.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Match calls to `inStream(...)` or `actualStream(...)` and check the argument's `stream` prefix
       if (!db.ast.textEquals(node, "inStream") && !db.ast.textEquals(node, "actualStream")) {
         return;
       }
@@ -931,13 +987,16 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M5007: Iterator in for loop must be a 1D range or array expression.
+   * M5007: Iterator in for loop must be a 1D range or vector expression (MLS §8.3.2, §11.2.2).
+   *
+   * Rejects multi-dimensional nested array constructors (e.g., `{{1, 2}, {3, 4}}`) used as
+   * the iteration range of a `for` loop.
    */
   forIteratorNot1D: {
     nodes: ["for_statement", "for_equation"],
     severity: "error",
     code: 5007,
-    message: (node, varNode, packedShape) => {
+    message: (_node, varNode, packedShape) => {
       const vName = varNode && varNode.text ? varNode.text : "iterator";
       const val = packedShape && packedShape.asNumber ? packedShape.asNumber() : Number(packedShape);
       const typeNum = (val >> 24) & 0xff;
@@ -948,7 +1007,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const shapeStr = d1 && d2 ? `${tName}[${d1}, ${d2}]` : tName;
       return `Iterator ${vName}, has type ${shapeStr}, but expected a 1D array expression.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Inspect each `for_index` range for nested 2D array constructors
       if ($.for_index == 0) return;
       for (const forIdx of db.ast.getDescendants(node, $.for_index)) {
         let varNode = db.ast.getChildByFieldId(forIdx, "variable");
@@ -1021,14 +1081,18 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M3010: Unit mismatch in simple equation.
+   * M3010: Unit mismatch in simple equation (MLS §19).
+   *
+   * Warns when the inferred physical SI units of the LHS and RHS of an equation
+   * are dimensionally incompatible.
    */
   unitMismatchEquation: {
     nodes: ["simple_equation"],
     severity: "warning",
     code: 3010,
     message: (target) => `Unit mismatch in equation '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Fast-path: skip unit inference if no component in the enclosing class declares a unit
       let classNode: u32 = getEnclosingClass(db, node, $);
       if (classNode == 0 || !hasUnitInClass(db, classNode, $)) return;
 
@@ -1061,7 +1125,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M3010: Unit mismatch in component declaration binding.
+   * M3010: Unit mismatch in component declaration binding (MLS §19).
+   *
+   * Warns when a component with an explicit `unit` attribute is bound to an expression
+   * with an incompatible physical unit.
    */
   unitMismatchBinding: {
     nodes: ["component_declaration"],
@@ -1073,7 +1140,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         ? `Unit mismatch in equation '${target.text}'.`
         : `Unit mismatch in component binding '${target.text}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Retrieve declared unit on the component and compare against the binding expression's unit
       const compUnit = getComponentUnit(db, node, $);
       if (compUnit == null) return;
 
@@ -1135,7 +1203,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4031: Array index out of bounds.
+   * M4031: Array index out of bounds (MLS §10.5).
+   *
+   * Statically validates constant integer subscripts against the declared 1-based dimension
+   * bounds `[1 .. size]` of local array components.
    */
   arrayIndexOutOfBounds: {
     nodes: ["component_reference"],
@@ -1143,12 +1214,12 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 4031,
     message: (subNode, arrNode, dimIndex, dimSize) => {
       const idxText = subNode && subNode.text ? subNode.text : "index";
-      const arrName = arrNode && arrNode.text && arrNode.text !== "0" ? arrNode.text.split("[")[0].trim() : "array";
+      const arrName = arrNode && arrNode.text && arrNode.text !== "0" ? arrNode.text.split("[")[0]!.trim() : "array";
       const dIdx = dimIndex ? String(dimIndex) : "1";
       const dSz = dimSize ? String(dimSize) : "?";
       return `Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       if ($.array_subscripts == 0 || $.subscript == 0) return;
       let subsNode: u32 = 0;
       for (const s of db.ast.getDescendants(node, $.array_subscripts)) {
@@ -1257,7 +1328,10 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4076: Parameter lower bound exceeds upper bound.
+   * M4076: Parameter lower bound exceeds upper bound (MLS §4.8).
+   *
+   * Reports an error when a parameter's `min` attribute modification is strictly greater
+   * than its `max` attribute modification.
    */
   parameterBoundContradiction: {
     nodes: ["component_declaration", "component_declaration1"],
@@ -1267,14 +1341,14 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       let pName = "parameter";
       const src = declNode && declNode.text && declNode.text !== "0" ? declNode : node;
       if (src && src.text) {
-        const parts = src.text.split("(")[0].split("=");
-        pName = parts[0].trim();
+        const parts = src.text.split("(")[0]!.split("=");
+        pName = parts[0]!.trim();
       }
       const lVal = lowerNode && lowerNode.text ? lowerNode.text : "min";
       const uVal = upperNode && upperNode.text ? upperNode.text : "max";
       return `Contradictory bounds for parameter '${pName}': lower bound '${lVal}' exceeds upper bound '${uVal}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       // Must be parameter variability
       let isParam = false;
       for (const anc of db.ast.getAncestors(node)) {

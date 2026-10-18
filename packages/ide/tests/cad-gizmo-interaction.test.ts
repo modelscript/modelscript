@@ -24,10 +24,10 @@ describe("CAD Direct-Manipulation Gizmo & Live Writeback", () => {
 
     const components = extractCadComponents(rawVariables);
     assert.strictEqual(components.length, 1);
-    assert.strictEqual(components[0].name, "box1");
-    assert.ok(components[0].sourceMetadata);
-    assert.strictEqual(components[0].sourceMetadata?.parameterName, "box_width");
-    assert.strictEqual(components[0].sourceMetadata?.transformMethod, "translate");
+    assert.strictEqual(components[0]!.name, "box1");
+    assert.ok(components[0]!.sourceMetadata);
+    assert.strictEqual(components[0]!.sourceMetadata?.parameterName, "box_width");
+    assert.strictEqual(components[0]!.sourceMetadata?.transformMethod, "translate");
   });
 
   it("applies parameter writeback to OpenSCAD active document", async () => {
@@ -62,7 +62,7 @@ cube([width, height, 10]);
       getText: () => scadSource,
       positionAt: (offset: number) => {
         const lines = scadSource.slice(0, offset).split("\n");
-        return new vscode.Position(lines.length - 1, lines[lines.length - 1].length);
+        return new vscode.Position(lines.length - 1, lines[lines.length - 1]!.length);
       },
     };
 
@@ -137,7 +137,7 @@ cube([width, height, 10]);
       getText: () => scadSource,
       positionAt: (offset: number) => {
         const lines = scadSource.slice(0, offset).split("\n");
-        return new vscode.Position(lines.length - 1, lines[lines.length - 1].length);
+        return new vscode.Position(lines.length - 1, lines[lines.length - 1]!.length);
       },
     };
 
@@ -213,7 +213,7 @@ end RobotArm;
       getText: () => moSource,
       positionAt: (offset: number) => {
         const lines = moSource.slice(0, offset).split("\n");
-        return new vscode.Position(lines.length - 1, lines[lines.length - 1].length);
+        return new vscode.Position(lines.length - 1, lines[lines.length - 1]!.length);
       },
     };
 

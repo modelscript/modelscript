@@ -14,6 +14,7 @@
  */
 
 import type { VerificationVerdict } from "../formal/verdict.js";
+import { SdpSolver, type SdpProblem } from "../solvers/wasm_sdp_solver.js";
 
 export interface StochasticSystem {
   numVars: number;
@@ -27,7 +28,7 @@ export interface StochasticBarrierSpec {
   initialState: number[];
   unsafeRadius: number;
   /** Maximum acceptable failure probability (e.g. 0.05) */
-  riskTolerance?: number;
+  riskTolerance?: number | undefined;
 }
 
 export interface StochasticBarrierResult {
@@ -47,8 +48,8 @@ export interface StochasticBarrierResult {
 
 export class StochasticBarrierSynthesizer {
   /**
-   * Synthesizes a quadratic stochastic barrier B(x) = x^T P x and computes
-   * guaranteed Doob martingale bound on probability of ever entering the unsafe set.
+   * Synthesizes a quadratic stochastic barrier B(x) = x^T P x via SDP and computes
+   * the Doob supermartingale bound on probability of entering the unsafe set.
    */
   public static synthesize(system: StochasticSystem, spec: StochasticBarrierSpec): StochasticBarrierResult {
     const n = system.numVars;
@@ -76,46 +77,126 @@ export class StochasticBarrierSynthesizer {
       const row = new Array<number>(n).fill(0);
       for (let j = 0; j < n; j++) {
         let sum = 0;
-        for (let k = 0; k < sigma0[0]!.length; k++) {
-          sum += (sigma0[i]![k] ?? 0) * (sigma0[j]![k] ?? 0);
+        for (let k = 0; k < (sigma0[0]?.length ?? 0); k++) {
+          sum += (sigma0[i]?.[k] ?? 0) * (sigma0[j]?.[k] ?? 0);
         }
         row[j] = sum;
       }
       Sigma.push(row);
     }
 
-    // Solve for positive definite P with damping: P = I
-    const P: number[][] = [];
-    for (let i = 0; i < n; i++) {
-      const row = new Array<number>(n).fill(0);
-      row[i] = 1.0;
-      P.push(row);
+    // Formulate generator drift SDP: find P > 0 solving -(A^T P + P A) = 2 * diag(|A_kk|)
+    const sdpA: number[][][] = [];
+    const sdpB: number[] = [];
+    for (let k = 0; k < n; k++) {
+      for (let l = k; l < n; l++) {
+        const Gkl: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            let val = 0;
+            if (j === l) val += -(A[i]?.[k] ?? 0);
+            if (i === l) val += -(A[j]?.[k] ?? 0);
+            if (i === k) val += -(A[j]?.[l] ?? 0);
+            if (j === k) val += -(A[i]?.[l] ?? 0);
+            Gkl[i]![j] = 0.5 * val;
+          }
+        }
+        let normG = 0;
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            normG += Math.abs(Gkl[i]![j]!);
+          }
+        }
+        if (normG > 1e-10) {
+          sdpA.push(Gkl);
+          const diagTarget = Math.max(1e-3, 2.0 * Math.abs(A[k]?.[k] ?? 1.0));
+          sdpB.push(k === l ? diagTarget : 0.0);
+        }
+      }
     }
 
+    if (sdpA.length === 0) {
+      for (let k = 0; k < n; k++) {
+        const Ak: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+        Ak[k]![k] = 1.0;
+        sdpA.push(Ak);
+        sdpB.push(1.0);
+      }
+    }
+
+    const sdpProblem: SdpProblem = {
+      n,
+      m: sdpA.length,
+      C: Sigma.map((row, i) => row.map((v, j) => (i === j ? Math.max(v, 1e-3) : v))),
+      A: sdpA,
+      b: sdpB,
+    };
+
+    const sdpRes = SdpSolver.solve(sdpProblem);
+    const P = sdpRes.X;
+
+    // Evaluate drift dissipation matrix Q = -(A^T P + P A)
+    const Q: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        let sum = 0;
+        for (let k = 0; k < n; k++) {
+          sum += (A[k]?.[i] ?? 0) * (P[k]?.[j] ?? 0) + (P[i]?.[k] ?? 0) * (A[k]?.[j] ?? 0);
+        }
+        Q[i]![j] = -sum;
+      }
+    }
+
+    const isPsdP = SdpSolver.isPsd(P);
+    const isStableQ = isPsdP && SdpSolver.isPsd(Q.map((row, i) => row.map((v, j) => (i === j ? v - 1e-5 : v))));
+
     // Infinitesimal generator:
-    // L B(x) = 2 x^T P A x + tr(\Sigma P)
-    // Noise term: tr(\Sigma P)
+    // L B(x) = x^T (A^T P + P A) x + tr(\Sigma P) = -x^T Q x + tr(\Sigma P)
     let trSigmaP = 0;
     for (let i = 0; i < n; i++) {
-      trSigmaP += Sigma[i]![i] ?? 0;
+      for (let j = 0; j < n; j++) {
+        trSigmaP += (Sigma[i]?.[j] ?? 0) * (P[i]?.[j] ?? 0);
+      }
     }
 
     // Initial barrier value: B(x0) = x0^T P x0
     let B_x0 = 0;
     for (let i = 0; i < n; i++) {
-      B_x0 += (x0[i] ?? 0) * (x0[i] ?? 0);
+      for (let j = 0; j < n; j++) {
+        B_x0 += (x0[i] ?? 0) * (P[i]?.[j] ?? 0) * (x0[j] ?? 0);
+      }
+    }
+
+    // Minimum eigenvalue bound of P and decay rate alpha where Q >= 2 * alpha * P
+    let lambdaMinP = Infinity;
+    let minDecay = Infinity;
+    for (let i = 0; i < n; i++) {
+      const pii = P[i]?.[i] ?? 0;
+      let offP = 0;
+      let offQ = 0;
+      for (let j = 0; j < n; j++) {
+        if (i !== j) {
+          offP += Math.abs(P[i]?.[j] ?? 0);
+          offQ += Math.abs(Q[i]?.[j] ?? 0);
+        }
+      }
+      const pRowMin = Math.max(0, pii - offP);
+      const pRowMax = Math.max(1e-8, pii + offP);
+      const qRowMin = Math.max(0, (Q[i]?.[i] ?? 0) - offQ);
+      lambdaMinP = Math.min(lambdaMinP, pRowMin);
+      minDecay = Math.min(minDecay, qRowMin / (2.0 * pRowMax));
     }
 
     // Minimum barrier value on unsafe boundary { ||x|| >= ru }: lambda_min(P) * ru^2
-    const minUnsafeBarrier = ru * ru;
+    const minUnsafeBarrier = Math.max(1e-8, lambdaMinP * ru * ru);
 
-    // Doob's Martingale bound:
-    // P(sup_{t >= 0} ||x(t)|| >= ru) <= B(x0) / ru^2 + steady_state_noise_correction
-    const decay = Math.abs(A[0]?.[0] ?? 1.0);
-    const steadyStateNoiseVariance = trSigmaP / (2 * decay);
+    // Doob / Kushner supermartingale bound:
+    // P(sup_{t >= 0} ||x(t)|| >= ru) <= (B(x0) + tr(\Sigma P) / (2 * decay)) / (lambda_min(P) * ru^2)
+    const decay = Number.isFinite(minDecay) && minDecay > 1e-6 ? minDecay : Math.abs(A[0]?.[0] ?? 1.0);
+    const steadyStateNoiseVariance = trSigmaP / Math.max(1e-8, 2 * decay);
 
-    const maxProb = Math.min(1.0, (B_x0 + steadyStateNoiseVariance) / minUnsafeBarrier);
-    const isSafe = maxProb <= riskTolerance;
+    const maxProb = isStableQ ? Math.min(1.0, (B_x0 + steadyStateNoiseVariance) / minUnsafeBarrier) : 1.0;
+    const isSafe = isStableQ && maxProb <= riskTolerance;
 
     const coeffs: number[] = [];
     for (let i = 0; i < n; i++) {
@@ -134,7 +215,7 @@ export class StochasticBarrierSynthesizer {
         reason: "not-rigorous",
         rigor: "heuristic",
         detail:
-          "Barrier B(x)=x^T P x uses P=I without verifying the generator inequality, linearizes the drift at the origin by finite differences, and takes A[0][0] as the global decay rate.",
+          "Barrier B(x)=x^T P x is synthesized on the origin linearization without global nonlinear generator remainder bounds.",
       },
       maxFailureProbability: maxProb,
       riskTolerance,

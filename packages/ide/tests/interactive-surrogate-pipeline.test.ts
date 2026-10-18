@@ -45,18 +45,18 @@ TIP, 3, -5000.0
 
     assert.strictEqual(runs.length, 15, "Should generate 5 loads * 3 moduli = 15 runs");
     for (const run of runs) {
-      assert.ok(run.scalarOutputs.maxStress > 0, "Max stress must be positive");
-      assert.ok(run.scalarOutputs.maxDisplacement > 0, "Max displacement must be positive");
-      assert.ok(run.fields.vonMisesStress.length === 4, "4 nodes should have von Mises stresses");
-      assert.ok(run.fields.displacements.length === 12, "4 nodes * 3 DOF = 12 displacements");
+      assert.ok(run.scalarOutputs["maxStress"]! > 0, "Max stress must be positive");
+      assert.ok(run.scalarOutputs["maxDisplacement"]! > 0, "Max displacement must be positive");
+      assert.ok(run.fields["vonMisesStress"]!.length === 4, "4 nodes should have von Mises stresses");
+      assert.ok(run.fields["displacements"]!.length === 12, "4 nodes * 3 DOF = 12 displacements");
     }
 
     // Monotonicity check: at baseline modulus (210 GPa), higher loadMultiplier => higher maxStress
-    const baselineModulusRuns = runs.filter((r) => Math.abs(r.parameters.youngsModulus - 210.0) < 1.0);
+    const baselineModulusRuns = runs.filter((r) => Math.abs(r.parameters["youngsModulus"]! - 210.0) < 1.0);
     assert.strictEqual(baselineModulusRuns.length, 5);
     for (let i = 1; i < baselineModulusRuns.length; i++) {
       assert.ok(
-        baselineModulusRuns[i]!.scalarOutputs.maxStress > baselineModulusRuns[i - 1]!.scalarOutputs.maxStress,
+        baselineModulusRuns[i]!.scalarOutputs["maxStress"]! > baselineModulusRuns[i - 1]!.scalarOutputs["maxStress"]!,
         "Stress must scale monotonically with load factor",
       );
     }
@@ -92,7 +92,7 @@ TIP, 3, -5000.0
     const pred1 = surrogate.evaluate({ loadScale: 1.0, youngsModulus: 210.0 });
     const pred2 = surrogate.evaluate({ loadScale: 1.5, youngsModulus: 210.0 });
     assert.ok(
-      pred2.scalarOutputs.maxStress > pred1.scalarOutputs.maxStress,
+      pred2.scalarOutputs["maxStress"]! > pred1.scalarOutputs["maxStress"]!,
       "Surrogate prediction must reflect load increase",
     );
     assert.strictEqual(pred1.field.length, 4, "Reconstructed field must match node count");
@@ -171,12 +171,12 @@ TIP, 3, -5000.0
 
     assert.ok(dt < 5.0, `Reconstruction took ${dt.toFixed(3)}ms (must be <5ms for 60 FPS)`);
     assert.strictEqual(result10.field.length, 4);
-    assert.ok(result10.scalars.maxStress > 0);
+    assert.ok(result10.scalars["maxStress"]! > 0);
 
     // Reconstruct at 2.0x load
     const result20 = reconstructSurrogate(dataPayload, { loadScale: 2.0, youngsModulus: 210.0 });
     assert.ok(
-      result20.scalars.maxStress > result10.scalars.maxStress,
+      result20.scalars["maxStress"]! > result10.scalars["maxStress"]!,
       "Doubling load in twin slider must increase predicted stress",
     );
   });
@@ -194,10 +194,10 @@ TIP, 3, -5000.0
 
     assert.strictEqual(cfdRuns.length, 9, "3 velocities * 3 AoA = 9 CFD runs");
     for (const r of cfdRuns) {
-      assert.ok(r.fields.pressure.length === 4, "4 surface nodes should have pressure");
-      assert.ok(r.fields.velocity.length === 12, "4 nodes * 3 DOF = 12 velocity components");
-      assert.ok(r.scalarOutputs.dragForce > 0, "Drag force must be positive");
-      assert.ok(r.scalarOutputs.liftForce !== undefined, "Lift force must be defined");
+      assert.ok(r.fields["pressure"]!.length === 4, "4 surface nodes should have pressure");
+      assert.ok(r.fields["velocity"]!.length === 12, "4 nodes * 3 DOF = 12 velocity components");
+      assert.ok(r.scalarOutputs["dragForce"]! > 0, "Drag force must be positive");
+      assert.ok(r.scalarOutputs["liftForce"] !== undefined, "Lift force must be defined");
     }
 
     const cfdDataset = CaeSnapshotExtractor.extractFromRuns(cfdRuns, { targetField: "pressure" });

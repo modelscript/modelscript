@@ -23,20 +23,20 @@ export enum LoDTier {
 
 export interface LoDThresholds {
   /** Minimum screen diameter in pixels for Full fidelity (default: 80px) */
-  fullThresholdPx?: number;
+  fullThresholdPx?: number | undefined;
   /** Minimum screen diameter in pixels for Decimated tier (default: 16px) */
-  decimatedThresholdPx?: number;
+  decimatedThresholdPx?: number | undefined;
   /** Minimum screen diameter in pixels below which geometry is culled (default: 2px) */
-  cullThresholdPx?: number;
+  cullThresholdPx?: number | undefined;
 }
 
 export interface CameraViewportConfig {
   /** Distance from camera to object center */
   distance: number;
   /** Vertical field of view in degrees (default: 50) */
-  fovDegrees?: number;
+  fovDegrees?: number | undefined;
   /** Viewport height in pixels (default: 1080) */
-  viewportHeightPx?: number;
+  viewportHeightPx?: number | undefined;
 }
 
 /**

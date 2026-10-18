@@ -20,14 +20,19 @@ export { simpleHash };
 export function registerDiagramHandlers(context: LspContext) {
   context.connection.onRequest(
     DiagramMethods.getData,
-    async (params: { uri: string; className?: string; diagramType?: string; sidecarContent?: string }) => {
+    async (params: {
+      uri: string;
+      className?: string | undefined;
+      diagramType?: string | undefined;
+      sidecarContent?: string | undefined;
+    }) => {
       return await context.diagramService.handleGetDiagramData(params);
     },
   );
 
   context.connection.onRequest(
     DiagramMethods.getComponentProperties,
-    async (params: { uri: string; componentName: string; className?: string }) => {
+    async (params: { uri: string; componentName: string; className?: string | undefined }) => {
       return await context.diagramService.getDiagramDispatch().getComponentProperties(params);
     },
   );
@@ -46,13 +51,13 @@ export function registerDiagramHandlers(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getDiagramData",
-    async (params: { uri: string; className?: string; diagramType?: string }) =>
+    async (params: { uri: string; className?: string | undefined; diagramType?: string | undefined }) =>
       await context.diagramService.handleGetDiagramData(params),
   );
 
   context.connection.onRequest(
     "modelscript/getComponentProperties",
-    async (params: { uri: string; componentName: string; className?: string }) => {
+    async (params: { uri: string; componentName: string; className?: string | undefined }) => {
       try {
         const dispatch = context.diagramService.getDiagramDispatch();
         if (typeof dispatch?.getComponentProperties === "function") {

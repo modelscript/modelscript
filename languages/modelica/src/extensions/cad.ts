@@ -27,7 +27,7 @@ export function extractModelicaCadComponents(
     if (cad) {
       const varName = arena.getVarName(i);
       const prefix = `${varName}.`;
-      const bindings: { property: string; variable: string; value?: number }[] = [];
+      const bindings: { property: string; variable: string; value?: number | undefined }[] = [];
 
       for (let j = 0; j < arena.varCount; j++) {
         if (arena.isVarRemoved(j)) continue;

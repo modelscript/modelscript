@@ -203,7 +203,7 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
         .then((data) => {
           setJobs(data);
           if (data.length > 0) {
-            setSelectedJobId((prev) => (prev === null ? data[0].id : prev));
+            setSelectedJobId((prev) => (prev === null ? data[0]!.id : prev));
           }
         })
         .finally(() => setLoading(false));

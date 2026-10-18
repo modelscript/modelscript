@@ -26,8 +26,8 @@ export function mcpRouter(database: LibraryDatabase): Router {
     const authHeader = req.headers["authorization"];
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.substring(7);
-    } else if (req.query?.token && typeof req.query.token === "string") {
-      token = req.query.token;
+    } else if (req.query?.["token"] && typeof req.query["token"] === "string") {
+      token = req.query["token"];
     }
 
     if (token) {
@@ -97,7 +97,7 @@ export function mcpRouter(database: LibraryDatabase): Router {
 
   // POST /api/v1/mcp/messages — Incoming JSON-RPC calls for an active SSE session
   router.post("/mcp/messages", async (req: Request, res: Response) => {
-    const sessionId = req.query.sessionId as string;
+    const sessionId = req.query["sessionId"] as string;
     if (!sessionId || !sessions.has(sessionId)) {
       res.status(404).json({ error: "Session not found or expired." });
       return;

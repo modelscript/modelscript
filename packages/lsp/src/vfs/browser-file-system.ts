@@ -3,7 +3,7 @@
 import type { Dirent, FileSystem, Stats } from "../utils/filesystem.js";
 
 export interface MemFile {
-  content?: string;
+  content?: string | undefined;
   binary: Uint8Array;
 }
 
@@ -29,7 +29,7 @@ export class BrowserFileSystem implements FileSystem {
     const parts = p.split("/");
     for (let i = 1; i < parts.length; i++) {
       const dir = parts.slice(0, i).join("/") || "/";
-      const child = parts[i];
+      const child = parts[i]!;
       const isDir = i < parts.length - 1;
       if (!this.#dirs.has(dir)) {
         this.#dirs.set(dir, { children: new Map() });
@@ -55,7 +55,7 @@ export class BrowserFileSystem implements FileSystem {
     const parts = p.split("/");
     for (let i = 1; i < parts.length; i++) {
       const dir = parts.slice(0, i).join("/") || "/";
-      const child = parts[i];
+      const child = parts[i]!;
       if (!this.#dirs.has(dir)) {
         this.#dirs.set(dir, { children: new Map() });
       }

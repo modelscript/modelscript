@@ -123,4 +123,49 @@ test("Phase 3: Salsa QueryEngine Integration", async (t) => {
     assert.deepEqual(l3, l1);
     assert.notEqual(l3, l1); // Recomputed because of revision increment
   });
+
+  await t.test("infers struct field and array index PostfixExpression types", () => {
+    const code = `
+      @unmanaged
+      struct SensorReading {
+        id: i32;
+        voltage: f64;
+        valid: bool;
+      }
+      let reading = new SensorReading(1, 3.3, true);
+      let idVal = reading.id;
+      let vVal = reading.voltage;
+      let okVal = reading.valid;
+      let arr = [10, 20, 30];
+      let firstElem = arr[0];
+    `;
+
+    const tree = compiler.parse(code);
+    const nodes = tree.rootNode.namedChildren.map(unwrapNode);
+    const structNode = nodes[0];
+    compiler.queries.structLayout(structNode);
+
+    const scope = new Map<string, any>([
+      ["reading", { kind: "struct", name: "SensorReading" }],
+      ["arr", { kind: "array", element: { kind: "i32" } }],
+    ]);
+
+    const newExpr = nodes[1].childForFieldName("value");
+    assert.deepEqual(compiler.queries.inferExpressionType(newExpr, scope), {
+      kind: "struct",
+      name: "SensorReading",
+    });
+
+    const idExpr = nodes[2].childForFieldName("value");
+    assert.deepEqual(compiler.queries.inferExpressionType(idExpr, scope), { kind: "i32" });
+
+    const vExpr = nodes[3].childForFieldName("value");
+    assert.deepEqual(compiler.queries.inferExpressionType(vExpr, scope), { kind: "f64" });
+
+    const okExpr = nodes[4].childForFieldName("value");
+    assert.deepEqual(compiler.queries.inferExpressionType(okExpr, scope), { kind: "bool" });
+
+    const idxExpr = nodes[6].childForFieldName("value");
+    assert.deepEqual(compiler.queries.inferExpressionType(idxExpr, scope), { kind: "i32" });
+  });
 });

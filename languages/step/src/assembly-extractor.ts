@@ -32,7 +32,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
 
   while ((headerMatch = headerRegex.exec(text)) !== null) {
     const id = `#${headerMatch[1]}`;
-    const type = headerMatch[2];
+    const type = headerMatch[2]!;
     const argsStart = headerMatch.index + headerMatch[0].length;
     let depth = 1;
     let pos = argsStart;
@@ -66,7 +66,9 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     headerRegex.lastIndex = endPos;
   }
 
-  // Helper to parse arguments (handles simple nested parens/strings)
+  /**
+   * Splits a top-level comma-separated STEP argument list while respecting nested parentheses and quoted strings.
+   */
   const parseArgs = (argsStr: string): string[] => {
     const args: string[] = [];
     let current = "";
@@ -94,8 +96,12 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     return args;
   };
 
+  /** Looks up a parsed STEP entity record by its `#id` instance handle. */
   const resolveEntity = (ref: string) => entities.get(ref);
 
+  /**
+   * Dereferences a `DIRECTION` or `CARTESIAN_POINT` entity handle and returns its `[x, y, z]` coordinates.
+   */
   const getVector = (ref: string): [number, number, number] | null => {
     const ent = resolveEntity(ref);
     if (!ent || (ent.type !== "DIRECTION" && ent.type !== "CARTESIAN_POINT")) return null;
@@ -111,6 +117,9 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     return null;
   };
 
+  /**
+   * Dereferences an `AXIS2_PLACEMENT_3D` entity handle into its origin `location`, Z `axis`, and X `refDirection`.
+   */
   const getPlacement = (ref: string): StepPlacement | null => {
     const ent = resolveEntity(ref);
     if (!ent || ent.type !== "AXIS2_PLACEMENT_3D") return null;
@@ -131,33 +140,44 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
       const args = parseArgs(ent.args);
       const nameMatch = args[0]?.match(/'([^']*)'/);
       if (nameMatch) {
-        parts.set(id, { id, name: nameMatch[1] });
+        parts.set(id, { id, name: nameMatch[1]! });
+      }
+    }
+  }
+
+  // Collect placements from ITEM_DEFINED_TRANSFORMATION and AXIS2_PLACEMENT_3D
+  const transformationPlacements: StepPlacement[] = [];
+  for (const [, ent] of entities.entries()) {
+    if (ent.type === "ITEM_DEFINED_TRANSFORMATION") {
+      const args = parseArgs(ent.args);
+      if (args.length >= 4) {
+        const p2 = getPlacement(args[3] ?? "");
+        const p1 = getPlacement(args[2] ?? "");
+        if (p2) transformationPlacements.push(p2);
+        else if (p1) transformationPlacements.push(p1);
       }
     }
   }
 
   // Find assemblies
+  let edgeIdx = 0;
   for (const [, ent] of entities.entries()) {
     if (ent.type === "NEXT_ASSEMBLY_USAGE_OCCURRENCE") {
       const args = parseArgs(ent.args);
       if (args.length >= 6) {
         const parentRef = args[3] ?? "";
         const childRef = args[4] ?? "";
+        const placement = transformationPlacements[edgeIdx] ?? {
+          location: [0, 0, 0],
+          axis: [0, 0, 1],
+          refDirection: [1, 0, 0],
+        };
+        edgeIdx++;
         edges.push({
           parentPartId: parentRef,
           childPartId: childRef,
-          placement: { location: [0, 0, 0], axis: [0, 0, 1], refDirection: [1, 0, 0] },
+          placement,
         });
-      }
-    }
-  }
-
-  // Find placements (ITEM_DEFINED_TRANSFORMATION)
-  for (const [, ent] of entities.entries()) {
-    if (ent.type === "ITEM_DEFINED_TRANSFORMATION") {
-      const args = parseArgs(ent.args);
-      if (args.length >= 4) {
-        getPlacement(args[3] ?? "");
       }
     }
   }
@@ -169,13 +189,25 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
       if (args.length >= 4) {
         const typeMatch = ent.type.match(/^([A-Z]+)_PAIR$/);
         const jointType = typeMatch && typeMatch[1] ? typeMatch[1].toLowerCase() : "fixed";
+        let axis: [number, number, number] = [0, 0, 1];
+        let origin: [number, number, number] = [0, 0, 0];
+        for (const arg of args) {
+          if (arg.startsWith("#")) {
+            const pl = getPlacement(arg);
+            if (pl) {
+              origin = pl.location;
+              axis = pl.axis;
+              break;
+            }
+          }
+        }
 
         joints.push({
           type: jointType as StepKinematicJoint["type"],
           partA: args[2] ?? "",
           partB: args[3] ?? "",
-          axis: [0, 0, 1],
-          origin: [0, 0, 0],
+          axis,
+          origin,
         });
       }
     }
@@ -184,14 +216,84 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   // ─────────────────────────────────────────────────────────────────────────
   // Find mass properties & 3D inertia tensors (AP242 / AP214)
   // ─────────────────────────────────────────────────────────────────────────
-  // Heuristic entity scanning across representation items & property definitions
+  // Build entity -> partId ownership map across STEP representation chains:
+  // PRODUCT <- PRODUCT_DEFINITION_FORMATION <- PRODUCT_DEFINITION <-
+  // PRODUCT_DEFINITION_SHAPE / PROPERTY_DEFINITION <-
+  // SHAPE_DEFINITION_REPRESENTATION / PROPERTY_DEFINITION_REPRESENTATION -> REPRESENTATION -> items
+  const entityToPartId = new Map<string, string>();
+  for (const partId of parts.keys()) {
+    entityToPartId.set(partId, partId);
+  }
+  // Multi-pass propagation through STEP definition and representation links
+  for (let pass = 0; pass < 5; pass++) {
+    for (const [id, ent] of entities.entries()) {
+      const refs = ent.args.match(/#\d+/g) || [];
+      let foundPartId = entityToPartId.get(id);
+      if (!foundPartId) {
+        for (const ref of refs) {
+          const mapped = entityToPartId.get(ref);
+          if (mapped) {
+            foundPartId = mapped;
+            break;
+          }
+        }
+      }
+      if (!foundPartId) {
+        // Also check if entity name matches a known part name
+        for (const [pId, pObj] of parts.entries()) {
+          if (pObj.name && ent.args.includes(`'${pObj.name}'`)) {
+            foundPartId = pId;
+            break;
+          }
+        }
+      }
+      if (foundPartId) {
+        if (!entityToPartId.has(id)) {
+          entityToPartId.set(id, foundPartId);
+        }
+        if (
+          ent.type.includes("REPRESENTATION") ||
+          ent.type === "PROPERTY_DEFINITION" ||
+          ent.type === "PRODUCT_DEFINITION_SHAPE"
+        ) {
+          for (const ref of refs) {
+            if (!entityToPartId.has(ref)) {
+              entityToPartId.set(ref, foundPartId);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const defaultPartId = parts.keys().next().value || "#1";
+  const perPartAccum = new Map<
+    string,
+    {
+      mass?: number | undefined;
+      volume?: number | undefined;
+      centerOfMass?: [number, number, number] | undefined;
+      inertiaTensor?: StepMassProperties["inertiaTensor"] | undefined;
+    }
+  >();
+  const getPartAccum = (partId: string) => {
+    let acc = perPartAccum.get(partId);
+    if (!acc) {
+      acc = {};
+      perPartAccum.set(partId, acc);
+    }
+    return acc;
+  };
+
   let extractedMass: number | undefined;
   let extractedVolume: number | undefined;
   let extractedCoM: [number, number, number] | undefined;
   let extractedInertia: StepMassProperties["inertiaTensor"] | undefined;
+  const allPoints: [number, number, number][] = [];
 
   for (const [id, ent] of entities.entries()) {
     const rawText = ent.args;
+    const ownerPartId = entityToPartId.get(id) ?? defaultPartId;
 
     // 1. Mass measure (explicit mass measure entity or property definition)
     if (
@@ -207,20 +309,27 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
         rawText.match(/,\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*[,)]/);
       if (numMatch && numMatch[1] && !isNaN(parseFloat(numMatch[1]))) {
         const candidate = parseFloat(numMatch[1]);
-        if (candidate > 0) extractedMass = candidate;
+        if (candidate > 0) {
+          extractedMass = candidate;
+          getPartAccum(ownerPartId).mass = candidate;
+        }
       }
     }
 
     // 2. Center of mass (CARTESIAN_POINT with 'centre of mass' or 'com' in name)
     if (ent.type === "CARTESIAN_POINT") {
-      const isCoM =
-        rawText.toLowerCase().includes("centre of mass") ||
-        rawText.toLowerCase().includes("center of mass") ||
-        rawText.toLowerCase().includes("centre_of_mass") ||
-        rawText.toLowerCase().includes("com");
-      if (isCoM) {
-        const coords = getVector(id);
-        if (coords) extractedCoM = coords;
+      const coords = getVector(id);
+      if (coords) {
+        allPoints.push(coords);
+        const isCoM =
+          rawText.toLowerCase().includes("centre of mass") ||
+          rawText.toLowerCase().includes("center of mass") ||
+          rawText.toLowerCase().includes("centre_of_mass") ||
+          rawText.toLowerCase().includes("com");
+        if (isCoM) {
+          extractedCoM = coords;
+          getPartAccum(ownerPartId).centerOfMass = coords;
+        }
       }
     }
 
@@ -228,7 +337,9 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     if (rawText.toLowerCase().includes("volume")) {
       const volMatch = rawText.match(/VOLUME_MEASURE\s*\(\s*([0-9.]+)\s*\)/i) || rawText.match(/,\s*([0-9.]+)\s*[,)]/);
       if (volMatch && volMatch[1]) {
-        extractedVolume = parseFloat(volMatch[1]);
+        const vol = parseFloat(volMatch[1]);
+        extractedVolume = vol;
+        getPartAccum(ownerPartId).volume = vol;
       }
     }
 
@@ -245,7 +356,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
         .filter((n) => !isNaN(n));
 
       if (nums.length >= 6) {
-        extractedInertia = {
+        const inertia = {
           I_11: nums[0] ?? 1.0,
           I_22: nums[1] ?? 1.0,
           I_33: nums[2] ?? 1.0,
@@ -253,18 +364,62 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
           I_31: nums[4] ?? 0.0,
           I_32: nums[5] ?? 0.0,
         };
+        extractedInertia = inertia;
+        getPartAccum(ownerPartId).inertiaTensor = inertia;
       }
     }
   }
 
-  // Bind extracted mass properties to part
-  if (extractedMass !== undefined || extractedCoM !== undefined || extractedInertia !== undefined) {
-    const defaultPartId = parts.keys().next().value || "#1";
+  // Bind extracted mass properties to each associated part
+  if (perPartAccum.size > 0) {
+    for (const [partId, acc] of perPartAccum.entries()) {
+      massProperties.set(partId, {
+        mass: acc.mass ?? extractedMass ?? 1.0,
+        centerOfMass: acc.centerOfMass ?? extractedCoM ?? [0, 0, 0],
+        inertiaTensor: acc.inertiaTensor ??
+          extractedInertia ?? { I_11: 1.0, I_22: 1.0, I_33: 1.0, I_21: 0, I_31: 0, I_32: 0 },
+        volume: acc.volume ?? extractedVolume ?? 0.001,
+      });
+    }
+  } else if (extractedMass !== undefined || extractedCoM !== undefined || extractedInertia !== undefined) {
     massProperties.set(defaultPartId, {
       mass: extractedMass ?? 1.0,
       centerOfMass: extractedCoM ?? [0, 0, 0],
       inertiaTensor: extractedInertia ?? { I_11: 1.0, I_22: 1.0, I_33: 1.0, I_21: 0, I_31: 0, I_32: 0 },
       volume: extractedVolume ?? 0.001,
+    });
+  } else if (allPoints.length >= 4 && parts.size > 0) {
+    let minX = Infinity,
+      minY = Infinity,
+      minZ = Infinity;
+    let maxX = -Infinity,
+      maxY = -Infinity,
+      maxZ = -Infinity;
+    for (const [px, py, pz] of allPoints) {
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (pz < minZ) minZ = pz;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+      if (pz > maxZ) maxZ = pz;
+    }
+    const dx = Math.max(1e-3, maxX - minX);
+    const dy = Math.max(1e-3, maxY - minY);
+    const dz = Math.max(1e-3, maxZ - minZ);
+    const vol = extractedVolume ?? dx * dy * dz;
+    const estMass = Math.max(0.01, Number((vol * 1000).toFixed(4)));
+    massProperties.set(defaultPartId, {
+      mass: estMass,
+      centerOfMass: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
+      inertiaTensor: {
+        I_11: Number(((estMass * (dy * dy + dz * dz)) / 12).toFixed(6)),
+        I_22: Number(((estMass * (dx * dx + dz * dz)) / 12).toFixed(6)),
+        I_33: Number(((estMass * (dx * dx + dy * dy)) / 12).toFixed(6)),
+        I_21: 0,
+        I_31: 0,
+        I_32: 0,
+      },
+      volume: vol,
     });
   }
 
@@ -277,7 +432,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
       const args = parseArgs(ent.args);
       // DATUM('name', 'description', #shape_aspect, identification)
       const labelMatch = args[3]?.match(/'([^']*)'/) || args[0]?.match(/'([^']*)'/);
-      const datumName = labelMatch ? labelMatch[1] : `D_${id.replace("#", "")}`;
+      const datumName = labelMatch ? labelMatch[1]! : `D_${id.replace("#", "")}`;
       datums.set(id, {
         id,
         name: datumName,
@@ -335,7 +490,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
         const magEnt = resolveEntity(magRef);
         if (magEnt) {
           const num = magEnt.args.match(/([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
-          if (num && !isNaN(parseFloat(num[1]))) mag = parseFloat(num[1]);
+          if (num && !isNaN(parseFloat(num[1]!))) mag = parseFloat(num[1]!);
         }
       } else {
         const num = parseFloat(magRef);

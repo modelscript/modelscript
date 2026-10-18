@@ -14,6 +14,11 @@ import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/s
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 
+/**
+ * Creates the Express router handling `/api/v1/simulate` job submission, status polling
+ * (`/api/v1/simulate/:jobId`), and CSV trajectory retrieval (`/api/v1/simulate/:jobId/result`),
+ * enforcing export-compliance checks and compute credit quotas.
+ */
 export function simulateRouter(
   storage: LibraryStorage,
   jobQueue: JobQueue,
@@ -266,6 +271,7 @@ getErrorString();
       });
 
       res.json({ jobId });
+      return;
     },
   );
 
@@ -283,6 +289,7 @@ getErrorString();
       profile: status.profile,
       usage: status.usage,
     });
+    return;
   });
 
   // GET /api/v1/simulate/:jobId/result
@@ -303,6 +310,7 @@ getErrorString();
     } else {
       res.status(400).json({ error: "Simulation not completed yet" });
     }
+    return;
   });
 
   return router;

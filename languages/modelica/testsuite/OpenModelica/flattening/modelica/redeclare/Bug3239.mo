@@ -1,7 +1,6 @@
 // name:     Bug3239.mo [BUG: #3239]
 // keywords: redeclare modifier handling
 // status:   correct
-// xfail:    true
 //
 // check that modifiers on redeclare are not lost
 //

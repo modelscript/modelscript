@@ -4,9 +4,9 @@ import { buildParser, type BuildOptions } from "../../dsl/api.js";
 import type { LanguageOptions } from "../../dsl/language.js";
 
 export interface DynamicCompileOptions extends BuildOptions {
-  extensions?: string[];
-  optimize?: boolean;
-  shrink?: boolean;
+  extensions?: string[] | undefined;
+  optimize?: boolean | undefined;
+  shrink?: boolean | undefined;
 }
 
 export interface CompiledLanguageBundle {
@@ -18,7 +18,7 @@ export interface CompiledLanguageBundle {
   textmate: any;
   jsWrapper: string;
   parserInfo: any;
-  languageDef?: LanguageOptions;
+  languageDef?: LanguageOptions | undefined;
 }
 
 /**

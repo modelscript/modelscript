@@ -1,7 +1,6 @@
 // name: DiagonalSimplify1
 // keywords: diagonal, simplify
 // status: correct
-// xfail:    true
 //
 // Tests simplification of built in operator diagonal.
 //

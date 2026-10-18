@@ -1,20 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * Severity level for a ModelScript compiler or linter diagnostic.
+ */
 export type DiagnosticSeverity = "error" | "warning" | "info";
 
+/**
+ * Structured diagnostic emitted by the ModelScript parser or semantic linter.
+ */
 export interface ModelScriptDiagnostic {
   code: number;
   rule: string;
   severity: DiagnosticSeverity;
   message: string;
-  range?: {
-    startLine: number;
-    startColumn: number;
-    endLine: number;
-    endColumn: number;
-  };
+  range?:
+    | {
+        startLine: number;
+        startColumn: number;
+        endLine: number;
+        endColumn: number;
+      }
+    | undefined;
 }
 
+/**
+ * Metadata and message formatter definition for a single ModelScript error code.
+ */
 export interface ErrorCodeDef {
   code: number;
   rule: string;

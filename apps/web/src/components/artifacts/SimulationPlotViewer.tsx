@@ -25,10 +25,10 @@ const SIM_COLORS = ["#06b6d4", "#a855f7", "#10b981", "#f59e0b", "#ef4444", "#3b8
 
 interface SimulationPlotViewerProps {
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
-const Wrapper = styled.div<{ $isFullScreen?: boolean }>`
+const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "380px")};
   background: var(--color-canvas-default, #0d1117);

@@ -28,22 +28,22 @@ export interface StateNode {
   id: StateId;
   name: string;
   kind: StateKind;
-  parentId?: StateId;
+  parentId?: StateId | undefined;
   children: StateId[];
-  entryAction?: (context: Record<string, any>) => void;
-  doAction?: (context: Record<string, any>) => void;
-  exitAction?: (context: Record<string, any>) => void;
+  entryAction?: ((context: Record<string, any>) => void) | undefined;
+  doAction?: ((context: Record<string, any>) => void) | undefined;
+  exitAction?: ((context: Record<string, any>) => void) | undefined;
 }
 
 export interface StateTransition {
   id: TransitionId;
-  name?: string;
+  name?: string | undefined;
   sourceId: StateId;
   targetId: StateId;
   /** Trigger event name. If undefined/null, this is a completion transition */
-  trigger?: string;
-  guard?: (context: Record<string, any>, payload?: any) => boolean;
-  effect?: (context: Record<string, any>, payload?: any) => void;
+  trigger?: string | undefined;
+  guard?: ((context: Record<string, any>, payload?: any) => boolean) | undefined;
+  effect?: ((context: Record<string, any>, payload?: any) => void) | undefined;
 }
 
 export interface StateMachineEvent {
@@ -53,8 +53,8 @@ export interface StateMachineEvent {
 
 export interface RTCStepRecord {
   stepIndex: number;
-  dispatchedEvent?: StateMachineEvent;
-  firedTransitionId?: TransitionId;
+  dispatchedEvent?: StateMachineEvent | undefined;
+  firedTransitionId?: TransitionId | undefined;
   exitedStateIds: StateId[];
   enteredStateIds: StateId[];
   preActiveStates: StateId[];
@@ -65,8 +65,8 @@ export interface RTCStepRecord {
 
 export interface RTCStepResult {
   stepIndex: number;
-  firedTransitionId?: TransitionId;
-  dispatchedEvent?: StateMachineEvent;
+  firedTransitionId?: TransitionId | undefined;
+  dispatchedEvent?: StateMachineEvent | undefined;
   activeStateNames: string[];
   isCompleted: boolean;
 }
@@ -94,10 +94,10 @@ export class WasmRtcStateMachine {
     name: string,
     kind: StateKind = StateKind.Simple,
     options?: {
-      parentId?: StateId;
-      entryAction?: (ctx: Record<string, any>) => void;
-      doAction?: (ctx: Record<string, any>) => void;
-      exitAction?: (ctx: Record<string, any>) => void;
+      parentId?: StateId | undefined;
+      entryAction?: ((ctx: Record<string, any>) => void) | undefined;
+      doAction?: ((ctx: Record<string, any>) => void) | undefined;
+      exitAction?: ((ctx: Record<string, any>) => void) | undefined;
     },
   ): StateId {
     const id = this.nextStateId++;
@@ -132,10 +132,10 @@ export class WasmRtcStateMachine {
     sourceId: StateId,
     targetId: StateId,
     options?: {
-      name?: string;
-      trigger?: string;
-      guard?: (context: Record<string, any>, payload?: any) => boolean;
-      effect?: (context: Record<string, any>, payload?: any) => void;
+      name?: string | undefined;
+      trigger?: string | undefined;
+      guard?: ((context: Record<string, any>, payload?: any) => boolean) | undefined;
+      effect?: ((context: Record<string, any>, payload?: any) => void) | undefined;
     },
   ): TransitionId {
     if (!this.states.has(sourceId)) throw new Error(`Source state ID ${sourceId} not found`);

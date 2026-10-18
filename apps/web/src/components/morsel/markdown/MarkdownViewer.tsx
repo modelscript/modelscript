@@ -24,8 +24,8 @@ function remarkDirectiveToHast() {
 
 interface MarkdownViewerProps {
   content: string;
-  context?: Record<string, any>;
-  className?: string;
+  context?: Record<string, any> | undefined;
+  className?: string | undefined;
 }
 
 export function MarkdownViewer({ content, context, className }: MarkdownViewerProps) {

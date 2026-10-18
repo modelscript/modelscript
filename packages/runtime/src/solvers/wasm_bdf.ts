@@ -60,25 +60,25 @@ export const BDF_ALPHA: readonly (readonly number[])[] = [
 /** Configuration options for the BDF solver. */
 export interface BdfOptions {
   /** Absolute tolerance (default: 1e-6). */
-  atol?: number;
+  atol?: number | undefined;
   /** Relative tolerance (default: 1e-6). */
-  rtol?: number;
+  rtol?: number | undefined;
   /** Maximum step size (default: tEnd - t0). */
-  maxStep?: number;
+  maxStep?: number | undefined;
   /** Initial step size (default: auto-estimated). */
-  initialStep?: number;
+  initialStep?: number | undefined;
   /** Maximum number of steps (default: 100000). */
-  maxSteps?: number;
+  maxSteps?: number | undefined;
   /** Maximum BDF order (default: 5, range 1-5). */
-  maxOrder?: number;
+  maxOrder?: number | undefined;
   /** Dense Jacobian function (optional — uses finite differences if not provided). */
-  jacobian?: (t: number, y: number[]) => number[][];
+  jacobian?: ((t: number, y: number[]) => number[][]) | undefined;
   /**
    * Sparse Jacobian function using graph-coloring-compressed AD.
    * Takes priority over `jacobian` if both are provided.
    * The sparse result is converted to dense for the LU factorization.
    */
-  sparseJacobian?: (t: number, y: number[]) => SparseJacobian;
+  sparseJacobian?: ((t: number, y: number[]) => SparseJacobian) | undefined;
 }
 
 /** Result of a BDF integration. */
@@ -107,7 +107,7 @@ export interface WasmBdfExports {
   dae_createBdfSolver(daePtr: number, nStates: number, atol: number, rtol: number, maxOrder: number): number;
   dae_setBdfStateMapping(solverPtr: number, idx: number, stateVarIdx: number, derivVarIdx: number): void;
   dae_stepBdfSolver(solverPtr: number, varValuesPtr: number, t: number, dt: number): number;
-  memory?: WebAssembly.Memory;
+  memory?: WebAssembly.Memory | undefined;
 }
 
 /**
@@ -241,25 +241,99 @@ export function bdf(
 
     const tNew = t + h;
 
-    // ── Compute dynamic BDF coefficients for variable step sizes ──
+    // ── Compute dynamic BDF coefficients for variable step sizes (orders 1..5) ──
     const effectiveOrder = Math.min(order, history.length, maxOrder);
     let alpha: number[];
     if (effectiveOrder === 1 || history.length < 2) {
       alpha = [1, -1];
-    } else {
+    } else if (effectiveOrder === 2) {
       const hPrev = Math.max(1e-15, history[0]!.t - history[1]!.t);
       const r = h / hPrev;
       const a0 = (1 + 2 * r) / (1 + r);
       const a1 = -(1 + r);
       const a2 = (r * r) / (1 + r);
       alpha = [a0, a1, a2];
+    } else {
+      const tau = new Array(effectiveOrder) as number[];
+      let validTau = true;
+      for (let j = 1; j <= effectiveOrder; j++) {
+        const tj = (tNew - history[j - 1]!.t) / h;
+        if (tj <= 0 || (j > 1 && tj - (tau[j - 2] ?? 0) < 1e-12)) {
+          validTau = false;
+          break;
+        }
+        tau[j - 1] = tj;
+      }
+      if (!validTau) {
+        alpha = [1, -1];
+      } else {
+        alpha = new Array(effectiveOrder + 1) as number[];
+        let a0 = 0;
+        for (let j = 1; j <= effectiveOrder; j++) {
+          const tj = tau[j - 1]!;
+          a0 += 1 / tj;
+          let prod = 1;
+          for (let m = 1; m <= effectiveOrder; m++) {
+            if (m !== j) {
+              const tm = tau[m - 1]!;
+              prod *= tm / (tm - tj);
+            }
+          }
+          alpha[j] = -prod / tj;
+        }
+        alpha[0] = a0;
+      }
     }
     const alpha0 = alpha[0] ?? 1;
 
-    // ── Compute predictor (explicit extrapolation from history) ──
-    const yPred = new Array(n) as number[];
-    for (let i = 0; i < n; i++) {
-      yPred[i] = (y[i] ?? 0) + h * (fCurrent[i] ?? 0);
+    // ── Compute predictor (explicit polynomial extrapolation from history) ──
+    const yPred = new Array(n).fill(0) as number[];
+    let usedPolyPred = false;
+    if (effectiveOrder >= 2 && history.length >= effectiveOrder + 1) {
+      const predPoints = effectiveOrder + 1;
+      const tauPred = new Array(predPoints) as number[];
+      let validPredTau = true;
+      for (let j = 0; j < predPoints; j++) {
+        const tj = (tNew - history[j]!.t) / h;
+        if (tj <= 0 || (j > 0 && tj - (tauPred[j - 1] ?? 0) < 1e-12)) {
+          validPredTau = false;
+          break;
+        }
+        tauPred[j] = tj;
+      }
+      if (validPredTau) {
+        for (let j = 0; j < predPoints; j++) {
+          let lj = 1.0;
+          const tj = tauPred[j]!;
+          for (let m = 0; m < predPoints; m++) {
+            if (m !== j) {
+              const tm = tauPred[m]!;
+              lj *= tm / (tm - tj);
+            }
+          }
+          const yHist = history[j]!.y;
+          for (let i = 0; i < n; i++) {
+            yPred[i] = (yPred[i] ?? 0) + lj * (yHist[i] ?? 0);
+          }
+        }
+        usedPolyPred = true;
+      }
+    } else if (effectiveOrder === 2 && history.length >= 2) {
+      const hPrev = history[0]!.t - history[1]!.t;
+      if (hPrev > 1e-15) {
+        const r = h / hPrev;
+        const yPrev = history[1]!.y;
+        for (let i = 0; i < n; i++) {
+          const yi = y[i] ?? 0;
+          yPred[i] = yi + h * (fCurrent[i] ?? 0) * (1 + r) - r * r * (yi - (yPrev[i] ?? 0));
+        }
+        usedPolyPred = true;
+      }
+    }
+    if (!usedPolyPred) {
+      for (let i = 0; i < n; i++) {
+        yPred[i] = (y[i] ?? 0) + h * (fCurrent[i] ?? 0);
+      }
     }
 
     // ── Compute/reuse Jacobian ──
@@ -289,7 +363,7 @@ export function bdf(
       for (let i = 0; i < n; i++) {
         const iterRow = new Array(n) as number[];
         iterMatrix[i] = iterRow;
-        const jRow = jacobianMatrix[i];
+        const jRow = jacobianMatrix?.[i];
         if (!jRow) continue;
         for (let j = 0; j < n; j++) {
           const jVal = jRow[j] ?? 0;
@@ -398,9 +472,10 @@ export function bdf(
         err = Math.max(err, ratio);
       }
     } else {
+      const errConst = BDF_ERROR_CONST[effectiveOrder - 1] ?? 1.0 / 3.0;
       for (let i = 0; i < n; i++) {
         const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNewton[i] ?? 0));
-        const est = (1.0 / 3.0) * Math.abs((yNewton[i] ?? 0) - (yPred[i] ?? 0));
+        const est = errConst * Math.abs((yNewton[i] ?? 0) - (yPred[i] ?? 0));
         const ratio = est / sc;
         if (!Number.isFinite(ratio)) {
           err = Infinity;

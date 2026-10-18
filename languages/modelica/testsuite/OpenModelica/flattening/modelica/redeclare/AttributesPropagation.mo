@@ -1,7 +1,6 @@
 // name:     AttributesPropagation.mo
 // keywords: tests if attributes are properly propagated from original to redeclared component
 // status:   correct
-// xfail:    true
 //
 
 package Buildings

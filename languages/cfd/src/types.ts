@@ -3,10 +3,10 @@
 export interface BoundaryActionPayload {
   kind: "fix" | "force" | "inlet" | "outlet" | "wall" | "heatflux" | "isothermal";
   targetId: number | string;
-  dofs?: number[];
-  magnitude?: number;
-  vector?: [number, number, number];
-  temperature?: number;
+  dofs?: number[] | undefined;
+  magnitude?: number | undefined;
+  vector?: [number, number, number] | undefined;
+  temperature?: number | undefined;
 }
 
 export interface CfdMarker {
@@ -18,27 +18,27 @@ export interface CfdMarker {
 export interface CaeDiagnostic {
   severity: "error" | "warning" | "info";
   message: string;
-  line?: number;
-  column?: number;
-  expression?: string;
+  line?: number | undefined;
+  column?: number | undefined;
+  expression?: string | undefined;
 }
 
 export interface CfdModelData {
   dialect: string;
-  mathProblem?: string;
-  machNumber?: number;
-  aoa?: number;
-  reynoldsNumber?: number;
-  freestreamVelocity?: number;
-  inletVelocity?: [number, number, number];
-  density?: number;
-  viscosity?: number;
-  inletMarker?: string;
-  outletMarker?: string;
+  mathProblem?: string | undefined;
+  machNumber?: number | undefined;
+  aoa?: number | undefined;
+  reynoldsNumber?: number | undefined;
+  freestreamVelocity?: number | undefined;
+  inletVelocity?: [number, number, number] | undefined;
+  density?: number | undefined;
+  viscosity?: number | undefined;
+  inletMarker?: string | undefined;
+  outletMarker?: string | undefined;
   inletMarkers: string[];
   outletMarkers: string[];
   wallMarkers: string[];
-  meshFilename?: string;
+  meshFilename?: string | undefined;
   directives: Map<string, string>;
   rawDirectives: Map<string, string>;
   markers: Map<string, CfdMarker>;
@@ -47,9 +47,9 @@ export interface CfdModelData {
 export type ParameterLookup = (name: string) => number | string | undefined;
 
 export interface MaterializeOptions {
-  evaluator?: ParameterLookup | Record<string, number | string>;
-  formatNumber?: (val: number) => string;
-  diagnostics?: CaeDiagnostic[];
+  evaluator?: ParameterLookup | Record<string, number | string> | undefined;
+  formatNumber?: ((val: number) => string) | undefined;
+  diagnostics?: CaeDiagnostic[] | undefined;
 }
 
 export interface CfdDialect {

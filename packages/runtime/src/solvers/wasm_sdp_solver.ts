@@ -278,6 +278,12 @@ export class SdpSolver {
       }
     }
 
+    // Precompute squared Frobenius norms of constraint matrices A_k for exact affine hyperplane projection
+    const aNormSq: number[] = [];
+    for (let k = 0; k < m; k++) {
+      aNormSq.push(Math.max(SdpSolver.innerProduct(A[k]!, A[k]!), 1e-12));
+    }
+
     let iterations = 0;
     let residual = 1.0;
 
@@ -298,18 +304,9 @@ export class SdpSolver {
         break;
       }
 
-      // Projected primal-dual gradient step on X:
-      // X <- X + alpha * \sum rp_i * A_i - objStep * C
-      const alpha = 0.1 / (1 + iter * 0.1);
-      const objStep = cNorm > 0 ? (0.01 * alpha) / (1 + iter * 0.5) : 0;
-      for (let k = 0; k < m; k++) {
-        const coeff = alpha * rp[k]!;
-        for (let i = 0; i < n; i++) {
-          for (let j = 0; j < n; j++) {
-            X[i]![j]! += coeff * (A[k]![i]![j] ?? 0);
-          }
-        }
-      }
+      // Objective gradient descent step before alternating affine/cone projections
+      const alpha = 0.5 / (1 + iter * 0.05);
+      const objStep = cNorm > 0 ? (0.01 * alpha) / ((1 + iter * 0.5) * cNorm) : 0;
       if (objStep > 0) {
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < n; j++) {
@@ -318,8 +315,21 @@ export class SdpSolver {
         }
       }
 
+      // Kaczmarz / Gauss-Seidel affine hyperplane projections <A_k, X> = b_k
+      for (let sweep = 0; sweep < 3; sweep++) {
+        for (let k = 0; k < m; k++) {
+          const r_k = b[k]! - SdpSolver.innerProduct(A[k]!, X);
+          const stepCoeff = r_k / aNormSq[k]!;
+          for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+              X[i]![j]! += stepCoeff * (A[k]![i]![j] ?? 0);
+            }
+          }
+        }
+      }
+
       // Robust spectral projection to positive semidefinite cone
-      X = SdpSolver.projectPsdCone(X, 1e-6);
+      X = SdpSolver.projectPsdCone(X, 1e-7);
     }
 
     // Recompute final constraint residual after last cone projection
@@ -331,7 +341,7 @@ export class SdpSolver {
     residual = finalResidual;
 
     const isFeasible =
-      SdpSolver.isPsd(X) && Number.isFinite(residual) && (m === 0 || residual <= Math.max(tol * 1000, 1.0));
+      SdpSolver.isPsd(X) && Number.isFinite(residual) && (m === 0 || residual <= Math.max(tol * 10, 1e-4));
     const primalObj = SdpSolver.innerProduct(C, X);
 
     return {

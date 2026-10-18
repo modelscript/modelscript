@@ -3,14 +3,16 @@
 import { materializeCfdConfig } from "../materializer.js";
 import type { CfdDialect, CfdMarker, CfdModelData, MaterializeOptions } from "../types.js";
 
+/**
+ * Recursive key-value tree representation of an OpenFOAM dictionary file.
+ */
 interface FoamDict {
   [key: string]: string | FoamDict;
 }
 
 /**
- * OpenFOAM case dictionary dialect implementation.
- * Supports recursive hierarchical dictionary parsing, boundaryField extraction,
- * and solver directive extraction.
+ * Strips C/C++ style line (`//`) and block (`/* ... *\/`) comments from an OpenFOAM dictionary string
+ * while preserving quoted string literals.
  */
 function stripComments(source: string): string {
   let result = "";
@@ -59,15 +61,26 @@ function stripComments(source: string): string {
   return result;
 }
 
+/**
+ * OpenFOAM case dictionary dialect implementation.
+ * Supports recursive hierarchical dictionary parsing, `boundaryField` patch extraction,
+ * and solver directive extraction.
+ */
 export class OpenFoamDialect implements CfdDialect {
   public readonly id = "openfoam";
   public readonly name = "OpenFOAM Case Dictionaries";
   public readonly extensions = [".foam", "controlDict", "fvSchemes", "fvSolution"];
 
+  /**
+   * Materializes an OpenFOAM dictionary template by evaluating embedded `{{ ... }}` expressions.
+   */
   public materialize(templateText: string, options?: MaterializeOptions): string {
     return materializeCfdConfig(templateText, options);
   }
 
+  /**
+   * Parses an OpenFOAM dictionary into flattened dot-notated directives and classified boundary patches.
+   */
   public parse(content: string): CfdModelData {
     const rawDirectives = new Map<string, string>();
     const directives = new Map<string, string>();
@@ -154,6 +167,9 @@ export class OpenFoamDialect implements CfdDialect {
     return data;
   }
 
+  /**
+   * Recursively parses nested `{ ... }` OpenFOAM sub-dictionaries and semicolon-terminated entries.
+   */
   private parseDictionary(text: string, state: { pos: number } = { pos: 0 }): FoamDict {
     const dict: FoamDict = {};
 
@@ -196,6 +212,9 @@ export class OpenFoamDialect implements CfdDialect {
     return dict;
   }
 
+  /**
+   * Flattens a hierarchical `FoamDict` into dot-separated key paths in `directives` and `rawDirectives`.
+   */
   private flattenDict(
     dict: FoamDict,
     prefix: string,

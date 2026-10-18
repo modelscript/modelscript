@@ -26,8 +26,8 @@ export interface InductiveSpec {
   init: NonlinearConstraint[];
   transition: NonlinearConstraint[];
   invariant: NonlinearConstraint[];
-  domainBounds?: Map<string, Interval>;
-  maxStrengtheningAttempts?: number;
+  domainBounds?: Map<string, Interval> | undefined;
+  maxStrengtheningAttempts?: number | undefined;
 }
 
 export type InductiveProofStatus = "PROVEN" | "DISPROVEN" | "STRENGTHENED" | "UNKNOWN";
@@ -37,13 +37,15 @@ export interface InductiveProofResult {
   isInductive: boolean;
   initiationHolds: boolean;
   consecutionHolds: boolean;
-  strengtheningLemmas?: NonlinearConstraint[];
-  counterexample?: {
-    type: "INIT_VIOLATION" | "CTI";
-    state: Map<string, Interval>;
-    nextState?: Map<string, Interval>;
-    failedConstraint?: NonlinearConstraint;
-  };
+  strengtheningLemmas?: NonlinearConstraint[] | undefined;
+  counterexample?:
+    | {
+        type: "INIT_VIOLATION" | "CTI";
+        state: Map<string, Interval>;
+        nextState?: Map<string, Interval> | undefined;
+        failedConstraint?: NonlinearConstraint | undefined;
+      }
+    | undefined;
   summary: string;
 }
 
@@ -92,6 +94,10 @@ export function substituteExpr(node: ExprNode, mapFn: (v: string) => string): Ex
       return { kind: "mul", left: substituteExpr(node.left, mapFn), right: substituteExpr(node.right, mapFn) };
     case "div":
       return { kind: "div", left: substituteExpr(node.left, mapFn), right: substituteExpr(node.right, mapFn) };
+    case "pow":
+      return { kind: "pow", left: substituteExpr(node.left, mapFn), right: substituteExpr(node.right, mapFn) };
+    case "call":
+      return { kind: "call", fn: node.fn, args: node.args.map((a) => substituteExpr(a, mapFn)) };
   }
 }
 
@@ -156,6 +162,10 @@ export function formatExpr(node: ExprNode): string {
       return `(${formatExpr(node.left)} * ${formatExpr(node.right)})`;
     case "div":
       return `(${formatExpr(node.left)} / ${formatExpr(node.right)})`;
+    case "pow":
+      return `(${formatExpr(node.left)} ^ ${formatExpr(node.right)})`;
+    case "call":
+      return `${node.fn}(${node.args.map(formatExpr).join(", ")})`;
   }
 }
 
@@ -312,7 +322,11 @@ export class InductiveProver {
     target: NonlinearConstraint[],
     initialBox: Map<string, Interval>,
     isNextState: boolean,
-  ): { holds: boolean; failedConstraint?: NonlinearConstraint; counterexampleBox?: Map<string, Interval> } {
+  ): {
+    holds: boolean;
+    failedConstraint?: NonlinearConstraint | undefined;
+    counterexampleBox?: Map<string, Interval> | undefined;
+  } {
     for (const conjunct of target) {
       const evaluatedConjunct = isNextState ? primeConstraint(conjunct) : conjunct;
       const negations = negateConstraint(evaluatedConjunct);

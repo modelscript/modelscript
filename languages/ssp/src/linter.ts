@@ -11,9 +11,15 @@
 
 import type { SspConnectorKind, SspConnectorType } from "./types.js";
 
+/**
+ * Diagnostic emitted by the SSP/SSV semantic linter with exact byte and 1-indexed line/column spans.
+ */
 export interface SspDiagnostic {
+  /** Machine-readable diagnostic code (e.g., `"SSP_CONNECTOR_TYPE_MISMATCH"`). */
   code: string;
+  /** Diagnostic severity level. */
   severity: "error" | "warning" | "info";
+  /** Human-readable diagnostic description. */
   message: string;
   /** 0-indexed character/byte start offset in XML */
   startByte: number;
@@ -29,8 +35,12 @@ export interface SspDiagnostic {
   endColumn: number;
 }
 
+/** Allowed values for the `kind` attribute on `<ssd:Connector>` elements per SSP 1.0. */
 const VALID_CONNECTOR_KINDS = new Set<string>(["input", "output", "inout", "parameter", "calculatedParameter"]);
 
+/**
+ * Binary-search line/column locator over raw XML source text.
+ */
 class LineLocator {
   private lineStarts: number[] = [0];
 
@@ -42,6 +52,9 @@ class LineLocator {
     }
   }
 
+  /**
+   * Convert a 0-indexed character offset into a 1-indexed `{ line, column }` position.
+   */
   offsetToPos(offset: number): { line: number; column: number } {
     const clamped = Math.max(0, Math.min(offset, this.source.length));
     let low = 0;
@@ -62,6 +75,9 @@ class LineLocator {
   }
 }
 
+/**
+ * Source byte spans of a located XML element tag, its attributes, and its inner body.
+ */
 interface LocatedTag {
   tagName: string;
   tagStart: number;
@@ -72,6 +88,9 @@ interface LocatedTag {
   bodyEnd: number;
 }
 
+/**
+ * Source byte spans of an XML attribute and its quoted value within a `LocatedTag`.
+ */
 interface LocatedAttr {
   value: string;
   valueStart: number;
@@ -80,6 +99,9 @@ interface LocatedAttr {
   attrEnd: number;
 }
 
+/**
+ * Find all occurrences of `<tag ...>` within `[rangeStart, rangeEnd)` along with their attribute and body spans.
+ */
 function findTagOccurrences(xml: string, tag: string, rangeStart = 0, rangeEnd = xml.length): LocatedTag[] {
   const results: LocatedTag[] = [];
   const openTag = `<${tag}`;
@@ -153,6 +175,9 @@ function findTagOccurrences(xml: string, tag: string, rangeStart = 0, rangeEnd =
   return results;
 }
 
+/**
+ * Locate a named XML attribute within `tag` and compute exact byte offsets for its value.
+ */
 function locateAttr(xml: string, tag: LocatedTag, attrName: string): LocatedAttr | null {
   const attrsSlice = xml.slice(tag.attrsStart, tag.attrsEnd);
   const escaped = attrName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -180,19 +205,25 @@ function locateAttr(xml: string, tag: LocatedTag, attrName: string): LocatedAttr
   };
 }
 
+/**
+ * Metadata and source byte range for a validated `<ssd:Connector>` declaration.
+ */
 interface ParsedConnectorInfo {
   name: string;
   kind: SspConnectorKind;
   type: SspConnectorType;
-  unit?: string;
+  unit?: string | undefined;
   nameRange: { start: number; end: number };
 }
 
+/**
+ * Determine the SSP scalar data type and optional physical unit from a connector's `<ssc:*>` child element.
+ */
 function detectConnectorType(
   xml: string,
   bodyStart: number,
   bodyEnd: number,
-): { type: SspConnectorType; unit?: string } {
+): { type: SspConnectorType; unit?: string | undefined } {
   const body = xml.slice(bodyStart, bodyEnd);
   const realTags = findTagOccurrences(xml, "ssc:Real", bodyStart, bodyEnd);
   if (realTags.length > 0) {
@@ -597,8 +628,12 @@ export function lintSsd(xml: string): SspDiagnostic[] {
   return diagnostics;
 }
 
+/** Supported SSV scalar type child tags inside `<ssv:Parameter>`. */
 const SSV_TYPE_TAGS = ["ssv:Real", "ssv:Integer", "ssv:Boolean", "ssv:String", "ssv:Enumeration"] as const;
 
+/**
+ * Validate `<ssv:Parameter>` declarations within `[rangeStart, rangeEnd)` of an XML document.
+ */
 function lintSsvRange(xml: string, rangeStart: number, rangeEnd: number, locator: LineLocator): SspDiagnostic[] {
   const diagnostics: SspDiagnostic[] = [];
 

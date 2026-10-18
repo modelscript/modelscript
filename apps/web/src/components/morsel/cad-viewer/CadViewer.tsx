@@ -32,16 +32,16 @@ import { VtkRenderer } from "./VtkRenderer";
 
 export interface CadAnnotation {
   uri: string;
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-  scale?: [number, number, number];
+  position?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined;
+  scale?: [number, number, number] | undefined;
 }
 
 export interface CadPortAnnotation {
   feature: string;
-  offsetPosition?: [number, number, number];
-  offsetRotation?: [number, number, number];
-  offsetScale?: [number, number, number];
+  offsetPosition?: [number, number, number] | undefined;
+  offsetRotation?: [number, number, number] | undefined;
+  offsetScale?: [number, number, number] | undefined;
 }
 
 export interface CadComponent {
@@ -50,32 +50,32 @@ export interface CadComponent {
   /** Parsed CAD annotation */
   cad: CadAnnotation;
   /** Parsed CADPort annotations from sub-components (connectors) */
-  ports?: { name: string; port: CadPortAnnotation }[];
+  ports?: { name: string; port: CadPortAnnotation }[] | undefined;
   /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
-  dynamicBindings?: { property: string; index: number; variable: string }[];
+  dynamicBindings?: { property: string; index: number; variable: string }[] | undefined;
 }
 
 interface CadViewerProps {
   /** List of components with CAD annotations to render */
   components: CadComponent[];
   /** Base URL for resolving modelica:// URIs, e.g. "/api/v1/libraries" */
-  assetBaseUrl?: string;
+  assetBaseUrl?: string | undefined;
   /** Currently selected component name (synced with the 2D diagram) */
-  selectedName?: string | null;
+  selectedName?: string | null | undefined;
   /** Callback when user selects a 3D object */
-  onSelect?: (name: string | null) => void;
+  onSelect?: ((name: string | null) => void) | undefined;
   /** Callback when user performs a snap/connect action */
-  onConnect?: (sourceName: string, sourcePort: string, targetName: string, targetPort: string) => void;
+  onConnect?: ((sourceName: string, sourcePort: string, targetName: string, targetPort: string) => void) | undefined;
   /** Dark mode toggle */
-  dark?: boolean;
+  dark?: boolean | undefined;
   /** Animation controller for simulation-driven animation */
-  animationController?: AnimationController | null;
+  animationController?: AnimationController | null | undefined;
   /** Extracted VTK Buffer from the CFD Orchestrator for Real-time VR rendering */
-  vtkBuffer?: Uint8Array | null;
+  vtkBuffer?: Uint8Array | null | undefined;
   /** Available simulation variables for dynamic binding picker */
-  availableVariables?: string[];
+  availableVariables?: string[] | undefined;
   /** Callback when user saves new bindings from the picker */
-  onSaveBindings?: (componentName: string, bindings: DynamicBindingConfig[]) => void;
+  onSaveBindings?: ((componentName: string, bindings: DynamicBindingConfig[]) => void) | undefined;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ function PortIndicator({
 }: {
   position: [number, number, number];
   name: string;
-  highlighted?: boolean;
+  highlighted?: boolean | undefined;
 }) {
   const ref = useRef<THREE.Mesh>(null);
 
@@ -138,8 +138,8 @@ function CadModel({
   component: CadComponent;
   assetBaseUrl: string;
   selected: boolean;
-  onSelect?: (name: string | null) => void;
-  animationController?: AnimationController | null;
+  onSelect?: ((name: string | null) => void) | undefined;
+  animationController?: AnimationController | null | undefined;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const { scene } = useGLTF(url);
@@ -220,7 +220,7 @@ function CadModel({
 
       if (trailGeoRef.current) {
         trailGeoRef.current.setDrawRange(0, trailCount.current);
-        trailGeoRef.current.attributes.position.needsUpdate = true;
+        trailGeoRef.current.attributes.position!.needsUpdate = true;
       }
     } else if (!selected && trailCount.current > 0) {
       trailCount.current = 0;
@@ -325,11 +325,11 @@ function SceneContents({
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
-  selectedName?: string | null;
-  onSelect?: (name: string | null) => void;
-  dark?: boolean;
-  animationController?: AnimationController | null;
-  vtkBuffer?: Uint8Array | null;
+  selectedName?: string | null | undefined;
+  onSelect?: ((name: string | null) => void) | undefined;
+  dark?: boolean | undefined;
+  animationController?: AnimationController | null | undefined;
+  vtkBuffer?: Uint8Array | null | undefined;
 }) {
   const { gl } = useThree();
 
@@ -413,7 +413,7 @@ function SceneContents({
 
 // ── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState({ dark }: { dark?: boolean }) {
+function EmptyState({ dark }: { dark?: boolean | undefined }) {
   return (
     <div
       style={{

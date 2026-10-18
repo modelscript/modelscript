@@ -15,6 +15,8 @@ const DagreLayout: any = (antvLayout as any).DagreLayout || class {};
 
 type Graph = any;
 type Cell = any;
+type Node = any;
+type Edge = any;
 type Selection = any;
 type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -99,33 +101,55 @@ if (typeof Graph.registerConnector === "function") {
   }
 }
 
+/** Configuration options and host callbacks for the AntV X6 diagram renderer. */
 export interface DiagramRendererOptions {
+  /** Target DOM container element in which to mount the AntV X6 graph canvas. */
   container: HTMLElement;
-  isDark?: boolean;
-  allowNodeConnection?: boolean;
-  onAction?: (action: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void;
-  onSelect?: (id: string | null) => void;
-  onShowProperties?: (
-    nodeId: string,
-    cachedProps?: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any,
-    isLoading?: boolean,
-  ) => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
+  /** Whether to render the diagram canvas and grid in dark mode. */
+  isDark?: boolean | undefined;
+  /** Whether edges can connect directly to node bodies in addition to port magnets. */
+  allowNodeConnection?: boolean | undefined;
+  /** Callback invoked when the user performs a diagram edit action (move, resize, connect, disconnect, etc.). */
+  onAction?: ((action: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void) | undefined;
+  /** Callback invoked when the selected component node changes (or `null` when deselected). */
+  onSelect?: ((id: string | null) => void) | undefined;
+  /** Callback invoked to display or update the component properties inspection panel. */
+  onShowProperties?:
+    | ((
+        nodeId: string,
+        cachedProps?: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any,
+        isLoading?: boolean,
+      ) => void)
+    | undefined;
+  /** Callback invoked when the user triggers an Undo keyboard shortcut (`Ctrl+Z` / `Cmd+Z`). */
+  onUndo?: (() => void) | undefined;
+  /** Callback invoked when the user triggers a Redo keyboard shortcut (`Ctrl+Y` / `Cmd+Shift+Z`). */
+  onRedo?: (() => void) | undefined;
   /** Generic message callback for non-action messages (revealSource, navigateTo, etc.) */
-  onMessage?: (msg: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void;
+  onMessage?: ((msg: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void) | undefined;
 }
 
+/** Active diagram renderer configuration options. */
 let currentOptions: DiagramRendererOptions | null = null;
 
+/**
+ * Sets or updates the active configuration options and callbacks for the diagram renderer.
+ */
 export function setDiagramOptions(options: DiagramRendererOptions) {
   currentOptions = options;
 }
 
+/**
+ * Dispatches a structural or spatial diagram edit action to the registered `onAction` callback.
+ */
 function enqueueDiagramAction(action: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) {
   if (currentOptions?.onAction) currentOptions.onAction(action);
 }
 
+/**
+ * Forwards host-bound messages (`undo`, `redo`, `getProperties`, `revealSource`, `navigateTo`)
+ * to the appropriate callback in `currentOptions`.
+ */
 function postMessageToHost(msg: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) {
   if (msg.type === "undo" && currentOptions?.onUndo) {
     currentOptions.onUndo();
@@ -143,7 +167,9 @@ function postMessageToHost(msg: /* eslint-disable-line @typescript-eslint/no-exp
   if (currentOptions?.onMessage) currentOptions.onMessage(msg);
 }
 
+/** Singleton AntV X6 graph instance for the active diagram canvas. */
 let graph: Graph | null = null;
+/** ID of the currently selected component node, if any. */
 let selectedNodeId: string | null = null;
 
 /** Cache for on-demand component properties (cleared on diagram re-render) */
@@ -230,6 +256,10 @@ function getConnectedEdges(
   });
 }
 
+/**
+ * Initializes (or reconfigures) the AntV X6 graph canvas, plugins, interaction handlers,
+ * orthogonal edge routers, and keyboard shortcuts.
+ */
 export function initGraph(isDark: boolean): Graph | null {
   ensureDiagramStyles();
   let container = currentOptions?.container;
@@ -299,7 +329,7 @@ export function initGraph(isDark: boolean): Graph | null {
     // We don't want runtime drag-to-reparent behavior.
     // Parent-child relationships are strictly defined by semantic children via addChild().
     embedding: { enabled: false },
-    interacting: (cellView) => {
+    interacting: (cellView: any) => {
       if (
         cellView.cell.id === "__diagram_background__" ||
         cellView.cell.id.startsWith("__seq_stem_") ||
@@ -371,7 +401,7 @@ export function initGraph(isDark: boolean): Graph | null {
       modifiers: ["ctrl", "meta", "shift"],
       multipleSelectionModifiers: ["ctrl", "meta", "shift"],
       pointerEvents: "none",
-      filter: (cell) =>
+      filter: (cell: Cell) =>
         cell.id !== "__diagram_background__" &&
         !cell.id.startsWith("__seq_stem_") &&
         !cell.id.startsWith("solder_dot_"),
@@ -445,11 +475,11 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // ── Placement Mode (Drag and Drop in VS Code) ──
-  let placementData: { className: string; classKind: string; iconSvg?: string } | null = null;
+  let placementData: { className: string; classKind: string; iconSvg?: string | undefined } | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let placementGhost: any = null;
 
-  const startPlacement = (data: { className: string; classKind: string; iconSvg?: string }) => {
+  const startPlacement = (data: { className: string; classKind: string; iconSvg?: string | undefined }) => {
     ensureDiagramStyles();
     placementData = data;
     const center = g.pageToLocal(window.innerWidth / 2, window.innerHeight / 2);
@@ -565,13 +595,13 @@ export function initGraph(isDark: boolean): Graph | null {
   let moveTimeout: ReturnType<typeof setTimeout> | null = null;
   let justResized = false;
 
-  g.on("node:moved", ({ node }) => {
+  g.on("node:moved", ({ node }: { node: Node }) => {
     if (node.id === "__diagram_background__") return;
 
     // Deselect edges when moving a node to avoid stale rubberbands
     const selected = g.getSelectedCells();
     if (selected) {
-      selected.forEach((cell) => {
+      selected.forEach((cell: Cell) => {
         if (cell.isEdge()) g.unselect(cell);
       });
     }
@@ -919,7 +949,7 @@ export function initGraph(isDark: boolean): Graph | null {
       const edgesToDelete: { source: string; target: string }[] = [];
       const componentNames: string[] = [];
 
-      cells.forEach((cell) => {
+      cells.forEach((cell: Cell) => {
         if (cell.isEdge()) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const source = cell.getSource() as any;
@@ -955,9 +985,9 @@ export function initGraph(isDark: boolean): Graph | null {
       scheduleUpdateSolderDots(g);
     } else {
       const nav = navigator as unknown as {
-        platform?: string;
-        userAgent?: string;
-        userAgentData?: { platform?: string };
+        platform?: string | undefined;
+        userAgent?: string | undefined;
+        userAgentData?: { platform?: string | undefined } | undefined;
       };
       const platform = (nav.platform || nav.userAgentData?.platform || nav.userAgent || "").toUpperCase();
       const isMac = platform.indexOf("MAC") >= 0;
@@ -1088,7 +1118,7 @@ export function initGraph(isDark: boolean): Graph | null {
 
   // ── Double-click navigation: drill into child diagram views ──
   // E.g., double-click a StateDefinition in BDD → open StateMachine view for it.
-  g.on("node:dblclick", ({ node }) => {
+  g.on("node:dblclick", ({ node }: { node: Node }) => {
     const data = node.getData();
     const props = data?.properties;
     if (!props?.ruleName) return;
@@ -1131,6 +1161,10 @@ export function initGraph(isDark: boolean): Graph | null {
   return g;
 }
 
+/**
+ * Renders (or incrementally diffs and updates) a polyglot diagram model onto the AntV X6 graph canvas,
+ * executing hierarchical Dagre/sequence/swimlane/TSM layouts and updating topological solder dots.
+ */
 export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any, isDark: boolean) {
   const g = initGraph(isDark);
   if (!g) return;
@@ -1786,7 +1820,11 @@ window.addEventListener("message", (event: MessageEvent) => {
       // Calls the startPlacement function defined inside initGraph
       // which creates the ghost cursor and enters placement mode
       (
-        window as { __startPlacement?: (d: { className: string; classKind: string; iconSvg?: string }) => void }
+        window as {
+          __startPlacement?:
+            | ((d: { className: string; classKind: string; iconSvg?: string | undefined }) => void)
+            | undefined;
+        }
       ).__startPlacement?.({ className, classKind, iconSvg });
       break;
     }
@@ -1827,12 +1865,12 @@ window.addEventListener("message", (event: MessageEvent) => {
       });
 
       const model = {
-        nodes: nodes.map((n) => ({
+        nodes: nodes.map((n: Node) => ({
           id: n.id,
           width: n.getSize().width,
           height: n.getSize().height,
         })),
-        edges: edges.map((e) => ({
+        edges: edges.map((e: Edge) => ({
           source: e.getSourceCellId(),
           target: e.getTargetCellId(),
         })),
@@ -1919,6 +1957,9 @@ window.addEventListener("message", (event: MessageEvent) => {
 
 // ── Property Panel Rendering ──
 
+/**
+ * Invokes the registered `onShowProperties` callback to display or update the component inspector.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function showProperties(nodeData: any) {
   if (currentOptions?.onShowProperties) {
@@ -1926,8 +1967,12 @@ function showProperties(nodeData: any) {
   }
 }
 
+/** Pending `requestAnimationFrame` handle for coalescing solder-dot updates. */
 let solderDotsRaf: number | null = null;
 
+/**
+ * Schedules a coalesced `requestAnimationFrame` update of topological junction solder dots on the graph.
+ */
 export function scheduleUpdateSolderDots(g: Graph) {
   if (!g || (g as any).disposed) return;
   if (solderDotsRaf !== null) return;
@@ -1939,6 +1984,10 @@ export function scheduleUpdateSolderDots(g: Graph) {
   });
 }
 
+/**
+ * Recomputes and synchronizes electrical/topological T-junction solder dot nodes across all edges
+ * in the graph, excluding component port pin locations.
+ */
 export function updateSolderDots(g: Graph) {
   if (!g || (g as any).disposed) return;
 
@@ -2038,6 +2087,9 @@ export function updateSolderDots(g: Graph) {
   }
 }
 
+/**
+ * Disposes the active AntV X6 graph instance and resets renderer options.
+ */
 export function disposeDiagram() {
   if (graph) {
     graph.dispose();
@@ -2054,7 +2106,7 @@ export function disposeDiagram() {
  * The function walks all `<text>` elements inside the node's SVG and replaces
  * text content that matches the old parameter value pattern with the new one.
  */
-export function updateParameterText(nodeId: string, paramName: string, oldValue: string, newValue: string): void {
+export function updateParameterText(nodeId: string, _paramName: string, oldValue: string, newValue: string): void {
   if (!graph) return;
   const cell = graph.getCellById(nodeId);
   if (!cell || !cell.isNode()) return;
@@ -2078,10 +2130,16 @@ export function updateParameterText(nodeId: string, paramName: string, oldValue:
   }
 }
 
+/**
+ * Returns the active AntV X6 graph instance, or `null` if none is initialized.
+ */
 export function getGraph(): Graph | null {
   return graph;
 }
 
+/**
+ * Applies a live simulation telemetry state frame to animate diagram nodes and edges.
+ */
 export function applySimulationFrame(
   stateVector: Record<string, number> | Float64Array,
   varIndexMap?: Map<string, number> | Record<string, number>,
@@ -2090,6 +2148,10 @@ export function applySimulationFrame(
   animateCells({ nodes: graph.getNodes(), edges: graph.getEdges() }, stateVector, varIndexMap);
 }
 
+/**
+ * Toggles the collapsed/expanded visual state of a composite group container node,
+ * hiding or restoring its embedded child nodes and resizing the container header.
+ */
 export function toggleGroupNodeCollapse(node: any): void {
   if (!node) return;
   const data = node.getData?.() || {};
@@ -2108,12 +2170,18 @@ export function toggleGroupNodeCollapse(node: any): void {
   }
 }
 
+/**
+ * Serializes the active diagram's SVG DOM element into a standalone XML string.
+ */
 export function exportDiagramSvg(): string {
   if (!graph) return "";
   const svgElem = graph.container?.querySelector("svg");
   return svgElem ? new XMLSerializer().serializeToString(svgElem) : "";
 }
 
+/**
+ * Renders the active diagram SVG onto an offscreen HTML5 canvas and exports a PNG data URL.
+ */
 export async function exportDiagramPng(scale = 2): Promise<string> {
   const svgString = exportDiagramSvg();
   if (!svgString || typeof document === "undefined") return "";
@@ -2141,6 +2209,10 @@ export async function exportDiagramPng(scale = 2): Promise<string> {
   });
 }
 
+/**
+ * Programmatically triggers an interactive widget binding (toggle, momentary button, slider, numeric input)
+ * on a diagram component node and dispatches the resulting parameter write action.
+ */
 export function triggerInteractiveInput(
   nodeId: string,
   variableName: string,

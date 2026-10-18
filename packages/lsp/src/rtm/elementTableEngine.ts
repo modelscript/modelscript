@@ -10,8 +10,8 @@ export interface TableColumnDefinition {
   title: string;
   type: "string" | "number" | "boolean" | "select";
   editable: boolean;
-  options?: string[];
-  description?: string;
+  options?: string[] | undefined;
+  description?: string | undefined;
 }
 
 export interface ElementsTablePayload {
@@ -32,7 +32,7 @@ export interface TextEditLike {
 export interface TableCellCompletionItem {
   label: string;
   kind: "type" | "port" | "property" | "unit" | "keyword";
-  detail?: string;
+  detail?: string | undefined;
 }
 
 export class ElementTableEngine {
@@ -154,30 +154,30 @@ export class ElementTableEngine {
         uri: entry.resourceId ?? "",
         startByte: entry.startByte,
         endByte: entry.endByte,
-        type: meta.typeName || meta.type || "",
-        multiplicity: meta.multiplicity || "1",
-        isComposite: meta.isComposite ?? true,
-        doc: meta.doc || "",
-        mass: meta.mass || "",
-        power: meta.power || "",
-        cost: meta.cost || "",
-        parameters: meta.parameters || "",
-        behaviorType: meta.behaviorType || "",
-        portType: meta.portType || meta.typeName || "",
-        direction: meta.direction || "inout",
-        isConjugated: meta.isConjugated ?? false,
-        isParallel: meta.isParallel ?? false,
-        entryAction: meta.entryAction || "",
-        exitAction: meta.exitAction || "",
-        defaultValue: meta.defaultValue || meta.val || "",
-        unit: meta.unit || "",
+        type: meta["typeName"] || meta["type"] || "",
+        multiplicity: meta["multiplicity"] || "1",
+        isComposite: meta["isComposite"] ?? true,
+        doc: meta["doc"] || "",
+        mass: meta["mass"] || "",
+        power: meta["power"] || "",
+        cost: meta["cost"] || "",
+        parameters: meta["parameters"] || "",
+        behaviorType: meta["behaviorType"] || "",
+        portType: meta["portType"] || meta["typeName"] || "",
+        direction: meta["direction"] || "inout",
+        isConjugated: meta["isConjugated"] ?? false,
+        isParallel: meta["isParallel"] ?? false,
+        entryAction: meta["entryAction"] || "",
+        exitAction: meta["exitAction"] || "",
+        defaultValue: meta["defaultValue"] || meta["val"] || "",
+        unit: meta["unit"] || "",
       };
 
       rows.push(row);
     }
 
     // Sort rows alphabetically by qualifiedName
-    rows.sort((a, b) => a.qualifiedName.localeCompare(b.qualifiedName));
+    rows.sort((a, b) => a["qualifiedName"].localeCompare(b["qualifiedName"]));
 
     return {
       metaclass,
@@ -202,7 +202,7 @@ export class ElementTableEngine {
     // 1. Locate the declaration line for this element
     let declLineIndex = -1;
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+      const line = lines[i]!;
       if (
         (line.includes(`part ${shortName}`) ||
           line.includes(`action ${shortName}`) ||
@@ -222,12 +222,12 @@ export class ElementTableEngine {
     }
 
     // 2. If editing type directly on a single-line usage: e.g. "part p : OldType;"
-    if (attributeName === "type" && lines[declLineIndex].includes(":")) {
-      const line = lines[declLineIndex];
+    if (attributeName === "type" && lines[declLineIndex]!.includes(":")) {
+      const line = lines[declLineIndex]!;
       const match = line.match(/(:\s*)([A-Za-z0-9_:]+)/);
       if (match && match.index !== undefined) {
-        const startChar = match.index + match[1].length;
-        const endChar = startChar + match[2].length;
+        const startChar = match.index + match[1]!.length;
+        const endChar = startChar + match[2]!.length;
         return [
           {
             range: {
@@ -246,7 +246,7 @@ export class ElementTableEngine {
     let foundOpenBrace = false;
 
     for (let i = declLineIndex; i < lines.length; i++) {
-      const line = lines[i];
+      const line = lines[i]!;
       for (let ch = 0; ch < line.length; ch++) {
         if (line[ch] === "{") {
           braceDepth++;
@@ -280,7 +280,7 @@ export class ElementTableEngine {
 
     // 4. If element has an open block `{ ... }`, insert before closing brace
     if (blockEndIndex !== -1) {
-      const indentMatch = lines[blockEndIndex].match(/^(\s*)/);
+      const indentMatch = lines[blockEndIndex]!.match(/^(\s*)/);
       const baseIndent = indentMatch ? indentMatch[1] : "";
       const childIndent = baseIndent + "    ";
 
@@ -296,7 +296,7 @@ export class ElementTableEngine {
     }
 
     // 5. If element was single-line declaration ending with ';', convert to block
-    const declLine = lines[declLineIndex];
+    const declLine = lines[declLineIndex]!;
     if (declLine.trim().endsWith(";")) {
       const semiIndex = declLine.lastIndexOf(";");
       const beforeSemi = declLine.substring(0, semiIndex);
@@ -319,7 +319,7 @@ export class ElementTableEngine {
    */
   static getTableCellCompletions(
     index: SymbolIndex,
-    metaclass: string,
+    _metaclass: string,
     attributeName: string,
     prefix = "",
   ): TableCellCompletionItem[] {
@@ -381,7 +381,7 @@ export class ElementTableEngine {
   /**
    * Validates a cell value against basic syntax and unit rules.
    */
-  static validateTableCell(attributeName: string, value: string): { valid: boolean; error?: string } {
+  static validateTableCell(attributeName: string, value: string): { valid: boolean; error?: string | undefined } {
     if (!value || value.trim() === "") {
       return { valid: true };
     }

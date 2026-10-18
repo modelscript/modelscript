@@ -30,72 +30,78 @@ export interface ModelicaSystemConfig {
   /** Variable name in Modelica model providing actuator thrust/force (e.g. "motor.flange.f"). */
   actuatorVar: string;
   /** Variable name in Modelica model receiving displacement/velocity sensor feedback (e.g. "motor.flange.s"). */
-  sensorVar?: string;
+  sensorVar?: string | undefined;
   /** Optional simulation environment array. */
-  values?: Float64Array;
+  values?: Float64Array | undefined;
   /** State variable name IDs. */
-  stateStringIds?: number[];
+  stateStringIds?: number[] | undefined;
   /** Derivative variable name IDs. */
-  derivStringIds?: number[];
+  derivStringIds?: number[] | undefined;
   /** ODE solver algorithm (default: 'rk4'). */
-  solver?: "euler" | "rk4" | "dopri5" | "bdf";
+  solver?: "euler" | "rk4" | "dopri5" | "bdf" | undefined;
 }
 
 export interface LiveCoSimConfig {
   /** 1D simulation time step in seconds (e.g., 0.005s = 5ms). */
   macroDt: number;
   /** Number of sub-cycled LBM iterations per macro-step (default: 5). */
-  lbmSubSteps?: number;
+  lbmSubSteps?: number | undefined;
   /** FEA mesh and structural material properties (optional if feaProvider is supplied). */
-  fea?: {
-    mesh: Tet4Mesh;
-    material: MaterialProperties;
-    /** Optional boundary tag name for fixed Dirichlet support. If omitted, automatically matched from CAD tags. */
-    fixedTag?: string;
-    /** Optional boundary tag name where motor thrust/flange load is applied. If omitted, automatically matched from CAD tags. */
-    loadTag?: string;
-    /** PCG convergence tolerance (default 1e-6). */
-    tol?: number;
-    /** PCG maximum iterations (default 500). */
-    maxIters?: number;
-    /** Enable transient dynamic elastodynamics via Newmark-beta integration. */
-    transient?: boolean;
-  };
+  fea?:
+    | {
+        mesh: Tet4Mesh;
+        material: MaterialProperties;
+        /** Optional boundary tag name for fixed Dirichlet support. If omitted, automatically matched from CAD tags. */
+        fixedTag?: string | undefined;
+        /** Optional boundary tag name where motor thrust/flange load is applied. If omitted, automatically matched from CAD tags. */
+        loadTag?: string | undefined;
+        /** PCG convergence tolerance (default 1e-6). */
+        tol?: number | undefined;
+        /** PCG maximum iterations (default 500). */
+        maxIters?: number | undefined;
+        /** Enable transient dynamic elastodynamics via Newmark-beta integration. */
+        transient?: boolean | undefined;
+      }
+    | undefined;
   /** CFD lattice configuration and obstacle occupancy mask (optional if cfdProvider is supplied). */
-  cfd?: {
-    config: LbmGridConfig;
-    cellTypes: Uint8Array;
-  };
+  cfd?:
+    | {
+        config: LbmGridConfig;
+        cellTypes: Uint8Array;
+      }
+    | undefined;
   /** Pluggable CFD continuum participant (WebGPU, Native SHM OpenFOAM, HPC Slurm, or Surrogate ROM). */
-  cfdProvider?: ICfdContinuumParticipant;
+  cfdProvider?: ICfdContinuumParticipant | undefined;
   /** Pluggable FEA continuum participant (in-WASM Tet4/Tet10, CalculiX, or Surrogate ROM). */
-  feaProvider?: IFeaContinuumParticipant;
+  feaProvider?: IFeaContinuumParticipant | undefined;
   /** Optional multi-physics port coupler for formal boundary flux verification and digital thread federation. */
-  portCoupler?: MultiphysicsPortCoupler;
+  portCoupler?: MultiphysicsPortCoupler | undefined;
   /** 1D Modelica system parameters or compiled Modelica DAE model. */
   system: {
-    mass?: number; // kg
-    stiffness?: number; // N/m
-    baseDamping?: number; // N*s/m
-    modelica?: ModelicaSystemConfig;
+    mass?: number | undefined; // kg
+    stiffness?: number | undefined; // N/m
+    baseDamping?: number | undefined; // N*s/m
+    modelica?: ModelicaSystemConfig | undefined;
   };
   /** Fluid-Structure Interaction dynamic stabilization. */
-  fsi?: {
-    /** Enable Aitken dynamic relaxation to prevent numerical added-mass instability (default: false). */
-    enableAitkenRelaxation?: boolean;
-    /** Initial relaxation factor omega_0 in (0, 1] (default: 0.5). */
-    initialOmega?: number;
-    /** Lower bound on relaxation factor (default: 0.05). */
-    minOmega?: number;
-    /** Upper bound on relaxation factor (default: 1.0). */
-    maxOmega?: number;
-    /** Vector mode for multi-degree-of-freedom boundary relaxation. */
-    vectorMode?: boolean;
-    /** Custom VectorAitkenRelaxation instance. */
-    vectorAitken?: VectorAitkenRelaxation;
-  };
+  fsi?:
+    | {
+        /** Enable Aitken dynamic relaxation to prevent numerical added-mass instability (default: false). */
+        enableAitkenRelaxation?: boolean | undefined;
+        /** Initial relaxation factor omega_0 in (0, 1] (default: 0.5). */
+        initialOmega?: number | undefined;
+        /** Lower bound on relaxation factor (default: 0.05). */
+        minOmega?: number | undefined;
+        /** Upper bound on relaxation factor (default: 1.0). */
+        maxOmega?: number | undefined;
+        /** Vector mode for multi-degree-of-freedom boundary relaxation. */
+        vectorMode?: boolean | undefined;
+        /** Custom VectorAitkenRelaxation instance. */
+        vectorAitken?: VectorAitkenRelaxation | undefined;
+      }
+    | undefined;
   /** Multi-rate sub-cycling scheduler across CFD, FEA, and 1D DAE. */
-  subCycleScheduler?: MultiRateSubCycleScheduler;
+  subCycleScheduler?: MultiRateSubCycleScheduler | undefined;
 }
 
 export interface LiveCoSimState {
@@ -115,14 +121,14 @@ export interface LiveCoSimState {
   feaResult: FeaStepResult | FeaStepOutput;
   cfdResult: LbmStepResult | CfdStepOutput;
   // Formal conservation verification result from FlowAlgebraOracle
-  couplingVerification?: ConservationVerificationResult;
+  couplingVerification?: ConservationVerificationResult | undefined;
   // Modelica DAE state values
-  modelicaValues?: Float64Array;
+  modelicaValues?: Float64Array | undefined;
   // Aitken relaxation factor
-  aitkenOmega?: number;
+  aitkenOmega?: number | undefined;
   // Multi-fidelity tracking
-  activeFidelity?: "continuum" | "surrogate";
-  surrogateConfidence?: number;
+  activeFidelity?: "continuum" | "surrogate" | undefined;
+  surrogateConfidence?: number | undefined;
 }
 
 /**
@@ -133,13 +139,13 @@ export interface LiveCoSimState {
  */
 export class LiveCoSimOrchestrator {
   public readonly config: LiveCoSimConfig;
-  public readonly feaSolver?: FeaSolver;
-  public readonly cfdRunner?: WebGPULbmRunner;
+  public readonly feaSolver?: FeaSolver | undefined;
+  public readonly cfdRunner?: WebGPULbmRunner | undefined;
   public readonly feaProvider: IFeaContinuumParticipant;
   public readonly cfdProvider: ICfdContinuumParticipant;
-  public readonly portCoupler?: MultiphysicsPortCoupler;
-  public readonly vectorAitken?: VectorAitkenRelaxation;
-  public readonly subCycleScheduler?: MultiRateSubCycleScheduler;
+  public readonly portCoupler?: MultiphysicsPortCoupler | undefined;
+  public readonly vectorAitken?: VectorAitkenRelaxation | undefined;
+  public readonly subCycleScheduler?: MultiRateSubCycleScheduler | undefined;
 
   private state: LiveCoSimState;
   private resolvedFixedTags: string[] = [];
@@ -151,9 +157,9 @@ export class LiveCoSimOrchestrator {
   private prevResidual = 0.0;
   private relaxedDisplacement = 0.0;
 
-  private modelicaValues?: Float64Array;
-  private modelicaActuatorId?: number;
-  private modelicaSensorId?: number;
+  private modelicaValues?: Float64Array | undefined;
+  private modelicaActuatorId?: number | undefined;
+  private modelicaSensorId?: number | undefined;
   private modelicaStateIds: number[] = [];
   private modelicaDerivIds: number[] = [];
 

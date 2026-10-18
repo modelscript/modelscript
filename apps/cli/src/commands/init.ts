@@ -7,8 +7,8 @@ import type { CommandModule } from "yargs";
 import { parsePackageMo } from "../util/package-mo.js";
 
 interface InitArgs {
-  path?: string;
-  yes?: boolean;
+  path?: string | undefined;
+  yes?: boolean | undefined;
 }
 
 function prompt(question: string): Promise<string> {
@@ -103,8 +103,8 @@ export const Init: CommandModule<{}, InitArgs> = {
     };
 
     // Remove undefined values
-    if (!packageJson.modelscript.main) {
-      delete packageJson.modelscript.main;
+    if (!packageJson["modelscript"].main) {
+      delete packageJson["modelscript"].main;
     }
 
     writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");

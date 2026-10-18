@@ -17,10 +17,10 @@ import type { TelemetryWindow } from "./telemetry-buffer.js";
 export type MheParameterBounds = Record<
   string,
   {
-    min?: number;
-    max?: number;
-    prior?: number;
-    regWeight?: number;
+    min?: number | undefined;
+    max?: number | undefined;
+    prior?: number | undefined;
+    regWeight?: number | undefined;
   }
 >;
 
@@ -30,15 +30,15 @@ export interface MovingHorizonEstimatorOptions {
   /** Physical parameter names to calibrate. */
   parametersToEstimate: string[];
   /** Optional bounds, priors, and regularization weights for physical parameters. */
-  parameterBounds?: MheParameterBounds;
+  parameterBounds?: MheParameterBounds | undefined;
   /** Optional neural surrogate block embedded in the DAE arena. */
-  neuralBlock?: ArenaNeuralBlock;
+  neuralBlock?: ArenaNeuralBlock | undefined;
   /** Optional initial state overrides at window start. */
-  initialStates?: Record<string, number> | Map<string, number>;
+  initialStates?: Record<string, number> | Map<string, number> | undefined;
   /** Global regularization weight lambda for prior deviation penalty. Default: 1e-4. */
-  regularizationLambda?: number;
+  regularizationLambda?: number | undefined;
   /** L-BFGS-B optimizer configuration overrides. */
-  optimizerOptions?: LbfgsbOptions;
+  optimizerOptions?: LbfgsbOptions | undefined;
 }
 
 export interface MheResult {
@@ -47,7 +47,7 @@ export interface MheResult {
   lossBefore: number;
   lossAfter: number;
   calibratedParameters: Record<string, number>;
-  calibratedWeights?: Float64Array;
+  calibratedWeights?: Float64Array | undefined;
   residualNorm: number;
   parameterDeltas: Record<
     string,
@@ -65,15 +65,15 @@ export class MovingHorizonEstimator {
   readonly solver: DaeAdjointSolver;
   readonly parametersToEstimate: string[];
   readonly parameterBounds: MheParameterBounds;
-  readonly neuralBlock?: ArenaNeuralBlock;
-  readonly initialStates?: Record<string, number> | Map<string, number>;
+  readonly neuralBlock?: ArenaNeuralBlock | undefined;
+  readonly initialStates?: Record<string, number> | Map<string, number> | undefined;
   readonly regularizationLambda: number;
   readonly optimizerOptions: LbfgsbOptions;
 
   private currentParameters: Map<string, number> = new Map();
 
   constructor(options: MovingHorizonEstimatorOptions) {
-    const rawProb = options.problem as unknown as { builder?: DAEBuilder };
+    const rawProb = options.problem as unknown as { builder?: DAEBuilder | undefined };
     if (rawProb instanceof DAEBuilder) {
       this.arena = rawProb;
     } else if (rawProb.builder instanceof DAEBuilder) {

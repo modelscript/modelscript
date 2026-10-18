@@ -4,13 +4,13 @@ import type { Vector3D } from "./continuum-participant.js";
 
 export interface VectorAitkenConfig {
   /** Initial relaxation factor omega_0 in (0, 1] (default: 0.5). */
-  initialOmega?: number;
+  initialOmega?: number | undefined;
   /** Minimum allowable relaxation factor (default: 0.02). */
-  minOmega?: number;
+  minOmega?: number | undefined;
   /** Maximum allowable relaxation factor (default: 1.0). */
-  maxOmega?: number;
+  maxOmega?: number | undefined;
   /** Convergence tolerance for relative residual norm (default: 1e-4). */
-  tolerance?: number;
+  tolerance?: number | undefined;
 }
 
 /**
@@ -25,7 +25,7 @@ export interface VectorAitkenConfig {
  *   x_{k+1} = x_k + omega_k * r_k
  */
 export class VectorAitkenRelaxation {
-  public readonly config: Required<VectorAitkenConfig>;
+  public readonly config: { [K in keyof VectorAitkenConfig]-?: NonNullable<VectorAitkenConfig[K]> };
   private omega: number;
   private prevResidual: Float64Array | null = null;
   private relaxedState: Float64Array | null = null;
@@ -130,7 +130,7 @@ export class VectorAitkenRelaxation {
 
     // Update relaxed state: x_{k+1} = x_k + omega_k * r_k
     for (let i = 0; i < n; i++) {
-      this.relaxedState[i] += this.omega * residual[i]!;
+      this.relaxedState[i] = this.relaxedState[i]! + this.omega * residual[i]!;
     }
     this.prevResidual = residual;
 
@@ -174,9 +174,9 @@ export class VectorAitkenRelaxation {
  */
 export interface MultiRateScheduleConfig {
   macroDt: number;
-  cfdDt?: number;
-  feaDt?: number;
-  oneDDt?: number;
+  cfdDt?: number | undefined;
+  feaDt?: number | undefined;
+  oneDDt?: number | undefined;
 }
 
 export class MultiRateSubCycleScheduler {

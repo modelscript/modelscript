@@ -25,12 +25,12 @@ export interface FrdParsedData {
 
 export interface FeaMeshPayload {
   type: "fea-mesh";
-  participantId?: string;
+  participantId?: string | undefined;
   time: number;
   geometry: {
     positions: number[];
     indices: number[];
-    normals?: number[];
+    normals?: number[] | undefined;
   };
   fields: {
     vonMisesStress: number[];
@@ -39,7 +39,7 @@ export interface FeaMeshPayload {
   stats: {
     maxStress: number;
     maxDisplacement: number;
-    safetyFactor?: number;
+    safetyFactor?: number | undefined;
   };
 }
 

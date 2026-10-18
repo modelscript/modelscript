@@ -6,7 +6,7 @@ export interface OWL2Entity {
   iri: string;
   label: string;
   type: "class" | "objectProperty" | "dataProperty" | "individual";
-  isDefinedClass?: boolean;
+  isDefinedClass?: boolean | undefined;
 }
 
 export interface OWL2Relationship {
@@ -27,7 +27,7 @@ export interface OWL2Relationship {
 
 export interface OWL2DiagramOptions {
   /** Inferred SubClassOf pairs computed by TableauReasoner */
-  inferredSubClassOf?: { subClassIri: string; superClassIri: string }[];
+  inferredSubClassOf?: { subClassIri: string; superClassIri: string }[] | undefined;
 }
 
 export function getShortLabel(iri: string): string {
@@ -51,7 +51,11 @@ export function getShortLabel(iri: string): string {
  */
 export function buildOWL2DiagramData(
   axioms: any[],
-  layout?: { elements?: Record<string, { x: number; y: number; width?: number; height?: number }> },
+  layout?: {
+    elements?:
+      | Record<string, { x: number; y: number; width?: number | undefined; height?: number | undefined }>
+      | undefined;
+  },
   diagramType: string = "All",
   options?: OWL2DiagramOptions,
 ): DiagramData {
@@ -281,7 +285,7 @@ export function buildOWL2DiagramData(
   for (const entity of filteredEntities) {
     const isDefined = entity.isDefinedClass === true;
     const styleKey = isDefined ? "definedClass" : entity.type;
-    const style = typeStyles[styleKey] ?? typeStyles.class;
+    const style = typeStyles[styleKey] ?? typeStyles["class"]!;
 
     const savedPos = layout?.elements?.[entity.iri] ?? layout?.elements?.[entity.label];
     const width = savedPos?.width ?? 160;

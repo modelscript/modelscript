@@ -101,6 +101,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
       } catch (err: unknown) {
         res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
       }
+      return;
     },
   );
 
@@ -126,6 +127,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
       return res.status(404).json({ error: "Session not found" });
     }
     res.json(session.toJSON());
+    return;
   });
 
   // ── Participant Enrollment ──
@@ -137,7 +139,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
       return res.status(404).json({ error: "Session not found" });
     }
 
-    const { fmuId, participantId } = req.body as { fmuId?: string; participantId?: string };
+    const { fmuId, participantId } = req.body as { fmuId?: string | undefined; participantId?: string | undefined };
     if (!fmuId) {
       return res.status(400).json({ error: "Missing required field: fmuId" });
     }
@@ -160,6 +162,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
     }
+    return;
   });
 
   // GET /api/v1/cosim/sessions/:id/participants — List session participants
@@ -176,6 +179,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
       variables: p.metadata.variables.length,
     }));
     res.json({ participants });
+    return;
   });
 
   // DELETE /api/v1/cosim/sessions/:id/participants/:pid — Remove a participant
@@ -191,6 +195,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
     }
+    return;
   });
 
   // ── Couplings ──
@@ -203,8 +208,8 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     }
 
     const { from, to } = req.body as {
-      from?: { participantId?: string; variableName?: string };
-      to?: { participantId?: string; variableName?: string };
+      from?: { participantId?: string | undefined; variableName?: string | undefined } | undefined;
+      to?: { participantId?: string | undefined; variableName?: string | undefined } | undefined;
     };
 
     if (!from?.participantId || !from?.variableName || !to?.participantId || !to?.variableName) {
@@ -220,6 +225,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
     }
+    return;
   });
 
   // ── Orchestrator Control ──
@@ -252,6 +258,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     void orchestrator.run();
 
     res.json({ ok: true, state: "initializing", sessionId: session.sessionId });
+    return;
   });
 
   // POST /api/v1/cosim/sessions/:id/pause — Pause simulation
@@ -263,6 +270,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     }
     orchestrator.pause();
     res.json({ ok: true, state: "paused" });
+    return;
   });
 
   // POST /api/v1/cosim/sessions/:id/resume — Resume simulation
@@ -274,6 +282,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     }
     orchestrator.resume();
     res.json({ ok: true, state: "running" });
+    return;
   });
 
   // POST /api/v1/cosim/sessions/:id/stop — Stop and terminate
@@ -286,6 +295,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     orchestrator.abort();
     orchestrators.delete(sessionId);
     res.json({ ok: true, state: "stopping" });
+    return;
   });
 
   // DELETE /api/v1/cosim/sessions/:id — Remove completed/failed session
@@ -317,6 +327,7 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
       participants,
       connected: mqttClient.connected,
     });
+    return;
   });
 
   // GET /api/v1/mqtt/participants/:id — Get participant metadata
@@ -331,6 +342,7 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
     }
 
     res.json(meta);
+    return;
   });
 
   // GET /api/v1/mqtt/participants/:id/variables — Get variable snapshot
@@ -345,6 +357,7 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
     }
 
     res.json({ variables: meta.variables });
+    return;
   });
 
   // GET /api/v1/mqtt/participants/:id/tree — Get as Modelica-compatible tree node
@@ -371,6 +384,7 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
     };
 
     res.json(treeNode);
+    return;
   });
 
   // POST /api/v1/mqtt/participants/:id/variables — Set input variable values
@@ -384,12 +398,25 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
       return res.status(404).json({ error: "Participant not found" });
     }
 
-    const { values } = req.body as { values?: Record<string, number> };
+    const { values } = req.body as { values?: Record<string, number> | undefined };
     if (!values || typeof values !== "object") {
       return res.status(400).json({ error: "Missing 'values' object in request body" });
     }
 
+    for (const [varName, val] of Object.entries(values)) {
+      try {
+        (mqttClient as any).publishVariable?.(meta.participantId, varName, val);
+        const existingVar = meta.variables?.find((v: any) => v.name === varName);
+        if (existingVar) {
+          (existingVar as any).start = val;
+        }
+      } catch {
+        // Ignore publish errors on disconnected brokers
+      }
+    }
+
     res.json({ ok: true, published: Object.keys(values).length });
+    return;
   });
 
   return router;

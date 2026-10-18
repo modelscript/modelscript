@@ -24,10 +24,10 @@ import {
 export type DeStrategy = "rand/1/bin" | "best/1/bin" | "current-to-best/1";
 
 export interface DeOptions extends SingleObjectiveOptions {
-  strategy?: DeStrategy;
-  targetFitness?: number;
-  initialF?: number;
-  initialCR?: number;
+  strategy?: DeStrategy | undefined;
+  targetFitness?: number | undefined;
+  initialF?: number | undefined;
+  initialCR?: number | undefined;
 }
 
 /**

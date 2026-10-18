@@ -16,7 +16,7 @@ export interface QuotaCheckResult {
   allowed: boolean;
   userBalance: number;
   estimatedCost: number;
-  reason?: string;
+  reason?: string | undefined;
   profileId: string;
 }
 
@@ -26,7 +26,7 @@ export interface QuotaCheckResult {
 export function validateResourceLimits(
   resources: HpcResourceSpec,
   profile?: ComputeProfile,
-): { valid: boolean; reason?: string } {
+): { valid: boolean; reason?: string | undefined } {
   const effectiveProfile = profile || getComputeProfile();
   const maxTime = effectiveProfile.maxWallClockMinutes ?? HARD_LIMITS.DEFAULT_WALL_CLOCK_MINUTES;
 
@@ -129,7 +129,7 @@ export function checkComputeQuota(
  * falling back to the primary dev user in development/test environments.
  */
 export function resolveRequestUserId(req: express.Request, database: LibraryDatabase): number | null {
-  const reqAny = req as { user?: { id?: number }; userId?: number };
+  const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
   if (reqAny.user?.id) {
     return reqAny.user.id;
   }

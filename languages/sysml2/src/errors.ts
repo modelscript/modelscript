@@ -20,20 +20,24 @@ export interface SysML2Diagnostic {
   /** Human-readable diagnostic message. */
   message: string;
   /** Field name if diagnostic targets a specific AST field. */
-  field?: string;
+  field?: string | undefined;
   /** Starting byte offset in source. */
-  startByte?: number;
+  startByte?: number | undefined;
   /** Ending byte offset in source. */
-  endByte?: number;
+  endByte?: number | undefined;
 }
 
 /**
  * Definition of a SysML v2 error code rule.
  */
 export interface ErrorCodeDef {
+  /** Unique numeric diagnostic code (1xxx-5xxx). */
   code: number;
+  /** Kebab-case rule identifier used for filtering and suppression. */
   rule: string;
+  /** Default severity level emitted when this rule triggers. */
   severity: DiagnosticSeverity;
+  /** Message formatter accepting rule-specific context arguments. */
   message: (...args: any[]) => string;
 }
 
@@ -407,13 +411,18 @@ export const SysML2ErrorCode = {
 } as const;
 
 /**
- * Creates a structured LintResult annotated with numeric error code.
+ * Creates a structured LintResult annotated with numeric error code and optional byte span.
+ *
+ * @param def - Error code definition from `SysML2ErrorCode`.
+ * @param args - Arguments forwarded to `def.message(...)`.
+ * @param options - Optional source range or AST field targeting options.
+ * @returns Formatted `LintResult` ready for IDE/CLI consumption.
  */
 export function createSysML2Diagnostic(
   def: ErrorCodeDef,
   args: any[] = [],
   options?: LintRangeOptions,
-): LintResult & { rule?: string } {
+): LintResult & { rule?: string | undefined } {
   return {
     code: def.code,
     rule: def.rule,
@@ -423,6 +432,7 @@ export function createSysML2Diagnostic(
   };
 }
 
+// Precompute numeric code -> ErrorCodeDef lookup table (first registration wins for aliases)
 const sysml2ErrorsByCode = new Map<number, ErrorCodeDef>();
 for (const def of Object.values(SysML2ErrorCode)) {
   if (!sysml2ErrorsByCode.has(def.code)) {
@@ -431,7 +441,10 @@ for (const def of Object.values(SysML2ErrorCode)) {
 }
 
 /**
- * Look up a SysML v2 error code definition by numeric code or rule name.
+ * Look up a SysML v2 error code definition by numeric code, `"Sxxxx"` string, or kebab-case rule name.
+ *
+ * @param codeOrRule - Numeric code (e.g. `3001`), prefixed code (`"S3001"`), or rule slug (`"type-mismatch"`).
+ * @returns Matching `ErrorCodeDef` or `undefined` if not registered.
  */
 export function getSysML2ErrorCodeDef(codeOrRule: number | string): ErrorCodeDef | undefined {
   if (typeof codeOrRule === "number") {

@@ -174,10 +174,10 @@ const TableWrap = styled.div`
 interface CloudSimulationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  fileName?: string;
-  fileContent?: string;
-  libraryName?: string;
-  libraryVersion?: string;
+  fileName?: string | undefined;
+  fileContent?: string | undefined;
+  libraryName?: string | undefined;
+  libraryVersion?: string | undefined;
 }
 
 export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
@@ -283,7 +283,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
     if (!csvContent) return null;
     const lines = csvContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length === 0) return null;
-    const headers = lines[0].split(",").map((h) => h.replace(/^["']|["']$/g, "").trim());
+    const headers = lines[0]!.split(",").map((h) => h.replace(/^["']|["']$/g, "").trim());
     const rows = lines.slice(1, 11).map((row) => row.split(",").map((c) => c.replace(/^["']|["']$/g, "").trim()));
     return {
       headers,
@@ -294,7 +294,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentProfile = profiles.find((p) => p.id === selectedProfile) || profiles[0];
+  const currentProfile = profiles.find((p) => p.id === selectedProfile) || profiles[0]!;
 
   const handleLaunch = async () => {
     setPhase("submitting");
@@ -317,8 +317,13 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
     } catch (err: unknown) {
       setPhase("failed");
       const axiosErr = err as {
-        response?: { status?: number; data?: { message?: string; error?: string } };
-        message?: string;
+        response?:
+          | {
+              status?: number | undefined;
+              data?: { message?: string | undefined; error?: string | undefined } | undefined;
+            }
+          | undefined;
+        message?: string | undefined;
       };
       const errData = axiosErr.response?.data;
       if (axiosErr.response?.status === 402) {

@@ -12,83 +12,130 @@
  *   - Incremental solving under temporary assumption vectors with UNSAT core extraction
  */
 
+/** Solver status code indicating an unresolved or interrupted search. */
 export const SAT_RESULT_UNKNOWN: i32 = 0;
+/** Solver status code indicating the formula is satisfiable (a valid model was found). */
 export const SAT_RESULT_SAT: i32     = 1;
+/** Solver status code indicating the formula is unsatisfiable. */
 export const SAT_RESULT_UNSAT: i32   = 2;
 
+/**
+ * Extracts the 1-based variable ID from a signed literal (`lit < 0 ? -lit : lit`).
+ */
 @inline
 export function satLitToVar(lit: i32): i32 {
   return lit < 0 ? -lit : lit;
 }
 
+/**
+ * Returns `true` if the signed literal has positive polarity (`lit > 0`).
+ */
 @inline
 export function satLitSign(lit: i32): bool {
   return lit > 0;
 }
 
+/**
+ * Encodes a signed literal into a non-negative watcher array index (`2*v` for `+v`, `2*v + 1` for `-v`).
+ */
 @inline
 export function satLitToIndex(lit: i32): i32 {
   return lit > 0 ? (lit << 1) : (((-lit) << 1) | 1);
 }
 
+/**
+ * Decodes a watcher array index back into a signed literal.
+ */
 @inline
 export function satIndexToLit(idx: i32): i32 {
   let v = idx >> 1;
   return (idx & 1) == 0 ? v : -v;
 }
 
+/**
+ * Negates a signed literal (`-lit`).
+ */
 @inline
 export function satNegateLit(lit: i32): i32 {
   return -lit;
 }
 
+/**
+ * Conflict-Driven Clause Learning (CDCL) Boolean satisfiability solver in WebAssembly linear memory.
+ *
+ * Implements Two-Watched-Literals (2WL) unit propagation, 1-UIP conflict analysis with
+ * non-chronological backjumping, VSIDS variable activity heuristics on a binary max-heap,
+ * phase saving, and incremental assumption solving with UNSAT core extraction.
+ */
 export class WasmCdclSolver {
+  /** Total number of Boolean variables managed by the solver (1-indexed up to `numVars`). */
   public numVars: i32;
 
   // Clause database: each clause is an Array<i32> of signed literals
+  /** Clause database storing original and learned clauses as arrays of signed literals. */
   public clauses: Array<Array<i32>>;
 
   // Two-Watched-Literals: watches[litIndex] -> list of clause indices
+  /** Two-Watched-Literals adjacency lists mapping each literal index to watching clause indices. */
   public watches: Array<Array<i32>>;
 
   // Variable assignments: 0 = unassigned, 1 = true, -1 = false
+  /** Current truth assignment per variable (`0` = unassigned, `1` = true, `-1` = false). */
   public assigns: Int8Array;
 
   // Decision level at which each variable was assigned
+  /** Decision level at which each variable was assigned. */
   public level: Int32Array;
 
   // Implicating clause index for each variable (-1 for decisions / assumptions)
+  /** Antecedent clause index that implied each variable's assignment (`-1` for decisions/assumptions). */
   public reason: Int32Array;
 
   // Assignment history trail (signed literals in assignment order)
+  /** Chronological trail of assigned signed literals. */
   public trail: Array<i32>;
 
   // Trail limits (start index in trail for each decision level)
+  /** Delimiter indices into `trail` marking the start of each decision level. */
   public trailLim: Array<i32>;
 
   // Activity scores for VSIDS
+  /** VSIDS activity score for each variable. */
   public activity: Float64Array;
+  /** Current VSIDS activity increment added on each conflict participation. */
   public varInc: f64;
+  /** Multiplicative decay factor (`0.95`) applied to `varInc` after each conflict. */
   public readonly varDecay: f64;
 
   // Binary max-heap for O(1) branch variable selection
+  /** Binary max-heap of unassigned variable IDs ordered by VSIDS activity. */
   public orderHeap: Array<i32>;
+  /** Index of each variable within `orderHeap` (`-1` if not currently in the heap). */
   public heapPos: Int32Array;
 
   // Phase saving: last assigned polarity (1 or -1)
+  /** Phase-saving cache storing the most recent polarity (`1` or `-1`) assigned to each variable. */
   public savedPhase: Int8Array;
 
   // Solver search state
+  /** Active decision level during search (`0` at root level). */
   public currentLevel: i32;
+  /** Flag indicating whether a root-level (level 0) conflict has rendered the formula permanently UNSAT. */
   public isRootUnsat: bool;
 
   // Buffer for seen variables during conflict analysis (zero-allocation)
+  /** Scratch marker array tracking visited variables during 1-UIP conflict resolution. */
   public seen: Uint8Array;
 
   // Assumptions and UNSAT core
+  /** Number of active decision levels reserved for user assumptions. */
   public assumptionLevel: i32;
+  /** Extracted subset of conflicting assumption literals when `solve()` returns `SAT_RESULT_UNSAT`. */
   public unsatCore: Array<i32>;
 
+  /**
+   * Initializes a new CDCL solver for `numVars` Boolean variables.
+   */
   constructor(numVars: i32) {
     this.numVars = numVars;
     let varSlots = numVars + 1;
@@ -143,11 +190,13 @@ export class WasmCdclSolver {
   // Binary Max-Heap Operations
   // ───────────────────────────────────────────────────────────────────────────
 
+  /** Returns `true` if variable `v` is currently present in the VSIDS priority heap. */
   @inline
   private inHeap(v: i32): bool {
     return this.heapPos[v] != -1;
   }
 
+  /** Compares two heap positions by variable VSIDS activity. */
   @inline
   private heapLess(i: i32, j: i32): bool {
     let vi = this.orderHeap[i];
@@ -155,6 +204,7 @@ export class WasmCdclSolver {
     return this.activity[vi] < this.activity[vj];
   }
 
+  /** Swaps two entries in the VSIDS binary max-heap and updates their `heapPos` indices. */
   @inline
   private swapHeap(i: i32, j: i32): void {
     let vi = this.orderHeap[i];
@@ -165,6 +215,7 @@ export class WasmCdclSolver {
     this.heapPos[vj] = i;
   }
 
+  /** Restores max-heap order by sifting the element at index `i` upward toward the root. */
   private siftUp(i: i32): void {
     while (i > 0) {
       let parent = (i - 1) >> 1;
@@ -177,6 +228,7 @@ export class WasmCdclSolver {
     }
   }
 
+  /** Restores max-heap order by sifting the element at index `i` downward toward the leaves. */
   private siftDown(i: i32): void {
     let n = this.orderHeap.length;
     while (true) {
@@ -198,6 +250,7 @@ export class WasmCdclSolver {
     }
   }
 
+  /** Inserts an unassigned variable `v` into the VSIDS decision heap if not already present. */
   public insertVarOrder(v: i32): void {
     if (!this.inHeap(v) && this.assigns[v] == 0) {
       let idx = this.orderHeap.length;
@@ -207,6 +260,7 @@ export class WasmCdclSolver {
     }
   }
 
+  /** Sifts variable `v` upward in the VSIDS heap after its activity score increases. */
   public updateVarOrder(v: i32): void {
     let pos = this.heapPos[v];
     if (pos != -1) {
@@ -214,6 +268,7 @@ export class WasmCdclSolver {
     }
   }
 
+  /** Increments the VSIDS activity of variable `v`, rescaling all activities if overflow approaches `1e100`. */
   public bumpVarActivity(v: i32): void {
     let act = this.activity[v] + this.varInc;
     this.activity[v] = act;
@@ -223,6 +278,7 @@ export class WasmCdclSolver {
     this.updateVarOrder(v);
   }
 
+  /** Rescales all variable activities and `varInc` by `1e-100` to prevent IEEE 754 floating-point overflow. */
   private rescaleVarActivities(): void {
     for (let v = 1; v <= this.numVars; v++) {
       this.activity[v] *= 1e-100;
@@ -234,6 +290,7 @@ export class WasmCdclSolver {
   // Literals & Variable Values
   // ───────────────────────────────────────────────────────────────────────────
 
+  /** Evaluates the current truth value of a signed literal (`1` = true, `-1` = false, `0` = unassigned). */
   @inline
   public litValue(lit: i32): i32 {
     let v = satLitToVar(lit);
@@ -242,6 +299,7 @@ export class WasmCdclSolver {
     return lit > 0 ? (a as i32) : (-(a as i32));
   }
 
+  /** Returns the current truth assignment of variable `v` (`1` = true, `-1` = false, `0` = unassigned). */
   @inline
   public getValue(v: i32): i32 {
     if (v < 1 || v > this.numVars) return 0;
@@ -252,6 +310,10 @@ export class WasmCdclSolver {
   // Trail & Enqueue Operations
   // ───────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Enqueues a literal assignment onto the trail with its implicating reason clause.
+   * Returns `false` if the assignment immediately contradicts the existing assignment.
+   */
   public enqueue(lit: i32, reasonClause: i32 = -1): bool {
     let val = this.litValue(lit);
     if (val == 1) return true;  // already satisfied
@@ -267,6 +329,9 @@ export class WasmCdclSolver {
     return true;
   }
 
+  /**
+   * Backtracks the assignment trail to `targetLevel`, unassigning variables and reinserting them into the VSIDS heap.
+   */
   public backtrack(targetLevel: i32): void {
     if (this.currentLevel <= targetLevel) return;
 
@@ -296,11 +361,16 @@ export class WasmCdclSolver {
   // Clause Addition & Watching
   // ───────────────────────────────────────────────────────────────────────────
 
+  /** Attaches clause `cIdx` to the Two-Watched-Literals list for `lit`. */
   private addWatcher(lit: i32, cIdx: i32): void {
     let idx = satLitToIndex(lit);
     this.watches[idx].push(cIdx);
   }
 
+  /**
+   * Simplifies and adds a clause of signed literals to the clause database, attaching 2WL watchers.
+   * Returns `false` if the clause is empty or triggers an immediate root-level conflict.
+   */
   public addClause(lits: Array<i32>): bool {
     if (this.isRootUnsat) return false;
     if (this.currentLevel > 0) {
@@ -361,6 +431,10 @@ export class WasmCdclSolver {
   // Boolean Constraint Propagation (BCP) with Two-Watched-Literals
   // ───────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Executes Boolean Constraint Propagation (BCP) using the Two-Watched-Literals scheme.
+   * Returns the index of a falsified conflicting clause, or `-1` if propagation completes without conflict.
+   */
   public propagate(): i32 {
     let head = 0;
     if (this.currentLevel > 0 && this.trailLim.length > 0) {
@@ -441,6 +515,10 @@ export class WasmCdclSolver {
   // 1-UIP Conflict Analysis & Non-Chronological Backjumping
   // ───────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Performs First Unique Implication Point (1-UIP) conflict analysis on `conflictCIdx`,
+   * populating `outLearned` with the asserting clause and returning the backjump decision level.
+   */
   private analyzeConflict(conflictCIdx: i32, outLearned: Array<i32>): i32 {
     outLearned.length = 0;
     let pathCount = 0;
@@ -528,6 +606,9 @@ export class WasmCdclSolver {
     return backjumpLevel;
   }
 
+  /**
+   * Traces backward from a conflict involving assumptions to extract the minimal UNSAT core into `this.unsatCore`.
+   */
   private analyzeFinalConflict(conflictClause: Array<i32>, assumptions: Array<i32>): void {
     this.unsatCore.length = 0;
     let seenVars = new Uint8Array(this.numVars + 1);
@@ -589,6 +670,9 @@ export class WasmCdclSolver {
   // Main CDCL Solve Loop (with Assumptions & UNSAT Core Extraction)
   // ───────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Solves the CNF formula under the given `assumptions`, returning `SAT_RESULT_SAT` or `SAT_RESULT_UNSAT`.
+   */
   public solve(assumptions: Array<i32>): i32 {
     if (this.isRootUnsat) return SAT_RESULT_UNSAT;
 

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 interface Emoji {
   char: string;
   name: string;
-  hasSkinTone?: boolean;
+  hasSkinTone?: boolean | undefined;
 }
 
 const EMOJI_CATEGORIES: { title: string; icon: string; emojis: Emoji[] }[] = [
@@ -515,7 +515,7 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
     }
   });
   const [showSkinTones, setShowSkinTones] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<string>(EMOJI_CATEGORIES[0].title);
+  const [activeCategory, setActiveCategory] = useState<string>(EMOJI_CATEGORIES[0]!.title);
   const scrollRef = useRef<HTMLDivElement>(null);
   const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -560,7 +560,7 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
     return emoji.char.replace(/\uFE0F/g, "") + skinTone;
   };
 
-  const currentSkinColor = SKIN_TONES.find((s) => s.char === skinTone)?.color || SKIN_TONES[0].color;
+  const currentSkinColor = SKIN_TONES.find((s) => s.char === skinTone)?.color || SKIN_TONES[0]!.color;
 
   return (
     <div

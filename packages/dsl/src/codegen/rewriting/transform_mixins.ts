@@ -132,7 +132,7 @@ export const McCormickMixin = {
  */
 export const StandardTangentMixin = {
   tangent: {
-    add: (a: C, b: C, da: C, db: C): C => add(da, db),
+    add: (_a: C, _b: C, da: C, db: C): C => add(da, db),
     mul: (a: C, b: C, da: C, db: C): C => add(mul(a, db), mul(b, da)),
     div: (a: C, b: C, da: C, db: C): C => div(sub(mul(da, b), mul(a, db)), mul(b, b)),
     sin: (a: C, da: C): C => mul(cos(a), da),
@@ -146,8 +146,8 @@ export const StandardTangentMixin = {
     gelu: (a: C, da: C): C => mul(node("GELU_DERIV", a), da),
     softmax: (a: C, da: C): C => mul(node("SOFTMAX_DERIV", a), da),
     smoothstep: (a: C, da: C): C => mul(node("SMOOTHSTEP_DERIV", a), da),
-    fft: (a: C, da: C): C => node("FFT", da),
-    ifft: (a: C, da: C): C => node("IFFT", da),
+    fft: (_a: C, da: C): C => node("FFT", da),
+    ifft: (_a: C, da: C): C => node("IFFT", da),
     complex_mul: (a: C, b: C, da: C, db: C): C => add(node("COMPLEX_MUL", a, db), node("COMPLEX_MUL", b, da)),
     distance: (a: C, b: C, da: C, db: C): C =>
       add(mul(node("DISTANCE_GRAD_A", a, b), da), mul(node("DISTANCE_GRAD_B", a, b), db)),
@@ -171,8 +171,8 @@ export const StandardAdjointMixin = {
     gelu: (a: C, adjoint: C): C[] => [mul(adjoint, node("GELU_DERIV", a))],
     softmax: (a: C, adjoint: C): C[] => [mul(adjoint, node("SOFTMAX_DERIV", a))],
     smoothstep: (a: C, adjoint: C): C[] => [mul(adjoint, node("SMOOTHSTEP_DERIV", a))],
-    fft: (a: C, adjoint: C): C[] => [node("IFFT", adjoint)],
-    ifft: (a: C, adjoint: C): C[] => [node("FFT", adjoint)],
+    fft: (_a: C, adjoint: C): C[] => [node("IFFT", adjoint)],
+    ifft: (_a: C, adjoint: C): C[] => [node("FFT", adjoint)],
     complex_mul: (a: C, b: C, adjoint: C): C[] => [
       node("COMPLEX_MUL", node("CONJ", b), adjoint),
       node("COMPLEX_MUL", node("CONJ", a), adjoint),
@@ -198,7 +198,7 @@ export const StandardAdjointMixin = {
  */
 export const StandardHessianMixin = {
   hessian: {
-    add: (a: C, b: C, da: C, db: C, d2a: C, d2b: C): C => add(d2a, d2b),
+    add: (_a: C, _b: C, _da: C, _db: C, d2a: C, d2b: C): C => add(d2a, d2b),
     mul: (a: C, b: C, da: C, db: C, d2a: C, d2b: C): C =>
       add(add(mul(a, d2b), mul(b, d2a)), mul(constant(2), mul(da, db))),
     sin: (a: C, da: C, d2a: C): C => sub(mul(cos(a), d2a), mul(sin(a), mul(da, da))),

@@ -8,13 +8,13 @@ import { type NodeId, type SerializedMarking, WasmFumlEngine } from "./wasm_fuml
 export interface ActivitySafetyInvariant {
   name: string;
   /** Nodes that must never be executed / receive tokens (e.g. Error or Hazard state) */
-  forbiddenNodes?: (NodeId | string)[];
+  forbiddenNodes?: (NodeId | string)[] | undefined;
   /** Pairs of nodes that must never be active simultaneously (Mutual Exclusion) */
-  mutuallyExclusiveNodes?: [NodeId | string, NodeId | string][];
+  mutuallyExclusiveNodes?: [NodeId | string, NodeId | string][] | undefined;
   /** Maximum token capacity for any node or edge (Bounded Buffer / No Overflow) */
-  maxTokenCapacity?: number;
+  maxTokenCapacity?: number | undefined;
   /** Custom invariant predicate on marking and data state */
-  predicate?: (marking: SerializedMarking, variables: Record<string, any>) => boolean;
+  predicate?: ((marking: SerializedMarking, variables: Record<string, any>) => boolean) | undefined;
 }
 
 export interface BmcCounterexampleTrace {
@@ -28,11 +28,13 @@ export interface BmcResult {
   satisfied: boolean;
   boundReached: number;
   visitedStatesCount: number;
-  violation?: {
-    step: number;
-    reason: string;
-    trace: BmcCounterexampleTrace[];
-  };
+  violation?:
+    | {
+        step: number;
+        reason: string;
+        trace: BmcCounterexampleTrace[];
+      }
+    | undefined;
 }
 
 export interface KInductionResult {
@@ -40,7 +42,7 @@ export interface KInductionResult {
   baseStepSatisfied: boolean;
   inductiveStepSatisfied: boolean;
   depth: number;
-  counterexample?: BmcCounterexampleTrace[];
+  counterexample?: BmcCounterexampleTrace[] | undefined;
   message: string;
 }
 
@@ -58,7 +60,7 @@ export class ActivityBmcEngine {
     variables: Record<string, any>,
     firedNodeIds: NodeId[],
     invariant: ActivitySafetyInvariant,
-  ): { holds: boolean; reason?: string } {
+  ): { holds: boolean; reason?: string | undefined } {
     // 1. Check forbidden nodes
     if (invariant.forbiddenNodes && invariant.forbiddenNodes.length > 0) {
       for (const fn of invariant.forbiddenNodes) {

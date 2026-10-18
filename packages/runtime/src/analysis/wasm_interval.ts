@@ -346,13 +346,13 @@ export interface SbbResult {
 /** Configuration for the sBB solver. */
 export interface SbbOptions {
   /** Absolute gap tolerance (default: 1e-6). */
-  absTol?: number;
+  absTol?: number | undefined;
   /** Relative gap tolerance (default: 1e-4). */
-  relTol?: number;
+  relTol?: number | undefined;
   /** Maximum number of nodes to explore (default: 10000). */
-  maxNodes?: number;
+  maxNodes?: number | undefined;
   /** Maximum Newton iterations per local solve (default: 50). */
-  maxNewtonIter?: number;
+  maxNewtonIter?: number | undefined;
 }
 
 export function evaluateTapeInterval(tape: StaticTapeBuilder, box: DomainBox): Interval[] {

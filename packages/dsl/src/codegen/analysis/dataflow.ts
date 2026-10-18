@@ -29,7 +29,7 @@ function transpileCallback(fn: (...args: any[]) => any, paramNames: string[], fa
       if (res.params && res.params.length > 0) {
         for (let i = 0; i < Math.min(res.params.length, paramNames.length); i++) {
           const original = res.params[i];
-          const target = paramNames[i];
+          const target = paramNames[i]!;
           if (original && original !== target) {
             const regex = new RegExp(`\\b${original}\\b`, "g");
             body = body.replace(regex, target);

@@ -22,6 +22,7 @@ import {
   type HybridFlowpipeResult,
 } from "../analysis/wasm_hybrid_flowpipe.js";
 import { Interval } from "../analysis/wasm_interval.js";
+import { SosBarrierSynthesizer } from "../analysis/wasm_sos_barrier.js";
 import { compileArenaToDae } from "../formal/dae/arena_dae_compiler.js";
 import { DaeIntervalEvaluator } from "../formal/dae/dae_interval_evaluator.js";
 import {
@@ -40,40 +41,54 @@ import { generateSarifReport } from "../util/sarif_reporter.js";
 import { B2BEquivalenceVerifier, type B2BVerificationResult } from "./b2b_verifier.js";
 import { VerificationRunner, type SimulationResult, type VerificationResult } from "./wasm_verifier.js";
 
+/**
+ * Dynamically imports an optional workspace package at runtime, returning `null` if unavailable.
+ */
 async function importOptionalModule(moduleName: string): Promise<any> {
   try {
-    return await (Function(`return import("${moduleName}")`)() as Promise<any>);
+    return await import(moduleName);
   } catch {
     return null;
   }
 }
 
+/**
+ * Single formal verification violation or counterexample witness reported by a verification stage.
+ */
 export interface VerificationViolation {
-  id?: string;
+  id?: string | undefined;
   message: string;
-  severity?: "error" | "warning" | "note";
+  severity?: "error" | "warning" | "note" | undefined;
   stage: string;
-  location?: {
-    uri?: string;
-    line?: number;
-    column?: number;
-    endLine?: number;
-    endColumn?: number;
-  };
+  location?:
+    | {
+        uri?: string | undefined;
+        line?: number | undefined;
+        column?: number | undefined;
+        endLine?: number | undefined;
+        endColumn?: number | undefined;
+      }
+    | undefined;
   witness?: any;
 }
 
+/**
+ * Execution outcome, certification status, and violation list for an individual verification stage.
+ */
 export interface VerificationStageResult {
   stage: string;
   name: string;
   passed: boolean;
-  certified?: boolean;
+  certified?: boolean | undefined;
   durationMs: number;
   summary: string;
-  violations?: VerificationViolation[];
+  violations?: VerificationViolation[] | undefined;
   details?: any;
 }
 
+/**
+ * Configuration options controlling which formal verification stages to run and their solver parameters.
+ */
 export interface UnifiedVerificationOptions {
   target?: string | undefined;
   all?: boolean | undefined;
@@ -104,9 +119,12 @@ export interface UnifiedVerificationOptions {
   cancellationToken?: CancellationTokenLike | undefined;
 }
 
+/**
+ * Complete multi-stage formal verification report with aggregate pass/certification metrics and per-stage results.
+ */
 export interface UnifiedVerificationReport {
   timestamp: string;
-  target?: string;
+  target?: string | undefined;
   summary: {
     totalStages: number;
     passedStages: number;
@@ -118,16 +136,22 @@ export interface UnifiedVerificationReport {
     overallPassed: boolean;
   };
   stages: Record<string, VerificationStageResult>;
-  artifacts?: Record<string, string>;
+  artifacts?: Record<string, string> | undefined;
 }
 
+/**
+ * Numerical integration and Taylor model parameters for continuous/hybrid flowpipe reachability.
+ */
 export interface FlowpipeConfigOptions {
-  dt?: number;
-  horizon?: number;
-  order?: number;
-  initialSet?: Record<string, [number, number]> | Map<string, [number, number]>;
+  dt?: number | undefined;
+  horizon?: number | undefined;
+  order?: number | undefined;
+  initialSet?: Record<string, [number, number]> | Map<string, [number, number]> | undefined;
 }
 
+/**
+ * Parses a textual initial-set specification (e.g., `"x = [0, 1], y: [-0.5, 0.5]"`) into a variable bound map.
+ */
 export function parseInitialSetString(str: string): Map<string, [number, number]> {
   const map = new Map<string, [number, number]>();
   if (!str) return map;
@@ -135,9 +159,9 @@ export function parseInitialSetString(str: string): Map<string, [number, number]
     /([a-zA-Z0-9_.]+)\s*[:=]\s*\[?\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*[,:]\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\]?/g;
   let match;
   while ((match = regex.exec(str)) !== null) {
-    const varName = match[1];
-    const lo = parseFloat(match[2]);
-    const hi = parseFloat(match[3]);
+    const varName = match[1]!;
+    const lo = parseFloat(match[2]!);
+    const hi = parseFloat(match[3]!);
     if (Number.isFinite(lo) && Number.isFinite(hi)) {
       map.set(varName, [Math.min(lo, hi), Math.max(lo, hi)]);
     }
@@ -145,23 +169,31 @@ export function parseInitialSetString(str: string): Map<string, [number, number]
   return map;
 }
 
+/**
+ * Input artifacts and runtime handles provided to `UnifiedVerifier.verify()`.
+ */
 export interface VerificationInputContext {
-  uri?: string;
-  sourceText?: string;
+  uri?: string | undefined;
+  sourceText?: string | undefined;
   queryDB?: any;
   arena?: any;
   assembly?: any;
-  hybridAutomaton?: HybridAutomaton;
-  simulationResult?: SimulationResult;
-  verifyCaseId?: number;
-  paths?: string[];
-  coordinator?: SemanticTheoryCoordinator;
-  hypergraph?: DigitalThreadHypergraph;
-  contractedStateSpace?: Map<string, [number, number]>;
-  flowpipeRequirements?: DaeFlowpipeRequirement[];
-  flowpipeOptions?: FlowpipeConfigOptions;
+  hybridAutomaton?: HybridAutomaton | undefined;
+  simulationResult?: SimulationResult | undefined;
+  verifyCaseId?: number | undefined;
+  paths?: string[] | undefined;
+  coordinator?: SemanticTheoryCoordinator | undefined;
+  hypergraph?: DigitalThreadHypergraph | undefined;
+  contractedStateSpace?: Map<string, [number, number]> | undefined;
+  flowpipeRequirements?: DaeFlowpipeRequirement[] | undefined;
+  flowpipeOptions?: FlowpipeConfigOptions | undefined;
 }
 
+/**
+ * Orchestrates multi-domain formal verification across decision tables, symbolic region decomposition,
+ * assume-guarantee contracts, state machines, validated Taylor flowpipes, SOS barrier certificates,
+ * dynamic simulation trajectories, 3D CAD clearance, ISO 26262 MiL/SiL B2B equivalence, and abstract interpretation.
+ */
 export class UnifiedVerifier {
   /**
    * Main entrypoint to verify all requested or auto-detected stages.
@@ -452,6 +484,9 @@ export class UnifiedVerifier {
     };
   }
 
+  /**
+   * Executes the Nelson-Oppen / DPLL(T) semantic theory coordination pass and extracts contracted variable bounds.
+   */
   private static async runTheoryCoordinationStages(
     ctx: VerificationInputContext,
     options: UnifiedVerificationOptions,
@@ -476,7 +511,10 @@ export class UnifiedVerifier {
     return report.stages;
   }
 
-  private static async runTheoryCoordinationStage(
+  /**
+   * Runs the theory coordination stage and returns the master `theory_coordination` stage result.
+   */
+  public static async runTheoryCoordinationStage(
     ctx: VerificationInputContext,
     options: UnifiedVerificationOptions,
   ): Promise<VerificationStageResult> {
@@ -484,6 +522,9 @@ export class UnifiedVerifier {
     return stages["theory_coordination"]!;
   }
 
+  /**
+   * Stage 1: Verifies decision tables and guards for exhaustiveness and determinism.
+   */
   private static async runDecisionsStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
@@ -550,6 +591,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 2: Partitions the symbolic state space into invariant regions and optionally synthesizes MC/DC test vectors.
+   */
   private static async runRegionDecompositionStage(
     ctx: VerificationInputContext,
     synthesizeMcdc: boolean = false,
@@ -599,6 +643,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 3: Checks compositional assume-guarantee contracts for compatibility and refinement.
+   */
   private static async runContractsStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
@@ -654,6 +701,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 4: Verifies state machines and activity workflows for soundness and deadlock freedom.
+   */
   private static async runStateMachinesStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
@@ -708,6 +758,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 5: Computes validated Taylor-model reachability flowpipes for continuous DAE or hybrid automata systems.
+   */
   private static async runFlowpipesStage(
     ctx: VerificationInputContext,
     options?: UnifiedVerificationOptions,
@@ -824,7 +877,7 @@ export class UnifiedVerifier {
           const initialX: Interval[] = [];
           const nominalX: number[] = [];
           for (let s = 0; s < stateNames.length; s++) {
-            const sName = stateNames[s];
+            const sName = stateNames[s]!;
             if (customBounds.has(sName)) {
               const [lo, hi] = customBounds.get(sName)!;
               initialX.push(new Interval(lo, hi));
@@ -846,7 +899,7 @@ export class UnifiedVerifier {
           const initialZ: Interval[] = [];
           const nominalZ: number[] = [];
           for (let a = 0; a < algebraicNames.length; a++) {
-            const aName = algebraicNames[a];
+            const aName = algebraicNames[a]!;
             if (customBounds.has(aName)) {
               const [lo, hi] = customBounds.get(aName)!;
               initialZ.push(new Interval(lo, hi));
@@ -971,19 +1024,76 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 6: Synthesizes quadratic Sum-of-Squares (SOS) Lyapunov and Barrier certificates for continuous dynamics.
+   */
   private static async runBarriersStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
-      // Barrier synthesis is not yet bound to the model's dynamics. Running it on a hardcoded generic
-      // system (f = -x) would report a certificate that says nothing about the user's model.
-      void ctx;
+      if (ctx.arena) {
+        const compiled = compileArenaToDae(ctx.arena);
+        if (compiled.ok && compiled.compiled.stateNames.length > 0) {
+          const { dae, stateNames, algebraicNames } = compiled.compiled;
+          const evaluator = new DaeIntervalEvaluator(ctx.arena);
+          const nominalZ: number[] = [];
+          for (let a = 0; a < algebraicNames.length; a++) {
+            const aName = algebraicNames[a];
+            const vIdx = (ctx.arena as any).lookupVariable?.((ctx.arena as any).interner.intern(aName)) ?? -1;
+            const b = vIdx >= 0 ? evaluator.getVarBound(vIdx) : null;
+            if (b && !b.isBottom() && !b.isTop()) {
+              nominalZ.push((b.low + b.high) / 2);
+            } else {
+              nominalZ.push(vIdx >= 0 ? ((ctx.arena as any).getVarStartValue?.(vIdx) ?? 0) : 0);
+            }
+          }
+          let initialRadius = 0.25;
+          let unsafeRadius = 2.0;
+          for (const sName of stateNames) {
+            const vIdx = (ctx.arena as any).lookupVariable?.((ctx.arena as any).interner.intern(sName)) ?? -1;
+            if (vIdx >= 0) {
+              const startVal = Math.abs((ctx.arena as any).getVarStartValue?.(vIdx) ?? 0);
+              if (startVal > 0) {
+                initialRadius = Math.max(initialRadius, startVal);
+              }
+              const maxExpr = (ctx.arena as any).getVarAttrExprId?.(vIdx, "max");
+              if (maxExpr !== undefined && maxExpr >= 0) {
+                const maxVal = Math.abs((ctx.arena as any).getExprRealValue?.(maxExpr) ?? 0);
+                if (Number.isFinite(maxVal) && maxVal > initialRadius) {
+                  unsafeRadius = Math.max(unsafeRadius, maxVal);
+                }
+              }
+            }
+          }
+          if (unsafeRadius <= initialRadius) {
+            unsafeRadius = initialRadius * 2.0 + 1.0;
+          }
+          const barrierRes = SosBarrierSynthesizer.synthesizeQuadratic(
+            {
+              numVars: stateNames.length,
+              varNames: stateNames,
+              f: (x: number[]) => dae.f(0, x, nominalZ),
+            },
+            { initialRadius, unsafeRadius },
+          );
+          return {
+            stage: "barriers",
+            name: "Sum-of-Squares Barrier Synthesizer",
+            passed: true,
+            certified: barrierRes.isCertifiedSafe,
+            durationMs: Date.now() - t0,
+            summary: barrierRes.summary,
+            violations: [],
+            details: { ...barrierRes, stateNames, initialRadius, unsafeRadius },
+          };
+        }
+      }
       return {
         stage: "barriers",
         name: "Sum-of-Squares Barrier Synthesizer",
         passed: true,
         certified: false,
         durationMs: Date.now() - t0,
-        summary: "Not evaluated: barrier synthesis is not bound to this model's dynamics (no certificate produced).",
+        summary: "Not evaluated: barrier synthesis requires continuous state dynamics (no certificate produced).",
         violations: [],
       };
     } catch (err: any) {
@@ -998,6 +1108,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 7: Evaluates dynamic simulation trajectories against formal requirement constraints.
+   */
   private static async runTrajectoriesStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
@@ -1053,6 +1166,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 8: Verifies 3D CAD assembly physical clearances and detects part collisions.
+   */
   private static async runClearanceStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
@@ -1106,6 +1222,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 9: Executes ISO 26262 TCL1 back-to-back Model-in-the-Loop (MiL) vs Software-in-the-Loop (SiL) equivalence verification.
+   */
   private static async runB2BStage(
     ctx: VerificationInputContext,
     options: UnifiedVerificationOptions,
@@ -1166,6 +1285,9 @@ export class UnifiedVerifier {
     }
   }
 
+  /**
+   * Stage 10: Runs sound abstract interpretation over Modelica algorithmic sections and functions to prove absence of run-time errors (RTE).
+   */
   private static async runAlgorithmsStage(
     ctx: VerificationInputContext,
     options: UnifiedVerificationOptions,
@@ -1237,6 +1359,7 @@ export class UnifiedVerifier {
 
       while ((match = funcRegex.exec(text)) !== null) {
         const _kind = match[1]!;
+        void _kind;
         const name = match[2]!;
         const body = match[3]!;
 
@@ -1415,6 +1538,9 @@ export class UnifiedVerifier {
   // Digital Thread Hypergraph Synchronization
   // ---------------------------------------------------------------------------
 
+  /**
+   * Records verification satisfaction or conflict provenance into the Digital Thread Hypergraph.
+   */
   private static syncDigitalThread(report: UnifiedVerificationReport, hypergraph?: DigitalThreadHypergraph): void {
     const targetHypergraph = hypergraph || new DigitalThreadHypergraph();
     const threadSlot = targetHypergraph.createThread(1);
@@ -1435,6 +1561,9 @@ export class UnifiedVerifier {
   // Multi-Format Exporters
   // ---------------------------------------------------------------------------
 
+  /**
+   * Formats a `UnifiedVerificationReport` as a human-readable CLI terminal summary table.
+   */
   public static formatTerminal(report: UnifiedVerificationReport): string {
     const lines: string[] = [];
     const icon = report.summary.overallPassed ? "✔" : "✖";
@@ -1476,14 +1605,23 @@ export class UnifiedVerifier {
     return lines.join("\n");
   }
 
+  /**
+   * Serializes a `UnifiedVerificationReport` to a SARIF 2.1.0 JSON string for static analysis integration.
+   */
   public static formatSarif(report: UnifiedVerificationReport): string {
     return JSON.stringify(generateSarifReport(report), null, 2);
   }
 
+  /**
+   * Renders a `UnifiedVerificationReport` as a standalone HTML verification dashboard.
+   */
   public static formatHtml(report: UnifiedVerificationReport): string {
     return generateHtmlReport(report);
   }
 
+  /**
+   * Converts a `UnifiedVerificationReport` into a Common Test Report Format (CTRF) object.
+   */
   public static formatCtrf(report: UnifiedVerificationReport): CtrfReport {
     const verifResults: VerificationResult[] = [];
     let reqId = 1;
@@ -1514,13 +1652,16 @@ export class UnifiedVerifier {
     return generateCtrfReport(verifResults, report.summary.durationMs);
   }
 
+  /**
+   * Formats a `UnifiedVerificationReport` as a JUnit XML test suite document.
+   */
   public static formatJUnit(report: UnifiedVerificationReport): string {
     const ctrf = this.formatCtrf(report);
     const verifResults: VerificationResult[] = [];
     for (const t of ctrf.report.results.tests) {
       verifResults.push({
-        requirementId: t.extra?.requirementId || 1,
-        constraintId: t.extra?.constraintId || 1,
+        requirementId: t.extra?.["requirementId"] || 1,
+        constraintId: t.extra?.["constraintId"] || 1,
         isSatisfied: t.status === "passed",
         requirementName: t.name,
         message: t.message,
@@ -1529,10 +1670,16 @@ export class UnifiedVerifier {
     return generateJUnitReport(report.target || "UnifiedVerification", verifResults, report.summary.durationMs);
   }
 
+  /**
+   * Alias for `formatJUnit` returning a JUnit XML string.
+   */
   public static formatJunit(report: UnifiedVerificationReport): string {
     return this.formatJUnit(report);
   }
 
+  /**
+   * Generates an ISO 26262 Design History File (DHF) Markdown regulatory verification dossier.
+   */
   public static formatDhf(report: UnifiedVerificationReport): string {
     const lines = [
       `# ISO 26262 Design History File (DHF) Regulatory Verification Dossier`,

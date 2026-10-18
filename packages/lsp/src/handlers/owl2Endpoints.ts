@@ -22,7 +22,7 @@ export interface OWL2PropertyNode {
   domain: string[];
   range: string[];
   characteristics: string[];
-  inverseOf?: string;
+  inverseOf?: string | undefined;
 }
 
 export interface OWL2DiagramData {
@@ -34,7 +34,7 @@ export interface OWL2DiagramNode {
   id: string;
   label: string;
   type: "class" | "objectProperty" | "dataProperty" | "individual";
-  isDefinedClass?: boolean;
+  isDefinedClass?: boolean | undefined;
 }
 
 export interface OWL2DiagramEdge {
@@ -64,7 +64,7 @@ export function registerOwl2Endpoints(context: LspContext): void {
   // 1. Class Hierarchy endpoint
   context.connection.onRequest(
     "modelscript/owl2/classHierarchy",
-    async (params: { uri?: string; parentIri?: string | null }): Promise<OWL2ClassNode[]> => {
+    async (params: { uri?: string | undefined; parentIri?: string | null | undefined }): Promise<OWL2ClassNode[]> => {
       try {
         const store = context.workspaceManager.unifiedWorkspace?.owl2Store;
         if (!store || !store.axioms || store.axioms.length === 0) return [];
@@ -139,9 +139,9 @@ export function registerOwl2Endpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/owl2/propertyHierarchy",
     async (_params: {
-      uri?: string;
-      parentIri?: string | null;
-      propertyType?: string | null;
+      uri?: string | undefined;
+      parentIri?: string | null | undefined;
+      propertyType?: string | null | undefined;
     }): Promise<OWL2PropertyNode[]> => {
       try {
         const store = context.workspaceManager.unifiedWorkspace?.owl2Store;
@@ -250,7 +250,7 @@ export function registerOwl2Endpoints(context: LspContext): void {
   // 3. Diagram Data endpoint
   context.connection.onRequest(
     "modelscript/owl2/diagramData",
-    async (_params: { uri?: string }): Promise<OWL2DiagramData> => {
+    async (_params: { uri?: string | undefined }): Promise<OWL2DiagramData> => {
       try {
         const store = context.workspaceManager.unifiedWorkspace?.owl2Store;
         if (!store || !store.axioms || store.axioms.length === 0) return { nodes: [], edges: [] };

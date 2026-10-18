@@ -41,6 +41,29 @@ console.log("=== Testing Sparse Linear Algebra Solver Bridge ===");
     assert(diff < 1e-12, `Sparse LU solution mismatch at index ${i}: got ${x[i]}, expected ${expectedX[i]}`);
   }
   console.log("  ✓ Gilbert-Peierls Sparse LU solved 4x4 tridiagonal system exactly");
+
+  // 1b. Non-diagonally-dominant matrix requiring partial pivoting in column k = 1
+  // after column 0 has populated L(1,0) and L(2,0):
+  // [ 2,  1,  1 ]   [ 1 ]   [ 7 ]
+  // [ 4,  2,  1 ] * [ 2 ] = [ 11 ]
+  // [ 2,  5,  2 ]   [ 3 ]   [ 18 ]
+  // Column 0 eliminates rows 1 and 2 with L(1,0)=2, L(2,0)=1, leaving U(1,1)=0, L_cand(2,1)=4.
+  // Column 1 MUST pivot row 1 <-> row 2 and permute L(1,0) <-> L(2,0)!
+  const densePivot: Float64Array[] = [
+    new Float64Array([2, 1, 1]),
+    new Float64Array([4, 2, 1]),
+    new Float64Array([2, 5, 2]),
+  ];
+  const bPivot = new Float64Array([7, 11, 18]);
+  const expectedPivot = [1, 2, 3];
+  const luPivot = sparseLuFactor(denseToCCS(densePivot, 3));
+  const xPivot = new Float64Array(3);
+  sparseLuSolve(luPivot, bPivot, xPivot);
+  for (let i = 0; i < 3; i++) {
+    const diff = Math.abs(xPivot[i]! - expectedPivot[i]!);
+    assert(diff < 1e-12, `Pivoted Sparse LU mismatch at index ${i}: got ${xPivot[i]}, expected ${expectedPivot[i]}`);
+  }
+  console.log("  ✓ Gilbert-Peierls Sparse LU partial pivoting across prior L columns verified");
 }
 
 // 2. Test factorizeLinearMatrix universal factory

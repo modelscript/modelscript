@@ -90,6 +90,14 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
         isMapped = true;
       } else if (c.kind === "typeMap" && isArgMatching(c.args[0])) {
         isMapped = true;
+      } else if (c.kind === "mapList" && isArgMatching(c.args[0])) {
+        isMapped = true;
+      } else if (c.kind === "compute" && isArgMatching(c.args[2])) {
+        isMapped = true;
+      } else if (c.kind === "path" && isArgMatching(c.args[0])) {
+        isMapped = true;
+      } else if (c.kind === "forEach" && isArgMatching(c.args[0])) {
+        isMapped = true;
       } else if (c.kind === "exprMap" && (isArgMatching(c.args[0]) || isArgMatching(c.args[1]))) {
         isMapped = true;
       } else if (c.kind === "physicalPort" && (isArgMatching(c.args[0]) || isArgMatching(c.args[1]))) {

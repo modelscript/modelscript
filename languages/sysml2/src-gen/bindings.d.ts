@@ -30,9 +30,9 @@ export interface EditRange {
   startByte: number;
   oldEndByte: number;
   newEndByte: number;
-  startOffset?: number;
-  oldEndOffset?: number;
-  newEndOffset?: number;
+  startOffset?: number | undefined;
+  oldEndOffset?: number | undefined;
+  newEndOffset?: number | undefined;
 }
 export interface SemanticTokensEdit {
   start: number;
@@ -41,8 +41,8 @@ export interface SemanticTokensEdit {
 }
 export interface SemanticTokensDeltaResponse {
   resultId: number;
-  edits?: SemanticTokensEdit[];
-  fullTokens?: Uint32Array;
+  edits?: SemanticTokensEdit[] | undefined;
+  fullTokens?: Uint32Array | undefined;
 }
 /**
  * Value-Type Tree Cursor for zero-allocation, re-entrant tree traversals.
@@ -167,20 +167,20 @@ export interface Diagnostic {
   range: Range;
   message: string;
   severity: number;
-  code?: number | string;
-  expectedTokens?: string[];
+  code?: number | string | undefined;
+  expectedTokens?: string[] | undefined;
   /** Character offset of the diagnostic start within the source text. */
-  startOffset?: number;
+  startOffset?: number | undefined;
   /** Character offset of the diagnostic end within the source text. */
-  endOffset?: number;
+  endOffset?: number | undefined;
   /** @deprecated Use {@link startOffset} instead. */
-  startCharOffset?: number;
+  startCharOffset?: number | undefined;
   /** @deprecated Use {@link endOffset} instead. */
-  endCharOffset?: number;
+  endCharOffset?: number | undefined;
   /** @deprecated Use {@link startOffset} instead. */
-  startByte?: number;
+  startByte?: number | undefined;
   /** @deprecated Use {@link endOffset} instead. */
-  endByte?: number;
+  endByte?: number | undefined;
 }
 export declare const SYNTAX_NAMES: string[];
 export declare const LINT_MESSAGES: Record<string, string>;
@@ -398,8 +398,8 @@ export declare class LspFacade {
     end: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
   }[];
   /**
    * Instantiates a new value-type TreeCursor rooted at rootNode.
@@ -520,10 +520,10 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[];
   /** Finds all stub symbols matching a name string using WASM SIMD 128-bit vector search. */
   findStubsByNameSIMD(
@@ -538,10 +538,10 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[];
   /** Queries all symbols for a given fileId (fast LSP document symbol outline). */
   getFileSymbols(fileId: number): {
@@ -553,10 +553,10 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[];
   /** Queries child stub symbols for a parent symbol ID. */
   getStubChildren(parentSymbolId: number): {
@@ -568,10 +568,10 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
-    merkleLow?: number;
-    merkleHigh?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
+    merkleLow?: number | undefined;
+    merkleHigh?: number | undefined;
   }[];
   /** Returns total number of registered stub symbols. */
   getStubCount(): number;
@@ -597,8 +597,8 @@ export declare class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
     score: number;
   }[];
   /** Shifts byte offsets in-place across all stubs in a file after an interior edit. */
@@ -734,7 +734,7 @@ export declare class LspFacade {
       objectHash: number;
       flags: number;
     }[];
-    explanation?: string;
+    explanation?: string | undefined;
   };
   /** Classifies an individual, returning direct types and all transitive types. */
   classifyIndividual(individual: string): {
@@ -777,17 +777,17 @@ export declare class LspFacade {
   applyOntologyDelta(
     adds: {
       axiomType: number;
-      sourceLangId?: number;
+      sourceLangId?: number | undefined;
       subject: string;
-      predicate?: string;
-      object?: string;
-      flags?: number;
+      predicate?: string | undefined;
+      object?: string | undefined;
+      flags?: number | undefined;
     }[],
     retractions: {
       axiomType: number;
       subject: string;
-      predicate?: string;
-      object?: string;
+      predicate?: string | undefined;
+      object?: string | undefined;
     }[],
   ): number;
   /** Saturates functional object properties and unifies individual equivalence classes. */
@@ -1207,9 +1207,9 @@ export declare const WasmLanguageBinding: typeof LspFacade;
 export default WasmLanguageBinding;
 export interface LruAstCacheOptions {
   /** Maximum number of full document ASTs to keep in memory simultaneously (default: 100). */
-  maxActiveAsts?: number;
+  maxActiveAsts?: number | undefined;
   /** Maximum memory threshold in bytes before LRU eviction triggers (default: 128 MB). */
-  maxAstMemoryBytes?: number;
+  maxAstMemoryBytes?: number | undefined;
 }
 /**
  * Tier 2 On-Demand LRU Full AST Cache.
@@ -1260,8 +1260,8 @@ export declare class LspWorkspaceManager {
     kind: number;
     startByte: number;
     endByte: number;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset?: number | undefined;
+    endOffset?: number | undefined;
     score: number;
   }[];
 }
@@ -1272,10 +1272,10 @@ export declare class LspWorkspaceManager {
 export declare function createWasmParser(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
   options?: {
-    syntaxNames?: string[];
-    fieldNames?: Record<string, number>;
-    lintMessages?: Record<string, any>;
-    lintSeverities?: Record<string, number>;
+    syntaxNames?: string[] | undefined;
+    fieldNames?: Record<string, number> | undefined;
+    lintMessages?: Record<string, any> | undefined;
+    lintSeverities?: Record<string, number> | undefined;
   },
 ): Promise<{
   facade: LspFacade;
@@ -1288,10 +1288,10 @@ export declare function createWasmParser(
 export declare function createWasmParserSync(
   wasmUrlOrBytes: string | Uint8Array | ArrayBuffer,
   options?: {
-    syntaxNames?: string[];
-    fieldNames?: Record<string, number>;
-    lintMessages?: Record<string, any>;
-    lintSeverities?: Record<string, number>;
+    syntaxNames?: string[] | undefined;
+    fieldNames?: Record<string, number> | undefined;
+    lintMessages?: Record<string, any> | undefined;
+    lintSeverities?: Record<string, number> | undefined;
   },
 ): {
   facade: LspFacade;

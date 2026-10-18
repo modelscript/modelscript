@@ -7,8 +7,8 @@ import { getClassIcon } from "./util/lsp-bridge";
 import { invertSvgColors } from "./util/x6";
 
 export interface ModelPreviewProps {
-  model?: { id: string; name: string; content: string };
-  colorMode?: string;
+  model?: { id: string; name: string; content: string } | undefined;
+  colorMode?: string | undefined;
 }
 
 export const ModelPreview: React.FC<ModelPreviewProps> = ({ model, colorMode = "light" }) => {

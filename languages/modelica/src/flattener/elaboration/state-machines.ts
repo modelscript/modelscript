@@ -3,13 +3,15 @@
 import {
   type ArenaStateMachine,
   type ArenaStateMachineState,
+  type ArenaStateMachineTransition,
+  BinOp,
   DAEBuilder,
   EqKind,
   ExprKind,
 } from "@modelscript/runtime";
 import { getFlatteningState } from "../support/state.js";
 
-export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibility?: boolean }): void {
+export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibility?: boolean | undefined }): void {
   const state = getFlatteningState(dae);
   // 1. Scan for initialState and transition calls
   interface InitialStateInfo {
@@ -20,19 +22,47 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
     eqIdx: number;
     from: string;
     to: string;
+    conditionExprId: number;
+    immediate: boolean;
+    reset: boolean;
+    synchronize: boolean;
+    priority: number;
   }
 
   const initialStates: InitialStateInfo[] = [];
   const transitions: TransitionInfo[] = [];
 
+  const getCallArgId = (callId: number, argIndex: number): number =>
+    argIndex === 0 ? dae.getExprLeft(callId) : dae.getExprLeft(callId + argIndex);
+
   const getCallArgName = (callId: number, argIndex: number): string | null => {
-    const argId = argIndex === 0 ? dae.getExprLeft(callId) : dae.getExprLeft(callId + argIndex);
+    const argId = getCallArgId(callId, argIndex);
     if (argId < 0) return null;
     const k = dae.getExprKind(argId);
     if (k === ExprKind.Name) {
       return dae.interner.resolve(dae.getExprData1(argId));
     }
     return null;
+  };
+
+  const evalBoolArg = (exprId: number, defaultVal: boolean): boolean => {
+    if (exprId < 0) return defaultVal;
+    const k = dae.getExprKind(exprId);
+    if (k === ExprKind.BoolLiteral) return dae.getExprData1(exprId) !== 0;
+    if (k === ExprKind.Name) {
+      const s = dae.interner.resolve(dae.getExprData1(exprId));
+      if (s === "true") return true;
+      if (s === "false") return false;
+    }
+    return defaultVal;
+  };
+
+  const evalIntArg = (exprId: number, defaultVal: number): number => {
+    if (exprId < 0) return defaultVal;
+    const k = dae.getExprKind(exprId);
+    if (k === ExprKind.IntLiteral) return dae.getExprData1(exprId);
+    if (k === ExprKind.RealLiteral) return Math.round(dae.getExprRealValue(exprId));
+    return defaultVal;
   };
 
   for (let eqIdx = 0; eqIdx < dae.eqCount; eqIdx++) {
@@ -48,7 +78,51 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
         } else if (fname === "transition" && argCount >= 2) {
           const from = getCallArgName(callId, 0);
           const to = getCallArgName(callId, 1);
-          if (from && to) transitions.push({ eqIdx, from, to });
+          if (from && to) {
+            let conditionExprId = -1;
+            let immediate = true;
+            let reset = true;
+            let synchronize = false;
+            let priority = 1;
+            for (let i = 2; i < argCount; i++) {
+              const argId = getCallArgId(callId, i);
+              if (argId < 0) continue;
+              if (dae.getExprKind(argId) === ExprKind.Binary && dae.getExprData1(argId) === BinOp.Eq) {
+                const lhs = dae.getExprLeft(argId);
+                const rhs = dae.getExprRight(argId);
+                const paramName =
+                  lhs >= 0 && dae.getExprKind(lhs) === ExprKind.Name
+                    ? dae.interner.resolve(dae.getExprData1(lhs))
+                    : null;
+                if (paramName === "immediate") {
+                  immediate = evalBoolArg(rhs, true);
+                  continue;
+                }
+                if (paramName === "reset") {
+                  reset = evalBoolArg(rhs, true);
+                  continue;
+                }
+                if (paramName === "synchronize") {
+                  synchronize = evalBoolArg(rhs, false);
+                  continue;
+                }
+                if (paramName === "priority") {
+                  priority = evalIntArg(rhs, 1);
+                  continue;
+                }
+                if (paramName === "condition" && i > 2) {
+                  conditionExprId = rhs;
+                  continue;
+                }
+              }
+              if (i === 2) conditionExprId = argId;
+              else if (i === 3) immediate = evalBoolArg(argId, true);
+              else if (i === 4) reset = evalBoolArg(argId, true);
+              else if (i === 5) synchronize = evalBoolArg(argId, false);
+              else if (i === 6) priority = evalIntArg(argId, 1);
+            }
+            transitions.push({ eqIdx, from, to, conditionExprId, immediate, reset, synchronize, priority });
+          }
         }
       }
     }
@@ -124,11 +198,26 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
 
     // Collect transitions belonging to this state machine
     const smTransitions: number[] = [];
+    const smTransitionInfos: TransitionInfo[] = [];
     for (const t of transitions) {
       if (visited.has(t.from) && visited.has(t.to)) {
         smTransitions.push(t.eqIdx);
+        smTransitionInfos.push(t);
       }
     }
+
+    const smTransitionDefs: ArenaStateMachineTransition[] = smTransitionInfos
+      .slice()
+      .sort((a, b) => a.priority - b.priority)
+      .map((t) => ({
+        fromState: t.from,
+        toState: t.to,
+        conditionExprId: t.conditionExprId,
+        immediate: t.immediate,
+        reset: t.reset,
+        synchronize: t.synchronize,
+        priority: t.priority,
+      }));
 
     const smStates: ArenaStateMachineState[] = orderedStates.map((sName) => ({
       name: sName,
@@ -143,7 +232,7 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
     const sm: ArenaStateMachine = {
       name: init.stateName,
       states: smStates,
-      transitions: [],
+      transitions: smTransitionDefs,
       initialState: init.stateName,
       initialStateEqIdx: init.eqIdx,
       transitionEqIndices: smTransitions,
@@ -179,6 +268,10 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
     const owner = findOwnerState(vName);
     if (owner) {
       owner.varIndices!.push(v);
+      owner.variables.push({
+        nameId: dae.getVarNameId(v),
+        startValue: dae.getVarStartValue(v),
+      });
     }
   }
 
@@ -187,6 +280,9 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
     if (exprId < 0) return null;
     const k = dae.getExprKind(exprId);
     if (k === ExprKind.Name) return dae.interner.resolve(dae.getExprData1(exprId));
+    if (k === ExprKind.Der || k === ExprKind.Pre) {
+      return getExprVarName(dae.getExprData1(exprId));
+    }
     if (k === ExprKind.Binary || k === ExprKind.Unary) {
       return getExprVarName(dae.getExprLeft(exprId));
     }
@@ -206,11 +302,31 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
     const ek = dae.getEqKind(eqIdx);
     if (ek === EqKind.Simple || ek === EqKind.InitialSimple || ek === EqKind.Array) {
       const lhs = dae.getEqLhs(eqIdx);
+      const rhs = dae.getEqRhs(eqIdx);
       const lhsName = getExprVarName(lhs);
       if (lhsName) {
         const owner = findOwnerState(lhsName);
         if (owner) {
           owner.eqIndices!.push(eqIdx);
+          if (ek === EqKind.Simple && lhs >= 0 && rhs >= 0) {
+            const lk = dae.getExprKind(lhs);
+            if (lk === ExprKind.Name) {
+              owner.equations.push({
+                targetNameId: dae.getExprData1(lhs),
+                exprId: rhs,
+                isDerivative: false,
+              });
+            } else if (lk === ExprKind.Der) {
+              const inner = dae.getExprData1(lhs);
+              if (inner >= 0 && dae.getExprKind(inner) === ExprKind.Name) {
+                owner.equations.push({
+                  targetNameId: dae.getExprData1(inner),
+                  exprId: rhs,
+                  isDerivative: true,
+                });
+              }
+            }
+          }
         }
       }
     }

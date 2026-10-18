@@ -8,23 +8,26 @@ import type { OWL2Axiom } from "@modelscript/runtime";
  */
 export interface GenericSyntaxNode {
   type: string;
-  text?: string;
-  startIndex?: number;
-  endIndex?: number;
-  startByte?: number;
-  endByte?: number;
-  startOffset?: number;
-  endOffset?: number;
-  isError?: boolean;
-  hasError?: boolean;
-  children?: GenericSyntaxNode[];
-  childCount?: number;
-  child?: (index: number) => GenericSyntaxNode | null;
-  getFirstChild?: () => any;
-  getNextSibling?: () => any;
-  getTypeId?: () => number;
+  text?: string | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  isError?: boolean | undefined;
+  hasError?: boolean | undefined;
+  children?: GenericSyntaxNode[] | undefined;
+  childCount?: number | undefined;
+  child?: ((index: number) => GenericSyntaxNode | null) | undefined;
+  getFirstChild?: (() => any) | undefined;
+  getNextSibling?: (() => any) | undefined;
+  getTypeId?: (() => number) | undefined;
 }
 
+/**
+ * Configuration options for OWL 2 Functional-Style Syntax CST lowering.
+ */
 export interface LoweringOptions {
   /**
    * When true, expands abbreviated IRIs (`:Car`, `ex:Car`) into full IRIs
@@ -33,16 +36,22 @@ export interface LoweringOptions {
    * that match a declared prefix into their abbreviated form (`:Car`) so that
    * mixed full/abbreviated IRIs in the same ontology unify to a single canonical IRI.
    */
-  expandPrefixes?: boolean;
+  expandPrefixes?: boolean | undefined;
 }
 
+/**
+ * Stateful context passed through the prefix and axiom CST traversal passes.
+ */
 export interface LoweringContext {
-  sourceText?: string;
+  sourceText?: string | undefined;
   prefixes: Map<string, string>;
   userPrefixes: Map<string, string>;
   expandPrefixes: boolean;
 }
 
+/**
+ * Standard W3C built-in prefix declarations implicitly available in every OWL 2 ontology.
+ */
 export const BUILTIN_OWL2_PREFIXES: readonly (readonly [string, string])[] = [
   ["owl:", "http://www.w3.org/2002/07/owl#"],
   ["rdf:", "http://www.w3.org/1999/02/22-rdf-syntax-ns#"],
@@ -109,6 +118,10 @@ export function lowerCstToAxioms(
   return axioms;
 }
 
+/**
+ * Returns the direct child nodes of a `GenericSyntaxNode`, supporting both array-based
+ * `children` and indexed `child(i)` / `childCount` WASM parser cursors.
+ */
 export function getNodeChildren(node: GenericSyntaxNode): GenericSyntaxNode[] {
   if (Array.isArray(node.children)) {
     return node.children;
@@ -124,7 +137,11 @@ export function getNodeChildren(node: GenericSyntaxNode): GenericSyntaxNode[] {
   return [];
 }
 
-export function getNodeText(node: GenericSyntaxNode, ctx: { sourceText?: string }): string {
+/**
+ * Extracts the trimmed source text of a syntax node via direct `.text`, byte/offset slicing,
+ * or recursive child concatenation.
+ */
+export function getNodeText(node: GenericSyntaxNode, ctx: { sourceText?: string | undefined }): string {
   if (node.text !== undefined) {
     return node.text.trim();
   }
@@ -144,6 +161,10 @@ export function getNodeText(node: GenericSyntaxNode, ctx: { sourceText?: string 
   return "";
 }
 
+/**
+ * Normalizes a raw IRI token into a canonical identifier according to `ctx.expandPrefixes`,
+ * unifying full IRIs (`<http://...>`) and abbreviated IRIs (`prefix:Local`) that refer to the same entity.
+ */
 export function normalizeIri(rawText: string, ctx: LoweringContext): string {
   const clean = rawText.trim();
   if (!clean) return "";
@@ -184,6 +205,9 @@ export function normalizeIri(rawText: string, ctx: LoweringContext): string {
   return clean;
 }
 
+/**
+ * Pre-pass that walks the CST to collect `PrefixDeclaration` mappings into `ctx.prefixes` and `ctx.userPrefixes`.
+ */
 function walkForPrefixes(node: GenericSyntaxNode, ctx: LoweringContext): void {
   if (node.type === "PrefixDeclaration") {
     const children = getNodeChildren(node);
@@ -211,6 +235,10 @@ function walkForPrefixes(node: GenericSyntaxNode, ctx: LoweringContext): void {
   }
 }
 
+/**
+ * Recursively traverses the CST and lowers each OWL 2 axiom node into its corresponding
+ * runtime `OWL2Axiom` representation for the tableau/consequence reasoner.
+ */
 function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2Axiom[]): void {
   const t = node.type;
 
@@ -246,6 +274,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
         const superClass = exprs[1]!;
         const subIri = normalizeIri(getNodeText(subClass, ctx), ctx);
 
+        // Lower `SubClassOf(ObjectUnionOf(A B ...) Super)` into a DisjunctiveClass axiom
         if (subClass.type === "ObjectUnionOf") {
           const unionIris = getIris(subClass, ctx);
           const supIri = normalizeIri(getNodeText(superClass, ctx), ctx);
@@ -366,6 +395,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
 
     case "EquivalentClassesAxiom": {
       const exprs = getMeaningfulExpressions(node, ctx);
+      // Special-case `EquivalentClasses(C ObjectOneOf(i1 i2 ...))` into an ObjectOneOf enumeration axiom
       if (exprs.length === 2) {
         const oneOfIdx = exprs.findIndex((e) => e.type === "ObjectOneOf");
         if (oneOfIdx !== -1) {
@@ -675,6 +705,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
   }
 }
 
+/** Strips surrounding double quotes from an OWL 2 `StringLiteral` token. */
 function cleanString(raw: string): string {
   if (raw.startsWith('"') && raw.endsWith('"')) {
     return raw.slice(1, -1);
@@ -682,6 +713,7 @@ function cleanString(raw: string): string {
   return raw;
 }
 
+/** Collects and normalizes all direct IRI or `DataRange` child nodes of `node`. */
 function getIris(node: GenericSyntaxNode, ctx: LoweringContext): string[] {
   const result: string[] = [];
   for (const c of getNodeChildren(node)) {
@@ -693,6 +725,7 @@ function getIris(node: GenericSyntaxNode, ctx: LoweringContext): string[] {
   return result;
 }
 
+/** Extracts the non-negative integer cardinality argument from a cardinality restriction node. */
 function getInteger(node: GenericSyntaxNode, ctx: LoweringContext): number {
   const intNode = getNodeChildren(node).find((c) => cleanNodeType(c) === "INTEGER");
   if (!intNode) return 1;
@@ -700,6 +733,10 @@ function getInteger(node: GenericSyntaxNode, ctx: LoweringContext): number {
   return isNaN(val) ? 1 : val;
 }
 
+/**
+ * Set of OWL 2 Functional-Style Syntax punctuation and axiom keywords ignored when
+ * extracting operand expressions from an axiom node.
+ */
 const AXIOM_KEYWORDS = new Set([
   "(",
   ")",
@@ -737,11 +774,15 @@ const AXIOM_KEYWORDS = new Set([
   "DifferentIndividuals",
 ]);
 
+/** Strips optional quotes from a syntax node's `.type` name. */
 function cleanNodeType(node: GenericSyntaxNode): string {
   const raw = node.type;
   return raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
 }
 
+/**
+ * Filters a node's children to only semantic operand expressions (excluding keywords and delimiters).
+ */
 function getMeaningfulExpressions(node: GenericSyntaxNode, _ctx: LoweringContext): GenericSyntaxNode[] {
   return getNodeChildren(node).filter((c) => {
     const t = cleanNodeType(c);

@@ -43,19 +43,19 @@ export interface RequirementRow {
   /** Verification status placeholder. */
   status: "Pending" | "Passed" | "Failed";
   /** Peak (extremal) value of the constrained variable. */
-  peakValue?: number;
+  peakValue?: number | undefined;
   /** The requirement limit value. */
-  limitValue?: number;
+  limitValue?: number | undefined;
   /** Simulation time of first constraint violation. */
-  violationTime?: number;
+  violationTime?: number | undefined;
   /** Name of the constrained variable (e.g., "motor.T"). */
-  lhsName?: string;
+  lhsName?: string | undefined;
   /** Verification tier: structural (Tier 1), spatial (Tier 2), static parametric (Tier 3), dynamic STL (Tier 4) */
-  tier?: "structural" | "spatial" | "static_parametric" | "dynamic_stl";
+  tier?: "structural" | "spatial" | "static_parametric" | "dynamic_stl" | undefined;
   /** Safety margin or quantitative robustness degree */
-  margin?: number;
+  margin?: number | undefined;
   /** Blame token IDs / AST provenance */
-  blameTokens?: number[];
+  blameTokens?: number[] | undefined;
 }
 
 /** A single cell in the traceability matrix. */
@@ -123,16 +123,16 @@ export function getRequirements(
   uri?: string,
   verificationResults?: {
     requirementId: number;
-    constraintId?: number;
+    constraintId?: number | undefined;
     isSatisfied: boolean;
-    requirementName?: string;
-    peakValue?: number;
-    limitValue?: number;
-    violationTime?: number;
-    lhsName?: string;
-    tier?: "structural" | "spatial" | "static_parametric" | "dynamic_stl";
-    margin?: number;
-    blameTokens?: number[];
+    requirementName?: string | undefined;
+    peakValue?: number | undefined;
+    limitValue?: number | undefined;
+    violationTime?: number | undefined;
+    lhsName?: string | undefined;
+    tier?: "structural" | "spatial" | "static_parametric" | "dynamic_stl" | undefined;
+    margin?: number | undefined;
+    blameTokens?: number[] | undefined;
   }[],
 ): RequirementRow[] {
   const rows: RequirementRow[] = [];
@@ -160,14 +160,16 @@ export function getRequirements(
 
     // Extract text from metadata (doc, description, text)
     const text =
-      (entry.metadata?.doc as string) ??
-      (entry.metadata?.description as string) ??
-      (entry.metadata?.text as string) ??
+      (entry.metadata?.["doc"] as string) ??
+      (entry.metadata?.["description"] as string) ??
+      (entry.metadata?.["text"] as string) ??
       "";
 
     // Extract a human-readable ID from metadata or generate one
     const reqId =
-      (entry.metadata?.id as string) ?? (entry.metadata?.reqId as string) ?? `REQ-${String(seqId++).padStart(3, "0")}`;
+      (entry.metadata?.["id"] as string) ??
+      (entry.metadata?.["reqId"] as string) ??
+      `REQ-${String(seqId++).padStart(3, "0")}`;
 
     let status: "Passed" | "Failed" | "Pending" = "Pending";
     let peakValue: number | undefined;

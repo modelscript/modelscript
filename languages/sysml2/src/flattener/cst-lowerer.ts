@@ -16,33 +16,64 @@
 
 import { BinOp, Causality, DAEBuilder, EqKind, UnaryOp, VarAttrKind, Variability, VarType } from "@modelscript/runtime";
 
+/**
+ * Result produced by lowering a SysML v2 CST into a `DAEBuilder` arena.
+ */
 export interface LoweredSysml2CstResult {
+  /** Populated linear-memory `DAEBuilder` arena containing variables and equations. */
   arena: DAEBuilder;
+  /** Resolved top-level component or system definition name. */
   rootName: string;
+  /** Flattened parameter variable names. */
   parameters: string[];
+  /** Flattened continuous state and algebraic variable names. */
   states: string[];
+  /** Derivative expression identifiers (`der(x)`) referenced in equations. */
   derivatives: string[];
+  /** Total number of equations emitted into the arena. */
   eqCount: number;
 }
 
+/**
+ * Configuration options for `SysML2CstFlattener`.
+ */
 export interface CstFlattenerOptions {
-  arena?: DAEBuilder;
-  overrides?: Record<string, number>;
-  rootComponentName?: string;
-  sourceText?: string;
+  /** Existing `DAEBuilder` arena to append into; allocates a new arena if omitted. */
+  arena?: DAEBuilder | undefined;
+  /** Top-level parameter value overrides keyed by attribute name. */
+  overrides?: Record<string, number> | undefined;
+  /** Explicit root component definition name to elaborate. */
+  rootComponentName?: string | undefined;
+  /** Raw SysML v2 source text for experiment configuration extraction. */
+  sourceText?: string | undefined;
 }
 
+/**
+ * Metadata extracted from a `port def` declaration, separating across (potential)
+ * and through (flow) physical attributes.
+ */
 export interface PortMeta {
+  /** Port definition type name (e.g. `"Pin"`, `"Flange"`). */
   name: string;
+  /** Potential (across) attribute names (e.g. `["v"]`), equated across connected ports. */
   potentialAttrs: string[];
+  /** Flow (through) attribute names (e.g. `["i"]`), summed to zero at connection junctions. */
   flowAttrs: string[];
 }
 
+/**
+ * Elaborated port instance inside a flattened component hierarchy.
+ */
 export interface ActivePortInstance {
+  /** Hierarchical dot-prefixed port path (e.g. `"r1.p"`). */
   fullName: string;
+  /** Unconjugated base port definition name. */
   portType: string;
+  /** True if the port typing uses the conjugation prefix (`~PortDef`), inverting flow sign. */
   isConjugated: boolean;
+  /** Potential (across) attributes declared on the port type. */
   potentialAttrs: string[];
+  /** Flow (through) attributes declared on the port type. */
   flowAttrs: string[];
 }
 
@@ -88,6 +119,11 @@ export function findCstChildren(node: any, type: string, results: any[] = []): a
     const exports = node.tree.facade.exports;
     const NodeCtor = node.constructor as any;
 
+    // Linear CST node layout in WASM memory (20 bytes per node):
+    //   +0:  typeFlags (bits 0..9 = typeId, bit 14 = isInvisible, bits 22..31 = rawPad)
+    //   +4:  envHashPadding (bits 0..22 = byte length, bit 23 = isFatPadding)
+    //   +12: firstChildPtr (u32 byte pointer)
+    //   +16: nextSiblingPtr (u32 byte pointer)
     const ptrStack: number[] = [];
     const offsetStack: number[] = [];
     let currentChildPtr = mem32[(node.ptr + 12) >>> 2]!;
@@ -108,6 +144,7 @@ export function findCstChildren(node: any, type: string, results: any[] = []): a
         const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
         const nextOffset = currentOffset + pad + len;
 
+        // Transparently descend into hidden/inline grammar rules (prefixed with '_' or marked invisible)
         if (name.startsWith("_") || isInvisible) {
           if (nextChildPtr !== 0) {
             ptrStack.push(nextChildPtr);
@@ -821,8 +858,11 @@ export class SysML2CstFlattener {
   private derivatives: string[] = [];
   private overrides: Record<string, number>;
   private rootCompName: string;
-  private sourceText?: string;
+  private sourceText?: string | undefined;
 
+  /**
+   * @param options - Arena instance, parameter overrides, and target root component configuration.
+   */
   constructor(options: CstFlattenerOptions = {}) {
     this.arena = options.arena ?? new DAEBuilder();
     this.overrides = options.overrides ?? {};
@@ -832,6 +872,9 @@ export class SysML2CstFlattener {
 
   /**
    * Main entry point to flatten a parsed SysML v2 root CST node into the DAE arena.
+   *
+   * @param rootNode - Root CST node returned by the SysML v2 WASM GLR parser.
+   * @returns Lowered DAE arena and variable/equation summary metadata.
    */
   public flatten(rootNode: any): LoweredSysml2CstResult {
     // 0. Extract experiment configs from root text if present
@@ -874,6 +917,10 @@ export class SysML2CstFlattener {
     };
   }
 
+  /**
+   * Scans the CST for `PortDefinition` nodes and classifies their attributes into
+   * potential (across) and `flow` (through) variables.
+   */
   private collectPortDefinitions(rootNode: any): void {
     const portDefNodes = findCstDescendants(rootNode, "PortDefinition");
     for (const pNode of portDefNodes) {
@@ -914,6 +961,9 @@ export class SysML2CstFlattener {
     }
   }
 
+  /**
+   * Indexes all `PartDefinition` and `ConstraintDefinition` CST nodes by declared name.
+   */
   private collectComponentDefinitions(rootNode: any): void {
     const partDefNodes = findCstDescendants(rootNode, "PartDefinition");
     const constraintDefNodes = findCstDescendants(rootNode, "ConstraintDefinition");
@@ -927,6 +977,10 @@ export class SysML2CstFlattener {
     }
   }
 
+  /**
+   * Heuristically selects the top-level system definition by finding a component that is
+   * neither instantiated as a child `PartUsage` nor specialized as a superclass (`:>`).
+   */
   private determineRootComponent(): string {
     if (this.compDefs.size === 0) return "SysmlModel";
     if (this.compDefs.size === 1) return Array.from(this.compDefs.keys())[0]!;
@@ -1153,6 +1207,10 @@ export class SysML2CstFlattener {
     this.elaborateConnections(compNode, prefix);
   }
 
+  /**
+   * Returns true if `node` is nested inside a child `PartUsage` of `currentComp`
+   * (so it isn't double-processed during the parent's traversal).
+   */
   private isDescendantOfPartUsage(node: any, currentComp: any): boolean {
     let p = node.parent;
     while (p && p !== currentComp) {
@@ -1162,6 +1220,10 @@ export class SysML2CstFlattener {
     return false;
   }
 
+  /**
+   * Lowers `AssertConstraintUsage` and `ConstraintUsage` expressions within `compNode`
+   * into simple equations (`lhs == rhs`) inside `this.arena`.
+   */
   private elaborateEquations(compNode: any, prefix: string, localNames: Set<string>): void {
     const assertUsages = [
       ...findCstDescendants(compNode, "AssertConstraintUsage"),
@@ -1192,6 +1254,9 @@ export class SysML2CstFlattener {
     }
   }
 
+  /**
+   * Extracts `ConnectionUsage` endpoint pairs (`connect p1 to p2;`) for global Kirchhoff synthesis.
+   */
   private elaborateConnections(compNode: any, prefix: string): void {
     const connUsages = findCstDescendants(compNode, "ConnectionUsage");
     for (const cu of connUsages) {

@@ -625,7 +625,7 @@ function sanitizeIdentifier(name: string): string {
 }
 
 function varToC(
-  dae: DAEBuilder,
+  _dae: DAEBuilder,
   name: string,
   vars: FmiScalarVariable[] | Map<string, FmiScalarVariable>,
   derMap?: Map<string, number>,

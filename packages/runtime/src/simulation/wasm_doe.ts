@@ -30,7 +30,7 @@ export interface ArenaDoEInputRange {
   /** Maximum value. */
   max: number;
   /** Number of levels for full-factorial (default: 5). */
-  levels?: number;
+  levels?: number | undefined;
 }
 
 export type DoESamplingStrategy = "full-factorial" | "latin-hypercube" | "sobol" | "central-composite";
@@ -44,18 +44,18 @@ export interface ArenaDoEConfig {
   /** Sampling strategy. */
   strategy: DoESamplingStrategy;
   /** Number of samples (ignored for full-factorial / central-composite). */
-  numSamples?: number;
+  numSamples?: number | undefined;
   /** Simulation options passed to `simulateArena()`. */
-  simulateOptions?: ArenaSimulateOptions;
+  simulateOptions?: ArenaSimulateOptions | undefined;
   /**
    * Time points at which to snapshot outputs.
    * Default: only `stopTime` (steady-state response).
    */
-  snapshotTimes?: number[];
+  snapshotTimes?: number[] | undefined;
   /** PRNG seed for reproducibility (default: Date.now()). */
-  seed?: number;
+  seed?: number | undefined;
   /** Progress callback: (completedSamples, totalSamples). */
-  onProgress?: (done: number, total: number) => void;
+  onProgress?: ((done: number, total: number) => void) | undefined;
 }
 
 /** Result of an arena DoE run. */
@@ -73,7 +73,7 @@ export interface ArenaDoEResult {
   /** Output variable names (ordered). */
   outputNames: string[];
   /** Snapshot times (if transient mode). */
-  snapshotTimes?: number[];
+  snapshotTimes?: number[] | undefined;
   /** Whether this is a transient (multi-time) dataset. */
   isTransient: boolean;
   /** Wall-clock time in ms. */
@@ -369,7 +369,7 @@ export function runArenaDoE(arena: DAEBuilder, config: ArenaDoEConfig): ArenaDoE
  */
 export async function runArenaDoEAsync(
   arena: DAEBuilder,
-  config: ArenaDoEConfig & { signal?: AbortSignal },
+  config: ArenaDoEConfig & { signal?: AbortSignal | undefined },
 ): Promise<ArenaDoEResult> {
   const wallStart = performance.now();
   const inputNames = Array.from(config.inputs.keys());

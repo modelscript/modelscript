@@ -3,7 +3,7 @@
 export interface ModelicaComponentInfo {
   name: string;
   type: string;
-  value?: number;
+  value?: number | undefined;
   properties: Record<string, unknown>;
 }
 
@@ -81,10 +81,10 @@ export function extractModelicaModel(modelicaTreeRoot: any, sourceText: string):
       /(?:parameter\s+)?([A-Za-z0-9_.]+)\s+([A-Za-z0-9_]+)(?:\s*=\s*([0-9.]+))?/g,
     );
     for (const m of declMatches) {
-      if (!keywords.has(m[1]) && !keywords.has(m[2])) {
+      if (!keywords.has(m[1]!) && !keywords.has(m[2]!)) {
         components.push({
-          type: m[1],
-          name: m[2],
+          type: m[1]!,
+          name: m[2]!,
           value: m[3] ? parseFloat(m[3]) : undefined,
           properties: {},
         });

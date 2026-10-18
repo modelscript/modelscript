@@ -256,14 +256,14 @@ export class TaylorModel {
         const c = this.coeffs[i]!;
         if (c !== 0) {
           const target = res.basis.indexOf(this.basis.exponents[i]!);
-          if (target >= 0) res.coeffs[target] += c;
+          if (target >= 0) res.coeffs[target] = res.coeffs[target]! + c;
         }
       }
       for (let j = 0; j < other.basis.totalMonomials; j++) {
         const c = other.coeffs[j]!;
         if (c !== 0) {
           const target = res.basis.indexOf(other.basis.exponents[j]!);
-          if (target >= 0) res.coeffs[target] += c;
+          if (target >= 0) res.coeffs[target] = res.coeffs[target]! + c;
         }
       }
       for (let k = 0; k < res.basis.totalMonomials; k++) {
@@ -300,14 +300,14 @@ export class TaylorModel {
         const c = this.coeffs[i]!;
         if (c !== 0) {
           const target = res.basis.indexOf(this.basis.exponents[i]!);
-          if (target >= 0) res.coeffs[target] += c;
+          if (target >= 0) res.coeffs[target] = res.coeffs[target]! + c;
         }
       }
       for (let j = 0; j < other.basis.totalMonomials; j++) {
         const c = other.coeffs[j]!;
         if (c !== 0) {
           const target = res.basis.indexOf(other.basis.exponents[j]!);
-          if (target >= 0) res.coeffs[target] -= c;
+          if (target >= 0) res.coeffs[target] = res.coeffs[target]! - c;
         }
       }
       for (let k = 0; k < res.basis.totalMonomials; k++) {
@@ -395,7 +395,7 @@ export class TaylorModel {
           const coeff = c1 * c2;
           const k = mulTable[rowOffset + j]!;
           if (k >= 0) {
-            res.coeffs[k] += coeff;
+            res.coeffs[k] = res.coeffs[k]! + coeff;
           } else {
             const exps1 = this.basis.exponents[i]!;
             const exps2 = this.basis.exponents[j]!;
@@ -426,7 +426,7 @@ export class TaylorModel {
           if (sumDeg <= maxOrder) {
             const target = res.basis.indexOf(sumExps);
             if (target >= 0) {
-              res.coeffs[target] += coeff;
+              res.coeffs[target] = res.coeffs[target]! + coeff;
             } else {
               const mRange = this.evaluateMonomialRangeExponents(sumExps);
               excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
@@ -686,7 +686,7 @@ export class TaylorModel {
       const e = degMap[i]!;
       const target = targetMap[i]!;
       const term = c * (e === 0 ? 1 : Math.pow(value, e));
-      res.coeffs[target] += term;
+      res.coeffs[target] = res.coeffs[target]! + term;
       absSum += Math.abs(term);
       count++;
       if (e > maxDeg) maxDeg = e;
@@ -732,7 +732,7 @@ export class TaylorModel {
 
 export interface FlowpipeRequirement {
   stateIndex: number;
-  stateName?: string;
+  stateName?: string | undefined;
   operator: "<=" | ">=" | "<" | ">";
   limitValue: number;
 }
@@ -779,19 +779,19 @@ export interface FlowpipeProblemOptions {
   /** Step size dt */
   dt: number;
   /** Polynomial order for Taylor Models (e.g. 2, 3) */
-  order?: number;
+  order?: number | undefined;
   /** Safety requirements to formally verify against flowpipe */
-  requirements?: FlowpipeRequirement[];
+  requirements?: FlowpipeRequirement[] | undefined;
   /** Max Picard contractive iterations per step */
-  maxPicardIterations?: number;
+  maxPicardIterations?: number | undefined;
   /** Whether to dynamically adapt step size dt based on local remainder error */
-  adaptive?: boolean;
+  adaptive?: boolean | undefined;
   /** Local remainder error tolerance for adaptive stepping (default: 1e-4) */
-  tol?: number;
+  tol?: number | undefined;
   /** Minimum step size for adaptive stepping (default: 1e-6) */
-  minDt?: number;
+  minDt?: number | undefined;
   /** Maximum step size for adaptive stepping (default: 1.0) */
-  maxDt?: number;
+  maxDt?: number | undefined;
   /**
    * Whether to carry over polynomial dependencies symbolically across time steps
    * (Makino–Berz / Flow* scheme) to mitigate the wrapping effect.
@@ -800,12 +800,12 @@ export interface FlowpipeProblemOptions {
    * A numeric value specifies the maximum number of steps between coordinate refreshes.
    * Default: true (with automatic coordinate refresh on Picard failure or every 20 steps).
    */
-  symbolicCarryOver?: boolean | number;
+  symbolicCarryOver?: boolean | number | undefined;
   /**
    * @deprecated Ignored. The previous "QR tightening" only widened the enclosure (union of the
    * direct and rotated boxes). Proper preconditioned Taylor models are tracked in the hardening plan.
    */
-  useQrPreconditioning?: boolean;
+  useQrPreconditioning?: boolean | undefined;
 }
 
 /**

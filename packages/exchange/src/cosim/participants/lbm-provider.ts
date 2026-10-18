@@ -22,7 +22,7 @@ export interface LbmMeshPayload {
   geometry: {
     positions: Float32Array | number[];
     indices: Uint32Array | number[];
-    normals?: Float32Array | number[];
+    normals?: Float32Array | number[] | undefined;
   };
   fields: {
     "alpha.polymer": Float32Array | number[];
@@ -37,17 +37,31 @@ export interface LbmMeshPayload {
   };
 }
 
+/** Configuration options for a 3D Lattice Boltzmann {@link LbmCoSimParticipant}. */
 export interface LbmCoSimOptions {
   /** Physical lattice dimensions and properties */
   config: LbmGridConfig;
   /** Obstacle definitions for the voxelizer */
-  obstacles?: {
-    boxes?: { min: [number, number, number]; max: [number, number, number] }[];
-    cylinders?: { center: [number, number, number]; radius: number; axis: "x" | "y" | "z"; length: number }[];
-    solidWalls?: { minX?: boolean; maxX?: boolean; minY?: boolean; maxY?: boolean; minZ?: boolean; maxZ?: boolean };
-  };
+  obstacles?:
+    | {
+        boxes?: { min: [number, number, number]; max: [number, number, number] }[] | undefined;
+        cylinders?:
+          | { center: [number, number, number]; radius: number; axis: "x" | "y" | "z"; length: number }[]
+          | undefined;
+        solidWalls?:
+          | {
+              minX?: boolean | undefined;
+              maxX?: boolean | undefined;
+              minY?: boolean | undefined;
+              maxY?: boolean | undefined;
+              minZ?: boolean | undefined;
+              maxZ?: boolean | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
   /** Pre-voxelized cellTypes (optional, overrides obstacles) */
-  cellTypes?: Uint8Array;
+  cellTypes?: Uint8Array | undefined;
 }
 
 /**
@@ -56,15 +70,23 @@ export interface LbmCoSimOptions {
  * and flow fields back to 1D Modelica dynamics.
  */
 export class LbmCoSimParticipant implements CoSimParticipant {
+  /** Unique co-simulation participant identifier. */
   public readonly id: string;
+  /** Human-readable LBM CFD model name. */
   public readonly modelName: string;
+  /** Co-simulation participant metadata and exposed fluid port variables. */
   public readonly metadata: ParticipantMetadata;
 
+  /** Underlying D3Q19 Lattice Boltzmann fluid runner. */
   private runner: WebGPULbmRunner;
+  /** Current simulation time in seconds. */
   private currentTime = 0;
+  /** Most recent LBM fluid step result (aerodynamic forces, peak velocity, pressure drop). */
   private lastResult: LbmStepResult | null = null;
+  /** Current moving-wall / inflow boundary velocity vector `[vx, vy, vz]` in m/s. */
   private movingWallVel: [number, number, number] = [0, 0, 0];
 
+  /** Creates a 3D LBM CFD co-simulation participant and voxelizes any configured solid obstacles. */
   constructor(id: string, modelName: string, options: LbmCoSimOptions) {
     this.id = id;
     this.modelName = modelName;
@@ -114,6 +136,7 @@ export class LbmCoSimParticipant implements CoSimParticipant {
     };
   }
 
+  /** Resets the LBM participant clock and zeroes aerodynamic force accumulators. */
   public async initialize(startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     this.currentTime = startTime;
     this.lastResult = {
@@ -123,6 +146,7 @@ export class LbmCoSimParticipant implements CoSimParticipant {
     };
   }
 
+  /** Advances the D3Q19 Lattice Boltzmann fluid solver across the communication step `stepSize`. */
   public async doStep(currentTime: number, stepSize: number): Promise<void> {
     this.currentTime = currentTime + stepSize;
 
@@ -134,6 +158,7 @@ export class LbmCoSimParticipant implements CoSimParticipant {
     this.lastResult = this.runner.step(subSteps);
   }
 
+  /** Returns integrated aerodynamic drag, side, and lift forces, peak velocity, and pressure drop. */
   public async getOutputs(): Promise<Map<string, CosimValue>> {
     const outputs = new Map<string, CosimValue>();
     const forces = this.lastResult?.aerodynamicForceN ?? [0, 0, 0];
@@ -147,6 +172,7 @@ export class LbmCoSimParticipant implements CoSimParticipant {
     return outputs;
   }
 
+  /** Updates the moving-wall or inflow velocity vector from incoming co-simulation inputs. */
   public async setInputs(values: Map<string, CosimValue>): Promise<void> {
     let vx = this.movingWallVel[0];
     let vy = this.movingWallVel[1];
@@ -165,6 +191,7 @@ export class LbmCoSimParticipant implements CoSimParticipant {
     this.movingWallVel = [vx, vy, vz];
   }
 
+  /** Terminates the LBM co-simulation participant (no-op for in-memory runner). */
   public async terminate(): Promise<void> {
     // No-op for WASM/JS runner
   }
@@ -287,8 +314,8 @@ export class LbmCoSimParticipant implements CoSimParticipant {
               const pVal = ((rhoVal - 1.0) / 3.0) * (dx / this.runner.config.dt) ** 2 * this.runner.config.density;
 
               for (const [qx, qy, qz] of nb.quad) {
-                positions.push((ix + qx) * dx, (iy + qy) * dx, (iz + qz) * dx);
-                normals.push(nb.normal[0], nb.normal[1], nb.normal[2]);
+                positions.push((ix + qx!) * dx, (iy + qy!) * dx, (iz + qz!) * dx);
+                normals.push(nb.normal[0]!, nb.normal[1]!, nb.normal[2]!);
                 velocityMag.push(vMag);
                 pressure.push(pVal);
                 alphaPolymer.push(1.0);
@@ -330,10 +357,10 @@ export class LbmCoSimParticipant implements CoSimParticipant {
 
         const base = vertIdx;
         for (let p = 0; p < 4; p++) {
-          positions.push(pts[p][0], pts[p][1], pts[p][2]);
+          positions.push(pts[p]![0]!, pts[p]![1]!, pts[p]![2]!);
           normals.push(0, 0, 1);
 
-          const c = cells[p];
+          const c = cells[p]!;
           const vx = this.runner.vx[c] ?? 0;
           const vy = this.runner.vy[c] ?? 0;
           const vz = this.runner.vz[c] ?? 0;

@@ -8,8 +8,8 @@ import Box from "../Box";
 
 interface Props {
   children: ReactNode;
-  viewerTitle?: string;
-  onReset?: () => void;
+  viewerTitle?: string | undefined;
+  onReset?: (() => void) | undefined;
 }
 
 interface State {

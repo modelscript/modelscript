@@ -175,6 +175,11 @@ function generateCopperGerber(traces: TraceSegment[], pads: PadDefinition[], lay
     }
   }
 
+  const hasRoundRect = pads.some((p) => p.shape === "roundrect");
+  if (hasRoundRect) {
+    lines.push("%AMROUNDRECT*21,1,$1,$2-2x$3,0,0,0*21,1,$1-2x$3,$2,0,0,0*%");
+  }
+
   for (const pad of pads) {
     const key = padApertureKey(pad);
     if (!apertures.has(key)) {
@@ -381,8 +386,10 @@ function padApertureKey(pad: PadDefinition | { shape: string; width: number; hei
       return `R,${pad.width.toFixed(4)}X${pad.height.toFixed(4)}`;
     case "oval":
       return `O,${pad.width.toFixed(4)}X${pad.height.toFixed(4)}`;
-    case "roundrect":
-      return `R,${pad.width.toFixed(4)}X${pad.height.toFixed(4)}`; // Approximate
+    case "roundrect": {
+      const r = Math.min(pad.width, pad.height) * 0.2;
+      return `ROUNDRECT,${pad.width.toFixed(4)}X${pad.height.toFixed(4)}X${r.toFixed(4)}`;
+    }
     default:
       return `C,${pad.width.toFixed(4)}`;
   }

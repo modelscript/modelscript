@@ -172,10 +172,10 @@ const TEMPLATE_NAMES: Record<string, string> = {
 
 export const IdeWorkspacePage: React.FC = () => {
   const { provider, namespace, project, templateId } = useParams<{
-    provider?: string;
-    namespace?: string;
-    project?: string;
-    templateId?: string;
+    provider?: string | undefined;
+    namespace?: string | undefined;
+    project?: string | undefined;
+    templateId?: string | undefined;
   }>();
 
   const [searchParams] = useSearchParams();
@@ -270,7 +270,7 @@ export const IdeWorkspacePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [showDeprecationNotice, setShowDeprecationNotice] = useState(true);
-  const [lspStatus, setLspStatus] = useState<{ status: string; message?: string } | null>(null);
+  const [lspStatus, setLspStatus] = useState<{ status: string; message?: string | undefined } | null>(null);
 
   const handleRestartLsp = () => {
     setLspStatus({ status: "loading", message: "Restarting language server…" });

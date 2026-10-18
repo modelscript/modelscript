@@ -5,11 +5,11 @@ import type { CommandModule } from "yargs";
 import { getApiUrl, saveApiUrl, saveToken } from "../util/auth.js";
 
 interface LoginArgs {
-  email?: string;
-  password?: string;
-  token?: string;
-  otp?: string;
-  registry?: string;
+  email?: string | undefined;
+  password?: string | undefined;
+  token?: string | undefined;
+  otp?: string | undefined;
+  registry?: string | undefined;
 }
 
 function prompt(question: string, hidden = false): Promise<string> {

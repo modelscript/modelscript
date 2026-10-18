@@ -103,11 +103,11 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
       try {
         const res = await fetch(`${apiUrl}/api/v1/users/me/export/status`, { headers });
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          const body = (await res.json().catch(() => ({}))) as { error?: string | undefined };
           console.error(c.red(`Failed to query archive status: ${body.error || res.statusText}`));
           process.exit(1);
         }
-        const data = (await res.json()) as { job: any; concurrency?: number };
+        const data = (await res.json()) as { job: any; concurrency?: number | undefined };
         if (!data.job) {
           console.log(c.yellow("No active or recent archive job found for current user."));
           return;
@@ -157,14 +157,14 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
       });
 
       if (!enqueueRes.ok && enqueueRes.status !== 202) {
-        const body = (await enqueueRes.json().catch(() => ({}))) as { error?: string };
+        const body = (await enqueueRes.json().catch(() => ({}))) as { error?: string | undefined };
         console.error(c.red(`\nFailed to enqueue archive request: ${body.error || enqueueRes.statusText}`));
         process.exit(1);
       }
 
       const enqueueData = (await enqueueRes.json()) as {
-        job: { id: string; status: string; queuePosition?: number; concurrency?: number };
-        concurrency?: number;
+        job: { id: string; status: string; queuePosition?: number | undefined; concurrency?: number | undefined };
+        concurrency?: number | undefined;
       };
 
       const jobId = enqueueData.job.id;

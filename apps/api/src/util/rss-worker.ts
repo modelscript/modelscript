@@ -32,8 +32,8 @@ const feedProcessors: FeedItemProcessor[] = [
       let artifactViewId: number | undefined;
 
       const extItem = item as typeof item & {
-        mediaGroup?: Record<string, unknown[]>;
-        videoId?: string;
+        mediaGroup?: Record<string, unknown[]> | undefined;
+        videoId?: string | undefined;
       };
 
       if (extItem.mediaGroup) {
@@ -151,7 +151,8 @@ export async function processRssFeeds(database: LibraryDatabase) {
       let newPostsCount = 0;
 
       for (const item of items) {
-        const guid = item.guid || ((item as unknown as Record<string, unknown>).id as string | undefined) || item.link;
+        const guid =
+          item.guid || ((item as unknown as Record<string, unknown>)["id"] as string | undefined) || item.link;
         if (!guid) continue;
 
         if (feed.last_guid && !lastGuidFound) {
@@ -168,9 +169,9 @@ export async function processRssFeeds(database: LibraryDatabase) {
         const pubDate =
           (item.isoDate as string) ||
           (item.pubDate as string) ||
-          (extItem.publishedAt as string) ||
+          (extItem["publishedAt"] as string) ||
           new Date().toISOString();
-        const updateDate = (extItem.updatedAt as string) || pubDate;
+        const updateDate = (extItem["updatedAt"] as string) || pubDate;
 
         database.createPost(
           feed.user_id,

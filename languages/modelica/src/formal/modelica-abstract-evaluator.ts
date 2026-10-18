@@ -11,11 +11,11 @@ import {
 
 export interface EvaluatorContext {
   instId: number;
-  astNodeId?: number;
-  startByte?: number;
-  endByte?: number;
-  initializedVars?: Set<string>;
-  declaredVars?: Set<string>;
+  astNodeId?: number | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  initializedVars?: Set<string> | undefined;
+  declaredVars?: Set<string> | undefined;
 }
 
 function isBinaryAddSub(str: string, idx: number): boolean {
@@ -220,6 +220,7 @@ export class ModelicaAbstractEvaluator {
       }
       if (fnName === "tan" && rawArgs[0]) {
         const _argIval = this.evalExpr(rawArgs[0], state, collectRTE, ctx);
+        void _argIval;
         return Interval.TOP;
       }
 

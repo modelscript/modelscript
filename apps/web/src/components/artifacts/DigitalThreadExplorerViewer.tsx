@@ -22,10 +22,10 @@ export interface ThreadNode {
   nodeId: number;
   name: string;
   status: "synced" | "stale" | "conflict" | "removed";
-  uri?: string;
-  line?: number;
-  column?: number;
-  properties?: Record<string, any>;
+  uri?: string | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  properties?: Record<string, any> | undefined;
 }
 
 export interface ThreadItem {
@@ -59,8 +59,8 @@ export interface ConflictDiagnostic {
 
 interface DigitalThreadExplorerViewerProps {
   viewConfig?: any;
-  isFullScreen?: boolean;
-  onNodeSelected?: (node: ThreadNode) => void;
+  isFullScreen?: boolean | undefined;
+  onNodeSelected?: ((node: ThreadNode) => void) | undefined;
 }
 
 const DOMAIN_COLORS: Record<string, string> = {

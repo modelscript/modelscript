@@ -24,17 +24,17 @@ export interface NativeShmPatchConfig {
   name: string;
   patchId: number;
   type: CfdPatchType;
-  initialPressure?: number;
-  initialVelocity?: [number, number, number];
+  initialPressure?: number | undefined;
+  initialVelocity?: [number, number, number] | undefined;
 }
 
 export interface NativeShmCfdConfig {
   id: string;
   modelName: string;
-  socketPath?: string;
-  caseDir?: string;
-  autoSpawnDaemon?: boolean;
-  daemonScriptPath?: string;
+  socketPath?: string | undefined;
+  caseDir?: string | undefined;
+  autoSpawnDaemon?: boolean | undefined;
+  daemonScriptPath?: string | undefined;
   patches: NativeShmPatchConfig[];
 }
 
@@ -62,7 +62,7 @@ export class NativeShmCfdProvider extends BaseCfdProvider {
 
   // Metrics from solver
   private lastDragForceX = 0;
-  private lastDragForceY = 0;
+  public lastDragForceY = 0;
   private lastMaxVelocity = 0;
   private currentVtkBuffer: Uint8Array | null = null;
 
@@ -138,7 +138,7 @@ export class NativeShmCfdProvider extends BaseCfdProvider {
     };
   }
 
-  public async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
+  public override async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
     await super.initialize(startTime, stopTime, stepSize);
 
     // Auto-spawn daemon if requested or if socket doesn't exist

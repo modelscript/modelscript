@@ -37,8 +37,8 @@ export interface SspParameterBinding {
 }
 
 export interface SspDefaultExperiment {
-  startTime?: number;
-  stopTime?: number;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
 }
 
 export interface SspSystem {

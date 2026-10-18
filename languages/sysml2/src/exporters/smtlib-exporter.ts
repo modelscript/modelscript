@@ -7,18 +7,18 @@ import { getSysmlParser } from "../sysml2-dae-lowerer.js";
 
 export interface SmtFunctionDef {
   name: string;
-  params: { name: string; type?: string }[];
-  returnType?: string;
+  params: { name: string; type?: string | undefined }[];
+  returnType?: string | undefined;
   body: string;
 }
 
 export interface SmtLibExportOptions {
-  logic?: "QF_LRA" | "QF_NRA" | "QF_IDL" | "ALL";
-  scopeFilter?: string;
-  produceModels?: boolean;
-  functions?: SmtFunctionDef[];
-  minimize?: string[];
-  maximize?: string[];
+  logic?: "QF_LRA" | "QF_NRA" | "QF_IDL" | "ALL" | undefined;
+  scopeFilter?: string | undefined;
+  produceModels?: boolean | undefined;
+  functions?: SmtFunctionDef[] | undefined;
+  minimize?: string[] | undefined;
+  maximize?: string[] | undefined;
 }
 
 type Token =
@@ -84,11 +84,11 @@ function tokenizeArithmetic(expr: string): Token[] {
 
 interface AstNode {
   kind: "num" | "ident" | "unary" | "binary";
-  op?: string;
-  val?: number;
-  name?: string;
-  left?: AstNode;
-  right?: AstNode;
+  op?: string | undefined;
+  val?: number | undefined;
+  name?: string | undefined;
+  left?: AstNode | undefined;
+  right?: AstNode | undefined;
 }
 
 function parseArithmeticExpr(tokens: Token[]): AstNode {
@@ -414,7 +414,7 @@ function extractUserFunctionsFromDb(db: QueryDB): SmtFunctionDef[] {
         const returnMatch = rawBody.match(/return\s+([^;]+);/) || rawBody.match(/([a-zA-Z0-9_.+*/^ -]+);?/);
         const bodyExpr = returnMatch ? returnMatch[1]!.trim() : "0.0";
 
-        const params: { name: string; type?: string }[] = [];
+        const params: { name: string; type?: string | undefined }[] = [];
         if (rawParams.trim()) {
           const paramParts = rawParams.split(",");
           for (const part of paramParts) {

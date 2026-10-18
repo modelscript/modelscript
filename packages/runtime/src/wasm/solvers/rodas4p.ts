@@ -7,7 +7,7 @@
  * zero heap allocations, and 4th-order continuous dense output polynomial interpolation.
  */
 
-import { DaeBuilder } from "../dae/builder";
+import { DaeBuilder, VAR_STRIDE, VAR_NAME } from "../dae/builder";
 import { UnmanagedFloat64Array, DenseMatrixView } from "../core/array";
 import { luFactor, luSolve } from "./matrix";
 import { computeDerivatives, solveAlgebraicConstraints } from "./integrators";
@@ -104,16 +104,42 @@ export function stepRodas4P(
   let fStage = changetype<UnmanagedFloat64Array>(fStagePtr as usize);
   let yStage = changetype<UnmanagedFloat64Array>(yStagePtr as usize);
   let yNew = changetype<UnmanagedFloat64Array>(yNewPtr as usize);
-  let rhs = changetype<UnmanagedFloat64Array>(rhsPtr as usize);
+  let dfdt = changetype<UnmanagedFloat64Array>(rhsPtr as usize);
   let wMat = DenseMatrixView.at(wMatPtr as usize, numVars, numVars);
+
+  // Locate explicit "time" variable if present for non-autonomous df/dt terms
+  let timeVarIdx: i32 = -1;
+  let pool = dae.getStringPool();
+  for (let v: u32 = 0; v < numVars; v++) {
+    let nameId = dae.getVarData().get(v * VAR_STRIDE + VAR_NAME);
+    if (pool.isTime(nameId)) {
+      timeVarIdx = v as i32;
+      break;
+    }
+  }
+  let t0: f64 = timeVarIdx >= 0 ? varValues[timeVarIdx as u32] : 0.0;
 
   // 1. Initial f0 = f(t, y0)
   computeDerivatives(dae, varValuesPtr, f0Ptr);
 
-  // 2. Numerical Jacobian & W = fac * I - J with fac = 1 / (gamma * dt)
+  // 2. Numerical Jacobian & W = fac * I - J with fac = 1 / (gamma * dt), plus df/dt
   let fac: f64 = 1.0 / (RODAS4P_GAMMA * dt);
   let invH: f64 = 1.0 / dt;
   let eps: f64 = 1e-8;
+
+  if (timeVarIdx >= 0) {
+    let tv = timeVarIdx as u32;
+    varValues[tv] = t0 + eps;
+    computeDerivatives(dae, varValuesPtr, fStagePtr);
+    varValues[tv] = t0;
+    for (let i: u32 = 0; i < numVars; i++) {
+      dfdt[i] = i == tv ? 0.0 : (fStage[i] - f0[i]) / eps;
+    }
+  } else {
+    for (let i: u32 = 0; i < numVars; i++) {
+      dfdt[i] = 0.0;
+    }
+  }
 
   for (let j: u32 = 0; j < numVars; j++) {
     let yOrig = varValues[j];
@@ -122,7 +148,7 @@ export function stepRodas4P(
     varValues[j] = yOrig; // restore
 
     for (let i: u32 = 0; i < numVars; i++) {
-      let J_ij = (fStage[i] - f0[i]) / eps;
+      let J_ij = (j as i32) == timeVarIdx ? 0.0 : (fStage[i] - f0[i]) / eps;
       let identity: f64 = i == j ? fac : 0.0;
       wMat.set(i, j, identity - J_ij);
     }
@@ -133,52 +159,56 @@ export function stepRodas4P(
     return false;
   }
 
-  // ── Stage 1: W * k1 = f0 ──
+  // ── Stage 1: W * k1 = f0 + dt * D1 * df/dt ──
   for (let i: u32 = 0; i < numVars; i++) {
-    k1[i] = f0[i];
+    k1[i] = f0[i] + dt * D1 * dfdt[i];
   }
   luSolve(wMatPtr, pivPtr, scalePtr, k1Ptr, luScratchPtr, numVars);
 
-  // ── Stage 2: y_stage = y0 + A21 * k1 ──
+  // ── Stage 2: y_stage = y0 + A21 * k1 at t0 + C2 * dt ──
   for (let i: u32 = 0; i < numVars; i++) {
     yStage[i] = varValues[i] + A21 * k1[i];
   }
+  if (timeVarIdx >= 0) yStage[timeVarIdx as u32] = t0 + C2 * dt;
   computeDerivatives(dae, yStagePtr, fStagePtr);
 
-  // rhs2 = fStage + C21 * invH * k1
+  // rhs2 = fStage + C21 * invH * k1 + dt * D2 * df/dt
   for (let i: u32 = 0; i < numVars; i++) {
-    k2[i] = fStage[i] + C21 * invH * k1[i];
+    k2[i] = fStage[i] + C21 * invH * k1[i] + dt * D2 * dfdt[i];
   }
   luSolve(wMatPtr, pivPtr, scalePtr, k2Ptr, luScratchPtr, numVars);
 
-  // ── Stage 3: y_stage = y0 + A31 * k1 + A32 * k2 ──
+  // ── Stage 3: y_stage = y0 + A31 * k1 + A32 * k2 at t0 + C3 * dt ──
   for (let i: u32 = 0; i < numVars; i++) {
     yStage[i] = varValues[i] + A31 * k1[i] + A32 * k2[i];
   }
+  if (timeVarIdx >= 0) yStage[timeVarIdx as u32] = t0 + C3 * dt;
   computeDerivatives(dae, yStagePtr, fStagePtr);
 
-  // rhs3 = fStage + invH * (C31 * k1 + C32 * k2)
+  // rhs3 = fStage + invH * (C31 * k1 + C32 * k2) + dt * D3 * df/dt
   for (let i: u32 = 0; i < numVars; i++) {
-    k3[i] = fStage[i] + invH * (C31 * k1[i] + C32 * k2[i]);
+    k3[i] = fStage[i] + invH * (C31 * k1[i] + C32 * k2[i]) + dt * D3 * dfdt[i];
   }
   luSolve(wMatPtr, pivPtr, scalePtr, k3Ptr, luScratchPtr, numVars);
 
-  // ── Stage 4: y_stage = y0 + A41 * k1 + A42 * k2 + A43 * k3 ──
+  // ── Stage 4: y_stage = y0 + A41 * k1 + A42 * k2 + A43 * k3 at t0 + C4 * dt ──
   for (let i: u32 = 0; i < numVars; i++) {
     yStage[i] = varValues[i] + A41 * k1[i] + A42 * k2[i] + A43 * k3[i];
   }
+  if (timeVarIdx >= 0) yStage[timeVarIdx as u32] = t0 + C4 * dt;
   computeDerivatives(dae, yStagePtr, fStagePtr);
 
-  // rhs4 = fStage + invH * (C41 * k1 + C42 * k2 + C43 * k3)
+  // rhs4 = fStage + invH * (C41 * k1 + C42 * k2 + C43 * k3) + dt * D4 * df/dt
   for (let i: u32 = 0; i < numVars; i++) {
-    k4[i] = fStage[i] + invH * (C41 * k1[i] + C42 * k2[i] + C43 * k3[i]);
+    k4[i] = fStage[i] + invH * (C41 * k1[i] + C42 * k2[i] + C43 * k3[i]) + dt * D4 * dfdt[i];
   }
   luSolve(wMatPtr, pivPtr, scalePtr, k4Ptr, luScratchPtr, numVars);
 
-  // ── Stage 5: y5 = y0 + A51*k1 + A52*k2 + A53*k3 + A54*k4 ──
+  // ── Stage 5: y5 = y0 + A51*k1 + A52*k2 + A53*k3 + A54*k4 at t0 + dt ──
   for (let i: u32 = 0; i < numVars; i++) {
     yStage[i] = varValues[i] + A51 * k1[i] + A52 * k2[i] + A53 * k3[i] + A54 * k4[i];
   }
+  if (timeVarIdx >= 0) yStage[timeVarIdx as u32] = t0 + dt;
   computeDerivatives(dae, yStagePtr, fStagePtr);
 
   // rhs5 = fStage + invH * (C51 * k1 + C52 * k2 + C53 * k3 + C54 * k4)
@@ -191,6 +221,7 @@ export function stepRodas4P(
   for (let i: u32 = 0; i < numVars; i++) {
     yStage[i] = yStage[i] + k5[i];
   }
+  if (timeVarIdx >= 0) yStage[timeVarIdx as u32] = t0 + dt;
   computeDerivatives(dae, yStagePtr, fStagePtr);
 
   // ── Stage 6: Error estimation stage ──

@@ -85,7 +85,7 @@ export class CfdIpcCodec {
     numPatches: number,
     currentTime: number,
     stepSize: number,
-    metrics?: { maxVelocity?: number; dragForceX?: number; dragForceY?: number },
+    metrics?: { maxVelocity?: number | undefined; dragForceX?: number | undefined; dragForceY?: number | undefined },
   ): void {
     view.setUint32(0, CFD_IPC_MAGIC, true);
     view.setUint32(4, CFD_IPC_VERSION, true);

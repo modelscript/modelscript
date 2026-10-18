@@ -1,7 +1,6 @@
 // name:     RedeclareComponent3
 // keywords: redeclare component modifier
 // status:   correct
-// xfail:    true
 //
 // Tests that modifiers are merged when redeclaring components.
 //

@@ -318,9 +318,9 @@ export function registerDefinitionProvider(
     if (isStepDocument(document)) {
       const text = document.getText();
       let start = offset;
-      while (start > 0 && /[0-9#]/.test(text[start - 1])) start--;
+      while (start > 0 && /[0-9#]/.test(text[start - 1]!)) start--;
       let end = offset;
-      while (end < text.length && /[0-9]/.test(text[end])) end++;
+      while (end < text.length && /[0-9]/.test(text[end]!)) end++;
 
       const token = text.slice(start, end);
       let localDefMatch: RegExpExecArray | null = null;

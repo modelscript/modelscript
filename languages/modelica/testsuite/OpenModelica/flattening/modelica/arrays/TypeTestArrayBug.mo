@@ -1,4 +1,3 @@
-// xfail:    true
 class TypeTestArrayBug
 
   type Wrong = Real[2](unit = "m");

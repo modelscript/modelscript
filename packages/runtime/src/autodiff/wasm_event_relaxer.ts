@@ -23,19 +23,19 @@ export interface EventRelaxerOptions {
    * - Lower values (e.g. 5-20): broad, smooth transitions; convex optimization landscape.
    * - Higher values (e.g. 100-1000): sharp transitions; closely mimics true discontinuous step.
    */
-  smoothness?: number;
+  smoothness?: number | undefined;
 
   /** Relax if-then-else expressions: if (c) then a else b -> sigma(c)*a + (1-sigma(c))*b. Default: true. */
-  relaxIfElse?: boolean;
+  relaxIfElse?: boolean | undefined;
 
   /** Relax abs(x) -> sqrt(x^2 + 1/k^2). Default: true. */
-  relaxAbs?: boolean;
+  relaxAbs?: boolean | undefined;
 
   /** Relax sign(x) -> tanh(k*x). Default: true. */
-  relaxSign?: boolean;
+  relaxSign?: boolean | undefined;
 
   /** Relax max(a, b) and min(a, b) -> smooth softmax/softmin. Default: true. */
-  relaxMaxMin?: boolean;
+  relaxMaxMin?: boolean | undefined;
 }
 
 export class DAEEventRelaxer {
@@ -80,7 +80,7 @@ export class DAEEventRelaxer {
     const numVars = this.arena.varCount;
     for (let varIdx = 0; varIdx < numVars; varIdx++) {
       const exprId = this.arena.getVarExpression(varIdx);
-      if (exprId !== -1) {
+      if (exprId !== undefined && exprId !== -1) {
         const newExpr = this.relaxExpression(exprId);
         if (newExpr !== exprId) {
           this.arena.setVarExpression(varIdx, newExpr);

@@ -299,6 +299,17 @@ export function evaluateArenaDualExpression(
       ) {
         return argCount > 0 ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId) : Dual.constant(0);
       }
+      if (funcName === "homotopy") {
+        if (argCount >= 2 && typeof arena.homotopyLambda === "number" && arena.homotopyLambda < 1.0) {
+          const lambda = Math.max(0, Math.min(1, arena.homotopyLambda));
+          const actualDual = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId);
+          const secondArgId = arena.getExprLeft(exprId + 1);
+          const simplifiedDual = evaluateArenaDualExpression(arena, secondArgId, dualVarsByStringId);
+          if (actualDual === null || simplifiedDual === null) return null;
+          return actualDual.mul(Dual.constant(lambda)).add(simplifiedDual.mul(Dual.constant(1.0 - lambda)));
+        }
+        return argCount > 0 ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId) : Dual.constant(0);
+      }
       if (funcName === "smooth") {
         if (argCount > 1) {
           const secondArgId = arena.getExprLeft(exprId + 1);
@@ -459,8 +470,8 @@ export function evaluateArenaDualFlat(
       }
       switch (op) {
         case UnaryOp.Negate:
-          stack[sp] = -stack[sp];
-          stack[sp + 1] = -stack[sp + 1];
+          stack[sp] = -stack[sp]!;
+          stack[sp + 1] = -stack[sp + 1]!;
           return true;
         case UnaryOp.Not:
           stack[sp] = stack[sp] === 0 ? 1 : 0;
@@ -475,8 +486,8 @@ export function evaluateArenaDualFlat(
       if (!evaluateArenaDualFlat(arena, arena.getExprLeft(exprId), valuesByStringId, seedStringId, stack, sp)) {
         return false;
       }
-      stack[sp] = -stack[sp];
-      stack[sp + 1] = -stack[sp + 1];
+      stack[sp] = -stack[sp]!;
+      stack[sp + 1] = -stack[sp + 1]!;
       return true;
     }
 
@@ -591,6 +602,27 @@ export function evaluateArenaDualFlat(
         funcName === "/*Integer*/" ||
         funcName === "/*Boolean*/"
       ) {
+        if (argCount > 0) {
+          return evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp);
+        }
+        stack[sp] = 0.0;
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+      if (funcName === "homotopy") {
+        if (argCount >= 2 && typeof arena.homotopyLambda === "number" && arena.homotopyLambda < 1.0) {
+          const lambda = Math.max(0, Math.min(1, arena.homotopyLambda));
+          if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp)) {
+            return false;
+          }
+          const secondArgId = arena.getExprLeft(exprId + 1);
+          if (!evaluateArenaDualFlat(arena, secondArgId, valuesByStringId, seedStringId, stack, sp + 2)) {
+            return false;
+          }
+          stack[sp] = lambda * stack[sp]! + (1.0 - lambda) * stack[sp + 2]!;
+          stack[sp + 1] = lambda * stack[sp + 1]! + (1.0 - lambda) * stack[sp + 3]!;
+          return true;
+        }
         if (argCount > 0) {
           return evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp);
         }
@@ -771,8 +803,24 @@ export function evaluateArenaDualFlat(
 }
 
 /**
- * Highly optimized, zero-garbage runtime evaluator.
- * Evaluates an arena expression using a dense, flat Float64Array for variable lookups.
+ * Highly optimized, zero-garbage runtime evaluator for numerical simulation loops.
+ * Evaluates a `DAEBuilder` arena expression tree (`exprId`) directly to a 64-bit float (`number`)
+ * using a dense, flat `Float64Array` (`valuesByStringId`) indexed by interned string IDs.
+ *
+ * Key runtime behaviors:
+ * - **Literals & Variables:** O(1) lookup of `ExprKind.Name` and `ExprKind.Der` via interned string IDs.
+ * - **Synchronous / Discrete `pre()`:** Evaluates sub-expressions against `preValuesByStringId` snapshot.
+ * - **Hybrid Event Intrinsics:** Supports `edge()`, `change()`, periodic `sample(start, interval)`,
+ *   `initial()`, `terminal()`, `delay()` (with binary-searched linear interpolation over history buffers),
+ *   and `homotopy(actual, simplified)` continuation blending.
+ * - **Math & Table Builtins:** Fast-paths unary/binary `Modelica.Math` intrinsics, array reductions,
+ *   and `CombiTimeTable` 1D/time-table interpolation.
+ *
+ * @param arena Backing `DAEBuilder` containing the flat expression arena.
+ * @param exprId Root expression index in `arena.exprData`.
+ * @param valuesByStringId Current state/algebraic/parameter values indexed by `arena.interner` ID.
+ * @param preValuesByStringId Optional discrete pre-event value snapshot indexed by `arena.interner` ID.
+ * @returns Evaluated numeric value (`1` / `0` for booleans).
  */
 export function evaluateArenaRuntime(
   arena: DAEBuilder,
@@ -785,6 +833,7 @@ export function evaluateArenaRuntime(
   const kind = arena.getExprKind(exprId);
 
   switch (kind) {
+    // 1. Scalar Literals
     case ExprKind.RealLiteral:
       return arena.getExprRealValue(exprId);
 
@@ -796,6 +845,7 @@ export function evaluateArenaRuntime(
     case ExprKind.StringLiteral:
       return 0;
 
+    // 2. Variable & State Derivative Lookups (O(1) via interned string ID)
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
       return valuesByStringId[nameId] ?? 0;
@@ -812,12 +862,14 @@ export function evaluateArenaRuntime(
       return 0;
     }
 
+    // 3. Discrete Pre-Value Snapshot (`pre(x)`)
     case ExprKind.Pre: {
       const argId = arena.getExprData1(exprId);
       const snapshotEnv = preValuesByStringId ?? valuesByStringId;
       return evaluateArenaRuntime(arena, argId, snapshotEnv, snapshotEnv);
     }
 
+    // 4. Unary & Binary Arithmetic / Relational / Logical Operators
     case ExprKind.Negate: {
       return -evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId, preValuesByStringId);
     }
@@ -871,6 +923,7 @@ export function evaluateArenaRuntime(
       return 0;
     }
 
+    // 5. Conditional Branching (`if cond then a else b`)
     case ExprKind.IfElse: {
       const cond = evaluateArenaRuntime(arena, arena.getExprData1(exprId), valuesByStringId, preValuesByStringId);
       if (cond !== 0) {
@@ -880,6 +933,7 @@ export function evaluateArenaRuntime(
       }
     }
 
+    // 6. Dynamic Subscript Resolution (`x[i]` / `x[i,j]` resolved via scalarized interned name)
     case ExprKind.Subscript: {
       const baseId = arena.getExprData1(exprId);
       const indexCount = arena.getExprRight(exprId);
@@ -902,6 +956,7 @@ export function evaluateArenaRuntime(
       return 0;
     }
 
+    // 7. Aggregate / Range / Tuple Fallbacks in Scalar Context
     case ExprKind.ArrayCtor: {
       const count = arena.getExprData1(exprId);
       const firstElem = arena.getExprLeft(exprId);
@@ -925,6 +980,7 @@ export function evaluateArenaRuntime(
     case ExprKind.Comprehension:
       return 0;
 
+    // 8. Intrinsic & Built-in Function Calls
     case ExprKind.Call: {
       const funcNameId = arena.getExprData1(exprId);
       const rawFuncName = arena.interner.resolve(funcNameId) ?? "";
@@ -932,13 +988,107 @@ export function evaluateArenaRuntime(
       const argCount = arena.getExprRight(exprId);
       const firstArgId = arena.getExprLeft(exprId);
 
+      // 8a. Synchronous Event, Clock, Delay, and Homotopy Intrinsics
       switch (funcName) {
-        case "edge":
-        case "change":
-        case "sample":
-        case "initial":
-        case "terminal":
+        case "pre": {
+          if (argCount > 0) {
+            const snapshotEnv = preValuesByStringId ?? valuesByStringId;
+            return evaluateArenaRuntime(arena, firstArgId, snapshotEnv, snapshotEnv);
+          }
           return 0;
+        }
+        case "edge": {
+          // Rising edge detector: true when current boolean is true (`!== 0`) and previous was false (`=== 0`).
+          if (argCount > 0 && preValuesByStringId) {
+            const curr = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+            const prev = evaluateArenaRuntime(arena, firstArgId, preValuesByStringId, preValuesByStringId);
+            return curr !== 0 && prev === 0 ? 1 : 0;
+          }
+          return 0;
+        }
+        case "change": {
+          // Value change detector: true whenever current scalar value differs from its pre-event snapshot.
+          if (argCount > 0 && preValuesByStringId) {
+            const curr = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+            const prev = evaluateArenaRuntime(arena, firstArgId, preValuesByStringId, preValuesByStringId);
+            return curr !== prev ? 1 : 0;
+          }
+          return 0;
+        }
+        case "sample": {
+          // Periodic sample trigger at `t = start + k * interval` within numerical tolerance.
+          if (argCount >= 2) {
+            const start = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+            const secondArgId = arena.getExprLeft(exprId + 1);
+            const interval = evaluateArenaRuntime(arena, secondArgId, valuesByStringId, preValuesByStringId);
+            if (interval > 0) {
+              const timeId = arena.interner.intern("time");
+              const t = valuesByStringId[timeId] ?? 0;
+              if (t >= start - 1e-7) {
+                const k = Math.round((t - start) / interval);
+                if (k >= 0 && Math.abs(t - (start + k * interval)) <= Math.max(1e-7, 1e-9 * Math.abs(t))) {
+                  return 1;
+                }
+              }
+            }
+          }
+          return 0;
+        }
+        case "initial":
+          return (arena as any)._isInitialPhase ? 1 : 0;
+        case "terminal":
+          return (arena as any)._isTerminalPhase ? 1 : 0;
+        case "delay": {
+          // Continuous transport delay `delay(expr, delayTime)`: records `(t, currVal)` samples per `exprId`
+          // and performs binary search + linear interpolation at `queryTime = t - delayTime`.
+          if (argCount >= 2) {
+            const currVal = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+            const secondArgId = arena.getExprLeft(exprId + 1);
+            const delayTime = evaluateArenaRuntime(arena, secondArgId, valuesByStringId, preValuesByStringId);
+            if (delayTime <= 0) return currVal;
+            const timeId = arena.interner.intern("time");
+            const t = valuesByStringId[timeId] ?? 0;
+            let delayMap = (arena as any)._delayHistory as Map<number, { t: number[]; v: number[] }> | undefined;
+            if (!delayMap) {
+              delayMap = new Map();
+              (arena as any)._delayHistory = delayMap;
+            }
+            let buf = delayMap.get(exprId);
+            if (!buf) {
+              buf = { t: [t], v: [currVal] };
+              delayMap.set(exprId, buf);
+              return currVal;
+            }
+            const lastIdx = buf.t.length - 1;
+            if (lastIdx < 0 || t > buf.t[lastIdx]! + 1e-12) {
+              buf.t.push(t);
+              buf.v.push(currVal);
+            } else if (Math.abs(t - buf.t[lastIdx]!) <= 1e-12) {
+              buf.v[lastIdx] = currVal;
+            }
+            const queryTime = t - delayTime;
+            if (queryTime <= buf.t[0]!) {
+              return buf.v[0]!;
+            }
+            if (queryTime >= buf.t[buf.t.length - 1]!) {
+              return buf.v[buf.v.length - 1]!;
+            }
+            let lo = 0;
+            let hi = buf.t.length - 1;
+            while (lo < hi - 1) {
+              const mid = (lo + hi) >> 1;
+              if (buf.t[mid]! <= queryTime) lo = mid;
+              else hi = mid;
+            }
+            const t0 = buf.t[lo]!;
+            const t1 = buf.t[hi]!;
+            const v0 = buf.v[lo]!;
+            const v1 = buf.v[hi]!;
+            if (Math.abs(t1 - t0) < 1e-15) return v1;
+            return v0 + ((queryTime - t0) / (t1 - t0)) * (v1 - v0);
+          }
+          return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
+        }
         case "noEvent":
         case "/*Real*/":
         case "/*Integer*/":
@@ -951,6 +1101,7 @@ export function evaluateArenaRuntime(
           }
           return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
         case "homotopy": {
+          // Homotopy continuation blending: `lambda * actual + (1 - lambda) * simplified`.
           if (argCount >= 2 && typeof arena.homotopyLambda === "number" && arena.homotopyLambda < 1.0) {
             const lambda = Math.max(0, Math.min(1, arena.homotopyLambda));
             const actualVal = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
@@ -962,6 +1113,7 @@ export function evaluateArenaRuntime(
         }
       }
 
+      // 8b. Single-Argument Mathematical Intrinsics
       if (argCount === 1) {
         const arg = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
         switch (funcName) {
@@ -1022,6 +1174,7 @@ export function evaluateArenaRuntime(
         }
       }
 
+      // 8c. Two-Argument Mathematical & Division Intrinsics
       if (argCount === 2) {
         const arg0 = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
         const secondArgId = arena.getExprLeft(exprId + 1);
@@ -1047,6 +1200,7 @@ export function evaluateArenaRuntime(
         }
       }
 
+      // 8d. Variadic Array Reductions & External CombiTimeTable Lookups
       if (funcName === "max" || funcName === "min") {
         if (argCount > 0) {
           const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
@@ -1664,7 +1818,27 @@ export function evalRawSubscriptIndex(
 }
 
 /**
- * Evaluates an expression tree stored in an DAEBuilder symbolically.
+ * Recursively evaluates an expression tree stored in a {@link DAEBuilder} into a concrete {@link ArenaValue}.
+ *
+ * Supports scalar literals, complex name resolution (parameter overrides, inline `size(...)`
+ * and bracketed array subscript names, dotted record field access, scalarized array reassembly
+ * with multi-dimensional reshaping, cycle-guarded binding evaluation via `visitedVars`, and
+ * fallback Salsa `QueryDB` workspace queries), unary/binary operators (including vector dot
+ * products, matrix-matrix/matrix-vector multiplication, and element-wise broadcasting),
+ * conditional `if`/`else`, intrinsic and user-defined function calls, array constructors,
+ * ranges, 1-based subscripts, record objects, and multi-iterator array/reduction comprehensions.
+ *
+ * @param dae The DAE arena containing the expression node (`exprId`).
+ * @param exprId The arena expression ID to evaluate (`< 0` returns `null`).
+ * @param parameters Optional map of pre-evaluated parameter/iterator bindings by name.
+ * @param db Optional Salsa `QueryDB` for resolving workspace symbols and CSV/modification values.
+ * @param scopeId Optional lexical scope symbol ID for `db` queries.
+ * @param visitedVars Set of variable indices currently being evaluated on the call stack (prevents infinite recursion on cyclic bindings).
+ * @param onlyConstants If `true`, only `Variability.Constant` bindings are evaluated (skipping `Variability.Parameter`).
+ * @param functionLookup Optional callback for evaluating user-defined or external functions by interned name ID.
+ * @param callerDae Optional parent/caller `DAEBuilder` when evaluating expressions inside an inlined/called sub-context.
+ * @param instancePrefix Optional hierarchical component prefix to prepend when looking up variables in `callerDae`.
+ * @returns The evaluated {@link ArenaValue}, or `null` if the expression cannot be statically/symbolically reduced.
  */
 export function evaluateArenaExpression(
   dae: DAEBuilder,
@@ -1683,6 +1857,7 @@ export function evaluateArenaExpression(
   const kind = dae.getExprKind(exprId);
 
   switch (kind) {
+    // --- 1. Scalar Literals ---
     case ExprKind.RealLiteral:
       return dae.getExprRealValue(exprId);
 
@@ -1698,12 +1873,15 @@ export function evaluateArenaExpression(
     case ExprKind.EnumLiteral:
       return dae.getExprData1(exprId);
 
+    // --- 2. Variable & Symbol Name Resolution ---
     case ExprKind.Name: {
       const name = dae.interner.resolve(dae.getExprData1(exprId));
       if (!name) return null;
+      // 2a. Check explicit parameter/iterator bindings and slice token `:`.
       const paramVal = parameters.get(name);
       if (paramVal !== undefined) return paramVal;
       if (name === ":") return ":";
+      // 2b. Handle stringified `size(v, dim)` references against parameter arrays.
       if (name.startsWith("size(") && name.endsWith(")")) {
         const inner = name.slice(5, -1).trim();
         const parts = inner.split(",").map((s) => s.trim());
@@ -1723,6 +1901,7 @@ export function evaluateArenaExpression(
         }
       }
 
+      // 2c. Handle stringified subscripted names `arr[i, j]` by indexing into parameter arrays (1-based).
       const match = name.match(/^([^[\]]+)\[(.*)\]$/);
       if (match && match[1] && match[2]) {
         const root = match[1];
@@ -1744,6 +1923,7 @@ export function evaluateArenaExpression(
         }
       }
 
+      // 2d. Resolve hierarchical record field access (`recordVar.field1.field2`).
       const dotIdx = name.indexOf(".");
       if (dotIdx > 0) {
         const root = name.substring(0, dotIdx);
@@ -1787,6 +1967,7 @@ export function evaluateArenaExpression(
         }
       }
 
+      // 2e. Locate the variable in `dae` or fallback to `callerDae` (with or without `instancePrefix`).
       let effectiveName = name;
       let targetDae = dae;
       let vIdx = targetDae.getVarIdxByName(effectiveName);
@@ -1811,6 +1992,7 @@ export function evaluateArenaExpression(
         }
       }
 
+      // 2f. Reassemble scalarized array elements (`x[1]`, `x[2]`, ...) into a (potentially reshaped N-D) array.
       if (vIdx < 0 && targetDae.hasArrayElements(effectiveName)) {
         const elements = targetDae.getArrayElementIndices(effectiveName);
         const result: any[] = [];
@@ -1882,6 +2064,7 @@ export function evaluateArenaExpression(
         return result;
       }
 
+      // 2g. Evaluate scalar constant/parameter variable binding (guarded by `visitedVars` against cycles).
       if (vIdx >= 0) {
         if (targetDae.isVarFixed(vIdx)) {
           return targetDae.getVarStartValue(vIdx);
@@ -1913,6 +2096,7 @@ export function evaluateArenaExpression(
         }
       }
 
+      // 2h. Fallback to Salsa `QueryDB` symbol resolution (e.g. `.csv` virtual components or effective modifications).
       if (db && scopeId !== undefined) {
         const resolveName = db.query<(q: string) => SymbolEntry | null>("resolveName", scopeId);
         if (resolveName) {
@@ -1920,14 +2104,14 @@ export function evaluateArenaExpression(
           if (resolved) {
             if (resolved.kind === "Component") {
               if (resolved.metadata) {
-                const csvValue = resolved.metadata.csvValue;
+                const csvValue = resolved.metadata["csvValue"];
                 if (csvValue !== undefined) {
                   return csvValue as ArenaValue;
                 }
               }
               const mod = db.query<any | null>("effectiveModification", resolved.id);
               if (mod && mod.bindingExpression) {
-                const variability = resolved.metadata?.variability;
+                const variability = resolved.metadata?.["variability"];
                 if (variability === "constant" || (!onlyConstants && variability === "parameter")) {
                   const val = db.evaluate(mod.bindingExpression, resolved.parentId);
                   if (val !== null && val !== undefined) {
@@ -1943,6 +2127,7 @@ export function evaluateArenaExpression(
       return null;
     }
 
+    // --- 3. Unary & Binary Operators ---
     case ExprKind.Unary: {
       const op = dae.getExprData1(exprId) as UnaryOp;
       const operand = evaluateArenaExpression(
@@ -1998,16 +2183,56 @@ export function evaluateArenaExpression(
         (typeof left === "number" && typeof right === "number") ||
         (typeof left === "string" && typeof right === "string")
       ) {
+        // Recursive helper supporting linear algebra (`*` for 1D dot product, 2D*2D matrix
+        // product, 2D*1D matrix-vector, and 1D*2D vector-matrix) and element-wise broadcasting.
         const applyBinOp = (a: ArenaValue, b: ArenaValue, op: BinOp): ArenaValue | null => {
           if (Array.isArray(a) && Array.isArray(b)) {
-            if (a.length !== b.length) return null;
-            if (op === BinOp.Mul && a.every((v) => typeof v === "number") && b.every((v) => typeof v === "number")) {
-              let sum = 0;
-              for (let i = 0; i < a.length; i++) {
-                sum += (a[i] as number) * (b[i] as number);
+            if (op === BinOp.Mul) {
+              if (a.every((v) => typeof v === "number") && b.every((v) => typeof v === "number")) {
+                if (a.length !== b.length) return null;
+                let sum = 0;
+                for (let i = 0; i < a.length; i++) {
+                  sum += (a[i] as number) * (b[i] as number);
+                }
+                return sum;
               }
-              return sum;
+              if (
+                a.length > 0 &&
+                b.length > 0 &&
+                Array.isArray(a[0]) &&
+                Array.isArray(b[0]) &&
+                (a[0] as any[]).length === b.length
+              ) {
+                const cols = (b[0] as any[]).length;
+                return a.map((row: any) =>
+                  Array.from({ length: cols }, (_, j) =>
+                    (row as number[]).reduce((sum, val, k) => sum + val * ((b[k] as number[])[j] ?? 0), 0),
+                  ),
+                ) as ArenaValue;
+              }
+              if (
+                a.length > 0 &&
+                Array.isArray(a[0]) &&
+                b.every((v) => typeof v === "number") &&
+                (a[0] as any[]).length === b.length
+              ) {
+                return a.map((row: any) =>
+                  (row as number[]).reduce((sum, val, k) => sum + val * (b[k] as number), 0),
+                ) as ArenaValue;
+              }
+              if (
+                a.every((v) => typeof v === "number") &&
+                b.length > 0 &&
+                Array.isArray(b[0]) &&
+                a.length === b.length
+              ) {
+                const cols = (b[0] as any[]).length;
+                return Array.from({ length: cols }, (_, j) =>
+                  (a as number[]).reduce((sum, val, k) => sum + val * ((b[k] as number[])[j] ?? 0), 0),
+                ) as ArenaValue;
+              }
             }
+            if (a.length !== b.length) return null;
             const res = a.map((val, idx) => {
               const bVal = b[idx];
               if (bVal === undefined) return null;
@@ -2089,6 +2314,7 @@ export function evaluateArenaExpression(
       return null;
     }
 
+    // --- 4. Conditional & Function Call Evaluation ---
     case ExprKind.IfElse: {
       const cond = evaluateArenaExpression(
         dae,
@@ -2139,7 +2365,14 @@ export function evaluateArenaExpression(
       const firstArg = dae.getExprLeft(exprId);
       const argIds = getSequenceElements(dae, exprId, argCount, firstArg);
 
-      if ((funcName === "/*Real*/" || funcName === "/*Integer*/") && argCount === 1) {
+      // 4a. Unwrap synthetic cast pseudo-calls (`/*Real*/(x)`, `/*Integer*/(x)`).
+      if (
+        (funcName === "/*Real*/" ||
+          funcName.startsWith("/*Real[") ||
+          funcName === "/*Integer*/" ||
+          funcName.startsWith("/*Integer[")) &&
+        argCount === 1
+      ) {
         const firstArgId = argIds[0];
         if (firstArgId !== undefined) {
           return evaluateArenaExpression(
@@ -2157,6 +2390,8 @@ export function evaluateArenaExpression(
         }
       }
 
+      // 4b. Structural dimension query intrinsics (`size` and `ndims`) inspected before
+      // eager argument evaluation so array variables/calls/constructors need not be fully evaluated.
       if ((funcName === "size" || funcName === "ndims") && argCount >= 1) {
         const firstArgId = argIds[0];
         if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.Name) {
@@ -2295,6 +2530,7 @@ export function evaluateArenaExpression(
         }
       }
 
+      // 4c. Eagerly evaluate all call arguments; abort if any argument cannot be reduced.
       const args = argIds.map((id) =>
         evaluateArenaExpression(
           dae,
@@ -2311,6 +2547,8 @@ export function evaluateArenaExpression(
       );
       if (args.some((a) => a === null)) return null;
 
+      // 4d. Dispatch to built-in math, integer division (`div`/`rem`/`mod`), type conversion,
+      // `homotopy` continuation blending, `smooth`, array built-ins, or user-defined `functionLookup`.
       const mathRes = evaluateBuiltinMathFunction(funcName, args as ArenaValue[]);
       if (mathRes !== undefined) return mathRes;
       if (funcName === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
@@ -2323,11 +2561,11 @@ export function evaluateArenaExpression(
         return args[1] !== 0 ? args[0] - Math.floor(args[0] / args[1]) * args[1] : null;
       }
       if (funcName === "String") return String(args[0]);
-      if (funcName === "noEvent" && args.length === 1) return args[0];
-      if (funcName === "Real" && args.length === 1) return args[0];
+      if (funcName === "noEvent" && args.length === 1) return args[0]!;
+      if (funcName === "Real" && args.length === 1) return args[0]!;
       if (funcName === "Integer" && args.length === 1) {
         if (typeof args[0] === "number") return Math.floor(args[0]);
-        return args[0];
+        return args[0]!;
       }
       if (
         funcName === "homotopy" &&
@@ -2340,8 +2578,8 @@ export function evaluateArenaExpression(
         const simplifiedVal = typeof args[1] === "number" ? args[1] : 0;
         return lambda * actualVal + (1.0 - lambda) * simplifiedVal;
       }
-      if (funcName === "homotopy" && args.length >= 1) return args[0];
-      if (funcName === "smooth" && args.length >= 2) return args[1];
+      if (funcName === "homotopy" && args.length >= 1) return args[0]!;
+      if (funcName === "smooth" && args.length >= 2) return args[1]!;
 
       const arrayResult = evaluateArrayBuiltin(funcName, args as ArenaValue[]);
       if (arrayResult !== undefined) return arrayResult;
@@ -2385,10 +2623,12 @@ export function evaluateArenaExpression(
       return null;
     }
 
+    // Dynamic state derivatives `der(x)` and discrete `pre(x)` have no static value.
     case ExprKind.Der:
     case ExprKind.Pre:
       return null;
 
+    // --- 5. Array Constructors, Ranges, Subscripts, Objects & Comprehensions ---
     case ExprKind.ArrayCtor: {
       const count = dae.getExprData1(exprId);
       const firstElem = dae.getExprLeft(exprId);
@@ -2487,6 +2727,7 @@ export function evaluateArenaExpression(
       const firstIdx = dae.getExprLeft(exprId);
       const idxIds = getSequenceElements(dae, exprId, idxCount, firstIdx);
 
+      // Apply 1-based Modelica subscript indices across each dimension.
       let current: ArenaValue = base;
       for (const id of idxIds) {
         if (!Array.isArray(current)) {
@@ -2556,6 +2797,7 @@ export function evaluateArenaExpression(
       const iterCount = dae.getExprRight(exprId);
       if (iterCount <= 0) return null;
 
+      // Evaluate each comprehension iterator's range expression upfront.
       const iters: { varName: string; values: ArenaValue[] }[] = [];
       for (let i = 0; i < iterCount; i++) {
         const iterNodeId = exprId + 1 + i;
@@ -2578,6 +2820,8 @@ export function evaluateArenaExpression(
         iters.push({ varName: iterVarName, values: rangeVal });
       }
 
+      // Recursively bind each iterator variable in `parameters` (restoring shadowed values in `finally`)
+      // to construct nested comprehension arrays or reduction inputs (`sum`/`product`/`min`/`max`).
       const evalIterDepth = (depth: number): ArenaValue[] | null => {
         const iter = iters[depth]!;
         const prev = parameters.get(iter.varName);

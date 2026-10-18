@@ -30,9 +30,9 @@ export async function sendSignedRequest(
 
   const signedString = [
     `(request-target): post ${url.pathname}`,
-    `host: ${headers.Host}`,
-    `date: ${headers.Date}`,
-    `digest: ${headers.Digest}`,
+    `host: ${headers["Host"]}`,
+    `date: ${headers["Date"]}`,
+    `digest: ${headers["Digest"]}`,
   ].join("\n");
 
   const signer = crypto.createSign("RSA-SHA256");

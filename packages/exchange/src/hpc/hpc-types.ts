@@ -18,9 +18,9 @@ export interface ParallelDecompositionSpec {
   /** Total number of MPI ranks / subdomains (e.g. 64, 128, 512). */
   numberOfSubdomains: number;
   /** Simple/hierarchical directional split [nx, ny, nz] if method is simple/hierarchical. */
-  directionalSplit?: [number, number, number];
+  directionalSplit?: [number, number, number] | undefined;
   /** Geometric bounding weights delta (default: 0.001). */
-  delta?: number;
+  delta?: number | undefined;
 }
 
 export interface HpcClusterConfig {
@@ -35,21 +35,21 @@ export interface HpcClusterConfig {
   /** MPI tasks per compute node. */
   tasksPerNode: number;
   /** OpenMP / multi-threading CPUs allocated per task (default: 1). */
-  cpusPerTask?: number;
+  cpusPerTask?: number | undefined;
   /** Number of GPUs requested per node (e.g., 4 or 8 for A100/H100). */
-  gpusPerNode?: number;
+  gpusPerNode?: number | undefined;
   /** Walltime limit formatted as "HH:MM:SS" (e.g., "02:00:00"). */
   walltime: string;
   /** Memory allocation per node in MB or GB string (e.g., "128GB"). */
-  memoryPerNode?: string;
+  memoryPerNode?: string | undefined;
   /** Slurm account / project charge allocation. */
-  account?: string;
+  account?: string | undefined;
   /** Quality of Service (QOS). */
-  qos?: string;
+  qos?: string | undefined;
   /** Modules to load prior to execution (e.g. ["openfoam/v2312", "openmpi/4.1.5"]). */
-  modules?: string[];
+  modules?: string[] | undefined;
   /** Environment variables to export across compute nodes. */
-  env?: Record<string, string>;
+  env?: Record<string, string> | undefined;
 }
 
 export interface InSituCutPlaneSpec {
@@ -68,10 +68,10 @@ export interface InSituProbeSpec {
 export interface InSituTelemetryConfig {
   enabled: boolean;
   sampleIntervalSteps: number;
-  cutPlanes?: InSituCutPlaneSpec[];
-  probes?: InSituProbeSpec[];
-  compression?: "none" | "zstd" | "lz4";
-  streamProtocol?: "websocket" | "arrow-flight" | "binary-ipc";
+  cutPlanes?: InSituCutPlaneSpec[] | undefined;
+  probes?: InSituProbeSpec[] | undefined;
+  compression?: "none" | "zstd" | "lz4" | undefined;
+  streamProtocol?: "websocket" | "arrow-flight" | "binary-ipc" | undefined;
 }
 
 export interface CfdSimulationJobSpec {
@@ -81,12 +81,14 @@ export interface CfdSimulationJobSpec {
   caseDir: string;
   cluster: HpcClusterConfig;
   decomposition: ParallelDecompositionSpec;
-  telemetry?: InSituTelemetryConfig;
-  couplingInterfaces?: {
-    patchName: string;
-    modelicaPort: string;
-    updateFrequencyHz: number;
-  }[];
+  telemetry?: InSituTelemetryConfig | undefined;
+  couplingInterfaces?:
+    | {
+        patchName: string;
+        modelicaPort: string;
+        updateFrequencyHz: number;
+      }[]
+    | undefined;
 }
 
 export interface InSituTelemetrySlice {

@@ -53,30 +53,21 @@ export class HistorianRecorder {
   async startRecording(sessionId: string, unsContext: UnsContext): Promise<void> {
     // Subscribe to all variable data in the session
     const topic = sessionDataWildcard(unsContext, sessionId);
-    await new Promise<void>((resolve, reject) => {
-      // Use the underlying mqtt.js subscribe through our client
-      // We register a variable handler on the client
-      this.mqttClient.onVariable((participantId, variableName, value) => {
-        this.buffer.push({
-          time: new Date(),
-          sessionId,
-          participantId,
-          variableName,
-          value,
-        });
-
-        if (this.buffer.length >= this.batchSize) {
-          void this.flush();
-        }
+    this.mqttClient.onVariable((participantId, variableName, value) => {
+      this.buffer.push({
+        time: new Date(),
+        sessionId,
+        participantId,
+        variableName,
+        value,
       });
 
-      // The subscription is handled when we subscribe to the session's data wildcard
-      // This is a simplified approach; in production, the CosimMqttClient would
-      // need a method to subscribe to a raw topic pattern
-      resolve();
-      void topic;
-      void reject;
+      if (this.buffer.length >= this.batchSize) {
+        void this.flush();
+      }
     });
+
+    await this.mqttClient.subscribeTopic(topic, 0);
 
     // Start periodic flush timer
     this.flushTimer = setInterval(() => {

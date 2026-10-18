@@ -12,9 +12,9 @@ export interface TelemetryBufferOptions {
   /** Number of sensor channels (excluding timestamp). */
   numChannels: number;
   /** Maximum number of samples to hold in the circular buffer. Default: 10,000. */
-  capacity?: number;
+  capacity?: number | undefined;
   /** Optional channel names for debugging and telemetry mapping. */
-  channelNames?: string[];
+  channelNames?: string[] | undefined;
 }
 
 export interface TelemetryWindow {

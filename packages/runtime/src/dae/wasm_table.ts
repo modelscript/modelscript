@@ -75,7 +75,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   const tableIdx = arena.getVarIdxByName(`${prefix}.table`);
   if (tableIdx >= 0) {
     const tableExpr = arena.getVarExpression(tableIdx);
-    const data = extractTableArrayLiteral(arena, tableExpr);
+    const data = tableExpr !== undefined ? extractTableArrayLiteral(arena, tableExpr) : null;
     if (Array.isArray(data)) tableData = data;
   }
   if (!tableData) {
@@ -91,7 +91,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
           if (vIdx < 0) break;
           const exprId = arena.getVarExpression(vIdx);
           const val =
-            (exprId >= 0
+            (exprId !== undefined && exprId >= 0
               ? arena.getExprKind(exprId) === ExprKind.IntLiteral
                 ? arena.getExprData1(exprId)
                 : arena.getExprRealValue(exprId)
@@ -111,7 +111,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   const colsIdx = arena.getVarIdxByName(`${prefix}.columns`);
   if (colsIdx >= 0) {
     const colsExpr = arena.getVarExpression(colsIdx);
-    const colsData = extractTableArrayLiteral(arena, colsExpr);
+    const colsData = colsExpr !== undefined ? extractTableArrayLiteral(arena, colsExpr) : null;
     if (Array.isArray(colsData)) {
       columns = colsData.map(Number);
     }
@@ -123,7 +123,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
       if (vIdx < 0) break;
       const exprId = arena.getVarExpression(vIdx);
       const val =
-        (exprId >= 0
+        (exprId !== undefined && exprId >= 0
           ? arena.getExprKind(exprId) === ExprKind.IntLiteral
             ? arena.getExprData1(exprId)
             : arena.getExprRealValue(exprId)
@@ -137,7 +137,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   let shiftTime = 0.0;
   if (shiftIdx >= 0) {
     const shiftExpr = arena.getVarExpression(shiftIdx);
-    const val = extractTableArrayLiteral(arena, shiftExpr);
+    const val = shiftExpr !== undefined ? extractTableArrayLiteral(arena, shiftExpr) : null;
     if (typeof val === "number") shiftTime = val;
   }
 
@@ -145,7 +145,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   let timeScale = 1.0;
   if (scaleIdx >= 0) {
     const scaleExpr = arena.getVarExpression(scaleIdx);
-    const val = extractTableArrayLiteral(arena, scaleExpr);
+    const val = scaleExpr !== undefined ? extractTableArrayLiteral(arena, scaleExpr) : null;
     if (typeof val === "number") timeScale = val;
   }
 
@@ -153,7 +153,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   let startTime = 0.0;
   if (startIdx >= 0) {
     const startExpr = arena.getVarExpression(startIdx);
-    const val = extractTableArrayLiteral(arena, startExpr);
+    const val = startExpr !== undefined ? extractTableArrayLiteral(arena, startExpr) : null;
     if (typeof val === "number") startTime = val;
   }
 
@@ -172,16 +172,16 @@ export function evalTimeTableValue(cached: CachedTable1D | null, icol: number, t
   if (!cached || !cached.table || cached.table.length === 0) return 0.0;
   const table = cached.table;
   const effTime = (timeIn - cached.shiftTime) / (cached.timeScale || 1.0);
-  const colInTable = cached.columns && cached.columns.length >= icol ? cached.columns[icol - 1] - 1 : icol;
+  const colInTable = cached.columns && cached.columns.length >= icol ? cached.columns[icol - 1]! - 1 : icol;
   return interpolate1DTable(table, colInTable, effTime);
 }
 
 export function evalTimeTableTmin(cached: CachedTable1D | null): number {
-  return cached && cached.table.length > 0 ? (cached.table[0][0] + cached.shiftTime) * (cached.timeScale || 1.0) : 0;
+  return cached && cached.table.length > 0 ? (cached.table[0]![0]! + cached.shiftTime) * (cached.timeScale || 1.0) : 0;
 }
 
 export function evalTimeTableTmax(cached: CachedTable1D | null): number {
   return cached && cached.table.length > 0
-    ? (cached.table[cached.table.length - 1][0] + cached.shiftTime) * (cached.timeScale || 1.0)
+    ? (cached.table[cached.table.length - 1]![0]! + cached.shiftTime) * (cached.timeScale || 1.0)
     : 0;
 }

@@ -123,9 +123,9 @@ export function parseVtu(xmlString: string): VtuParseResult {
   let zmin = Infinity,
     zmax = -Infinity;
   for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i],
-      y = positions[i + 1],
-      z = positions[i + 2];
+    const x = positions[i]!,
+      y = positions[i + 1]!,
+      z = positions[i + 2]!;
     if (x < xmin) xmin = x;
     if (x > xmax) xmax = x;
     if (y < ymin) ymin = y;
@@ -158,7 +158,7 @@ function parseDataArray(node: Element, expectedLength: number): Float32Array {
     const values = text.split(/\s+/).map(Number);
     const arr = new Float32Array(expectedLength);
     for (let i = 0; i < Math.min(values.length, expectedLength); i++) {
-      arr[i] = values[i];
+      arr[i] = values[i]!;
     }
     return arr;
   } else if (format === "binary") {
@@ -191,15 +191,15 @@ function parseFieldDataArray(node: Element, numEntities: number, association: "p
     max = -Infinity;
   if (numComponents === 1) {
     for (let i = 0; i < data.length; i++) {
-      if (data[i] < min) min = data[i];
-      if (data[i] > max) max = data[i];
+      if (data[i]! < min) min = data[i]!;
+      if (data[i]! > max) max = data[i]!;
     }
   } else {
     // For vectors, compute magnitude range
     for (let i = 0; i < data.length; i += numComponents) {
       let mag = 0;
       for (let c = 0; c < numComponents; c++) {
-        mag += data[i + c] * data[i + c];
+        mag += data[i + c]! * data[i + c]!;
       }
       mag = Math.sqrt(mag);
       if (mag < min) min = mag;
@@ -228,19 +228,19 @@ function triangulateFromVtkCells(
   const triangles: number[] = [];
 
   for (let i = 0; i < numCells; i++) {
-    const start = i === 0 ? 0 : offsets[i - 1];
-    const end = offsets[i];
+    const start = i === 0 ? 0 : offsets[i - 1]!;
+    const end = offsets[i]!;
     const cellSize = end - start;
     const cellType = types[i];
 
     // VTK cell types: 5 = triangle, 9 = quad, 10 = tetra, etc.
     if (cellType === 5 && cellSize === 3) {
       // Triangle
-      triangles.push(connectivity[start], connectivity[start + 1], connectivity[start + 2]);
+      triangles.push(connectivity[start]!, connectivity[start + 1]!, connectivity[start + 2]!);
     } else if (cellType === 9 && cellSize === 4) {
       // Quad → 2 triangles
-      triangles.push(connectivity[start], connectivity[start + 1], connectivity[start + 2]);
-      triangles.push(connectivity[start], connectivity[start + 2], connectivity[start + 3]);
+      triangles.push(connectivity[start]!, connectivity[start + 1]!, connectivity[start + 2]!);
+      triangles.push(connectivity[start]!, connectivity[start + 2]!, connectivity[start + 3]!);
     } else if (cellType === 10 && cellSize === 4) {
       // Tetrahedron → 4 triangles (surface faces)
       const [a, b, c, d] = [
@@ -249,24 +249,24 @@ function triangulateFromVtkCells(
         connectivity[start + 2],
         connectivity[start + 3],
       ];
-      triangles.push(a, b, c);
-      triangles.push(a, b, d);
-      triangles.push(a, c, d);
-      triangles.push(b, c, d);
+      triangles.push(a!, b!, c!);
+      triangles.push(a!, b!, d!);
+      triangles.push(a!, c!, d!);
+      triangles.push(b!, c!, d!);
     } else if (cellType === 12 && cellSize === 8) {
       // Hexahedron → 12 triangles (6 quad faces)
       const v = connectivity.slice(start, end);
       // front, back, left, right, top, bottom
-      triangles.push(v[0], v[1], v[2], v[0], v[2], v[3]); // front
-      triangles.push(v[4], v[7], v[6], v[4], v[6], v[5]); // back
-      triangles.push(v[0], v[4], v[5], v[0], v[5], v[1]); // bottom
-      triangles.push(v[2], v[6], v[7], v[2], v[7], v[3]); // top
-      triangles.push(v[0], v[3], v[7], v[0], v[7], v[4]); // left
-      triangles.push(v[1], v[5], v[6], v[1], v[6], v[2]); // right
+      triangles.push(v[0]!, v[1]!, v[2]!, v[0]!, v[2]!, v[3]!); // front
+      triangles.push(v[4]!, v[7]!, v[6]!, v[4]!, v[6]!, v[5]!); // back
+      triangles.push(v[0]!, v[4]!, v[5]!, v[0]!, v[5]!, v[1]!); // bottom
+      triangles.push(v[2]!, v[6]!, v[7]!, v[2]!, v[7]!, v[3]!); // top
+      triangles.push(v[0]!, v[3]!, v[7]!, v[0]!, v[7]!, v[4]!); // left
+      triangles.push(v[1]!, v[5]!, v[6]!, v[1]!, v[6]!, v[2]!); // right
     } else if (cellSize >= 3) {
       // Generic polygon → fan triangulation
       for (let j = 1; j < cellSize - 1; j++) {
-        triangles.push(connectivity[start], connectivity[start + j], connectivity[start + j + 1]);
+        triangles.push(connectivity[start]!, connectivity[start + j]!, connectivity[start + j + 1]!);
       }
     }
   }
@@ -280,19 +280,19 @@ function computeNormals(positions: Float32Array, indices: Uint32Array): Float32A
   const normals = new Float32Array(positions.length);
 
   for (let i = 0; i < indices.length; i += 3) {
-    const ia = indices[i] * 3;
-    const ib = indices[i + 1] * 3;
-    const ic = indices[i + 2] * 3;
+    const ia = indices[i]! * 3;
+    const ib = indices[i + 1]! * 3;
+    const ic = indices[i + 2]! * 3;
 
-    const ax = positions[ia],
-      ay = positions[ia + 1],
-      az = positions[ia + 2];
-    const bx = positions[ib],
-      by = positions[ib + 1],
-      bz = positions[ib + 2];
-    const cx = positions[ic],
-      cy = positions[ic + 1],
-      cz = positions[ic + 2];
+    const ax = positions[ia]!,
+      ay = positions[ia + 1]!,
+      az = positions[ia + 2]!;
+    const bx = positions[ib]!,
+      by = positions[ib + 1]!,
+      bz = positions[ib + 2]!;
+    const cx = positions[ic]!,
+      cy = positions[ic + 1]!,
+      cz = positions[ic + 2]!;
 
     // Edge vectors
     const e1x = bx - ax,
@@ -308,24 +308,24 @@ function computeNormals(positions: Float32Array, indices: Uint32Array): Float32A
     const nz = e1x * e2y - e1y * e2x;
 
     // Accumulate
-    normals[ia] += nx;
-    normals[ia + 1] += ny;
-    normals[ia + 2] += nz;
-    normals[ib] += nx;
-    normals[ib + 1] += ny;
-    normals[ib + 2] += nz;
-    normals[ic] += nx;
-    normals[ic + 1] += ny;
-    normals[ic + 2] += nz;
+    normals[ia] = normals[ia]! + nx;
+    normals[ia + 1] = normals[ia + 1]! + ny;
+    normals[ia + 2] = normals[ia + 2]! + nz;
+    normals[ib] = normals[ib]! + nx;
+    normals[ib + 1] = normals[ib + 1]! + ny;
+    normals[ib + 2] = normals[ib + 2]! + nz;
+    normals[ic] = normals[ic]! + nx;
+    normals[ic + 1] = normals[ic + 1]! + ny;
+    normals[ic + 2] = normals[ic + 2]! + nz;
   }
 
   // Normalize
   for (let i = 0; i < normals.length; i += 3) {
-    const len = Math.sqrt(normals[i] ** 2 + normals[i + 1] ** 2 + normals[i + 2] ** 2);
+    const len = Math.sqrt(normals[i]! ** 2 + normals[i + 1]! ** 2 + normals[i + 2]! ** 2);
     if (len > 0) {
-      normals[i] /= len;
-      normals[i + 1] /= len;
-      normals[i + 2] /= len;
+      normals[i] = normals[i]! / len;
+      normals[i + 1] = normals[i + 1]! / len;
+      normals[i + 2] = normals[i + 2]! / len;
     }
   }
 
@@ -340,8 +340,8 @@ function computeNormals(positions: Float32Array, indices: Uint32Array): Float32A
  */
 export function generateSyntheticVtu(
   options: {
-    gridSize?: number;
-    fields?: { name: string; generator: (x: number, y: number, z: number) => number }[];
+    gridSize?: number | undefined;
+    fields?: { name: string; generator: (x: number, y: number, z: number) => number }[] | undefined;
   } = {},
 ): string {
   const N = options.gridSize || 20;

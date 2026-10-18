@@ -15,7 +15,7 @@ import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
 
-const Avatar = styled.div<{ $url?: string; $letter?: string }>`
+const Avatar = styled.div<{ $url?: string | undefined; $letter?: string | undefined }>`
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -59,7 +59,7 @@ const TabBar = styled.div`
   z-index: 9;
 `;
 
-const TabButton = styled(Link)<{ $active?: boolean }>`
+const TabButton = styled(Link)<{ $active?: boolean | undefined }>`
   flex: 1;
   text-align: center;
   padding: 14px 16px;
@@ -93,10 +93,10 @@ const TabButton = styled(Link)<{ $active?: boolean }>`
 interface FollowUser {
   id: string | number;
   username: string;
-  display_name?: string;
-  avatar_url?: string;
-  bio?: string;
-  is_following?: boolean;
+  display_name?: string | undefined;
+  avatar_url?: string | undefined;
+  bio?: string | undefined;
+  is_following?: boolean | undefined;
 }
 
 const FollowingPage: React.FC = () => {
@@ -191,7 +191,7 @@ const FollowingPage: React.FC = () => {
                       </Box>
                       {currentUser?.username !== u.username && (
                         <Box onClick={(e) => e.preventDefault()}>
-                          <FollowButton username={u.username} initialIsFollowing={u.is_following} />
+                          <FollowButton username={u.username} initialIsFollowing={Boolean(u.is_following)} />
                         </Box>
                       )}
                     </Box>

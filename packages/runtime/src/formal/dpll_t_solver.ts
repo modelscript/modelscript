@@ -111,20 +111,20 @@ export interface SmtTheoryLiteral {
 
 export interface SmtProblem {
   clauses: LitId[][];
-  theoryLiterals?: Map<LitId, NonlinearConstraint>;
-  initialBox?: Map<string, Interval>;
-  delta?: number;
-  maxSubdivisions?: number;
-  coordinator?: SemanticTheoryCoordinator;
-  multiTheoryLiterals?: Map<LitId, TheoryLiteral>;
-  useNlsat?: boolean;
+  theoryLiterals?: Map<LitId, NonlinearConstraint> | undefined;
+  initialBox?: Map<string, Interval> | undefined;
+  delta?: number | undefined;
+  maxSubdivisions?: number | undefined;
+  coordinator?: SemanticTheoryCoordinator | undefined;
+  multiTheoryLiterals?: Map<LitId, TheoryLiteral> | undefined;
+  useNlsat?: boolean | undefined;
 }
 
 export type SmtStatus = "DELTA_SAT" | "UNSAT" | "UNKNOWN";
 
 export interface SmtResult {
   status: SmtStatus;
-  solutionBox?: Map<string, Interval>;
+  solutionBox?: Map<string, Interval> | undefined;
   conflictsEncountered: number;
   subdivisions: number;
   summary: string;
@@ -134,11 +134,11 @@ export class DpllTSolver {
   private sat: CdclSatSolver;
   private theoryLits: Map<LitId, NonlinearConstraint>;
   private multiTheoryLiterals: Map<LitId, TheoryLiteral>;
-  private coordinator?: SemanticTheoryCoordinator;
+  private coordinator?: SemanticTheoryCoordinator | undefined;
   private delta: number;
   private maxSubdivisions: number;
   private useNlsat: boolean;
-  private initialBox?: Map<string, Interval>;
+  private initialBox?: Map<string, Interval> | undefined;
   private conflicts = 0;
   private subdivisions = 0;
 
@@ -284,7 +284,7 @@ export class DpllTSolver {
   private solveTheoryBox(
     box: Map<string, Interval>,
     constraints: NonlinearConstraint[],
-  ): { isSat: boolean; budgetExceeded?: boolean; resultBox?: Map<string, Interval> } {
+  ): { isSat: boolean; budgetExceeded?: boolean | undefined; resultBox?: Map<string, Interval> | undefined } {
     // 1. Gröbner basis preprocessing for polynomial equality constraints
     const groebnerValid = this.preprocessPolynomialEqualities(box, constraints);
     if (!groebnerValid) {

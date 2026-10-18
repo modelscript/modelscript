@@ -27,42 +27,47 @@ export interface ROMTrainConfig {
   /** ROM architecture. */
   architecture: "polynomial" | "rbf" | "mlp";
   /** MLP hidden layer sizes (default: [32, 16]). */
-  hiddenLayers?: number[];
+  hiddenLayers?: number[] | undefined;
   /** MLP activation (default: "tanh"). */
-  activation?: "tanh" | "relu" | "sigmoid";
+  activation?: "tanh" | "relu" | "sigmoid" | undefined;
   /** Polynomial degree (default: 2). */
-  polynomialDegree?: number;
+  polynomialDegree?: number | undefined;
   /** RBF kernel (default: "gaussian"). */
-  rbfKernel?: "gaussian" | "multiquadric";
+  rbfKernel?: "gaussian" | "multiquadric" | undefined;
   /** Training epochs for MLP (default: 500). */
-  epochs?: number;
+  epochs?: number | undefined;
   /** Learning rate for MLP (default: 0.001). */
-  learningRate?: number;
+  learningRate?: number | undefined;
   /** Validation split fraction (default: 0.2). */
-  validationSplit?: number;
+  validationSplit?: number | undefined;
   /** PRNG seed (default: 42). */
-  seed?: number;
+  seed?: number | undefined;
   /** Progress callback. */
-  onProgress?: (epoch: number, trainLoss: number, valLoss: number) => void;
+  onProgress?: ((epoch: number, trainLoss: number, valLoss: number) => void) | undefined;
   /**
    * Transient handling mode for transient DoE datasets:
    * - "final": Use only final steady-state / terminal values (default).
    * - "trajectory": Train on full dynamic trajectories across time (inputs augmented with 'time' dimension).
    */
-  transientMode?: "final" | "trajectory";
+  transientMode?: "final" | "trajectory" | undefined;
 }
 
 export interface ScalingParams {
   mean: number;
   std: number;
-  min?: number;
-  max?: number;
+  min?: number | undefined;
+  max?: number | undefined;
 }
 
 export type ROMWeights =
   | { type: "polynomial"; coefficients: number[][]; degree: number; nInputs: number }
   | { type: "rbf"; centers: number[][]; weights: number[][]; epsilon: number }
-  | { type: "mlp"; layers: { W: number[][]; b: number[] }[]; activation: string };
+  | {
+      type: "mlp";
+      layers: { W: number[][]; b: number[] }[];
+      activation: string;
+      layerActivations?: ("tanh" | "relu" | "sigmoid" | "linear")[] | undefined;
+    };
 
 export interface TrainedROM {
   architecture: "polynomial" | "rbf" | "mlp";
@@ -70,11 +75,11 @@ export interface TrainedROM {
   outputNames: string[];
   inputScaling: ScalingParams[];
   outputScaling: ScalingParams[];
-  parameterBounds?: Record<string, { min: number; max: number }>;
-  multivariateBounds?: MultivariateBounds;
+  parameterBounds?: Record<string, { min: number; max: number }> | undefined;
+  multivariateBounds?: MultivariateBounds | undefined;
   weights: ROMWeights;
   metrics: { trainMSE: number; valMSE: number; r2: number };
-  lossCurve?: { epoch: number; trainLoss: number; valLoss: number }[];
+  lossCurve?: { epoch: number; trainLoss: number; valLoss: number }[] | undefined;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -333,6 +338,8 @@ type ActivationDeriv = (x: number) => number;
 
 function getActivation(name: string): { fn: ActivationFn; deriv: ActivationDeriv } {
   switch (name) {
+    case "linear":
+      return { fn: (x) => x, deriv: () => 1 };
     case "relu":
       return { fn: (x) => Math.max(0, x), deriv: (x) => (x > 0 ? 1 : 0) };
     case "sigmoid":
@@ -678,15 +685,21 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
     }
     case "mlp": {
       const w = rom.weights;
-      const act = getActivation(w.activation);
+      const defaultAct = getActivation(w.activation);
       let a = normInput;
       for (let l = 0; l < w.layers.length; l++) {
         const { W, b } = w.layers[l]!;
+        const layerActName = w.layerActivations?.[l];
+        const layerAct = layerActName
+          ? getActivation(layerActName)
+          : l < w.layers.length - 1
+            ? defaultAct
+            : getActivation("linear");
         const next: number[] = [];
         for (let i = 0; i < W.length; i++) {
           let z = b[i]!;
           for (let j = 0; j < a.length; j++) z += W[i]![j]! * a[j]!;
-          next.push(l < w.layers.length - 1 ? act.fn(z) : z);
+          next.push(layerAct.fn(z));
         }
         a = next;
       }
@@ -762,16 +775,16 @@ export interface OnnxTensorProto {
 }
 
 export interface OnnxNodeProto {
-  opType: "Gemm" | "Relu" | "Tanh" | "Sigmoid" | "Add" | "Sub" | "Mul" | "Div";
+  opType: "Gemm" | "MatMul" | "Relu" | "Tanh" | "Sigmoid" | "Add" | "Sub" | "Mul" | "Div";
   inputs: string[];
   outputs: string[];
-  name?: string;
+  name?: string | undefined;
 }
 
 export interface OnnxGraphExport {
   producerName: string;
   modelFormat: "ONNX-v1.14";
-  metadataProps?: Record<string, string>;
+  metadataProps?: Record<string, string> | undefined;
   graph: {
     name: string;
     inputs: { name: string; dims: (number | string)[] }[];
@@ -1114,6 +1127,7 @@ export function exportROMToC(rom: TrainedROM, functionName = "rom_evaluate"): Ro
       const rows = W.length;
       const cols = W[0]!.length;
       const isLast = l === mlp.layers.length - 1;
+      const layerAct = mlp.layerActivations?.[l] ?? (isLast ? "linear" : mlp.activation);
 
       sourceLines.push(`  /* Layer ${l} */`);
       sourceLines.push(`  for (int i = 0; i < ${rows}; i++) {`);
@@ -1121,7 +1135,21 @@ export function exportROMToC(rom: TrainedROM, functionName = "rom_evaluate"): Ro
       sourceLines.push(`    for (int j = 0; j < ${cols}; j++) {`);
       sourceLines.push(`      z += W_${l}[i][j] * cur[j];`);
       sourceLines.push(`    }`);
-      sourceLines.push(isLast ? `    nxt[i] = z;` : `    nxt[i] = act_fn(z);`);
+      if (layerAct === "linear" || (isLast && !mlp.layerActivations?.[l])) {
+        sourceLines.push(`    nxt[i] = z;`);
+      } else if (layerAct === mlp.activation) {
+        sourceLines.push(`    nxt[i] = act_fn(z);`);
+      } else if (layerAct === "relu") {
+        sourceLines.push(`    nxt[i] = z > 0.0 ? z : 0.0;`);
+      } else if (layerAct === "tanh") {
+        sourceLines.push(`    nxt[i] = tanh(z);`);
+      } else if (layerAct === "sigmoid") {
+        sourceLines.push(`    nxt[i] = 1.0 / (1.0 + exp(-z));`);
+      } else if (layerAct === "gelu") {
+        sourceLines.push(`    nxt[i] = 0.5 * z * (1.0 + tanh(0.7978845608 * (z + 0.044715 * z * z * z)));`);
+      } else {
+        sourceLines.push(`    nxt[i] = act_fn(z);`);
+      }
       sourceLines.push(`  }`);
       sourceLines.push(`  { double* tmp = cur; cur = nxt; nxt = tmp; }`);
       sourceLines.push(``);

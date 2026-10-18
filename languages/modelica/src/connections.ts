@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEBuilder, EqKind, ExprKind, StmtKind, Variability } from "@modelscript/runtime";
+import {
+  BinOp,
+  DAEBuilder,
+  EqKind,
+  evaluateConstantArenaExpression,
+  ExprKind,
+  StmtKind,
+  Variability,
+} from "@modelscript/runtime";
 import { ModelicaErrorCode } from "./errors.js";
 import { getFlatteningState } from "./flattener/support/state.js";
 
@@ -17,6 +25,12 @@ export class IntUnionFind {
     for (let i = 0; i < size; i++) this.parent[i] = i;
   }
 
+  /**
+   * Finds the canonical root representative of element `i` using two-pass path compression.
+   *
+   * @param i - Zero-based variable index in the DAE arena.
+   * @returns Canonical equivalence class root index.
+   */
   find(i: number): number {
     let root = i;
     while (root >= 0 && root < this.parent.length && root !== this.parent[root]) {
@@ -34,6 +48,13 @@ export class IntUnionFind {
     return root;
   }
 
+  /**
+   * Unites the equivalence classes containing `i` and `j` using union-by-rank.
+   *
+   * @param i - First variable index.
+   * @param j - Second variable index.
+   * @returns `true` if two previously disjoint sets were merged, or `false` if already in the same set.
+   */
   union(i: number, j: number): boolean {
     const rootI = this.find(i);
     const rootJ = this.find(j);
@@ -89,27 +110,32 @@ export class IntUnionFind {
 /* eslint-disable @typescript-eslint/no-extraneous-class */
 export class ModelicaPortBalancer {
   /**
-   * Finalizes all connection graphs on an DAEBuilder, expanding connect()
-   * equations into potential equalities, flow balance zero-sums, and stream equations.
+   * Finalizes all connection graphs on a `DAEBuilder`, expanding `connect()`
+   * equations into potential equalities, Kirchhoff flow balance zero-sums,
+   * stream convective mixing expressions (`inStream` / `actualStream`), and
+   * overconstrained connection loop-breaking constraints (`MLS §9.4`).
+   *
+   * @param dae - Target `DAEBuilder` arena containing variables and `EqKind.Connect` equations.
+   * @param options - Optional flags controlling WASM kernel acceleration, OMC ordering compatibility, and stream flow threshold.
    */
   static expandConnections(
     dae: DAEBuilder,
     options?: {
-      omcCompatibility?: boolean;
-      useWasmKernel?: boolean;
-      isOldFrontend?: boolean;
-      flowThreshold?: number;
+      omcCompatibility?: boolean | undefined;
+      useWasmKernel?: boolean | undefined;
+      isOldFrontend?: boolean | undefined;
+      flowThreshold?: number | undefined;
     },
   ): void {
     const expBuses = (dae.extensionMetadata?.expandableBuses as string[]) ?? [];
-    const ocGraphMeta = dae.extensionMetadata?.overconstrainedGraph as
+    const ocGraphMeta = dae.extensionMetadata?.["overconstrainedGraph"] as
       | {
           roots: Set<string>;
           potentialRoots: Map<string, number>;
           branches: { a: string; b: string }[];
           queriedRoots: Set<string>;
-          selectedRoots?: Set<string>;
-          rootedMap?: Map<string, boolean>;
+          selectedRoots?: Set<string> | undefined;
+          rootedMap?: Map<string, boolean> | undefined;
         }
       | undefined;
     const hasOverconstrained = Boolean(
@@ -135,6 +161,8 @@ export class ModelicaPortBalancer {
       }
     }
 
+    // Fast path: delegate standard acausal connections to the in-WASM AssemblyScript connection kernel
+    // when no stream variables, overconstrained connection graphs, or expandable buses are present.
     const state = getFlatteningState(dae);
     if (
       hasConnectEq &&
@@ -200,6 +228,8 @@ export class ModelicaPortBalancer {
       }
     }
 
+    // Partition expandable connector bus connections into bus-to-bus and component-to-bus pairs
+    // when virtual flow variables exist on expandable buses (MLS §9.1.3).
     const isExpBusVar = (name: string) => expBuses.some((b) => b && (name === b || name.startsWith(b + ".")));
 
     let hasExpBusFlows = false;
@@ -276,7 +306,10 @@ export class ModelicaPortBalancer {
       }
     }
 
-    // 2.5 Resolve overconstrained connection graph (MLS §9.4)
+    // 2.5 Resolve overconstrained connection graph (MLS §9.4):
+    //     Constructs a spanning forest over `Connections.branch` edges and `connect()` edges,
+    //     identifies cycle-inducing `connect()` edges to break via `equalityConstraint(u, v) = 0`,
+    //     and selects a unique root per connected component to orient `Connections.rooted(...)`.
     const brokenOverconstrainedConnections: { u: string; v: string; eqIdx: number }[] = [];
     if (hasOverconstrained && ocGraphMeta) {
       const ocNodes = new Set<string>();
@@ -290,11 +323,41 @@ export class ModelicaPortBalancer {
 
       const stripTrailingSubscripts = (s: string): string => s.replace(/(?:\[\d+(?:,\d+)*\])+$/, "");
 
+      // Normalize scalarized record subfields (e.g. `.R.T[1,1]`) back to the overconstrained connector node
+      const ocRecordSubfields: { leafAndSub: string; sub: string }[] = [];
+      const seenLeafAndSub = new Set<string>();
+      for (const [fromStrId, toStrId] of connectPairs) {
+        const rawFrom = stripTrailingSubscripts(dae.interner.resolve(fromStrId));
+        const rawTo = stripTrailingSubscripts(dae.interner.resolve(toStrId));
+        for (const n of ocNodes) {
+          const lastDot = n.lastIndexOf(".");
+          const ocLeaf = lastDot >= 0 ? n.slice(lastDot) : n;
+          for (const ep of [rawFrom, rawTo]) {
+            if (ep.startsWith(n + ".")) {
+              const sub = ep.slice(n.length);
+              const leafAndSub = ocLeaf + sub;
+              if (!seenLeafAndSub.has(leafAndSub)) {
+                seenLeafAndSub.add(leafAndSub);
+                ocRecordSubfields.push({ leafAndSub, sub });
+              }
+            }
+          }
+        }
+      }
+      const normalizeOcEndpoint = (s: string): string => {
+        for (const { leafAndSub, sub } of ocRecordSubfields) {
+          if (s.endsWith(leafAndSub)) {
+            return s.slice(0, s.length - sub.length);
+          }
+        }
+        return s;
+      };
+
       // Extract relative overconstrained member suffixes (e.g., ".o", ".R", ".reference", ".theta", or "")
       const ocSuffixes = new Set<string>();
       for (const [fromStrId, toStrId] of connectPairs) {
-        const fromStr = stripTrailingSubscripts(dae.interner.resolve(fromStrId));
-        const toStr = stripTrailingSubscripts(dae.interner.resolve(toStrId));
+        const fromStr = normalizeOcEndpoint(stripTrailingSubscripts(dae.interner.resolve(fromStrId)));
+        const toStr = normalizeOcEndpoint(stripTrailingSubscripts(dae.interner.resolve(toStrId)));
         for (const n of ocNodes) {
           if (n === fromStr || n === toStr) {
             ocSuffixes.add("");
@@ -372,8 +435,8 @@ export class ModelicaPortBalancer {
       const seenConnectEdges = new Set<string>();
       for (let k = connectPairs.length - 1; k >= 0; k--) {
         const [fromStrId, toStrId, eqIdx] = connectPairs[k]!;
-        const fromStr = stripTrailingSubscripts(dae.interner.resolve(fromStrId));
-        const toStr = stripTrailingSubscripts(dae.interner.resolve(toStrId));
+        const fromStr = normalizeOcEndpoint(stripTrailingSubscripts(dae.interner.resolve(fromStrId)));
+        const toStr = normalizeOcEndpoint(stripTrailingSubscripts(dae.interner.resolve(toStrId)));
         for (const sfx of ocSuffixes) {
           const u = fromStr + sfx;
           const v = toStr + sfx;
@@ -404,6 +467,8 @@ export class ModelicaPortBalancer {
         list.push(n);
       }
 
+      // Select spanning-tree roots per connected component (explicit `Connections.root` first,
+      // then lowest-priority-number `Connections.potentialRoot`) and compute BFS distances from root.
       const selectedRoots = new Set<string>();
       const depth = new Map<string, number>();
       for (const nodes of compNodes.values()) {
@@ -470,7 +535,10 @@ export class ModelicaPortBalancer {
       return false;
     };
 
-    // 3. Resolve structural connections to variable index pairs efficiently
+    // 3. Resolve structural connections to variable index pairs efficiently:
+    //    Matches either exact scalar variables or hierarchical connector subtrees via `prefixMap`,
+    //    verifies plug-compatibility (matching flow/stream prefixes and base types), and unions
+    //    corresponding leaf variables (skipping edges broken by overconstrained loop resolution).
     const orderedConnectPairs =
       brokenOverconstrainedConnections.length > 0 && options?.omcCompatibility
         ? [...connectPairs].reverse()
@@ -483,7 +551,7 @@ export class ModelicaPortBalancer {
       const toExact = dae.getVarIdxByName(toStr);
 
       if (fromExact !== -1 && toExact !== -1 && !dae.isVarRemoved(fromExact) && !dae.isVarRemoved(toExact)) {
-        if (dae.extensionMetadata?.isOldFrontend && dae.isVarFlow(fromExact) !== dae.isVarFlow(toExact)) {
+        if (dae.extensionMetadata?.["isOldFrontend"] && dae.isVarFlow(fromExact) !== dae.isVarFlow(toExact)) {
           const flowComp = dae.isVarFlow(fromExact) ? fromStr : toStr;
           const nonFlowComp = dae.isVarFlow(fromExact) ? toStr : fromStr;
           const srcRange = dae.getEqSourceRange?.(eqIdx);
@@ -728,8 +796,23 @@ export class ModelicaPortBalancer {
 
     const zeroExpr = dae.addRealLiteral(0.0);
 
+    // Classify variables as inside vs. outside connectors (MLS §9.1.2):
+    // `flags & 1` / `flags & 2` record whether the LHS / RHS of `connect(a, b)` is an outside connector
+    // relative to the enclosing class; `isOutsideOrOuter` also accounts for top-level connectors and `inner`/`outer` bindings.
     const outsideVarSet = new Set<number>();
     const outerConnectedVars = new Set<number>();
+    const varConnectorCompPrefix = new Map<number, string>();
+    const getCommonDotPrefix = (a: string, b: string): string => {
+      const aParts = a.split(".");
+      const bParts = b.split(".");
+      const common: string[] = [];
+      const len = Math.min(aParts.length, bParts.length) - 1;
+      for (let k = 0; k < len; k++) {
+        if (aParts[k] === bParts[k]) common.push(aParts[k]!);
+        else break;
+      }
+      return common.join(".");
+    };
     const connectPairEqIndices = new Set(connectPairs.map((p) => p[2]));
     for (let i = 0; i < dae.eqCount; i++) {
       if (dae.getEqKind(i) === EqKind.Connect) {
@@ -737,37 +820,42 @@ export class ModelicaPortBalancer {
         const flags = dae.getEqAux(i);
         const lhsId = dae.getEqLhs(i);
         const rhsId = dae.getEqRhs(i);
+        const sLhs = dae.interner.resolve(dae.getExprData1(lhsId));
+        const sRhs = dae.interner.resolve(dae.getExprData1(rhsId));
+        const compPfx = sLhs && sRhs ? getCommonDotPrefix(sLhs, sRhs) : "";
         if (flags & 1) {
-          const s = dae.interner.resolve(dae.getExprData1(lhsId));
-          if (s) {
+          if (sLhs) {
             for (let v = 0; v < dae.varCount; v++) {
               const vn = dae.getVarName(v);
-              if (vn === s || vn.startsWith(s + ".")) outsideVarSet.add(v);
+              if (vn === sLhs || vn.startsWith(sLhs + ".")) {
+                outsideVarSet.add(v);
+                if (compPfx) varConnectorCompPrefix.set(v, compPfx);
+              }
             }
           }
         } else {
-          const s = dae.interner.resolve(dae.getExprData1(lhsId));
-          if (s) {
+          if (sLhs) {
             for (let v = 0; v < dae.varCount; v++) {
               const vn = dae.getVarName(v);
-              if (vn === s || vn.startsWith(s + ".")) outerConnectedVars.add(v);
+              if (vn === sLhs || vn.startsWith(sLhs + ".")) outerConnectedVars.add(v);
             }
           }
         }
         if (flags & 2) {
-          const s = dae.interner.resolve(dae.getExprData1(rhsId));
-          if (s) {
+          if (sRhs) {
             for (let v = 0; v < dae.varCount; v++) {
               const vn = dae.getVarName(v);
-              if (vn === s || vn.startsWith(s + ".")) outsideVarSet.add(v);
+              if (vn === sRhs || vn.startsWith(sRhs + ".")) {
+                outsideVarSet.add(v);
+                if (compPfx) varConnectorCompPrefix.set(v, compPfx);
+              }
             }
           }
         } else {
-          const s = dae.interner.resolve(dae.getExprData1(rhsId));
-          if (s) {
+          if (sRhs) {
             for (let v = 0; v < dae.varCount; v++) {
               const vn = dae.getVarName(v);
-              if (vn === s || vn.startsWith(s + ".")) outerConnectedVars.add(v);
+              if (vn === sRhs || vn.startsWith(sRhs + ".")) outerConnectedVars.add(v);
             }
           }
         }
@@ -899,6 +987,10 @@ export class ModelicaPortBalancer {
       return undefined;
     };
 
+    // Synthesize `inStream(v)` per MLS §15.2:
+    //   - 1-way (unconnected): `inStream(v) = v`
+    //   - 2-way (point-to-point): `inStream(v_1) = v_2`
+    //   - N-way mixing: `sum_{k != i} PositiveMax(-m_flow_k, eps_k) * s_k / sum_{k != i} PositiveMax(-m_flow_k, eps_k)`
     const buildInStreamExpr = (vIdx: number, argId: number): number => {
       const vName = dae.getVarName(vIdx);
       const root = uf.find(vIdx);
@@ -918,6 +1010,7 @@ export class ModelicaPortBalancer {
       const terms: number[] = [];
       const weights: number[] = [];
       let allHaveFlow = true;
+      let firstPeerStreamExpr: number | null = null;
       for (const otherIdx of group) {
         if (otherIdx === vIdx) continue;
         const otherFlowIdx = getPortFlowVar(otherIdx);
@@ -945,6 +1038,7 @@ export class ModelicaPortBalancer {
         const epsExpr = dae.addRealLiteral(eps_k);
         const posMaxExpr = dae.addCallExpr("$OMC$PositiveMax", [inflowExpr, epsExpr]);
         const sExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherIdx));
+        if (firstPeerStreamExpr === null) firstPeerStreamExpr = sExpr;
         terms.push(dae.addBinaryExpr(BinOp.Mul, posMaxExpr, sExpr));
         weights.push(posMaxExpr);
       }
@@ -957,7 +1051,11 @@ export class ModelicaPortBalancer {
         for (let w = 1; w < weights.length; w++) {
           denExpr = dae.addBinaryExpr(BinOp.Add, denExpr, weights[w]!);
         }
-        return dae.addBinaryExpr(BinOp.Div, numExpr, denExpr);
+        const divExpr = dae.addBinaryExpr(BinOp.Div, numExpr, denExpr);
+        if (dae.extensionMetadata?.["isOldFrontend"] && firstPeerStreamExpr !== null) {
+          return dae.addCallExpr("$OMC$inStreamDiv", [divExpr, firstPeerStreamExpr]);
+        }
+        return divExpr;
       }
       // Fallback unweighted average when connector has no flow variable
       let sumExpr: number | null = null;
@@ -974,7 +1072,11 @@ export class ModelicaPortBalancer {
       return argId;
     };
 
-    // Function to recursively replace inStream(s) and actualStream(s) inside expression trees
+    // Recursively rewrite connection-dependent intrinsic operators across arena expression trees:
+    //   - `inStream(s)` → upstream convective mixing expression via `buildInStreamExpr`
+    //   - `actualStream(s)` → `if m_flow > 0 then inStream(s) else s` (simplified statically when `min >= 0` or `max <= 0`)
+    //   - `Connections.isRoot(c)` / `Connections.rooted(c)` → static boolean literal from spanning-tree analysis
+    //   - `cardinality(c)` → integer count of `connect()` clauses referencing connector `c`
     const rewriteStreamExpr = (exprId: number): number => {
       if (exprId < 0 || exprId >= dae.exprCount) return exprId;
       const k = dae.getExprKind(exprId);
@@ -1019,7 +1121,7 @@ export class ModelicaPortBalancer {
                 }
               }
 
-              const wrapSmooth = Boolean(dae.extensionMetadata?.isOldFrontend);
+              const wrapSmooth = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
               if (minVal !== undefined && minVal >= 0 && partnerMinVal !== undefined && partnerMinVal >= 0) {
                 const selfExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
                 return wrapSmooth ? dae.addCallExpr("smooth", [dae.addIntLiteral(0), selfExpr]) : selfExpr;
@@ -1071,6 +1173,58 @@ export class ModelicaPortBalancer {
               );
               return dae.addBoolLiteral(isRootedVal);
             }
+          }
+        }
+        if (fnName === "cardinality" && dae.getExprRight(exprId) === 1) {
+          const a0 = dae.getExprLeft(exprId);
+          let connName = "";
+          if (dae.getExprKind(a0) === ExprKind.Name) {
+            connName = dae.interner.resolve(dae.getExprData1(a0)) ?? "";
+          } else if (dae.getExprKind(a0) === ExprKind.Subscript) {
+            const baseId = dae.getExprData1(a0);
+            if (dae.getExprKind(baseId) === ExprKind.Name) {
+              const baseName = dae.interner.resolve(dae.getExprData1(baseId)) ?? "";
+              const subCount = dae.getExprRight(a0);
+              const subs: number[] = [];
+              let allConst = true;
+              for (let s = 0; s < subCount; s++) {
+                const subId = s === 0 ? dae.getExprLeft(a0) : dae.getExprLeft(a0 + s);
+                const sv = evaluateConstantArenaExpression(dae, subId);
+                if (typeof sv === "number") {
+                  subs.push(Math.round(sv));
+                } else {
+                  allConst = false;
+                  break;
+                }
+              }
+              if (allConst && subs.length > 0) {
+                connName = `${baseName}[${subs.join(",")}]`;
+              }
+            }
+          }
+          if (connName) {
+            let count = 0;
+            for (let eqIdx = 0; eqIdx < dae.eqCount; eqIdx++) {
+              if (dae.getEqKind(eqIdx) === EqKind.Connect) {
+                const lhsId = dae.getEqLhs(eqIdx);
+                const rhsId = dae.getEqRhs(eqIdx);
+                const lhsName =
+                  dae.getExprKind(lhsId) === ExprKind.Name ? (dae.interner.resolve(dae.getExprData1(lhsId)) ?? "") : "";
+                const rhsName =
+                  dae.getExprKind(rhsId) === ExprKind.Name ? (dae.interner.resolve(dae.getExprData1(rhsId)) ?? "") : "";
+                if (
+                  lhsName === connName ||
+                  lhsName.startsWith(connName + ".") ||
+                  connName.startsWith(lhsName + ".") ||
+                  rhsName === connName ||
+                  rhsName.startsWith(connName + ".") ||
+                  connName.startsWith(rhsName + ".")
+                ) {
+                  count++;
+                }
+              }
+            }
+            return dae.addIntLiteral(count);
           }
         }
         const argCount = dae.getExprRight(exprId);
@@ -1164,13 +1318,28 @@ export class ModelicaPortBalancer {
       return exprId;
     };
 
+    // Apply `rewriteStreamExpr` across all equations (including nested When/If/For bodies),
+    // variable binding expressions, and algorithm statements in the DAE arena.
     for (let i = 0; i < dae.eqCount; i++) {
       const eqKind = dae.getEqKind(i);
       const lhs = dae.getEqLhs(i);
       const rhs = dae.getEqRhs(i);
       const newLhs = rewriteStreamExpr(lhs);
       const newRhs = rewriteStreamExpr(rhs);
-      if (newLhs !== lhs) dae.setEqLhs(i, newLhs);
+      if (newLhs !== lhs) {
+        dae.setEqLhs(i, newLhs);
+        if (
+          (eqKind === EqKind.FunctionCall || eqKind === EqKind.InitialFunctionCall) &&
+          dae.getExprKind(newLhs) === ExprKind.Call &&
+          dae.interner.resolve(dae.getExprData1(newLhs)) === "assert"
+        ) {
+          const condVal = evaluateConstantArenaExpression(dae, dae.getExprLeft(newLhs));
+          if (condVal === true) {
+            dae.setEqKind(i, EqKind.Connect);
+            continue;
+          }
+        }
+      }
       if (newRhs !== rhs) dae.setEqRhs(i, newRhs);
 
       if (eqKind === EqKind.When) {
@@ -1205,19 +1374,32 @@ export class ModelicaPortBalancer {
           }
         }
       } else if (eqKind === EqKind.If) {
-        const meta = dae.getIfEquationMeta(i);
-        if (meta) {
+        const rewriteIfMeta = (meta: any) => {
+          if (!meta) return;
+          const origCond = meta.conditionExprId;
           meta.conditionExprId = rewriteStreamExpr(meta.conditionExprId);
-          dae.setEqLhs(i, meta.conditionExprId);
+          if (meta.conditionExprId !== origCond) {
+            meta.hasResolvedConnectionQuery = true;
+          }
           for (const bEq of meta.thenEquations) {
             bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
             bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+            if (bEq.kind === EqKind.If && (bEq as any).ifMeta) {
+              rewriteIfMeta((bEq as any).ifMeta);
+            }
           }
           for (const ei of meta.elseIfClauses) {
+            const origEiCond = ei.conditionExprId;
             ei.conditionExprId = rewriteStreamExpr(ei.conditionExprId);
+            if (ei.conditionExprId !== origEiCond) {
+              meta.hasResolvedConnectionQuery = true;
+            }
             for (const bEq of ei.bodyEquations) {
               bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
               bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+              if (bEq.kind === EqKind.If && (bEq as any).ifMeta) {
+                rewriteIfMeta((bEq as any).ifMeta);
+              }
             }
             for (const bEq of ei.equations) {
               bEq.lhs = rewriteStreamExpr(bEq.lhs);
@@ -1228,8 +1410,16 @@ export class ModelicaPortBalancer {
             for (const bEq of meta.elseEquations) {
               bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
               bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+              if (bEq.kind === EqKind.If && (bEq as any).ifMeta) {
+                rewriteIfMeta((bEq as any).ifMeta);
+              }
             }
           }
+        };
+        const meta = dae.getIfEquationMeta(i);
+        if (meta) {
+          rewriteIfMeta(meta);
+          dae.setEqLhs(i, meta.conditionExprId);
         }
       } else if (eqKind === EqKind.For) {
         const meta = dae.getForEquationMeta(i);
@@ -1298,9 +1488,15 @@ export class ModelicaPortBalancer {
     }
 
     // 5. Emit flow-balance and potential equality equations
-    const potentialEqs: { kind: EqKind; lhs: number; rhs: number; str: string; eqIdx?: number; connOrder?: number }[] =
-      [];
-    const flowSumEqs: { kind: EqKind; lhs: number; rhs: number; str: string; eqIdx?: number }[] = [];
+    const potentialEqs: {
+      kind: EqKind;
+      lhs: number;
+      rhs: number;
+      str: string;
+      eqIdx?: number | undefined;
+      connOrder?: number | undefined;
+    }[] = [];
+    const flowSumEqs: { kind: EqKind; lhs: number; rhs: number; str: string; eqIdx?: number | undefined }[] = [];
     const zeroFlows: { kind: EqKind; lhs: number; rhs: number; varName: string }[] = [];
     const compBusFlowEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
     const connectedBusTerminals = new Set<string>();
@@ -1535,6 +1731,12 @@ export class ModelicaPortBalancer {
       }
     }
 
+    // 4. Synthesize connection equations per disjoint Union-Find equivalence class (`roots`):
+    //    - Singleton unconnected flow variables: `f = 0.0` (MLS §9.2).
+    //    - Stream groups with outside connectors: direct `s_inside = s_outside` forwarding.
+    //    - Potential (non-flow, non-stream) groups: `potRoot = v_i` equality chain (or `assert(p1 == p2)` for parameters).
+    //    - Flow groups: generalized Kirchhoff conservation balance `sum(f_inside) - sum(f_outside) = 0.0`,
+    //      including hierarchical intermediate outside connector splitting when sub-models expose pass-through ports.
     for (const [root, group] of roots) {
       const isStream = dae.getVarFlowPrefix(root) === "stream";
       const isFlow = dae.isVarFlow(root) && !isStream;
@@ -1542,6 +1744,7 @@ export class ModelicaPortBalancer {
       const firstVarIdx = group[0];
       if (firstVarIdx === undefined) continue;
 
+      // Singleton group: unconnected flow variables default to `0.0`.
       if (group.length <= 1) {
         if (isFlow && !handledFlowVars.has(firstVarIdx)) {
           const expr = dae.getVarExpression(firstVarIdx);
@@ -1563,6 +1766,8 @@ export class ModelicaPortBalancer {
         continue;
       }
 
+      // Stream group: emit inside-to-outside stream forwarding equations `s_inside = s_outside`
+      // when an inside stream connector is bridged to an enclosing outside connector.
       if (isStream) {
         const hasOutside = group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
         if (hasOutside) {
@@ -1595,6 +1800,8 @@ export class ModelicaPortBalancer {
         }
         continue;
       }
+      // Across / potential variable group: select canonical representative `potRoot`
+      // and emit `N - 1` potential equality equations `potRoot = v_i` (or `assert(potRoot == v_i)` for parameters).
       if (!isFlow) {
         if (options?.omcCompatibility) {
           for (const vIdx of group) {
@@ -1722,6 +1929,9 @@ export class ModelicaPortBalancer {
           }
         }
       } else {
+        // Through / flow variable group: construct Kirchhoff zero-sum equation
+        // `sum(f_inside) + sum(-f_outside) = 0.0` per MLS §9.2, assigning positive sign
+        // to inside connectors and negative sign to outside connectors.
         let sumExpr: number;
         const countDots = (name: string) => (name.match(/\./g) || []).length;
         const minDots = Math.min(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
@@ -1802,23 +2012,74 @@ export class ModelicaPortBalancer {
                 return a - b;
               });
             }
+            // Detect intermediate hierarchical ports that act as both an outside port inside a
+            // sub-component (`outsideVarSet`) and an inside port at the parent level (`outerConnectedVars`),
+            // splitting their internal sub-component flow sum from the outer connection set.
             const isIntermediateOutside = (vIdx: number) =>
               outsideVarSet.has(vIdx) && outerConnectedVars.has(vIdx) && insideVars.length > 0;
             const activeOutsideVars = outsideVars.filter((vIdx) => !isIntermediateOutside(vIdx));
             const intermediateOutsideVars = outsideVars.filter((vIdx) => isIntermediateOutside(vIdx));
 
+            const splitInsidePeersSet = new Set<number>();
+            const replacedIntermediateVars: number[] = [];
+            for (const vIdx of intermediateOutsideVars) {
+              const ovName = dae.getVarName(vIdx);
+              const compPfx = varConnectorCompPrefix.get(vIdx) ?? ovName.substring(0, ovName.lastIndexOf("."));
+              const insidePeers = insideVars.filter((iv) => dae.getVarName(iv).startsWith(compPfx + "."));
+              if (insidePeers.length > 1) {
+                for (const ip of insidePeers) splitInsidePeersSet.add(ip);
+                replacedIntermediateVars.push(vIdx);
+                const internalVars = [...insidePeers, vIdx];
+                if (options?.omcCompatibility) {
+                  internalVars.sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
+                }
+                const firstInt = internalVars[0]!;
+                const firstIntExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstInt));
+                let intSumExpr = firstInt === vIdx ? dae.addExpression(ExprKind.Negate, 0, firstIntExpr) : firstIntExpr;
+                for (let i = 1; i < internalVars.length; i++) {
+                  const ivIdx = internalVars[i]!;
+                  const ivExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ivIdx));
+                  const term = ivIdx === vIdx ? dae.addExpression(ExprKind.Negate, 0, ivExpr) : ivExpr;
+                  intSumExpr = dae.addBinaryExpr(BinOp.Add, intSumExpr, term);
+                }
+                let intEqIdx = 99999;
+                for (const ivIdx of internalVars) {
+                  const rank = varConnectEqIdx.get(ivIdx);
+                  if (rank !== undefined && rank < intEqIdx) intEqIdx = rank;
+                }
+                flowSumEqs.push({
+                  kind: EqKind.Simple,
+                  lhs: intSumExpr,
+                  rhs: zeroExpr,
+                  str: dae.getVarName(firstInt),
+                  eqIdx: intEqIdx,
+                });
+              }
+            }
+
+            const outerInsideVars =
+              splitInsidePeersSet.size > 0
+                ? [...insideVars.filter((iv) => !splitInsidePeersSet.has(iv)), ...replacedIntermediateVars]
+                : insideVars;
+            if (splitInsidePeersSet.size > 0 && options?.omcCompatibility) {
+              outerInsideVars.sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
+            }
+            const replacedIntermediateSet = new Set(replacedIntermediateVars);
+            const isOuterGroupOutside = (vIdx: number) =>
+              replacedIntermediateSet.has(vIdx) ? false : isGroupOutside(vIdx);
+
             const orderedVars =
               intermediateOutsideVars.length > 0 && insideVars.length > 0
-                ? [...insideVars, ...activeOutsideVars]
+                ? [...outerInsideVars, ...activeOutsideVars]
                 : [...insideVars, ...outsideVars];
             if (orderedVars.length > 0) {
               const first = orderedVars[0]!;
               const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(first));
-              sumExpr = isGroupOutside(first) ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
+              sumExpr = isOuterGroupOutside(first) ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
               for (let i = 1; i < orderedVars.length; i++) {
                 const vIdx = orderedVars[i]!;
                 const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                const term = isGroupOutside(vIdx) ? dae.addExpression(ExprKind.Negate, 0, vi) : vi;
+                const term = isOuterGroupOutside(vIdx) ? dae.addExpression(ExprKind.Negate, 0, vi) : vi;
                 sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, term);
               }
             } else {
@@ -1830,6 +2091,7 @@ export class ModelicaPortBalancer {
               zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
             }
             for (const vIdx of intermediateOutsideVars) {
+              if (replacedIntermediateSet.has(vIdx)) continue;
               const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               const insidePeer =
                 insideVars.find((iv) => {
@@ -1891,18 +2153,25 @@ export class ModelicaPortBalancer {
       }
     }
 
+    // 4.5. Outside-outside port groups (`connect(outsidePortA, outsidePortB)` with `flags === 3`):
+    // Clusters connected outside ports via BFS (`ooGroups`) and generates their internal
+    // negated flow sums `(-p0.f) + (-p1.f) + ... = 0.0`, potential equalities `p0.r = pi.r`,
+    // and multi-way or 2-way stream transport equations.
     interface OOGroupData {
       group: string[];
       internalPotentials: { kind: EqKind; lhs: number; rhs: number }[];
-      internalFlowSum?: { kind: EqKind; lhs: number; rhs: number };
-      internalFlowSums?: { kind: EqKind; lhs: number; rhs: number }[];
-      internalStreams: { kind: EqKind; lhs: number; rhs: number; desc?: string }[];
+      internalFlowSum?: { kind: EqKind; lhs: number; rhs: number } | undefined;
+      internalFlowSums?: { kind: EqKind; lhs: number; rhs: number }[] | undefined;
+      internalStreams: { kind: EqKind; lhs: number; rhs: number; desc?: string | undefined }[];
     }
     const ooGroupData: OOGroupData[] = [];
 
     if (outsideOutsidePairs.length > 0) {
       const getPortVars = (port: string) => {
-        const vars: { r: number[]; f?: number; fList: number[]; s?: number } = { r: [], fList: [] };
+        const vars: { r: number[]; f?: number | undefined; fList: number[]; s?: number | undefined } = {
+          r: [],
+          fList: [],
+        };
         for (let i = 0; i < dae.varCount; i++) {
           if (dae.isVarRemoved(i)) continue;
           const vName = dae.getVarName(i);
@@ -2327,8 +2596,14 @@ export class ModelicaPortBalancer {
           }
         }
       } else {
-        const allEqs: { kind: EqKind; lhs: number; rhs: number; varIdx: number; eqIdx: number; connOrder?: number }[] =
-          [];
+        const allEqs: {
+          kind: EqKind;
+          lhs: number;
+          rhs: number;
+          varIdx: number;
+          eqIdx: number;
+          connOrder?: number | undefined;
+        }[] = [];
         potentialEqs.forEach((eq) =>
           allEqs.push({
             kind: eq.kind,
@@ -2408,6 +2683,10 @@ export class ModelicaPortBalancer {
       compBusFlowEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
     }
 
+    // 6. Emit equalityConstraint(u, v) = {0.0, ...} equations for broken overconstrained loops (MLS §9.4.2):
+    //    For every non-spanning-tree connection edge (u, v) broken during loop breaking in Step 2.5,
+    //    resolve the connector class's `equalityConstraint` function, inspect its output dimension `residueLen`,
+    //    and emit `equalityConstraint(u, v) = {0.0, ..., 0.0}` when `residueLen > 0`.
     if (brokenOverconstrainedConnections.length > 0) {
       const db = state.db;
       const flattener = state.flattener;
@@ -2415,8 +2694,30 @@ export class ModelicaPortBalancer {
       let residueLen = 0;
 
       if (db && typeof db.byName === "function") {
-        const eqSyms = db.byName("equalityConstraint") ?? [];
-        const eqSym = eqSyms.find((s: any) => s.kind === "Class" || s.kind === "Function");
+        const eqSyms = (db.byName("equalityConstraint") ?? []).filter(
+          (s: any) => s.kind === "Class" || s.kind === "Function",
+        );
+        let eqSym = eqSyms[0];
+        if (eqSyms.length > 1 && brokenOverconstrainedConnections.length > 0) {
+          const sampleNode = brokenOverconstrainedConnections[0]!.u;
+          const leafName = sampleNode
+            .split(".")
+            .pop()
+            ?.replace(/\[.*\]$/, "");
+          if (leafName) {
+            const compCandidates = (db.byName(leafName) ?? []).filter((s: any) => s.kind === "Component");
+            for (const comp of compCandidates) {
+              const typeClassId = db.query?.("classInstance", comp.id);
+              if (typeClassId) {
+                const matched = eqSyms.find((s: any) => s.parentId === typeClassId);
+                if (matched) {
+                  eqSym = matched;
+                  break;
+                }
+              }
+            }
+          }
+        }
         if (eqSym) {
           const parentSym = eqSym.parentId ? db.symbol(eqSym.parentId) : null;
           if (parentSym?.name) {

@@ -46,7 +46,7 @@ const defaultResolver: MarkdownResolver = {
 /**
  * Build an HTML table for requirements data.
  */
-function buildRequirementsHtml(target: string, rows: RequirementRow[]): string {
+function buildRequirementsHtml(_target: string, rows: RequirementRow[]): string {
   const statusIcon = (s: string) => {
     switch (s) {
       case "Passed":
@@ -83,7 +83,7 @@ function buildRequirementsHtml(target: string, rows: RequirementRow[]): string {
  * Build an inline SVG block diagram representing components and connections.
  */
 function buildSvgDiagramHtml(
-  target: string,
+  _target: string,
   components: DiagramComponent[],
   connections: DiagramConnection[] = [],
 ): string {
@@ -127,8 +127,8 @@ function buildSvgDiagramHtml(
   // Draw connections first (so they are under boxes)
   for (const conn of connections) {
     // Parse "CompName.portName"
-    const fromCompName = conn.from.split(".")[0];
-    const toCompName = conn.to.split(".")[0];
+    const fromCompName = conn.from.split(".")[0]!;
+    const toCompName = conn.to.split(".")[0]!;
 
     const p1 = positions.get(fromCompName);
     const p2 = positions.get(toCompName);
@@ -181,7 +181,7 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
         const match = /^::diagram\{target="([^"]+)"\}/.exec(src);
         if (!match) return false;
         if (!silent) {
-          const target = match[1];
+          const target = match[1]!;
           const svg = resolver.resolveDiagramSvg(target);
           const components = resolver.resolveDiagramComponents(target);
 
@@ -243,7 +243,7 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
         const match = /^::requirements\{target="([^"]+)"\}/.exec(src);
         if (!match) return false;
         if (!silent) {
-          const target = match[1];
+          const target = match[1]!;
           const rows = resolver.resolveRequirements(target);
           const open = state.push("modelscript_req_open", "div", 1);
           open.attrs = [
@@ -311,7 +311,7 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
 
           while ((match = varRegex.exec(tok.content)) !== null) {
             found = true;
-            const varName = match[1];
+            const varName = match[1]!;
             const resolved = resolver.resolveVariable(varName);
 
             // Text before the match

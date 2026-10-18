@@ -117,9 +117,9 @@ export interface SatAPI {
  * Declarative physical connector schema definition.
  */
 export interface ConnectorDefinition {
-  potential?: string[];
-  flow?: string[];
-  stream?: string[];
+  potential?: string[] | undefined;
+  flow?: string[] | undefined;
+  stream?: string[] | undefined;
 }
 
 /**

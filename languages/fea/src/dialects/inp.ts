@@ -11,10 +11,17 @@ export class InpDialect implements FeaDialect {
   public readonly name = "Standard FEA Input Deck (.inp) / CalculiX";
   public readonly extensions = [".inp"];
 
+  /**
+   * Materializes an Abaqus/CalculiX `.inpt` template by evaluating embedded `{{ ... }}` expressions.
+   */
   public materialize(templateText: string, options?: MaterializeOptions): string {
     return materializeFeaDeck(templateText, options);
   }
 
+  /**
+   * Parses an Abaqus/CalculiX `.inp` input deck into nodes, elements, node/element sets,
+   * material constitutive properties, fixed boundary conditions, and nodal loads.
+   */
   public parse(deckText: string): FeaModelData {
     const lines = deckText.split(/\r?\n/);
 
@@ -35,6 +42,9 @@ export class InpDialect implements FeaDialect {
     let lastElementId: number | null = null;
     let isElementContinuation = false;
 
+    /**
+     * Classifies an Abaqus/CalculiX element type code (e.g., `C3D8`, `S4`, `B31`, `T3D2`) into its structural family.
+     */
     function inferElementFamily(type: string): "solid" | "shell" | "beam" | "truss" | "other" {
       const t = type.toUpperCase();
       if (t.startsWith("C3D") || t.includes("TET") || t.includes("HEX") || t.includes("PENT") || t.includes("WEDGE")) {
@@ -61,7 +71,7 @@ export class InpDialect implements FeaDialect {
     }
 
     for (let i = 0; i < lines.length; i++) {
-      const rawLine = lines[i].trim();
+      const rawLine = lines[i]!.trim();
       if (!rawLine || rawLine.startsWith("**")) {
         continue;
       }
@@ -73,23 +83,23 @@ export class InpDialect implements FeaDialect {
           .substring(1)
           .split(",")
           .map((s) => s.trim());
-        const keyword = parts[0].toUpperCase();
+        const keyword = parts[0]!.toUpperCase();
         currentSection = keyword;
         currentOptions = {};
 
         for (let p = 1; p < parts.length; p++) {
-          const opt = parts[p];
+          const opt = parts[p]!;
           if (opt.includes("=")) {
             const [k, v] = opt.split("=").map((s) => s.trim());
-            currentOptions[k.toUpperCase()] = v;
+            currentOptions[k!.toUpperCase()] = v!;
           } else {
             currentOptions[opt.toUpperCase()] = "TRUE";
           }
         }
 
         if (keyword === "HEADING") {
-          if (i + 1 < lines.length && !lines[i + 1].trim().startsWith("*")) {
-            data.heading = lines[++i].trim();
+          if (i + 1 < lines.length && !lines[i + 1]!.trim().startsWith("*")) {
+            data.heading = lines[++i]!.trim();
           }
         } else if (keyword === "MATERIAL") {
           const matName = currentOptions["NAME"] || "DEFAULT_MATERIAL";
@@ -107,10 +117,10 @@ export class InpDialect implements FeaDialect {
 
       if (currentSection === "NODE") {
         if (tokens.length >= 3) {
-          const id = parseInt(tokens[0], 10);
-          const x = parseFloat(tokens[1]);
-          const y = parseFloat(tokens[2]);
-          const z = tokens.length >= 4 ? parseFloat(tokens[3]) : 0.0;
+          const id = parseInt(tokens[0]!, 10);
+          const x = parseFloat(tokens[1]!);
+          const y = parseFloat(tokens[2]!);
+          const z = tokens.length >= 4 ? parseFloat(tokens[3]!) : 0.0;
           if (!isNaN(id) && !isNaN(x) && !isNaN(y) && !isNaN(z)) {
             data.nodes.set(id, { id, x, y, z });
 
@@ -127,7 +137,7 @@ export class InpDialect implements FeaDialect {
           const continuedNodes = tokens.map((s) => parseInt(s, 10)).filter((n) => !isNaN(n));
           elem.nodes.push(...continuedNodes);
         } else if (tokens.length >= 2) {
-          const id = parseInt(tokens[0], 10);
+          const id = parseInt(tokens[0]!, 10);
           const nodeIds = tokens
             .slice(1)
             .map((s) => parseInt(s, 10))
@@ -147,15 +157,15 @@ export class InpDialect implements FeaDialect {
         }
         isElementContinuation = endsWithComma;
       } else if (currentSection === "NSET") {
-        const setName = (currentOptions["NSET"] || tokens[0]).toUpperCase();
+        const setName = (currentOptions["NSET"]! || tokens[0]!).toUpperCase();
         if (!data.nodeSets.has(setName)) data.nodeSets.set(setName, new Set());
         const set = data.nodeSets.get(setName)!;
         const isGenerate = "GENERATE" in currentOptions || currentOptions["GENERATE"] === "TRUE";
-        const valTokens = !currentOptions["NSET"] ? tokens.slice(1) : tokens;
+        const valTokens = !currentOptions["NSET"]! ? tokens.slice(1) : tokens;
         if (isGenerate && valTokens.length >= 2) {
-          const start = parseInt(valTokens[0], 10);
-          const end = parseInt(valTokens[1], 10);
-          const step = valTokens.length >= 3 ? parseInt(valTokens[2], 10) : 1;
+          const start = parseInt(valTokens[0]!, 10);
+          const end = parseInt(valTokens[1]!, 10);
+          const step = valTokens.length >= 3 ? parseInt(valTokens[2]!, 10) : 1;
           if (!isNaN(start) && !isNaN(end)) {
             const actualStep = !isNaN(step) && step > 0 ? step : 1;
             for (let nid = start; nid <= end; nid += actualStep) {
@@ -169,15 +179,15 @@ export class InpDialect implements FeaDialect {
           }
         }
       } else if (currentSection === "ELSET") {
-        const setName = (currentOptions["ELSET"] || tokens[0]).toUpperCase();
+        const setName = (currentOptions["ELSET"]! || tokens[0]!).toUpperCase();
         if (!data.elementSets.has(setName)) data.elementSets.set(setName, new Set());
         const set = data.elementSets.get(setName)!;
         const isGenerate = "GENERATE" in currentOptions || currentOptions["GENERATE"] === "TRUE";
-        const valTokens = !currentOptions["ELSET"] ? tokens.slice(1) : tokens;
+        const valTokens = !currentOptions["ELSET"]! ? tokens.slice(1) : tokens;
         if (isGenerate && valTokens.length >= 2) {
-          const start = parseInt(valTokens[0], 10);
-          const end = parseInt(valTokens[1], 10);
-          const step = valTokens.length >= 3 ? parseInt(valTokens[2], 10) : 1;
+          const start = parseInt(valTokens[0]!, 10);
+          const end = parseInt(valTokens[1]!, 10);
+          const step = valTokens.length >= 3 ? parseInt(valTokens[2]!, 10) : 1;
           if (!isNaN(start) && !isNaN(end)) {
             const actualStep = !isNaN(step) && step > 0 ? step : 1;
             for (let eid = start; eid <= end; eid += actualStep) {
@@ -192,33 +202,59 @@ export class InpDialect implements FeaDialect {
         }
       } else if (currentSection === "ELASTIC" && activeMaterial) {
         if (tokens.length >= 2) {
-          activeMaterial.E = parseFloat(tokens[0]);
-          activeMaterial.nu = parseFloat(tokens[1]);
+          activeMaterial.E = parseFloat(tokens[0]!);
+          activeMaterial.nu = parseFloat(tokens[1]!);
         }
       } else if (currentSection === "DENSITY" && activeMaterial) {
         if (tokens.length >= 1) {
-          activeMaterial.rho = parseFloat(tokens[0]);
+          activeMaterial.rho = parseFloat(tokens[0]!);
+        }
+      } else if (currentSection === "PLASTIC" && activeMaterial) {
+        if (tokens.length >= 1 && activeMaterial.yieldStrength === undefined) {
+          const ys = parseFloat(tokens[0]!);
+          if (!isNaN(ys) && ys > 0) {
+            activeMaterial.yieldStrength = ys;
+          }
         }
       } else if (currentSection === "BOUNDARY") {
         if (tokens.length >= 1) {
-          const target = tokens[0];
+          const target = tokens[0]!;
+          const dofStart = tokens.length >= 2 ? parseInt(tokens[1]!, 10) : 1;
+          const dofEnd = tokens.length >= 3 && tokens[2] !== "" ? parseInt(tokens[2]!, 10) : dofStart;
+          const dispVal = tokens.length >= 4 && tokens[3] !== "" ? parseFloat(tokens[3]!) : 0.0;
+
+          const applyBoundary = (nid: number) => {
+            if (!isNaN(dispVal) && Math.abs(dispVal) > 0) {
+              if (!data.displacements) data.displacements = new Map();
+              if (!data.displacements.has(nid)) data.displacements.set(nid, [0, 0, 0]);
+              const vec = data.displacements.get(nid)!;
+              const s = isNaN(dofStart) ? 1 : dofStart;
+              const e = isNaN(dofEnd) ? s : dofEnd;
+              for (let d = s; d <= e; d++) {
+                if (d >= 1 && d <= 3) vec[d - 1] = dispVal;
+              }
+            } else {
+              data.fixedNodes.add(nid);
+            }
+          };
+
           const numId = parseInt(target, 10);
           if (!isNaN(numId)) {
-            data.fixedNodes.add(numId);
+            applyBoundary(numId);
           } else {
             const nset = data.nodeSets.get(target.toUpperCase());
             if (nset) {
               for (const nid of nset) {
-                data.fixedNodes.add(nid);
+                applyBoundary(nid);
               }
             }
           }
         }
       } else if (currentSection === "CLOAD") {
         if (tokens.length >= 3) {
-          const target = tokens[0];
-          const dof = parseInt(tokens[1], 10);
-          const mag = parseFloat(tokens[2]);
+          const target = tokens[0]!;
+          const dof = parseInt(tokens[1]!, 10);
+          const mag = parseFloat(tokens[2]!);
 
           const applyLoad = (nid: number) => {
             if (!data.nodalLoads.has(nid)) data.nodalLoads.set(nid, [0, 0, 0]);
@@ -266,4 +302,7 @@ export function materializeCalculixDeck(templateText: string, options?: Material
   return new InpDialect().materialize(templateText, options);
 }
 
+/**
+ * Type alias for parsed Abaqus/CalculiX `.inp` deck model data.
+ */
 export type InpDeckData = FeaModelData;

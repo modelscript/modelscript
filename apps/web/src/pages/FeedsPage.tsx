@@ -25,7 +25,7 @@ const FeedItemWrapper = styled.div`
   }
 `;
 
-const Avatar = styled.div<{ $url?: string }>`
+const Avatar = styled.div<{ $url?: string | undefined }>`
   width: 48px;
   height: 48px;
   border-radius: 50%;

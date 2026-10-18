@@ -56,13 +56,15 @@ export interface Mdf4ChannelMetadata {
   dataType: Mdf4DataType;
   byteOffset: number;
   bitCount: number;
-  unit?: string;
-  comment?: string;
-  conversion?: {
-    type: "identity" | "linear";
-    factor: number;
-    offset: number;
-  };
+  unit?: string | undefined;
+  comment?: string | undefined;
+  conversion?:
+    | {
+        type: "identity" | "linear";
+        factor: number;
+        offset: number;
+      }
+    | undefined;
 }
 
 export interface Mdf4ChannelGroupMetadata {
@@ -74,7 +76,7 @@ export interface Mdf4ChannelGroupMetadata {
 
 export interface Mdf4DataSeries {
   name: string;
-  unit?: string;
+  unit?: string | undefined;
   isMasterTime: boolean;
   timestamps: Float64Array;
   values: Float64Array;
@@ -305,12 +307,12 @@ export class Mdf4Reader {
         const firstCnLink = Number(this.view.getBigUint64(cgOffset + 32, true));
         const channelList: {
           name: string;
-          unit?: string;
+          unit?: string | undefined;
           isMaster: boolean;
           byteOffset: number;
           dataType: Mdf4DataType;
           bitCount: number;
-          conversion?: { factor: number; offset: number };
+          conversion?: { factor: number; offset: number } | undefined;
         }[] = [];
 
         let cnOffset = firstCnLink;
@@ -431,7 +433,7 @@ export class Mdf4Reader {
  */
 export class Mdf4Writer {
   public static create(
-    timeSeries: { name: string; unit?: string; timestamps: Float64Array; values: Float64Array }[],
+    timeSeries: { name: string; unit?: string | undefined; timestamps: Float64Array; values: Float64Array }[],
     startTimeNs: bigint = 0n,
   ): Uint8Array {
     if (timeSeries.length === 0) {

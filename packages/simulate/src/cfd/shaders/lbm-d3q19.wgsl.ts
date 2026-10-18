@@ -101,9 +101,9 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
         let oppI = OPP[i];
         var fRefl = f_ping[getSoAIndex(oppI, cellIdx)];
 
-        // Bouzidi curved boundary interpolation
+        // Bouzidi curved boundary interpolation (ray from cellIdx to solid upIdx is along oppI)
         if (u.useBouzidi != 0u && upType == 1u) {
-          let delta = deltaWall[i * u.totalCells + cellIdx];
+          let delta = deltaWall[oppI * u.totalCells + cellIdx];
           if (delta > 0.0 && delta < 1.0) {
             if (delta < 0.5) {
               let bx = gx + CX[i];
@@ -112,7 +112,7 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
               if (bx >= 0 && bx < i32(u.nx) && by >= 0 && by < i32(u.ny) && bz >= 0 && bz < i32(u.nz)) {
                 let bIdx = getCellIndex(u32(bx), u32(by), u32(bz));
                 if (cellTypes[bIdx] != 1u && cellTypes[bIdx] != 2u) {
-                  let fB = f_ping[getSoAIndex(i, bIdx)];
+                  let fB = f_ping[getSoAIndex(oppI, bIdx)];
                   fRefl = 2.0 * delta * fRefl + (1.0 - 2.0 * delta) * fB;
                 }
               }
@@ -156,7 +156,7 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
     jz += f32(CZ[i]) * fi;
   }
 
-  // Velocity inlet boundary override
+  // Velocity inlet / pressure outlet boundary override
   if (cType == 3u) {
     let uInletX = u.inletVx * (u.dt / u.dx);
     let uInletY = u.inletVy * (u.dt / u.dx);
@@ -164,6 +164,8 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
     jx = rho * uInletX;
     jy = rho * uInletY;
     jz = rho * uInletZ;
+  } else if (cType == 4u) {
+    rho = 1.0;
   }
 
   let invRho = 1.0 / max(1e-6, rho);

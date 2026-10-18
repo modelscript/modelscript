@@ -51,28 +51,28 @@ import {
  */
 export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): Svg | null {
   svg = svg ? svg : new Svg();
-  for (const extendsClassInstance of classInstance.extendsClassInstances) {
-    if (extendsClassInstance.classInstance) renderDiagram(extendsClassInstance.classInstance, svg);
+  for (const extendsClassInstance of classInstance.extendsClassInstances ?? []) {
+    if (extendsClassInstance["classInstance"]) renderDiagram(extendsClassInstance["classInstance"], svg);
   }
-  const diagram: IDiagram | null = classInstance.annotation("Diagram");
+  const diagram: IDiagram | null = classInstance.annotation?.("Diagram") ?? null;
   applyCoordinateSystem(svg, diagram?.coordinateSystem);
   const group = svg.group();
   for (const graphicItem of diagram?.graphics ?? []) renderGraphicItem(group, graphicItem, classInstance);
-  for (const component of classInstance.components) {
+  for (const component of classInstance.components ?? []) {
     const componentClassInstance = component.classInstance;
     if (!componentClassInstance) continue;
 
     const condition = evaluateCondition(component);
     if (condition === false) continue;
 
-    const componentSvg = renderIcon(component.declaredType ?? componentClassInstance, component, true);
+    const componentSvg = renderIcon(component["declaredType"] ?? componentClassInstance, component, true);
     if (componentSvg) {
       if (condition === undefined) componentSvg.opacity(0.5);
       applyIconPlacement(componentSvg, component);
       group.add(componentSvg);
     }
   }
-  for (const connectEquation of classInstance.connectEquations) {
+  for (const connectEquation of classInstance["connectEquations"]) {
     const line: ILine | null =
       typeof connectEquation.annotation === "function" ? connectEquation.annotation("Line") : null;
     if (line) renderLine(group, line);
@@ -95,11 +95,11 @@ export function renderIcon(
   skipText?: boolean,
 ): Svg | null {
   svg = svg ? svg : new Svg();
-  for (const extendsClassInstance of classInstance.extendsClassInstances) {
-    if (extendsClassInstance.classInstance)
-      renderIcon(extendsClassInstance.classInstance, componentInstance, ports, svg, skipText);
+  for (const extendsClassInstance of classInstance.extendsClassInstances ?? []) {
+    if (extendsClassInstance["classInstance"])
+      renderIcon(extendsClassInstance["classInstance"], componentInstance, ports, svg, skipText);
   }
-  const icon: IIcon | null = classInstance.annotation("Icon");
+  const icon: IIcon | null = classInstance.annotation?.("Icon") ?? null;
   applyCoordinateSystem(svg, icon?.coordinateSystem);
   const group = svg.group();
   for (const graphicItem of icon?.graphics ?? []) {
@@ -107,8 +107,8 @@ export function renderIcon(
     renderGraphicItem(group, graphicItem, componentInstance ?? classInstance);
   }
   if (ports) {
-    for (const component of classInstance.components) {
-      if (component.classKind !== ModelicaClassKind.CONNECTOR) continue;
+    for (const component of classInstance.components ?? []) {
+      if (component["classKind"] !== ModelicaClassKind.CONNECTOR) continue;
 
       const condition = evaluateCondition(component);
       if (condition === false) continue;
@@ -522,9 +522,9 @@ export function applyTextString(
   let str = graphicItem.string ?? "";
   if (str.includes("%")) {
     str = str.replace(/%name/g, classInstance?.name ?? "");
-    str = str.replace(/%comment/g, classInstance?.description ?? "");
-    if (classInstance?.isComponentInstance || classInstance?.kind === "Component") {
-      str = str.replace(/%class/g, classInstance.typeSpecifier || classInstance.name || "");
+    str = str.replace(/%comment/g, classInstance?.["description"] ?? "");
+    if (classInstance?.["isComponentInstance"] || classInstance?.kind === "Component") {
+      str = str.replace(/%class/g, classInstance["typeSpecifier"] || classInstance.name || "");
     }
   }
   shape.text(str);
@@ -654,21 +654,21 @@ export function convertSmoothPath(points?: IPoint[]): PathCommand[] {
   const pts: [number, number][] = points.map((p) => convertPoint(p));
   const n = pts.length;
 
-  pathArray.push(["M", pts[0][0], pts[0][1]]);
+  pathArray.push(["M", pts[0]![0], pts[0]![1]]);
 
   for (let i = 0; i < n - 1; i++) {
-    const p0 = i > 0 ? pts[i - 1] : [2 * pts[0][0] - pts[1][0], 2 * pts[0][1] - pts[1][1]];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = i + 2 < n ? pts[i + 2] : [2 * pts[n - 1][0] - pts[n - 2][0], 2 * pts[n - 1][1] - pts[n - 2][1]];
+    const p0 = i > 0 ? pts[i - 1]! : [2 * pts[0]![0] - pts[1]![0], 2 * pts[0]![1] - pts[1]![1]];
+    const p1 = pts[i]!;
+    const p2 = pts[i + 1]!;
+    const p3 = i + 2 < n ? pts[i + 2]! : [2 * pts[n - 1]![0] - pts[n - 2]![0], 2 * pts[n - 1]![1] - pts[n - 2]![1]];
 
     // Catmull-Rom to Cubic Bezier control points (C1 continuity everywhere):
     // C1 = P1 + (P2 - P0) / 6
     // C2 = P2 - (P3 - P1) / 6
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    const c1x = p1[0] + (p2[0] - p0[0]!) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]!) / 6;
+    const c2x = p2[0] - (p3[0]! - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1]! - p1[1]) / 6;
 
     pathArray.push(["C", c1x, c1y, c2x, c2y, p2[0], p2[1]]);
   }

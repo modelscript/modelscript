@@ -269,7 +269,8 @@ function cloneExprScalarized(
     if (argCount == 0) {
       return outDae.addCall(data1 as i32, 0xffffffff, 0);
     }
-    let newFirstArg = cloneExprScalarized(srcDae, outDae, firstArg, varBaseMapping, varElemCounts, currentElemIndex);
+    let clonedArgs = new Array<u32>(argCount as i32);
+    clonedArgs[0] = cloneExprScalarized(srcDae, outDae, firstArg, varBaseMapping, varElemCounts, currentElemIndex);
     for (let a: u32 = 1; a < argCount; a++) {
       let argExprId = firstArg + a;
       if (exprId + a < srcDae.exprCount) {
@@ -278,9 +279,13 @@ function cloneExprScalarized(
           argExprId = srcDae.getExprData().get((exprId + a) * EXPR_STRIDE + EXPR_LEFT) as u32;
         }
       }
-      cloneExprScalarized(srcDae, outDae, argExprId, varBaseMapping, varElemCounts, currentElemIndex);
+      clonedArgs[a as i32] = cloneExprScalarized(srcDae, outDae, argExprId, varBaseMapping, varElemCounts, currentElemIndex);
     }
-    return outDae.addCall(data1 as i32, newFirstArg, argCount);
+    let callId = outDae.addCall(data1 as i32, clonedArgs[0], argCount);
+    for (let a: u32 = 1; a < argCount; a++) {
+      outDae.addExpression(ExprKind.Tuple, 0, clonedArgs[a as i32], 0);
+    }
+    return callId;
   }
 
   return outDae.addExpression(kind, data1, left, right);

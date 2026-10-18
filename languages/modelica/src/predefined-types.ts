@@ -184,9 +184,9 @@ export function injectPredefinedTypes(index: SymbolIndex): SymbolIndex {
     }
 
     // If this is an enumeration, add child entries for the literal values
-    if (typeInfo.attributes.isEnumeration && Array.isArray(typeInfo.attributes.literals)) {
-      for (let j = 0; j < typeInfo.attributes.literals.length; j++) {
-        const litName = typeInfo.attributes.literals[j] as string;
+    if (typeInfo.attributes["isEnumeration"] && Array.isArray(typeInfo.attributes["literals"])) {
+      for (let j = 0; j < typeInfo.attributes["literals"].length; j++) {
+        const litName = typeInfo.attributes["literals"][j] as string;
         const litId: SymbolId = PREDEFINED_BASE_ID - 100 - i * 20 - j;
 
         const litEntry: SymbolEntry = {
@@ -236,7 +236,7 @@ export function injectPredefinedTypes(index: SymbolIndex): SymbolIndex {
  * Check if a symbol entry represents a predefined type.
  */
 export function isPredefinedType(entry: SymbolEntry): boolean {
-  return entry.metadata?.isPredefined === true;
+  return entry.metadata?.["isPredefined"] === true;
 }
 
 /**

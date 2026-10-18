@@ -25,6 +25,11 @@ import type {
   PscxProject,
 } from "../types.js";
 
+/**
+ * Extracts a structured `EmtNetlist` from a parsed `PscxProject`, recursively flattening
+ * hierarchical sub-modules, snapping geometric wire/ground pins, and classifying electrical
+ * and CSMF control components.
+ */
 export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const buses = new Map<string, EmtBus>();
   const branches: EmtBranch[] = [];
@@ -40,6 +45,10 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const controlBlocks: EmtControlBlock[] = [];
   let virtualBusCounter = 1;
 
+  /**
+   * Recursively elaborates a single PSCAD schematic module (`mod`) under hierarchical `prefix`,
+   * stitching boundary ports (`port` / `xnode`) to parent buses via `boundaryBusOverrides`.
+   */
   function processModule(
     mod: PscxModule,
     prefix: string,
@@ -743,8 +752,10 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
  * ready for `@modelscript/simulate`'s `EmtSolver`.
  */
 export function netlistToEmtCircuit(netlist: EmtNetlist) {
+  // 1. Exclude reference ground nodes ("0" and "GND") from the active nodal admittance bus list
   const buses = Array.from(netlist.buses.keys()).filter((b) => b !== "0" && b !== "GND");
 
+  // 2. Map passive RLC branches and circuit breakers/switches
   const rlc = netlist.branches
     .filter((b) => b.kind === "rlc")
     .map((b) => ({
@@ -766,6 +777,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
       openTimeSec: b.openTimeSec,
       closeTimeSec: b.closeTimeSec,
       choppingCurrentAmp: b.choppingCurrentAmp,
+      // Convert numeric 0/1/2 phase index into symbolic phase identifier ("A" | "B" | "C")
       singlePoleTripPhase:
         b.singlePoleTripPhase === 0
           ? ("A" as const)
@@ -776,6 +788,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
               : undefined,
     }));
 
+  // 3. Map two-winding transformers, distributed-parameter lines/cables, and FMU interfaces
   const transformers = netlist.transformers.map((x) => ({
     id: x.id,
     primaryBus: x.fromBus,
@@ -811,6 +824,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     ratedKv: f.ratedKv,
   }));
 
+  // 4. Map Thevenin/ideal AC voltage sources, timed faults, and nonlinear MOV surge arresters
   const sources = netlist.sources.map((s) => ({
     id: s.id,
     bus: s.bus,
@@ -840,6 +854,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     vRefKv: arr.vRefKv,
   }));
 
+  // 5. Map rotating machines (Park dq0 synchronous & induction machines) and power-electronic converters
   const synchronousMachines = netlist.synchronousMachines?.map((sm) => ({
     id: sm.id,
     bus: sm.bus,
@@ -905,6 +920,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     armInductanceH: cb.armInductanceH,
   }));
 
+  // 6. Map Continuous System Modeling Functions (CSMF) signal-flow control blocks
   const csmfBlocks = netlist.controlBlocks?.map((cb) => ({
     id: cb.id,
     kind: cb.kind,

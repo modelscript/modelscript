@@ -8,32 +8,32 @@ import type { FeaBoundaryConditions, FeaStepResult, MaterialProperties, Tet4Mesh
 export type Vector3D = [number, number, number];
 
 export interface ContinuumBoundaryCondition {
-  velocity?: Vector3D;
-  pressure?: number;
-  massFlow?: number;
-  temperature?: number;
-  displacement?: Vector3D;
-  force?: Vector3D;
+  velocity?: Vector3D | undefined;
+  pressure?: number | undefined;
+  massFlow?: number | undefined;
+  temperature?: number | undefined;
+  displacement?: Vector3D | undefined;
+  force?: Vector3D | undefined;
 }
 
 export interface ContinuumPatchMetrics {
   patchName: string;
   integratedForce: Vector3D;
   meanPressure: number;
-  integratedMassFlow?: number;
-  areaM2?: number;
+  integratedMassFlow?: number | undefined;
+  areaM2?: number | undefined;
 }
 
 export interface CfdStepOutput {
   aerodynamicForceN: Vector3D;
   maxVelocity: number;
   pressureDropPa: number;
-  patchMetrics?: Map<string, ContinuumPatchMetrics>;
-  velocityMagnitude?: Float32Array;
+  patchMetrics?: Map<string, ContinuumPatchMetrics> | undefined;
+  velocityMagnitude?: Float32Array | undefined;
 }
 
 export interface FeaStepOutput extends FeaStepResult {
-  tagDisplacements?: Map<string, Vector3D>;
+  tagDisplacements?: Map<string, Vector3D> | undefined;
 }
 
 /**
@@ -153,7 +153,7 @@ export class WasmFeaAdapter implements IFeaContinuumParticipant {
   public readonly mesh: Tet4Mesh;
   public readonly material: MaterialProperties;
   private fixedNodeSet: Set<number> = new Set();
-  private lastResult?: FeaStepResult;
+  private lastResult?: FeaStepResult | undefined;
   private transient: boolean;
 
   constructor(

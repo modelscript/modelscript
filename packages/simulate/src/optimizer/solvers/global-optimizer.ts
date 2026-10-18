@@ -15,9 +15,9 @@ import { freezeAndSolve, type MinlpResult } from "@modelscript/runtime/wasm_minl
 import { StaticTapeBuilder } from "@modelscript/runtime/wasm_tape.js";
 
 export interface GlobalOptimizationOptions {
-  maxIterations?: number;
-  tolerance?: number;
-  timeoutMs?: number;
+  maxIterations?: number | undefined;
+  tolerance?: number | undefined;
+  timeoutMs?: number | undefined;
 }
 
 export interface GlobalOptimizationProblem {
@@ -25,7 +25,7 @@ export interface GlobalOptimizationProblem {
   objectiveExpr: number; // ExprId in dae
   variables: string[];
   bounds: Map<string, { min: number; max: number }>;
-  discreteVariables?: Set<string>;
+  discreteVariables?: Set<string> | undefined;
 }
 
 export interface GlobalOptimizationResult {

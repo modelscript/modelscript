@@ -8,29 +8,33 @@
  * TGG polyglot correspondence index and WebAssembly zero-GC runtime.
  */
 
+/** Source-location provenance token linking an inferred or projected ontology entity back to source code. */
 export interface ProvenanceToken {
   readonly tokenId: number;
-  readonly sourceLang?: string;
-  readonly sourceUri?: string;
-  readonly startByte?: number;
-  readonly endByte?: number;
-  readonly startOffset?: number;
-  readonly endOffset?: number;
-  readonly symbolId?: string | number;
+  readonly sourceLang?: string | undefined;
+  readonly sourceUri?: string | undefined;
+  readonly startByte?: number | undefined;
+  readonly endByte?: number | undefined;
+  readonly startOffset?: number | undefined;
+  readonly endOffset?: number | undefined;
+  readonly symbolId?: string | number | undefined;
 }
 
+/** Result of projecting a language-specific AST/CST construct into ontology properties and provenance tokens. */
 export interface OntologyProjectionResult {
   props: Record<string, unknown>;
-  provenanceTokens?: readonly ProvenanceToken[];
-  blameLocations?: readonly {
-    uri?: string;
-    startByte?: number;
-    endByte?: number;
-    startOffset?: number;
-    endOffset?: number;
-    sourceLang?: string;
-    symbolId?: string | number;
-  }[];
+  provenanceTokens?: readonly ProvenanceToken[] | undefined;
+  blameLocations?:
+    | readonly {
+        uri?: string | undefined;
+        startByte?: number | undefined;
+        endByte?: number | undefined;
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
+        sourceLang?: string | undefined;
+        symbolId?: string | number | undefined;
+      }[]
+    | undefined;
 }
 import type { SymbolEntry, SymbolId, SymbolIndex } from "../runtime.js";
 
@@ -38,297 +42,340 @@ import type { SymbolEntry, SymbolId, SymbolIndex } from "../runtime.js";
 // OWL2 Axiom Types
 // ---------------------------------------------------------------------------
 
+/** OWL 2 class declaration axiom (`Declaration(Class(C))`). */
 export interface OWL2ClassDeclaration {
   readonly type: "ClassDeclaration";
   readonly iri: string;
-  readonly sourceLang?: string;
-  readonly sourceQualifiedName?: string;
+  readonly sourceLang?: string | undefined;
+  readonly sourceQualifiedName?: string | undefined;
 }
 
+/** OWL 2 subclass inclusion axiom (`SubClassOf(C D)`). */
 export interface OWL2SubClassOf {
   readonly type: "SubClassOf";
   readonly subClassIri: string;
   readonly superClassIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 class equivalence axiom (`EquivalentClasses(C1 ... Cn)`). */
 export interface OWL2EquivalentClasses {
   readonly type: "EquivalentClasses";
   readonly classIris: readonly string[];
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 disjoint classes axiom (`DisjointClasses(C1 ... Cn)`). */
 export interface OWL2DisjointClasses {
   readonly type: "DisjointClasses";
   readonly classIris: readonly string[];
-  readonly subClassIri?: string;
-  readonly sourceLang?: string;
+  readonly subClassIri?: string | undefined;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 object property declaration axiom (`Declaration(ObjectProperty(R))`). */
 export interface OWL2ObjectPropertyDeclaration {
   readonly type: "ObjectPropertyDeclaration";
   readonly iri: string;
-  readonly sourceLang?: string;
-  readonly characteristics?: readonly ("Transitive" | "Functional" | "Symmetric" | "InverseFunctional")[];
+  readonly sourceLang?: string | undefined;
+  readonly characteristics?: readonly ("Transitive" | "Functional" | "Symmetric" | "InverseFunctional")[] | undefined;
 }
 
+/** OWL 2 data property declaration axiom (`Declaration(DataProperty(P))`). */
 export interface OWL2DataPropertyDeclaration {
   readonly type: "DataPropertyDeclaration";
   readonly iri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 positive object property assertion (`ObjectPropertyAssertion(R a b)`). */
 export interface OWL2ObjectPropertyAssertion {
   readonly type: "ObjectPropertyAssertion";
   readonly propertyIri: string;
   readonly subjectIri: string;
   readonly objectIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 positive data property assertion (`DataPropertyAssertion(P a v)`) with optional numeric bounds. */
 export interface OWL2DataPropertyAssertion {
   readonly type: "DataPropertyAssertion";
   readonly propertyIri: string;
   readonly subjectIri: string;
   readonly value: string;
-  readonly datatype?: string;
-  readonly sourceLang?: string;
-  readonly minVal?: number;
-  readonly maxVal?: number;
-  readonly op?: "<" | "<=" | ">" | ">=" | "=" | "!=";
+  readonly datatype?: string | undefined;
+  readonly sourceLang?: string | undefined;
+  readonly minVal?: number | undefined;
+  readonly maxVal?: number | undefined;
+  readonly op?: "<" | "<=" | ">" | ">=" | "=" | "!=" | undefined;
 }
 
+/** OWL 2 transitive object property axiom (`TransitiveObjectProperty(R)`). */
 export interface OWL2TransitiveObjectProperty {
   readonly type: "TransitiveObjectProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 named individual declaration axiom (`Declaration(NamedIndividual(a))`). */
 export interface OWL2IndividualDeclaration {
   readonly type: "IndividualDeclaration";
   readonly iri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 class assertion axiom (`ClassAssertion(C a)`). */
 export interface OWL2ClassAssertion {
   readonly type: "ClassAssertion";
   readonly classIri: string;
   readonly individualIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 existential object restriction (`SubClassOf(C ObjectSomeValuesFrom(R D))`). */
 export interface OWL2ObjectSomeValuesFrom {
   readonly type: "ObjectSomeValuesFrom";
-  readonly subClassIri?: string;
+  readonly subClassIri?: string | undefined;
   readonly propertyIri: string;
   readonly fillerClassIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 existential data restriction (`SubClassOf(C DataSomeValuesFrom(P DR))`). */
 export interface OWL2DataSomeValuesFrom {
   readonly type: "DataSomeValuesFrom";
-  readonly subClassIri?: string;
+  readonly subClassIri?: string | undefined;
   readonly propertyIri: string;
   readonly dataRange: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 functional object property axiom (`FunctionalObjectProperty(R)`). */
 export interface OWL2FunctionalObjectProperty {
   readonly type: "FunctionalObjectProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 inverse-functional object property axiom (`InverseFunctionalObjectProperty(R)`). */
 export interface OWL2InverseFunctionalObjectProperty {
   readonly type: "InverseFunctionalObjectProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 reflexive object property axiom (`ReflexiveObjectProperty(R)`). */
 export interface OWL2ReflexiveObjectProperty {
   readonly type: "ReflexiveObjectProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 functional data property axiom (`FunctionalDataProperty(P)`). */
 export interface OWL2FunctionalDataProperty {
   readonly type: "FunctionalDataProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 object subproperty axiom (`SubObjectPropertyOf(R1 R2)`). */
 export interface OWL2SubObjectPropertyOf {
   readonly type: "SubObjectPropertyOf";
   readonly subPropertyIri: string;
   readonly superPropertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 data subproperty axiom (`SubDataPropertyOf(P1 P2)`). */
 export interface OWL2SubDataPropertyOf {
   readonly type: "SubDataPropertyOf";
   readonly subPropertyIri: string;
   readonly superPropertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 object property domain axiom (`ObjectPropertyDomain(R C)`). */
 export interface OWL2ObjectPropertyDomain {
   readonly type: "ObjectPropertyDomain";
   readonly propertyIri: string;
   readonly domainIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 object property range axiom (`ObjectPropertyRange(R C)`). */
 export interface OWL2ObjectPropertyRange {
   readonly type: "ObjectPropertyRange";
   readonly propertyIri: string;
   readonly rangeIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 data property domain axiom (`DataPropertyDomain(P C)`). */
 export interface OWL2DataPropertyDomain {
   readonly type: "DataPropertyDomain";
   readonly propertyIri: string;
   readonly domainIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 data property range axiom (`DataPropertyRange(P DR)`). */
 export interface OWL2DataPropertyRange {
   readonly type: "DataPropertyRange";
   readonly propertyIri: string;
   readonly rangeIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 negative object property assertion (`NegativeObjectPropertyAssertion(R a b)`). */
 export interface OWL2NegativeObjectPropertyAssertion {
   readonly type: "NegativeObjectPropertyAssertion";
   readonly propertyIri: string;
   readonly subjectIri: string;
   readonly objectIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 negative data property assertion (`NegativeDataPropertyAssertion(P a v)`). */
 export interface OWL2NegativeDataPropertyAssertion {
   readonly type: "NegativeDataPropertyAssertion";
   readonly propertyIri: string;
   readonly subjectIri: string;
   readonly value: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 individual equality axiom (`SameIndividual(a1 ... an)`). */
 export interface OWL2SameIndividual {
   readonly type: "SameIndividual";
   readonly individualIris: readonly string[];
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 universal object restriction (`SubClassOf(C ObjectAllValuesFrom(R D))`). */
 export interface OWL2UniversalRestriction {
   readonly type: "UniversalRestriction";
   readonly propertyIri: string;
   readonly targetClassIri: string;
-  readonly classIri?: string;
-  readonly sourceLang?: string;
+  readonly classIri?: string | undefined;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 disjunctive class union axiom (`SubClassOf(C ObjectUnionOf(D1 ... Dn))`). */
 export interface OWL2DisjunctiveClass {
   readonly type: "DisjunctiveClass";
   readonly classIris: readonly string[];
-  readonly superClassIri?: string;
-  readonly sourceLang?: string;
+  readonly superClassIri?: string | undefined;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 qualified cardinality restriction (`ObjectMinCardinality` / `ObjectMaxCardinality` / `ObjectExactCardinality`). */
 export interface OWL2QualifiedCardinality {
   readonly type: "QualifiedCardinality";
   readonly classIri: string;
   readonly propertyIri: string;
-  readonly fillerClassIri?: string;
+  readonly fillerClassIri?: string | undefined;
   readonly cardinalityType: "min" | "max" | "exact";
   readonly count: number;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 symmetric object property axiom (`SymmetricObjectProperty(R)`). */
 export interface OWL2SymmetricObjectProperty {
   readonly type: "SymmetricObjectProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 inverse object properties axiom (`InverseObjectProperties(R S)`). */
 export interface OWL2InverseObjectProperty {
   readonly type: "InverseObjectProperty";
   readonly propertyIri: string;
   readonly inversePropertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 asymmetric object property axiom (`AsymmetricObjectProperty(R)`). */
 export interface OWL2AsymmetricObjectProperty {
   readonly type: "AsymmetricObjectProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 irreflexive object property axiom (`IrreflexiveObjectProperty(R)`). */
 export interface OWL2IrreflexiveObjectProperty {
   readonly type: "IrreflexiveObjectProperty";
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 disjoint object properties axiom (`DisjointObjectProperties(R1 ... Rn)`). */
 export interface OWL2DisjointObjectProperties {
   readonly type: "DisjointObjectProperties";
   readonly propertyIris: readonly string[];
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 enumeration / nominal class definition (`EquivalentClasses(C ObjectOneOf(a1 ... an))`). */
 export interface OWL2NominalClass {
   readonly type: "NominalClass" | "ObjectOneOf";
   readonly classIri: string;
   readonly individualIris: readonly string[];
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
+/** Alias for `OWL2NominalClass`. */
 export type OWL2ObjectOneOf = OWL2NominalClass;
 
+/** OWL 2 individual inequality axiom (`DifferentIndividuals(a1 ... an)`). */
 export interface OWL2DifferentIndividuals {
   readonly type: "DifferentIndividuals";
   readonly individualIris: readonly string[];
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 local reflexivity restriction (`SubClassOf(C ObjectHasSelf(R))`). */
 export interface OWL2SelfRestriction {
   readonly type: "SelfRestriction";
   readonly classIri: string;
   readonly propertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** OWL 2 role composition / property chain inclusion (`SubObjectPropertyOf(ObjectPropertyChain(R1 ... Rn) S)`). */
 export interface OWL2SubPropertyChainOf {
   readonly type: "SubPropertyChainOf";
   readonly subPropertyChain: readonly string[];
   readonly superPropertyIri: string;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
+/** Single weighted term in a linear data-property constraint (`coefficient * propertyIri`). */
 export interface OWL2LinearTerm {
   readonly propertyIri: string;
   readonly coefficient: number;
 }
 
+/** Multivariate linear inequality/equality constraint over data properties of an individual or class. */
 export interface OWL2LinearConstraint {
   readonly type: "LinearConstraint";
   readonly subjectIri: string;
   readonly terms: readonly OWL2LinearTerm[];
   readonly op: "<" | "<=" | ">" | ">=" | "=";
   readonly bound: number;
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------
 // SWRL Rules and Atoms
 // ---------------------------------------------------------------------------
 
+/** SWRL class atom (`C(?x)`). */
 export interface SWRLClassAtom {
   readonly type: "ClassAtom";
   readonly classIri: string;
   readonly argument: string;
 }
 
+/** SWRL object property atom (`R(?x, ?y)`). */
 export interface SWRLIndividualPropertyAtom {
   readonly type: "IndividualPropertyAtom";
   readonly propertyIri: string;
@@ -336,6 +383,7 @@ export interface SWRLIndividualPropertyAtom {
   readonly argument2: string;
 }
 
+/** SWRL data property atom (`P(?x, ?v)`). */
 export interface SWRLDataPropertyAtom {
   readonly type: "DataPropertyAtom";
   readonly propertyIri: string;
@@ -343,24 +391,28 @@ export interface SWRLDataPropertyAtom {
   readonly argument2: string | number;
 }
 
+/** SWRL built-in predicate atom (`swrlb:add(?res, ?a, ?b)`, etc.). */
 export interface SWRLBuiltInAtom {
   readonly type: "BuiltInAtom";
   readonly builtInIri: string;
   readonly arguments: readonly (string | number)[];
 }
 
+/** SWRL same-individual equality atom (`sameAs(?x, ?y)`). */
 export interface SWRLSameIndividualAtom {
   readonly type: "SameIndividualAtom";
   readonly argument1: string;
   readonly argument2: string;
 }
 
+/** SWRL different-individuals inequality atom (`differentFrom(?x, ?y)`). */
 export interface SWRLDifferentIndividualsAtom {
   readonly type: "DifferentIndividualsAtom";
   readonly argument1: string;
   readonly argument2: string;
 }
 
+/** Union of all supported SWRL rule body/head atom types. */
 export type SWRLAtom =
   | SWRLClassAtom
   | SWRLIndividualPropertyAtom
@@ -369,57 +421,62 @@ export type SWRLAtom =
   | SWRLSameIndividualAtom
   | SWRLDifferentIndividualsAtom;
 
+/** DL-safe SWRL implication rule (`body => head`). */
 export interface OWL2SwrlRule {
   readonly type: "SwrlRule";
-  readonly ruleIri?: string;
+  readonly ruleIri?: string | undefined;
   readonly body: readonly SWRLAtom[];
   readonly head: readonly SWRLAtom[];
-  readonly sourceLang?: string;
+  readonly sourceLang?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------
 // SHACL Shapes and Rules (SHACL-AF)
 // ---------------------------------------------------------------------------
 
+/** SHACL-SPARQL BGP query constraint (`sh:sparql`). */
 export interface SHACLSparqlConstraint {
-  readonly ask?: BgpQuery;
-  readonly select?: BgpQuery;
-  readonly expectEmpty?: boolean;
-  readonly message?: string;
+  readonly ask?: BgpQuery | undefined;
+  readonly select?: BgpQuery | undefined;
+  readonly expectEmpty?: boolean | undefined;
+  readonly message?: string | undefined;
 }
 
+/** SHACL property shape specification (`sh:PropertyShape`). */
 export interface SHACLPropertyShape {
   readonly path: string;
-  readonly targetClass?: string;
-  readonly minCount?: number;
-  readonly maxCount?: number;
-  readonly qualifiedValueShape?: string;
-  readonly pattern?: string;
-  readonly hasValue?: string;
-  readonly in?: readonly string[];
-  readonly class?: string;
-  readonly or?: readonly SHACLPropertyShape[];
-  readonly and?: readonly SHACLPropertyShape[];
-  readonly not?: SHACLPropertyShape;
-  readonly xone?: readonly SHACLPropertyShape[];
-  readonly minInclusive?: number;
-  readonly maxInclusive?: number;
-  readonly minExclusive?: number;
-  readonly maxExclusive?: number;
-  readonly lessThan?: string;
-  readonly lessThanOrEquals?: string;
-  readonly sparql?: SHACLSparqlConstraint;
+  readonly targetClass?: string | undefined;
+  readonly minCount?: number | undefined;
+  readonly maxCount?: number | undefined;
+  readonly qualifiedValueShape?: string | undefined;
+  readonly pattern?: string | undefined;
+  readonly hasValue?: string | undefined;
+  readonly in?: readonly string[] | undefined;
+  readonly class?: string | undefined;
+  readonly or?: readonly SHACLPropertyShape[] | undefined;
+  readonly and?: readonly SHACLPropertyShape[] | undefined;
+  readonly not?: SHACLPropertyShape | undefined;
+  readonly xone?: readonly SHACLPropertyShape[] | undefined;
+  readonly minInclusive?: number | undefined;
+  readonly maxInclusive?: number | undefined;
+  readonly minExclusive?: number | undefined;
+  readonly maxExclusive?: number | undefined;
+  readonly lessThan?: string | undefined;
+  readonly lessThanOrEquals?: string | undefined;
+  readonly sparql?: SHACLSparqlConstraint | undefined;
 }
 
+/** SHACL Advanced Features (SHACL-AF) triple derivation rule (`sh:TripleRule`). */
 export interface SHACLTripleRule {
-  readonly type?: "TripleRule";
+  readonly type?: "TripleRule" | undefined;
   readonly targetClass: string;
-  readonly subject?: string; // defaults to "?this" or "sh:this"
+  readonly subject?: string | undefined; // defaults to "?this" or "sh:this"
   readonly predicate: string;
   readonly object: string;
-  readonly condition?: SHACLPropertyShape;
+  readonly condition?: SHACLPropertyShape | undefined;
 }
 
+/** SHACL Advanced Features (SHACL-AF) SPARQL construct rule (`sh:SPARQLRule`). */
 export interface SHACLSparqlRule {
   readonly type: "SparqlRule";
   readonly targetClass: string;
@@ -433,40 +490,46 @@ export interface SHACLSparqlRule {
 export interface SHACLLegacyRule {
   readonly targetClass: string;
   readonly propertyIri: string;
-  readonly fillerClassIri?: string;
-  readonly minCount?: number;
-  readonly maxCount?: number;
-  readonly derivedClassIri?: string;
-  readonly derivedPropertyIri?: string;
-  readonly derivedValueIri?: string;
+  readonly fillerClassIri?: string | undefined;
+  readonly minCount?: number | undefined;
+  readonly maxCount?: number | undefined;
+  readonly derivedClassIri?: string | undefined;
+  readonly derivedPropertyIri?: string | undefined;
+  readonly derivedValueIri?: string | undefined;
 }
 
+/** Union of supported SHACL-AF derivation rules. */
 export type SHACLRule = SHACLTripleRule | SHACLSparqlRule | SHACLLegacyRule;
 
+/** SHACL node shape specification (`sh:NodeShape`) targeting a class and its instances. */
 export interface SHACLNodeShape {
   readonly targetClass: string;
   readonly propertyShapes: readonly SHACLPropertyShape[];
-  readonly closed?: boolean;
-  readonly rules?: readonly SHACLRule[];
+  readonly closed?: boolean | undefined;
+  readonly rules?: readonly SHACLRule[] | undefined;
 }
 
+/** Validation violation produced when a focus node fails a SHACL shape constraint. */
 export interface SHACLViolation {
   readonly focusNode: string;
   readonly resultPath: string;
   readonly message: string;
   readonly constraintComponent: string;
-  readonly severity?: "Violation" | "Warning" | "Info";
-  readonly blameLocations?: readonly {
-    uri?: string;
-    startByte?: number;
-    endByte?: number;
-    startOffset?: number;
-    endOffset?: number;
-    sourceLang?: string;
-    symbolId?: string | number;
-  }[];
+  readonly severity?: "Violation" | "Warning" | "Info" | undefined;
+  readonly blameLocations?:
+    | readonly {
+        uri?: string | undefined;
+        startByte?: number | undefined;
+        endByte?: number | undefined;
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
+        sourceLang?: string | undefined;
+        symbolId?: string | number | undefined;
+      }[]
+    | undefined;
 }
 
+/** Discriminated union of all supported OWL 2 and SWRL axioms. */
 export type OWL2Axiom =
   | OWL2ClassDeclaration
   | OWL2SubClassOf
@@ -509,11 +572,13 @@ export type OWL2Axiom =
   | OWL2LinearConstraint
   | OWL2SwrlRule;
 
+/** Incremental ontology changeset consisting of retracted and newly asserted OWL 2 axioms. */
 export interface OWL2AxiomDelta {
   readonly retractions: readonly OWL2Axiom[];
   readonly assertions: readonly OWL2Axiom[];
 }
 
+/** Read-only interface to an OWL 2 ontology axiom store. */
 export interface IOWL2OntologyStore {
   readonly size: number;
   readonly axioms: readonly OWL2Axiom[];
@@ -523,6 +588,7 @@ export interface IOWL2OntologyStore {
 // Reasoner Status & Query Results
 // ---------------------------------------------------------------------------
 
+/** Lifecycle state of an OWL 2 ontology reasoner. */
 export type ReasonerStatus = "idle" | "loading" | "classifying" | "ready" | "inconsistent" | "error";
 
 /** Result of a subsumption check. */
@@ -578,6 +644,7 @@ export interface PropertyChainResult {
 // SPARQL-DL & Property Path Queries
 // ---------------------------------------------------------------------------
 
+/** Supported SPARQL 1.1 property path operators. */
 export type PropertyPathOp = "direct" | "plus" | "star" | "inverse" | "inverse-plus" | "sequence" | "alternation";
 
 /** A simplified SPARQL-DL or Property Path query. */
@@ -628,6 +695,7 @@ export interface DLQueryResult {
 // Reasoner Contract
 // ---------------------------------------------------------------------------
 
+/** Contract implemented by OWL 2 / SHACL reasoner backends. */
 export interface IOWLReasoner {
   readonly status: ReasonerStatus;
   readonly axiomCount: number;
@@ -661,6 +729,7 @@ export interface IOWLReasoner {
 // Events & IRI Namespace Helpers
 // ---------------------------------------------------------------------------
 
+/** Discriminated union of lifecycle events emitted by `OntologyBuilder`. */
 export type OntologyEvent =
   | { type: "status-changed"; status: ReasonerStatus }
   | { type: "classified"; axiomCount: number; timeMs: number }
@@ -668,8 +737,10 @@ export type OntologyEvent =
   | { type: "delta-applied"; delta: OWL2AxiomDelta }
   | { type: "error"; error: Error };
 
+/** Callback signature for `OntologyBuilder` event subscribers. */
 export type OntologyEventListener = (event: OntologyEvent) => void;
 
+/** Default IRI namespace prefixes by source engineering language. */
 export const OWL2_IRI_PREFIX = {
   modelica: "mo:",
   sysml2: "sysml:",
@@ -677,6 +748,7 @@ export const OWL2_IRI_PREFIX = {
   owl2: "",
 } as const;
 
+/** Constructs a prefixed IRI for `name` in the given `sourceLang` namespace. */
 export function makeIri(sourceLang: string, name: string): string {
   const prefix = (OWL2_IRI_PREFIX as Record<string, string>)[sourceLang] ?? `${sourceLang}:`;
   return `${prefix}${name}`;
@@ -686,62 +758,91 @@ export function makeIri(sourceLang: string, name: string): string {
 // Axiom Type Constants matching AssemblyScript ontology.ts
 // ---------------------------------------------------------------------------
 
+/** Axiom type constant for `ClassDeclaration`. */
 export const AXIOM_CLASS_DECL = 1;
+/** Axiom type constant for `SubClassOf`. */
 export const AXIOM_SUBCLASS_OF = 2;
+/** Axiom type constant for `EquivalentClasses`. */
 export const AXIOM_EQUIV_CLASS = 3;
+/** Axiom type constant for `DisjointClasses`. */
 export const AXIOM_DISJOINT_CLASSES = 4;
+/** Axiom type constant for `ObjectPropertyDeclaration`. */
 export const AXIOM_OBJ_PROP_DECL = 5;
+/** Axiom type constant for `DataPropertyDeclaration`. */
 export const AXIOM_DATA_PROP_DECL = 6;
+/** Axiom type constant for `ObjectPropertyAssertion`. */
 export const AXIOM_OBJ_PROP_ASSERT = 7;
+/** Axiom type constant for `DataPropertyAssertion`. */
 export const AXIOM_DATA_PROP_ASSERT = 8;
+/** Axiom type constant for `TransitiveObjectProperty`. */
 export const AXIOM_TRANSITIVE_PROP = 9;
+/** Axiom type constant for `IndividualDeclaration`. */
 export const AXIOM_INDIVIDUAL_DECL = 10;
+/** Axiom type constant for `ClassAssertion`. */
 export const AXIOM_CLASS_ASSERT = 11;
+/** Axiom type constant for `ObjectSomeValuesFrom`. */
 export const AXIOM_OBJECT_SOME_VALUES_FROM = 12;
+/** Axiom type constant for `SubPropertyChainOf`. */
 export const AXIOM_SUB_PROPERTY_CHAIN = 13;
+/** Axiom type constant for `FunctionalObjectProperty`. */
 export const AXIOM_FUNCTIONAL_OBJ_PROP = 14;
+/** Axiom type constant for `FunctionalDataProperty`. */
 export const AXIOM_FUNCTIONAL_DATA_PROP = 15;
+/** Axiom type constant for `SameIndividual`. */
 export const AXIOM_SAME_INDIVIDUAL = 16;
+/** Axiom type constant for `UniversalRestriction`. */
 export const AXIOM_UNIVERSAL_RESTRICTION = 17;
+/** Axiom type constant for `DisjunctiveClass`. */
 export const AXIOM_DISJUNCTIVE_CLASS = 18;
+/** Axiom type constant for `QualifiedCardinality`. */
 export const AXIOM_QUALIFIED_CARDINALITY = 19;
+/** Axiom type constant for `SymmetricObjectProperty`. */
 export const AXIOM_SYMMETRIC_PROP = 20;
+/** Axiom type constant for `InverseObjectProperty`. */
 export const AXIOM_INVERSE_PROP = 21;
+/** Axiom type constant for `AsymmetricObjectProperty`. */
 export const AXIOM_ASYMMETRIC_PROP = 22;
+/** Axiom type constant for `IrreflexiveObjectProperty`. */
 export const AXIOM_IRREFLEXIVE_PROP = 23;
+/** Axiom type constant for `DisjointObjectProperties`. */
 export const AXIOM_DISJOINT_PROPS = 24;
+/** Axiom type constant for `NominalClass` / `ObjectOneOf`. */
 export const AXIOM_NOMINAL_CLASS = 25;
+/** Axiom type constant for `SelfRestriction`. */
 export const AXIOM_SELF_RESTRICTION = 26;
+/** Axiom type constant for an in-WASM SHACL-AF derivation rule. */
 export const AXIOM_SHACL_RULE = 27;
 
 // ---------------------------------------------------------------------------
 // Conversion from ProjectionResult
 // ---------------------------------------------------------------------------
 
+/** Converts an `OntologyProjectionResult` emitted by a language grammar rule into `OWL2Axiom` objects. */
 export function projectionToAxioms(result: OntologyProjectionResult): OWL2Axiom[] {
   const props = result.props;
-  const axiomType = props.axiomType as string | undefined;
+  const axiomType = props["axiomType"] as string | undefined;
 
   if (axiomType) {
     return convertExplicitAxiom(props, axiomType);
   }
 
-  if (Array.isArray(props.axioms)) {
-    return props.axioms as OWL2Axiom[];
+  if (Array.isArray(props["axioms"])) {
+    return props["axioms"] as OWL2Axiom[];
   }
 
   return [];
 }
 
+/** Converts an untyped property dictionary with an explicit `axiomType` tag into typed `OWL2Axiom` records. */
 function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string): OWL2Axiom[] {
   switch (axiomType) {
     case "ClassDeclaration":
       return [
         {
           type: "ClassDeclaration",
-          iri: props.iri as string,
-          sourceLang: props.sourceLang as string,
-          sourceQualifiedName: props.sourceQualifiedName as string,
+          iri: props["iri"] as string,
+          sourceLang: props["sourceLang"] as string,
+          sourceQualifiedName: props["sourceQualifiedName"] as string,
         } satisfies OWL2ClassDeclaration,
       ];
 
@@ -749,9 +850,9 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "SubClassOf",
-          subClassIri: props.subClassIri as string,
-          superClassIri: props.superClassIri as string,
-          sourceLang: props.sourceLang as string,
+          subClassIri: props["subClassIri"] as string,
+          superClassIri: props["superClassIri"] as string,
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2SubClassOf,
       ];
 
@@ -759,8 +860,8 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "DisjointClasses",
-          classIris: props.classIris as string[],
-          sourceLang: props.sourceLang as string,
+          classIris: props["classIris"] as string[],
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2DisjointClasses,
       ];
 
@@ -768,9 +869,9 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "ObjectPropertyDeclaration",
-          iri: props.iri as string,
-          sourceLang: props.sourceLang as string,
-          characteristics: props.characteristics as OWL2ObjectPropertyDeclaration["characteristics"],
+          iri: props["iri"] as string,
+          sourceLang: props["sourceLang"] as string,
+          characteristics: props["characteristics"] as OWL2ObjectPropertyDeclaration["characteristics"],
         } satisfies OWL2ObjectPropertyDeclaration,
       ];
 
@@ -778,8 +879,8 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "DataPropertyDeclaration",
-          iri: props.iri as string,
-          sourceLang: props.sourceLang as string,
+          iri: props["iri"] as string,
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2DataPropertyDeclaration,
       ];
 
@@ -787,10 +888,10 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "ObjectPropertyAssertion",
-          propertyIri: props.propertyIri as string,
-          subjectIri: props.subjectIri as string,
-          objectIri: props.objectIri as string,
-          sourceLang: props.sourceLang as string,
+          propertyIri: props["propertyIri"] as string,
+          subjectIri: props["subjectIri"] as string,
+          objectIri: props["objectIri"] as string,
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2ObjectPropertyAssertion,
       ];
 
@@ -798,11 +899,11 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "DataPropertyAssertion",
-          propertyIri: props.propertyIri as string,
-          subjectIri: props.subjectIri as string,
-          value: props.value as string,
-          datatype: props.datatype as string | undefined,
-          sourceLang: props.sourceLang as string,
+          propertyIri: props["propertyIri"] as string,
+          subjectIri: props["subjectIri"] as string,
+          value: props["value"] as string,
+          datatype: props["datatype"] as string | undefined,
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2DataPropertyAssertion,
       ];
 
@@ -810,8 +911,8 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "TransitiveObjectProperty",
-          propertyIri: props.propertyIri as string,
-          sourceLang: props.sourceLang as string,
+          propertyIri: props["propertyIri"] as string,
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2TransitiveObjectProperty,
       ];
 
@@ -819,8 +920,8 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "IndividualDeclaration",
-          iri: props.iri as string,
-          sourceLang: props.sourceLang as string,
+          iri: props["iri"] as string,
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2IndividualDeclaration,
       ];
 
@@ -828,9 +929,9 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
       return [
         {
           type: "ClassAssertion",
-          classIri: props.classIri as string,
-          individualIri: props.individualIri as string,
-          sourceLang: props.sourceLang as string,
+          classIri: props["classIri"] as string,
+          individualIri: props["individualIri"] as string,
+          sourceLang: props["sourceLang"] as string,
         } satisfies OWL2ClassAssertion,
       ];
 
@@ -839,14 +940,17 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
   }
 }
 
-// ---------------------------------------------------------------------------
+// // ---------------------------------------------------------------------------
 // SPARQL 1.1 Property Path Parser & DSL Query Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Parses a SPARQL 1.1 property path expression into an IRI, path operator, and optional second step IRI.
+ */
 export function parsePropertyPathExpression(expr: string): {
   iri: string;
   pathOp: PropertyPathOp;
-  stepPropertyIri2?: string;
+  stepPropertyIri2?: string | undefined;
 } {
   const trimmed = expr.trim();
 
@@ -902,6 +1006,9 @@ export function parsePropertyPathExpression(expr: string): {
   };
 }
 
+/**
+ * Parses a textual DL query string (e.g., `subclasses(mo:Resistor)`) into a structured `DLQuery`.
+ */
 export function parseDLQuery(queryString: string): DLQuery | null {
   const trimmed = queryString.trim();
 
@@ -947,16 +1054,25 @@ export function parseDLQuery(queryString: string): DLQuery | null {
   return { type, iri, fromIri };
 }
 
+/**
+ * Executes a structured `DLQuery` against the given OWL 2 reasoner.
+ */
 export function executeDLQuery(reasoner: IOWLReasoner, query: DLQuery): DLQueryResult {
   return reasoner.query(query);
 }
 
+/**
+ * Parses and executes a textual DL query string against the given OWL 2 reasoner.
+ */
 export function executeQueryString(reasoner: IOWLReasoner, queryString: string): DLQueryResult | null {
   const query = parseDLQuery(queryString);
   if (!query) return null;
   return executeDLQuery(reasoner, query);
 }
 
+/**
+ * Executes a Basic Graph Pattern (BGP) conjunctive query against the given OWL 2 reasoner.
+ */
 export function executeBgpQuery(reasoner: IOWLReasoner, query: BgpQuery): BgpQueryResult {
   if (reasoner.queryBgp) {
     return reasoner.queryBgp(query);
@@ -968,10 +1084,16 @@ export function executeBgpQuery(reasoner: IOWLReasoner, query: BgpQuery): BgpQue
   };
 }
 
+/**
+ * Executes a batch of DL queries sequentially against the given OWL 2 reasoner.
+ */
 export function executeBatchQueries(reasoner: IOWLReasoner, queries: readonly DLQuery[]): DLQueryResult[] {
   return queries.map((q) => executeDLQuery(reasoner, q));
 }
 
+/**
+ * Formats a `DLQueryResult` as a human-readable multi-line string.
+ */
 export function formatQueryResult(result: DLQueryResult): string {
   const lines: string[] = [];
 
@@ -998,6 +1120,9 @@ export function formatQueryResult(result: DLQueryResult): string {
   return lines.join("\n");
 }
 
+/**
+ * Formats a `BgpQueryResult` as a human-readable multi-line string.
+ */
 export function formatBgpQueryResult(result: BgpQueryResult): string {
   const lines: string[] = [];
   lines.push(`BGP Query Results: ${result.bindings.length} row(s) in ${result.executionTimeMs.toFixed(2)}ms`);
@@ -1020,6 +1145,9 @@ export function formatBgpQueryResult(result: BgpQueryResult): string {
 // WASM Instance Interface
 // ---------------------------------------------------------------------------
 
+/**
+ * Low-level WebAssembly exports interface for the native ontology store and reasoner module.
+ */
 export interface WasmOntologyInstance {
   ontology_addAxiom?(
     axiomType: number,
@@ -1094,7 +1222,7 @@ export interface WasmOntologyInstance {
   ontology_getRoaringCardinality?(indexType: number, keyHash: number): number;
   alloc?(size: number): number;
   free?(ptr: number): void;
-  memory?: WebAssembly.Memory;
+  memory?: WebAssembly.Memory | undefined;
 }
 
 /**
@@ -1116,29 +1244,37 @@ export function hashIri64(s: string): { lo: number; hi: number; hash64: bigint }
  * Zero-copy flyweight view over an in-WASM axiom record in linear memory.
  */
 export class AxiomRecordView {
+  /** Creates a zero-copy view over a 6-word axiom record in `buffer` at `wordOffset`. */
   constructor(
     private _buffer: Uint32Array,
     private _wordOffset: number,
   ) {}
 
+  /** Numeric `AXIOM_*` type tag of the record. */
   get axiomType(): number {
-    return this._buffer[this._wordOffset] & 0xffff;
+    return this._buffer[this._wordOffset]! & 0xffff;
   }
+  /** Numeric identifier of the source engineering language. */
   get sourceLangId(): number {
-    return (this._buffer[this._wordOffset] >> 16) & 0xffff;
+    return (this._buffer[this._wordOffset]! >> 16) & 0xffff;
   }
+  /** Interned entity ID of the subject argument. */
   get subjectId(): number {
     return this._buffer[this._wordOffset + 1] ?? 0;
   }
+  /** Interned entity ID of the predicate argument. */
   get predicateId(): number {
     return this._buffer[this._wordOffset + 2] ?? 0;
   }
+  /** Interned entity ID of the object argument. */
   get objectId(): number {
     return this._buffer[this._wordOffset + 3] ?? 0;
   }
+  /** Packed bitflags or lower 32 bits of quantitative literal data. */
   get flags(): number {
     return this._buffer[this._wordOffset + 4] ?? 0;
   }
+  /** Extra payload word or upper 32 bits of quantitative literal data. */
   get extra(): number {
     return this._buffer[this._wordOffset + 5] ?? 0;
   }
@@ -1148,83 +1284,144 @@ export class AxiomRecordView {
 // WASM-Backed Reasoner Implementation
 // ---------------------------------------------------------------------------
 
+/** Internal taxonomy graph node for an OWL 2 class. */
 interface ClassNode {
+  /** Direct asserted superclasses. */
   superClasses: Set<string>;
+  /** Direct asserted subclasses. */
   subClasses: Set<string>;
+  /** Directly equivalent classes. */
   equivalents: Set<string>;
+  /** Transitive closure of all superclasses (populated during classification). */
   allSuperClasses: Set<string> | null;
+  /** Transitive closure of all subclasses (populated during classification). */
   allSubClasses: Set<string> | null;
 }
 
+/** Directed object property assertion edge between two individuals. */
 interface PropertyEdge {
+  /** Subject individual IRI. */
   subjectIri: string;
+  /** Object individual IRI. */
   objectIri: string;
 }
 
+/** Covering multi-index for fast Basic Graph Pattern (BGP) conjunctive query evaluation. */
 interface BgpCompiledIndex {
+  /** Flat list of all materialized `(s, p, o)` triples. */
   allFacts: { s: string; p: string; o: string }[];
+  /** Set of NUL-delimited `s\0p\0o` strings for O(1) exact triple existence checks. */
   exactSet: Set<string>;
+  /** Index mapping `s\0p` to matching object IRIs. */
   bySubjPred: Map<string, string[]>;
+  /** Index mapping `p\0o` to matching subject IRIs. */
   byPredObj: Map<string, string[]>;
+  /** Index mapping `s\0o` to matching predicate IRIs. */
   bySubjObj: Map<string, string[]>;
+  /** Index mapping predicate IRI `p` to `(s, o)` pairs. */
   byPred: Map<string, { s: string; o: string }[]>;
+  /** Index mapping subject IRI `s` to `(p, o)` pairs. */
   bySubj: Map<string, { p: string; o: string }[]>;
+  /** Index mapping object IRI `o` to `(s, p)` pairs. */
   byObj: Map<string, { s: string; p: string }[]>;
 }
 
+/**
+ * OWL 2 DL / EL++ / SROIQ(D), SWRL, and SHACL reasoner backed by WebAssembly and indexed graph structures.
+ */
 export class WasmOntologyReasoner implements IOWLReasoner {
+  /** Current lifecycle status of the reasoner. */
   private _status: ReasonerStatus = "idle";
+  /** Active list of asserted and inferred OWL 2 axioms. */
   private _axioms: OWL2Axiom[] = [];
 
+  /** Map from class IRI to its taxonomy node. */
   private classes = new Map<string, ClassNode>();
+  /** Set of canonical `classA|classB` disjoint class pairs. */
   private disjointPairs = new Set<string>();
+  /** Declared object property IRIs. */
   private objectProperties = new Set<string>();
+  /** Declared data property IRIs. */
   private dataProperties = new Set<string>();
+  /** Object properties declared transitive. */
   private transitiveProperties = new Set<string>();
+  /** Object properties declared functional. */
   private functionalObjectProperties = new Set<string>();
+  /** Equivalence classes of individuals unified via `SameIndividual` or functional roles. */
   private sameIndividualGroups = new Map<string, Set<string>>();
 
+  /** Map from individual IRI to its set of asserted and inferred class IRIs. */
   private individualTypes = new Map<string, Set<string>>();
+  /** Map from object property IRI to its asserted/inferred edges. */
   private objectPropertyAssertions = new Map<string, PropertyEdge[]>();
+  /** Map from data property IRI to its subject-value assertions. */
   private dataPropertyAssertions = new Map<string, { subjectIri: string; value: string }[]>();
+  /** Data properties declared functional. */
   private functionalDataProperties = new Set<string>();
+  /** Object properties declared inverse-functional. */
   private inverseFunctionalObjectProperties = new Set<string>();
+  /** Object properties declared reflexive. */
   private reflexiveProperties = new Set<string>();
+  /** Object properties declared asymmetric. */
   private asymmetricProperties = new Set<string>();
+  /** Object properties declared irreflexive. */
   private irreflexiveProperties = new Set<string>();
+  /** Canonical pairs `prop1|prop2` of disjoint object properties. */
   private disjointPropertyPairs = new Set<string>();
+  /** Sub-object-property hierarchy edges (`subProp -> Set<superProp>`). */
   private subObjectPropertyEdges = new Map<string, Set<string>>();
+  /** Sub-data-property hierarchy edges (`subProp -> Set<superProp>`). */
   private subDataPropertyEdges = new Map<string, Set<string>>();
+  /** Object property domain restrictions (`prop -> Set<domainClass>`). */
   private objectPropertyDomains = new Map<string, Set<string>>();
+  /** Object property range restrictions (`prop -> Set<rangeClass>`). */
   private objectPropertyRanges = new Map<string, Set<string>>();
+  /** Data property domain restrictions (`prop -> Set<domainClass>`). */
   private dataPropertyDomains = new Map<string, Set<string>>();
+  /** Data property range restrictions (`prop -> Set<rangeDatatype>`). */
   private dataPropertyRanges = new Map<string, Set<string>>();
+  /** Asserted negative object property assertions. */
   private negativeObjectAssertions: OWL2NegativeObjectPropertyAssertion[] = [];
+  /** Asserted negative data property assertions. */
   private negativeDataAssertions: OWL2NegativeDataPropertyAssertion[] = [];
+  /** Raw data property assertions preserving numeric interval bounds and comparison operators. */
   private rawDataPropertyAssertions: OWL2DataPropertyAssertion[] = [];
+  /** Role composition chain axioms (`R1 o ... o Rn SubPropertyOf S`). */
   private subPropertyChains: OWL2SubPropertyChainOf[] = [];
+  /** Qualified cardinality restrictions (`>= n R.C`, `<= n R.C`, `= n R.C`). */
   private qualifiedCardinalities: OWL2QualifiedCardinality[] = [];
+  /** Multivariate linear arithmetic constraints over data properties. */
   private linearConstraints: OWL2LinearConstraint[] = [];
+  /** Nominal class definitions (`classIri -> Set<individualIri>`). */
   private objectOneOfMap = new Map<string, Set<string>>();
+  /** Canonical `ind1|ind2` pairs declared `DifferentIndividuals`. */
   private differentIndividualPairs = new Set<string>();
+  /** Active DL-safe SWRL rules. */
   private swrlRules: OWL2SwrlRule[] = [];
 
+  /** Whether the ontology has been classified since the last axiom mutation. */
   private _classified = false;
+  /** Lazily compiled covering index for BGP conjunctive queries. */
   private _bgpIndex: BgpCompiledIndex | null = null;
+  /** Optional native WebAssembly ontology instance. */
   private _wasmInstance: WasmOntologyInstance | null = null;
 
+  /** Creates a new `WasmOntologyReasoner`, optionally bound to a compiled WASM instance. */
   constructor(wasmInstance?: WasmOntologyInstance | null) {
     this._wasmInstance = wasmInstance ?? null;
   }
 
+  /** Binds a compiled WebAssembly ontology module instance to this reasoner. */
   public setWasmInstance(wasmInstance: WasmOntologyInstance): void {
     this._wasmInstance = wasmInstance;
   }
 
+  /** Current lifecycle status of the reasoner. */
   get status(): ReasonerStatus {
     return this._status;
   }
 
+  /** Total number of axioms currently loaded in the reasoner. */
   get axiomCount(): number {
     if (this._wasmInstance?.ontology_getAxiomCount) {
       return this._wasmInstance.ontology_getAxiomCount();
@@ -1232,10 +1429,12 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return this._axioms.length;
   }
 
+  /** Initializes the reasoner and transitions its status to `"ready"`. */
   async init(): Promise<void> {
     this._status = "ready";
   }
 
+  /** Replaces the current ontology with the given axioms and indexes them. */
   loadOntology(axioms: readonly OWL2Axiom[]): void {
     this._status = "loading";
     this.clear();
@@ -1250,6 +1449,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this._status = "ready";
   }
 
+  /** Incrementally applies a set of axiom retractions and assertions. */
   applyDelta(delta: OWL2AxiomDelta): void {
     for (const axiom of delta.retractions) {
       this.removeAxiom(axiom);
@@ -1264,6 +1464,10 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this._bgpIndex = null;
   }
 
+  /**
+   * Classifies the ontology by saturating class/property hierarchies, nominals, SWRL rules,
+   * and checking global consistency.
+   */
   classify(): void {
     this._status = "classifying";
     this._bgpIndex = null;
@@ -1613,6 +1817,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this._ensureBgpIndex();
   }
 
+  /** Unifies two individuals into the same equivalence group and merges their class assertions. */
   private unifyIndividuals(ind1: string, ind2: string): void {
     if (ind1 === ind2) return;
     const group = this.sameIndividualGroups.get(ind1) ?? new Set([ind1]);
@@ -1628,6 +1833,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this.individualTypes.set(ind2, types2);
   }
 
+  /** Checks whether two individuals (or their equivalence representatives) are asserted `DifferentIndividuals`. */
   private isDifferent(ind1: string, ind2: string): boolean {
     if (ind1 === ind2) return false;
     let rep1 = ind1;
@@ -1646,6 +1852,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return this.differentIndividualPairs.has(keyDirect);
   }
 
+  /** Evaluates the conjunctive body atoms of a DL-safe SWRL rule and returns all satisfying variable bindings. */
   private evaluateSwrlBody(body: readonly SWRLAtom[]): Record<string, string>[] {
     let currentEnvs: Record<string, string>[] = [{}];
 
@@ -1788,6 +1995,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return currentEnvs;
   }
 
+  /** Evaluates a SWRL built-in atom (`swrlb:*`) against the current variable binding environment. */
   private evaluateSwrlBuiltIn(atom: SWRLBuiltInAtom, env: Record<string, string>): Record<string, string> | null {
     const resolveVal = (arg: string | number): number => {
       const str = String(arg);
@@ -1933,6 +2141,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     }
   }
 
+  /** Materializes a SWRL rule head atom using the bound variables in `env`, returning true if a new fact was added. */
   private applySwrlHeadAtom(headAtom: SWRLAtom, env: Record<string, string>): boolean {
     const resolveInd = (arg: string): string => {
       if (arg.startsWith("?")) return env[arg] ?? arg;
@@ -2012,11 +2221,13 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     }
   }
 
+  /** Clears all loaded axioms and resets the reasoner to `"idle"`. */
   dispose(): void {
     this.clear();
     this._status = "idle";
   }
 
+  /** Tests whether `subClassIri` is subsumed by `superClassIri` and builds a justification trail if true. */
   isSubClassOf(subClassIri: string, superClassIri: string): SubsumptionResult {
     if (!this._classified) this.classify();
 
@@ -2035,6 +2246,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     };
   }
 
+  /** Checks global consistency of the ontology and extracts minimal conflict cores (MUS) if inconsistent. */
   checkConsistency(): ConsistencyResult {
     if (!this._classified) this.classify();
     const res = this.checkConsistencyInternal();
@@ -2050,6 +2262,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return res;
   }
 
+  /** Computes a single minimal unsatisfiable subset (MUS) using Junker's QuickXplain algorithm. */
   quickXplain(backgroundAxioms?: readonly OWL2Axiom[]): readonly OWL2Axiom[] {
     const bg = backgroundAxioms ? [...backgroundAxioms] : [];
     const bgSet = new Set(bg.map((a) => axiomKey(a)));
@@ -2062,6 +2275,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return this.qxRecursive(bg, delta);
   }
 
+  /** Enumerates up to `maxCores` distinct Minimal Unsatisfiable Subsets (MUS) via Reiter's Hitting Set Tree. */
   allMus(maxCores: number = 16): readonly (readonly OWL2Axiom[])[] {
     const root = this.quickXplain();
     if (root.length === 0) return [];
@@ -2104,6 +2318,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return discovered;
   }
 
+  /** Tests whether a candidate subset of axioms is consistent in an isolated temporary reasoner. */
   private testConsistencySubset(axioms: OWL2Axiom[]): boolean {
     const temp = new WasmOntologyReasoner();
     temp.loadOntology(axioms);
@@ -2111,6 +2326,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return temp.checkConsistencyInternal().isConsistent;
   }
 
+  /** Recursive divide-and-conquer step for Junker's QuickXplain algorithm. */
   private qxRecursive(b: OWL2Axiom[], delta: OWL2Axiom[]): OWL2Axiom[] {
     if (b.length > 0 && !this.testConsistencySubset(b)) {
       return [];
@@ -2135,6 +2351,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return Array.from(unique.values());
   }
 
+  /** Returns the classified class hierarchy as an array of `TaxonomyNode` descriptors. */
   getTaxonomy(): TaxonomyNode[] {
     if (!this._classified) this.classify();
 
@@ -2150,6 +2367,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return nodes;
   }
 
+  /** Computes the direct (most specific) and all inferred class types for the given individual IRI. */
   classifyIndividual(individualIri: string): ClassificationResult {
     if (!this._classified) this.classify();
 
@@ -2175,24 +2393,28 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     };
   }
 
+  /** Returns all superclasses of `classIri`. */
   getSuperClasses(classIri: string): readonly string[] {
     if (!this._classified) this.classify();
     const node = this.classes.get(classIri);
     return node?.allSuperClasses ? [...node.allSuperClasses] : [];
   }
 
+  /** Returns all subclasses of `classIri`. */
   getSubClasses(classIri: string): readonly string[] {
     if (!this._classified) this.classify();
     const node = this.classes.get(classIri);
     return node?.allSubClasses ? [...node.allSubClasses] : [];
   }
 
+  /** Returns all asserted and inferred class IRIs for `individualIri`. */
   getIndividualTypes(individualIri: string): readonly string[] {
     if (!this._classified) this.classify();
     const types = this.individualTypes.get(individualIri);
     return types ? [...types] : [];
   }
 
+  /** Computes the transitive closure of `propertyIri` starting from `fromIri` via breadth-first search. */
   getTransitiveClosure(propertyIri: string, fromIri: string): PropertyChainResult {
     const edges = this.objectPropertyAssertions.get(propertyIri) ?? [];
     const visited = new Set<string>();
@@ -2219,6 +2441,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return { propertyIri, sourceIri: fromIri, reachable, path };
   }
 
+  /** Executes a structured `DLQuery` against the classified ontology. */
   query(q: DLQuery): DLQueryResult {
     if (!this._classified) this.classify();
     const start = performance.now();
@@ -2292,6 +2515,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     };
   }
 
+  /** Evaluates a SPARQL 1.1 property path expression from `fromIri` and returns all reachable target IRIs. */
   evaluatePropertyPath(
     propertyIri: string,
     pathOp: PropertyPathOp,
@@ -2404,6 +2628,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return Array.from(reachable);
   }
 
+  /** Lazily builds and caches the 6-way covering index for BGP conjunctive query evaluation. */
   private _ensureBgpIndex(): BgpCompiledIndex {
     if (this._bgpIndex !== null) return this._bgpIndex;
 
@@ -2501,6 +2726,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return this._bgpIndex;
   }
 
+  /** Evaluates a Basic Graph Pattern (BGP) conjunctive query using selectivity-guided index joins. */
   queryBgp(query: BgpQuery): BgpQueryResult {
     if (!this._classified) this.classify();
     const idx = this._ensureBgpIndex();
@@ -2675,11 +2901,13 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     };
   }
 
+  /** Returns a minimal sequence of asserted axioms justifying why `subClassIri` is a subclass of `superClassIri`. */
   explain(subClassIri: string, superClassIri: string): readonly OWL2Axiom[] {
     if (!this._classified) this.classify();
     return this.buildJustification(subClassIri, superClassIri);
   }
 
+  /** Indexes a single OWL 2 axiom into the reasoner's internal class, property, and individual tables. */
   private indexAxiom(axiom: OWL2Axiom): void {
     switch (axiom.type) {
       case "ClassDeclaration": {
@@ -3076,6 +3304,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     }
   }
 
+  /** Retracts a single OWL 2 axiom from the reasoner's internal tables. */
   private removeAxiom(axiom: OWL2Axiom): void {
     const idx = this._axioms.findIndex((a) => axiomEqual(a, axiom));
     if (idx !== -1) this._axioms.splice(idx, 1);
@@ -3274,6 +3503,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     }
   }
 
+  /** Recursively computes and caches the transitive closure of superclasses for `iri`. */
   private computeAllSuperClasses(iri: string): Set<string> {
     const node = this.classes.get(iri);
     if (!node) return new Set();
@@ -3296,6 +3526,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return node.allSuperClasses;
   }
 
+  /** Performs internal consistency checks across disjointness, property characteristics, intervals, cardinalities, and nominals. */
   private checkConsistencyInternal(): ConsistencyResult {
     const conflicts: OWL2Axiom[] = [];
     const explanations: string[] = [];
@@ -3812,6 +4043,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return { isConsistent: true };
   }
 
+  /** Finds a shortest-path justification trail of `SubClassOf` / `EquivalentClasses` axioms from `subIri` to `superIri`. */
   private buildJustification(subIri: string, superIri: string): OWL2Axiom[] {
     const visited = new Set<string>();
     const queue: { iri: string; trail: OWL2Axiom[] }[] = [{ iri: subIri, trail: [] }];
@@ -3850,6 +4082,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return [];
   }
 
+  /** Retrieves or creates a `ClassNode` entry for `iri` in the class table. */
   private ensureClass(iri: string): ClassNode {
     let node = this.classes.get(iri);
     if (!node) {
@@ -3865,6 +4098,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return node;
   }
 
+  /** Validates all focus nodes in the ontology against the given SHACL node shapes and returns any violations. */
   validateShacl(shapes: readonly SHACLNodeShape[]): readonly SHACLViolation[] {
     if (!this._classified) this.classify();
     const violations: SHACLViolation[] = [];
@@ -4253,6 +4487,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return violations;
   }
 
+  /** Executes SHACL-AF triple and SPARQL construct rules up to `maxPasses` fixpoint iterations. */
   executeShaclRules(
     shapes: readonly SHACLNodeShape[],
     maxPasses = 10,
@@ -4423,6 +4658,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return { materializedAxioms, passes };
   }
 
+  /** Returns all object or data property values asserted/inferred for `focusNode` along `path`. */
   private getPropertyValues(focusNode: string, path: string): string[] {
     const res: string[] = [];
     if (path === "rdf:type") {
@@ -4471,6 +4707,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return Array.from(module);
   }
 
+  /** Tests whether `axiom` is syntactically $\bot$-local with respect to signature `sig`. */
   private isAxiomBotLocal(axiom: OWL2Axiom, sig: ReadonlySet<string>): boolean {
     switch (axiom.type) {
       case "ClassDeclaration":
@@ -4512,6 +4749,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     }
   }
 
+  /** Extracts all entity IRIs referenced in `axiom`. */
   private getAxiomSignature(axiom: OWL2Axiom): string[] {
     const s = new Set<string>();
     switch (axiom.type) {
@@ -4603,6 +4841,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return Array.from(s);
   }
 
+  /** Resets all internal axiom lists, class/property maps, and cached indices. */
   private clear(): void {
     this._axioms = [];
     this.classes.clear();
@@ -4650,22 +4889,34 @@ export { WasmOntologyReasoner as TableauReasoner };
 // Ontology Builder (debouncing, events, re-classification)
 // ---------------------------------------------------------------------------
 
+/**
+ * Coordinates an `IOWL2OntologyStore` and `IOWLReasoner` with debounced delta application,
+ * automatic re-classification, and lifecycle event broadcasting.
+ */
 export class OntologyBuilder {
+  /** Underlying OWL 2 reasoner engine. */
   private reasoner: IOWLReasoner;
+  /** Underlying OWL 2 ontology store. */
   private store: IOWL2OntologyStore;
+  /** Registered lifecycle event listeners. */
   private listeners: OntologyEventListener[] = [];
 
+  /** Active debounce timer handle for coalescing rapid axiom deltas. */
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Accumulated axiom delta awaiting flush. */
   private pendingDelta: OWL2AxiomDelta | null = null;
+  /** Debounce delay in milliseconds before applying accumulated deltas. */
   private debounceMs: number;
+  /** Whether to automatically re-classify the ontology after applying a delta. */
   private autoClassify: boolean;
 
+  /** Creates a new `OntologyBuilder` wrapping `reasoner` and `store`. */
   constructor(
     reasoner: IOWLReasoner,
     store: IOWL2OntologyStore,
     options?: {
-      debounceMs?: number;
-      autoClassify?: boolean;
+      debounceMs?: number | undefined;
+      autoClassify?: boolean | undefined;
     },
   ) {
     this.reasoner = reasoner;
@@ -4674,10 +4925,12 @@ export class OntologyBuilder {
     this.autoClassify = options?.autoClassify ?? true;
   }
 
+  /** Returns the underlying `IOWLReasoner` instance. */
   get backend(): IOWLReasoner {
     return this.reasoner;
   }
 
+  /** Initializes the reasoner and loads any existing axioms from the store. */
   async initialize(): Promise<void> {
     await this.reasoner.init();
     this.emit({ type: "status-changed", status: this.reasoner.status });
@@ -4687,6 +4940,7 @@ export class OntologyBuilder {
     }
   }
 
+  /** Loads all axioms currently in `store` into the reasoner and optionally classifies. */
   loadFromStore(): void {
     const axioms = this.store.axioms;
     this.reasoner.loadOntology(axioms);
@@ -4697,6 +4951,7 @@ export class OntologyBuilder {
     }
   }
 
+  /** Queues or immediately applies an incremental `OWL2AxiomDelta` to the reasoner. */
   applyDelta(delta: OWL2AxiomDelta): void {
     if (delta.retractions.length === 0 && delta.assertions.length === 0) return;
 
@@ -4722,6 +4977,7 @@ export class OntologyBuilder {
     }, this.debounceMs);
   }
 
+  /** Immediately flushes any pending debounced axiom delta. */
   flush(): void {
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
@@ -4730,6 +4986,7 @@ export class OntologyBuilder {
     this.flushPendingDelta();
   }
 
+  /** Classifies the ontology, checks global consistency, and emits a `"consistency-result"` event. */
   classifyAndCheck(): ConsistencyResult {
     this.classifyAndEmit();
     const result = this.reasoner.checkConsistency();
@@ -4737,19 +4994,23 @@ export class OntologyBuilder {
     return result;
   }
 
+  /** Returns the classified taxonomy hierarchy from the reasoner. */
   getTaxonomy(): TaxonomyNode[] {
     return this.reasoner.getTaxonomy();
   }
 
+  /** Subscribes `listener` to ontology lifecycle events. */
   on(listener: OntologyEventListener): void {
     this.listeners.push(listener);
   }
 
+  /** Unsubscribes `listener` from ontology lifecycle events. */
   off(listener: OntologyEventListener): void {
     const idx = this.listeners.indexOf(listener);
     if (idx !== -1) this.listeners.splice(idx, 1);
   }
 
+  /** Cancels pending timers, disposes the reasoner, and clears all listeners. */
   dispose(): void {
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
@@ -4760,6 +5021,7 @@ export class OntologyBuilder {
     this.listeners = [];
   }
 
+  /** Applies `delta` directly to the reasoner and triggers classification if `autoClassify` is enabled. */
   private applyDeltaImmediate(delta: OWL2AxiomDelta): void {
     try {
       this.reasoner.applyDelta(delta);
@@ -4773,6 +5035,7 @@ export class OntologyBuilder {
     }
   }
 
+  /** Flushes `pendingDelta` through `applyDeltaImmediate`. */
   private flushPendingDelta(): void {
     if (this.pendingDelta) {
       const delta = this.pendingDelta;
@@ -4781,6 +5044,7 @@ export class OntologyBuilder {
     }
   }
 
+  /** Runs `reasoner.classify()` and emits `"classified"` and `"status-changed"` events. */
   private classifyAndEmit(): void {
     const start = performance.now();
     this.reasoner.classify();
@@ -4793,6 +5057,7 @@ export class OntologyBuilder {
     this.emit({ type: "status-changed", status: this.reasoner.status });
   }
 
+  /** Dispatches `event` to all registered listeners. */
   private emit(event: OntologyEvent): void {
     for (const listener of this.listeners) {
       try {
@@ -4808,13 +5073,17 @@ export class OntologyBuilder {
 // WASM-Backed Ontology Store
 // ---------------------------------------------------------------------------
 
+/**
+ * Maps a high-level `OWL2Axiom` to its numeric `AXIOM_*` code and `(subject, predicate, object)` IRI triple
+ * for insertion into the linear-memory WASM ontology store.
+ */
 export function axiomToTypeAndIris(axiom: OWL2Axiom): {
   type: number;
   sIri: string;
   pIri: string;
   oIri: string;
-  flags?: number;
-  extra?: number;
+  flags?: number | undefined;
+  extra?: number | undefined;
 } | null {
   switch (axiom.type) {
     case "ClassDeclaration":
@@ -4903,48 +5172,70 @@ export function axiomToTypeAndIris(axiom: OWL2Axiom): {
   }
 }
 
+/**
+ * Multi-language OWL 2 ontology store backed by WebAssembly linear memory and Roaring Bitmap triple indices.
+ */
 export class WasmOntologyStore implements IOWL2OntologyStore {
+  /** Monotonically increasing store revision counter. */
   private _revision = 0;
+  /** All active OWL 2 axioms across all registered source languages. */
   private _axioms: OWL2Axiom[] = [];
+  /** Axioms partitioned by source language identifier. */
   private _axiomsBySource = new Map<string, OWL2Axiom[]>();
+  /** Last projected workspace version per language. */
   private _projectedVersions = new Map<string, number>();
+  /** Most recent incremental delta produced by a store update. */
   private _lastDelta: OWL2AxiomDelta = { retractions: [], assertions: [] };
+  /** Registered source engineering languages (`"modelica"`, `"sysml2"`, `"step"`, etc.). */
   private _sourceLanguages: string[] = [];
+  /** Optional native WebAssembly ontology module instance. */
   private _wasmInstance: WasmOntologyInstance | null = null;
+  /** Optional multi-file `WorkspaceIndex` used for automatic symbol-to-axiom projection. */
   private _workspace: any = null;
+  /** When true, skips JS-side axiom array materialization and forwards directly to WASM. */
   private _pureWasmMode = false;
+  /** Bidirectional map from numeric entity ID to IRI string. */
   private _entityIriMap = new Map<number, string>();
+  /** Bidirectional map from IRI string to numeric entity ID. */
   private _iriEntityMap = new Map<string, number>();
 
+  /** Creates a new `WasmOntologyStore`, optionally bound to a WASM module and workspace index. */
   constructor(wasmInstance?: WasmOntologyInstance | null, workspace?: any) {
     this._wasmInstance = wasmInstance ?? null;
     this._workspace = workspace ?? null;
   }
 
+  /** Attaches a `WorkspaceIndex` for polyglot symbol projection. */
   public setWorkspace(workspace: any): void {
     this._workspace = workspace;
   }
 
+  /** Currently attached `WorkspaceIndex`, if any. */
   public get workspace(): any {
     return this._workspace;
   }
 
+  /** Attaches a compiled WebAssembly ontology module instance. */
   public setWasmInstance(wasmInstance: WasmOntologyInstance): void {
     this._wasmInstance = wasmInstance;
   }
 
+  /** Currently attached WebAssembly ontology module instance, if any. */
   public get wasmInstance(): WasmOntologyInstance | null {
     return this._wasmInstance;
   }
 
+  /** Enables or disables pure-WASM mode (bypassing JS-side axiom arrays). */
   public setPureWasmMode(enabled: boolean): void {
     this._pureWasmMode = enabled;
   }
 
+  /** Whether pure-WASM mode is currently enabled. */
   public get isPureWasmMode(): boolean {
     return this._pureWasmMode;
   }
 
+  /** Interns an IRI string into a 32-bit entity ID (synchronized with the WASM entity dictionary). */
   public internIri(iri: string): number {
     if (!iri) return 0;
     const existing = this._iriEntityMap.get(iri);
@@ -4962,10 +5253,12 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return id;
   }
 
+  /** Resolves an interned numeric entity ID back to its original IRI string. */
   public getIri(entityId: number): string | undefined {
     return this._entityIriMap.get(entityId);
   }
 
+  /** Interns a UTF-8 string into the WASM prefix-compressed Front-Coding string arena. */
   public internStringWasm(str: string): number {
     if (!this._wasmInstance?.ontology_internString || !this._wasmInstance.memory) return 0;
     const encoder = new TextEncoder();
@@ -4986,6 +5279,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return id;
   }
 
+  /** Decompresses and extracts a UTF-8 string by entity ID from the WASM Front-Coding string arena. */
   public extractStringWasm(id: number): string {
     if (!this._wasmInstance?.ontology_extractString || !this._wasmInstance.memory) return "";
     let ptr = 0;
@@ -5009,15 +5303,17 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return str;
   }
 
+  /** Returns the current compression ratio (`compressedBytes / rawBytes`) of the WASM string arena. */
   public getStringCompressionRatio(): number {
     if (!this._wasmInstance?.ontology_getStringCompressionRatio) return 1.0;
     return this._wasmInstance.ontology_getStringCompressionRatio();
   }
 
+  /** Queries matching axiom records in WASM linear memory using Roaring Bitmap index intersections. */
   public queryTriplesBitmap(pattern: {
-    subject?: string | number;
-    predicate?: string | number;
-    object?: string | number;
+    subject?: string | number | undefined;
+    predicate?: string | number | undefined;
+    object?: string | number | undefined;
   }): AxiomRecordView[] {
     if (
       !this._wasmInstance?.ontology_queryTriplesBitmap ||
@@ -5055,12 +5351,14 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return results;
   }
 
+  /** Returns the Roaring Bitmap cardinality for `key` in the specified index (`0=S`, `1=P`, `2=O`). */
   public getRoaringCardinality(indexType: number, key: string | number): number {
     if (!this._wasmInstance?.ontology_getRoaringCardinality) return 0;
     const entityId = typeof key === "string" ? this.internIri(key) : key;
     return this._wasmInstance.ontology_getRoaringCardinality(indexType, entityId);
   }
 
+  /** Directly inserts an axiom into the WASM store using 64-bit FNV-1a IRI hashes. */
   public addAxiomDirect64(
     axiomType: number,
     sourceLangId: number,
@@ -5098,22 +5396,27 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return axId;
   }
 
+  /** Monotonically increasing revision number of the store. */
   get revision(): number {
     return this._revision;
   }
 
+  /** All OWL 2 axioms currently held in the store. */
   get axioms(): readonly OWL2Axiom[] {
     return this._axioms;
   }
 
+  /** Read-only map of axioms grouped by source language. */
   get axiomsBySource(): ReadonlyMap<string, readonly OWL2Axiom[]> {
     return this._axiomsBySource;
   }
 
+  /** Most recent axiom delta produced by `addAxioms`, `setAxioms`, or `update`. */
   get lastDelta(): Readonly<OWL2AxiomDelta> {
     return this._lastDelta;
   }
 
+  /** Total number of axioms in the store. */
   get size(): number {
     if (this._wasmInstance?.ontology_getAxiomCount) {
       return this._wasmInstance.ontology_getAxiomCount();
@@ -5121,12 +5424,14 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return this._axioms.length;
   }
 
+  /** Registers a source engineering language for workspace projection. */
   registerSourceLanguage(language: string): void {
     if (!this._sourceLanguages.includes(language)) {
       this._sourceLanguages.push(language);
     }
   }
 
+  /** Appends `axioms` to the partition for `sourceLang` and returns the resulting delta. */
   addAxioms(sourceLang: string, axioms: OWL2Axiom[]): OWL2AxiomDelta {
     // Forward to WASM instance directly if present
     if (this._wasmInstance?.ontology_addAxiom64) {
@@ -5169,6 +5474,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return delta;
   }
 
+  /** Replaces all axioms for `sourceLang` with `axioms` and returns the resulting delta. */
   setAxioms(sourceLang: string, axioms: OWL2Axiom[]): OWL2AxiomDelta {
     const previousAxioms = this._axiomsBySource.get(sourceLang) ?? [];
     this._axiomsBySource.set(sourceLang, axioms);
@@ -5185,6 +5491,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return delta;
   }
 
+  /** Clears axioms for `sourceLang`, or all languages if omitted. */
   clearAxioms(sourceLang?: string): void {
     if (sourceLang) {
       this._axiomsBySource.delete(sourceLang);
@@ -5199,6 +5506,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     this._revision++;
   }
 
+  /** Projects all registered source languages from the attached `WorkspaceIndex` into OWL 2 axioms. */
   fullProjection(): void {
     if (this._workspace) {
       if (this._sourceLanguages.length === 0) {
@@ -5212,6 +5520,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     this._revision++;
   }
 
+  /** Projects symbols from `language` in the attached `WorkspaceIndex` into OWL 2 axioms. */
   projectLanguage(language: string): OWL2AxiomDelta {
     if (!this._workspace) return { assertions: [], retractions: [] };
 
@@ -5413,11 +5722,13 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return this.setAxioms(language, projected);
   }
 
+  /** Projects 3D CAD bounding envelopes into RCC-8 spatial OWL 2 axioms under the `"step"` partition. */
   projectCadEnvelopes(boxes: readonly CadBoundingBox[]): OWL2AxiomDelta {
     const axioms = projectCadEnvelopes(boxes);
     return this.setAxioms("step", axioms);
   }
 
+  /** Incrementally re-projects any source languages whose workspace version has changed. */
   update(workspaceVersions: Map<string, number>): OWL2AxiomDelta | null {
     let changed = false;
     const assertions: OWL2Axiom[] = [];
@@ -5446,6 +5757,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return combinedDelta;
   }
 
+  /** Queries the native WASM store for whether `subClassHash` is a subclass of `superClassHash`. */
   isSubClassOf(subClassHash: number, superClassHash: number): boolean {
     if (this._wasmInstance?.ontology_isSubClassOf) {
       return this._wasmInstance.ontology_isSubClassOf(subClassHash, superClassHash) !== 0;
@@ -5453,6 +5765,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return false;
   }
 
+  /** Queries the native WASM store for global ontology consistency. */
   checkConsistency(): boolean {
     if (this._wasmInstance?.ontology_checkConsistency) {
       return this._wasmInstance.ontology_checkConsistency() !== 0;
@@ -5460,30 +5773,37 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return true;
   }
 
+  /** Returns all `ClassDeclaration` axioms in the store. */
   getClassDeclarations(): OWL2Axiom[] {
     return this._axioms.filter((a) => a.type === "ClassDeclaration");
   }
 
+  /** Returns all `SubClassOf` axioms where `subClassIri === classIri`. */
   getSuperClasses(classIri: string): OWL2Axiom[] {
     return this._axioms.filter((a) => a.type === "SubClassOf" && a.subClassIri === classIri);
   }
 
+  /** Returns all `SubClassOf` axioms where `superClassIri === classIri`. */
   getSubClasses(classIri: string): OWL2Axiom[] {
     return this._axioms.filter((a) => a.type === "SubClassOf" && a.superClassIri === classIri);
   }
 
+  /** Returns all `ObjectPropertyDeclaration` axioms in the store. */
   getObjectProperties(): OWL2Axiom[] {
     return this._axioms.filter((a) => a.type === "ObjectPropertyDeclaration");
   }
 
+  /** Returns all `DataPropertyDeclaration` axioms in the store. */
   getDataProperties(): OWL2Axiom[] {
     return this._axioms.filter((a) => a.type === "DataPropertyDeclaration");
   }
 
+  /** Returns all axioms in the store that reference `iri`. */
   getAxiomsForIri(iri: string): OWL2Axiom[] {
     return this._axioms.filter((a) => axiomReferencesIri(a, iri));
   }
 
+  /** Serializes all axioms in the store to OWL 2 Functional-Style Syntax (FSS). */
   toFunctionalSyntax(): string {
     const lines: string[] = [];
     lines.push("Ontology(<urn:modelscript:unified>");
@@ -5496,6 +5816,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return lines.join("\n");
   }
 
+  /** Converts all entity declaration axioms in the store into a synthetic `SymbolIndex`. */
   toSyntheticSymbolEntries(): SymbolIndex {
     const symbols = new Map<SymbolId, SymbolEntry>();
     const byName = new Map<string, number[]>();
@@ -5520,6 +5841,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return { symbols, byName, childrenOf };
   }
 
+  /** Clears all axioms, entity mappings, and WASM state in the store. */
   clear(): void {
     if (this._wasmInstance?.ontology_clear) {
       this._wasmInstance.ontology_clear();
@@ -5540,11 +5862,13 @@ export { WasmOntologyStore as OWL2OntologyStore };
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/** Structural equality check between two `OWL2Axiom` objects. */
 function axiomEqual(a: OWL2Axiom, b: OWL2Axiom): boolean {
   if (a.type !== b.type) return false;
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Computes the set of retracted and newly asserted axioms between `previous` and `current`. */
 export function computeDelta(previous: readonly OWL2Axiom[], current: readonly OWL2Axiom[]): OWL2AxiomDelta {
   const prevKeys = new Set(previous.map(axiomKey));
   const currKeys = new Set(current.map(axiomKey));
@@ -5555,6 +5879,7 @@ export function computeDelta(previous: readonly OWL2Axiom[], current: readonly O
   return { retractions, assertions };
 }
 
+/** Computes a canonical string deduplication key for an `OWL2Axiom`. */
 export function axiomKey(axiom: OWL2Axiom): string {
   switch (axiom.type) {
     case "ClassDeclaration":
@@ -5621,6 +5946,7 @@ export function axiomKey(axiom: OWL2Axiom): string {
   }
 }
 
+/** Checks whether `axiom` references the given entity `iri` in any position. */
 export function axiomReferencesIri(axiom: OWL2Axiom, iri: string): boolean {
   switch (axiom.type) {
     case "ClassDeclaration":
@@ -5694,6 +6020,7 @@ export function axiomReferencesIri(axiom: OWL2Axiom, iri: string): boolean {
   }
 }
 
+/** Formats a single `OWL2Axiom` in OWL 2 Functional-Style Syntax (FSS). */
 export function axiomToFSS(axiom: OWL2Axiom): string {
   switch (axiom.type) {
     case "ClassDeclaration":
@@ -5768,6 +6095,7 @@ export function axiomToFSS(axiom: OWL2Axiom): string {
   }
 }
 
+/** Converts an OWL 2 entity declaration axiom into a synthetic `SymbolEntry`, or `null` if not a declaration. */
 export function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | null {
   const base: Omit<SymbolEntry, "id" | "kind" | "name"> = {
     ruleName: "owl2:projected",
@@ -5803,6 +6131,10 @@ export function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | 
 // GCI Absorption Preprocessor (HermiT / Pellet optimization)
 // ---------------------------------------------------------------------------
 
+/**
+ * Simplifies and absorbs General Concept Inclusion (GCI) tautologies and redundant class lists
+ * before tableau / saturation reasoning.
+ */
 export function absorbGCIs(axioms: readonly OWL2Axiom[]): OWL2Axiom[] {
   const result: OWL2Axiom[] = [];
   for (const ax of axioms) {
@@ -5839,13 +6171,19 @@ export function absorbGCIs(axioms: readonly OWL2Axiom[]): OWL2Axiom[] {
 // STEP CAD 3D Bounding Box RCC-8 Spatial Projections
 // ---------------------------------------------------------------------------
 
+/** 3D axis-aligned bounding box (AABB) for a STEP CAD solid or assembly component. */
 export interface CadBoundingBox {
+  /** Unique CAD entity identifier. */
   readonly id: string;
-  readonly name?: string;
+  /** Optional human-readable part or solid name. */
+  readonly name?: string | undefined;
+  /** Minimum corner coordinates `[xMin, yMin, zMin]`. */
   readonly min: readonly [number, number, number];
+  /** Maximum corner coordinates `[xMax, yMax, zMax]`. */
   readonly max: readonly [number, number, number];
 }
 
+/** Region Connection Calculus (RCC-8) topological relation between two 3D bounding envelopes. */
 export type Rcc8Relation =
   | "rcc:DC"
   | "rcc:EC"
@@ -5856,11 +6194,15 @@ export type Rcc8Relation =
   | "rcc:TPPi"
   | "rcc:NTPPi";
 
+/**
+ * Computes the topological RCC-8 relation (`rcc:DC`, `rcc:EC`, `rcc:PO`, `rcc:EQ`, `rcc:TPP`, `rcc:NTPP`, etc.)
+ * between two 3D axis-aligned bounding boxes `a` and `b` within tolerance `epsilon`.
+ */
 export function computeRcc8Relation(a: CadBoundingBox, b: CadBoundingBox, epsilon: number = 1e-6): Rcc8Relation {
   // Check for exact identity (EQ)
   let isEqual = true;
   for (let i = 0; i < 3; i++) {
-    if (Math.abs(a.min[i] - b.min[i]) > epsilon || Math.abs(a.max[i] - b.max[i]) > epsilon) {
+    if (Math.abs(a.min[i]! - b.min[i]!) > epsilon || Math.abs(a.max[i]! - b.max[i]!) > epsilon) {
       isEqual = false;
       break;
     }
@@ -5873,7 +6215,7 @@ export function computeRcc8Relation(a: CadBoundingBox, b: CadBoundingBox, epsilo
 
   // If disjoint on any axis => Disconnected (DC)
   for (let i = 0; i < 3; i++) {
-    if (interMin[i] > interMax[i] + epsilon) {
+    if (interMin[i]! > interMax[i]! + epsilon) {
       return "rcc:DC";
     }
   }
@@ -5881,7 +6223,7 @@ export function computeRcc8Relation(a: CadBoundingBox, b: CadBoundingBox, epsilo
   // If touches at boundary face/edge/corner with 0-volume intersection => Externally Connected (EC)
   let touchesBoundary = false;
   for (let i = 0; i < 3; i++) {
-    if (Math.abs(interMin[i] - interMax[i]) <= epsilon) {
+    if (Math.abs(interMin[i]! - interMax[i]!) <= epsilon) {
       touchesBoundary = true;
       break;
     }
@@ -5934,6 +6276,10 @@ export function computeRcc8Relation(a: CadBoundingBox, b: CadBoundingBox, epsilo
   return "rcc:PO";
 }
 
+/**
+ * Projects a collection of 3D CAD bounding boxes into OWL 2 `cad:BoundingEnvelope` individuals
+ * and pairwise RCC-8 spatial object property assertions.
+ */
 export function projectCadEnvelopes(boxes: readonly CadBoundingBox[]): OWL2Axiom[] {
   const axioms: OWL2Axiom[] = [
     { type: "ClassDeclaration", iri: "cad:BoundingEnvelope", sourceLang: "step" },

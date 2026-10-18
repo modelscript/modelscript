@@ -5,7 +5,7 @@ export interface GitTreeItem {
   name: string;
   type: "tree" | "blob" | "commit";
   path: string;
-  mode?: string;
+  mode?: string | undefined;
 }
 
 export interface GitCommitItem {
@@ -14,7 +14,7 @@ export interface GitCommitItem {
   title: string;
   created_at: string;
   author_name: string;
-  author_email?: string;
+  author_email?: string | undefined;
   message: string;
 }
 

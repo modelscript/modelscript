@@ -2,13 +2,13 @@
 
 export interface BoundaryLayerOptions {
   /** First layer height in meters (default: 0.0005 = 0.5mm). */
-  firstLayerHeight?: number;
+  firstLayerHeight?: number | undefined;
   /** Number of inflation layers (default: 3). */
-  numLayers?: number;
+  numLayers?: number | undefined;
   /** Geometric expansion ratio between consecutive layers (default: 1.2). */
-  growthRatio?: number;
+  growthRatio?: number | undefined;
   /** Tag name for the inflated boundary layer elements. Default: 'boundary_layer'. */
-  layerTag?: string;
+  layerTag?: string | undefined;
 }
 
 export interface ExtrusionResult {
@@ -43,17 +43,17 @@ export class BoundaryLayerExtruder {
     // 1. Calculate vertex normals on the base surface
     const vertexNormals = new Float32Array(numBaseNodes * 3);
     for (let t = 0; t < numBaseTriangles; t++) {
-      const n0 = surfaceTriangles[t * 3 + 0] * 3;
-      const n1 = surfaceTriangles[t * 3 + 1] * 3;
-      const n2 = surfaceTriangles[t * 3 + 2] * 3;
+      const n0 = surfaceTriangles[t * 3 + 0]! * 3;
+      const n1 = surfaceTriangles[t * 3 + 1]! * 3;
+      const n2 = surfaceTriangles[t * 3 + 2]! * 3;
 
-      const ax = surfaceCoords[n1 + 0] - surfaceCoords[n0 + 0];
-      const ay = surfaceCoords[n1 + 1] - surfaceCoords[n0 + 1];
-      const az = surfaceCoords[n1 + 2] - surfaceCoords[n0 + 2];
+      const ax = surfaceCoords[n1 + 0]! - surfaceCoords[n0 + 0]!;
+      const ay = surfaceCoords[n1 + 1]! - surfaceCoords[n0 + 1]!;
+      const az = surfaceCoords[n1 + 2]! - surfaceCoords[n0 + 2]!;
 
-      const bx = surfaceCoords[n2 + 0] - surfaceCoords[n0 + 0];
-      const by = surfaceCoords[n2 + 1] - surfaceCoords[n0 + 1];
-      const bz = surfaceCoords[n2 + 2] - surfaceCoords[n0 + 2];
+      const bx = surfaceCoords[n2 + 0]! - surfaceCoords[n0 + 0]!;
+      const by = surfaceCoords[n2 + 1]! - surfaceCoords[n0 + 1]!;
+      const bz = surfaceCoords[n2 + 2]! - surfaceCoords[n0 + 2]!;
 
       const nx = ay * bz - az * by;
       const ny = az * bx - ax * bz;
@@ -61,20 +61,20 @@ export class BoundaryLayerExtruder {
 
       // Accumulate into vertex normals
       for (const idx of [n0, n1, n2]) {
-        vertexNormals[idx + 0] += nx;
-        vertexNormals[idx + 1] += ny;
-        vertexNormals[idx + 2] += nz;
+        vertexNormals[idx + 0] = vertexNormals[idx + 0]! + nx;
+        vertexNormals[idx + 1] = vertexNormals[idx + 1]! + ny;
+        vertexNormals[idx + 2] = vertexNormals[idx + 2]! + nz;
       }
     }
 
     // Normalize vertex normals
     for (let i = 0; i < numBaseNodes; i++) {
       const idx = i * 3;
-      const len = Math.hypot(vertexNormals[idx], vertexNormals[idx + 1], vertexNormals[idx + 2]);
+      const len = Math.hypot(vertexNormals[idx]!, vertexNormals[idx + 1]!, vertexNormals[idx + 2]!);
       if (len > 1e-12) {
-        vertexNormals[idx + 0] /= len;
-        vertexNormals[idx + 1] /= len;
-        vertexNormals[idx + 2] /= len;
+        vertexNormals[idx + 0] = vertexNormals[idx + 0]! / len;
+        vertexNormals[idx + 1] = vertexNormals[idx + 1]! / len;
+        vertexNormals[idx + 2] = vertexNormals[idx + 2]! / len;
       } else {
         vertexNormals[idx + 2] = 1.0; // Fallback unit normal
       }
@@ -87,7 +87,7 @@ export class BoundaryLayerExtruder {
 
     // Copy base layer (layer 0)
     for (let i = 0; i < surfaceCoords.length; i++) {
-      nodeCoords[i] = surfaceCoords[i];
+      nodeCoords[i] = surfaceCoords[i]!;
     }
     layerNodeIndices.push(Array.from({ length: numBaseNodes }, (_, i) => i));
 
@@ -105,13 +105,13 @@ export class BoundaryLayerExtruder {
         const baseIdx = i * 3;
         const targetIdx = layerOffset + baseIdx;
 
-        const nx = vertexNormals[baseIdx + 0];
-        const ny = vertexNormals[baseIdx + 1];
-        const nz = vertexNormals[baseIdx + 2];
+        const nx = vertexNormals[baseIdx + 0]!;
+        const ny = vertexNormals[baseIdx + 1]!;
+        const nz = vertexNormals[baseIdx + 2]!;
 
-        nodeCoords[targetIdx + 0] = surfaceCoords[baseIdx + 0] + nx * currentHeight;
-        nodeCoords[targetIdx + 1] = surfaceCoords[baseIdx + 1] + ny * currentHeight;
-        nodeCoords[targetIdx + 2] = surfaceCoords[baseIdx + 2] + nz * currentHeight;
+        nodeCoords[targetIdx + 0] = surfaceCoords[baseIdx + 0]! + nx * currentHeight;
+        nodeCoords[targetIdx + 1] = surfaceCoords[baseIdx + 1]! + ny * currentHeight;
+        nodeCoords[targetIdx + 2] = surfaceCoords[baseIdx + 2]! + nz * currentHeight;
 
         layerNodes.push(layer * numBaseNodes + i);
       }
@@ -129,9 +129,9 @@ export class BoundaryLayerExtruder {
       const topBase = (layer + 1) * numBaseNodes;
 
       for (let t = 0; t < numBaseTriangles; t++) {
-        const i0 = surfaceTriangles[t * 3 + 0];
-        const i1 = surfaceTriangles[t * 3 + 1];
-        const i2 = surfaceTriangles[t * 3 + 2];
+        const i0 = surfaceTriangles[t * 3 + 0]!;
+        const i1 = surfaceTriangles[t * 3 + 1]!;
+        const i2 = surfaceTriangles[t * 3 + 2]!;
 
         const n0 = bottomBase + i0;
         const n1 = bottomBase + i1;

@@ -6,13 +6,13 @@
 import type { X6Markup } from "./polyglot-diagram-builder.js";
 
 export interface GlyphOptions {
-  fill?: string;
-  stroke?: string;
-  strokeWidth?: number;
-  strokeDasharray?: string;
-  width?: number;
-  height?: number;
-  label?: string;
+  fill?: string | undefined;
+  stroke?: string | undefined;
+  strokeWidth?: number | undefined;
+  strokeDasharray?: string | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  label?: string | undefined;
 }
 
 /**
@@ -144,10 +144,10 @@ export function decisionDiamondGlyph(options?: GlyphOptions): X6Markup[] {
  * Fork / Join Synchronization Bar Glyph for Activity diagrams.
  */
 export function forkJoinBarGlyph(options?: {
-  orientation?: "horizontal" | "vertical";
-  length?: number;
-  thickness?: number;
-  fill?: string;
+  orientation?: "horizontal" | "vertical" | undefined;
+  length?: number | undefined;
+  thickness?: number | undefined;
+  fill?: string | undefined;
 }): X6Markup[] {
   const orientation = options?.orientation ?? "horizontal";
   const length = options?.length ?? 60;
@@ -175,7 +175,7 @@ export function forkJoinBarGlyph(options?: {
 /**
  * Initial Pseudostate Glyph (filled solid black circle).
  */
-export function pseudostateInitialGlyph(options?: { r?: number; fill?: string }): X6Markup[] {
+export function pseudostateInitialGlyph(options?: { r?: number | undefined; fill?: string | undefined }): X6Markup[] {
   const r = options?.r ?? 10;
   const fill = options?.fill ?? "#212121";
 
@@ -198,10 +198,10 @@ export function pseudostateInitialGlyph(options?: { r?: number; fill?: string })
  * Final Pseudostate Glyph (bullseye: outer circle with inner solid circle).
  */
 export function pseudostateFinalGlyph(options?: {
-  outerR?: number;
-  innerR?: number;
-  stroke?: string;
-  fill?: string;
+  outerR?: number | undefined;
+  innerR?: number | undefined;
+  stroke?: string | undefined;
+  fill?: string | undefined;
 }): X6Markup[] {
   const outerR = options?.outerR ?? 12;
   const innerR = options?.innerR ?? 7;
@@ -238,7 +238,7 @@ export function pseudostateFinalGlyph(options?: {
 /**
  * History Pseudostate Glyph (circle containing 'H' or 'H*').
  */
-export function pseudostateHistoryGlyph(options?: { deep?: boolean; r?: number }): X6Markup[] {
+export function pseudostateHistoryGlyph(options?: { deep?: boolean | undefined; r?: number | undefined }): X6Markup[] {
   const deep = options?.deep ?? false;
   const r = options?.r ?? 11;
   const label = deep ? "H*" : "H";
@@ -276,9 +276,9 @@ export function pseudostateHistoryGlyph(options?: { deep?: boolean; r?: number }
  * Parameter Pin Port Glyph for Actions and Activities.
  */
 export function pinPortGlyph(options?: {
-  direction?: "in" | "out" | "inout";
-  conjugated?: boolean;
-  size?: number;
+  direction?: "in" | "out" | "inout" | undefined;
+  conjugated?: boolean | undefined;
+  size?: number | undefined;
 }): X6Markup[] {
   const size = options?.size ?? 12;
   const conjugated = options?.conjugated ?? false;
@@ -307,10 +307,10 @@ export function pinPortGlyph(options?: {
  * Features a tactile button cap, bevel border, and central text label.
  */
 export function momentaryButtonGlyph(options?: {
-  width?: number;
-  height?: number;
-  color?: string;
-  label?: string;
+  width?: number | undefined;
+  height?: number | undefined;
+  color?: string | undefined;
+  label?: string | undefined;
 }): X6Markup[] {
   const width = options?.width ?? 60;
   const height = options?.height ?? 32;
@@ -371,7 +371,11 @@ export function momentaryButtonGlyph(options?: {
  * Industrial Toggle Switch Glyph.
  * Features a switch housing, movable lever handle, and status LED indicator.
  */
-export function toggleSwitchGlyph(options?: { width?: number; height?: number; label?: string }): X6Markup[] {
+export function toggleSwitchGlyph(options?: {
+  width?: number | undefined;
+  height?: number | undefined;
+  label?: string | undefined;
+}): X6Markup[] {
   const width = options?.width ?? 50;
   const height = options?.height ?? 34;
   const label = options?.label ?? "SW";
@@ -441,7 +445,11 @@ export function toggleSwitchGlyph(options?: { width?: number; height?: number; l
 /**
  * Linear Slider Track Glyph with Draggable Thumb.
  */
-export function sliderTrackGlyph(options?: { width?: number; height?: number; label?: string }): X6Markup[] {
+export function sliderTrackGlyph(options?: {
+  width?: number | undefined;
+  height?: number | undefined;
+  label?: string | undefined;
+}): X6Markup[] {
   const width = options?.width ?? 100;
   const height = options?.height ?? 26;
   const label = options?.label ?? "SETPOINT";
@@ -510,10 +518,10 @@ export function sliderTrackGlyph(options?: { width?: number; height?: number; la
  * Numeric Readout / Setpoint Badge Glyph.
  */
 export function numericReadoutBadgeGlyph(options?: {
-  width?: number;
-  height?: number;
-  label?: string;
-  unit?: string;
+  width?: number | undefined;
+  height?: number | undefined;
+  label?: string | undefined;
+  unit?: string | undefined;
 }): X6Markup[] {
   const width = options?.width ?? 70;
   const height = options?.height ?? 28;
@@ -769,7 +777,11 @@ export function inverterIbrGlyph(options?: GlyphOptions): X6Markup[] {
 /**
  * High-Voltage Busbar Glyph.
  */
-export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number; label?: string }): X6Markup[] {
+export function busbarGlyph(options?: {
+  length?: number | undefined;
+  voltageBaseKv?: number | undefined;
+  label?: string | undefined;
+}): X6Markup[] {
   const length = options?.length ?? 80;
   const vbase = options?.voltageBaseKv ?? 230;
   const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
@@ -818,7 +830,7 @@ export function busbarGlyph(options?: { length?: number; voltageBaseKv?: number;
 /**
  * IEEE/IEC Circuit Breaker Glyph (Switch Box with Interrupt Cross).
  */
-export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean }): X6Markup[] {
+export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undefined }): X6Markup[] {
   const isOpen = options?.isOpen ?? false;
   const stroke = options?.stroke ?? (isOpen ? "#fbbf24" : "#f87171");
   const fill = options?.fill ?? (isOpen ? "rgba(251, 191, 36, 0.1)" : "rgba(248, 113, 113, 0.14)");
@@ -961,7 +973,7 @@ export function faultGlyph(options?: GlyphOptions): X6Markup[] {
 /**
  * HVDC / Power-Electronics Converter Bridge (VSC / LCC / MMC) Glyph.
  */
-export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string }): X6Markup[] {
+export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string | undefined }): X6Markup[] {
   const stroke = options?.stroke ?? "#2dd4bf";
   const fill = options?.fill ?? "rgba(45, 212, 191, 0.1)";
   const badge = options?.badge ?? "MMC";
@@ -1025,7 +1037,7 @@ export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string }
 /**
  * Transmission Line / Underground Cable Segment Glyph.
  */
-export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boolean }): X6Markup[] {
+export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boolean | undefined }): X6Markup[] {
   const isCable = options?.isCable ?? false;
   const stroke = options?.stroke ?? (isCable ? "#f472b6" : "#38bdf8");
   const fill = options?.fill ?? "rgba(56, 189, 248, 0.08)";
@@ -1046,7 +1058,7 @@ export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boole
         y2: 24,
         stroke,
         strokeWidth: 2,
-        strokeDasharray: isCable ? "4,2" : undefined,
+        ...(isCable ? { strokeDasharray: "4,2" } : {}),
       },
     },
     {
@@ -1072,8 +1084,8 @@ export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boole
  */
 export function csmfBlockGlyph(
   options?: GlyphOptions & {
-    kind?: "pi" | "lag" | "sum" | "gain" | "limit" | "compar" | "const";
-    label?: string;
+    kind?: "pi" | "lag" | "sum" | "gain" | "limit" | "compar" | "const" | undefined;
+    label?: string | undefined;
   },
 ): X6Markup[] {
   const kind = options?.kind ?? "pi";
@@ -1205,8 +1217,8 @@ export function csmfBlockGlyph(
  */
 export function meterProbeGlyph(
   options?: GlyphOptions & {
-    kind?: "pgb" | "multimeter" | "voltmeter" | "ammeter";
-    label?: string;
+    kind?: "pgb" | "multimeter" | "voltmeter" | "ammeter" | undefined;
+    label?: string | undefined;
   },
 ): X6Markup[] {
   const kind = options?.kind ?? "pgb";
@@ -1276,8 +1288,8 @@ export function meterProbeGlyph(
  */
 export function wirelessNetLabelGlyph(
   options?: GlyphOptions & {
-    label?: string;
-    isElectrical?: boolean;
+    label?: string | undefined;
+    isElectrical?: boolean | undefined;
   },
 ): X6Markup[] {
   const isElectrical = options?.isElectrical ?? false;

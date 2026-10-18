@@ -13,13 +13,13 @@ export interface TransientPeakLoad {
   peakMagnitude: number;
   timeOfPeak: number;
   forceVector: [number, number, number];
-  torqueVector?: [number, number, number];
+  torqueVector?: [number, number, number] | undefined;
 }
 
 export interface FeaBoundaryCondition {
   surfacePatchId: string;
   appliedForce: [number, number, number];
-  pressurePa?: number;
+  pressurePa?: number | undefined;
   fixedFaces: string[];
 }
 
@@ -57,7 +57,7 @@ export class RomLoadPipeline {
         const val = Math.abs(trajectory.y[item.idx]?.[step] ?? 0);
         if (val > maxVal) {
           maxVal = val;
-          maxTime = trajectory.t[step];
+          maxTime = trajectory.t[step]!;
         }
       }
 

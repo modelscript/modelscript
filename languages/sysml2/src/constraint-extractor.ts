@@ -30,13 +30,13 @@ export interface ExtractedConstraint {
   /** Origin language */
   source: "sysml2";
   /** Requirement name, if traceable */
-  requirementName?: string;
+  requirementName?: string | undefined;
   /** Constraint entry name */
-  constraintName?: string;
+  constraintName?: string | undefined;
   /** Classification of the constraint for Tier 3/4 verification dispatch */
-  kind?: ConstraintKind;
+  kind?: ConstraintKind | undefined;
   /** Parameter uncertainty ranges (e.g. { R: [8, 12] }) */
-  parameterRanges?: Record<string, [number, number]>;
+  parameterRanges?: Record<string, [number, number]> | undefined;
 }
 
 /**
@@ -235,16 +235,16 @@ function parseComparisonFromText(text: string): { lhs: string; op: string; rhs: 
   let inner = text;
   const braceMatch = text.match(/\{([^}]+)\}/);
   if (braceMatch) {
-    inner = braceMatch[1].trim();
+    inner = braceMatch[1]!.trim();
   }
 
   // Match comparison operators
   const compMatch = inner.match(/([^<>=!]+?)\s*(<=|>=|==|!=|<|>)\s*([^<>=!]+)/);
   if (compMatch) {
     return {
-      lhs: compMatch[1].trim(),
-      op: compMatch[2].trim(),
-      rhs: compMatch[3].trim(),
+      lhs: compMatch[1]!.trim(),
+      op: compMatch[2]!.trim(),
+      rhs: compMatch[3]!.trim(),
     };
   }
 
@@ -301,7 +301,7 @@ function resolveRhsFromDb(db: QueryDB, constraint: SymbolEntry, rhsPath: string)
   const text = db.cstText(current.startByte, current.endByte, current);
   if (text) {
     const match = text.match(/=\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
-    if (match) return parseFloat(match[1]);
+    if (match) return parseFloat(match[1]!);
   }
 
   return rhsPath;

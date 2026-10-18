@@ -31,52 +31,60 @@ import process from "node:process";
 export interface CtrfTest {
   name: string;
   status: "passed" | "failed" | "skipped" | "pending" | "other";
-  rawStatus?: string;
-  duration?: number;
-  cpuTime?: number;
-  filePath?: string;
-  suite?: string;
-  type?: string;
-  retries?: number;
-  flaky?: boolean;
-  message?: string;
-  trace?: string;
-  extra?: {
-    backend?: string;
-    xfail?: boolean | string;
-    cpuMs?: number;
-    peakMemoryMB?: number;
-    tolerance?: number;
-    rmse?: number;
-    [key: string]: unknown;
-  };
+  rawStatus?: string | undefined;
+  duration?: number | undefined;
+  cpuTime?: number | undefined;
+  filePath?: string | undefined;
+  suite?: string | undefined;
+  type?: string | undefined;
+  retries?: number | undefined;
+  flaky?: boolean | undefined;
+  message?: string | undefined;
+  trace?: string | undefined;
+  extra?:
+    | {
+        backend?: string | undefined;
+        xfail?: boolean | string | undefined;
+        cpuMs?: number | undefined;
+        peakMemoryMB?: number | undefined;
+        tolerance?: number | undefined;
+        rmse?: number | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
 }
 
 export interface CtrfReport {
-  results?: {
-    tool?: { name: string; version?: string };
-    environment?: Record<string, unknown>;
-    summary?: {
-      tests: number;
-      passed: number;
-      failed: number;
-      pending: number;
-      skipped: number;
-      other?: number;
-      start: number;
-      stop: number;
-      cpuTime?: number;
-    };
-    tests: CtrfTest[];
-  };
-  report?: {
-    reportFormat: "CTRF";
-    results: {
-      tool?: { name: string };
-      summary?: any;
-      tests: CtrfTest[];
-    };
-  };
+  results?:
+    | {
+        tool?: { name: string; version?: string | undefined } | undefined;
+        environment?: Record<string, unknown> | undefined;
+        summary?:
+          | {
+              tests: number;
+              passed: number;
+              failed: number;
+              pending: number;
+              skipped: number;
+              other?: number | undefined;
+              start: number;
+              stop: number;
+              cpuTime?: number | undefined;
+            }
+          | undefined;
+        tests: CtrfTest[];
+      }
+    | undefined;
+  report?:
+    | {
+        reportFormat: "CTRF";
+        results: {
+          tool?: { name: string } | undefined;
+          summary?: any;
+          tests: CtrfTest[];
+        };
+      }
+    | undefined;
 }
 
 export type TestTier = "unit" | "omc" | "msl";
@@ -84,8 +92,8 @@ export type TestTier = "unit" | "omc" | "msl";
 export interface EnrichedTest extends CtrfTest {
   tier: TestTier;
   group: string;
-  backend?: "wasm" | "js" | "hybrid" | "all";
-  isXfail?: boolean;
+  backend?: "wasm" | "js" | "hybrid" | "all" | undefined;
+  isXfail?: boolean | undefined;
 }
 
 export interface TierSummary {
@@ -106,10 +114,10 @@ export interface TierSummary {
       skipped: number;
       durationMs: number;
       // Dual backend metrics for OMC
-      wasmPassed?: number;
-      wasmTotal?: number;
-      jsPassed?: number;
-      jsTotal?: number;
+      wasmPassed?: number | undefined;
+      wasmTotal?: number | undefined;
+      jsPassed?: number | undefined;
+      jsTotal?: number | undefined;
     }
   >;
 }
@@ -119,9 +127,9 @@ export interface TierSummary {
 interface CliOptions {
   searchDir: string;
   githubStepSummary: boolean;
-  outputJson?: string;
-  outputHtml?: string;
-  outputMd?: string;
+  outputJson?: string | undefined;
+  outputHtml?: string | undefined;
+  outputMd?: string | undefined;
   checkFailed: boolean;
   silent: boolean;
 }
@@ -130,7 +138,7 @@ function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
   const opts: CliOptions = {
     searchDir: "",
-    githubStepSummary: process.argv.includes("--github-step-summary") || Boolean(process.env.GITHUB_STEP_SUMMARY),
+    githubStepSummary: process.argv.includes("--github-step-summary") || Boolean(process.env["GITHUB_STEP_SUMMARY"]),
     checkFailed: process.argv.includes("--check-failed"),
     silent: process.argv.includes("--silent"),
   };
@@ -260,7 +268,7 @@ function classifyTest(test: CtrfTest, toolName: string, filePath: string): Enric
       category = cleanSuite;
     } else if (rawFile.includes("flattening/modelica/")) {
       const parts = rawFile.split("flattening/modelica/")[1]?.split("/");
-      if (parts && parts.length > 0) category = parts[0];
+      if (parts && parts.length > 0) category = parts[0]!;
     } else if (rawFile.includes("testsuite/")) {
       const parts = rawFile.split("testsuite/")[1]?.split("/");
       if (parts && parts.length > 1) category = `${parts[0]}/${parts[1]}`;
@@ -424,7 +432,6 @@ export function consolidateReports(opts: CliOptions): {
     const isPassed = t.status === "passed";
     // If marked xfail, treat failure as expected (counted under skipped/xfail, not unexpected failure)
     const isFailed = t.status === "failed" && !t.isXfail;
-    const isSkipped = t.status === "skipped" || t.status === "pending" || t.isXfail;
     const isFlaky = Boolean(t.flaky);
     const dur = Math.max(0, t.duration || 0);
 
@@ -497,7 +504,6 @@ export function consolidateReports(opts: CliOptions): {
   // ── Generate Markdown ───────────────────────────────────────────────────
 
   const statusBadge = overall.hasFailure ? "🔴 **FAILED**" : "🟢 **PASSED**";
-  const passRate = totalTests > 0 ? ((totalPassed / totalTests) * 100).toFixed(1) : "100.0";
 
   let md = `# 🧪 ModelScript Test Suite Summary\n\n`;
   md += `| Overall Status | Total Tests | Passed | Failed | Skipped / XFail | Flaky | Duration |\n`;
@@ -574,7 +580,7 @@ export function consolidateReports(opts: CliOptions): {
     md += `| Test Name | Tier / Package | Message |\n`;
     md += `|:----------|:---------------|:--------|\n`;
     for (const f of failures.slice(0, 50)) {
-      const msg = f.message ? f.message.split("\n")[0].slice(0, 120) : "Failed without error message";
+      const msg = f.message ? f.message.split("\n")[0]!.slice(0, 120) : "Failed without error message";
       const groupBadge = `\`${f.tier}\` · \`${f.group}\``;
       md += `| **${f.name}** | ${groupBadge} | \`${msg}\` |\n`;
     }
@@ -941,9 +947,9 @@ function main(): void {
   }
 
   // Write to GitHub Step Summary if running in GitHub Actions
-  if (opts.githubStepSummary && process.env.GITHUB_STEP_SUMMARY) {
+  if (opts.githubStepSummary && process.env["GITHUB_STEP_SUMMARY"]) {
     try {
-      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdownSummary + "\n", "utf-8");
+      fs.appendFileSync(process.env["GITHUB_STEP_SUMMARY"], markdownSummary + "\n", "utf-8");
       console.log(`[consolidate-test-reports] Appended test summary to $GITHUB_STEP_SUMMARY`);
     } catch (err) {
       console.error("[consolidate-test-reports] Failed to write to GITHUB_STEP_SUMMARY:", err);

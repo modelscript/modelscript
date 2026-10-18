@@ -105,11 +105,11 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 
 export interface MorselEditorProps {
-  dataUrl?: DataUrl | null;
-  initialCode?: string;
-  embed?: boolean;
-  onCodeChange?: (code: string) => void;
-  onSave?: (code: string) => void;
+  dataUrl?: DataUrl | null | undefined;
+  initialCode?: string | undefined;
+  embed?: boolean | undefined;
+  onCodeChange?: ((code: string) => void) | undefined;
+  onSave?: ((code: string) => void) | undefined;
 }
 
 enum View {
@@ -491,7 +491,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           if (res.classes.length > 0) {
             setSelectedTreeClassName((prev) => {
               if (prev && res.classes.some((c) => c.name === prev)) return prev;
-              return res.classes[0].name;
+              return res.classes[0]!.name;
             });
           }
         }
@@ -2621,7 +2621,7 @@ end Manufacturing;`,
             startTime: experimentOverrides.startTime,
             stopTime: experimentOverrides.stopTime,
             interval: experimentOverrides.interval,
-            solver: experimentOverrides.solver,
+            solver: experimentOverrides.solver!,
             numberOfIntervals: experimentOverrides.numberOfIntervals,
             tolerance: experimentOverrides.tolerance,
           }}

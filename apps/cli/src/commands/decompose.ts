@@ -7,9 +7,9 @@ import type { CommandModule } from "yargs";
 
 export interface DecomposeArgs {
   paths: string[];
-  maxRegions?: number;
-  maxDepth?: number;
-  json?: boolean;
+  maxRegions?: number | undefined;
+  maxDepth?: number | undefined;
+  json?: boolean | undefined;
 }
 
 export const Decompose: CommandModule<{}, DecomposeArgs> = {

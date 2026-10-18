@@ -112,7 +112,7 @@ function getComponentEvaluatedValue(resolved: SymbolEntry, db: QueryDB): unknown
       const compMod = db.query<any>("effectiveModification", resolved.id);
       if (compMod?.bindingExpression) {
         const scopeId = compMod.evaluationScopeId ?? resolved.parentId;
-        const scopeEntry = scopeId ? db.symbol(scopeId) : null;
+        const scopeEntry = scopeId ? (db.symbol(scopeId) ?? null) : null;
         const val = evaluateModValue(compMod.bindingExpression, scopeEntry, db);
         if (val !== null && val !== undefined) {
           return val;
@@ -179,10 +179,10 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   if (trimmed.startsWith("if ") || trimmed.startsWith("if(")) {
     const ifMatch = trimmed.match(/^if\s+(.+?)\s+then\s+(.+?)(?:\s+else\s+(.+))?$/s);
     if (ifMatch) {
-      const condVal = evaluateExprText(ifMatch[1].trim(), scope, db);
+      const condVal = evaluateExprText(ifMatch[1]!.trim(), scope, db);
       const isTrue = condVal === true || condVal === 1 || (typeof condVal === "number" && condVal !== 0);
       if (isTrue) {
-        return evaluateExprText(ifMatch[2].trim(), scope, db);
+        return evaluateExprText(ifMatch[2]!.trim(), scope, db);
       } else if (ifMatch[3]) {
         return evaluateExprText(ifMatch[3].trim(), scope, db);
       }
@@ -192,8 +192,8 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   // Array subscript indexing: arr[index] or arr[start:stop]
   const subscriptMatch = trimmed.match(/^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\[([^\]]+)\]$/);
   if (subscriptMatch) {
-    const baseName = subscriptMatch[1];
-    const subText = subscriptMatch[2].trim();
+    const baseName = subscriptMatch[1]!;
+    const subText = subscriptMatch[2]!.trim();
     let baseVal = evaluateExprText(baseName, scope, db);
     if (!Array.isArray(baseVal) && baseVal && typeof baseVal === "object" && "id" in baseVal) {
       const sym = baseVal as SymbolEntry;
@@ -307,12 +307,16 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   }
 
   // Simple name reference — resolve in scope
-  if (/^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(trimmed) && scope) {
-    const isQualified = trimmed.includes(".");
+  if (/^\.?[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(trimmed) && scope) {
+    const cleanName = trimmed.startsWith(".") ? trimmed.slice(1) : trimmed;
+    if (cleanName === "Modelica.Constants.inf" || cleanName === "Constants.inf") {
+      return 1e60;
+    }
+    const isQualified = cleanName.includes(".");
     const resolveHook = isQualified ? "resolveName" : "resolveSimpleName";
     const resolver = db.query<(name: string) => SymbolEntry | null>(resolveHook, scope.id);
     if (resolver) {
-      const resolved = resolver(trimmed);
+      const resolved = resolver(cleanName);
       if (resolved) {
         if (resolved.kind === "EnumerationLiteral" || resolved.ruleName === "EnumerationLiteral") {
           if (resolved.parentId) {
@@ -327,7 +331,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     }
 
     // Fallback if the hook fails (e.g. built-in constants)
-    const resolvedFallback = db.byName(trimmed);
+    const resolvedFallback = db.byName(cleanName);
     if (resolvedFallback && resolvedFallback.length > 0) {
       const resolved = resolvedFallback[0];
       if (resolved) {
@@ -398,12 +402,54 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
       const rangeExpr = compMatch[3]!.trim();
       const rangeVals = evaluateExprText(rangeExpr, scope, db);
       if (Array.isArray(rangeVals)) {
+        const substituteIterVar = (exprStr: string, varName: string, replacement: string): string => {
+          let out = "";
+          let i = 0;
+          while (i < exprStr.length) {
+            const ch = exprStr[i]!;
+            if (ch === '"' || ch === "'") {
+              const quote = ch;
+              out += ch;
+              i++;
+              while (i < exprStr.length) {
+                const c = exprStr[i]!;
+                out += c;
+                i++;
+                if (c === "\\" && i < exprStr.length) {
+                  out += exprStr[i]!;
+                  i++;
+                } else if (c === quote) {
+                  break;
+                }
+              }
+              continue;
+            }
+            if (/[a-zA-Z_]/.test(ch)) {
+              const start = i;
+              while (i < exprStr.length && /[a-zA-Z0-9_]/.test(exprStr[i]!)) i++;
+              const ident = exprStr.slice(start, i);
+              const prevChar = start > 0 ? exprStr[start - 1] : "";
+              const rest = exprStr.slice(i);
+              const isMemberAccess = prevChar === ".";
+              const isNamedArg = /^\s*=[^=]/.test(rest);
+              if (ident === varName && !isMemberAccess && !isNamedArg) {
+                out += replacement;
+              } else {
+                out += ident;
+              }
+              continue;
+            }
+            out += ch;
+            i++;
+          }
+          return out;
+        };
         const result: unknown[] = [];
         for (const v of rangeVals) {
           if (bodyExpr === iterVar) {
             result.push(v);
           } else {
-            const replaced = bodyExpr.replace(new RegExp(`\\b${iterVar}\\b`, "g"), String(v));
+            const replaced = substituteIterVar(bodyExpr, iterVar, String(v));
             result.push(evaluateExprText(replaced, scope, db));
           }
         }
@@ -473,8 +519,8 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
       if (targetClass && targetClass.kind === "Class") {
         const meta = targetClass.metadata as Record<string, unknown> | undefined;
         const isRecord =
-          meta?.classPrefixes === "record" ||
-          (typeof meta?.classPrefixes === "string" && meta.classPrefixes.includes("record")) ||
+          meta?.["classPrefixes"] === "record" ||
+          (typeof meta?.["classPrefixes"] === "string" && meta["classPrefixes"].includes("record")) ||
           targetClass.ruleName === "record_definition";
         if (isRecord) {
           const rawArgs = splitTopLevel(argsText, ",").map((a) => a.trim());

@@ -38,7 +38,7 @@ export async function seedDroneFea(db: LibraryDatabase) {
     return;
   }
 
-  const vtuPath = "/home/omar/git/modelscript/packages/examples/drone-chassis/drone_fea.vtu";
+  const vtuPath = new URL("../../../packages/examples/drone-chassis/drone_fea.vtu", import.meta.url).pathname;
   if (!fs.existsSync(vtuPath)) {
     console.error(`VTU file not found at ${vtuPath}`);
     console.error("Run the python FEA script first!");

@@ -5,8 +5,8 @@ import React, { useEffect, useRef } from "react";
 import { uploadArtifactThumbnail } from "../../api";
 
 interface AutoThumbnailCaptureProps {
-  artifactId?: number;
-  hasThumbnail?: boolean;
+  artifactId?: number | undefined;
+  hasThumbnail?: boolean | undefined;
 }
 
 /**

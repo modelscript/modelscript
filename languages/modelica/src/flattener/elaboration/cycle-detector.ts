@@ -81,7 +81,7 @@ export function checkCyclicConstantsAndParameters(
     return;
   }
 
-  if (!dae.extensionMetadata?.isOldFrontend) {
+  if (!dae.extensionMetadata?.["isOldFrontend"]) {
     const children = db.childrenOf(rootClassId);
     const paramNames = new Set<string>();
     for (const ch of children) {
@@ -224,7 +224,7 @@ export function checkCyclicConstantsAndParameters(
 }
 
 export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId, db: QueryDB): void {
-  if (fn.extensionMetadata?.isOldFrontend) {
+  if (fn.extensionMetadata?.["isOldFrontend"]) {
     return;
   }
   if (fn.diagnostics.some((d) => d.code === ModelicaErrorCode.CYCLIC_FUNCTION_COMPONENTS.code)) {

@@ -1,7 +1,6 @@
 // name:     ComplexBinding1
 // keywords: #4606 
 // status:   correct
-// xfail:    true
 //
 
 operator record Complex 

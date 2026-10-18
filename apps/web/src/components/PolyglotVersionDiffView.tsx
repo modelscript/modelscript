@@ -74,7 +74,7 @@ const MetricsRow = styled.div`
   gap: 8px;
 `;
 
-const MetricBadge = styled.div<{ $color?: string; $bg?: string }>`
+const MetricBadge = styled.div<{ $color?: string | undefined; $bg?: string | undefined }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -168,11 +168,11 @@ export const PolyglotVersionDiffView: React.FC<PolyglotVersionDiffViewProps> = (
   const currentIndex = sortedVersions.indexOf(currentVersion);
   const defaultBase =
     currentIndex > 0
-      ? sortedVersions[currentIndex - 1]
+      ? sortedVersions[currentIndex - 1]!
       : sortedVersions.length > 1
         ? sortedVersions[0] === currentVersion
-          ? sortedVersions[1]
-          : sortedVersions[0]
+          ? sortedVersions[1]!
+          : sortedVersions[0]!
         : currentVersion;
 
   const [baseVersion, setBaseVersion] = useState<string>(defaultBase);

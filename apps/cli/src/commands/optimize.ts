@@ -10,25 +10,41 @@ import { NodeFileSystem } from "../util/filesystem.js";
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
+/** CLI arguments for the `msx optimize` dynamic optimal control command. */
 interface OptimizeArgs {
+  /** Fully-qualified name of the Modelica class to optimize. */
   name: string;
+  /** File or library paths to load into the compilation context. */
   paths: string[];
+  /** Lagrange cost integrand expression (e.g., `"u^2"`). */
   objective: string;
+  /** Comma-separated control input variable names. */
   controls: string;
-  "control-bounds"?: string;
-  controlBounds?: string;
-  "start-time"?: number;
-  startTime?: number;
-  "stop-time"?: number;
-  stopTime?: number;
-  "num-intervals"?: number;
-  numIntervals?: number;
-  tolerance?: number;
-  "max-iterations"?: number;
-  maxIterations?: number;
+  "control-bounds"?: string | undefined;
+  /** Comma-separated box constraints on control variables (`var:min:max`). */
+  controlBounds?: string | undefined;
+  "start-time"?: number | undefined;
+  /** Horizon start time in seconds. */
+  startTime?: number | undefined;
+  "stop-time"?: number | undefined;
+  /** Horizon stop time in seconds. */
+  stopTime?: number | undefined;
+  "num-intervals"?: number | undefined;
+  /** Number of direct collocation intervals (default: `50`). */
+  numIntervals?: number | undefined;
+  /** NLP convergence tolerance (default: `1e-6`). */
+  tolerance?: number | undefined;
+  "max-iterations"?: number | undefined;
+  /** Maximum number of SQP/NLP iterations (default: `200`). */
+  maxIterations?: number | undefined;
+  /** Output serialization format (`"csv"` or `"json"`). */
   format: string;
 }
 
+/**
+ * `msx optimize <name> <paths..>` CLI command module for solving direct-collocation optimal
+ * control problems on Modelica models via `ModelicaOptimizer`.
+ */
 export const Optimize: CommandModule<{}, OptimizeArgs> = {
   command: "optimize <name> <paths..>",
   describe: "Solve an optimal control problem for a Modelica model",

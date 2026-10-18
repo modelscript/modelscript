@@ -118,7 +118,7 @@ function addCylinder(
     topRing.push(pushVert(g, cx + radius * Math.cos(a), cy + halfHeight, cz + radius * Math.sin(a), 0, 1, 0));
   }
   for (let i = 0; i < segments; i++) {
-    pushTri(g, topCenter, topRing[i], topRing[(i + 1) % segments]);
+    pushTri(g, topCenter, topRing[i]!, topRing[(i + 1) % segments]!);
   }
 
   // Bottom cap
@@ -129,7 +129,7 @@ function addCylinder(
     botRing.push(pushVert(g, cx + radius * Math.cos(a), cy - halfHeight, cz + radius * Math.sin(a), 0, -1, 0));
   }
   for (let i = 0; i < segments; i++) {
-    pushTri(g, botCenter, botRing[(i + 1) % segments], botRing[i]);
+    pushTri(g, botCenter, botRing[(i + 1) % segments]!, botRing[i]!);
   }
 
   // Side wall
@@ -144,7 +144,7 @@ function addCylinder(
   }
   for (let i = 0; i < segments; i++) {
     const next = (i + 1) % segments;
-    pushQuad(g, sideTop[i], sideBot[i], sideBot[next], sideTop[next]);
+    pushQuad(g, sideTop[i]!, sideBot[i]!, sideBot[next]!, sideTop[next]!);
   }
 }
 
@@ -188,10 +188,10 @@ function addTorus(
 
   for (let i = 0; i < majorSegments; i++) {
     for (let j = 0; j < minorSegments; j++) {
-      const a = grid[i][j];
-      const b = grid[i + 1][j];
-      const c = grid[i + 1][j + 1];
-      const d = grid[i][j + 1];
+      const a = grid[i]![j]!;
+      const b = grid[i + 1]![j]!;
+      const c = grid[i + 1]![j + 1]!;
+      const d = grid[i]![j + 1]!;
       pushQuad(g, a, b, c, d);
     }
   }
@@ -223,20 +223,24 @@ function addTaperedArm(
 
   // Choose an up vector that isn't parallel to fwd
   let up = [0, 1, 0];
-  if (Math.abs(fwd[1]) > 0.99) up = [1, 0, 0];
+  if (Math.abs(fwd[1]!) > 0.99) up = [1, 0, 0];
 
   // right = fwd × up
-  const right = [fwd[1] * up[2] - fwd[2] * up[1], fwd[2] * up[0] - fwd[0] * up[2], fwd[0] * up[1] - fwd[1] * up[0]];
-  const rLen = Math.sqrt(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
-  right[0] /= rLen;
-  right[1] /= rLen;
-  right[2] /= rLen;
+  const right = [
+    fwd[1]! * up[2]! - fwd[2]! * up[1]!,
+    fwd[2]! * up[0]! - fwd[0]! * up[2]!,
+    fwd[0]! * up[1]! - fwd[1]! * up[0]!,
+  ];
+  const rLen = Math.sqrt(right[0]! * right[0]! + right[1]! * right[1]! + right[2]! * right[2]!);
+  right[0] = right[0]! / rLen;
+  right[1] = right[1]! / rLen;
+  right[2] = right[2]! / rLen;
 
   // recalc up = right × fwd
   up = [
-    right[1] * fwd[2] - right[2] * fwd[1],
-    right[2] * fwd[0] - right[0] * fwd[2],
-    right[0] * fwd[1] - right[1] * fwd[0],
+    right[1]! * fwd[2]! - right[2]! * fwd[1]!,
+    right[2]! * fwd[0]! - right[0]! * fwd[2]!,
+    right[0]! * fwd[1]! - right[1]! * fwd[0]!,
   ];
 
   // 4 corners at start
@@ -245,7 +249,11 @@ function addTaperedArm(
     [w0, -h0],
     [w0, h0],
     [-w0, h0],
-  ].map(([r, u]) => [x0 + right[0] * r + up[0] * u, y0 + right[1] * r + up[1] * u, z0 + right[2] * r + up[2] * u]);
+  ].map(([r, u]) => [
+    x0 + right[0]! * r! + up[0]! * u!,
+    y0 + right[1]! * r! + up[1]! * u!,
+    z0 + right[2]! * r! + up[2]! * u!,
+  ]);
 
   // 4 corners at end
   const corners1 = [
@@ -253,7 +261,11 @@ function addTaperedArm(
     [w1, -h1],
     [w1, h1],
     [-w1, h1],
-  ].map(([r, u]) => [x1 + right[0] * r + up[0] * u, y1 + right[1] * r + up[1] * u, z1 + right[2] * r + up[2] * u]);
+  ].map(([r, u]) => [
+    x1 + right[0]! * r! + up[0]! * u!,
+    y1 + right[1]! * r! + up[1]! * u!,
+    z1 + right[2]! * r! + up[2]! * u!,
+  ]);
 
   // 4 side faces
   const faceNormals = [
@@ -261,29 +273,29 @@ function addTaperedArm(
     [1, 0, 0], // right
     [0, 1, 0], // top
     [-1, 0, 0], // left
-  ].map(([r, u]) => [right[0] * r + up[0] * u, right[1] * r + up[1] * u, right[2] * r + up[2] * u]);
+  ].map(([r, u]) => [right[0]! * r! + up[0]! * u!, right[1]! * r! + up[1]! * u!, right[2]! * r! + up[2]! * u!]);
 
   for (let face = 0; face < 4; face++) {
     const next = (face + 1) % 4;
-    const n = faceNormals[face];
-    const a = pushVert(g, corners0[face][0], corners0[face][1], corners0[face][2], n[0], n[1], n[2]);
-    const b = pushVert(g, corners0[next][0], corners0[next][1], corners0[next][2], n[0], n[1], n[2]);
-    const c = pushVert(g, corners1[next][0], corners1[next][1], corners1[next][2], n[0], n[1], n[2]);
-    const d = pushVert(g, corners1[face][0], corners1[face][1], corners1[face][2], n[0], n[1], n[2]);
+    const n = faceNormals[face]!;
+    const a = pushVert(g, corners0[face]![0]!, corners0[face]![1]!, corners0[face]![2]!, n[0]!, n[1]!, n[2]!);
+    const b = pushVert(g, corners0[next]![0]!, corners0[next]![1]!, corners0[next]![2]!, n[0]!, n[1]!, n[2]!);
+    const c = pushVert(g, corners1[next]![0]!, corners1[next]![1]!, corners1[next]![2]!, n[0]!, n[1]!, n[2]!);
+    const d = pushVert(g, corners1[face]![0]!, corners1[face]![1]!, corners1[face]![2]!, n[0]!, n[1]!, n[2]!);
     pushQuad(g, a, b, c, d);
   }
 
   // Start cap (normal = -fwd)
   {
-    const n = [-fwd[0], -fwd[1], -fwd[2]];
-    const vs = corners0.map((c) => pushVert(g, c[0], c[1], c[2], n[0], n[1], n[2]));
-    pushQuad(g, vs[3], vs[2], vs[1], vs[0]);
+    const n = [-fwd[0]!, -fwd[1]!, -fwd[2]!];
+    const vs = corners0.map((c) => pushVert(g, c[0]!, c[1]!, c[2]!, n[0]!, n[1]!, n[2]!));
+    pushQuad(g, vs[3]!, vs[2]!, vs[1]!, vs[0]!);
   }
   // End cap (normal = +fwd)
   {
     const n = fwd;
-    const vs = corners1.map((c) => pushVert(g, c[0], c[1], c[2], n[0], n[1], n[2]));
-    pushQuad(g, vs[0], vs[1], vs[2], vs[3]);
+    const vs = corners1.map((c) => pushVert(g, c[0]!, c[1]!, c[2]!, n[0]!, n[1]!, n[2]!));
+    pushQuad(g, vs[0]!, vs[1]!, vs[2]!, vs[3]!);
   }
 }
 
@@ -315,8 +327,8 @@ function addOctagonalPlate(
   // Top and bottom faces
   for (let i = 0; i < sides; i++) {
     const next = (i + 1) % sides;
-    pushTri(g, topCenter, topVerts[i], topVerts[next]);
-    pushTri(g, botCenter, botVerts[next], botVerts[i]);
+    pushTri(g, topCenter, topVerts[i]!, topVerts[next]!);
+    pushTri(g, botCenter, botVerts[next]!, botVerts[i]!);
   }
 
   // Side faces

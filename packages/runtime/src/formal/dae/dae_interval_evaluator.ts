@@ -31,29 +31,29 @@ export interface DaeSingularityIssue {
   kind: DaeSingularityKind;
   severity: "definite" | "possible";
   exprId: number;
-  varIdx?: number;
-  varName?: string;
-  eqIdx?: number;
+  varIdx?: number | undefined;
+  varName?: string | undefined;
+  eqIdx?: number | undefined;
   message: string;
   interval: NumericalInterval;
 }
 
 export interface DaeEvaluatorOptions {
   /** Explicit bounds mapped by variable index (0 .. varCount-1) */
-  varBounds?: Map<number, NumericalInterval>;
+  varBounds?: Map<number, NumericalInterval> | undefined;
   /** Explicit bounds mapped by variable name */
-  varBoundsByName?: Map<string, NumericalInterval>;
+  varBoundsByName?: Map<string, NumericalInterval> | undefined;
   /** Pre-allocated noise symbol indices for affine arithmetic */
-  noiseSymbols?: Map<number, number>;
+  noiseSymbols?: Map<number, number> | undefined;
   /** Check if evaluated bounds violate Modelica min/max attributes */
-  checkAttributes?: boolean;
+  checkAttributes?: boolean | undefined;
 }
 
 export interface DaeEvaluationResult {
   interval: NumericalInterval;
-  affine?: AffineForm;
+  affine?: AffineForm | undefined;
   /** Sound affine form (same value as `affine`, with rounding-safe error term). */
-  aff?: Aff;
+  aff?: Aff | undefined;
   issues: DaeSingularityIssue[];
 }
 

@@ -1,7 +1,6 @@
 // name:     Record Modifications
 // keywords: algorithm
 // status:   correct
-// xfail:    true
 
 package HardMagnetic
 public

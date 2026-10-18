@@ -20,39 +20,39 @@ import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 export interface ActionPinInfo {
   name: string;
   direction: "in" | "out" | "inout" | "return";
-  type?: string;
-  hasDefault?: boolean;
-  startByte?: number;
-  endByte?: number;
+  type?: string | undefined;
+  hasDefault?: boolean | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
 }
 
 export interface ActionAssignmentInfo {
   target: string;
   expr: string;
-  startByte?: number;
-  endByte?: number;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
 }
 
 export interface ActivityNodeInfo {
   name: string;
   kind: "action" | "merge" | "decide" | "fork" | "join" | "initial" | "final";
-  calleeTypeName?: string;
-  isInvocation?: boolean;
+  calleeTypeName?: string | undefined;
+  isInvocation?: boolean | undefined;
   inputs: ActionPinInfo[];
   outputs: ActionPinInfo[];
   assignments: ActionAssignmentInfo[];
-  startByte?: number;
-  endByte?: number;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
 }
 
 export interface ActivityFlowInfo {
   source: string;
   target: string;
   kind: "control" | "object";
-  guard?: string;
-  itemType?: string;
-  startByte?: number;
-  endByte?: number;
+  guard?: string | undefined;
+  itemType?: string | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
 }
 
 export interface ActivityGraph {
@@ -60,8 +60,8 @@ export interface ActivityGraph {
   nodes: ActivityNodeInfo[];
   flows: ActivityFlowInfo[];
   declaredOutputs: ActionPinInfo[];
-  startByte?: number;
-  endByte?: number;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
 }
 
 export interface CfaDiagnostic {
@@ -69,8 +69,8 @@ export interface CfaDiagnostic {
   rule: string;
   nodeName: string;
   message: string;
-  startByte?: number;
-  endByte?: number;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
 }
 
 export interface ActivityCfaResult {
@@ -314,7 +314,6 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
     let caseIdx = 1;
     while ((cm = caseRegex.exec(block.body)) !== null) {
       const guardStr = (cm[1] ?? cm[2])!.trim();
-      const _targetStr = cm[3]!.trim();
       const targetName = `${decideName}_case_${caseIdx++}`;
       nodes.push({
         name: targetName,

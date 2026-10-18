@@ -27,24 +27,24 @@ export type STLOp = "predicate" | "not" | "and" | "or" | "globally" | "eventuall
 
 export interface STLPredicateOptions {
   /** Index in state vector y, or variable name */
-  stateIndex?: number;
+  stateIndex?: number | undefined;
   /** Variable evaluation function: (t, y) => value */
-  evalFn?: (t: number, y: number[] | Float64Array) => number;
+  evalFn?: ((t: number, y: number[] | Float64Array) => number) | undefined;
   /** Comparison operator */
   operator: "<=" | ">=" | "<" | ">";
   /** Scalar limit threshold */
   threshold: number;
   /** Optional human-readable expression, e.g. "v <= 120.0" */
-  expression?: string;
+  expression?: string | undefined;
 }
 
 export interface STLFormula {
   op: STLOp;
-  predicate?: STLPredicateOptions;
-  tInterval?: [number, number]; // [t_start, t_end]
-  child?: STLFormula;
-  left?: STLFormula;
-  right?: STLFormula;
+  predicate?: STLPredicateOptions | undefined;
+  tInterval?: [number, number] | undefined; // [t_start, t_end]
+  child?: STLFormula | undefined;
+  left?: STLFormula | undefined;
+  right?: STLFormula | undefined;
 }
 
 export interface STLStepResult {
@@ -55,12 +55,12 @@ export interface STLStepResult {
 }
 
 export interface STLVerificationResult {
-  requirementName?: string;
+  requirementName?: string | undefined;
   isSatisfied: boolean;
   minRobustness: number;
   maxRobustness: number;
-  violationTime?: number;
-  peakValue?: number;
+  violationTime?: number | undefined;
+  peakValue?: number | undefined;
   sampleCount: number;
 }
 
@@ -318,7 +318,7 @@ export function evaluateFormulaSignalWasm(
 export function evaluateFormulaSignal(
   formula: STLFormula,
   samples: { t: number; y: number[] | Float64Array }[],
-  options?: { preferWasm?: boolean; wasmExports?: any },
+  options?: { preferWasm?: boolean | undefined; wasmExports?: any },
 ): SignalPoint[] {
   if (samples.length === 0) return [];
 
@@ -510,8 +510,8 @@ export class OnlineSTLMonitor {
   private samples: { t: number; y: number[] | Float64Array }[] = [];
   private minRobustness: number = Infinity;
   private maxRobustness: number = -Infinity;
-  private violationTime?: number;
-  private peakValue?: number;
+  private violationTime?: number | undefined;
+  private peakValue?: number | undefined;
   private hasViolated: boolean = false;
 
   private lemireQueue: LemireMinMaxQueue;
@@ -519,8 +519,8 @@ export class OnlineSTLMonitor {
   constructor(
     public readonly formula: STLFormula,
     public readonly options: {
-      requirementName?: string;
-      terminateOnViolation?: boolean;
+      requirementName?: string | undefined;
+      terminateOnViolation?: boolean | undefined;
     } = {},
   ) {
     this.lemireQueue = new LemireMinMaxQueue(formula.op === "globally");

@@ -16,7 +16,7 @@ export class VerificationPanel {
 
   private constructor(
     panel: vscode.WebviewPanel,
-    private readonly extensionUri: vscode.Uri,
+    _extensionUri: vscode.Uri,
     private readonly client: LanguageClient,
   ) {
     this.panel = panel;

@@ -12,7 +12,7 @@ export interface SysML2ElementLayout {
   y: number;
   width: number;
   height: number;
-  rotation?: number;
+  rotation?: number | undefined;
 }
 
 /**
@@ -74,7 +74,7 @@ export function layoutUriFromSysmlUri(sysmlUri: string): string {
  */
 export function updateElementPositions(
   layout: SysML2Layout,
-  updates: { name: string; x: number; y: number; width: number; height: number; rotation?: number }[],
+  updates: { name: string; x: number; y: number; width: number; height: number; rotation?: number | undefined }[],
 ): SysML2Layout {
   const newElements = { ...layout.elements };
   for (const item of updates) {
@@ -118,7 +118,7 @@ export function removeElements(layout: SysML2Layout, names: string[]): SysML2Lay
   const newConnections = Object.fromEntries(
     Object.entries(layout.connections).filter(([connId]) => {
       const parts = connId.split("→");
-      return !parts.some((p) => nameSet.has(p.split(".")[0]));
+      return !parts.some((p) => nameSet.has(p.split(".")[0]!));
     }),
   );
 

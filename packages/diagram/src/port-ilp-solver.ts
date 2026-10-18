@@ -36,13 +36,13 @@ export type SolverPortSide = "top" | "bottom" | "left" | "right";
 export interface SolverPort {
   id: string;
   nodeId: string;
-  name?: string;
-  direction?: "in" | "out" | "inout";
-  fixedSide?: SolverPortSide;
-  assignedSide?: SolverPortSide;
-  offset?: number; // Distance along edge [margin, edgeLength - margin]
-  x?: number; // Absolute canvas X coordinate
-  y?: number; // Absolute canvas Y coordinate
+  name?: string | undefined;
+  direction?: "in" | "out" | "inout" | undefined;
+  fixedSide?: SolverPortSide | undefined;
+  assignedSide?: SolverPortSide | undefined;
+  offset?: number | undefined; // Distance along edge [margin, edgeLength - margin]
+  x?: number | undefined; // Absolute canvas X coordinate
+  y?: number | undefined; // Absolute canvas Y coordinate
   [key: string]: any;
 }
 
@@ -56,7 +56,7 @@ export interface SolverNode {
 }
 
 export interface SolverEdge {
-  id?: string;
+  id?: string | undefined;
   sourceNodeId: string;
   sourcePortId: string;
   targetNodeId: string;
@@ -188,7 +188,7 @@ export class GlobalPortIlpSolver {
     }
 
     // If port has a single peer, evaluate geometric sector to peer node centroid
-    const peerNode = nodeMap.get(connections[0].peerNodeId);
+    const peerNode = nodeMap.get(connections[0]!.peerNodeId);
     if (!peerNode) {
       if (port.direction === "in") return "left";
       if (port.direction === "out") return "right";
@@ -231,7 +231,7 @@ export class GlobalPortIlpSolver {
     side: "left" | "right",
     ports: SolverPort[],
     nodeMap: Map<string, SolverNode>,
-    portMap: Map<string, SolverPort>,
+    _portMap: Map<string, SolverPort>,
     portConnections: Map<string, { peerPortId: string; peerNodeId: string }[]>,
     results: Map<string, SolvedPortPlacement>,
   ): void {
@@ -247,7 +247,7 @@ export class GlobalPortIlpSolver {
       const conns = portConnections.get(p.id) ?? [];
       let targetY = node.y + height / 2;
       if (conns.length > 0) {
-        const peerNode = nodeMap.get(conns[0].peerNodeId);
+        const peerNode = nodeMap.get(conns[0]!.peerNodeId);
         if (peerNode) {
           targetY = peerNode.y + peerNode.height / 2;
         }
@@ -262,7 +262,7 @@ export class GlobalPortIlpSolver {
     let yCoords: number[] = [];
 
     if (count === 1) {
-      const idealY = portTargets[0].targetY;
+      const idealY = portTargets[0]!.targetY;
       const clampedY = Math.min(Math.max(idealY, node.y + margin), node.y + height - margin);
       yCoords = [clampedY];
     } else {
@@ -290,8 +290,8 @@ export class GlobalPortIlpSolver {
     const faceX = side === "left" ? node.x : node.x + node.width;
 
     for (let i = 0; i < count; i++) {
-      const p = portTargets[i].port;
-      const absY = Math.round(yCoords[i]);
+      const p = portTargets[i]!.port;
+      const absY = Math.round(yCoords[i]!);
       const relY = height > 0 ? (absY - node.y) / height : 0.5;
 
       p.x = faceX;
@@ -319,7 +319,7 @@ export class GlobalPortIlpSolver {
     side: "top" | "bottom",
     ports: SolverPort[],
     nodeMap: Map<string, SolverNode>,
-    portMap: Map<string, SolverPort>,
+    _portMap: Map<string, SolverPort>,
     portConnections: Map<string, { peerPortId: string; peerNodeId: string }[]>,
     results: Map<string, SolvedPortPlacement>,
   ): void {
@@ -334,7 +334,7 @@ export class GlobalPortIlpSolver {
       const conns = portConnections.get(p.id) ?? [];
       let targetX = node.x + width / 2;
       if (conns.length > 0) {
-        const peerNode = nodeMap.get(conns[0].peerNodeId);
+        const peerNode = nodeMap.get(conns[0]!.peerNodeId);
         if (peerNode) {
           targetX = peerNode.x + peerNode.width / 2;
         }
@@ -348,7 +348,7 @@ export class GlobalPortIlpSolver {
     let xCoords: number[] = [];
 
     if (count === 1) {
-      const idealX = portTargets[0].targetX;
+      const idealX = portTargets[0]!.targetX;
       const clampedX = Math.min(Math.max(idealX, node.x + margin), node.x + width - margin);
       xCoords = [clampedX];
     } else {
@@ -373,8 +373,8 @@ export class GlobalPortIlpSolver {
     const faceY = side === "top" ? node.y : node.y + node.height;
 
     for (let i = 0; i < count; i++) {
-      const p = portTargets[i].port;
-      const absX = Math.round(xCoords[i]);
+      const p = portTargets[i]!.port;
+      const absX = Math.round(xCoords[i]!);
       const relX = width > 0 ? (absX - node.x) / width : 0.5;
 
       p.x = absX;

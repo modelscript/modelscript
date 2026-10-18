@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { DatasetArtifactHandler } from "./dataset-handler.js";
 import type { ArtifactHandler, ArtifactMetadata, ArtifactViewDescriptor } from "./registry.js";
 
 export class CsvArtifactHandler implements ArtifactHandler {
   readonly type = "csv";
   readonly displayName = "CSV Table";
   readonly extensions = [".csv"];
+  readonly #datasetHandler = new DatasetArtifactHandler();
 
   async extractMetadata(fileBuffer: Buffer, filePath: string): Promise<ArtifactMetadata | null> {
     try {
-      // Just verify it's readable
-      fileBuffer.toString("utf-8");
-
+      const datasetMeta = await this.#datasetHandler.extractMetadata(fileBuffer, filePath);
       return {
         type: "csv",
         path: filePath,
-        description: "CSV Table",
+        description: datasetMeta?.description ?? "CSV Table",
         mimeType: "text/csv",
         size: fileBuffer.length,
-        details: {},
+        details: datasetMeta?.details ?? {},
       };
     } catch (err) {
       console.error(`[CsvArtifactHandler] Failed to extract metadata from ${filePath}:`, err);
@@ -29,10 +29,10 @@ export class CsvArtifactHandler implements ArtifactHandler {
   validate(artifact: Record<string, unknown>): string[] {
     const errors: string[] = [];
 
-    if (!artifact.path) {
+    if (!artifact["path"]) {
       errors.push("CSV artifact must have a 'path' field");
     } else {
-      const p = artifact.path as string;
+      const p = artifact["path"] as string;
       const validExts = this.extensions;
       if (!validExts.some((ext) => p.toLowerCase().endsWith(ext))) {
         errors.push(`CSV path must end with ${validExts.join(", ")}, got: "${p}"`);
@@ -44,11 +44,12 @@ export class CsvArtifactHandler implements ArtifactHandler {
 
   getViewDescriptor(metadata: ArtifactMetadata): ArtifactViewDescriptor | null {
     return {
-      viewer: "csv",
+      viewer: "dataset-table",
       label: "View Table",
       icon: "table",
       config: {
-        url: metadata.path, // The frontend will fetch the CSV from the URL
+        url: metadata.path,
+        ...metadata.details,
       },
     };
   }

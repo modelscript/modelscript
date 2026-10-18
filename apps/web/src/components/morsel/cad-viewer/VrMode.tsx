@@ -15,7 +15,7 @@ const store = createXRStore();
 
 interface VrModeProps {
   children: React.ReactNode;
-  enabled?: boolean;
+  enabled?: boolean | undefined;
 }
 
 /** VR toggle button overlay. */

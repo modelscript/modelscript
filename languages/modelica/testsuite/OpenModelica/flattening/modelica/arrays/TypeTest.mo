@@ -1,4 +1,3 @@
-// xfail:    true
 within ;
 model TypeTest
   import Modelica.Mechanics.MultiBody.Types;

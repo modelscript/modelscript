@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { materializeSu2Config, parseSu2Config, type Su2ConfigData } from "@modelscript/cfd";
+import {
+  extractCfdSlicingProperties,
+  materializeSu2Config,
+  parseSu2Config,
+  type Su2ConfigData,
+} from "@modelscript/cfd";
 import {
   CaeParametricSampler,
   CaeSnapshotExtractor,
@@ -14,12 +19,12 @@ import { CaeCloudClient } from "./cae-cloud-client.js";
 export interface CfgPayload {
   directives: Record<string, any>;
   markers: { name: string; type: string; options: (string | number)[] }[];
-  meshFilename?: string;
+  meshFilename?: string | undefined;
   stats: {
-    machNumber?: number;
-    aoa?: number;
-    reynoldsNumber?: number;
-    freestreamVelocity?: number;
+    machNumber?: number | undefined;
+    aoa?: number | undefined;
+    reynoldsNumber?: number | undefined;
+    freestreamVelocity?: number | undefined;
   };
 }
 
@@ -28,7 +33,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly client: LanguageClient,
+    _client: LanguageClient,
   ) {}
 
   public async resolveCustomTextEditor(
@@ -68,7 +73,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
             const m = v.match(/\(\s*([A-Za-z0-9_-]+)/);
             if (m) {
               markersList.push({
-                name: m[1],
+                name: m[1]!,
                 type: k,
                 options: [v],
               });
@@ -123,26 +128,47 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
         case "runLocalCfd":
           try {
             webviewPanel.webview.postMessage({ type: "setLoading", data: true });
-            // Generate synthetic CFD field results for flow preview
-            const mach = currentParsedData?.machNumber ?? 0.3;
-            const velocity = typeof mach === "number" ? mach * 343 : 100;
+            const text = document.getText();
+            const rawCfg = text.includes("{{") ? materializeSu2Config(text) : text;
+            const slicing = extractCfdSlicingProperties(rawCfg);
+            const velocity = slicing.freeStreamVelocity;
+            const aoaDeg = slicing.aoaDeg ?? 0.0;
+            const baselineMesh = {
+              positions: [-1, -0.5, 0, 1, -0.5, 0, 1, 0.5, 0, -1, 0.5, 0],
+              indices: [0, 1, 2, 0, 2, 3],
+            };
+            const [run] = CaeParametricSampler.sampleCfdEnvelope(baselineMesh, {
+              velocities: [velocity],
+              anglesOfAttackDeg: [aoaDeg],
+              density: slicing.density,
+            });
+            const velField = run?.fields["velocity"] ?? new Float32Array(12);
+            const velMags: number[] = [];
+            for (let i = 0; i < velField.length; i += 3) {
+              velMags.push(Math.hypot(velField[i] ?? 0, velField[i + 1] ?? 0, velField[i + 2] ?? 0));
+            }
+            const pressures = run?.fields["pressure"]
+              ? Array.from(run.fields["pressure"])
+              : [101325, 101325, 101325, 101325];
 
             const cfdPayload = {
               type: "cfd-mesh",
               time: 0,
               geometry: {
-                positions: [-1, -0.5, 0, 1, -0.5, 0, 1, 0.5, 0, -1, 0.5, 0],
-                indices: [0, 1, 2, 0, 2, 3],
+                positions: baselineMesh.positions,
+                indices: baselineMesh.indices,
                 normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
               },
               fields: {
-                velocityMagnitude: [velocity * 0.8, velocity, velocity * 1.2, velocity * 0.9],
-                pressure: [101325, 100500, 99800, 101200],
+                velocityMagnitude: velMags,
+                pressure: pressures,
               },
               metadata: {
-                maxVelocity: velocity * 1.2,
-                pressureDrop: 1525,
-                dragForce: [12.4, 0, 0] as [number, number, number],
+                maxVelocity: Math.max(...velMags, velocity),
+                pressureDrop: Math.round(
+                  run?.scalarOutputs["pressureDrop"] ?? 0.5 * slicing.density * velocity * velocity,
+                ),
+                dragForce: [slicing.dragForce ?? 0, slicing.liftForce ?? 0, 0] as [number, number, number],
               },
             };
 
@@ -359,6 +385,7 @@ export class CfgEditorProvider implements vscode.CustomTextEditorProvider {
                 });
 
                 const _baselineEval = surrogate.evaluate({ velocity: baseVel, angle_of_attack_deg: 2.5 });
+                void _baselineEval;
                 const predictedCd = 0.0285;
                 const thresholdCd = 0.035;
                 const isSatisfied = predictedCd <= thresholdCd;

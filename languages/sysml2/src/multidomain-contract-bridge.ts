@@ -15,10 +15,10 @@ export interface FeaContractSpec {
   appliedForceVar: string;
   maxAllowableForce: number;
   yieldStressPa: number;
-  safetyFactor?: number;
-  maxDeflectionMm?: number;
-  deflectionVar?: string;
-  stressVar?: string;
+  safetyFactor?: number | undefined;
+  maxDeflectionMm?: number | undefined;
+  deflectionVar?: string | undefined;
+  stressVar?: string | undefined;
 }
 
 export interface ModelicaPortContractSpec {
@@ -26,10 +26,10 @@ export interface ModelicaPortContractSpec {
   portName: string;
   variableName: string;
   peakLoadMagnitude: number;
-  operatingTempRange?: [number, number];
-  tempVar?: string;
-  sourceGuarantees?: string[];
-  consumerAssumptions?: string[];
+  operatingTempRange?: [number, number] | undefined;
+  tempVar?: string | undefined;
+  sourceGuarantees?: string[] | undefined;
+  consumerAssumptions?: string[] | undefined;
 }
 
 export interface MultiDomainCompositionResult {

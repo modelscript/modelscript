@@ -21,8 +21,8 @@ export type ObjectiveSense = "minimize" | "maximize";
 export interface ObjectiveDef {
   name: string;
   sense: ObjectiveSense;
-  unit?: string;
-  weight?: number;
+  unit?: string | undefined;
+  weight?: number | undefined;
 }
 
 export interface TradeStudyCandidate {
@@ -30,8 +30,8 @@ export interface TradeStudyCandidate {
   name: string;
   parameters: Record<string, number | string>;
   objectives: Record<string, number>;
-  branchId?: number;
-  metadata?: Record<string, any>;
+  branchId?: number | undefined;
+  metadata?: Record<string, any> | undefined;
 }
 
 export interface ParetoPoint extends TradeStudyCandidate {
@@ -59,15 +59,15 @@ export interface TradeStudyVariable {
 export interface EvolveTradeStudyOptions {
   variables: TradeStudyVariable[];
   evaluate: (params: Record<string, number>) => Promise<Record<string, number>> | Record<string, number>;
-  batchEvaluate?: (
-    paramsList: Record<string, number>[],
-  ) => Promise<Record<string, number>[]> | Record<string, number>[];
-  populationSize?: number;
-  generations?: number;
-  seed?: number;
-  crossoverProb?: number;
-  mutationProb?: number;
-  onGeneration?: (gen: number, paretoCount: number) => void;
+  batchEvaluate?:
+    | ((paramsList: Record<string, number>[]) => Promise<Record<string, number>[]> | Record<string, number>[])
+    | undefined;
+  populationSize?: number | undefined;
+  generations?: number | undefined;
+  seed?: number | undefined;
+  crossoverProb?: number | undefined;
+  mutationProb?: number | undefined;
+  onGeneration?: ((gen: number, paretoCount: number) => void) | undefined;
 }
 
 export class TradeStudyEngine {
@@ -121,7 +121,7 @@ export class TradeStudyEngine {
       if (batchEvaluate) {
         return batchEvaluate(paramList);
       }
-      return Promise.all(paramList.map((p) => evaluate(p)));
+      return Promise.all(paramList.map((p) => Promise.resolve(evaluate(p))));
     };
 
     // 1. Initial population
@@ -198,10 +198,10 @@ export class TradeStudyEngine {
 
           if (aDominatesB && atLeastOneBetterA) {
             domSets[p]!.push(q);
-            domCounts[q]++;
+            domCounts[q] = domCounts[q]! + 1;
           } else if (bDominatesA && atLeastOneBetterB) {
             domSets[q]!.push(p);
-            domCounts[p]++;
+            domCounts[p] = domCounts[p]! + 1;
           }
         }
 
@@ -217,7 +217,7 @@ export class TradeStudyEngine {
         for (const pInd of fronts[curFrontIdx]!) {
           const pIdx = pop.indexOf(pInd);
           for (const qIdx of domSets[pIdx]!) {
-            domCounts[qIdx]--;
+            domCounts[qIdx] = domCounts[qIdx]! - 1;
             if (domCounts[qIdx] === 0) {
               pop[qIdx]!.rank = curFrontIdx + 1;
               nextFront.push(pop[qIdx]!);
@@ -413,10 +413,10 @@ export class TradeStudyEngine {
 
         if (this.dominates(candP, candQ)) {
           dominatedSets[p]!.push(q);
-          dominationCounts[q]++;
+          dominationCounts[q] = dominationCounts[q]! + 1;
         } else if (this.dominates(candQ, candP)) {
           dominatedSets[q]!.push(p);
-          dominationCounts[p]++;
+          dominationCounts[p] = dominationCounts[p]! + 1;
         }
       }
 
@@ -430,7 +430,7 @@ export class TradeStudyEngine {
       const nextFront: number[] = [];
       for (const p of fronts[curFrontIdx]!) {
         for (const q of dominatedSets[p]!) {
-          dominationCounts[q]--;
+          dominationCounts[q] = dominationCounts[q]! - 1;
           if (dominationCounts[q] === 0) {
             nextFront.push(q);
           }

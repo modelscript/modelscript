@@ -10,8 +10,8 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import path, { join, resolve } from "path";
 
 const __dirname = import.meta.dirname;
-const PORT = parseInt(process.env.PORT || "3003", 10);
-const HOST = process.env.HOST || "0.0.0.0";
+const PORT = parseInt(process.env["PORT"] || "3003", 10);
+const HOST = process.env["HOST"] || "0.0.0.0";
 
 // Paths
 const APP_ROOT = existsSync(resolve(__dirname, "package.json")) ? __dirname : resolve(__dirname, "..");
@@ -42,6 +42,10 @@ if (!existsSync(MODELSCRIPT_EXT_DIR)) {
 
 // ── Read and cache the workbench template ──
 
+/**
+ * Loads the VS Code Web HTML workbench template (`workbench-esm.html` or fallback `workbench.html`)
+ * from `@vscode/test-web`.
+ */
 function getWorkbenchTemplate(): string {
   // Prefer ESM template (VS Code >= 1.112)
   const esmPath = join(TEST_WEB_DIR, "views", "workbench-esm.html");
@@ -58,10 +62,17 @@ function getWorkbenchTemplate(): string {
   throw new Error("No workbench template found in @vscode/test-web");
 }
 
+/**
+ * Serializes `value` as JSON and escapes double quotes (`&quot;`) for embedding in HTML `data-settings` attributes.
+ */
 function escapeJSON(value: unknown): string {
   return JSON.stringify(value).replace(/"/g, "&quot;");
 }
 
+/**
+ * Renders the full VS Code Web workbench HTML document configured with the ModelScript IDE extension,
+ * `github-fs` virtual filesystem provider, Open VSX gallery, and hash-based workspace routing.
+ */
 function renderWorkbench(protocol: string, host: string, folderConfig: Record<string, unknown> | null): string {
   const baseUrl = `${protocol}://${host}/vscode-static`;
 
@@ -89,7 +100,8 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   };
 
   // No UUID for webview content since we are same-origin
-  productConfiguration.webviewContentExternalBaseUrlTemplate = `${protocol}://${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`;
+  productConfiguration["webviewContentExternalBaseUrlTemplate"] =
+    `${protocol}://${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`;
 
   const extList = [
     { scheme: protocol, authority: host, path: "/static/devextensions" },
@@ -117,7 +129,7 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   };
 
   if (folderConfig) {
-    config.folderUri = folderConfig;
+    config["folderUri"] = folderConfig;
   }
 
   const template = getWorkbenchTemplate();
@@ -310,7 +322,7 @@ app.use("/vscode-static", express.static(VSCODE_WEB_DIR, { dotfiles: "allow" }))
 // ModelScript extension
 app.use(
   "/static/devextensions",
-  (req, res, next) => {
+  (_req, res, next) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     next();
   },
@@ -335,7 +347,7 @@ app.use(
 
 // Favicon
 const webFavicon = resolve(__dirname, "..", "..", "web", "public", "favicon.ico");
-app.get("/favicon.ico", (req, res) => {
+app.get("/favicon.ico", (_req, res) => {
   if (existsSync(webFavicon)) {
     res.sendFile(webFavicon);
   } else {
@@ -361,7 +373,7 @@ app.use(
       proxyReq: (proxyReq) => {
         proxyReq.setHeader("User-Agent", "ModelScript-IDE");
         // Forward GitHub token if available
-        const token = process.env.GITHUB_TOKEN;
+        const token = process.env["GITHUB_TOKEN"];
         if (token) {
           proxyReq.setHeader("Authorization", `token ${token}`);
         }
@@ -372,11 +384,16 @@ app.use(
 
 // ── User Language Registry API ──
 
+/**
+ * Resolves the local filesystem directory where user-defined language plugins
+ * and compiled WASM parsers are stored (defaults to `~/.modelscript/languages`
+ * unless overridden by `MODELSCRIPT_LANGUAGES_DIR`).
+ */
 function getUserLanguagesDir(): string {
-  if (process.env.MODELSCRIPT_LANGUAGES_DIR) {
-    return resolve(process.env.MODELSCRIPT_LANGUAGES_DIR);
+  if (process.env["MODELSCRIPT_LANGUAGES_DIR"]) {
+    return resolve(process.env["MODELSCRIPT_LANGUAGES_DIR"]);
   }
-  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const home = process.env["HOME"] || process.env["USERPROFILE"] || "";
   return join(home, ".modelscript", "languages");
 }
 
@@ -396,13 +413,15 @@ app.get("/api/languages/user", (_req, res) => {
 app.get("/api/languages/user/:id/parser.wasm", (req, res) => {
   const rawId = req.params.id;
   if (!rawId || typeof rawId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(rawId)) {
-    return res.status(400).type("text/plain").send("Invalid language ID");
+    res.status(400).type("text/plain").send("Invalid language ID");
+    return;
   }
   const langId = path.basename(rawId);
   const baseDir = getUserLanguagesDir();
   const langDir = resolve(baseDir, langId);
   if (!langDir.startsWith(baseDir + path.sep) && langDir !== baseDir) {
-    return res.status(400).type("text/plain").send("Invalid language directory");
+    res.status(400).type("text/plain").send("Invalid language directory");
+    return;
   }
   const candidates = [
     join(langDir, "parser.wasm"),
@@ -450,7 +469,7 @@ if (existsSync(userLanguagesDir)) {
 // ── VS Code workbench route ──
 
 app.get("/vscode/workbench", (req, res) => {
-  const folder = (req.query.folder as string) || "";
+  const folder = (req.query["folder"] as string) || "";
   let folderConfig: Record<string, unknown> | null = null;
 
   if (folder) {
@@ -1069,7 +1088,7 @@ app.get("/", (_req, res) => {
 
 app.get("/github.com/:owner/:repo", (req, res) => {
   const { owner, repo } = req.params;
-  const ref = (req.query.ref as string) || "main";
+  const ref = (req.query["ref"] as string) || "main";
   res.send(renderWrapper("github", owner, repo, ref));
 });
 
@@ -1083,6 +1102,10 @@ app.get("/github.com/:owner/:repo/tree/:ref/*subpath", (req, res) => {
   res.send(renderWrapper("github", owner, repo, ref));
 });
 
+/**
+ * Escapes HTML special characters (`&`, `<`, `>`, `"`, `'`) to prevent XSS injection
+ * in server-rendered shell pages.
+ */
 function escapeHtml(unsafe: string): string {
   return unsafe
     .replace(/&/g, "&amp;")
@@ -1092,6 +1115,10 @@ function escapeHtml(unsafe: string): string {
     .replace(/'/g, "&#039;");
 }
 
+/**
+ * Renders the top-bar repository wrapper HTML page that embeds the VS Code Web
+ * workbench inside a full-height iframe for a given Git repository URI.
+ */
 function renderWrapper(provider: string, owner: string, repo: string, ref: string): string {
   const folderUri = `${provider}:///${owner}/${repo}?ref=${ref}`;
   const safeOwner = escapeHtml(owner);

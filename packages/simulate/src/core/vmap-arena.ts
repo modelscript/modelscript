@@ -14,15 +14,15 @@ export interface VmapBatchConfig {
   /** Array of parameter maps or row-major parameter matrix [batchSize][numParams]. */
   parameters: Map<string, number>[] | number[][];
   /** Parameter names if parameters is a number[][] matrix. */
-  parameterNames?: string[];
+  parameterNames?: string[] | undefined;
   /** Initial states overrides per batch instance (optional). */
-  initialStates?: (Map<string, number> | number[])[];
+  initialStates?: (Map<string, number> | number[])[] | undefined;
   /** Simulation start time (default: 0). */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Simulation stop time (default: 1). */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Step size (default: 0.01). */
-  step?: number;
+  step?: number | undefined;
 }
 
 export interface VmapBatchResult {

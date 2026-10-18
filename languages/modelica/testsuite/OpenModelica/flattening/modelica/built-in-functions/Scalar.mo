@@ -1,7 +1,6 @@
 // name:     Scalar
 // keywords: array, scalar
 // status:   correct
-// xfail:    true
 //
 // Tests the scalar dimensionality conversion function.
 //

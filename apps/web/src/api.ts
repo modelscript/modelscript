@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
+import { encodePackagePath } from "./util/url";
 
 const api = axios.create({
   baseURL: "/api/v1",
@@ -46,14 +47,37 @@ export interface LibraryVersion {
   description: string | null;
   modelicaVersion: string | null;
   size: number;
-  contentHash?: string;
-  signature?: string;
-  publishedAt?: string;
-  isDeprecated?: boolean;
-  deprecationReason?: string | null;
-  isYanked?: boolean;
-  yankReason?: string | null;
-  yankedAt?: string | null;
+  contentHash?: string | undefined;
+  signature?: string | undefined;
+  publishedAt?: string | undefined;
+  isDeprecated?: boolean | undefined;
+  deprecationReason?: string | null | undefined;
+  isYanked?: boolean | undefined;
+  yankReason?: string | null | undefined;
+  yankedAt?: string | null | undefined;
+  canManage?: boolean | undefined;
+}
+
+export type CollaboratorPermission = "admin" | "write" | "read";
+
+export interface PackageCollaborator {
+  id?: number | undefined;
+  library_name: string;
+  user_id: number;
+  username: string;
+  permission: CollaboratorPermission;
+  created_at?: string | undefined;
+}
+
+export interface PendingPackageTransfer {
+  id: number;
+  package_name: string;
+  from_user_id: number;
+  to_user_id: number;
+  from_username: string;
+  to_username: string;
+  status: string;
+  created_at: string;
 }
 
 export interface PackageStats {
@@ -82,8 +106,8 @@ export type JobStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface JobInfo {
   status: JobStatus;
-  error?: string;
-  logs?: string[];
+  error?: string | undefined;
+  logs?: string[] | undefined;
 }
 
 export interface ClassDetail {
@@ -92,20 +116,36 @@ export interface ClassDetail {
   documentation: string | null;
   extends: string[];
   components: Component[];
+  sourceFile?: string | null | undefined;
+  sourceCode?: string | null | undefined;
+  equations?: string[] | undefined;
+  sysmlConfig?: Record<string, unknown> | undefined;
+  cadResourceUrl?: string | undefined;
 }
 
 export interface LibraryListItem {
   name: string;
   versions: string[];
   latestVersion: string | null;
-  description?: string;
-  author?: string;
-  scope?: string;
-  jobStatus?: {
-    status: JobStatus;
-    classesProcessed?: number;
-    error?: string;
-  } | null;
+  description?: string | undefined;
+  license?: string | undefined;
+  author?: string | undefined;
+  scope?: string | undefined;
+  publishedAt?: string | undefined;
+  totalDownloads?: number | undefined;
+  downloads30d?: number | undefined;
+  isDeprecated?: boolean | undefined;
+  deprecationReason?: string | null | undefined;
+  isYanked?: boolean | undefined;
+  domains?: string[] | undefined;
+  jobStatus?:
+    | {
+        status: JobStatus;
+        classesProcessed?: number | undefined;
+        error?: string | undefined;
+      }
+    | null
+    | undefined;
 }
 
 export const getLibraries = async (q?: string) => {
@@ -125,12 +165,16 @@ export const getLibraries = async (q?: string) => {
       versions: ["4.1.0"],
       latestVersion: "4.1.0",
       description: "Modelica Standard Library",
+      license: "BSD-3-Clause",
+      domains: ["modelica"],
     },
     {
       name: "SysML",
       versions: ["2026.3.0"],
       latestVersion: "2026.3.0",
       description: "SysML v2 Standard Library",
+      license: "OMG-SysML-2.0",
+      domains: ["sysml2"],
     },
   ];
 
@@ -141,65 +185,90 @@ export const getLibraries = async (q?: string) => {
 };
 
 export const getLibraryVersions = async (name: string) => {
-  const { data } = await api.get<Library>(`/libraries/${name}`);
+  const { data } = await api.get<Library>(`/libraries/${encodePackagePath(name)}`);
   return data;
 };
 
 export const getLibraryDetail = async (name: string, version: string) => {
-  const { data } = await api.get<LibraryVersion>(`/libraries/${name}/${version}`);
+  const { data } = await api.get<LibraryVersion>(
+    `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}`,
+  );
   return data;
 };
 
 export const getClasses = async (name: string, version: string, kind?: string, q?: string) => {
-  const { data } = await api.get<{ classes: ClassSummary[] }>(`/libraries/${name}/${version}/classes`, {
-    params: { kind, q },
-  });
+  const { data } = await api.get<{ classes: ClassSummary[] }>(
+    `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes`,
+    {
+      params: { kind, q },
+    },
+  );
   return data?.classes || [];
 };
 
 export const getClassDetail = async (name: string, version: string, className: string) => {
-  const { data } = await api.get<ClassDetail>(`/libraries/${name}/${version}/classes/${className}`);
+  const { data } = await api.get<ClassDetail>(
+    `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes/${encodeURIComponent(className)}`,
+  );
   return data;
 };
 
 export const getJobStatus = async (name: string, version: string) => {
-  const { data } = await api.get<JobInfo & { name: string; version: string }>(`/libraries/${name}/${version}/status`);
+  const { data } = await api.get<JobInfo & { name: string; version: string }>(
+    `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/status`,
+  );
   return data;
 };
 
 export const getIconUrl = (name: string, version: string, className: string) =>
-  `/api/v1/libraries/${name}/${version}/classes/${className}/icon.svg`;
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes/${encodeURIComponent(className)}/icon.svg`;
 
 export const getDiagramUrl = (name: string, version: string, className: string) =>
-  `/api/v1/libraries/${name}/${version}/classes/${className}/diagram.svg`;
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes/${encodeURIComponent(className)}/diagram.svg`;
+
+export const getPackageDownloadUrl = (name: string, version: string) =>
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/download`;
+
+export const getPackageAasxExportUrl = (name: string, version: string, variant?: string) =>
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/export/aasx${variant && variant !== "default" ? `?variant=${encodeURIComponent(variant)}` : ""}`;
+
+export const getPackageOkhExportUrl = (name: string, version: string, variant?: string) =>
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/export/okh${variant && variant !== "default" ? `?variant=${encodeURIComponent(variant)}` : ""}`;
+
+export const getPackageSalsaIndexUrl = (name: string, version: string) =>
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/salsa-index.db`;
 
 export const getPackageStats = async (name: string, days = 30): Promise<PackageStats> => {
-  const { data } = await api.get<PackageStats>(`/libraries/${name}/stats`, { params: { days } });
+  const { data } = await api.get<PackageStats>(`/libraries/${encodePackagePath(name)}/stats`, { params: { days } });
   return data;
 };
 
 export const deprecatePackage = async (name: string, version: string, reason: string) => {
-  const { data } = await api.post(`/libraries/${name}/${version}/deprecate`, { reason });
+  const { data } = await api.post(`/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/deprecate`, {
+    reason,
+  });
   return data;
 };
 
 export const undeprecatePackage = async (name: string, version: string) => {
-  const { data } = await api.delete(`/libraries/${name}/${version}/deprecate`);
+  const { data } = await api.delete(`/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/deprecate`);
   return data;
 };
 
 export const yankPackage = async (name: string, version: string, reason: string) => {
-  const { data } = await api.post(`/libraries/${name}/${version}/yank`, { reason });
+  const { data } = await api.post(`/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/yank`, {
+    reason,
+  });
   return data;
 };
 
 export const unyankPackage = async (name: string, version: string) => {
-  const { data } = await api.post(`/libraries/${name}/${version}/unyank`);
+  const { data } = await api.post(`/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/unyank`);
   return data;
 };
 
 export const transferPackageOwnership = async (name: string, targetUsername: string) => {
-  const { data } = await api.post(`/libraries/${name}/transfer-ownership`, { targetUsername });
+  const { data } = await api.post(`/libraries/${encodePackagePath(name)}/transfer-ownership`, { targetUsername });
   return data;
 };
 
@@ -213,20 +282,73 @@ export const cancelPackageTransfer = async (transferId: number) => {
   return data;
 };
 
-export const getPendingPackageTransfers = async () => {
-  const { data } = await api.get<{ transfers: any[] }>(`/libraries/transfers/pending`);
-  return data.transfers;
+export const getPendingPackageTransfers = async (): Promise<PendingPackageTransfer[]> => {
+  const { data } = await api.get<{ transfers: PendingPackageTransfer[] }>(`/libraries/transfers/pending`);
+  return data.transfers || [];
 };
 
-/**
- * Rewrite `modelica://` URIs in documentation HTML:
- *
- * 1. Resource paths: `modelica://Modelica/Resources/Images/foo.png`
- *    → `/api/v1/libraries/Modelica/4.1.0/resources/Resources/Images/foo.png`
- *
- * 2. Class references: `modelica://Modelica.Electrical.Analog`
- *    → `/packages/Modelica/4.1.0/classes/Modelica.Electrical.Analog`
- */
+export const getPackageCollaborators = async (
+  name: string,
+): Promise<{ package: string; collaborators: PackageCollaborator[]; canManage?: boolean | undefined }> => {
+  const { data } = await api.get<{
+    package: string;
+    collaborators: PackageCollaborator[];
+    canManage?: boolean | undefined;
+  }>(`/libraries/${encodePackagePath(name)}/collaborators`);
+  return data;
+};
+
+export const addPackageCollaborator = async (
+  name: string,
+  username: string,
+  permission: CollaboratorPermission = "write",
+) => {
+  const { data } = await api.post(`/libraries/${encodePackagePath(name)}/collaborators`, {
+    username,
+    permission,
+  });
+  return data;
+};
+
+export const removePackageCollaborator = async (name: string, userId: number) => {
+  const { data } = await api.delete(`/libraries/${encodePackagePath(name)}/collaborators/${userId}`);
+  return data;
+};
+
+export const publishPackageArchive = async (
+  name: string,
+  version: string,
+  file: File | Blob,
+  options?: {
+    tag?: string | undefined;
+    description?: string | undefined;
+    license?: string | undefined;
+    contentHash?: string | undefined;
+  },
+) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (options?.tag) formData.append("tag", options.tag);
+  if (options?.description) formData.append("description", options.description);
+  if (options?.license) formData.append("license", options.license);
+  if (options?.contentHash) formData.append("contentHash", options.contentHash);
+
+  const headers: Record<string, string> = {};
+  if (options?.contentHash) {
+    headers["X-Content-SHA256"] = options.contentHash;
+  }
+
+  const { data } = await api.post(`/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}`, formData, {
+    headers,
+  });
+  return data;
+};
+
+export const unpublishPackageRelease = async (name: string, version: string) => {
+  const { data } = await api.delete(`/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}`);
+  return data;
+};
+
 export interface PackageDependent {
   name: string;
   version: string;
@@ -237,7 +359,7 @@ export const getPackageDependents = async (
   name: string,
 ): Promise<{ name: string; count: number; dependents: PackageDependent[] }> => {
   const { data } = await api.get<{ name: string; count: number; dependents: PackageDependent[] }>(
-    `/libraries/${encodeURIComponent(name)}/dependents`,
+    `/libraries/${encodePackagePath(name)}/dependents`,
   );
   return data;
 };
@@ -260,18 +382,22 @@ export function rewriteModelicaUris(html: string, version: string, packageName?:
 
   // First pass: resource paths (modelica://LibName/path — contains a slash after lib name)
   let result = html.replace(/modelica:\/\/([^/\s"']+)\/([^"'\s>]+)/g, (_match, libName, resourcePath) => {
-    return `/api/v1/libraries/${libName}/${version}/resources/${resourcePath}`;
+    const targetPkg =
+      packageName && (packageName === libName || packageName.endsWith(`/${libName}`)) ? packageName : libName;
+    return `/api/v1/libraries/${encodePackagePath(targetPkg)}/${version}/resources/${resourcePath}`;
   });
 
   // Second pass: class references (modelica://Lib.Class.Name — dotted name, no slash)
   result = result.replace(/modelica:\/\/([A-Za-z_][\w.]*)/g, (_match, className) => {
     const libName = className.split(".")[0];
-    return `/packages/${libName}/${version}/classes/${className}`;
+    const targetPkg =
+      packageName && (packageName === libName || packageName.endsWith(`/${libName}`)) ? packageName : libName;
+    return `/packages/${targetPkg}/${version}/classes/${className}`;
   });
 
   // Third pass: relative image/asset paths
   if (packageName && version) {
-    const encodedPkg = encodeURIComponent(packageName);
+    const encodedPkg = encodePackagePath(packageName);
     const encodedVer = encodeURIComponent(version);
 
     // Markdown images: ![alt](./path.png) or ![alt](path.png)
@@ -299,49 +425,55 @@ export function rewriteModelicaUris(html: string, version: string, packageName?:
 export interface NpmPackument {
   _id: string;
   name: string;
-  description?: string | null;
+  description?: string | null | undefined;
   "dist-tags": Record<string, string>;
   versions: Record<string, NpmVersionManifest>;
-  time?: Record<string, string>;
-  readme?: string;
-  readmeFilename?: string;
-  license?: string | null;
-  homepage?: string | null;
-  repository?: { type: string; url: string } | null;
+  time?: Record<string, string> | undefined;
+  readme?: string | undefined;
+  readmeFilename?: string | undefined;
+  license?: string | null | undefined;
+  homepage?: string | null | undefined;
+  repository?: { type: string; url: string } | null | undefined;
 }
 
 export interface NpmVersionManifest {
   name: string;
   version: string;
-  description?: string;
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-  modelscript?: {
-    languages?: string[];
-    main?: string;
-    modelicaVersion?: string;
-    artifacts?: NpmArtifact[];
-    verification?: {
-      requirements?: string;
-      results?: string;
-    };
-  };
-  dist?: {
-    shasum: string;
-    integrity?: string;
-    tarball: string;
-  };
-  license?: string;
-  author?: { name?: string; email?: string; url?: string } | string;
+  description?: string | undefined;
+  dependencies?: Record<string, string> | undefined;
+  devDependencies?: Record<string, string> | undefined;
+  modelscript?:
+    | {
+        languages?: string[] | undefined;
+        main?: string | undefined;
+        modelicaVersion?: string | undefined;
+        artifacts?: NpmArtifact[] | undefined;
+        verification?:
+          | {
+              requirements?: string | undefined;
+              results?: string | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+  dist?:
+    | {
+        shasum: string;
+        integrity?: string | undefined;
+        tarball: string;
+      }
+    | undefined;
+  license?: string | undefined;
+  author?: { name?: string | undefined; email?: string | undefined; url?: string | undefined } | string | undefined;
   [key: string]: unknown;
 }
 
 export interface NpmArtifact {
   type: string;
   path: string;
-  description?: string;
-  fmiVersion?: string;
-  platforms?: string[];
+  description?: string | undefined;
+  fmiVersion?: string | undefined;
+  platforms?: string[] | undefined;
   [key: string]: unknown;
 }
 
@@ -352,7 +484,7 @@ export interface NpmSearchResult {
       version: string;
       description: string | null;
       date: string;
-      links?: Record<string, string>;
+      links?: Record<string, string> | undefined;
     };
   }[];
   total: number;
@@ -388,8 +520,8 @@ export const searchRegistry = async (text: string, size = 20): Promise<NpmSearch
 export const createBot = async (payload: {
   username: string;
   display_name: string;
-  bio?: string;
-  avatar_url?: string;
+  bio?: string | undefined;
+  avatar_url?: string | undefined;
 }) => {
   const { data } = await api.post("/users/me/bots", payload);
   return data;
@@ -430,7 +562,7 @@ export interface ArtifactViewerInfo {
 export const getArtifactViewers = async (name: string, version: string): Promise<ArtifactViewerInfo[]> => {
   try {
     const { data } = await axios.get<{ artifacts: ArtifactViewerInfo[] }>(
-      `/api/v1/packages/${encodeURIComponent(name)}/${version}/artifacts`,
+      `/api/v1/packages/${encodePackagePath(name)}/${encodeURIComponent(version)}/artifacts`,
     );
     return data?.artifacts || [];
   } catch {
@@ -722,19 +854,63 @@ export const getGitlabMergeRequests = async (
   return data;
 };
 
+export const createGitlabMergeRequest = async (
+  projectIdOrPath: string,
+  payload: {
+    title: string;
+    description?: string | undefined;
+    source_branch: string;
+    target_branch: string;
+  },
+  provider: string = "gitlab",
+): Promise<GitlabMergeRequest> => {
+  if (provider === "github") {
+    const { data: pr } = await axios.post(`https://api.github.com/repos/${projectIdOrPath}/pulls`, {
+      title: payload.title,
+      body: payload.description || "",
+      head: payload.source_branch,
+      base: payload.target_branch,
+    });
+    return {
+      id: pr.id,
+      iid: pr.number,
+      project_id: 0,
+      title: pr.title,
+      description: pr.body || "",
+      state: pr.state,
+      created_at: pr.created_at,
+      updated_at: pr.updated_at,
+      target_branch: pr.base.ref,
+      source_branch: pr.head.ref,
+      web_url: pr.html_url || "#",
+      author: {
+        id: pr.user?.id || 1,
+        name: pr.user?.login || "current_user",
+        avatar_url: pr.user?.avatar_url,
+        username: pr.user?.login || "current_user",
+      },
+    };
+  }
+  const { data } = await api.post<GitlabMergeRequest>(
+    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests`,
+    payload,
+  );
+  return data;
+};
+
 export const updateAccount = async (data: {
-  password?: string;
-  username?: string;
-  email?: string;
-  display_name?: string;
-  avatar_url?: string;
-  banner_url?: string;
+  password?: string | undefined;
+  username?: string | undefined;
+  email?: string | undefined;
+  display_name?: string | undefined;
+  avatar_url?: string | undefined;
+  banner_url?: string | undefined;
 }) => {
   const { data: resData } = await api.put("/auth/account", data);
   return resData;
 };
 
-export const updatePassword = async (data: { oldPassword?: string; newPassword?: string }) => {
+export const updatePassword = async (data: { oldPassword?: string | undefined; newPassword?: string | undefined }) => {
   const { data: resData } = await api.put("/auth/password", data);
   return resData;
 };
@@ -743,15 +919,15 @@ export interface ArchiveJobInfo {
   id: string;
   status: "queued" | "processing" | "completed" | "failed";
   format: "zip" | "json";
-  queuePosition?: number;
+  queuePosition?: number | undefined;
   createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  expiresAt?: string;
-  fileSizeBytes?: number;
-  error?: string;
-  downloadUrl?: string;
-  concurrency?: number;
+  startedAt?: string | undefined;
+  completedAt?: string | undefined;
+  expiresAt?: string | undefined;
+  fileSizeBytes?: number | undefined;
+  error?: string | undefined;
+  downloadUrl?: string | undefined;
+  concurrency?: number | undefined;
 }
 
 export const requestUserDataArchiveJob = async (format: "zip" | "json" = "zip"): Promise<ArchiveJobInfo> => {
@@ -786,32 +962,36 @@ export const deleteAccount = async () => {
 };
 
 export interface NotificationPreferences {
-  qualityFilter?: boolean;
-  inAppSounds?: boolean;
-  emailDigestFrequency?: "instant" | "daily" | "weekly" | "never";
-  channels?: {
-    email: boolean;
-    browserPush: boolean;
-    inApp: boolean;
-  };
-  events?: {
-    social: {
-      mentions: boolean;
-      replies: boolean;
-      follows: boolean;
-      reposts: boolean;
-    };
-    engineering: {
-      packageUpdates: boolean;
-      starredRepoCommits: boolean;
-      federatedMentions: boolean;
-    };
-    computeHpc: {
-      jobCompleted: boolean;
-      jobFailed: boolean;
-      quotaThresholdAlert: boolean;
-    };
-  };
+  qualityFilter?: boolean | undefined;
+  inAppSounds?: boolean | undefined;
+  emailDigestFrequency?: "instant" | "daily" | "weekly" | "never" | undefined;
+  channels?:
+    | {
+        email: boolean;
+        browserPush: boolean;
+        inApp: boolean;
+      }
+    | undefined;
+  events?:
+    | {
+        social: {
+          mentions: boolean;
+          replies: boolean;
+          follows: boolean;
+          reposts: boolean;
+        };
+        engineering: {
+          packageUpdates: boolean;
+          starredRepoCommits: boolean;
+          federatedMentions: boolean;
+        };
+        computeHpc: {
+          jobCompleted: boolean;
+          jobFailed: boolean;
+          quotaThresholdAlert: boolean;
+        };
+      }
+    | undefined;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -859,7 +1039,7 @@ export interface ConnectedAccount {
   provider: string;
   name: string;
   connected: boolean;
-  identifier?: string;
+  identifier?: string | undefined;
 }
 
 export const getConnectedAccounts = async (): Promise<{ providers: ConnectedAccount[] }> => {
@@ -917,7 +1097,7 @@ export interface ComputeProfileInfo {
   cpus: number;
   memoryMb: number;
   gpus: number;
-  gpuType?: string;
+  gpuType?: string | undefined;
   partition: string;
   costCreditsPerHour: number;
 }
@@ -1076,8 +1256,8 @@ export interface HpcJobSummary {
   completedAt: string | null;
   hasVtu: boolean;
   hasScalars: boolean;
-  scalars?: Record<string, any>;
-  resultDir?: string;
+  scalars?: Record<string, any> | undefined;
+  resultDir?: string | undefined;
 }
 
 export interface ArtifactViewFromJobResult {
@@ -1100,7 +1280,7 @@ export const getUserHpcJobs = async (limit = 20): Promise<HpcJobSummary[]> => {
 
 export const createArtifactViewFromHpcJob = async (
   jobId: number,
-  options?: { colormap?: string; activeField?: string; title?: string },
+  options?: { colormap?: string | undefined; activeField?: string | undefined; title?: string | undefined },
 ): Promise<ArtifactViewFromJobResult> => {
   const { data } = await api.post<ArtifactViewFromJobResult>("/social/artifact-views/from-hpc-job", {
     jobId,
@@ -1118,25 +1298,27 @@ export const getHpcJobReproduceSpec = async (jobId: number) => {
 
 export interface CloudSimulationRequest {
   modelName: string;
-  modelSource?: string;
-  libraryName?: string;
-  libraryVersion?: string;
-  dependencies?: { name: string; version: string }[];
-  profile?: string;
-  numberOfIntervals?: number;
+  modelSource?: string | undefined;
+  libraryName?: string | undefined;
+  libraryVersion?: string | undefined;
+  dependencies?: { name: string; version: string }[] | undefined;
+  profile?: string | undefined;
+  numberOfIntervals?: number | undefined;
 }
 
 export interface CloudSimulationStatus {
   id: string;
   status: "pending" | "processing" | "queued" | "running" | "completed" | "success" | "failed" | string;
-  profile?: string;
-  usage?: {
-    cpuSeconds: number;
-    gpuSeconds: number;
-    costCredits: number;
-    exitCode: number;
-  };
-  error?: string;
+  profile?: string | undefined;
+  usage?:
+    | {
+        cpuSeconds: number;
+        gpuSeconds: number;
+        costCredits: number;
+        exitCode: number;
+      }
+    | undefined;
+  error?: string | undefined;
 }
 
 export const submitCloudSimulation = async (req: CloudSimulationRequest): Promise<{ jobId: string }> => {
@@ -1162,11 +1344,11 @@ export interface ClusterStatus {
   backend: "slurm-rest" | "slurm" | "local-process" | string;
   connected: boolean;
   latencyMs: number;
-  version?: string;
-  stagingBackend?: string;
+  version?: string | undefined;
+  stagingBackend?: string | undefined;
   partitions: { name: string; state: string }[];
   nodesCount: number;
-  nodes?: { name: string; state: string }[];
+  nodes?: { name: string; state: string }[] | undefined;
 }
 
 export const getClusterStatus = async (): Promise<ClusterStatus> => {
@@ -1192,12 +1374,12 @@ export interface UnifiedJob {
   domain: string;
   profile: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled" | "SUCCESS" | "FAILED" | string;
-  progress?: number;
-  costCredits?: number;
-  elapsedSeconds?: number;
-  startedAt?: string | number;
-  hasVtu?: boolean;
-  hasCsv?: boolean;
+  progress?: number | undefined;
+  costCredits?: number | undefined;
+  elapsedSeconds?: number | undefined;
+  startedAt?: string | number | undefined;
+  hasVtu?: boolean | undefined;
+  hasCsv?: boolean | undefined;
 }
 
 export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
@@ -1253,25 +1435,25 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
 export interface AdminModerationReport {
   id: number;
   reporter_id: number | null;
-  reporter_username?: string;
+  reporter_username?: string | undefined;
   target_type: "post" | "user" | "comment" | string;
-  target_id?: number | string;
-  post_id?: number;
-  post_content?: string;
-  author_username?: string;
+  target_id?: number | string | undefined;
+  post_id?: number | undefined;
+  post_content?: string | undefined;
+  author_username?: string | undefined;
   reason: string;
   status: "pending" | "resolved" | "dismissed";
-  resolution_notes?: string;
+  resolution_notes?: string | undefined;
   created_at: string;
-  resolved_at?: string;
+  resolved_at?: string | undefined;
 }
 
 export interface AdminFederationDomain {
   domain: string;
   tier: "allow" | "silence" | "suspend";
-  reason?: string;
-  created_at?: string;
-  updated_at?: string;
+  reason?: string | undefined;
+  created_at?: string | undefined;
+  updated_at?: string | undefined;
 }
 
 export interface AdminDmcaNotice {
@@ -1281,34 +1463,42 @@ export interface AdminDmcaNotice {
   copyright_owner: string;
   work_description: string;
   infringing_url: string;
-  resource_type?: string;
-  resource_id?: string;
+  resource_type?: string | undefined;
+  resource_id?: string | undefined;
   status: "pending" | "resolved" | "rejected";
-  action_taken?: string;
+  action_taken?: string | undefined;
   created_at: string;
-  resolved_at?: string;
+  resolved_at?: string | undefined;
 }
 
 export interface AdminAuditLog {
   id: number;
   actor_id: number | null;
-  actor_username?: string;
+  actor_username?: string | undefined;
   action: string;
-  resource_type?: string;
-  resource_id?: string;
-  ip_address?: string;
+  resource_type?: string | undefined;
+  resource_id?: string | undefined;
+  ip_address?: string | undefined;
   details?: any;
   created_at: string;
 }
 
 export interface AdminDbStatus {
   currentVersion: string | number | null;
-  latestVersion?: string | number | null;
-  pendingCount?: number;
-  applied?: { id: number; name: string; applied_at?: string; checksum?: string; execution_ms?: number }[];
-  pending?: { id?: number; name: string }[];
-  pendingMigrations?: { id: number; name: string }[];
-  appliedMigrations?: { id: number; name: string; applied_at?: string }[];
+  latestVersion?: string | number | null | undefined;
+  pendingCount?: number | undefined;
+  applied?:
+    | {
+        id: number;
+        name: string;
+        applied_at?: string | undefined;
+        checksum?: string | undefined;
+        execution_ms?: number | undefined;
+      }[]
+    | undefined;
+  pending?: { id?: number | undefined; name: string }[] | undefined;
+  pendingMigrations?: { id: number; name: string }[] | undefined;
+  appliedMigrations?: { id: number; name: string; applied_at?: string | undefined }[] | undefined;
 }
 
 export const getAdminModerationQueue = async (
@@ -1324,8 +1514,8 @@ export const resolveAdminModerationReport = async (
   id: number,
   data: {
     status: "resolved" | "dismissed";
-    resolutionNotes?: string;
-    action?: "none" | "delete_post" | "silence_domain" | "suspend_domain";
+    resolutionNotes?: string | undefined;
+    action?: "none" | "delete_post" | "silence_domain" | "suspend_domain" | undefined;
   },
 ): Promise<{ success: boolean; reportId: number; status: string; actionExecuted: string }> => {
   const res = await api.post(`/admin/moderation/reports/${id}/resolve`, data);
@@ -1348,7 +1538,7 @@ export const setAdminFederationDomainTier = async (
   domain: string,
   tier: "allow" | "silence" | "suspend",
   reason?: string,
-): Promise<{ success: boolean; domain: string; tier: string; reason?: string }> => {
+): Promise<{ success: boolean; domain: string; tier: string; reason?: string | undefined }> => {
   const { data } = await api.post("/admin/federation/domains", { domain, tier, reason });
   return data;
 };
@@ -1388,18 +1578,23 @@ export const getAdminDbStatus = async (): Promise<AdminDbStatus> => {
 };
 
 export const runAdminDbUpgrade = async (options?: {
-  dryRun?: boolean;
-  skipBackup?: boolean;
-}): Promise<{ success: boolean; appliedCount?: number; dryRun?: boolean; error?: string }> => {
+  dryRun?: boolean | undefined;
+  skipBackup?: boolean | undefined;
+}): Promise<{
+  success: boolean;
+  appliedCount?: number | undefined;
+  dryRun?: boolean | undefined;
+  error?: string | undefined;
+}> => {
   const { data } = await api.post("/admin/db/upgrade", options || {});
   return data;
 };
 
 export const verifyAdminDbIntegrity = async (): Promise<{
-  valid?: boolean;
-  foreignKeysOk?: boolean;
-  integrityOk?: boolean;
-  issues?: string[];
+  valid?: boolean | undefined;
+  foreignKeysOk?: boolean | undefined;
+  integrityOk?: boolean | undefined;
+  issues?: string[] | undefined;
 }> => {
   const { data } = await api.get("/admin/db/verify");
   return data;
@@ -1412,7 +1607,7 @@ export interface AdminFeatureFlag {
   defaultValue: boolean;
   category: string;
   maturity: string;
-  allowedRoles?: string[];
+  allowedRoles?: string[] | undefined;
   currentEnabled: boolean;
   rolloutPercentage: number;
   dbAllowedRoles: string[];
@@ -1506,13 +1701,13 @@ export const getUserPosts = async (
 };
 
 export const getTimeline = async (options?: {
-  following?: boolean;
-  federated?: boolean;
-  sort?: string;
-  limit?: number;
-  offset?: number;
-  artifactType?: string;
-  tag?: string;
+  following?: boolean | undefined;
+  federated?: boolean | undefined;
+  sort?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  artifactType?: string | undefined;
+  tag?: string | undefined;
 }): Promise<{ posts: any[] }> => {
   const endpoint = options?.federated
     ? "/social/timeline/federated"
@@ -1544,12 +1739,16 @@ export const getPostParents = async (id: string | number): Promise<{ posts: any[
   return data;
 };
 
-export const getPostQuotes = async (id: string | number): Promise<{ quotes?: any[]; posts?: any[] }> => {
+export const getPostQuotes = async (
+  id: string | number,
+): Promise<{ quotes?: any[] | undefined; posts?: any[] | undefined }> => {
   const { data } = await api.get(`/social/posts/${id}/quotes`);
   return data;
 };
 
-export const getPostReposts = async (id: string | number): Promise<{ reposts?: any[]; posts?: any[] }> => {
+export const getPostReposts = async (
+  id: string | number,
+): Promise<{ reposts?: any[] | undefined; posts?: any[] | undefined }> => {
   const { data } = await api.get(`/social/posts/${id}/reposts`);
   return data;
 };
@@ -1588,7 +1787,9 @@ export const getBookmarks = async (): Promise<{ posts: any[] }> => {
   return data;
 };
 
-export const getNotifications = async (category?: string): Promise<{ notifications: any[]; unreadCount?: number }> => {
+export const getNotifications = async (
+  category?: string,
+): Promise<{ notifications: any[]; unreadCount?: number | undefined }> => {
   const params = category && category !== "all" ? { category } : undefined;
   const { data } = await api.get("/social/notifications", { params });
   return data;
@@ -1620,10 +1821,10 @@ export const getTrending = async (limit = 4): Promise<{ topics: any[] }> => {
 };
 
 export const getExplore = async (options?: {
-  limit?: number;
-  offset?: number;
-  artifactType?: string;
-  tag?: string;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  artifactType?: string | undefined;
+  tag?: string | undefined;
 }): Promise<{ posts: any[] }> => {
   const params: Record<string, any> = {};
   if (options?.limit !== undefined) params.limit = options.limit;
@@ -1636,7 +1837,7 @@ export const getExplore = async (options?: {
 
 export const getTopicPosts = async (
   topic: string,
-  options?: { limit?: number; offset?: number; artifactType?: string },
+  options?: { limit?: number | undefined; offset?: number | undefined; artifactType?: string | undefined },
 ): Promise<{ posts: any[] }> => {
   const params: Record<string, any> = {};
   if (options?.limit !== undefined) params.limit = options.limit;
@@ -1648,7 +1849,16 @@ export const getTopicPosts = async (
   return data;
 };
 
-export const getRepos = async (): Promise<{ repos: any[] }> => {
+export const getRepos = async (username?: string): Promise<{ repos: any[] }> => {
+  if (username) {
+    try {
+      const { data } = await api.get(`/users/${encodeURIComponent(username)}/repos`);
+      return data;
+    } catch {
+      const { data } = await api.get("/repos", { params: { username } });
+      return data;
+    }
+  }
   const { data } = await api.get("/repos");
   return data;
 };
@@ -1691,7 +1901,7 @@ export const uploadStorageFile = async (formData: FormData): Promise<any> => {
 export const getSearchCompletions = async (
   query: string,
   limit = 6,
-): Promise<{ suggestions?: any[]; completions?: any[] }> => {
+): Promise<{ suggestions?: any[] | undefined; completions?: any[] | undefined }> => {
   const { data } = await api.get("/search/completions", { params: { q: query, limit } });
   return data;
 };
@@ -1713,7 +1923,7 @@ export const getJobLogs = async (id: string | number): Promise<any> => {
   return data;
 };
 
-export const getJobDetails = async (id: string | number): Promise<{ job: any; steps?: any[] }> => {
+export const getJobDetails = async (id: string | number): Promise<{ job: any; steps?: any[] | undefined }> => {
   const { data } = await api.get(`/jobs/${id}`);
   return data;
 };
@@ -1810,14 +2020,16 @@ export const verifyEmail = async (
   return data;
 };
 
-export const resendVerificationEmail = async (email: string): Promise<{ success?: boolean; message: string }> => {
+export const resendVerificationEmail = async (
+  email: string,
+): Promise<{ success?: boolean | undefined; message: string }> => {
   const { data } = await api.post("/auth/resend-verification", { email });
   return data;
 };
 
 export const requestPasswordReset = async (
   email: string,
-): Promise<{ success: boolean; message: string; resetToken?: string }> => {
+): Promise<{ success: boolean; message: string; resetToken?: string | undefined }> => {
   const { data } = await api.post("/auth/forgot-password", { email });
   return data;
 };
@@ -1837,9 +2049,9 @@ export const revokeAllSessions = async (): Promise<{ success: boolean; message: 
 
 export interface Setup2FAResponse {
   secret: string;
-  otpauthUri?: string;
-  otpAuthUri?: string;
-  message?: string;
+  otpauthUri?: string | undefined;
+  otpAuthUri?: string | undefined;
+  message?: string | undefined;
 }
 
 export interface Verify2FAResponse {
@@ -1891,13 +2103,13 @@ export interface VersionComparisonResult {
     modified: {
       name: string;
       kind: string;
-      parameterChanges: { name: string; old: unknown; new: unknown; unit?: string }[];
+      parameterChanges: { name: string; old: unknown; new: unknown; unit?: string | undefined }[];
     }[];
   };
   cadChanges: {
     file: string;
     status: "added" | "removed" | "modified" | "unchanged";
-    volumeDeltaPercent?: number;
+    volumeDeltaPercent?: number | undefined;
   }[];
   parityDrift: {
     className: string;
@@ -1912,7 +2124,7 @@ export const comparePackageVersions = async (
   base: string,
   head: string,
 ): Promise<VersionComparisonResult> => {
-  const { data } = await api.get(`/libraries/${encodeURIComponent(name)}/compare`, {
+  const { data } = await api.get(`/libraries/${encodePackagePath(name)}/compare`, {
     params: { base, head },
   });
   return data;
@@ -1945,8 +2157,8 @@ export interface ThreadAuditLogDto {
 }
 
 export const getThreadProposals = async (params?: {
-  threadId?: string;
-  status?: string;
+  threadId?: string | undefined;
+  status?: string | undefined;
 }): Promise<ThreadProposalDto[]> => {
   const { data } = await api.get("/threads/proposals", { params });
   return data.proposals || [];
@@ -1955,10 +2167,10 @@ export const getThreadProposals = async (params?: {
 export const createThreadProposal = async (payload: {
   threadId: string;
   title: string;
-  description?: string;
-  proposedBy?: string;
+  description?: string | undefined;
+  proposedBy?: string | undefined;
   diffSummary?: any;
-  safetyStandard?: string;
+  safetyStandard?: string | undefined;
 }): Promise<ThreadProposalDto> => {
   const { data } = await api.post("/threads/proposals", payload);
   return data.proposal;
@@ -1968,9 +2180,9 @@ export const reviewThreadProposal = async (
   id: number,
   payload: {
     status: "approved" | "rejected" | "applied";
-    comment?: string;
-    resolvedBy?: string;
-    safetyStandard?: string;
+    comment?: string | undefined;
+    resolvedBy?: string | undefined;
+    safetyStandard?: string | undefined;
   },
 ): Promise<ThreadProposalDto> => {
   const { data } = await api.post(`/threads/proposals/${id}/review`, payload);
@@ -1978,7 +2190,7 @@ export const reviewThreadProposal = async (
 };
 
 export const getThreadAuditLogs = async (params?: {
-  threadId?: string;
+  threadId?: string | undefined;
 }): Promise<{ auditLogs: ThreadAuditLogDto[]; verification: { valid: boolean; totalEntries: number } }> => {
   const { data } = await api.get("/threads/audit-log", { params });
   return data;

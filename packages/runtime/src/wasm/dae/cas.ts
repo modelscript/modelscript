@@ -79,6 +79,7 @@ export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
       if (cas_isZero(dae, left))  return right;  // 0 + x → x
     } else if (op == BinOp.Sub) {
       if (cas_isZero(dae, right)) return left;   // x - 0 → x
+      if (cas_isZero(dae, left))  return cas_simplify(dae, dae.addExpression(ExprKind.Negate, 0, right, 0xffffffff)); // 0 - x → -x
       if (left == right) return dae.addRealLiteral(0.0); // x - x → 0
     } else if (op == BinOp.Mul) {
       if (cas_isZero(dae, left) || cas_isZero(dae, right)) return dae.addRealLiteral(0.0); // x*0, 0*x → 0
@@ -94,6 +95,25 @@ export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
     }
 
     return dae.addExpression(ExprKind.Binary, op, left, right);
+  }
+
+  if (kind == ExprKind.Call && rightId == 1 && leftId < dae.exprCount) {
+    let simpArg = cas_simplify(dae, leftId);
+    if (simpArg != leftId) {
+      return dae.addExpression(ExprKind.Call, e.data1, simpArg, 1);
+    }
+    return exprId;
+  }
+
+  if (kind == ExprKind.IfElse) {
+    let simpCond = cas_simplify(dae, e.data1);
+    let simpThen = cas_simplify(dae, leftId);
+    let simpElse = cas_simplify(dae, rightId);
+    if (simpThen == simpElse) return simpThen;
+    if (simpCond != e.data1 || simpThen != leftId || simpElse != rightId) {
+      return dae.addExpression(ExprKind.IfElse, simpCond, simpThen, simpElse);
+    }
+    return exprId;
   }
 
   if (kind == ExprKind.Unary && unaryOp == UnaryOp.Not) {
@@ -146,7 +166,12 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
 
   // d(x)/dx = 1, d(y)/dx = 0
   if (kind == ExprKind.Name) {
-    return varId == targetVarId ? dae.addRealLiteral(1.0) : dae.addRealLiteral(0.0);
+    if (varId == targetVarId) return dae.addRealLiteral(1.0);
+    if (varId >= dae.varCount) {
+      let resolved = dae.lookupVariableByName(varId);
+      if (resolved >= 0 && (resolved as u32) == targetVarId) return dae.addRealLiteral(1.0);
+    }
+    return dae.addRealLiteral(0.0);
   }
 
   // d(const)/dx = 0
@@ -208,8 +233,92 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
   }
 
   if (kind == ExprKind.Call) {
+    funcId = dae.resolveBuiltinMathFunc(funcId);
     let u  = left;
     let du = cas_differentiate(dae, u, targetVarId);
+
+    if (funcId == BuiltinMathFunc.NoEvent || funcId == BuiltinMathFunc.Homotopy || funcId == BuiltinMathFunc.Fmod) {
+      return du;
+    }
+    if (funcId == BuiltinMathFunc.Sign || funcId == BuiltinMathFunc.Floor || funcId == BuiltinMathFunc.Ceil) {
+      return dae.addRealLiteral(0.0);
+    }
+    if (
+      funcId == BuiltinMathFunc.Smooth ||
+      funcId == BuiltinMathFunc.Atan2 ||
+      funcId == BuiltinMathFunc.Min ||
+      funcId == BuiltinMathFunc.Max ||
+      funcId == BuiltinMathFunc.Pow ||
+      funcId == BuiltinMathFunc.SemiLinear
+    ) {
+      let v = right;
+      if (exprId + 1 < dae.exprCount) {
+        let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
+        if (nextAcc.kind == ExprKind.Tuple) {
+          v = nextAcc.left;
+        }
+      }
+      if (v >= dae.exprCount && u + 1 < dae.exprCount) {
+        v = u + 1;
+      }
+      if (funcId == BuiltinMathFunc.Smooth) {
+        return cas_differentiate(dae, v, targetVarId);
+      }
+      if (funcId == BuiltinMathFunc.SemiLinear) {
+        if (cas_isZero(dae, du)) return dae.addRealLiteral(0.0);
+        let kNeg: u32 = 0xffffffff;
+        if (exprId + 2 < dae.exprCount) {
+          let next2Acc = ExprAccessor.at(dae.getExprData(), exprId + 2);
+          if (next2Acc.kind == ExprKind.Tuple) {
+            kNeg = next2Acc.left;
+          }
+        }
+        let cond = dae.addExpression(ExprKind.Binary, BinOp.Gte, u, dae.addRealLiteral(0.0));
+        let posBranch = cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Mul, v, du));
+        let negBranch = kNeg < dae.exprCount
+          ? cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Mul, kNeg, du))
+          : dae.addRealLiteral(0.0);
+        return cas_simplify(dae, dae.addExpression(ExprKind.IfElse, cond, posBranch, negBranch));
+      }
+      let dv = cas_differentiate(dae, v, targetVarId);
+      if (cas_isZero(dae, du) && cas_isZero(dae, dv)) return dae.addRealLiteral(0.0);
+      if (funcId == BuiltinMathFunc.Min) {
+        let cond = dae.addExpression(ExprKind.Binary, BinOp.Lt, u, v);
+        return cas_simplify(dae, dae.addExpression(ExprKind.IfElse, cond, du, dv));
+      }
+      if (funcId == BuiltinMathFunc.Max) {
+        let cond = dae.addExpression(ExprKind.Binary, BinOp.Gt, u, v);
+        return cas_simplify(dae, dae.addExpression(ExprKind.IfElse, cond, du, dv));
+      }
+      if (funcId == BuiltinMathFunc.Atan2) {
+        let vDu = dae.addExpression(ExprKind.Binary, BinOp.Mul, v, du);
+        let uDv = dae.addExpression(ExprKind.Binary, BinOp.Mul, u, dv);
+        let num = dae.addExpression(ExprKind.Binary, BinOp.Sub, vDu, uDv);
+        let u2  = dae.addExpression(ExprKind.Binary, BinOp.Mul, u, u);
+        let v2  = dae.addExpression(ExprKind.Binary, BinOp.Mul, v, v);
+        let den = dae.addExpression(ExprKind.Binary, BinOp.Add, v2, u2);
+        return cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Div, num, den));
+      }
+      if (funcId == BuiltinMathFunc.Pow) {
+        if (cas_isZero(dae, dv)) {
+          let vMinus1 = cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Sub, v, dae.addRealLiteral(1.0)));
+          let uPow = dae.addExpression(ExprKind.Binary, BinOp.Pow, u, vMinus1);
+          let t1   = dae.addExpression(ExprKind.Binary, BinOp.Mul, v, uPow);
+          return cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Mul, t1, du));
+        }
+        let logU = dae.addExpression(ExprKind.Call, BuiltinMathFunc.Log, u, 1);
+        if (cas_isZero(dae, du)) {
+          let t1 = dae.addExpression(ExprKind.Binary, BinOp.Mul, exprId, logU);
+          return cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Mul, t1, dv));
+        }
+        let t1       = dae.addExpression(ExprKind.Binary, BinOp.Mul, dv, logU);
+        let vDu      = dae.addExpression(ExprKind.Binary, BinOp.Mul, v, du);
+        let vDuOverU = dae.addExpression(ExprKind.Binary, BinOp.Div, vDu, u);
+        let sum      = dae.addExpression(ExprKind.Binary, BinOp.Add, t1, vDuOverU);
+        return cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Mul, exprId, sum));
+      }
+    }
+
     if (cas_isZero(dae, du)) return dae.addRealLiteral(0.0);
 
     let dOuter: u32 = 0xffffffff;
@@ -266,9 +375,9 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
       let den = dae.addExpression(ExprKind.Binary, BinOp.Add, dae.addRealLiteral(1.0), uSq);
       dOuter  = dae.addExpression(ExprKind.Binary, BinOp.Div, dae.addRealLiteral(1.0), den);
     } else if (funcId == BuiltinMathFunc.Abs) {
-      dOuter = dae.addExpression(ExprKind.Call, BuiltinMathFunc.Sign, u, 1);
-    } else if (funcId == BuiltinMathFunc.Sign) {
-      return dae.addRealLiteral(0.0);
+      let cond  = dae.addExpression(ExprKind.Binary, BinOp.Gte, u, dae.addRealLiteral(0.0));
+      let negDu = dae.addExpression(ExprKind.Negate, 0, du, 0xffffffff);
+      return cas_simplify(dae, dae.addExpression(ExprKind.IfElse, cond, du, negDu));
     }
 
     if (dOuter != 0xffffffff) {

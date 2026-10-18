@@ -81,7 +81,7 @@ export class FmuWasmWorkerProxy implements CoSimParticipant {
     });
   }
 
-  async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
+  async initialize(_startTime: number, stopTime: number, stepSize: number): Promise<void> {
     void stopTime;
     void stepSize;
     const asSource = this.storage.getExtractedFile(this.storedFmu.id, "resources/model.ts");

@@ -119,7 +119,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   const router = Router();
   const verifier = createActivityPubVerifier(db);
   const inboxLimiter = defaultInboxLimiter.middleware();
-  const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+  const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
 
   // Check FEDERATION_MODE
   router.use((req: Request, res: Response, next) => {
@@ -136,7 +136,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   // ── WebFinger (RFC 7033 / ActivityPub Discovery) ──────────────────
 
   router.get("/.well-known/webfinger", (req: Request, res: Response) => {
-    const resource = req.query.resource as string;
+    const resource = req.query["resource"] as string;
 
     if (!resource || !resource.startsWith("acct:")) {
       res.status(400).json({ error: "Invalid or missing resource parameter. Must be acct:username@domain" });
@@ -292,7 +292,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       return;
     }
 
-    const username = req.params.username;
+    const username = req.params["username"];
     if (!username) {
       res.status(400).json({ error: "Missing username" });
       return;
@@ -310,40 +310,40 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       )
       .get(user.id) as Record<string, unknown> | undefined;
 
-    if (!fullUser || !fullUser.actor_url) {
+    if (!fullUser || !fullUser["actor_url"]) {
       res.status(404).json({ error: "User not federated" });
       return;
     }
 
-    const keys = db.getPublicKeysForUser(fullUser.id as number);
+    const keys = db.getPublicKeysForUser(fullUser["id"] as number);
 
     // Fallback to legacy key if no new keys exist, or map all active keys
     let publicKeys: { id: string; owner: string; publicKeyPem: string }[] = keys.map((k) => ({
-      id: `${fullUser.actor_url}#${k.key_id_string}`,
-      owner: fullUser.actor_url as string,
+      id: `${fullUser["actor_url"]}#${k.key_id_string}`,
+      owner: fullUser["actor_url"] as string,
       publicKeyPem: k.public_key_pem,
     }));
 
     if (publicKeys.length === 0) {
-      const rsaKey = (fullUser.rsa_public_key as string) || db.ensureUserRSAKeys(fullUser.id as number).publicKey;
+      const rsaKey = (fullUser["rsa_public_key"] as string) || db.ensureUserRSAKeys(fullUser["id"] as number).publicKey;
       publicKeys = [
         {
-          id: `${fullUser.actor_url}#main-key`,
-          owner: fullUser.actor_url as string,
+          id: `${fullUser["actor_url"]}#main-key`,
+          owner: fullUser["actor_url"] as string,
           publicKeyPem: rsaKey,
         },
       ];
     }
 
     const assertionMethod: Record<string, string>[] = [];
-    if (fullUser.ed25519_public_key) {
-      const edMultibase = ed25519PemToMultibase(fullUser.ed25519_public_key as string);
+    if (fullUser["ed25519_public_key"]) {
+      const edMultibase = ed25519PemToMultibase(fullUser["ed25519_public_key"] as string);
       assertionMethod.push({
-        id: `${fullUser.actor_url}#ed25519-key`,
+        id: `${fullUser["actor_url"]}#ed25519-key`,
         type: "Multikey",
-        controller: fullUser.actor_url as string,
+        controller: fullUser["actor_url"] as string,
         publicKeyMultibase: edMultibase,
-        publicKeyPem: fullUser.ed25519_public_key as string,
+        publicKeyPem: fullUser["ed25519_public_key"] as string,
       });
     }
 
@@ -353,22 +353,22 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         "https://w3id.org/security/v1",
         "https://w3id.org/security/data-integrity/v1",
       ],
-      id: fullUser.actor_url,
+      id: fullUser["actor_url"],
       type: "Person",
       preferredUsername: username,
-      name: fullUser.display_name || username,
-      summary: fullUser.bio || "ModelScript developer",
-      inbox: fullUser.inbox_url,
-      outbox: fullUser.outbox_url,
-      followers: `${fullUser.actor_url}/followers`,
-      following: `${fullUser.actor_url}/following`,
+      name: fullUser["display_name"] || username,
+      summary: fullUser["bio"] || "ModelScript developer",
+      inbox: fullUser["inbox_url"],
+      outbox: fullUser["outbox_url"],
+      followers: `${fullUser["actor_url"]}/followers`,
+      following: `${fullUser["actor_url"]}/following`,
       endpoints: {
         sharedInbox: `${publicUrl}/actor/inbox`,
       },
       icon: {
         type: "Image",
         mediaType: "image/jpeg",
-        url: fullUser.avatar_url,
+        url: fullUser["avatar_url"],
       },
       publicKey: publicKeys.length === 1 ? publicKeys[0] : publicKeys,
       assertionMethod: assertionMethod.length > 0 ? assertionMethod : undefined,
@@ -378,7 +378,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   // ── User Outbox (W3C ActivityPub §5.3) ─────────────────────────────
 
   router.get("/users/:username/outbox", (req: Request, res: Response) => {
-    const username = req.params.username;
+    const username = req.params["username"];
     const user = db.getUserByUsername(username as string);
     if (!user) {
       res.status(404).json({ error: "User not found" });
@@ -394,7 +394,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     const outboxUrl = (fullUser.outbox_url as string) || `${fullUser.actor_url}/outbox`;
     const totalCount = db.getUserOutboxCount(user.id);
-    const isPage = req.query.page === "true" || req.query.page === "1";
+    const isPage = req.query["page"] === "true" || req.query["page"] === "1";
 
     if (!isPage) {
       res.type("application/activity+json").json({
@@ -408,8 +408,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       return;
     }
 
-    const limit = Math.min(Number(req.query.limit) || 20, 100);
-    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const limit = Math.min(Number(req.query["limit"]) || 20, 100);
+    const offset = Math.max(Number(req.query["offset"]) || 0, 0);
     const posts = db.getUserOutboxPosts(user.id, limit, offset);
 
     const orderedItems = posts.map((post) => {
@@ -470,7 +470,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   // ── Followers & Following Collections (W3C §5.4) ──────────────────
 
   router.get("/users/:username/followers", (req: Request, res: Response) => {
-    const username = req.params.username;
+    const username = req.params["username"];
     const user = db.getUserByUsername(username as string);
     if (!user) {
       res.status(404).json({ error: "User not found" });
@@ -486,7 +486,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     const followersUrl = `${fullUser.actor_url}/followers`;
     const totalCount = db.getUserFollowerActorsCount(user.id);
-    const isPage = req.query.page === "true" || req.query.page === "1";
+    const isPage = req.query["page"] === "true" || req.query["page"] === "1";
 
     if (!isPage) {
       res.type("application/activity+json").json({
@@ -499,8 +499,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       return;
     }
 
-    const limit = Math.min(Number(req.query.limit) || 50, 100);
-    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const limit = Math.min(Number(req.query["limit"]) || 50, 100);
+    const offset = Math.max(Number(req.query["offset"]) || 0, 0);
     const followerActors = db.getUserFollowerActors(user.id, limit, offset);
 
     res.type("application/activity+json").json({
@@ -514,7 +514,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   });
 
   router.get("/users/:username/following", (req: Request, res: Response) => {
-    const username = req.params.username;
+    const username = req.params["username"];
     const user = db.getUserByUsername(username as string);
     if (!user) {
       res.status(404).json({ error: "User not found" });
@@ -530,7 +530,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     const followingUrl = `${fullUser.actor_url}/following`;
     const totalCount = db.getUserFollowingActorsCount(user.id);
-    const isPage = req.query.page === "true" || req.query.page === "1";
+    const isPage = req.query["page"] === "true" || req.query["page"] === "1";
 
     if (!isPage) {
       res.type("application/activity+json").json({
@@ -543,8 +543,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       return;
     }
 
-    const limit = Math.min(Number(req.query.limit) || 50, 100);
-    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const limit = Math.min(Number(req.query["limit"]) || 50, 100);
+    const offset = Math.max(Number(req.query["offset"]) || 0, 0);
     const followingActors = db.getUserFollowingActors(user.id, limit, offset);
 
     res.type("application/activity+json").json({
@@ -560,7 +560,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   // ── Remote Actor WebFinger Resolution Endpoint ────────────────────
 
   const resolveRemoteActor = async (req: Request, res: Response) => {
-    const handleOrUrl = req.body?.handle || req.body?.url || req.query.resource;
+    const handleOrUrl = req.body?.handle || req.body?.url || req.query["resource"];
     if (!handleOrUrl || typeof handleOrUrl !== "string") {
       res.status(400).json({ error: "Missing handle or url in request" });
       return;
@@ -585,10 +585,10 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   // ── Shared Inbox & User Inbox Handler ─────────────────────────────
 
   const handleInboxActivity = async (req: Request, res: Response) => {
-    const username = req.params.username;
+    const username = req.params["username"];
     const activity = req.body;
-    const remoteActorUrl = (req as Request & { actorId?: string }).actorId;
-    const remoteActorProfile = (req as Request & { actorProfile?: Record<string, unknown> }).actorProfile;
+    const remoteActorUrl = (req as Request & { actorId?: string | undefined }).actorId;
+    const remoteActorProfile = (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile;
 
     if (activity?.actor && remoteActorUrl && typeof activity.actor === "string" && activity.actor !== remoteActorUrl) {
       res.status(403).json({ error: "Actor mismatch between HTTP signature and activity payload" });
@@ -633,9 +633,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         };
 
         const targetInbox =
-          (remoteActorProfile?.endpoints as any)?.sharedInbox ||
-          (remoteActorProfile?.sharedInbox as string) ||
-          (remoteActorProfile?.inbox as string) ||
+          (remoteActorProfile?.["endpoints"] as any)?.sharedInbox ||
+          (remoteActorProfile?.["sharedInbox"] as string) ||
+          (remoteActorProfile?.["inbox"] as string) ||
           `${remoteActorUrl}/inbox`;
 
         const instanceKeys = db.getInstanceKeys();
@@ -911,8 +911,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   );
 
   router.get("/federation/packages", (req: Request, res: Response) => {
-    const limit = Math.min(Number(req.query.limit) || 50, 100);
-    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const limit = Math.min(Number(req.query["limit"]) || 50, 100);
+    const offset = Math.max(Number(req.query["offset"]) || 0, 0);
     const packages = db.getRemotePackages(limit, offset);
     res.json({
       total: packages.length,

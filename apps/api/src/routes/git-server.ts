@@ -19,7 +19,7 @@ function pktLine(str: string): Buffer {
 const PKT_FLUSH = Buffer.from("0000");
 
 export interface GitServerOptions {
-  reposDir?: string;
+  reposDir?: string | undefined;
 }
 
 export function gitServerRouter(database: LibraryDatabase, options?: GitServerOptions): Router {

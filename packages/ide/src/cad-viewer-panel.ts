@@ -3,15 +3,36 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 
+/**
+ * Manages the interactive 3D CAD & Multi-Body Webview Panel in VS Code.
+ *
+ * Queries CAD component geometry from the LSP server (`modelscript/getCadComponents`),
+ * streams batch or live co-simulation state trajectories and FEA stress payloads to the
+ * 3D viewport, and writes interactive gizmo transforms and CAD variable bindings back
+ * into OpenSCAD (`.scad`) and Modelica (`.mo`) source documents.
+ */
 export class CadViewerPanel {
+  /** Singleton instance of the currently open CAD viewer panel, if any. */
   public static currentPanel: CadViewerPanel | undefined;
+  /** VS Code webview view type identifier for the 3D CAD viewer. */
   public static readonly viewType = "modelscript.cadViewer";
 
+  /** Underlying VS Code webview panel host. */
   private readonly _panel: vscode.WebviewPanel;
+  /** Root URI of the extension used to resolve bundled scripts and CAD assets. */
   private readonly _extensionUri: vscode.Uri;
+  /** Active LSP language client used to request CAD component meshes and listen for AST updates. */
   private readonly _client: LanguageClient;
+  /** Subscriptions and timers disposed when the panel closes. */
   private _disposables: vscode.Disposable[] = [];
 
+  /**
+   * Creates a new 3D CAD Viewer webview panel beside the active editor, or reveals
+   * and refreshes the existing singleton panel.
+   *
+   * @param extensionUri - Base URI of the IDE extension.
+   * @param client - Active LSP `LanguageClient`.
+   */
   public static createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
 
@@ -30,6 +51,10 @@ export class CadViewerPanel {
     CadViewerPanel.currentPanel = new CadViewerPanel(panel, extensionUri, client);
   }
 
+  /**
+   * Initializes the CAD viewer panel, wires up webview message handlers for gizmo and binding
+   * writebacks, and subscribes to editor and workspace change events.
+   */
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient) {
     this._panel = panel;
     this._extensionUri = extensionUri;
@@ -106,6 +131,10 @@ export class CadViewerPanel {
     }
   }
 
+  /**
+   * Queries the LSP server for CAD components in the active document, resolves relative
+   * binary glTF asset URIs into base64 data URIs, and posts the component list to the webview.
+   */
   public async update() {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.uri.scheme === "output") {
@@ -132,7 +161,7 @@ export class CadViewerPanel {
                 const bytes = new Uint8Array(data);
                 let binary = "";
                 for (let i = 0; i < bytes.byteLength; i++) {
-                  binary += String.fromCharCode(bytes[i]);
+                  binary += String.fromCharCode(bytes[i]!);
                 }
                 const b64 = btoa(binary);
                 const dataUri = `data:model/gltf-binary;base64,${b64}`;
@@ -188,6 +217,9 @@ export class CadViewerPanel {
     });
   }
 
+  /**
+   * Posts an arbitrary message payload directly to the underlying CAD webview.
+   */
   public postMessage(msg: unknown): void {
     this._panel.webview.postMessage(msg);
   }
@@ -197,28 +229,30 @@ export class CadViewerPanel {
    */
   public async handleCommitGizmoDelta(payload: {
     componentName: string;
-    mode?: "translate" | "rotate" | "scale";
+    mode?: "translate" | "rotate" | "scale" | undefined;
     delta: [number, number, number];
     newPosition: [number, number, number];
-    newRotation?: [number, number, number];
-    newScale?: [number, number, number];
-    sourceMetadata?: {
-      parameterName?: string;
-      dimensionParams?: [string | undefined, string | undefined, string | undefined];
-      dimensions?: [number, number, number];
-      transformMethod?: string;
-      argIndex?: number;
-      startByte?: number;
-      endByte?: number;
-      primitiveStartByte?: number;
-      primitiveEndByte?: number;
-      translateRange?: { startByte: number; endByte: number };
-      rotateRange?: { startByte: number; endByte: number };
-      scaleRange?: { startByte: number; endByte: number };
-      translation?: [number, number, number];
-      rotation?: [number, number, number];
-      scale?: [number, number, number];
-    };
+    newRotation?: [number, number, number] | undefined;
+    newScale?: [number, number, number] | undefined;
+    sourceMetadata?:
+      | {
+          parameterName?: string | undefined;
+          dimensionParams?: [string | undefined, string | undefined, string | undefined] | undefined;
+          dimensions?: [number, number, number] | undefined;
+          transformMethod?: string | undefined;
+          argIndex?: number | undefined;
+          startByte?: number | undefined;
+          endByte?: number | undefined;
+          primitiveStartByte?: number | undefined;
+          primitiveEndByte?: number | undefined;
+          translateRange?: { startByte: number; endByte: number } | undefined;
+          rotateRange?: { startByte: number; endByte: number } | undefined;
+          scaleRange?: { startByte: number; endByte: number } | undefined;
+          translation?: [number, number, number] | undefined;
+          rotation?: [number, number, number] | undefined;
+          scale?: [number, number, number] | undefined;
+        }
+      | undefined;
   }): Promise<void> {
     if (!payload) return;
     const editor = vscode.window.activeTextEditor;
@@ -247,8 +281,8 @@ export class CadViewerPanel {
             for (let axis = 0; axis < 3; axis++) {
               const paramName = dimParams[axis];
               const baseDim = dims[axis];
-              if (paramName && baseDim !== undefined && Math.abs(scaleFactors[axis] - 1) > 1e-3) {
-                const newDimVal = Number((baseDim * scaleFactors[axis]).toFixed(4));
+              if (paramName && baseDim !== undefined && Math.abs(scaleFactors[axis]! - 1) > 1e-3) {
+                const newDimVal = Number((baseDim * scaleFactors[axis]!).toFixed(4));
                 patchRes = ScadPatcher.patchVariable(source, tree.rootNode, paramName, newDimVal);
                 if (patchRes) break;
               }
@@ -320,8 +354,8 @@ export class CadViewerPanel {
       const match = compRegex.exec(source);
       if (match) {
         const edit = new vscode.WorkspaceEdit();
-        const startIdx = match.index + match[1].length;
-        const endIdx = startIdx + match[0].length - match[1].length - match[2].length;
+        const startIdx = match.index + match[1]!.length;
+        const endIdx = startIdx + match[0].length - match[1]!.length - match[2]!.length;
         const startPos = doc.positionAt(startIdx);
         const endPos = doc.positionAt(endIdx);
         edit.replace(doc.uri, new vscode.Range(startPos, endPos), newCoords);
@@ -332,7 +366,7 @@ export class CadViewerPanel {
         const insertMatch = cadInsertRegex.exec(source);
         if (insertMatch) {
           const edit = new vscode.WorkspaceEdit();
-          const insertIdx = insertMatch.index + insertMatch[1].length;
+          const insertIdx = insertMatch.index + insertMatch[1]!.length;
           const pos = doc.positionAt(insertIdx);
           edit.insert(doc.uri, pos, `, ${propName}={${newCoords}}`);
           await vscode.workspace.applyEdit(edit);
@@ -347,7 +381,7 @@ export class CadViewerPanel {
   public async handleCommitCadBinding(payload: {
     componentName: string;
     bindings: any[];
-    uri?: string;
+    uri?: string | undefined;
   }): Promise<void> {
     if (!payload) return;
     const editor = vscode.window.activeTextEditor;
@@ -374,6 +408,11 @@ export class CadViewerPanel {
     }
   }
 
+  /**
+   * Instructs the 3D viewport camera to focus and highlight a specific named CAD part.
+   *
+   * @param partName - Component or part identifier to focus.
+   */
   public focusPart(partName: string) {
     this._panel.webview.postMessage({
       type: "focusPart",
@@ -381,10 +420,16 @@ export class CadViewerPanel {
     });
   }
 
+  /**
+   * Reveals the CAD webview panel in the given editor column.
+   */
   public reveal(column?: vscode.ViewColumn) {
     this._panel.reveal(column);
   }
 
+  /**
+   * Disposes the webview panel and all registered event listeners and timers.
+   */
   public dispose() {
     CadViewerPanel.currentPanel = undefined;
     this._panel.dispose();
@@ -396,6 +441,9 @@ export class CadViewerPanel {
     }
   }
 
+  /**
+   * Generates the HTML document shell for the 3D CAD viewer webview with a strict Content Security Policy.
+   */
   private _getHtmlForWebview(webview: vscode.Webview) {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "dist", "cad-webview.js"));
     const cadBaseUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "images", "cad")).toString();
@@ -420,6 +468,9 @@ export class CadViewerPanel {
   }
 }
 
+/**
+ * Generates a random 32-character alphanumeric cryptographic nonce for webview script tags.
+ */
 function getNonce() {
   let text = "";
   const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";

@@ -15,8 +15,9 @@ import {
 } from "@modelscript/exchange";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue, JobStatus } from "../jobs.js";
-import { requireAuth } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import type { LibraryStorage } from "../storage.js";
+import { inspectClassSource } from "../util/class-source-inspector.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
@@ -25,7 +26,7 @@ function isValidPackageName(name: string): boolean {
 }
 
 function safeUpstreamUrl(pathname: string): URL {
-  const base = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
+  const base = process.env["UPSTREAM_HUB"] || "https://hub.modelscript.org";
   const url = new URL(pathname, base);
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error("Invalid protocol for upstream hub");
@@ -201,10 +202,57 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           };
         }
       }
+
+      const pkgRecord = database.getPackage(name);
+      const release = latestVersion ? database.getLibraryRelease(name, latestVersion) : undefined;
+      const stats = database.getPackageStats(name, 30);
+      const downloads30d = stats.daily.reduce((sum, d) => sum + d.downloads, 0);
+      const scope = name.startsWith("@") ? name.split("/")[0]!.slice(1) : undefined;
+      const publisherUser = release?.published_by ? database.getUserById(release.published_by) : undefined;
+      const author = publisherUser?.username ?? scope ?? undefined;
+
+      const domainSet = new Set<string>();
+      if (latestVersion) {
+        const classes = database.getClasses(name, latestVersion);
+        if (classes.length > 0) {
+          domainSet.add("modelica");
+          for (const c of classes) {
+            if (c.class_kind.toLowerCase().includes("sysml")) domainSet.add("sysml2");
+          }
+        }
+        if (pkgRecord) {
+          const verRow = database.getPackageVersion(pkgRecord.id, latestVersion);
+          if (verRow) {
+            const artifacts = database.getArtifacts(verRow.id);
+            for (const a of artifacts) {
+              const t = a.type.toLowerCase();
+              if (t === "cad" || t === "step") domainSet.add("cad");
+              else if (t === "sysml" || t === "sysml2" || t === "kerml") domainSet.add("sysml2");
+              else if (t === "fmu") domainSet.add("fmu");
+              else if (t === "dataset" || t === "csv") domainSet.add("dataset");
+            }
+          }
+        }
+      }
+      if (domainSet.size === 0) {
+        domainSet.add("modelica");
+      }
+
       return {
         name,
         versions,
         latestVersion,
+        description: pkgRecord?.description ?? undefined,
+        license: pkgRecord?.license ?? undefined,
+        author,
+        scope,
+        publishedAt: release?.published_at ?? pkgRecord?.modified_at ?? undefined,
+        totalDownloads: stats.totalDownloads,
+        downloads30d,
+        isDeprecated: Boolean(release?.is_deprecated),
+        deprecationReason: release?.deprecation_reason ?? null,
+        isYanked: Boolean(release?.is_yanked),
+        domains: Array.from(domainSet),
         jobStatus,
       };
     });
@@ -371,7 +419,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const modifiedClasses: {
       name: string;
       kind: string;
-      parameterChanges: { name: string; old: unknown; new: unknown; unit?: string }[];
+      parameterChanges: { name: string; old: unknown; new: unknown; unit?: string | undefined }[];
     }[] = [];
     const parityDrift: { className: string; parameter: string; oldUnit: string; newUnit: string }[] = [];
 
@@ -385,7 +433,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
         if (baseDetail && headDetail) {
           const baseCompMap = new Map(baseDetail.components.map((c) => [c.component_name, c]));
-          const paramChanges: { name: string; old: unknown; new: unknown; unit?: string }[] = [];
+          const paramChanges: { name: string; old: unknown; new: unknown; unit?: string | undefined }[] = [];
 
           for (const headComp of headDetail.components) {
             const baseComp = baseCompMap.get(headComp.component_name);
@@ -446,7 +494,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const cadChanges: {
       file: string;
       status: "added" | "removed" | "modified" | "unchanged";
-      volumeDeltaPercent?: number;
+      volumeDeltaPercent?: number | undefined;
     }[] = [];
 
     for (const [cadPath] of headCadMap.entries()) {
@@ -526,6 +574,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    */
   router.get(
     ["/:name/collaborators", "/:scope/:name/collaborators"],
+    optionalAuth,
     (req: Request, res: Response, next: NextFunction): void => {
       if (isScopeInvalid(req)) return next();
       const { name } = extractPkgAndVersion(req);
@@ -535,7 +584,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       const collaborators = database.getPackageCollaborators(name);
-      res.json({ package: name, collaborators });
+      const canManage = Boolean(req.user && database.canUserManagePackage(name, req.user.id));
+      res.json({ package: name, collaborators, canManage });
     },
   );
 
@@ -627,6 +677,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    */
   router.get(
     ["/:name/:version", "/:scope/:name/:version"],
+    optionalAuth,
     async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
@@ -664,6 +715,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       const release = database.getLibraryRelease(name, version);
       const contentHash = release?.content_hash || storage.getContentHash(name, version);
+      const canManage = Boolean(req.user && database.canUserManagePackage(name, req.user.id));
 
       try {
         const packageMoContent = await extractPackageMoFromZip(file.buffer);
@@ -683,6 +735,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           isYanked: Boolean(release?.is_yanked),
           yankReason: release?.yank_reason ?? null,
           yankedAt: release?.yanked_at ?? null,
+          canManage,
         });
       } catch {
         // If we cannot parse the zip, still return basic info
@@ -700,6 +753,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           isYanked: Boolean(release?.is_yanked),
           yankReason: release?.yank_reason ?? null,
           yankedAt: release?.yanked_at ?? null,
+          canManage,
         });
       }
     },
@@ -1224,7 +1278,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         }
       };
 
-      const onStatus = (statusData: { status: JobStatus; error?: string }) => {
+      const onStatus = (statusData: { status: JobStatus; error?: string | undefined }) => {
         if (!res.writableEnded) {
           res.write(`event: status\ndata: ${JSON.stringify(statusData)}\n\n`);
           if (statusData.status === "completed" || statusData.status === "failed") {
@@ -1297,7 +1351,21 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      res.json({ name, version, className, ...cls });
+      const extractedDir = storage.getExtractedPath(name, version);
+      const inspected = inspectClassSource(extractedDir, name, version, className, cls.classKind);
+
+      res.json({
+        name,
+        version,
+        className,
+        ...cls,
+        components: cls.components.length > 0 ? cls.components : inspected.extractedComponents,
+        sourceFile: inspected.sourceFile,
+        sourceCode: inspected.sourceCode,
+        equations: inspected.equations,
+        ...(inspected.sysmlConfig ? { sysmlConfig: inspected.sysmlConfig } : {}),
+        ...(inspected.cadResourceUrl ? { cadResourceUrl: inspected.cadResourceUrl } : {}),
+      });
     },
   );
 

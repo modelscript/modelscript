@@ -16,7 +16,7 @@ export interface FmuScalarVariable {
   variability: "continuous" | "discrete" | "fixed" | "tunable" | "constant";
   description: string;
   type: "Real" | "Integer" | "Boolean" | "String" | "Enumeration";
-  start?: number | boolean | string;
+  start?: number | boolean | string | undefined;
 }
 
 // ── XML parsing ──

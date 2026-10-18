@@ -8,6 +8,10 @@ import type { StepAssemblyModel } from "./physical-data.js";
 let occtPromise: Promise<any> | null = null;
 let nodeRequire: any = null;
 
+/**
+ * Lazily initializes a Node.js `createRequire` function when running in a Node environment
+ * so `occt-import-js.wasm` can be resolved from `node_modules`.
+ */
 async function getNodeRequire(): Promise<any> {
   if (!nodeRequire) {
     try {
@@ -20,6 +24,10 @@ async function getNodeRequire(): Promise<any> {
   return nodeRequire;
 }
 
+/**
+ * Lazily loads and initializes the OpenCascade WebAssembly (`occt-import-js`) instance
+ * for B-Rep STEP tessellation across Node.js and browser/worker environments.
+ */
 function getOcct(serverDistBase: string | null = null): Promise<any> {
   if (!occtPromise) {
     occtPromise = (async () => {
@@ -66,9 +74,12 @@ function getOcct(serverDistBase: string | null = null): Promise<any> {
  */
 function extractFirstString(entityArgs: string): string | null {
   const match = entityArgs.match(/'([^']*)'/);
-  return match ? match[1] : null;
+  return match ? match[1]! : null;
 }
 
+/**
+ * Byte span and extracted name for a STEP `PRODUCT` or solid shape entity.
+ */
 interface StepNameMatch {
   name: string;
   startByte: number;
@@ -163,34 +174,42 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
   private fileMeshes = new Map<string, any[]>();
   private fileAssemblies = new Map<string, StepAssemblyModel>();
 
+  /** Monotonically increasing index revision counter. */
   get version(): number {
     return this._version;
   }
 
+  /** Structural revision counter used for Salsa query invalidation. */
   get structuralRevision(): number {
     return this._version;
   }
 
+  /** Total number of STEP files registered in this workspace index. */
   get fileCount(): number {
     return this.fileIndices.size;
   }
 
+  /** Returns the cached triangulated OCCT meshes for `uri`. */
   public getMeshes(uri: string): any[] {
     return this.fileMeshes.get(uri) || [];
   }
 
+  /** Returns the extracted `StepAssemblyModel` (parts, joints, mass properties, GD&T) for `uri`. */
   public getAssemblyModel(uri: string): StepAssemblyModel | undefined {
     return this.fileAssemblies.get(uri);
   }
 
+  /** Returns `true` if `uri` has been registered in the STEP workspace index. */
   public has(uri: string): boolean {
     return this.fileIndices.has(uri);
   }
 
+  /** Returns the per-file `SymbolIndex` for `uri`. */
   public getFileIndex(uri: string): SymbolIndex | undefined {
     return this.fileIndices.get(uri);
   }
 
+  /** Registers an empty placeholder `SymbolIndex` entry for `uri` if not already present. */
   public register(uri: string, _loader?: () => any): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
@@ -201,7 +220,24 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(_uri: string, _loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
+  /**
+   * Re-parses STEP product/shape symbols and assembly metadata when a document is edited in-place.
+   */
+  public reindexDocument(uri: string, loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
+    if (loader) {
+      try {
+        const res = loader();
+        const text = typeof res === "string" ? res : res?.text;
+        if (typeof text === "string" && text.length > 0) {
+          const { products, shapes } = extractStepNames(text);
+          this.fileAssemblies.set(uri, extractStepAssembly(text));
+          const meshes = this.getMeshes(uri);
+          this.fileIndices.set(uri, this.buildSymbolIndex(uri, products, shapes, meshes));
+        }
+      } catch {
+        // ignore loader errors during incremental reindex
+      }
+    }
     this._version++;
   }
 
@@ -235,6 +271,10 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     return index;
   }
 
+  /**
+   * Constructs a `SymbolIndex` combining STEP `PRODUCT` packages, B-Rep `step_shape` symbols,
+   * and tessellated OCCT mesh entries.
+   */
   private buildSymbolIndex(
     uri: string,
     products: StepNameMatch[],
@@ -391,6 +431,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     return { symbols, byName, childrenOf };
   }
 
+  /** Derives a fallback PascalCase product name from the file URI basename when no `PRODUCT` entity exists. */
   private deriveProductNameFromUri(uri: string): string {
     const filename =
       uri
@@ -400,6 +441,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     return filename.charAt(0).toUpperCase() + filename.slice(1);
   }
 
+  /** Merges all per-file `SymbolIndex` maps into a single workspace-wide `SymbolIndex`. */
   private mergeIndices(): SymbolIndex {
     const symbols = new Map<number, SymbolEntry>();
     const byName = new Map<string, number[]>();
@@ -424,22 +466,27 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     return { symbols, byName, childrenOf };
   }
 
+  /** Returns the merged `SymbolIndex` across all indexed STEP files. */
   toSymbolIndex(): SymbolIndex {
     return this.mergeIndices();
   }
 
+  /** Returns the unified workspace `SymbolIndex`. */
   toUnified(): SymbolIndex {
     return this.mergeIndices();
   }
 
+  /** Asynchronously returns the unified workspace `SymbolIndex`. */
   async toUnifiedAsync(): Promise<SymbolIndex> {
     return this.mergeIndices();
   }
 
+  /** Returns the currently available partial unified `SymbolIndex`. */
   toUnifiedPartial(): SymbolIndex {
     return this.mergeIndices();
   }
 
+  /** Returns the merged symbol tree index. */
   toTreeIndex(): SymbolIndex {
     return this.mergeIndices();
   }

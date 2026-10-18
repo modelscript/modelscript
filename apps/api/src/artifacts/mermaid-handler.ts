@@ -9,8 +9,7 @@ export class MermaidArtifactHandler implements ArtifactHandler {
 
   async extractMetadata(fileBuffer: Buffer, filePath: string): Promise<ArtifactMetadata | null> {
     try {
-      // Just verify it's readable
-      fileBuffer.toString("utf-8");
+      const code = fileBuffer.toString("utf-8");
 
       return {
         type: "mermaid",
@@ -18,7 +17,10 @@ export class MermaidArtifactHandler implements ArtifactHandler {
         description: "Mermaid Diagram",
         mimeType: "text/plain",
         size: fileBuffer.length,
-        details: {},
+        details: {
+          code,
+          title: filePath.split("/").pop() || filePath,
+        },
       };
     } catch (err) {
       console.error(`[MermaidArtifactHandler] Failed to extract metadata from ${filePath}:`, err);
@@ -29,10 +31,10 @@ export class MermaidArtifactHandler implements ArtifactHandler {
   validate(artifact: Record<string, unknown>): string[] {
     const errors: string[] = [];
 
-    if (!artifact.path) {
+    if (!artifact["path"]) {
       errors.push("Mermaid artifact must have a 'path' field");
     } else {
-      const p = artifact.path as string;
+      const p = artifact["path"] as string;
       const validExts = this.extensions;
       if (!validExts.some((ext) => p.toLowerCase().endsWith(ext))) {
         errors.push(`Mermaid path must end with ${validExts.join(", ")}, got: "${p}"`);
@@ -48,7 +50,9 @@ export class MermaidArtifactHandler implements ArtifactHandler {
       label: "View Diagram",
       icon: "workflow",
       config: {
-        codeUrl: metadata.path, // The frontend can fetch the text from the path
+        code: metadata.details?.["code"],
+        codeUrl: metadata.path,
+        title: metadata.details?.["title"] || metadata.path,
       },
     };
   }

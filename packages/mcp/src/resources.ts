@@ -5,11 +5,23 @@ import type { ServerContext } from "./types.js";
 
 /**
  * Register MCP resources for read-only access to loaded Modelica model data.
+ *
+ * Exposes three URI endpoints:
+ * - `modelica://libraries`: Lists all currently loaded Modelica libraries and their filesystem paths.
+ * - `modelica://classes`: Lists all top-level and library classes with their class kind and source library.
+ * - `modelica://classes/{name}`: Returns detailed component declarations and nested classes for a specific class.
+ *
+ * @param server - Target MCP server instance on which resources are registered.
+ * @param ctx - Shared server context holding the active compiler `Context`.
  */
 export function registerResources(server: McpServer, ctx: ServerContext): void {
   // ── modelica://libraries ───────────────────────────────────────────────
 
+  /**
+   * Resource endpoint returning a JSON array of all libraries loaded in the active context.
+   */
   server.resource("libraries", "modelica://libraries", async () => {
+    // Require an initialized compiler context before enumerating libraries
     if (!ctx.current) {
       return {
         contents: [
@@ -22,6 +34,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
       };
     }
 
+    // Collect each loaded library's display name and resolved path
     const libraries: { name: string; path: string }[] = [];
     for (const lib of ctx.current.listLibraries()) {
       libraries.push({
@@ -43,6 +56,9 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
 
   // ── modelica://classes ─────────────────────────────────────────────────
 
+  /**
+   * Resource endpoint returning a JSON summary of all classes across loaded libraries and inline sources.
+   */
   server.resource("classes", "modelica://classes", async () => {
     if (!ctx.current) {
       return {
@@ -56,6 +72,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
       };
     }
 
+    // Gather classes exported by each registered library package
     const classes: { name: string; kind: string; library: string }[] = [];
     for (const lib of ctx.current.listLibraries()) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,6 +109,10 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
 
   // ── modelica://classes/{name} (resource template) ──────────────────────
 
+  /**
+   * Resource template endpoint returning detailed structural metadata (components and nested classes)
+   * for a specific Modelica class queried by its qualified or simple name.
+   */
   server.resource("class-details", "modelica://classes/{name}", async (uri) => {
     if (!ctx.current) {
       return {
@@ -105,6 +126,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
       };
     }
 
+    // Extract the target class name from the `modelica://classes/{name}` URI path
     const name = uri.pathname.replace(/^\/\/classes\//, "").replace(/^\//, "");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const element: any = ctx.current.query(name);
@@ -121,6 +143,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
       };
     }
 
+    // Reject queries that resolve to a component usage rather than a class definition
     if (element.isClassInstance === false || (element.kind && element.kind === "Component")) {
       return {
         contents: [
@@ -133,6 +156,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
       };
     }
 
+    // Partition child elements into component declarations and nested class definitions
     const components: { name: string; type: string; description: string }[] = [];
     const childClasses: { name: string; kind: string }[] = [];
 

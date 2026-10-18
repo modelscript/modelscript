@@ -342,11 +342,13 @@ export class WebGPULbmRunner {
               jz += CZ[i]! * fi;
             }
 
-            // Prescribe velocity inlet
+            // Prescribe velocity inlet or constant-pressure outlet
             if (cType === LbmCellType.VelocityInlet) {
               jx = rho * uInletX;
               jy = rho * uInletY;
               jz = rho * uInletZ;
+            } else if (cType === LbmCellType.PressureOutlet) {
+              rho = 1.0;
             }
 
             const invRho = 1.0 / Math.max(1e-6, rho);
@@ -408,9 +410,13 @@ export class WebGPULbmRunner {
               const nyCoord = y + CY[i]!;
               const nzCoord = z + CZ[i]!;
 
-              // Handle domain boundary wrap or bounce
+              // Handle domain boundary wrap or bounce (or open outlet equilibrium)
               if (nxCoord < 0 || nxCoord >= nx || nyCoord < 0 || nyCoord >= ny || nzCoord < 0 || nzCoord >= nz) {
-                dst[OPP[i]! * totalCells + cellIdx] = fPost[i]!;
+                if (nxCoord >= nx && cType === LbmCellType.PressureOutlet) {
+                  dst[OPP[i]! * totalCells + cellIdx] = feqs[OPP[i]!]!;
+                } else {
+                  dst[OPP[i]! * totalCells + cellIdx] = fPost[i]!;
+                }
                 continue;
               }
 
@@ -483,6 +489,41 @@ export class WebGPULbmRunner {
       this.currentPing = !this.currentPing;
     }
 
+    // If numSteps === 0 (e.g. called after stepGpu macro readback), estimate obstacle force from macroscopic fields
+    if (numSteps === 0) {
+      for (let z = 0; z < nz; z++) {
+        for (let y = 0; y < ny; y++) {
+          for (let x = 0; x < nx; x++) {
+            const cellIdx = x + y * nx + z * nx * ny;
+            const cType = this.cellTypes[cellIdx];
+            if (cType === LbmCellType.ObstacleSolid || cType === LbmCellType.ChannelWall) continue;
+            const rho = this.rho[cellIdx] ?? 1.0;
+            const ux = (this.vx[cellIdx] ?? 0) * (dt / dx);
+            const uy = (this.vy[cellIdx] ?? 0) * (dt / dx);
+            const uz = (this.vz[cellIdx] ?? 0) * (dt / dx);
+            const uSq = ux * ux + uy * uy + uz * uz;
+            for (let i = 1; i < 19; i++) {
+              const nxCoord = x + CX[i]!;
+              const nyCoord = y + CY[i]!;
+              const nzCoord = z + CZ[i]!;
+              if (nxCoord < 0 || nxCoord >= nx || nyCoord < 0 || nyCoord >= ny || nzCoord < 0 || nzCoord >= nz) {
+                continue;
+              }
+              const targetIdx = nxCoord + nyCoord * nx + nzCoord * nx * ny;
+              if (this.cellTypes[targetIdx] === LbmCellType.ObstacleSolid) {
+                const cu = CX[i]! * ux + CY[i]! * uy + CZ[i]! * uz;
+                const feq = W[i]! * rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * uSq);
+                const dP = 2.0 * feq;
+                dragLatX += dP * CX[i]!;
+                dragLatY += dP * CY[i]!;
+                dragLatZ += dP * CZ[i]!;
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Convert lattice force to physical Newtons: F_phys = F_lat * rho_phys * (dx^4 / dt^2)
     const forceScale = density * (Math.pow(dx, 4) / Math.pow(dt, 2));
     const fx = dragLatX * forceScale;
@@ -496,10 +537,34 @@ export class WebGPULbmRunner {
       if (vMag > maxVel) maxVel = vMag;
     }
 
-    // Inlet to outlet pressure drop: deltaP = (rho_inlet - rho_outlet) * c_s^2 * rho_phys * (dx/dt)^2
+    // Cross-sectional inlet-to-outlet pressure drop: deltaP = (rho_inlet_avg - rho_outlet_avg) * c_s^2 * rho_phys * (dx/dt)^2
+    let inletRhoSum = 0.0;
+    let inletCount = 0;
+    let outletRhoSum = 0.0;
+    let outletCount = 0;
+    for (let z = 0; z < nz; z++) {
+      for (let y = 0; y < ny; y++) {
+        const inIdx = 0 + y * nx + z * nx * ny;
+        if (this.cellTypes[inIdx] !== LbmCellType.ObstacleSolid && this.cellTypes[inIdx] !== LbmCellType.ChannelWall) {
+          inletRhoSum += this.rho[inIdx]!;
+          inletCount++;
+        }
+        const outIdx = nx - 1 + y * nx + z * nx * ny;
+        if (
+          this.cellTypes[outIdx] !== LbmCellType.ObstacleSolid &&
+          this.cellTypes[outIdx] !== LbmCellType.ChannelWall
+        ) {
+          outletRhoSum += this.rho[outIdx]!;
+          outletCount++;
+        }
+      }
+    }
+    const avgInletRho = inletCount > 0 ? inletRhoSum / inletCount : this.rho[0]!;
+    const avgOutletRho = outletCount > 0 ? outletRhoSum / outletCount : this.rho[nx - 1]!;
+
     const csSq = 1.0 / 3.0;
     const pressScale = csSq * density * Math.pow(dx / dt, 2);
-    const pDrop = Math.max(0, this.rho[0]! - this.rho[nx - 1]!) * pressScale;
+    const pDrop = Math.max(0, avgInletRho - avgOutletRho) * pressScale;
 
     return {
       aerodynamicForceN: [fx, fy, fz],

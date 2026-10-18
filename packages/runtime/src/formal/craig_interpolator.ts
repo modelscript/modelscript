@@ -55,21 +55,25 @@ import { toPrimedVar, toUnprimedVar, type InductiveSpec } from "./inductive_prov
 export interface LinearConstraint {
   coeffs: Map<string, number>;
   rhs: number; // sum_{v} coeffs[v] * v <= rhs
-  origin?: "A" | "B";
+  origin?: "A" | "B" | undefined;
 }
 
 export interface CraigInterpolantResult {
   status: "INTERPOLANT_FOUND" | "CONSISTENT" | "ERROR";
-  interpolant?: NonlinearConstraint;
-  linearInterpolant?: {
-    coeffs: Map<string, number>;
-    rhs: number;
-  };
+  interpolant?: NonlinearConstraint | undefined;
+  linearInterpolant?:
+    | {
+        coeffs: Map<string, number>;
+        rhs: number;
+      }
+    | undefined;
   sharedVars: string[];
-  farkasMultipliers?: {
-    lambdaA: number[];
-    lambdaB: number[];
-  };
+  farkasMultipliers?:
+    | {
+        lambdaA: number[];
+        lambdaB: number[];
+      }
+    | undefined;
   summary: string;
 }
 
@@ -86,11 +90,11 @@ export interface EufFuncApp {
 
 export interface EufCraigProblem {
   equalitiesA: EufEquality[];
-  funcAppsA?: EufFuncApp[];
+  funcAppsA?: EufFuncApp[] | undefined;
   equalitiesB: EufEquality[];
-  funcAppsB?: EufFuncApp[];
-  disequalityB?: { left: string; right: string };
-  disequalityA?: { left: string; right: string };
+  funcAppsB?: EufFuncApp[] | undefined;
+  disequalityB?: { left: string; right: string } | undefined;
+  disequalityA?: { left: string; right: string } | undefined;
 }
 
 export interface EufCraigResult {
@@ -342,14 +346,14 @@ export class CraigInterpolator {
     const pivot = (leaveRow: number, enterCol: number) => {
       const pivotVal = T[leaveRow]![enterCol]!;
       for (let c = 0; c <= numCols; c++) {
-        T[leaveRow]![c] /= pivotVal;
+        T[leaveRow]![c] = T[leaveRow]![c]! / pivotVal;
       }
       for (let r = 0; r <= numRows; r++) {
         if (r !== leaveRow) {
           const factor = T[r]![enterCol]!;
           if (Math.abs(factor) > 1e-15) {
             for (let c = 0; c <= numCols; c++) {
-              T[r]![c] -= factor * T[leaveRow]![c]!;
+              T[r]![c] = T[r]![c]! - factor * T[leaveRow]![c]!;
             }
           }
         }
@@ -360,9 +364,9 @@ export class CraigInterpolator {
     // Phase I: Maximize - sum(artificial)
     for (let r = 0; r < numRows; r++) {
       for (let c = 0; c < m; c++) {
-        T[numRows]![c] -= T[r]![c]!;
+        T[numRows]![c] = T[numRows]![c]! - T[r]![c]!;
       }
-      T[numRows]![numCols] -= T[r]![numCols]!;
+      T[numRows]![numCols] = T[numRows]![numCols]! - T[r]![numCols]!;
     }
 
     let iter = 0;
@@ -414,7 +418,7 @@ export class CraigInterpolator {
       if (bVar < m) {
         const coeff = T[numRows]![bVar]!;
         for (let c = 0; c <= numCols; c++) {
-          T[numRows]![c] -= coeff * T[r]![c]!;
+          T[numRows]![c] = T[numRows]![c]! - coeff * T[r]![c]!;
         }
       }
     }

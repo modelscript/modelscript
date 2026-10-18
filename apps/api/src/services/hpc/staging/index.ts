@@ -12,9 +12,9 @@ export * from "./staging-types.js";
  * Returns the configured ObjectStager based on environment variables or explicit options.
  */
 export function getObjectStager(overrideOptions?: {
-  backend?: "s3" | "local";
-  s3Options?: Partial<S3StagerOptions>;
-  localRoot?: string;
+  backend?: "s3" | "local" | undefined;
+  s3Options?: Partial<S3StagerOptions> | undefined;
+  localRoot?: string | undefined;
 }): ObjectStager {
   const backend = (
     overrideOptions?.backend ||

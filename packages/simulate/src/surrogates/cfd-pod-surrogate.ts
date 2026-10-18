@@ -6,11 +6,11 @@ import { computeMultivariateBounds, type MultivariateBounds } from "./multivaria
 
 export interface PodTrainConfig {
   /** Target cumulative kinetic energy fraction to capture (default: 0.99 = 99%). */
-  energyThreshold?: number;
+  energyThreshold?: number | undefined;
   /** Maximum number of spatial POD modes to retain (default: 16). */
-  maxModes?: number;
+  maxModes?: number | undefined;
   /** Polynomial degree for latent coordinate regression (default: 2). */
-  polynomialDegree?: number;
+  polynomialDegree?: number | undefined;
 }
 
 export interface PodSurrogatePrediction {
@@ -28,8 +28,8 @@ export interface PodSurrogateData {
   polyDegree: number;
   parameterNames: string[];
   scalarOutputNames: string[];
-  parameterBounds?: Record<string, { min: number; max: number }>;
-  multivariateBounds?: MultivariateBounds;
+  parameterBounds?: Record<string, { min: number; max: number }> | undefined;
+  multivariateBounds?: MultivariateBounds | undefined;
   capturedEnergy: number;
   eigenvalues: number[];
   meanField: number[];
@@ -82,8 +82,8 @@ export class CfdPodSurrogate {
 
   public readonly parameterNames: string[];
   public readonly scalarOutputNames: string[];
-  public readonly parameterBounds?: Record<string, { min: number; max: number }>;
-  public readonly multivariateBounds?: MultivariateBounds;
+  public readonly parameterBounds?: Record<string, { min: number; max: number }> | undefined;
+  public readonly multivariateBounds?: MultivariateBounds | undefined;
 
   // Regression coefficients: mapping polynomial basis of parameters to latent coordinates
   public readonly latentCoeffs: Float64Array[]; // k vectors of polynomial coefficients
@@ -139,7 +139,7 @@ export class CfdPodSurrogate {
     for (let j = 0; j < M; j++) {
       const colOffset = j * N;
       for (let i = 0; i < N; i++) {
-        meanField[i] += dataset.snapshots[colOffset + i]! / M;
+        meanField[i] = meanField[i]! + dataset.snapshots[colOffset + i]! / M;
       }
     }
 
@@ -214,7 +214,7 @@ export class CfdPodSurrogate {
       }
       const invNorm = modeNormSq > 1e-14 ? 1.0 / Math.sqrt(modeNormSq) : 0.0;
       for (let i = 0; i < N; i++) {
-        basisModes[m * N + i] *= invNorm;
+        basisModes[m * N + i] = basisModes[m * N + i]! * invNorm;
       }
     }
 
@@ -408,8 +408,8 @@ export class CfdPodSurrogate {
     builder: IDaeBuilder,
     inputVarMap: Record<string, number | string>,
     options?: {
-      outputPrefix?: string;
-      computeLatent?: boolean;
+      outputPrefix?: string | undefined;
+      computeLatent?: boolean | undefined;
     },
   ): {
     scalarVarIds: Record<string, number>;
@@ -563,7 +563,7 @@ export class CfdPodSurrogate {
         }
         AtA[r * K + c] = sum;
       }
-      AtA[r * K + r] += ridge;
+      AtA[r * K + r] = AtA[r * K + r]! + ridge;
 
       let bSum = 0.0;
       for (let j = 0; j < M; j++) {
@@ -605,7 +605,7 @@ export class CfdPodSurrogate {
       for (let r = i + 1; r < K; r++) {
         const factor = aug[r * (K + 1) + i]! / pivot;
         for (let c = i; c <= K; c++) {
-          aug[r * (K + 1) + c] -= factor * aug[i * (K + 1) + c]!;
+          aug[r * (K + 1) + c] = aug[r * (K + 1) + c]! - factor * aug[i * (K + 1) + c]!;
         }
       }
     }

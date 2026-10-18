@@ -30,9 +30,9 @@ export interface IMemoryFileSystemProvider {
 
 export interface ArtifactWorkspaceDescriptor {
   artifactId: string | number;
-  title?: string;
-  viewType?: string;
-  viewConfig?: Record<string, any>;
+  title?: string | undefined;
+  viewType?: string | undefined;
+  viewConfig?: Record<string, any> | undefined;
 }
 
 export interface GeneratedWorkspace {
@@ -75,9 +75,9 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     viewType === "modelica-code" ||
     viewType === "modelica-diagram" ||
     viewType === "morsel" ||
-    (!viewType && config.code)
+    (!viewType && config["code"])
   ) {
-    const rawCode = config.code || config.content || "";
+    const rawCode = config["code"] || config["content"] || "";
     let modelName = "";
     if (rawCode) {
       const match = rawCode.match(/(?:model|class|block|connector|package)\s+([A-Za-z0-9_]+)/);
@@ -132,15 +132,15 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     viewType === "fea-result" ||
     viewType === "cfd-animation"
   ) {
-    const modelName = config.model
-      ? sanitizeModelicaIdentifier(config.model)
+    const modelName = config["model"]
+      ? sanitizeModelicaIdentifier(config["model"])
       : sanitizeModelicaIdentifier(descriptor.title, `Simulation_${descriptor.artifactId}`);
     const primaryFile = `${modelName}.mo`;
 
     const variables: string[] =
-      Array.isArray(config.variables) && config.variables.length > 0 ? config.variables : ["x", "v"];
+      Array.isArray(config["variables"]) && config["variables"].length > 0 ? config["variables"] : ["x", "v"];
 
-    const overrides: Record<string, any> = config.overrides || {};
+    const overrides: Record<string, any> = config["overrides"] || {};
     const paramLines = Object.entries(overrides).map(([k, v]) => {
       const safeK = sanitizeModelicaIdentifier(k);
       return `  parameter Real ${safeK} = ${v};`;
@@ -156,7 +156,7 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
         : variables.map((v) => `  der(${sanitizeModelicaIdentifier(v)}) = -${sanitizeModelicaIdentifier(v)};`);
 
     const code =
-      config.code ||
+      config["code"] ||
       [
         `// ModelScript Simulation Experiment: ${descriptor.title || modelName}`,
         `// Generated from Artifact #${descriptor.artifactId}`,
@@ -191,13 +191,13 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
       ].join("\n"),
     };
 
-    if (config.csvData || config.data || config.results) {
+    if (config["csvData"] || config["data"] || config["results"]) {
       files["trajectory.csv"] =
-        typeof config.csvData === "string"
-          ? config.csvData
-          : typeof config.data === "string"
-            ? config.data
-            : JSON.stringify(config.results || config.data, null, 2);
+        typeof config["csvData"] === "string"
+          ? config["csvData"]
+          : typeof config["data"] === "string"
+            ? config["data"]
+            : JSON.stringify(config["results"] || config["data"], null, 2);
     }
 
     return { files, primaryFile };
@@ -206,9 +206,9 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
   // 3. 3D CAD STEP
   if (viewType === "cad-step" || viewType === "cad_step" || viewType === "3d-model") {
     const stepContent =
-      config.step ||
-      config.content ||
-      config.data ||
+      config["step"] ||
+      config["content"] ||
+      config["data"] ||
       [
         `ISO-10303-21;`,
         `HEADER;`,
@@ -251,8 +251,8 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
   // 4. GCode Toolpath
   if (viewType === "gcode" || viewType === "cam-result") {
     const gcodeContent =
-      config.gcode ||
-      config.content ||
+      config["gcode"] ||
+      config["content"] ||
       [
         `; GCode Toolpath for Artifact #${descriptor.artifactId}: ${descriptor.title || "CNC Job"}`,
         `G21 ; millimeters`,
@@ -294,7 +294,7 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
 
   // 5. AAS Package / Cyber-Physical System
   if (viewType === "aas-package" || viewType === "cyber-physical-system" || viewType === "hardware-project") {
-    const manifest = config.manifest ||
+    const manifest = config["manifest"] ||
       config || {
         idShort: sanitizeModelicaIdentifier(descriptor.title, `Asset_${descriptor.artifactId}`),
         assetAdministrationShells: [
@@ -366,9 +366,9 @@ export function generatePackageWorkspaceFiles(packageName: string, pkgInfo?: Rec
   const primaryFile = `${safeName}Demo.mo`;
   const manifest = {
     name: packageName,
-    version: pkgInfo?.version || "1.0.0",
-    description: pkgInfo?.description || `ModelScript workspace for package ${packageName}`,
-    dependencies: pkgInfo?.dependencies || {},
+    version: pkgInfo?.["version"] || "1.0.0",
+    description: pkgInfo?.["description"] || `ModelScript workspace for package ${packageName}`,
+    dependencies: pkgInfo?.["dependencies"] || {},
   };
 
   const files: Record<string, string> = {

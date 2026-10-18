@@ -511,7 +511,7 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
   }
 
   if (kind == ExprKind.Call) {
-    let funcId = exprData.get(offset + EXPR_DATA1) as u32;
+    let funcId = dae.resolveBuiltinMathFunc(exprData.get(offset + EXPR_DATA1));
     let arg0Id = exprData.get(offset + EXPR_LEFT) as u32;
     let rightVal = exprData.get(offset + EXPR_RIGHT) as u32;
 
@@ -586,16 +586,26 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
       dualFloor(arg0, outDual);
       return;
     }
+    if (funcId == BuiltinMathFunc.NoEvent || funcId == BuiltinMathFunc.Homotopy) {
+      outDual.copyFrom(arg0);
+      return;
+    }
 
     // 2-argument functions: resolve arg1Id from either trailing Tuple slot or EXPR_RIGHT
     let arg1Id = rightVal;
     let nextSlot = exprId + 1;
     if (nextSlot < dae.exprCount && exprData.get(nextSlot * EXPR_STRIDE + EXPR_KIND) == ExprKind.Tuple) {
       arg1Id = exprData.get(nextSlot * EXPR_STRIDE + EXPR_LEFT) as u32;
+    } else if (arg1Id >= dae.exprCount && arg0Id + 1 < dae.exprCount) {
+      arg1Id = arg0Id + 1;
     }
     let arg1 = Dual.temp();
     evalDualExpr(arg1Id, dae, dualVarsPtr, arg1);
 
+    if (funcId == BuiltinMathFunc.Smooth) {
+      outDual.copyFrom(arg1);
+      return;
+    }
     if (funcId == BuiltinMathFunc.Atan2) {
       dualAtan2(arg0, arg1, outDual);
       return;
@@ -614,6 +624,22 @@ export function evalDualExpr(exprId: u32, dae: DaeBuilder, dualVarsPtr: usize, o
     }
     if (funcId == BuiltinMathFunc.Pow) {
       dualPow(arg0, arg1, outDual);
+      return;
+    }
+    if (funcId == BuiltinMathFunc.SemiLinear) {
+      let arg2Id: u32 = 0xffffffff;
+      if (exprId + 2 < dae.exprCount && exprData.get((exprId + 2) * EXPR_STRIDE + EXPR_KIND) == ExprKind.Tuple) {
+        arg2Id = exprData.get((exprId + 2) * EXPR_STRIDE + EXPR_LEFT) as u32;
+      }
+      let arg2 = Dual.temp();
+      if (arg2Id < dae.exprCount) {
+        evalDualExpr(arg2Id, dae, dualVarsPtr, arg2);
+      }
+      if (arg0.val >= 0.0) {
+        dualMul(arg1, arg0, outDual);
+      } else {
+        dualMul(arg2, arg0, outDual);
+      }
       return;
     }
 

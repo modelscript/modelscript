@@ -20,7 +20,7 @@ export type STLPredicateOperator = "<=" | "<" | ">=" | ">" | "==";
 export type STLFormula =
   | {
       type: "predicate";
-      name?: string;
+      name?: string | undefined;
       variable: string;
       operator: STLPredicateOperator;
       threshold: number;
@@ -57,13 +57,15 @@ export type STLFormula =
 export interface STLEvaluationResult {
   isSatisfied: boolean;
   robustness: number;
-  violationTime?: number;
-  counterexample?: {
-    time: number;
-    variable: string;
-    value: number;
-    threshold: number;
-  };
+  violationTime?: number | undefined;
+  counterexample?:
+    | {
+        time: number;
+        variable: string;
+        value: number;
+        threshold: number;
+      }
+    | undefined;
   robustnessTrajectory: {
     time: number;
     robustness: number;

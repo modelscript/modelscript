@@ -19,18 +19,11 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
 
   const fetchRepos = async () => {
     try {
-      // In a real app we'd fetch repos by username.
-      // For now, since the API only returns repos for the logged-in user, we'll fetch from /api/v1/repos if it's our own profile
-      if (!isOwnProfile) {
-        setRepos([]);
-        setLoading(false);
-        return;
-      }
-
-      const data = await getRepos();
+      const data = await getRepos(isOwnProfile ? undefined : username);
       setRepos(data.repos || []);
     } catch (err) {
       console.error(err);
+      setRepos([]);
     } finally {
       setLoading(false);
     }

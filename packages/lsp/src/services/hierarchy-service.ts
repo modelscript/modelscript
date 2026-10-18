@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-useless-constructor */
 import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
 import { Connection } from "vscode-languageserver";
 import {
@@ -16,11 +16,7 @@ import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 export class HierarchyService {
-  constructor(
-    private connection: Connection,
-    private documentManager: DocumentManager,
-    private workspaceManager: WorkspaceManager,
-  ) {}
+  constructor(_connection: Connection, _documentManager: DocumentManager, _workspaceManager: WorkspaceManager) {}
 
   classKindFromEntry(entry: any): string {
     return classKindFromEntry(entry);

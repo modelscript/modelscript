@@ -16,40 +16,40 @@
 export interface SysML2Attribute {
   name: string;
   type: string;
-  defaultValue?: string | number;
-  isParameter?: boolean;
+  defaultValue?: string | number | undefined;
+  isParameter?: boolean | undefined;
 }
 
 export interface SysML2Port {
   name: string;
   type: string;
-  direction?: "in" | "out" | "inout";
-  isConjugated?: boolean;
+  direction?: "in" | "out" | "inout" | undefined;
+  isConjugated?: boolean | undefined;
 }
 
 export interface SysML2Connection {
   source: string;
   target: string;
-  kind?: "flow" | "binding" | "physical";
+  kind?: "flow" | "binding" | "physical" | undefined;
 }
 
 export interface SysML2PartUsage {
   name: string;
   type: string;
-  multiplicity?: string;
-  attributes?: Record<string, string | number>;
+  multiplicity?: string | undefined;
+  attributes?: Record<string, string | number> | undefined;
 }
 
 export interface SysML2GenericDefinition {
   name: string;
   kind: "part def" | "item def" | "action def" | "constraint def";
-  isAbstract?: boolean;
-  superclasses?: string[];
+  isAbstract?: boolean | undefined;
+  superclasses?: string[] | undefined;
   attributes: SysML2Attribute[];
   ports: SysML2Port[];
-  parts?: SysML2PartUsage[];
+  parts?: SysML2PartUsage[] | undefined;
   connections: SysML2Connection[];
-  constraints?: string[];
+  constraints?: string[] | undefined;
 }
 
 import { createWasmParserSync } from "@modelscript/dsl";
@@ -418,7 +418,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
   if (constraints.length === 0) {
     const constrMatches = Array.from(sysmlSource.matchAll(/\bassert\s+constraint\s*\{([^}]*)\}/g));
     for (const m of constrMatches) {
-      constraints.push(m[1].trim());
+      constraints.push(m[1]!.trim());
     }
   }
 
@@ -589,8 +589,8 @@ export class GenericModelicaBridge {
     let aMatch: RegExpExecArray | null;
     while ((aMatch = attrRegex.exec(targetSource)) !== null) {
       attributes.push({
-        name: aMatch[1],
-        type: aMatch[2],
+        name: aMatch[1]!,
+        type: aMatch[2]!,
         defaultValue: aMatch[3]?.trim(),
         isParameter: true,
       });
@@ -600,8 +600,8 @@ export class GenericModelicaBridge {
     const portRegex = /\bport\s+((?:~\s*)?[A-Za-z_][A-Za-z0-9_]*)\s*:\s*((?:~\s*)?[A-Za-z0-9_.]+)\s*;/g;
     let pMatch: RegExpExecArray | null;
     while ((pMatch = portRegex.exec(targetSource)) !== null) {
-      const rawName = pMatch[1].trim();
-      const rawType = pMatch[2].trim();
+      const rawName = pMatch[1]!.trim();
+      const rawType = pMatch[2]!.trim();
       const isConjugated = rawName.startsWith("~") || rawType.startsWith("~");
       const portName = rawName.replace(/^~\s*/, "");
       const portType = rawType.replace(/^~\s*/, "");
@@ -620,8 +620,8 @@ export class GenericModelicaBridge {
     const partHeaderRegex = /\bpart\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z0-9_.]+)/g;
     let puMatch: RegExpExecArray | null;
     while ((puMatch = partHeaderRegex.exec(targetSource)) !== null) {
-      const partName = puMatch[1];
-      const partType = puMatch[2];
+      const partName = puMatch[1]!;
+      const partType = puMatch[2]!;
       const afterPos = puMatch.index + puMatch[0].length;
       let rest = "";
       const openBrace = targetSource.indexOf("{", afterPos);
@@ -657,9 +657,9 @@ export class GenericModelicaBridge {
         const bodyAttrRegex = /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]*?)\s*;/g;
         let baMatch: RegExpExecArray | null;
         while ((baMatch = bodyAttrRegex.exec(body)) !== null) {
-          const valStr = baMatch[2].trim();
+          const valStr = baMatch[2]!.trim();
           const num = parseFloat(valStr);
-          inlineAttributes[baMatch[1]] = Number.isNaN(num) ? valStr : num;
+          inlineAttributes[baMatch[1]!] = Number.isNaN(num) ? valStr : num;
         }
       }
 
@@ -676,8 +676,8 @@ export class GenericModelicaBridge {
     let cMatch: RegExpExecArray | null;
     while ((cMatch = connRegex.exec(targetSource)) !== null) {
       connections.push({
-        source: cMatch[1],
-        target: cMatch[2],
+        source: cMatch[1]!,
+        target: cMatch[2]!,
         kind: "physical",
       });
     }
@@ -720,7 +720,7 @@ export class GenericModelicaBridge {
 
     // @deprecated Legacy regex fallback - retained solely for environments lacking WebAssembly GLR parser support.
     const nameMatch = modelicaSource.match(/(?:model|block)\s+([A-Za-z_][A-Za-z0-9_]*)/);
-    const name = nameMatch ? nameMatch[1] : "ModelicaTranslation";
+    const name = nameMatch ? nameMatch[1]! : "ModelicaTranslation";
     const isAbstract = /partial\s+(?:model|block)/.test(modelicaSource);
 
     const attributes: SysML2Attribute[] = [];
@@ -735,8 +735,8 @@ export class GenericModelicaBridge {
     while ((dMatch = declRegex.exec(modelicaSource)) !== null) {
       attributes.push({
         isParameter: !!dMatch[1],
-        type: dMatch[2],
-        name: dMatch[3],
+        type: dMatch[2]!,
+        name: dMatch[3]!,
         defaultValue: dMatch[4]?.trim(),
       });
     }
@@ -745,15 +745,15 @@ export class GenericModelicaBridge {
     const portDeclRegex = /\b([A-Za-z0-9_.]+)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
     let pMatch: RegExpExecArray | null;
     while ((pMatch = portDeclRegex.exec(modelicaSource)) !== null) {
-      const fullType = pMatch[1];
+      const fullType = pMatch[1]!;
       const typeParts = fullType.split(".");
-      const rawType = typeParts[typeParts.length - 1];
+      const rawType = typeParts[typeParts.length - 1]!;
       const isKnownPort =
         /^(?:Pin|PositivePin|NegativePin|Flange|Flange_[ab]|Port|HeatPort_[ab]|Terminal|Plug|RealInput|RealOutput)$/.test(
           rawType,
         );
       if (!isKnownPort) continue;
-      const portName = pMatch[2];
+      const portName = pMatch[2]!;
       const isConjugated = rawType.endsWith("_b") || rawType.includes("NegativePin") || rawType === "RealOutput";
 
       let baseType = rawType;
@@ -776,8 +776,8 @@ export class GenericModelicaBridge {
     let cMatch: RegExpExecArray | null;
     while ((cMatch = connRegex.exec(modelicaSource)) !== null) {
       connections.push({
-        source: cMatch[1],
-        target: cMatch[2],
+        source: cMatch[1]!,
+        target: cMatch[2]!,
         kind: "physical",
       });
     }

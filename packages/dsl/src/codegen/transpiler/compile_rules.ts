@@ -21,8 +21,9 @@ export interface RewriteRule {
 export function compileRewriteRules(rules: RewriteRule[]): string {
   let out = "// --- AOT Compiled Rewrite Rules ---\n";
   out += "function allocEClass(opType: u16, leftClass: u32, rightClass: u32): u32 {\n";
-  out +=
-    "    let key: u64 = ((opType as u64) << 48) | (((ufFind(leftClass) & 0xFFFFFF) as u64) << 24) | ((ufFind(rightClass) & 0xFFFFFF) as u64);\n";
+  out += "    let lBits: u64 = leftClass == 0xFFFFFFFF ? 0 : ((ufFind(leftClass) & 0xFFFFFF) as u64);\n";
+  out += "    let rBits: u64 = rightClass == 0xFFFFFFFF ? 0 : ((ufFind(rightClass) & 0xFFFFFF) as u64);\n";
+  out += "    let key: u64 = ((opType as u64) << 48) | (lBits << 24) | rBits;\n";
   out += "    let existing = hashFind(key);\n";
   out += "    if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
   out += "    let id = ufMakeSet();\n";
@@ -30,8 +31,8 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "    return id;\n";
   out += "}\n\n";
   out += "function allocConstantEClass(val: f64): u32 {\n";
-  out += "    let floatBits = reinterpret<u64>(val);\n";
-  out += "    let key: u64 = ((512 as u64) << 48) | (floatBits >>> 16);\n"; // 512 is (ExprKind.RealLiteral << 8)
+  out += "    let constIdx = internFloatConstant(val);\n";
+  out += "    let key: u64 = ((512 as u64) << 48) | (constIdx as u64);\n"; // 512 is (ExprKind.RealLiteral << 8)
   out += "    let existing = hashFind(key);\n";
   out += "    if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
   out += "    let id = ufMakeSet();\n";
@@ -55,7 +56,7 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
     if (typeof rule === "object" && rule !== null && !(rule as any).lhs) {
       const keys = Object.keys(rule);
       if (keys.length === 1) {
-        const name = keys[0];
+        const name = keys[0]!;
         const fn = (rule as any)[name];
         if (typeof fn === "function") {
           const res = fn(ruleCombinators.var("x"), ruleCombinators.var("y"));
@@ -101,12 +102,13 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "            let right = ufFind((key & 0xFFFFFF) as u32);\n";
   out += "            let nodeClass = ufFind(load<u32>(eNodeClassesOffset + i * 4));\n";
   out += "            let cost: u32 = 1;\n";
-  out += "            if ((op >= 1280 && op <= 1284) || (op >= 1536 && op <= 1539) || (op >= 1792 && op <= 1793)) {\n";
+  out +=
+    "            if ((op >= 1280 && op <= 1289) || (op >= 1536 && op <= 1541) || (op >= 1792 && op <= 1793) || (op >= 1811 && op <= 1821)) {\n";
   out += "                let lCost = load<u32>(dpCostOffset + left * 4);\n";
   out += "                let rCost = load<u32>(dpCostOffset + right * 4);\n";
   out += "                if (lCost == 0xFFFFFFFF || rCost == 0xFFFFFFFF) cost = 0xFFFFFFFF;\n";
   out += "                else cost += lCost + rCost;\n";
-  out += "            } else if ((op >= 1024 && op <= 1027) || (op >= 1800 && op <= 1810)) {\n";
+  out += "            } else if ((op >= 1024 && op <= 1027) || (op >= 1800 && op <= 1810) || op == 3072) {\n";
   out += "                let lCost = load<u32>(dpCostOffset + left * 4);\n";
   out += "                if (lCost == 0xFFFFFFFF) cost = 0xFFFFFFFF;\n";
   out += "                else cost += lCost;\n";
@@ -128,19 +130,22 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
 
   out += "export function extractAst(eClass: u32, dae: DaeBuilder): u32 {\n";
   out += "    let root = ufFind(eClass);\n";
+  out += "    if (load<u32>(dpCostOffset + root * 4) == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
   out += "    let key = load<u64>(dpKeyOffset + root * 8);\n";
-  out += "    if (key == 0) return 0xFFFFFFFF;\n";
   out += "    let op = (key >> 48) as u16;\n";
   out += "    if (op == 512) { // RealLiteral\n";
-  out += "        let valBits = (key & 0xFFFFFFFFFFFF) << 16;\n";
-  out += "        return dae.addRealLiteral(reinterpret<f64>(valBits));\n";
+  out += "        let constIdx = (key & 0xFFFFFFFF) as u32;\n";
+  out += "        return dae.addRealLiteral(getFloatConstant(constIdx));\n";
   out += "    } else if (op == 256) { // IntLiteral\n";
   out += "        let val = (key & 0xFFFFFFFF) as i32;\n";
   out += "        return dae.addIntLiteral(val);\n";
+  out += "    } else if (op == 768) { // BoolLiteral\n";
+  out += "        let bVal = (key & 1) as u32;\n";
+  out += "        return dae.addExpression(3 /* BoolLiteral */, bVal, 0, 0);\n";
   out += "    } else if (op == 0) { // Name\n";
   out += "        let nameId = (key & 0xFFFFFFFF) as u32;\n";
   out += "        return dae.addExpression(0 /* Name */, nameId, 0xFFFFFFFF, 0xFFFFFFFF);\n";
-  out += "    } else if (op >= 1280 && op <= 1284) {\n";
+  out += "    } else if (op >= 1280 && op <= 1289) {\n";
   out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "        let right = (key & 0xFFFFFF) as u32;\n";
   out += "        let leftNode = extractAst(left, dae);\n";
@@ -148,18 +153,49 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "        if (leftNode == 0xFFFFFFFF || rightNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
   out += "        let binOp: u32 = op - 1280;\n";
   out += "        return dae.addExpression(5 /* Binary */, binOp, leftNode, rightNode);\n";
+  out += "    } else if (op >= 1536 && op <= 1541) {\n";
+  out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
+  out += "        let right = (key & 0xFFFFFF) as u32;\n";
+  out += "        let leftNode = extractAst(left, dae);\n";
+  out += "        let rightNode = extractAst(right, dae);\n";
+  out += "        if (leftNode == 0xFFFFFFFF || rightNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
+  out += "        let binOp: u32 = (op - 1536) + 12;\n";
+  out += "        return dae.addExpression(5 /* Binary */, binOp, leftNode, rightNode);\n";
+  out += "    } else if (op >= 1792 && op <= 1793) {\n";
+  out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
+  out += "        let right = (key & 0xFFFFFF) as u32;\n";
+  out += "        let leftNode = extractAst(left, dae);\n";
+  out += "        let rightNode = extractAst(right, dae);\n";
+  out += "        if (leftNode == 0xFFFFFFFF || rightNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
+  out += "        let binOp: u32 = (op - 1792) + 10;\n";
+  out += "        return dae.addExpression(5 /* Binary */, binOp, leftNode, rightNode);\n";
   out += "    } else if (op >= 1024 && op <= 1027) {\n";
   out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "        let leftNode = extractAst(left, dae);\n";
   out += "        if (leftNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
   out += "        let unOp: u32 = op - 1024;\n";
   out += "        return dae.addExpression(6 /* Unary */, unOp, leftNode, 0xFFFFFFFF);\n";
+  out += "    } else if (op == 3072) {\n";
+  out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
+  out += "        let leftNode = extractAst(left, dae);\n";
+  out += "        if (leftNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
+  out += "        return dae.addExpression(12 /* Der */, leftNode, leftNode, 0xFFFFFFFF);\n";
   out += "    } else if (op >= 1800 && op <= 1810) {\n";
   out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "        let leftNode = extractAst(left, dae);\n";
   out += "        if (leftNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
   out += "        let funcId: u32 = op - 1800;\n";
   out += "        return dae.addExpression(7 /* Call */, funcId, leftNode, 1);\n";
+  out += "    } else if (op >= 1811 && op <= 1821) {\n";
+  out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
+  out += "        let right = (key & 0xFFFFFF) as u32;\n";
+  out += "        let leftNode = extractAst(left, dae);\n";
+  out += "        let rightNode = extractAst(right, dae);\n";
+  out += "        if (leftNode == 0xFFFFFFFF || rightNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
+  out += "        let funcId: u32 = op - 1800;\n";
+  out += "        let callNode = dae.addExpression(7 /* Call */, funcId, leftNode, 2);\n";
+  out += "        dae.addExpression(15 /* Tuple */, 0, rightNode, 0xFFFFFFFF);\n";
+  out += "        return callNode;\n";
   out += "    }\n";
   out += "    return 0xFFFFFFFF;\n";
   out += "}\n";
@@ -178,7 +214,7 @@ function resolveRuleExpr(expr: any): string {
     const args: any[] = [ruleCombinators];
     const funcLength = expr.length;
     for (let i = 1; i < funcLength; i++) {
-      args.push(ruleCombinators.var(paramNames[(i - 1) % paramNames.length]));
+      args.push(ruleCombinators.var(paramNames[(i - 1) % paramNames.length]!));
     }
     const res = expr(...args);
     return res instanceof TransformCombinator ? res.toSExpr() : String(res);
@@ -225,18 +261,27 @@ function parseSExpr(s: string): Expr {
         "asin",
         "acos",
         "atan",
+        "atan2",
         "sinh",
         "cosh",
         "tanh",
         "exp",
         "log",
+        "min",
+        "max",
+        "mod",
+        "rem",
         "eq",
         "neq",
         "lt",
         "gt",
+        "lte",
+        "gte",
         "and",
         "or",
         "not",
+        "der",
+        "rate",
       ];
       if (knownOps.includes(normToken)) {
         const parts: string[] = [];
@@ -254,9 +299,9 @@ function parseSExpr(s: string): Expr {
         }
         if (curr.length > 0) parts.push(curr);
         if (parts.length === 2) {
-          return { op: normToken, left: parseSExpr(parts[1]), right: "" };
+          return { op: normToken, left: parseSExpr(parts[1]!), right: "" };
         }
-        return { op: normToken, left: parseSExpr(parts[1]), right: parseSExpr(parts[2]) };
+        return { op: normToken, left: parseSExpr(parts[1]!), right: parseSExpr(parts[2]!) };
       } else {
         return parseSExpr(inner);
       }
@@ -266,9 +311,9 @@ function parseSExpr(s: string): Expr {
   // Prefix function call: e.g. sin(x), fn:sin(x), cos(x + y), sqrt(x)
   const fnMatch = s.match(/^([a-zA-Z_][a-zA-Z0-9_:]*)\s*\((.*)\)$/);
   if (fnMatch) {
-    const rawName = fnMatch[1];
+    const rawName = fnMatch[1]!;
     const fnName = rawName.startsWith("fn:") ? rawName.substring(3) : rawName;
-    const innerArg = fnMatch[2];
+    const innerArg = fnMatch[2]!;
     const knownFns = [
       "add",
       "sub",
@@ -284,11 +329,16 @@ function parseSExpr(s: string): Expr {
       "asin",
       "acos",
       "atan",
+      "atan2",
       "sinh",
       "cosh",
       "tanh",
       "exp",
       "log",
+      "min",
+      "max",
+      "mod",
+      "rem",
       "not",
       "der",
       "rate",
@@ -365,32 +415,39 @@ function parseSExpr(s: string): Expr {
  */
 export function getOpCode(op: string): number {
   if (op.startsWith("fn:")) op = op.substring(3);
-  if (op === "add") return 1280; // (5 << 8) | 0
-  if (op === "sub") return 1281; // (5 << 8) | 1
-  if (op === "mul") return 1282; // (5 << 8) | 2
-  if (op === "div") return 1283; // (5 << 8) | 3
-  if (op === "pow") return 1284; // (5 << 8) | 4
-  if (op === "neg") return 1024; // (4 << 8) | 0
+  if (op === "add") return 1280; // (5 << 8) | 0 (BinOp.Add)
+  if (op === "sub") return 1281; // (5 << 8) | 1 (BinOp.Sub)
+  if (op === "mul") return 1282; // (5 << 8) | 2 (BinOp.Mul)
+  if (op === "div") return 1283; // (5 << 8) | 3 (BinOp.Div)
+  if (op === "pow") return 1284; // (5 << 8) | 4 (BinOp.Pow)
+  if (op === "neg") return 1024; // (4 << 8) | 0 (UnaryOp.Negate)
   if (op === "abs") return 1025; // (4 << 8) | 1
-  if (op === "not") return 1026;
-  if (op === "sqrt") return 1027;
-  if (op === "sin") return 1800; // (7 << 8) | 8
-  if (op === "cos") return 1801;
-  if (op === "tan") return 1802;
-  if (op === "asin") return 1803;
-  if (op === "acos") return 1804;
-  if (op === "atan") return 1805;
-  if (op === "sinh") return 1806;
-  if (op === "cosh") return 1807;
-  if (op === "tanh") return 1808;
-  if (op === "exp") return 1809;
-  if (op === "log") return 1810;
-  if (op === "eq") return 1536; // (6 << 8) | 0
-  if (op === "neq") return 1537;
-  if (op === "lt") return 1538;
-  if (op === "gt") return 1539;
-  if (op === "and") return 1792; // (7 << 8) | 0
-  if (op === "or") return 1793;
+  if (op === "not") return 1026; // (4 << 8) | 2 (UnaryOp.Not)
+  if (op === "sqrt") return 1027; // (4 << 8) | 3
+  if (op === "sin") return 1800; // Call fnId = 0
+  if (op === "cos") return 1801; // Call fnId = 1
+  if (op === "tan") return 1802; // Call fnId = 2
+  if (op === "asin") return 1803; // Call fnId = 3
+  if (op === "acos") return 1804; // Call fnId = 4
+  if (op === "atan") return 1805; // Call fnId = 5
+  if (op === "sinh") return 1806; // Call fnId = 6
+  if (op === "cosh") return 1807; // Call fnId = 7
+  if (op === "tanh") return 1808; // Call fnId = 8
+  if (op === "exp") return 1809; // Call fnId = 9
+  if (op === "log") return 1810; // Call fnId = 10
+  if (op === "atan2") return 1811; // Call fnId = 11
+  if (op === "min") return 1812; // Call fnId = 12
+  if (op === "max") return 1813; // Call fnId = 13
+  if (op === "mod") return 1814; // Call fnId = 14
+  if (op === "rem") return 1815; // Call fnId = 15
+  if (op === "eq") return 1536; // (6 << 8) | 0 (BinOp.Eq = 12)
+  if (op === "neq") return 1537; // (6 << 8) | 1 (BinOp.Neq = 13)
+  if (op === "lt") return 1538; // (6 << 8) | 2 (BinOp.Lt = 14)
+  if (op === "gt") return 1539; // (6 << 8) | 3 (BinOp.Gt = 15)
+  if (op === "lte") return 1540; // (6 << 8) | 4 (BinOp.Lte = 16)
+  if (op === "gte") return 1541; // (6 << 8) | 5 (BinOp.Gte = 17)
+  if (op === "and") return 1792; // (7 << 8) | 0 (BinOp.And = 10)
+  if (op === "or") return 1793; // (7 << 8) | 1 (BinOp.Or = 11)
   if (op === "der" || op === "rate") return 3072; // (12 << 8) | 0 (ExprKind.Der)
   return 0;
 }
@@ -559,8 +616,8 @@ function compileRule(rule: RewriteRule): string {
   let closeStr = "";
   let lines = matchStr.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i].includes("if (") || lines[i].includes("for (")) {
-      let ind = lines[i].match(/^\s*/)?.[0] || "";
+    if (lines[i]!.includes("if (") || lines[i]!.includes("for (")) {
+      let ind = lines[i]!.match(/^\s*/)?.[0] || "";
       closeStr += `${ind}}\n`;
     }
   }

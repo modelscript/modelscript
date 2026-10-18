@@ -1,5 +1,4 @@
 // status: correct
-// xfail:    true
 // Bug #2695
 
 package Modelica

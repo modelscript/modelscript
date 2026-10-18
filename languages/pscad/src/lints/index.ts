@@ -10,13 +10,18 @@
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
 import type { PscadDiagnostic, PscxProject } from "../types.js";
 
+/**
+ * Catalog of PSCAD pre-flight electrical and control diagnostic error codes (`M6001`–`M6011`).
+ */
 export const PscadErrorCode = {
+  /** `M6001`: Electrical bus or node has no connected branches, sources, or shunt elements. */
   FLOATING_NODE: {
     code: "M6001",
     rule: "floating-electrical-node",
     severity: "error" as const,
     message: (nodeName: string) => `Electrical node '${nodeName}' is floating with no closed connections.`,
   },
+  /** `M6002`: Transformer primary or secondary nominal voltage differs by more than 5% from the connected bus base kV. */
   TRANSFORMER_MISMATCH: {
     code: "M6002",
     rule: "transformer-winding-mismatch",
@@ -24,6 +29,7 @@ export const PscadErrorCode = {
     message: (xfmrName: string, ratedKv: number, busKv: number, side: "primary" | "secondary") =>
       `Transformer '${xfmrName}' ${side} rating (${ratedKv} kV) does not match connected bus base (${busKv} kV).`,
   },
+  /** `M6003`: Component physical parameter ($R$, $L$, $C$, or rated $\text{MVA}$) violates non-negativity or positivity bounds. */
   INVALID_PARAMETER: {
     code: "M6003",
     rule: "invalid-parameter-bounds",
@@ -31,6 +37,7 @@ export const PscadErrorCode = {
     message: (elemName: string, paramName: string, val: number, reason: string) =>
       `Component '${elemName}' parameter '${paramName}' = ${val} is invalid: ${reason}.`,
   },
+  /** `M6004`: Point of Interconnection (POI) Short-Circuit Ratio ($\text{SCR} = S_{\text{sc}} / S_{\text{IBR}}$) is below 1.5. */
   WEAK_GRID: {
     code: "M6004",
     rule: "weak-grid-warning",
@@ -38,6 +45,7 @@ export const PscadErrorCode = {
     message: (poiBus: string, scr: number) =>
       `Point of Interconnection '${poiBus}' has low Short-Circuit Ratio (SCR = ${scr.toFixed(2)} < 1.5). IBR control stability risks detected.`,
   },
+  /** `M6005`: CSMF control block references an input signal ID that does not match any block in the schematic. */
   CSMF_UNRESOLVED_INPUT: {
     code: "M6005",
     rule: "csmf-unresolved-input",
@@ -45,6 +53,7 @@ export const PscadErrorCode = {
     message: (blockId: string, missingInputId: string) =>
       `CSMF control block '${blockId}' references unresolved upstream signal block '${missingInputId}'.`,
   },
+  /** `M6006`: Distributed Bergeron/FDPM transmission line wave travel time $\tau = \ell\sqrt{L'C'}$ is shorter than the EMT step $\Delta t$. */
   LINE_TRAVEL_TIME_UNDERFLOW: {
     code: "M6006",
     rule: "line-travel-time-underflow",
@@ -52,6 +61,7 @@ export const PscadErrorCode = {
     message: (lineId: string, tauUs: number, dtUs: number) =>
       `Transmission line '${lineId}' wave propagation delay (${tauUs.toFixed(2)} us) is smaller than simulation time step (${dtUs.toFixed(2)} us). Reduce time step or use a lumped pi-section model.`,
   },
+  /** `M6007`: Synchronous machine d-axis reactances violate the physical flux-leakage ordering $X_d \ge X_d' \ge X_d'' > 0$. */
   SYNC_MACHINE_REACTANCE_ORDER: {
     code: "M6007",
     rule: "sync-machine-reactance-order",
@@ -59,6 +69,7 @@ export const PscadErrorCode = {
     message: (machineId: string, xd: number, xdPrime: number, xdSub: number) =>
       `Synchronous machine '${machineId}' violates physical d-axis reactance hierarchy (Xd=${xd} >= Xd'=${xdPrime} >= Xd''=${xdSub} pu required).`,
   },
+  /** `M6008`: Metal-Oxide Varistor (MOV) surge arrester $V_{\text{ref}}$ is below connected bus peak line-to-ground voltage $V_{\text{base}}\sqrt{2/3}$. */
   MOV_ARRESTER_UNDER_RATED: {
     code: "M6008",
     rule: "mov-arrester-under-rated",
@@ -66,6 +77,7 @@ export const PscadErrorCode = {
     message: (arresterId: string, vRefKv: number, busName: string, vPeakPhaseKv: number) =>
       `MOV surge arrester '${arresterId}' reference voltage (${vRefKv.toFixed(1)} kV) is below connected bus '${busName}' nominal phase-to-ground peak voltage (${vPeakPhaseKv.toFixed(1)} kV), causing continuous thermal conduction.`,
   },
+  /** `M6009`: Two components or buses share the same identifier within the same schematic canvas module. */
   DUPLICATE_COMPONENT_ID: {
     code: "M6009",
     rule: "duplicate-component-id",
@@ -73,6 +85,7 @@ export const PscadErrorCode = {
     message: (id: string, modName: string) =>
       `Duplicate component or bus ID '${id}' declared in schematic module '${modName}'.`,
   },
+  /** `M6010`: A conductive wire net directly shorts two buses whose nominal base voltages differ by more than 5%. */
   BUS_VOLTAGE_CONFLICT: {
     code: "M6010",
     rule: "bus-voltage-conflict",
@@ -80,6 +93,7 @@ export const PscadErrorCode = {
     message: (busA: string, kvA: number, busB: string, kvB: number) =>
       `Conductive net shorts bus '${busA}' (${kvA} kV) directly to bus '${busB}' (${kvB} kV) without an intervening transformer.`,
   },
+  /** `M6011`: A wire connects a CSMF control signal port directly to a 3-phase electrical port or bus. */
   PORT_DOMAIN_MISMATCH: {
     code: "M6011",
     rule: "port-domain-mismatch",
@@ -98,8 +112,8 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
 
   const allModules = [project.rootModule, ...Array.from(project.subModules?.values() ?? [])];
 
-  const busLocationMap = new Map<string, { line?: number; column?: number }>();
-  const cmpLocationMap = new Map<string, { line?: number; column?: number }>();
+  const busLocationMap = new Map<string, { line?: number | undefined; column?: number | undefined }>();
+  const cmpLocationMap = new Map<string, { line?: number | undefined; column?: number | undefined }>();
   for (const mod of allModules) {
     for (const b of mod.buses) {
       busLocationMap.set(b.id, { line: b.line, column: b.column });

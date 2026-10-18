@@ -52,7 +52,7 @@ export function adminRouter(
    * Resolves a report and optionally applies actions (delete post, silence domain, suspend domain)
    */
   router.post("/admin/moderation/reports/:id/resolve", adminAuth, express.json(), (req: Request, res: Response) => {
-    const reportId = Number(req.params.id);
+    const reportId = Number(req.params["id"]);
     const { status, resolutionNotes, action } = req.body;
 
     if (!["resolved", "dismissed"].includes(status)) {
@@ -169,7 +169,7 @@ export function adminRouter(
    * Remove domain override rule (defaults back to allow)
    */
   router.delete("/admin/federation/domains/:domain", adminAuth, (req: Request, res: Response) => {
-    const domain = req.params.domain as string;
+    const domain = req.params["domain"] as string;
     try {
       database.deleteDomainTier(domain);
 
@@ -195,7 +195,7 @@ export function adminRouter(
    * Admin delete of a post with ActivityPub Delete tombstone synthesis
    */
   router.delete("/admin/posts/:id", adminAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params.id);
+    const postId = Number(req.params["id"]);
     try {
       const deleteResult = database.deletePost(postId);
       if (!deleteResult.success) {
@@ -327,7 +327,7 @@ export function adminRouter(
    * POST /api/v1/admin/dmca/notices/:id/resolve
    */
   router.post("/admin/dmca/notices/:id/resolve", adminAuth, express.json(), (req: Request, res: Response) => {
-    const id = Number(req.params.id);
+    const id = Number(req.params["id"]);
     const { actionTaken } = req.body;
 
     if (!actionTaken || typeof actionTaken !== "string") {

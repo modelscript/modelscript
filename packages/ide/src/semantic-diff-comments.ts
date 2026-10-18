@@ -6,36 +6,38 @@ import { isSupportedModelFile } from "./utils/file-utils";
 
 export interface RegulatoryImpact {
   isSafetyCritical: boolean;
-  hazardId?: string;
-  hazardName?: string;
-  requirementId?: string;
-  riskSeverity?: number;
-  invalidatedLinks?: {
-    targetName: string;
-    targetKind: string;
-    reason: string;
-  }[];
+  hazardId?: string | undefined;
+  hazardName?: string | undefined;
+  requirementId?: string | undefined;
+  riskSeverity?: number | undefined;
+  invalidatedLinks?:
+    | {
+        targetName: string;
+        targetKind: string;
+        reason: string;
+      }[]
+    | undefined;
 }
 
 export interface FlatSemanticEdit {
   action: "insert" | "delete" | "update" | "none";
   description: string;
-  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
-  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
-  kind?: string;
-  regulatoryImpact?: RegulatoryImpact;
+  oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
+  newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
+  kind?: string | undefined;
+  regulatoryImpact?: RegulatoryImpact | undefined;
 }
 
 class SemanticDiffComment implements vscode.Comment {
   id: number;
-  label: string | undefined;
+  label?: string;
   body: string | vscode.MarkdownString;
   mode: vscode.CommentMode;
   author: vscode.CommentAuthorInformation;
 
   constructor(body: string, label?: string) {
     this.id = Math.random();
-    this.label = label;
+    if (label !== undefined) this.label = label;
     const md = new vscode.MarkdownString(body);
     md.isTrusted = true;
     md.supportThemeIcons = true;

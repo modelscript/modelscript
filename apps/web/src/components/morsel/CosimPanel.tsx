@@ -59,13 +59,13 @@ interface CosimPanelProps {
   /** Called when the user changes the data source. */
   onDataSourceChange: (source: SimulationDataSource) => void;
   /** Called when a participant variable is selected for charting. */
-  onVariableSelected?: (participantId: string, variable: string) => void;
+  onVariableSelected?: ((participantId: string, variable: string) => void) | undefined;
   /** MQTT session ID (for live mode). */
-  sessionId?: string;
+  sessionId?: string | undefined;
   /** Color mode for styling. */
-  colorMode?: "light" | "dark";
+  colorMode?: "light" | "dark" | undefined;
   /** Optional handler when a recorded historian session is selected or replayed. */
-  onReplaySession?: (session: HistorianSession, speed: number) => void;
+  onReplaySession?: ((session: HistorianSession, speed: number) => void) | undefined;
 }
 
 const STATUS_COLORS: Record<MqttConnectionState, string> = {
@@ -106,7 +106,7 @@ export function CosimPanel({
   onReplaySession,
 }: CosimPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(DEFAULT_HISTORIAN_SESSIONS[0].id);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(DEFAULT_HISTORIAN_SESSIONS[0]!.id);
   const [replaySpeed, setReplaySpeed] = useState<number>(1);
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
 
@@ -363,7 +363,7 @@ function ParticipantRow({
   expanded: boolean;
   onToggle: () => void;
   latestValues: Map<string, number>;
-  onVariableSelected?: (participantId: string, variable: string) => void;
+  onVariableSelected?: ((participantId: string, variable: string) => void) | undefined;
   textMuted: string;
   borderColor: string;
   isDark: boolean;

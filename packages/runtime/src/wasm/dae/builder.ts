@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChunkedInt32Array, createChunkedInt32Array, atomicChunkAlloc } from "../core/array";
+import { ChunkedInt32Array, createChunkedInt32Array, atomicChunkAlloc, atomicChunkFree } from "../core/array";
 import { UnmanagedMap64, createMap64 } from "../core/hashmap";
 import { ArenaStringPool } from "../core/string_pool";
 
@@ -12,7 +12,7 @@ export {
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
   FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_STREAM,
   FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
-  FLAG_EQ_INITIAL, FLAG_EQ_OVERCONSTRAINED, FLAG_EQ_STREAM_CONNECT,
+  FLAG_EQ_INITIAL, FLAG_EQ_OVERCONSTRAINED, FLAG_EQ_STREAM_CONNECT, FLAG_HIGH_INDEX_EQ,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
   STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT,
@@ -271,6 +271,68 @@ export class DaeBuilder {
     this.finalTimeExprId = 0xffffffff;
     if (changetype<usize>(this.nameIndex) != 0) {
       this.getNameIndex().init(512);
+    }
+  }
+
+  /**
+   * Releases all unmanaged chunked arrays, hash tables, and string pool buffers.
+   */
+  dispose(): void {
+    let freeChunked = (arr: ChunkedInt32Array): void => {
+      let ptr = changetype<usize>(arr);
+      if (ptr != 0) {
+        arr.dispose();
+        atomicChunkFree(ptr);
+      }
+    };
+    freeChunked(this.varData);
+    freeChunked(this.eqData);
+    freeChunked(this.exprData);
+    freeChunked(this.stmtData);
+    freeChunked(this.aliasData);
+    freeChunked(this.varAttrData);
+    freeChunked(this.varShapes);
+    freeChunked(this.varSymbolicShapes);
+    freeChunked(this.clocksData);
+    freeChunked(this.varClockMap);
+    freeChunked(this.eqClockMap);
+    freeChunked(this.whenMeta);
+    freeChunked(this.whenBodyEqs);
+    freeChunked(this.forMeta);
+    freeChunked(this.forBodyEqs);
+    freeChunked(this.ifMeta);
+    freeChunked(this.ifBranchEqs);
+    freeChunked(this.stateMachines);
+    freeChunked(this.stateData);
+    freeChunked(this.stateEqs);
+    freeChunked(this.stateVars);
+    freeChunked(this.transitions);
+    freeChunked(this.eventIndicators);
+
+    if (changetype<usize>(this.nameIndex) != 0) {
+      this.nameIndex.release();
+    }
+    let spPtr = changetype<usize>(this.stringPool);
+    if (spPtr != 0) {
+      if (changetype<usize>(this.stringPool.charBuffer) != 0) {
+        this.stringPool.charBuffer.dispose();
+        atomicChunkFree(changetype<usize>(this.stringPool.charBuffer));
+      }
+      if (changetype<usize>(this.stringPool.stringOffsets) != 0) {
+        this.stringPool.stringOffsets.dispose();
+        atomicChunkFree(changetype<usize>(this.stringPool.stringOffsets));
+      }
+      if (changetype<usize>(this.stringPool.stringLengths) != 0) {
+        this.stringPool.stringLengths.dispose();
+        atomicChunkFree(changetype<usize>(this.stringPool.stringLengths));
+      }
+      if (this.stringPool.stringMapPtr != 0) {
+        atomicChunkFree(this.stringPool.stringMapPtr);
+      }
+      if (this.stringPool.pathMapPtr != 0) {
+        atomicChunkFree(this.stringPool.pathMapPtr);
+      }
+      atomicChunkFree(spPtr);
     }
   }
 
@@ -907,7 +969,7 @@ export class DaeBuilder {
       const vData = this.getVarData();
       for (let i: u32 = 0; i < this.varCount; i++) {
         const nameId = vData.get(i * VAR_STRIDE + VAR_NAME);
-        idxMap.set(nameId, i);
+        idxMap.set(nameId, i + 1);
       }
     }
     
@@ -926,24 +988,24 @@ export class DaeBuilder {
     this.whenCount = this.snapshotWhenCount;
     this.getWhenMeta().length = this.whenCount * WHEN_STRIDE;
     this.whenBodyEqCount = this.snapshotWhenBodyEqCount;
-    this.getWhenBodyEqs().length = this.whenBodyEqCount;
+    this.getWhenBodyEqs().length = this.whenBodyEqCount * EQ_STRIDE;
 
     this.forCount = this.snapshotForCount;
     this.getForMeta().length = this.forCount * FOR_STRIDE;
     this.forBodyEqCount = this.snapshotForBodyEqCount;
-    this.getForBodyEqs().length = this.forBodyEqCount;
+    this.getForBodyEqs().length = this.forBodyEqCount * EQ_STRIDE;
 
     this.ifCount = this.snapshotIfCount;
     this.getIfMeta().length = this.ifCount * IF_STRIDE;
     this.ifBranchEqCount = this.snapshotIfBranchEqCount;
-    this.getIfBranchEqs().length = this.ifBranchEqCount;
+    this.getIfBranchEqs().length = this.ifBranchEqCount * EQ_STRIDE;
 
     this.smCount = this.snapshotSmCount;
     this.getStateMachines().length = this.smCount * SM_STRIDE;
     this.stateCount = this.snapshotStateCount;
     this.getStateData().length = this.stateCount * STATE_STRIDE;
     this.stateEqCount = this.snapshotStateEqCount;
-    this.getStateEqs().length = this.stateEqCount;
+    this.getStateEqs().length = this.stateEqCount * 4;
     this.stateVarCount = this.snapshotStateVarCount;
     this.getStateVars().length = this.stateVarCount;
     this.transitionCount = this.snapshotTransitionCount;
@@ -951,6 +1013,15 @@ export class DaeBuilder {
 
     this.eventIndicatorCount = this.snapshotEventIndicatorCount;
     this.getEventIndicators().length = this.eventIndicatorCount;
+  }
+
+  @inline
+  resolveBuiltinMathFunc(funcId: i32): i32 {
+    if (changetype<usize>(this.stringPool) != 0) {
+      return this.stringPool.resolveBuiltinMathFunc(funcId);
+    }
+    if (funcId >= 56 && funcId <= 81) return funcId - 56;
+    return (funcId >= 0 && funcId <= 25) ? funcId : -1;
   }
 }
 
@@ -965,6 +1036,11 @@ export function dae_createBuilder(): u32 {
   let builder = changetype<DaeBuilder>(ptr);
   builder.init();
   return ptr as u32;
+}
+
+export function dae_getStringPool(ptr: u32): usize {
+  if (ptr == 0) return 0;
+  return changetype<usize>(changetype<DaeBuilder>(ptr).stringPool);
 }
 
 export function dae_alloc(size: u32): u32 {
@@ -986,6 +1062,8 @@ export function dae_getInt32(ptr: usize, index: u32): i32 {
 
 export function dae_free(ptr: u32): void {
   if (ptr == 0) return;
+  changetype<DaeBuilder>(ptr).dispose();
+  atomicChunkFree(ptr);
 }
 
 export function dae_snapshot(ptr: u32): void {
@@ -1372,11 +1450,6 @@ export function dae_getSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32): 
 export function dae_setSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32, val: f64): void {
   if (viewPtr == 0) return;
   changetype<ArraySliceView>(viewPtr).setValue(index, varValuesPtr, val);
-}
-
-export function dae_getStringPool(builderPtr: u32): u32 {
-  if (builderPtr == 0) return 0;
-  return changetype<u32>(changetype<DaeBuilder>(builderPtr).stringPool);
 }
 
 

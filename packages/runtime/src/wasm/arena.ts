@@ -15,38 +15,47 @@ export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
 
 
 
-/**
- * Arena Allocator for AST Nodes (Persistent / Structural Sharing)
- *
- * Provides a zero-GC, thread-safe linear memory allocator for Abstract Syntax Tree (AST) nodes.
- * Each AST node is allocated a fixed size of 32 bytes (NODE_SIZE = 32).
- *
- * Node Memory Layout (32 bytes, 8-byte aligned):
- * offset + 0:  word0: type (10 bits) | flags (12 bits) | paddingLength (10 bits)
- * offset + 4:  word1: byteLength (23 bits) | isFatPadding (1 bit) | envHash (8 bits)
- * offset + 8:  startState (u32): LR state (16 bits) | reduction lookahead (15 bits) | FLAG_FRAGILE (bit 31)
- * offset + 12: firstChild (u32, arena ptr / freeListNext)
- * offset + 16: nextSibling (u32, arena ptr)
- * offset + 20: merkleLow (u32)
- * offset + 24: merkleHigh (u32)
- * offset + 28: fatPadding (u32, used when isFatPadding is true)
- *
- * The logical `flags` value is 13 bits wide: bits 0-11 live in word0 and bit 12
- * (FLAG_FRAGILE) is stored in bit 31 of startState, because word0 has no spare bits.
- */
-
+/** Fixed byte size of every `ASTNode` record in linear memory (32 bytes, 8-byte aligned). */
 const NODE_SIZE: u32 = 32;
+/** Reserved base offset (0) representing a null `ASTNode` pointer. */
 const GLOBAL_BUMP_PTR: usize = 0;
 
+/**
+ * Arena Allocator Node for CST/AST Trees (Persistent / Structural Sharing).
+ *
+ * Provides a zero-GC, thread-safe linear-memory representation for Concrete/Abstract
+ * Syntax Tree nodes. Each node occupies a fixed size of 32 bytes (`NODE_SIZE = 32`).
+ *
+ * Node Memory Layout (32 bytes, 8-byte aligned):
+ * - `offset + 0`  (`word0`): `type` (10 bits) | `flags` low 12 bits (bits 10..21) | `paddingLength` (10 bits, bits 22..31)
+ * - `offset + 4`  (`word1`): `byteLength` (23 bits) | `isFatPadding` (1 bit, bit 23) | `envHash` (8 bits, bits 24..31)
+ * - `offset + 8`  (`startState`): LR state (16 bits) | reduction lookahead (15 bits) | `FLAG_FRAGILE` (bit 31)
+ * - `offset + 12` (`firstChild`): arena pointer to first child node (or `freeListNext` when on the free list)
+ * - `offset + 16` (`nextSibling`): arena pointer to next sibling node
+ * - `offset + 20` (`merkleLow`): lower 32 bits of the 64-bit structural Merkle hash
+ * - `offset + 24` (`merkleHigh`): upper 32 bits of the 64-bit structural Merkle hash
+ * - `offset + 28` (`fatPadding`): full 32-bit leading trivia length when `isFatPadding` is set (`paddingLength >= 1024`)
+ *
+ * The logical `flags` value is 13 bits wide: bits 0–11 live in `word0` and bit 12
+ * (`FLAG_FRAGILE`) is stored in bit 31 of `startState`, because `word0` has no spare bits.
+ */
 @unmanaged
 export class ASTNode {
+  /** Packed word 0: `type` (bits 0..9), `flags[0..11]` (bits 10..21), inline `paddingLength` (bits 22..31). */
   word0: u32;
+  /** Packed word 1: `byteLength` (bits 0..22), `isFatPadding` (bit 23), `envHash` (bits 24..31). */
   word1: u32;
+  /** Packed word 2: parser LR entry state (bits 0..15), reduction lookahead (bits 16..30), `FLAG_FRAGILE` (bit 31). */
   startState: u32;
+  /** Byte offset in the arena to the first child node (0 if leaf), or next free node when recycled. */
   firstChild: u32;
+  /** Byte offset in the arena to the next sibling node (0 if last child). */
   nextSibling: u32;
+  /** Lower 32 bits of the node's 64-bit structural + token Merkle hash. */
   merkleLow: u32;
+  /** Upper 32 bits of the node's 64-bit structural + token Merkle hash. */
   merkleHigh: u32;
+  /** Overflow 32-bit leading whitespace/comment byte length used when `isFatPadding` is true. */
   fatPadding: u32;
 
   // --- Core Bitfield Accessors ---
@@ -127,38 +136,71 @@ const AST_CHUNK_SIZE: u32 = 256 * 1024; // 256 KB incremental chunks
  */
 @unmanaged
 class SharedState {
+  /** Table of 256 KB chunk base pointers for Generation 1 (persistent workspace CSTs). */
   gen1_chunks: UnmanagedUint32Array;
+  /** Number of allocated chunks in Generation 1. */
   gen1_chunk_count: u32;
+  /** Index of the currently active allocation chunk in Generation 1. */
   gen1_active_chunk: u32;
+  /** Current bump-pointer byte address within the active Generation 1 chunk. */
   gen1_offset: u32;
+  /** Exclusive upper byte address of the active Generation 1 chunk. */
   gen1_endLimit: u32;
+  /** Legacy/fallback bump offset mirror. */
   arenaOffset: u32;
+  /** Table of 256 KB chunk base pointers for Generation 0 (scratch/ephemeral parse state). */
   gen0_chunks: UnmanagedUint32Array;
+  /** Number of allocated chunks in Generation 0. */
   gen0_chunk_count: u32;
+  /** Index of the currently active allocation chunk in Generation 0. */
   gen0_active_chunk: u32;
+  /** Current bump-pointer byte address within the active Generation 0 chunk. */
   gen0_offset: u32;
+  /** Exclusive upper byte address of the active Generation 0 chunk. */
   gen0_endLimit: u32;
+  /** Table of 256 KB chunk base pointers for Generation 2 (long-lived stdlib/library CSTs). */
   gen2_chunks: UnmanagedUint32Array;
+  /** Number of allocated chunks in Generation 2. */
   gen2_chunk_count: u32;
+  /** Index of the currently active allocation chunk in Generation 2. */
   gen2_active_chunk: u32;
+  /** Current bump-pointer byte address within the active Generation 2 chunk. */
   gen2_offset: u32;
+  /** Exclusive upper byte address of the active Generation 2 chunk. */
   gen2_endLimit: u32;
+  /** Active arena generation (`0` = scratch, `1` = workspace, `2` = stdlib). */
   activeGeneration: u8;
+  /** Total number of `ASTNode` allocations performed since reset. */
   allocCount: u32;
+  /** Intrusive free-list head pointer for recycled 32-byte `ASTNode` slots (`0` if empty). */
   freeNodeHead: u32;
+  /** Side-table buffer storing overflow padding lengths when `ASTNode.isFatPadding` is true. */
   fatPaddingArenaPtr: UnmanagedUint32Array;
+  /** Number of entries allocated in `fatPaddingArenaPtr`. */
   fatPaddingCount: u32;
+  /** Linear-memory pointer to the UTF-8/UTF-16 source input text buffer. */
   arenaBuffer: u32;
+  /** Current capacity in bytes of `arenaBuffer`. */
   currentInputBufferSize: u32;
+  /** Number of registered GC root CST node pointers in `activeRootsPtr`. */
   activeRootCount: u32;
+  /** Array of GC root CST node pointers preserved across mark-and-sweep collection. */
   activeRootsPtr: UnmanagedUint32Array;
+  /** Capacity (in elements) of `activeRootsPtr`. */
   activeRootsCapacity: u32;
+  /** Explicit DFS worklist stack used during mark-and-sweep GC. */
   gcStackPtr: UnmanagedUint32Array;
+  /** Capacity (in elements) of `gcStackPtr`. */
   gcStackCapacity: u32;
-  allocLock: u32; // Used for thread-safe spinlocking during chunk rollovers
+  /** Atomic spinlock word (`0` = unlocked, `1` = locked) guarding chunk allocation rollovers. */
+  allocLock: u32;
+  /** Per-64KB-page generation ownership stamp table used for fast pointer validation. */
   pageStampTable: UnmanagedUint32Array;
+  /** Monotonically increasing sequence counter for chunk allocations. */
   chunkSequence: u32;
+  /** Snapshot of `chunkSequence` recorded at the start of the current parse. */
   parseStartSeq: u32;
+  /** Snapshot of the active generation's bump offset at the start of the current parse. */
   parseStartOffset: u32;
 
   @inline atomicAddOffset(amount: u32): u32 {
@@ -281,17 +323,31 @@ export function arena_alloc(size: u32): u32 {
   return atomicChunkAlloc(size);
 }
 
+/**
+ * Lightweight checkpoint struct capturing bump-pointer offsets across all three
+ * arena generations (`gen0`, `gen1`, `gen2`) for $O(1)$ speculative rollback.
+ */
 @unmanaged
 export class ArenaSnapshot {
+  /** Active arena generation (`0`, `1`, or `2`) at the time of the snapshot. */
   activeGeneration: u8;
+  /** Saved bump-pointer byte offset in Generation 0. */
   gen0_offset: u32;
+  /** Saved active chunk index in Generation 0. */
   gen0_currentChunk: u32;
+  /** Saved chunk end byte limit in Generation 0. */
   gen0_endLimit: u32;
+  /** Saved bump-pointer byte offset in Generation 1. */
   gen1_offset: u32;
+  /** Saved active chunk index in Generation 1. */
   gen1_currentChunk: u32;
+  /** Saved chunk end byte limit in Generation 1. */
   gen1_endLimit: u32;
+  /** Saved bump-pointer byte offset in Generation 2. */
   gen2_offset: u32;
+  /** Saved active chunk index in Generation 2. */
   gen2_currentChunk: u32;
+  /** Saved chunk end byte limit in Generation 2. */
   gen2_endLimit: u32;
 }
 
@@ -817,34 +873,57 @@ export function setNodeReductionInfo(ptr: u32, state: u32, lookahead: u32): void
 // ----------------------------------------------------------------------------
 // Tier 4: Value-Type Tree Cursor
 // ----------------------------------------------------------------------------
+
+/** Maximum CST depth supported by an unmanaged `TreeCursor` traversal stack. */
 export const TREE_CURSOR_MAX_DEPTH: i32 = 128;
+
+/**
+ * Total byte size of a `TreeCursor` instance in linear memory (`8 + 128 * 4 + 128 * 4 = 1032`, padded to `1040` bytes).
+ *
+ * - `[0..3]`: `root` (`u32`) — Root CST node pointer.
+ * - `[4..7]`: `depth` (`i32`) — Current stack depth (`0` at root, `-1` when uninitialized).
+ * - `[8..519]`: `nodeStack[128]` (`u32[128]`) — CST node pointers along the active ancestor path.
+ * - `[520..1031]`: `contentStartStack[128]` (`u32[128]`) — Cumulative source byte offsets at each depth.
+ */
 export const TREE_CURSOR_SIZE: u32 = 1040;
 
+/**
+ * Unmanaged stack-based cursor for zero-allocation traversal of green CST nodes in linear memory
+ * while maintaining exact absolute byte offsets.
+ */
 @unmanaged
 export class TreeCursor {
+  /** Root CST node pointer where the cursor is anchored. */
   root: u32;
+  /** Current traversal depth (`0` at root, `-1` if empty/invalid). */
   depth: i32;
 
+  /** Reinterprets a raw linear memory address as a `TreeCursor` reference. */
   @inline static at(ptr: usize): TreeCursor {
     return changetype<TreeCursor>(ptr);
   }
 
+  /** Reads the CST node pointer stored at stack depth `d` (offset `8 + d * 4`). */
   @inline getNode(d: i32): u32 {
     return load<u32>(changetype<usize>(this) + 8 + (d << 2));
   }
 
+  /** Writes the CST node pointer `val` at stack depth `d` (offset `8 + d * 4`). */
   @inline setNode(d: i32, val: u32): void {
     store<u32>(changetype<usize>(this) + 8 + (d << 2), val);
   }
 
+  /** Reads the absolute source byte start offset at stack depth `d` (offset `520 + d * 4`). */
   @inline getContentStart(d: i32): u32 {
     return load<u32>(changetype<usize>(this) + 520 + (d << 2));
   }
 
+  /** Writes the absolute source byte start offset `val` at stack depth `d` (offset `520 + d * 4`). */
   @inline setContentStart(d: i32, val: u32): void {
     store<u32>(changetype<usize>(this) + 520 + (d << 2), val);
   }
 
+  /** Resets the cursor to point at `rootPtr` with initial depth `0`. */
   @inline reset(rootPtr: u32): void {
     this.root = rootPtr;
     if (rootPtr != 0) {
@@ -856,18 +935,21 @@ export class TreeCursor {
     }
   }
 
+  /** Returns the CST node pointer at the current cursor position, or `0` if invalid. */
   @inline currentNode(): u32 {
     let d = this.depth;
     if (d < 0) return 0;
     return this.getNode(d);
   }
 
+  /** Returns the absolute source byte offset (excluding leading trivia padding) of the current CST node. */
   @inline currentOffset(): u32 {
     let d = this.depth;
     if (d < 0) return 0;
     return this.getContentStart(d);
   }
 
+  /** Descends to the first child of the current CST node; returns `true` on success. */
   @inline gotoFirstChild(): boolean {
     let d = this.depth;
     if (d < 0 || d >= TREE_CURSOR_MAX_DEPTH - 1) return false;
@@ -884,6 +966,7 @@ export class TreeCursor {
     return true;
   }
 
+  /** Advances to the next sibling of the current CST node, accumulating byte lengths and trivia padding; returns `true` on success. */
   @inline gotoNextSibling(): boolean {
     let d = this.depth;
     if (d < 0) return false;
@@ -901,6 +984,7 @@ export class TreeCursor {
     return true;
   }
 
+  /** Ascends to the parent CST node; returns `true` if not already at the root. */
   @inline gotoParent(): boolean {
     if (this.depth <= 0) return false;
     this.depth--;
@@ -2105,24 +2189,38 @@ function ensureTensorArena(bytesNeeded: u32): void {
   }
 }
 
-// Chunked array mapping nodeId (index) to Tensor Arena handle (offset)
+/** Chunked array mapping node index (`nodePtr >> 5`) to its `tensorArena` byte handle offset. */
 export const nodeTensorHandles = createChunkedUint32Array();
 
+/** Element data type tag stored in `TensorHeader.type` within the linear-memory tensor arena. */
 export enum TensorType {
+  /** 64-bit IEEE-754 floating point (`f64`, 8 bytes). */
   Float64 = 0,
+  /** 32-bit signed integer (`i32`, 4 bytes). */
   Int32 = 1,
+  /** 8-bit boolean (`u8`, 1 byte). */
   Boolean = 2,
+  /** 32-bit IEEE-754 floating point (`f32`, 4 bytes). */
   Float32 = 3,
+  /** 16-bit half-precision floating point (`u16`, 2 bytes). */
   Float16 = 4,
+  /** 64-bit signed integer (`i64`, 8 bytes). */
   Int64 = 5,
+  /** 16-bit signed integer (`i16`, 2 bytes). */
   Int16 = 6,
+  /** 8-bit signed integer (`i8`, 1 byte). */
   Int8 = 7,
+  /** 8-bit unsigned integer (`u8`, 1 byte). */
   Uint8 = 8,
+  /** 16-bit unsigned integer (`u16`, 2 bytes). */
   Uint16 = 9,
+  /** 32-bit unsigned integer (`u32`, 4 bytes). */
   Uint32 = 10,
+  /** 64-bit unsigned integer (`u64`, 8 bytes). */
   Uint64 = 11,
 }
 
+/** Returns the byte width (`1`, `2`, `4`, or `8`) of a single scalar element for the given `TensorType`. */
 function getElementSize(type: u32): u32 {
   if (type == TensorType.Float64) return 8;
   if (type == TensorType.Int64) return 8;
@@ -2148,15 +2246,21 @@ function getElementSize(type: u32): u32 {
  */
 @unmanaged
 export class TensorHeader {
+  /** Scalar element data type (`TensorType` enum value). */
   type: u32;
+  /** Number of tensor dimensions (`shape` array length). */
   rank: u32;
+  /** Total number of scalar elements across all dimensions (`∏ shape[i]`). */
   elementCount: u32;
+  /** 8-byte-aligned byte offset from the start of `TensorHeader` to the contiguous data payload. */
   alignedHeaderSize: u32;
 
+  /** Reinterprets a raw linear memory address as a `TensorHeader` reference. */
   @inline static at(ptr: usize): TensorHeader {
     return changetype<TensorHeader>(ptr);
   }
 
+  /** Reads the extent of dimension `dimIndex` (`0 <= dimIndex < rank`) from `offset 16 + dimIndex * 4`. */
   @inline getShape(dimIndex: u32): u32 {
     return load<u32>(changetype<usize>(this) + 16 + (dimIndex << 2));
   }

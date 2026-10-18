@@ -12,7 +12,7 @@ export interface ExtractedLanguageAST {
   functions: Map<string, ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction>;
   constants: Map<string, ts.VariableDeclaration>;
   pipelines: Map<string, (ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration)[]>;
-  definition?: ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration | ts.Identifier;
+  definition?: ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration | ts.Identifier | undefined;
 }
 
 /**
@@ -459,7 +459,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
     if (ts.isCallExpression(node)) {
       const fnName = node.expression.getText(sourceFile);
       if (fnName === "language" || fnName === "grammar" || fnName.endsWith(".language")) {
-        if (node.arguments.length > 0 && ts.isObjectLiteralExpression(node.arguments[0])) {
+        if (node.arguments.length > 0 && ts.isObjectLiteralExpression(node.arguments[0]!)) {
           visitObjectLiteral(node.arguments[0]);
         }
       }

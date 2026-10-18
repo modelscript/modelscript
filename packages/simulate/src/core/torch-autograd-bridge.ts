@@ -24,23 +24,23 @@ export interface TorchBridgeConfig {
   /** Parameters exposed to PyTorch autograd. */
   parameterNames: string[];
   /** State variables exposed as outputs or differentiable initial states. */
-  stateNames?: string[];
+  stateNames?: string[] | undefined;
   /** Default simulation start time (default: 0.0). */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Default simulation stop time (default: 1.0). */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Step size for simulation trajectory. */
-  step?: number;
+  step?: number | undefined;
 }
 
 export interface TorchForwardRequest {
   /** Parameter tensor values in order of config.parameterNames. */
   parameters: number[] | Float64Array;
   /** Optional initial state overrides in order of config.stateNames. */
-  initialStates?: number[] | Float64Array;
-  startTime?: number;
-  stopTime?: number;
-  step?: number;
+  initialStates?: number[] | Float64Array | undefined;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  step?: number | undefined;
 }
 
 export interface TorchForwardResponse {

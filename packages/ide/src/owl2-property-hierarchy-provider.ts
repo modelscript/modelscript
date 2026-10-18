@@ -15,7 +15,7 @@ export interface OWL2PropertyNode {
   domain: string[];
   range: string[];
   characteristics: string[]; // "Transitive", "Functional", "Symmetric", etc.
-  inverseOf?: string;
+  inverseOf?: string | undefined;
 }
 
 function propertyNodeIcon(node: OWL2PropertyNode): vscode.ThemeIcon {
@@ -34,7 +34,7 @@ function propertyNodeIcon(node: OWL2PropertyNode): vscode.ThemeIcon {
 export class OWL2PropertyItem extends vscode.TreeItem {
   constructor(
     public readonly node: OWL2PropertyNode,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+    public override readonly collapsibleState: vscode.TreeItemCollapsibleState,
   ) {
     super(node.label, collapsibleState);
     this.tooltip = buildPropertyTooltip(node);

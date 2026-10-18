@@ -142,7 +142,7 @@ const ConvergencePlotBox = styled.div`
   cursor: crosshair;
 `;
 
-const ActionDockBtn = styled.button<{ $primary?: boolean }>`
+const ActionDockBtn = styled.button<{ $primary?: boolean | undefined }>`
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
@@ -295,7 +295,7 @@ function runMoldSimulation(meltTempStr: string, injPressureStr: string, gateVelS
   const svgPressure: string[] = [];
 
   for (let i = 0; i < points.length; i++) {
-    const pt = points[i];
+    const pt = points[i]!;
     const px = 15 + (pt.t / tMax) * 250;
     const pyAlpha = 120 - pt.alpha * 98;
     const pyPressure = 120 - Math.min(1, pt.pressure / (injPressure * 1.05)) * 98;
@@ -380,7 +380,7 @@ function runWasmSimulation(dampingStr: string, stiffnessStr: string, tolStr: str
   // y: mid is 70, amplitude scales to 52px (range -1.0 to +1.0)
   const svgPoints: string[] = [];
   for (let i = 0; i < points.length; i++) {
-    const pt = points[i];
+    const pt = points[i]!;
     const px = 15 + (pt.t / tMax) * 250;
     const py = 70 - Math.max(-1.1, Math.min(1.1, pt.x)) * 52;
     if (i === 0) svgPoints.push(`M ${px.toFixed(1)} ${py.toFixed(1)}`);

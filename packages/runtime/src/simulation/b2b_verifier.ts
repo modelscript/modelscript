@@ -19,25 +19,25 @@ import type { DAEBuilder } from "../dae/wasm_dae.js";
 
 export interface B2BVerificationOptions {
   /** Maximum allowable absolute numerical discrepancy (default: 1e-4). */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Maximum allowable relative numerical discrepancy (default: 1e-3). */
-  relTolerance?: number;
+  relTolerance?: number | undefined;
   /** Host or cross compiler binary (default: "gcc"). */
-  compiler?: string;
+  compiler?: string | undefined;
   /** Additional compiler flags. */
-  cflags?: string[];
+  cflags?: string[] | undefined;
   /** Fixed integration step size in seconds for SiL RK4 (default: 0.001). */
-  dt?: number;
+  dt?: number | undefined;
   /** Simulation start time in seconds (default: 0.0). */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Simulation stop time in seconds (default: 1.0). */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Custom model identifier. */
-  modelIdentifier?: string;
+  modelIdentifier?: string | undefined;
   /** Directory for compilation scratch artifacts. */
-  scratchDir?: string;
+  scratchDir?: string | undefined;
   /** Retain generated C files and binaries for debugging. */
-  preserveArtifacts?: boolean;
+  preserveArtifacts?: boolean | undefined;
 }
 
 export interface B2BDiscrepancy {
@@ -59,15 +59,17 @@ export interface B2BVerificationResult {
   testedVariables: string[];
   totalSamples: number;
   discrepancies: B2BDiscrepancy[];
-  cSourceHash?: string;
-  compilerUsed?: string;
+  cSourceHash?: string | undefined;
+  compilerUsed?: string | undefined;
   summary: string;
-  trajectories?: {
-    times: number[];
-    variables: string[];
-    mil: number[][];
-    sil: number[][];
-  };
+  trajectories?:
+    | {
+        times: number[];
+        variables: string[];
+        mil: number[][];
+        sil: number[][];
+      }
+    | undefined;
 }
 
 export class B2BEquivalenceVerifier {
@@ -115,9 +117,8 @@ export class B2BEquivalenceVerifier {
     let mil = milResult;
     if (!mil) {
       try {
-        const simulateModule: any = await (Function('return import("@modelscript/simulate")')() as Promise<any>).catch(
-          () => null,
-        );
+        const simPkg = "@modelscript/simulate";
+        const simulateModule: any = await import(simPkg).catch(() => null);
         if (simulateModule && simulateModule.simulateArenaAsync) {
           mil = await simulateModule.simulateArenaAsync(arena, {
             startTime,

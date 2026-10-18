@@ -2,10 +2,10 @@
 
 export interface InversionResult {
   isInvertible: boolean;
-  invertedExpr?: string;
-  sourceVar?: string;
-  targetVar?: string;
-  kind?: "affine" | "unit" | "prefix" | "nonlinear" | "custom";
+  invertedExpr?: string | undefined;
+  sourceVar?: string | undefined;
+  targetVar?: string | undefined;
+  kind?: "affine" | "unit" | "prefix" | "nonlinear" | "custom" | undefined;
 }
 
 /**
@@ -13,7 +13,27 @@ export interface InversionResult {
  * Solves y = f(x) for x, enabling automatic backward TGG rule generation without manual specification.
  */
 export function invertExpression(forwardExpr: string, targetVarName: string = "y"): InversionResult {
-  const trimmed = forwardExpr.trim();
+  let trimmed = forwardExpr.trim();
+  const eqAssignMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*=\s*(.+)$/);
+  if (eqAssignMatch) {
+    targetVarName = eqAssignMatch[1]!;
+    trimmed = eqAssignMatch[2]!.trim();
+  }
+
+  // 0. General 2-step affine: x * A + B or x / A - B
+  const fullAffineMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*([*/])\s*([\d.]+)\s*([+-])\s*([\d.]+)$/);
+  if (fullAffineMatch) {
+    const [, sourceVar, mulOp, aVal, addOp, bVal] = fullAffineMatch;
+    const invAddOp = addOp === "+" ? "-" : "+";
+    const invMulOp = mulOp === "*" ? "/" : "*";
+    return {
+      isInvertible: true,
+      kind: "affine",
+      sourceVar,
+      targetVar: targetVarName,
+      invertedExpr: `(${targetVarName} ${invAddOp} ${bVal}) ${invMulOp} ${aVal}`,
+    };
+  }
 
   // 1. Affine addition / subtraction: x + C or x - C
   const addMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*([+-])\s*([\d.]+)$/);
@@ -98,7 +118,7 @@ export function invertExpression(forwardExpr: string, targetVarName: string = "y
   const powMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*(?:\*\*|\^)\s*([\d.]+)$/);
   if (powMatch) {
     const [, sourceVar, expVal] = powMatch;
-    const expNum = parseFloat(expVal);
+    const expNum = parseFloat(expVal!);
     const invExp = expNum === 2 ? "Math.sqrt" : null;
     return {
       isInvertible: true,

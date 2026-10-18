@@ -17,15 +17,15 @@ import type { CommandModule } from "yargs";
 const require = createRequire(import.meta.url);
 
 interface PrDiffArgs {
-  file?: string;
-  base?: string;
-  head?: string;
-  format?: string;
-  output?: string;
-  view?: string;
-  breakingOnly?: boolean;
-  "breaking-only"?: boolean;
-  open?: boolean;
+  file?: string | undefined;
+  base?: string | undefined;
+  head?: string | undefined;
+  format?: string | undefined;
+  output?: string | undefined;
+  view?: string | undefined;
+  breakingOnly?: boolean | undefined;
+  "breaking-only"?: boolean | undefined;
+  open?: boolean | undefined;
 }
 
 /**
@@ -179,7 +179,58 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         headDiagram = buildSysML2DiagramData(headIndex, targetFile, undefined, viewName);
       }
     } else {
-      console.log(`Visual PR diff for ${fileName}: Modelica/Polyglot support.`);
+      const { GenericModelicaBridge } = await import("@modelscript/sysml2");
+      const buildMoDiagram = (src: string) => {
+        if (!src.trim()) return null;
+        const parsed = GenericModelicaBridge.parseModelicaToSysML2(src);
+        const nodes: any[] = [];
+        for (const attr of parsed.attributes) {
+          nodes.push({
+            id: attr.name,
+            type: "attribute",
+            properties: {
+              values: {
+                name: attr.name,
+                type: attr.type,
+                defaultValue: attr.defaultValue,
+              },
+            },
+          });
+        }
+        for (const part of parsed.parts || []) {
+          nodes.push({
+            id: part.name,
+            type: "part",
+            properties: {
+              values: {
+                name: part.name,
+                type: part.type,
+              },
+            },
+          });
+        }
+        for (const port of parsed.ports) {
+          nodes.push({
+            id: port.name,
+            type: "port",
+            properties: {
+              values: {
+                name: port.name,
+                type: port.type,
+                direction: port.direction,
+              },
+            },
+          });
+        }
+        const edges = parsed.connections.map((c, idx) => ({
+          id: `conn_${idx}_${c.source}_${c.target}`,
+          source: c.source.split(".")[0] || c.source,
+          target: c.target.split(".")[0] || c.target,
+        }));
+        return { nodes, edges };
+      };
+      baseDiagram = buildMoDiagram(baseContent);
+      headDiagram = buildMoDiagram(headContent);
     }
 
     // 4. Construct Stabilized Visual Diff Graph
@@ -241,7 +292,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         comment += `| Component | Breaking? | Property Deltas |\n`;
         comment += `| :--- | :---: | :--- |\n`;
         for (const mn of modifiedNodes) {
-          const name = mn.properties?.values?.name || mn.id;
+          const name = mn.properties?.values?.["name"] || mn.id;
           const changes = (mn.propertyChanges || [])
             .map((c) => `\`${c.key}\`: ${JSON.stringify(c.oldValue)} ➔ ${JSON.stringify(c.newValue)}`)
             .join("<br>");
@@ -266,7 +317,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         stats: diffData.stats,
         nodes: diffData.nodes.map((n) => ({
           id: n.id,
-          name: n.properties?.values?.name || n.id,
+          name: n.properties?.values?.["name"] || n.id,
           diffStatus: n.diffStatus,
           isBreaking: n.isBreaking,
           changes: n.propertyChanges,
@@ -289,7 +340,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
       console.log(`Base: ${baseRef}  ➔  Head: ${displayHead}`);
       console.log(`─────────────────────────────────────────────────────────────`);
       for (const n of diffData.nodes) {
-        const name = n.properties?.values?.name || n.id;
+        const name = n.properties?.values?.["name"] || n.id;
         if (n.diffStatus === "added") {
           console.log(`  \x1b[32m+ [ADDED]\x1b[0m   ${name}`);
         } else if (n.diffStatus === "deleted") {

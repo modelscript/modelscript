@@ -8,19 +8,30 @@ export interface ArenaSimulationResult {
 }
 
 export interface ArenaSimulateOptions {
-  startTime?: number;
-  stopTime?: number;
-  step?: number;
-  numberOfIntervals?: number;
-  solver?: "euler" | "rk4" | "dopri5" | "tsit5" | "bdf" | "rodas4p" | "trbdf2" | "auto" | "webgpu" | "cvode";
-  atol?: number;
-  rtol?: number;
-  outputStringIds?: number[];
-  parameterOverrides?: Map<string, number>;
-  signal?: AbortSignal;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  step?: number | undefined;
+  numberOfIntervals?: number | undefined;
+  solver?:
+    | "euler"
+    | "rk4"
+    | "dopri5"
+    | "tsit5"
+    | "bdf"
+    | "rodas4p"
+    | "trbdf2"
+    | "auto"
+    | "webgpu"
+    | "cvode"
+    | undefined;
+  atol?: number | undefined;
+  rtol?: number | undefined;
+  outputStringIds?: number[] | undefined;
+  parameterOverrides?: Map<string, number> | undefined;
+  signal?: AbortSignal | undefined;
   fmuRegistry?: any;
   debuggerHook?: any;
-  debug?: boolean;
+  debug?: boolean | undefined;
 }
 
 export type ArenaSimulatorFn = (arena: DAEBuilder, options?: ArenaSimulateOptions) => ArenaSimulationResult;
@@ -76,21 +87,21 @@ export interface RandomVariable {
 }
 
 export interface MonteCarloOptions {
-  numSamples?: number;
-  seed?: number;
-  confidenceLevel?: number;
-  antithetic?: boolean;
-  latinHypercube?: boolean;
-  sobol?: boolean;
-  storeTrajectories?: boolean;
+  numSamples?: number | undefined;
+  seed?: number | undefined;
+  confidenceLevel?: number | undefined;
+  antithetic?: boolean | undefined;
+  latinHypercube?: boolean | undefined;
+  sobol?: boolean | undefined;
+  storeTrajectories?: boolean | undefined;
 }
 
 export interface ArenaMonteCarloOptions extends MonteCarloOptions {
-  simulateOptions?: ArenaSimulateOptions;
-  collectAllVariables?: boolean;
-  signal?: AbortSignal;
+  simulateOptions?: ArenaSimulateOptions | undefined;
+  collectAllVariables?: boolean | undefined;
+  signal?: AbortSignal | undefined;
   /** Maximum number of concurrent simulation worker partitions. Defaults to CPU core count or navigator.hardwareConcurrency. */
-  concurrency?: number;
+  concurrency?: number | undefined;
 }
 
 export interface VariableStatistics {
@@ -1219,7 +1230,7 @@ export const aggregateResults = aggregateSimulationResults;
  * High-level wrapper for the WASM Monte Carlo and UQ engine.
  */
 export class WasmMonteCarloEngine {
-  constructor(private instance?: any) {}
+  constructor(readonly instance?: any) {}
 
   createRng(seed: number): Xoshiro256pp {
     return new Xoshiro256pp(seed);

@@ -5,16 +5,18 @@ import parseDataUrl from "parse-data-url";
 
 export interface CompressedMorselPayload {
   v: number;
-  lang?: "modelica" | "sysml2" | "owl2" | "step";
+  lang?: "modelica" | "sysml2" | "owl2" | "step" | undefined;
   code: string;
-  title?: string;
-  view?: "split-columns" | "split-rows" | "code-only" | "diagram-only";
-  params?: Record<string, number>;
-  sim?: {
-    stopTime?: number;
-    stepSize?: number;
-    tolerance?: number;
-  };
+  title?: string | undefined;
+  view?: "split-columns" | "split-rows" | "code-only" | "diagram-only" | undefined;
+  params?: Record<string, number> | undefined;
+  sim?:
+    | {
+        stopTime?: number | undefined;
+        stepSize?: number | undefined;
+        tolerance?: number | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -26,7 +28,7 @@ export function compressMorselPayload(payload: CompressedMorselPayload): string 
   let binary = "";
   const len = compressed.length;
   for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(compressed[i]);
+    binary += String.fromCharCode(compressed[i]!);
   }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

@@ -21,9 +21,9 @@ import type { Assembly, PartEntry, Solid, Vec3 } from "./types.js";
 export function part(
   solid: Solid,
   opts?: {
-    material?: string;
-    color?: Vec3;
-    boundingBox?: { min: [number, number, number]; max: [number, number, number] };
+    material?: string | undefined;
+    color?: Vec3 | undefined;
+    boundingBox?: { min: [number, number, number]; max: [number, number, number] } | undefined;
   },
 ): PartEntry {
   return Object.freeze({

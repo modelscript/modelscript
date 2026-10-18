@@ -35,7 +35,7 @@ export interface ModuleClassificationResult {
 export class ParallelOntologyReasoner {
   private concurrency: number;
 
-  constructor(options?: { concurrency?: number }) {
+  constructor(options?: { concurrency?: number | undefined }) {
     this.concurrency = options?.concurrency ?? 4;
   }
 

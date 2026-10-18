@@ -20,9 +20,9 @@ interface CliOptions {
   exportAll: boolean;
   concurrency: number;
   outputDir: string;
-  explicitOutputFile?: string;
+  explicitOutputFile?: string | undefined;
   format: "zip" | "json";
-  dbDir?: string;
+  dbDir?: string | undefined;
   quiet: boolean;
 }
 
@@ -32,17 +32,17 @@ interface BatchJob {
     id: number;
     username: string;
     email: string;
-    account_type?: string;
+    account_type?: string | undefined;
   };
   format: "zip" | "json";
   outputPath: string;
   status: "queued" | "processing" | "completed" | "failed";
-  workerId?: number;
-  startedAt?: number;
-  completedAt?: number;
-  durationMs?: number;
-  fileSizeBytes?: number;
-  error?: string;
+  workerId?: number | undefined;
+  startedAt?: number | undefined;
+  completedAt?: number | undefined;
+  durationMs?: number | undefined;
+  fileSizeBytes?: number | undefined;
+  error?: string | undefined;
 }
 
 const isTTY = Boolean(process.stdout.isTTY && !process.env["NO_COLOR"]);
@@ -188,7 +188,7 @@ async function main() {
   }
 
   const database = new LibraryDatabase(options.dbDir);
-  const targetUsers: { id: number; username: string; email: string; account_type?: string }[] = [];
+  const targetUsers: { id: number; username: string; email: string; account_type?: string | undefined }[] = [];
 
   if (options.exportAll) {
     const all = database.getAllUsers();

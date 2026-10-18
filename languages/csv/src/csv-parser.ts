@@ -12,6 +12,9 @@
 
 // ── Public interface ──
 
+/**
+ * Parsed time-series measurement table extracted from a CSV document.
+ */
 export interface CsvData {
   /** Column headers (after mapping). */
   columns: string[];
@@ -21,15 +24,18 @@ export interface CsvData {
   data: Map<string, number[]>;
 }
 
+/**
+ * Configuration options for `parseCsvMeasurements`.
+ */
 export interface CsvParseOptions {
   /** Name of the time column in the CSV (default: auto-detect "time" or "t"). */
-  timeColumn?: string;
+  timeColumn?: string | undefined;
   /** Column delimiter (default: auto-detect from first line). */
-  delimiter?: string;
+  delimiter?: string | undefined;
   /** Map from CSV column name → Modelica variable name. */
-  columnMapping?: Map<string, string>;
+  columnMapping?: Map<string, string> | undefined;
   /** Skip rows where any value is NaN. */
-  skipNaN?: boolean;
+  skipNaN?: boolean | undefined;
 }
 
 // ── Parser ──
@@ -247,20 +253,20 @@ function findTimeColumn(headers: string[]): string | null {
  * directly into Modelica models as if it were code.
  */
 export function parseCsvToModelica(csvText: string, modelName: string): string {
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const lines = splitCsvLines(csvText).filter((l) => l.trim().length > 0 && !l.trim().startsWith("#"));
   if (lines.length < 2) {
     return `package ${modelName}\nend ${modelName};`;
   }
 
-  // Detect delimiter from first line (comma, semicolon, tab)
+  // Detect delimiter from first line (comma, semicolon, tab) using quote-aware helper
   const headerLine = lines[0] as string;
-  const delimiter = headerLine.includes("\t") ? "\t" : headerLine.includes(";") ? ";" : ",";
-  const headers = headerLine.split(delimiter).map((h) => h.trim().replace(/[^a-zA-Z0-9_]/g, "_"));
+  const delimiter = detectDelimiter(headerLine);
+  const headers = parseCsvRow(headerLine, delimiter).map((h) => h.trim().replace(/[^a-zA-Z0-9_]/g, "_"));
   const numCols = headers.length;
 
   const data: number[][] = [];
   for (let i = 1; i < lines.length; i++) {
-    const parts = (lines[i] as string).split(delimiter);
+    const parts = parseCsvRow(lines[i] as string, delimiter);
     const row = parts.map((p) => parseFloat(p.trim()));
     if (row.length === numCols && !row.some(isNaN)) {
       data.push(row);
@@ -293,9 +299,15 @@ export function parseCsvToModelica(csvText: string, modelName: string): string {
 
 // ── Semantic Linter ──────────────────────────────────────────────────────────
 
+/**
+ * Diagnostic emitted by the CSV semantic linter with exact byte and 1-indexed line/column spans.
+ */
 export interface CsvDiagnostic {
+  /** Machine-readable diagnostic code (e.g., `"CSV_COLUMN_COUNT_MISMATCH"`). */
   code: string;
+  /** Severity level of the diagnostic. */
   severity: "error" | "warning" | "info";
+  /** Human-readable diagnostic message. */
   message: string;
   /** 0-indexed character/byte start offset in CSV text */
   startByte: number;
@@ -311,14 +323,20 @@ export interface CsvDiagnostic {
   endColumn: number;
 }
 
+/**
+ * Tokenized CSV cell with trimmed text and source byte offsets.
+ */
 interface LocatedCsvCell {
   text: string;
   rawText: string;
   startByte: number;
   endByte: number;
-  unclosedQuote?: boolean;
+  unclosedQuote?: boolean | undefined;
 }
 
+/**
+ * Tokenized CSV row containing its constituent cells and source byte span.
+ */
 interface LocatedCsvRow {
   rowIndex: number;
   startByte: number;
@@ -326,6 +344,9 @@ interface LocatedCsvRow {
   cells: LocatedCsvCell[];
 }
 
+/**
+ * Binary-search line/column locator over raw CSV source text.
+ */
 class CsvLineLocator {
   private lineStarts: number[] = [0];
 
@@ -337,6 +358,9 @@ class CsvLineLocator {
     }
   }
 
+  /**
+   * Convert a 0-indexed character offset into a 1-indexed `{ line, column }` position.
+   */
   offsetToPos(offset: number): { line: number; column: number } {
     const clamped = Math.max(0, Math.min(offset, this.source.length));
     let low = 0;
@@ -357,6 +381,9 @@ class CsvLineLocator {
   }
 }
 
+/**
+ * Tokenize a CSV string into rows and cells while tracking exact byte spans and unclosed quotes.
+ */
 function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter: string } {
   // Detect delimiter from first non-empty line
   let firstLineEnd = text.indexOf("\n");
@@ -461,6 +488,9 @@ function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter
   return { rows, delimiter };
 }
 
+/**
+ * Return `true` if `str` is a strictly formatted finite decimal or scientific-notation number.
+ */
 function isStrictFiniteNumber(str: string): boolean {
   if (!str) return false;
   return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str);

@@ -95,7 +95,7 @@ export function householderQR(A: Float64Array[], n: number): QRResult {
       }
       const scale = beta * dot;
       for (let i = k; i < n; i++) {
-        R[i]![j] -= scale * v[i]!;
+        R[i]![j] = R[i]![j]! - scale * v[i]!;
       }
     }
     R[k]![k] = alpha;
@@ -112,7 +112,7 @@ export function householderQR(A: Float64Array[], n: number): QRResult {
       }
       const scale = beta * dot;
       for (let j = k; j < n; j++) {
-        Q[i]![j] -= scale * v[j]!;
+        Q[i]![j] = Q[i]![j]! - scale * v[j]!;
       }
     }
   }

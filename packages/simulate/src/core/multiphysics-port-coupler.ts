@@ -27,22 +27,24 @@ export interface PortCouplingBinding {
   /** Physical domain role. */
   role: PortCouplingRole;
   /** Direction axis for mechanical projection (default: [1, 0, 0]). */
-  axis?: Vector3D;
+  axis?: Vector3D | undefined;
   /** Physical patch area in m^2 (optional, used for fluid flux integrals). */
-  areaM2?: number;
+  areaM2?: number | undefined;
   /** Fluid density in kg/m^3 (optional, used for flow algebra). */
-  fluidDensity?: number;
+  fluidDensity?: number | undefined;
   /** Digital thread node IDs for hypergraph cross-domain binding. */
-  digitalThreadIds?: {
-    threadId: number;
-    modelicaNodeId: number;
-    continuumNodeId: number;
-  };
+  digitalThreadIds?:
+    | {
+        threadId: number;
+        modelicaNodeId: number;
+        continuumNodeId: number;
+      }
+    | undefined;
 }
 
 export interface ConservationVerificationResult {
   isConservative: boolean;
-  conflict?: ConflictClause;
+  conflict?: ConflictClause | undefined;
   sharedEqualities: SharedEquality[];
   metrics: {
     massFluxImbalanceKg_s: number;
@@ -59,13 +61,20 @@ export interface ConservationVerificationResult {
  */
 export class MultiphysicsPortCoupler {
   public readonly oracle: FlowAlgebraOracle;
-  public readonly hypergraph?: DigitalThreadHypergraph;
+  public readonly hypergraph?: DigitalThreadHypergraph | undefined;
   private bindings: Map<string, PortCouplingBinding> = new Map();
-  private last1DValues: Map<string, { massFlow?: number; pressure?: number; force?: number; disp?: number }> =
-    new Map();
+  private last1DValues: Map<
+    string,
+    {
+      massFlow?: number | undefined;
+      pressure?: number | undefined;
+      force?: number | undefined;
+      disp?: number | undefined;
+    }
+  > = new Map();
   private lastContinuumMetrics: Map<string, ContinuumPatchMetrics> = new Map();
 
-  constructor(options?: { oracle?: FlowAlgebraOracle; hypergraph?: DigitalThreadHypergraph }) {
+  constructor(options?: { oracle?: FlowAlgebraOracle | undefined; hypergraph?: DigitalThreadHypergraph | undefined }) {
     this.oracle = options?.oracle ?? new FlowAlgebraOracle();
     this.hypergraph = options?.hypergraph;
   }

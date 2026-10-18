@@ -71,10 +71,10 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     const dummy$ = new Proxy(
       {},
       {
-        get: (target, prop: string) => ({ type: "SYMBOL", value: prop }),
+        get: (_target, prop: string) => ({ type: "SYMBOL", value: prop }),
       },
     );
-    const rule = toRule(grammar.rules[ruleName](dummy$ as any));
+    const rule = toRule(grammar.rules[ruleName]!(dummy$ as any));
     extractTokens(rule);
   }
 
@@ -88,7 +88,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   let wordName: string | null = null;
 
   if (grammar.word) {
-    const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
+    const dummy$ = new Proxy({}, { get: (_t, p: string) => ({ type: "SYMBOL", value: p }) });
     let wResult = grammar.word;
     if (typeof grammar.word === "function") wResult = (grammar as any).word(dummy$ as any);
     const wordRule = toRule(wResult as any);
@@ -99,9 +99,9 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     }
   }
 
-  if (wordName && grammar.rules[wordName]) {
-    const dummy$ = new Proxy({}, { get: (target, prop: string) => ({ type: "SYMBOL", value: prop }) });
-    let rule = toRule(grammar.rules[wordName](dummy$ as any));
+  if (wordName && grammar.rules?.[wordName]) {
+    const dummy$ = new Proxy({}, { get: (_target, prop: string) => ({ type: "SYMBOL", value: prop }) });
+    let rule = toRule(grammar.rules[wordName]!(dummy$ as any));
     let rType = (rule.type || "").toUpperCase();
     if (rType === "DEF" || rType === "REF") {
       rule =
@@ -125,20 +125,16 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     }
 
     if (!wordRegex) {
-      console.log("lexer.ts: Falling back to generic wordRegex extraction for", wordName);
       // Hardcode common identifier patterns if it's a complex rule
       wordRegex = new RegExp("^([a-zA-Z_][a-zA-Z0-9_]*)$");
     }
   }
 
   // Force IDENT into regexTokens if it's missing so the DFA generates it!
-  if (wordName && !grammar.rules[wordName] && !regexTokens.has(wordName)) {
+  if (wordName && !grammar.rules?.[wordName] && !regexTokens.has(wordName)) {
     // Inject generic word pattern only if wordName is not already a rule in the grammar
     regexTokens.set(wordName, "/[_a-zA-Z][_a-zA-Z0-9]*/");
   }
-  console.log("lexer.ts: wordRegex is", wordRegex);
-
-  console.log("lexer.ts: stringTokens size =", stringTokens.size, Array.from(stringTokens.keys()));
   let lexerGlobals = `// DFA Lexer State Machine\n`;
   lexerGlobals += `// Extracted ${stringTokens.size} string literals and ${regexTokens.size} regex patterns\n\n`;
 
@@ -190,7 +186,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 
   lexerCode += `export let inputEncoding: u8 = 1;
 `;
-  lexerCode += `export function setInputEncoding(enc: u8): void { inputEncoding = 1; }
+  lexerCode += `export function setInputEncoding(enc: u8): void { inputEncoding = enc == 2 ? 2 : 1; }
 
 // Internal decode helpers (pos and inputLength are in UTF-16 code units, 1:1 with JS string indices)
 @inline
@@ -542,8 +538,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
           cps[i] === 32 &&
           hasWhitespaceExtra &&
           i + 1 < cps.length &&
-          isWordCodePoint(cps[i - 1]) &&
-          isWordCodePoint(cps[i + 1])
+          isWordCodePoint(cps[i - 1]!) &&
+          isWordCodePoint(cps[i + 1]!)
         ) {
           branchCode += `        if (sMatch && cPos < inputLength && (peekChar(cPos) == 32 || peekChar(cPos) == 9)) { while (cPos < inputLength && (peekChar(cPos) == 32 || peekChar(cPos) == 9)) { cPos += peekCharLen(cPos); } } else { sMatch = false; }\n`;
         } else {
@@ -556,7 +552,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       branchCode += `      }\n`;
     }
 
-    stringBranchesByChar0.set(cps[0], (stringBranchesByChar0.get(cps[0]) || "") + branchCode);
+    stringBranchesByChar0.set(cps[0]!, (stringBranchesByChar0.get(cps[0]!) || "") + branchCode);
   }
 
   if (stringBranchesByChar0.size > 0) {
@@ -599,12 +595,6 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     }
     regexList.push({ pattern: patternStr, tokenName: safeName });
   }
-
-  console.log(
-    "lexer.ts: regexList size =",
-    regexList.length,
-    regexList.map((r) => r.tokenName + "=" + r.pattern),
-  );
 
   if (regexList.length > 0) {
     const dfa = compileRegexToDFA(regexList);
@@ -662,11 +652,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `    switch(lastAcceptingState) {\n`;
     for (let s = 0; s < dfa.numStates; s++) {
       if (dfa.accepts[s]) {
-        console.log(`lexer.ts: State ${s} accepts`, dfa.accepts[s]);
         const tokenNames = dfa.accepts[s]!;
         lexerCode += `      case ${s}: {\n`;
 
-        const tokenName = tokenNames[0];
+        const tokenName = tokenNames[0]!;
 
         let isWordToken = false;
         if (wordName) {
@@ -677,9 +666,9 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
             (wordSymInt !== undefined && tokenName === "T_" + wordSymInt)
           ) {
             isWordToken = true;
-          } else {
-            const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
-            const wRule = toRule(grammar.rules[wordName](dummy$ as any));
+          } else if (grammar.rules?.[wordName]) {
+            const dummy$ = new Proxy({}, { get: (_t, p: string) => ({ type: "SYMBOL", value: p }) });
+            const wRule = toRule(grammar.rules[wordName]!(dummy$ as any));
             const checkWordRule = (r: any): boolean => {
               if (!r) return false;
               if (r.type === "TOKEN" && r.value) {
@@ -707,7 +696,6 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         }
 
         if (isWordToken) {
-          console.log("lexer.ts: Injecting " + keywordTokens.size + " keywords into DFA state " + tokenName);
           if (sp && sp.multiWordKeywords && sp.multiWordKeywords.length > 0) {
             lexerCode += `        // Multi-word keyword lookahead\n`;
             lexerCode += `        let mwkToken = checkMultiWordKeyword(lexPos, lexLen);\n`;

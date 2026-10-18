@@ -72,25 +72,35 @@ const D4 = -0.0362;
 
 // Dense output polynomial constants
 const _D21 = 25.09876703708589;
+void _D21;
 const _D22 = 11.62013104361867;
+void _D22;
 const _D23 = 28.49148307714626;
+void _D23;
 const _D24 = -5.664021568594133;
+void _D24;
 const _D25 = 0.0;
+void _D25;
 const _D31 = 1.638054557396973;
+void _D31;
 const _D32 = -0.7373619806678748;
+void _D32;
 const _D33 = 8.47791821923899;
+void _D33;
 const _D34 = 15.9925314877952;
+void _D34;
 const _D35 = -1.882352941176471;
+void _D35;
 
 export const ROSENBROCK_D = 1.0 - 1.0 / Math.SQRT2; // ≈ 0.2928932188134524
 
 export interface Rodas4POptions {
-  atol?: number;
-  rtol?: number;
-  initialStep?: number;
-  maxStep?: number;
-  minStep?: number;
-  maxSteps?: number;
+  atol?: number | undefined;
+  rtol?: number | undefined;
+  initialStep?: number | undefined;
+  maxStep?: number | undefined;
+  minStep?: number | undefined;
+  maxSteps?: number | undefined;
 }
 
 export interface Rodas4PResult extends CommonSolverResult {
@@ -446,6 +456,7 @@ export function rosenbrock23(
   const denseOutputs = outputTimes !== undefined && outputTimes.length > 0;
   let outIdx = 0;
 
+  // Initialize heuristic step size h within [1e-5, maxStep] if not explicitly provided
   let h = options.initialStep ?? Math.min(Math.max((tEnd - t0) / 100, 1e-5), maxStep);
   let t = t0;
   let y = [...y0];
@@ -456,28 +467,33 @@ export function rosenbrock23(
     outIdx++;
   }
 
+  // Rosenbrock-W stability parameter d = 1 / (2 + sqrt(2)) for L-stability
   const d = ROSENBROCK_D;
   const k1 = new Float64Array(n);
   const k2 = new Float64Array(n);
   const rhs2 = new Float64Array(n);
 
   while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {
+    // Clamp step size h so the final step lands exactly on tEnd
     if (tEnd > t0) {
       if (t + h > tEnd) h = tEnd - t;
     } else {
       if (t + h < tEnd) h = tEnd - t;
     }
 
+    // Abort if step size underflows minStep threshold
     if (Math.abs(h) < minStep) {
       stats.converged = false;
       break;
     }
 
+    // 1. Evaluate base derivative f0 = f(t, y) and numerical Jacobian J = df/dy
     const f0 = f(t, y);
     stats.fEvals++;
     const J = computeJacobian(f, t, y, f0);
     stats.jacobianEvals!++;
 
+    // 2. Assemble Rosenbrock iteration matrix W = M - d * h * J (where M is massMatrix or I)
     const W: Float64Array[] = new Array(n);
     for (let i = 0; i < n; i++) {
       W[i] = new Float64Array(n);
@@ -487,17 +503,21 @@ export function rosenbrock23(
       }
     }
 
+    // Factor W once per step and reuse across both stages
     const lu = luFactor(W, n);
     stats.luFactorizations!++;
 
+    // 3. Stage 1 solve: W * k1 = h * f(t, y)
     for (let i = 0; i < n; i++) k1[i] = h * (f0[i] ?? 0);
     luSolve(lu, k1);
 
+    // 4. Stage 2 evaluation at yStage2 = y + k1
     const yStage2 = new Array<number>(n);
     for (let i = 0; i < n; i++) yStage2[i] = (y[i] ?? 0) + (k1[i] ?? 0);
     const f1 = f(t + h, yStage2);
     stats.fEvals++;
 
+    // Stage 2 solve: W * k2 = h * f(t + h, y + k1) + 2 * h * f(t, y) - 2 * M * k1
     for (let i = 0; i < n; i++) {
       let Mk1 = 0;
       for (let j = 0; j < n; j++) {
@@ -509,11 +529,13 @@ export function rosenbrock23(
     k2.set(rhs2);
     luSolve(lu, k2);
 
+    // 5. 2nd-order state update: yNew = y + 0.5 * (k1 + k2)
     const yNew = new Array<number>(n);
     for (let i = 0; i < n; i++) {
       yNew[i] = (y[i] ?? 0) + 0.5 * ((k1[i] ?? 0) + (k2[i] ?? 0));
     }
 
+    // 6. Embedded 1st/2nd-order local truncation error estimate: err_i = 0.5 * |k2_i - k1_i|
     let maxErrorRatio = 0.0;
     for (let i = 0; i < n; i++) {
       const err_i = 0.5 * Math.abs((k2[i] ?? 0) - (k1[i] ?? 0));
@@ -521,9 +543,11 @@ export function rosenbrock23(
       maxErrorRatio = Math.max(maxErrorRatio, err_i / tol);
     }
 
+    // 7. Accept or reject step based on normalized error ratio
     if (maxErrorRatio <= 1.0 || h <= minStep * 2) {
       stats.acceptedSteps++;
       if (denseOutputs && outputTimes) {
+        // Emit linearly interpolated dense output points falling within [t, t + h]
         while (outIdx < outputTimes.length) {
           const tTarget = outputTimes[outIdx]!;
           if ((tEnd > t0 && tTarget <= t + h) || (tEnd < t0 && tTarget >= t + h)) {
@@ -545,10 +569,12 @@ export function rosenbrock23(
       }
       t += h;
       y = [...yNew];
+      // Asymptotic 3rd-root step-size growth controller clamped to [0.2, 4.0]
       const factor = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(Math.max(maxErrorRatio, 1e-6), -1.0 / 3.0)));
       h = Math.min(maxStep, Math.max(minStep, h * factor));
     } else {
       stats.rejectedSteps++;
+      // Step rejected: shrink h using 2nd-root safety factor clamped to [0.1, 1.0]
       const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.5)));
       h = Math.max(minStep, h * factor);
     }

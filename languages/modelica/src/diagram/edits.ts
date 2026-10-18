@@ -223,14 +223,14 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
     const minLine = Math.max(0, startLine - 15);
     const maxLine = Math.min(lines.length - 1, startLine + 15);
     for (let l = minLine; l <= maxLine; l++) {
-      if (nameRegex.test(lines[l])) {
+      if (nameRegex.test(lines[l]!)) {
         foundLine = l;
         break;
       }
     }
     if (foundLine === -1) {
       for (let l = 0; l < lines.length; l++) {
-        if (nameRegex.test(lines[l])) {
+        if (nameRegex.test(lines[l]!)) {
           foundLine = l;
           break;
         }
@@ -245,8 +245,8 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
         startLine = foundLine;
         endLine = foundLine;
         startCol = 0;
-        endCol = lines[foundLine].length;
-        text = lines[foundLine];
+        endCol = lines[foundLine]!.length;
+        text = lines[foundLine]!;
       }
     }
   }
@@ -492,7 +492,7 @@ export function computeConnectInsert(
   // Fallback to basic keyword scan if CST is completely unavailable (e.g., highly malformed text)
   let equationLine = -1;
   for (let i = modelStartLine; i <= modelEndLine; i++) {
-    if (lines[i].trim() === "equation" || lines[i].trim().startsWith("equation ")) {
+    if (lines[i]!.trim() === "equation" || lines[i]!.trim().startsWith("equation ")) {
       equationLine = i;
       break;
     }
@@ -502,7 +502,7 @@ export function computeConnectInsert(
     const keywords = ["public", "protected", "initial equation", "algorithm", "annotation", "end"];
     let insertLine = -1;
     for (let i = equationLine + 1; i <= modelEndLine; i++) {
-      const line = lines[i].trim();
+      const line = lines[i]!.trim();
       if (keywords.some((kw) => line.startsWith(kw))) {
         insertLine = i;
         break;
@@ -514,10 +514,10 @@ export function computeConnectInsert(
   }
 
   for (let i = modelEndLine; i >= modelStartLine; i--) {
-    if (lines[i].trim().startsWith("end")) {
+    if (lines[i]!.trim().startsWith("end")) {
       let insertLine = i;
       for (let j = i - 1; j >= modelStartLine; j--) {
-        const line = lines[j].trim();
+        const line = lines[j]!.trim();
         if (line.startsWith("annotation")) {
           insertLine = j;
         } else if (line !== "") {
@@ -538,13 +538,19 @@ function getConnectEndpoints(ce: any): { source: string; target: string } {
   const source =
     ce.lhs ??
     ce.componentReference1?.parts
-      ?.map((c: { identifier?: { text: string }; text?: string }) => c.identifier?.text ?? c.text ?? "")
+      ?.map(
+        (c: { identifier?: { text: string } | undefined; text?: string | undefined }) =>
+          c.identifier?.text ?? c.text ?? "",
+      )
       ?.join(".") ??
     "";
   const target =
     ce.rhs ??
     ce.componentReference2?.parts
-      ?.map((c: { identifier?: { text: string }; text?: string }) => c.identifier?.text ?? c.text ?? "")
+      ?.map(
+        (c: { identifier?: { text: string } | undefined; text?: string | undefined }) =>
+          c.identifier?.text ?? c.text ?? "",
+      )
       ?.join(".") ??
     "";
   return { source, target };
@@ -833,8 +839,8 @@ export function applyEditsToText(text: string, edits: TextEdit[]): string {
     const el = edit.range.end.line;
     const ec = edit.range.end.character;
 
-    const before = lines[sl].substring(0, sc);
-    const after = lines[el].substring(ec);
+    const before = lines[sl]!.substring(0, sc);
+    const after = lines[el]!.substring(ec);
 
     const newLines = edit.newText.split("\n");
     newLines[0] = before + newLines[0];
@@ -855,7 +861,7 @@ export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
   // Remove overlapping edits
   return edits.filter((edit, i) => {
     if (i === 0) return true;
-    const prev = edits[i - 1];
+    const prev = edits[i - 1]!;
     if (
       edit.range.start.line < prev.range.end.line ||
       (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
@@ -933,7 +939,7 @@ export function computeDescriptionEdit(
       const descStartCol = descRange.startCol;
       const descEndLine = descRange.endLine;
       const descEndCol = descRange.endCol;
-      const lineContent = lines[descStartLine];
+      const lineContent = lines[descStartLine]!;
       let col = descStartCol - 1;
       while (col >= 0 && (lineContent[col] === " " || lineContent[col] === "\t")) {
         col--;
@@ -1313,7 +1319,7 @@ export function computeComponentInsert(
   const keywords = ["protected", "initial equation", "initial algorithm", "equation", "algorithm", "end"];
   let insertLine = -1;
   for (let i = modelStartLine; i <= modelEndLine; i++) {
-    const line = lines[i].trim();
+    const line = lines[i]!.trim();
     if (keywords.some((kw) => line.startsWith(kw))) {
       insertLine = i;
       break;
@@ -1321,7 +1327,7 @@ export function computeComponentInsert(
   }
 
   if (insertLine !== -1) {
-    if (insertLine > modelStartLine && lines[insertLine - 1].trim() === "") {
+    if (insertLine > modelStartLine && lines[insertLine - 1]!.trim() === "") {
       // Replace the empty line before the section
       return [TextEdit.replace(Range.create(insertLine - 1, 0, insertLine, 0), componentDecl)];
     } else {
@@ -1335,7 +1341,7 @@ export function computeComponentInsert(
     if (lastEndIndex !== -1) {
       const linesBeforeEnd = modelText.substring(0, lastEndIndex).split("\n").length - 1;
       const endLineNumber = modelStartLine + linesBeforeEnd;
-      const endLineContent = lines[endLineNumber];
+      const endLineContent = lines[endLineNumber]!;
       const endCol = endLineContent.lastIndexOf("end");
       const beforeEnd = endLineContent.substring(0, endCol).trimEnd();
 

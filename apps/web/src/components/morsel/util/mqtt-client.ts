@@ -26,15 +26,15 @@ export interface MqttParticipantMeta {
   modelName: string;
   type: string;
   classKind: string;
-  description?: string;
+  description?: string | undefined;
   variables: {
     name: string;
     causality: "input" | "output" | "parameter" | "local";
     type: string;
-    unit?: string;
-    start?: number;
+    unit?: string | undefined;
+    start?: number | undefined;
   }[];
-  iconSvg?: string;
+  iconSvg?: string | undefined;
   timestamp: string;
 }
 

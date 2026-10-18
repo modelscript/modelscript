@@ -25,7 +25,7 @@ export class LspSimulatorParticipant {
   readonly id: string;
   readonly modelName: string;
   readonly uri: string;
-  readonly className?: string;
+  readonly className?: string | undefined;
 
   private readonly client: LanguageClient;
   private variables: LspVariable[] = [];
@@ -54,8 +54,8 @@ export class LspSimulatorParticipant {
   async initialize(startTime: number, stopTime: number, stepSize: number): Promise<void> {
     const result = await this.client.sendRequest<{
       ok: boolean;
-      variables?: LspVariable[];
-      error?: string;
+      variables?: LspVariable[] | undefined;
+      error?: string | undefined;
     }>("modelscript/simulateInit", {
       uri: this.uri,
       participantId: this.id,
@@ -81,9 +81,9 @@ export class LspSimulatorParticipant {
 
     const result = await this.client.sendRequest<{
       ok: boolean;
-      outputs?: Record<string, number>;
-      allValues?: Record<string, number>;
-      error?: string;
+      outputs?: Record<string, number> | undefined;
+      allValues?: Record<string, number> | undefined;
+      error?: string | undefined;
     }>("modelscript/simulateStep", {
       participantId: this.id,
       currentTime,

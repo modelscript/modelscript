@@ -44,7 +44,7 @@ const TabBar = styled.div`
   background: var(--surface-hud);
 `;
 
-const Tab = styled.button<{ $active?: boolean }>`
+const Tab = styled.button<{ $active?: boolean | undefined }>`
   flex: 1;
   display: flex;
   align-items: center;
@@ -70,7 +70,7 @@ const Tab = styled.button<{ $active?: boolean }>`
   }
 `;
 
-const TabText = styled.div<{ $active?: boolean }>`
+const TabText = styled.div<{ $active?: boolean | undefined }>`
   position: relative;
   display: flex;
   align-items: center;
@@ -152,9 +152,13 @@ const ComposePrompt = styled.div`
 export interface FilterChip {
   id: string;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>;
-  emoji?: string;
-  artifactType?: string;
+  icon: React.ComponentType<{
+    size?: number | undefined;
+    className?: string | undefined;
+    style?: React.CSSProperties | undefined;
+  }>;
+  emoji?: string | undefined;
+  artifactType?: string | undefined;
   description: string;
 }
 
@@ -192,7 +196,7 @@ const FILTER_CHIPS: FilterChip[] = [
 interface TopicItem {
   concept: string;
   displayName: string;
-  postCount?: number;
+  postCount?: number | undefined;
 }
 
 const DEFAULT_CURATED_HASHTAGS: TopicItem[] = [
@@ -230,7 +234,7 @@ const FilterChipsScroll = styled.div`
   }
 `;
 
-const FilterChipButton = styled.button<{ $active?: boolean }>`
+const FilterChipButton = styled.button<{ $active?: boolean | undefined }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -274,7 +278,7 @@ const FilterChipButton = styled.button<{ $active?: boolean }>`
   }
 `;
 
-const HashtagPill = styled.button<{ $active?: boolean }>`
+const HashtagPill = styled.button<{ $active?: boolean | undefined }>`
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -904,12 +908,12 @@ const HomeFeedPage: React.FC = () => {
     const idx = tabs.indexOf(currentTab);
     if (e.key === "ArrowRight") {
       e.preventDefault();
-      const nextTab = tabs[(idx + 1) % tabs.length];
+      const nextTab = tabs[(idx + 1) % tabs.length]!;
       setActiveTab(nextTab);
       document.getElementById(`feed-tab-${nextTab}`)?.focus();
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
-      const prevTab = tabs[(idx - 1 + tabs.length) % tabs.length];
+      const prevTab = tabs[(idx - 1 + tabs.length) % tabs.length]!;
       setActiveTab(prevTab);
       document.getElementById(`feed-tab-${prevTab}`)?.focus();
     }

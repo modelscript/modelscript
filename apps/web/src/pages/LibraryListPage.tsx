@@ -1,15 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AlertIcon, HourglassIcon, SearchIcon, SyncIcon, XCircleFillIcon } from "@primer/octicons-react";
-import { Button, Heading, Text, TextInput } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import {
+  AlertFillIcon,
+  AlertIcon,
+  CheckIcon,
+  CodeIcon,
+  CopyIcon,
+  CpuIcon,
+  DatabaseIcon,
+  DesktopDownloadIcon,
+  DownloadIcon,
+  FileCodeIcon,
+  GlobeIcon,
+  HourglassIcon,
+  LawIcon,
+  PackageIcon as OcticonPackageIcon,
+  PlusIcon,
+  SearchIcon,
+  SyncIcon,
+  TerminalIcon,
+  WorkflowIcon,
+  XCircleFillIcon,
+  XIcon,
+} from "@primer/octicons-react";
+import { ActionList, ActionMenu, Button, Flash, Heading, Label, Select, Text, TextInput } from "@primer/react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import type { LibraryListItem } from "../api";
-import { getLibraries } from "../api";
+import type { LibraryListItem, PendingPackageTransfer } from "../api";
+import { acceptPackageTransfer, cancelPackageTransfer, getLibraries, getPendingPackageTransfers } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import PublishPackageModal from "../components/PublishPackageModal";
 import { usePageTitle } from "../util/title";
+import { encodePackagePath } from "../util/url";
 
 /* ─── styled helpers ─── */
 
@@ -24,7 +48,7 @@ const TabBar = styled.div`
   background: rgba(6, 8, 15, 0.85);
 `;
 
-const Tab = styled.button<{ $active?: boolean }>`
+const Tab = styled.button<{ $active?: boolean | undefined }>`
   flex: 1;
   display: flex;
   align-items: center;
@@ -71,9 +95,127 @@ const CardList = styled.div`
   padding: 16px 0;
 `;
 
+const FilterPillBar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
+const FilterPill = styled.button<{ $active: boolean; $color?: string | undefined }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid
+    ${(p) =>
+      p.$active ? p.$color || "var(--color-accent-cyan, #06b6d4)" : "var(--color-border, rgba(255, 255, 255, 0.12))"};
+  background: ${(p) => (p.$active ? "rgba(255, 255, 255, 0.08)" : "rgba(255, 255, 255, 0.02)")};
+  color: ${(p) => (p.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: ${(p) => p.$color || "var(--color-accent-cyan, #06b6d4)"};
+    color: var(--color-text-primary);
+  }
+`;
+
+const DomainBadge = styled.span<{ $domain: string }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: ${(p) => {
+    switch (p.$domain) {
+      case "modelica":
+        return "rgba(234, 179, 8, 0.12)";
+      case "sysml2":
+        return "rgba(168, 85, 247, 0.12)";
+      case "cad":
+        return "rgba(6, 182, 212, 0.12)";
+      case "fmu":
+        return "rgba(244, 63, 94, 0.12)";
+      case "dataset":
+        return "rgba(59, 130, 246, 0.12)";
+      default:
+        return "rgba(156, 163, 175, 0.12)";
+    }
+  }};
+  color: ${(p) => {
+    switch (p.$domain) {
+      case "modelica":
+        return "#eab308";
+      case "sysml2":
+        return "#c084fc";
+      case "cad":
+        return "#06b6d4";
+      case "fmu":
+        return "#f43f5e";
+      case "dataset":
+        return "#60a5fa";
+      default:
+        return "#9ca3af";
+    }
+  }};
+`;
+
+const DOMAIN_OPTIONS: {
+  id: string;
+  label: string;
+  color: string;
+  icon: React.ComponentType<{ size?: number | undefined }>;
+}[] = [
+  { id: "all", label: "All Domains", color: "#06b6d4", icon: GlobeIcon },
+  { id: "modelica", label: "Modelica", color: "#eab308", icon: FileCodeIcon },
+  { id: "sysml2", label: "SysML v2", color: "#a855f7", icon: WorkflowIcon },
+  { id: "cad", label: "3D CAD", color: "#06b6d4", icon: OcticonPackageIcon },
+  { id: "fmu", label: "FMU", color: "#f43f5e", icon: CpuIcon },
+  { id: "dataset", label: "Datasets", color: "#3b82f6", icon: DatabaseIcon },
+];
+
+function formatDomainLabel(domain: string): string {
+  switch (domain) {
+    case "modelica":
+      return "Modelica";
+    case "sysml2":
+      return "SysML v2";
+    case "cad":
+      return "3D CAD";
+    case "fmu":
+      return "FMU";
+    case "dataset":
+      return "Dataset";
+    default:
+      return domain;
+  }
+}
+
+function formatTimeAgo(dateStr?: string | null): string {
+  if (!dateStr) return "";
+  try {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (days < 1) return "updated today";
+    if (days === 1) return "updated yesterday";
+    if (days < 30) return `updated ${days}d ago`;
+    if (days < 365) return `updated ${Math.floor(days / 30)}mo ago`;
+    return `updated ${Math.floor(days / 365)}y ago`;
+  } catch {
+    return "";
+  }
+}
+
 const PackageIcon = ({ name, version }: { name: string; version: string }) => {
   const [error, setError] = useState(false);
-  const iconUrl = `/api/v1/libraries/${name}/${version}/classes/${name}/icon.svg`;
+  const rootClassName = name.includes("/") ? name.split("/")[1]! : name;
+  const iconUrl = `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes/${encodeURIComponent(rootClassName)}/icon.svg`;
 
   if (error) {
     return (
@@ -107,6 +249,8 @@ const PackageIcon = ({ name, version }: { name: string; version: string }) => {
   );
 };
 
+import { filterAndSortLibraries, type SortOption } from "../util/package-helpers";
+
 /* ─── main page ─── */
 
 const LibraryListPage: React.FC = () => {
@@ -119,6 +263,18 @@ const LibraryListPage: React.FC = () => {
   const query = searchParams.get("q") || "";
   const [searchInput, setSearchInput] = useState(query);
   const [activeTab, setActiveTab] = useState<"all" | "my">("all");
+  const [domainFilter, setDomainFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("downloads");
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [copiedPkg, setCopiedPkg] = useState<string | null>(null);
+
+  // Pending ownership transfers state
+  const [pendingTransfers, setPendingTransfers] = useState<PendingPackageTransfer[]>([]);
+  const [transferBusyId, setTransferBusyId] = useState<number | null>(null);
+  const [transferFeedback, setTransferFeedback] = useState<{ type: "success" | "danger"; message: string } | null>(
+    null,
+  );
+
   usePageTitle("Packages");
 
   useEffect(() => {
@@ -138,20 +294,25 @@ const LibraryListPage: React.FC = () => {
     return () => clearTimeout(handler);
   }, [searchInput, query, setSearchParams]);
 
+  const fetchLibraries = useCallback(async () => {
+    const libs = await getLibraries(query);
+    setLibraries(libs);
+    return libs;
+  }, [query]);
+
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
 
-    const fetchLibraries = async () => {
+    const load = async () => {
       try {
-        const libs = await getLibraries(query);
-        setLibraries(libs);
+        const libs = await fetchLibraries();
 
         // If any library is processing, poll again after 2 seconds
         const isProcessing = libs.some(
           (lib) => lib.jobStatus?.status === "pending" || lib.jobStatus?.status === "processing",
         );
         if (isProcessing) {
-          timeoutId = setTimeout(fetchLibraries, 2000);
+          timeoutId = setTimeout(load, 2000);
         }
       } catch (err) {
         setError("Failed to load libraries");
@@ -162,26 +323,95 @@ const LibraryListPage: React.FC = () => {
     };
 
     setLoading(true);
-    const initialDelay = setTimeout(fetchLibraries, 300);
+    const initialDelay = setTimeout(load, 300);
 
     return () => {
       clearTimeout(initialDelay);
       clearTimeout(timeoutId);
     };
-  }, [query]);
+  }, [fetchLibraries]);
 
-  const displayedLibraries = libraries.filter((lib) => {
-    if (activeTab === "my") {
-      if (!user) return false;
-      return (
-        lib.author === user.username ||
-        lib.scope === user.username ||
-        lib.name.startsWith(`@${user.username}/`) ||
-        lib.name.startsWith(`${user.username}/`)
-      );
+  const fetchPendingTransfers = useCallback(async () => {
+    if (!user) {
+      setPendingTransfers([]);
+      return;
     }
-    return true;
-  });
+    try {
+      const transfers = await getPendingPackageTransfers();
+      setPendingTransfers(transfers);
+    } catch {
+      // Ignore unauthenticated or transient errors
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchPendingTransfers();
+  }, [fetchPendingTransfers]);
+
+  const handleAcceptTransfer = async (transfer: PendingPackageTransfer) => {
+    setTransferBusyId(transfer.id);
+    setTransferFeedback(null);
+    try {
+      await acceptPackageTransfer(transfer.package_name, transfer.id);
+      setTransferFeedback({
+        type: "success",
+        message: `You are now the owner of ${transfer.package_name}.`,
+      });
+      await Promise.all([fetchPendingTransfers(), fetchLibraries()]);
+    } catch (err: unknown) {
+      const e = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
+      setTransferFeedback({
+        type: "danger",
+        message: e.response?.data?.error || e.message || "Failed to accept ownership transfer.",
+      });
+    } finally {
+      setTransferBusyId(null);
+    }
+  };
+
+  const handleCancelTransfer = async (transfer: PendingPackageTransfer) => {
+    setTransferBusyId(transfer.id);
+    setTransferFeedback(null);
+    try {
+      await cancelPackageTransfer(transfer.package_name, transfer.id);
+      setTransferFeedback({
+        type: "success",
+        message: `Ownership transfer for ${transfer.package_name} has been cancelled.`,
+      });
+      await fetchPendingTransfers();
+    } catch (err: unknown) {
+      const e = err as {
+        response?: { data?: { error?: string | undefined } | undefined } | undefined;
+        message?: string | undefined;
+      };
+      setTransferFeedback({
+        type: "danger",
+        message: e.response?.data?.error || e.message || "Failed to cancel ownership transfer.",
+      });
+    } finally {
+      setTransferBusyId(null);
+    }
+  };
+
+  const displayedLibraries = useMemo(
+    () =>
+      filterAndSortLibraries(libraries, {
+        activeTab,
+        username: user?.username,
+        domainFilter,
+        sortBy,
+      }),
+    [libraries, activeTab, user?.username, domainFilter, sortBy],
+  );
+
+  const handleCopyInstall = (pkgName: string) => {
+    navigator.clipboard.writeText(`msx install ${pkgName}`);
+    setCopiedPkg(pkgName);
+    setTimeout(() => setCopiedPkg(null), 2000);
+  };
 
   return (
     <Box>
@@ -191,13 +421,116 @@ const LibraryListPage: React.FC = () => {
         </Tab>
         <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
           My Packages
+          {pendingTransfers.length > 0 && (
+            <Label variant="attention" style={{ marginLeft: 8, fontSize: 11 }}>
+              {pendingTransfers.length}
+            </Label>
+          )}
         </Tab>
       </TabBar>
 
       <Box p={4}>
-        {/* Search header & Input */}
+        {/* Pending Ownership Transfers Inbox Banner */}
+        {transferFeedback && (
+          <Box mb={3}>
+            <Flash variant={transferFeedback.type} onDismiss={() => setTransferFeedback(null)}>
+              {transferFeedback.message}
+            </Flash>
+          </Box>
+        )}
+
+        {user && pendingTransfers.length > 0 && (
+          <Box
+            mb={4}
+            p={3}
+            style={{
+              borderRadius: 12,
+              background: "rgba(139, 92, 246, 0.08)",
+              border: "1px solid rgba(139, 92, 246, 0.35)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <Box display="flex" alignItems="center" justifyContent="space-between">
+              <Text style={{ fontWeight: 700, fontSize: 14, color: "var(--color-text-heading)" }}>
+                Pending Package Ownership Transfers ({pendingTransfers.length})
+              </Text>
+            </Box>
+            {pendingTransfers.map((tr) => {
+              const isIncoming = tr.to_user_id === user.id || tr.to_username === user.username;
+              const isBusy = transferBusyId === tr.id;
+              return (
+                <Box
+                  key={tr.id}
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  flexWrap="wrap"
+                  gap={2}
+                  p={2}
+                  style={{
+                    borderRadius: 8,
+                    background: "rgba(6, 8, 15, 0.55)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <SyncIcon size={16} fill="#a855f7" />
+                    {isIncoming ? (
+                      <Text style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
+                        <strong>@{tr.from_username || "User"}</strong> invited you to accept ownership of{" "}
+                        <Link
+                          to={`/packages/${tr.package_name}`}
+                          style={{ color: "var(--color-accent-cyan, #06b6d4)", fontWeight: 600 }}
+                        >
+                          {tr.package_name}
+                        </Link>
+                      </Text>
+                    ) : (
+                      <Text style={{ fontSize: 13, color: "var(--color-text-primary)" }}>
+                        Outgoing transfer of{" "}
+                        <Link
+                          to={`/packages/${tr.package_name}`}
+                          style={{ color: "var(--color-accent-cyan, #06b6d4)", fontWeight: 600 }}
+                        >
+                          {tr.package_name}
+                        </Link>{" "}
+                        to <strong>@{tr.to_username || "recipient"}</strong> (awaiting acceptance)
+                      </Text>
+                    )}
+                  </Box>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    {isIncoming && (
+                      <Button
+                        size="small"
+                        variant="primary"
+                        leadingVisual={CheckIcon}
+                        disabled={isBusy}
+                        onClick={() => handleAcceptTransfer(tr)}
+                      >
+                        Accept Ownership
+                      </Button>
+                    )}
+                    <Button
+                      size="small"
+                      variant="danger"
+                      leadingVisual={XIcon}
+                      disabled={isBusy}
+                      onClick={() => handleCancelTransfer(tr)}
+                    >
+                      {isIncoming ? "Decline" : "Cancel Request"}
+                    </Button>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
+        {/* Search header, Filters & Publish CTA */}
         <Box display="flex" flexDirection="column" gap={3} mb={4}>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
+          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
             <Box display="flex" alignItems="baseline" gap="8px">
               <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 800, fontSize: 24, margin: 0 }}>
                 Packages
@@ -208,36 +541,85 @@ const LibraryListPage: React.FC = () => {
                 </ResultCount>
               )}
             </Box>
+
+            <Button
+              variant="primary"
+              leadingVisual={PlusIcon}
+              onClick={() => {
+                if (!user) {
+                  navigate("/login");
+                } else {
+                  setPublishModalOpen(true);
+                }
+              }}
+            >
+              Publish Package
+            </Button>
           </Box>
 
-          <Box
-            display="flex"
-            alignItems="center"
-            style={{
-              maxWidth: "500px",
-              width: "100%",
-            }}
-          >
-            <TextInput
-              leadingVisual={SearchIcon}
-              placeholder="Search packages by name or keyword..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              trailingAction={
-                searchInput ? (
-                  <TextInput.Action
-                    icon={XCircleFillIcon}
-                    aria-label="Clear search"
-                    onClick={() => {
-                      setSearchInput("");
-                      setSearchParams({});
-                    }}
-                  />
-                ) : undefined
-              }
-              sx={{ width: "100%" }}
-            />
+          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={3}>
+            <Box
+              display="flex"
+              alignItems="center"
+              style={{
+                maxWidth: "460px",
+                width: "100%",
+                flex: "1 1 280px",
+              }}
+            >
+              <TextInput
+                leadingVisual={SearchIcon}
+                placeholder="Search packages by name, scope, or keyword..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                trailingAction={
+                  searchInput ? (
+                    <TextInput.Action
+                      icon={XCircleFillIcon}
+                      aria-label="Clear search"
+                      onClick={() => {
+                        setSearchInput("");
+                        setSearchParams({});
+                      }}
+                    />
+                  ) : undefined
+                }
+                sx={{ width: "100%" }}
+              />
+            </Box>
+
+            <Box display="flex" alignItems="center" gap={2}>
+              <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Sort by:</Text>
+              <Select
+                size="small"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                aria-label="Sort packages"
+              >
+                <Select.Option value="downloads">Most Downloaded</Select.Option>
+                <Select.Option value="recent">Recently Updated</Select.Option>
+                <Select.Option value="name">Alphabetical (A–Z)</Select.Option>
+              </Select>
+            </Box>
           </Box>
+
+          {/* Polyglot Domain Filter Pills */}
+          <FilterPillBar>
+            {DOMAIN_OPTIONS.map((d) => {
+              const IconComp = d.icon;
+              return (
+                <FilterPill
+                  key={d.id}
+                  $active={domainFilter === d.id}
+                  $color={d.color}
+                  onClick={() => setDomainFilter(d.id)}
+                >
+                  <IconComp size={13} />
+                  <span>{d.label}</span>
+                </FilterPill>
+              );
+            })}
+          </FilterPillBar>
         </Box>
 
         {/* Content */}
@@ -302,100 +684,209 @@ const LibraryListPage: React.FC = () => {
             </Heading>
             <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
               {activeTab === "my"
-                ? "You haven't published any packages yet."
-                : query
-                  ? `No results matching "${query}"`
+                ? "You haven't published any matching packages yet."
+                : query || domainFilter !== "all"
+                  ? `No results matching your filter criteria.`
                   : "No libraries have been published yet."}
             </Text>
+            {activeTab === "my" && user && (
+              <Button variant="primary" leadingVisual={PlusIcon} onClick={() => setPublishModalOpen(true)}>
+                Publish Your First Package
+              </Button>
+            )}
           </Box>
         ) : (
           <CardList>
-            {displayedLibraries.map((lib) => (
-              <Box
-                key={lib.name}
-                display="flex"
-                alignItems="flex-start"
-                justifyContent="space-between"
-                p={3}
-                borderBottom="1px solid var(--color-border)"
-              >
-                <Link
-                  to={lib.latestVersion ? `/packages/${lib.name}/${lib.latestVersion}` : `/packages/${lib.name}`}
-                  style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "12px", flex: 1 }}
+            {displayedLibraries.map((lib) => {
+              const displayHandle = lib.name.startsWith("@") ? lib.name : `@${lib.author || lib.name}`;
+              const domains = lib.domains && lib.domains.length > 0 ? lib.domains : ["modelica"];
+              const timeAgoText = formatTimeAgo(lib.publishedAt);
+
+              return (
+                <Box
+                  key={lib.name}
+                  display="flex"
+                  alignItems="flex-start"
+                  justifyContent="space-between"
+                  p={3}
+                  borderBottom="1px solid var(--color-border)"
+                  style={{ gap: 16 }}
                 >
-                  <PackageIcon name={lib.name} version={lib.latestVersion || "1.0.0"} />
-                  <Box flex={1}>
-                    <Heading
-                      as="h4"
-                      style={{ fontSize: "15px", fontWeight: "bold", margin: 0, color: "var(--color-text-heading)" }}
-                    >
-                      {lib.name}
-                    </Heading>
-                    <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
-                      @{lib.name} · v{lib.latestVersion || "1.0.0"}
-                    </Text>
-                    <Text
-                      as="p"
-                      style={{
-                        fontSize: "14px",
-                        margin: "4px 0 0 0",
-                        color: "var(--color-text-primary)",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {lib.description || "Artifact library"}
-                    </Text>
-                    {lib.jobStatus && (lib.jobStatus.status === "pending" || lib.jobStatus.status === "processing") && (
-                      <Box display="flex" alignItems="center" gap="8px" mt="8px">
-                        {lib.jobStatus.status === "pending" ? (
-                          <HourglassIcon size={16} fill="var(--color-text-muted)" />
-                        ) : (
-                          <SyncIcon size={16} className="spinner-spin" fill="var(--color-text-muted)" />
+                  <Link
+                    to={lib.latestVersion ? `/packages/${lib.name}/${lib.latestVersion}` : `/packages/${lib.name}`}
+                    style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "12px", flex: 1 }}
+                  >
+                    <PackageIcon name={lib.name} version={lib.latestVersion || "1.0.0"} />
+                    <Box flex={1}>
+                      <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
+                        <Heading
+                          as="h4"
+                          style={{
+                            fontSize: "15px",
+                            fontWeight: "bold",
+                            margin: 0,
+                            color: "var(--color-text-heading)",
+                          }}
+                        >
+                          {lib.name}
+                        </Heading>
+                        <Label variant="secondary" style={{ fontSize: 11 }}>
+                          v{lib.latestVersion || "1.0.0"}
+                        </Label>
+                        {lib.isYanked && (
+                          <Label variant="danger" style={{ fontSize: 10 }}>
+                            <AlertFillIcon size={10} /> yanked
+                          </Label>
                         )}
-                        <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                          {lib.jobStatus.status === "pending"
-                            ? "Queued for processing..."
-                            : `Processing... ${
-                                lib.jobStatus.classesProcessed ? `(${lib.jobStatus.classesProcessed} classes)` : ""
-                              }`}
-                        </Text>
+                        {lib.isDeprecated && (
+                          <Label
+                            variant="attention"
+                            style={{ fontSize: 10 }}
+                            title={lib.deprecationReason || undefined}
+                          >
+                            <AlertIcon size={10} /> deprecated
+                          </Label>
+                        )}
+                        {domains.map((dom) => (
+                          <DomainBadge key={dom} $domain={dom}>
+                            {formatDomainLabel(dom)}
+                          </DomainBadge>
+                        ))}
                       </Box>
-                    )}
-                    {lib.jobStatus?.status === "failed" && (
-                      <Box display="flex" alignItems="center" gap="6px" mt="8px">
-                        <AlertIcon size={14} fill="var(--color-error)" />
-                        <Text style={{ fontSize: "12px", color: "var(--color-error)" }}>
-                          Processing failed: {lib.jobStatus.error || "Unknown error"}
-                        </Text>
+
+                      <Text
+                        as="p"
+                        style={{
+                          fontSize: "14px",
+                          margin: "6px 0 8px 0",
+                          color: "var(--color-text-primary)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {lib.description || "Engineering model & artifact package"}
+                      </Text>
+
+                      {/* Metadata Footer Row */}
+                      <Box display="flex" alignItems="center" gap="14px" flexWrap="wrap">
+                        <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{displayHandle}</Text>
+                        {lib.license && (
+                          <Text
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--color-text-muted)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <LawIcon size={12} /> {lib.license}
+                          </Text>
+                        )}
+                        {typeof lib.totalDownloads === "number" && (
+                          <Text
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--color-text-muted)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <DownloadIcon size={12} /> {lib.totalDownloads.toLocaleString()} downloads
+                          </Text>
+                        )}
+                        {timeAgoText && (
+                          <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{timeAgoText}</Text>
+                        )}
                       </Box>
-                    )}
+
+                      {lib.jobStatus &&
+                        (lib.jobStatus.status === "pending" || lib.jobStatus.status === "processing") && (
+                          <Box display="flex" alignItems="center" gap="8px" mt="8px">
+                            {lib.jobStatus.status === "pending" ? (
+                              <HourglassIcon size={16} fill="var(--color-text-muted)" />
+                            ) : (
+                              <SyncIcon size={16} className="spinner-spin" fill="var(--color-text-muted)" />
+                            )}
+                            <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                              {lib.jobStatus.status === "pending"
+                                ? "Queued for processing..."
+                                : `Processing... ${
+                                    lib.jobStatus.classesProcessed ? `(${lib.jobStatus.classesProcessed} classes)` : ""
+                                  }`}
+                            </Text>
+                          </Box>
+                        )}
+                      {lib.jobStatus?.status === "failed" && (
+                        <Box display="flex" alignItems="center" gap="6px" mt="8px">
+                          <AlertIcon size={14} fill="var(--color-error)" />
+                          <Text style={{ fontSize: "12px", color: "var(--color-error)" }}>
+                            Processing failed: {lib.jobStatus.error || "Unknown error"}
+                          </Text>
+                        </Box>
+                      )}
+                    </Box>
+                  </Link>
+
+                  {/* Install / Open Action Menu */}
+                  <Box display="flex" alignItems="center" gap={1} style={{ flexShrink: 0 }}>
+                    <Button
+                      size="small"
+                      leadingVisual={copiedPkg === lib.name ? CheckIcon : CopyIcon}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleCopyInstall(lib.name);
+                      }}
+                      title={`Copy: msx install ${lib.name}`}
+                    >
+                      {copiedPkg === lib.name ? "Copied" : "msx install"}
+                    </Button>
+                    <ActionMenu>
+                      <ActionMenu.Button size="small" aria-label={`Install options for ${lib.name}`}>
+                        Open
+                      </ActionMenu.Button>
+                      <ActionMenu.Overlay align="end">
+                        <ActionList>
+                          <ActionList.Item onSelect={() => navigate(`/ide#memfs:package-${lib.name}`)}>
+                            <ActionList.LeadingVisual>
+                              <CodeIcon size={14} />
+                            </ActionList.LeadingVisual>
+                            Open in ModelScript Web IDE
+                          </ActionList.Item>
+                          <ActionList.Item onSelect={() => handleCopyInstall(lib.name)}>
+                            <ActionList.LeadingVisual>
+                              <TerminalIcon size={14} />
+                            </ActionList.LeadingVisual>
+                            Copy CLI Command (msx install)
+                          </ActionList.Item>
+                          <ActionList.Item
+                            onSelect={() => {
+                              window.location.href = `vscode://modelscript.modelscript/install?package=${encodeURIComponent(lib.name)}`;
+                            }}
+                          >
+                            <ActionList.LeadingVisual>
+                              <DesktopDownloadIcon size={14} />
+                            </ActionList.LeadingVisual>
+                            Install in VS Code Desktop
+                          </ActionList.Item>
+                        </ActionList>
+                      </ActionMenu.Overlay>
+                    </ActionMenu>
                   </Box>
-                </Link>
-                <button
-                  style={{
-                    backgroundColor: "rgba(255, 255, 255, 0.04)",
-                    color: "var(--color-text-primary)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "9999px",
-                    padding: "6px 16px",
-                    fontWeight: 700,
-                    fontSize: "14px",
-                    cursor: "pointer",
-                    marginLeft: "12px",
-                    transition: "all 0.2s ease",
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.location.href = `vscode://modelscript.modelscript/install?package=${lib.name}`;
-                  }}
-                >
-                  Install
-                </button>
-              </Box>
-            ))}
+                </Box>
+              );
+            })}
           </CardList>
         )}
       </Box>
+
+      <PublishPackageModal
+        isOpen={publishModalOpen}
+        onClose={() => setPublishModalOpen(false)}
+        onPublished={() => {
+          fetchLibraries();
+        }}
+      />
     </Box>
   );
 };

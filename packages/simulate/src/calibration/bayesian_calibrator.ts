@@ -18,10 +18,10 @@ export interface ParameterPrior {
   name: string;
   nominalValue: number;
   initialStdDev: number;
-  processNoiseVariance?: number; // Random walk drift (default: 1e-6)
-  minBound?: number;
-  maxBound?: number;
-  unit?: string;
+  processNoiseVariance?: number | undefined; // Random walk drift (default: 1e-6)
+  minBound?: number | undefined;
+  maxBound?: number | undefined;
+  unit?: string | undefined;
 }
 
 export interface BayesianCalibrationResult {
@@ -31,7 +31,7 @@ export interface BayesianCalibrationResult {
   stdDev: number;
   confidenceInterval95: [number, number];
   relativeChangePercent: number;
-  unit?: string;
+  unit?: string | undefined;
   rmse: number;
   ideSuggestion: string;
 }
@@ -40,10 +40,10 @@ export interface CalibrationRunConfig {
   stateNames: string[];
   parameters: ParameterPrior[];
   initialState: number[];
-  initialStateVariance?: number[];
+  initialStateVariance?: number[] | undefined;
   timeGrid: Float64Array;
   measuredTelemetry: Float64Array[]; // Array of M channels, each length N
-  controlInputs?: Float64Array[]; // Optional input signals
+  controlInputs?: Float64Array[] | undefined; // Optional input signals
   measurementNoiseR: number[]; // Variance for each measurement channel
   /**
    * Continuous-time or discrete physics step function:

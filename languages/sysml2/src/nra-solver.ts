@@ -23,14 +23,14 @@ export interface NRAPolynomialConstraint {
 export interface NRASolverOptions {
   variables: Record<string, [number, number]>; // [min, max] domain bounds
   constraints: NRAPolynomialConstraint[];
-  tolerance?: number;
-  maxIterations?: number;
+  tolerance?: number | undefined;
+  maxIterations?: number | undefined;
 }
 
 export interface NRASolverResult {
   status: "sat" | "unsat" | "unknown";
-  model?: Record<string, number>;
-  groebnerBasis?: Polynomial[];
+  model?: Record<string, number> | undefined;
+  groebnerBasis?: Polynomial[] | undefined;
   explanation: string;
 }
 

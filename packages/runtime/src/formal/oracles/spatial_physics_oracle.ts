@@ -20,25 +20,25 @@ export interface StressMeasurementSpec {
   partName: string;
   maxVonMisesPa: number;
   yieldStrengthPa: number;
-  safetyFactor?: number; // Defaults to 1.0, e.g. 1.5 for aerospace/pressure vessels
-  ultimateStrengthPa?: number;
-  ultimateSafetyFactor?: number;
-  loadCase?: string;
+  safetyFactor?: number | undefined; // Defaults to 1.0, e.g. 1.5 for aerospace/pressure vessels
+  ultimateStrengthPa?: number | undefined;
+  ultimateSafetyFactor?: number | undefined;
+  loadCase?: string | undefined;
 }
 
 export interface DeflectionMeasurementSpec {
   partName: string;
   maxDisplacementMeters: number;
   allowableDisplacementMeters: number;
-  direction?: "x" | "y" | "z" | "resultant";
-  location?: string;
+  direction?: "x" | "y" | "z" | "resultant" | undefined;
+  location?: string | undefined;
 }
 
 export interface FsiEquilibriumSpec {
   interfaceName: string;
   fluidForce: [number, number, number] | number; // N (vector or normal scalar)
   solidForce: [number, number, number] | number; // N (reaction force from solid)
-  tolerance?: number; // N (residual tolerance)
+  tolerance?: number | undefined; // N (residual tolerance)
 }
 
 export interface DroneSlicingProperties {
@@ -53,12 +53,14 @@ export interface SolidGeometrySpec {
   solidName: string;
   isWatertight: boolean;
   volumeM3: number;
-  surfaceAreaM2?: number;
-  nonManifoldEdgeCount?: number;
-  boundingBox?: {
-    min: [number, number, number];
-    max: [number, number, number];
-  };
+  surfaceAreaM2?: number | undefined;
+  nonManifoldEdgeCount?: number | undefined;
+  boundingBox?:
+    | {
+        min: [number, number, number];
+        max: [number, number, number];
+      }
+    | undefined;
 }
 
 export class SpatialPhysicsOracle implements TheoryOracle {
@@ -69,7 +71,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   private deflectionSpecs = new Map<string, DeflectionMeasurementSpec>();
   private fsiSpecs = new Map<string, FsiEquilibriumSpec>();
   private solidSpecs = new Map<string, SolidGeometrySpec>();
-  private droneProps?: DroneSlicingProperties;
+  private droneProps?: DroneSlicingProperties | undefined;
   private externalBounds = new Map<string, [number, number]>();
 
   private assertedLiterals = new Map<number, TheoryLiteral>();
@@ -321,7 +323,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     // 0. Drone Multi-Physics Slicing Stress Verification
     if (this.droneProps && this.droneProps.maxVonMisesPa > this.droneProps.yieldStrengthPa) {
       return {

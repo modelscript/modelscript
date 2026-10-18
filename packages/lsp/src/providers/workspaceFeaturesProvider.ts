@@ -25,6 +25,7 @@ export function registerWorkspaceFeaturesProvider(
     typeof getResolverOrIndex === "function" && getGlobalWorkspaceIndex === undefined
       ? getResolverOrIndex
       : getGlobalWorkspaceIndex || (() => null);
+  void getWorkspaceIndex;
 
   const isDecl = (entry: any): boolean => {
     return entry.kind !== "Reference" && entry.kind !== "ConnectEquation" && entry.kind !== "FunctionCall";
@@ -252,6 +253,7 @@ export function registerWorkspaceFeaturesProvider(
         const text = documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
         if (text) {
           const dummyDoc = TextDocument.create(declEntry.resourceId, "temp", 1, text);
+          void dummyDoc;
           const declStart = declEntry.startOffset ?? declEntry.startByte;
           const declEnd = declEntry.endOffset ?? declEntry.endByte;
           const nameMatch = text.substring(declStart, declEnd).indexOf(declEntry.name);
@@ -481,7 +483,7 @@ export function registerWorkspaceFeaturesProvider(
           const powMatch = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\^\s*([0-9]+(?:\.[0-9]+)?)$/);
           if (powMatch) {
             const varName = powMatch[1];
-            const power = parseFloat(powMatch[2]);
+            const power = parseFloat(powMatch[2]!);
             simplified = deriveSimp("power", varName, { power });
           } else if (/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*abs\(\s*\1\s*\)$/.test(termText)) {
             const varName = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/)?.[1] || "v";
@@ -578,8 +580,9 @@ export function registerWorkspaceFeaturesProvider(
     const MAX_RESULTS = 100;
 
     // Search using the global unified workspace index
-    if (getGlobalWorkspaceIndex()) {
-      const unifiedIndex = getGlobalWorkspaceIndex().toUnified();
+    const globalWsIdx = getGlobalWorkspaceIndex?.();
+    if (globalWsIdx) {
+      const unifiedIndex = globalWsIdx.toUnified();
       for (const entry of unifiedIndex.symbols.values()) {
         if (symbols.length >= MAX_RESULTS) break;
         if (!entry.name || entry.name.startsWith("<")) continue;

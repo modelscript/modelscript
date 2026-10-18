@@ -7,43 +7,79 @@ import { RoaringBitmap, createRoaringBitmap } from "../core/roaring";
 import { FrontCodedDictionary, createFrontCodedDictionary } from "../core/trie";
 
 
+/** Axiom type ID for an OWL 2 ClassDeclaration (`Declaration(Class(C))`). */
 export const AXIOM_CLASS_DECL: u16 = 1;
+/** Axiom type ID for an OWL 2 SubClassOf axiom (`C ⊑ D`). */
 export const AXIOM_SUBCLASS_OF: u16 = 2;
+/** Axiom type ID for an OWL 2 EquivalentClasses axiom (`C ≡ D`). */
 export const AXIOM_EQUIV_CLASS: u16 = 3;
+/** Axiom type ID for an OWL 2 DisjointClasses axiom (`C ⊓ D ⊑ ⊥`). */
 export const AXIOM_DISJOINT_CLASSES: u16 = 4;
+/** Axiom type ID for an OWL 2 ObjectPropertyDeclaration. */
 export const AXIOM_OBJ_PROP_DECL: u16 = 5;
+/** Axiom type ID for an OWL 2 DataPropertyDeclaration. */
 export const AXIOM_DATA_PROP_DECL: u16 = 6;
+/** Axiom type ID for an OWL 2 ObjectPropertyAssertion (`R(a, b)`). */
 export const AXIOM_OBJ_PROP_ASSERT: u16 = 7;
+/** Axiom type ID for an OWL 2 DataPropertyAssertion (`P(a, v)`). */
 export const AXIOM_DATA_PROP_ASSERT: u16 = 8;
+/** Axiom type ID for an OWL 2 TransitiveObjectProperty (`Trans(R)`). */
 export const AXIOM_TRANSITIVE_PROP: u16 = 9;
+/** Axiom type ID for an OWL 2 IndividualDeclaration. */
 export const AXIOM_INDIVIDUAL_DECL: u16 = 10;
+/** Axiom type ID for an OWL 2 ClassAssertion (`C(a)`). */
 export const AXIOM_CLASS_ASSERT: u16 = 11;
+/** Axiom type ID for an OWL 2 existential restriction (`C ⊑ ∃R.D`). */
 export const AXIOM_OBJECT_SOME_VALUES_FROM: u16 = 12; // C ⊑ ∃R.D
+/** Axiom type ID for an OWL 2 property chain inclusion (`R ∘ S ⊑ T`). */
 export const AXIOM_SUB_PROPERTY_CHAIN: u16 = 13;      // R ∘ S ⊑ T
+/** Axiom type ID for an OWL 2 FunctionalObjectProperty (`Func(R)`). */
 export const AXIOM_FUNCTIONAL_OBJ_PROP: u16 = 14;     // Func(R)
+/** Axiom type ID for an OWL 2 FunctionalDataProperty (`Func(P)`). */
 export const AXIOM_FUNCTIONAL_DATA_PROP: u16 = 15;    // Func(P)
+/** Axiom type ID for an OWL 2 SameIndividual assertion (`a ≡ b`). */
 export const AXIOM_SAME_INDIVIDUAL: u16 = 16;         // a ≡ b
+/** Axiom type ID for an OWL 2 universal restriction (`C ⊑ ∀R.D`). */
 export const AXIOM_UNIVERSAL_RESTRICTION: u16 = 17;   // C ⊑ ∀R.D
+/** Axiom type ID for an OWL 2 disjunctive class inclusion (`C ⊑ D1 ⊔ D2`). */
 export const AXIOM_DISJUNCTIVE_CLASS: u16 = 18;       // C ⊑ D1 ⊔ D2
+/** Axiom type ID for an OWL 2 qualified cardinality restriction (`C ⊑ (≥|≤|= n) R.D`). */
 export const AXIOM_QUALIFIED_CARDINALITY: u16 = 19;   // C ⊑ (≥|≤|= n) R.D
+/** Axiom type ID for an OWL 2 SymmetricObjectProperty (`Sym(R)`). */
 export const AXIOM_SYMMETRIC_PROP: u16 = 20;          // Sym(R)
+/** Axiom type ID for an OWL 2 InverseObjectProperties axiom (`Inv(R, S)`). */
 export const AXIOM_INVERSE_PROP: u16 = 21;            // Inv(R, S)
+/** Axiom type ID for an OWL 2 AsymmetricObjectProperty (`Asym(R)`). */
 export const AXIOM_ASYMMETRIC_PROP: u16 = 22;         // Asym(R)
+/** Axiom type ID for an OWL 2 IrreflexiveObjectProperty (`Irr(R)`). */
 export const AXIOM_IRREFLEXIVE_PROP: u16 = 23;        // Irr(R)
+/** Axiom type ID for an OWL 2 DisjointObjectProperties axiom (`Disjoint(R, S)`). */
 export const AXIOM_DISJOINT_PROPS: u16 = 24;          // Disjoint(R, S)
+/** Axiom type ID for an OWL 2 nominal / enumeration class (`C ≡ {a1, a2, ...}`). */
 export const AXIOM_NOMINAL_CLASS: u16 = 25;           // C ≡ {a1, a2, ...}
+/** Axiom type ID for an OWL 2 local reflexivity restriction (`C ⊑ ∃R.Self`). */
 export const AXIOM_SELF_RESTRICTION: u16 = 26;        // C ⊑ ∃R.Self
+/** Axiom type ID for an in-WASM SHACL-AF derivation rule. */
 export const AXIOM_SHACL_RULE: u16 = 27;              // SHACL-AF Rule
 
+/** Property path operator code for direct 1-hop traversal. */
 export const PATH_OP_DIRECT: u32 = 1;
+/** Property path operator code for 1-or-more transitive hops (`+`). */
 export const PATH_OP_PLUS: u32 = 2;          // + (1+ hops)
+/** Property path operator code for 0-or-more reflexive-transitive hops (`*`). */
 export const PATH_OP_STAR: u32 = 3;          // * (0+ hops)
+/** Property path operator code for inverse 1-hop traversal (`^`). */
 export const PATH_OP_INVERSE: u32 = 4;       // ^ (inverse 1 hop)
+/** Property path operator code for inverse 1-or-more transitive hops (`^+`). */
 export const PATH_OP_INVERSE_PLUS: u32 = 5;  // ^+ (inverse 1+ hops)
+/** Property path operator code for 2-step sequence composition (`/`). */
 export const PATH_OP_SEQUENCE: u32 = 6;      // / (step1 / step2)
+/** Property path operator code for property alternation (`|`). */
 export const PATH_OP_ALTERNATION: u32 = 7;   // | (prop1 | prop2)
 
+/** Number of 32-bit words per axiom record in `axiomTable` (6 words = 24 bytes). */
 export const AXIOM_STRIDE: u32 = 6; // 24 bytes per axiom
+/** Wildcard sentinel value for triple pattern queries (`0xffffffff`). */
 export const WILDCARD_PATTERN: u32 = 0xffffffff;
 
 const AXIOM_ACCESSOR_SLOTS: u32 = 16;
@@ -60,6 +96,7 @@ export class AxiomAccessor {
   private _data: ChunkedUint32Array;
   private _offset: u32;
 
+  /** Returns a ring-buffered accessor pointing at the given `axiomId` inside `data`. */
   @inline static at(data: ChunkedUint32Array, axiomId: u32): AxiomAccessor {
     if (g_axiomAccessorBuf == 0) {
       g_axiomAccessorBuf = atomicChunkAlloc(AXIOM_ACCESSOR_SLOTS * (sizeof<usize>() * 2));
@@ -71,37 +108,54 @@ export class AxiomAccessor {
     return a;
   }
 
+  /** Gets the packed `(sourceLangId << 16) | axiomType` word. */
   @inline get typeAndLang(): u32 { return this._data.get(this._offset + 0); }
+  /** Sets the packed `(sourceLangId << 16) | axiomType` word. */
   @inline set typeAndLang(v: u32) { this._data.set(this._offset + 0, v); }
 
+  /** Gets the 16-bit axiom type code. */
   @inline get axiomType(): u16 { return (this._data.get(this._offset + 0) & 0xffff) as u16; }
+  /** Gets the 16-bit source language identifier. */
   @inline get sourceLangId(): u16 { return ((this._data.get(this._offset + 0) >> 16) & 0xffff) as u16; }
 
+  /** Packs and stores both the axiom type and source language ID into word 0. */
   @inline setTypeAndLang(type: u32, lang: u32): void {
     this._data.set(this._offset + 0, (type & 0xffff) | ((lang & 0xffff) << 16));
   }
 
+  /** Gets the subject entity ID/hash (word 1). */
   @inline get subject(): u32 { return this._data.get(this._offset + 1); }
+  /** Sets the subject entity ID/hash (word 1). */
   @inline set subject(v: u32) { this._data.set(this._offset + 1, v); }
 
+  /** Gets the predicate entity ID/hash (word 2). */
   @inline get predicate(): u32 { return this._data.get(this._offset + 2); }
+  /** Sets the predicate entity ID/hash (word 2). */
   @inline set predicate(v: u32) { this._data.set(this._offset + 2, v); }
 
+  /** Gets the object entity ID/hash (word 3). */
   @inline get object(): u32 { return this._data.get(this._offset + 3); }
+  /** Sets the object entity ID/hash (word 3). */
   @inline set object(v: u32) { this._data.set(this._offset + 3, v); }
 
+  /** Gets the axiom flags word (word 4, e.g. `1` for inferred axioms). */
   @inline get flags(): u32 { return this._data.get(this._offset + 4); }
+  /** Sets the axiom flags word (word 4). */
   @inline set flags(v: u32) { this._data.set(this._offset + 4, v); }
 
+  /** Gets the auxiliary payload word (word 5). */
   @inline get extra(): u32 { return this._data.get(this._offset + 5); }
+  /** Sets the auxiliary payload word (word 5). */
   @inline set extra(v: u32) { this._data.set(this._offset + 5, v); }
 
+  /** Appends all 6 words of this axiom record to `outBuffer`. */
   @inline writeTo(outBuffer: ChunkedUint32Array): void {
     for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
       outBuffer.push(this._data.get(this._offset + w));
     }
   }
 
+  /** Copies all 6 words from `other` into this axiom record slot. */
   @inline copyFrom(other: AxiomAccessor): void {
     for (let w: u32 = 0; w < AXIOM_STRIDE; w++) {
       this._data.set(this._offset + w, other._data.get(other._offset + w));
@@ -109,13 +163,21 @@ export class AxiomAccessor {
   }
 }
 
+/**
+ * Bidirectional dictionary mapping 64-bit FNV-1a entity hashes to dense 32-bit `EntityId`s.
+ */
 @unmanaged
 export class EntityDictionary {
+  /** Hash map from 64-bit IRI hash to 1-based dense `EntityId`. */
   hashToId: UnmanagedMap64;       // maps u64 hash -> dense u32 EntityId
+  /** Reverse lookup table from `EntityId` to lower 32 bits of the 64-bit hash. */
   idToHashLo: ChunkedUint32Array; // dense u32 EntityId -> hash low 32 bits
+  /** Reverse lookup table from `EntityId` to upper 32 bits of the 64-bit hash. */
   idToHashHi: ChunkedUint32Array; // dense u32 EntityId -> hash high 32 bits
+  /** Total number of interned entities. */
   entityCount: u32;
 
+  /** Initializes the hash map and reverse lookup arrays with the given initial capacity. */
   init(initialCapacity: u32 = 1024): void {
     this.hashToId = changetype<UnmanagedMap64>(createMap64());
     this.idToHashLo = createChunkedUint32Array(initialCapacity);
@@ -123,6 +185,7 @@ export class EntityDictionary {
     this.entityCount = 0;
   }
 
+  /** Returns the existing dense `EntityId` for `hash64` or allocates a new one. */
   getOrCreate(hash64: u64): u32 {
     if (hash64 == 0) return 0;
     if (this.hashToId.has(hash64)) {
@@ -135,11 +198,13 @@ export class EntityDictionary {
     return id;
   }
 
+  /** Returns or allocates a dense `EntityId` from split low/high 32-bit hash words. */
   getOrCreateSplit(hashLo: u32, hashHi: u32): u32 {
     let hash64 = ((hashHi as u64) << 32) | (hashLo as u64);
     return this.getOrCreate(hash64);
   }
 
+  /** Reconstructs the 64-bit hash for a dense `entityId`, or returns `0` if out of range. */
   getHash64(entityId: u32): u64 {
     if (entityId == 0 || entityId > this.entityCount) return 0;
     let lo = this.idToHashLo.get(entityId) as u64;
@@ -147,16 +212,19 @@ export class EntityDictionary {
     return (hi << 32) | lo;
   }
 
+  /** Returns the lower 32 bits of the 64-bit hash for `entityId`. */
   getHashLo(entityId: u32): u32 {
     if (entityId == 0 || entityId > this.entityCount) return 0;
     return this.idToHashLo.get(entityId);
   }
 
+  /** Returns the upper 32 bits of the 64-bit hash for `entityId`. */
   getHashHi(entityId: u32): u32 {
     if (entityId == 0 || entityId > this.entityCount) return 0;
     return this.idToHashHi.get(entityId);
   }
 
+  /** Resets all entity mappings and clears the dictionary. */
   clear(): void {
     this.hashToId.clear();
     this.idToHashLo.clear();
@@ -165,49 +233,81 @@ export class EntityDictionary {
   }
 }
 
+/**
+ * Zero-GC WebAssembly OWL 2 EL++ / RL / SHACL Ontology Store and Consequence-Based Reasoner.
+ *
+ * Maintains triple-indexed axiom records (`SPO`, `POS`, `OSP`) along with Roaring Bitmap
+ * inverted indices, union-find individual equivalence classes, DRed incremental maintenance,
+ * and O(1) interval dominance indices in linear memory.
+ */
 @unmanaged
 export class OntologyStore {
+  /** Flat struct-of-arrays table storing 6-word (`AXIOM_STRIDE`) axiom records. */
   axiomTable: ChunkedUint32Array;
+  /** Next available 1-based axiom ID (`axiomCount - 1` total records). */
   axiomCount: u32;
 
   // 64-Bit Entity Identification & Symbol Dictionary
+  /** Bidirectional 64-bit hash to dense 32-bit `EntityId` dictionary. */
   entities: EntityDictionary;
 
   // Inverted Indices for O(1) / O(K) SPARQL-DL Pattern Matching
+  /** Head axiom ID pointer per subject entity/hash for the SPO index chain. */
   spoHead: UnmanagedMap64; // maps subjectHash -> head axiomId
+  /** Head axiom ID pointer per predicate entity/hash for the POS index chain. */
   posHead: UnmanagedMap64; // maps predicateHash -> head axiomId
+  /** Head axiom ID pointer per object entity/hash for the OSP index chain. */
   ospHead: UnmanagedMap64; // maps objectHash -> head axiomId
 
+  /** Intrusive next-axiom linked list for the SPO index. */
   nextSpo: ChunkedUint32Array;
+  /** Intrusive next-axiom linked list for the POS index. */
   nextPos: ChunkedUint32Array;
+  /** Intrusive next-axiom linked list for the OSP index. */
   nextOsp: ChunkedUint32Array;
 
   // DRed (Delete/Rederive) Incremental Maintenance & Active Status
+  /** Per-axiom active status flag (`1` = active, `0` = retracted). */
   axiomActive: ChunkedUint32Array; // 1 = active, 0 = retracted/over-deleted
+  /** Number of independent derivation paths supporting each inferred axiom. */
   derivationCount: ChunkedUint32Array; // count of deriving proof paths for inferred axioms
 
   // ELF Individual Equivalence (Union-Find)
+  /** Disjoint-set parent map for `SameIndividual` / functional property unification. */
   individualParent: UnmanagedMap64; // maps individualHash -> parentHash
 
   // O(1) Interval/Topological DAG Indexing
+  /** Pre-order entry timestamp per class in the interval-labeled taxonomy tree. */
   intervalLeft: UnmanagedMap64;  // maps classHash -> left interval
+  /** Post-order exit timestamp per class in the interval-labeled taxonomy tree. */
   intervalRight: UnmanagedMap64; // maps classHash -> right interval
+  /** Whether the `[intervalLeft, intervalRight]` index is currently valid. */
   hasIntervalIndex: boolean;
+  /** Reusable BFS queue for reachability and subsumption searches. */
   bfsQueue: ChunkedUint32Array;
+  /** Scratch buffer of distinct class hashes collected during interval indexing. */
   distinctClasses: ChunkedUint32Array;
 
   // HDT-Style Compact Front-Coded String / IRI Dictionary
+  /** Front-coded dictionary for compressed in-WASM IRI string storage. */
   iriDict: FrontCodedDictionary;
 
   // HDT-Style Inverted Roaring Bitmaps for Fast SIMD Relational Joins
+  /** Map from subject entity/hash to its `RoaringBitmap` of axiom IDs. */
   spoBitmaps: UnmanagedMap64; // maps subjectHash -> RoaringBitmap ptr
+  /** Map from predicate entity/hash to its `RoaringBitmap` of axiom IDs. */
   posBitmaps: UnmanagedMap64; // maps predicateHash -> RoaringBitmap ptr
+  /** Map from object entity/hash to its `RoaringBitmap` of axiom IDs. */
   ospBitmaps: UnmanagedMap64; // maps objectHash -> RoaringBitmap ptr
 
+  /** Scratch RoaringBitmap for pairwise intersection joins. */
   tempJoinBitmap: RoaringBitmap;
+  /** Secondary scratch RoaringBitmap for 3-way intersection joins. */
   tempJoinBitmap2: RoaringBitmap;
+  /** Scratch buffer holding materialized axiom IDs after bitmap intersection. */
   tempAxiomIdBuf: ChunkedUint32Array;
 
+  /** Allocates and initializes all tables, index chains, bitmaps, and dictionaries. */
   init(initialCapacity: u32 = 1024): void {
     this.axiomTable = createChunkedUint32Array(initialCapacity * AXIOM_STRIDE);
     this.axiomCount = 1; // 1-indexed (0 reserved for null)
@@ -248,6 +348,7 @@ export class OntologyStore {
     this.tempAxiomIdBuf = createChunkedUint32Array(256);
   }
 
+  /** Retrieves or lazily creates a `RoaringBitmap` in `map` for `key`. */
   @inline
   getOrCreateRoaring(map: UnmanagedMap64, key: u64): RoaringBitmap {
     if (map.has(key)) {
@@ -258,6 +359,7 @@ export class OntologyStore {
     return bm;
   }
 
+  /** Looks up the `RoaringBitmap` in `map` for `key`, or returns null (`0`) if absent. */
   @inline
   getRoaring(map: UnmanagedMap64, key: u64): RoaringBitmap {
     if (map.has(key)) {
@@ -266,6 +368,10 @@ export class OntologyStore {
     return changetype<RoaringBitmap>(0);
   }
 
+  /**
+   * Interns 64-bit split hashes for subject, predicate, and object into dense entity IDs
+   * and inserts the resulting axiom into the store.
+   */
   addAxiom64(
     axiomType: u32,
     sourceLangId: u32,
@@ -457,6 +563,7 @@ export class OntologyStore {
   // ELF Functional Properties & Individual Equivalence (Union-Find)
   // --------------------------------------------------------------------------
 
+  /** Finds the canonical equivalence-class representative for `indHash` with path compression. */
   findIndRoot(indHash: u32): u32 {
     if (indHash == 0) return 0;
     if (!this.individualParent.has(indHash as u64)) {
@@ -471,6 +578,7 @@ export class OntologyStore {
     return root;
   }
 
+  /** Merges the equivalence classes of individuals `indA` and `indB`. */
   unionInds(indA: u32, indB: u32): u32 {
     let rootA = this.findIndRoot(indA);
     let rootB = this.findIndRoot(indB);
@@ -481,6 +589,7 @@ export class OntologyStore {
     return rootA;
   }
 
+  /** Returns `true` if `indA` and `indB` belong to the same `SameIndividual` equivalence class. */
   areSameIndividual(indA: u32, indB: u32): boolean {
     if (indA == 0 || indB == 0) return false;
     if (indA == indB) return true;
@@ -542,6 +651,7 @@ export class OntologyStore {
     return newInferences;
   }
 
+  /** Copies asserted and inferred `ClassAssertion` types between two unified individuals. */
   propagateEquivalentIndividualTypes(ind1: u32, ind2: u32): void {
     let types1 = createChunkedUint32Array(8);
     let types2 = createChunkedUint32Array(8);
@@ -1178,6 +1288,7 @@ export class OntologyStore {
     return this.qxRecurse(bgAxioms, deltaAxioms, outMus);
   }
 
+  /** Recursive divide-and-conquer QuickXplain core isolation helper. */
   qxRecurse(b: ChunkedUint32Array, delta: ChunkedUint32Array, outMus: ChunkedUint32Array): u32 {
     if (b.length > 0) {
       let bMask = createChunkedUint32Array(this.axiomCount);
@@ -1678,6 +1789,7 @@ export class OntologyStore {
     this.hasIntervalIndex = true;
   }
 
+  /** Depth-first traversal helper that assigns `[left, right]` Euler tour intervals to `classHash`. */
   dfsIntervalAssign(classHash: u32, currentCounter: u32): u32 {
     if (classHash == 0) return currentCounter;
     if (this.intervalLeft.has(classHash as u64)) return currentCounter;
@@ -2025,6 +2137,7 @@ export class OntologyStore {
     return newInferences;
   }
 
+  /** Returns `true` if a direct `SubClassOf(sub, sup)` axiom is currently active in the SPO index. */
   hasDirectSubclass(sub: u32, sup: u32): boolean {
     let axId = this.spoHead.get(sub as u64) as u32;
     while (axId != 0) {
@@ -2039,6 +2152,7 @@ export class OntologyStore {
     return false;
   }
 
+  /** Returns `true` if an existential restriction `c ⊑ ∃r.d` is currently active in the SPO index. */
   hasExistential(c: u32, r: u32, d: u32): boolean {
     let axId = this.spoHead.get(c as u64) as u32;
     while (axId != 0) {
@@ -2054,6 +2168,7 @@ export class OntologyStore {
     return false;
   }
 
+  /** Returns `true` if an `ObjectPropertyAssertion(prop, subj, obj)` is currently active. */
   hasObjectPropertyAssertion(subj: u32, prop: u32, obj: u32): boolean {
     let axId = this.spoHead.get(subj as u64) as u32;
     while (axId != 0) {
@@ -2069,6 +2184,7 @@ export class OntologyStore {
     return false;
   }
 
+  /** Returns `true` if a direct `ClassAssertion(cls, ind)` is currently active. */
   hasDirectClassAssertion(ind: u32, cls: u32): boolean {
     let axId = this.spoHead.get(ind as u64) as u32;
     while (axId != 0) {
@@ -2471,6 +2587,7 @@ export class OntologyStore {
     return count;
   }
 
+  /** Resets all axiom tables, inverted indices, bitmaps, and dictionaries in the store. */
   clear(): void {
     if (changetype<usize>(this.entities) != 0) {
       this.entities.clear();
@@ -2508,11 +2625,16 @@ export class OntologyStore {
 // Global WASM Exported Ontology State & Functions
 // ----------------------------------------------------------------------------
 
+/** Singleton in-WASM `OntologyStore` instance. */
 export let t_ontologyStore: OntologyStore = changetype<OntologyStore>(0);
+/** Chunked scratch buffer used by query functions before copying to a flat linear buffer. */
 export let t_ontologyQueryBuffer: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+/** Linear memory pointer to the contiguous query output buffer shared with the host. */
 export let t_ontologyQueryFlatPtr: usize = 0;
+/** Capacity (in 32-bit words) of the contiguous query output buffer at `t_ontologyQueryFlatPtr`. */
 export let t_ontologyQueryFlatCapacity: u32 = 0;
 
+/** Lazily allocates and initializes the global `t_ontologyStore` and query output buffer. */
 export function ensureOntologyStore(): void {
   if (changetype<usize>(t_ontologyStore) == 0) {
     let ptr = atomicChunkAlloc(128);
@@ -2525,6 +2647,7 @@ export function ensureOntologyStore(): void {
   }
 }
 
+/** C-ABI export: Inserts a 32-bit hashed OWL 2 axiom into the global ontology store. */
 export function ontology_addAxiom(
   axiomType: u32,
   sourceLangId: u32,
@@ -2538,12 +2661,14 @@ export function ontology_addAxiom(
   return t_ontologyStore.addAxiom(axiomType, sourceLangId, subjectHash, predicateHash, objectHash, flags, extra);
 }
 
+/** C-ABI export: Returns `1` if `subClassHash ⊑ superClassHash` holds in the ontology store, or `0` otherwise. */
 export function ontology_isSubClassOf(subClassHash: u32, superClassHash: u32): u32 {
   ensureOntologyStore();
   if (t_ontologyStore.isSubClassOf(subClassHash, superClassHash)) return 1;
   return 0;
 }
 
+/** C-ABI export: Computes the justification axiom chain for `subClassHash ⊑ superClassHash` into the query buffer. */
 export function ontology_explainSubsumption(subClassHash: u32, superClassHash: u32): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2559,6 +2684,7 @@ export function ontology_explainSubsumption(subClassHash: u32, superClassHash: u
   return count;
 }
 
+/** C-ABI export: Checks ontology consistency and writes conflicting axiom records into the query buffer. */
 export function ontology_checkConsistency(): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2574,6 +2700,7 @@ export function ontology_checkConsistency(): u32 {
   return count;
 }
 
+/** C-ABI export: Classifies `individualHash` and writes direct and transitive class hashes into the query buffer. */
 export function ontology_classifyIndividual(individualHash: u32): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2588,18 +2715,21 @@ export function ontology_classifyIndividual(individualHash: u32): u32 {
   return wordCount;
 }
 
+/** C-ABI export: Returns `1` if `class1Hash` and `class2Hash` are disjoint, or `0` otherwise. */
 export function ontology_areDisjoint(class1Hash: u32, class2Hash: u32): u32 {
   ensureOntologyStore();
   if (t_ontologyStore.areDisjoint(class1Hash, class2Hash)) return 1;
   return 0;
 }
 
+/** C-ABI export: Returns `1` if `individualHash` is an instance of `classHash`, or `0` otherwise. */
 export function ontology_isInstanceOf(individualHash: u32, classHash: u32): u32 {
   ensureOntologyStore();
   if (t_ontologyStore.isInstanceOf(individualHash, classHash)) return 1;
   return 0;
 }
 
+/** C-ABI export: Computes reachable individuals from `sourceHash` along `propertyHash` into the query buffer. */
 export function ontology_getTransitiveClosure(propertyHash: u32, sourceHash: u32): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2614,6 +2744,7 @@ export function ontology_getTransitiveClosure(propertyHash: u32, sourceHash: u32
   return count;
 }
 
+/** C-ABI export: Computes reachable individuals and traversal edges from `sourceHash` along `propertyHash`. */
 export function ontology_getTransitiveClosureWithPath(propertyHash: u32, sourceHash: u32): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2629,6 +2760,7 @@ export function ontology_getTransitiveClosureWithPath(propertyHash: u32, sourceH
   return count;
 }
 
+/** C-ABI export: Serializes the full class taxonomy into the query buffer and returns the class count. */
 export function ontology_getTaxonomy(): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2644,6 +2776,7 @@ export function ontology_getTaxonomy(): u32 {
   return classCount;
 }
 
+/** C-ABI export: Matches axioms against `(subjectPattern, predicatePattern, objectPattern)` using SPO/POS/OSP chains. */
 export function ontology_queryTriples(subjectPattern: u32, predicatePattern: u32, objectPattern: u32): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2659,26 +2792,31 @@ export function ontology_queryTriples(subjectPattern: u32, predicatePattern: u32
   return count;
 }
 
+/** C-ABI export: Returns the total number of axiom records allocated in the store. */
 export function ontology_getAxiomCount(): u32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 0;
   return t_ontologyStore.axiomCount - 1;
 }
 
+/** C-ABI export: Clears all axioms, indices, and dictionaries from the global ontology store. */
 export function ontology_clear(): void {
   if (changetype<usize>(t_ontologyStore) != 0) {
     t_ontologyStore.clear();
   }
 }
 
+/** C-ABI export: Returns the linear memory byte pointer to the flat query result buffer. */
 export function ontology_getQueryBuffer(): usize {
   return t_ontologyQueryFlatPtr;
 }
 
+/** C-ABI export: Recomputes the O(1) Euler-interval dominance index for class subsumption. */
 export function ontology_computeIntervalIndex(): void {
   ensureOntologyStore();
   t_ontologyStore.computeIntervalIndex();
 }
 
+/** C-ABI export: Evaluates a SPARQL 1.1 property path expression from `sourceHash` into the query buffer. */
 export function ontology_evaluatePropertyPath(propertyHash: u32, pathOp: u32, stepPropertyHash2: u32, sourceHash: u32): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2694,16 +2832,19 @@ export function ontology_evaluatePropertyPath(propertyHash: u32, pathOp: u32, st
   return count;
 }
 
+/** C-ABI export: Runs polynomial EL++ consequence-based saturation rules (`CR1`-`CR4`). */
 export function ontology_saturateELRules(): u32 {
   ensureOntologyStore();
   return t_ontologyStore.saturateELRules();
 }
 
+/** C-ABI export: Retracts `axiomId` using DRed (Delete/Rederive) incremental maintenance. */
 export function ontology_retractAxiom(axiomId: u32): u32 {
   ensureOntologyStore();
   return t_ontologyStore.retractAxiom(axiomId);
 }
 
+/** C-ABI export: Applies a batch delta of axiom additions and retractions from linear memory pointers. */
 export function ontology_applyDelta(
   addCount: u32,
   addPtr: usize,
@@ -2727,11 +2868,13 @@ export function ontology_applyDelta(
   return t_ontologyStore.applyDelta(addCount, addArr, retractCount, retArr);
 }
 
+/** C-ABI export: Runs consequence-based saturation for `FunctionalObjectProperty` unification. */
 export function ontology_saturateFunctional(): u32 {
   ensureOntologyStore();
   return t_ontologyStore.saturateFunctionalProperties();
 }
 
+/** C-ABI export: Isolates a single Minimal Unsatisfiable Subset (MUS) via QuickXplain into the query buffer. */
 export function ontology_quickXplain(): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2765,6 +2908,7 @@ export function ontology_quickXplain(): u32 {
   return count;
 }
 
+/** C-ABI export: Enumerates up to `maxCores` Minimal Unsatisfiable Subsets (All-MUS) via Reiter's HST. */
 export function ontology_allMus(maxCores: u32 = 16): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2787,13 +2931,20 @@ export function ontology_allMus(maxCores: u32 = 16): u32 {
  */
 @unmanaged
 export class TableauEngine {
+  /** Bump-pointer arena storing trail entries during tableau branching. */
   arena: ChunkedUint32Array;
+  /** Current top offset in `arena`. */
   arenaPtr: u32;
+  /** Stack of saved `arenaPtr` watermarks per decision level. */
   watermarkStack: ChunkedUint32Array;
+  /** Stack of active disjunctive branch choices. */
   branchStack: ChunkedUint32Array;
+  /** Map from generated tableau individual ID to its parent individual ID for blocking checks. */
   ancestorMap: UnmanagedMap64;
+  /** Stack of `branchStack` lengths at each decision mark. */
   decisionLevelStack: ChunkedUint32Array;
 
+  /** Allocates and initializes the tableau arena and backtracking stacks. */
   init(capacity: u32 = 16384): void {
     this.arena = createChunkedUint32Array(capacity);
     this.arenaPtr = 0;
@@ -2803,6 +2954,7 @@ export class TableauEngine {
     this.decisionLevelStack = createChunkedUint32Array(256);
   }
 
+  /** Pushes a new backtracking checkpoint onto the watermark and decision-level stacks. */
   mark(): u32 {
     let markVal = this.arenaPtr;
     this.watermarkStack.push(markVal);
@@ -2810,6 +2962,7 @@ export class TableauEngine {
     return markVal;
   }
 
+  /** Restores the arena pointer and decision level to the most recent checkpoint. */
   backtrack(): void {
     if (this.watermarkStack.length > 0) {
       let markVal = this.watermarkStack.pop();
@@ -2850,10 +3003,12 @@ export class TableauEngine {
     return false;
   }
 
+  /** Records `parentInd` as the ancestor of `childInd` in the tableau expansion tree. */
   registerSuccessor(parentInd: u32, childInd: u32): void {
     this.ancestorMap.set(childInd as u64, parentInd as u32);
   }
 
+  /** Checks whether `subClass ⊑ supClass` holds using disjunctive branch case-analysis. */
   solveSubsumption(store: OntologyStore, subClass: u32, supClass: u32): boolean {
     if (subClass == supClass) return true;
     if (store.isSubClassOf(subClass, supClass)) return true;
@@ -2884,8 +3039,10 @@ export class TableauEngine {
   }
 }
 
+/** Singleton in-WASM `TableauEngine` instance. */
 export let t_tableauEngine: TableauEngine = changetype<TableauEngine>(0);
 
+/** Lazily allocates and initializes the global `t_tableauEngine`. */
 export function ensureTableauEngine(): void {
   if (changetype<usize>(t_tableauEngine) == 0) {
     let ptr = atomicChunkAlloc(128);
@@ -2894,11 +3051,13 @@ export function ensureTableauEngine(): void {
   }
 }
 
+/** C-ABI export: Runs the full hybrid interleaved saturation fixpoint loop in WASM memory. */
 export function ontology_runHybridFixpoint(): u32 {
   ensureOntologyStore();
   return t_ontologyStore.runHybridInterleavedFixpoint();
 }
 
+/** C-ABI export: Validates asymmetric, irreflexive, and disjoint-property constraints into the query buffer. */
 export function ontology_validateAdvancedConstraints(): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -2914,6 +3073,7 @@ export function ontology_validateAdvancedConstraints(): u32 {
   return count;
 }
 
+/** C-ABI export: Checks `subClass ⊑ supClass` using the Tier 2 backtrackable `TableauEngine`. */
 export function ontology_runTableauSubsumption(subClass: u32, supClass: u32): u32 {
   ensureOntologyStore();
   ensureTableauEngine();
@@ -2921,6 +3081,7 @@ export function ontology_runTableauSubsumption(subClass: u32, supClass: u32): u3
   return holds ? 1 : 0;
 }
 
+/** C-ABI export: Interns 64-bit entity hashes (split into low/high 32-bit words) and adds an axiom. */
 export function ontology_addAxiom64(
   axiomType: u32,
   sourceLangId: u32,
@@ -2934,72 +3095,86 @@ export function ontology_addAxiom64(
   return t_ontologyStore.addAxiom64(axiomType, sourceLangId, sLo, sHi, pLo, pHi, oLo, oHi, flags, extra);
 }
 
+/** C-ABI export: Interns or looks up a 64-bit hash (split into `hashLo`/`hashHi`) and returns its dense `EntityId`. */
 export function ontology_getOrCreateEntity(hashLo: u32, hashHi: u32): u32 {
   ensureOntologyStore();
   return t_ontologyStore.entities.getOrCreateSplit(hashLo, hashHi);
 }
 
+/** C-ABI export: Returns the low 32 bits of the 64-bit hash for `entityId`. */
 export function ontology_getEntityHashLo(entityId: u32): u32 {
   ensureOntologyStore();
   return t_ontologyStore.entities.getHashLo(entityId);
 }
 
+/** C-ABI export: Returns the high 32 bits of the 64-bit hash for `entityId`. */
 export function ontology_getEntityHashHi(entityId: u32): u32 {
   ensureOntologyStore();
   return t_ontologyStore.entities.getHashHi(entityId);
 }
 
+/** C-ABI export: Returns the total number of unique entities interned in the dictionary. */
 export function ontology_getEntityCount(): u32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 0;
   return t_ontologyStore.entities.entityCount;
 }
 
+/** C-ABI export: Returns the linear memory pointer to the `axiomTable` chunk directory. */
 export function ontology_getAxiomTablePtr(): usize {
   ensureOntologyStore();
   return t_ontologyStore.axiomTable.directory;
 }
 
+/** C-ABI export: Interns a UTF-8 string into the front-coded IRI dictionary and returns its string ID. */
 export function ontology_internString(strPtr: usize, strLen: u32, hashLo: u32, hashHi: u32): u32 {
   ensureOntologyStore();
   let hash64 = (hashLo as u64) | ((hashHi as u64) << 32);
   return t_ontologyStore.iriDict.addString(strPtr, strLen, hash64);
 }
 
+/** C-ABI export: Decompresses string `id` from the front-coded dictionary into `outPtr` and returns its byte length. */
 export function ontology_extractString(id: u32, outPtr: usize): u32 {
   ensureOntologyStore();
   return t_ontologyStore.iriDict.extractString(id, outPtr);
 }
 
+/** C-ABI export: Decompresses up to `maxLen` bytes of string `id` into `outPtr` and returns the bytes written. */
 export function ontology_extractStringBounded(id: u32, outPtr: usize, maxLen: u32): u32 {
   ensureOntologyStore();
   return t_ontologyStore.iriDict.extractString(id, outPtr, maxLen);
 }
 
+/** C-ABI export: Returns the uncompressed byte length of interned string `id`. */
 export function ontology_getStringLen(id: u32): u32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 0;
   return t_ontologyStore.iriDict.getStringLen(id);
 }
 
+/** C-ABI export: Returns the front-coding compression ratio (`compressedBytes / rawBytes`). */
 export function ontology_getStringCompressionRatio(): f32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 1.0;
   return t_ontologyStore.iriDict.getCompressionRatio();
 }
 
+/** C-ABI export: Returns the total number of strings stored in the front-coded dictionary. */
 export function ontology_getStringCount(): u32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 0;
   return t_ontologyStore.iriDict.stringCount;
 }
 
+/** C-ABI export: Returns the total uncompressed byte count of all interned strings. */
 export function ontology_getRawStringBytes(): u32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 0;
   return t_ontologyStore.iriDict.totalRawBytes;
 }
 
+/** C-ABI export: Returns the total compressed byte count occupied by the front-coded dictionary. */
 export function ontology_getCompressedStringBytes(): u32 {
   if (changetype<usize>(t_ontologyStore) == 0) return 0;
   return t_ontologyStore.iriDict.totalCompressedBytes;
 }
 
+/** C-ABI export: Matches triples using SIMD Roaring Bitmap intersections and writes matches to the query buffer. */
 export function ontology_queryTriplesBitmap(subjectPattern: u32, predicatePattern: u32, objectPattern: u32): u32 {
   ensureOntologyStore();
   t_ontologyQueryBuffer.clear();
@@ -3015,6 +3190,7 @@ export function ontology_queryTriplesBitmap(subjectPattern: u32, predicatePatter
   return count;
 }
 
+/** C-ABI export: Returns the cardinality of the Roaring Bitmap for `(indexType, keyHash)` (`1=SPO`, `2=POS`, `3=OSP`). */
 export function ontology_getRoaringCardinality(indexType: u32, keyHash: u32): u32 {
   ensureOntologyStore();
   let map: UnmanagedMap64;
@@ -3029,6 +3205,7 @@ export function ontology_getRoaringCardinality(indexType: u32, keyHash: u32): u3
   if (changetype<usize>(bm) == 0) return 0;
   return bm.cardinality();
 }
+
 
 
 

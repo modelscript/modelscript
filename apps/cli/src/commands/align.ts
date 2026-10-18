@@ -19,7 +19,7 @@ interface AlignArgs {
   "min-confidence": number;
   threshold: number;
   apply: boolean;
-  hypergraph?: string;
+  hypergraph?: string | undefined;
   json: boolean;
 }
 

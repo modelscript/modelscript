@@ -25,9 +25,9 @@ function byteToLineCol(text: string, byteOffset: number): { line: number; col: n
 interface SysMLExportArgs {
   file: string;
   format: "sysmlx" | "ssp" | "fmu";
-  output?: string;
-  description?: string;
-  "include-stdlib"?: boolean;
+  output?: string | undefined;
+  description?: string | undefined;
+  "include-stdlib"?: boolean | undefined;
 }
 
 const SysMLExportCommand: CommandModule<{}, SysMLExportArgs> = {
@@ -124,8 +124,8 @@ const SysMLExportCommand: CommandModule<{}, SysMLExportArgs> = {
 
 interface SysMLImportArgs {
   file: string;
-  output?: string;
-  indent?: number;
+  output?: string | undefined;
+  indent?: number | undefined;
 }
 
 const SysMLImportCommand: CommandModule<{}, SysMLImportArgs> = {
@@ -182,7 +182,7 @@ const SysMLImportCommand: CommandModule<{}, SysMLImportArgs> = {
 interface SysMLCheckArgs {
   files: string[];
   format: "terminal" | "json";
-  strict?: boolean;
+  strict?: boolean | undefined;
 }
 
 const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
@@ -444,11 +444,11 @@ const SysMLInfoCommand: CommandModule<{}, SysMLInfoArgs> = {
 interface SysMLSyncPullArgs {
   target: "twc" | "mms";
   url: string;
-  resource?: string;
-  org?: string;
-  branch?: string;
-  token?: string;
-  output?: string;
+  resource?: string | undefined;
+  org?: string | undefined;
+  branch?: string | undefined;
+  token?: string | undefined;
+  output?: string | undefined;
 }
 
 const SysMLSyncPullCommand: CommandModule<{}, SysMLSyncPullArgs> = {
@@ -537,12 +537,12 @@ interface SysMLSyncPushArgs {
   file: string;
   target: "twc" | "mms";
   url: string;
-  resource?: string;
-  org?: string;
-  branch?: string;
-  token?: string;
+  resource?: string | undefined;
+  org?: string | undefined;
+  branch?: string | undefined;
+  token?: string | undefined;
   message: string;
-  force?: boolean;
+  force?: boolean | undefined;
 }
 
 const SysMLSyncPushCommand: CommandModule<{}, SysMLSyncPushArgs> = {

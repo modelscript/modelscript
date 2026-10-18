@@ -14,7 +14,7 @@ function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
 
   return edits.filter((edit, i) => {
     if (i === 0) return true;
-    const prev = edits[i - 1];
+    const prev = edits[i - 1]!;
     if (
       edit.range.start.line < prev.range.end.line ||
       (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
@@ -35,7 +35,7 @@ function formatIri(name: string): string {
 function findOntologyInsertionLine(lines: string[]): number {
   // Search backward for closing parenthesis of Ontology(...)
   for (let i = lines.length - 1; i >= 0; i--) {
-    const trimmed = lines[i].trim();
+    const trimmed = lines[i]!.trim();
     if (trimmed.endsWith(")") || trimmed === ")") {
       return i;
     }
@@ -85,7 +85,7 @@ export function computeOWL2ElementDelete(docText: string, elementNames: string[]
   const namePatterns = elementNames.map((n) => escapeRegex(n.replace(/^:/, "")));
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     for (const pat of namePatterns) {
       const reg = new RegExp(`[:#<]?\\b${pat}\\b[>]?`);
       if (reg.test(line)) {
@@ -144,7 +144,7 @@ export function computeOWL2ConnectionDelete(docText: string, source: string, tar
   const tgtReg = new RegExp(`[:#<]?\\b${tgtPat}\\b[>]?`);
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     if (srcReg.test(line) && tgtReg.test(line)) {
       if (i + 1 < lines.length) {
         edits.push(TextEdit.del(Range.create(i, 0, i + 1, 0)));

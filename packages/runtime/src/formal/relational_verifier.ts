@@ -18,8 +18,8 @@ import { type NonlinearConstraint } from "./hc4_contractor.js";
 
 export interface RelationalVariable {
   name: string;
-  type?: "real" | "int";
-  isPublic?: boolean;
+  type?: "real" | "int" | undefined;
+  isPublic?: boolean | undefined;
 }
 
 export interface RelationalContract {
@@ -27,27 +27,29 @@ export interface RelationalContract {
   inputs: string[];
   outputs: string[];
   deltaBound: number; // Input perturbation bound: ||x1 - x2|| <= delta
-  epsilonBound?: number; // Target output bound: ||y1 - y2|| <= epsilon
-  maxLipschitzConstant?: number; // Target Lipschitz constant: ||y1 - y2|| / ||x1 - x2|| <= L
+  epsilonBound?: number | undefined; // Target output bound: ||y1 - y2|| <= epsilon
+  maxLipschitzConstant?: number | undefined; // Target Lipschitz constant: ||y1 - y2|| / ||x1 - x2|| <= L
 }
 
 export interface RelationalVerificationResult {
   status: "VERIFIED" | "VIOLATED" | "UNKNOWN";
   property: "LIPSCHITZ_CONTINUITY" | "NOISE_ROBUSTNESS" | "OBSERVATIONAL_DETERMINISM";
-  certifiedLipschitzConstant?: number;
-  maxOutputDeviation?: number;
-  counterexample?: {
-    trace1: Map<string, number>;
-    trace2: Map<string, number>;
-    inputDiff: number;
-    outputDiff: number;
-  };
+  certifiedLipschitzConstant?: number | undefined;
+  maxOutputDeviation?: number | undefined;
+  counterexample?:
+    | {
+        trace1: Map<string, number>;
+        trace2: Map<string, number>;
+        inputDiff: number;
+        outputDiff: number;
+      }
+    | undefined;
   durationMs: number;
   summary: string;
 }
 
 export class RelationalVerifier {
-  private tvpi = new TvpiDomain();
+  public tvpi = new TvpiDomain();
 
   /**
    * Verifies Lipschitz continuity: |f(x1) - f(x2)| <= L * |x1 - x2| over input range.
@@ -69,6 +71,7 @@ export class RelationalVerifier {
 
     // 1. Build TVPI state for relational difference
     const _state = TvpiState.top();
+    void _state;
 
     // Map transfer constraints for copy 1 and copy 2
     const c1 = transferConstraints.map((c) => this.tagConstraint(c, "_1"));
@@ -351,7 +354,7 @@ export class RelationalVerifier {
 
   private checkSatisfiability(constraints: NonlinearConstraint[]): {
     sat: boolean;
-    model?: Map<string, number>;
+    model?: Map<string, number> | undefined;
   } {
     // 1. Exact Linear Farkas Dual Simplex check
     const allLinear: LinearConstraint[] = [];

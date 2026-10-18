@@ -4296,9 +4296,6 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot, newRoot, listener) {
-    console.log(
-      `[Bindings] walkAstDiff START: oldRoot=${oldRoot}, newRoot=${newRoot}`,
-    );
     let mem32 = new Uint32Array(this.wasmMemory.buffer);
     const getMem32 = () => {
       if (mem32.buffer !== this.wasmMemory.buffer || mem32.byteLength === 0) {
@@ -4675,9 +4672,6 @@ export class LspFacade {
         }
       }
     }
-    console.log(
-      `[Bindings] walkAstDiff COMPLETE: oldRoot=${oldRoot}, newRoot=${newRoot}, total opsCount=${opsCount}`,
-    );
   }
 }
 /**
@@ -5926,7 +5920,7 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
         bytes = await res.arrayBuffer();
       } catch {
         const modName = "node" + ":fs";
-        const fs = await Function("m", "return import(m)")(modName);
+        const fs = await import(/* @vite-ignore */ modName);
         const buf = fs.readFileSync(wasmUrlOrBytes);
         bytes = buf.buffer.slice(
           buf.byteOffset,
@@ -5935,7 +5929,7 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
       }
     } else {
       const modName = "node" + ":fs";
-      const fs = await Function("m", "return import(m)")(modName);
+      const fs = await import(/* @vite-ignore */ modName);
       const buf = fs.readFileSync(wasmUrlOrBytes);
       bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
@@ -5954,7 +5948,7 @@ export async function createWasmParser(wasmUrlOrBytes, options) {
             typeof bPath === "string" && bPath.startsWith("/")
               ? `file://${bPath}`
               : bPath;
-          const mod = await Function("m", "return import(m)")(fileUrl);
+          const mod = await import(/* @vite-ignore */ fileUrl);
           if (mod) {
             if (
               !syntaxNames &&

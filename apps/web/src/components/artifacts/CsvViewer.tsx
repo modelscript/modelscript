@@ -11,29 +11,29 @@ import Box from "../Box";
 export interface DatasetColumn {
   name: string;
   type: "number" | "string" | "boolean" | string;
-  min?: number;
-  max?: number;
-  mean?: number;
-  unique?: number;
+  min?: number | undefined;
+  max?: number | undefined;
+  mean?: number | undefined;
+  unique?: number | undefined;
 }
 
 export interface CsvViewerProps {
   viewConfig: {
-    data?: string | string[][];
-    url?: string;
-    columns?: DatasetColumn[];
-    previewRows?: string[][];
-    rows?: string[][];
-    rowCount?: number;
-    format?: "csv" | "tsv" | "json" | string;
-    hasHeader?: boolean;
-    delimiter?: string;
+    data?: string | string[][] | undefined;
+    url?: string | undefined;
+    columns?: DatasetColumn[] | undefined;
+    previewRows?: string[][] | undefined;
+    rows?: string[][] | undefined;
+    rowCount?: number | undefined;
+    format?: "csv" | "tsv" | "json" | string | undefined;
+    hasHeader?: boolean | undefined;
+    delimiter?: string | undefined;
     [key: string]: unknown;
   };
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
-const TableWrapper = styled.div<{ $isFullScreen?: boolean }>`
+const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
   display: flex;
@@ -81,7 +81,7 @@ const StatCard = styled.div`
   gap: 3px;
 `;
 
-const TypePill = styled.span<{ $type?: string }>`
+const TypePill = styled.span<{ $type?: string | undefined }>`
   display: inline-block;
   font-size: 9.5px;
   font-family: var(--font-mono, monospace);

@@ -9,10 +9,10 @@ import Box from "../Box";
 
 interface AudioViewerProps {
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
-const Wrapper = styled.div<{ $isFullScreen?: boolean }>`
+const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "260px")};
   background: var(--color-canvas-default, #0d1117);
@@ -113,7 +113,7 @@ const AudioViewer: React.FC<AudioViewerProps> = ({ viewConfig, isFullScreen }) =
   const [speedIndex, setSpeedIndex] = useState(1); // default 1.0x
   const [isMuted, setIsMuted] = useState(false);
 
-  const speed = SPEED_OPTIONS[speedIndex];
+  const speed = SPEED_OPTIONS[speedIndex]!;
 
   // Generate deterministic acoustic waveform bars
   const waveformBars = useMemo(() => {

@@ -248,6 +248,11 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
   }
 
   if (kind == ExprKind.Call) {
+    funcId = dae.resolveBuiltinMathFunc(funcId);
+    if (funcId < 0) {
+      staticResult.isConstant = false;
+      return staticResult;
+    }
     let firstArgId = left;
     let argCount   = right;
 
@@ -269,7 +274,13 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
           res2_val = res2.valReal;
         }
         staticResult.isConstant = true;
-        staticResult.valReal    = evalMathBuiltin(funcId, arg1_val, res2_val);
+        if (funcId == BuiltinMathFunc.NoEvent || funcId == BuiltinMathFunc.Homotopy) {
+          staticResult.valReal = arg1_val;
+        } else if (funcId == BuiltinMathFunc.Smooth) {
+          staticResult.valReal = res2_val;
+        } else {
+          staticResult.valReal = evalMathBuiltin(funcId, arg1_val, res2_val);
+        }
         staticResult.valInt     = staticResult.valReal as i32;
         staticResult.valBool    = staticResult.valReal != 0.0;
         staticResult.valType    = 0;

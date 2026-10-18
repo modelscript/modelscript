@@ -6,6 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yargs, { type ArgumentsCamelCase, type Argv, type CommandBuilder, type CommandModule } from "yargs";
 
+/**
+ * Wraps a `yargs` `CommandModule` with dynamic `import()` lazy loading so that CLI startup
+ * and `--help` only load the specific command module being executed.
+ */
 function lazy(
   command: string | readonly string[],
   describe: string,
@@ -47,6 +51,8 @@ try {
 
 const rawArgs = process.argv.slice(2);
 
+// Fast-path: when `--daemon` is passed, forward the invocation over the local Unix socket
+// to the persistent compiler daemon to bypass Node/WASM cold-start latency.
 if (rawArgs.includes("--daemon")) {
   const daemonArgs = rawArgs.filter((a) => a !== "--daemon");
   const { isSocketAlive, startDaemon, forwardToDaemon } = await import("./daemon/daemon-client.js");
@@ -89,8 +95,8 @@ await yargs(rawArgs)
   // Modeling & Simulation
   .command(
     lazy(
-      "simulate <name> <paths..>",
-      "Simulate a Modelica model and output results",
+      "simulate <name> [paths..]",
+      "Simulate a Modelica model, SysML v2 system, or FMU archive and output results",
       () => import("./commands/simulate.js"),
       "Simulate",
     ),
@@ -113,8 +119,8 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
-      "fmu <name> <paths..>",
-      "Export a Modelica model as an FMU archive",
+      "fmu <name> [paths..]",
+      "Export, validate, inspect, build, or simulate an FMU archive",
       () => import("./commands/fmu.js"),
       "Fmu",
       ["export-fmu"],
@@ -265,6 +271,14 @@ await yargs(rawArgs)
       "Compute visual and semantic pull request diff across Git revisions (SysML v2, Modelica)",
       () => import("./commands/pr-diff.js"),
       "PrDiff",
+    ),
+  )
+  .command(
+    lazy(
+      "merge [base] [ours] [theirs]",
+      "Perform an AST/CST-aware 3-way semantic merge across base, ours, and theirs model files",
+      () => import("./commands/merge.js"),
+      "Merge",
     ),
   )
   .command(

@@ -18,43 +18,47 @@ export interface DiagramEditorHandle {
 
 interface DiagramEditorProps {
   diagramData: any | null;
-  diagramClassName?: string | null;
-  onSelect?: (componentName: string | null) => void;
-  onDrop?: (className: string, x: number, y: number, iconSvg?: string | null) => void;
-  onConnect?: (source: string, target: string, points?: { x: number; y: number }[]) => void;
-  onMove?: (
-    items: {
-      name: string;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      rotation: number;
-      edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
-      connectedOnly?: boolean;
-    }[],
-  ) => void;
-  onResize?: (
-    name: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    rotation: number,
-    edges?: { source: string; target: string; points: { x: number; y: number }[] }[],
-  ) => void;
-  onEdgeMove?: (edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => void;
-  onEdgeDelete?: (source: string, target: string) => void;
-  onComponentDelete?: (name: string) => void;
-  onComponentsDelete?: (names: string[]) => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
-  selectedName?: string | null;
+  diagramClassName?: string | null | undefined;
+  onSelect?: ((componentName: string | null) => void) | undefined;
+  onDrop?: ((className: string, x: number, y: number, iconSvg?: string | null) => void) | undefined;
+  onConnect?: ((source: string, target: string, points?: { x: number; y: number }[]) => void) | undefined;
+  onMove?:
+    | ((
+        items: {
+          name: string;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          rotation: number;
+          edges?: { source: string; target: string; points: { x: number; y: number }[] }[] | undefined;
+          connectedOnly?: boolean | undefined;
+        }[],
+      ) => void)
+    | undefined;
+  onResize?:
+    | ((
+        name: string,
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        rotation: number,
+        edges?: { source: string; target: string; points: { x: number; y: number }[] }[],
+      ) => void)
+    | undefined;
+  onEdgeMove?: ((edges: { source: string; target: string; points: { x: number; y: number }[] }[]) => void) | undefined;
+  onEdgeDelete?: ((source: string, target: string) => void) | undefined;
+  onComponentDelete?: ((name: string) => void) | undefined;
+  onComponentsDelete?: ((names: string[]) => void) | undefined;
+  onUndo?: (() => void) | undefined;
+  onRedo?: (() => void) | undefined;
+  selectedName?: string | null | undefined;
   theme: Theme;
-  isLoading?: boolean;
-  onRenderComplete?: (diagramData: any) => void;
-  onInteractiveWrite?: (variableName: string, value: any, nodeId: string) => void;
-  onShowProperties?: (nodeId: string, cachedProps?: any, isLoading?: boolean) => void;
+  isLoading?: boolean | undefined;
+  onRenderComplete?: ((diagramData: any) => void) | undefined;
+  onInteractiveWrite?: ((variableName: string, value: any, nodeId: string) => void) | undefined;
+  onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
 }
 
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {

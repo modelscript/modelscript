@@ -115,6 +115,7 @@ export class WebGPUReduction {
     const numPoints = stepCount * varCount;
     const outputBytes = numPoints * 4;
 
+    // 1. Allocate device-local storage buffers written by the compute shader
     const meanBuffer = this.device.createBuffer({
       size: outputBytes,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -132,6 +133,7 @@ export class WebGPUReduction {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
 
+    // 2. Allocate host-mappable staging buffers for CPU readback
     const readbackMean = this.device.createBuffer({
       size: outputBytes,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
@@ -149,6 +151,7 @@ export class WebGPUReduction {
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
+    // 3. Upload 16-byte uniform block: [ensembleCount, stepCount, varCount, padding]
     const uniformsBuffer = this.device.createBuffer({
       size: 16,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -156,6 +159,7 @@ export class WebGPUReduction {
     const uniformsData = new Uint32Array([ensembleCount, stepCount, varCount, 0]);
     this.device.queue.writeBuffer(uniformsBuffer, 0, uniformsData);
 
+    // 4. Bind input trajectory tensor and 4 statistical output buffers to @group(0)
     const bindGroup = this.device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
@@ -168,6 +172,7 @@ export class WebGPUReduction {
       ],
     });
 
+    // 5. Encode 2D compute pass: X dimension tiles state variables (workgroup_size = 64), Y dimension covers time steps
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginComputePass();
     pass.setPipeline(this.pipeline);
@@ -175,6 +180,7 @@ export class WebGPUReduction {
     pass.dispatchWorkgroups(Math.ceil(varCount / 64), stepCount, 1);
     pass.end();
 
+    // Copy reduced device buffers into host-mappable staging buffers
     encoder.copyBufferToBuffer(meanBuffer, 0, readbackMean, 0, outputBytes);
     encoder.copyBufferToBuffer(varianceBuffer, 0, readbackVar, 0, outputBytes);
     encoder.copyBufferToBuffer(minBuffer, 0, readbackMin, 0, outputBytes);
@@ -183,6 +189,7 @@ export class WebGPUReduction {
     this.device.queue.submit([encoder.finish()]);
 
     try {
+      // 6. Map all 4 staging buffers in parallel and clone results into standalone Float32Arrays
       await Promise.all([
         readbackMean.mapAsync(GPUMapMode.READ),
         readbackVar.mapAsync(GPUMapMode.READ),
@@ -202,6 +209,7 @@ export class WebGPUReduction {
 
       return { mean, variance, min, max };
     } finally {
+      // 7. Deterministically release GPU memory regardless of mapAsync outcome
       meanBuffer.destroy();
       varianceBuffer.destroy();
       minBuffer.destroy();

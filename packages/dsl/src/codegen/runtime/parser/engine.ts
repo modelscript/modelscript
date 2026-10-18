@@ -118,6 +118,10 @@ class StaticTable {
   }
 }
 
+/**
+ * Zero-allocation static wrapper for baked 16-bit unsigned integer WASM memory tables.
+ * Preceded by a 4-byte `i32` element-count header at `ptr - 4`.
+ */
 @unmanaged
 class StaticU16Table {
   /** Reads a 16-bit unsigned integer at the given logical index. */
@@ -130,6 +134,7 @@ class StaticU16Table {
     }
     return load<u16>(ptr + ((index as usize) << 1)) as i32;
   }
+  /** Retrieves the encoded array length from the preceding 4-byte header. */
   @inline get length(): i32 {
     let ptr = changetype<usize>(this);
     if (ptr < 4) return 0;
@@ -137,6 +142,10 @@ class StaticU16Table {
   }
 }
 
+/**
+ * Zero-allocation static wrapper for baked 8-bit unsigned byte WASM memory tables.
+ * Preceded by a 4-byte `i32` element-count header at `ptr - 4`.
+ */
 @unmanaged
 class StaticByteTable {
   /** Reads an 8-bit unsigned integer at the given logical index. */
@@ -149,6 +158,7 @@ class StaticByteTable {
     }
     return load<u8>(ptr + (index as usize)) as i32;
   }
+  /** Retrieves the encoded array length from the preceding 4-byte header. */
   @inline get length(): i32 {
     let ptr = changetype<usize>(this);
     if (ptr < 4) return 0;
@@ -156,37 +166,70 @@ class StaticByteTable {
   }
 }
 
+/** Per-state start index into `action_data` (`stateId -> offset`, or `-1` if empty). */
 export let action_offsets: StaticTable = changetype<StaticTable>(0);
+/** Flattened per-state action lookup entries: `[entryCount, symId_0, entryOffset_0, ...]`. */
 export let action_data: StaticTable = changetype<StaticTable>(0);
+/** Legacy/auxiliary index table mapping action cells into `action_entry_data`. */
 export let action_entry_offsets: StaticTable = changetype<StaticTable>(0);
+/** Packed GLR action lists: `[actCount, actType_0, actTarget_0, ...]`. */
 export let action_entry_data: StaticTable = changetype<StaticTable>(0);
+/** Net bracket nesting depth delta (`+1` open, `-1` close, `0` neutral) per terminal token ID. */
 export let token_bracket_deltas: StaticTable = changetype<StaticTable>(0);
+/** ASCII/Unicode code points of opening delimiter tokens (e.g., `(`, `[`, `{`). */
 export let open_bracket_chars: StaticTable = changetype<StaticTable>(0);
+/** Matching closing delimiter code points parallel to `open_bracket_chars` (e.g., `)`, `]`, `}`). */
 export let close_bracket_chars: StaticTable = changetype<StaticTable>(0);
+/** Per-state start index into `goto_data` (`stateId -> offset`, or `-1` if no GOTO transitions). */
 export let goto_offsets: StaticTable = changetype<StaticTable>(0);
+/** Sorted per-state non-terminal GOTO transitions: `[gCount, nonTermId_0, targetState_0, ...]`. */
 export let goto_data: StaticTable = changetype<StaticTable>(0);
+/** Minimum Reduction Distance (MRD) byte matrix used by minimum-distance error recovery. */
 export let mrd_data: StaticByteTable = changetype<StaticByteTable>(0);
+/** Per-terminal insertion penalty cost used during single/multi-token error repair. */
 export let token_insert_costs: StaticByteTable = changetype<StaticByteTable>(0);
+/** Per-terminal deletion penalty cost (`u16`) used during panic/error recovery. */
 export let token_delete_costs: StaticU16Table = changetype<StaticU16Table>(0);
+/** Boolean byte table (`1` = identifier/keyword word token, `0` = punctuation/operator). */
 export let token_is_word: StaticByteTable = changetype<StaticByteTable>(0);
+/** Bit-packed 0-distance terminal reachability matrix (`state * (MAX_TERMINAL_ID + 1) + tok`). */
 export let reachability_matrix: StaticByteTable = changetype<StaticByteTable>(0);
+/** Precomputed minimum-cost repair sequences per `(state, lookahead)` pair. */
 export let precomputed_repairs: StaticU16Table = changetype<StaticU16Table>(0);
+/** Per-token start offset into `token_string_bytes` for human-readable token names. */
 export let token_string_offsets: StaticTable = changetype<StaticTable>(0);
+/** UTF-8 byte pool of human-readable terminal/non-terminal symbol names for diagnostics. */
 export let token_string_bytes: StaticTable = changetype<StaticTable>(0);
 
+/** Number of RHS symbols for each grammar production ID (`prodId -> length`). */
 export let prod_lengths: StaticByteTable = changetype<StaticByteTable>(0);
+/** Per-production start index into `prod_right_symbols`. */
 export let prod_right_offsets: StaticTable = changetype<StaticTable>(0);
+/** Flattened array of RHS symbol IDs across all grammar productions. */
 export let prod_right_symbols: StaticU16Table = changetype<StaticU16Table>(0);
+/** LHS non-terminal symbol/node-type ID produced by each production (`prodId -> lhsSymId`). */
 export let prod_lhs: StaticU16Table = changetype<StaticU16Table>(0);
+/** Flag byte (`1` if synthetic `_`-prefixed rule whose node is elided/inlined on reduce). */
 export let prod_is_invisible: StaticByteTable = changetype<StaticByteTable>(0);
+/** Flag byte (`1` if left-recursive list spine production flattened into $O(1)$ list children). */
 export let prod_is_list: StaticByteTable = changetype<StaticByteTable>(0);
+/** Dynamic precedence score (`prec.dynamic`) associated with each production ID. */
 export let prod_dynamic_prec: StaticTable = changetype<StaticTable>(0);
+/** Per-production start offset into `alias_data` (`-1` if no child aliases). */
 export let prod_aliases: StaticTable = changetype<StaticTable>(0);
+/** Flattened child-index to alias-type-ID mappings (`[aliasCount, childIdx_0, aliasType_0, ...]`). */
 export let alias_data: StaticTable = changetype<StaticTable>(0);
+/** Per-node-type start offset into `type_field_data` (`nodeType -> offset`, or `-1` if no named fields). */
 export let type_fields: StaticTable = changetype<StaticTable>(0);
+/**
+ * Flattened named-field descriptor table decoded by `FieldCursor`:
+ * `[fieldCount, fieldId, entryCount, childIndex | (isSynthetic ? 0x8000 : 0), expectedType, ...]`.
+ */
 export let type_field_data: StaticTable = changetype<StaticTable>(0);
+/** Flag byte per node type (`1` if the node type represents a repeatable list). */
 export let type_is_list: StaticByteTable = changetype<StaticByteTable>(0);
 
+/** Binds all module-level `StaticTable` / `StaticU16Table` / `StaticByteTable` views to the grammar's baked memory pointers. */
 export function initStaticTables(): void {
   action_offsets = changetype<StaticTable>(_action_offsets);
   action_data = changetype<StaticTable>(_action_data);
@@ -279,28 +322,49 @@ export function lookupGoto(state: i32, lhs: i32): i32 {
 // ----------------------------------------------------------------------------
 // Diagnostics & Error Reporting
 // ----------------------------------------------------------------------------
+/** Number of syntax/semantic errors recorded during the current parse or lint pass. */
 export let errorCount: i32 = 0;
+/** Start byte offsets for each recorded diagnostic (`0..errorCount - 1`). */
 export let t_errorStarts: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** End byte offsets for each recorded diagnostic (`0..errorCount - 1`). */
 export let t_errorEnds: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Primary diagnostic payload word (e.g., error code or token type) per diagnostic. */
 export let t_errorArg0: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Secondary diagnostic argument word per diagnostic. */
 export let t_errorArg1: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Tertiary diagnostic argument word per diagnostic. */
 export let t_errorArg2: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Quaternary diagnostic argument word per diagnostic. */
 export let t_errorArg3: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
+/** Maximum number of diagnostics stored in `t_error*` buffers per pass. */
 export const MAX_ERRORS: i32 = 10000;
+/** Maximum number of concurrent GLR parse heads maintained in the GSS frontier. */
 export const MAX_PARALLEL_HEADS: u32 = 32;
+/** Upper bound on tree-cursor stack depth. */
 const MAX_CURSOR_DEPTH: i32 = 999999;
+/** Sentinel cost representing an unreachable or invalid error-recovery path. */
 export const INFINITE_COST: i32 = 999999;
+/** Safety limit on upward parent steps during cursor traversal. */
 const MAX_UPWARD_STEPS: i32 = 100000;
+/** Maximum number of child nodes visited in a single flat list/node scan. */
 export const MAX_CHILD_NODES: i32 = 100000;
+/** Minimum iteration cap for parser/recovery worklist loops. */
 export const MIN_LOOP_LIMIT: u32 = 10000;
+/** Default capacity (in elements) of GSS head and scratch buffers. */
 export const ARENA_BUFFER_SIZE: i32 = 16384;
+/** Maximum lookahead token window inspected during GLR error recovery. */
 export const MAX_LOOKAHEAD_DEPTH: i32 = 6;
+/** Maximum recursion/stack depth for AST structural helper walks. */
 export const MAX_AST_TRAVERSAL_DEPTH: u32 = 100;
+/** Multiplier applied to input length to bound total parser loop iterations. */
 export const LOOP_MULTIPLIER_LIMIT: u32 = 50;
+/** Maximum number of tokens skipped during panic-mode recovery. */
 export const MAX_PANIC_SCAN_TOKENS: u32 = 500;
 
+/** Error-recovery cost penalty incurred per unwound GSS stack node. */
 export const PENALTY_UNWIND_NODE: i32 = 500;
+/** Error-recovery cost penalty incurred per skipped synchronizing token. */
 export const PENALTY_SYNC_TOKEN: i32 = 50;
 
 /**
@@ -344,17 +408,29 @@ export function reportGlobalError(start: u32, end: u32, arg0: u32 = 0, arg1: u32
   }
 }
 
+/**
+ * Persistent singly-linked list node allocated in Gen 0 arena memory to track
+ * speculative syntax diagnostics along individual GSS parse head branches.
+ */
 @unmanaged
 export class DiagnosticNode {
+  /** Pointer to the preceding `DiagnosticNode` on this GSS branch (`0` if root). */
   next: u32;
+  /** Start byte offset of the diagnostic span. */
   start: u32;
+  /** End byte offset of the diagnostic span. */
   end: u32;
+  /** Token or syntax kind ID associated with the diagnostic. */
   tokenType: u32;
+  /** Primary diagnostic argument word. */
   arg0: u32;
+  /** Secondary diagnostic argument word. */
   arg1: u32;
+  /** Tertiary diagnostic argument word. */
   arg2: u32;
 }
 
+/** Prepends a new `DiagnosticNode` onto a GSS head's persistent diagnostic chain and returns its pointer. */
 export function pushDiagnostic(
   tailPtr: u32,
   start: u32,
@@ -375,6 +451,7 @@ export function pushDiagnostic(
   return changetype<u32>(node);
 }
 
+/** Materializes the winning GSS head's reversed `DiagnosticNode` chain into the global `t_error*` buffers in source order. */
 export function commitDiagnostics(tailPtr: u32): void {
   let count = 0;
   let curr = tailPtr;
@@ -768,24 +845,45 @@ export function getBestErrorCost(): u32 {
   return 0;
 }
 
+/**
+ * Zero-allocation linear-memory cursor that iterates over all child CST nodes
+ * assigned to a specific grammar `fieldId` on a parent node.
+ *
+ * Decodes `type_fields` and `type_field_data` on the fly, transparently descending
+ * into synthetic (`_`-prefixed) rules marked with the `0x8000` indirect-hop flag
+ * using an inline 64-frame stack (`stackPtr`, 32 bytes per frame).
+ */
 @unmanaged
 export class FieldCursor {
+  /** Arena pointer to the CST node currently being scanned for field children. */
   node: u32;
+  /** Target grammar field ID being queried. */
   fieldId: i32;
 
+  /** Start index in `type_field_data` for the current `(nodeType, fieldId)` entry (`-1` if none). */
   offset: i32;
+  /** Remaining `(childIndex, expectedType)` pairs to inspect in the current frame. */
   indexCount: i32;
+  /** Current read index into `type_field_data` for the next `(rawIndex, expectedType)` pair. */
   currentIdxPtr: i32;
 
+  /** Arena pointer to the current child node in `node`'s sibling list. */
   currentChild: u32;
+  /** 0-based logical child index of `currentChild` (skipping error/null nodes). */
   currentChildIdx: i32;
 
+  /** Current recursion depth in `stackPtr` when descending through `0x8000` synthetic rules. */
   frameDepth: i32;
+  /** Linear-memory pointer to the 64-entry frame stack (each frame is 32 bytes = `1 << 5`). */
   stackPtr: usize;
+  /** Cached next matching CST node pointer populated by `hasNext()`. */
   private cachedNext: u32;
+  /** True when `cachedNext` holds an unconsumed lookahead result from `hasNext()`. */
   private hasCachedNext: boolean;
+  /** True while this cursor is checked out from `cursorPool`. */
   isActive: boolean;
 
+  /** Pushes the current node and `type_field_data` iteration state onto the 32-byte-per-frame stack before descending into a synthetic child. */
   @inline
   pushFrame(node: u32, offset: i32, count: i32, ptr: i32): void {
     if (this.frameDepth < MAX_FIELD_CURSOR_DEPTH) {
@@ -800,6 +898,7 @@ export class FieldCursor {
     }
   }
 
+  /** Restores the parent node and `type_field_data` iteration state from the top of the frame stack. */
   @inline
   popFrame(): void {
     if (this.frameDepth > 0) {
@@ -814,6 +913,7 @@ export class FieldCursor {
     }
   }
 
+  /** Initializes the cursor to iterate over children of `node` matching `fieldId`. */
   @inline
   init(node: u32, fieldId: i32): void {
     if (this.stackPtr == 0) {
@@ -855,6 +955,7 @@ export class FieldCursor {
     let fieldCount = type_field_data[offset];
     let currentOffset = offset + 1;
     
+    // Scan the field descriptors for `type`: [fieldId, indexCount, (rawIndex, expectedType)*]
     for (let i = 0; i < fieldCount; i++) {
       if (currentOffset + 1 >= type_field_data.length) {
         break;
@@ -872,6 +973,7 @@ export class FieldCursor {
     this.offset = -1;
   }
 
+  /** Returns true if at least one more child node matching `fieldId` exists. */
   @inline
   hasNext(): boolean {
     if (this.hasCachedNext) return this.cachedNext != 0;
@@ -880,6 +982,7 @@ export class FieldCursor {
     return this.cachedNext != 0;
   }
 
+  /** Advances the cursor and returns the next matching child node pointer (`0` when exhausted). */
   @inline
   next(): u32 {
     if (this.hasCachedNext) {
@@ -889,6 +992,11 @@ export class FieldCursor {
     return this._advance();
   }
 
+  /**
+   * Core state machine that steps through `(rawIndex, expectedType)` pairs in `type_field_data`.
+   * Bit 15 (`0x8000`) of `rawIndex` indicates that the child at `rawIndex & 0x7fff` is a
+   * synthetic rule node that must be pushed onto the frame stack and searched recursively.
+   */
   private _advance(): u32 {
     while (true) {
       if (this.indexCount == 0) {
@@ -910,15 +1018,18 @@ export class FieldCursor {
       this.currentIdxPtr += 2;
       this.indexCount--;
 
+      // Bit 15 (0x8000) marks an indirect hop through a synthetic rule child
       let isSyntheticField = (rawIndex & 0x8000) != 0;
       let logicalIndex = rawIndex & 0x7fff;
       let targetIdx = logicalIndex;
       
+      // Rewind sibling pointer if the next field entry refers to an earlier child index
       if (targetIdx < this.currentChildIdx) {
         this.currentChild = getNodeFirstChild(this.node);
         this.currentChildIdx = 0;
       }
 
+      // Advance sibling pointer to `targetIdx`, ignoring error recovery nodes
       while (this.currentChild != 0) {
         let childType = getNodeType(this.currentChild);
         if (childType == NODE_TYPE_ERROR || childType == 0) {
@@ -940,6 +1051,7 @@ export class FieldCursor {
 
       let rawChildType = getNodeType(child);
       if (!isSyntheticField) {
+        // Unwrap flattened list-spine containers (`FLAG_IS_LIST`) to their first element
         while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0)) {
           let first = getNodeFirstChild(child);
           if (first != 0 && getNodeType(first) != NODE_TYPE_ERROR) {
@@ -950,6 +1062,7 @@ export class FieldCursor {
         }
       }
 
+      // If `0x8000` is set, push the current frame and descend into `child`'s field table
       if (isSyntheticField) {
         if (this.frameDepth < MAX_FIELD_CURSOR_DEPTH) {
           this.pushFrame(this.node, this.offset, this.indexCount, this.currentIdxPtr);
@@ -1010,6 +1123,7 @@ export class FieldCursor {
     return 0;
   }
 
+  /** Returns this `FieldCursor` instance to `cursorPool` for reuse. */
   @inline
   release(): void {
     if (!this.isActive) return;
@@ -1039,6 +1153,7 @@ function initCursorPool(): void {
   cursorPoolInitialized = true;
 }
 
+/** Reclaims all pooled `FieldCursor` instances back into `cursorPool`. */
 export function resetCursorPool(): void {
   if (!cursorPoolInitialized) return;
   for (let i = 0; i < CURSOR_POOL_CAPACITY; i++) {
@@ -1050,6 +1165,7 @@ export function resetCursorPool(): void {
   cursorPoolDepth = CURSOR_POOL_CAPACITY;
 }
 
+/** Acquires and initializes a pooled `FieldCursor` for `(node, fieldId)`. */
 export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
   if (!cursorPoolInitialized) initCursorPool();
   let cursor: FieldCursor;
@@ -1065,6 +1181,7 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
   return cursor;
 }
 
+/** Releases a `FieldCursor` back into `cursorPool`. */
 export function releaseFieldCursor(cursor: FieldCursor): void {
   if (!cursorPoolInitialized) initCursorPool();
   cursor.isActive = false;
@@ -1074,11 +1191,13 @@ export function releaseFieldCursor(cursor: FieldCursor): void {
   }
 }
 
+/** Advances `cursor` and returns the next matching child CST node pointer (`0` if none). */
 export function fieldCursorNext(cursor: FieldCursor): u32 {
   if (changetype<usize>(cursor) == 0) return 0;
   return cursor.next();
 }
 
+/** Returns the first child CST node of `ptr` matching `fieldId`, or `0` if absent. */
 export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   let cursor = getChildrenByFieldId(ptr, fieldId);
   let child = cursor.next();
@@ -1086,6 +1205,10 @@ export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   return child;
 }
 
+/**
+ * Reverse-maps a `(parentType, childIndex, childType)` triple to its grammar `fieldId`
+ * by scanning `type_fields` and `type_field_data` (returns `-1` if the child has no field name).
+ */
 export function getFieldIdForChild(type: u16, childIndex: u16, childType: u16, directOnly: i32): i32 {
   let tablePtr = changetype<usize>(type_fields);
   if (tablePtr < 4) return -1;
@@ -1125,6 +1248,7 @@ export function getFieldIdForChild(type: u16, childIndex: u16, childType: u16, d
   return -1;
 }
 
+/** Returns the direct (non-synthetic) `fieldId` for the child at `childIndex` of `type`, or `-1`. */
 export function getDirectFieldIdForChild(type: u16, childIndex: u16, childType: u16): i32 {
   return getFieldIdForChild(type, childIndex, childType, 1);
 }
@@ -1141,8 +1265,10 @@ let ancestorTable: usize = 0; // entries of (key u32, parent u32)
 let ancestorTableCap: u32 = 0; // power of two
 let ancestorTableCount: u32 = 0;
 
+/** Generation counter incremented on each lint pass to invalidate per-pass lint memo tables. */
 export let lintRunGeneration: u32 = 0;
 
+/** Enables or disables the $O(1)$ node-to-parent hash table used by `AncestorCursor` during lint runs. */
 export function setAncestorCacheEnabled(on: boolean): void {
   ancestorCacheOn = on;
   ancestorCacheRoot = 0; // force rebuild on next use
@@ -1231,14 +1357,24 @@ function buildAncestorTable(rootNode: u32): void {
   ancestorCacheRoot = rootNode;
 }
 
+/**
+ * Pooled linear-memory cursor that iterates bottom-up over the ancestor chain
+ * of a target CST node (optionally filtered by syntax type `filterType`).
+ */
 @unmanaged
 export class AncestorCursor {
+  /** Linear-memory pointer to the 4096-entry `u32` ancestor path buffer. */
   pathStack: usize; 
+  /** Total number of ancestors recorded in `pathStack`. */
   pathLength: i32;
+  /** Current read index in `pathStack` (iterates downward from `pathLength - 1` to `0`). */
   currentIndex: i32;
+  /** True while checked out from `ancestorCursorPool`. */
   isActive: boolean;
+  /** Syntax type filter (`0` or `0xFFFF` matches any ancestor type). */
   filterType: u16;
   
+  /** Populates `pathStack` with the ancestors of `targetNode` up to `rootNode`. */
   @inline init(targetNode: u32, stopAtType: u16, rootNode: u32): void {
      this.filterType = stopAtType;
      this.pathLength = 0;
@@ -1344,6 +1480,7 @@ export class AncestorCursor {
      }
   }
 
+  /** Returns true if another ancestor matching `filterType` exists along the path to `rootNode`. */
   @inline hasNext(): boolean {
       while (this.currentIndex >= 0) {
           let n = load<u32>(this.pathStack + (this.currentIndex << 2));
@@ -1355,12 +1492,14 @@ export class AncestorCursor {
       return false;
    }
   
+  /** Returns the next matching ancestor CST node pointer moving upward toward `rootNode`. */
   @inline next(): u32 {
      let n = load<u32>(this.pathStack + (this.currentIndex << 2));
      this.currentIndex--;
      return n;
   }
 
+  /** Releases this cursor back to `ancestorCursorPool`. */
   @inline release(): void {
      if (!this.isActive) return;
      this.isActive = false;
@@ -1385,6 +1524,7 @@ function initAncestorCursorPool(): void {
   ancestorCursorPoolInitialized = true;
 }
 
+/** Acquires and initializes an `AncestorCursor` walking upward from `node` to `rootNode`. */
 export function getAncestors(node: u32, filterType: u16, rootNode: u32): AncestorCursor {
   if (!ancestorCursorPoolInitialized) initAncestorCursorPool();
   let cursor: AncestorCursor;
@@ -1400,6 +1540,7 @@ export function getAncestors(node: u32, filterType: u16, rootNode: u32): Ancesto
   return cursor;
 }
 
+/** Releases an `AncestorCursor` back into `ancestorCursorPool`. */
 export function releaseAncestorCursor(cursor: AncestorCursor): void {
   if (!ancestorCursorPoolInitialized) initAncestorCursorPool();
   if (ancestorCursorPoolDepth < 16) {
@@ -1409,14 +1550,24 @@ export function releaseAncestorCursor(cursor: AncestorCursor): void {
 }
 
 
+/**
+ * Pooled linear-memory cursor that performs an iterative pre-order DFS traversal
+ * over all descendants of a subtree root, optionally filtering by `filterType`.
+ */
 @unmanaged
 export class DescendantCursor {
+  /** Linear-memory pointer to the 4096-entry `u32` DFS ancestor stack. */
   stack: u32;
+  /** Current number of ancestor nodes pushed onto `stack`. */
   stackDepth: i32;
+  /** Arena pointer to the descendant node currently under the cursor (`0` when finished). */
   current: u32;
+  /** True while checked out from `descendantCursorPool`. */
   isActive: boolean;
+  /** Syntax type filter (`0` or `0xFFFF` matches all descendant node types). */
   filterType: u16;
 
+  /** Initializes a pre-order descendant traversal starting at the first child of `root`. */
   @inline init(root: u32, filterType: u16): void {
      this.filterType = filterType;
      this.stackDepth = 0;
@@ -1424,6 +1575,7 @@ export class DescendantCursor {
      this.isActive = true;
   }
   
+  /** Advances until a descendant matching `filterType` is reached and returns true if found. */
   @inline hasNext(): boolean {
      while (this.current != 0) {
          if (this.filterType == 0xFFFF || this.filterType == 0 || getNodeType(this.current) == this.filterType) {
@@ -1434,12 +1586,14 @@ export class DescendantCursor {
      return false;
   }
   
+  /** Returns the current matching descendant CST node pointer and advances to the next node. */
   @inline next(): u32 {
      let n = this.current;
      this.advance();
      return n;
   }
 
+  /** Steps `current` to the next node in pre-order DFS (`firstChild`, else `nextSibling`, else climb `stack`). */
   @inline advance(): void {
      let child = getNodeFirstChild(this.current);
      if (child != 0) {
@@ -1467,6 +1621,7 @@ export class DescendantCursor {
      this.current = 0;
   }
   
+  /** Releases this cursor back to `descendantCursorPool`. */
   @inline release(): void {
      if (!this.isActive) return;
      this.isActive = false;
@@ -1491,6 +1646,7 @@ function initDescendantCursorPool(): void {
   descendantCursorPoolInitialized = true;
 }
 
+/** Acquires and initializes a pooled `DescendantCursor` rooted at `node`. */
 export function getDescendants(node: u32, filterType: u16): DescendantCursor {
   if (!descendantCursorPoolInitialized) initDescendantCursorPool();
   let cursor: DescendantCursor;
@@ -1506,6 +1662,7 @@ export function getDescendants(node: u32, filterType: u16): DescendantCursor {
   return cursor;
 }
 
+/** Releases a `DescendantCursor` back into `descendantCursorPool`. */
 export function releaseDescendantCursor(cursor: DescendantCursor): void {
   if (!descendantCursorPoolInitialized) initDescendantCursorPool();
   if (descendantCursorPoolDepth < 16) {
@@ -1515,26 +1672,36 @@ export function releaseDescendantCursor(cursor: DescendantCursor): void {
 }
 
 
+/**
+ * Pooled linear-memory cursor that iterates over the direct children of a CST node
+ * via `firstChild` / `nextSibling` links.
+ */
 @unmanaged
 export class SemanticCursor {
+  /** Arena pointer to the next direct child node to yield (`0` when exhausted). */
   currentChild: u32;
+  /** True while checked out from `semanticCursorPool`. */
   isActive: boolean;
   
+  /** Initializes the cursor at the first direct child of `node`. */
   @inline init(node: u32): void {
      this.currentChild = getNodeFirstChild(node);
      this.isActive = true;
   }
   
+  /** Returns true if `currentChild` is non-null. */
   @inline hasNext(): boolean {
      return this.currentChild != 0;
   }
   
+  /** Returns `currentChild` and advances to `getNodeNextSibling(currentChild)`. */
   @inline next(): u32 {
      let c = this.currentChild;
      this.currentChild = getNodeNextSibling(c);
      return c;
   }
   
+  /** Releases this cursor back to `semanticCursorPool`. */
   @inline release(): void {
      if (!this.isActive) return;
      this.isActive = false;

@@ -136,6 +136,9 @@ export function parseSsv(xml: string, fullXml: string = xml, baseOffset: number 
 
 // ── Internal parsers ────────────────────────────────────────────────
 
+/**
+ * Compute the 1-indexed line number corresponding to `offset` within `xml`.
+ */
 function offsetToLine(xml: string, offset: number): number {
   let line = 1;
   const end = Math.min(offset, xml.length);
@@ -145,6 +148,9 @@ function offsetToLine(xml: string, offset: number): number {
   return line;
 }
 
+/**
+ * Parse `x1`, `y1`, `x2`, `y2`, and optional `rotation` attributes from an `<ssd:ElementGeometry>` or `<ssd:SystemGeometry>` tag.
+ */
 function parseElementGeometryAttrs(attrs: string): SspElementGeometry | undefined {
   const x1Str = extractAttrFromStr(attrs, "x1");
   const y1Str = extractAttrFromStr(attrs, "y1");
@@ -169,6 +175,9 @@ function parseElementGeometryAttrs(attrs: string): SspElementGeometry | undefine
   };
 }
 
+/**
+ * Parse normalized `x` and `y` coordinates from an `<ssd:ConnectorGeometry>` tag.
+ */
 function parseConnectorGeometryAttrs(attrs: string): SspConnectorGeometry | undefined {
   const xStr = extractAttrFromStr(attrs, "x");
   const yStr = extractAttrFromStr(attrs, "y");
@@ -179,6 +188,9 @@ function parseConnectorGeometryAttrs(attrs: string): SspConnectorGeometry | unde
   return { x, y };
 }
 
+/**
+ * Parse whitespace-separated `pointsX` and `pointsY` waypoint arrays from an `<ssd:ConnectionGeometry>` tag.
+ */
 function parseConnectionGeometryAttrs(attrs: string): { x: number; y: number }[] | undefined {
   const pxStr = extractAttrFromStr(attrs, "pointsX");
   const pyStr = extractAttrFromStr(attrs, "pointsY");
@@ -202,12 +214,18 @@ function parseConnectionGeometryAttrs(attrs: string): { x: number; y: number }[]
   return pts.length > 0 ? pts : undefined;
 }
 
+/**
+ * Parse top-level system boundary `<ssd:Connectors>` declared prior to `<ssd:Elements>`.
+ */
 function parseSystemBoundaryConnectors(systemBody: string, fullXml: string, systemBodyOffset: number): SspConnector[] {
   const elementsIdx = systemBody.indexOf("<ssd:Elements>");
   const connectorsBlock = elementsIdx >= 0 ? systemBody.substring(0, elementsIdx) : systemBody;
   return parseConnectors(connectorsBlock, fullXml, systemBodyOffset);
 }
 
+/**
+ * Parse all `<ssd:Component>` declarations inside `<ssd:Elements>`, including nested connectors and geometry.
+ */
 function parseComponents(systemBody: string, fullXml: string, systemBodyOffset: number): SspComponent[] {
   const components: SspComponent[] = [];
 
@@ -244,6 +262,9 @@ function parseComponents(systemBody: string, fullXml: string, systemBodyOffset: 
   return components;
 }
 
+/**
+ * Parse `<ssd:Connector>` elements inside a component or system `<ssd:Connectors>` block.
+ */
 function parseConnectors(componentBody: string, fullXml: string, baseOffset: number): SspConnector[] {
   const connectors: SspConnector[] = [];
 
@@ -289,6 +310,9 @@ function parseConnectors(componentBody: string, fullXml: string, baseOffset: num
   return connectors;
 }
 
+/**
+ * Parse all `<ssd:Connection>` elements inside `<ssd:Connections>`, including optional routing waypoints.
+ */
 function parseConnections(systemBody: string, fullXml: string, systemBodyOffset: number): SspConnection[] {
   const connections: SspConnection[] = [];
 
@@ -322,6 +346,9 @@ function parseConnections(systemBody: string, fullXml: string, systemBodyOffset:
   return connections;
 }
 
+/**
+ * Parse `<ssd:ParameterBinding>` elements and any inline `<ssv:Parameter>` values within the system body.
+ */
 function parseParameterBindings(systemBody: string, fullXml: string, systemBodyOffset: number): SspParameterBinding[] {
   const bindings: SspParameterBinding[] = [];
   const bindElements = extractTagElements(systemBody, "ssd:ParameterBinding");
@@ -343,6 +370,9 @@ function parseParameterBindings(systemBody: string, fullXml: string, systemBodyO
   return bindings;
 }
 
+/**
+ * Parse `startTime` and `stopTime` attributes from `<ssd:DefaultExperiment>`.
+ */
 function parseDefaultExperiment(xml: string): SspDefaultExperiment | undefined {
   const expBlock = extractTagBlock(xml, "ssd:DefaultExperiment") ?? extractTagBlock(xml, "DefaultExperiment");
   if (!expBlock) return undefined;
@@ -360,6 +390,48 @@ function parseDefaultExperiment(xml: string): SspDefaultExperiment | undefined {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Check whether `ch` is a valid XML tag-name terminator (whitespace, `>`, `/`, or EOF).
+ */
+function isTagBoundaryChar(ch: string | undefined): boolean {
+  return ch === undefined || ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === ">" || ch === "/";
+}
+
+/**
+ * Find the byte index of the matching `</tag>` closing tag, accounting for nested `<tag>` elements.
+ */
+function findMatchingCloseTag(xml: string, tag: string, searchFrom: number): number {
+  const openTag = `<${tag}`;
+  const closeTag = `</${tag}>`;
+  let depth = 1;
+  let cursor = searchFrom;
+  while (cursor < xml.length && depth > 0) {
+    const nextClose = xml.indexOf(closeTag, cursor);
+    if (nextClose === -1) return -1;
+    let nextOpen = xml.indexOf(openTag, cursor);
+    while (nextOpen !== -1 && nextOpen < nextClose) {
+      const charAfter = xml[nextOpen + openTag.length];
+      if (isTagBoundaryChar(charAfter)) {
+        const openEnd = xml.indexOf(">", nextOpen + openTag.length);
+        if (openEnd !== -1 && xml[openEnd - 1] !== "/") {
+          depth++;
+        }
+        cursor = openEnd !== -1 ? openEnd + 1 : nextOpen + openTag.length;
+      } else {
+        cursor = nextOpen + openTag.length;
+      }
+      nextOpen = xml.indexOf(openTag, cursor);
+    }
+    depth--;
+    if (depth === 0) return nextClose;
+    cursor = nextClose + closeTag.length;
+  }
+  return -1;
+}
+
+/**
+ * Extract the first occurrence of `<tag ...>...</tag>` (or self-closing `<tag .../>`) from `xml`.
+ */
 function extractTagBlock(
   xml: string,
   tag: string,
@@ -370,15 +442,7 @@ function extractTagBlock(
     const startIdx = xml.indexOf(openTag, pos);
     if (startIdx === -1) return null;
     const charAfter = xml[startIdx + openTag.length];
-    if (
-      charAfter !== undefined &&
-      charAfter !== " " &&
-      charAfter !== "\t" &&
-      charAfter !== "\r" &&
-      charAfter !== "\n" &&
-      charAfter !== ">" &&
-      charAfter !== "/"
-    ) {
+    if (!isTagBoundaryChar(charAfter)) {
       pos = startIdx + openTag.length;
       continue;
     }
@@ -390,8 +454,7 @@ function extractTagBlock(
     if (isSelfClosing) {
       return { attrs, body: "", startIdx, bodyOffset: tagEnd + 1 };
     }
-    const closeTag = `</${tag}>`;
-    const endIdx = xml.indexOf(closeTag, tagEnd + 1);
+    const endIdx = findMatchingCloseTag(xml, tag, tagEnd + 1);
     if (endIdx === -1) {
       return { attrs, body: "", startIdx, bodyOffset: tagEnd + 1 };
     }
@@ -401,6 +464,9 @@ function extractTagBlock(
   return null;
 }
 
+/**
+ * Extract all sequential occurrences of `<tag ...>...</tag>` (or `<tag .../>`) within `xml`.
+ */
 function extractTagElements(
   xml: string,
   tag: string,
@@ -413,15 +479,7 @@ function extractTagElements(
     const startIdx = xml.indexOf(openTag, pos);
     if (startIdx === -1) break;
     const charAfter = xml[startIdx + openTag.length];
-    if (
-      charAfter !== undefined &&
-      charAfter !== " " &&
-      charAfter !== "\t" &&
-      charAfter !== "\r" &&
-      charAfter !== "\n" &&
-      charAfter !== ">" &&
-      charAfter !== "/"
-    ) {
+    if (!isTagBoundaryChar(charAfter)) {
       pos = startIdx + openTag.length;
       continue;
     }
@@ -434,7 +492,7 @@ function extractTagElements(
       result.push({ attrs, body: "", startIdx, bodyOffset: tagEnd + 1 });
       pos = tagEnd + 1;
     } else {
-      const endIdx = xml.indexOf(closeTag, tagEnd + 1);
+      const endIdx = findMatchingCloseTag(xml, tag, tagEnd + 1);
       if (endIdx === -1) {
         result.push({ attrs, body: "", startIdx, bodyOffset: tagEnd + 1 });
         pos = tagEnd + 1;
@@ -447,12 +505,18 @@ function extractTagElements(
   return result;
 }
 
+/**
+ * Extract a named XML attribute value from the first occurrence of `<element>` in `xml`.
+ */
 function extractAttr(xml: string, element: string, attr: string): string | undefined {
   const block = extractTagBlock(xml, element);
   if (!block) return undefined;
   return extractAttrFromStr(block.attrs, attr);
 }
 
+/**
+ * Extract a single- or double-quoted XML attribute value from a raw attribute string.
+ */
 function extractAttrFromStr(attrs: string, attr: string): string | undefined {
   const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = attrs.match(new RegExp(`\\b${escaped}\\s*=\\s*"([^"]*)"`));

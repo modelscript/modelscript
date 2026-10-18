@@ -217,17 +217,17 @@ export class FmuArtifactHandler implements ArtifactHandler {
   validate(artifact: Record<string, unknown>): string[] {
     const errors: string[] = [];
 
-    if (!artifact.path) {
+    if (!artifact["path"]) {
       errors.push("FMU artifact must have a 'path' field");
     } else {
-      const p = artifact.path as string;
+      const p = artifact["path"] as string;
       if (!p.endsWith(".fmu")) {
         errors.push(`FMU artifact path must end with .fmu, got: "${p}"`);
       }
     }
 
-    if (artifact.fmiVersion) {
-      const v = artifact.fmiVersion as string;
+    if (artifact["fmiVersion"]) {
+      const v = artifact["fmiVersion"] as string;
       if (!["1.0", "2.0", "3.0"].includes(v)) {
         errors.push(`Invalid FMI version: "${v}" (expected 1.0, 2.0, or 3.0)`);
       }

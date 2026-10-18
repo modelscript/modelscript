@@ -25,41 +25,43 @@ export interface LanguagePlugin {
   /** Workspace index instance for multi-file cross-referencing */
   workspaceIndex?: any;
   /** Salsa QueryEngine for memoized semantic queries */
-  queryEngine?: QueryEngine;
+  queryEngine?: QueryEngine | undefined;
   /** Dynamic LSP capability registrations (client/registerCapability disposables) */
-  disposables?: Disposable[];
+  disposables?: Disposable[] | undefined;
   /** Compiled WebAssembly bytecode buffer */
-  wasmBytes?: Uint8Array;
+  wasmBytes?: Uint8Array | undefined;
   /** WebAssembly linear memory reference */
-  memory?: WebAssembly.Memory;
+  memory?: WebAssembly.Memory | undefined;
   /** Custom language-specific handler overrides */
-  customHandlers?: {
-    validate?: (doc: any) => Promise<any[]> | any[];
-    postValidate?: (doc: any, context: any, diagnostics: any[]) => Promise<void> | void;
-    complete?: (offset: number, text: string) => any[];
-    hover?: (offset: number, text: string) => any | null;
-    definition?: (offset: number, text: string) => any | null;
-    symbols?: (tree: any) => any[];
-    folding?: (tree: any) => any[];
-  };
+  customHandlers?:
+    | {
+        validate?: ((doc: any) => Promise<any[]> | any[]) | undefined;
+        postValidate?: ((doc: any, context: any, diagnostics: any[]) => Promise<void> | void) | undefined;
+        complete?: ((offset: number, text: string) => any[]) | undefined;
+        hover?: ((offset: number, text: string) => any | null) | undefined;
+        definition?: ((offset: number, text: string) => any | null) | undefined;
+        symbols?: ((tree: any) => any[]) | undefined;
+        folding?: ((tree: any) => any[]) | undefined;
+      }
+    | undefined;
   /** Full language definition options from @modelscript/dsl */
   languageDef?: LanguageOptions | any;
   /** First-class declarative language actions (commands, toolbar buttons, LLM tools) */
-  actions?: LanguageAction[];
+  actions?: LanguageAction[] | undefined;
   /** Custom JSON-RPC request and notification handlers */
-  handlers?: Record<string, (context: any, params: any) => Promise<any> | any>;
+  handlers?: Record<string, (context: any, params: any) => Promise<any> | any> | undefined;
   /** Domain action execution handlers (decoupled from AST grammar) */
-  actionHandlers?: Record<string, (context: any, inputs: any) => Promise<any> | any>;
+  actionHandlers?: Record<string, (context: any, inputs: any) => Promise<any> | any> | undefined;
   /** Optional source text preprocessor hook (e.g. keyword aliases) */
-  preprocessText?: (text: string) => string;
+  preprocessText?: ((text: string) => string) | undefined;
   /** Factory for creating a Salsa QueryEngine for this language */
-  createQueryEngine?: (unifiedIndex: any, cstTreeWrapper: any) => QueryEngine;
+  createQueryEngine?: ((unifiedIndex: any, cstTreeWrapper: any) => QueryEngine) | undefined;
   /** Diagram backend instance */
   diagramBackend?: any;
   /** Annotation evaluator class or constructor */
   annotationEvaluator?: any;
   /** Bi-directional parameter writeback handler or configuration */
-  writeback?: WritebackConfig | WritebackHandler;
+  writeback?: WritebackConfig | WritebackHandler | undefined;
 }
 
 /**

@@ -194,9 +194,9 @@ package DroneAero {
       assert.ok(panel, "CandidateTradeStudyPanel must be active");
 
       // Candidate 4 has higher stress exceeding allowable limit
-      const cand4 = panel.getCandidate("cand_4");
+      const cand4 = panel.getCandidate("cand_4")!;
       cand4.allowableStressMPa = 10.0; // Enforce tight allowable stress limit to guarantee refutation
-      cand4.parameters.wallThickness = 0.5;
+      cand4.parameters["wallThickness"] = 0.5;
 
       const verifiedCand = await panel.launchLocalTier3("cand_4");
       assert.ok(verifiedCand, "launchLocalTier3 should return candidate");

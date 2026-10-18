@@ -1,10 +1,11 @@
 # ModelScript FMI Validation Dashboard
 
-This dashboard tracks the numerical parity and structural compatibility of the ModelScript FMI exporter across FMI 2.0 & FMI 3.0 (ME and CS) against the official [Modelica Reference-FMUs](https://github.com/modelica/Reference-FMUs). The Reference-FMUs are compiled directly from their manual C source code via their provided CMake build system, serving as the definitive ground truth for these validation benchmarks.
+This dashboard tracks the numerical parity and structural compatibility of the ModelScript FMI exporter and native FMU simulator across FMI 2.0 & FMI 3.0 (ME and CS) against the official [Modelica Reference-FMUs](https://github.com/modelica/Reference-FMUs). The Reference-FMUs are compiled directly from their manual C source code via their provided CMake build system, serving as the definitive ground truth for these validation benchmarks.
 
 ### Options & Terminology
 
 - **Native msx:** The ModelScript Arena Simulator running the source `.mo` file directly. Uses the internal WASM CVODE solver by default.
+- **msx-FMU (msx):** The exported ModelScript FMU (`.fmu`) simulated directly via `msx simulate <file.fmu> --interface-type <cs|me>`.
 - **msx-FMU (fmusim):** The exported ModelScript FMU (`.fmu`) simulated using the official FMI standard `fmusim` C-binary. We explicitly pass `--output-interval` to ensure exact parity with the Reference FMU execution.
   - **Model Exchange (ME):** The FMU only supplies state derivatives. The host (`fmusim`) integrates the equations. We explicitly configure `fmusim` to use the **CVODE** algorithm (`--solver cvode`).
   - **Co-Simulation (CS):** The FMU contains its own embedded solver. ModelScript natively compiles a custom **4th-order Runge-Kutta (RK4)** integration algorithm directly into the FMU binary to advance the state.
@@ -16,33 +17,45 @@ Values are reported as `Max Absolute Error (NRMSE %)`. A simulation passes if th
 
 ### Expected Exclusions & Failures
 
-- **Done (No Ref):** Indicates the simulation succeeded internally, but no Ground Truth Reference-FMU exists for this FMI version (e.g. `StateSpace` is not available in FMI 2.0 reference FMUs).
+- **Done (No Ref):** Indicates the simulation succeeded internally, but no Ground Truth Reference-FMU exists for this FMI version (e.g. `StateSpace` and `Roberts` are only in FMI 3.0 reference FMUs).
 - **OMSimulator FMI 3.0 Failures:** `OMSimulator` v2.1.3 explicitly hardcodes schema validation to the `FMI-2.0` standard. FMI 3.0 FMUs fail during ingestion because the `fmiVersion="3.0"` attribute does not match the hardcoded `#FIXED` value of `'2.0'`. This is a limitation of the current OMSimulator build.
 
 ## Simulation Matrix
 
-| Model        | FMI | Mode | Native msx | msx-FMU (fmusim)   | msx-FMU (omsim)   |
-| ------------ | --- | ---- | ---------- | ------------------ | ----------------- |
-| BouncingBall | 2.0 | CS   | ❌ Fail    | ✅ 2.5e-2 (0.45%)  | ✅ 2.5e-2 (0.45%) |
-| BouncingBall | 2.0 | ME   | ❌ Fail    | ✅ 5.3e-5 (0.00%)  | ✅ 2.5e-4 (0.02%) |
-| BouncingBall | 3.0 | CS   | ❌ Fail    | ✅ 2.5e-2 (0.45%)  | Not Supported     |
-| BouncingBall | 3.0 | ME   | ❌ Fail    | ✅ 5.3e-5 (0.00%)  | Not Supported     |
-| VanDerPol    | 2.0 | CS   | ❌ Fail    | ✅ 2.8e-1 (1.43%)  | ✅ 1.0e-1 (3.74%) |
-| VanDerPol    | 2.0 | ME   | ❌ Fail    | ✅ 0.0e+0 (0.00%)  | ✅ 2.7e-4 (0.59%) |
-| VanDerPol    | 3.0 | CS   | ❌ Fail    | ✅ 2.8e-1 (1.43%)  | Not Supported     |
-| VanDerPol    | 3.0 | ME   | ❌ Fail    | ✅ 0.0e+0 (0.00%)  | Not Supported     |
-| Dahlquist    | 2.0 | CS   | ❌ Fail    | ✅ 1.9e-2 (0.81%)  | ✅ 1.9e-2 (1.42%) |
-| Dahlquist    | 2.0 | ME   | ❌ Fail    | ✅ 0.0e+0 (0.00%)  | ✅ 3.8e-4 (0.02%) |
-| Dahlquist    | 3.0 | CS   | ❌ Fail    | ✅ 1.9e-2 (0.81%)  | Not Supported     |
-| Dahlquist    | 3.0 | ME   | ❌ Fail    | ✅ 0.0e+0 (0.00%)  | Not Supported     |
-| Stair        | 2.0 | CS   | ❌ Fail    | ✅ 1.0e+0 (0.74%)  | ✅ 0.0e+0 (0.00%) |
-| Stair        | 2.0 | ME   | ❌ Fail    | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%) |
-| Stair        | 3.0 | CS   | ❌ Fail    | ✅ 0.0e+0 (0.00%)  | Not Supported     |
-| Stair        | 3.0 | ME   | ❌ Fail    | ✅ 0.0e+0 (0.00%)  | Not Supported     |
-| StateSpace   | 2.0 | CS   | ❌ Fail    | Done (No Ref)      | Done (No Ref)     |
-| StateSpace   | 2.0 | ME   | ❌ Fail    | Done (No Ref)      | Done (No Ref)     |
-| StateSpace   | 3.0 | CS   | ❌ Fail    | ❌ 6.6e+4 (23.38%) | Not Supported     |
-| StateSpace   | 3.0 | ME   | ❌ Fail    | ❌ 6.6e+4 (23.37%) | Not Supported     |
+| Model        | FMI | Mode | Native msx        | msx-FMU (msx)     | msx-FMU (fmusim)    | msx-FMU (omsim)   |
+| ------------ | --- | ---- | ----------------- | ----------------- | ------------------- | ----------------- |
+| BouncingBall | 2.0 | CS   | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%)   | ✅ 2.5e-2 (0.45%) |
+| BouncingBall | 2.0 | ME   | ✅ 2.6e-4 (0.01%) | ✅ 2.7e-4 (0.01%) | ✅ 5.3e-5 (0.00%)   | ✅ 2.3e-4 (0.02%) |
+| BouncingBall | 3.0 | CS   | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%)   | Not Supported     |
+| BouncingBall | 3.0 | ME   | ✅ 2.6e-4 (0.01%) | ✅ 2.7e-4 (0.01%) | ✅ 5.3e-5 (0.00%)   | Not Supported     |
+| VanDerPol    | 2.0 | CS   | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%)   | ✅ 1.0e-1 (3.74%) |
+| VanDerPol    | 2.0 | ME   | ✅ 3.0e-3 (0.02%) | ✅ 3.0e-3 (0.02%) | ✅ 0.0e+0 (0.00%)   | ✅ 2.7e-4 (0.59%) |
+| VanDerPol    | 3.0 | CS   | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%)   | Not Supported     |
+| VanDerPol    | 3.0 | ME   | ✅ 3.0e-3 (0.02%) | ✅ 3.0e-3 (0.02%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Dahlquist    | 2.0 | CS   | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%)   | ✅ 1.9e-2 (1.42%) |
+| Dahlquist    | 2.0 | ME   | ✅ 2.5e-4 (0.01%) | ✅ 2.5e-4 (0.01%) | ✅ 0.0e+0 (0.00%)   | ✅ 3.8e-4 (0.02%) |
+| Dahlquist    | 3.0 | CS   | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%)   | Not Supported     |
+| Dahlquist    | 3.0 | ME   | ✅ 2.5e-4 (0.01%) | ✅ 2.5e-4 (0.01%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Stair        | 2.0 | CS   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.74%)   | ✅ 0.0e+0 (0.00%) |
+| Stair        | 2.0 | ME   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Stair        | 3.0 | CS   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.74%)   | Not Supported     |
+| Stair        | 3.0 | ME   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| StateSpace   | 2.0 | CS   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
+| StateSpace   | 2.0 | ME   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
+| StateSpace   | 3.0 | CS   | ✅ 3.3e+2 (0.11%) | ✅ 3.3e+2 (0.11%) | ✅ 3.3e+2 (0.11%)   | Not Supported     |
+| StateSpace   | 3.0 | ME   | ✅ 8.2e+1 (0.03%) | ✅ 8.3e+1 (0.03%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Feedthrough  | 2.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Feedthrough  | 2.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Feedthrough  | 3.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Feedthrough  | 3.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Resource     | 2.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Resource     | 2.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Resource     | 3.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Resource     | 3.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Roberts      | 2.0 | CS   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
+| Roberts      | 2.0 | ME   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
+| Roberts      | 3.0 | CS   | ✅ 1.5e-6 (0.00%) | ✅ 4.0e-7 (0.00%) | ✅ 4.0e-7 (0.00%)   | Not Supported     |
+| Roberts      | 3.0 | ME   | ✅ 1.2e-4 (0.27%) | ✅ 1.2e-4 (0.26%) | ✅ 1.6e-2 (196.67%) | Not Supported     |
 
 ## Models & Validation Plots
 
@@ -179,3 +192,81 @@ end StateSpace;
 </details>
 
 ![StateSpace Trajectories](./plots/StateSpace.png)
+
+### Feedthrough
+
+**Simulation Options:** `stopTime = 2`, `stepSize / outputInterval = 0.1`, `Native Solver = cvode`
+
+<details>
+<summary><b>Source Code (Feedthrough.mo)</b></summary>
+
+```modelica
+model Feedthrough "A model to test different variable types, causalities, and variabilities"
+  parameter Real Float64_fixed_parameter = 0.0;
+  parameter Real Float64_tunable_parameter = 0.0;
+  input Real Float64_continuous_input(start = 0.0);
+  output Real Float64_continuous_output(start = 0.0);
+  input Real Float64_discrete_input(start = 0.0);
+  output Real Float64_discrete_output(start = 0.0);
+  input Integer Int32_input(start = 0);
+  output Integer Int32_output(start = 0);
+  input Boolean Boolean_input(start = false);
+  output Boolean Boolean_output(start = false);
+  input Integer Enumeration_input(start = 1);
+  output Integer Enumeration_output(start = 1);
+equation
+  Float64_continuous_output = Float64_continuous_input + Float64_fixed_parameter + Float64_tunable_parameter;
+  Float64_discrete_output = Float64_discrete_input;
+  Int32_output = Int32_input;
+  Boolean_output = Boolean_input;
+  Enumeration_output = Enumeration_input;
+end Feedthrough;
+```
+
+</details>
+
+![Feedthrough Trajectories](./plots/Feedthrough.png)
+
+### Resource
+
+**Simulation Options:** `stopTime = 1`, `stepSize / outputInterval = 0.5`, `Native Solver = cvode`
+
+<details>
+<summary><b>Source Code (Resource.mo)</b></summary>
+
+```modelica
+model Resource "Reads the first character of resources/y.txt as ASCII integer y"
+  output Integer y(start = 97);
+equation
+  y = 97;
+end Resource;
+```
+
+</details>
+
+![Resource Trajectories](./plots/Resource.png)
+
+### Roberts
+
+**Simulation Options:** `stopTime = 1`, `stepSize / outputInterval = 0.01`, `Native Solver = cvode`
+
+<details>
+<summary><b>Source Code (Roberts.mo)</b></summary>
+
+```modelica
+model Roberts "Robertson chemical kinetics benchmark"
+  output Real y1(start = 1.0, fixed = true);
+  output Real y2(start = 0.0, fixed = true);
+  output Real y3(start = 0.0);
+  Real r(start = 0.0);
+equation
+  y3 = 1.0 - y1 - y2;
+  der(y1) = -0.04 * y1 + 1e4 * y2 * y3;
+  der(y2) = 0.04 * y1 - 1e4 * y2 * y3 - 3e7 * y2 * y2;
+  r = y1 + y2 + y3 - 1.0;
+end Roberts;
+```
+
+</details>
+
+![Roberts Trajectories](./plots/Roberts.png)

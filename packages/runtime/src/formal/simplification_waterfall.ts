@@ -37,10 +37,16 @@ export class SimplificationWaterfall {
       case "sub":
       case "mul":
       case "div":
+      case "pow":
         return (
           SimplificationWaterfall.areEqual(a.left, (b as typeof a).left) &&
           SimplificationWaterfall.areEqual(a.right, (b as typeof a).right)
         );
+      case "call": {
+        const bCall = b as typeof a;
+        if (a.fn !== bCall.fn || a.args.length !== bCall.args.length) return false;
+        return a.args.every((arg, i) => SimplificationWaterfall.areEqual(arg, bCall.args[i]!));
+      }
     }
   }
 
@@ -241,6 +247,23 @@ export class SimplificationWaterfall {
         const child = SimplificationWaterfall.rewriteOnce(node.child);
         if (child.kind === "const" && Math.abs(child.value) < 1e-12) return { kind: "const", value: 1 };
         return { kind: "cos", child };
+      }
+
+      case "pow": {
+        const left = SimplificationWaterfall.rewriteOnce(node.left);
+        const right = SimplificationWaterfall.rewriteOnce(node.right);
+        if (left.kind === "const" && right.kind === "const") {
+          return { kind: "const", value: Math.pow(left.value, right.value) };
+        }
+        return { kind: "pow", left, right };
+      }
+
+      case "call": {
+        return {
+          kind: "call",
+          fn: node.fn,
+          args: node.args.map((arg) => SimplificationWaterfall.rewriteOnce(arg)),
+        };
       }
     }
   }

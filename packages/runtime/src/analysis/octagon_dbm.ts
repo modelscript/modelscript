@@ -117,18 +117,18 @@ export class OctagonDBM {
    * falling back to the optimized in-engine Floyd-Warshall closure.
    */
   closeWithWasm(wasmExports: Record<string, any>): void {
-    if (typeof wasmExports.octagon_close_i32 === "function" && typeof wasmExports.__new === "function") {
+    if (typeof wasmExports["octagon_close_i32"] === "function" && typeof wasmExports["__new"] === "function") {
       const dim = this.dim;
       const bytes = dim * dim * 4;
       if (this.wasmInstance !== wasmExports || this.wasmByteCap < bytes || this.wasmPtr === 0) {
-        this.wasmPtr = wasmExports.__new(bytes, 0);
+        this.wasmPtr = wasmExports["__new"](bytes, 0);
         this.wasmByteCap = bytes;
         this.wasmInstance = wasmExports;
       }
-      const mem = wasmExports.memory as WebAssembly.Memory;
+      const mem = wasmExports["memory"] as WebAssembly.Memory;
       const view = new Int32Array(mem.buffer, this.wasmPtr, dim * dim);
       view.set(this.matrix);
-      wasmExports.octagon_close_i32(this.wasmPtr, dim);
+      wasmExports["octagon_close_i32"](this.wasmPtr, dim);
       const outView = new Int32Array(mem.buffer, this.wasmPtr, dim * dim);
       this.matrix.set(outView);
       return;

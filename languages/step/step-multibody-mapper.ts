@@ -22,9 +22,9 @@ export interface MultiBodyPart {
     I_31: number;
     I_32: number;
   };
-  shapeRef?: string;
+  shapeRef?: string | undefined;
   /** Qualified variable name prefix for the body's frame, e.g. "body1" → "body1.frame_a" */
-  frameVariable?: string;
+  frameVariable?: string | undefined;
 }
 
 export interface MultiBodyJoint {
@@ -40,7 +40,7 @@ export interface MultiBodyFixedTranslation {
   partA: string;
   partB: string;
   r: [number, number, number];
-  rotationMatrix?: [[number, number, number], [number, number, number], [number, number, number]];
+  rotationMatrix?: [[number, number, number], [number, number, number], [number, number, number]] | undefined;
 }
 
 import type { StepAssemblyModel } from "./src/physical-data.js";

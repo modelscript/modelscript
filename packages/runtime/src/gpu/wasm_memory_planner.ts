@@ -117,13 +117,13 @@ export function planStaticArenaMemory(
     for (const v of blockDefs[b]!) {
       if (v < varCount && isPersistent[v] === 0) {
         if (birthBlock[v] === -1) birthBlock[v] = b;
-        if (deathBlock[v] < b) deathBlock[v] = b;
+        if (deathBlock[v]! < b) deathBlock[v] = b;
       }
     }
     for (const v of blockUses[b]!) {
       if (v < varCount && isPersistent[v] === 0) {
         if (birthBlock[v] === -1) birthBlock[v] = b;
-        if (deathBlock[v] < b) deathBlock[v] = b;
+        if (deathBlock[v]! < b) deathBlock[v] = b;
       }
     }
   }

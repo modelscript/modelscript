@@ -30,7 +30,7 @@ export interface AuthUser {
 
 declare module "express" {
   interface Request {
-    user?: AuthUser;
+    user?: AuthUser | undefined;
   }
 }
 
@@ -52,8 +52,8 @@ function extractTokenFromRequest(req: Request): string | undefined {
       return decodeURIComponent(match[1]);
     }
   }
-  if (typeof req.query.token === "string" && req.query.token.length > 0) {
-    return req.query.token;
+  if (typeof req.query["token"] === "string" && req.query["token"].length > 0) {
+    return req.query["token"];
   }
   return undefined;
 }
@@ -86,7 +86,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   // Otherwise, handle as a JWT
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string };
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string | undefined };
 
     // Intermediate 2FA challenge token cannot access authenticated endpoints
     if (decoded.scope === "2fa_challenge") {
@@ -157,7 +157,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
     return;
   }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string };
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string | undefined };
     if (decoded.scope === "2fa_challenge") {
       next();
       return;

@@ -10,7 +10,7 @@ export interface SimulationResult {
   /** Names of the states/variables corresponding to the columns of y */
   states: string[];
   /** Optional parameter info passed back from the simulator */
-  parameters?: { name: string; value: number | string | boolean }[];
+  parameters?: { name: string; value: number | string | boolean }[] | undefined;
 }
 
 /** Describes a single action inside a when-clause body. */

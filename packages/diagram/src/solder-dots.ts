@@ -14,13 +14,13 @@ export interface SolderDot {
 export interface EdgePath {
   id: string;
   points: { x: number; y: number }[];
-  color?: string;
+  color?: string | undefined;
 }
 
 export interface ComputeSolderDotsOptions {
-  cellSize?: number;
-  tolerance?: number;
-  portPoints?: { x: number; y: number }[];
+  cellSize?: number | undefined;
+  tolerance?: number | undefined;
+  portPoints?: { x: number; y: number }[] | undefined;
 }
 
 export function distToSegmentSquared(px: number, py: number, vx: number, vy: number, wx: number, wy: number): number {
@@ -69,7 +69,7 @@ export function computeSolderDots(
     x: number;
     y: number;
     count: number;
-    preferredColor?: string;
+    preferredColor?: string | undefined;
   }
   const clusters: JunctionCluster[] = [];
   const clusterGrid = new Map<string, JunctionCluster[]>();
@@ -133,8 +133,8 @@ export function computeSolderDots(
   for (const edge of validEdges) {
     const color = edge.color && edge.color !== "none" ? edge.color : "#333333";
     for (let k = 0; k < edge.points.length - 1; k++) {
-      const p1 = edge.points[k];
-      const p2 = edge.points[k + 1];
+      const p1 = edge.points[k]!;
+      const p2 = edge.points[k + 1]!;
       const seg: IndexedSegment = {
         edgeId: edge.id,
         color,
@@ -263,7 +263,7 @@ export function computeSolderDots(
     if (seenIds.has(id)) continue;
     seenIds.add(id);
 
-    const color = C.preferredColor || edgeColors.get(incidentEdgeIds[0]) || "#333333";
+    const color = C.preferredColor || edgeColors.get(incidentEdgeIds[0]!) || "#333333";
 
     dots.push({
       id,

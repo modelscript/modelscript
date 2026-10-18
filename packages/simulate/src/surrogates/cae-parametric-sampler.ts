@@ -15,22 +15,22 @@ import type { CaeRunResult } from "./cae-snapshot-extractor.js";
 
 export interface FeaSamplingOptions {
   /** Load multipliers to sweep, e.g. [0.6, 0.8, 1.0, 1.2, 1.4]. Defaults to 5 steps from 0.6 to 1.4 */
-  loadMultipliers?: number[];
+  loadMultipliers?: number[] | undefined;
   /** Young's modulus multipliers, e.g. [0.9, 1.0, 1.1]. Defaults to [1.0] */
-  modulusMultipliers?: number[];
+  modulusMultipliers?: number[] | undefined;
   /** Solvers convergence tolerance. Default: 1e-5 */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Maximum iterations per solve. Default: 300 */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
 }
 
 export interface CfdSamplingOptions {
   /** Freestream velocities in m/s, e.g. [20, 35, 50, 65, 80] */
-  velocities?: number[];
+  velocities?: number[] | undefined;
   /** Angles of attack in degrees, e.g. [0, 2, 4, 6, 8] */
-  anglesOfAttackDeg?: number[];
+  anglesOfAttackDeg?: number[] | undefined;
   /** Baseline fluid density in kg/m^3. Default: 1.225 (sea level air) */
-  density?: number;
+  density?: number | undefined;
 }
 
 export class CaeParametricSampler {
@@ -85,18 +85,18 @@ export class CaeParametricSampler {
         } else if (result.elementVonMises) {
           // Average element stresses to nodes
           const counts = new Uint16Array(mesh.numNodes);
-          const npe = mesh.nodesPerElement;
+          const npe = mesh.nodesPerElement ?? 4;
           for (let e = 0; e < mesh.numElements; e++) {
             const s = result.elementVonMises[e] || 0;
             const base = e * npe;
             for (let i = 0; i < npe; i++) {
               const nid = mesh.elements[base + i]!;
-              nodalStress[nid] += s;
-              counts[nid]++;
+              nodalStress[nid] = nodalStress[nid]! + s;
+              counts[nid] = counts[nid]! + 1;
             }
           }
           for (let i = 0; i < mesh.numNodes; i++) {
-            if (counts[i]! > 0) nodalStress[i] /= counts[i]!;
+            if (counts[i]! > 0) nodalStress[i] = nodalStress[i]! / counts[i]!;
           }
         }
 

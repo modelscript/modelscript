@@ -18,10 +18,10 @@
 export interface TrainedROM {
   inputNames: string[];
   outputNames: string[];
-  inputScaling?: { mean: number; std: number }[];
-  outputScaling?: { mean: number; std: number }[];
+  inputScaling?: { mean: number; std: number }[] | undefined;
+  outputScaling?: { mean: number; std: number }[] | undefined;
   weights?: any;
-  evaluate?: (input: number[]) => number[];
+  evaluate?: ((input: number[]) => number[]) | undefined;
   [key: string]: any;
 }
 
@@ -32,21 +32,43 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
   const inputScaling = rom.inputScaling ?? [];
   const outputScaling = rom.outputScaling ?? [];
   const normInput = rawInput.map((v, i) => {
-    const s = inputScaling[i];
+    const s = inputScaling[i]!;
     return s && s.std !== 0 ? (v - s.mean) / s.std : v;
   });
   let normOutput: number[] = [];
+  const applyActivation = (z: number, actName: string | undefined): number => {
+    switch (actName) {
+      case "relu":
+        return Math.max(0, z);
+      case "tanh":
+        return Math.tanh(z);
+      case "sigmoid":
+        return 1.0 / (1.0 + Math.exp(-z));
+      case "swish":
+      case "silu":
+        return z / (1.0 + Math.exp(-z));
+      case "linear":
+      case "identity":
+      case "none":
+        return z;
+      default:
+        return Math.tanh(z);
+    }
+  };
   const w = rom.weights;
   if (w && w.type === "neural_net" && Array.isArray(w.layers)) {
     let act = normInput;
-    for (const layer of w.layers) {
+    for (let l = 0; l < w.layers.length; l++) {
+      const layer = w.layers[l];
+      const isLast = l === w.layers.length - 1;
+      const actType = layer.activation ?? (isLast ? (w.outputActivation ?? "tanh") : (w.activation ?? "tanh"));
       const next: number[] = [];
       for (let j = 0; j < layer.biases.length; j++) {
         let sum = layer.biases[j];
         for (let k = 0; k < act.length; k++) {
-          sum += layer.weights[j][k] * act[k];
+          sum += layer.weights[j][k] * act[k]!;
         }
-        next.push(layer.activation === "relu" ? Math.max(0, sum) : Math.tanh(sum));
+        next.push(applyActivation(sum, actType));
       }
       act = next;
     }
@@ -54,12 +76,16 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
   } else if (w && w.type === "mlp" && Array.isArray(w.layers)) {
     let a = normInput;
     for (let l = 0; l < w.layers.length; l++) {
-      const { W, b } = w.layers[l]!;
+      const layer = w.layers[l]!;
+      const { W, b } = layer;
+      const isHidden = l < w.layers.length - 1;
+      const actType: string =
+        layer.activation ?? (isHidden ? (w.activation ?? "tanh") : (w.outputActivation ?? "linear"));
       const next: number[] = [];
       for (let i = 0; i < W.length; i++) {
         let z = b[i]!;
         for (let j = 0; j < a.length; j++) z += W[i]![j]! * a[j]!;
-        next.push(z);
+        next.push(applyActivation(z, actType));
       }
       a = next;
     }
@@ -68,7 +94,7 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
     normOutput = w.coefficients.map((row: number[]) => {
       let sum = 0;
       for (let j = 0; j < normInput.length && j < row.length; j++) {
-        sum += row[j] * normInput[j];
+        sum += row[j]! * normInput[j]!;
       }
       return sum;
     });
@@ -414,20 +440,20 @@ export class ModelExchangeFmuSubsystem implements ModelExchangeSubsystem {
   private eventIndicators: Float64Array;
   private currentInputs = new Map<string, number>();
   private currentOutputs = new Map<string, number>();
-  private derivativeFn?: (t: number, x: Float64Array, u: Map<string, number>) => Float64Array | number[];
-  private outputFn?: (t: number, x: Float64Array, u: Map<string, number>) => Map<string, number>;
+  private derivativeFn?: ((t: number, x: Float64Array, u: Map<string, number>) => Float64Array | number[]) | undefined;
+  private outputFn?: ((t: number, x: Float64Array, u: Map<string, number>) => Map<string, number>) | undefined;
 
   constructor(options: {
     modelName: string;
     stateNames: string[];
-    derivativeNames?: string[];
-    inputNames?: string[];
-    outputNames?: string[];
-    parameterNames?: string[];
-    numberOfEventIndicators?: number;
-    initialStates?: Float64Array | number[];
-    derivativeFn?: (t: number, x: Float64Array, u: Map<string, number>) => Float64Array | number[];
-    outputFn?: (t: number, x: Float64Array, u: Map<string, number>) => Map<string, number>;
+    derivativeNames?: string[] | undefined;
+    inputNames?: string[] | undefined;
+    outputNames?: string[] | undefined;
+    parameterNames?: string[] | undefined;
+    numberOfEventIndicators?: number | undefined;
+    initialStates?: Float64Array | number[] | undefined;
+    derivativeFn?: ((t: number, x: Float64Array, u: Map<string, number>) => Float64Array | number[]) | undefined;
+    outputFn?: ((t: number, x: Float64Array, u: Map<string, number>) => Map<string, number>) | undefined;
   }) {
     this.modelName = options.modelName;
     this.stateNames = options.stateNames;

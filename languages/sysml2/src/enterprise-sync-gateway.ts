@@ -64,12 +64,12 @@ export interface SyncPushOptions {
 
 export interface SyncElementDiff {
   elementId: string;
-  name?: string;
+  name?: string | undefined;
   metaclass: string;
   changeType: "added" | "modified" | "deleted" | "unchanged";
-  local?: Record<string, any>;
-  remote?: Record<string, any>;
-  conflicts?: string[];
+  local?: Record<string, any> | undefined;
+  remote?: Record<string, any> | undefined;
+  conflicts?: string[] | undefined;
 }
 
 export interface SyncDiffResult {
@@ -118,10 +118,10 @@ export class TeamworkCloudClient {
       "Content-Type": "application/json",
     };
     if (this.config.authToken) {
-      headers.Authorization = `Bearer ${this.config.authToken}`;
+      headers["Authorization"] = `Bearer ${this.config.authToken}`;
     } else if (this.config.username && this.config.password) {
       const cred = Buffer.from(`${this.config.username}:${this.config.password}`).toString("base64");
-      headers.Authorization = `Basic ${cred}`;
+      headers["Authorization"] = `Basic ${cred}`;
     }
     return headers;
   }
@@ -250,10 +250,10 @@ export class OpenMbeeMmsClient {
       "Content-Type": "application/json",
     };
     if (this.config.authToken) {
-      headers.Authorization = `Bearer ${this.config.authToken}`;
+      headers["Authorization"] = `Bearer ${this.config.authToken}`;
     } else if (this.config.username && this.config.password) {
       const cred = Buffer.from(`${this.config.username}:${this.config.password}`).toString("base64");
-      headers.Authorization = `Basic ${cred}`;
+      headers["Authorization"] = `Basic ${cred}`;
     }
     return headers;
   }
@@ -345,13 +345,13 @@ export class OpenMbeeMmsClient {
       ...diff.diffs
         .filter((d) => d.changeType === "added" || d.changeType === "modified")
         .map((d) => {
-          const item = d.local;
+          const item = d.local!;
           return {
             id: item["@id"],
-            name: item.name,
+            name: item["name"],
             type: item["@type"],
-            ownerId: item.owner?.["@id"] ?? null,
-            attributes: item.attributes ?? {},
+            ownerId: item["owner"]?.["@id"] ?? null,
+            attributes: item["attributes"] ?? {},
           };
         }),
     ];

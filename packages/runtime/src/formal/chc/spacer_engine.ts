@@ -44,9 +44,9 @@ import { formatConstraint } from "../inductive_prover.js";
 import { ChcSystem } from "./chc_system.js";
 
 export interface SpacerOptions {
-  maxDepth?: number;
-  maxPobIterations?: number;
-  timeoutMs?: number;
+  maxDepth?: number | undefined;
+  maxPobIterations?: number | undefined;
+  timeoutMs?: number | undefined;
 }
 
 export interface SpacerCounterexampleStep {
@@ -58,8 +58,8 @@ export interface SpacerCounterexampleStep {
 export interface SpacerResult {
   status: "SAFE" | "UNSAFE" | "UNKNOWN";
   depth: number;
-  inductiveInvariants?: Map<string, NonlinearConstraint[]>;
-  counterexample?: SpacerCounterexampleStep[];
+  inductiveInvariants?: Map<string, NonlinearConstraint[]> | undefined;
+  counterexample?: SpacerCounterexampleStep[] | undefined;
   iterations: number;
   durationMs: number;
   summary: string;
@@ -108,7 +108,7 @@ export class SpacerEngine {
   private frames = new Map<string, NonlinearConstraint[][]>();
   private hasFacts = new Map<string, boolean>();
   private maxDepth: number;
-  private maxPobIterations: number;
+  public maxPobIterations: number;
 
   constructor(
     public readonly chc: ChcSystem,

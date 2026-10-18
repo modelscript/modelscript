@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/**
+ * @module context
+ *
+ * Polyglot Modelica compiler context (`Context`) and library loader (`ModelicaLibrary`).
+ *
+ * Manages file system access, native WebAssembly GLR parsing (`Tree` cache),
+ * multi-file `WorkspaceIndex` registration, Salsa `QueryEngine` memoization,
+ * arena-native DAE flattening (`flattenArena` / `ModelicaFlattener`), and `.po`
+ * internationalization translations.
+ */
+
 import type { FileSystem, Parser, Tree } from "@modelscript/dsl/utils";
 import {
   computeEditRanges,
@@ -20,20 +31,37 @@ import { MODELSCRIPT_STUDIES_PACKAGE } from "./extensions/studies.js";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ModelicaFlattener, type FlattenOptions } from "./flattener.js";
 
+/** Preconditioner strategy used by the nonlinear initialization solver. */
 export type PreconditionerMode = "none" | "branch-and-bound";
+
+/**
+ * Configuration options for nonlinear DAE initialization and homotopy continuation.
+ */
 export interface InitSolverConfig {
-  preconditioner?: PreconditionerMode;
-  homotopyMode?: HomotopyMode;
-  mccormickRelaxation?: boolean;
-  maxHomotopySteps?: number;
+  /** Preconditioner mode for bounding nonlinear initialization systems. */
+  preconditioner?: PreconditionerMode | undefined;
+  /** Homotopy continuation strategy (`"actual"`, `"linear"`, `"homotopy"`, etc.). */
+  homotopyMode?: HomotopyMode | undefined;
+  /** Whether to construct convex McCormick relaxations during initialization. */
+  mccormickRelaxation?: boolean | undefined;
+  /** Maximum number of continuation steps along the homotopy path ($\lambda \in [0, 1]$). */
+  maxHomotopySteps?: number | undefined;
 }
 
+/**
+ * High-level compiler and code-generation options for Modelica flattening and export.
+ */
 export interface ModelicaCompilerOptions {
-  arrayMode?: "scalarize" | "preserve";
-  functionInlining?: "inline" | "preserve";
-  fmiVersion?: "2.0" | "3.0";
-  solver?: InitSolverConfig;
-  canonicalizeEquations?: boolean;
+  /** Whether to scalarize array variables/equations (`"scalarize"`) or preserve array loops (`"preserve"`). */
+  arrayMode?: "scalarize" | "preserve" | undefined;
+  /** Whether to inline user-defined Modelica functions (`"inline"`) or preserve call sites (`"preserve"`). */
+  functionInlining?: "inline" | "preserve" | undefined;
+  /** Target Functional Mock-up Interface (FMI) specification version for FMU export. */
+  fmiVersion?: "2.0" | "3.0" | undefined;
+  /** Initialization and nonlinear solver configuration. */
+  solver?: InitSolverConfig | undefined;
+  /** Whether to algebraically canonicalize equations after flattening. */
+  canonicalizeEquations?: boolean | undefined;
   /**
    * Batch mode: disables Salsa memoization and triggers manual GC between
    * compilation phases (parse → index → flatten).
@@ -44,15 +72,28 @@ export interface ModelicaCompilerOptions {
    *
    * Requires Node.js to be started with `--expose-gc` for GC to take effect.
    */
-  batch?: boolean;
+  batch?: boolean | undefined;
 }
 
 export type { HomotopyMode };
 
+/** Legacy dynamic handle representing a resolved class or component element in `Context`. */
 export type ModelicaElement = any;
 
+/**
+ * Represents a loaded Modelica package/library directory or single-file `.mo` library
+ * registered within a {@link Context}.
+ */
 export class ModelicaLibrary {
+  /** Top-level Modelica package name inferred from `package.mo` or the file basename. */
   name: string;
+
+  /**
+   * Creates a new `ModelicaLibrary` descriptor and resolves its package name from disk.
+   *
+   * @param context - Owning compiler {@link Context}.
+   * @param path - File system path to the library directory or `.mo` file.
+   */
   constructor(
     public context: Context,
     public path: string,
@@ -75,8 +116,15 @@ export class ModelicaLibrary {
 
 export { computeEditRanges, isIdentChar, type EditRange };
 
+/**
+ * Initialization options when constructing a {@link Context}.
+ */
 export interface ContextOptions {
-  loadStdlib?: boolean;
+  /**
+   * Whether to automatically load the built-in ModelScript standard library packages
+   * (`ModelScript.CAS`, `ModelScript.Studies`, `ModelScript.Geometry`). Defaults to `true`.
+   */
+  loadStdlib?: boolean | undefined;
 }
 
 /**
@@ -88,20 +136,35 @@ export interface ContextOptions {
  * (arena-backed symbol storage). Name resolution is handled by the QueryDB.
  */
 export class Context {
+  /** Hydrated top-level class descriptors registered in this context. */
   #classes: any[] = [];
+  /** Virtual or physical file system adapter used to read source files and libraries. */
   #fs: FileSystem;
+  /** List of Modelica libraries registered via {@link addLibrary}. */
   #libraries: ModelicaLibrary[] = [];
+  /** Loaded `.po` translation tables keyed by locale identifier (e.g., `"de"`). */
   #translations = new Map<string, ModelicaTranslation>();
+  /** Currently active translation language code, or `null` if translation is disabled. */
   #language: string | null = null;
+  /** Multi-file symbol index managing lazy file registration and incremental re-indexing. */
   #workspaceIndex: WorkspaceIndex;
+  /** Salsa incremental query engine wrapping the unified symbol index. */
   #queryEngine: QueryEngine;
+  /** Parsed linear-memory CST trees keyed by document URI / resource path. */
   #trees = new Map<string, Tree>();
+  /** Raw source text cache keyed by document URI for computing incremental edit ranges. */
   #fileTexts = new Map<string, string>();
+  /** Byte-length delta of the most recent edit per document URI for fast DAE patching. */
   #fileDeltas = new Map<string, number>();
+  /** Explicit override for `MODELICAPATH`, or `null` to fall back to `process.env.MODELICAPATH`. */
   #modelicaPath: string | null = null;
 
+  /**
+   * Colon- or semicolon-separated search path for Modelica libraries (`MODELICAPATH`).
+   * Falls back to `process.env.MODELICAPATH` when not explicitly overridden.
+   */
   get modelicaPath(): string {
-    return this.#modelicaPath ?? (typeof process !== "undefined" ? process.env.MODELICAPATH || "" : "");
+    return this.#modelicaPath ?? (typeof process !== "undefined" ? process.env["MODELICAPATH"] || "" : "");
   }
 
   set modelicaPath(value: string | null) {
@@ -148,28 +211,39 @@ export class Context {
   /**
    * Automatically locate and load a package from MODELICAPATH if found.
    */
-  async loadFromModelicaPath(packageName: string, options?: { skipIndex?: boolean }): Promise<ModelicaLibrary | null> {
+  async loadFromModelicaPath(
+    packageName: string,
+    options?: { skipIndex?: boolean | undefined },
+  ): Promise<ModelicaLibrary | null> {
     const found = this.findInModelicaPath(packageName);
     if (!found) return null;
     return this.addLibrary(found, options);
   }
 
+  /** Multi-file workspace symbol index owned by this context. */
   get workspaceIndex(): WorkspaceIndex {
     return this.#workspaceIndex;
   }
 
+  /** Replaces the active {@link WorkspaceIndex} instance. */
   setWorkspaceIndex(index: WorkspaceIndex): void {
     this.#workspaceIndex = index;
   }
 
+  /** Salsa incremental {@link QueryEngine} owned by this context. */
   get queryEngine(): QueryEngine {
     return this.#queryEngine;
   }
 
+  /** Ontological / class-hierarchy taxonomy attached to the active query engine, if any. */
   get taxonomy(): any {
     return (this.#queryEngine as any)?.taxonomy;
   }
 
+  /**
+   * Checks whether `childName` is a subtype of `parentName` via the fast taxonomy cache
+   * or the Salsa `isSubtype` query.
+   */
   isSubtype(childName: string, parentName: string): boolean {
     if (childName === parentName) return true;
     const tax = (this.#queryEngine as any)?.taxonomy;
@@ -183,10 +257,15 @@ export class Context {
     return db.query<(target: string | number) => boolean>("isSubtype", childSym.id)?.(parentName) ?? false;
   }
 
+  /** Replaces the active Salsa {@link QueryEngine}. */
   setQueryEngine(engine: QueryEngine): void {
     this.#queryEngine = engine;
   }
 
+  /**
+   * Injects a pre-built unified `SymbolIndex` (e.g., deserialized from cache),
+   * wires up on-demand CST node/text recovery, and hydrates top-level class descriptors.
+   */
   setSymbolIndex(index: any): void {
     injectPredefinedTypes(index);
     const missingResources = new Set<string>();
@@ -274,6 +353,9 @@ export class Context {
     }
   }
 
+  /**
+   * Retrieves the parsed CST {@link Tree} for `uri`, parsing it from disk on demand if not yet cached.
+   */
   getTree(uri: string): Tree | undefined {
     let tree = this.#trees.get(uri);
     if (!tree) {
@@ -288,6 +370,9 @@ export class Context {
     return tree;
   }
 
+  /**
+   * Slices the raw source text of `resourceId` between `startByte` and `endByte`.
+   */
   getTreeText(resourceId: string | undefined, startByte: number, endByte: number): string | null {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
@@ -298,6 +383,9 @@ export class Context {
     return tree.rootNode.text.substring(startByte - offset, endByte - offset);
   }
 
+  /**
+   * Recovers the smallest CST node spanning `[startByte, endByte)` in `resourceId`.
+   */
   getTreeNode(resourceId: string | undefined, startByte: number, endByte: number): any | null {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
@@ -305,6 +393,7 @@ export class Context {
     return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
   }
 
+  /** Registry of file-extension-to-WASM-parser mappings shared across `Context` instances. */
   static _parsers = new Map<string, Parser>();
 
   /**
@@ -401,8 +490,12 @@ export class Context {
     }
   }
 
+  /** Root scope identifier string (`"root"`). */
   readonly hash = "root";
 
+  /**
+   * Iterates over all top-level classes and libraries loaded in this context.
+   */
   get elements(): IterableIterator<any> {
     const classes = this.#classes;
     const libraries = this.#libraries;
@@ -412,11 +505,15 @@ export class Context {
     })();
   }
 
+  /** Root context has no parent scope (`null`). */
   readonly parent: null = null;
 
+  /**
+   * Looks up a top-level class or library by its unqualified `name`.
+   */
   getNamedElement(name: string): any | null {
     for (const element of this.elements) {
-      if ("name" in element && (element as { name?: string }).name === name) {
+      if ("name" in element && (element as { name?: string | undefined }).name === name) {
         return element;
       }
     }
@@ -479,7 +576,7 @@ export class Context {
    * @param path - The absolute file system path to the directory or file representing the library.
    * @returns The loaded ModelicaLibrary instance, or null if the path does not point to a valid library.
    */
-  async addLibrary(path: string, options?: { skipIndex?: boolean }): Promise<ModelicaLibrary | null> {
+  async addLibrary(path: string, options?: { skipIndex?: boolean | undefined }): Promise<ModelicaLibrary | null> {
     let library = this.getLibrary(path);
     if (library) return library;
 
@@ -971,7 +1068,7 @@ export class Context {
   load(input: string, resourceId?: string): Tree {
     const uri = resourceId ?? "synthetic-" + Math.random().toString();
     const prevText = this.#fileTexts.get(uri);
-    let editRanges: { startByte: number; endByte: number; delta?: number }[] | undefined = undefined;
+    let editRanges: { startByte: number; endByte: number; delta?: number | undefined }[] | undefined = undefined;
 
     if (prevText !== undefined && prevText !== input) {
       editRanges = computeEditRanges(prevText, input);
@@ -980,10 +1077,12 @@ export class Context {
     this.#fileTexts.set(uri, input);
 
     const oldTree = this.#trees.get(uri);
-    let editBounds: { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string } | undefined = undefined;
+    let editBounds:
+      | { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string | undefined }
+      | undefined = undefined;
     if (editRanges && editRanges.length > 0 && prevText !== undefined) {
-      const editStart = editRanges[0].startByte;
-      const lastRange = editRanges[editRanges.length - 1];
+      const editStart = editRanges[0]!.startByte;
+      const lastRange = editRanges[editRanges.length - 1]!;
       const editNewEnd = lastRange.endByte;
       const totalDelta = input.length - prevText.length;
       const editOldEnd = editNewEnd - totalDelta;
@@ -1053,7 +1152,7 @@ export class Context {
     extname: string,
     input: string,
     oldTree?: Tree,
-    editBounds?: { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string },
+    editBounds?: { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string | undefined },
   ): Tree {
     const parser = this.getParser(extname);
     return (parser as any).parse(

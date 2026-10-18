@@ -11,27 +11,31 @@
 export interface SarifPhysicalLocation {
   artifactLocation: {
     uri: string;
-    uriBaseId?: string;
+    uriBaseId?: string | undefined;
   };
-  region?: {
-    startLine?: number;
-    startColumn?: number;
-    endLine?: number;
-    endColumn?: number;
-  };
+  region?:
+    | {
+        startLine?: number | undefined;
+        startColumn?: number | undefined;
+        endLine?: number | undefined;
+        endColumn?: number | undefined;
+      }
+    | undefined;
 }
 
 export interface SarifResult {
   ruleId: string;
-  ruleIndex?: number;
+  ruleIndex?: number | undefined;
   level: "error" | "warning" | "note" | "none";
   message: {
     text: string;
   };
-  locations?: {
-    physicalLocation: SarifPhysicalLocation;
-  }[];
-  properties?: Record<string, any>;
+  locations?:
+    | {
+        physicalLocation: SarifPhysicalLocation;
+      }[]
+    | undefined;
+  properties?: Record<string, any> | undefined;
 }
 
 export interface SarifRule {
@@ -40,13 +44,17 @@ export interface SarifRule {
   shortDescription: {
     text: string;
   };
-  fullDescription?: {
-    text: string;
-  };
-  defaultConfiguration?: {
-    level: "error" | "warning" | "note";
-  };
-  helpUri?: string;
+  fullDescription?:
+    | {
+        text: string;
+      }
+    | undefined;
+  defaultConfiguration?:
+    | {
+        level: "error" | "warning" | "note";
+      }
+    | undefined;
+  helpUri?: string | undefined;
 }
 
 export interface SarifReport {
@@ -66,28 +74,32 @@ export interface SarifReport {
 }
 
 export interface SarifVerificationReportInput {
-  target?: string;
+  target?: string | undefined;
   stages: Record<
     string,
     {
       stage: string;
       name: string;
       passed: boolean;
-      certified?: boolean;
+      certified?: boolean | undefined;
       details?: any;
-      violations?: {
-        id?: string;
-        message: string;
-        severity?: "error" | "warning" | "note";
-        location?: {
-          uri?: string;
-          line?: number;
-          column?: number;
-          endLine?: number;
-          endColumn?: number;
-        };
-        witness?: any;
-      }[];
+      violations?:
+        | {
+            id?: string | undefined;
+            message: string;
+            severity?: "error" | "warning" | "note" | undefined;
+            location?:
+              | {
+                  uri?: string | undefined;
+                  line?: number | undefined;
+                  column?: number | undefined;
+                  endLine?: number | undefined;
+                  endColumn?: number | undefined;
+                }
+              | undefined;
+            witness?: any;
+          }[]
+        | undefined;
     }
   >;
 }

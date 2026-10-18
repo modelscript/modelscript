@@ -72,7 +72,7 @@ export class FeatureFlagService {
     }
 
     // In test environment, bypass flag gating for legacy tests unless strict evaluation is requested
-    if (process.env.NODE_ENV === "test" && process.env.FEATURE_FLAG_TEST_STRICT !== "true") {
+    if (process.env["NODE_ENV"] === "test" && process.env["FEATURE_FLAG_TEST_STRICT"] !== "true") {
       return true;
     }
 
@@ -120,7 +120,9 @@ export class FeatureFlagService {
   /**
    * Evaluates all flags for the current user and returns a key-boolean dictionary.
    */
-  public getAllFlagsForUser(user?: { role?: string; id?: number } | null): Record<string, boolean> {
+  public getAllFlagsForUser(
+    user?: { role?: string | undefined; id?: number | undefined } | null,
+  ): Record<string, boolean> {
     const result: Record<string, boolean> = {};
     for (const key of Object.keys(FEATURE_FLAGS)) {
       result[key] = this.isEnabled(key, user);

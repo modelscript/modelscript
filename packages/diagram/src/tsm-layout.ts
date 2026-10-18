@@ -46,18 +46,18 @@ export interface TsmNode {
   id: string;
   width: number;
   height: number;
-  x?: number;
-  y?: number;
-  parent?: string;
-  autoLayout?: boolean;
+  x?: number | undefined;
+  y?: number | undefined;
+  parent?: string | undefined;
+  autoLayout?: boolean | undefined;
   [key: string]: any;
 }
 
 export interface TsmEdge {
-  id?: string;
-  source: string | { cell: string; port?: string };
-  target: string | { cell: string; port?: string };
-  vertices?: { x: number; y: number }[];
+  id?: string | undefined;
+  source: string | { cell: string; port?: string | undefined };
+  target: string | { cell: string; port?: string | undefined };
+  vertices?: { x: number; y: number }[] | undefined;
   [key: string]: any;
 }
 
@@ -80,10 +80,10 @@ interface InternalVertex {
   height: number;
   gridX: number;
   gridY: number;
-  x?: number;
-  y?: number;
+  x?: number | undefined;
+  y?: number | undefined;
   incidentEdges: string[];
-  isDummy?: boolean;
+  isDummy?: boolean | undefined;
 }
 
 interface InternalEdge {
@@ -97,7 +97,7 @@ interface InternalEdge {
 /**
  * Extracts a normalized string cell ID from an edge endpoint.
  */
-function getEndpointId(endpoint: string | { cell: string; port?: string }): string {
+function getEndpointId(endpoint: string | { cell: string; port?: string | undefined }): string {
   if (typeof endpoint === "string") return endpoint;
   return endpoint.cell;
 }
@@ -130,7 +130,7 @@ export class TsmOrthogonalLayout {
     }
 
     if (rawNodes.length === 1) {
-      const single = { ...rawNodes[0], x: 40, y: 40 };
+      const single = { ...rawNodes[0]!, x: 40, y: 40 };
       return { nodes: [single], edges: rawEdges };
     }
 
@@ -154,7 +154,7 @@ export class TsmOrthogonalLayout {
     const edgeIdSet = new Set<string>();
 
     for (let i = 0; i < rawEdges.length; i++) {
-      const e = rawEdges[i];
+      const e = rawEdges[i]!;
       const sId = getEndpointId(e.source);
       const tId = getEndpointId(e.target);
 
@@ -244,7 +244,7 @@ export class TsmOrthogonalLayout {
 
     let head = 0;
     while (head < queue.length) {
-      const u = queue[head++];
+      const u = queue[head++]!;
       visited.add(u);
       const currRank = rank.get(u) || 0;
 
@@ -281,7 +281,7 @@ export class TsmOrthogonalLayout {
     for (const [r, vList] of layers.entries()) {
       // Sort vertices in layer to minimize edge crossings with adjacent layers
       for (let i = 0; i < vList.length; i++) {
-        const v = vertices.get(vList[i])!;
+        const v = vertices.get(vList[i]!)!;
         if (isLR) {
           v.gridX = r * 2;
           v.gridY = i * 2;
@@ -323,7 +323,6 @@ export class TsmOrthogonalLayout {
 
       // Check which corner collides less with vertices
       const collides1 = this.hasVertexAt(vertices, corner1.x, corner1.y, u.id, v.id);
-      const _collides2 = this.hasVertexAt(vertices, corner2.x, corner2.y, u.id, v.id);
 
       const chosenCorner = !collides1 ? corner1 : corner2;
 

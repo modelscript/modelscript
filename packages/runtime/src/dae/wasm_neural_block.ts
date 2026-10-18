@@ -29,13 +29,13 @@ export interface NeuralBlockConfig {
   /** Layer dimensions: [inputDim, hidden1, hidden2, ..., outputDim]. */
   layers: number[];
   /** Activation function for hidden layers. Default: Tanh. */
-  activation?: ActivationKind;
+  activation?: ActivationKind | undefined;
   /** Activation function for the final output layer. Default: Linear. */
-  outputActivation?: ActivationKind;
+  outputActivation?: ActivationKind | undefined;
   /** Optional custom initial weights vector. */
-  initialWeights?: Float64Array;
+  initialWeights?: Float64Array | undefined;
   /** Random initialization seed. */
-  seed?: number;
+  seed?: number | undefined;
 }
 
 export class ArenaNeuralBlock {
@@ -235,7 +235,7 @@ export class ArenaNeuralBlock {
       const vIdx = arena.getVarIdxByName(pName);
       if (vIdx !== -1) {
         const exprId = arena.getVarExpression(vIdx);
-        if (exprId !== -1) {
+        if (exprId !== undefined && exprId !== -1) {
           weights[i] = arena.getExprRealValue(exprId);
         }
       }
@@ -472,15 +472,15 @@ export interface CTRNNBlockConfig {
   /** Number of output variables. */
   outDim: number;
   /** Activation function for recurrent hidden states. Default: Tanh. */
-  activation?: ActivationKind;
+  activation?: ActivationKind | undefined;
   /** Activation function for output projection. Default: Linear. */
-  outputActivation?: ActivationKind;
+  outputActivation?: ActivationKind | undefined;
   /** Initial time-constant tau for hidden states (scalar or array). Default: 1.0. */
-  initialTau?: number | number[];
+  initialTau?: number | number[] | undefined;
   /** Optional custom initial weights vector. */
-  initialWeights?: Float64Array;
+  initialWeights?: Float64Array | undefined;
   /** Random initialization seed. */
-  seed?: number;
+  seed?: number | undefined;
 }
 
 function buildActivationDaeExpr(arena: DAEBuilder, sumExpr: number, act: ActivationKind): number {
@@ -736,7 +736,7 @@ export class ArenaCTRNNBlock {
       const vIdx = arena.getVarIdxByName(pName);
       if (vIdx !== -1) {
         const exprId = arena.getVarExpression(vIdx);
-        if (exprId !== -1) {
+        if (exprId !== undefined && exprId !== -1) {
           weights[i] = arena.getExprRealValue(exprId);
         }
       }
@@ -918,7 +918,7 @@ function invertSquareMatrix(A: number[][], n: number): number[][] {
 
     const pivot = aug[i]![i]!;
     for (let c = 0; c < 2 * n; c++) {
-      aug[i]![c] /= pivot;
+      aug[i]![c] = aug[i]![c]! / pivot;
     }
 
     for (let r = 0; r < n; r++) {
@@ -926,7 +926,7 @@ function invertSquareMatrix(A: number[][], n: number): number[][] {
         const factor = aug[r]![i]!;
         if (Math.abs(factor) > 1e-12) {
           for (let c = 0; c < 2 * n; c++) {
-            aug[r]![c] -= factor * aug[i]![c]!;
+            aug[r]![c] = aug[r]![c]! - factor * aug[i]![c]!;
           }
         }
       }

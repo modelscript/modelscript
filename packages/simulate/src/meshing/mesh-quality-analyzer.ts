@@ -83,23 +83,23 @@ export class MeshQualityAnalyzer {
 
     for (let e = 0; e < numElements; e++) {
       const base = e * nodesPerElement;
-      const n0 = elements[base + 0] * 3;
-      const n1 = elements[base + 1] * 3;
-      const n2 = elements[base + 2] * 3;
-      const n3 = elements[base + 3] * 3;
+      const n0 = elements[base + 0]! * 3;
+      const n1 = elements[base + 1]! * 3;
+      const n2 = elements[base + 2]! * 3;
+      const n3 = elements[base + 3]! * 3;
 
-      const x0 = nodeCoords[n0 + 0],
-        y0 = nodeCoords[n0 + 1],
-        z0 = nodeCoords[n0 + 2];
-      const x1 = nodeCoords[n1 + 0],
-        y1 = nodeCoords[n1 + 1],
-        z1 = nodeCoords[n1 + 2];
-      const x2 = nodeCoords[n2 + 0],
-        y2 = nodeCoords[n2 + 1],
-        z2 = nodeCoords[n2 + 2];
-      const x3 = nodeCoords[n3 + 0],
-        y3 = nodeCoords[n3 + 1],
-        z3 = nodeCoords[n3 + 2];
+      const x0 = nodeCoords[n0 + 0]!,
+        y0 = nodeCoords[n0 + 1]!,
+        z0 = nodeCoords[n0 + 2]!;
+      const x1 = nodeCoords[n1 + 0]!,
+        y1 = nodeCoords[n1 + 1]!,
+        z1 = nodeCoords[n1 + 2]!;
+      const x2 = nodeCoords[n2 + 0]!,
+        y2 = nodeCoords[n2 + 1]!,
+        z2 = nodeCoords[n2 + 2]!;
+      const x3 = nodeCoords[n3 + 0]!,
+        y3 = nodeCoords[n3 + 1]!,
+        z3 = nodeCoords[n3 + 2]!;
 
       // Edge vectors from n0
       const e1x = x1 - x0,

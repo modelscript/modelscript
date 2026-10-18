@@ -59,13 +59,21 @@ import { UnmanagedMap64, createMap64, UnmanagedSet64, createSet64, UnmanagedMap6
 import { ArenaStringPool } from "./string_pool";
 import { SyntaxType, FieldId } from "./types";
 
+/** Modification entry bitflag (`bit 0`): Modification is declared `final` and cannot be overridden by outer scopes. */
 export const FLAG_MOD_FINAL: u32 = 0x01;
+/** Modification entry bitflag (`bit 1`): Modification is prefixed with `each` and broadcasts across array elements. */
 export const FLAG_MOD_EACH: u32 = 0x02;
+/** Modification entry bitflag (`bit 2`): Modification is a `redeclare` clause replacing a replaceable type or component. */
 export const FLAG_MOD_REDECLARE: u32 = 0x04;
+/** Modification entry bitflag (`bit 3`): Modified element is declared `replaceable`. */
 export const FLAG_MOD_REPLACEABLE: u32 = 0x08;
+/** Variable bitflag (`bit 6`, value `64`): Variable was conditionally disabled (`if false`) or removed during alias elimination. */
 export const FLAG_VAR_REMOVED: i32 = 1 << 6;
+/** Variable bitflag (`bit 7`, value `128`): Variable belongs to a `protected` section. */
 export const FLAG_VAR_PROTECTED: i32 = 1 << 7;
+/** Variable bitflag (`bit 8`, value `256`): Variable or parameter is declared `final`. */
 export const FLAG_VAR_FINAL: i32 = 1 << 8;
+/** Variable bitflag (`bit 9`, value `512`): Variable is a virtual connector/record placeholder not emitted in scalar output. */
 export const FLAG_VAR_VIRTUAL: i32 = 1 << 9;
 
 /**
@@ -75,34 +83,63 @@ export const FLAG_VAR_VIRTUAL: i32 = 1 << 9;
  * both lists in sync.
  */
 const enum WasmBailReason {
+  /** No bail-out occurred; WASM flattening succeeded. */
   None = 0,
+  /** Encountered a complex `when` or `if` equation requiring TS fallback expansion. */
   WhenOrIfEquation = 3290,
+  /** `for` equation is missing a valid loop index clause. */
   ForEquationNoIndex = 3291,
+  /** `for` equation iteration range could not be statically evaluated in WASM. */
   ForEquationRange = 3292,
+  /** `for` equation has an empty or missing equation body. */
   ForEquationNoBody = 3293,
+  /** Simple equation is missing left-hand or right-hand operand CST nodes. */
   SimpleEquationOperands = 3323,
+  /** Simple equation operand expression failed to lower in WASM. */
   SimpleEquationExpr = 3330,
+  /** Array equation left-hand and right-hand sides have mismatched or unknown dimensions. */
   ArrayEquationSize = 3348,
+  /** Array equation involves a non-constructor array expression requiring TS scalarization. */
   ArrayEquationNonCtor = 3363,
+  /** Left-hand side of a simple equation contains an unresolved identifier reference. */
   EquationLhsUnresolved = 3370,
+  /** Right-hand side of a simple equation contains an unresolved identifier reference. */
   EquationRhsUnresolved = 3377,
+  /** `connect(a, b)` argument could not be resolved to a valid connector reference. */
   ConnectRefExpr = 3425,
+  /** Type-prefix array dimensions on a component clause could not be statically evaluated. */
   ClauseDimensions = 3570,
+  /** Component declaration array dimensions could not be statically evaluated. */
   DeclarationDimensions = 3609,
+  /** Variable binding expression (`= expr`) failed to lower in WASM. */
   BindingExpr = 3625,
+  /** Array variable binding expression has mismatched shape or rank. */
   ArrayBindingShape = 3626,
+  /** Type mismatch between `Integer` and `Real` in a variable binding expression. */
   IntegerRealBinding = 3629,
+  /** Type mismatch between `Integer` and `Real` in a modification expression. */
   IntegerRealModifier = 3645,
+  /** Branches of an array `if`-expression have incompatible array sizes. */
   IfExprArraySize = 3760,
+  /** Nested `if`-expression returning arrays exceeds WASM scalarization support. */
   IfExprArrayNesting = 3770,
+  /** `if`-expression mixes array and scalar branches. */
   IfExprArrayScalarMix = 3775,
+  /** Algorithm section contains a statement kind not yet supported in the WASM kernel. */
   AlgorithmStatementUnsupported = 3800,
+  /** Invalid `reinit(...)` call outside a `when` clause or with invalid arguments. */
   AlgorithmReinit = 3801,
+  /** `for` statement uses an implicit iteration range (`for i in arr`) requiring type reflection. */
   ForStatementImplicitRange = 3802,
+  /** `when` equation illegally placed inside an `initial equation` section. */
   WhenInInitialEquation = 3810,
+  /** `connect(...)` equation illegally placed inside a `when` equation. */
   ConnectInWhen = 3811,
+  /** `connect(...)` equation placed inside an `if` equation with a non-parameter condition. */
   ConnectInDynamicIf = 3812,
+  /** Equation inside a `when` clause has an invalid left-hand side. */
   InvalidWhenLhs = 3813,
+  /** `when` condition expression is not discrete-time or boolean-typed. */
   WhenConditionNonDiscrete = 3814,
 }
 
@@ -500,9 +537,13 @@ export function locFindMatchingDescendant(loc: u64, str: string): u64 {
   return 0;
 }
 
+/** Number of preallocated ring-buffer slots for ephemeral `CstNodeView` wrappers. */
 const CST_NODE_VIEW_SLOTS: u32 = 256;
+/** Bitmask (`255`) for wrapping `g_cstNodeViewIdx` into `[0, CST_NODE_VIEW_SLOTS)`. */
 const CST_NODE_VIEW_MASK: u32 = CST_NODE_VIEW_SLOTS - 1;
+/** Monotonically incrementing ring-buffer slot index for `CstNodeView.at`. */
 let g_cstNodeViewIdx: u32 = 0;
+/** Linear memory base address of the `CstNodeView` ring buffer. */
 let g_cstNodeViewBuf: usize = 0;
 
 /**
@@ -511,8 +552,10 @@ let g_cstNodeViewBuf: usize = 0;
  */
 @unmanaged
 export class CstNodeView {
+  /** Packed 64-bit CST location (`(byteOffset << 32) | nodePtr`). */
   loc: u64;
 
+  /** Allocates or reuses a ring-buffer `CstNodeView` slot wrapping `loc`. */
   @inline static at(loc: u64): CstNodeView {
     if (g_cstNodeViewBuf == 0) {
       g_cstNodeViewBuf = atomicChunkAlloc(CST_NODE_VIEW_SLOTS * offsetof<CstNodeView>());
@@ -523,21 +566,31 @@ export class CstNodeView {
     return v;
   }
 
+  /** Creates a `CstNodeView` from a CST `nodePtr` and absolute source byte `offset`. */
   @inline static from(ptr: u32, offset: u32 = 0): CstNodeView {
     return CstNodeView.at(locMake(ptr, offset));
   }
 
+  /** Creates a `CstNodeView` rooted at `nodePtr` (initializing its byte offset from its leading trivia padding). */
   @inline static fromRoot(nodePtr: u32): CstNodeView {
     return CstNodeView.at(locMakeRoot(nodePtr));
   }
 
+  /** Linear memory pointer (`u32`) to the underlying 32-byte green `ASTNode`. */
   @inline get ptr(): u32 { return locPtr(this.loc); }
+  /** Absolute source byte offset (`u32`) of the start of this node's content. */
   @inline get offset(): u32 { return locOffset(this.loc); }
+  /** `true` if `this.loc` is null (`ptr == 0`). */
   @inline get isNull(): bool { return locIsNull(this.loc); }
+  /** Grammar `SyntaxType` ID (`u16`) of the CST node. */
   @inline get type(): u16 { return locType(this.loc); }
+  /** Source byte length (`u32`) of the node's content (excluding leading trivia padding). */
   @inline get byteLength(): u32 { return locByteLen(this.loc); }
+  /** Leading trivia byte padding (`u32`) preceding this CST node. */
   @inline get padding(): u32 { return locPad(this.loc); }
+  /** Linear memory address (`usize`) of the node's first source byte in the input buffer. */
   @inline get bytes(): usize { return locBytes(this.loc); }
+  /** Zero-copy `SourceTextView` over the node's source text slice. */
   @inline get text(): SourceTextView { return SourceTextView.at(this.bytes, this.byteLength, inputEncoding == 1 || inputEncoding == 2); }
 
   @inline get firstChild(): CstNodeView { return CstNodeView.at(locFirstChild(this.loc)); }
@@ -1452,10 +1505,15 @@ function getExprDimensions(dae: DaeBuilder, exprId: u32, pool: ArenaStringPool |
   return 0;
 }
 
+/** Scratch output register storing the 3rd array dimension (`dim3`) parsed by `parseArraySubscripts`. */
 export var g_lastParsedDim3: u32 = 0;
+/** Scratch output register storing the 4th array dimension (`dim4`) parsed by `parseArraySubscripts`. */
 export var g_lastParsedDim4: u32 = 0;
+/** Scratch output register storing the total rank (`nDims`) parsed by `parseArraySubscripts`. */
 export var g_lastParsedNDims: u32 = 0;
+/** `true` if the most recently parsed array subscript clause contained an explicit zero dimension (`[0]`). */
 export var g_hasExplicitZeroDim: boolean = false;
+/** `true` when running in OpenModelica `newInst` compatibility mode for empty-array and modifier rules. */
 export var g_isOmcNewInst: boolean = false;
 
 function parseIntSlice(text: SourceTextView, startChar: u32, endChar: u32): i32 {
@@ -2176,9 +2234,13 @@ function extractModQuantity(modLoc: u64, exprVisitor: WasmExprVisitor): u32 {
 
 
 
+/** Number of preallocated ring-buffer slots for ephemeral `ModEntryView` wrappers. */
 const MOD_ENTRY_SLOTS: u32 = 256;
+/** Bitmask (`255`) for wrapping `g_modEntryIdx` into `[0, MOD_ENTRY_SLOTS)`. */
 const MOD_ENTRY_MASK: u32 = MOD_ENTRY_SLOTS - 1;
+/** Monotonically incrementing ring-buffer slot index for `ModEntryView.at`. */
 let g_modEntryIdx: u32 = 0;
+/** Linear memory base address of the `ModEntryView` ring buffer. */
 let g_modEntryBuf: usize = 0;
 
 /**
@@ -2186,9 +2248,12 @@ let g_modEntryBuf: usize = 0;
  */
 @unmanaged
 export class ModEntryView {
+  /** Owning `ModificationEnvironment` containing the parallel struct-of-arrays columns. */
   private _env: ModificationEnvironment;
+  /** Row index (`0 <= _idx < _env.count`) within `_env`. */
   private _idx: u32;
 
+  /** Allocates or reuses a ring-buffer `ModEntryView` slot pointing to entry `idx` of `env`. */
   @inline static at(env: ModificationEnvironment, idx: u32): ModEntryView {
     if (g_modEntryBuf == 0) {
       g_modEntryBuf = atomicChunkAlloc(MOD_ENTRY_SLOTS * (sizeof<usize>() * 2));
@@ -2200,41 +2265,62 @@ export class ModEntryView {
     return a;
   }
 
+  /** Interned string pool ID (`u32`) of the modified component or attribute name. */
   @inline get keyHash(): u32 { return this._env.keyHashes.get(this._idx); }
   @inline set keyHash(v: u32) { this._env.keyHashes.set(this._idx, v); }
 
+  /** DAE arena expression ID (`u32`) of the value binding (`= expr`), or `0xffffffff` if none. */
   @inline get valExprId(): u32 { return this._env.valExprIds.get(this._idx); }
   @inline set valExprId(v: u32) { this._env.valExprIds.set(this._idx, v); }
 
+  /** Linear memory pointer (`u32`) to a nested `ModificationEnvironment` for sub-modifications, or `0` if none. */
   @inline get childEnvPtr(): u32 { return this._env.childEnvPtrs.get(this._idx); }
   @inline set childEnvPtr(v: u32) { this._env.childEnvPtrs.set(this._idx, v); }
 
+  /** Interned string pool ID (`u32`) of the replacement type name for `redeclare` modifications, or `0` if none. */
   @inline get redeclareTypeHash(): u32 { return this._env.redeclareTypeHashes.get(this._idx); }
   @inline set redeclareTypeHash(v: u32) { this._env.redeclareTypeHashes.set(this._idx, v); }
 
+  /** Packed `FLAG_MOD_*` bitmask (`final`, `each`, `redeclare`, `replaceable`) for this modification entry. */
   @inline get flags(): u32 { return this._env.flags.get(this._idx); }
   @inline set flags(v: u32) { this._env.flags.set(this._idx, v); }
 
+  /** `true` if `FLAG_MOD_FINAL` is set on this entry. */
   @inline get isFinal(): bool { return (this.flags & FLAG_MOD_FINAL) != 0; }
+  /** `true` if `FLAG_MOD_EACH` is set on this entry. */
   @inline get isEach(): bool { return (this.flags & FLAG_MOD_EACH) != 0; }
+  /** `true` if `FLAG_MOD_REDECLARE` is set on this entry. */
   @inline get isRedeclare(): bool { return (this.flags & FLAG_MOD_REDECLARE) != 0; }
+  /** `true` if `FLAG_MOD_REPLACEABLE` is set on this entry. */
   @inline get isReplaceable(): bool { return (this.flags & FLAG_MOD_REPLACEABLE) != 0; }
 }
 
 /**
  * Modification and Parameter Binding Environment in Linear Memory.
+ *
+ * Stores hierarchical component/class modifications `(x = expr, sub(y = expr2), redeclare type T = ...)`
+ * as a struct-of-arrays table with parent-pointer chaining.
  */
 @unmanaged
 export class ModificationEnvironment {
+  /** Linear memory pointer to a `ChunkedUint32Array` pooling allocated `ModificationEnvironment` instances. */
   static poolPtrs: usize = 0;
+  /** High-water index in `poolPtrs` tracking currently active `ModificationEnvironment` instances. */
   static poolIdx: u32 = 0;
 
+  /** Parallel column: interned string pool IDs of modified element names. */
   keyHashes: ChunkedUint32Array;
+  /** Parallel column: DAE expression IDs (`ExprId`) for value bindings (`0xffffffff` if none). */
   valExprIds: ChunkedUint32Array;
+  /** Parallel column: pointers to nested `ModificationEnvironment` instances for sub-component modifications (`0` if none). */
   childEnvPtrs: ChunkedUint32Array;
+  /** Parallel column: interned string pool IDs of replacement type names for `redeclare` clauses (`0` if none). */
   redeclareTypeHashes: ChunkedUint32Array;
+  /** Parallel column: bitwise OR of `FLAG_MOD_*` flags (`FINAL`, `EACH`, `REDECLARE`, `REPLACEABLE`). */
   flags: ChunkedUint32Array;
+  /** Number of active modification entries currently stored in this environment. */
   count: u32;
+  /** Linear memory pointer (`u32`) to the enclosing parent `ModificationEnvironment`, or `0` if root. */
   parentEnvPtr: u32;
 
   @inline static create(parentPtr: u32 = 0): u32 {
@@ -2623,15 +2709,24 @@ export class ModificationEnvironment {
 
 /**
  * Linear-Memory Lexical Scope Stack.
+ *
+ * Tracks active class/component scopes, associated `ModificationEnvironment` pointers,
+ * hierarchical name prefixes, and scope flags during recursive instantiation.
  */
 @unmanaged
 export class ScopeStack {
+  /** Stack column: CST node pointers or scope IDs for each active lexical frame. */
   scopeIds: ChunkedUint32Array;
+  /** Stack column: linear memory pointers to `ModificationEnvironment` instances at each frame. */
   envPtrs: ChunkedUint32Array;
+  /** Stack column: interned string pool IDs of hierarchical dot-prefixes (e.g., `"comp.sub"`) at each frame. */
   prefixPathIds: ChunkedUint32Array;
+  /** Stack column: per-frame instantiation flags. */
   flags: ChunkedUint32Array;
+  /** Current number of active frames on the scope stack. */
   depth: u32;
 
+  /** Allocates and initializes a new `ScopeStack` in linear memory. */
   @inline static create(): ScopeStack {
     let ptr = atomicChunkAlloc(offsetof<ScopeStack>());
     let obj = changetype<ScopeStack>(ptr);
@@ -2639,6 +2734,7 @@ export class ScopeStack {
     return obj;
   }
 
+  /** Initializes the parallel chunked arrays with capacity 64 and resets `depth` to `0`. */
   init(): void {
     this.scopeIds = createChunkedUint32Array(64);
     this.envPtrs = createChunkedUint32Array(64);
@@ -2647,6 +2743,7 @@ export class ScopeStack {
     this.depth = 0;
   }
 
+  /** Pushes a new lexical scope frame onto the stack. */
   push(scopeId: u32, envPtr: u32, prefixPathId: u32 = 0, flags: u32 = 0): void {
     let idx = this.depth++;
     this.scopeIds.set(idx, scopeId);
@@ -2655,24 +2752,29 @@ export class ScopeStack {
     this.flags.set(idx, flags);
   }
 
+  /** Pops the top lexical scope frame from the stack. */
   pop(): void {
     if (this.depth > 0) {
       this.depth--;
     }
   }
 
+  /** Returns the `scopeId` of the innermost active frame, or `0` if empty. */
   get currentScopeId(): u32 {
     return this.depth > 0 ? this.scopeIds.get(this.depth - 1) : 0;
   }
 
+  /** Returns the `ModificationEnvironment` pointer of the innermost active frame, or `0` if empty. */
   get currentEnvPtr(): u32 {
     return this.depth > 0 ? this.envPtrs.get(this.depth - 1) : 0;
   }
 
+  /** Returns the interned prefix string ID of the innermost active frame, or `0` if empty. */
   get currentPrefixPathId(): u32 {
     return this.depth > 0 ? this.prefixPathIds.get(this.depth - 1) : 0;
   }
 
+  /** Searches from innermost to outermost scope for a value binding matching `keyHash` (`0xffffffff` if not found). */
   lookup(keyHash: u32): u32 {
     for (let i: i32 = this.depth - 1; i >= 0; i--) {
       let envPtr = this.envPtrs.get(i);
@@ -2684,6 +2786,7 @@ export class ScopeStack {
     return 0xffffffff;
   }
 
+  /** Searches from innermost to outermost scope for a dotted-path value binding matching `pathId` (`0xffffffff` if not found). */
   lookupPath(pool: ArenaStringPool, pathId: u32): u32 {
     for (let i: i32 = this.depth - 1; i >= 0; i--) {
       let envPtr = this.envPtrs.get(i);
@@ -2695,6 +2798,7 @@ export class ScopeStack {
     return 0xffffffff;
   }
 
+  /** Searches from innermost to outermost scope for a nested `ModificationEnvironment` pointer matching `keyHash`. */
   lookupNested(keyHash: u32): u32 {
     for (let i: i32 = this.depth - 1; i >= 0; i--) {
       let envPtr = this.envPtrs.get(i);
@@ -2706,6 +2810,7 @@ export class ScopeStack {
     return 0;
   }
 
+  /** Searches from innermost to outermost scope for a nested `ModificationEnvironment` pointer matching dotted `pathId`. */
   lookupNestedPath(pool: ArenaStringPool, pathId: u32): u32 {
     for (let i: i32 = this.depth - 1; i >= 0; i--) {
       let envPtr = this.envPtrs.get(i);
@@ -2717,6 +2822,7 @@ export class ScopeStack {
     return 0;
   }
 
+  /** Searches from innermost to outermost scope for a `redeclare` replacement type string ID matching `keyHash`. */
   lookupRedeclare(keyHash: u32): u32 {
     for (let i: i32 = this.depth - 1; i >= 0; i--) {
       let envPtr = this.envPtrs.get(i);
@@ -2728,6 +2834,7 @@ export class ScopeStack {
     return 0;
   }
 
+  /** Searches from innermost to outermost scope for a `redeclare` replacement type string ID matching dotted `pathId`. */
   lookupRedeclarePath(pool: ArenaStringPool, pathId: u32): u32 {
     for (let i: i32 = this.depth - 1; i >= 0; i--) {
       let envPtr = this.envPtrs.get(i);
@@ -2739,6 +2846,7 @@ export class ScopeStack {
     return 0;
   }
 
+  /** Searches from innermost to outermost scope for the `FLAG_MOD_*` bitmask matching `keyHash`. */
   lookupFlags(keyHash: u32): u32 {
     for (let i: i32 = this.depth - 1; i >= 0; i--) {
       let envPtr = this.envPtrs.get(i);
@@ -2753,33 +2861,49 @@ export class ScopeStack {
 
 /**
  * In-WASM Abstract Syntax Tree Expression Visitor.
+ *
+ * Lowers green CST expression nodes directly into `DaeBuilder` arena expression IDs (`ExprId`),
+ * performing constant folding, loop-index substitution, and hierarchical prefix qualification.
  */
 @unmanaged
 export class WasmExprVisitor {
+  /** Linear memory pointer (`u32`) to the target `DaeBuilder` arena. */
   daePtr: u32;
+  /** Interned string pool ID (`u32`) of the current component hierarchy prefix (`0` at top level). */
   prefixHash: u32;
+  /** Linear memory pointer (`usize`) to an `UnmanagedMap64` mapping active `for`-loop variable string IDs to integer values. */
   loopVarsPtr: usize;
+  /** Linear memory pointer (`u32`) to the active `ModificationEnvironment`. */
   envPtr: u32;
+  /** Linear memory pointer (`u32`) to the active `ScopeStack`. */
   scopeStackPtr: u32;
+  /** Linear memory pointer (`usize`) to a 4 KB scratch buffer for formatting qualified names. */
   tempBufferPtr: usize;
+  /** Linear memory pointer (`usize`) to a secondary scratch buffer for intermediate string operations. */
   scratchBufferPtr: usize;
+  /** Linear memory pointer (`u32`) to the parent `ModelicaFlattener` instance. */
   flattenerPtr: u32;
+  /** Upper bound (`end`) of the current array dimension when evaluating subscript expressions (`:` / `end`). */
   currentDimEnd: i32;
+  /** Packed 64-bit CST location of the 1st pending subscript expression during multi-dimensional component indexing. */
   subLoc1: u64;
+  /** Packed 64-bit CST location of the 2nd pending subscript expression. */
   subLoc2: u64;
+  /** Packed 64-bit CST location of the 3rd pending subscript expression. */
   subLoc3: u64;
-  // Algorithm-section mode: keep non-constant subscripts symbolic (`x[i]`) rather
-  // than constant-folding them to a scalar element name.
+  /** Algorithm-section mode: keep non-constant subscripts symbolic (`x[i]`) rather than constant-folding them to a scalar element name. */
   symbolicSubscripts: boolean;
-  // Keep `a:b` / `a:s:b` as Range nodes instead of expanding them to array
-  // constructors (used for `for`-statement ranges, which OMC prints verbatim).
+  /** Keep `a:b` / `a:s:b` as `Range` nodes instead of expanding them to array constructors (used for `for`-statement ranges, which OMC prints verbatim). */
   keepRanges: boolean;
+  /** Internal traversal flag set when a bounded CST walk reaches `stopLoc`. */
   stopLocReached: bool;
 
+  /** Returns the target `DaeBuilder` instance. */
   @inline get dae(): DaeBuilder {
     return changetype<DaeBuilder>(this.daePtr);
   }
 
+  /** Returns the active `for`-loop variable binding map (`UnmanagedMap64`). */
   @inline get loopVars(): UnmanagedMap64 {
     return changetype<UnmanagedMap64>(this.loopVarsPtr);
   }
@@ -3899,10 +4023,32 @@ export class WasmExprVisitor {
     }
   }
 
+  /**
+   * Lowers a Modelica function call expression into the WASM DAE arena, performing
+   * constant folding, reduction expansion, array vectorization, and structural builtin synthesis.
+   *
+   * Supported lowering passes:
+   * 1. **Scalar Function Vectorization (MLS §12.4.6)**: Automatically broadcasts scalar math functions
+   *    (`sin`, `cos`, `exp`, `sqrt`, `abs`, `div`, `mod`, `rem`, etc.) element-wise over `ExprKind.ArrayCtor` arguments.
+   * 2. **Unary Reductions & Math Folding**: Expands `sum`, `product`, `min`, and `max` over array constructors
+   *    (checking for empty dimensions) and folds unary math intrinsics on numeric literals.
+   * 3. **Binary Math Folding & Type Coercion**: Folds `atan2`, `div`, `mod`, and `rem` on literal operands
+   *    and inserts `castToReal` coercions for mixed Integer/Real operands.
+   * 4. **Structural & Array Builtins**: Synthesizes arena `ArrayCtor` trees or integer literals for
+   *    `size`, `ndims`, `zeros`, `ones`, `fill`, `identity`, `linspace`, `scalar`, `vector`, `matrix`,
+   *    `cross`, `skew`, `cat`, `array`, and `noEvent`.
+   *
+   * @param fnNameId - Interned string ID of the function name in the DAE string pool.
+   * @param argStart - Start index of the lowered argument `ExprId`s in `this.tempBuffer`.
+   * @param argCount - Number of arguments passed to the function call.
+   * @returns The lowered `ExprId` in `this.dae`, or `0xffffffff` if the call requires TypeScript fallback.
+   */
   lowerFunctionCall(fnNameId: u32, argStart: u32, argCount: u32): u32 {
     let pool = this.dae.getStringPool();
 
-    // 1. Vectorization if any arg is ArrayCtor and function is scalar vectorizable
+    // --- 1. Automatic Vectorization of Scalar Builtins over Array Constructors (MLS §12.4.6) ---
+    // If any argument is an `ArrayCtor` and the function is an element-wise mathematical operator,
+    // recursively invoke `lowerFunctionCall` for each element index `0 .. arrayLen - 1` and wrap the results.
     let hasArrayArg = false;
     let arrayLen: u32 = 0;
     for (let i: u32 = 0; i < argCount; i++) {
@@ -3946,7 +4092,9 @@ export class WasmExprVisitor {
       }
     }
 
-    // 2. Math & Reduction functions (arity 1)
+    // --- 2. Unary Array Reductions (`sum`, `product`, `min`, `max`) & Arity-1 Math Constant Folding ---
+    // Expands reductions over symbolic/literal `ArrayCtor` leaves into binary addition/multiplication chains
+    // or literal extrema, and folds elementary transcendental functions (`sin`, `cos`, `exp`, `log`, `sqrt`, etc.).
     if (argCount == 1) {
       let a0 = this.tempBuffer.get(argStart);
       let isSum = poolMatchesSimple(pool, fnNameId, "sum") || poolMatchesSimple(pool, fnNameId, ".sum");
@@ -4075,7 +4223,9 @@ export class WasmExprVisitor {
       }
     }
 
-    // 3. Math functions (arity 2)
+    // --- 3. Arity-2 Math Constant Folding & Mixed Integer/Real Promotion ---
+    // Evaluates `atan2`, `div`, `mod`, and `rem` when both arguments are constant literals,
+    // or promotes the Integer operand to Real when paired with a Real expression.
     if (argCount == 2) {
       let a0 = this.tempBuffer.get(argStart);
       let a1 = this.tempBuffer.get(argStart + 1);
@@ -4125,7 +4275,8 @@ export class WasmExprVisitor {
       }
     }
 
-    // 4. Structural builtins: size, ndims, zeros, ones, fill, identity, linspace, matrix, cross, skew, cat
+    // --- 4. Structural Array Enquiry & Construction Builtins (MLS §10.3) ---
+    // Handles `size(A, [dim])` and `ndims(A)` by inspecting nested `ArrayCtor` nodes or registered variable shapes.
     if (poolMatchesSimple(pool, fnNameId, "size") && argCount >= 1) {
       let arrId = this.tempBuffer.get(argStart);
       let dim: u32 = 1;
@@ -4263,6 +4414,8 @@ export class WasmExprVisitor {
       }
     }
 
+    // --- 4b. Constant Array Generators (`zeros`, `ones`, `fill`, `identity`, `linspace`) ---
+    // Materializes 1D, 2D, and 3D nested `ArrayCtor` trees directly in linear memory.
     if (poolMatchesSimple(pool, fnNameId, "zeros") && argCount >= 1) {
       let a0 = this.tempBuffer.get(argStart);
       if (this.dae.getExprKind(a0) == ExprKind.IntLiteral) {
@@ -4425,6 +4578,7 @@ export class WasmExprVisitor {
       }
     }
 
+    // --- 4c. Array Reshaping, Linear Algebra & Concatenation (`scalar`, `vector`, `matrix`, `cross`, `skew`, `cat`, `array`) ---
     if (poolMatchesSimple(pool, fnNameId, "scalar") && argCount == 1) {
       let a0 = this.tempBuffer.get(argStart);
       let a0Arr = a0;
@@ -4641,11 +4795,13 @@ export class WasmExprVisitor {
       return addArrayCtorFromChunked(this.dae, this.tempBuffer, argStart, argCount);
     }
 
+    // Unwrap `noEvent(expr)` when used inside constant/binding evaluation contexts.
     if (poolMatchesSimple(pool, fnNameId, "noEvent") && argCount == 1) {
       return this.tempBuffer.get(argStart);
     }
 
-    // 5. Fallback: Functions not recognized or not yet supported in WASM (reductions, user functions, etc.)
+    // --- 5. Fallback Bailout ---
+    // Functions not recognized or requiring full user-defined function inlining return `0xffffffff`.
     return 0xffffffff;
   }
 
@@ -4665,18 +4821,21 @@ export class WasmExprVisitor {
     let rangeInfo = createChunkedInt32Array(16);
     let fi1: u64 = 0;
     let fi2: u64 = 0;
+    let fi3: u64 = 0;
     let fc = locFirstChild(forInd);
     while (!locIsNull(fc)) {
       let t = locType(fc);
       if (t == SyntaxType.FOR_INDEX) {
         if (fi1 == 0) fi1 = fc;
         else if (fi2 == 0) fi2 = fc;
+        else if (fi3 == 0) fi3 = fc;
       } else {
         let fsub = locFirstChild(fc);
         while (!locIsNull(fsub)) {
           if (locType(fsub) == SyntaxType.FOR_INDEX) {
             if (fi1 == 0) fi1 = fsub;
             else if (fi2 == 0) fi2 = fsub;
+            else if (fi3 == 0) fi3 = fsub;
           }
           fsub = locNextSibling(fsub);
         }
@@ -4711,7 +4870,7 @@ export class WasmExprVisitor {
       let ctorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, arrStart, arrCount);
       this.tempBuffer.length = arrStart;
       return ctorId;
-    } else {
+    } else if (locIsNull(fi3)) {
       // 2D comprehension: {expr for i in s1:e1, j in s2:e2}
       let ok2 = parseForIndexRange(fi2, this.dae, pool, rangeInfo);
       if (ok2 == 0) return 0xffffffff;
@@ -4749,6 +4908,62 @@ export class WasmExprVisitor {
       let matCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, matStart, rowCount);
       this.tempBuffer.length = matStart;
       return matCtorId;
+    } else {
+      // 3D comprehension: {expr for i in s1:e1, j in s2:e2, k in s3:e3}
+      let ok2 = parseForIndexRange(fi2, this.dae, pool, rangeInfo);
+      if (ok2 == 0) return 0xffffffff;
+      let ok3 = parseForIndexRange(fi3, this.dae, pool, rangeInfo);
+      if (ok3 == 0) return 0xffffffff;
+      let var2 = rangeInfo.get(4) as u32;
+      let s2 = rangeInfo.get(5);
+      let st2 = rangeInfo.get(6);
+      let e2 = rangeInfo.get(7);
+      let var3 = rangeInfo.get(8) as u32;
+      let s3 = rangeInfo.get(9);
+      let st3 = rangeInfo.get(10);
+      let e3 = rangeInfo.get(11);
+
+      let cubeStart = this.tempBuffer.length;
+      let planeCount: u32 = 0;
+      for (let v1: i32 = s1; st1 > 0 ? v1 <= e1 : v1 >= e1; v1 += st1) {
+        let lit1 = this.dae.addIntLiteral(v1);
+        this.setLoopVar(var1, lit1);
+        let matStart = this.tempBuffer.length;
+        let rowCount: u32 = 0;
+        for (let v2: i32 = s2; st2 > 0 ? v2 <= e2 : v2 >= e2; v2 += st2) {
+          let lit2 = this.dae.addIntLiteral(v2);
+          this.setLoopVar(var2, lit2);
+          let rowStart = this.tempBuffer.length;
+          for (let v3: i32 = s3; st3 > 0 ? v3 <= e3 : v3 >= e3; v3 += st3) {
+            let lit3 = this.dae.addIntLiteral(v3);
+            this.setLoopVar(var3, lit3);
+            let elemId = this.visitLoc(bodyLoc);
+            if (elemId == 0xffffffff) {
+              this.removeLoopVar(var1);
+              this.removeLoopVar(var2);
+              this.removeLoopVar(var3);
+              this.tempBuffer.length = cubeStart;
+              return 0xffffffff;
+            }
+            this.tempBuffer.push(elemId);
+          }
+          let colCount = this.tempBuffer.length - rowStart;
+          let rowCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, rowStart, colCount);
+          this.tempBuffer.length = rowStart;
+          this.tempBuffer.push(rowCtorId);
+          rowCount++;
+        }
+        let matCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, matStart, rowCount);
+        this.tempBuffer.length = matStart;
+        this.tempBuffer.push(matCtorId);
+        planeCount++;
+      }
+      this.removeLoopVar(var1);
+      this.removeLoopVar(var2);
+      this.removeLoopVar(var3);
+      let cubeCtorId = addArrayCtorFromChunked(this.dae, this.tempBuffer, cubeStart, planeCount);
+      this.tempBuffer.length = cubeStart;
+      return cubeCtorId;
     }
   }
 
@@ -4775,18 +4990,21 @@ export class WasmExprVisitor {
     let rangeInfo = createChunkedInt32Array(16);
     let fi1: u64 = 0;
     let fi2: u64 = 0;
+    let fi3: u64 = 0;
     let fc = locFirstChild(forInd);
     while (!locIsNull(fc)) {
       let t = locType(fc);
       if (t == SyntaxType.FOR_INDEX) {
         if (fi1 == 0) fi1 = fc;
         else if (fi2 == 0) fi2 = fc;
+        else if (fi3 == 0) fi3 = fc;
       } else {
         let fsub = locFirstChild(fc);
         while (!locIsNull(fsub)) {
           if (locType(fsub) == SyntaxType.FOR_INDEX) {
             if (fi1 == 0) fi1 = fsub;
             else if (fi2 == 0) fi2 = fsub;
+            else if (fi3 == 0) fi3 = fsub;
           }
           fsub = locNextSibling(fsub);
         }
@@ -4818,7 +5036,7 @@ export class WasmExprVisitor {
         this.tempBuffer.push(elemId);
       }
       this.removeLoopVar(var1);
-    } else {
+    } else if (locIsNull(fi3)) {
       // 2D reduction: e.g. sum((1/(i+j-1)) for i in 1:n, j in 1:n)
       let ok2 = parseForIndexRange(fi2, this.dae, pool, rangeInfo);
       if (ok2 == 0) return 0xffffffff;
@@ -4845,6 +5063,45 @@ export class WasmExprVisitor {
       }
       this.removeLoopVar(var1);
       this.removeLoopVar(var2);
+    } else {
+      // 3D reduction
+      let ok2 = parseForIndexRange(fi2, this.dae, pool, rangeInfo);
+      if (ok2 == 0) return 0xffffffff;
+      let ok3 = parseForIndexRange(fi3, this.dae, pool, rangeInfo);
+      if (ok3 == 0) return 0xffffffff;
+      let var2 = rangeInfo.get(4) as u32;
+      let s2 = rangeInfo.get(5);
+      let st2 = rangeInfo.get(6);
+      let e2 = rangeInfo.get(7);
+      let var3 = rangeInfo.get(8) as u32;
+      let s3 = rangeInfo.get(9);
+      let st3 = rangeInfo.get(10);
+      let e3 = rangeInfo.get(11);
+
+      for (let v1: i32 = s1; st1 > 0 ? v1 <= e1 : v1 >= e1; v1 += st1) {
+        let lit1 = this.dae.addIntLiteral(v1);
+        this.setLoopVar(var1, lit1);
+        for (let v2: i32 = s2; st2 > 0 ? v2 <= e2 : v2 >= e2; v2 += st2) {
+          let lit2 = this.dae.addIntLiteral(v2);
+          this.setLoopVar(var2, lit2);
+          for (let v3: i32 = s3; st3 > 0 ? v3 <= e3 : v3 >= e3; v3 += st3) {
+            let lit3 = this.dae.addIntLiteral(v3);
+            this.setLoopVar(var3, lit3);
+            let elemId = this.visitLoc(bodyLoc);
+            if (elemId == 0xffffffff) {
+              this.removeLoopVar(var1);
+              this.removeLoopVar(var2);
+              this.removeLoopVar(var3);
+              this.tempBuffer.length = elemStart;
+              return 0xffffffff;
+            }
+            this.tempBuffer.push(elemId);
+          }
+        }
+      }
+      this.removeLoopVar(var1);
+      this.removeLoopVar(var2);
+      this.removeLoopVar(var3);
     }
 
     let elemCount = this.tempBuffer.length - elemStart;
@@ -4862,6 +5119,38 @@ export class WasmExprVisitor {
     } else if (isProd) {
       for (let i: u32 = 1; i < elemCount; i++) {
         acc = this.lowerBinary(BinOp.Mul as u16, acc, this.tempBuffer.get(elemStart + i));
+      }
+    } else if (isMin || isMax) {
+      for (let i: u32 = 1; i < elemCount; i++) {
+        let elem = this.tempBuffer.get(elemStart + i);
+        let kAcc = this.dae.getExprKind(acc);
+        let kElem = this.dae.getExprKind(elem);
+        if (kAcc == ExprKind.IntLiteral && kElem == ExprKind.IntLiteral) {
+          let iAcc = this.dae.getExprData1(acc) as i32;
+          let iElem = this.dae.getExprData1(elem) as i32;
+          let resInt = isMin ? (iAcc < iElem ? iAcc : iElem) : (iAcc > iElem ? iAcc : iElem);
+          acc = this.dae.addIntLiteral(resInt);
+        } else if ((kAcc == ExprKind.RealLiteral || kAcc == ExprKind.IntLiteral) &&
+                   (kElem == ExprKind.RealLiteral || kElem == ExprKind.IntLiteral)) {
+          let vAcc = kAcc == ExprKind.RealLiteral ? this.dae.getExprRealValue(acc) : ((this.dae.getExprData1(acc) as i32) as f64);
+          let vElem = kElem == ExprKind.RealLiteral ? this.dae.getExprRealValue(elem) : ((this.dae.getExprData1(elem) as i32) as f64);
+          let resVal = isMin ? (vAcc < vElem ? vAcc : vElem) : (vAcc > vElem ? vAcc : vElem);
+          acc = this.dae.addRealLiteral(resVal);
+        } else if (kAcc == ExprKind.BoolLiteral && kElem == ExprKind.BoolLiteral) {
+          let bAcc = this.dae.getExprData1(acc) != 0;
+          let bElem = this.dae.getExprData1(elem) != 0;
+          let resBool = isMin ? (bAcc && bElem) : (bAcc || bElem);
+          acc = this.dae.addExpression(ExprKind.BoolLiteral, resBool ? 1 : 0);
+        } else if (kAcc == ExprKind.EnumLiteral && kElem == ExprKind.EnumLiteral) {
+          let oAcc = this.dae.getExprData1(acc) as i32;
+          let oElem = this.dae.getExprData1(elem) as i32;
+          if (isMin ? oElem < oAcc : oElem > oAcc) {
+            acc = elem;
+          }
+        } else {
+          this.tempBuffer.length = elemStart;
+          return 0xffffffff;
+        }
       }
     } else {
       this.tempBuffer.length = elemStart;
@@ -5991,9 +6280,13 @@ export class WasmExprVisitor {
   }
 }
 
+/** Number of preallocated ring-buffer slots for ephemeral `ConnectionPairView` wrappers. */
 const CONN_PAIR_SLOTS: u32 = 64;
+/** Bitmask (`63`) for wrapping `g_connPairIdx` into `[0, CONN_PAIR_SLOTS)`. */
 const CONN_PAIR_MASK: u32 = CONN_PAIR_SLOTS - 1;
+/** Monotonically incrementing ring-buffer slot index for `ConnectionPairView.at`. */
 let g_connPairIdx: u32 = 0;
+/** Linear memory base address of the `ConnectionPairView` ring buffer. */
 let g_connPairBuf: usize = 0;
 
 /**
@@ -6001,9 +6294,12 @@ let g_connPairBuf: usize = 0;
  */
 @unmanaged
 export class ConnectionPairView {
+  /** Underlying flat `ChunkedUint32Array` storing stride-4 connection records. */
   private _data: ChunkedUint32Array;
+  /** Element offset (`pairIndex * 4`) into `_data`. */
   private _offset: u32;
 
+  /** Allocates or reuses a ring-buffer `ConnectionPairView` slot pointing to `pairIndex` in `data`. */
   @inline static at(data: ChunkedUint32Array, pairIndex: u32): ConnectionPairView {
     if (g_connPairBuf == 0) {
       g_connPairBuf = atomicChunkAlloc(CONN_PAIR_SLOTS * (sizeof<usize>() * 2));
@@ -6015,18 +6311,23 @@ export class ConnectionPairView {
     return a;
   }
 
+  /** First connected variable ID (`VarId`) at word `+0`. */
   @inline get var1(): u32 { return this._data.get(this._offset + 0); }
   @inline set var1(val: u32) { this._data.set(this._offset + 0, val); }
 
+  /** Second connected variable ID (`VarId`) at word `+1`. */
   @inline get var2(): u32 { return this._data.get(this._offset + 1); }
   @inline set var2(val: u32) { this._data.set(this._offset + 1, val); }
 
+  /** `true` if this pair connects `flow` variables (sum-to-zero equation), `false` for potential variables (equality equation), stored at word `+2`. */
   @inline get isFlow(): bool { return this._data.get(this._offset + 2) != 0; }
   @inline set isFlow(val: bool) { this._data.set(this._offset + 2, val ? 1 : 0); }
 
+  /** `true` if one endpoint is an outside/boundary connector (`connect(outside, inside)`), stored at word `+3`. */
   @inline get isBoundary(): bool { return this._data.get(this._offset + 3) != 0; }
   @inline set isBoundary(val: bool) { this._data.set(this._offset + 3, val ? 1 : 0); }
 
+  /** Writes all four fields (`var1`, `var2`, `isFlow`, `isBoundary`) of the stride-4 connection record. */
   @inline set(var1: u32, var2: u32, isFlow: bool, isBoundary: bool): void {
     this._data.set(this._offset + 0, var1);
     this._data.set(this._offset + 1, var2);
@@ -6040,11 +6341,16 @@ export class ConnectionPairView {
  */
 @unmanaged
 export class DisjointSet {
+  /** Union-Find parent pointer array indexed by `VarId`. */
   parent: ChunkedUint32Array;
+  /** Union-Find subtree rank upper bound indexed by `VarId`. */
   rank: ChunkedUint32Array;
+  /** Number of `connect(...)` clauses referencing each connector variable (`cardinality(c)`). */
   cardinality: ChunkedUint32Array;
+  /** Current initialized variable capacity across `parent`, `rank`, and `cardinality`. */
   capacity: u32;
 
+  /** Allocates and initializes a new `DisjointSet` in linear memory. */
   @inline static create(initialCapacity: u32 = 256): DisjointSet {
     let ptr = atomicChunkAlloc(offsetof<DisjointSet>());
     let ds = changetype<DisjointSet>(ptr);
@@ -6052,6 +6358,7 @@ export class DisjointSet {
     return ds;
   }
 
+  /** Allocates the backing chunked arrays and initializes `0..initialCapacity` as singleton sets. */
   init(initialCapacity: u32 = 256): void {
     this.capacity = initialCapacity;
     this.parent = createChunkedUint32Array(initialCapacity);
@@ -6064,6 +6371,7 @@ export class DisjointSet {
     }
   }
 
+  /** Resets all sets in `0..initialCapacity` to singletons with zero cardinality without reallocating. */
   reset(initialCapacity: u32 = 256): void {
     this.capacity = initialCapacity;
     for (let i: u32 = 0; i < initialCapacity; i++) {
@@ -6073,6 +6381,7 @@ export class DisjointSet {
     }
   }
 
+  /** Dynamically grows the initialized singleton range to cover `varId`. */
   ensureCapacity(varId: u32): void {
     if (varId >= this.capacity) {
       let newCap = (varId + 1) * 2;
@@ -6085,6 +6394,7 @@ export class DisjointSet {
     }
   }
 
+  /** Returns the canonical representative `VarId` for the connected component containing `v` (with path compression). */
   find(v: u32): u32 {
     this.ensureCapacity(v);
     let p = this.parent.get(v);
@@ -6095,6 +6405,7 @@ export class DisjointSet {
     return p;
   }
 
+  /** Merges the connected component sets containing `v1` and `v2` using union-by-rank. */
   union(v1: u32, v2: u32): void {
     let r1 = this.find(v1);
     let r2 = this.find(v2);
@@ -6111,11 +6422,13 @@ export class DisjointSet {
     }
   }
 
+  /** Returns the number of `connect(...)` equations referencing `v`. */
   getCardinality(v: u32): u32 {
     this.ensureCapacity(v);
     return this.cardinality.get(v);
   }
 
+  /** Increments the connection cardinality counter for `v` by `1`. */
   incrementCardinality(v: u32): void {
     this.ensureCapacity(v);
     this.cardinality.set(v, this.cardinality.get(v) + 1);
@@ -6124,132 +6437,192 @@ export class DisjointSet {
 
 /**
  * Modelica & Physical Semantic Flattening Engine in WebAssembly.
+ *
+ * Implements the in-WASM AssemblyScript flattening kernel: walks linear-memory green CST nodes,
+ * resolves hierarchical modifications and `extends` clauses, scalarizes arrays, expands `connect(...)`
+ * and `stream` connector sets via `DisjointSet`, and emits variables/equations/statements directly
+ * into `DaeBuilder`.
  */
 @unmanaged
 export class ModelicaFlattener {
+  /** Linear memory base address of the reusable `ModelicaFlattener` instance pool buffer. */
   static poolBuf: usize = 0;
+  /** Number of idle `ModelicaFlattener` instances currently available in `poolBuf`. */
   static poolDepth: i32 = 0;
 
+  /** Linear memory pointer (`u32`) to the target `DaeBuilder` arena. */
   daePtr: u32;
+  /** Linear memory pointer (`u32`) to the associated `WasmExprVisitor` instance. */
   exprVisitorPtr: u32;
 
-  // Connection Graph Tracking: [var1, var2, isFlow, isBoundary] stride = 4
+  /** Flat connection graph buffer (`[var1, var2, isFlow, isBoundary]`, stride = `4`). */
   connectionPairs: ChunkedUint32Array;
+  /** Number of 4-word connection records stored in `connectionPairs`. */
   connectionCount: u32;
 
-  // Stream Connections: [h1, mdot1, h2, mdot2] stride = 4
+  /** Flat stream connection buffer (`[h1, mdot1, h2, mdot2]`, stride = `4`). */
   streamPairs: ChunkedUint32Array;
+  /** Number of 4-word stream connection records stored in `streamPairs`. */
   streamCount: u32;
 
-  // Encapsulated Union-Find Disjoint Set & Cardinality
+  /** Linear memory pointer (`u32`) to the encapsulated `DisjointSet` for connection set resolution. */
   disjointSetPtr: u32;
 
+  /** Returns the `DisjointSet` instance managing connected components and connector cardinalities. */
   @inline get disjointSet(): DisjointSet {
     return changetype<DisjointSet>(this.disjointSetPtr);
   }
 
-  // Backwards compatibility getters
+  /** Backwards-compatible getter for `this.disjointSet.parent`. */
   @inline get ufParent(): ChunkedUint32Array { return this.disjointSet.parent; }
+  /** Backwards-compatible getter for `this.disjointSet.rank`. */
   @inline get ufRank(): ChunkedUint32Array { return this.disjointSet.rank; }
+  /** Backwards-compatible getter for `this.disjointSet.cardinality`. */
   @inline get cardinalityMap(): ChunkedUint32Array { return this.disjointSet.cardinality; }
 
-  // Inner/Outer Resolution Map: [nameHash -> varId]
+  /** Parallel column: interned string pool IDs of `inner` variable names. */
   innerKeys: ChunkedUint32Array;
+  /** Parallel column: `VarId` indices corresponding to `innerKeys`. */
   innerVars: ChunkedUint32Array;
+  /** Number of registered scalar `inner` variable mappings. */
   innerCount: u32;
 
-  // Inner Component Scope Registrations: [scopePrefixId, compNameId, fullPrefixId]
+  /** Parallel column: interned string IDs of enclosing scope prefixes for `inner` components. */
   innerScopePrefixes: ChunkedUint32Array;
+  /** Parallel column: interned string IDs of unqualified `inner` component names. */
   innerNames: ChunkedUint32Array;
+  /** Parallel column: interned string IDs of fully qualified `inner` component paths. */
   innerFullPaths: ChunkedUint32Array;
+  /** Number of registered `inner` component declarations. */
   innerRegCount: u32;
 
-  // Outer-to-Inner Mappings: [outerPrefixId, targetInnerPrefixId]
+  /** Parallel column: interned string IDs of `outer` component paths. */
   outerPaths: ChunkedUint32Array;
+  /** Parallel column: interned string IDs of the resolved target `inner` component paths. */
   targetInnerPaths: ChunkedUint32Array;
+  /** Number of registered `outer`-to-`inner` prefix redirections. */
   outerMapCount: u32;
 
-  // Expandable Connector Buses
+  /** Interned string IDs of component prefixes declared with `expandable connector`. */
   expandableBuses: ChunkedUint32Array;
+  /** Number of registered expandable connector instances. */
   expandableBusCount: u32;
+  /** Disjoint-set parent array linking connected expandable connector buses. */
   busParent: ChunkedUint32Array;
+  /** Parallel column: expandable bus index (`0..expandableBusCount`) for each virtual signal reference. */
   busRefSignalsBusIdx: ChunkedUint32Array;
+  /** Parallel column: interned string ID of the relative signal path referenced on the expandable bus. */
   busRefSignalsRelId: ChunkedUint32Array;
+  /** Number of virtual signal references collected across expandable connector buses. */
   busRefSignalCount: u32;
+  /** Scratch output: interned string ID of the expandable bus prefix matched by `matchExpandableBus`. */
   matchedBusPrefix: u32;
+  /** Scratch output: interned string ID of the relative member path after `matchedBusPrefix`. */
   matchedRelPath: u32;
 
-  // Named Array Shapes: [nameId -> (dim1, dim2, dim3, dim4)]
+  /** Parallel column: interned string IDs of named array components/variables. */
   arrayNames: ChunkedUint32Array;
+  /** Parallel column: 1st dimension size (`dim1`) for each entry in `arrayNames`. */
   arrayDim1: ChunkedUint32Array;
+  /** Parallel column: 2nd dimension size (`dim2`, `0` if 1-D) for each entry in `arrayNames`. */
   arrayDim2: ChunkedUint32Array;
+  /** Parallel column: 3rd dimension size (`dim3`, `0` if <= 2-D) for each entry in `arrayNames`. */
   arrayDim3: ChunkedUint32Array;
+  /** Parallel column: 4th dimension size (`dim4`, `0` if <= 3-D) for each entry in `arrayNames`. */
   arrayDim4: ChunkedUint32Array;
+  /** Parallel column: explicit rank (`1..4`) for each entry in `arrayNames`. */
   arrayNDims: ChunkedUint32Array;
+  /** Number of named array shape records stored in `arrayNames`. */
   arrayCount: u32;
+  /** Linear memory pointer (`usize`) to an `UnmanagedMap64` indexing `arrayNames` string IDs to row indices. */
   arrayNameIndexPtr: usize;
 
-  // Pending Array Equation Bindings: [lhsExprId, rhsExprId]
+  /** Parallel column: left-hand side `ExprId` for deferred array equations. */
   pendingArrayLhs: ChunkedUint32Array;
+  /** Parallel column: right-hand side `ExprId` for deferred array equations. */
   pendingArrayRhs: ChunkedUint32Array;
+  /** Number of deferred array equations waiting for post-instantiation scalarization. */
   pendingArrayCount: u32;
 
-  // Connect Equation References
+  /** Scratch output: packed 64-bit CST location of the 1st argument in a `connect(ref1, ref2)` clause. */
   connectRef1: u64;
+  /** Scratch output: packed 64-bit CST location of the 2nd argument in a `connect(ref1, ref2)` clause. */
   connectRef2: u64;
+  /** Scratch state counter (`0`, `1`, or `2`) used while extracting `connect(ref1, ref2)` arguments. */
   connectRefFound: i32;
 
-  // Disabled components (due to 'if <cond>' evaluating to false)
+  /** Interned string IDs of component prefixes disabled by false conditional declarations (`if false`). */
   disabledNames: ChunkedUint32Array;
+  /** Number of conditionally disabled component prefixes in `disabledNames`. */
   disabledCount: u32;
+  /** Linear memory pointer (`usize`) to an `UnmanagedSet64` of disabled component name string IDs for O(1) lookup. */
   disabledSetPtr: usize;
 
-  // Lexical Scope Stack
+  /** Linear memory pointer (`u32`) to the lexical `ScopeStack`. */
   scopeStackPtr: u32;
 
-  // Root Program/Tree Node Pointer for resolving cross-class references
+  /** Root CST node pointer (`u32`) of the parsed compilation unit for cross-class lookup. */
   rootProgramNodePtr: u32;
+  /** Packed 64-bit CST location of the root compilation unit. */
   rootProgramLoc: u64;
+  /** Packed 64-bit CST location of the class definition currently being instantiated. */
   currentClassLoc: u64;
 
-  // Subtype attribute modifiers (from short class specifier or primitive extends clause)
+  /** DAE `ExprId` of the inherited `start` attribute modifier from a short class specifier (`0xffffffff` if none). */
   curSubtypeStartId: u32;
+  /** DAE `ExprId` of the inherited `fixed` attribute modifier from a short class specifier (`0xffffffff` if none). */
   curSubtypeFixedId: u32;
+  /** DAE `ExprId` of the inherited `min` attribute modifier from a short class specifier (`0xffffffff` if none). */
   curSubtypeMinId: u32;
+  /** DAE `ExprId` of the inherited `max` attribute modifier from a short class specifier (`0xffffffff` if none). */
   curSubtypeMaxId: u32;
+  /** DAE `ExprId` of the inherited `nominal` attribute modifier from a short class specifier (`0xffffffff` if none). */
   curSubtypeNominalId: u32;
+  /** DAE `ExprId` of the inherited `displayUnit` attribute modifier from a short class specifier (`0xffffffff` if none). */
   curSubtypeDisplayUnitId: u32;
+  /** DAE `ExprId` of the inherited `quantity` attribute modifier from a short class specifier (`0xffffffff` if none). */
   curSubtypeQuantityId: u32;
+  /** Inherited connector prefix flags (`FLAG_VAR_FLOW`, `FLAG_VAR_STREAM`) passed down from an enclosing short class or connector. */
   parentFlowFlags: i32;
 
-  // Flattening error flag
+  /** `true` if the WASM flattener encountered an unsupported construct or semantic error and bailed out. */
   hasError: boolean;
+  /** Numeric `WasmBailReason` code (`0` if `hasError == false`) read by the TS host via `flattener_getErrorCode`. */
   errorCode: u32;
-  // Absolute byte range (into the root program's input buffer) of the CST node that
-  // triggered the bail-out; 0xffffffff when unknown.
+  /** Absolute start byte offset (into the root program's input buffer) of the CST node that triggered the bail-out (`0xffffffff` when unknown). */
   errorStartByte: u32;
+  /** Absolute end byte offset (into the root program's input buffer) of the CST node that triggered the bail-out (`0xffffffff` when unknown). */
   errorEndByte: u32;
-  // Location of the simple equation currently being expanded, used to attribute
-  // bail-outs raised from expression-level helpers such as emitExpandedEquation.
+  /** Packed 64-bit CST location of the simple equation currently being expanded, used to attribute bail-outs raised from expression-level helpers. */
   curEqLoc: u64;
 
-  // Algorithm sections emitted into the DAE statement arena: [start, count, isInitial] stride = 3
+  /** Algorithm sections emitted into the DAE statement arena (`[startStmtIdx, stmtCount, isInitial]`, stride = `3`). */
   algSections: ChunkedUint32Array;
+  /** Number of algorithm sections recorded in `algSections`. */
   algSectionCount: u32;
-  // Compound when/if equations emitted into DAE:
+  /** Flat buffer of compound `when` equation records emitted into the DAE. */
   whenRecords: ChunkedInt32Array;
+  /** Number of `when` equation records in `whenRecords`. */
   whenRecordCount: u32;
+  /** Flat buffer of compound `if` equation records emitted into the DAE. */
   ifRecords: ChunkedInt32Array;
+  /** Number of `if` equation records in `ifRecords`. */
   ifRecordCount: u32;
-  // Stack-disciplined scratch buffers used while walking statements:
-  // stmtItems holds CST locs as (lo, hi) u32 pairs, stmtAux holds per-construct records.
+  /** Stack-disciplined scratch buffer holding CST locations as `(lo, hi)` `u32` pairs while lowering statements. */
   stmtItems: ChunkedUint32Array;
+  /** Stack-disciplined scratch buffer holding per-construct auxiliary metadata while lowering statements. */
   stmtAux: ChunkedUint32Array;
+  /** Linear memory pointer (`usize`) to an `UnmanagedMap64To64` caching lexical scope name resolutions. */
   scopeResolutionsPtr: usize;
+  /** Linear memory pointer (`usize`) to an `UnmanagedMap64` mapping enumeration literal string IDs to their 1-based ordinal values. */
   enumLiteralsPtr: usize;
+  /** `true` when formatting and flattening rules should strictly mirror OpenModelica (`omc`) output conventions. */
   isOmcCompatibility: bool;
+  /** Saved `ModificationEnvironment.poolIdx` watermark restored when this flattener instance is released. */
   savedModEnvPoolIdx: u32;
+  /** Guard flag preventing double-return of this `ModelicaFlattener` instance to `poolBuf`. */
   isDestroyed: bool;
+  /** Scratch output slot holding the `f64` result of constant-evaluating a scalar real expression. */
   scalarOutVal: f64;
 
   @inline static create(dae: DaeBuilder): ModelicaFlattener {
@@ -9566,6 +9939,38 @@ export class ModelicaFlattener {
     return count;
   }
 
+  /**
+   * Instantiates a single `component_declaration` CST node into the WebAssembly DAE arena.
+   *
+   * Resolves component/type redeclarations and `inner`/`outer` dynamic scoping bindings, merges
+   * declaration-level and clause-level array dimensions (1D through 4D), evaluates binding expressions
+   * and attribute modifiers (`start`, `fixed`, `min`, `max`, `nominal`, `unit`, `displayUnit`, `quantity`)
+   * with `ScopeStack` override lookup, and either emits scalarized primitive arena variables or
+   * recursively flattens composite sub-component hierarchies.
+   *
+   * @param declLoc - Packed 64-bit CST location of the `component_declaration` node.
+   * @param isPrimitive - Whether the component type resolves to a built-in scalar (`Real`, `Integer`, `Boolean`, `String`, `Enumeration`).
+   * @param varType - Target `VarType` enum code for primitive variables.
+   * @param variability - Variability level (`Continuous`, `Discrete`, `Parameter`, `Constant`).
+   * @param causality - Causality direction (`Local`, `Input`, `Output`).
+   * @param varFlags - Bitmask of variable flags (`FLAG_VAR_FLOW`, `FLAG_VAR_STREAM`, `FLAG_VAR_FINAL`, `FLAG_VAR_PROTECTED`, etc.).
+   * @param typeNameId - Interned string ID of the component's type specifier.
+   * @param clauseDim1 - First array dimension inherited from the enclosing `component_clause` (or `0`).
+   * @param clauseDim2 - Second array dimension inherited from the enclosing `component_clause` (or `0`).
+   * @param clauseDim3 - Third array dimension inherited from the enclosing `component_clause` (or `0`).
+   * @param prefixPathId - Interned string ID of the enclosing hierarchical instance prefix (or `0` at root).
+   * @param pool - Arena string pool for zero-copy identifier concatenation and interning.
+   * @param isTopLevelInterface - Whether this declaration is a top-level `input`/`output` interface variable.
+   * @param parentCausality - Inherited causality from an enclosing composite connector or block.
+   * @param subtypeUnitId - Default `unit` attribute expression ID inherited from a `type` alias.
+   * @param clauseHasExplicitZero - Whether the enclosing `component_clause` has an explicit zero dimension `[0]`.
+   * @param isInner - Whether the declaration carries the `inner` prefix.
+   * @param isOuter - Whether the declaration carries the `outer` prefix.
+   * @param declDescId - Interned expression ID of the declaration description string, or `0xffffffff`.
+   * @param clauseNDims - Number of array dimensions on the enclosing `component_clause`.
+   * @param clauseDim4 - Fourth array dimension inherited from the enclosing `component_clause` (or `0`).
+   * @returns Total number of leaf variables emitted into the DAE arena.
+   */
   instantiateDeclaration(declLoc: u64, isPrimitive: boolean, varType: i32, variability: i32, causality: i32, varFlags: i32, typeNameId: u32, clauseDim1: u32, clauseDim2: u32, clauseDim3: u32, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, subtypeUnitId: u32 = 0xffffffff, clauseHasExplicitZero: boolean = false, isInner: boolean = false, isOuter: boolean = false, declDescId: u32 = 0xffffffff, clauseNDims: u32 = 0, clauseDim4: u32 = 0): u32 {
     let idLoc = locFirstNonEmptyChild(declLoc);
     if (locIsNull(idLoc)) return 0;
@@ -9575,7 +9980,7 @@ export class ModelicaFlattener {
     let compNameId = locIntern(pool, idLoc);
     let fullVarNameId = prefixPathId != 0 ? pool.concatIds(prefixPathId, compNameId) : compNameId;
 
-    // Resolve component-level or type-level redeclare from enclosing modification environments
+    // 1. Resolve component-level or type-level redeclare from enclosing modification environments
     if (!isPrimitive && this.scopeStackPtr != 0) {
       let ss = changetype<ScopeStack>(this.scopeStackPtr);
       let redeclCompTypeId = ss.lookupRedeclare(compNameId);
@@ -9608,6 +10013,7 @@ export class ModelicaFlattener {
       }
     }
 
+    // 2. Register `inner` declarations and bind `outer` references to their enclosing `inner` target
     let isSimultaneousInnerOuter = isInner && isOuter;
     if (isInner && !isOuter) {
       this.registerInnerDeclaration(prefixPathId, compNameId, fullVarNameId);
@@ -9625,6 +10031,7 @@ export class ModelicaFlattener {
       }
     }
 
+    // 3. Parse declaration-level array subscripts and merge with clause-level dimensions (up to 4D)
     let declSubscripts = this.findDeclarationSubscripts(declLoc);
     let declDims = parseArrayDimensionsLoc(declSubscripts, this.dae, pool, prefixPathId, this.scopeStackPtr);
     let declHasExplicitZero = g_hasExplicitZeroDim;
@@ -9664,6 +10071,7 @@ export class ModelicaFlattener {
       }
     }
 
+    // 4. Lower declaration binding expression, extract attribute modifiers, and apply `ScopeStack` overrides
     let modLoc = locFindDescendant(declLoc, SyntaxType.MODIFICATION);
     let valExprId: u32 = 0xffffffff;
     let bExprLoc = findBindingExpressionLoc(modLoc);
@@ -9792,6 +10200,7 @@ export class ModelicaFlattener {
       }
     }
 
+    // 5. Infer flexible (`:`) array dimensions from binding expressions and validate array/binding shape consistency
     let hasSubscripts = declNDims > 0 || clauseNDims > 0 || !locIsNull(declSubscripts) || clauseDim1 > 0 || declHasExplicitZero || clauseHasExplicitZero;
     let isExplicitZero = declHasExplicitZero || clauseHasExplicitZero;
     let isArrayCtor = valExprId != 0xffffffff && this.dae.getExprKind(valExprId) == ExprKind.ArrayCtor;
@@ -9916,6 +10325,7 @@ export class ModelicaFlattener {
       effectiveCausality = Causality.Local;
     }
 
+    // 6. Emit primitive variables (1D, 2D, 3D, 4D scalarized array elements or scalar) into the DAE arena
     if (isPrimitive) {
       if (dim1 > 0 && dim2 == 0 && dim3 == 0 && dim4 == 0) {
         let isArrayCtor = valExprId != 0xffffffff && this.dae.getExprKind(valExprId) == ExprKind.ArrayCtor;

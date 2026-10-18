@@ -49,6 +49,7 @@ import {
 } from "../api";
 import { useAuth } from "../AuthContext";
 import { parseFederatedHandle } from "../util/federation";
+import { isNotebookPost, parseNotebookFromContent } from "../util/notebook";
 import AnimatedCount from "./AnimatedCount";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import type { SpatialPin } from "./artifacts/spatial-pin";
@@ -75,7 +76,7 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-const PostWrapper = styled.div<{ $isDetail?: boolean; $isThread?: boolean }>`
+const PostWrapper = styled.div<{ $isDetail?: boolean | undefined; $isThread?: boolean | undefined }>`
   display: flex;
   flex-direction: ${(props) => (props.$isDetail ? "column" : "row")};
   gap: 12px;
@@ -98,7 +99,7 @@ const PostWrapper = styled.div<{ $isDetail?: boolean; $isThread?: boolean }>`
   }
 `;
 
-const Avatar = styled.div<{ $url?: string }>`
+const Avatar = styled.div<{ $url?: string | undefined }>`
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -114,7 +115,7 @@ const Avatar = styled.div<{ $url?: string }>`
   border: 1px solid var(--color-border-default);
 `;
 
-const EngBadge = styled.span<{ $variant?: "verified" | "solver" | "fmu" | "warning" }>`
+const EngBadge = styled.span<{ $variant?: "verified" | "solver" | "fmu" | "warning" | undefined }>`
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
@@ -151,7 +152,7 @@ const ModelSpecTag = styled.div`
   }
 `;
 
-const AiBadge = styled.span<{ $variant?: "generated" | "verified" | "reviewed" }>`
+const AiBadge = styled.span<{ $variant?: "generated" | "verified" | "reviewed" | undefined }>`
   font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 600;
@@ -289,7 +290,11 @@ const ViewsLink = styled.span`
   }
 `;
 
-const ActionButton = styled.button<{ $active?: boolean; $color?: string; $noHoverColor?: boolean }>`
+const ActionButton = styled.button<{
+  $active?: boolean | undefined;
+  $color?: string | undefined;
+  $noHoverColor?: boolean | undefined;
+}>`
   display: flex;
   align-items: center;
   background: none;
@@ -434,8 +439,8 @@ const AnalyticsStatValue = styled.div`
 
 interface PostProps {
   post: any;
-  isDetail?: boolean;
-  isThread?: boolean;
+  isDetail?: boolean | undefined;
+  isThread?: boolean | undefined;
 }
 
 const MarkdownContainer = styled.div`
@@ -845,7 +850,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     return num.toString();
   };
 
-  const hasAttachment = !!displayPost.artifact_view_id;
+  const hasAttachment = !!displayPost.artifact_view_id || isNotebookPost(displayPost);
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -929,6 +934,336 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     }
   };
 
+  const [isNotebookExpanded, setIsNotebookExpanded] = useState(false);
+  const isNotebook = isNotebookPost(displayPost);
+  const notebookData = React.useMemo(
+    () =>
+      isNotebook
+        ? parseNotebookFromContent(displayPost.content, displayPost.artifact_view_id, displayPost.metadata?.notebook)
+        : null,
+    [isNotebook, displayPost.content, displayPost.artifact_view_id, displayPost.metadata?.notebook],
+  );
+
+  const renderNotebookOrStandardBody = (isDetailView: boolean) => {
+    if (isNotebook && notebookData && notebookData.cells.length > 0) {
+      let previewEndIdx = notebookData.cells.length;
+      if (!isDetailView && !isNotebookExpanded) {
+        const firstArtIdx = notebookData.cells.findIndex((c) => c.type === "artifact");
+        if (firstArtIdx !== -1 && firstArtIdx + 1 < notebookData.cells.length) {
+          previewEndIdx = firstArtIdx + 1;
+        } else if (notebookData.cells.length > 2) {
+          previewEndIdx = 2;
+        }
+      }
+
+      const visibleCells = notebookData.cells.slice(0, previewEndIdx);
+      const hiddenCount = notebookData.cells.length - visibleCells.length;
+      let figureIndex = 0;
+
+      return (
+        <Box display="flex" flexDirection="column" gap={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
+          {notebookData.title && (
+            <div
+              style={{
+                fontSize: isDetailView ? "21px" : "17.5px",
+                fontWeight: 800,
+                color: "var(--color-text-heading, var(--color-fg-default))",
+                lineHeight: 1.3,
+                marginTop: "4px",
+                marginBottom: "2px",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {notebookData.title}
+            </div>
+          )}
+
+          {visibleCells.map((cell) => {
+            if (cell.type === "markdown") {
+              const shouldTruncateMd =
+                !isDetailView && !isNotebookExpanded && cell.content.length > 520 && notebookData.cells.length === 1;
+              const mdText = shouldTruncateMd ? `${cell.content.slice(0, 520)}…` : cell.content;
+              return (
+                <Box
+                  key={cell.id}
+                  style={{
+                    fontSize: isDetailView ? "16.5px" : "15px",
+                    lineHeight: isDetailView ? 1.6 : 1.5,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  <RenderContent text={mdText} />
+                </Box>
+              );
+            }
+
+            figureIndex += 1;
+            const currentFigNum = figureIndex;
+            const initialView =
+              displayPost.artifact_views?.[cell.artifactId] ||
+              (cell.artifactId === displayPost.artifact_view_id ? displayPost.artifact_view : undefined);
+
+            return (
+              <Box
+                key={cell.id}
+                my={1}
+                style={{
+                  width: "100%",
+                  maxWidth: "100%",
+                  minWidth: 0,
+                  borderRadius: "12px",
+                  border: "1px solid rgba(139, 92, 246, 0.22)",
+                  background: "rgba(139, 92, 246, 0.03)",
+                  overflow: "hidden",
+                }}
+              >
+                <ArtifactViewCard
+                  artifactId={cell.artifactId}
+                  initialArtifactView={initialView}
+                  onPinCreated={(pin) => {
+                    setPendingPin(pin);
+                    setShowReplyModal(true);
+                  }}
+                />
+                {(cell.caption || cell.title) && (
+                  <div
+                    style={{
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      color: "var(--color-text-muted)",
+                      borderTop: "1px solid rgba(139, 92, 246, 0.15)",
+                      background: "rgba(0, 0, 0, 0.18)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontWeight: 700,
+                        color: "var(--color-accent-cyan)",
+                        fontSize: "11px",
+                      }}
+                    >
+                      Fig. {currentFigNum}:
+                    </span>
+                    <span>{cell.caption || cell.title}</span>
+                  </div>
+                )}
+              </Box>
+            );
+          })}
+
+          {!isDetailView && hiddenCount > 0 && !isNotebookExpanded && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsNotebookExpanded(true);
+              }}
+              style={{
+                width: "100%",
+                padding: "9px 14px",
+                marginTop: "4px",
+                borderRadius: "10px",
+                border: "1px solid rgba(6, 182, 212, 0.32)",
+                background: "linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.1))",
+                color: "var(--color-accent-cyan)",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span>
+                📓 Expand full notebook ({notebookData.cells.length} sections · {notebookData.artifactIds.length}{" "}
+                {notebookData.artifactIds.length === 1 ? "artifact" : "interactive artifacts"})
+              </span>
+              <span>+{hiddenCount} more ▼</span>
+            </button>
+          )}
+
+          {!isDetailView && isNotebookExpanded && notebookData.cells.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsNotebookExpanded(false);
+              }}
+              style={{
+                alignSelf: "flex-start",
+                padding: "5px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--color-border)",
+                background: "rgba(255, 255, 255, 0.04)",
+                color: "var(--color-text-muted)",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              ▲ Collapse notebook
+            </button>
+          )}
+
+          {notebookData.artifactIds.length > 0 && (
+            <AiInsightRibbon
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAiDetails(!showAiDetails);
+              }}
+              style={{ cursor: "pointer", marginTop: "4px" }}
+            >
+              <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                <Box display="flex" alignItems="center" gap={2}>
+                  <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
+                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
+                    AI Verified · Linear DAE Arena ({notebookData.artifactIds.length}{" "}
+                    {notebookData.artifactIds.length === 1 ? "Artifact" : "Artifacts"})
+                  </span>
+                </Box>
+                <span
+                  style={{
+                    fontSize: "10.5px",
+                    color: "var(--color-status-verified)",
+                    fontFamily: "var(--font-mono)",
+                    background: "rgba(16, 185, 129, 0.12)",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                  }}
+                >
+                  ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
+                </span>
+              </Box>
+              {showAiDetails && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-text-muted)",
+                    borderTop: "1px solid rgba(139, 92, 246, 0.15)",
+                    paddingTop: "6px",
+                    marginTop: "4px",
+                  }}
+                >
+                  Verified AST and differential equations across all embedded notebook artifacts in linear DAE arena.
+                  Numerical convergence guaranteed with SUNDIALS CVODE integrator.
+                </div>
+              )}
+            </AiInsightRibbon>
+          )}
+        </Box>
+      );
+    }
+
+    return (
+      <>
+        <Box
+          mt={0}
+          style={{
+            wordBreak: "break-word",
+            lineHeight: isDetailView ? 1.5 : undefined,
+            fontSize: isDetailView ? "17px" : "15px",
+          }}
+        >
+          <RenderContent text={displayPost.content} />
+        </Box>
+
+        {displayPost.metadata?.spatialPin && (
+          <Box
+            mt={2}
+            p={2}
+            border="1px solid var(--color-border)"
+            borderRadius="8px"
+            backgroundColor="rgba(255, 255, 255, 0.03)"
+            style={{ cursor: "pointer", display: "inline-block" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              window.dispatchEvent(new CustomEvent("focus-spatial-pin", { detail: displayPost.metadata.spatialPin }));
+            }}
+          >
+            <span
+              style={{
+                fontSize: "13px",
+                color: "var(--color-fg-muted)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
+              <span>
+                View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
+                {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
+              </span>
+            </span>
+          </Box>
+        )}
+
+        {displayPost.artifact_view_id && (
+          <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
+            <ArtifactViewCard
+              artifactId={displayPost.artifact_view_id}
+              initialArtifactView={displayPost.artifact_view}
+              onPinCreated={(pin) => {
+                setPendingPin(pin);
+                setShowReplyModal(true);
+              }}
+            />
+            <AiInsightRibbon
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAiDetails(!showAiDetails);
+              }}
+              style={{ cursor: "pointer", marginTop: "8px" }}
+            >
+              <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                <Box display="flex" alignItems="center" gap={2}>
+                  <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
+                  <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
+                    AI Verified · Linear DAE Arena
+                  </span>
+                </Box>
+                <span
+                  style={{
+                    fontSize: "10.5px",
+                    color: "var(--color-status-verified)",
+                    fontFamily: "var(--font-mono)",
+                    background: "rgba(16, 185, 129, 0.12)",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                  }}
+                >
+                  ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
+                </span>
+              </Box>
+              {showAiDetails && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-text-muted)",
+                    borderTop: "1px solid rgba(139, 92, 246, 0.15)",
+                    paddingTop: "6px",
+                    marginTop: "4px",
+                  }}
+                >
+                  Verified AST and differential equations in linear DAE arena. No algebraic loops detected. Numerical
+                  convergence guaranteed with CVODE integrator.
+                </div>
+              )}
+            </AiInsightRibbon>
+          </Box>
+        )}
+      </>
+    );
+  };
+
   const content = (
     <PostWrapper $isDetail={isDetail} $isThread={isThread}>
       {isDetail ? (
@@ -1007,7 +1342,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 )}
               </Box>
               <Box display="flex" gap={1} flexWrap="wrap" mt={1}>
-                {displayPost.artifact_view_id && (
+                {isNotebook && <AiBadge $variant="verified">📓 Notebook</AiBadge>}
+                {(displayPost.artifact_view_id || Boolean(notebookData?.artifactIds?.length)) && (
                   <ModelSpecTag>
                     <span className="verified-dot" />
                     <span>Modelica 3.4</span>
@@ -1017,7 +1353,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     <span>FMU 3.0</span>
                   </ModelSpecTag>
                 )}
-                {displayPost.artifact_view_id && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
+                {(displayPost.artifact_view_id || Boolean(notebookData?.artifactIds?.length)) && (
+                  <AiBadge $variant="verified">✨ AI Verified</AiBadge>
+                )}
                 {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
               </Box>
             </Box>
@@ -1178,95 +1516,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             </Box>
           </Box>
 
-          <Box
-            style={{
-              wordBreak: "break-word",
-              lineHeight: 1.5,
-              fontSize: "17px",
-            }}
-          >
-            <RenderContent text={displayPost.content} />
-          </Box>
-
-          {displayPost.metadata?.spatialPin && (
-            <Box
-              mt={2}
-              p={2}
-              border="1px solid var(--color-border)"
-              borderRadius="8px"
-              backgroundColor="rgba(255, 255, 255, 0.03)"
-              style={{ cursor: "pointer", display: "inline-block" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.dispatchEvent(new CustomEvent("focus-spatial-pin", { detail: displayPost.metadata.spatialPin }));
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "13px",
-                  color: "var(--color-fg-muted)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
-                <span>
-                  View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
-                  {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
-                </span>
-              </span>
-            </Box>
-          )}
-
-          {displayPost.artifact_view_id && (
-            <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-              <ArtifactViewCard
-                artifactId={displayPost.artifact_view_id}
-                initialArtifactView={displayPost.artifact_view}
-                onPinCreated={(pin) => {
-                  setPendingPin(pin);
-                  setShowReplyModal(true);
-                }}
-              />
-              <AiInsightRibbon onClick={() => setShowAiDetails(!showAiDetails)} style={{ cursor: "pointer" }}>
-                <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
-                  <Box display="flex" alignItems="center" gap={2}>
-                    <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
-                    <span style={{ fontWeight: 600, fontSize: "12.5px", color: "var(--color-text-primary)" }}>
-                      AI Verified · Linear DAE Arena
-                    </span>
-                  </Box>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      color: "var(--color-status-verified)",
-                      fontFamily: "var(--font-mono)",
-                      background: "rgba(16, 185, 129, 0.12)",
-                      padding: "2px 6px",
-                      borderRadius: "4px",
-                    }}
-                  >
-                    ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
-                  </span>
-                </Box>
-                {showAiDetails && (
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--color-text-muted)",
-                      borderTop: "1px solid rgba(139, 92, 246, 0.15)",
-                      paddingTop: "6px",
-                      marginTop: "4px",
-                    }}
-                  >
-                    Verified AST and differential equations in linear DAE arena. No algebraic loops detected. Numerical
-                    convergence guaranteed with CVODE integrator.
-                  </div>
-                )}
-              </AiInsightRibbon>
-            </Box>
-          )}
+          {renderNotebookOrStandardBody(true)}
 
           {displayPost.quote_post && (
             <Box
@@ -1670,7 +1920,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     </ProfileNameLink>
                   </ProfileHoverCard>
                   {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
-                  {displayPost.artifact_view_id && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
+                  {isNotebook && <AiBadge $variant="verified">📓 Notebook</AiBadge>}
+                  {(displayPost.artifact_view_id || Boolean(notebookData?.artifactIds?.length)) && (
+                    <AiBadge $variant="verified">✨ AI Verified</AiBadge>
+                  )}
                   <Link
                     to={`/${displayPost.username}`}
                     className="handle-text"
@@ -1934,102 +2187,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   </ContentWarningBox>
                 )}
 
-                {(!contentWarning || showCwContent) && (
-                  <>
-                    <Box mt={0} style={{ fontSize: "15px", wordBreak: "break-word" }}>
-                      <RenderContent text={displayPost.content} />
-                    </Box>
-
-                    {displayPost.metadata?.spatialPin && (
-                      <Box
-                        mt={2}
-                        p={2}
-                        border="1px solid var(--color-border)"
-                        borderRadius="8px"
-                        backgroundColor="rgba(255, 255, 255, 0.03)"
-                        style={{ cursor: "pointer", display: "inline-block" }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.dispatchEvent(
-                            new CustomEvent("focus-spatial-pin", { detail: displayPost.metadata.spatialPin }),
-                          );
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: "13px",
-                            color: "var(--color-fg-muted)",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                          }}
-                        >
-                          <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
-                          <span>
-                            View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
-                            {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
-                          </span>
-                        </span>
-                      </Box>
-                    )}
-
-                    {displayPost.artifact_view_id && (
-                      <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-                        <ArtifactViewCard
-                          artifactId={displayPost.artifact_view_id}
-                          initialArtifactView={displayPost.artifact_view}
-                          onPinCreated={(pin) => {
-                            setPendingPin(pin);
-                            setShowReplyModal(true);
-                          }}
-                        />
-                        <AiInsightRibbon
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowAiDetails(!showAiDetails);
-                          }}
-                          style={{ cursor: "pointer", marginTop: "8px" }}
-                        >
-                          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
-                            <Box display="flex" alignItems="center" gap={2}>
-                              <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
-                              <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
-                                AI Verified · Linear DAE Arena
-                              </span>
-                            </Box>
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                color: "var(--color-status-verified)",
-                                fontFamily: "var(--font-mono)",
-                                background: "var(--status-verified-bg)",
-                                border: "1px solid var(--status-verified-border)",
-                                padding: "1px 6px",
-                                borderRadius: "4px",
-                              }}
-                            >
-                              ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
-                            </span>
-                          </Box>
-                          {showAiDetails && (
-                            <div
-                              style={{
-                                fontSize: "11.5px",
-                                color: "var(--color-text-muted)",
-                                borderTop: "1px solid rgba(139, 92, 246, 0.15)",
-                                paddingTop: "6px",
-                                marginTop: "4px",
-                              }}
-                            >
-                              Index-1 DAE lowered directly to linear WASM memory. Zero algebraic loops detected.
-                              Numerical convergence guaranteed with SUNDIALS CVODE integrator.
-                            </div>
-                          )}
-                        </AiInsightRibbon>
-                      </Box>
-                    )}
-                  </>
-                )}
+                {(!contentWarning || showCwContent) && renderNotebookOrStandardBody(false)}
 
                 {displayPost.quote_post && (
                   <QuoteWrapper>

@@ -108,7 +108,25 @@ function evalMatrixPow(A: any[], p: number): any[][] | null {
 }
 
 /**
- * Evaluates an expression node in DAEBuilder to a scalar constant if possible.
+ * Evaluates a compile-time constant or parameter expression tree in a {@link DAEBuilder}
+ * to a scalar (`number | boolean | string`) or nested array value during constant folding.
+ *
+ * Enforces a recursion depth guard (`visitedDepth <= 100`) to prevent infinite loops on
+ * cyclic bindings, resolves names against `paramMap`, arena variable declarations, and
+ * Salsa `QueryDB` workspace symbols (including inherited `extends` modifications and
+ * subscripted component chains via `evaluateDbConstantRef`), folds derivatives of constants
+ * to `0.0`, and evaluates array constructors, subscripts, unary/binary operators (including
+ * matrix exponentiation), `if`/`else` branches, and built-in/user-defined function calls.
+ *
+ * @param arena The DAE arena containing the expression node (`exprId`).
+ * @param exprId The arena expression ID to fold (`0 <= exprId < arena.exprCount`).
+ * @param paramMap Optional map of known constant/parameter values by variable name.
+ * @param nameToIdx Optional fast lookup map from variable name to arena variable index.
+ * @param visitedDepth Current recursion depth (aborts above `100`).
+ * @param db Optional Salsa `QueryDB` for resolving workspace constants and inherited modifications.
+ * @param scopeId Optional lexical scope symbol ID for `db` queries.
+ * @param onlyConstants If `true`, restricts evaluation strictly to `Variability.Constant` symbols.
+ * @returns The folded scalar or array constant, or `null` if the expression is non-constant.
  */
 export function evaluateConstantArenaExpression(
   arena: DAEBuilder,
@@ -126,6 +144,7 @@ export function evaluateConstantArenaExpression(
 
   const kind = arena.getExprKind(exprId);
 
+  // --- 1. Scalar Literals ---
   if (kind === ExprKind.RealLiteral) {
     return arena.getExprRealValue(exprId);
   }
@@ -146,6 +165,11 @@ export function evaluateConstantArenaExpression(
     return arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
   }
 
+  /**
+   * Resolves a constant or parameter reference through the Salsa `QueryDB` when the symbol
+   * is not directly present in the flattened `arena` (e.g., package constants, `extends`
+   * modification overrides, or subscripted record/component chains).
+   */
   function evaluateDbConstantRef(
     db: QueryDB,
     rawName: string,
@@ -159,6 +183,8 @@ export function evaluateConstantArenaExpression(
     if (visited.has(visitKey)) return null;
     visited.add(visitKey);
 
+    // Parses literal numbers, booleans, well-known `Modelica.Constants` / `ModelicaServices.Machine`
+    // expressions, brace array literals `{...}`, or recursively resolves symbolic references.
     const parseScalarOrArrayText = (text: string, evalScopeId: SymbolId): number | boolean | string | any[] | null => {
       const t = text.trim();
       if (t === "true") return true;
@@ -356,8 +382,8 @@ export function evaluateConstantArenaExpression(
             targetClassId = currSym.id;
           }
           if (targetClassId !== null) {
-            const children = db.childrenOf(targetClassId) || [];
-            nextSym = children.find((c) => c.name === segName) ?? null;
+            const children: SymbolEntry[] = db.childrenOf(targetClassId) || [];
+            nextSym = children.find((c: SymbolEntry) => c.name === segName) ?? null;
             if (!nextSym) {
               nextSym = resolveInScopeOrBase(targetClassId, segName, 0);
             }
@@ -421,6 +447,7 @@ export function evaluateConstantArenaExpression(
     return null;
   }
 
+  // --- 2. Variable & Component Name Resolution ---
   if (kind === ExprKind.Name) {
     const nameId = arena.getExprData1(exprId);
     const varName = arena.interner.resolve(nameId);
@@ -457,6 +484,7 @@ export function evaluateConstantArenaExpression(
       }
       return arena.getVarStartValue(varIdx);
     }
+    // Reassemble sliced array-of-records field references (`prefix[1].suffix`, `prefix[2].suffix`, ...).
     if (varName.includes(".")) {
       let dotPos = varName.indexOf(".");
       while (dotPos > 0) {
@@ -516,6 +544,7 @@ export function evaluateConstantArenaExpression(
     return null;
   }
 
+  // --- 3. Negation, Time Derivatives of Constants, Array Constructors & Subscripts ---
   if (kind === ExprKind.Negate) {
     const childId = arena.getExprLeft(exprId);
     const childVal = evaluateConstantArenaExpression(
@@ -532,6 +561,7 @@ export function evaluateConstantArenaExpression(
     return null;
   }
 
+  // The time derivative `der(c)` of any constant or parameter expression is identically `0.0` (or a zero array).
   if (kind === ExprKind.Der) {
     const operandId = arena.getExprData1(exprId);
     if (operandId >= 0) {
@@ -588,6 +618,43 @@ export function evaluateConstantArenaExpression(
     return elements;
   }
 
+  if (kind === ExprKind.Subscript) {
+    const baseExprId = arena.getExprData1(exprId);
+    const subCount = arena.getExprRight(exprId);
+    const baseVal = evaluateConstantArenaExpression(
+      arena,
+      baseExprId,
+      paramMap,
+      nameToIdx,
+      visitedDepth + 1,
+      db,
+      scopeId,
+      onlyConstants,
+    );
+    if (baseVal === null || !Array.isArray(baseVal)) return null;
+    // Apply 1-based subscript indices across each dimension of `baseVal`.
+    let curr: any = baseVal;
+    for (let i = 0; i < subCount; i++) {
+      const subExprId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
+      const subVal = evaluateConstantArenaExpression(
+        arena,
+        subExprId,
+        paramMap,
+        nameToIdx,
+        visitedDepth + 1,
+        db,
+        scopeId,
+        onlyConstants,
+      );
+      if (typeof subVal !== "number" || !Array.isArray(curr)) return null;
+      const idx = Math.trunc(subVal) - 1;
+      if (idx < 0 || idx >= curr.length) return null;
+      curr = curr[idx];
+    }
+    return curr ?? null;
+  }
+
+  // --- 4. Unary & Binary Operators ---
   if (kind === ExprKind.Unary) {
     const op = arena.getExprData1(exprId);
     const childId = arena.getExprLeft(exprId);
@@ -640,11 +707,13 @@ export function evaluateConstantArenaExpression(
 
     if (lVal === null || rVal === null) return null;
 
+    // Square matrix exponentiation `A ^ n` for non-negative integer `n`.
     if (op === BinOp.Pow && Array.isArray(lVal) && typeof rVal === "number") {
       const matPow = evalMatrixPow(lVal, rVal);
       if (matPow !== null) return matPow;
     }
 
+    // Element-wise binary arithmetic and scalar-array broadcasting.
     if (Array.isArray(lVal) || Array.isArray(rVal)) {
       const evalElemBinOp = (op: BinOp, a: any, b: any): any => {
         if (Array.isArray(a) && Array.isArray(b)) {
@@ -723,6 +792,7 @@ export function evaluateConstantArenaExpression(
     }
   }
 
+  // --- 5. Conditional Expressions & Function Calls ---
   if (kind === ExprKind.IfElse) {
     const condId = arena.getExprData1(exprId);
     const condVal = evaluateConstantArenaExpression(
@@ -753,6 +823,7 @@ export function evaluateConstantArenaExpression(
 
   if (kind === ExprKind.Call) {
     const funcName = arena.interner.resolve(arena.getExprData1(exprId));
+    // 5a. Fold `der(expr)` calls on constant/parameter expressions to `0.0`.
     if (funcName === "der") {
       const argCount = arena.getExprRight(exprId);
       if (argCount >= 1) {
@@ -787,6 +858,7 @@ export function evaluateConstantArenaExpression(
       }
       return null;
     }
+    // 5b. Event-generating and discrete-time operators are never compile-time constants.
     if (
       funcName === "sample" ||
       funcName === "edge" ||
@@ -802,6 +874,7 @@ export function evaluateConstantArenaExpression(
       return i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
     };
 
+    // 5c. Special-case `String(EnumLiteral)`, `linspace`, type casts (`Real`/`Integer`), and `cardinality(connector)`.
     if (funcName === "String" && argCount === 1) {
       const a0 = getCallArg(0);
       if (arena.getExprKind(a0) === ExprKind.EnumLiteral) {
@@ -929,6 +1002,8 @@ export function evaluateConstantArenaExpression(
       }
       if (connectorName && !arena.hasArrayElements(connectorName)) {
         let count = 0;
+        let canonicalMemberSuffix: string | null = null;
+        const prefixDot = `${connectorName}.`;
         for (let i = 0; i < arena.eqCount; i++) {
           if (arena.getEqKind(i) === EqKind.Connect) {
             const lhs = arena.getEqLhs(i);
@@ -941,13 +1016,17 @@ export function evaluateConstantArenaExpression(
               rhs >= 0 && arena.getExprKind(rhs) === ExprKind.Name
                 ? arena.interner.resolve(arena.getExprData1(rhs))
                 : "";
-            if (
-              lName === connectorName ||
-              rName === connectorName ||
-              (lName.startsWith(`${connectorName}.`) && lName.endsWith(".v")) ||
-              (rName.startsWith(`${connectorName}.`) && rName.endsWith(".v"))
-            ) {
+            if (lName === connectorName || rName === connectorName) {
               count++;
+            } else if (lName.startsWith(prefixDot) || rName.startsWith(prefixDot)) {
+              const matchedSide = lName.startsWith(prefixDot) ? lName : rName;
+              const suffix = matchedSide.slice(connectorName.length);
+              if (canonicalMemberSuffix === null) {
+                canonicalMemberSuffix = suffix;
+              }
+              if (suffix === canonicalMemberSuffix) {
+                count++;
+              }
             }
           }
         }
@@ -956,6 +1035,8 @@ export function evaluateConstantArenaExpression(
       return null;
     }
 
+    // 5d. Evaluate array built-ins (`evaluateArrayBuiltin`), `fill`, `size`, reductions
+    // (`max`/`min`/`sum`/`product`), scalar math built-ins (`evalMathBuiltin`), and user-defined functions.
     const callArgs: any[] = [];
     let allArgsConst = true;
     for (let i = 0; i < argCount; i++) {
@@ -1245,7 +1326,7 @@ function isLiteralMinusOne(dae: DAEBuilder, exprId: number): boolean {
   return false;
 }
 
-function _getNegatedInner(dae: DAEBuilder, exprId: number): number | null {
+export function _getNegatedInner(dae: DAEBuilder, exprId: number): number | null {
   if (exprId < 0) return null;
   const k = dae.getExprKind(exprId);
   if (k === ExprKind.Negate) {
@@ -1327,7 +1408,7 @@ export function substituteArenaConstants(
         }
 
         // Algebraic simplifications when one operand is constant
-        if (op === BinOp.Mul || op === BinOp.ElemMul) {
+        if (op === BinOp.Mul) {
           if (isLiteralZero(arena, left)) return left;
           if (isLiteralZero(arena, right)) return right;
           if (isLiteralOne(arena, left)) return right;
@@ -1338,15 +1419,22 @@ export function substituteArenaConstants(
           if (isLiteralMinusOne(arena, right)) {
             return arena.addUnaryExpr(UnaryOp.Negate, left);
           }
-        } else if (op === BinOp.Add || op === BinOp.ElemAdd) {
+        } else if (op === BinOp.Add) {
           if (isLiteralZero(arena, left)) return right;
           if (isLiteralZero(arena, right)) return left;
-        } else if (op === BinOp.Sub || op === BinOp.ElemSub) {
+          if (
+            left !== arena.getExprLeft(exprId) &&
+            arena.getExprKind(left) === ExprKind.Unary &&
+            (arena.getExprData1(left) as UnaryOp) === UnaryOp.Negate
+          ) {
+            return arena.addBinaryExpr(BinOp.Sub, right, arena.getExprLeft(left));
+          }
+        } else if (op === BinOp.Sub) {
           if (isLiteralZero(arena, right)) return left;
           if (isLiteralZero(arena, left)) {
             return arena.addUnaryExpr(UnaryOp.Negate, right);
           }
-        } else if (op === BinOp.Div || op === BinOp.ElemDiv) {
+        } else if (op === BinOp.Div) {
           if (isLiteralZero(arena, left)) return left;
           if (isLiteralOne(arena, right)) return left;
         }
@@ -1491,6 +1579,28 @@ export function substituteArenaConstants(
         return arena.addArrayCtorExpr(elements);
       }
       return exprId;
+    }
+    case ExprKind.Subscript: {
+      const baseExprId = arena.getExprData1(exprId);
+      const subCount = arena.getExprRight(exprId);
+      const newBase = substituteArenaConstants(arena, baseExprId, constMap, nameToIdx);
+      let anyChanged = newBase !== baseExprId;
+      const newSubs: number[] = [];
+      for (let i = 0; i < subCount; i++) {
+        const subId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
+        const newSub = substituteArenaConstants(arena, subId, constMap, nameToIdx);
+        newSubs.push(newSub);
+        if (newSub !== subId) anyChanged = true;
+      }
+      const subExprId = anyChanged ? arena.addSubscriptExpr(newBase, newSubs) : exprId;
+      const folded = evaluateConstantArenaExpression(arena, subExprId, constMap, nameToIdx);
+      if (typeof folded === "number" && Number.isFinite(folded)) {
+        return arena.addRealLiteral(folded);
+      }
+      if (typeof folded === "boolean") {
+        return arena.addBoolLiteral(folded);
+      }
+      return subExprId;
     }
     default:
       return exprId;
@@ -1726,7 +1836,7 @@ export function foldArenaConstants(
             let foldedValue: number | boolean | string | any[] | null = evalVal;
             const match = name.match(/\[([\d,]+)\]$/);
             if (match && Array.isArray(foldedValue)) {
-              const indices = match[1].split(",").map(Number);
+              const indices = match[1]!.split(",").map(Number);
               let current: any = foldedValue;
               for (const idx of indices) {
                 if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
@@ -1809,7 +1919,7 @@ export function foldArenaConstants(
           let foldedValue: number | boolean | string | any[] | null = evalVal;
           const match = arena.getVarName(i).match(/\[([\d,]+)\]$/);
           if (match && Array.isArray(foldedValue)) {
-            const indices = match[1].split(",").map(Number);
+            const indices = match[1]!.split(",").map(Number);
             let current: any = foldedValue;
             for (const idx of indices) {
               if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
@@ -1864,22 +1974,35 @@ export function foldArenaConstants(
       if (!attrs) continue;
       for (const [attrName, attrExprId] of attrs.entries()) {
         if (attrExprId >= 0) {
-          if (omcCompatibility && attrName === "start" && arena.getExprKind(attrExprId) === ExprKind.Name) {
-            const refName = arena.interner.resolve(arena.getExprData1(attrExprId));
-            const refIdx = refName ? nameToIdx.get(refName) : undefined;
+          if (attrName === "start" && attrExprId === arena.getVarExpression(i)) {
+            continue;
+          }
+          if (omcCompatibility && attrName === "start") {
             if (
-              refIdx !== undefined &&
-              arena.getVarVariability(refIdx) === Variability.Parameter &&
-              !arena.isVarFinal(refIdx)
+              Boolean((arena as any).extensionMetadata?.isOldFrontend) &&
+              arena.getExprKind(attrExprId) === ExprKind.Binary
             ) {
               continue;
+            }
+            if (arena.getExprKind(attrExprId) === ExprKind.Name) {
+              const refName = arena.interner.resolve(arena.getExprData1(attrExprId));
+              const refIdx = refName ? nameToIdx.get(refName) : undefined;
+              if (
+                refIdx !== undefined &&
+                arena.getVarVariability(refIdx) === Variability.Parameter &&
+                !arena.isVarFinal(refIdx)
+              ) {
+                continue;
+              }
             }
           }
           const evalVal = evaluateConstantArenaExpression(arena, attrExprId, paramMap, nameToIdx, 0, db, scopeId);
           if (evalVal !== null && !isExprAlreadyLiteral(arena, attrExprId, evalVal)) {
             const varType = arena.getVarType(i);
             let literalId: number;
-            if (varType === VarType.Integer && typeof evalVal === "number") {
+            if (attrName === "fixed" && (typeof evalVal === "boolean" || typeof evalVal === "number")) {
+              literalId = arena.addBoolLiteral(Boolean(evalVal));
+            } else if (varType === VarType.Integer && typeof evalVal === "number") {
               literalId = arena.addIntLiteral(Math.trunc(evalVal));
             } else if (varType === VarType.Boolean && typeof evalVal === "boolean") {
               literalId = arena.addBoolLiteral(evalVal);
@@ -2209,7 +2332,7 @@ function generateIndices(shape: number[]): number[][] {
     result.push([...current]);
     let i = shape.length - 1;
     while (i >= 0) {
-      current[i]++;
+      current[i] = current[i]! + 1;
       if (current[i]! <= shape[i]!) break;
       current[i] = 1;
       i--;
@@ -2547,7 +2670,11 @@ function isRecordConstructorCall(dae: DAEBuilder, exprId: number): boolean {
     dae.functions.get(shortName) ||
     (dae.name ? dae.functions.get(`${dae.name}.${fnName}`) : null) ||
     (dae.name ? dae.functions.get(`${dae.name}.${shortName}`) : null);
-  if (fn && ((fn as any).isOperatorRecord || fn.extensionMetadata?.isOperatorRecord)) {
+  if (
+    !dae.extensionMetadata?.["isOldFrontend"] &&
+    fn &&
+    ((fn as any).isOperatorRecord || fn.extensionMetadata?.isOperatorRecord)
+  ) {
     return false;
   }
   if (fn && fn.description && fn.description.startsWith("Automatically generated record constructor")) {
@@ -3055,7 +3182,7 @@ export function getNthExpr(dae: DAEBuilder, exprId: number, k: number, n: number
               const vi = dae.getVarIdxByName(nm);
               if (vi >= 0) {
                 const bx = dae.getVarExpression(vi);
-                if (bx >= 0) return evalNum(bx);
+                if (bx !== undefined && bx >= 0) return evalNum(bx);
                 const sv = dae.getVarStartValue(vi);
                 if (sv !== 0) return sv;
               }
@@ -3194,7 +3321,7 @@ function isRealType(dae: DAEBuilder, exprId: number): boolean {
     if (name) {
       let vIdx = dae.getVarIdxByName(name);
       if (vIdx < 0 && name.includes("[")) {
-        vIdx = dae.getVarIdxByName(name.split("[")[0]);
+        vIdx = dae.getVarIdxByName(name.split("[")[0]!);
       }
       if (vIdx >= 0) return dae.getVarType(vIdx) === VarType.Real;
     }
@@ -3204,10 +3331,26 @@ function isRealType(dae: DAEBuilder, exprId: number): boolean {
 
 /**
  * Deferred Batch Scalarization Pass.
- * Takes an DAEBuilder where array variables and equations have been preserved,
- * and scalarizes them into a flat DAE of individual scalar variables and equations.
+ *
+ * Transforms a {@link DAEBuilder} containing unexpanded multi-dimensional array variables,
+ * array/record equations, and `for` equation loops into a flat scalar {@link DAEBuilder}
+ * suitable for BLT sorting and numerical integration:
+ * 1. Copies model metadata, functions, diagnostics, annotations, and domain extension metadata.
+ * 2. Indexes array variable shapes (`arrayShapes`) and defines `cloneExpr` to deep-copy
+ *    expressions into `out` while substituting active loop indices (`loopVarMap`), appending
+ *    element subscript suffixes, or reconstructing array constructors for array-taking calls.
+ * 3. Expands every array variable of shape $[d_1, \dots, d_k]$ into individual scalar
+ *    variables `name[i_1,...,i_k]` and slices array bindings and `start` attributes per element.
+ * 4. Scalarizes equations (`emitEquation`) across array elements and record/connector fields,
+ *    validating connector plug-compatibility (`M3003`) for `connect(...)` equations and
+ *    unrolling `If`, `When`, and `For`/`InitialFor` equation blocks.
+ * 5. Clones boundary nodes and imperative algorithm statements into the output arena.
+ *
+ * @param dae The input DAE arena with preserved array/record structures.
+ * @returns A newly allocated `DAEBuilder` containing scalarized variables and equations.
  */
-export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
+export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): DAEBuilder {
+  // --- Step 1: Clone Model Metadata & Index Array Variable Shapes ---
   const out = new DAEBuilder(dae.interner);
   out.name = dae.name;
   out.classKind = dae.classKind;
@@ -3253,6 +3396,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     }
   }
 
+  // --- Step 2: Expression Cloner with Loop-Index Substitution & Array Element Projection ---
   const cloneExpr = (
     exprId: number,
     indexSuffix: string,
@@ -3385,7 +3529,11 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           const argExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
           args.push(cloneExpr(argExprId, indexSuffix, currentShape, true));
         }
-        if (dae.extensionMetadata?.scalarizeMinMax && (funcName === "min" || funcName === "max") && args.length === 1) {
+        if (
+          dae.extensionMetadata?.["scalarizeMinMax"] &&
+          (funcName === "min" || funcName === "max") &&
+          args.length === 1
+        ) {
           let arg0 = args[0]!;
           if (out.getExprKind(arg0) === ExprKind.Name) {
             const vName = out.interner.resolve(out.getExprData1(arg0));
@@ -3448,6 +3596,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
           subIds.push(cloneExpr(sId, indexSuffix, currentShape));
         }
         const clonedBase = cloneExpr(baseId, indexSuffix, currentShape);
+        // Flatten constant integer subscripts on known arrays directly into a scalarized `ExprKind.Name` (`x[1,2]`).
         if (
           out.getExprKind(clonedBase) === ExprKind.Name &&
           subIds.length > 0 &&
@@ -3478,6 +3627,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     }
   };
 
+  // --- Step 3: Emit Scalarized Variables & Element-Sliced Attributes ---
   // Emit variables
   for (let i = 0; i < dae.varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
@@ -3611,14 +3761,19 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     return null;
   };
 
+  // --- Step 4: Equation Scalarization Helper (`emitEquation`) ---
+  // Splits array equations element-by-element (coercing integer literals to Real when paired
+  // with Real LHS/RHS elements), decomposes record and `connect(...)` equations field-by-field
+  // after verifying plug-compatibility, or iterates over `generateIndices(shape)` for shaped variables.
   const emitEquation = (
-    kind: EqKind,
+    rawKind: EqKind,
     lhsId: number,
     rhsId: number,
     eqFlags: number,
     targetList?: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
     origEqIdx?: number,
   ) => {
+    const kind = rawKind === EqKind.Array && expandArrayEquations ? EqKind.Simple : rawKind;
     const recordEqMeta = (newEqIdx: number) => {
       if (origEqIdx !== undefined) {
         const desc = dae.getEqDescription?.(origEqIdx);
@@ -3649,10 +3804,10 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     if (lhsElements && lhsElements.length > 0) {
       const N = lhsElements.length;
       for (let k = 0; k < N; k++) {
-        const newLhs = cloneExpr(lhsElements[k], "", null);
-        const rk_raw = rhsElements && rhsElements.length === N ? rhsElements[k] : getNthExpr(dae, rhsId, k, N);
+        const newLhs = cloneExpr(lhsElements[k]!, "", null);
+        const rk_raw = rhsElements && rhsElements.length === N ? rhsElements[k]! : getNthExpr(dae, rhsId, k, N);
         let newRhs = cloneExpr(rk_raw, "", null);
-        if (isRealType(dae, lhsElements[k])) {
+        if (isRealType(dae, lhsElements[k]!)) {
           if (dae.getExprKind(rk_raw) === ExprKind.IntLiteral) {
             newRhs = out.addRealLiteral(dae.getExprData1(rk_raw));
           } else if (dae.getExprKind(rk_raw) === ExprKind.Negate) {
@@ -3673,20 +3828,31 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       return;
     }
 
+    const lhsRec = getRecordFields(dae, lhsId);
+    const rhsRec = getRecordFields(dae, rhsId);
+
     if (rhsElements && rhsElements.length > 0) {
       const N = rhsElements.length;
       for (let k = 0; k < N; k++) {
-        const newRhs = cloneExpr(rhsElements[k], "", null);
-        const lk_raw = getNthExpr(dae, lhsId, k, N);
-        let newLhs = cloneExpr(lk_raw, "", null);
-        if (isRealType(dae, rhsElements[k])) {
-          if (dae.getExprKind(lk_raw) === ExprKind.IntLiteral) {
-            newLhs = out.addRealLiteral(dae.getExprData1(lk_raw));
-          } else if (dae.getExprKind(lk_raw) === ExprKind.Negate) {
-            const inner = dae.getExprLeft(lk_raw);
-            if (dae.getExprKind(inner) === ExprKind.IntLiteral) {
-              const realLit = out.addRealLiteral(dae.getExprData1(inner));
-              newLhs = out.addExpression(ExprKind.Negate, 0, realLit);
+        let newRhs = cloneExpr(rhsElements[k]!, "", null);
+        let newLhs: number;
+        if (lhsRec && lhsRec.length === N) {
+          newLhs = getFieldExpr(dae, out, lhsId, lhsRec[k]!, cloneExpr);
+          if (isRealType(dae, newLhs) && dae.getExprKind(rhsElements[k]!) === ExprKind.IntLiteral) {
+            newRhs = out.addRealLiteral(dae.getExprData1(rhsElements[k]!));
+          }
+        } else {
+          const lk_raw = getNthExpr(dae, lhsId, k, N);
+          newLhs = cloneExpr(lk_raw, "", null);
+          if (isRealType(dae, rhsElements[k]!)) {
+            if (dae.getExprKind(lk_raw) === ExprKind.IntLiteral) {
+              newLhs = out.addRealLiteral(dae.getExprData1(lk_raw));
+            } else if (dae.getExprKind(lk_raw) === ExprKind.Negate) {
+              const inner = dae.getExprLeft(lk_raw);
+              if (dae.getExprKind(inner) === ExprKind.IntLiteral) {
+                const realLit = out.addRealLiteral(dae.getExprData1(inner));
+                newLhs = out.addExpression(ExprKind.Negate, 0, realLit);
+              }
             }
           }
         }
@@ -3699,9 +3865,6 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       }
       return;
     }
-
-    const lhsRec = getRecordFields(dae, lhsId);
-    const rhsRec = getRecordFields(dae, rhsId);
     const isRhsCall = dae.getExprKind(rhsId) === ExprKind.Call;
     const isRhsComprehension = dae.getExprKind(rhsId) === ExprKind.Comprehension;
     const isRhsRecordCtor = isRhsCall && isRecordConstructorCall(dae, rhsId);
@@ -3871,6 +4034,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     }
   };
 
+  // --- Step 5: Emit & Unroll Equations (`If`, `When`, `For`/`InitialFor`, and Simple/Connect) ---
   // Emit equations
   for (let i = 0; i < dae.eqCount; i++) {
     const kind = dae.getEqKind(i);
@@ -3931,6 +4095,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
             outMeta.elseIfClauses.push({ conditionExprId: clauseCond, bodyEquations: clauseEqs, equations: [] });
           }
           if (meta.elseEquations) {
+            outMeta.elseEquations ??= [];
             cloneInlineEqList(meta.elseEquations, outMeta.elseEquations);
           }
         }
@@ -3970,6 +4135,8 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
       }
     }
 
+    // Unroll `For` and `InitialFor` loops by evaluating loop range bounds (`evalRangeVal` / `getRangeValues`),
+    // binding the loop variable in `loopVarMap`, and recursively emitting body equations.
     if (kind === EqKind.For || kind === EqKind.InitialFor) {
       const meta = dae.getForEquationMeta(i);
       if (meta) {
@@ -4131,6 +4298,7 @@ export function scalarizeArena(dae: DAEBuilder): DAEBuilder {
     emitEquation(kind, lhsId, rhsId, eqFlags, undefined, i);
   }
 
+  // --- Step 6: Clone Boundary Nodes & Imperative Algorithm Statements ---
   for (const node of dae.boundaryNodes) {
     out.boundaryNodes.push({ ...node });
   }

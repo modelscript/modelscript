@@ -17,10 +17,10 @@ import { computePackageContentHash } from "../util/package-verify.js";
 
 interface PublishArgs {
   path: string;
-  signature?: string;
-  dryRun?: boolean;
-  tag?: string;
-  noVerify?: boolean;
+  signature?: string | undefined;
+  dryRun?: boolean | undefined;
+  tag?: string | undefined;
+  noVerify?: boolean | undefined;
 }
 
 export const Publish: CommandModule<{}, PublishArgs> = {
@@ -172,7 +172,7 @@ export const Publish: CommandModule<{}, PublishArgs> = {
 
     try {
       // Connects to local dev registry; could be configurable
-      const API_URL = process.env.MODELSCRIPT_API_URL || "http://localhost:3000";
+      const API_URL = process.env["MODELSCRIPT_API_URL"] || "http://localhost:3000";
       const endpoint = `${API_URL}/api/v1/libraries/${name}/${version}`;
 
       const headers: Record<string, string> = {

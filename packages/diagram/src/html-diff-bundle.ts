@@ -10,10 +10,10 @@ import type { VisualDiffData } from "./visual-diff-graph.js";
 import { renderVisualDiffToSvg, type VisualDiffSvgOptions } from "./visual-diff-renderer.js";
 
 export interface VisualDiffHtmlOptions extends VisualDiffSvgOptions {
-  title?: string;
-  repoName?: string;
-  baseRef?: string;
-  headRef?: string;
+  title?: string | undefined;
+  repoName?: string | undefined;
+  baseRef?: string | undefined;
+  headRef?: string | undefined;
 }
 
 function escapeHtml(str: string): string {
@@ -43,7 +43,7 @@ export function renderVisualDiffToHtml(diffData: VisualDiffData, options: Visual
     .filter((n) => n.diffStatus === "modified" && n.propertyChanges && n.propertyChanges.length > 0)
     .map((n) => ({
       id: n.id,
-      name: n.properties?.values?.name || n.id,
+      name: n.properties?.values?.["name"] || n.id,
       isBreaking: n.isBreaking,
       changes: n.propertyChanges,
     }));

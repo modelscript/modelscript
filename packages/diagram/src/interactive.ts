@@ -22,25 +22,25 @@ export interface InteractiveBinding {
   /** Variable or tag name (e.g., in DAE solver, FMU, or MQTT UNS topic) */
   variableName: string;
   /** Optional visual sub-selector within the X6 cell markup (e.g., 'button', 'handle', 'indicator') */
-  targetSelector?: string;
+  targetSelector?: string | undefined;
   /** Human-readable label or tooltip */
-  label?: string;
+  label?: string | undefined;
   /** Lower operational bound for numeric/slider inputs */
-  min?: number;
+  min?: number | undefined;
   /** Upper operational bound for numeric/slider inputs */
-  max?: number;
+  max?: number | undefined;
   /** Step increment */
-  step?: number;
+  step?: number | undefined;
   /** Engineering unit string (e.g. 'rpm', '°C', 'bar') */
-  unit?: string;
+  unit?: string | undefined;
   /** Available choices for selector/enum inputs */
-  options?: { label: string; value: number | string }[];
+  options?: { label: string; value: number | string }[] | undefined;
   /** Value transmitted when active (for momentary/toggle; default: true) */
-  onValue?: number | boolean | string;
+  onValue?: number | boolean | string | undefined;
   /** Value transmitted when inactive (for momentary/toggle; default: false) */
-  offValue?: number | boolean | string;
+  offValue?: number | boolean | string | undefined;
   /** Optional safety confirmation prompt before writing */
-  confirmPrompt?: string;
+  confirmPrompt?: string | undefined;
 }
 
 export interface InteractiveWriteAction {
@@ -49,17 +49,19 @@ export interface InteractiveWriteAction {
   variableName: string;
   value: number | boolean | string;
   action: InteractiveActionType;
-  unit?: string;
+  unit?: string | undefined;
 }
 
 export interface InteractiveNodeLike {
   id: string;
-  getData?: () => {
-    interactive?: InteractiveBinding[];
-    [key: string]: unknown;
-  };
-  setData?: (data: Record<string, unknown>, options?: Record<string, unknown>) => void;
-  attr?: (path: string, val: unknown) => void;
+  getData?:
+    | (() => {
+        interactive?: InteractiveBinding[] | undefined;
+        [key: string]: unknown;
+      })
+    | undefined;
+  setData?: ((data: Record<string, unknown>, options?: Record<string, unknown>) => void) | undefined;
+  attr?: ((path: string, val: unknown) => void) | undefined;
 }
 
 /**

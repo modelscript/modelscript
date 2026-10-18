@@ -8,7 +8,11 @@
  * package. Operator string constants are inlined.
  */
 
+/**
+ * Minimal output stream interface used by {@link ArenaDAEPrinter} to emit formatted Modelica text.
+ */
 export interface Writer {
+  /** Appends a string chunk to the output stream. */
   write(string: string): void;
 }
 import {
@@ -27,6 +31,7 @@ import {
 
 // ── Inlined Modelica operator strings ──
 
+/** Lookup table mapping {@link BinOp} enum values to their Modelica source syntax strings. */
 const binOpStr: Record<number, string> = {
   [BinOp.Add]: "+",
   [BinOp.Sub]: "-",
@@ -49,12 +54,15 @@ const binOpStr: Record<number, string> = {
   [BinOp.Colon]: ":",
 };
 
+/** Lookup table mapping {@link UnaryOp} enum values to their Modelica source syntax strings. */
 const unaryOpStr: Record<number, string> = {
   [UnaryOp.Negate]: "-",
   [UnaryOp.Not]: "not",
 };
 
+/** Set of high-precedence multiplicative and exponentiation binary operators. */
 const HIGH_PREC_OPS = new Set([BinOp.Mul, BinOp.Div, BinOp.Pow, BinOp.ElemMul, BinOp.ElemDiv, BinOp.ElemPow]);
+/** Set of lower-precedence additive and relational binary operators. */
 const LOW_PREC_OPS = new Set([
   BinOp.Add,
   BinOp.Sub,
@@ -66,28 +74,56 @@ const LOW_PREC_OPS = new Set([
   BinOp.Gte,
   BinOp.Eq,
   BinOp.Neq,
+  BinOp.Colon,
 ]);
 
+/** Set of associative binary operators where redundant right-hand parentheses can be omitted. */
 const ASSOCIATIVE_OPS = new Set([BinOp.Add, BinOp.Mul, BinOp.ElemAdd, BinOp.ElemMul, BinOp.And, BinOp.Or]);
 
+/**
+ * Formats and pretty-prints a flattened {@link DAEBuilder} arena directly into canonical
+ * Modelica / OpenModelica flat DAE syntax without allocating intermediate AST objects.
+ */
 export class ArenaDAEPrinter {
+  /** Target writer receiving emitted text chunks. */
   private out: Writer;
+  /** Current indentation depth level. */
   private depth = 0;
+  /** Active DAE arena being printed. */
   private arena: DAEBuilder;
+  /** Whether to emit output matching OpenModelica's canonical `instantiateModel` formatting rules. */
   private omcCompatibility: boolean;
+  /** Set of function arenas already emitted to prevent duplicate function definitions. */
   private visitedFunctions = new Set<DAEBuilder>();
+  /** Whether the printer is currently formatting statements inside an `algorithm` section. */
   private isInsideAlgorithm = false;
+  /** Whether the printer is currently formatting declarations or equations inside a synchronous `state`. */
   private insideState = false;
+  /** Whether the arena was produced under OpenModelica old-frontend compatibility mode. */
   private isOldFrontend = false;
 
+  /**
+   * Creates a new `ArenaDAEPrinter`.
+   *
+   * @param out - Output writer receiving formatted text.
+   * @param arena - Root DAE arena to print.
+   * @param omcCompatibility - If true, enables OpenModelica-compatible canonical ordering and formatting.
+   */
   constructor(out: Writer, arena: DAEBuilder, omcCompatibility = false) {
     this.out = out;
     this.arena = arena;
     this.omcCompatibility = omcCompatibility;
-    this.isOldFrontend = Boolean(arena.extensionMetadata?.isOldFrontend);
+    this.isOldFrontend = Boolean(arena.extensionMetadata?.["isOldFrontend"]);
   }
 
-  private getExprRank(id: number): number {
+  /**
+   * Computes a structural sorting rank for an expression node used when canonicalizing
+   * commutative/associative operands.
+   *
+   * @param id - Expression arena ID.
+   * @returns Numeric rank (lower values sort earlier).
+   */
+  public getExprRank(id: number): number {
     if (id < 0) return 99;
     switch (this.arena.getExprKind(id)) {
       case ExprKind.Call:
@@ -112,7 +148,14 @@ export class ArenaDAEPrinter {
     }
   }
 
-  private getExprStringFallback(id: number): string {
+  /**
+   * Returns a lightweight string representation of simple expressions (names, literals, `der`)
+   * for lexicographical tie-breaking during operand sorting.
+   *
+   * @param id - Expression arena ID.
+   * @returns Fallback string representation, or `""` for complex expressions.
+   */
+  public getExprStringFallback(id: number): string {
     if (id < 0) return "";
     const a = this.arena;
     switch (a.getExprKind(id)) {
@@ -147,7 +190,7 @@ export class ArenaDAEPrinter {
   /**
    * Check if an expression is a negated numeric literal (Negate(lit) or Unary(Negate, lit)).
    */
-  private isNegatedLiteral(id: number): boolean {
+  public isNegatedLiteral(id: number): boolean {
     if (id < 0) return false;
     const a = this.arena;
     const k = a.getExprKind(id);
@@ -186,10 +229,19 @@ export class ArenaDAEPrinter {
     this.out.write(s.replace(/e\+/g, "e"));
   }
 
+  /**
+   * Returns the current line indentation string (two spaces per indentation level).
+   */
   private indent(): string {
     return "  ".repeat(this.depth + 1);
   }
 
+  /**
+   * Formats an expression node into a standalone string without writing to the primary output stream.
+   *
+   * @param id - Expression arena ID.
+   * @returns Formatted Modelica expression string.
+   */
   printExprToString(id: number): string {
     const prev = this.out;
     let buf = "";
@@ -205,6 +257,11 @@ export class ArenaDAEPrinter {
 
   // ── Expression printing ──
 
+  /**
+   * Formats an expression node from the active arena and writes it to the output stream.
+   *
+   * @param id - Expression arena ID.
+   */
   printExpr(id: number): void {
     if (id < 0) {
       this.out.write("?");
@@ -232,14 +289,15 @@ export class ArenaDAEPrinter {
           this.out.write("0.0");
           break;
         }
-        if (Number.isInteger(v) && (Math.abs(v) < 1e5 || (Math.abs(v) < 1e6 && Math.abs(v) % 1000 !== 0))) {
+        if (Number.isInteger(v) && (Math.abs(v) < 1e5 || (Math.abs(v) < 1e6 && Math.abs(v) % 100000 !== 0))) {
           this.out.write(v.toFixed(1));
           break;
         }
         let s: string;
         if (Number.isInteger(v) && Math.abs(v) >= 1e5) s = v.toExponential();
         else if (!Number.isInteger(v) && Math.abs(v) >= 1e6) s = v.toExponential();
-        else if (Math.abs(v) < 0.001 && Math.abs(v) > 0) s = v.toExponential();
+        else if (Math.abs(v) < 0.001 && Math.abs(v) > 0)
+          s = v.toExponential().replace(/^(-?\d)\.(\1{15})\1e/, "$1.$2e");
         else s = v.toString();
         this.out.write(s.replace(/e\+/g, "e"));
         break;
@@ -289,22 +347,45 @@ export class ArenaDAEPrinter {
         const needsParens = (childId: number, isRhs = false): boolean => {
           if (childId < 0) return false;
           const ck = a.getExprKind(childId);
+          const isRelOp =
+            op === BinOp.Lt ||
+            op === BinOp.Lte ||
+            op === BinOp.Gt ||
+            op === BinOp.Gte ||
+            op === BinOp.Eq ||
+            op === BinOp.Neq;
           if (ck === ExprKind.Unary) {
             const uop = a.getExprData1(childId) as UnaryOp;
             if (uop === UnaryOp.Not) {
               return op !== BinOp.And && op !== BinOp.Or;
             }
             if (uop !== UnaryOp.Negate) return true; // other unary ops need parens
-            // Negate needs parens on Add, on RHS of Sub to avoid `a - -b`, and inside high-prec ops
+            // Negate needs parens on Add, on RHS of Sub or relational ops, and inside high-prec ops
             if (op === BinOp.Add) return true;
-            if (isRhs && op === BinOp.Sub) return true;
+            if (isRhs && isRelOp) return true;
+            if (
+              op === BinOp.Sub &&
+              (isRhs ||
+                (a.getExprKind(a.getExprLeft(childId)) === ExprKind.Binary &&
+                  a.getExprData1(a.getExprLeft(childId)) === BinOp.Pow))
+            ) {
+              return true;
+            }
             if (isHigh) return true;
             return false;
           }
           // Dedicated Negate node: same logic
           if (ck === ExprKind.Negate) {
             if (op === BinOp.Add) return true;
-            if (isRhs && op === BinOp.Sub) return true;
+            if (isRhs && isRelOp) return true;
+            if (
+              op === BinOp.Sub &&
+              (isRhs ||
+                (a.getExprKind(a.getExprLeft(childId)) === ExprKind.Binary &&
+                  a.getExprData1(a.getExprLeft(childId)) === BinOp.Pow))
+            ) {
+              return true;
+            }
             if (isHigh) return true;
             return false;
           }
@@ -320,7 +401,7 @@ export class ArenaDAEPrinter {
             const childOp = a.getExprData1(childId) as BinOp;
             if (LOW_PREC_OPS.has(childOp)) return true;
           }
-          if (ck === ExprKind.IfElse) return true;
+          if (ck === ExprKind.IfElse || ck === ExprKind.Range) return true;
           return false;
         };
 
@@ -547,7 +628,7 @@ export class ArenaDAEPrinter {
           if (
             this.omcCompatibility &&
             !isStringConcat &&
-            (a.classKind !== "function" || Boolean(a.extensionMetadata?.isOldFrontend)) &&
+            (a.classKind !== "function" || Boolean(a.extensionMetadata?.["isOldFrontend"])) &&
             (op === BinOp.Mul || this.isInsideAlgorithm || !hasCall) &&
             (op === BinOp.Add || (!this.isInsideAlgorithm && op === BinOp.Mul))
           ) {
@@ -616,11 +697,12 @@ export class ArenaDAEPrinter {
                 if (xIsPosMax && yKind === ExprKind.Name) return -1;
                 if (xKind === ExprKind.Name && yIsPosMax) return 1;
                 if (xKind === ExprKind.Name && yKind === ExprKind.Name) {
+                  const nx = a.interner.resolve(a.getExprData1(x)) || "";
+                  const ny = a.interner.resolve(a.getExprData1(y)) || "";
+                  if (nx.includes("[") && ny.includes("[")) return 0;
                   const rx = getOperandRank(x);
                   const ry = getOperandRank(y);
                   if (rx !== ry) return rx - ry;
-                  const nx = a.interner.resolve(a.getExprData1(x)) || "";
-                  const ny = a.interner.resolve(a.getExprData1(y)) || "";
                   if (!nx.includes("[") && !ny.includes("[") && !nx.includes(".") && !ny.includes(".")) {
                     return nx.localeCompare(ny);
                   }
@@ -639,7 +721,7 @@ export class ArenaDAEPrinter {
             if (i > 0) {
               this.out.write(" " + (binOpStr[op] ?? "+") + " ");
             }
-            const childId = operands[i];
+            const childId = operands[i]!;
             if (needsParens(childId, i > 0)) {
               this.out.write("(");
               this.printExpr(childId);
@@ -797,11 +879,15 @@ export class ArenaDAEPrinter {
           const innerId = a.getExprLeft(id);
           if (innerId >= 0 && a.getExprKind(innerId) === ExprKind.Call) {
             const innerFname = a.interner.resolve(a.getExprData1(innerId));
-            if (
-              innerFname.includes(".constructor") ||
-              innerFname.includes("SerialPort") ||
-              innerFname.includes("SerialPackager")
-            ) {
+            const lastDot = innerFname.lastIndexOf(".");
+            const innerPkg = lastDot > 0 ? innerFname.slice(0, lastDot) : "";
+            const isExtObjCall =
+              innerFname.endsWith(".constructor") ||
+              innerFname.endsWith(".destructor") ||
+              (innerPkg.length > 0 &&
+                (a.getFunction(`${innerPkg}.constructor`) !== undefined ||
+                  a.getFunction(`${innerPkg}.destructor`) !== undefined));
+            if (isExtObjCall) {
               this.printExpr(innerId);
               break;
             }
@@ -859,15 +945,27 @@ export class ArenaDAEPrinter {
         this.printExpr(a.getExprRight(id));
         break;
 
-      case ExprKind.Range:
-        this.printExpr(a.getExprData1(id));
+      case ExprKind.Range: {
+        const startId = a.getExprData1(id);
+        const stepId = a.getExprLeft(id);
+        const stopId = a.getExprRight(id);
+        const printRangePart = (partId: number) => {
+          const k = partId >= 0 ? a.getExprKind(partId) : -1;
+          const isNeg =
+            k === ExprKind.Negate || (k === ExprKind.Unary && (a.getExprData1(partId) as UnaryOp) === UnaryOp.Negate);
+          if (isNeg) this.out.write("(");
+          this.printExpr(partId);
+          if (isNeg) this.out.write(")");
+        };
+        printRangePart(startId);
         this.out.write(":");
-        if (a.getExprLeft(id) >= 0) {
-          this.printExpr(a.getExprLeft(id));
+        if (stepId >= 0) {
+          printRangePart(stepId);
           this.out.write(":");
         }
-        this.printExpr(a.getExprRight(id));
+        printRangePart(stopId);
         break;
+      }
 
       case ExprKind.ArrayCtor: {
         const count = a.getExprData1(id);
@@ -884,12 +982,14 @@ export class ArenaDAEPrinter {
       }
 
       case ExprKind.Subscript: {
-        this.printExpr(a.getExprData1(id));
+        const baseId = a.getExprData1(id);
+        this.printExpr(baseId);
         const scount = a.getExprRight(id);
+        const sep = baseId >= 0 && a.getExprKind(baseId) === ExprKind.Call ? ", " : ",";
         this.out.write("[");
         if (scount > 0) this.printExpr(a.getExprLeft(id));
         for (let i = 1; i < scount; i++) {
-          this.out.write(",");
+          this.out.write(sep);
           this.printExpr(a.getExprLeft(id + i));
         }
         this.out.write("]");
@@ -977,6 +1077,12 @@ export class ArenaDAEPrinter {
 
   // ── Variable printing ──
 
+  /**
+   * Formats and prints a single variable or parameter declaration at index `idx`,
+   * including prefixes, type, array dimensions, attributes, binding expression, and annotations.
+   *
+   * @param idx - Variable index in the active arena.
+   */
   printVar(idx: number): void {
     const a = this.arena;
     this.out.write(this.indent());
@@ -1082,7 +1188,7 @@ export class ArenaDAEPrinter {
         if (this.printExprToString(startId) === this.printExprToString(bindId)) {
           return true;
         }
-        if (this.arena.getExprKind(bindId) === ExprKind.Name) {
+        if (this.arena.getExprKind(bindId) === ExprKind.Name && !this.arena.extensionMetadata?.["isOldFrontend"]) {
           const varName = this.arena.interner.resolve(this.arena.getExprData1(bindId));
           if (varName) {
             const vIdx = this.arena.getVarIdxByName(varName);
@@ -1102,12 +1208,21 @@ export class ArenaDAEPrinter {
             k !== "unbounded" &&
             !(type === VarType.String && k === "fixed") &&
             !(
+              this.arena.classKind === "function" &&
+              shape.length > 0 &&
+              (k === "min" || k === "max") &&
+              (this.arena.getExprKind(attrs.get(k)!) === ExprKind.ArrayCtor ||
+                this.printExprToString(attrs.get(k)!).startsWith("{"))
+            ) &&
+            !(
               k === "start" &&
               hasBindingExpr &&
               !attrs.has("fixed") &&
               !(
                 this.isNumericLiteral(attrs.get("start")!) &&
-                this.isNumericLiteral(expr) &&
+                (this.isNumericLiteral(expr) ||
+                  (Boolean(this.arena.extensionMetadata?.["isOldFrontend"]) &&
+                    attrs.get("start") !== this.arena.getVarExpression(idx))) &&
                 (!isStartSameAsBinding(attrs.get("start"), expr) ||
                   (isFinal && variability === Variability.Continuous && attrs.get("start") !== expr))
               )
@@ -1165,6 +1280,12 @@ export class ArenaDAEPrinter {
 
   // ── Equation printing ──
 
+  /**
+   * Formats and prints an equation at index `idx` in the active arena (`Simple`, `Array`,
+   * `When`, `For`, `If`, `FunctionCall`, etc.).
+   *
+   * @param idx - Equation index in the active arena.
+   */
   printEq(idx: number): void {
     const a = this.arena;
     const kind = a.getEqKind(idx);
@@ -1245,6 +1366,67 @@ export class ArenaDAEPrinter {
       case EqKind.If: {
         const meta = a.getIfEquationMeta(idx);
         if (meta) {
+          if ((meta as any).hasResolvedConnectionQuery) {
+            const evalConstBool = (id: number): boolean | null => {
+              if (id < 0) return null;
+              const k = a.getExprKind(id);
+              if (k === ExprKind.BoolLiteral) return a.getExprData1(id) !== 0;
+              if (k === ExprKind.Unary && (a.getExprData1(id) as UnaryOp) === UnaryOp.Not) {
+                const inner = evalConstBool(a.getExprLeft(id));
+                return inner === null ? null : !inner;
+              }
+              if (k === ExprKind.Binary) {
+                const op = a.getExprData1(id) as BinOp;
+                if (op === BinOp.And) {
+                  const l = evalConstBool(a.getExprLeft(id));
+                  if (l === false) return false;
+                  const r = evalConstBool(a.getExprRight(id));
+                  if (r === false) return false;
+                  return l === true && r === true ? true : null;
+                }
+                if (op === BinOp.Or) {
+                  const l = evalConstBool(a.getExprLeft(id));
+                  if (l === true) return true;
+                  const r = evalConstBool(a.getExprRight(id));
+                  if (r === true) return true;
+                  return l === false && r === false ? false : null;
+                }
+              }
+              return null;
+            };
+            const firstCond = evalConstBool(meta.conditionExprId);
+            if (firstCond === true) {
+              for (const body of meta.thenEquations) {
+                this.printInlineEq(body);
+              }
+              break;
+            } else if (firstCond === false) {
+              let handled = false;
+              let unknown = false;
+              for (const clause of meta.elseIfClauses) {
+                const cCond = evalConstBool(clause.conditionExprId);
+                if (cCond === null) {
+                  unknown = true;
+                  break;
+                }
+                if (cCond === true) {
+                  for (const body of clause.bodyEquations) {
+                    this.printInlineEq(body);
+                  }
+                  handled = true;
+                  break;
+                }
+              }
+              if (!unknown) {
+                if (!handled && meta.elseEquations) {
+                  for (const body of meta.elseEquations) {
+                    this.printInlineEq(body);
+                  }
+                }
+                break;
+              }
+            }
+          }
           this.out.write(this.indent() + "if ");
           this.printExpr(meta.conditionExprId);
           this.out.write(" then\n");
@@ -1263,7 +1445,7 @@ export class ArenaDAEPrinter {
             }
             this.depth--;
           }
-          if (meta.elseEquations.length > 0) {
+          if (meta.elseEquations && meta.elseEquations.length > 0) {
             this.out.write(this.indent() + "else\n");
             this.depth++;
             for (const body of meta.elseEquations) {
@@ -1366,6 +1548,13 @@ export class ArenaDAEPrinter {
 
   // ── Statement printing ──
 
+  /**
+   * Formats and prints an algorithm statement starting at index `idx` and returns
+   * the index of the next sibling statement following any nested statement blocks.
+   *
+   * @param idx - Statement index in the active arena.
+   * @returns Next sibling statement index.
+   */
   printStmt(idx: number): number {
     const prev = this.isInsideAlgorithm;
     this.isInsideAlgorithm = true;
@@ -1376,6 +1565,13 @@ export class ArenaDAEPrinter {
     }
   }
 
+  /**
+   * Internal implementation of statement printing for `Assignment`, `Return`, `Break`,
+   * `ProcedureCall`, `For`, `While`, `If`, `When`, and `ComplexAssignment` statements.
+   *
+   * @param idx - Statement index in the active arena.
+   * @returns Next sibling statement index.
+   */
   private doPrintStmt(idx: number): number {
     const a = this.arena;
 
@@ -1488,7 +1684,7 @@ export class ArenaDAEPrinter {
             this.out.write(this.indent() + "elseif ");
             this.printExpr(blockCond);
             this.out.write(" then\n");
-          } else {
+          } else if (blockCount > 0) {
             this.out.write(this.indent() + "else\n");
           }
           this.depth++;
@@ -1573,6 +1769,13 @@ export class ArenaDAEPrinter {
 
   // ── Top-level DAE printing ──
 
+  /**
+   * Formats and prints a synchronous state machine block (`stateMachine ... end ...;`)
+   * including all member states and transition/initial-state equations.
+   *
+   * @param sm - State machine metadata record.
+   * @param indentLevel - Leading space indentation count.
+   */
   printStateMachine(sm: ArenaStateMachine, indentLevel = 0): void {
     const ind = " ".repeat(indentLevel);
     this.out.write(`${ind}stateMachine ${sm.name}\n`);
@@ -1599,6 +1802,13 @@ export class ArenaDAEPrinter {
     this.out.write(`${ind}end ${sm.name};\n`);
   }
 
+  /**
+   * Formats and prints a single state block within a synchronous state machine,
+   * including state-local variables, nested state machines, and state equations.
+   *
+   * @param state - State metadata record.
+   * @param indentLevel - Leading space indentation count.
+   */
   printState(state: ArenaStateMachineState, indentLevel: number): void {
     const ind = " ".repeat(indentLevel);
     this.out.write(`${ind}state ${state.name}\n`);
@@ -1637,6 +1847,13 @@ export class ArenaDAEPrinter {
     this.out.write(`${ind}end ${state.name};\n`);
   }
 
+  /**
+   * Formats and prints a complete flattened DAE arena, including referenced function
+   * definitions, class header, variable declarations, state machines, initial equations/algorithms,
+   * regular equations/algorithms, and annotations.
+   *
+   * @param dae - Flattened DAE arena to print.
+   */
   printDAE(dae: DAEBuilder): void {
     this.visitedFunctions.clear();
     // Emit function definitions
@@ -1781,7 +1998,7 @@ export class ArenaDAEPrinter {
               walkExprCalls(builder, body.rhsExprId);
             }
           }
-          for (const body of ifMeta.elseEquations) {
+          for (const body of ifMeta.elseEquations ?? []) {
             walkExprCalls(builder, body.lhsExprId);
             walkExprCalls(builder, body.rhsExprId);
           }
@@ -1889,7 +2106,7 @@ export class ArenaDAEPrinter {
     walkEquations(dae);
     for (let i = 0; i < dae.varCount; i++) {
       const expr = dae.getVarExpression(i);
-      if (expr >= 0) walkExprCalls(dae, expr);
+      if (expr !== undefined && expr >= 0) walkExprCalls(dae, expr);
     }
     for (const sec of dae.algorithmSections) {
       let idx = sec.start;
@@ -1916,7 +2133,7 @@ export class ArenaDAEPrinter {
           walkEquations(fn);
           for (let i = 0; i < fn.varCount; i++) {
             const expr = fn.getVarExpression(i);
-            if (expr >= 0) walkExprCalls(fn, expr);
+            if (expr !== undefined && expr >= 0) walkExprCalls(fn, expr);
           }
           for (const sec of fn.algorithmSections) {
             let idx = sec.start;
@@ -1928,7 +2145,7 @@ export class ArenaDAEPrinter {
       if (activeCalledFnNames.size > prevSize) activeChanged = true;
     }
 
-    this.isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+    this.isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
     const isOldFrontend = this.isOldFrontend;
 
     // Collect custom types used by variables in dae and in functions
@@ -2010,7 +2227,8 @@ export class ArenaDAEPrinter {
           const parentTypeName =
             ctorIdx > 0
               ? fn.name.slice(0, ctorIdx)
-              : (baseName === "constructor" || baseName === "destructor") && fn.name.includes(".")
+              : (baseName === "constructor" || baseName === "destructor" || baseName === "equalityConstraint") &&
+                  fn.name.includes(".")
                 ? fn.name.slice(0, fn.name.lastIndexOf("."))
                 : "";
           const isCalled =
@@ -2033,7 +2251,7 @@ export class ArenaDAEPrinter {
       }
       return true;
     });
-    if (process.env.DEBUG_FNS) {
+    if (process.env["DEBUG_FNS"]) {
       console.log(
         "DEBUG_PRINT_DAE:",
         Array.from(dae.functions.keys()),
@@ -2042,24 +2260,39 @@ export class ArenaDAEPrinter {
       );
     }
     const hasSpecRecordCtor = isOldFrontend && uniqueFns.some((f) => f.name.includes("$"));
+    const extObjClasses = new Map<string, number>();
+    for (const fn of uniqueFns) {
+      if (fn.name.endsWith(".constructor") || fn.name.endsWith(".destructor")) {
+        const clsName = fn.name.slice(0, fn.name.lastIndexOf("."));
+        if (!extObjClasses.has(clsName)) {
+          extObjClasses.set(clsName, extObjClasses.size + 1);
+        }
+      }
+    }
+    const fnUsesExtObj = (fn: DAEBuilder): boolean => {
+      for (let i = 0; i < fn.varCount; i++) {
+        const ct = fn.getVarCustomType(i);
+        if (ct && (ct.includes("ExternalObject") || extObjClasses.has(ct))) return true;
+      }
+      return false;
+    };
     const getOmcFnRank = (fn: DAEBuilder): [number, number, string] => {
       const name = fn.name;
-      if (name.includes("DummyFunctions")) {
-        const isRead = name.includes("readSerial") ? 0 : 1;
-        return [0, isRead, name];
-      }
-      if (name.includes("SerialPort")) {
+      const lastDot = name.lastIndexOf(".");
+      const parentCls = lastDot > 0 ? name.slice(0, lastDot) : "";
+      const extClsRank = extObjClasses.get(parentCls);
+      if (extClsRank !== undefined) {
         const methodRank = name.endsWith(".constructor") ? 0 : name.endsWith(".destructor") ? 1 : 2;
-        return [1, methodRank, name];
+        return [extClsRank, methodRank, name];
       }
-      if (name.includes("SerialPackager")) {
-        const methodRank = name.endsWith(".constructor") ? 0 : name.endsWith(".destructor") ? 1 : 2;
-        return [2, methodRank, name];
+      if (extObjClasses.size > 0 && fnUsesExtObj(fn)) {
+        return [0, 0, name];
       }
       const isRecordOrOp =
         !hasSpecRecordCtor &&
         (fn.description?.startsWith("Automatically generated record constructor") || name.includes(".'"));
-      const kindRank = isRecordOrOp ? 3 : 4;
+      const baseRank = extObjClasses.size + 1;
+      const kindRank = isRecordOrOp ? baseRank : baseRank + 1;
       return [kindRank, 0, name];
     };
     const sortedFns = this.omcCompatibility
@@ -2071,9 +2304,11 @@ export class ArenaDAEPrinter {
           return rA[2] < rB[2] ? -1 : rA[2] > rB[2] ? 1 : 0;
         })
       : uniqueFns.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const seenFnNames = new Set<string>();
     for (const fn of sortedFns) {
       if ((fn as any).aliasTo) continue;
-      if (this.visitedFunctions.has(fn)) continue;
+      if (this.visitedFunctions.has(fn) || seenFnNames.has(fn.name)) continue;
+      seenFnNames.add(fn.name);
       this.printFunction(fn);
       this.out.write("\n\n");
     }
@@ -2149,7 +2384,7 @@ export class ArenaDAEPrinter {
         const mA = nameA.match(/^([^[]+)\[(\d+)\](.*)$/);
         const mB = nameB.match(/^([^[]+)\[(\d+)\](.*)$/);
         if (mA && mB && mA[1] === mB[1] && mA[3] === mB[3]) {
-          return parseInt(mB[2], 10) - parseInt(mA[2], 10);
+          return parseInt(mB[2]!, 10) - parseInt(mA[2]!, 10);
         }
         return 0;
       });
@@ -2250,6 +2485,14 @@ export class ArenaDAEPrinter {
     this.out.write("end " + dae.name + ";\n");
   }
 
+  /**
+   * Checks whether an equation at index `idx` simply duplicates the inline declaration
+   * binding expression of its left-hand variable.
+   *
+   * @param a - Target DAE arena.
+   * @param idx - Equation index.
+   * @returns `true` if the equation is redundant with the variable's declaration binding.
+   */
   private isDeclarationBinding(a: DAEBuilder, idx: number): boolean {
     const kind = a.getEqKind(idx);
     if (kind === EqKind.Simple || kind === EqKind.Array) {
@@ -2273,6 +2516,13 @@ export class ArenaDAEPrinter {
     return false;
   }
 
+  /**
+   * Formats and prints a Modelica function or record constructor definition from its
+   * own `DAEBuilder` arena, including inputs, outputs, protected locals, algorithm
+   * statements, external declarations, and nested helper functions.
+   *
+   * @param fn - Function DAE arena to print.
+   */
   printFunction(fn: DAEBuilder): void {
     if (this.visitedFunctions.has(fn)) return;
     if (fn.externalDecl && fn.externalDecl.includes('"builtin"')) return;
@@ -2311,7 +2561,8 @@ export class ArenaDAEPrinter {
         if (fn.isVarRemoved(i)) continue;
         const isProtected = fn.isVarProtected(i);
         if (isProtected) {
-          const hasBinding = fn.getVarExpression(i) >= 0;
+          const varExpr = fn.getVarExpression(i);
+          const hasBinding = varExpr !== undefined && varExpr >= 0;
           if (hasBinding) {
             protWithBinding.push(i);
           } else {
@@ -2324,7 +2575,13 @@ export class ArenaDAEPrinter {
           }
         } else {
           if (fn.getVarVariability(i) !== Variability.Constant) {
-            if (isRecordCtor && fn.getVarCausality(i) === Causality.Output) {
+            const isTrailingSpecializedOut =
+              this.isOldFrontend &&
+              fn.name.includes("$") &&
+              (fn.name.endsWith(".PDF") || fn.name.endsWith(".RNG")) &&
+              fn.getVarCausality(i) === Causality.Output &&
+              (fn.getVarShapeExprs(i)?.length ?? 0) > 0;
+            if ((isRecordCtor && fn.getVarCausality(i) === Causality.Output) || isTrailingSpecializedOut) {
               outputVars.push(i);
             } else {
               publicVars.push(i);
@@ -2341,9 +2598,18 @@ export class ArenaDAEPrinter {
         return 0;
       });
 
+      const allProtected: number[] = [];
+      for (let i = 0; i < fn.varCount; i++) {
+        if (!fn.isVarRemoved(i) && fn.isVarProtected(i)) {
+          allProtected.push(i);
+        }
+      }
+      const hasProtParam = allProtected.some((v) => fn.getVarVariability(v) === Variability.Parameter);
       const orderedProtected = fn.externalDecl
         ? [...protScalarNoBinding, ...protWithBinding, ...protArrayNoBinding]
-        : [...protNoBinding, ...protWithBinding];
+        : (fn.extensionMetadata as any)?.hasOldInstOption && hasProtParam
+          ? allProtected
+          : [...protNoBinding, ...protWithBinding];
       for (const i of [...publicVars, ...orderedProtected, ...outputVars]) {
         this.printVar(i);
       }

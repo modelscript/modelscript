@@ -7,15 +7,15 @@ import type { CommandModule } from "yargs";
 
 interface ReqIfImportArgs {
   file: string;
-  "to-sysml"?: string;
-  "to-modelica"?: string;
+  "to-sysml"?: string | undefined;
+  "to-modelica"?: string | undefined;
   format: "table" | "json";
 }
 
 interface ReqIfExportArgs {
   file: string;
-  output?: string;
-  title?: string;
+  output?: string | undefined;
+  title?: string | undefined;
 }
 
 const ReqIfImportCommand: CommandModule<{}, ReqIfImportArgs> = {

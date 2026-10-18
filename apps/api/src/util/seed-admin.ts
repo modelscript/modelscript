@@ -9,7 +9,7 @@ export interface AdminSeedResult {
   created: boolean;
   username: string;
   email: string;
-  generatedPassword?: string;
+  generatedPassword?: string | undefined;
 }
 
 /**
@@ -20,9 +20,9 @@ export interface AdminSeedResult {
 export async function seedInitialAdmin(
   database: LibraryDatabase,
   options?: {
-    username?: string;
-    email?: string;
-    password?: string;
+    username?: string | undefined;
+    email?: string | undefined;
+    password?: string | undefined;
   },
 ): Promise<AdminSeedResult> {
   if (database.hasAdminUser()) {

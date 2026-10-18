@@ -95,12 +95,12 @@ export interface BomLineItem {
   description: string;
   quantity: number;
   material: string;
-  volumeM3?: number;
+  volumeM3?: number | undefined;
   massKg: number;
-  unitCostUsd?: number;
-  process?: string;
-  embodiedCarbonKgCo2e?: number;
-  supplierPartNumber?: string;
+  unitCostUsd?: number | undefined;
+  process?: string | undefined;
+  embodiedCarbonKgCo2e?: number | undefined;
+  supplierPartNumber?: string | undefined;
 }
 
 export interface BomSummary {
@@ -163,9 +163,9 @@ export class BomSyncManager {
 
   private recalculateItem(item: BomLineItem): BomLineItem {
     const matKey = item.material.toUpperCase().replace(/[\s-]/g, "_");
-    const mat = STANDARD_MATERIALS[matKey] || STANDARD_MATERIALS.ALUMINUM_6061;
+    const mat = STANDARD_MATERIALS[matKey]! || STANDARD_MATERIALS["ALUMINUM_6061"]!;
     const procKey = (item.process || "cnc_machining").toLowerCase().replace(/[\s-]/g, "_");
-    const proc = STANDARD_PROCESSES[procKey] || STANDARD_PROCESSES.cnc_machining;
+    const proc = STANDARD_PROCESSES[procKey]! || STANDARD_PROCESSES["cnc_machining"]!;
 
     let mass = item.massKg;
     if (item.volumeM3 && item.volumeM3 > 0) {

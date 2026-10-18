@@ -4,6 +4,7 @@ import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createCh
 import { DaeBuilder, ExprKind, EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT, EQ_STRIDE, EQ_LHS, EQ_RHS, VAR_STRIDE, VAR_FLAGS, FLAG_TEARING_VAR } from "../dae/builder";
 import { atomicChunkAlloc, debugLog } from "../arena";
 import { simplifyAst } from "../parser";
+import { isolateSymbolically, isTargetVar } from "../optimization/isolation";
 
 /**
  * Block Lower Triangular (BLT) Transformation Engine.
@@ -37,24 +38,37 @@ import { simplifyAst } from "../parser";
  */
 @unmanaged
 export class BltEngine {
+  /** Target DAE arena containing equations, variables, and AST expressions. */
   dae: DaeBuilder;
 
   // CSR Dependency Graph
+  /** CSR row pointer array mapping each equation to its slice in `eqDepVars` and `eqDepWeights`. */
   eqDepPtrs: ChunkedInt32Array;
+  /** CSR column index array storing variable IDs referenced by each equation. */
   eqDepVars: ChunkedInt32Array;
+  /** CSR edge weights recording solvability classification (`SOLV_ANALYTIC`, `SOLV_LINEAR`, `SOLV_NONLINEAR`) per dependency. */
   eqDepWeights: ChunkedUint8Array;
 
   // Matching
+  /** Maps each variable ID to its matched equation index (-1 if unmatched). */
   matchVarToEq: ChunkedInt32Array;
+  /** Maps each equation index to its matched variable ID (-1 if unmatched). */
   matchEqToVar: ChunkedInt32Array;
+  /** Visited marker array for variables during DFS augmenting-path bipartite matching. */
   visitedVar: ChunkedUint8Array;
 
   // Tarjan SCC
+  /** Discovery timestamp index for each variable in Tarjan's SCC depth-first traversal. */
   indexMap: ChunkedInt32Array;
+  /** Lowest reachable discovery index (`lowlink`) for each variable in Tarjan's SCC algorithm. */
   lowlinkMap: ChunkedInt32Array;
+  /** Boolean flags indicating whether each variable is currently on the active Tarjan SCC recursion stack. */
   onStack: ChunkedUint8Array;
+  /** Explicit recursion stack of variable IDs for Tarjan's SCC decomposition. */
   stack: ChunkedInt32Array;
+  /** CSR-style block pointer offsets into `sccBlockEqs` delineating each topological SCC block. */
   sccBlockPtrs: ChunkedInt32Array;
+  /** Flattened array of equation indices ordered by topological SCC blocks. */
   sccBlockEqs: ChunkedInt32Array;
 
   /**
@@ -359,7 +373,9 @@ export class BltEngine {
     }
   }
 
+  /** Running DFS discovery counter used during Tarjan's SCC traversal. */
   private indexCounter: i32;
+  /** Total number of strongly connected components (SCCs) discovered in the equation system. */
   private sccCount: u32;
 
   /**
@@ -430,46 +446,164 @@ export class BltEngine {
    */
   @inline
   isolateEquation(eqId: u32, targetVarId: u32): void {
+    if (eqId >= this.dae.eqCount || targetVarId >= this.dae.varCount) return;
+    let isolatedRhs = isolateSymbolically(this.dae, eqId, targetVarId);
+    if (isolatedRhs != 0xffffffff) {
+      let offset = eqId * EQ_STRIDE;
+      let curLhs = this.dae.getEqData().get(offset + EQ_LHS) as u32;
+      let curRhs = this.dae.getEqData().get(offset + EQ_RHS) as u32;
+      let targetExpr: u32;
+      if (isTargetVar(this.dae, curLhs, targetVarId)) {
+        targetExpr = curLhs;
+      } else if (isTargetVar(this.dae, curRhs, targetVarId)) {
+        targetExpr = curRhs;
+      } else {
+        targetExpr = this.dae.addName(targetVarId);
+      }
+      this.dae.getEqData().set(offset + EQ_LHS, targetExpr as i32);
+      this.dae.getEqData().set(offset + EQ_RHS, isolatedRhs as i32);
+    }
+  }
+
+  /**
+   * Helper: checks if equation `eqIdx` depends on `varIdx`.
+   */
+  @inline
+  private eqDependsOnVar(eqIdx: i32, varIdx: i32): boolean {
+    if (eqIdx < 0 || varIdx < 0) return false;
+    let start = this.eqDepPtrs.get(eqIdx as u32);
+    let end = this.eqDepPtrs.get((eqIdx as u32) + 1);
+    for (let k: i32 = start; k < end; k++) {
+      if (this.eqDepVars.get(k as u32) == varIdx) return true;
+    }
+    return false;
   }
 
   /**
    * Applies algebraic loop tearing to strongly connected components larger than 1x1.
-   * Partitions the block into Tearing Variables, Inner System, and Residual Equations.
+   * Partitions the block into Tearing Variables, Inner System, and Residual Equations
+   * by greedily tearing variables with maximum cycle incidence until the remaining
+   * inner equations form an acyclic DAG.
    */
   @inline
   tearAlgebraicLoop(blockOffset: i32, blockSize: i32): void {
     if (blockSize <= 1) return;
 
-    // Minimum Degree Heuristic (Cellier's Tearing Algorithm):
-    // 1. Calculate occurrence incidence (degree) of each variable in the SCC block.
-    let minDegree: i32 = 0x7fffffff;
-    let selectedTearVar: i32 = -1;
+    let tornMask = createChunkedUint8Array(blockSize as u32);
+    let inDegree = createChunkedInt32Array(blockSize as u32);
+    let visited = createChunkedUint8Array(blockSize as u32);
+    let queue = createChunkedInt32Array(blockSize as u32);
 
     for (let i: i32 = 0; i < blockSize; i++) {
-      let eqIdx = this.sccBlockEqs.get(blockOffset + i);
-      let varIdx = this.matchEqToVar.get(eqIdx);
-      if (varIdx == -1) continue;
+      tornMask.push(0);
+      inDegree.push(0);
+      visited.push(0);
+    }
 
-      // Count dependencies of this variable within block equations
-      let start = this.eqDepPtrs.get(eqIdx);
-      let end = this.eqDepPtrs.get(eqIdx + 1);
-      let degree = (end - start) as i32;
-
-      if (degree > 0 && degree < minDegree) {
-        minDegree = degree;
-        selectedTearVar = varIdx;
+    let tornCount: i32 = 0;
+    while (tornCount < blockSize - 1) {
+      // Check if remaining untorn equations/variables form an acyclic DAG via Kahn's algorithm
+      let untornTotal: i32 = 0;
+      queue.clear();
+      for (let i: i32 = 0; i < blockSize; i++) {
+        visited.set(i as u32, 0);
+        if (tornMask.get(i as u32) != 0) {
+          inDegree.set(i as u32, -1);
+          continue;
+        }
+        untornTotal++;
+        let eqI = this.sccBlockEqs.get((blockOffset + i) as u32);
+        let deg: i32 = 0;
+        for (let j: i32 = 0; j < blockSize; j++) {
+          if (i == j || tornMask.get(j as u32) != 0) continue;
+          let varJ = this.matchEqToVar.get(this.sccBlockEqs.get((blockOffset + j) as u32) as u32);
+          if (this.eqDependsOnVar(eqI, varJ)) {
+            deg++;
+          }
+        }
+        inDegree.set(i as u32, deg);
+        if (deg == 0) {
+          queue.push(i);
+        }
       }
-    }
 
-    if (selectedTearVar == -1) {
-      let firstEq = this.sccBlockEqs.get(blockOffset);
-      selectedTearVar = this.matchEqToVar.get(firstEq);
-    }
+      let resolvedCount: i32 = 0;
+      let qHead: u32 = 0;
+      while (qHead < queue.length) {
+        let u = queue.get(qHead++);
+        visited.set(u as u32, 1);
+        resolvedCount++;
+        let varU = this.matchEqToVar.get(this.sccBlockEqs.get((blockOffset + u) as u32) as u32);
+        for (let i: i32 = 0; i < blockSize; i++) {
+          if (i == u || tornMask.get(i as u32) != 0 || visited.get(i as u32) != 0) continue;
+          let eqI = this.sccBlockEqs.get((blockOffset + i) as u32);
+          if (this.eqDependsOnVar(eqI, varU)) {
+            let nextDeg = inDegree.get(i as u32) - 1;
+            inDegree.set(i as u32, nextDeg);
+            if (nextDeg == 0) {
+              queue.push(i);
+            }
+          }
+        }
+      }
 
-    if (selectedTearVar != -1) {
-      let offset = selectedTearVar * VAR_STRIDE;
-      let curFlags = this.dae.getVarData().get(offset + VAR_FLAGS);
-      this.dae.getVarData().set(offset + VAR_FLAGS, curFlags | FLAG_TEARING_VAR);
+      if (resolvedCount == untornTotal) {
+        // Remaining untorn equations form a causal DAG!
+        break;
+      }
+
+      // Select best tearing candidate among unvisited (cycle-participating) untorn variables:
+      // Prefer the variable that breaks the most dependencies in other cycle equations,
+      // with tie-breaking by lowest total dependency count in its matched residual equation.
+      let bestIdx: i32 = -1;
+      let bestScore: i32 = -0x7fffffff;
+
+      for (let j: i32 = 0; j < blockSize; j++) {
+        if (tornMask.get(j as u32) != 0 || visited.get(j as u32) != 0) continue;
+        let eqJ = this.sccBlockEqs.get((blockOffset + j) as u32);
+        let varJ = this.matchEqToVar.get(eqJ as u32);
+        if (varJ == -1) continue;
+
+        let outCycleIncidence: i32 = 0;
+        for (let i: i32 = 0; i < blockSize; i++) {
+          if (i == j || tornMask.get(i as u32) != 0 || visited.get(i as u32) != 0) continue;
+          let eqI = this.sccBlockEqs.get((blockOffset + i) as u32);
+          if (this.eqDependsOnVar(eqI, varJ)) {
+            outCycleIncidence++;
+          }
+        }
+
+        let start = this.eqDepPtrs.get(eqJ as u32);
+        let end = this.eqDepPtrs.get((eqJ as u32) + 1);
+        let eqDegree = end - start;
+        let score = outCycleIncidence * 1024 - eqDegree;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = j;
+        }
+      }
+
+      if (bestIdx == -1) {
+        for (let j: i32 = 0; j < blockSize; j++) {
+          if (tornMask.get(j as u32) == 0) {
+            bestIdx = j;
+            break;
+          }
+        }
+      }
+
+      if (bestIdx == -1) break;
+
+      tornMask.set(bestIdx as u32, 1);
+      tornCount++;
+      let tearEq = this.sccBlockEqs.get((blockOffset + bestIdx) as u32);
+      let tearVar = this.matchEqToVar.get(tearEq as u32);
+      if (tearVar != -1) {
+        let offset = (tearVar as u32) * VAR_STRIDE;
+        let curFlags = this.dae.getVarData().get(offset + VAR_FLAGS);
+        this.dae.getVarData().set(offset + VAR_FLAGS, curFlags | FLAG_TEARING_VAR);
+      }
     }
   }
 
@@ -542,11 +676,17 @@ export function blt_rollback(enginePtr: u32, snapshotEqCount: u32, snapshotVarCo
   changetype<BltEngine>(enginePtr).rollback(snapshotEqCount, snapshotVarCount);
 }
 
+/**
+ * Returns the total number of topological SCC blocks computed by the BLT engine.
+ */
 export function blt_getSccCount(enginePtr: u32): u32 {
   if (enginePtr == 0) return 0;
   return changetype<BltEngine>(enginePtr).sccCount;
 }
 
+/**
+ * Returns the number of equations in the `sccIdx`-th SCC block.
+ */
 export function blt_getSccBlockSize(enginePtr: u32, sccIdx: u32): u32 {
   if (enginePtr == 0) return 0;
   let engine = changetype<BltEngine>(enginePtr);
@@ -556,6 +696,9 @@ export function blt_getSccBlockSize(enginePtr: u32, sccIdx: u32): u32 {
   return (end - start) as u32;
 }
 
+/**
+ * Returns the equation index at `eqOffset` within the `sccIdx`-th SCC block, or -1 if out of bounds.
+ */
 export function blt_getSccBlockEq(enginePtr: u32, sccIdx: u32, eqOffset: u32): i32 {
   if (enginePtr == 0) return -1;
   let engine = changetype<BltEngine>(enginePtr);
@@ -566,6 +709,9 @@ export function blt_getSccBlockEq(enginePtr: u32, sccIdx: u32, eqOffset: u32): i
   return engine.sccBlockEqs.get(start + (eqOffset as i32));
 }
 
+/**
+ * Returns the equation index matched to variable `varId`, or -1 if unmatched.
+ */
 export function blt_getMatchVarToEq(enginePtr: u32, varId: u32): i32 {
   if (enginePtr == 0) return -1;
   let engine = changetype<BltEngine>(enginePtr);
@@ -573,6 +719,9 @@ export function blt_getMatchVarToEq(enginePtr: u32, varId: u32): i32 {
   return engine.matchVarToEq.get(varId);
 }
 
+/**
+ * Returns the variable ID matched to equation `eqId`, or -1 if unmatched.
+ */
 export function blt_getMatchEqToVar(enginePtr: u32, eqId: u32): i32 {
   if (enginePtr == 0) return -1;
   let engine = changetype<BltEngine>(enginePtr);
@@ -582,15 +731,53 @@ export function blt_getMatchEqToVar(enginePtr: u32, eqId: u32): i32 {
 
 /**
  * Modular BLT Composition: Combines boundary connections with pre-computed component BLTs.
+ * Warm-starts global matching from component matchings, runs global SCC & tearing, and
+ * optionally writes the combined topological equation order to `outCombinedOrderPtr`.
  */
 export function dae_composeModularBlt(
   globalEnginePtr: u32,
   nComponents: u32,
-  compEnginesPtr: u32
+  compEnginesPtr: u32,
+  outCombinedOrderPtr: u32 = 0
 ): u32 {
   if (globalEnginePtr == 0) return 0;
   let globalEngine = changetype<BltEngine>(globalEnginePtr);
+  let globalEqCount = globalEngine.dae.eqCount;
+  let globalVarCount = globalEngine.dae.varCount;
+
+  while (globalEngine.matchVarToEq.length < globalVarCount) globalEngine.matchVarToEq.push(-1);
+  while (globalEngine.matchEqToVar.length < globalEqCount) globalEngine.matchEqToVar.push(-1);
+
+  // 1. Seed warm-start matchings from pre-computed component BLTs when provided
+  if (nComponents > 0 && compEnginesPtr != 0) {
+    for (let c: u32 = 0; c < nComponents; c++) {
+      let compPtr = load<u32>((compEnginesPtr + c * 4) as usize);
+      if (compPtr == 0) continue;
+      let compEngine = changetype<BltEngine>(compPtr);
+      let compVarLen = compEngine.matchVarToEq.length;
+      for (let v: u32 = 0; v < compVarLen && v < globalVarCount; v++) {
+        let mEq = compEngine.matchVarToEq.get(v);
+        if (mEq >= 0 && (mEq as u32) < globalEqCount) {
+          if (globalEngine.matchVarToEq.get(v) == -1 && globalEngine.matchEqToVar.get(mEq as u32) == -1) {
+            globalEngine.matchVarToEq.set(v, mEq);
+            globalEngine.matchEqToVar.set(mEq as u32, v as i32);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Run global dependency construction, incremental augmenting-path matching, and SCC + tearing
   globalEngine.computeBLT();
+
+  // 3. Write combined topological equation schedule into outCombinedOrderPtr if provided
+  if (outCombinedOrderPtr != 0) {
+    let totalEqs = globalEngine.sccBlockEqs.length;
+    for (let i: u32 = 0; i < totalEqs; i++) {
+      store<i32>((outCombinedOrderPtr + i * 4) as usize, globalEngine.sccBlockEqs.get(i));
+    }
+  }
+
   return globalEngine.sccCount;
 }
 

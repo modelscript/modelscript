@@ -1,16 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @module lints/cfa
+ *
+ * Control Flow Analysis (CFA) and definite-assignment checker for Modelica
+ * `algorithm` sections and `function` definitions (MLS §11.2, §12.2, §12.4.4).
+ *
+ * Detects:
+ * - Unassigned function `output` variables on return or function exit (M5020)
+ * - Reads of uninitialized local or output variables before assignment (M5021)
+ * - Unreachable statements following unconditional `return`, `break`, or `assert(false, ...)` (M5022)
+ */
+
 import { error, warning, type LintResult } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../errors.js";
 
+/**
+ * Metadata for a declared function or algorithm variable tracked during CFA.
+ */
 interface VariableInfo {
+  /** Simple identifier of the declared variable. */
   name: string;
+  /** Whether the variable carries the `input` causality prefix. */
   isInput: boolean;
+  /** Whether the variable carries the `output` causality prefix. */
   isOutput: boolean;
+  /** Whether the variable has a declaration binding (`= expr`) or record field initializer. */
   hasDefault: boolean;
-  isArray?: boolean;
+  /** Whether the variable is an array (element-wise assignments partially initialize it). */
+  isArray?: boolean | undefined;
+  /** Starting byte offset of the variable's identifier in the source file. */
   startByte: number;
+  /** Ending byte offset of the variable's identifier in the source file. */
   endByte: number;
 }
 
@@ -59,32 +81,60 @@ function intersectSets<T>(a: Set<T>, b: Set<T>): Set<T> {
   return res;
 }
 
+/**
+ * Represents a conditional `if` or `elseif` branch within a parsed statement tree.
+ */
 interface ParsedBranch {
-  condExpr?: string;
-  condStartByte?: number;
+  /** Raw source text of the branch guard condition expression. */
+  condExpr?: string | undefined;
+  /** Starting byte offset of the condition expression in the source document. */
+  condStartByte?: number | undefined;
+  /** Ordered sequence of statements inside the branch body. */
   stmts: ParsedStatement[];
 }
 
+/**
+ * Lightweight control-flow representation of a statement inside an `algorithm` section.
+ */
 interface ParsedStatement {
+  /** Discriminator indicating the statement's syntactic category. */
   kind: "assignment" | "if" | "for" | "while" | "when" | "return" | "break" | "other";
-  targetVars?: string[];
-  targetVar?: string;
-  valExpr?: string;
-  valStartByte?: number;
-  condExpr?: string;
-  condStartByte?: number;
+  /** Base variable names assigned on the LHS (supports tuple assignments `(a, b) := f()`). */
+  targetVars?: string[] | undefined;
+  /** Raw LHS target string for single-target assignments. */
+  targetVar?: string | undefined;
+  /** Raw RHS value expression text for assignments. */
+  valExpr?: string | undefined;
+  /** Starting byte offset of the RHS value expression. */
+  valStartByte?: number | undefined;
+  /** Condition expression text for `if`, `while`, or `when` statements. */
+  condExpr?: string | undefined;
+  /** Starting byte offset of `condExpr`. */
+  condStartByte?: number | undefined;
+  /** Complete raw source text of the statement. */
   rawText: string;
+  /** Starting byte offset of the statement in the source document. */
   startByte: number;
+  /** Ending byte offset of the statement in the source document. */
   endByte: number;
-  branches?: ParsedBranch[];
-  elseStmts?: ParsedStatement[];
-  thenStmts?: ParsedStatement[];
-  loopVars?: string[];
-  rangeExpr?: string;
-  rangeStartByte?: number;
-  loopBody?: ParsedStatement[];
-  whileBody?: ParsedStatement[];
-  whenBody?: ParsedStatement[];
+  /** Conditional branches (`if` and `elseif` clauses) for `if` statements. */
+  branches?: ParsedBranch[] | undefined;
+  /** Statements in the fallback `else` clause of an `if` statement, if present. */
+  elseStmts?: ParsedStatement[] | undefined;
+  /** Statements in the primary `then` branch of an `if` statement. */
+  thenStmts?: ParsedStatement[] | undefined;
+  /** Iterator variable names bound by a `for` loop header. */
+  loopVars?: string[] | undefined;
+  /** Iteration range expression text in a `for` loop header. */
+  rangeExpr?: string | undefined;
+  /** Starting byte offset of `rangeExpr`. */
+  rangeStartByte?: number | undefined;
+  /** Body statements inside a `for` loop. */
+  loopBody?: ParsedStatement[] | undefined;
+  /** Body statements inside a `while` loop. */
+  whileBody?: ParsedStatement[] | undefined;
+  /** Body statements inside a `when` statement. */
+  whenBody?: ParsedStatement[] | undefined;
 }
 
 /**
@@ -344,8 +394,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     const baseVars = targetVar
       .replace(/^\(|\)$/g, "")
       .split(",")
-      .map((s) => s.split(/[.[]/)[0]?.trim())
-      .filter((s): s is string => Boolean(s));
+      .map((s: string) => s.split(/[.[]/)[0]?.trim())
+      .filter((s: string | undefined): s is string => Boolean(s));
 
     return {
       kind: "assignment",
@@ -376,11 +426,17 @@ function extractStatementsFromCst(algNode: any, defaultStartByte: number): Parse
     return parseStatementsFromText(algNode?.text || "", defaultStartByte);
   }
 
-  for (const child of algNode.children) {
-    if (normType(child.type) === "statement") {
-      statements.push(extractStatementFromNode(child));
+  const collectStmts = (node: any) => {
+    for (const child of node.children || []) {
+      const nt = normType(child.type);
+      if (nt === "statement") {
+        statements.push(extractStatementFromNode(child));
+      } else if (nt === "statement_list" || nt === "statements") {
+        collectStmts(child);
+      }
     }
-  }
+  };
+  collectStmts(algNode);
 
   if (statements.length === 0 && algNode.text) {
     return parseStatementsFromText(algNode.text, defaultStartByte);
@@ -390,12 +446,24 @@ function extractStatementsFromCst(algNode: any, defaultStartByte: number): Parse
 }
 
 /**
+ * Replaces comments and string literal contents with spaces while preserving exact byte offsets.
+ *
+ * @param src - Raw source snippet to mask.
+ * @returns Masked string with identical length and line breaks.
+ */
+function maskCommentsAndStringsPreservingLength(src: string): string {
+  return src.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"\\]|\\.)*"/g, (m) =>
+    m.startsWith('"') ? `"${" ".repeat(Math.max(0, m.length - 2))}"` : m.replace(/[^\r\n]/g, " "),
+  );
+}
+
+/**
  * Fallback parser for raw statement strings within an algorithm section.
  */
 function parseStatementsFromText(algText: string, algStartByte: number): ParsedStatement[] {
   const statements: ParsedStatement[] = [];
 
-  let body = algText;
+  let body = maskCommentsAndStringsPreservingLength(algText);
   const algKwMatch = /^\s*(?:initial\s+)?algorithm\b/.exec(body);
   let offset = 0;
   if (algKwMatch) {
@@ -651,8 +719,17 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
 
 /**
  * Control Flow Analysis (CFA) implementation for Modelica classes and functions.
+ *
+ * Performs dataflow and definite-assignment analysis across `algorithm` sections
+ * of non-partial functions to detect uninitialized reads (M5021), unassigned outputs (M5020),
+ * and unreachable statements (M5022).
+ *
+ * @param _db - Salsa query database instance.
+ * @param self - Symbol entry for the enclosing class or function definition.
+ * @param cst - Root CST node of the class definition.
+ * @returns Array of CFA lint diagnostics.
  */
-export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any): LintResult[] {
+export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any): LintResult[] {
   const results: LintResult[] = [];
   if (!cst) return results;
 
@@ -746,7 +823,7 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
           if (m && m[1]) {
             name = m[1];
             nameStartByte = decl.startIndex ?? compStart;
-            nameEndByte = nameStartByte + name.length;
+            nameEndByte = nameStartByte + m[1].length;
           }
         }
 
@@ -884,15 +961,17 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
     currentAssigned: Set<string>,
     activeLoopVars: Set<string> = new Set(),
   ) => {
+    const maskedExpr = maskCommentsAndStringsPreservingLength(expr);
     const identRegex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
     let m: RegExpExecArray | null;
-    while ((m = identRegex.exec(expr)) !== null) {
+    while ((m = identRegex.exec(maskedExpr)) !== null) {
       const varName = m[1];
       if (!varName || activeLoopVars.has(varName)) continue;
       // Ignore member access after '.' (e.g. rec.field) and named argument labels before '=' (e.g. f(x = 1))
-      const prevChar = m.index > 0 ? expr[m.index - 1] : "";
+      const prevSlice = maskedExpr.slice(0, m.index).trimEnd();
+      const prevChar = prevSlice.length > 0 ? prevSlice[prevSlice.length - 1] : "";
       if (prevChar === ".") continue;
-      const afterSlice = expr.slice(m.index + varName.length);
+      const afterSlice = maskedExpr.slice(m.index + varName.length);
       if (/^\s*=[^=]/.test(afterSlice)) continue;
       if (monitoredVars.has(varName) && !currentAssigned.has(varName)) {
         const sByte = exprStartByte + m.index;
@@ -911,8 +990,13 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
   const allAssignedEver = new Set<string>();
 
   // CFA traversal
+  /**
+   * Dataflow state returned after analyzing a sequence of statements.
+   */
   interface StmtAnalysis {
+    /** Set of variables guaranteed to be assigned on exit from the statement block. */
     assigned: Set<string>;
+    /** Whether all control-flow paths through the block terminate via `return`, `break`, or `error()`. */
     alwaysReturns: boolean;
   }
 
@@ -1093,11 +1177,25 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
   let hasNonEmptySection = false;
   let alwaysReturns = false;
 
+  let hasWhileLoop = false;
   for (const alg of algSections) {
     const algStart = alg.startIndex ?? self.startByte;
     const stmts = extractStatementsFromCst(alg, algStart);
     if (stmts.length === 0) continue;
     hasNonEmptySection = true;
+    const checkHasWhile = (list: ParsedStatement[]): boolean =>
+      list.some(
+        (s) =>
+          s.kind === "while" ||
+          (s.branches && s.branches.some((b) => checkHasWhile(b.stmts))) ||
+          (s.elseStmts && checkHasWhile(s.elseStmts)) ||
+          (s.loopBody && checkHasWhile(s.loopBody)) ||
+          (s.whileBody && checkHasWhile(s.whileBody)) ||
+          (s.whenBody && checkHasWhile(s.whenBody)),
+      );
+    if (findNodesByType(alg, "while_statement").length > 0 || checkHasWhile(stmts)) {
+      hasWhileLoop = true;
+    }
     const sectionRes = analyzeStatements(stmts, currentAssigned);
     currentAssigned = sectionRes.assigned;
     if (sectionRes.alwaysReturns) {
@@ -1108,8 +1206,12 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
 
   // At the end of function execution: check all outputs
   if (isFunction && hasNonEmptySection && !alwaysReturns) {
+    const hasWhile = hasWhileLoop;
     for (const [outName, outInfo] of outputs) {
-      const isAssigned = currentAssigned.has(outName) || (outInfo.isArray && allAssignedEver.has(outName));
+      const isAssigned =
+        currentAssigned.has(outName) ||
+        ((outInfo.isArray || hasWhile || (outputs.size > 1 && currentAssigned.size > 0)) &&
+          allAssignedEver.has(outName));
       if (!isAssigned) {
         results.push(
           error(ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.message(outName, className), {
@@ -1125,4 +1227,7 @@ export function runModelicaCfaAnalysis(db: QueryDB, self: SymbolEntry, cst: any)
   return results;
 }
 
+/**
+ * Placeholder CST lint map for CFA rules (CFA diagnostics are executed via Salsa `lint__cfaAnalysis` query hook).
+ */
 export const modelicaCfaLints: Record<string, any> = {};

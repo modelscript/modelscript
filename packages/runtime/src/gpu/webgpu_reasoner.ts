@@ -76,9 +76,9 @@ const GPUMapModeFlags = {
 export interface SHACLNumericConstraint {
   propertyIndex: number;
   attributeStride: number;
-  minInclusive?: number;
-  maxInclusive?: number;
-  expectedClassId?: number;
+  minInclusive?: number | undefined;
+  maxInclusive?: number | undefined;
+  expectedClassId?: number | undefined;
 }
 
 export interface SHACLValidationResult {
@@ -162,6 +162,7 @@ export class WebGPUOntologyReasoner {
     reflexive: boolean = true,
   ): Promise<BitsetGraph> {
     const _start = performance.now();
+    void _start;
     const graph = new BitsetGraph(nodeCount);
 
     if (reflexive) {

@@ -37,21 +37,21 @@ export interface FmiLsBusSignal {
   /** Bit length of the signal. */
   bitLength: number;
   /** Byte order (Intel / Motorola). Default: "littleEndian". */
-  byteOrder?: ByteOrder;
+  byteOrder?: ByteOrder | undefined;
   /** Data representation. Default: "uint32" or auto-detected from bitLength. */
-  dataType?: SignalDataType;
+  dataType?: SignalDataType | undefined;
   /** Linear scale factor (physical = raw * factor + offset). Default: 1.0. */
-  factor?: number;
+  factor?: number | undefined;
   /** Linear offset. Default: 0.0. */
-  offset?: number;
+  offset?: number | undefined;
   /** Minimum physical value. */
-  min?: number;
+  min?: number | undefined;
   /** Maximum physical value. */
-  max?: number;
+  max?: number | undefined;
   /** Physical engineering unit (e.g. "km/h", "rpm", "V"). */
-  unit?: string;
+  unit?: string | undefined;
   /** Human-readable description. */
-  description?: string;
+  description?: string | undefined;
 }
 
 export interface FmiLsBusFrame {
@@ -60,15 +60,15 @@ export interface FmiLsBusFrame {
   /** Numeric frame identifier (e.g., 0x120 or 288). */
   id: number;
   /** Whether this is an extended 29-bit CAN identifier (false = 11-bit standard). */
-  isExtended?: boolean;
+  isExtended?: boolean | undefined;
   /** Frame payload length in bytes (DLC). Default: 8 for CAN, up to 64 for CAN-FD. */
   length: number;
   /** Periodic transmission cycle time in seconds (e.g., 0.01 for 10ms). */
-  cycleTime?: number;
+  cycleTime?: number | undefined;
   /** List of signals packed into this frame. */
   signals: FmiLsBusSignal[];
   /** Optional FMI binary variable valueReference if the raw frame is exposed directly. */
-  binaryValueReference?: number;
+  binaryValueReference?: number | undefined;
 }
 
 export interface FmiLsBusDefinition {
@@ -77,9 +77,9 @@ export interface FmiLsBusDefinition {
   /** Network bus type. */
   type: BusType;
   /** Baud rate in bits per second (e.g., 500000 for 500 kbit/s CAN). */
-  baudRate?: number;
+  baudRate?: number | undefined;
   /** CAN-FD data phase baud rate (e.g. 2000000 for 2 Mbit/s). */
-  dataBaudRate?: number;
+  dataBaudRate?: number | undefined;
   /** List of frames defined on this bus. */
   frames: FmiLsBusFrame[];
 }
@@ -242,9 +242,9 @@ export class FmiLsBusCodec {
         const bitInByte = currBit % 8;
         if (byteIdx < buffer.length) {
           if (bit === 1) {
-            buffer[byteIdx] |= 1 << bitInByte;
+            buffer[byteIdx] = buffer[byteIdx]! | (1 << bitInByte);
           } else {
-            buffer[byteIdx] &= ~(1 << bitInByte);
+            buffer[byteIdx] = buffer[byteIdx]! & ~(1 << bitInByte);
           }
         }
       }
@@ -257,9 +257,9 @@ export class FmiLsBusCodec {
         const bitInByte = currBit % 8;
         if (byteIdx < buffer.length) {
           if (bit === 1) {
-            buffer[byteIdx] |= 1 << bitInByte;
+            buffer[byteIdx] = buffer[byteIdx]! | (1 << bitInByte);
           } else {
-            buffer[byteIdx] &= ~(1 << bitInByte);
+            buffer[byteIdx] = buffer[byteIdx]! & ~(1 << bitInByte);
           }
         }
         if (currBit % 8 === 0) {
@@ -291,7 +291,7 @@ export class FmiLsBusCodec {
         const byteIdx = Math.floor(currBit / 8);
         const bitInByte = currBit % 8;
         if (byteIdx < buffer.length) {
-          const bit = (buffer[byteIdx] >> bitInByte) & 1;
+          const bit = (buffer[byteIdx]! >> bitInByte) & 1;
           if (bit === 1) {
             uVal |= 1n << BigInt(i);
           }
@@ -303,7 +303,7 @@ export class FmiLsBusCodec {
         const byteIdx = Math.floor(currBit / 8);
         const bitInByte = currBit % 8;
         if (byteIdx < buffer.length) {
-          const bit = (buffer[byteIdx] >> bitInByte) & 1;
+          const bit = (buffer[byteIdx]! >> bitInByte) & 1;
           if (bit === 1) {
             uVal |= 1n << BigInt(bitLength - 1 - i);
           }
@@ -355,7 +355,10 @@ export class FmiLsBusCodec {
  *   - __signal_datatype: SignalDataType
  */
 export function extractBusManifestFromDae(dae: DAEBuilder, defaultBusName = "CAN0"): FmiLsBusManifest {
-  const busMap = new Map<string, { type: BusType; baudRate?: number; frames: Map<number, FmiLsBusFrame> }>();
+  const busMap = new Map<
+    string,
+    { type: BusType; baudRate?: number | undefined; frames: Map<number, FmiLsBusFrame> }
+  >();
 
   const resolveExprVal = (exprId: number): number | string | undefined => {
     if (exprId < 0) return undefined;

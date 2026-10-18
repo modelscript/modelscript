@@ -33,10 +33,10 @@ export interface SymbolicRegion {
   pathCondition: NonlinearConstraint[];
   boundingPolytope: Record<string, [number, number]>;
   /** Octagon DBM difference bounds for coupled variable pairs: (u - v) in [lo, hi] */
-  differenceBounds?: Record<string, [number, number]>;
+  differenceBounds?: Record<string, [number, number]> | undefined;
   /** Oblique / diagonal hyperplane constraints active in this region */
-  obliqueConstraints?: NonlinearConstraint[];
-  terminalValue?: ExprNode | number | string;
+  obliqueConstraints?: NonlinearConstraint[] | undefined;
+  terminalValue?: ExprNode | number | string | undefined;
   interiorWitness: Record<string, number>;
   boundaryWitnesses: BoundaryFacetWitness[];
 }
@@ -57,18 +57,18 @@ export interface RegionDecompositionResult {
 }
 
 export interface RegionDecomposerOptions {
-  domainBounds?: Map<string, [number, number]>;
-  defaultRange?: [number, number];
-  maxDepth?: number;
-  maxRegions?: number;
-  delta?: number;
-  eps?: number;
+  domainBounds?: Map<string, [number, number]> | undefined;
+  defaultRange?: [number, number] | undefined;
+  maxDepth?: number | undefined;
+  maxRegions?: number | undefined;
+  delta?: number | undefined;
+  eps?: number | undefined;
 }
 
 export interface RegionBranchInput {
   id: string;
   constraints: NonlinearConstraint[];
-  terminalValue?: ExprNode | number | string;
+  terminalValue?: ExprNode | number | string | undefined;
 }
 
 /**
@@ -208,7 +208,9 @@ export class RegionDecomposer {
     };
 
     // Helper: checks SAT of a path condition within the domain box
-    const checkSat = (constraints: NonlinearConstraint[]): { isSat: boolean; box?: Map<string, Interval> } => {
+    const checkSat = (
+      constraints: NonlinearConstraint[],
+    ): { isSat: boolean; box?: Map<string, Interval> | undefined } => {
       if (constraints.length === 0) {
         return { isSat: true, box: buildDomainBox() };
       }

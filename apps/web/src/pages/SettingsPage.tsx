@@ -133,7 +133,7 @@ const SearchInput = styled.input`
   }
 `;
 
-const MenuItem = styled.button<{ $active?: boolean }>`
+const MenuItem = styled.button<{ $active?: boolean | undefined }>`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -157,7 +157,7 @@ const MenuItem = styled.button<{ $active?: boolean }>`
   }
 `;
 
-const DetailItem = styled.div<{ $clickable?: boolean }>`
+const DetailItem = styled.div<{ $clickable?: boolean | undefined }>`
   display: flex;
   align-items: center;
   padding: 12px 16px;
@@ -311,11 +311,11 @@ const FormLabel = styled.label`
 `;
 
 const Text = styled.span<{
-  color?: string;
-  fontSize?: string;
-  fontWeight?: string;
-  display?: string;
-  mb?: number | string;
+  color?: string | undefined;
+  fontSize?: string | undefined;
+  fontWeight?: string | undefined;
+  display?: string | undefined;
+  mb?: number | string | undefined;
 }>`
   color: ${(props) => props.color || "inherit"};
   font-size: ${(props) => props.fontSize || "inherit"};
@@ -441,7 +441,7 @@ type TabType =
 
 const SettingsPage: React.FC = () => {
   const toast = useToast();
-  const { tab: pathTab } = useParams<{ tab?: string }>();
+  const { tab: pathTab } = useParams<{ tab?: string | undefined }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const effectiveTab = (pathTab || searchParams.get("tab")) as TabType | null;
   const [activeTab, setActiveTab] = useState<TabType>(effectiveTab || "account");

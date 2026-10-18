@@ -43,19 +43,19 @@ import type { CoSimSession } from "./session.js";
 /** Orchestrator event callbacks. */
 export interface OrchestratorCallbacks {
   /** Called after each step with aggregated results. */
-  onStep?: (result: StepResult) => void;
+  onStep?: ((result: StepResult) => void) | undefined;
   /** Called when the simulation completes. */
-  onComplete?: () => void;
+  onComplete?: (() => void) | undefined;
   /** Called on error. */
-  onError?: (error: Error) => void;
+  onError?: ((error: Error) => void) | undefined;
   /** Called on state change. */
-  onStateChange?: (state: string) => void;
+  onStateChange?: ((state: string) => void) | undefined;
   /** Called when unit compatibility issues are detected. */
-  onUnitWarning?: (warnings: UnitWarning[]) => void;
+  onUnitWarning?: ((warnings: UnitWarning[]) => void) | undefined;
   /** Called when a CFD provider produces a VTK mesh for VR visualization. */
-  onVtkData?: (participantId: string, time: number, vtkData: Uint8Array) => void;
+  onVtkData?: ((participantId: string, time: number, vtkData: Uint8Array) => void) | undefined;
   /** Pre-compiled STEP files (participantId -> STEP file bytes) */
-  stepFiles?: Map<string, Uint8Array>;
+  stepFiles?: Map<string, Uint8Array> | undefined;
 }
 
 /**
@@ -207,7 +207,8 @@ export class Orchestrator {
         for (const p of participants) {
           if (
             "getVtkBuffer" in p &&
-            typeof (p as unknown as { getVtkBuffer?: () => Promise<Uint8Array | null> }).getVtkBuffer === "function"
+            typeof (p as unknown as { getVtkBuffer?: (() => Promise<Uint8Array | null>) | undefined }).getVtkBuffer ===
+              "function"
           ) {
             const vtkData = await (p as unknown as { getVtkBuffer: () => Promise<Uint8Array | null> }).getVtkBuffer();
             if (vtkData) {

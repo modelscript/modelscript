@@ -104,8 +104,8 @@ export class ModelicaNotebookController implements vscode.Disposable {
     try {
       const result = await this._client.sendRequest<{
         output: string;
-        error?: string;
-        diagrams?: { name: string; data: unknown }[];
+        error?: string | undefined;
+        diagrams?: { name: string; data: unknown }[] | undefined;
       }>("modelscript/runNotebookCell", {
         sessionId,
         code,

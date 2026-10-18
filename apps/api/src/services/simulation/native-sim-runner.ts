@@ -23,13 +23,13 @@ export async function ensureModelicaParser(): Promise<void> {
 export interface NativeSimSpec {
   modelName: string;
   sourceFiles: string[];
-  libraryPaths?: string[];
-  startTime?: number;
-  stopTime?: number;
-  stepSize?: number;
-  numberOfIntervals?: number;
-  solver?: "rk4" | "cvode";
-  tolerance?: number;
+  libraryPaths?: string[] | undefined;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  stepSize?: number | undefined;
+  numberOfIntervals?: number | undefined;
+  solver?: "rk4" | "cvode" | undefined;
+  tolerance?: number | undefined;
 }
 
 export interface NativeSimPrepResult {
@@ -114,7 +114,7 @@ export async function prepareNativeSimulation(
 
     fs.writeFileSync(cFile, cSource, "utf8");
 
-    const cc = process.env.CC ?? "gcc";
+    const cc = process.env["CC"] ?? "gcc";
     const scriptContent = `#!/bin/bash
 set -e
 ${cc} -O3 -fno-math-errno -w "${cFile}" -o "${binFile}" -lm

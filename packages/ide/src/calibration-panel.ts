@@ -19,8 +19,8 @@ export class CalibrationPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
-  public sourceUri?: string;
-  private client?: LanguageClient;
+  public sourceUri?: string | undefined;
+  private client?: LanguageClient | undefined;
   private disposables: vscode.Disposable[] = [];
 
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
@@ -74,7 +74,7 @@ export class CalibrationPanel {
         if (msg.type === "webviewReady") {
           if (this.client && this.sourceUri) {
             this.client
-              .sendRequest<{ parameters: string[]; error?: string }>("modelscript/getParameters", {
+              .sendRequest<{ parameters: string[]; error?: string | undefined }>("modelscript/getParameters", {
                 uri: this.sourceUri,
               })
               .then((res) => {

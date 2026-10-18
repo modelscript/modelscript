@@ -12,13 +12,13 @@ export * from "./fs-bridge.js";
 export interface ElementPosition {
   x: number;
   y: number;
-  width?: number;
-  height?: number;
-  rotation?: number;
+  width?: number | undefined;
+  height?: number | undefined;
+  rotation?: number | undefined;
   /** Optional structural classification or rule name */
-  ruleName?: string;
+  ruleName?: string | undefined;
   /** Optional previous name tracked before a rename */
-  previousName?: string;
+  previousName?: string | undefined;
 }
 
 export interface ConnectionLayout {
@@ -61,7 +61,10 @@ export function serializeLayout(layout: DiagramLayout): string {
 export interface DiagramLayoutStorage {
   loadLayout(uri: string): Promise<DiagramLayout | null>;
   saveLayout(uri: string, layout: DiagramLayout): Promise<void>;
-  updatePositions(uri: string, items: PlacementItem[]): Promise<{ layout?: DiagramLayout; edits?: any[] }>;
+  updatePositions(
+    uri: string,
+    items: PlacementItem[],
+  ): Promise<{ layout?: DiagramLayout | undefined; edits?: any[] | undefined }>;
   renameElement?(uri: string, oldName: string, newName: string): Promise<boolean>;
   pruneOrphans?(
     uri: string,
@@ -76,7 +79,7 @@ export interface SidecarStorageOptions {
   /**
    * File extension for the sidecar file. Default: ".layout".
    */
-  extension?: string;
+  extension?: string | undefined;
 
   /**
    * Location policy:
@@ -85,23 +88,23 @@ export interface SidecarStorageOptions {
    * - "subfolder": `dir/Model.sysml` -> `dir/.layouts/Model.sysml.layout`
    * - Custom resolver function: `(uri: string, extension: string) => string`
    */
-  location?: "alongside" | "hidden" | "subfolder" | ((uri: string, extension: string) => string);
+  location?: "alongside" | "hidden" | "subfolder" | ((uri: string, extension: string) => string) | undefined;
 
   /**
    * Custom serializer function (object -> string). Default: JSON.stringify(..., null, 2).
    */
-  serialize?: (layout: DiagramLayout) => string;
+  serialize?: ((layout: DiagramLayout) => string) | undefined;
 
   /**
    * Custom parser function (string -> object). Default: JSON.parse.
    */
-  parse?: (content: string) => DiagramLayout | null;
+  parse?: ((content: string) => DiagramLayout | null) | undefined;
 
   /**
    * Pluggable file system bridge for environment-agnostic I/O.
    * Defaults to NodeFsBridge on Node.js and MemoryFsBridge in browser.
    */
-  fsBridge?: FileSystemBridge;
+  fsBridge?: FileSystemBridge | undefined;
 }
 
 /**
@@ -201,7 +204,10 @@ export class SidecarLayoutStorage implements DiagramLayoutStorage {
     }
   }
 
-  async updatePositions(uri: string, items: PlacementItem[]): Promise<{ layout?: DiagramLayout; edits?: any[] }> {
+  async updatePositions(
+    uri: string,
+    items: PlacementItem[],
+  ): Promise<{ layout?: DiagramLayout | undefined; edits?: any[] | undefined }> {
     let layout = (await this.loadLayout(uri)) ?? createEmptyLayout();
     const updatedElements = { ...layout.elements };
     const updatedConnections = { ...layout.connections };
@@ -354,7 +360,10 @@ export class InlineAnnotationLayoutStorage implements DiagramLayoutStorage {
 
   async saveLayout(_uri: string, _layout: DiagramLayout): Promise<void> {}
 
-  async updatePositions(uri: string, items: PlacementItem[]): Promise<{ layout?: DiagramLayout; edits?: any[] }> {
+  async updatePositions(
+    uri: string,
+    items: PlacementItem[],
+  ): Promise<{ layout?: DiagramLayout | undefined; edits?: any[] | undefined }> {
     const edits = await this.editComputer(uri, items);
     return { edits };
   }

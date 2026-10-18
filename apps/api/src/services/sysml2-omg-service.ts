@@ -11,6 +11,7 @@
  *   - High-performance in-memory index with pagination and structured querying
  */
 
+import { PhysicsSimplexReconciler } from "@modelscript/runtime";
 import {
   GenericModelicaBridge,
   SysML2ContainerExporter,
@@ -29,15 +30,31 @@ export interface OmgIdentified {
   "@type": string;
 }
 
+export interface OmgBranch extends OmgIdentified {
+  "@type": "Branch";
+  projectId: string;
+  name: string;
+  headCommitId?: string | undefined;
+  created: string;
+}
+
+export interface OmgTag extends OmgIdentified {
+  "@type": "Tag";
+  projectId: string;
+  name: string;
+  taggedCommit: { "@id": string };
+  created: string;
+}
+
 export interface OmgProject extends OmgIdentified {
   "@type": "Project";
   name: string;
-  description?: string;
+  description?: string | undefined;
   created: string;
   defaultBranch: {
     "@id": string;
     name: string;
-    headCommitId?: string;
+    headCommitId?: string | undefined;
   };
 }
 
@@ -46,17 +63,18 @@ export interface OmgCommit extends OmgIdentified {
   projectId: string;
   description: string;
   created: string;
-  previousCommit?: { "@id": string } | null;
+  previousCommit?: { "@id": string } | null | undefined;
+  mergedCommit?: { "@id": string } | null | undefined;
 }
 
 export interface OmgElement extends OmgIdentified {
   name: string;
   qualifiedName: string;
-  owner?: { "@id": string } | null;
-  ownedElement?: { "@id": string }[];
-  documentation?: string[];
-  isAbstract?: boolean;
-  attributes?: Record<string, unknown>;
+  owner?: { "@id": string } | null | undefined;
+  ownedElement?: { "@id": string }[] | undefined;
+  documentation?: string[] | undefined;
+  isAbstract?: boolean | undefined;
+  attributes?: Record<string, unknown> | undefined;
   sourceUri?: string | undefined;
 }
 
@@ -66,15 +84,52 @@ export interface OmgRelationship extends OmgIdentified {
   relationshipType: string;
 }
 
+export interface OmgCommitDiff {
+  baseCommitId: string;
+  targetCommitId: string;
+  addedElements: OmgElement[];
+  modifiedElements: {
+    qualifiedName: string;
+    baseElement: OmgElement;
+    targetElement: OmgElement;
+    changedFields: string[];
+  }[];
+  deletedElements: OmgElement[];
+  addedRelationships: OmgRelationship[];
+  deletedRelationships: OmgRelationship[];
+}
+
+export interface OmgMergeConflict {
+  qualifiedName: string;
+  elementType: string;
+  description: string;
+  baseValue?: unknown;
+  sourceValue?: unknown;
+  targetValue?: unknown;
+}
+
+export interface OmgMergeResult {
+  status: "merged" | "reconciled" | "conflicted";
+  hasConflicts: boolean;
+  lcaCommitId: string | null;
+  sourceBranchId: string;
+  targetBranchId: string;
+  mergeCommit?: OmgCommit | undefined;
+  conflicts: OmgMergeConflict[];
+  reconciledParameters: Record<string, number>;
+}
+
 export interface OmgQuerySpec {
-  select?: string[];
-  where?: {
-    "@type"?: string;
-    name?: string;
-    qualifiedName?: string;
-    isAbstract?: boolean;
-    [key: string]: unknown;
-  };
+  select?: string[] | undefined;
+  where?:
+    | {
+        "@type"?: string | undefined;
+        name?: string | undefined;
+        qualifiedName?: string | undefined;
+        isAbstract?: boolean | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
 }
 
 export interface QueryOptions {
@@ -86,6 +141,8 @@ export interface QueryOptions {
 
 export class SysML2OmgService {
   private projects = new Map<string, OmgProject>();
+  private branches = new Map<string, OmgBranch[]>(); // projectId -> branches
+  private tags = new Map<string, OmgTag[]>(); // projectId -> tags
   private commits = new Map<string, OmgCommit[]>(); // projectId -> commits
   private elements = new Map<string, Map<string, OmgElement>>(); // commitId -> (elementId -> element)
   private relationships = new Map<string, OmgRelationship[]>(); // commitId -> relationships
@@ -104,6 +161,24 @@ export class SysML2OmgService {
       const projects = this.db.getSysml2Projects();
       for (const p of projects) {
         this.projects.set(p["@id"], p);
+        const dbBranches = this.db.getSysml2Branches(p["@id"]);
+        if (dbBranches.length > 0) {
+          this.branches.set(p["@id"], dbBranches);
+        } else {
+          this.branches.set(p["@id"], [
+            {
+              "@id": p.defaultBranch["@id"],
+              "@type": "Branch",
+              projectId: p["@id"],
+              name: p.defaultBranch.name,
+              headCommitId: p.defaultBranch.headCommitId,
+              created: p.created,
+            },
+          ]);
+        }
+        const dbTags = this.db.getSysml2Tags(p["@id"]);
+        this.tags.set(p["@id"], dbTags);
+
         const commits = this.db.getSysml2Commits(p["@id"]);
         this.commits.set(p["@id"], commits);
         for (const c of commits) {
@@ -154,6 +229,15 @@ export class SysML2OmgService {
       previousCommit: null,
     };
 
+    const defaultBranch: OmgBranch = {
+      "@id": branchId,
+      "@type": "Branch",
+      projectId,
+      name: "main",
+      headCommitId: initialCommitId,
+      created: now,
+    };
+
     const project: OmgProject = {
       "@id": projectId,
       "@type": "Project",
@@ -168,6 +252,8 @@ export class SysML2OmgService {
     };
 
     this.projects.set(projectId, project);
+    this.branches.set(projectId, [defaultBranch]);
+    this.tags.set(projectId, []);
     this.commits.set(projectId, [initialCommit]);
     this.elements.set(initialCommitId, new Map());
     this.relationships.set(initialCommitId, []);
@@ -175,6 +261,7 @@ export class SysML2OmgService {
     if (this.db) {
       try {
         this.db.saveSysml2Project(project);
+        this.db.saveSysml2Branch(defaultBranch);
         this.db.saveSysml2Commit(initialCommit);
       } catch (err) {
         console.warn("[SysML2OmgService] Could not persist project to database:", err);
@@ -185,7 +272,7 @@ export class SysML2OmgService {
   }
 
   /**
-   * Deletes a project and its associated commits and elements.
+   * Deletes a project and its associated commits, branches, tags, and elements.
    */
   deleteProject(projectId: string): boolean {
     if (!this.projects.has(projectId)) return false;
@@ -195,6 +282,8 @@ export class SysML2OmgService {
       this.relationships.delete(c["@id"]);
     }
     this.commits.delete(projectId);
+    this.branches.delete(projectId);
+    this.tags.delete(projectId);
     this.projects.delete(projectId);
 
     if (this.db) {
@@ -206,6 +295,146 @@ export class SysML2OmgService {
     }
 
     return true;
+  }
+
+  /**
+   * Lists branches for a project.
+   */
+  listBranches(projectId: string): OmgBranch[] {
+    return this.branches.get(projectId) || [];
+  }
+
+  /**
+   * Retrieves a branch by ID or name.
+   */
+  getBranch(projectId: string, branchIdOrName: string): OmgBranch | undefined {
+    const projectBranches = this.branches.get(projectId) || [];
+    return projectBranches.find((b) => b["@id"] === branchIdOrName || b.name === branchIdOrName);
+  }
+
+  /**
+   * Creates a new branch pointing at a specified commit (or the default branch head).
+   */
+  createBranch(projectId: string, name: string, headCommitId?: string): OmgBranch {
+    const project = this.projects.get(projectId);
+    if (!project) throw new Error(`Project '${projectId}' not found`);
+
+    const projectBranches = this.branches.get(projectId) || [];
+    if (projectBranches.some((b) => b.name === name)) {
+      throw new Error(`Branch '${name}' already exists in project '${projectId}'`);
+    }
+
+    const resolvedHead = headCommitId || project.defaultBranch.headCommitId;
+    if (resolvedHead && !this.getCommit(projectId, resolvedHead)) {
+      throw new Error(`Head commit '${resolvedHead}' not found in project '${projectId}'`);
+    }
+
+    const branch: OmgBranch = {
+      "@id": randomUUID(),
+      "@type": "Branch",
+      projectId,
+      name,
+      headCommitId: resolvedHead,
+      created: new Date().toISOString(),
+    };
+
+    projectBranches.push(branch);
+    this.branches.set(projectId, projectBranches);
+
+    if (this.db) {
+      try {
+        this.db.saveSysml2Branch(branch);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not persist branch to database:", err);
+      }
+    }
+
+    return branch;
+  }
+
+  /**
+   * Deletes a non-default branch from a project.
+   */
+  deleteBranch(projectId: string, branchIdOrName: string): boolean {
+    const project = this.projects.get(projectId);
+    if (!project) return false;
+
+    const projectBranches = this.branches.get(projectId) || [];
+    const target = projectBranches.find((b) => b["@id"] === branchIdOrName || b.name === branchIdOrName);
+    if (!target) return false;
+    if (target["@id"] === project.defaultBranch["@id"] || target.name === project.defaultBranch.name) {
+      throw new Error(`Cannot delete default branch '${target.name}'`);
+    }
+
+    this.branches.set(
+      projectId,
+      projectBranches.filter((b) => b["@id"] !== target["@id"]),
+    );
+
+    if (this.db) {
+      try {
+        this.db.deleteSysml2Branch(projectId, target["@id"]);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not delete branch from database:", err);
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Lists tags for a project.
+   */
+  listTags(projectId: string): OmgTag[] {
+    return this.tags.get(projectId) || [];
+  }
+
+  /**
+   * Retrieves a tag by ID or name.
+   */
+  getTag(projectId: string, tagIdOrName: string): OmgTag | undefined {
+    const projectTags = this.tags.get(projectId) || [];
+    return projectTags.find((t) => t["@id"] === tagIdOrName || t.name === tagIdOrName);
+  }
+
+  /**
+   * Creates an immutable tag pointing at a specific commit.
+   */
+  createTag(projectId: string, name: string, commitId?: string): OmgTag {
+    const project = this.projects.get(projectId);
+    if (!project) throw new Error(`Project '${projectId}' not found`);
+
+    const projectTags = this.tags.get(projectId) || [];
+    if (projectTags.some((t) => t.name === name)) {
+      throw new Error(`Tag '${name}' already exists in project '${projectId}'`);
+    }
+
+    const resolvedCommitId = commitId || project.defaultBranch.headCommitId;
+    if (!resolvedCommitId || !this.getCommit(projectId, resolvedCommitId)) {
+      throw new Error(`Commit '${resolvedCommitId}' not found in project '${projectId}'`);
+    }
+
+    const tag: OmgTag = {
+      "@id": randomUUID(),
+      "@type": "Tag",
+      projectId,
+      name,
+      taggedCommit: { "@id": resolvedCommitId },
+      created: new Date().toISOString(),
+    };
+
+    projectTags.push(tag);
+    this.tags.set(projectId, projectTags);
+
+    if (this.db) {
+      try {
+        this.db.saveSysml2Tag(tag);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not persist tag to database:", err);
+      }
+    }
+
+    return tag;
   }
 
   /**
@@ -224,21 +453,32 @@ export class SysML2OmgService {
   }
 
   /**
-   * Creates a new commit in a project with elements and relationships.
+   * Creates a new commit in a project (on the specified branch or default branch) with elements and relationships.
    */
   createCommit(
     projectId: string,
     description: string,
     elements: OmgElement[],
     relationships: OmgRelationship[] = [],
+    branchIdOrName?: string,
+    mergedCommitId?: string,
   ): OmgCommit {
     const project = this.projects.get(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
 
+    let targetBranch = branchIdOrName
+      ? this.getBranch(projectId, branchIdOrName)
+      : this.getBranch(projectId, project.defaultBranch["@id"]) ||
+        this.getBranch(projectId, project.defaultBranch.name);
+
+    if (branchIdOrName && !targetBranch) {
+      throw new Error(`Branch '${branchIdOrName}' not found in project '${projectId}'`);
+    }
+
     const commitId = randomUUID();
     const now = new Date().toISOString();
     const projectCommits = this.commits.get(projectId) || [];
-    const previousCommit = projectCommits[projectCommits.length - 1];
+    const parentCommitId = targetBranch?.headCommitId ?? projectCommits[projectCommits.length - 1]?.["@id"];
 
     const commit: OmgCommit = {
       "@id": commitId,
@@ -246,11 +486,20 @@ export class SysML2OmgService {
       projectId,
       description,
       created: now,
-      previousCommit: previousCommit ? { "@id": previousCommit["@id"] } : null,
+      previousCommit: parentCommitId ? { "@id": parentCommitId } : null,
+      ...(mergedCommitId ? { mergedCommit: { "@id": mergedCommitId } } : {}),
     };
 
     projectCommits.push(commit);
-    project.defaultBranch.headCommitId = commitId;
+
+    if (targetBranch) {
+      targetBranch.headCommitId = commitId;
+      if (targetBranch["@id"] === project.defaultBranch["@id"] || targetBranch.name === project.defaultBranch.name) {
+        project.defaultBranch.headCommitId = commitId;
+      }
+    } else {
+      project.defaultBranch.headCommitId = commitId;
+    }
 
     const elementMap = new Map<string, OmgElement>();
     for (const elem of elements) {
@@ -265,6 +514,9 @@ export class SysML2OmgService {
         this.db.saveSysml2Commit(commit);
         this.db.saveSysml2Elements(commitId, elements);
         this.db.saveSysml2Relationships(commitId, relationships);
+        if (targetBranch) {
+          this.db.saveSysml2Branch(targetBranch);
+        }
         this.db.saveSysml2Project(project);
       } catch (err) {
         console.warn("[SysML2OmgService] Could not persist commit to database:", err);
@@ -275,10 +527,421 @@ export class SysML2OmgService {
   }
 
   /**
+   * Finds the Lowest Common Ancestor (LCA) commit ID between two commits in the project commit DAG.
+   */
+  findLowestCommonAncestor(projectId: string, commitIdA: string, commitIdB: string): string | null {
+    if (commitIdA === commitIdB) return commitIdA;
+
+    const commitMap = new Map<string, OmgCommit>();
+    for (const c of this.listCommits(projectId)) {
+      commitMap.set(c["@id"], c);
+    }
+
+    // Collect all ancestors of A with shortest distance
+    const ancestorsA = new Map<string, number>();
+    const queueA: { id: string; dist: number }[] = [{ id: commitIdA, dist: 0 }];
+    while (queueA.length > 0) {
+      const cur = queueA.shift()!;
+      if (ancestorsA.has(cur.id)) continue;
+      ancestorsA.set(cur.id, cur.dist);
+      const node = commitMap.get(cur.id);
+      if (node?.previousCommit?.["@id"]) {
+        queueA.push({ id: node.previousCommit["@id"], dist: cur.dist + 1 });
+      }
+      if (node?.mergedCommit?.["@id"]) {
+        queueA.push({ id: node.mergedCommit["@id"], dist: cur.dist + 1 });
+      }
+    }
+
+    // BFS from B to find the closest ancestor also in ancestorsA
+    const visitedB = new Set<string>();
+    const queueB: string[] = [commitIdB];
+    let bestLca: string | null = null;
+    let bestDist = Infinity;
+
+    while (queueB.length > 0) {
+      const curId = queueB.shift()!;
+      if (visitedB.has(curId)) continue;
+      visitedB.add(curId);
+
+      const distA = ancestorsA.get(curId);
+      if (distA !== undefined && distA < bestDist) {
+        bestDist = distA;
+        bestLca = curId;
+      }
+
+      const node = commitMap.get(curId);
+      if (node?.previousCommit?.["@id"]) {
+        queueB.push(node.previousCommit["@id"]);
+      }
+      if (node?.mergedCommit?.["@id"]) {
+        queueB.push(node.mergedCommit["@id"]);
+      }
+    }
+
+    return bestLca;
+  }
+
+  /**
+   * Computes a semantic diff between two commits in a project.
+   */
+  diffCommits(projectId: string, baseCommitId: string, targetCommitId: string): OmgCommitDiff {
+    if (!this.getCommit(projectId, baseCommitId)) {
+      throw new Error(`Base commit '${baseCommitId}' not found in project '${projectId}'`);
+    }
+    if (!this.getCommit(projectId, targetCommitId)) {
+      throw new Error(`Target commit '${targetCommitId}' not found in project '${projectId}'`);
+    }
+
+    const baseElems = Array.from(this.elements.get(baseCommitId)?.values() ?? []);
+    const targetElems = Array.from(this.elements.get(targetCommitId)?.values() ?? []);
+
+    const keyOfElem = (e: OmgElement) => `${e["@type"]}::${e.qualifiedName || e.name || e["@id"]}`;
+    const baseByKey = new Map<string, OmgElement>(baseElems.map((e) => [keyOfElem(e), e]));
+    const targetByKey = new Map<string, OmgElement>(targetElems.map((e) => [keyOfElem(e), e]));
+
+    const addedElements: OmgElement[] = [];
+    const modifiedElements: OmgCommitDiff["modifiedElements"] = [];
+    const deletedElements: OmgElement[] = [];
+
+    for (const [k, tElem] of targetByKey.entries()) {
+      const bElem = baseByKey.get(k);
+      if (!bElem) {
+        addedElements.push(tElem);
+      } else {
+        const changedFields: string[] = [];
+        if (bElem.isAbstract !== tElem.isAbstract) changedFields.push("isAbstract");
+        const bAttrs = bElem.attributes || {};
+        const tAttrs = tElem.attributes || {};
+        const attrKeys = new Set([...Object.keys(bAttrs), ...Object.keys(tAttrs)]);
+        for (const ak of attrKeys) {
+          if (ak === "sourceText") continue;
+          if (JSON.stringify(bAttrs[ak]) !== JSON.stringify(tAttrs[ak])) {
+            changedFields.push(`attributes.${ak}`);
+          }
+        }
+        if (changedFields.length > 0) {
+          modifiedElements.push({
+            qualifiedName: tElem.qualifiedName || tElem.name,
+            baseElement: bElem,
+            targetElement: tElem,
+            changedFields,
+          });
+        }
+      }
+    }
+
+    for (const [k, bElem] of baseByKey.entries()) {
+      if (!targetByKey.has(k)) {
+        deletedElements.push(bElem);
+      }
+    }
+
+    const baseRels = this.relationships.get(baseCommitId) || [];
+    const targetRels = this.relationships.get(targetCommitId) || [];
+    const keyOfRel = (r: OmgRelationship) =>
+      `${r.relationshipType}::${r.source.map((s) => s["@id"]).join(",")}->${r.target.map((t) => t["@id"]).join(",")}`;
+    const baseRelKeys = new Set(baseRels.map(keyOfRel));
+    const targetRelKeys = new Set(targetRels.map(keyOfRel));
+
+    const addedRelationships = targetRels.filter((r) => !baseRelKeys.has(keyOfRel(r)));
+    const deletedRelationships = baseRels.filter((r) => !targetRelKeys.has(keyOfRel(r)));
+
+    return {
+      baseCommitId,
+      targetCommitId,
+      addedElements,
+      modifiedElements,
+      deletedElements,
+      addedRelationships,
+      deletedRelationships,
+    };
+  }
+
+  /**
+   * Performs a 3-way semantic merge from `sourceBranch` into `targetBranch`.
+   */
+  mergeBranches(
+    projectId: string,
+    sourceBranchIdOrName: string,
+    targetBranchIdOrName: string,
+    options: {
+      strategy?: "strict" | "source-wins" | "target-wins" | "physics-simplex" | undefined;
+      description?: string | undefined;
+      bounds?: Record<string, { min: number; max: number }> | undefined;
+    } = {},
+  ): OmgMergeResult {
+    const sourceBranch = this.getBranch(projectId, sourceBranchIdOrName);
+    if (!sourceBranch || !sourceBranch.headCommitId) {
+      throw new Error(`Source branch '${sourceBranchIdOrName}' not found or has no head commit`);
+    }
+    const targetBranch = this.getBranch(projectId, targetBranchIdOrName);
+    if (!targetBranch || !targetBranch.headCommitId) {
+      throw new Error(`Target branch '${targetBranchIdOrName}' not found or has no head commit`);
+    }
+
+    const strategy = options.strategy || "strict";
+    const sourceHead = sourceBranch.headCommitId;
+    const targetHead = targetBranch.headCommitId;
+    const lcaCommitId = this.findLowestCommonAncestor(projectId, sourceHead, targetHead);
+
+    const baseElems = lcaCommitId ? Array.from(this.elements.get(lcaCommitId)?.values() ?? []) : [];
+    const sourceElems = Array.from(this.elements.get(sourceHead)?.values() ?? []);
+    const targetElems = Array.from(this.elements.get(targetHead)?.values() ?? []);
+
+    const keyOfElem = (e: OmgElement) => `${e["@type"]}::${e.qualifiedName || e.name}`;
+    const baseMap = new Map<string, OmgElement>(baseElems.map((e) => [keyOfElem(e), e]));
+    const sourceMap = new Map<string, OmgElement>(sourceElems.map((e) => [keyOfElem(e), e]));
+    const targetMap = new Map<string, OmgElement>(targetElems.map((e) => [keyOfElem(e), e]));
+
+    const allKeys = new Set<string>([...baseMap.keys(), ...sourceMap.keys(), ...targetMap.keys()]);
+    const mergedElements: OmgElement[] = [];
+    const conflicts: OmgMergeConflict[] = [];
+    const reconciledParameters: Record<string, number> = {};
+
+    const stripSourceText = (attrs?: Record<string, unknown>) => {
+      if (!attrs) return {};
+      const copy = { ...attrs };
+      delete copy["sourceText"];
+      return copy;
+    };
+    const elemEqual = (a: OmgElement, b: OmgElement) =>
+      a["@type"] === b["@type"] &&
+      a.isAbstract === b.isAbstract &&
+      JSON.stringify(stripSourceText(a.attributes)) === JSON.stringify(stripSourceText(b.attributes));
+
+    for (const key of allKeys) {
+      const b = baseMap.get(key);
+      const s = sourceMap.get(key);
+      const t = targetMap.get(key);
+
+      if (!b) {
+        // Added in one or both branches
+        if (s && !t) {
+          mergedElements.push({ ...s });
+        } else if (!s && t) {
+          mergedElements.push({ ...t });
+        } else if (s && t) {
+          if (elemEqual(s, t) || strategy === "target-wins") {
+            mergedElements.push({ ...t });
+          } else if (strategy === "source-wins") {
+            mergedElements.push({ ...s });
+          } else if (strategy === "physics-simplex") {
+            const sVal = Number(s.attributes?.["defaultValue"]);
+            const tVal = Number(t.attributes?.["defaultValue"]);
+            if (Number.isFinite(sVal) && Number.isFinite(tVal)) {
+              const env = options.bounds?.[s.qualifiedName] || options.bounds?.[s.name];
+              const simplex = PhysicsSimplexReconciler.reconcile({
+                name: s.qualifiedName,
+                parameters: {
+                  [s.name]: {
+                    name: s.name,
+                    unit: "1",
+                    ...(env ? { bounds: env } : {}),
+                    proposals: [
+                      { domain: "source", value: sVal, unit: "1" },
+                      { domain: "target", value: tVal, unit: "1" },
+                    ],
+                  },
+                },
+              });
+              const optVal = simplex.parameters[s.name]?.optimalValue;
+              if (simplex.status === "OPTIMAL" && optVal !== undefined) {
+                reconciledParameters[s.qualifiedName] = optVal;
+                mergedElements.push({
+                  ...t,
+                  attributes: { ...t.attributes, defaultValue: String(optVal) },
+                });
+                continue;
+              }
+            }
+            conflicts.push({
+              qualifiedName: s.qualifiedName,
+              elementType: s["@type"],
+              description: `Concurrent conflicting creation of '${s.qualifiedName}'`,
+              sourceValue: s.attributes,
+              targetValue: t.attributes,
+            });
+          } else {
+            conflicts.push({
+              qualifiedName: s.qualifiedName,
+              elementType: s["@type"],
+              description: `Concurrent conflicting creation of '${s.qualifiedName}'`,
+              sourceValue: s.attributes,
+              targetValue: t.attributes,
+            });
+          }
+        }
+        continue;
+      }
+
+      // Existed in base
+      if (!s && !t) {
+        // Deleted in both
+        continue;
+      }
+      if (!s && t) {
+        // Deleted in source
+        if (elemEqual(b, t) || strategy === "source-wins") {
+          continue;
+        }
+        if (strategy === "target-wins") {
+          mergedElements.push({ ...t });
+          continue;
+        }
+        conflicts.push({
+          qualifiedName: b.qualifiedName,
+          elementType: b["@type"],
+          description: `'${b.qualifiedName}' was deleted in '${sourceBranch.name}' but modified in '${targetBranch.name}'`,
+          baseValue: b.attributes,
+          targetValue: t.attributes,
+        });
+        continue;
+      }
+      if (s && !t) {
+        // Deleted in target
+        if (elemEqual(b, s) || strategy === "target-wins") {
+          continue;
+        }
+        if (strategy === "source-wins") {
+          mergedElements.push({ ...s });
+          continue;
+        }
+        conflicts.push({
+          qualifiedName: b.qualifiedName,
+          elementType: b["@type"],
+          description: `'${b.qualifiedName}' was modified in '${sourceBranch.name}' but deleted in '${targetBranch.name}'`,
+          baseValue: b.attributes,
+          sourceValue: s.attributes,
+        });
+        continue;
+      }
+
+      // Present in all three
+      const sChanged = !elemEqual(b, s!);
+      const tChanged = !elemEqual(b, t!);
+
+      if (!sChanged && !tChanged) {
+        mergedElements.push({ ...t! });
+      } else if (sChanged && !tChanged) {
+        mergedElements.push({ ...s! });
+      } else if (!sChanged && tChanged) {
+        mergedElements.push({ ...t! });
+      } else {
+        // Both modified
+        if (elemEqual(s!, t!) || strategy === "target-wins") {
+          mergedElements.push({ ...t! });
+        } else if (strategy === "source-wins") {
+          mergedElements.push({ ...s! });
+        } else if (strategy === "physics-simplex") {
+          const sVal = Number(s!.attributes?.["defaultValue"]);
+          const tVal = Number(t!.attributes?.["defaultValue"]);
+          if (Number.isFinite(sVal) && Number.isFinite(tVal)) {
+            const env = options.bounds?.[s!.qualifiedName] || options.bounds?.[s!.name];
+            const simplex = PhysicsSimplexReconciler.reconcile({
+              name: s!.qualifiedName,
+              parameters: {
+                [s!.name]: {
+                  name: s!.name,
+                  unit: "1",
+                  ...(env ? { bounds: env } : {}),
+                  proposals: [
+                    { domain: "source", value: sVal, unit: "1" },
+                    { domain: "target", value: tVal, unit: "1" },
+                  ],
+                },
+              },
+            });
+            const optVal = simplex.parameters[s!.name]?.optimalValue;
+            if (simplex.status === "OPTIMAL" && optVal !== undefined) {
+              reconciledParameters[s!.qualifiedName] = optVal;
+              mergedElements.push({
+                ...t!,
+                attributes: { ...t!.attributes, defaultValue: String(optVal) },
+              });
+              continue;
+            }
+          }
+          conflicts.push({
+            qualifiedName: b.qualifiedName,
+            elementType: b["@type"],
+            description: `Conflicting modifications to '${b.qualifiedName}'`,
+            baseValue: b.attributes,
+            sourceValue: s!.attributes,
+            targetValue: t!.attributes,
+          });
+        } else {
+          conflicts.push({
+            qualifiedName: b.qualifiedName,
+            elementType: b["@type"],
+            description: `Conflicting modifications to '${b.qualifiedName}'`,
+            baseValue: b.attributes,
+            sourceValue: s!.attributes,
+            targetValue: t!.attributes,
+          });
+        }
+      }
+    }
+
+    if (conflicts.length > 0) {
+      return {
+        status: "conflicted",
+        hasConflicts: true,
+        lcaCommitId,
+        sourceBranchId: sourceBranch["@id"],
+        targetBranchId: targetBranch["@id"],
+        conflicts,
+        reconciledParameters,
+      };
+    }
+
+    // Merge relationships (union by relationshipType + source + target)
+    const sourceRels = this.relationships.get(sourceHead) || [];
+    const targetRels = this.relationships.get(targetHead) || [];
+    const mergedRelsMap = new Map<string, OmgRelationship>();
+    for (const r of [...targetRels, ...sourceRels]) {
+      const k = `${r.relationshipType}::${r.source.map((x) => x["@id"]).join(",")}->${r.target.map((x) => x["@id"]).join(",")}`;
+      if (!mergedRelsMap.has(k)) {
+        mergedRelsMap.set(k, r);
+      }
+    }
+
+    // Ensure root element's ownedElement array reflects all merged child elements
+    const rootElem = mergedElements.find((e) => !e.owner);
+    if (rootElem) {
+      rootElem.ownedElement = mergedElements.filter((e) => e !== rootElem).map((e) => ({ "@id": e["@id"] }));
+      if (rootElem.attributes?.["sourceText"]) {
+        delete rootElem.attributes["sourceText"];
+      }
+    }
+
+    const mergeDescription = options.description || `Merge branch '${sourceBranch.name}' into '${targetBranch.name}'`;
+    const mergeCommit = this.createCommit(
+      projectId,
+      mergeDescription,
+      mergedElements,
+      Array.from(mergedRelsMap.values()),
+      targetBranch["@id"],
+      sourceHead,
+    );
+
+    return {
+      status: Object.keys(reconciledParameters).length > 0 ? "reconciled" : "merged",
+      hasConflicts: false,
+      lcaCommitId,
+      sourceBranchId: sourceBranch["@id"],
+      targetBranchId: targetBranch["@id"],
+      mergeCommit,
+      conflicts: [],
+      reconciledParameters,
+    };
+  }
+
+  /**
    * Queries elements within a specific commit with pagination and filtering.
    */
   getElements(
-    projectId: string,
+    _projectId: string,
     commitId: string,
     options: QueryOptions = {},
   ): { elements: OmgElement[]; nextCursor?: string | undefined; totalCount: number } {
@@ -324,7 +987,7 @@ export class SysML2OmgService {
   /**
    * Retrieves a single element by ID from a commit.
    */
-  getElementById(projectId: string, commitId: string, elementId: string): OmgElement | undefined {
+  getElementById(_projectId: string, commitId: string, elementId: string): OmgElement | undefined {
     const elementMap = this.elements.get(commitId);
     return elementMap?.get(elementId);
   }
@@ -332,7 +995,7 @@ export class SysML2OmgService {
   /**
    * Retrieves all relationships where the element is source or target.
    */
-  getElementRelationships(projectId: string, commitId: string, elementId: string): OmgRelationship[] {
+  getElementRelationships(_projectId: string, commitId: string, elementId: string): OmgRelationship[] {
     const rels = this.relationships.get(commitId) || [];
     return rels.filter(
       (r) => r.source.some((s) => s["@id"] === elementId) || r.target.some((t) => t["@id"] === elementId),
@@ -342,7 +1005,7 @@ export class SysML2OmgService {
   /**
    * Executes a structured JSON query against a commit.
    */
-  executeQuery(projectId: string, commitId: string, querySpec: OmgQuerySpec): OmgElement[] {
+  executeQuery(_projectId: string, commitId: string, querySpec: OmgQuerySpec): OmgElement[] {
     const elementMap = this.elements.get(commitId);
     if (!elementMap) return [];
 
@@ -486,6 +1149,7 @@ export class SysML2OmgService {
     commitDescription: string,
     sysmlSource: string,
     sourceUri = "sysml2://workspace/model.sysml",
+    branchIdOrName?: string,
   ): OmgCommit {
     const parsed = GenericModelicaBridge.parseSysML2(sysmlSource);
     const elements: OmgElement[] = [];
@@ -595,7 +1259,7 @@ export class SysML2OmgService {
       }
     }
 
-    return this.createCommit(projectId, commitDescription, elements, relationships);
+    return this.createCommit(projectId, commitDescription, elements, relationships, branchIdOrName);
   }
 
   /**
@@ -630,6 +1294,17 @@ export class SysML2OmgService {
     };
 
     this.projects.set(projectId, project);
+    this.branches.set(projectId, [
+      {
+        "@id": "urn:uuid:branch-kerml-main",
+        "@type": "Branch",
+        projectId,
+        name: "main",
+        headCommitId: commitId,
+        created: now,
+      },
+    ]);
+    this.tags.set(projectId, []);
     this.commits.set(projectId, [commit]);
 
     const ws = createSysML2WorkspaceIndex();

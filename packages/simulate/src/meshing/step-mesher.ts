@@ -8,34 +8,36 @@ import { PatchClassifier, type ClassifiedPatches, type PatchClassificationRules 
 
 export interface StepMesherOptions {
   /** Target resolution along the longest bounding box dimension. Default: 20. */
-  resolution?: number;
+  resolution?: number | undefined;
   /** Element formulation order: 'linear' (Tet4, 4-node) or 'quadratic' (Tet10, 10-node). Default: 'linear'. */
-  order?: "linear" | "quadratic";
+  order?: "linear" | "quadratic" | undefined;
   /** Boundary layer inflation configuration (primarily for viscous CFD walls). */
-  inflation?: BoundaryLayerOptions & {
-    /** Target boundary patch name to extrude from. Default: 'WALL_BODY'. */
-    targetPatch?: string;
-  };
+  inflation?:
+    | (BoundaryLayerOptions & {
+        /** Target boundary patch name to extrude from. Default: 'WALL_BODY'. */
+        targetPatch?: string | undefined;
+      })
+    | undefined;
   /** Patch classification rules for boundary conditions. */
-  patchRules?: PatchClassificationRules;
+  patchRules?: PatchClassificationRules | undefined;
 }
 
 export interface MeshingPipelineResult {
   mesh: Tet4Mesh;
   patches: ClassifiedPatches;
   quality: MeshQualityMetrics;
-  inflationResult?: ExtrusionResult;
+  inflationResult?: ExtrusionResult | undefined;
 }
 
 export interface InpExportOptions {
-  heading?: string;
-  materialName?: string;
-  youngsModulus?: number; // E in Pa (default: 210e9)
-  poissonsRatio?: number; // nu (default: 0.3)
-  density?: number; // rho in kg/m^3 (default: 7850)
-  fixedPatch?: string; // default: 'FIXED_SUPPORT'
-  loadPatch?: string; // default: 'LOAD_SURFACE'
-  loadForceZ?: number; // default: -1000.0 N
+  heading?: string | undefined;
+  materialName?: string | undefined;
+  youngsModulus?: number | undefined; // E in Pa (default: 210e9)
+  poissonsRatio?: number | undefined; // nu (default: 0.3)
+  density?: number | undefined; // rho in kg/m^3 (default: 7850)
+  fixedPatch?: string | undefined; // default: 'FIXED_SUPPORT'
+  loadPatch?: string | undefined; // default: 'LOAD_SURFACE'
+  loadForceZ?: number | undefined; // default: -1000.0 N
 }
 
 /**
@@ -90,7 +92,7 @@ export class StepMesher {
             if (!nodeMap.has(origIdx)) {
               const newIdx = nodeMap.size;
               nodeMap.set(origIdx, newIdx);
-              subCoords.push(vertices[origIdx * 3 + 0], vertices[origIdx * 3 + 1], vertices[origIdx * 3 + 2]);
+              subCoords.push(vertices[origIdx * 3 + 0]!, vertices[origIdx * 3 + 1]!, vertices[origIdx * 3 + 2]!);
             }
           }
           subTris.push(nodeMap.get(a)!, nodeMap.get(b)!, nodeMap.get(c)!);
@@ -141,16 +143,135 @@ export class StepMesher {
   } {
     const text = typeof stepInput === "string" ? stepInput : new TextDecoder().decode(stepInput);
 
-    // Look for CARTESIAN_POINT coordinates in STEP ISO-10303-21 entity syntax
+    // 1. Parse numbered STEP entities for B-Rep face reconstruction
+    const cartesianPoints = new Map<number, [number, number, number]>();
+    const vertexToPoint = new Map<number, number>();
+    const edgeCurves = new Map<number, [number, number]>();
+    const orientedEdges = new Map<number, { edge: number; sense: boolean }>();
+    const edgeLoops = new Map<number, number[]>();
+    const faceBounds = new Map<number, number>();
+    const faces: number[][] = [];
+
+    const idPointRegex =
+      /#(\d+)\s*=\s*CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*\)\s*\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = idPointRegex.exec(text)) !== null) {
+      const id = parseInt(m[1]!, 10);
+      const x = parseFloat(m[2]!);
+      const y = parseFloat(m[3]!);
+      const z = parseFloat(m[4]!);
+      if (!Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z)) {
+        cartesianPoints.set(id, [x, y, z]);
+      }
+    }
+
+    const vpRegex = /#(\d+)\s*=\s*VERTEX_POINT\s*\(\s*'[^']*'\s*,\s*#(\d+)\s*\)/g;
+    while ((m = vpRegex.exec(text)) !== null) {
+      vertexToPoint.set(parseInt(m[1]!, 10), parseInt(m[2]!, 10));
+    }
+
+    const ecRegex = /#(\d+)\s*=\s*EDGE_CURVE\s*\(\s*'[^']*'\s*,\s*#(\d+)\s*,\s*#(\d+)/g;
+    while ((m = ecRegex.exec(text)) !== null) {
+      edgeCurves.set(parseInt(m[1]!, 10), [parseInt(m[2]!, 10), parseInt(m[3]!, 10)]);
+    }
+
+    const oeRegex = /#(\d+)\s*=\s*ORIENTED_EDGE\s*\(\s*'[^']*'\s*,\s*\*?\s*,\s*\*?\s*,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/g;
+    while ((m = oeRegex.exec(text)) !== null) {
+      orientedEdges.set(parseInt(m[1]!, 10), {
+        edge: parseInt(m[2]!, 10),
+        sense: m[3] === "T",
+      });
+    }
+
+    const elRegex = /#(\d+)\s*=\s*(?:EDGE_LOOP|POLY_LOOP)\s*\(\s*'[^']*'\s*,\s*\(([^)]*)\)\s*\)/g;
+    while ((m = elRegex.exec(text)) !== null) {
+      const loopId = parseInt(m[1]!, 10);
+      const refs = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
+      if (refs.length > 0) edgeLoops.set(loopId, refs);
+    }
+
+    const fbRegex = /#(\d+)\s*=\s*(?:FACE_OUTER_BOUND|FACE_BOUND)\s*\(\s*'[^']*'\s*,\s*#(\d+)/g;
+    while ((m = fbRegex.exec(text)) !== null) {
+      faceBounds.set(parseInt(m[1]!, 10), parseInt(m[2]!, 10));
+    }
+
+    const afRegex = /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'[^']*'\s*,\s*\(([^)]*)\)/g;
+    while ((m = afRegex.exec(text)) !== null) {
+      const boundIds = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
+      for (const bId of boundIds) {
+        const loopId = faceBounds.get(bId);
+        if (loopId === undefined) continue;
+        const loopItems = edgeLoops.get(loopId);
+        if (!loopItems || loopItems.length < 3) continue;
+        const polyPointIds: number[] = [];
+        for (const itemId of loopItems) {
+          if (cartesianPoints.has(itemId)) {
+            polyPointIds.push(itemId);
+            continue;
+          }
+          const oe = orientedEdges.get(itemId);
+          if (oe) {
+            const ec = edgeCurves.get(oe.edge);
+            if (ec) {
+              const startVertex = oe.sense ? ec[0] : ec[1];
+              const ptId = vertexToPoint.get(startVertex);
+              if (ptId !== undefined && cartesianPoints.has(ptId)) {
+                polyPointIds.push(ptId);
+              }
+            }
+          }
+        }
+        if (polyPointIds.length >= 3) {
+          faces.push(polyPointIds);
+        }
+      }
+    }
+
+    if (faces.length >= 4) {
+      const ptIdToVertexIdx = new Map<number, number>();
+      const vertCoords: number[] = [];
+      const triIndices: number[] = [];
+
+      const getOrAddVertex = (ptId: number): number => {
+        let idx = ptIdToVertexIdx.get(ptId);
+        if (idx === undefined) {
+          idx = ptIdToVertexIdx.size;
+          ptIdToVertexIdx.set(ptId, idx);
+          const pt = cartesianPoints.get(ptId)!;
+          vertCoords.push(pt[0], pt[1], pt[2]);
+        }
+        return idx;
+      };
+
+      for (const poly of faces) {
+        const v0 = getOrAddVertex(poly[0]!);
+        for (let k = 1; k < poly.length - 1; k++) {
+          const v1 = getOrAddVertex(poly[k]!);
+          const v2 = getOrAddVertex(poly[k + 1]!);
+          if (v0 !== v1 && v1 !== v2 && v2 !== v0) {
+            triIndices.push(v0, v1, v2);
+          }
+        }
+      }
+
+      if (triIndices.length >= 12 && ptIdToVertexIdx.size >= 4) {
+        return {
+          vertices: new Float32Array(vertCoords),
+          indices: new Uint32Array(triIndices),
+        };
+      }
+    }
+
+    // 2. Look for unnumbered or arbitrary CARTESIAN_POINT coordinates in STEP ISO-10303-21 entity syntax
     const pointRegex =
       /CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*\)\s*\)/g;
     const points: [number, number, number][] = [];
     let match: RegExpExecArray | null;
 
     while ((match = pointRegex.exec(text)) !== null) {
-      const x = parseFloat(match[1]);
-      const y = parseFloat(match[2]);
-      const z = parseFloat(match[3]);
+      const x = parseFloat(match[1]!);
+      const y = parseFloat(match[2]!);
+      const z = parseFloat(match[3]!);
       if (!Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z)) {
         points.push([x, y, z]);
       }
@@ -261,9 +382,9 @@ export class StepMesher {
     // *NODE block (1-based index)
     lines.push("*NODE");
     for (let i = 0; i < mesh.numNodes; i++) {
-      const x = mesh.nodeCoords[i * 3 + 0].toFixed(6);
-      const y = mesh.nodeCoords[i * 3 + 1].toFixed(6);
-      const z = mesh.nodeCoords[i * 3 + 2].toFixed(6);
+      const x = mesh.nodeCoords[i * 3 + 0]!.toFixed(6);
+      const y = mesh.nodeCoords[i * 3 + 1]!.toFixed(6);
+      const z = mesh.nodeCoords[i * 3 + 2]!.toFixed(6);
       lines.push(`${i + 1}, ${x}, ${y}, ${z}`);
     }
 
@@ -277,7 +398,7 @@ export class StepMesher {
       const base = e * nodesPerElem;
       const nodeIds: number[] = [];
       for (let k = 0; k < nodesPerElem; k++) {
-        nodeIds.push(mesh.elements[base + k] + 1); // 1-based
+        nodeIds.push(mesh.elements[base + k]! + 1); // 1-based
       }
       lines.push(`${e + 1}, ${nodeIds.join(", ")}`);
     }
@@ -346,9 +467,9 @@ export class StepMesher {
 
     lines.push(`NPOIN= ${mesh.numNodes}`);
     for (let i = 0; i < mesh.numNodes; i++) {
-      const x = mesh.nodeCoords[i * 3 + 0].toFixed(8);
-      const y = mesh.nodeCoords[i * 3 + 1].toFixed(8);
-      const z = mesh.nodeCoords[i * 3 + 2].toFixed(8);
+      const x = mesh.nodeCoords[i * 3 + 0]!.toFixed(8);
+      const y = mesh.nodeCoords[i * 3 + 1]!.toFixed(8);
+      const z = mesh.nodeCoords[i * 3 + 2]!.toFixed(8);
       lines.push(`${x}\t${y}\t${z}\t${i}`);
     }
 

@@ -17,9 +17,9 @@ export interface BVHItem {
 
 export interface BVHNode {
   aabb: AABB;
-  left?: BVHNode;
-  right?: BVHNode;
-  items?: BVHItem[];
+  left?: BVHNode | undefined;
+  right?: BVHNode | undefined;
+  items?: BVHItem[] | undefined;
 }
 
 export interface RaycastHit {
@@ -96,8 +96,8 @@ export class AssemblyBVH {
 
       // Sort by centroid along the longest axis
       subset.sort((a, b) => {
-        const ca = 0.5 * (a.aabb.min[axis] + a.aabb.max[axis]);
-        const cb = 0.5 * (b.aabb.min[axis] + b.aabb.max[axis]);
+        const ca = 0.5 * (a.aabb.min[axis]! + a.aabb.max[axis]!);
+        const cb = 0.5 * (b.aabb.min[axis]! + b.aabb.max[axis]!);
         return ca - cb;
       });
 
@@ -126,7 +126,7 @@ export class AssemblyBVH {
       this.flatAABBs = new Float64Array(items.length * 6);
       this.flatItemIds = new Int32Array(items.length);
       for (let i = 0; i < items.length; i++) {
-        const item = items[i];
+        const item = items[i]!;
         const off = i * 6;
         this.flatAABBs[off] = item.aabb.min[0];
         this.flatAABBs[off + 1] = item.aabb.min[1];
@@ -149,7 +149,7 @@ export class AssemblyBVH {
     const traverse = (node: BVHNode) => {
       // Test AABB against all frustum planes
       for (let i = 0; i < planes.length; i++) {
-        const plane = planes[i];
+        const plane = planes[i]!;
         // p-vertex (point on AABB furthest in the direction of the plane normal)
         const px = plane.normal[0] >= 0 ? node.aabb.max[0] : node.aabb.min[0];
         const py = plane.normal[1] >= 0 ? node.aabb.max[1] : node.aabb.min[1];
@@ -165,7 +165,7 @@ export class AssemblyBVH {
         for (const item of node.items) {
           let itemVisible = true;
           for (let i = 0; i < planes.length; i++) {
-            const plane = planes[i];
+            const plane = planes[i]!;
             const px = plane.normal[0] >= 0 ? item.aabb.max[0] : item.aabb.min[0];
             const py = plane.normal[1] >= 0 ? item.aabb.max[1] : item.aabb.min[1];
             const pz = plane.normal[2] >= 0 ? item.aabb.max[2] : item.aabb.min[2];
@@ -312,15 +312,15 @@ function computeEnclosingAABB(items: BVHItem[]): AABB {
     return { min: [0, 0, 0], max: [0, 0, 0] };
   }
 
-  let minX = items[0].aabb.min[0],
-    minY = items[0].aabb.min[1],
-    minZ = items[0].aabb.min[2];
-  let maxX = items[0].aabb.max[0],
-    maxY = items[0].aabb.max[1],
-    maxZ = items[0].aabb.max[2];
+  let minX = items[0]!.aabb.min[0],
+    minY = items[0]!.aabb.min[1],
+    minZ = items[0]!.aabb.min[2];
+  let maxX = items[0]!.aabb.max[0],
+    maxY = items[0]!.aabb.max[1],
+    maxZ = items[0]!.aabb.max[2];
 
   for (let i = 1; i < items.length; i++) {
-    const box = items[i].aabb;
+    const box = items[i]!.aabb;
     if (box.min[0] < minX) minX = box.min[0];
     if (box.min[1] < minY) minY = box.min[1];
     if (box.min[2] < minZ) minZ = box.min[2];
@@ -358,9 +358,9 @@ function intersectRayAABB(
   let tMax = Infinity;
 
   for (let i = 0; i < 3; i++) {
-    const invD = 1.0 / (Math.abs(dir[i]) > 1e-9 ? dir[i] : 1e-9 * (dir[i] >= 0 ? 1 : -1));
-    let t0 = (box.min[i] - origin[i]) * invD;
-    let t1 = (box.max[i] - origin[i]) * invD;
+    const invD = 1.0 / (Math.abs(dir[i]!) > 1e-9 ? dir[i]! : 1e-9 * (dir[i]! >= 0 ? 1 : -1));
+    let t0 = (box.min[i]! - origin[i]!) * invD;
+    let t1 = (box.max[i]! - origin[i]!) * invD;
 
     if (invD < 0) {
       const tmp = t0;

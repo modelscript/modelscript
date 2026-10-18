@@ -117,7 +117,7 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
       for (let p = lStart + 1; p < lEnd; p++) {
         const r = lRowIndicesList[p] ?? 0;
         const lVal = lValuesList[p] ?? 0;
-        denseX[r] -= xj * lVal;
+        denseX[r] = denseX[r]! - xj * lVal;
         touched[r] = 1;
       }
     }
@@ -151,6 +151,16 @@ export function sparseLuFactor(A: CCSMatrix): SparseLU {
       perm[pivotRow] = origK;
       permInv[origPiv] = k;
       permInv[origK] = pivotRow;
+
+      // Permute row indices k <-> pivotRow in previously factored columns of L
+      for (let p = 0; p < lRowIndicesList.length; p++) {
+        const rIdx = lRowIndicesList[p];
+        if (rIdx === k) {
+          lRowIndicesList[p] = pivotRow;
+        } else if (rIdx === pivotRow) {
+          lRowIndicesList[p] = k;
+        }
+      }
     }
 
     const pivotVal = denseX[k]!;
@@ -223,7 +233,7 @@ export function sparseLuSolve(lu: SparseLU, b: Float64Array, x: Float64Array): v
     for (let p = start + 1; p < end; p++) {
       const row = lu.lRowIndices[p] ?? 0;
       const lVal = lu.lValues[p] ?? 0;
-      y[row] -= diagVal * lVal;
+      y[row] = y[row]! - diagVal * lVal;
     }
   }
 
@@ -239,7 +249,7 @@ export function sparseLuSolve(lu: SparseLU, b: Float64Array, x: Float64Array): v
       const row = lu.uRowIndices[p] ?? 0;
       if (row < col) {
         const uVal = lu.uValues[p] ?? 0;
-        y[row] -= solCol * uVal;
+        y[row] = y[row]! - solCol * uVal;
       }
     }
   }
@@ -254,8 +264,8 @@ export function factorizeLinearMatrix(
   W: Float64Array[],
   n: number,
   options: {
-    linearSolver?: "auto" | "dense" | "sparse";
-    sparseThreshold?: number;
+    linearSolver?: "auto" | "dense" | "sparse" | undefined;
+    sparseThreshold?: number | undefined;
   } = {},
 ): FactorizedLinearSolver {
   const solverType = options.linearSolver ?? "auto";

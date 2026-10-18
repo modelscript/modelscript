@@ -50,15 +50,15 @@ interface CodeEditorProps {
   content: string;
   uri: string;
   setEditor: (editor: editor.ICodeEditor) => void;
-  onChange?: (value: string) => void;
-  onProgress?: (progress: number, message: string) => void;
-  onParsed?: () => void;
-  onDiagnostics?: (markers: editor.IMarkerData[]) => void;
-  onStatusChange?: (state: string, message: string) => void;
+  onChange?: ((value: string) => void) | undefined;
+  onProgress?: ((progress: number, message: string) => void) | undefined;
+  onParsed?: (() => void) | undefined;
+  onDiagnostics?: ((markers: editor.IMarkerData[]) => void) | undefined;
+  onStatusChange?: ((state: string, message: string) => void) | undefined;
   theme: Theme;
   embed: boolean;
-  readOnly?: boolean;
-  externalErrors?: string[];
+  readOnly?: boolean | undefined;
+  externalErrors?: string[] | undefined;
 }
 
 export interface CodeEditorHandle {

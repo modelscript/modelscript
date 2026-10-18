@@ -27,9 +27,9 @@ export interface HermiteSegment {
   /** State time derivatives dx/dt at t1. */
   dx1: Float64Array;
   /** Optional algebraic variables at t0. */
-  y0?: Float64Array;
+  y0?: Float64Array | undefined;
   /** Optional algebraic variables at t1. */
-  y1?: Float64Array;
+  y1?: Float64Array | undefined;
 }
 
 export interface CheckpointTapeStats {

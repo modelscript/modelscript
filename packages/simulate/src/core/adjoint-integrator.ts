@@ -30,7 +30,7 @@ export interface StageLossEvaluation {
   /** Gradient w.r.t state vector x at time t: dL_stage/dx_i */
   gradState: Map<string, number>;
   /** Optional direct gradient w.r.t parameters p: dL_stage/dp_j */
-  gradParam?: Map<string, number>;
+  gradParam?: Map<string, number> | undefined;
 }
 
 export interface TerminalLossEvaluation {
@@ -38,36 +38,40 @@ export interface TerminalLossEvaluation {
   /** Gradient w.r.t terminal state x(T): dPhi/dx_i */
   gradState: Map<string, number>;
   /** Optional direct gradient w.r.t parameters p: dPhi/dp_j */
-  gradParam?: Map<string, number>;
+  gradParam?: Map<string, number> | undefined;
 }
 
 export interface ArenaAdjointOptions {
   /** Start time (default: 0). */
-  startTime?: number;
+  startTime?: number | undefined;
   /** Stop time (default: 1). */
-  stopTime?: number;
+  stopTime?: number | undefined;
   /** Output communication step size. */
-  step?: number;
+  step?: number | undefined;
   /** Number of output intervals. */
-  numberOfIntervals?: number;
+  numberOfIntervals?: number | undefined;
   /** Parameter overrides applied before simulation. */
-  parameterOverrides?: Map<string, number>;
+  parameterOverrides?: Map<string, number> | undefined;
   /** Parameter names to compute sensitivities for. */
   parametersToDifferentiate: string[];
   /** Terminal cost Phi(x(T), p). */
-  terminalLoss?: (states: Map<string, number>, params: Map<string, number>) => TerminalLossEvaluation;
+  terminalLoss?: ((states: Map<string, number>, params: Map<string, number>) => TerminalLossEvaluation) | undefined;
   /** Running stage cost L_stage(t, x(t), p). */
-  stageLoss?: (t: number, states: Map<string, number>, params: Map<string, number>) => StageLossEvaluation;
+  stageLoss?:
+    | ((t: number, states: Map<string, number>, params: Map<string, number>) => StageLossEvaluation)
+    | undefined;
   /**
    * Convenience: target trajectory for tracking/parameter identification.
    * Uses quadratic loss: 0.5 * sum_k ||x(t_k) - x^*_k||^2.
    */
-  targetTrajectory?: {
-    states: string[];
-    y: number[][];
-  };
+  targetTrajectory?:
+    | {
+        states: string[];
+        y: number[][];
+      }
+    | undefined;
   /** Cooperative cancellation signal. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 export interface ArenaAdjointResult {
@@ -78,12 +82,14 @@ export interface ArenaAdjointResult {
   /** Forward simulation trajectory result. */
   trajectory: ArenaSimulationResult;
   /** Continuous Hermite checkpoint tape for dense trajectory reconstruction. */
-  tape?: DenseHermiteCheckpointTape;
+  tape?: DenseHermiteCheckpointTape | undefined;
   /** Adjoint states over time (lambda_i(t)). */
-  adjointTrajectory?: {
-    t: number[];
-    lambda: Map<string, number[]>;
-  };
+  adjointTrajectory?:
+    | {
+        t: number[];
+        lambda: Map<string, number[]>;
+      }
+    | undefined;
 }
 
 /**

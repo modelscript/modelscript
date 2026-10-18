@@ -12,11 +12,11 @@ export interface ParametricSweepVariable {
   name: string;
   min: number;
   max: number;
-  nominal?: number;
-  distribution?: "uniform" | "normal" | "log-uniform";
-  mean?: number;
-  stdDev?: number;
-  numSteps?: number;
+  nominal?: number | undefined;
+  distribution?: "uniform" | "normal" | "log-uniform" | undefined;
+  mean?: number | undefined;
+  stdDev?: number | undefined;
+  numSteps?: number | undefined;
 }
 
 export type DoEStrategy = "lhs" | "sobol" | "grid" | "random";

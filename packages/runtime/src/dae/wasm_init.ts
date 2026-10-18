@@ -21,8 +21,10 @@ import {
   VarType,
   Variability,
   differentiateArenaExpressionWrt,
+  substituteArenaExpr,
 } from "./wasm_dae.js";
 import { evaluateArenaRuntime } from "./wasm_evaluator.js";
+import { executeArenaStatements } from "./wasm_statement_executor.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public Types: Initialization BLT
@@ -256,6 +258,152 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
   }
 }
 
+function canonicalizeScalarizedSubscripts(dae: DAEBuilder, exprId: number): number {
+  if (exprId < 0) return exprId;
+  const kind = dae.getExprKind(exprId);
+  if (kind === ExprKind.Subscript) {
+    const baseExpr = dae.getExprData1(exprId);
+    const idxExpr = dae.getExprLeft(exprId);
+    const cBase = canonicalizeScalarizedSubscripts(dae, baseExpr);
+    const cIdx = canonicalizeScalarizedSubscripts(dae, idxExpr);
+    if (dae.getExprKind(cBase) === ExprKind.Name) {
+      const baseName = dae.interner.resolve(dae.getExprData1(cBase));
+      const idxKind = dae.getExprKind(cIdx);
+      let idxVal: number | null = null;
+      if (idxKind === ExprKind.IntLiteral) {
+        idxVal = dae.getExprData1(cIdx);
+      } else if (idxKind === ExprKind.RealLiteral) {
+        idxVal = Math.round(dae.getExprRealValue(cIdx));
+      }
+      if (baseName && idxVal !== null) {
+        const candidateName = `${baseName}[${idxVal}]`;
+        if (dae.getVarIdxByName(candidateName) !== -1) {
+          return dae.addNameExpr(candidateName);
+        }
+      }
+    }
+    return cBase !== baseExpr || cIdx !== idxExpr ? dae.addSubscriptExpr(cBase, [cIdx]) : exprId;
+  }
+  if (kind === ExprKind.Der) {
+    const arg = dae.getExprData1(exprId);
+    const cArg = canonicalizeScalarizedSubscripts(dae, arg);
+    return cArg !== arg ? dae.addDerExpr(cArg) : exprId;
+  }
+  if (kind === ExprKind.Binary) {
+    const l = dae.getExprLeft(exprId);
+    const r = dae.getExprRight(exprId);
+    const cl = canonicalizeScalarizedSubscripts(dae, l);
+    const cr = canonicalizeScalarizedSubscripts(dae, r);
+    return cl !== l || cr !== r ? dae.addBinaryExpr(dae.getExprData1(exprId), cl, cr) : exprId;
+  }
+  if (kind === ExprKind.Negate) {
+    const l = dae.getExprLeft(exprId);
+    const cl = canonicalizeScalarizedSubscripts(dae, l);
+    return cl !== l ? dae.addNegateExpr(cl) : exprId;
+  }
+  if (kind === ExprKind.Unary) {
+    const l = dae.getExprLeft(exprId);
+    const cl = canonicalizeScalarizedSubscripts(dae, l);
+    return cl !== l ? dae.addUnaryExpr(dae.getExprData1(exprId), cl) : exprId;
+  }
+  if (kind === ExprKind.IfElse) {
+    const c = dae.getExprData1(exprId);
+    const l = dae.getExprLeft(exprId);
+    const r = dae.getExprRight(exprId);
+    const cc = canonicalizeScalarizedSubscripts(dae, c);
+    const cl = canonicalizeScalarizedSubscripts(dae, l);
+    const cr = canonicalizeScalarizedSubscripts(dae, r);
+    return cc !== c || cl !== l || cr !== r ? dae.addExpression(ExprKind.IfElse, cc, cl, cr) : exprId;
+  }
+  if (kind === ExprKind.Call) {
+    const funcNameId = dae.getExprData1(exprId);
+    const firstArg = dae.getExprLeft(exprId);
+    const count = dae.getExprRight(exprId);
+    if (count <= 0 || firstArg < 0) return exprId;
+    let changed = false;
+    const newArgs: number[] = [];
+    for (let j = 0; j < count; j++) {
+      const slotIdx = exprId + j;
+      const origArg =
+        j === 0
+          ? firstArg
+          : slotIdx < dae.exprCount && dae.getExprKind(slotIdx) === ExprKind.Tuple
+            ? dae.getExprLeft(slotIdx)
+            : firstArg + j;
+      const cArg = canonicalizeScalarizedSubscripts(dae, origArg);
+      if (cArg !== origArg) changed = true;
+      newArgs.push(cArg);
+    }
+    if (!changed) return exprId;
+    const callId = dae.addExpression(ExprKind.Call, funcNameId, newArgs[0]!, count);
+    for (let j = 1; j < count; j++) {
+      dae.addExpression(ExprKind.Tuple, 0, newArgs[j]!, 0);
+    }
+    return callId;
+  }
+  return exprId;
+}
+
+function evalRangeBoundArena(dae: DAEBuilder, exprId: number): number | null {
+  if (exprId < 0) return null;
+  const kind = dae.getExprKind(exprId);
+  if (kind === ExprKind.IntLiteral) return dae.getExprData1(exprId);
+  if (kind === ExprKind.RealLiteral) return dae.getExprRealValue(exprId);
+  if (kind === ExprKind.Name) {
+    const name = dae.interner.resolve(dae.getExprData1(exprId));
+    if (name) {
+      const varIdx = dae.getVarIdxByName(name);
+      if (varIdx !== -1) {
+        return dae.getVarStartValue(varIdx);
+      }
+    }
+  }
+  try {
+    const val = evaluateArenaRuntime(dae, exprId, new Float64Array(0));
+    if (Number.isFinite(val)) return val;
+  } catch {
+    // Fallback below
+  }
+  return null;
+}
+
+function expandForEquationArena(dae: DAEBuilder, eqIdx: number): { lhs: number; rhs: number }[] {
+  const expanded: { lhs: number; rhs: number }[] = [];
+  const meta = dae.getForEquationMeta?.(eqIdx);
+  if (!meta) return expanded;
+
+  const rangeExprId = meta.rangeExprId;
+  if (rangeExprId < 0 || dae.getExprKind(rangeExprId) !== ExprKind.Range) return expanded;
+
+  const startExpr = dae.getExprData1(rangeExprId);
+  const stepExpr = dae.getExprLeft(rangeExprId);
+  const stopExpr = dae.getExprRight(rangeExprId);
+
+  const startVal = evalRangeBoundArena(dae, startExpr);
+  const stopVal = evalRangeBoundArena(dae, stopExpr);
+  const stepVal = stepExpr >= 0 ? (evalRangeBoundArena(dae, stepExpr) ?? 1) : 1;
+
+  if (startVal === null || stopVal === null || stepVal === 0) return expanded;
+
+  const bodyEqs = meta.equations ?? meta.bodyEquations ?? [];
+  const maxIter = 10000;
+  let iterCount = 0;
+
+  for (let idxVal = startVal; stepVal > 0 ? idxVal <= stopVal + 1e-12 : idxVal >= stopVal - 1e-12; idxVal += stepVal) {
+    if (++iterCount > maxIter) break;
+    const kExpr = dae.addIntLiteral(Math.round(idxVal));
+    for (const bEq of bodyEqs) {
+      const rawLhs = "lhs" in bEq ? bEq.lhs : (bEq as any).lhsExprId;
+      const rawRhs = "rhs" in bEq ? bEq.rhs : (bEq as any).rhsExprId;
+      const substLhs = canonicalizeScalarizedSubscripts(dae, substituteArenaExpr(dae, rawLhs, meta.indexNameId, kExpr));
+      const substRhs = canonicalizeScalarizedSubscripts(dae, substituteArenaExpr(dae, rawRhs, meta.indexNameId, kExpr));
+      expanded.push({ lhs: substLhs, rhs: substRhs });
+    }
+  }
+
+  return expanded;
+}
+
 /**
  * Build the initialization BLT from a flattened DAE.
  *
@@ -310,6 +458,11 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
             initEquations.push({ lhs: l, rhs: r, source: "initial" });
           }
         }
+      } else if (kind === EqKind.InitialFor) {
+        const expanded = expandForEquationArena(dae, i);
+        for (const eq of expanded) {
+          initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "initial" });
+        }
       }
     } else if (kind !== EqKind.When) {
       if (kind === EqKind.Array) {
@@ -325,6 +478,11 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
         }
       } else if (kind === EqKind.Simple) {
         initEquations.push({ lhs, rhs, source: "continuous" });
+      } else if (kind === EqKind.For) {
+        const expanded = expandForEquationArena(dae, i);
+        for (const eq of expanded) {
+          initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "continuous" });
+        }
       }
     }
   }
@@ -353,6 +511,26 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     if (shape.length > 0 && unknowns.has(varName)) {
       const size = shape.reduce((a: number, b: number) => a * b, 1);
       for (let j = 0; j < size; j++) unknowns.add(`${varName}[${j + 1}]`);
+    }
+  }
+
+  // If there are more unknowns than initialization equations (e.g. states without explicit
+  // `fixed = true` and without corresponding `initial equation`s), fix state variables at
+  // their `start` values unless they have an explicit `fixed = false` attribute.
+  if (unknowns.size > initEquations.length) {
+    for (const ref of allReferenced) {
+      if (unknowns.size <= initEquations.length) break;
+      if (ref.startsWith("der(") && ref.endsWith(")")) {
+        const stateName = ref.slice(4, -1);
+        if (unknowns.has(stateName)) {
+          const vIdx = dae.getVarIdxByName(stateName);
+          const hasExplicitFixedAttr = vIdx >= 0 && dae.getVarAttrExprId(vIdx, "fixed") !== undefined;
+          if (!hasExplicitFixedAttr) {
+            unknowns.delete(stateName);
+            knowns.add(stateName);
+          }
+        }
+      }
     }
   }
 
@@ -558,7 +736,7 @@ function extractDerName(exprId: number, arena: DAEBuilder): string | null {
   return null;
 }
 
-function _depsExcluding(deps: Set<string>, exclude: string): boolean {
+export function _depsExcluding(deps: Set<string>, exclude: string): boolean {
   for (const d of deps) {
     if (d !== exclude) return true;
   }
@@ -1092,12 +1270,27 @@ export function solveImplicitBlock(
  * @returns Solver result with computed initial values.
  */
 export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Float64Array): ArenaInitSolverResult {
+  (arena as any)._isInitialPhase = true;
+  try {
+    return solveInitialEquationsArenaInner(arena, initialValues);
+  } finally {
+    (arena as any)._isInitialPhase = false;
+  }
+}
+
+function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float64Array): ArenaInitSolverResult {
   const result: ArenaInitSolverResult = {
     valuesByStringId: new Float64Array(initialValues),
     iterations: 0,
     residualNorm: 0,
     converged: true,
   };
+
+  if (arena.initialAlgorithmSections && arena.initialAlgorithmSections.length > 0) {
+    for (const sec of arena.initialAlgorithmSections) {
+      executeArenaStatements(arena, sec.start, sec.count, result.valuesByStringId);
+    }
+  }
 
   // 0. Attempt block-by-block BLT initialization first
   try {
@@ -1124,15 +1317,23 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
     // If BLT encounters an unsupported structure, fall back to monolithic solver below
   }
 
-  // 1. Collect initial equations (Monolithic fallback)
-  const initialEqIndices: number[] = [];
+  // 1. Collect initial equations (Monolithic fallback, including expanded For/InitialFor)
+  const initialEqPairs: { lhs: number; rhs: number }[] = [];
+  let explicitInitialCount = 0;
   for (let i = 0; i < arena.eqCount; i++) {
     const kind = arena.getEqKind(i);
     if (kind === EqKind.InitialSimple || kind === EqKind.Simple) {
-      initialEqIndices.push(i);
+      initialEqPairs.push({ lhs: arena.getEqLhs(i), rhs: arena.getEqRhs(i) });
+      if (kind === EqKind.InitialSimple) explicitInitialCount++;
+    } else if (kind === EqKind.InitialFor || kind === EqKind.For) {
+      const expanded = expandForEquationArena(arena, i);
+      for (const eq of expanded) {
+        initialEqPairs.push(eq);
+        if (kind === EqKind.InitialFor) explicitInitialCount++;
+      }
     }
   }
-  if (initialEqIndices.length === 0) return result;
+  if (initialEqPairs.length === 0) return result;
 
   // 2. Identify unknowns
   const stateVars = new Set<number>();
@@ -1153,6 +1354,7 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
   }
 
   const solvableVarNameIds = new Set<number>();
+  let freeStatesAdded = 0;
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
     const v = arena.getVarVariability(i);
@@ -1161,6 +1363,10 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
     if (stateVars.has(i)) {
       const derNameId = arena.interner.intern(`der(${arena.getVarName(i)})`);
       solvableVarNameIds.add(derNameId);
+      if (!arena.isVarFixed(i) && freeStatesAdded < explicitInitialCount) {
+        solvableVarNameIds.add(arena.getVarNameId(i));
+        freeStatesAdded++;
+      }
       continue;
     }
 
@@ -1171,9 +1377,9 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
   }
 
   const referencedNameIds = new Set<number>();
-  for (const eqIdx of initialEqIndices) {
-    collectExprNameIds(arena, arena.getEqLhs(eqIdx), referencedNameIds);
-    collectExprNameIds(arena, arena.getEqRhs(eqIdx), referencedNameIds);
+  for (const eq of initialEqPairs) {
+    collectExprNameIds(arena, eq.lhs, referencedNameIds);
+    collectExprNameIds(arena, eq.rhs, referencedNameIds);
   }
 
   const timeId = arena.interner.intern("time");
@@ -1187,18 +1393,16 @@ export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Flo
   }
 
   const nUnknowns = unknownList.length;
-  const nResiduals = initialEqIndices.length;
+  const nResiduals = initialEqPairs.length;
   if (nResiduals === 0 || nUnknowns === 0) return result;
   const nSolve = Math.min(nResiduals, nUnknowns);
 
   // 3. Build residual expressions R_i = LHS_i - RHS_i
   const residualExprIds: number[] = [];
   for (let i = 0; i < nSolve; i++) {
-    const eqIdx = initialEqIndices[i] ?? -1;
-    if (eqIdx === -1) continue;
-    const lhs = arena.getEqLhs(eqIdx);
-    const rhs = arena.getEqRhs(eqIdx);
-    residualExprIds.push(arena.addBinaryExpr(BinOp.Sub, lhs, rhs));
+    const eq = initialEqPairs[i];
+    if (!eq) continue;
+    residualExprIds.push(arena.addBinaryExpr(BinOp.Sub, eq.lhs, eq.rhs));
   }
 
   // 4. Compute structural sparsity pattern
@@ -1900,7 +2104,7 @@ function runPseudoTransientRelaxation(
       const raw = (currentZ[i] ?? 0) + (dz[i] ?? 0);
       trialZ[i] = b ? Math.max(b.min, Math.min(b.max, raw)) : raw;
       const zj = unknownList[i]!;
-      result.valuesByStringId[zj] = trialZ[i];
+      result.valuesByStringId[zj] = trialZ[i]!;
     }
 
     let trialNorm = 0;
@@ -1919,7 +2123,7 @@ function runPseudoTransientRelaxation(
 
     if (isFiniteStep && trialNorm < norm * 1.05) {
       // Step accepted! Update current state
-      for (let i = 0; i < nSolve; i++) currentZ[i] = trialZ[i];
+      for (let i = 0; i < nSolve; i++) currentZ[i] = trialZ[i]!;
 
       // Switched Evolution Relaxation (SER) step acceleration
       const ratio = Math.max(0.5, Math.min(2.5, norm / Math.max(trialNorm, 1e-12)));
@@ -1986,6 +2190,32 @@ export class FixedPointHomotopy implements HomotopyStrategy {
     startValues: Map<string, number>,
     maxSteps: number,
   ): HomotopyResult {
+    const nUnknowns = unknownList.length;
+    const z0 = unknownList.map((name) => startValues.get(name) ?? env.get(name) ?? 0);
+    const envCopy = new Map(env);
+    for (let i = 0; i < nUnknowns; i++) {
+      const name = unknownList[i];
+      if (name) envCopy.set(name, z0[i] ?? 0);
+    }
+
+    // Compute diagonal scaling factors G_i = sign(dF_i/dz_i(z0)) * max(|dF_i/dz_i(z0)|, 1)
+    // so the fixed-point embedding H(z, lambda) = lambda * F(z) + (1 - lambda) * G * (z - z0)
+    // matches the local Jacobian orientation at z0 and avoids artificial sign-flip singularities.
+    const diagScale = new Float64Array(nSolve);
+    for (let row = 0; row < nSolve; row++) {
+      diagScale[row] = 1.0;
+      const td = tapeData[row];
+      if (!td) continue;
+      const t = evaluateTapeForward(td.ops, envCopy);
+      const grads = evaluateTapeReverse(td.ops, t, td.outputIndex);
+      const varName = unknownList[row];
+      if (varName) {
+        const dDiag = grads.get(varName) ?? 0;
+        const sign = dDiag < 0 ? -1.0 : 1.0;
+        diagScale[row] = sign * Math.max(Math.abs(dDiag), 1.0);
+      }
+    }
+
     return runHomotopyContinuation(
       tapeData,
       unknownList,
@@ -1994,8 +2224,8 @@ export class FixedPointHomotopy implements HomotopyStrategy {
       startValues,
       maxSteps,
       "fixed-point",
-      (Ri, zRow, z0Row, lambda) => lambda * Ri + (1 - lambda) * (zRow - z0Row),
-      (dRdz, row, col, lambda) => lambda * dRdz + (row === col ? 1 - lambda : 0),
+      (Ri, zRow, z0Row, lambda, row) => lambda * Ri + (1 - lambda) * (diagScale[row] ?? 1.0) * (zRow - z0Row),
+      (dRdz, row, col, lambda) => lambda * dRdz + (row === col ? (1 - lambda) * (diagScale[row] ?? 1.0) : 0),
       { initialStep: 0.02, maxGrowth: 1.2, dampingFactor: 0.5 },
     );
   }
@@ -2079,10 +2309,14 @@ export class ParameterContinuation implements HomotopyStrategy {
     const unknownSet = new Set(unknownList);
     const paramNames: string[] = [];
     const paramOriginal = new Map<string, number>();
+    const paramStart = new Map<string, number>();
     for (const [name, val] of env) {
       if (!unknownSet.has(name) && name !== "time") {
         paramNames.push(name);
         paramOriginal.set(name, val);
+        // Start from unit-scaled non-zero nominal value to avoid division-by-zero at small lambda
+        const startVal = Math.abs(val) > 1.0 ? Math.sign(val) : val;
+        paramStart.set(name, startVal);
       }
     }
 
@@ -2094,12 +2328,14 @@ export class ParameterContinuation implements HomotopyStrategy {
       startValues,
       maxSteps,
       "parameter",
-      (Ri, zRow, z0Row, lambda) => lambda * Ri + (1 - lambda) * (zRow - z0Row),
-      (dRdz, row, col, lambda) => lambda * dRdz + (row === col ? 1 - lambda : 0),
+      (Ri, zRow, z0Row, lambda) => Ri + (1 - lambda) * 1e-2 * (zRow - z0Row),
+      (dRdz, row, col, lambda) => dRdz + (row === col ? (1 - lambda) * 1e-2 : 0),
       {
         beforeStep: (lambda: number) => {
           for (const name of paramNames) {
-            env.set(name, lambda * (paramOriginal.get(name) ?? 0));
+            const p0 = paramStart.get(name) ?? 0;
+            const p1 = paramOriginal.get(name) ?? 0;
+            env.set(name, (1 - lambda) * p0 + lambda * p1);
           }
         },
         afterSolve: () => {
@@ -2163,11 +2399,11 @@ export function solveWithAutoHomotopy(
 }
 
 interface ContinuationOptions {
-  initialStep?: number;
-  maxGrowth?: number;
-  dampingFactor?: number;
-  beforeStep?: (lambda: number) => void;
-  afterSolve?: () => void;
+  initialStep?: number | undefined;
+  maxGrowth?: number | undefined;
+  dampingFactor?: number | undefined;
+  beforeStep?: ((lambda: number) => void) | undefined;
+  afterSolve?: (() => void) | undefined;
 }
 
 type ResidualFn = (Ri: number, zRow: number, z0Row: number, lambda: number, row: number, z: number[]) => number;
@@ -2274,11 +2510,25 @@ function runHomotopyContinuation(
 
   options?.afterSolve?.();
 
-  result.converged = lambda >= 1.0 - 1e-10;
   for (let i = 0; i < nUnknowns; i++) {
     const name = unknownList[i];
-    if (name) result.values.set(name, z[i] ?? 0);
+    if (name) {
+      env.set(name, z[i] ?? 0);
+      result.values.set(name, z[i] ?? 0);
+    }
   }
+
+  // Verify true system residual norm at lambda = 1 with restored parameters
+  let finalTrueNorm = 0;
+  for (let row = 0; row < nSolve; row++) {
+    const td = tapeData[row];
+    if (!td) continue;
+    const t = evaluateTapeForward(td.ops, env);
+    const Ri = t[td.outputIndex] ?? 0;
+    finalTrueNorm += Math.abs(Ri);
+  }
+  result.residualNorm = finalTrueNorm;
+  result.converged = lambda >= 1.0 - 1e-10 && Number.isFinite(finalTrueNorm) && finalTrueNorm < 1e-6;
 
   return result;
 }

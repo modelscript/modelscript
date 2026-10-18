@@ -38,33 +38,52 @@ export const enum LSPSymbolKind {
   TypeParameter = 26,
 }
 
+/** Zero-based start and end line/character range in an LSP text document. */
 export interface LSPRange {
+  /** Zero-based start line and UTF-16 character offset. */
   start: { line: number; character: number };
+  /** Zero-based end line and UTF-16 character offset. */
   end: { line: number; character: number };
 }
 
+/** URI and range identifying a specific span in a workspace document. */
 export interface LSPLocation {
+  /** Target document URI. */
   uri: string;
+  /** Span within the target document. */
   range: LSPRange;
 }
 
+/** Hierarchical document symbol node for the Outline tree and breadcrumbs. */
 export interface LSPDocumentSymbol {
+  /** Display name of the symbol. */
   name: string;
+  /** LSP symbol kind classification. */
   kind: LSPSymbolKind;
+  /** Full enclosing range of the declaration. */
   range: LSPRange;
+  /** Narrow identifier range highlighted when selecting the symbol. */
   selectionRange: LSPRange;
-  children?: LSPDocumentSymbol[];
+  /** Optional nested child symbols declared inside this symbol's scope. */
+  children?: LSPDocumentSymbol[] | undefined;
 }
 
+/** Completion candidate item returned for `textDocument/completion`. */
 export interface LSPCompletionItem {
+  /** Identifier text inserted or displayed on completion. */
   label: string;
+  /** LSP symbol classification icon. */
   kind: LSPSymbolKind;
-  detail?: string;
+  /** Optional short type or category detail string. */
+  detail?: string | undefined;
 }
 
+/** Markdown hover card payload and optional highlighted token range. */
 export interface LSPHover {
+  /** Markdown-formatted hover documentation. */
   contents: string;
-  range?: LSPRange;
+  /** Optional document range of the hovered symbol. */
+  range?: LSPRange | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,11 +95,20 @@ export interface LSPHover {
  * Must be initialized with the source text.
  */
 export class PositionIndex {
+  /** Character offset of the start of each 0-indexed line. */
   private lineStarts: number[];
+  /** UTF-8 byte offset of the start of each 0-indexed line. */
   private byteLineStarts: number[];
+  /** Raw document source text. */
   private sourceText: string;
+  /** Fast-path flag indicating whether the source contains only 7-bit ASCII characters. */
   private isPureAscii: boolean;
 
+  /**
+   * Builds a line-start lookup table for both character and UTF-8 byte offsets.
+   *
+   * @param sourceText - Full source text of the document.
+   */
   constructor(sourceText: string) {
     this.sourceText = sourceText;
     this.lineStarts = [0];
@@ -125,13 +153,13 @@ export class PositionIndex {
     let hi = this.lineStarts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
-      if (this.lineStarts[mid] <= charOffset) {
+      if (this.lineStarts[mid]! <= charOffset) {
         lo = mid;
       } else {
         hi = mid - 1;
       }
     }
-    return { line: lo, character: Math.max(0, charOffset - this.lineStarts[lo]) };
+    return { line: lo, character: Math.max(0, charOffset - this.lineStarts[lo]!) };
   }
 
   /**
@@ -146,7 +174,7 @@ export class PositionIndex {
    */
   positionToCharOffset(line: number, character: number): number {
     if (line < 0 || line >= this.lineStarts.length) return 0;
-    return Math.min(this.lineStarts[line] + character, this.sourceText.length);
+    return Math.min(this.lineStarts[line]! + character, this.sourceText.length);
   }
 
   /**
@@ -169,20 +197,20 @@ export class PositionIndex {
     let hi = this.byteLineStarts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
-      if (this.byteLineStarts[mid] <= offset) {
+      if (this.byteLineStarts[mid]! <= offset) {
         lo = mid;
       } else {
         hi = mid - 1;
       }
     }
 
-    const byteDelta = offset - this.byteLineStarts[lo];
+    const byteDelta = offset - this.byteLineStarts[lo]!;
     if (this.isPureAscii || byteDelta <= 0) {
       return { line: lo, character: Math.max(0, byteDelta) };
     }
 
-    const lineStartChar = this.lineStarts[lo];
-    const nextLineStartChar = lo + 1 < this.lineStarts.length ? this.lineStarts[lo + 1] : this.sourceText.length;
+    const lineStartChar = this.lineStarts[lo]!;
+    const nextLineStartChar = lo + 1 < this.lineStarts.length ? this.lineStarts[lo + 1]! : this.sourceText.length;
     let currByte = 0;
     let charIdx = lineStartChar;
 
@@ -213,7 +241,7 @@ export class PositionIndex {
       return this.lineStarts[line]! + character;
     }
 
-    const lineStartChar = this.lineStarts[line];
+    const lineStartChar = this.lineStarts[line]!;
     const targetCharIdx = Math.min(lineStartChar + character, this.sourceText.length);
     let byteDelta = 0;
 
@@ -231,7 +259,7 @@ export class PositionIndex {
       }
     }
 
-    return this.byteLineStarts[line] + byteDelta;
+    return this.byteLineStarts[line]! + byteDelta;
   }
 
   /** Total number of lines in the source. */
@@ -257,9 +285,16 @@ export class PositionIndex {
  * and the JSON-RPC protocol used by LSP clients.
  */
 export class LSPBridge {
+  /** Line/character position converter for the bound document. */
   private positions: PositionIndex;
+  /** Canonical URI of the bound document. */
   private documentUri: string;
 
+  /**
+   * Creates a new `LSPBridge` for a document.
+   * Supports both 4-argument `(index, engine, positions, documentUri)` and legacy
+   * 5-argument `(index, engine, resolver, positions, documentUri)` signatures.
+   */
   constructor(
     private index: SymbolIndex,
     private engine: QueryEngine,
@@ -281,27 +316,36 @@ export class LSPBridge {
     }
   }
 
+  /** Returns the underlying Salsa `QueryEngine` instance. */
   public getQueryEngine(): QueryEngine {
     return this.engine;
   }
 
+  /** Returns the underlying `SymbolIndex` instance. */
   public getIndex(): SymbolIndex {
     return this.index;
   }
 
+  /** Returns the URI of the document bound to this bridge. */
   public getDocumentUri(): string {
     return this.documentUri;
   }
 
+  /** Checks whether a symbol entry represents a declaration rather than a reference or equation usage. */
   private isDecl(entry: SymbolEntry): boolean {
     return entry.kind !== "Reference" && entry.kind !== "ConnectEquation" && entry.kind !== "FunctionCall";
   }
 
+  /** Resolves a reference symbol entry to its target declaration(s). */
   private resolveRef(refEntry: SymbolEntry): SymbolEntry[] {
     if (this.isDecl(refEntry)) return [refEntry];
     return this.resolveName(refEntry.name, refEntry.parentId);
   }
 
+  /**
+   * Resolves a simple identifier name starting from `scopeId`, consulting the Salsa
+   * `resolveSimpleName` query first and falling back to a lexical parent walk and global index lookup.
+   */
   private resolveName(name: string, scopeId: SymbolId | null): SymbolEntry[] {
     if (scopeId !== null && this.engine && typeof this.engine.query === "function") {
       try {
@@ -337,6 +381,7 @@ export class LSPBridge {
     return results;
   }
 
+  /** Collects all declaration symbols lexically visible from `scopeId` up to the root scope. */
   private getVisibleSymbols(scopeId: SymbolId | null): SymbolEntry[] {
     const visible: SymbolEntry[] = [];
     const seenNames = new Set<string>();
@@ -364,6 +409,7 @@ export class LSPBridge {
     return visible;
   }
 
+  /** Collects all inherited member declarations via BFS traversal of `inherits` clauses on `typeId`. */
   private getInheritedMembers(typeId: SymbolId): SymbolEntry[] {
     const inherited: SymbolEntry[] = [];
     const seen = new Set<SymbolId>();
@@ -390,6 +436,7 @@ export class LSPBridge {
     return inherited;
   }
 
+  /** Finds all reference symbol entries across the index that resolve to `declId`. */
   private findRefs(declId: SymbolId): SymbolEntry[] {
     const decl = this.index.symbols.get(declId);
     if (!decl) return [];
@@ -411,6 +458,9 @@ export class LSPBridge {
   // textDocument/documentSymbol
   // =========================================================================
 
+  /**
+   * Builds the hierarchical `LSPDocumentSymbol` outline tree for the bound document.
+   */
   documentSymbols(): LSPDocumentSymbol[] {
     // Collect only symbols belonging to this document
     const docSymbols = new Set<SymbolId>();
@@ -496,7 +546,7 @@ export class LSPBridge {
               entry,
             );
             if (source) {
-              const firstLine = source.trim().split("\n")[0].trim();
+              const firstLine = source.trim().split("\n")[0]!.trim();
               name = firstLine.length > 40 ? firstLine.substring(0, 37) + "..." : firstLine;
             }
           } catch {
@@ -506,7 +556,7 @@ export class LSPBridge {
 
         let selectionRange = range;
         const nameField =
-          entry.fieldRanges?.name ??
+          entry.fieldRanges?.["name"] ??
           (entry.fieldRanges ? entry.fieldRanges[entry.namePath] || entry.fieldRanges["identifier"] : undefined);
         if (nameField) {
           selectionRange = this.positions.rangeFromOffsets(
@@ -542,6 +592,9 @@ export class LSPBridge {
 
   // =========================================================================
   // textDocument/definition
+  /**
+   * Resolves the declaration location (`LSPLocation`) for the symbol at `byteOffset`.
+   */
   definition(byteOffset: number, sourceText?: string): LSPLocation | null {
     const target = this.definitionRaw(byteOffset, sourceText);
     if (!target) return null;
@@ -569,7 +622,7 @@ export class LSPBridge {
     }
 
     const nameField =
-      target.fieldRanges?.name ??
+      target.fieldRanges?.["name"] ??
       (target.fieldRanges ? target.fieldRanges[target.namePath] || target.fieldRanges["identifier"] : undefined);
     let startOff = target.startOffset ?? target.startByte;
     let endOff = target.endOffset ?? target.endByte;
@@ -613,7 +666,7 @@ export class LSPBridge {
     if (!refEntry) return null;
 
     if (word && (refEntry.kind === "Class" || refEntry.ruleName === "SourceFile")) {
-      const nameRange = refEntry.fieldRanges?.name;
+      const nameRange = refEntry.fieldRanges?.["name"];
       const isOverClassName = nameRange
         ? byteOffset >= (nameRange.startOffset ?? nameRange.startByte) &&
           byteOffset <= (nameRange.endOffset ?? nameRange.endByte)
@@ -622,14 +675,14 @@ export class LSPBridge {
       if (!isOverClassName) {
         // Cursor is inside the class body — resolve the word within this class scope
         const targets = this.resolveName(word, refEntry.id);
-        if (targets.length > 0) return targets[0];
+        if (targets.length > 0) return targets[0]!;
         return null;
       }
     } else if (word && refEntry.kind === "Component") {
       if (word !== refEntry.name) {
         // Cursor is on component type or modifier
         const targets = this.resolveName(word, refEntry.parentId);
-        if (targets.length > 0) return targets[0];
+        if (targets.length > 0) return targets[0]!;
         return null;
       }
     }
@@ -637,13 +690,17 @@ export class LSPBridge {
     const targets = this.resolveRef(refEntry);
     if (targets.length === 0) return null;
 
-    return targets[0];
+    return targets[0]!;
   }
 
   // =========================================================================
   // textDocument/completion
   // =========================================================================
 
+  /**
+   * Computes context-sensitive completion candidates (`LSPCompletionItem[]`) at `byteOffset`,
+   * supporting dot-access member completion, modification-argument completion, and lexical scope completion.
+   */
   completion(byteOffset: number, sourceText?: string): LSPCompletionItem[] {
     // ------------------------------------------------------------------
     // Dot-access completion: "a." → resolve `a` to its type, show members
@@ -652,7 +709,7 @@ export class LSPBridge {
       const before = sourceText.slice(0, byteOffset);
       const dotMatch = before.match(/([a-zA-Z_][a-zA-Z0-9_]*)\s*\.\s*[a-zA-Z_]?[a-zA-Z0-9_]*$/);
       if (dotMatch) {
-        const varName = dotMatch[1];
+        const varName = dotMatch[1]!;
         return this.completeDotAccess(varName, byteOffset);
       }
 
@@ -722,7 +779,7 @@ export class LSPBridge {
 
     if (varDecls.length === 0) return [];
 
-    const varDecl = varDecls[0];
+    const varDecl = varDecls[0]!;
 
     // 3. Resolve the type of the variable using generic strategies
     const typeDecl = this.resolveTypeOf(varDecl);
@@ -762,8 +819,8 @@ export class LSPBridge {
       for (const value of Object.values(entry.metadata)) {
         if (typeof value === "string" && value.length > 0) {
           const typeDecls = this.resolveName(value, entry.parentId);
-          if (typeDecls.length > 0 && this.isDecl(typeDecls[0])) {
-            return typeDecls[0];
+          if (typeDecls.length > 0 && this.isDecl(typeDecls[0]!)) {
+            return typeDecls[0]!;
           }
         }
       }
@@ -787,8 +844,8 @@ export class LSPBridge {
             }
           }
         }
-        if (typeDecls.length > 0 && this.isDecl(typeDecls[0])) {
-          return typeDecls[0];
+        if (typeDecls.length > 0 && this.isDecl(typeDecls[0]!)) {
+          return typeDecls[0]!;
         }
       }
     }
@@ -826,7 +883,7 @@ export class LSPBridge {
     const declMatch = beforeParen.match(/([a-zA-Z_][a-zA-Z0-9_.]*)\s+[a-zA-Z_][a-zA-Z0-9_]*$/);
     if (!declMatch) return null;
 
-    const typeName = declMatch[1];
+    const typeName = declMatch[1]!;
 
     // Resolve the type
     const scopeEntry = this.findScopeAtOffset(byteOffset);
@@ -834,7 +891,7 @@ export class LSPBridge {
     const typeDecls = this.resolveName(typeName, scopeId);
     if (typeDecls.length === 0) return null;
 
-    return this.membersOf(typeDecls[0]);
+    return this.membersOf(typeDecls[0]!);
   }
 
   /**
@@ -871,8 +928,8 @@ export class LSPBridge {
     }
 
     // Virtual completion members defined in metadata
-    if (typeEntry.metadata?.completionMembers && Array.isArray(typeEntry.metadata.completionMembers)) {
-      for (const name of typeEntry.metadata.completionMembers) {
+    if (typeEntry.metadata?.["completionMembers"] && Array.isArray(typeEntry.metadata["completionMembers"])) {
+      for (const name of typeEntry.metadata["completionMembers"]) {
         if (!seen.has(name) && typeof name === "string") {
           seen.add(name);
           results.push({
@@ -906,6 +963,10 @@ export class LSPBridge {
   // textDocument/hover
   // =========================================================================
 
+  /**
+   * Computes Markdown hover documentation (`LSPHover`) for the symbol at `byteOffset`,
+   * supporting modification-context attribute hover, class/component declarations, and predefined types.
+   */
   hover(byteOffset: number, sourceText?: string): LSPHover | null {
     const text = sourceText ?? this.positions.getSourceText();
     if (sourceText) {
@@ -935,7 +996,7 @@ export class LSPBridge {
 
     if (entry) {
       if (entry.kind === "Class" || entry.ruleName === "SourceFile") {
-        const nameRange = entry.fieldRanges?.name;
+        const nameRange = entry.fieldRanges?.["name"];
         const isOverClassName = nameRange
           ? wordStart >= (nameRange.startOffset ?? nameRange.startByte) &&
             wordEnd <= (nameRange.endOffset ?? nameRange.endByte)
@@ -947,7 +1008,7 @@ export class LSPBridge {
           // Inside class body — resolve the word within this class scope
           const resolved = this.resolveName(word, entry.id);
           if (resolved.length > 0) {
-            targetDecl = resolved[0];
+            targetDecl = resolved[0]!;
           }
         }
       } else if (entry.kind === "Component") {
@@ -956,13 +1017,13 @@ export class LSPBridge {
         } else {
           const resolved = this.resolveName(word, entry.parentId);
           if (resolved.length > 0) {
-            targetDecl = resolved[0];
+            targetDecl = resolved[0]!;
           }
         }
       } else if (entry.kind === "Reference") {
         const resolved = this.resolveRef(entry);
         if (resolved.length > 0) {
-          targetDecl = resolved[0];
+          targetDecl = resolved[0]!;
         }
       } else {
         targetDecl = entry;
@@ -974,7 +1035,7 @@ export class LSPBridge {
       const scopeId = scopeEntry?.id ?? null;
       const resolved = this.resolveName(word, scopeId);
       if (resolved.length > 0) {
-        targetDecl = resolved[0];
+        targetDecl = resolved[0]!;
       }
     }
 
@@ -983,7 +1044,7 @@ export class LSPBridge {
       const predefinedIds = this.index.byName.get(word);
       if (predefinedIds && predefinedIds.length > 0) {
         const candidate = this.index.symbols.get(predefinedIds[0]!);
-        if (candidate?.metadata?.isPredefined) {
+        if (candidate?.metadata?.["isPredefined"]) {
           targetDecl = candidate;
         }
       }
@@ -1000,14 +1061,17 @@ export class LSPBridge {
     };
   }
 
+  /**
+   * Formats a human-readable code signature for a `SymbolEntry` suitable for fenced code blocks in hover cards.
+   */
   private formatDeclaration(entry: SymbolEntry): string {
     const meta = entry.metadata;
     let declStr = "";
 
-    if (meta?.isPredefined) {
-      const cKind = typeof meta.classKind === "string" ? meta.classKind : "type";
+    if (meta?.["isPredefined"]) {
+      const cKind = typeof meta["classKind"] === "string" ? meta["classKind"] : "type";
       declStr = `${cKind} ${entry.name}`;
-      const attrs = meta.completionMembers;
+      const attrs = meta["completionMembers"];
       if (Array.isArray(attrs) && attrs.length > 0) {
         declStr += `(\n`;
         const lines: string[] = [];
@@ -1029,8 +1093,8 @@ export class LSPBridge {
     }
 
     if (entry.kind === "Class" || entry.kind === "Function") {
-      if (meta && typeof meta.classKind === "string" && meta.classKind) {
-        declStr += `${meta.classKind} `;
+      if (meta && typeof meta["classKind"] === "string" && meta["classKind"]) {
+        declStr += `${meta["classKind"]} `;
       } else {
         declStr += `${entry.kind.toLowerCase()} `;
       }
@@ -1047,14 +1111,18 @@ export class LSPBridge {
       return declStr;
     }
 
-    if (meta && typeof meta.causality === "string" && meta.causality) declStr += `${meta.causality} `;
-    if (meta && typeof meta.variability === "string" && meta.variability) declStr += `${meta.variability} `;
-    if (meta && typeof meta.typeSpecifier === "string" && meta.typeSpecifier) declStr += `${meta.typeSpecifier} `;
+    if (meta && typeof meta["causality"] === "string" && meta["causality"]) declStr += `${meta["causality"]} `;
+    if (meta && typeof meta["variability"] === "string" && meta["variability"]) declStr += `${meta["variability"]} `;
+    if (meta && typeof meta["typeSpecifier"] === "string" && meta["typeSpecifier"])
+      declStr += `${meta["typeSpecifier"]} `;
     declStr += entry.name;
 
     return declStr;
   }
 
+  /**
+   * Renders Markdown hover text for a resolved `SymbolEntry`, querying the Salsa `"hover"` hook first.
+   */
   private hoverEntry(entry: SymbolEntry): string {
     try {
       const hoverResult = this.engine.query<string>("hover", entry.id);
@@ -1074,20 +1142,23 @@ export class LSPBridge {
       md = `\`\`\`${lang}\n${declStr}\n\`\`\``;
     }
 
-    if (meta && typeof meta.description === "string" && meta.description) {
-      md += `\n---\n${meta.description}`;
+    if (meta && typeof meta["description"] === "string" && meta["description"]) {
+      md += `\n---\n${meta["description"]}`;
     }
     return md;
   }
 
+  /**
+   * Resolves hover documentation when the cursor is over a modifier name inside a component modification `(...)`.
+   */
   private hoverModificationContext(byteOffset: number, sourceText: string): LSPHover | null {
     let start = byteOffset;
-    if (start > 0 && !/[a-zA-Z0-9_]/.test(sourceText[start]) && /[a-zA-Z0-9_]/.test(sourceText[start - 1])) {
+    if (start > 0 && !/[a-zA-Z0-9_]/.test(sourceText[start]!) && /[a-zA-Z0-9_]/.test(sourceText[start - 1]!)) {
       start--;
     }
-    while (start > 0 && /[a-zA-Z0-9_]/.test(sourceText[start - 1])) start--;
+    while (start > 0 && /[a-zA-Z0-9_]/.test(sourceText[start - 1]!)) start--;
     let end = start;
-    while (end < sourceText.length && /[a-zA-Z0-9_]/.test(sourceText[end])) end++;
+    while (end < sourceText.length && /[a-zA-Z0-9_]/.test(sourceText[end]!)) end++;
 
     if (start >= end) return null;
     const word = sourceText.slice(start, end);
@@ -1112,13 +1183,13 @@ export class LSPBridge {
     const declMatch = beforeParen.match(/([a-zA-Z_][a-zA-Z0-9_.]*)\s+[a-zA-Z_][a-zA-Z0-9_]*$/);
     if (!declMatch) return null;
 
-    const typeName = declMatch[1];
+    const typeName = declMatch[1]!;
     const scopeEntry = this.findScopeAtOffset(byteOffset);
     const scopeId = scopeEntry?.id ?? null;
     const typeDecls = this.resolveName(typeName, scopeId);
     if (typeDecls.length === 0) return null;
 
-    const typeEntry = typeDecls[0];
+    const typeEntry = typeDecls[0]!;
     const hoverRange = this.positions.rangeFromOffsets(start, end);
 
     const children = this.getExportedChildren(typeEntry.id);
@@ -1135,8 +1206,8 @@ export class LSPBridge {
       }
     }
 
-    if (typeEntry.metadata?.completionMembers && Array.isArray(typeEntry.metadata.completionMembers)) {
-      if (typeEntry.metadata.completionMembers.includes(word)) {
+    if (typeEntry.metadata?.["completionMembers"] && Array.isArray(typeEntry.metadata["completionMembers"])) {
+      if (typeEntry.metadata["completionMembers"].includes(word)) {
         const lang = typeEntry.language ?? "modelica";
         return {
           contents: `\`\`\`${lang}\n${word}\n\`\`\`\n---\nBuilt-in attribute of ${typeEntry.name}`,
@@ -1175,14 +1246,14 @@ export class LSPBridge {
     if (word && (refEntry.kind === "Class" || refEntry.ruleName === "SourceFile")) {
       const resolved = this.resolveName(word, refEntry.id);
       if (resolved.length > 0) {
-        targetDecl = resolved[0];
+        targetDecl = resolved[0]!;
       } else {
         return null;
       }
     } else {
       const resolved = this.resolveRef(refEntry);
       if (resolved.length > 0) {
-        targetDecl = resolved[0];
+        targetDecl = resolved[0]!;
       }
     }
 
@@ -1197,7 +1268,7 @@ export class LSPBridge {
     const typeRef = children.find((c) => c.kind === "Reference");
     if (typeRef) {
       const typeResolved = this.resolveRef(typeRef);
-      if (typeResolved.length > 0) return typeResolved[0];
+      if (typeResolved.length > 0) return typeResolved[0]!;
     }
     return null;
   }
@@ -1218,7 +1289,7 @@ export class LSPBridge {
     // we can check if it resolves to something.
     const resolved = this.resolveRef(entry);
     if (resolved.length > 0) {
-      targetDecl = resolved[0];
+      targetDecl = resolved[0]!;
     }
 
     // Find all references mapping to the target declaration (workspace-wide)
@@ -1226,6 +1297,9 @@ export class LSPBridge {
     return { declaration: targetDecl, references };
   }
 
+  /**
+   * Returns `LSPLocation[]` for all references within the bound document to the symbol at `byteOffset`.
+   */
   references(byteOffset: number): LSPLocation[] {
     const { references } = this.findReferencesRaw(byteOffset);
 

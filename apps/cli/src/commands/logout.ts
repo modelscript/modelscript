@@ -4,8 +4,8 @@ import type { CommandModule } from "yargs";
 import { clearToken, getApiUrl, getAuthHeaders, getToken } from "../util/auth.js";
 
 interface LogoutArgs {
-  registry?: string;
-  all?: boolean;
+  registry?: string | undefined;
+  all?: boolean | undefined;
 }
 
 export const Logout: CommandModule<{}, LogoutArgs> = {

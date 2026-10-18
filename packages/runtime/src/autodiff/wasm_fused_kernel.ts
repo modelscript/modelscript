@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 
 /**
  * XLA-Style Fused Operator & Equation Kernel Compiler for DAE Arenas.
@@ -13,9 +14,9 @@ import { type PackedMemoryLayout } from "../gpu/wasm_memory_planner.js";
 
 export interface FusedKernelOptions {
   /** Target buffer indexing layout. */
-  layout?: PackedMemoryLayout;
+  layout?: PackedMemoryLayout | undefined;
   /** Enable Common Subexpression Elimination (CSE). Default: true. */
-  cse?: boolean;
+  cse?: boolean | undefined;
 }
 
 export interface FusedKernelResult {

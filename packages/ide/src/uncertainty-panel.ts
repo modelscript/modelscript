@@ -13,17 +13,26 @@ interface SimulationResult {
   t: number[];
   y: number[][];
   states: string[];
-  parameters?: {
-    name: string;
-    type: "real" | "integer" | "boolean" | "enumeration";
-    defaultValue: number;
-    min?: number;
-    max?: number;
-    step: number;
-    unit?: string;
-  }[];
-  experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
-  error?: string;
+  parameters?:
+    | {
+        name: string;
+        type: "real" | "integer" | "boolean" | "enumeration";
+        defaultValue: number;
+        min?: number | undefined;
+        max?: number | undefined;
+        step: number;
+        unit?: string | undefined;
+      }[]
+    | undefined;
+  experiment?:
+    | {
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        tolerance?: number | undefined;
+      }
+    | undefined;
+  error?: string | undefined;
 }
 
 export class UncertaintyPanel {
@@ -32,8 +41,8 @@ export class UncertaintyPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
-  public sourceUri?: string;
-  private client?: LanguageClient;
+  public sourceUri?: string | undefined;
+  private client?: LanguageClient | undefined;
   private disposables: vscode.Disposable[] = [];
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
@@ -118,14 +127,14 @@ export class UncertaintyPanel {
     parameters: {
       name: string;
       distribution: string;
-      mean?: number;
-      stddev?: number;
-      lo?: number;
-      hi?: number;
+      mean?: number | undefined;
+      stddev?: number | undefined;
+      lo?: number | undefined;
+      hi?: number | undefined;
     }[];
-    startTime?: number;
-    stopTime?: number;
-    interval?: number;
+    startTime?: number | undefined;
+    stopTime?: number | undefined;
+    interval?: number | undefined;
   }): Promise<void> {
     if (!this.client) return;
 

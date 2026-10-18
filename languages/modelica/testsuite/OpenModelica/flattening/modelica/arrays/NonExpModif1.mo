@@ -1,7 +1,6 @@
 // name:     Non-expanded Array - Modification
 // keywords: array
 // status:   correct
-// xfail:    true
 //
 // Basic test of modification processing in the case of non-expanded arrays.
 //

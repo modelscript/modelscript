@@ -1,7 +1,6 @@
 // name:     RedeclareComponentInvalidDims1
 // keywords: redeclare component
 // status:   incorrect
-// xfail:    true
 //
 // Checks that a redeclare of a component is not allowed to have dimensions on
 // the type.

@@ -11,8 +11,8 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
 
-const GITLAB_URL = process.env.GITLAB_URL || "https://gitlab.com";
-const GITLAB_TOKEN = process.env.GITLAB_TOKEN || "";
+const GITLAB_URL = process.env["GITLAB_URL"] || "https://gitlab.com";
+const GITLAB_TOKEN = process.env["GITLAB_TOKEN"] || "";
 
 export function npmRegistryRouter(database: LibraryDatabase): Router {
   void database; // No longer needed, logic delegated to GitLab
@@ -87,6 +87,7 @@ export function npmRegistryRouter(database: LibraryDatabase): Router {
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
+    return;
   });
 
   return router;

@@ -11,7 +11,7 @@ export interface ComputeProfileViewModel {
   partition: string;
   cpus: number;
   memoryMb: number;
-  gpus?: number;
+  gpus?: number | undefined;
   costCreditsPerHour: number;
 }
 
@@ -21,11 +21,11 @@ export class CloudJobPanel {
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
-  private readonly _client?: LanguageClient;
+  private readonly _client?: LanguageClient | undefined;
   private _disposables: vscode.Disposable[] = [];
   private _apiBaseUrl: string;
-  private _targetUri?: string;
-  private _activeJobId?: string;
+  private _targetUri?: string | undefined;
+  private _activeJobId?: string | undefined;
 
   public static createOrShow(extensionUri: vscode.Uri, client?: LanguageClient, targetUri?: string) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
@@ -281,7 +281,7 @@ export class CloudJobPanel {
         }
       }
 
-      SimulationPanel.createOrShowWithData(this._extensionUri, { t, y, states }, this._targetUri, this._client);
+      SimulationPanel.createOrShowWithData(this._extensionUri, { t, y, states }, this._targetUri ?? "", this._client);
     } catch (err: any) {
       vscode.window.showErrorMessage(`Failed to display result: ${err.message}`);
     }

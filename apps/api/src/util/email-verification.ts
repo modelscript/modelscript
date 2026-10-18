@@ -38,7 +38,7 @@ export function signEmailVerificationToken(
 export function verifyEmailVerificationToken(
   token: string,
   secret: string = JWT_SECRET,
-): { valid: boolean; userId?: number; email?: string; error?: string } {
+): { valid: boolean; userId?: number | undefined; email?: string | undefined; error?: string | undefined } {
   if (!token || typeof token !== "string" || !token.includes(".")) {
     return { valid: false, error: "Malformed token format" };
   }

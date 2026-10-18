@@ -54,19 +54,19 @@ export const DOPRI5_E: readonly number[] = DOPRI5_B5.map((b5, i) => b5 - (DOPRI5
 /** Configuration options for the DOPRI5 solver. */
 export interface Dopri5Options {
   /** Absolute tolerance (default: 1e-6). */
-  atol?: number;
+  atol?: number | undefined;
   /** Relative tolerance (default: 1e-6). */
-  rtol?: number;
+  rtol?: number | undefined;
   /** Maximum step size (default: tEnd - t0). */
-  maxStep?: number;
+  maxStep?: number | undefined;
   /** Minimum step size (default: 1e-15). */
-  minStep?: number;
+  minStep?: number | undefined;
   /** Initial step size (default: auto-estimated). */
-  initialStep?: number;
+  initialStep?: number | undefined;
   /** Maximum number of steps (default: 100000). */
-  maxSteps?: number;
+  maxSteps?: number | undefined;
   /** If true, output values only at `outputTimes`. If false, outputs every internal solver step (default: true). */
-  equidistantOutput?: boolean;
+  equidistantOutput?: boolean | undefined;
 }
 
 /** Result of a DOPRI5 integration. */

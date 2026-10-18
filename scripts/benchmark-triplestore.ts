@@ -533,9 +533,9 @@ async function instantiateWasm(wasmBytes: Buffer): Promise<{
       seed: () => 42,
     },
   });
-  const instance = "instance" in wasmModule ? wasmModule.instance : (wasmModule as unknown as WebAssembly.Instance);
+  const instance = ("instance" in wasmModule ? wasmModule.instance : wasmModule) as unknown as WebAssembly.Instance;
   const exports = instance.exports as Record<string, unknown>;
-  const memory = exports.memory as WebAssembly.Memory;
+  const memory = exports["memory"] as WebAssembly.Memory;
   const wasm = exports as unknown as WasmOntologyInstance;
   wasm.ontology_clear?.();
   return { exports, wasm, memory };
@@ -1509,7 +1509,8 @@ async function benchmarkExternalReasoners(
     let subOk = false;
     const tSub0 = performance.now();
     for (let it = 0; it < subIters; it++) {
-      subOk = tsReasoner.isSubClassOf(leafClassIri, rootClassIri);
+      const res: any = tsReasoner.isSubClassOf(leafClassIri, rootClassIri);
+      subOk = typeof res === "boolean" ? res : Boolean(res?.subsumed ?? res?.isSubsumed);
     }
     const subUs = ((performance.now() - tSub0) * 1000) / subIters;
 
@@ -2019,10 +2020,10 @@ function printMarkdownReport(report: TriplestoreBenchmarkReport): void {
 }
 
 export async function runTriplestoreBenchmark(options?: {
-  scales?: number[];
-  reasoningScales?: number[];
-  silent?: boolean;
-  jsonOutPath?: string;
+  scales?: number[] | undefined;
+  reasoningScales?: number[] | undefined;
+  silent?: boolean | undefined;
+  jsonOutPath?: string | undefined;
 }): Promise<TriplestoreBenchmarkReport> {
   const wasmBinary = resolveWasmBinaryPath();
   const wasmBytes = fs.readFileSync(wasmBinary);

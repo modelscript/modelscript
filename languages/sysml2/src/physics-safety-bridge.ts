@@ -27,23 +27,23 @@ export interface PhysicsHazardCondition {
   operator: ">=" | "<=" | ">" | "<";
   threshold: number;
   /** Minimum continuous duration the violation must persist to trigger the hazard (default: 0 = instantaneous) */
-  minDurationSeconds?: number;
+  minDurationSeconds?: number | undefined;
 }
 
 export interface PhysicsHazardOptions {
   hazardId: string;
   hazardName: string;
-  severity?: number;
-  probability?: number;
+  severity?: number | undefined;
+  probability?: number | undefined;
   failureModes: FailureMode[];
   /** Parameter overrides mapped to each failure mode ID */
   faultInjections: Record<string, Record<string, number>>;
   /** Nominal baseline physical parameters */
-  baselineParams?: Record<string, number>;
+  baselineParams?: Record<string, number> | undefined;
   /** Simulation runner (e.g. Modelica continuous DAE evaluator) */
   simulate: (params: Record<string, number>) => ContinuousSimulationTrajectory;
   hazardCondition: PhysicsHazardCondition;
-  maxOrder?: number;
+  maxOrder?: number | undefined;
 }
 
 export interface PhysicsSafetyAnalysisResult extends SafetyAnalysisResult {

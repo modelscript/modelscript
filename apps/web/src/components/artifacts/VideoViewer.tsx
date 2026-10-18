@@ -9,10 +9,10 @@ import Box from "../Box";
 
 interface VideoViewerProps {
   viewConfig: any;
-  isFullScreen?: boolean;
+  isFullScreen?: boolean | undefined;
 }
 
-const Wrapper = styled.div<{ $isFullScreen?: boolean }>`
+const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
   background: #05080f;
@@ -140,7 +140,7 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ viewConfig, isFullScreen }) =
   const [speedIndex, setSpeedIndex] = useState(2); // default 1.0x
   const [isLoop, setIsLoop] = useState(true);
 
-  const speed = SPEED_OPTIONS[speedIndex];
+  const speed = SPEED_OPTIONS[speedIndex]!;
 
   useEffect(() => {
     if (videoRef.current) {

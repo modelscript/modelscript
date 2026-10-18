@@ -41,6 +41,7 @@ export function billingRouter(database: LibraryDatabase): Router {
       console.error("[BillingRouter] GET /billing/wallet error:", err);
       res.status(500).json({ error: err.message || String(err) });
     }
+    return;
   });
 
   // ── GET /api/v1/billing/transactions ──
@@ -68,6 +69,7 @@ export function billingRouter(database: LibraryDatabase): Router {
       console.error("[BillingRouter] GET /billing/transactions error:", err);
       res.status(500).json({ error: err.message || String(err) });
     }
+    return;
   });
 
   // ── GET /api/v1/billing/usage ──
@@ -85,6 +87,7 @@ export function billingRouter(database: LibraryDatabase): Router {
       console.error("[BillingRouter] GET /billing/usage error:", err);
       res.status(500).json({ error: err.message || String(err) });
     }
+    return;
   });
 
   // ── POST /api/v1/billing/payment-intent ──
@@ -121,6 +124,7 @@ export function billingRouter(database: LibraryDatabase): Router {
       const statusCode = isLocked ? 429 : isRadar ? 403 : 400;
       res.status(statusCode).json({ error: err.message || "Failed to create payment intent" });
     }
+    return;
   });
 
   // ── POST /api/v1/billing/webhook ──
@@ -138,6 +142,7 @@ export function billingRouter(database: LibraryDatabase): Router {
       console.error("[BillingRouter] Webhook error:", err);
       res.status(500).json({ error: err.message || String(err) });
     }
+    return;
   });
 
   // ── POST /api/v1/billing/topup ──
@@ -207,6 +212,7 @@ export function billingRouter(database: LibraryDatabase): Router {
       console.error("[BillingRouter] POST /billing/topup error:", err);
       res.status(500).json({ error: err.message || String(err) });
     }
+    return;
   });
 
   return router;

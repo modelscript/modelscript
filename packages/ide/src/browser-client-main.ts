@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 import { simulateDroneReachability } from "@modelscript/runtime";
 
 import * as vscode from "vscode";
@@ -77,10 +78,10 @@ function decodeBase64ToArray(base64: string): Uint8Array {
   const bytes = new Uint8Array(bufferLength);
   let p = 0;
   for (let i = 0; i < b64.length; i += 4) {
-    const encoded1 = lookup[b64.charCodeAt(i)];
-    const encoded2 = lookup[b64.charCodeAt(i + 1)];
-    const encoded3 = lookup[b64.charCodeAt(i + 2)];
-    const encoded4 = lookup[b64.charCodeAt(i + 3)];
+    const encoded1 = lookup[b64.charCodeAt(i)]!;
+    const encoded2 = lookup[b64.charCodeAt(i + 1)]!;
+    const encoded3 = lookup[b64.charCodeAt(i + 2)]!;
+    const encoded4 = lookup[b64.charCodeAt(i + 3)]!;
 
     bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
     if (p < bufferLength) bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
@@ -146,7 +147,7 @@ class MemoryFileSystemProvider implements vscode.FileSystemProvider {
     for (const [path] of this.files) {
       if (path.startsWith(prefix)) {
         const rest = path.slice(prefix.length);
-        const name = rest.split("/")[0];
+        const name = rest.split("/")[0]!;
         if (!seen.has(name)) {
           seen.add(name);
           result.push([name, rest.includes("/") ? vscode.FileType.Directory : vscode.FileType.File]);
@@ -435,7 +436,7 @@ export async function activate(context: vscode.ExtensionContext) {
       return defaultDeps;
     }
 
-    const rootUri = workspace.workspaceFolders[0].uri;
+    const rootUri = workspace.workspaceFolders[0]!.uri;
 
     try {
       const msJsonUri = vscode.Uri.joinPath(rootUri, "modelscript.json");
@@ -476,8 +477,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const folders = workspace.workspaceFolders;
   let memfsRootUri: vscode.Uri | undefined;
-  if (folders && folders.length > 0 && folders[0].uri.scheme === "memfs") {
-    memfsRootUri = folders[0].uri;
+  if (folders && folders.length > 0 && folders[0]!.uri.scheme === "memfs") {
+    memfsRootUri = folders[0]!.uri;
   } else {
     try {
       const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
@@ -534,7 +535,7 @@ export async function activate(context: vscode.ExtensionContext) {
         /* ignore */
       }
       if (client) {
-        const result = await client.sendRequest<{ error?: string }>("modelscript/simulateDebug", { uri });
+        const result = await client.sendRequest<{ error?: string | undefined }>("modelscript/simulateDebug", { uri });
         if (result && result.error) {
           vscode.window.showErrorMessage(`Debugger failed to start: ${result.error}`);
         }
@@ -549,7 +550,7 @@ export async function activate(context: vscode.ExtensionContext) {
       if (client) return client.sendRequest("modelscript/debuggerVariables");
       return [];
     },
-    async (program: string, bps: { line: number; column?: number }[]) => {
+    async (program: string, bps: { line: number; column?: number | undefined }[]) => {
       let uri = program;
       try {
         const doc = vscode.workspace.textDocuments.find((d) => d.uri.path === program || d.fileName === program);
@@ -606,8 +607,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // Physics editor is registered after the LSP client starts (needs client for STEP meshes)
 
   const contributedLanguages =
-    (context.extension?.packageJSON?.contributes?.languages as { id: string; extensions?: string[] }[] | undefined) ||
-    [];
+    (context.extension?.packageJSON?.contributes?.languages as
+      | { id: string; extensions?: string[] | undefined }[]
+      | undefined) || [];
   const dynamicLanguageSelectors: ({ language: string } | { pattern: string })[] = [];
   const allExts: string[] = [
     "mo",
@@ -899,8 +901,8 @@ export async function activate(context: vscode.ExtensionContext) {
   // Handler for dynamic artifact handoff and mounting from web host shell
   const handleMountArtifact = async (payload: {
     artifactId: string | number;
-    title?: string;
-    viewType?: string;
+    title?: string | undefined;
+    viewType?: string | undefined;
     viewConfig?: any;
   }) => {
     if (!payload?.artifactId) return;
@@ -1109,7 +1111,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const bindClientNotifications = (targetClient: LanguageClient) => {
     targetClient.onNotification(
       "modelscript/debuggerStopped",
-      (params: { uri?: string; line?: number; column?: number }) => {
+      (params: { uri?: string | undefined; line?: number | undefined; column?: number | undefined }) => {
         if (activeDebugSession) {
           activeDebugSession.lastStoppedUri = params.uri;
           activeDebugSession.lastStoppedLine = params.line;
@@ -1175,7 +1177,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
     targetClient.onNotification(
       "modelscript/cosimStream",
-      async (msg: { type: string; participantId: string; time: number; data?: number[]; payload?: any }) => {
+      async (msg: {
+        type: string;
+        participantId: string;
+        time: number;
+        data?: number[] | undefined;
+        payload?: any;
+      }) => {
         // Forward the co-simulation streaming events to the CAD Viewer React webview
         const { CadViewerPanel } = await import("./cad-viewer-panel");
         if (CadViewerPanel.currentPanel) {
@@ -1689,10 +1697,11 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         // Fall back to querying language server for location
-        const resultPromise = client.sendRequest<{ uri: string; line?: number; character?: number } | null>(
-          "modelscript/getClassLocation",
-          { className },
-        );
+        const resultPromise = client.sendRequest<{
+          uri: string;
+          line?: number | undefined;
+          character?: number | undefined;
+        } | null>("modelscript/getClassLocation", { className });
         // Timeout after 4s so UI never freezes
         const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 4000));
         const result = await Promise.race([resultPromise, timeoutPromise]);
@@ -1885,7 +1894,7 @@ END-ISO-10303-21;`;
           while (t <= tStop) {
             result.time.push(t);
             for (let i = 0; i < inst.vars.length; i++) {
-              result.series[`var_${i}`].push(inst.vars[i]);
+              result.series[`var_${i}`]!.push(inst.vars[i]);
             }
             inst.doStep(t, dt);
             t += dt;
@@ -1903,8 +1912,8 @@ END-ISO-10303-21;`;
           for (const line of varLines) {
             const match = line.match(/Real (.*?); \/\* VR=(\d+) \*\//);
             if (match) {
-              const name = match[1].trim();
-              const vr = parseInt(match[2]);
+              const name = match[1]!.trim();
+              const vr = parseInt(match[2]!);
               states.push(name);
               y.push(result.series[`var_${vr}`] || []);
             }
@@ -2012,7 +2021,7 @@ END-ISO-10303-21;`;
             cancellable: false,
           },
           async () => {
-            const res = await client.sendRequest<any>("modelscript/executeAction", {
+            const res = await client!.sendRequest<any>("modelscript/executeAction", {
               actionId: "simulate",
               languageId: editor?.document.languageId ?? "modelica",
               uri,
@@ -2173,7 +2182,7 @@ END-ISO-10303-21;`;
       if (!client) return;
       SurrogatePanel.createOrShow(context.extensionUri, client, uri);
     }),
-    commands.registerCommand("modelscript.openCandidateTradeStudy", (uri?: string, entityName?: string) => {
+    commands.registerCommand("modelscript.openCandidateTradeStudy", (_uri?: string, entityName?: string) => {
       CandidateTradeStudyPanel.createOrShow(context.extensionUri, client, entityName);
     }),
     commands.registerCommand("modelscript.openCloudPanel", (uri?: string) => {
@@ -2260,10 +2269,13 @@ END-ISO-10303-21;`;
         { location: vscode.ProgressLocation.Notification, title: "Flattening model...", cancellable: false },
         async () => {
           try {
-            const res = await client?.sendRequest<{ text: string | null; error?: string }>("modelscript/flatten", {
-              name,
-              uri,
-            });
+            const res = await client?.sendRequest<{ text: string | null; error?: string | undefined }>(
+              "modelscript/flatten",
+              {
+                name,
+                uri,
+              },
+            );
             if (!res) return;
 
             outputChannel.clear();
@@ -2490,9 +2502,9 @@ END-ISO-10303-21;`;
               // Forward verification limits to the Simulation Panel for chart overlay
               try {
                 const reqs: {
-                  peakValue?: number;
-                  limitValue?: number;
-                  lhsName?: string;
+                  peakValue?: number | undefined;
+                  limitValue?: number | undefined;
+                  lhsName?: string | undefined;
                   status: string;
                 }[] = await client.sendRequest("modelscript/getRequirements", {
                   uri: editor.document.uri.toString(),
@@ -2524,10 +2536,10 @@ END-ISO-10303-21;`;
       // Support context menu (LibraryTreeItem), palette item, and direct call
       let className: string | undefined;
       if (firstArg && typeof firstArg === "object" && "info" in firstArg) {
-        const item = firstArg as { info: { compositeName: string; classKind: string; iconSvg?: string } };
+        const item = firstArg as { info: { compositeName: string; classKind: string; iconSvg?: string | undefined } };
         className = item.info.compositeName;
       } else if (firstArg && typeof firstArg === "object" && "elementInfo" in firstArg) {
-        const item = firstArg as { elementInfo: { type: string; element?: { elementType: string } } };
+        const item = firstArg as { elementInfo: { type: string; element?: { elementType: string } | undefined } };
         if (item.elementInfo.type === "element" && item.elementInfo.element) {
           className = item.elementInfo.element.elementType;
         }
@@ -2701,7 +2713,7 @@ END-ISO-10303-21;`;
         },
         async () => {
           try {
-            const res = await client.sendRequest<any>("modelscript/verifyB2B", { uri: targetUri, format: "dhf" });
+            const res = await client!.sendRequest<any>("modelscript/verifyB2B", { uri: targetUri, format: "dhf" });
             if (res.success) {
               const disc = res.maxDiscrepancy !== undefined ? res.maxDiscrepancy.toExponential(3) : "0.0";
               const sha = res.sha256CSource ? res.sha256CSource.slice(0, 12) : "unknown";
@@ -2741,22 +2753,22 @@ END-ISO-10303-21;`;
       if (doc) {
         const text = doc.getText();
         const mMatch = text.match(/\bm\s*=\s*([\d.]+)/);
-        if (mMatch) m = parseFloat(mMatch[1]);
+        if (mMatch) m = parseFloat(mMatch[1]!);
         const aMatch = text.match(/\bA\s*=\s*([\d.]+)/);
-        if (aMatch) A = parseFloat(aMatch[1]);
+        if (aMatch) A = parseFloat(aMatch[1]!);
         const cdMatch = text.match(/\bCd\s*=\s*([\d.]+)/i);
-        if (cdMatch) Cd = parseFloat(cdMatch[1]);
+        if (cdMatch) Cd = parseFloat(cdMatch[1]!);
         const zMatch = text.match(/\bz_target\s*=\s*([\d.]+)/);
-        if (zMatch) z_target = parseFloat(zMatch[1]);
+        if (zMatch) z_target = parseFloat(zMatch[1]!);
         const kzMatch = text.match(/\bkz\s*=\s*([\d.]+)/);
-        if (kzMatch) kz = parseFloat(kzMatch[1]);
+        if (kzMatch) kz = parseFloat(kzMatch[1]!);
         const kvMatch = text.match(/\bkv\s*=\s*([\d.]+)/);
-        if (kvMatch) kv = parseFloat(kvMatch[1]);
+        if (kvMatch) kv = parseFloat(kvMatch[1]!);
         const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
-        if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]);
+        if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]!);
         const wMatch =
           text.match(/\b(?:w_max)\s*=\s*([\d.]+)/) || text.match(/\binput\s+Real\s+w\s*\([^)]*max\s*=\s*([\d.]+)/);
-        if (wMatch) w_max = parseFloat(wMatch[1]);
+        if (wMatch) w_max = parseFloat(wMatch[1]!);
       }
 
       const res = simulateDroneReachability({
@@ -2794,8 +2806,8 @@ END-ISO-10303-21;`;
           color: "#8b5cf6",
           fillColor: "rgba(139, 92, 246, 0.18)",
           borderDash: [3, 2],
-          lo: res.zonotopeLo.map((lo, i) => res.nominal[i] - (res.nominal[i] - lo) * 1.08),
-          hi: res.zonotopeHi.map((hi, i) => res.nominal[i] + (hi - res.nominal[i]) * 1.08),
+          lo: res.zonotopeLo.map((lo, i) => res.nominal[i]! - (res.nominal[i]! - lo) * 1.08),
+          hi: res.zonotopeHi.map((hi, i) => res.nominal[i]! + (hi - res.nominal[i]!) * 1.08),
           peakVal: parseFloat((res.zonotopeMaxVelocity * 1.04).toFixed(2)),
         },
         {
@@ -2843,7 +2855,7 @@ END-ISO-10303-21;`;
       try {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) return;
-        const rootUri = workspaceFolders[0].uri;
+        const rootUri = workspaceFolders[0]!.uri;
 
         const inpUri = Uri.joinPath(rootUri, "cae/drone_chassis.inp");
         const cfgUri = Uri.joinPath(rootUri, "cae/drone_aero.cfg");
@@ -2861,9 +2873,9 @@ END-ISO-10303-21;`;
           const rawInp = await vscode.workspace.fs.readFile(inpUri);
           const inpText = new TextDecoder().decode(rawInp);
           const massMatch = inpText.match(/\bmass\s*=\s*([\d.]+)/i);
-          if (massMatch) mass = parseFloat(massMatch[1]);
+          if (massMatch) mass = parseFloat(massMatch[1]!);
           const misesMatch = inpText.match(/\bmax_von_mises\s*=\s*([\d.]+)/i);
-          if (misesMatch) maxVonMisesPa = parseFloat(misesMatch[1]) * 1e6;
+          if (misesMatch) maxVonMisesPa = parseFloat(misesMatch[1]!) * 1e6;
         } catch {}
 
         // 2. Read CFD config
@@ -2871,11 +2883,11 @@ END-ISO-10303-21;`;
           const rawCfg = await vscode.workspace.fs.readFile(cfgUri);
           const cfgText = new TextDecoder().decode(rawCfg);
           const cdMatch = cfgText.match(/\bCd_total\s*=\s*([\d.]+)/i) || cfgText.match(/\bCD\s*=\s*([\d.]+)/i);
-          if (cdMatch) cd = parseFloat(cdMatch[1]);
+          if (cdMatch) cd = parseFloat(cdMatch[1]!);
           const areaMatch = cfgText.match(/REF_AREA\s*=\s*([\d.]+)/i);
-          if (areaMatch) area = parseFloat(areaMatch[1]);
+          if (areaMatch) area = parseFloat(areaMatch[1]!);
           const rhoMatch = cfgText.match(/INC_DENSITY_INIT\s*=\s*([\d.]+)/i);
-          if (rhoMatch) rho = parseFloat(rhoMatch[1]);
+          if (rhoMatch) rho = parseFloat(rhoMatch[1]!);
         } catch {}
 
         // 3. Propagate into Modelica document
@@ -3010,7 +3022,7 @@ END-ISO-10303-21;`;
         },
         async () => {
           try {
-            const res = await client.sendRequest<any>("modelscript/runMcdcTests", {
+            const res = await client!.sendRequest<any>("modelscript/runMcdcTests", {
               uri: targetUri,
               actionName,
             });
@@ -3040,7 +3052,7 @@ END-ISO-10303-21;`;
         },
         async () => {
           try {
-            const res = await client.sendRequest<any>("modelscript/decomposeRegions", {
+            const res = await client!.sendRequest<any>("modelscript/decomposeRegions", {
               uri: targetUri,
             });
             if (res?.success) {
@@ -3069,41 +3081,44 @@ END-ISO-10303-21;`;
         SimulationViewPanel.createOrShow(context, client, className, targetUri.toString());
       }
     }),
-    commands.registerCommand("modelscript.runPhysicsSimulation", async (args?: { uri: string; className?: string }) => {
-      if (!client) return;
-      const uri = args?.uri || vscode.window.activeTextEditor?.document.uri.toString();
-      if (!uri) return;
-      const className = args?.className;
+    commands.registerCommand(
+      "modelscript.runPhysicsSimulation",
+      async (args?: { uri: string; className?: string | undefined }) => {
+        if (!client) return;
+        const uri = args?.uri || vscode.window.activeTextEditor?.document.uri.toString();
+        if (!uri) return;
+        const className = args?.className;
 
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Running multi-physics simulation for ${className || "study"}...`,
-          cancellable: false,
-        },
-        async () => {
-          try {
-            // Open 3D CAD viewer if not already open
-            const { CadViewerPanel } = await import("./cad-viewer-panel");
-            CadViewerPanel.createOrShow(context.extensionUri, client);
+        vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Running multi-physics simulation for ${className || "study"}...`,
+            cancellable: false,
+          },
+          async () => {
+            try {
+              // Open 3D CAD viewer if not already open
+              const { CadViewerPanel } = await import("./cad-viewer-panel");
+              CadViewerPanel.createOrShow(context.extensionUri, client!);
 
-            const result = await client.sendRequest<any>("modelscript/simulatePhysics", {
-              uri,
-              className,
-              physicsType: "FEA",
-            });
+              const result = await client!.sendRequest<any>("modelscript/simulatePhysics", {
+                uri,
+                className,
+                physicsType: "FEA",
+              });
 
-            if (result?.error) {
-              vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
-            } else {
-              vscode.window.showInformationMessage("Physics co-simulation completed successfully.");
+              if (result?.error) {
+                vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
+              } else {
+                vscode.window.showInformationMessage("Physics co-simulation completed successfully.");
+              }
+            } catch (err: any) {
+              vscode.window.showErrorMessage(`Failed to run physics simulation: ${err?.message || err}`);
             }
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to run physics simulation: ${err?.message || err}`);
-          }
-        },
-      );
-    }),
+          },
+        );
+      },
+    ),
     commands.registerCommand("modelscript.materializeCalculixDeck", async (uriOrStr?: vscode.Uri | string) => {
       let targetUri: vscode.Uri | undefined;
       if (typeof uriOrStr === "string") targetUri = vscode.Uri.parse(uriOrStr);
@@ -3482,13 +3497,13 @@ async function createWorkerLanguageClient(context: vscode.ExtensionContext, clie
  */
 async function initWorkspaceAndTree(
   treeProvider: LibraryTreeProvider,
-  treeView: vscode.TreeView<vscode.TreeItem>,
+  treeView: vscode.TreeView<vscode.TreeItem> | undefined,
   memFs?: MemoryFileSystemProvider,
 ): Promise<void> {
   const folders = workspace.workspaceFolders;
 
   let workspaceUri: vscode.Uri | undefined =
-    folders && folders.length > 0 && folders[0].uri.scheme === "memfs" ? folders[0].uri : undefined;
+    folders && folders.length > 0 && folders[0]!.uri.scheme === "memfs" ? folders[0]!.uri : undefined;
   if (!workspaceUri) {
     try {
       const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
@@ -3605,7 +3620,7 @@ async function initWorkspaceAndTree(
       try {
         const rootItems = await treeProvider.getChildren();
         for (const item of rootItems) {
-          await treeView.reveal(item, { expand: true, select: false, focus: false });
+          await treeView?.reveal(item, { expand: true, select: false, focus: false });
         }
       } catch {
         // ignore — tree may not be ready yet
@@ -3616,10 +3631,10 @@ async function initWorkspaceAndTree(
 
   // Always scan for existing .mo/.sysml files so the LSP indexes the workspace
   const moFiles = await scanWorkspaceFiles();
-  const isMemfs = folders && folders.length > 0 && folders[0].uri.scheme === "memfs";
+  const isMemfs = folders && folders.length > 0 && folders[0]!.uri.scheme === "memfs";
   if (moFiles.length > 0 && !isMemfs) {
     // Only set tree focus for non-memfs since memfs templates do their own opening
-    treeProvider.setDocumentUri(moFiles[0].toString());
+    treeProvider.setDocumentUri(moFiles[0]!.toString());
   }
 
   // Auto-expand root items after tree data loads
@@ -3627,7 +3642,7 @@ async function initWorkspaceAndTree(
     try {
       const rootItems = await treeProvider.getChildren();
       for (const item of rootItems) {
-        await treeView.reveal(item, { expand: true, select: false, focus: false });
+        await treeView?.reveal(item, { expand: true, select: false, focus: false });
       }
     } catch {
       // ignore — tree may not be ready yet
@@ -3766,29 +3781,54 @@ try {
       try {
         const activeEditor = vscode.window.activeTextEditor;
         const uri = activeEditor ? activeEditor.document.uri.toString() : "modelscript-lib://global";
+        const docText = activeEditor ? activeEditor.document.getText() : "";
 
-        // Fetch properties or evaluate values
+        // Fetch requirements once if needed
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let reqs: any[] | null = null;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          reqs = (await client.sendRequest("modelscript/getRequirements", { uri })) as any[];
+        } catch {
+          reqs = null;
+        }
+
+        // Fetchproperties or evaluate values from document and LSP
         for (const name of names) {
           try {
-            // For SysML2 properties like SystemVerification.MaxVoltageReq.maxLimit
-            // We can query the LSP or evaluate them
-            // Here we use modelscript/getRequirements to get requirement attributes
-            if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const reqs: any = await client.sendRequest("modelscript/getRequirements", { uri });
-              if (reqs && reqs.length > 0) {
-                // Try to extract value
-                values[name] = "8.0"; // fallback
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const req = reqs.find((r: any) => name.includes(r.name) || r.name.includes("MaxVoltageReq"));
-                if (req) {
-                  values[name] = req.attributes?.maxLimit ?? "8.0";
-                }
-              }
-            } else {
-              // Fallback empty
-              values[name] = "[unresolved]";
+            const leafName = name.split(".").pop() ?? name;
+            // 1. Check active document for attribute / parameter / variable binding
+            const escapedLeaf = leafName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const bindingMatch = docText.match(
+              new RegExp(
+                `\\b(?:attribute|parameter|constant|Real|Integer|Boolean)?[^;\\n]*?\\b${escapedLeaf}\\b(?:\\s*:\\s*[A-Za-z0-9_.:]+)?\\s*=\\s*([^;\\n]+)`,
+              ),
+            );
+            if (bindingMatch?.[1]) {
+              values[name] = bindingMatch[1].trim();
+              continue;
             }
+
+            // 2. Check LSP requirements attributes
+            if (reqs && reqs.length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const req = reqs.find((r: any) => name.includes(r.name) || (r.attributes && leafName in r.attributes));
+              if (req?.attributes?.[leafName] !== undefined) {
+                values[name] = String(req.attributes[leafName]);
+                continue;
+              }
+              if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const vReq = reqs.find((r: any) => name.includes(r.name) || r.name.includes("MaxVoltageReq"));
+                values[name] = vReq?.attributes?.maxLimit ?? "8.0";
+                continue;
+              }
+            } else if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {
+              values[name] = "8.0";
+              continue;
+            }
+
+            values[name] = "[unresolved]";
           } catch (err: unknown) {
             console.warn("Failed to resolve markdown var", name, err);
           }
@@ -3802,6 +3842,30 @@ try {
       const target = e.data.target;
       try {
         const targetClean = String(target).replace(/[<>&"]/g, "");
+        const activeEditor = vscode.window.activeTextEditor;
+        const docText = activeEditor ? activeEditor.document.getText() : "";
+
+        // Discover connected peer or second component from active document if available
+        let peerLabel = "Interface / Sink";
+        let portLabel = "Connector Port";
+        const connMatch = docText.match(
+          new RegExp(
+            `connect\\s*\\(\\s*${targetClean}(?:\\.([A-Za-z0-9_]+))?\\s*,\\s*([A-Za-z0-9_]+)(?:\\.([A-Za-z0-9_]+))?\\s*\\)`,
+          ),
+        );
+        const sysmlConnMatch = docText.match(
+          new RegExp(
+            `connect\\s+${targetClean}(?:\\.([A-Za-z0-9_]+))?\\s+to\\s+([A-Za-z0-9_]+)(?:\\.([A-Za-z0-9_]+))?`,
+          ),
+        );
+        if (connMatch) {
+          peerLabel = connMatch[2] ?? peerLabel;
+          portLabel = [connMatch[1], connMatch[3]].filter(Boolean).join(" ↔ ") || portLabel;
+        } else if (sysmlConnMatch) {
+          peerLabel = sysmlConnMatch[2] ?? peerLabel;
+          portLabel = [sysmlConnMatch[1], sysmlConnMatch[3]].filter(Boolean).join(" ↔ ") || portLabel;
+        }
+
         const svg = `<svg viewBox="0 0 400 180" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--vscode-widget-border, #454545); border-radius: 6px; background: var(--vscode-editor-background, #1e1e1e); padding: 8px; font-family: sans-serif;">
           <defs>
             <linearGradient id="compGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -3818,8 +3882,8 @@ try {
           <circle cx="160" cy="85" r="5" fill="var(--vscode-textLink-foreground, #3794ff)"/>
           <path d="M 165 85 L 235 85" stroke="var(--vscode-textLink-foreground, #3794ff)" stroke-width="2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
           <rect x="240" y="30" width="140" height="110" rx="6" fill="url(#compGrad)" stroke="var(--vscode-button-background, #007acc)" stroke-width="2"/>
-          <text x="310" y="80" text-anchor="middle" fill="var(--vscode-editor-foreground, #ccc)" font-size="13" font-weight="600">Interface / Sink</text>
-          <text x="310" y="105" text-anchor="middle" fill="var(--vscode-descriptionForeground, #888)" font-size="11">Connector Port</text>
+          <text x="310" y="80" text-anchor="middle" fill="var(--vscode-editor-foreground, #ccc)" font-size="13" font-weight="600">${peerLabel.replace(/[<>&"]/g, "")}</text>
+          <text x="310" y="105" text-anchor="middle" fill="var(--vscode-descriptionForeground, #888)" font-size="11">${portLabel.replace(/[<>&"]/g, "")}</text>
           <circle cx="240" cy="85" r="5" fill="var(--vscode-textLink-foreground, #3794ff)"/>
         </svg>`;
 

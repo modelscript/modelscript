@@ -17,6 +17,9 @@ import {
   type SymbolId,
 } from "@modelscript/dsl";
 
+/**
+ * Operator precedence levels for embedded parameter expressions in FEA templates (`.inpt`).
+ */
 const PREC = {
   ASSIGNMENT: 1,
   CONDITIONAL: 2,
@@ -27,6 +30,13 @@ const PREC = {
   PRIMARY: 7,
 } as const;
 
+/**
+ * Finite Element Analysis (`.fea`, `.inp`, `.inpt`, `.bdf`) language definition.
+ *
+ * Defines the GLR grammar for Abaqus/CalculiX keyword cards, data lines, and `{{ expr }}`
+ * template bindings, 3D FEA viewer/materialization/simulation actions, and polyglot TGG rules
+ * linking FEA structural properties and boundary conditions to SysML v2 and Modelica.
+ */
 export const feaLanguage = language({
   name: "fea",
   fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
@@ -38,13 +48,14 @@ export const feaLanguage = language({
     },
   },
 
+  // IDE and AI agent actions for 3D FEA mesh viewing, template materialization, and linear-elasticity simulation
   actions: [
     {
       id: "open_fea_viewer",
       title: "Open 3D FEA Deck Viewer",
       description: "Opens the 3D finite element deck viewer showing nodes, elements, boundary conditions, and loads.",
       category: "query",
-      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -91,7 +102,10 @@ export const feaLanguage = language({
       title: "Materialize FEA Deck (.inpt -> .inp)",
       description: "Evaluates embedded expressions and expands parametric macros into a concrete CalculiX / .inp deck.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string; uri?: string; options?: any }) => {
+      execute: async (
+        ctx: any,
+        params: { documentText?: string | undefined; uri?: string | undefined; options?: any },
+      ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -136,7 +150,7 @@ export const feaLanguage = language({
       title: "Run FEA Structural Simulation",
       description: "Executes a structural finite element simulation using CalculiX solver.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string; uri?: string }) => {
+      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -153,19 +167,25 @@ export const feaLanguage = language({
         const slicing = extractFeaSlicingProperties(source);
         if (ctx.notifyProgress) {
           ctx.notifyProgress(
-            `FEA Analysis: mass=${slicing.mass}kg, σ_max=${(slicing.maxVonMisesPa / 1e6).toFixed(1)}MPa (${slicing.isSafe ? "SAFE" : "FAIL"})`,
+            `FEA Analysis: mass=${slicing.mass}kg, σ_max=${(slicing.maxVonMisesPa / 1e6).toFixed(1)}MPa, u_max=${((slicing.maxDisplacementM ?? 0) * 1e3).toFixed(3)}mm (${slicing.isSafe ? "SAFE" : "FAIL"})`,
           );
         }
         return {
           success: true,
           uri: ctx.uri,
-          solver: "CalculiX Structural Slicing",
+          solver: "3D Linear Elasticity FEA Solver (C3D4/C3D8)",
           mass: slicing.mass,
+          totalVolumeM3: slicing.totalVolumeM3 ?? 0,
+          maxDisplacementM: slicing.maxDisplacementM ?? 0,
+          nodeCount: slicing.nodeCount ?? 0,
+          elementCount: slicing.elementCount ?? 0,
+          nodalDisplacements: slicing.nodalDisplacements ?? {},
+          elementVonMisesPa: slicing.elementVonMisesPa ?? {},
           maxVonMisesPa: slicing.maxVonMisesPa,
           yieldStrengthPa: slicing.yieldStrengthPa,
           safetyFactor: slicing.safetyFactor,
           isSafe: slicing.isSafe,
-          summary: `FEA structural simulation completed: Mass m = ${slicing.mass} kg, Max von Mises = ${(slicing.maxVonMisesPa / 1e6).toFixed(1)} MPa <= ${(slicing.yieldStrengthPa / 1e6).toFixed(1)} MPa (Safety Factor: ${slicing.safetyFactor}x, ${slicing.isSafe ? "SAT" : "VIOLATED"})`,
+          summary: `FEA structural simulation completed (${slicing.nodeCount ?? 0} nodes, ${slicing.elementCount ?? 0} elements): Mass m = ${slicing.mass} kg, Max displacement = ${((slicing.maxDisplacementM ?? 0) * 1e3).toFixed(3)} mm, Max von Mises = ${(slicing.maxVonMisesPa / 1e6).toFixed(1)} MPa <= ${(slicing.yieldStrengthPa / 1e6).toFixed(1)} MPa (Safety Factor: ${slicing.safetyFactor}x, ${slicing.isSafe ? "SAT" : "VIOLATED"})`,
         };
       },
       ui: {
@@ -184,6 +204,7 @@ export const feaLanguage = language({
     },
   ],
 
+  // Triple Graph Grammar (TGG) rules synchronizing FEA keyword cards with SysML v2 and Modelica
   polyglot: {
     languages: ["sysml2", "modelica"],
     rules: [
@@ -193,7 +214,7 @@ export const feaLanguage = language({
         targetLang: "modelica",
         priority: 15,
         source: ($, v) => $.KeywordCard({ name: "SOLID SECTION", parameter: v("elset") }),
-        target: ($, v) => $.ComponentClause({ name: "m", defaultValue: v("mass") }),
+        target: ($, v) => $.ComponentClause({ name: "m", defaultValue: v("elset") }),
         where: (v) => [tggEq(v("elset"), v("elset")), tggComplement(["mass"])],
       }),
       tggRule({
@@ -202,7 +223,7 @@ export const feaLanguage = language({
         targetLang: "sysml2",
         priority: 15,
         source: ($, v) => $.KeywordCard({ name: "SOLID SECTION", parameter: v("elset") }),
-        target: ($, v) => $.AttributeUsage({ declaredName: "totalMass", defaultValue: v("mass") }),
+        target: ($, v) => $.AttributeUsage({ declaredName: "totalMass", defaultValue: v("elset") }),
         where: (v) => [tggEq(v("elset"), v("elset")), tggComplement(["mass"])],
       }),
       tggRule({
@@ -259,9 +280,10 @@ export const feaLanguage = language({
   extras: () => [/[ \t\r]+/],
 
   rules: {
+    // Root FEA deck rule exposing Salsa instantiation and name-resolution queries
     SourceFile: ($) =>
       def({
-        syntax: repeat(choice($.CommentLine, $.KeywordCard, $.DataLine, $._newline)),
+        syntax: repeat(choice($["CommentLine"]!, $["KeywordCard"]!, $["DataLine"]!, $["_newline"]!)),
         symbol: () => ({
           kind: "Class",
           name: "FeaDeck",
@@ -281,67 +303,76 @@ export const feaLanguage = language({
         },
       }),
 
-    CommentLine: ($) => seq(choice("**", "$", "#"), /.*/, $._newline),
+    CommentLine: ($) => seq(choice("**", "$", "#"), /.*/, $["_newline"]!),
 
     _newline: () => /\n/,
 
+    // Abaqus/CalculiX keyword card (`*KEYWORD, PARAM=VAL`) indexed as a Section symbol
     KeywordCard: ($) =>
       def({
         syntax: seq(
           "*",
-          field("name", $.IDENTIFIER),
-          optional(seq(",", field("parameter", choice($.IDENTIFIER, $.NUMBER, $.STRING, $.EmbeddedExpression)))),
-          repeat(seq(",", choice($.ParameterAssignment, $.OptionFlag))),
-          choice($._newline, optional(/\r?\n/)),
+          field("name", $["CARD_NAME"]!),
+          optional(
+            seq(
+              ",",
+              field("parameter", choice($["IDENTIFIER"]!, $["NUMBER"]!, $["STRING"]!, $["EmbeddedExpression"]!)),
+            ),
+          ),
+          repeat(seq(",", choice($["ParameterAssignment"]!, $["OptionFlag"]!))),
+          choice($["_newline"]!, optional(/\r?\n/)),
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Section",
-          name: self.name ?? "KEYWORD",
+          name: self["name"] ?? "KEYWORD",
         }),
       }),
 
     ParameterAssignment: ($) =>
       seq(
-        field("param", $.IDENTIFIER),
+        field("param", $["IDENTIFIER"]!),
         "=",
-        field("value", choice($.IDENTIFIER, $.NUMBER, $.STRING, $.EmbeddedExpression)),
+        field("value", choice($["IDENTIFIER"]!, $["NUMBER"]!, $["STRING"]!, $["EmbeddedExpression"]!)),
       ),
 
-    OptionFlag: ($) => field("flag", $.IDENTIFIER),
+    OptionFlag: ($) => field("flag", $["IDENTIFIER"]!),
 
     DataLine: ($) =>
       seq(
-        choice($.DataItem, $.EmbeddedExpression),
-        repeat(seq(",", choice($.DataItem, $.EmbeddedExpression))),
-        choice($._newline, optional(/\r?\n/)),
+        choice($["DataItem"]!, $["EmbeddedExpression"]!),
+        repeat(seq(",", choice($["DataItem"]!, $["EmbeddedExpression"]!))),
+        choice($["_newline"]!, optional(/\r?\n/)),
       ),
 
-    DataItem: ($) => choice($.NUMBER, $.IDENTIFIER, $.STRING),
+    DataItem: ($) => choice($["NUMBER"]!, $["IDENTIFIER"]!, $["STRING"]!),
 
+    // Embedded template expression (`{{ expr }}`) for parametric FEA deck materialization
     EmbeddedExpression: ($) =>
       def({
-        syntax: seq("{{", field("expr", $.Expression), "}}"),
+        syntax: seq("{{", field("expr", $["Expression"]!), "}}"),
         symbol: (self: Record<string, string>) => ({
           kind: "ExpressionBinding",
-          name: self.expr ?? "",
+          name: self["expr"] ?? "",
         }),
       }),
 
-    Expression: ($) => choice($.BinaryExpression, $.UnaryExpression, $.PrimaryExpression),
+    Expression: ($) => choice($["BinaryExpression"]!, $["UnaryExpression"]!, $["PrimaryExpression"]!),
 
     BinaryExpression: ($) =>
       choice(
-        prec.left(PREC.ADDITIVE, seq($.Expression, choice("+", "-"), $.Expression)),
-        prec.left(PREC.MULTIPLICATIVE, seq($.Expression, choice("*", "/"), $.Expression)),
-        prec.right(PREC.EXPONENTIATION, seq($.Expression, "^", $.Expression)),
+        prec.left(PREC.ADDITIVE, seq($["Expression"]!, choice("+", "-"), $["Expression"]!)),
+        prec.left(PREC.MULTIPLICATIVE, seq($["Expression"]!, choice("*", "/"), $["Expression"]!)),
+        prec.right(PREC.EXPONENTIATION, seq($["Expression"]!, "^", $["Expression"]!)),
       ),
 
-    UnaryExpression: ($) => prec(PREC.UNARY, seq(choice("+", "-"), $.Expression)),
+    UnaryExpression: ($) => prec(PREC.UNARY, seq(choice("+", "-"), $["Expression"]!)),
 
-    PrimaryExpression: ($) => choice($.QualifiedIdentifier, $.NUMBER, $.STRING, seq("(", $.Expression, ")")),
+    PrimaryExpression: ($) =>
+      choice($["QualifiedIdentifier"]!, $["NUMBER"]!, $["STRING"]!, seq("(", $["Expression"]!, ")")),
 
-    QualifiedIdentifier: ($) => seq($.IDENTIFIER, repeat(seq(".", $.IDENTIFIER))),
+    QualifiedIdentifier: ($) => seq($["IDENTIFIER"]!, repeat(seq(".", $["IDENTIFIER"]!))),
 
+    CARD_NAME: () => /[A-Za-z_][A-Za-z0-9_]*(?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)*/,
     IDENTIFIER: () => /[A-Za-z_][A-Za-z0-9_]*/,
     NUMBER: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
     STRING: () => /"[^"\\]*(?:\\.[^"\\]*)*"/,

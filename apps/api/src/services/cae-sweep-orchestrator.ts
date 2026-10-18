@@ -22,26 +22,30 @@ import { CaeTelemetryStreamer, type CaeSolverType } from "./cae-telemetry-stream
 import type { HpcUsageMetrics } from "./hpc/hpc-types.js";
 
 export interface CaeSweepSpec {
-  title?: string;
+  title?: string | undefined;
   solver: CaeSolverType;
   templateDeck: string;
   deckFormat: "inp" | "cfg";
-  geometry?: {
-    casHash?: string;
-    filename?: string;
-  };
+  geometry?:
+    | {
+        casHash?: string | undefined;
+        filename?: string | undefined;
+      }
+    | undefined;
   sampling: {
     strategy: DoEStrategy;
     sampleCount: number;
-    concurrency?: number;
+    concurrency?: number | undefined;
     parameters: ParametricSweepVariable[];
   };
-  options?: {
-    cores?: number;
-    timeoutSeconds?: number;
-    runner?: "auto" | "docker" | "host" | "fallback";
-    profile?: string;
-  };
+  options?:
+    | {
+        cores?: number | undefined;
+        timeoutSeconds?: number | undefined;
+        runner?: "auto" | "docker" | "host" | "fallback" | undefined;
+        profile?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface CaeSweepRun {
@@ -49,12 +53,12 @@ export interface CaeSweepRun {
   jobId: string;
   parameters: Record<string, number>;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  startTime?: number;
-  completedTime?: number;
-  durationMs?: number;
-  scalars?: CaeScalarSummary;
+  startTime?: number | undefined;
+  completedTime?: number | undefined;
+  durationMs?: number | undefined;
+  scalars?: CaeScalarSummary | undefined;
   resultDir: string;
-  error?: string;
+  error?: string | undefined;
   usage?: HpcUsageMetrics | undefined;
   costCredits?: number | undefined;
 }
@@ -84,10 +88,10 @@ export interface CaeSweepState {
 }
 
 export interface SweepSurrogateTrainOptions extends CaeSurrogateBridgeConfig {
-  targetField?: string;
-  modelName?: string;
-  packageName?: string;
-  description?: string;
+  targetField?: string | undefined;
+  modelName?: string | undefined;
+  packageName?: string | undefined;
+  description?: string | undefined;
 }
 
 export interface SweepSurrogateTrainResult {

@@ -323,7 +323,9 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const res = await register(username, email, password, acceptTerms, "mock-token");
+      const captchaToken =
+        (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "mock-token";
+      const res = await register(username, email, password, acceptTerms, captchaToken);
       if (res?.verificationRequired) {
         setVerificationSent(true);
       } else {
@@ -331,7 +333,7 @@ export default function SignupPage() {
       }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { error?: string } } };
+        const axiosErr = err as { response?: { data?: { error?: string | undefined } | undefined } | undefined };
         setError(axiosErr.response?.data?.error || "Registration failed");
       } else {
         setError("Registration failed. Please try again.");

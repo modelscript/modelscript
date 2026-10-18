@@ -84,7 +84,7 @@ export class UnivariatePoly {
     const res = new Array<number>(this.degree() + other.degree() + 1).fill(0);
     for (let i = 0; i < this.coeffs.length; i++) {
       for (let j = 0; j < other.coeffs.length; j++) {
-        res[i + j] += this.coeffs[i]! * other.coeffs[j]!;
+        res[i + j] = res[i + j]! + this.coeffs[i]! * other.coeffs[j]!;
       }
     }
     return new UnivariatePoly(res);
@@ -106,7 +106,7 @@ export class UnivariatePoly {
       qCoeffs[degDiff] = coeff;
 
       for (let i = 0; i <= other.degree(); i++) {
-        rem.coeffs[i + degDiff] -= coeff * other.coeffs[i]!;
+        rem.coeffs[i + degDiff] = rem.coeffs[i + degDiff]! - coeff * other.coeffs[i]!;
       }
       rem.trim();
     }
@@ -553,8 +553,8 @@ export interface NlsatConstraint {
 
 export interface NlsatResult {
   status: "SAT" | "UNSAT" | "UNKNOWN";
-  model?: Map<string, number>;
-  conflictingConstraintIds?: number[];
+  model?: Map<string, number> | undefined;
+  conflictingConstraintIds?: number[] | undefined;
   iterations: number;
   durationMs: number;
   summary: string;

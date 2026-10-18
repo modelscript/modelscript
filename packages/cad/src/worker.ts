@@ -28,8 +28,8 @@ export class CSGWorker {
       const fs = await import(/* @vite-ignore */ "node:fs");
 
       const require = createRequire(import.meta.url);
-      if (typeof (globalThis as { __dirname?: string }).__dirname === "undefined") {
-        (globalThis as { __dirname?: string }).__dirname = path.dirname(new URL(import.meta.url).pathname);
+      if (typeof (globalThis as { __dirname?: string | undefined }).__dirname === "undefined") {
+        (globalThis as { __dirname?: string | undefined }).__dirname = path.dirname(new URL(import.meta.url).pathname);
       }
       const mod = require("opencascade.js/dist/opencascade.wasm.js");
       const initWasm = mod.default || mod;
@@ -93,7 +93,7 @@ export class CSGWorker {
 
         // 1. Tool Definition (Cylinder)
         // Assuming a simple end-mill dropping in Z
-        const makeTool = new this.oc.BRepPrimAPI_MakeCylinder_1(tool_diameter / 2, depth_of_cut);
+        const makeTool = new this.oc.BRepPrimAPI_MakeCylinder_1(tool_diameter! / 2, depth_of_cut);
         const toolShape = makeTool.Solid();
 
         // 2. Boolean Cut

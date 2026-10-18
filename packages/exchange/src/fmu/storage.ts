@@ -190,11 +190,18 @@ export class FmuStorage {
     return extractFileFromZip(archive, "resources/model.json");
   }
 
-  /** Extract a specific file from the FMU ZIP archive. */
+  /** Extract a specific file from the FMU ZIP archive as a UTF-8 string. */
   getExtractedFile(id: string, filename: string): string | null {
     const archive = this.getArchive(id);
     if (!archive) return null;
     return extractFileFromZip(archive, filename);
+  }
+
+  /** Extract a specific file from the FMU ZIP archive as raw bytes. */
+  getExtractedFileBytes(id: string, filename: string): Buffer | null {
+    const archive = this.getArchive(id);
+    if (!archive) return null;
+    return extractFileBytesFromZip(archive, filename);
   }
 
   /** Get the terminalsAndIcons.xml content (if it exists). */
@@ -225,13 +232,9 @@ export class FmuStorage {
 // ── ZIP extraction helpers ──────────────────────────────────────
 
 /**
- * Extract a single file from a ZIP archive by name.
- *
- * Minimal ZIP parser — reads the central directory to find the file,
- * then extracts its content. Supports STORED and DEFLATED methods.
- * No external dependency required.
+ * Extract a single file from a ZIP archive by name as raw bytes.
  */
-export function extractFileFromZip(zipData: Buffer, targetName: string): string | null {
+export function extractFileBytesFromZip(zipData: Buffer, targetName: string): Buffer | null {
   if (
     typeof zipData === "string" ||
     Array.isArray(zipData) ||
@@ -240,7 +243,6 @@ export function extractFileFromZip(zipData: Buffer, targetName: string): string 
     Array.isArray(targetName)
   )
     return null;
-  // Find End of Central Directory record
   let eocdOffset = -1;
   const len = typeof zipData === "string" || Array.isArray(zipData) || !Buffer.isBuffer(zipData) ? 0 : zipData.length;
   for (let i = len - 22; i >= 0; i--) {
@@ -255,7 +257,6 @@ export function extractFileFromZip(zipData: Buffer, targetName: string): string 
   const cdSize = zipData.readUInt32LE(eocdOffset + 12);
   const cdEnd = cdOffset + cdSize;
 
-  // Scan central directory for the target file
   let pos = cdOffset;
   while (pos < cdEnd) {
     if (zipData.readUInt32LE(pos) !== 0x02014b50) break;
@@ -269,7 +270,6 @@ export function extractFileFromZip(zipData: Buffer, targetName: string): string 
     const fileName = zipData.subarray(pos + 46, pos + 46 + fileNameLength).toString("utf-8");
 
     if (fileName === targetName) {
-      // Read from local file header
       const localPos = localHeaderOffset;
       if (zipData.readUInt32LE(localPos) !== 0x04034b50) return null;
 
@@ -278,13 +278,10 @@ export function extractFileFromZip(zipData: Buffer, targetName: string): string 
       const dataStart = localPos + 30 + localFileNameLen + localExtraLen;
 
       if (compressionMethod === 0) {
-        // Stored (no compression)
-        return zipData.subarray(dataStart, dataStart + compressedSize).toString("utf-8");
+        return Buffer.from(zipData.subarray(dataStart, dataStart + compressedSize));
       } else if (compressionMethod === 8) {
-        // Deflated — use zlib
         try {
-          const inflated = inflateRawSync(zipData.subarray(dataStart, dataStart + compressedSize));
-          return inflated.toString("utf-8");
+          return inflateRawSync(zipData.subarray(dataStart, dataStart + compressedSize));
         } catch {
           return null;
         }
@@ -297,4 +294,16 @@ export function extractFileFromZip(zipData: Buffer, targetName: string): string 
   }
 
   return null;
+}
+
+/**
+ * Extract a single file from a ZIP archive by name.
+ *
+ * Minimal ZIP parser — reads the central directory to find the file,
+ * then extracts its content. Supports STORED and DEFLATED methods.
+ * No external dependency required.
+ */
+export function extractFileFromZip(zipData: Buffer, targetName: string): string | null {
+  const bytes = extractFileBytesFromZip(zipData, targetName);
+  return bytes ? bytes.toString("utf-8") : null;
 }

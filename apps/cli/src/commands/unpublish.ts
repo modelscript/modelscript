@@ -98,7 +98,7 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
     const token = requireToken();
 
     try {
-      const API_URL = process.env.MODELSCRIPT_API_URL || "http://localhost:3000";
+      const API_URL = process.env["MODELSCRIPT_API_URL"] || "http://localhost:3000";
       const endpoint = `${API_URL}/api/v1/libraries/${name}/${version}`;
 
       const res = await fetch(endpoint, {

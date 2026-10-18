@@ -16,12 +16,12 @@ import type { SemanticTheoryCoordinator } from "./theory_coordinator.js";
 
 export interface SysmlRequirement {
   id: string;
-  qualifiedName?: string;
+  qualifiedName?: string | undefined;
   targetAttribute: string;
   operator: "<=" | ">=" | "<" | ">";
   limitValue: number;
-  rawConstraint?: string;
-  subjectName?: string;
+  rawConstraint?: string | undefined;
+  subjectName?: string | undefined;
 }
 
 /**

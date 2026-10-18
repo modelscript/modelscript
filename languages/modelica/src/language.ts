@@ -1,5 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @module language
+ *
+ * Declarative Modelica 3.x language definition (`modelicaLanguage`) built with
+ * `@modelscript/dsl`.
+ *
+ * Defines:
+ * - Editor/CLI actions (`flatten`, `simulate`, `export_fmu`, `compile_wasm`, `analyze_blt`, `query`, `parse`)
+ * - Model Context Protocol (MCP) tools, resources, and prompt templates
+ * - Native WebAssembly GLR parser grammar rules (MLS Appendix A), operator precedences, and lexical tokens
+ * - LSP folding, outline, semantic tokens, and custom request handlers (`getCadComponents`, `exportShapeToStep`, `flattenStudy`)
+ * - Declarative symbol indexing (`Class`, `Component`, `Extends`, `ConnectEquation`, `Import`)
+ * - Compiler lints (`allModelicaLints`), analytical domains (DAE, simulation, OWL2RL reasoner, Salsa workspace, octagon bounds), and schematic diagram layout rules
+ * - Triple Graph Grammar (TGG) bidirectional synchronization rules between Modelica, SysML v2, OWL2, and CSV
+ */
+
 import type { CodeGraph, u16, u32 } from "@modelscript/dsl";
 import {
   choice,
@@ -30,25 +46,48 @@ import { modelicaWriteback } from "./writeback.js";
 
 export { allModelicaLints, modelicaWriteback };
 
+/**
+ * Operator precedence levels for the flattened Modelica expression grammar (per MLS §3.2).
+ * Higher numeric values bind more tightly.
+ */
 const PRECEDENCE = {
+  /** Conditional `if ... then ... else ...` expression (lowest precedence). */
   if_exp: 1,
+  /** Range constructor `start : [step :] stop`. */
   range: 2,
+  /** Logical disjunction `or`. */
   or: 3,
+  /** Logical conjunction `and`. */
   and: 4,
+  /** Logical negation `not`. */
   not: 9,
+  /** Relational operators (`<`, `<=`, `>`, `>=`, `==`, `<>`). */
   relational: 6,
+  /** Additive binary operators (`+`, `-`, `.+`, `.-`). */
   add: 7,
+  /** Multiplicative binary operators (`*`, `/`, `.*`, `./`). */
   mul: 8,
+  /** Unary sign operators (`+`, `-`, `.+`, `.-`). */
   unary: 9,
+  /** Exponentiation operators (`^`, `.^`, right-associative). */
   exp: 10,
+  /** Postfix matrix transpose operator (`'`, highest precedence). */
   postfix_transpose: 11,
 };
 
+/**
+ * Complete `@modelscript/dsl` language specification for Modelica 3.x (`.mo`).
+ *
+ * Used by `buildParser` to compile the native WebAssembly GLR parser (`parser.wasm`)
+ * and by the LSP, IDE, MCP server, and polyglot TGG engine at runtime.
+ */
 export const modelicaLanguage = language({
   name: "Modelica",
 
+  // ── AST-to-Source Writeback Rules ───────────────────────────────────────
   writeback: modelicaWriteback,
 
+  // ── IDE & CLI Actions ───────────────────────────────────────────────────
   actions: [
     {
       id: "flatten",
@@ -209,6 +248,7 @@ export const modelicaLanguage = language({
     },
   ],
 
+  // ── Model Context Protocol (MCP) Server Configuration ───────────────────
   mcp: {
     serverName: "modelica-mcp",
     serverVersion: "1.0.0",
@@ -315,11 +355,12 @@ export const modelicaLanguage = language({
           { name: "objective", description: "Optimization objective metric", required: true },
         ],
         template: (args: Record<string, string>) =>
-          `Optimize parameters for ${args.className} targeting objective: ${args.objective}`,
+          `Optimize parameters for ${args["className"]} targeting objective: ${args["objective"]}`,
       },
     ],
   },
 
+  // ── In-WASM AssemblyScript Kernel Sources ───────────────────────────────
   runtimeFiles:
     typeof import.meta !== "undefined" && import.meta.url
       ? [
@@ -333,26 +374,29 @@ export const modelicaLanguage = language({
         ]
       : [],
 
-  word: ($) => $.identifier,
+  // ── Lexical & GLR Parser Configuration ──────────────────────────────────
+  word: ($) => $["identifier"]!,
 
+  // Intentional GLR ambiguities resolved dynamically via LR state splitting
   conflicts: ($) => [
-    [$.class_prefixes],
-    [$.component_reference, $.identifier],
-    [$.external_function_call, $.identifier],
-    [$.primary, $.output_expression_list],
-    [$.equation_section, $.primary],
-    [$.expression],
-    [$.some_equation],
-    [$.if_equation],
-    [$.if_statement],
-    [$.when_equation],
-    [$.when_statement],
-    [$.for_equation],
-    [$.for_statement],
-    [$.algorithm_section, $.annotation_clause],
-    [$.equation_section, $.annotation_clause],
+    [$["class_prefixes"]!],
+    [$["component_reference"]!, $["identifier"]!],
+    [$["external_function_call"]!, $["identifier"]!],
+    [$["primary"]!, $["output_expression_list"]!],
+    [$["equation_section"]!, $["primary"]!],
+    [$["expression"]!],
+    [$["some_equation"]!],
+    [$["if_equation"]!],
+    [$["if_statement"]!],
+    [$["when_equation"]!],
+    [$["when_statement"]!],
+    [$["for_equation"]!],
+    [$["for_statement"]!],
+    [$["algorithm_section"]!, $["annotation_clause"]!],
+    [$["equation_section"]!, $["annotation_clause"]!],
   ],
 
+  // Grammar non-terminals inlined during CST construction to minimize tree depth
   inline: ["element_list", "component_list", "statement_or_procedure", "lhs_expression", "lhs_primary"],
 
   primitives: {
@@ -361,6 +405,7 @@ export const modelicaLanguage = language({
     multiWordKeywords: ["end if", "end for", "end while", "end when"],
   },
 
+  // Reserved Modelica 3.x keywords (MLS §2.3.3) plus synchronous clock operators (MLS Chapter 16)
   reserved: {
     keyword: () =>
       [
@@ -436,6 +481,7 @@ export const modelicaLanguage = language({
       ].map((kw) => token(kw)),
   },
 
+  // ── Language Server Protocol (LSP) Integration ──────────────────────────
   lsp: {
     fileExtension: ".mo",
     icons: {
@@ -456,6 +502,7 @@ export const modelicaLanguage = language({
     ],
     outline: ["component_declaration", "short_class_specifier", "long_class_specifier", "der_class_specifier"],
     handlers: {
+      // Extracts 3D CAD / multibody visual shapes from a Modelica class
       "modelscript/getCadComponents": async (ctx: any, params: { uri: string }) => {
         const sharedContext = ctx.parserService?.sharedContext;
         if (!sharedContext) return [];
@@ -482,6 +529,7 @@ export const modelicaLanguage = language({
         const { extractModelicaCadComponents } = await import("./extensions/cad.js");
         return extractModelicaCadComponents(sharedContext, targetClassName, targetSymbolId, params.uri);
       },
+      // Compiles a Modelica shape/multibody assembly into ISO 10303 STEP format
       "modelscript/exportShapeToStep": async (ctx: any, params: { uri: string; className: string }) => {
         const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance(params.uri, params.className);
         if (!classInstance) {
@@ -495,6 +543,7 @@ export const modelicaLanguage = language({
         const stepContent = compileAssemblyToStep(assembly);
         return { step: stepContent, name: assembly.name };
       },
+      // Flattens a declarative ModelScript.Studies simulation study class
       "modelscript/flattenStudy": async (ctx: any, params: { uri: string; className: string }) => {
         const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance(params.uri, params.className);
         if (!classInstance) {
@@ -508,6 +557,7 @@ export const modelicaLanguage = language({
     },
   },
 
+  // ── Symbol Index Extraction Rules ───────────────────────────────────────
   symbols: {
     class_definition: { name: "name", kind: "Class", scope: true },
     component_declaration: { name: "declaration.name", kind: "Component", scope: false },
@@ -516,6 +566,7 @@ export const modelicaLanguage = language({
     import_clause: { name: "name", kind: "Import", scope: false },
   },
 
+  // ── Compiler Lints & Analytical Domains ─────────────────────────────────
   lints: allModelicaLints,
 
   domains: {
@@ -544,6 +595,7 @@ export const modelicaLanguage = language({
     bounds: domain.octagon(),
   },
 
+  // ── Schematic Diagram & Auto-Layout Rules ───────────────────────────────
   diagram: {
     nodes: {
       component_declaration: {
@@ -592,6 +644,7 @@ export const modelicaLanguage = language({
     },
   },
 
+  // ── Control-Flow Graph (CFG) Node Mapping ───────────────────────────────
   cfgNodes: {
     if_statement: {
       condition: "condition",
@@ -614,19 +667,21 @@ export const modelicaLanguage = language({
     },
   },
 
+  // ── Concrete Syntax Grammar Rules (MLS Appendix A) ──────────────────────
   rules: {
-    program: ($) => $.stored_definition,
+    program: ($) => $["stored_definition"]!,
 
     // A.2.1 Stored Definition – Within
-    stored_definition: ($) => seq(optional($.within_clause), repeat(seq(optional("final"), $.class_definition, ";"))),
-    within_clause: ($) => seq("within", optional($.name), ";"),
+    stored_definition: ($) =>
+      seq(optional($["within_clause"]!), repeat(seq(optional("final"), $["class_definition"]!, ";"))),
+    within_clause: ($) => seq("within", optional($["name"]!), ";"),
 
     // A.2.2 Class Definition
     class_definition: ($) =>
       seq(
         optional("encapsulated"),
-        field("class_prefixes", $.class_prefixes),
-        field("class_specifier", $.class_specifier),
+        field("class_prefixes", $["class_prefixes"]!),
+        field("class_specifier", $["class_specifier"]!),
       ),
 
     class_prefixes: () =>
@@ -645,118 +700,126 @@ export const modelicaLanguage = language({
         ),
       ),
 
-    class_specifier: ($) => choice($.long_class_specifier, $.short_class_specifier, $.der_class_specifier),
+    class_specifier: ($) => choice($["long_class_specifier"]!, $["short_class_specifier"]!, $["der_class_specifier"]!),
 
     long_class_specifier: ($) =>
       choice(
         seq(
-          semanticToken("class", field("name", $.identifier), ["declaration"]),
-          field("description", optional($.description_string)),
-          field("composition", $.composition),
+          semanticToken("class", field("name", $["identifier"]!), ["declaration"]),
+          field("description", optional($["description_string"]!)),
+          field("composition", $["composition"]!),
           "end",
-          optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
+          optional(semanticToken("class", field("end_name", $["identifier"]!), ["declaration"])),
         ),
         seq(
           "extends",
-          semanticToken("class", field("name", $.identifier), ["declaration"]),
-          optional($.class_modification),
-          field("description", optional($.description_string)),
-          field("composition", $.composition),
+          semanticToken("class", field("name", $["identifier"]!), ["declaration"]),
+          optional($["class_modification"]!),
+          field("description", optional($["description_string"]!)),
+          field("composition", $["composition"]!),
           "end",
-          optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
+          optional(semanticToken("class", field("end_name", $["identifier"]!), ["declaration"])),
         ),
       ),
 
     short_class_specifier: ($) =>
       choice(
         seq(
-          semanticToken("class", field("name", $.identifier), ["declaration"]),
+          semanticToken("class", field("name", $["identifier"]!), ["declaration"]),
           "=",
-          field("base_prefix", $.base_prefix),
-          field("type_specifier", $.type_specifier),
-          optional(field("array_subscripts", $.array_subscripts)),
-          field("class_modification", optional($.class_modification)),
-          field("description", $.description),
+          field("base_prefix", $["base_prefix"]!),
+          field("type_specifier", $["type_specifier"]!),
+          optional(field("array_subscripts", $["array_subscripts"]!)),
+          field("class_modification", optional($["class_modification"]!)),
+          field("description", $["description"]!),
         ),
         seq(
-          semanticToken("class", field("name", $.identifier), ["declaration"]),
+          semanticToken("class", field("name", $["identifier"]!), ["declaration"]),
           "=",
           "enumeration",
           "(",
-          choice(optional(field("enum_list", $.enum_list)), ":"),
+          choice(optional(field("enum_list", $["enum_list"]!)), ":"),
           ")",
-          field("description", $.description),
+          field("description", $["description"]!),
         ),
       ),
 
     der_class_specifier: ($) =>
       seq(
-        semanticToken("class", field("name", $.identifier), ["declaration"]),
+        semanticToken("class", field("name", $["identifier"]!), ["declaration"]),
         "=",
         "der",
         "(",
-        $.type_specifier,
+        $["type_specifier"]!,
         ",",
-        $.identifier,
-        repeat(seq(",", $.identifier)),
+        $["identifier"]!,
+        repeat(seq(",", $["identifier"]!)),
         ")",
-        $.description,
+        $["description"]!,
       ),
 
     base_prefix: () => optional(choice("input", "output", "flow", "stream")),
 
-    enum_list: ($) => seq($.enumeration_literal, repeat(seq(",", $.enumeration_literal))),
+    enum_list: ($) => seq($["enumeration_literal"]!, repeat(seq(",", $["enumeration_literal"]!))),
 
-    enumeration_literal: ($) => seq(semanticToken("enumMember", $.identifier, ["declaration"]), $.description),
+    enumeration_literal: ($) => seq(semanticToken("enumMember", $["identifier"]!, ["declaration"]), $["description"]!),
 
     composition: ($) =>
       seq(
-        $.element_list,
+        $["element_list"]!,
         repeat(
           choice(
-            seq("public", $.element_list),
-            seq("protected", $.element_list),
-            $.equation_section,
-            $.algorithm_section,
+            seq("public", $["element_list"]!),
+            seq("protected", $["element_list"]!),
+            $["equation_section"]!,
+            $["algorithm_section"]!,
           ),
         ),
-        optional(seq($.external_clause, ";", optional(seq(field("annotation_clause", $.annotation_clause), ";")))),
+        optional(
+          seq($["external_clause"]!, ";", optional(seq(field("annotation_clause", $["annotation_clause"]!), ";"))),
+        ),
       ),
 
     external_clause: ($) =>
       seq(
         "external",
-        optional($.language_specification),
-        optional($.external_function_call),
-        optional($.annotation_clause),
+        optional($["language_specification"]!),
+        optional($["external_function_call"]!),
+        optional($["annotation_clause"]!),
       ),
 
-    language_specification: ($) => $.string_literal,
+    language_specification: ($) => $["string_literal"]!,
 
     external_function_call: ($) =>
       choice(
-        seq($.component_reference, "=", $.identifier, "(", optional($.expression_list), ")"),
-        seq($.identifier, "(", optional($.expression_list), ")"),
+        seq($["component_reference"]!, "=", $["identifier"]!, "(", optional($["expression_list"]!), ")"),
+        seq($["identifier"]!, "(", optional($["expression_list"]!), ")"),
       ),
 
-    element_list: ($) => repeat(choice(seq($.element, ";"), seq(field("annotation_clause", $.annotation_clause), ";"))),
+    element_list: ($) =>
+      repeat(choice(seq($["element"]!, ";"), seq(field("annotation_clause", $["annotation_clause"]!), ";"))),
 
     element: ($) =>
       choice(
-        field("import_clause", $.import_clause),
-        field("extends_clause", $.extends_clause),
+        field("import_clause", $["import_clause"]!),
+        field("extends_clause", $["extends_clause"]!),
         seq(
           optional("redeclare"),
           optional("final"),
           optional("inner"),
           optional("outer"),
           choice(
-            field("class_definition", $.class_definition),
-            field("component_clause", $.component_clause),
+            field("class_definition", $["class_definition"]!),
+            field("component_clause", $["component_clause"]!),
             seq(
               "replaceable",
-              choice(field("class_definition", $.class_definition), field("component_clause", $.component_clause)),
-              optional(seq(field("constraining_clause", $.constraining_clause), field("description", $.description))),
+              choice(
+                field("class_definition", $["class_definition"]!),
+                field("component_clause", $["component_clause"]!),
+              ),
+              optional(
+                seq(field("constraining_clause", $["constraining_clause"]!), field("description", $["description"]!)),
+              ),
             ),
           ),
         ),
@@ -766,56 +829,56 @@ export const modelicaLanguage = language({
       seq(
         "import",
         choice(
-          seq(field("alias", $.identifier), "=", field("name", $.name)),
+          seq(field("alias", $["identifier"]!), "=", field("name", $["name"]!)),
           seq(
-            field("name", $.name),
-            optional(choice(".*", seq(".", choice("*", seq("{", field("import_list", $.import_list), "}"))))),
+            field("name", $["name"]!),
+            optional(choice(".*", seq(".", choice("*", seq("{", field("import_list", $["import_list"]!), "}"))))),
           ),
         ),
-        field("description", $.description),
+        field("description", $["description"]!),
       ),
 
-    import_list: ($) => seq($.identifier, repeat(seq(",", $.identifier))),
+    import_list: ($) => seq($["identifier"]!, repeat(seq(",", $["identifier"]!))),
 
     // A.2.3 Extends
     extends_clause: ($) =>
       seq(
         "extends",
-        field("type_specifier", $.type_specifier),
-        optional($.class_or_inheritance_modification),
-        optional($.annotation_clause),
+        field("type_specifier", $["type_specifier"]!),
+        optional($["class_or_inheritance_modification"]!),
+        optional($["annotation_clause"]!),
       ),
 
     constraining_clause: ($) =>
       seq(
         choice("constrainedby", "extends"),
-        field("type_specifier", $.type_specifier),
-        optional(field("modification", $.class_modification)),
+        field("type_specifier", $["type_specifier"]!),
+        optional(field("modification", $["class_modification"]!)),
       ),
 
-    class_or_inheritance_modification: ($) => seq("(", optional($.argument_or_inheritance_modification_list), ")"),
+    class_or_inheritance_modification: ($) => seq("(", optional($["argument_or_inheritance_modification_list"]!), ")"),
 
     argument_or_inheritance_modification_list: ($) =>
       seq(
-        choice($.argument, $.inheritance_modification),
-        repeat(seq(",", choice($.argument, $.inheritance_modification))),
+        choice($["argument"]!, $["inheritance_modification"]!),
+        repeat(seq(",", choice($["argument"]!, $["inheritance_modification"]!))),
       ),
 
-    inheritance_modification: ($) => seq("break", choice($.connect_equation, $.identifier)),
+    inheritance_modification: ($) => seq("break", choice($["connect_equation"]!, $["identifier"]!)),
 
     // A.2.4 Component Clause
     component_clause: ($) =>
       choice(
         seq(
-          field("type_prefix", $.type_prefix),
-          field("type_specifier", $.type_specifier),
-          optional(field("array_subscripts", $.array_subscripts)),
-          field("component_list", $.component_list),
+          field("type_prefix", $["type_prefix"]!),
+          field("type_specifier", $["type_specifier"]!),
+          optional(field("array_subscripts", $["array_subscripts"]!)),
+          field("component_list", $["component_list"]!),
         ),
         seq(
-          field("type_specifier", $.type_specifier),
-          optional(field("array_subscripts", $.array_subscripts)),
-          field("component_list", $.component_list),
+          field("type_specifier", $["type_specifier"]!),
+          optional(field("array_subscripts", $["array_subscripts"]!)),
+          field("component_list", $["component_list"]!),
         ),
       ),
 
@@ -832,49 +895,57 @@ export const modelicaLanguage = language({
 
     component_list: ($) =>
       seq(
-        field("component_declaration", $.component_declaration),
-        repeat(seq(",", field("component_declaration", $.component_declaration))),
+        field("component_declaration", $["component_declaration"]!),
+        repeat(seq(",", field("component_declaration", $["component_declaration"]!))),
       ),
 
     component_declaration: ($) =>
-      seq(field("declaration", $.declaration), optional($.condition_attribute), field("description", $.description)),
+      seq(
+        field("declaration", $["declaration"]!),
+        optional($["condition_attribute"]!),
+        field("description", $["description"]!),
+      ),
 
-    condition_attribute: ($) => seq("if", $.expression),
+    condition_attribute: ($) => seq("if", $["expression"]!),
 
     declaration: ($) =>
       seq(
-        semanticToken("property", field("name", $.identifier)),
-        optional(field("array_subscripts", $.array_subscripts)),
-        optional(field("modification", $.modification)),
+        semanticToken("property", field("name", $["identifier"]!)),
+        optional(field("array_subscripts", $["array_subscripts"]!)),
+        optional(field("modification", $["modification"]!)),
       ),
 
     // A.2.5 Modification
     modification: ($) =>
       choice(
         seq(
-          field("class_modification", $.class_modification),
-          optional(seq("=", field("modification_expression", $.modification_expression))),
+          field("class_modification", $["class_modification"]!),
+          optional(seq("=", field("modification_expression", $["modification_expression"]!))),
         ),
-        seq("=", field("modification_expression", $.modification_expression)),
+        seq("=", field("modification_expression", $["modification_expression"]!)),
       ),
 
-    modification_expression: ($) => choice($.expression, "break"),
+    modification_expression: ($) => choice($["expression"]!, "break"),
 
-    class_modification: ($) => seq("(", optional($.argument_list), ")"),
+    class_modification: ($) => seq("(", optional($["argument_list"]!), ")"),
 
-    argument_list: ($) => seq($.argument, repeat(seq(",", $.argument))),
+    argument_list: ($) => seq($["argument"]!, repeat(seq(",", $["argument"]!))),
 
-    argument: ($) => choice($.element_modification_or_replaceable, $.element_redeclaration),
+    argument: ($) => choice($["element_modification_or_replaceable"]!, $["element_redeclaration"]!),
 
     element_modification_or_replaceable: ($) =>
       seq(
         optional(field("is_each", "each")),
         optional(field("is_final", "final")),
-        choice(field("modification", $.element_modification), field("replaceable", $.element_replaceable)),
+        choice(field("modification", $["element_modification"]!), field("replaceable", $["element_replaceable"]!)),
       ),
 
     element_modification: ($) =>
-      seq(field("name", $.name), optional(field("modification", $.modification)), optional($.description_string)),
+      seq(
+        field("name", $["name"]!),
+        optional(field("modification", $["modification"]!)),
+        optional($["description_string"]!),
+      ),
 
     element_redeclaration: ($) =>
       seq(
@@ -882,133 +953,171 @@ export const modelicaLanguage = language({
         optional(field("is_each", "each")),
         optional(field("is_final", "final")),
         choice(
-          field("class_definition", $.class_definition),
-          field("component_clause1", $.component_clause1),
-          field("element_replaceable", $.element_replaceable),
+          field("class_definition", $["class_definition"]!),
+          field("component_clause1", $["component_clause1"]!),
+          field("element_replaceable", $["element_replaceable"]!),
         ),
       ),
 
     element_replaceable: ($) =>
       seq(
         "replaceable",
-        choice(field("class_definition", $.class_definition), field("component_clause1", $.component_clause1)),
-        optional(field("constraining_clause", $.constraining_clause)),
+        choice(field("class_definition", $["class_definition"]!), field("component_clause1", $["component_clause1"]!)),
+        optional(field("constraining_clause", $["constraining_clause"]!)),
       ),
 
     component_clause1: ($) =>
       choice(
         seq(
-          field("type_prefix", $.type_prefix),
-          field("type_specifier", $.type_specifier),
-          field("declaration", $.component_declaration1),
+          field("type_prefix", $["type_prefix"]!),
+          field("type_specifier", $["type_specifier"]!),
+          field("declaration", $["component_declaration1"]!),
         ),
-        seq(field("type_specifier", $.type_specifier), field("declaration", $.component_declaration1)),
+        seq(field("type_specifier", $["type_specifier"]!), field("declaration", $["component_declaration1"]!)),
       ),
 
-    component_declaration1: ($) => seq(field("declaration", $.declaration), field("description", $.description)),
+    component_declaration1: ($) =>
+      seq(field("declaration", $["declaration"]!), field("description", $["description"]!)),
 
-    short_class_definition: ($) => seq($.class_prefixes, $.short_class_specifier),
+    short_class_definition: ($) => seq($["class_prefixes"]!, $["short_class_specifier"]!),
 
     // A.2.6 Equations
     equation_section: ($) =>
-      seq(optional("initial"), "equation", repeat(choice(seq($.some_equation, ";"), seq($.annotation_clause, ";")))),
+      seq(
+        optional("initial"),
+        "equation",
+        repeat(choice(seq($["some_equation"]!, ";"), seq($["annotation_clause"]!, ";"))),
+      ),
 
     algorithm_section: ($) =>
-      seq(optional("initial"), "algorithm", repeat(choice(seq($.statement, ";"), seq($.annotation_clause, ";")))),
+      seq(
+        optional("initial"),
+        "algorithm",
+        repeat(choice(seq($["statement"]!, ";"), seq($["annotation_clause"]!, ";"))),
+      ),
 
     some_equation: ($) =>
       seq(
-        choice($.equation_or_procedure, $.if_equation, $.for_equation, $.connect_equation, $.when_equation),
-        $.description,
+        choice(
+          $["equation_or_procedure"]!,
+          $["if_equation"]!,
+          $["for_equation"]!,
+          $["connect_equation"]!,
+          $["when_equation"]!,
+        ),
+        $["description"]!,
       ),
 
     // GLR parsers handle this without needing left-factoring!
-    equation_or_procedure: ($) => choice($.simple_equation, $.function_call),
+    equation_or_procedure: ($) => choice($["simple_equation"]!, $["function_call"]!),
 
-    simple_equation: ($) => seq(field("lhs", $.lhs_expression), "=", field("rhs", $.expression)),
+    simple_equation: ($) => seq(field("lhs", $["lhs_expression"]!), "=", field("rhs", $["expression"]!)),
 
     statement: ($) =>
       seq(
         choice(
-          $.statement_or_procedure,
-          seq("(", $.output_expression_list, ")", ":=", $.function_call),
+          $["statement_or_procedure"]!,
+          seq("(", $["output_expression_list"]!, ")", ":=", $["function_call"]!),
           "break",
           "return",
-          $.if_statement,
-          $.for_statement,
-          $.while_statement,
-          $.when_statement,
+          $["if_statement"]!,
+          $["for_statement"]!,
+          $["while_statement"]!,
+          $["when_statement"]!,
         ),
-        $.description,
+        $["description"]!,
       ),
 
-    statement_or_procedure: ($) => choice($.function_call, $.assignment_statement),
+    statement_or_procedure: ($) => choice($["function_call"]!, $["assignment_statement"]!),
 
     assignment_statement: ($) =>
       choice(
-        seq(field("target", $.component_reference), ":=", field("value", $.expression)),
-        seq("der", "(", field("target", $.component_reference), ")", ":=", field("value", $.expression)),
+        seq(field("target", $["component_reference"]!), ":=", field("value", $["expression"]!)),
+        seq("der", "(", field("target", $["component_reference"]!), ")", ":=", field("value", $["expression"]!)),
       ),
 
     function_call: ($) =>
-      seq(field("name", semanticToken("function", $.component_reference)), field("args", $.function_call_args)),
+      seq(field("name", semanticToken("function", $["component_reference"]!)), field("args", $["function_call_args"]!)),
 
     if_equation: ($) =>
       seq(
         "if",
-        field("condition", $.expression),
+        field("condition", $["expression"]!),
         "then",
-        field("body", repeat(seq($.some_equation, ";"))),
+        field("body", repeat(seq($["some_equation"]!, ";"))),
         repeat(
           seq(
             "elseif",
-            field("elseCondition", $.expression),
+            field("elseCondition", $["expression"]!),
             "then",
-            field("elseBody", repeat(seq($.some_equation, ";"))),
+            field("elseBody", repeat(seq($["some_equation"]!, ";"))),
           ),
         ),
-        optional(seq("else", field("finalBody", repeat(seq($.some_equation, ";"))))),
+        optional(seq("else", field("finalBody", repeat(seq($["some_equation"]!, ";"))))),
         "end if",
       ),
 
     if_statement: ($) =>
       seq(
         "if",
-        field("condition", $.expression),
+        field("condition", $["expression"]!),
         "then",
-        field("body", repeat(seq($.statement, ";"))),
+        field("body", repeat(seq($["statement"]!, ";"))),
         repeat(
-          seq("elseif", field("elseCondition", $.expression), "then", field("elseBody", repeat(seq($.statement, ";")))),
+          seq(
+            "elseif",
+            field("elseCondition", $["expression"]!),
+            "then",
+            field("elseBody", repeat(seq($["statement"]!, ";"))),
+          ),
         ),
-        optional(seq("else", field("finalBody", repeat(seq($.statement, ";"))))),
+        optional(seq("else", field("finalBody", repeat(seq($["statement"]!, ";"))))),
         "end if",
       ),
 
     for_equation: ($) =>
-      seq("for", field("indices", $.for_indices), "loop", field("body", repeat(seq($.some_equation, ";"))), "end for"),
+      seq(
+        "for",
+        field("indices", $["for_indices"]!),
+        "loop",
+        field("body", repeat(seq($["some_equation"]!, ";"))),
+        "end for",
+      ),
 
     for_statement: ($) =>
-      seq("for", field("indices", $.for_indices), "loop", field("body", repeat(seq($.statement, ";"))), "end for"),
+      seq(
+        "for",
+        field("indices", $["for_indices"]!),
+        "loop",
+        field("body", repeat(seq($["statement"]!, ";"))),
+        "end for",
+      ),
 
-    for_indices: ($) => seq($.for_index, repeat(seq(",", $.for_index))),
+    for_indices: ($) => seq($["for_index"]!, repeat(seq(",", $["for_index"]!))),
 
-    for_index: ($) => seq(field("variable", $.identifier), optional(seq("in", field("range", $.expression)))),
+    for_index: ($) => seq(field("variable", $["identifier"]!), optional(seq("in", field("range", $["expression"]!)))),
 
     while_statement: ($) =>
-      seq("while", field("condition", $.expression), "loop", field("body", repeat(seq($.statement, ";"))), "end while"),
+      seq(
+        "while",
+        field("condition", $["expression"]!),
+        "loop",
+        field("body", repeat(seq($["statement"]!, ";"))),
+        "end while",
+      ),
 
     when_equation: ($) =>
       seq(
         "when",
-        field("condition", $.expression),
+        field("condition", $["expression"]!),
         "then",
-        field("body", repeat(seq($.some_equation, ";"))),
+        field("body", repeat(seq($["some_equation"]!, ";"))),
         repeat(
           seq(
             "elsewhen",
-            field("elseCondition", $.expression),
+            field("elseCondition", $["expression"]!),
             "then",
-            field("elseBody", repeat(seq($.some_equation, ";"))),
+            field("elseBody", repeat(seq($["some_equation"]!, ";"))),
           ),
         ),
         "end when",
@@ -1017,245 +1126,263 @@ export const modelicaLanguage = language({
     when_statement: ($) =>
       seq(
         "when",
-        field("condition", $.expression),
+        field("condition", $["expression"]!),
         "then",
-        field("body", repeat(seq($.statement, ";"))),
+        field("body", repeat(seq($["statement"]!, ";"))),
         repeat(
           seq(
             "elsewhen",
-            field("elseCondition", $.expression),
+            field("elseCondition", $["expression"]!),
             "then",
-            field("elseBody", repeat(seq($.statement, ";"))),
+            field("elseBody", repeat(seq($["statement"]!, ";"))),
           ),
         ),
         "end when",
       ),
 
     connect_equation: ($) =>
-      seq("connect", "(", field("lhs", $.component_reference), ",", field("rhs", $.component_reference), ")"),
+      seq("connect", "(", field("lhs", $["component_reference"]!), ",", field("rhs", $["component_reference"]!), ")"),
 
     // A.2.7 Expressions (Flattened for AST efficiency)
     expression: ($) =>
       choice(
-        $.primary,
+        $["primary"]!,
 
         // if expression
         prec(
           PRECEDENCE.if_exp,
           seq(
             "if",
-            $.expression,
+            $["expression"]!,
             "then",
-            $.expression,
-            repeat(seq("elseif", $.expression, "then", $.expression)),
+            $["expression"]!,
+            repeat(seq("elseif", $["expression"]!, "then", $["expression"]!)),
             "else",
-            $.expression,
+            $["expression"]!,
           ),
         ),
 
         // range (:)
-        prec.left(PRECEDENCE.range, seq(field("left", $.expression), ":", field("right", $.expression))),
+        prec.left(PRECEDENCE.range, seq(field("left", $["expression"]!), ":", field("right", $["expression"]!))),
 
         // logical or
-        prec.left(PRECEDENCE.or, seq(field("left", $.expression), "or", field("right", $.expression))),
+        prec.left(PRECEDENCE.or, seq(field("left", $["expression"]!), "or", field("right", $["expression"]!))),
 
         // logical and
-        prec.left(PRECEDENCE.and, seq(field("left", $.expression), "and", field("right", $.expression))),
+        prec.left(PRECEDENCE.and, seq(field("left", $["expression"]!), "and", field("right", $["expression"]!))),
 
         // logical not
-        prec(PRECEDENCE.not, seq("not", field("operand", $.expression))),
+        prec(PRECEDENCE.not, seq("not", field("operand", $["expression"]!))),
 
         // relation
         prec.left(
           PRECEDENCE.relational,
-          seq(field("left", $.expression), choice("<", "<=", ">", ">=", "==", "<>"), field("right", $.expression)),
+          seq(
+            field("left", $["expression"]!),
+            choice("<", "<=", ">", ">=", "==", "<>"),
+            field("right", $["expression"]!),
+          ),
         ),
 
         // add/sub
         prec.left(
           PRECEDENCE.add,
-          seq(field("left", $.expression), choice("+", "-", ".+", ".-"), field("right", $.expression)),
+          seq(field("left", $["expression"]!), choice("+", "-", ".+", ".-"), field("right", $["expression"]!)),
         ),
 
         // unary add/sub
-        prec(PRECEDENCE.unary, seq(choice("+", "-", ".+", ".-"), field("operand", $.expression))),
+        prec(PRECEDENCE.unary, seq(choice("+", "-", ".+", ".-"), field("operand", $["expression"]!))),
 
         // mul/div
         prec.left(
           PRECEDENCE.mul,
-          seq(field("left", $.expression), choice("*", "/", ".*", "./"), field("right", $.expression)),
-        ),
-
-        // exp
-        prec.right(PRECEDENCE.exp, seq(field("left", $.expression), choice("^", ".^"), field("right", $.expression))),
-
-        // postfix transpose (')
-        prec(PRECEDENCE.postfix_transpose, seq(field("operand", $.primary), "'")),
-      ),
-
-    primary: ($) =>
-      choice(
-        $.unsigned_number,
-        $.string_literal,
-        "false",
-        "true",
-        "time",
-        "end",
-        seq(field("callee", $.component_reference), field("args", $.function_call_args)),
-        seq("der", "(", field("argument", $.expression_list), ")"),
-        seq("initial", "(", ")"),
-        seq("pure", "(", optional(field("args", $.function_arguments)), ")"),
-        $.component_reference,
-        seq(
-          "(",
-          choice(field("expression", $.expression), field("expression", $.output_expression_list)),
-          ")",
-          optional(choice(field("subscripts", $.array_subscripts), seq(".", field("member", $.identifier)))),
-        ),
-        seq("[", field("rows", seq($.expression_list, repeat(seq(";", $.expression_list)))), "]"),
-        seq("{", field("arguments", $.array_arguments), "}"),
-      ),
-
-    lhs_expression: ($) =>
-      choice(
-        $.lhs_primary,
-
-        // range (:)
-        prec.left(PRECEDENCE.range, seq(field("left", $.lhs_expression), ":", field("right", $.expression))),
-
-        // logical or
-        prec.left(PRECEDENCE.or, seq(field("left", $.lhs_expression), "or", field("right", $.expression))),
-
-        // logical and
-        prec.left(PRECEDENCE.and, seq(field("left", $.lhs_expression), "and", field("right", $.expression))),
-
-        // logical not
-        prec(PRECEDENCE.not, seq("not", field("operand", $.expression))),
-
-        // relation
-        prec.left(
-          PRECEDENCE.relational,
-          seq(field("left", $.lhs_expression), choice("<", "<=", ">", ">=", "==", "<>"), field("right", $.expression)),
-        ),
-
-        // add/sub
-        prec.left(
-          PRECEDENCE.add,
-          seq(field("left", $.lhs_expression), choice("+", "-", ".+", ".-"), field("right", $.expression)),
-        ),
-
-        // unary add/sub
-        prec(PRECEDENCE.unary, seq(choice("+", "-", ".+", ".-"), field("operand", $.expression))),
-
-        // mul/div
-        prec.left(
-          PRECEDENCE.mul,
-          seq(field("left", $.lhs_expression), choice("*", "/", ".*", "./"), field("right", $.expression)),
+          seq(field("left", $["expression"]!), choice("*", "/", ".*", "./"), field("right", $["expression"]!)),
         ),
 
         // exp
         prec.right(
           PRECEDENCE.exp,
-          seq(field("left", $.lhs_expression), choice("^", ".^"), field("right", $.expression)),
+          seq(field("left", $["expression"]!), choice("^", ".^"), field("right", $["expression"]!)),
         ),
 
         // postfix transpose (')
-        prec(PRECEDENCE.postfix_transpose, seq(field("operand", $.lhs_primary), "'")),
+        prec(PRECEDENCE.postfix_transpose, seq(field("operand", $["primary"]!), "'")),
+      ),
+
+    primary: ($) =>
+      choice(
+        $["unsigned_number"]!,
+        $["string_literal"]!,
+        "false",
+        "true",
+        "time",
+        "end",
+        seq(field("callee", $["component_reference"]!), field("args", $["function_call_args"]!)),
+        seq("der", "(", field("argument", $["expression_list"]!), ")"),
+        seq("initial", "(", ")"),
+        seq("pure", "(", optional(field("args", $["function_arguments"]!)), ")"),
+        $["component_reference"]!,
+        seq(
+          "(",
+          choice(field("expression", $["expression"]!), field("expression", $["output_expression_list"]!)),
+          ")",
+          optional(choice(field("subscripts", $["array_subscripts"]!), seq(".", field("member", $["identifier"]!)))),
+        ),
+        seq("[", field("rows", seq($["expression_list"]!, repeat(seq(";", $["expression_list"]!)))), "]"),
+        seq("{", field("arguments", $["array_arguments"]!), "}"),
+      ),
+
+    lhs_expression: ($) =>
+      choice(
+        $["lhs_primary"]!,
+
+        // range (:)
+        prec.left(PRECEDENCE.range, seq(field("left", $["lhs_expression"]!), ":", field("right", $["expression"]!))),
+
+        // logical or
+        prec.left(PRECEDENCE.or, seq(field("left", $["lhs_expression"]!), "or", field("right", $["expression"]!))),
+
+        // logical and
+        prec.left(PRECEDENCE.and, seq(field("left", $["lhs_expression"]!), "and", field("right", $["expression"]!))),
+
+        // logical not
+        prec(PRECEDENCE.not, seq("not", field("operand", $["expression"]!))),
+
+        // relation
+        prec.left(
+          PRECEDENCE.relational,
+          seq(
+            field("left", $["lhs_expression"]!),
+            choice("<", "<=", ">", ">=", "==", "<>"),
+            field("right", $["expression"]!),
+          ),
+        ),
+
+        // add/sub
+        prec.left(
+          PRECEDENCE.add,
+          seq(field("left", $["lhs_expression"]!), choice("+", "-", ".+", ".-"), field("right", $["expression"]!)),
+        ),
+
+        // unary add/sub
+        prec(PRECEDENCE.unary, seq(choice("+", "-", ".+", ".-"), field("operand", $["expression"]!))),
+
+        // mul/div
+        prec.left(
+          PRECEDENCE.mul,
+          seq(field("left", $["lhs_expression"]!), choice("*", "/", ".*", "./"), field("right", $["expression"]!)),
+        ),
+
+        // exp
+        prec.right(
+          PRECEDENCE.exp,
+          seq(field("left", $["lhs_expression"]!), choice("^", ".^"), field("right", $["expression"]!)),
+        ),
+
+        // postfix transpose (')
+        prec(PRECEDENCE.postfix_transpose, seq(field("operand", $["lhs_primary"]!), "'")),
       ),
 
     lhs_primary: ($) =>
       choice(
-        $.unsigned_number,
-        $.string_literal,
+        $["unsigned_number"]!,
+        $["string_literal"]!,
         "false",
         "true",
         "time",
-        seq(field("callee", $.component_reference), field("args", $.function_call_args)),
-        seq("der", "(", field("argument", $.expression_list), ")"),
-        seq("pure", "(", optional(field("args", $.function_arguments)), ")"),
-        $.component_reference,
+        seq(field("callee", $["component_reference"]!), field("args", $["function_call_args"]!)),
+        seq("der", "(", field("argument", $["expression_list"]!), ")"),
+        seq("pure", "(", optional(field("args", $["function_arguments"]!)), ")"),
+        $["component_reference"]!,
         seq(
           "(",
-          choice(field("expression", $.expression), field("expression", $.output_expression_list)),
+          choice(field("expression", $["expression"]!), field("expression", $["output_expression_list"]!)),
           ")",
-          optional(choice(field("subscripts", $.array_subscripts), seq(".", field("member", $.identifier)))),
+          optional(choice(field("subscripts", $["array_subscripts"]!), seq(".", field("member", $["identifier"]!)))),
         ),
-        seq("[", field("rows", seq($.expression_list, repeat(seq(";", $.expression_list)))), "]"),
-        seq("{", field("arguments", $.array_arguments), "}"),
+        seq("[", field("rows", seq($["expression_list"]!, repeat(seq(";", $["expression_list"]!)))), "]"),
+        seq("{", field("arguments", $["array_arguments"]!), "}"),
       ),
 
-    unsigned_number: ($) => choice($.unsigned_integer, $.unsigned_real),
+    unsigned_number: ($) => choice($["unsigned_integer"]!, $["unsigned_real"]!),
 
     type_specifier: ($) =>
       choice(
-        seq(".", semanticToken("class", $.name, ["declaration"])),
-        semanticToken("class", $.name, ["declaration"]),
+        seq(".", semanticToken("class", $["name"]!, ["declaration"])),
+        semanticToken("class", $["name"]!, ["declaration"]),
       ),
 
-    name: ($) => choice($.identifier, prec.left(1, seq($.name, ".", $.identifier))),
+    name: ($) => choice($["identifier"]!, prec.left(1, seq($["name"]!, ".", $["identifier"]!))),
 
     component_reference: ($) =>
       choice(
         seq(
-          semanticToken("property", $.identifier),
-          optional($.array_subscripts),
-          repeat(seq(".", semanticToken("property", $.identifier), optional($.array_subscripts))),
+          semanticToken("property", $["identifier"]!),
+          optional($["array_subscripts"]!),
+          repeat(seq(".", semanticToken("property", $["identifier"]!), optional($["array_subscripts"]!))),
         ),
         seq(
           ".",
-          semanticToken("property", $.identifier),
-          optional($.array_subscripts),
-          repeat(seq(".", semanticToken("property", $.identifier), optional($.array_subscripts))),
+          semanticToken("property", $["identifier"]!),
+          optional($["array_subscripts"]!),
+          repeat(seq(".", semanticToken("property", $["identifier"]!), optional($["array_subscripts"]!))),
         ),
       ),
 
     result_reference: ($) =>
       choice(
-        $.component_reference,
+        $["component_reference"]!,
         "time",
-        seq("der", "(", choice($.component_reference, "time"), optional(seq(",", $.unsigned_integer)), ")"),
+        seq("der", "(", choice($["component_reference"]!, "time"), optional(seq(",", $["unsigned_integer"]!)), ")"),
       ),
 
-    function_call_args: ($) => choice(seq("(", ")"), seq("(", $.function_arguments, ")")),
+    function_call_args: ($) => choice(seq("(", ")"), seq("(", $["function_arguments"]!, ")")),
 
     function_arguments: ($) =>
       choice(
-        seq($.function_argument, optional(seq(",", $.function_arguments_non_first))),
-        seq($.expression, "for", $.for_indices),
-        $.named_arguments,
+        seq($["function_argument"]!, optional(seq(",", $["function_arguments_non_first"]!))),
+        seq($["expression"]!, "for", $["for_indices"]!),
+        $["named_arguments"]!,
       ),
 
     function_arguments_non_first: ($) =>
-      choice(seq($.function_argument, optional(seq(",", $.function_arguments_non_first))), $.named_arguments),
+      choice(
+        seq($["function_argument"]!, optional(seq(",", $["function_arguments_non_first"]!))),
+        $["named_arguments"]!,
+      ),
 
     array_arguments: ($) =>
-      seq($.expression, optional(choice(seq(",", $.array_arguments_non_first), seq("for", $.for_indices)))),
+      seq($["expression"]!, optional(choice(seq(",", $["array_arguments_non_first"]!), seq("for", $["for_indices"]!)))),
 
-    array_arguments_non_first: ($) => seq($.expression, optional(seq(",", $.array_arguments_non_first))),
+    array_arguments_non_first: ($) => seq($["expression"]!, optional(seq(",", $["array_arguments_non_first"]!))),
 
-    named_arguments: ($) => seq($.named_argument, optional(seq(",", $.named_arguments))),
+    named_arguments: ($) => seq($["named_argument"]!, optional(seq(",", $["named_arguments"]!))),
 
     named_argument: ($) =>
-      seq(semanticToken("property", field("name", $.identifier)), "=", field("value", $.function_argument)),
+      seq(semanticToken("property", field("name", $["identifier"]!)), "=", field("value", $["function_argument"]!)),
 
-    function_argument: ($) => choice($.function_partial_application, $.expression),
+    function_argument: ($) => choice($["function_partial_application"]!, $["expression"]!),
 
-    function_partial_application: ($) => seq("function", $.type_specifier, "(", optional($.named_arguments), ")"),
+    function_partial_application: ($) =>
+      seq("function", $["type_specifier"]!, "(", optional($["named_arguments"]!), ")"),
 
     output_expression_list: ($) =>
-      choice(seq(), seq(optional($.expression), ",", optional($.expression), repeat(seq(",", optional($.expression))))),
+      choice(
+        seq(),
+        seq(optional($["expression"]!), ",", optional($["expression"]!), repeat(seq(",", optional($["expression"]!)))),
+      ),
 
-    expression_list: ($) => seq($.expression, repeat(seq(",", $.expression))),
+    expression_list: ($) => seq($["expression"]!, repeat(seq(",", $["expression"]!))),
 
-    array_subscripts: ($) => seq("[", $.subscript, repeat(seq(",", $.subscript)), "]"),
+    array_subscripts: ($) => seq("[", $["subscript"]!, repeat(seq(",", $["subscript"]!)), "]"),
 
-    subscript: ($) => choice(field("flexible", ":"), field("expression", $.expression)),
+    subscript: ($) => choice(field("flexible", ":"), field("expression", $["expression"]!)),
 
-    description: ($) => seq(optional($.description_string), optional($.annotation_clause)),
+    description: ($) => seq(optional($["description_string"]!), optional($["annotation_clause"]!)),
 
-    description_string: ($) => seq($.string_literal, repeat(seq("+", $.string_literal))),
+    description_string: ($) => seq($["string_literal"]!, repeat(seq("+", $["string_literal"]!))),
 
-    annotation_clause: ($) => seq("annotation", $.class_modification),
+    annotation_clause: ($) => seq("annotation", $["class_modification"]!),
 
     // Tokens
     identifier: () => token(/[a-zA-Z_][a-zA-Z0-9_]*|'([^'\\\r\n]|\\.)*'/),
@@ -1265,16 +1392,22 @@ export const modelicaLanguage = language({
       semanticToken("number", token(/\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+/)),
   },
 
+  /**
+   * Reusable CST/scope queries exposed on `db` for lint and language service rules.
+   */
   queries: {
-    resolveComponentTypeInClass: (db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 => {
+    /** Resolves the primitive type mask of a component identifier declared or inherited in `classNode`. */
+    resolveComponentTypeInClass: (db: CodeGraph, classNode: u32, identNode: u32, $: any): u16 => {
       return getVariableTypeInClass(db, classNode, identNode, $);
     },
 
-    resolveDottedType: (db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: Record<string, u16>): u16 => {
+    /** Resolves the primitive type mask of a dotted component reference starting from `enclosingClass`. */
+    resolveDottedType: (db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: any): u16 => {
       return getDottedVariableType(db, enclosingClass, compRefNode, $);
     },
 
-    resolveEnclosingClass: (db: CodeGraph, node: u32, $: Record<string, u16>): u32 => {
+    /** Walks up the CST ancestor chain from `node` to find the nearest enclosing `class_definition` node. */
+    resolveEnclosingClass: (db: CodeGraph, node: u32, $: any): u32 => {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.class_definition) {
           return anc;
@@ -1284,10 +1417,16 @@ export const modelicaLanguage = language({
     },
   },
 
+  /** Whitespace tokens skipped automatically between grammar productions. */
   extras: () => [/\s+/],
 
+  /**
+   * Polyglot Triple Graph Grammar (TGG) synchronization rules mapping Modelica constructs
+   * to and from SysML v2 (`sysml2`), OWL2 (`owl2`), and CSV (`csv`).
+   */
   polyglot: {
     languages: ["sysml2", "owl2", "csv"],
+    /** Bidirectional primitive type correspondences across target languages. */
     typeMaps: {
       sysml2: {
         Real: "ISQ::Real",
@@ -1309,6 +1448,7 @@ export const modelicaLanguage = language({
       },
     },
     rules: [
+      // Map a Modelica class/model definition to a SysML v2 block definition
       tggRule({
         name: "ModelicaModelToSysmlBlock",
         sourceLang: "modelica",
@@ -1321,6 +1461,7 @@ export const modelicaLanguage = language({
           tggComplement(["isPartial", "encapsulated", "annotations"]),
         ],
       }),
+      // Map a Modelica component clause to a SysML v2 part usage with type, multiplicity, and attribute redefinitions
       tggRule({
         name: "ModelicaComponentToSysmlPart",
         sourceLang: "modelica",
@@ -1347,6 +1488,7 @@ export const modelicaLanguage = language({
           tggComplement(["variability", "causality", "binding"]),
         ],
       }),
+      // Higher-priority rule specializing Modelica electrical Pin connectors to SysML v2 ElectricalPort usages
       tggRule({
         name: "ModelicaPinToSysmlElectricalPort",
         sourceLang: "modelica",
@@ -1356,6 +1498,7 @@ export const modelicaLanguage = language({
         target: ($, v) => $.PortUsage({ declaredName: v("portName"), declaredType: "ElectricalPort" }),
         where: (v) => [tggEq(v("portName"), v("portName")), tggPhysicalPort(v("v"), v("i"), "electrical")],
       }),
+      // Map a Modelica assert(...) statement to a SysML v2 requirement usage
       tggRule({
         name: "ModelicaAssertToSysmlRequirement",
         sourceLang: "modelica",
@@ -1364,6 +1507,7 @@ export const modelicaLanguage = language({
         target: ($, v) => $.RequirementUsage({ declaredName: v("reqName"), condition: v("condExpr") }),
         where: (v) => [tggEq(v("reqName"), v("reqName")), tggEq(v("condExpr"), v("condExpr"))],
       }),
+      // Map a Modelica connect(...) clause to a SysML v2 connection usage
       tggRule({
         name: "ModelicaConnectToSysmlConnection",
         sourceLang: "modelica",
@@ -1372,6 +1516,7 @@ export const modelicaLanguage = language({
         target: ($, v) => $.ConnectionUsage({ declaredName: v("connName") }),
         where: (v) => [tggEq(v("connName"), v("connName"))],
       }),
+      // Map a named Modelica equation clause to a SysML v2 constraint usage
       tggRule({
         name: "ModelicaEquationToSysmlConstraint",
         sourceLang: "modelica",
@@ -1380,6 +1525,7 @@ export const modelicaLanguage = language({
         target: ($, v) => $.ConstraintUsage({ declaredName: v("eqName") }),
         where: (v) => [tggEq(v("eqName"), v("eqName"))],
       }),
+      // Map an algebraic simple equation (lhs = rhs) to a SysML v2 constraint usage with expression mapping
       tggRule({
         name: "ModelicaSimpleEquationToSysmlConstraint",
         sourceLang: "modelica",
@@ -1395,6 +1541,7 @@ export const modelicaLanguage = language({
           tggComplement(["comment", "annotation"]),
         ],
       }),
+      // Map a differential equation (der(state) = rate) to a SysML v2 rate constraint usage
       tggRule({
         name: "ModelicaDerEquationToSysmlRateConstraint",
         sourceLang: "modelica",
@@ -1409,6 +1556,7 @@ export const modelicaLanguage = language({
           tggComplement(["comment"]),
         ],
       }),
+      // Map a Modelica class definition to an OWL2 ontological class declaration with a `mo:` IRI prefix
       tggRule({
         name: "ModelicaToOWL2Class",
         sourceLang: "modelica",
@@ -1420,6 +1568,7 @@ export const modelicaLanguage = language({
           tggComplement(["isPartial", "encapsulated", "annotations"]),
         ],
       }),
+      // Map a Modelica component variable declaration to a CSV column header for trajectory/tabular I/O
       tggRule({
         name: "ModelicaVariableToCsvChannel",
         sourceLang: "modelica",

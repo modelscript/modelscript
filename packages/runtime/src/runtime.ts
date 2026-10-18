@@ -91,9 +91,9 @@ export interface SymbolEntry {
    */
   endByte: number;
   /** CST node start character offset within the source text. */
-  startOffset?: number;
+  startOffset?: number | undefined;
   /** CST node end character offset within the source text. */
-  endOffset?: number;
+  endOffset?: number | undefined;
   /** Parent scope symbol, if any */
   parentId: SymbolId | null;
   /** Dot-paths of fields whose children are visible from this scope */
@@ -114,7 +114,12 @@ export interface SymbolEntry {
    * Used by lint rules to narrow diagnostic ranges to specific fields.
    * Maps field name → { startByte, endByte, startOffset?, endOffset? }.
    */
-  fieldRanges?: Record<string, { startByte: number; endByte: number; startOffset?: number; endOffset?: number }>;
+  fieldRanges?:
+    | Record<
+        string,
+        { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
+      >
+    | undefined;
   /**
    * The CST field name under which this entry was indexed in its parent.
    * E.g., "body" for a component inside a class_definition's body field.
@@ -124,13 +129,17 @@ export interface SymbolEntry {
   /**
    * The URI of the document containing this symbol. Populated by WorkspaceIndex.
    */
-  resourceId?: string;
+  resourceId?: string | undefined;
+  /**
+   * Optional document URI alias populated by workspace indexers.
+   */
+  documentUri?: string | undefined;
   /**
    * The language this symbol belongs to (e.g., "language-a", "language-b").
    * Populated by UnifiedWorkspace when merging multi-language indices.
    * Null for single-language workspaces.
    */
-  language?: string;
+  language?: string | undefined;
 }
 
 /** The full symbol index for a single file. */
@@ -142,9 +151,9 @@ export interface SymbolIndex {
   /** Parent ID → direct child IDs for O(1) subtree reuse. (null parent mapped to 0 or null) */
   childrenOf: Map<SymbolId | null, SymbolId[]>;
   /** Resource URI → symbol IDs for fast per-file iteration. Optional — populated by workspace-level indices. */
-  symbolsByResource?: Map<string, SymbolId[]>;
+  symbolsByResource?: Map<string, SymbolId[]> | undefined;
   /** Optional tracking of which IDs changed in the most recent update */
-  lastChangedIds?: Set<SymbolId>;
+  lastChangedIds?: Set<SymbolId> | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,21 +204,21 @@ export interface RefHook {
 
 export interface ParityReport {
   compatible: boolean;
-  modelicaType?: string;
-  modelicaUnit?: string;
-  sysmlType?: string;
-  sysmlUnit?: string;
-  reason?: string;
+  modelicaType?: string | undefined;
+  modelicaUnit?: string | undefined;
+  sysmlType?: string | undefined;
+  sysmlUnit?: string | undefined;
+  reason?: string | undefined;
 }
 
 export interface ShapeBinding {
   bound: boolean;
   cadSymbolId: SymbolId;
   feaMeshId: SymbolId;
-  shapeName?: string;
-  surfaceArea?: number;
-  volume?: number;
-  meshElementCount?: number;
+  shapeName?: string | undefined;
+  surfaceArea?: number | undefined;
+  volume?: number | undefined;
+  meshElementCount?: number | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +234,7 @@ export interface QueryDB {
   /** Get a symbol entry by ID (works for both real and virtual entries). */
   symbol(id: SymbolId): SymbolEntry | undefined;
   /** Get all direct children of a symbol (symbols whose parentId matches). */
-  childrenOf(id: SymbolId): SymbolEntry[];
+  childrenOf(id: SymbolId | null): SymbolEntry[];
   /** Get direct children of a symbol that were indexed under a specific CST field. */
   childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[];
   /** Get the parent symbol, if any. */
@@ -321,7 +330,7 @@ export interface QueryDB {
    *
    * Returns null if the tree is not available or the range is invalid.
    */
-  cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null;
+  cstText(startByte: number, endByte: number, entry?: SymbolEntry | string): string | null;
 
   /**
    * Get the CST subtree node for a symbol (by its byte range).
@@ -337,7 +346,7 @@ export interface QueryDB {
    * Get the CST subtree node covering a specific byte range.
    * Returns an opaque tree-sitter SyntaxNode.
    */
-  cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null;
+  cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry | string): any;
 
   // -------------------------------------------------------------------------
   // Expression Evaluation
@@ -426,7 +435,7 @@ export type Revision = number;
  */
 export type DependencyKey =
   | { kind: "input"; symbolId: SymbolId }
-  | { kind: "query"; queryName: string; symbolId: SymbolId; argsHash?: string }
+  | { kind: "query"; queryName: string; symbolId: SymbolId; argsHash?: string | undefined }
   | { kind: "byName"; name: string }
   | { kind: "domain"; domain: LanguageDomainId };
 
@@ -449,13 +458,13 @@ export interface Memo {
   /** The set of dependencies read during the last execution. */
   dependencies: DependencyKey[];
   /** The set of cache keys for memos that depend on this one. Used for push-based invalidation. */
-  reverseDependencies?: Set<number>;
+  reverseDependencies?: Set<number> | undefined;
   /**
    * Names looked up via byName() during the last execution.
    * Used to selectively invalidate memos when new symbols appear,
    * instead of the nuclear memos.clear() approach.
    */
-  byNameLookups?: Set<string>;
+  byNameLookups?: Set<string> | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -598,15 +607,15 @@ export interface RefHook {
 // ---------------------------------------------------------------------------
 
 export interface SourceLocation {
-  filePath?: string;
+  filePath?: string | undefined;
   startLine: number;
   startCol: number;
   endLine: number;
   endCol: number;
-  startByte?: number;
-  endByte?: number;
-  startOffset?: number;
-  endOffset?: number;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface Diagnostic {
@@ -615,42 +624,42 @@ export interface Diagnostic {
   severity: "error" | "warning" | "info";
   message: string;
   range: { startPosition: { row: number; column: number }; endPosition: { row: number; column: number } } | null;
-  startByte?: number;
-  endByte?: number;
-  startOffset?: number;
-  endOffset?: number;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface ClassHierarchyNode {
   name: string;
-  kind?: string;
-  description?: string | null;
-  uri?: string;
+  kind?: string | undefined;
+  description?: string | null | undefined;
+  uri?: string | undefined;
   children: ClassHierarchyNode[];
 }
 
 export interface ComponentTreeNode {
   name: string;
-  type?: string;
-  typeName?: string;
-  kind?: string;
+  type?: string | undefined;
+  typeName?: string | undefined;
+  kind?: string | undefined;
   variability?: any;
   causality?: any;
-  description?: string | null;
-  children?: ComponentTreeNode[];
+  description?: string | null | undefined;
+  children?: ComponentTreeNode[] | undefined;
 }
 
 export interface TreeNodeInfo {
   name: string;
-  id?: string;
-  uri?: string;
-  compositeName?: string;
-  kind?: string;
-  classKind?: string;
-  icon?: string;
-  iconSvg?: string;
-  hasChildren?: boolean;
-  language?: string;
-  description?: string | null;
-  children?: TreeNodeInfo[];
+  id?: string | undefined;
+  uri?: string | undefined;
+  compositeName?: string | undefined;
+  kind?: string | undefined;
+  classKind?: string | undefined;
+  icon?: string | undefined;
+  iconSvg?: string | undefined;
+  hasChildren?: boolean | undefined;
+  language?: string | undefined;
+  description?: string | null | undefined;
+  children?: TreeNodeInfo[] | undefined;
 }

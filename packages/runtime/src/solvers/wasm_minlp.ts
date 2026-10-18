@@ -208,7 +208,16 @@ function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: DAEBui
       const name = arena.interner.resolve(arena.getExprData1(exprId));
       return env.get(name) ?? null;
     }
-    case ExprKind.Unary:
+    case ExprKind.Unary: {
+      const a = simpleEvalMinlp(arena.getExprLeft(exprId), env, arena);
+      if (a === null) return null;
+      const op = arena.getExprData1(exprId);
+      if (op === 1) {
+        // UnaryOp.Not
+        return a === 0 ? 1 : 0;
+      }
+      return -a;
+    }
     case ExprKind.Negate: {
       const a = simpleEvalMinlp(arena.getExprLeft(exprId), env, arena);
       return a !== null ? -a : null;
@@ -250,6 +259,105 @@ function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: DAEBui
           return a !== 0 && b !== 0 ? 1 : 0;
         case BinOp.Or:
           return a !== 0 || b !== 0 ? 1 : 0;
+      }
+      return null;
+    }
+    case ExprKind.Call: {
+      const rawName = arena.getExprFuncName(exprId);
+      const dotIdx = rawName.lastIndexOf(".");
+      const fn = dotIdx !== -1 ? rawName.slice(dotIdx + 1) : rawName;
+      const firstArg = arena.getExprLeft(exprId);
+      const count = arena.getExprRight(exprId);
+      if (count <= 0 || firstArg < 0) return null;
+      const getArg = (idx: number): number | null => {
+        if (idx === 0) return simpleEvalMinlp(firstArg, env, arena);
+        const slotIdx = exprId + idx;
+        const argExpr =
+          slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+            ? arena.getExprLeft(slotIdx)
+            : firstArg + idx;
+        return simpleEvalMinlp(argExpr, env, arena);
+      };
+      const a0 = getArg(0);
+      if (a0 === null) return null;
+      switch (fn) {
+        case "sin":
+          return Math.sin(a0);
+        case "cos":
+          return Math.cos(a0);
+        case "tan":
+          return Math.tan(a0);
+        case "asin":
+          return Math.asin(a0);
+        case "acos":
+          return Math.acos(a0);
+        case "atan":
+          return Math.atan(a0);
+        case "sinh":
+          return Math.sinh(a0);
+        case "cosh":
+          return Math.cosh(a0);
+        case "tanh":
+          return Math.tanh(a0);
+        case "exp":
+          return Math.exp(a0);
+        case "log":
+          return Math.log(a0);
+        case "log10":
+          return Math.log10(a0);
+        case "sqrt":
+          return Math.sqrt(a0);
+        case "abs":
+          return Math.abs(a0);
+        case "sign":
+          return Math.sign(a0);
+        case "floor":
+          return Math.floor(a0);
+        case "ceil":
+          return Math.ceil(a0);
+        case "integer":
+          return Math.trunc(a0);
+        case "noEvent":
+        case "homotopy":
+          return a0;
+        case "smooth":
+          return count >= 2 ? getArg(1) : a0;
+        case "atan2": {
+          const a1 = count >= 2 ? getArg(1) : null;
+          return a1 !== null ? Math.atan2(a0, a1) : null;
+        }
+        case "min": {
+          const a1 = count >= 2 ? getArg(1) : null;
+          return a1 !== null ? Math.min(a0, a1) : a0;
+        }
+        case "max": {
+          const a1 = count >= 2 ? getArg(1) : null;
+          return a1 !== null ? Math.max(a0, a1) : a0;
+        }
+        case "pow": {
+          const a1 = count >= 2 ? getArg(1) : null;
+          return a1 !== null ? Math.pow(a0, a1) : null;
+        }
+        case "mod": {
+          const a1 = count >= 2 ? getArg(1) : null;
+          return a1 !== null && a1 !== 0 ? a0 - Math.floor(a0 / a1) * a1 : null;
+        }
+        case "rem":
+        case "fmod": {
+          const a1 = count >= 2 ? getArg(1) : null;
+          return a1 !== null && a1 !== 0 ? a0 % a1 : null;
+        }
+        case "div": {
+          const a1 = count >= 2 ? getArg(1) : null;
+          return a1 !== null && a1 !== 0 ? Math.trunc(a0 / a1) : null;
+        }
+        case "semiLinear": {
+          if (count < 3) return null;
+          const kPos = getArg(1);
+          const kNeg = getArg(2);
+          if (kPos === null || kNeg === null) return null;
+          return a0 >= 0 ? kPos * a0 : kNeg * a0;
+        }
       }
       return null;
     }

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+/* eslint-disable @typescript-eslint/no-implied-eval */
 
 /**
  * Procedural algorithm statement execution module.
@@ -26,11 +27,15 @@ export interface StatementExecutionDebugger {
 }
 
 /** Sentinel thrown when a `return` statement is executed. */
-export const ArenaReturnSignal = Object.freeze({ __brand: "ArenaReturnSignal" as const });
+export const ArenaReturnSignal: Error & { readonly __brand: "ArenaReturnSignal" } = Object.freeze(
+  Object.assign(new Error("ArenaReturnSignal"), { __brand: "ArenaReturnSignal" as const }),
+);
 export type ArenaReturnSignal = typeof ArenaReturnSignal;
 
 /** Sentinel thrown when a `break` statement is executed. */
-export const ArenaBreakSignal = Object.freeze({ __brand: "ArenaBreakSignal" as const });
+export const ArenaBreakSignal: Error & { readonly __brand: "ArenaBreakSignal" } = Object.freeze(
+  Object.assign(new Error("ArenaBreakSignal"), { __brand: "ArenaBreakSignal" as const }),
+);
 export type ArenaBreakSignal = typeof ArenaBreakSignal;
 
 const MAX_WHILE_ITERATIONS = 100_000;
@@ -956,8 +961,12 @@ export async function executeArenaFunctionAsync(
 // Compile-Time Statement Execution (CEval)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ArenaCEvalReturnSignal = { __brand: "ArenaCEvalReturnSignal" as const };
-const ArenaCEvalBreakSignal = { __brand: "ArenaCEvalBreakSignal" as const };
+const ArenaCEvalReturnSignal = Object.assign(new Error("ArenaCEvalReturnSignal"), {
+  __brand: "ArenaCEvalReturnSignal" as const,
+});
+const ArenaCEvalBreakSignal = Object.assign(new Error("ArenaCEvalBreakSignal"), {
+  __brand: "ArenaCEvalBreakSignal" as const,
+});
 
 function getSequenceElementsLocal(dae: DAEBuilder, baseExprId: number, count: number, firstElement: number): number[] {
   if (count === 0) return [];
@@ -994,9 +1003,9 @@ function updateNestedArray(arr: ArenaValue, indices: ArenaValue[], value: ArenaV
       return Array.isArray(value) ? [...value] : value;
     } else if (Array.isArray(head)) {
       for (let k = 0; k < head.length; k++) {
-        const targetIdx = (head[k] as number) - 1;
+        const targetIdx = (head[k]! as number) - 1;
         while (currentArr.length <= targetIdx) currentArr.push(0);
-        currentArr[targetIdx] = Array.isArray(value) ? value[k] : value;
+        currentArr[targetIdx] = Array.isArray(value) ? value[k]! : value;
       }
       return currentArr;
     } else if (typeof head === "number" && Number.isInteger(head)) {
@@ -1013,7 +1022,7 @@ function updateNestedArray(arr: ArenaValue, indices: ArenaValue[], value: ArenaV
     const len = Array.isArray(value) ? value.length : currentArr.length;
     while (currentArr.length < len) currentArr.push([]);
     for (let k = 0; k < len; k++) {
-      const elemVal = Array.isArray(value) ? value[k] : value;
+      const elemVal = Array.isArray(value) ? value[k]! : value;
       currentArr[k] = updateNestedArray(currentArr[k] ?? [], tail, elemVal);
     }
     return currentArr;
@@ -1021,7 +1030,7 @@ function updateNestedArray(arr: ArenaValue, indices: ArenaValue[], value: ArenaV
     for (let k = 0; k < head.length; k++) {
       const targetIdx = (head[k] as number) - 1;
       while (currentArr.length <= targetIdx) currentArr.push([]);
-      const elemVal = Array.isArray(value) ? value[k] : value;
+      const elemVal = Array.isArray(value) ? value[k]! : value;
       currentArr[targetIdx] = updateNestedArray(currentArr[targetIdx] ?? [], tail, elemVal);
     }
     return currentArr;
@@ -1104,6 +1113,20 @@ export function executeArenaCEvalStatements(
               }
             } else {
               env.set(name, value);
+              if (Array.isArray(value) && !name.includes(".")) {
+                const prefixDot = `${name}.`;
+                const existingFieldKeys: string[] = [];
+                for (const k of env.keys()) {
+                  if (k.startsWith(prefixDot)) existingFieldKeys.push(k);
+                }
+                if (existingFieldKeys.length === value.length) {
+                  for (let fIdx = 0; fIdx < existingFieldKeys.length; fIdx++) {
+                    env.set(existingFieldKeys[fIdx]!, value[fIdx]!);
+                  }
+                } else {
+                  for (const k of existingFieldKeys) env.delete(k);
+                }
+              }
             }
           }
         } else if (targetKind === ExprKind.Subscript) {
@@ -1344,7 +1367,7 @@ export function executeArenaCEvalStatements(
           const funcName = arena.interner.resolve(funcNameId);
 
           const argIds = getSequenceElementsLocal(arena, callExprId, numArgs, firstArg);
-          const argValues: ArenaValue[] = [];
+          const argValues: (ArenaValue | null)[] = [];
           for (const aid of argIds) {
             const val = evaluateArenaExpression(arena, aid, env, db, scopeId, undefined, false, functionLookup);
             argValues.push(val);
@@ -1362,7 +1385,7 @@ export function executeArenaCEvalStatements(
               throw err;
             }
           } else if (functionLookup) {
-            functionLookup(funcNameId, argValues);
+            functionLookup(funcNameId, argValues as ArenaValue[]);
           }
         }
         break;
@@ -1533,7 +1556,8 @@ export function evaluateArenaFunctionCall(
   db?: QueryDB,
   scopeId?: SymbolId,
 ): ArenaValue | null {
-  const funcName = dae.interner.resolve(funcNameId) ?? "";
+  const rawFuncName = dae.interner.resolve(funcNameId) ?? "";
+  const funcName = rawFuncName.replace(/^\.+/, "");
   if (isMslCFunction(funcName)) {
     return evaluateMslCFunction(funcName, argValues);
   }
@@ -1563,9 +1587,12 @@ export function evaluateArenaFunctionCall(
     return BUILTIN_MATH[baseFn]!(...(argValues as number[]));
   }
 
-  let funcArena = dae.functions.get(funcNameId) ?? dae.getFunction(funcNameId);
+  let funcArena = dae.functions.get(funcNameId) ?? dae.getFunction(funcNameId) ?? dae.getFunction(funcName);
   if (!funcArena && (dae as any).parentDae) {
-    funcArena = (dae as any).parentDae.functions.get(funcNameId) ?? (dae as any).parentDae.getFunction(funcNameId);
+    funcArena =
+      (dae as any).parentDae.functions.get(funcNameId) ??
+      (dae as any).parentDae.getFunction(funcNameId) ??
+      (dae as any).parentDae.getFunction(funcName);
   }
   if (!funcArena) return null;
 
@@ -1593,25 +1620,24 @@ export function evaluateArenaFunctionCall(
     const instancePrefix = lastDot > 0 ? funcName.slice(0, lastDot) : undefined;
 
     const functionLookup = (fid: number, args: ArenaValue[]) => {
-      const calledName = funcArena.interner.resolve(fid);
-      if (!calledName) return null;
-      let targetDae = dae;
-      let targetFid = dae.interner.intern(calledName);
-      let found = targetDae.getFunction(targetFid) ?? (targetDae as any).parentDae?.getFunction(targetFid);
-      if (!found && instancePrefix) {
-        const qual = `${instancePrefix}.${calledName}`;
-        found = targetDae.getFunction(qual) ?? (targetDae as any).parentDae?.getFunction(qual);
-        if (found) {
-          targetFid = dae.interner.intern(qual);
+      const rawCalledName = funcArena.interner.resolve(fid);
+      if (!rawCalledName) return null;
+      const calledName = rawCalledName.replace(/^\.+/, "");
+      const candidates = [calledName, rawCalledName];
+      if (instancePrefix && !rawCalledName.startsWith(".")) {
+        candidates.push(`${instancePrefix}.${calledName}`);
+      }
+      const searchDaes: DAEBuilder[] = [funcArena, dae];
+      if ((dae as any).parentDae) searchDaes.push((dae as any).parentDae);
+      for (const cand of candidates) {
+        for (const sDae of searchDaes) {
+          const found = sDae.getFunction(cand);
+          if (found) {
+            return evaluateArenaFunctionCall(sDae, sDae.interner.intern(cand), args, db, scopeId);
+          }
         }
       }
-      return evaluateArenaFunctionCall(
-        found ? (targetDae.getFunction(targetFid) ? targetDae : (targetDae as any).parentDae) : targetDae,
-        targetFid,
-        args,
-        db,
-        scopeId,
-      );
+      return evaluateArenaFunctionCall(dae, dae.interner.intern(calledName), args, db, scopeId);
     };
 
     const outputs: string[] = [];
@@ -1701,7 +1727,7 @@ export function evaluateArenaFunctionCall(
           for (let i = 0; i < funcArena.varCount; i++) {
             if (funcArena.isVarRemoved(i) || funcArena.getVarCausality(i) !== 1) continue;
             const expectedShape = funcArena.getVarShape(i);
-            let val = argValues[argIdx];
+            let val = argValues[argIdx]!;
             const argShape: number[] = [];
             let curr: any = val;
             while (Array.isArray(curr)) {
@@ -1711,7 +1737,7 @@ export function evaluateArenaFunctionCall(
             if (argShape.length > expectedShape.length) {
               for (const idx of currentPrefixIndices) {
                 if (Array.isArray(val)) {
-                  val = val[idx];
+                  val = val[idx]!;
                 }
               }
             }
@@ -1823,6 +1849,26 @@ export function evaluateArenaFunctionCall(
               );
           if (evaluatedVal !== null && evaluatedVal !== undefined) {
             env.set(name, evaluatedVal);
+            if (Array.isArray(evaluatedVal) && funcArena.getExprKind(startExprId) === ExprKind.Call) {
+              const calledId = funcArena.getExprData1(startExprId);
+              const calledName = funcArena.interner.resolve(calledId);
+              const ctorArena = calledName
+                ? (funcArena.getFunction(calledName) ??
+                  dae.getFunction(calledName) ??
+                  (dae as any).parentDae?.getFunction(calledName))
+                : undefined;
+              if (ctorArena && ctorArena.description?.includes("record constructor")) {
+                let fIdx = 0;
+                for (let vi = 0; vi < ctorArena.varCount; vi++) {
+                  if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
+                    if (fIdx < evaluatedVal.length) {
+                      env.set(`${name}.${ctorArena.getVarName(vi)}`, evaluatedVal[fIdx]!);
+                    }
+                    fIdx++;
+                  }
+                }
+              }
+            }
           } else if (isSelfCall) {
             env.set(name, defaultVal);
           }
@@ -2158,6 +2204,21 @@ export function evaluateArenaFunctionCall(
           }
         }
       }
+    }
+
+    if (
+      funcArena.description?.includes("record constructor") &&
+      funcArena.algorithmSections.length === 0 &&
+      outputs.length === 1 &&
+      outputs[0] === "res"
+    ) {
+      const ctorVals: ArenaValue[] = [];
+      for (let i = 0; i < funcArena.varCount; i++) {
+        if (!funcArena.isVarRemoved(i) && funcArena.getVarCausality(i) === 1 /* Input */) {
+          ctorVals.push(env.get(funcArena.getVarName(i)) ?? 0);
+        }
+      }
+      return ctorVals;
     }
 
     const resolveOutput = (outName: string): ArenaValue | null => {

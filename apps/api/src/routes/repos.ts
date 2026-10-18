@@ -14,7 +14,7 @@ export function reposRouter(database: LibraryDatabase): Router {
    * GET /api/v1/repos/popular
    */
   router.get("/popular", (req: Request, res: Response) => {
-    const limit = Number(req.query.limit) || 50;
+    const limit = Number(req.query["limit"]) || 50;
     try {
       const repos = database.getPopularRepos(limit);
       res.json({ repos });
@@ -61,7 +61,7 @@ export function reposRouter(database: LibraryDatabase): Router {
    */
   router.delete("/:id", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const repoId = Number(req.params.id);
+    const repoId = Number(req.params["id"]);
 
     try {
       database.unlinkRepo(userId, repoId);
@@ -76,7 +76,7 @@ export function reposRouter(database: LibraryDatabase): Router {
    * List configured webhooks for a linked repository.
    */
   router.get("/:id/webhooks", requireAuth, (req: Request, res: Response) => {
-    const repoId = Number(req.params.id);
+    const repoId = Number(req.params["id"]);
     const repo = database.getLinkedRepoById(repoId);
     if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
       res.status(404).json({ error: "Repository not found or access denied" });
@@ -92,7 +92,7 @@ export function reposRouter(database: LibraryDatabase): Router {
    * Create a new webhook for automated CI/CD tag ingestion.
    */
   router.post("/:id/webhooks", requireAuth, (req: Request, res: Response) => {
-    const repoId = Number(req.params.id);
+    const repoId = Number(req.params["id"]);
     const repo = database.getLinkedRepoById(repoId);
     if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
       res.status(404).json({ error: "Repository not found or access denied" });
@@ -125,8 +125,8 @@ export function reposRouter(database: LibraryDatabase): Router {
    * Delete a webhook.
    */
   router.delete("/:id/webhooks/:webhookId", requireAuth, (req: Request, res: Response) => {
-    const repoId = Number(req.params.id);
-    const webhookId = Number(req.params.webhookId);
+    const repoId = Number(req.params["id"]);
+    const webhookId = Number(req.params["webhookId"]);
     const repo = database.getLinkedRepoById(repoId);
     if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
       res.status(404).json({ error: "Repository not found or access denied" });

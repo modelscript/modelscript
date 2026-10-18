@@ -23,12 +23,22 @@ const EXPORTED_DIR = path.join(VALIDATION_DIR, "exported_fmus");
 const REF_FMUS_DIR = path.join(VALIDATION_DIR, "reference_fmus");
 const MODELS_DIR = path.join(VALIDATION_DIR, "models");
 
-const MODELS = [
+const MODELS: {
+  name: string;
+  file: string;
+  stopTime: number;
+  stepSize: number;
+  startTime?: number;
+  solver?: string;
+}[] = [
   { name: "BouncingBall", file: "BouncingBall.mo", stopTime: 1.0, stepSize: 0.01 },
   { name: "VanDerPol", file: "VanDerPol.mo", stopTime: 10.0, stepSize: 0.1 },
   { name: "Dahlquist", file: "Dahlquist.mo", stopTime: 10.0, stepSize: 0.1 },
   { name: "Stair", file: "Stair.mo", stopTime: 10.0, stepSize: 0.01 },
   { name: "StateSpace", file: "StateSpace.mo", stopTime: 10.0, stepSize: 0.1 },
+  { name: "Feedthrough", file: "Feedthrough.mo", stopTime: 2.0, stepSize: 0.1 },
+  { name: "Resource", file: "Resource.mo", stopTime: 1.0, stepSize: 0.5 },
+  { name: "Roberts", file: "Roberts.mo", stopTime: 1.0, stepSize: 0.01 },
 ];
 
 async function runCmd(cmd: string, cwd: string = FMI_PKG_ROOT, maxBuffer: number = 1024 * 1024 * 10) {
@@ -201,6 +211,7 @@ async function runCrossSimulationMatrix() {
           iface: string;
           refMsc: string;
           refFmusim: string;
+          mscMsx: string;
           mscFmusim: string;
           mscOms: string;
         } = {
@@ -209,6 +220,7 @@ async function runCrossSimulationMatrix() {
           iface: iface.toUpperCase(),
           refMsc: "⚠️ No Ref",
           refFmusim: "⚠️ No Ref",
+          mscMsx: "⚠️ No Ref",
           mscFmusim: "⚠️ No Ref",
           mscOms: "⚠️ No Ref",
         };
@@ -259,6 +271,28 @@ async function runCrossSimulationMatrix() {
           row.refMsc = "Done (No Ref)";
         } else {
           row.refMsc = "❌ Fail";
+        }
+
+        // 2b. Simulate ModelScript FMU with msx simulate <fmu>
+        try {
+          console.log(`    [~] msx simulating msx-FMU...`);
+          const fmuAbsPath = path.resolve(outDir, `${model.name}_${fmiVer}.fmu`);
+          const msxFmuOut = await runCmd(
+            `node "${CLI_BIN}" simulate "${fmuAbsPath}" --stop-time ${model.stopTime} --interval ${model.stepSize} --interface-type ${iface} --format csv`,
+            REPO_ROOT,
+          );
+          const msxFmuLines = msxFmuOut.split("\n").filter((l) => l.includes(",") && !l.includes("[Context]"));
+          const msxFmuCsvStr = msxFmuLines.join("\n");
+          if (groundTruthCsvStr) {
+            const dev = compareCSV(model.name, msxFmuCsvStr, groundTruthCsvStr);
+            row.mscMsx = formatDev(dev);
+          } else {
+            row.mscMsx = "Done (No Ref)";
+          }
+          console.log(`    [✓] Success`);
+        } catch (e: any) {
+          console.error(`    [X] Failed msx-FMU (msx):`, e.message.split("\n")[0]);
+          row.mscMsx = "❌ Fail";
         }
 
         // 3. Simulate ModelScript FMU with fmusim
@@ -355,11 +389,14 @@ async function runCrossSimulationMatrix() {
   const mdLines: string[] = [];
   mdLines.push("# ModelScript FMI Validation Dashboard\n");
   mdLines.push(
-    "This dashboard tracks the numerical parity and structural compatibility of the ModelScript FMI exporter across FMI 2.0 & FMI 3.0 (ME and CS) against the official [Modelica Reference-FMUs](https://github.com/modelica/Reference-FMUs). The Reference-FMUs are compiled directly from their manual C source code via their provided CMake build system, serving as the definitive ground truth for these validation benchmarks.\n",
+    "This dashboard tracks the numerical parity and structural compatibility of the ModelScript FMI exporter and native FMU simulator across FMI 2.0 & FMI 3.0 (ME and CS) against the official [Modelica Reference-FMUs](https://github.com/modelica/Reference-FMUs). The Reference-FMUs are compiled directly from their manual C source code via their provided CMake build system, serving as the definitive ground truth for these validation benchmarks.\n",
   );
   mdLines.push("### Options & Terminology");
   mdLines.push(
     "- **Native msx:** The ModelScript Arena Simulator running the source `.mo` file directly. Uses the internal WASM CVODE solver by default.",
+  );
+  mdLines.push(
+    "- **msx-FMU (msx):** The exported ModelScript FMU (`.fmu`) simulated directly via `msx simulate <file.fmu> --interface-type <cs|me>`.",
   );
   mdLines.push(
     "- **msx-FMU (fmusim):** The exported ModelScript FMU (`.fmu`) simulated using the official FMI standard `fmusim` C-binary. We explicitly pass `--output-interval` to ensure exact parity with the Reference FMU execution.",
@@ -379,40 +416,40 @@ async function runCrossSimulationMatrix() {
   );
   mdLines.push("### Expected Exclusions & Failures");
   mdLines.push(
-    "- **Done (No Ref):** Indicates the simulation succeeded internally, but no Ground Truth Reference-FMU exists for this FMI version (e.g. `StateSpace` is not available in FMI 2.0 reference FMUs).",
+    "- **Done (No Ref):** Indicates the simulation succeeded internally, but no Ground Truth Reference-FMU exists for this FMI version (e.g. `StateSpace` and `Roberts` are only in FMI 3.0 reference FMUs).",
   );
   mdLines.push(
     "- **OMSimulator FMI 3.0 Failures:** `OMSimulator` v2.1.3 explicitly hardcodes schema validation to the `FMI-2.0` standard. FMI 3.0 FMUs fail during ingestion because the `fmiVersion=\"3.0\"` attribute does not match the hardcoded `#FIXED` value of `'2.0'`. This is a limitation of the current OMSimulator build.\n",
   );
   mdLines.push("## Simulation Matrix\n");
 
-  const header = `| ${"Model".padEnd(16)} | FMI | Mode | ${"Native msx".padEnd(20)} | ${"msx-FMU (fmusim)".padEnd(20)} | ${"msx-FMU (omsim)".padEnd(20)} |`;
-  const divider = `|${"".padEnd(18, "-")}|-----|------|${"".padEnd(22, "-")}|${"".padEnd(22, "-")}|${"".padEnd(22, "-")}|`;
+  const header = `| ${"Model".padEnd(16)} | FMI | Mode | ${"Native msx".padEnd(20)} | ${"msx-FMU (msx)".padEnd(20)} | ${"msx-FMU (fmusim)".padEnd(20)} | ${"msx-FMU (omsim)".padEnd(20)} |`;
+  const divider = `|${"".padEnd(18, "-")}|-----|------|${"".padEnd(22, "-")}|${"".padEnd(22, "-")}|${"".padEnd(22, "-")}|${"".padEnd(22, "-")}|`;
 
   mdLines.push(header);
   mdLines.push(divider);
 
   console.log(
-    "\n=======================================================================================================================",
+    "\n==========================================================================================================================================",
   );
   console.log(" FMI CROSS-SIMULATION VALIDATION RESULTS");
   console.log(
-    "=======================================================================================================================",
+    "==========================================================================================================================================",
   );
   console.log(
-    ` ${"Model".padEnd(16)} | FMI | Mode | ${"Native msx".padEnd(20)} | ${"msx-FMU (fmusim)".padEnd(20)} | ${"msx-FMU (omsim)".padEnd(20)}`,
+    ` ${"Model".padEnd(16)} | FMI | Mode | ${"Native msx".padEnd(20)} | ${"msx-FMU (msx)".padEnd(20)} | ${"msx-FMU (fmusim)".padEnd(20)} | ${"msx-FMU (omsim)".padEnd(20)}`,
   );
-  console.log("".padEnd(113, "-"));
+  console.log("".padEnd(136, "-"));
 
   for (const r of results) {
-    const termLine = ` ${r.model.padEnd(16)} | ${r.fmiVer} |  ${r.iface}  | ${r.refMsc.padEnd(20)} | ${r.mscFmusim.padEnd(20)} | ${r.mscOms.padEnd(20)}`;
+    const termLine = ` ${r.model.padEnd(16)} | ${r.fmiVer} |  ${r.iface}  | ${r.refMsc.padEnd(20)} | ${r.mscMsx.padEnd(20)} | ${r.mscFmusim.padEnd(20)} | ${r.mscOms.padEnd(20)}`;
     console.log(termLine);
     mdLines.push(
-      `| ${r.model.padEnd(16)} | ${r.fmiVer} | ${r.iface} | ${r.refMsc.padEnd(20)} | ${r.mscFmusim.padEnd(20)} | ${r.mscOms.padEnd(20)} |`,
+      `| ${r.model.padEnd(16)} | ${r.fmiVer} | ${r.iface} | ${r.refMsc.padEnd(20)} | ${r.mscMsx.padEnd(20)} | ${r.mscFmusim.padEnd(20)} | ${r.mscOms.padEnd(20)} |`,
     );
   }
   console.log(
-    "=======================================================================================================================\n",
+    "==========================================================================================================================================\n",
   );
 
   // Generate plots

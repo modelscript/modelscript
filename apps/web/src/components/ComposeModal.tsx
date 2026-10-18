@@ -6,6 +6,7 @@ import { Heading, IconButton } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 import { createArtifactView } from "../api";
+import { createCellId, type NotebookCell } from "../util/notebook";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 import Box from "./Box";
 import ComposeBox from "./ComposeBox";
@@ -38,8 +39,9 @@ const ModalPanel = styled.div`
   display: flex;
   flex-direction: column;
   overflow: visible;
-  max-height: 80vh;
+  max-height: 84vh;
   min-height: 250px;
+  transition: max-width 0.2s ease;
 `;
 
 const Header = styled.div`
@@ -52,27 +54,31 @@ const Header = styled.div`
 const Body = styled.div`
   padding: 4px 20px 20px;
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  overflow: visible;
+  overflow-y: auto;
   flex: 1;
 `;
 
 interface ComposeModalProps {
   onClose: () => void;
-  onPostCreated?: (post: any) => void;
+  onPostCreated?: ((post: any) => void) | undefined;
   quotePost?: any;
   replyToPost?: any;
-  pendingPin?: SpatialPin;
-  initialState?: ComposeInitialState;
+  pendingPin?: SpatialPin | undefined;
+  initialState?: ComposeInitialState | undefined;
 }
 
 interface DraftPost {
   id: string;
   content: string;
   artifactId: number | null;
+  notebookMode?: boolean | undefined;
+  notebookTitle?: string | undefined;
+  notebookCells?: NotebookCell[] | undefined;
   quotePost?: any;
   replyToPost?: any;
-  pendingPin?: SpatialPin;
+  pendingPin?: SpatialPin | undefined;
   timestamp: number;
 }
 
@@ -116,6 +122,11 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
   const [content, setContent] = useState(initialState?.content || initialState?.defaultText || "");
   const [artifactId, setArtifactId] = useState<number | null>(initialState?.artifactId ?? null);
+  const [notebookMode, setNotebookMode] = useState<boolean>(Boolean(initialState?.notebookMode));
+  const [notebookTitle, setNotebookTitle] = useState<string>(initialState?.notebookTitle || "");
+  const [notebookCells, setNotebookCells] = useState<NotebookCell[]>(
+    initialState?.notebookCells || [{ id: createCellId("md"), type: "markdown", content: "" }],
+  );
 
   const [currentQuotePost, setCurrentQuotePost] = useState(initialState?.quotePost || initialQuotePost);
   const [currentReplyToPost, setCurrentReplyToPost] = useState(initialState?.replyToPost || initialReplyToPost);
@@ -125,6 +136,15 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     if (!initialState) return;
     if (initialState.content || initialState.defaultText) {
       setContent(initialState.content || initialState.defaultText || "");
+    }
+    if (initialState.notebookMode !== undefined) {
+      setNotebookMode(Boolean(initialState.notebookMode));
+    }
+    if (initialState.notebookTitle) {
+      setNotebookTitle(initialState.notebookTitle);
+    }
+    if (initialState.notebookCells && initialState.notebookCells.length > 0) {
+      setNotebookCells(initialState.notebookCells);
     }
     if (initialState.morselPayload && artifactId === null) {
       const { code, title, dialect } = initialState.morselPayload;
@@ -174,7 +194,12 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
 
   const [draftsList, setDraftsList] = useState<DraftPost[]>([]);
 
-  const isDirty = content.trim() !== "" || artifactId !== null;
+  const isDirty =
+    content.trim() !== "" ||
+    artifactId !== null ||
+    (notebookMode &&
+      (notebookTitle.trim() !== "" ||
+        notebookCells.some((c) => (c.type === "markdown" ? c.content.trim() !== "" : Boolean(c.artifactId)))));
 
   const handleCloseClick = useCallback(() => {
     if (isDirty) {
@@ -217,6 +242,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
         id: Date.now().toString(),
         content,
         artifactId,
+        notebookMode,
+        notebookTitle,
+        notebookCells,
         quotePost: currentQuotePost,
         replyToPost: currentReplyToPost,
         pendingPin: currentPendingPin,
@@ -225,6 +253,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
     }
     setContent("");
     setArtifactId(null);
+    setNotebookMode(false);
+    setNotebookTitle("");
+    setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
     setCurrentQuotePost(initialQuotePost);
     setCurrentReplyToPost(initialReplyToPost);
     setCurrentPendingPin(initialPendingPin);
@@ -240,6 +271,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const discardAndNavigate = () => {
     setContent("");
     setArtifactId(null);
+    setNotebookMode(false);
+    setNotebookTitle("");
+    setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
     setCurrentQuotePost(initialQuotePost);
     setCurrentReplyToPost(initialReplyToPost);
     setCurrentPendingPin(initialPendingPin);
@@ -255,6 +289,9 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
   const loadDraft = (draft: DraftPost) => {
     setContent(draft.content);
     setArtifactId(draft.artifactId);
+    setNotebookMode(Boolean(draft.notebookMode));
+    setNotebookTitle(draft.notebookTitle || "");
+    setNotebookCells(draft.notebookCells || [{ id: createCellId("md"), type: "markdown", content: draft.content }]);
     setCurrentQuotePost(draft.quotePost);
     setCurrentReplyToPost(draft.replyToPost);
     setCurrentPendingPin(draft.pendingPin);
@@ -267,7 +304,11 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
       <Overlay onClick={view === "compose" ? handleCloseClick : undefined}>
         <ModalPanel
           onClick={(e) => e.stopPropagation()}
-          style={{ maxWidth: "600px", margin: "0 auto", display: view === "drafts" ? "none" : "flex" }}
+          style={{
+            maxWidth: notebookMode ? "760px" : "600px",
+            margin: "0 auto",
+            display: view === "drafts" ? "none" : "flex",
+          }}
         >
           <Header>
             <IconButton
@@ -328,6 +369,12 @@ const ComposeModal: React.FC<ComposeModalProps> = ({
               setContent={setContent}
               artifactId={artifactId}
               setArtifactId={setArtifactId}
+              notebookMode={notebookMode}
+              setNotebookMode={setNotebookMode}
+              notebookTitle={notebookTitle}
+              setNotebookTitle={setNotebookTitle}
+              notebookCells={notebookCells}
+              setNotebookCells={setNotebookCells}
               onPostCreated={(post) => {
                 onPostCreated?.(post);
                 onClose();

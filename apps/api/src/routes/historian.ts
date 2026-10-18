@@ -7,14 +7,14 @@ import type { Pool } from "pg";
 
 /** Historian query parameters. */
 interface HistorianQueryParams {
-  sessionId?: string;
-  participantId?: string;
-  variableName?: string;
-  from?: string;
-  to?: string;
-  limit?: string;
-  aggregate?: string;
-  interval?: string;
+  sessionId?: string | undefined;
+  participantId?: string | undefined;
+  variableName?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  limit?: string | undefined;
+  aggregate?: string | undefined;
+  interval?: string | undefined;
 }
 
 /** Active replayer tracking. */
@@ -47,6 +47,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
     }
+    return;
   });
 
   // GET /api/v1/historian/sessions/:id — Get session metadata
@@ -95,6 +96,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
     }
+    return;
   });
 
   // GET /api/v1/historian/telemetry — Query telemetry data
@@ -145,6 +147,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
     }
+    return;
   });
 
   // GET /api/v1/historian/telemetry/latest — Get latest values for all variables
@@ -181,6 +184,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
     }
+    return;
   });
 
   // GET /api/v1/historian/telemetry/aggregate — Time-bucketed aggregates
@@ -235,6 +239,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
     }
+    return;
   });
 
   // POST /api/v1/historian/replay — Start replaying a session
@@ -245,10 +250,10 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
       to,
       speedFactor = 1.0,
     } = req.body as {
-      sessionId?: string;
-      from?: string;
-      to?: string;
-      speedFactor?: number;
+      sessionId?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+      speedFactor?: number | undefined;
     };
 
     if (!sessionId) {
@@ -282,6 +287,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
       });
 
     res.json({ ok: true, replayId, sessionId, speedFactor, state: replayer.state });
+    return;
   });
 
   // POST /api/v1/historian/replay/:id/pause — Pause replay
@@ -290,6 +296,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     if (!replayer) return res.status(404).json({ error: "Replay not found" });
     replayer.pause();
     res.json({ ok: true, state: replayer.state });
+    return;
   });
 
   // POST /api/v1/historian/replay/:id/resume — Resume replay
@@ -298,6 +305,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     if (!replayer) return res.status(404).json({ error: "Replay not found" });
     replayer.resume();
     res.json({ ok: true, state: replayer.state });
+    return;
   });
 
   // POST /api/v1/historian/replay/:id/stop — Stop replay
@@ -308,6 +316,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     replayer.stop();
     activeReplayers.delete(replayId);
     res.json({ ok: true, state: "idle" });
+    return;
   });
 
   // GET /api/v1/historian/replay/:id — Get replay status
@@ -315,6 +324,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     const replayer = activeReplayers.get(req.params["id"] ?? "");
     if (!replayer) return res.status(404).json({ error: "Replay not found" });
     res.json({ state: replayer.state, error: replayer.error });
+    return;
   });
 
   // DELETE /api/v1/historian/sessions/:id — Delete recorded session data
@@ -329,6 +339,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
     }
+    return;
   });
 
   return router;

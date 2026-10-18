@@ -134,7 +134,7 @@ export function buildSspDiagramData(input: SspSystem | string): any {
     });
 
     const compBoundParams = boundParamsByComp.get(cmp.name) ?? new Map();
-    const paramEntries: { name: string; value: string; group?: string; unit?: string }[] = [
+    const paramEntries: { name: string; value: string; group?: string | undefined; unit?: string | undefined }[] = [
       { name: "source", value: cmp.source, group: "FMU Resource" },
       ...(cmp.type ? [{ name: "type", value: cmp.type, group: "FMU Resource" }] : []),
     ];

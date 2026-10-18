@@ -63,13 +63,13 @@ export class ModelScriptPty implements vscode.Pseudoterminal {
       case "\x1b[A": // Up arrow
         if (this.history.length > 0 && this.historyIndex > 0) {
           this.historyIndex--;
-          this.replaceCurrentLine(this.history[this.historyIndex]);
+          this.replaceCurrentLine(this.history[this.historyIndex]!);
         }
         break;
       case "\x1b[B": // Down arrow
         if (this.historyIndex < this.history.length - 1) {
           this.historyIndex++;
-          this.replaceCurrentLine(this.history[this.historyIndex]);
+          this.replaceCurrentLine(this.history[this.historyIndex]!);
         } else if (this.historyIndex === this.history.length - 1) {
           this.historyIndex++;
           this.replaceCurrentLine("");
@@ -118,7 +118,7 @@ export class ModelScriptPty implements vscode.Pseudoterminal {
         const comps = res.completions || [];
         if (comps.length === 1) {
           // Auto-complete the rest of the word
-          const remainder = comps[0].slice(prefix.length);
+          const remainder = comps[0]!.slice(prefix.length);
           this.currentLine += remainder;
           this.writeEmitter.fire(remainder);
         } else if (comps.length > 1) {
@@ -151,9 +151,12 @@ export class ModelScriptPty implements vscode.Pseudoterminal {
 
     // Send to LSP for evaluation
     this.client
-      .sendRequest<{ status: string; result?: string; error?: string }>("modelscript/repl/evaluate", {
-        input: this.commandBuffer,
-      })
+      .sendRequest<{ status: string; result?: string | undefined; error?: string | undefined }>(
+        "modelscript/repl/evaluate",
+        {
+          input: this.commandBuffer,
+        },
+      )
       .then((res) => {
         if (res.status === "incomplete") {
           this.prompt(true);

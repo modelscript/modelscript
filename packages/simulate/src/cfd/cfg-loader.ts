@@ -4,12 +4,12 @@ import { getCfdDialect, type ParameterLookup } from "@modelscript/cfd";
 import type { LbmGridConfig } from "./lbm-types.js";
 
 export interface LoadCfgOptions {
-  evaluator?: ParameterLookup | Record<string, number | string>;
-  nx?: number;
-  ny?: number;
-  nz?: number;
-  domainSizeMeters?: [number, number, number];
-  dialect?: string;
+  evaluator?: ParameterLookup | Record<string, number | string> | undefined;
+  nx?: number | undefined;
+  ny?: number | undefined;
+  nz?: number | undefined;
+  domainSizeMeters?: [number, number, number] | undefined;
+  dialect?: string | undefined;
 }
 
 /**

@@ -158,7 +158,7 @@ export function enforceExportCompliance(databaseGetter?: () => LibraryDatabase |
 
     if (isOfacSanctioned(country, region)) {
       const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip;
-      const db = databaseGetter ? databaseGetter() : (req.app?.locals?.database as LibraryDatabase | undefined);
+      const db = databaseGetter ? databaseGetter() : (req.app?.locals?.["database"] as LibraryDatabase | undefined);
 
       if (db) {
         db.logAudit({

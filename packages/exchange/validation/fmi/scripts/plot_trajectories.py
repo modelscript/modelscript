@@ -27,7 +27,10 @@ def get_plot_var(model_name):
         'VanDerPol': ['x0'],
         'Dahlquist': ['x'],
         'Stair': ['counter'],
-        'StateSpace': ['y[1]', 'y[2]', 'y[3]']
+        'StateSpace': ['y[1]', 'y[2]', 'y[3]'],
+        'Feedthrough': ['Float64_continuous_output'],
+        'Resource': ['y'],
+        'Roberts': ['y1', 'y3']
     }
     return mapping.get(model_name, [])
 
@@ -37,7 +40,10 @@ def get_msc_var(model_name):
         'VanDerPol': ['x'],
         'Dahlquist': ['x'],
         'Stair': ['counter'],
-        'StateSpace': ['y[1]', 'y[2]', 'y[3]']
+        'StateSpace': ['y[1]', 'y[2]', 'y[3]'],
+        'Feedthrough': ['Float64_continuous_output'],
+        'Resource': ['y'],
+        'Roberts': ['y1', 'y3']
     }
     return mapping.get(model_name, [])
 
@@ -74,7 +80,7 @@ def main():
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)
         
-    models = ['BouncingBall', 'VanDerPol', 'Dahlquist', 'Stair', 'StateSpace']
+    models = ['BouncingBall', 'VanDerPol', 'Dahlquist', 'Stair', 'StateSpace', 'Feedthrough', 'Resource', 'Roberts']
     
     for model in models:
         model_dir = os.path.join(exported_dir, model)

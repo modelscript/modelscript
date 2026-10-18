@@ -24,13 +24,13 @@ export type { MultivariateBounds };
 
 export interface CaeSurrogateBridgeConfig extends PodTrainConfig {
   /** Target cumulative energy threshold (default: 0.999 = 99.9%). */
-  energyThreshold?: number;
+  energyThreshold?: number | undefined;
   /** Maximum number of spatial POD modes to retain (default: 16). */
-  maxModes?: number;
+  maxModes?: number | undefined;
   /** Polynomial degree for latent and scalar regression (default: 2). */
-  polynomialDegree?: number;
+  polynomialDegree?: number | undefined;
   /** Validation fraction for held-out cross-validation (default: 0.2 = 20%). */
-  validationSplit?: number;
+  validationSplit?: number | undefined;
 }
 
 export interface CaeSurrogateValidationMetrics {
@@ -65,16 +65,16 @@ export interface TrainedCaeSurrogate {
   lowerToDae(
     builder: IDaeBuilder,
     inputVarMap: Record<string, number | string>,
-    options?: { outputPrefix?: string; computeLatent?: boolean },
+    options?: { outputPrefix?: string | undefined; computeLatent?: boolean | undefined },
   ): {
     scalarVarIds: Record<string, number>;
     latentVarIds: number[];
   };
 
   /** Parameter bounds extracted from training dataset for extrapolation detection. */
-  parameterBounds?: Record<string, { min: number; max: number }>;
+  parameterBounds?: Record<string, { min: number; max: number }> | undefined;
   /** Multivariate ellipsoid extrapolation bounds. */
-  multivariateBounds?: MultivariateBounds;
+  multivariateBounds?: MultivariateBounds | undefined;
 
   /**
    * Serializes the trained surrogate model to JSON-friendly data for real-time webview exploration.

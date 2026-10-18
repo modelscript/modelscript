@@ -60,14 +60,123 @@ export class IpoptSolver {
       };
     }
 
-    // Fallback to pure TypeScript L-BFGS-B when WASM module is not loaded or for bound-constrained problems
+    // Fallback to pure TypeScript L-BFGS-B (with Augmented Lagrangian outer loop when constraints are present)
     if (nVars > 0 && evalObjective && evalGradient) {
-      const x0Arr = new Float64Array(x0.length === nVars ? x0 : new Array(nVars).fill(0.0));
+      const xCurr = new Float64Array(x0.length === nVars ? x0 : new Array(nVars).fill(0.0));
       const lbArr = varLB.length === nVars ? new Float64Array(varLB) : undefined;
       const ubArr = varUB.length === nVars ? new Float64Array(varUB) : undefined;
+      const tol = options?.tolerance ?? 1e-6;
+      const maxIter = options?.maxIterations ?? 100;
+
+      if (nConstraints > 0 && evalConstraints) {
+        const lambda = new Float64Array(nConstraints);
+        let rho = 10.0;
+        const outerIterMax = 12;
+        const innerIterMax = Math.max(25, Math.ceil(maxIter / 2));
+        let converged = false;
+
+        const computeConstraintJacobian = (xVec: number[], cBase: number[]): Float64Array => {
+          if (evalJacobian) {
+            const rawJ = evalJacobian(xVec);
+            if (rawJ.length === nConstraints * nVars) {
+              return new Float64Array(rawJ);
+            }
+          }
+          const J = new Float64Array(nConstraints * nVars);
+          const xPert = xVec.slice();
+          for (let j = 0; j < nVars; j++) {
+            const orig = xPert[j]!;
+            const h = 1e-7 * Math.max(1.0, Math.abs(orig));
+            xPert[j] = orig + h;
+            const cPert = evalConstraints(xPert);
+            xPert[j] = orig;
+            for (let i = 0; i < nConstraints; i++) {
+              J[i * nVars + j] = ((cPert[i] ?? 0) - (cBase[i] ?? 0)) / h;
+            }
+          }
+          return J;
+        };
+
+        for (let outer = 0; outer < outerIterMax; outer++) {
+          const innerRes: LbfgsbResult = lbfgsbSolve(
+            xCurr,
+            (xArr) => {
+              const xVec = Array.from(xArr);
+              let augCost = evalObjective(xVec);
+              const gVec = evalGradient(xVec);
+              const augGrad = new Float64Array(nVars);
+              for (let j = 0; j < nVars; j++) augGrad[j] = gVec[j] ?? 0;
+
+              const cVal = evalConstraints(xVec);
+              const J = computeConstraintJacobian(xVec, cVal);
+
+              for (let i = 0; i < nConstraints; i++) {
+                const ci = cVal[i] ?? 0;
+                const li = conLB[i] ?? -Infinity;
+                const ui = conUB[i] ?? Infinity;
+                const lam = lambda[i]!;
+                // Project c_i(x) + lambda_i / rho onto [l_i, u_i]
+                const shifted = ci + lam / rho;
+                const sProj = Math.min(ui, Math.max(li, shifted));
+                const diff = shifted - sProj;
+                augCost += 0.5 * rho * diff * diff - (lam * lam) / (2.0 * rho);
+                const effMult = rho * diff;
+                for (let j = 0; j < nVars; j++) {
+                  augGrad[j] = augGrad[j]! + effMult * (J[i * nVars + j] ?? 0);
+                }
+              }
+
+              return { cost: augCost, grad: augGrad };
+            },
+            lbArr,
+            ubArr,
+            {
+              maxIterations: innerIterMax,
+              tolerance: tol,
+            },
+          );
+
+          xCurr.set(innerRes.x);
+          const xVec = Array.from(xCurr);
+          const cVal = evalConstraints(xVec);
+          let maxViol = 0;
+          for (let i = 0; i < nConstraints; i++) {
+            const ci = cVal[i] ?? 0;
+            const li = conLB[i] ?? -Infinity;
+            const ui = conUB[i] ?? Infinity;
+            const lam = lambda[i]!;
+            const shifted = ci + lam / rho;
+            const sProj = Math.min(ui, Math.max(li, shifted));
+            lambda[i] = rho * (shifted - sProj);
+            const viol = Math.max(0, li - ci, ci - ui);
+            if (viol > maxViol) maxViol = viol;
+          }
+
+          if (maxViol <= tol && innerRes.converged) {
+            converged = true;
+            break;
+          }
+          if (maxViol > tol) {
+            rho = Math.min(rho * 5.0, 1e6);
+          } else if (maxViol <= tol * 10) {
+            converged = true;
+            break;
+          }
+        }
+
+        const xFinal = Array.from(xCurr);
+        return {
+          status: converged ? "SUCCESS" : "MAX_ITERATIONS_REACHED",
+          objectiveValue: evalObjective(xFinal),
+          variables: {
+            solution: xFinal,
+            multipliers: Array.from(lambda),
+          },
+        };
+      }
 
       const res: LbfgsbResult = lbfgsbSolve(
-        x0Arr,
+        xCurr,
         (xArr) => {
           const xVec = Array.from(xArr);
           return {
@@ -78,8 +187,8 @@ export class IpoptSolver {
         lbArr,
         ubArr,
         {
-          maxIterations: options?.maxIterations ?? 100,
-          tolerance: options?.tolerance ?? 1e-6,
+          maxIterations: maxIter,
+          tolerance: tol,
         },
       );
 

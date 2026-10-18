@@ -11,11 +11,11 @@ import type { VisualDiffData, VisualDiffEdge, VisualDiffNode } from "./visual-di
 
 export interface VisualDiffSvgOptions extends SvgExportOptions {
   /** Include the diff statistics header banner in the SVG. Default: true */
-  showStatsBanner?: boolean;
+  showStatsBanner?: boolean | undefined;
   /** Custom title for the diff banner. */
-  title?: string;
+  title?: string | undefined;
   /** Dim unchanged elements to emphasize changes. Default: true */
-  dimUnchanged?: boolean;
+  dimUnchanged?: boolean | undefined;
 }
 
 function escapeXml(str: any): string {
@@ -190,8 +190,8 @@ export function renderVisualDiffToSvg(diffData: VisualDiffData, options: VisualD
     points: PointLike[];
     stroke: string;
     strokeWidth: number;
-    dash?: string;
-    markerEnd?: string;
+    dash?: string | undefined;
+    markerEnd?: string | undefined;
     opacity: number;
   }[] = [];
 
@@ -251,7 +251,7 @@ export function renderVisualDiffToSvg(diffData: VisualDiffData, options: VisualD
     }
 
     for (let i = 0; i < points.length - 1; i++) {
-      edgeSegments.push({ p1: points[i], p2: points[i + 1] });
+      edgeSegments.push({ p1: points[i]!, p2: points[i + 1]! });
     }
 
     edgePaths.push({ edge, points, stroke, strokeWidth, dash, markerEnd, opacity });
@@ -260,7 +260,7 @@ export function renderVisualDiffToSvg(diffData: VisualDiffData, options: VisualD
   // Draw Edges with Jumpover handling
   bodyParts.push(`<g id="diff-edges">`);
   for (let idx = 0; idx < edgePaths.length; idx++) {
-    const ep = edgePaths[idx];
+    const ep = edgePaths[idx]!;
     const isCurved = ep.edge.connector === "smooth" || ep.edge.connector === "bezier";
     let d: string;
 
@@ -321,8 +321,8 @@ export function renderVisualDiffToSvg(diffData: VisualDiffData, options: VisualD
       badgeBg = modifiedBadgeBg;
     }
 
-    const title = escapeXml(node.properties?.values?.name || node.id || "Component");
-    const stereotype = escapeXml(node.properties?.values?.typeName || node.properties?.values?.type || "");
+    const title = escapeXml(node.properties?.values?.["name"] || node.id || "Component");
+    const stereotype = escapeXml(node.properties?.values?.["typeName"] || node.properties?.values?.["type"] || "");
 
     bodyParts.push(`
       <g class="diff-node" transform="translate(${nx}, ${ny})" opacity="${opacity}">

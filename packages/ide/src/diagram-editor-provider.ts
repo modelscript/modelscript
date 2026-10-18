@@ -7,19 +7,29 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 
-// Method constants from the unified Diagram API protocol
+/** JSON-RPC method constants for the unified Diagram API protocol. */
 const DiagramMethods = {
   getData: "modelscript/diagram.getData",
   applyEdits: "modelscript/diagram.applyEdits",
   getComponentProperties: "modelscript/diagram.getComponentProperties",
 } as const;
 
+/**
+ * Custom text editor provider that renders interactive graphical schematic diagrams
+ * (Modelica, SysML v2, SSP, PSCAD) synchronized bi-directionally with source text.
+ */
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
+  /** Custom editor view type identifier registered with VS Code. */
   public static readonly viewType = "modelscript.diagram";
 
+  /** Set of currently open diagram webview panels across the workspace. */
   public readonly activeWebviews = new Set<vscode.WebviewPanel>();
-  public onDidOpenDocument?: (uri: string) => void;
+  /** Optional callback invoked when a document is opened in the diagram editor. */
+  public onDidOpenDocument?: ((uri: string) => void) | undefined;
 
+  /**
+   * Initializes the diagram editor provider and registers the `modelscript.autoLayout` command.
+   */
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly client: LanguageClient,
@@ -52,6 +62,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       }
     }
   }
+
+  /**
+   * Resolves a custom text editor by binding the webview lifecycle, message handlers,
+   * and incremental document synchronization to the backing `vscode.TextDocument`.
+   */
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
@@ -498,6 +513,10 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     debouncedUpdate();
   }
 
+  /**
+   * Requests diagram layout and schematic data from the language server (reading any `.layout` sidecar file)
+   * and posts the resulting diagram payload to the webview.
+   */
   private async requestDiagramData(
     webviewPanel: vscode.WebviewPanel,
     uri: string,
@@ -552,6 +571,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     }
   }
 
+  /**
+   * Generates the HTML document and CSP headers for the interactive diagram webview.
+   */
   private getHtmlForWebview(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", "diagram.js"));
     const nonce = getNonce();
@@ -744,6 +766,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   }
 }
 
+/**
+ * Generates a 32-character alphanumeric nonce for Content-Security-Policy script authorization.
+ */
 function getNonce() {
   let text = "";
   const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";

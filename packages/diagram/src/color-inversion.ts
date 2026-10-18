@@ -52,10 +52,10 @@ export function invertColorHelmlab(color: string): string {
     let alpha: number | undefined;
 
     if (hex.length === 3) {
-      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      hex = hex[0]! + hex[0]! + hex[1] + hex[1] + hex[2] + hex[2];
     } else if (hex.length === 4) {
-      alpha = parseInt(hex[3] + hex[3], 16) / 255;
-      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      alpha = parseInt(hex[3]! + hex[3]!, 16) / 255;
+      hex = hex[0]! + hex[0]! + hex[1] + hex[1] + hex[2] + hex[2];
     } else if (hex.length === 8) {
       alpha = parseInt(hex.slice(6, 8), 16) / 255;
       hex = hex.slice(0, 6);

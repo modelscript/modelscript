@@ -1,27 +1,46 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @module lints/helpers
+ *
+ * Shared linear-memory CST traversal, symbol resolution, type inference,
+ * variability checking, and SI unit propagation helpers used across the
+ * Modelica linter suites.
+ */
+
 import type { CodeGraph, u16, u32, u8 } from "@modelscript/dsl";
 import type { SIUnit } from "../units.js";
 import { createDimensionless, parseUnit, unitDivide, unitMultiply, unitPower } from "../units.js";
 
+/** Sentinel type tag indicating an unresolved or unknown expression/variable type. */
 export const TYPE_UNKNOWN: u16 = 0xffff;
+/** Built-in primitive `Real` scalar type tag. */
 export const TYPE_REAL: u16 = 0;
+/** Built-in primitive `Integer` scalar type tag. */
 export const TYPE_INTEGER: u16 = 1;
+/** Built-in primitive `Boolean` scalar type tag. */
 export const TYPE_BOOLEAN: u16 = 2;
+/** Built-in primitive `String` scalar type tag. */
 export const TYPE_STRING: u16 = 3;
+/** Built-in `enumeration(...)` scalar type tag. */
 export const TYPE_ENUM: u16 = 4;
+/** Synchronous `Clock` type tag (MLS Chapter 16). */
 export const TYPE_CLOCK: u16 = 5;
 
+/** Continuous-time variability level (default for `Real` variables). */
 export const VARIABILITY_CONTINUOUS: u8 = 0;
+/** Discrete-time variability level (`discrete` prefix or clocked/when-assigned). */
 export const VARIABILITY_DISCRETE: u8 = 1;
+/** Parameter variability level (`parameter` prefix, constant during simulation). */
 export const VARIABILITY_PARAMETER: u8 = 2;
+/** Constant variability level (`constant` prefix or literal expression). */
 export const VARIABILITY_CONSTANT: u8 = 3;
 
 /**
  * Resolves a complex dot-separated name (e.g. `a.b.c` or single identifier `x`)
  * to a target symbol or AST declaration pointer.
  */
-export function resolveComplexName(db: CodeGraph, nameNode: u32, $: Record<string, u16>): u32 {
+export function resolveComplexName(db: CodeGraph, nameNode: u32, $: any): u32 {
   if (nameNode == 0) return 0;
   const nodeType = db.ast.getType(nameNode);
 
@@ -51,7 +70,7 @@ export function resolveComplexName(db: CodeGraph, nameNode: u32, $: Record<strin
  * Fast lookup for the composition node of a class_definition or specifier.
  * Avoids recursive getDescendants scans across thousands of equations.
  */
-export function findComposition(db: CodeGraph, classNode: u32, $: Record<string, u16>): u32 {
+export function findComposition(db: CodeGraph, classNode: u32, $: any): u32 {
   if (classNode == 0) return 0;
   if (db.ast.getType(classNode) == $.composition) return classNode;
   for (const comp of db.ast.getDescendants(classNode, $.composition)) {
@@ -63,7 +82,7 @@ export function findComposition(db: CodeGraph, classNode: u32, $: Record<string,
 /**
  * Checks if a class definition contains any inner/nested class definitions.
  */
-export function hasAnyInnerClass(db: CodeGraph, classNode: u32, $: Record<string, u16>): boolean {
+export function hasAnyInnerClass(db: CodeGraph, classNode: u32, $: any): boolean {
   if (classNode == 0) return false;
   let cached = db.ast.getCachedHasInnerClass(classNode);
   if (cached >= 0) return cached == 1;
@@ -100,7 +119,7 @@ export function hasAnyInnerClass(db: CodeGraph, classNode: u32, $: Record<string
  * Returns the enclosing class definition for a given AST node.
  * Fast-paths single-class files by inspecting the top-level stored_definition directly.
  */
-export function getEnclosingClass(db: CodeGraph, node: u32, $: Record<string, u16>): u32 {
+export function getEnclosingClass(db: CodeGraph, node: u32, $: any): u32 {
   let root = db.ast.getRootNode();
   if (root != 0) {
     let cached = db.ast.getCachedEnclosingClass(root);
@@ -130,7 +149,7 @@ export function getEnclosingClass(db: CodeGraph, node: u32, $: Record<string, u1
 /**
  * Fast lookup for a declaration node matching targetId in classNode without scanning equations.
  */
-export function findDeclInClass(db: CodeGraph, classNode: u32, targetId: u32, $: Record<string, u16>): u32 {
+export function findDeclInClass(db: CodeGraph, classNode: u32, targetId: u32, $: any): u32 {
   if (classNode == 0 || targetId == 0) return 0;
   const memoKind: u32 = classNode ^ 0x33330000;
   const span = db.ast.getTextSpan(targetId);
@@ -141,7 +160,11 @@ export function findDeclInClass(db: CodeGraph, classNode: u32, targetId: u32, $:
   return res;
 }
 
-function findDeclInClassInternal(db: CodeGraph, classNode: u32, targetId: u32, $: Record<string, u16>): u32 {
+/**
+ * Uncached implementation of {@link findDeclInClass} that scans component declarations
+ * and enumeration literals directly inside `classNode` while skipping equation/algorithm sections.
+ */
+function findDeclInClassInternal(db: CodeGraph, classNode: u32, targetId: u32, $: any): u32 {
   const comp = findComposition(db, classNode, $);
   if (comp != 0) {
     let sec = db.ast.getFirstChild(comp);
@@ -198,7 +221,7 @@ function findDeclInClassInternal(db: CodeGraph, classNode: u32, targetId: u32, $
 /**
  * Fast lookup for an inner class definition matching targetId in classNode without scanning equations.
  */
-export function findInnerClassInClass(db: CodeGraph, classNode: u32, targetId: u32, $: Record<string, u16>): u32 {
+export function findInnerClassInClass(db: CodeGraph, classNode: u32, targetId: u32, $: any): u32 {
   if (classNode == 0 || targetId == 0) return 0;
   const comp = findComposition(db, classNode, $);
   if (comp != 0) {
@@ -268,7 +291,10 @@ export function findInnerClassInClass(db: CodeGraph, classNode: u32, targetId: u
   return 0;
 }
 
-export function getRedeclName(db: CodeGraph, node: u32, $: Record<string, u16>): u32 {
+/**
+ * Extracts the declared identifier node from an `element_redeclaration` or `element_replaceable` CST node.
+ */
+export function getRedeclName(db: CodeGraph, node: u32, $: any): u32 {
   if (node == 0) return 0;
   for (const decl of db.ast.getDescendants(node, $.declaration)) {
     for (const id of db.ast.getDescendants(decl, $.identifier)) {
@@ -286,13 +312,11 @@ export function getRedeclName(db: CodeGraph, node: u32, $: Record<string, u16>):
   return 0;
 }
 
-function findTargetElementInClassRecursive(
-  db: CodeGraph,
-  targetClass: u32,
-  redeclName: u32,
-  $: Record<string, u16>,
-  depth: u32,
-): u32 {
+/**
+ * Bounded recursive helper for {@link findTargetElementInClass} that searches direct
+ * declarations, inner classes, `extends` redeclarations, and inherited base classes.
+ */
+function findTargetElementInClassRecursive(db: CodeGraph, targetClass: u32, redeclName: u32, $: any, depth: u32): u32 {
   if (targetClass == 0 || redeclName == 0 || depth > 20) return 0;
 
   // 1. Direct component declaration in targetClass (excluding declarations inside extends_clause modifications)
@@ -379,20 +403,23 @@ function findTargetElementInClassRecursive(
   return 0;
 }
 
-export function findTargetElementInClass(
-  db: CodeGraph,
-  targetClass: u32,
-  redeclName: u32,
-  $: Record<string, u16>,
-): u32 {
+/**
+ * Finds the original element or class definition targeted by a `redeclare` clause
+ * within `targetClass` or its inherited base classes.
+ */
+export function findTargetElementInClass(db: CodeGraph, targetClass: u32, redeclName: u32, $: any): u32 {
   return findTargetElementInClassRecursive(db, targetClass, redeclName, $, 0);
 }
 
+/**
+ * Recursively checks whether `classNode` or any of its inherited base classes
+ * declares a component or inner class matching `targetId`.
+ */
 export function classContainsElementRecursive(
   db: CodeGraph,
   classNode: u32,
   targetId: u32,
-  $: Record<string, u16>,
+  $: any,
   depth: u32 = 0,
 ): boolean {
   if (classNode == 0 || targetId == 0 || depth > 20) return false;
@@ -412,7 +439,11 @@ export function classContainsElementRecursive(
   return false;
 }
 
-export function isDirectModificationChild(db: CodeGraph, redecl: u32, node: u32, $: Record<string, u16>): boolean {
+/**
+ * Returns `true` if `redecl` is a direct child modification of `node` without any
+ * intervening nested modification or redeclaration scopes.
+ */
+export function isDirectModificationChild(db: CodeGraph, redecl: u32, node: u32, $: any): boolean {
   for (const anc of db.ast.getAncestors(redecl, 0)) {
     if (anc == node) break;
     if (anc == redecl) continue;
@@ -430,7 +461,10 @@ export function isDirectModificationChild(db: CodeGraph, redecl: u32, node: u32,
   return true;
 }
 
-function getCallArguments(db: CodeGraph, sib: u32, $: Record<string, u16>): u32[] {
+/**
+ * Collects the direct argument expression CST nodes for a function call argument list `sib`.
+ */
+function getCallArguments(db: CodeGraph, sib: u32, $: any): u32[] {
   const args: u32[] = [];
   if (sib == 0) return args;
   for (const fa of db.ast.getDescendants(sib, $.function_argument)) {
@@ -455,7 +489,7 @@ function getCallArguments(db: CodeGraph, sib: u32, $: Record<string, u16>): u32[
 /**
  * Infers the basic variable type of an AST expression node.
  */
-export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u16>): u16 {
+export function inferExprType(db: CodeGraph, exprNode: u32, $: any): u16 {
   if (exprNode == 0) return TYPE_UNKNOWN;
   const nodeType = db.ast.getType(exprNode);
 
@@ -681,7 +715,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         if (db.ast.textEquals(cr, "fill")) {
           const args = getCallArguments(db, sib, $);
           if (args.length > 0) {
-            const elemType = inferExprType(db, args[0], $);
+            const elemType = inferExprType(db, args[0]!, $);
             if (elemType !== TYPE_UNKNOWN) return elemType;
           }
           return TYPE_REAL;
@@ -692,20 +726,20 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         if (db.ast.textEquals(cr, "sample")) {
           const args = getCallArguments(db, sib, $);
           if (args.length === 1) {
-            const uType = inferExprType(db, args[0], $);
+            const uType = inferExprType(db, args[0]!, $);
             if (uType !== TYPE_UNKNOWN) return uType;
           } else if (args.length === 2) {
-            const secType = inferExprType(db, args[1], $);
+            const secType = inferExprType(db, args[1]!, $);
             let isClockArg = false;
             if (secType === TYPE_CLOCK) {
               isClockArg = true;
             } else if (secType === TYPE_REAL || secType === TYPE_INTEGER) {
               isClockArg = false;
-            } else if (db.ast.startsWith(args[1], "Clock") || db.ast.startsWith(args[1], "clock")) {
+            } else if (db.ast.startsWith(args[1]!, "Clock") || db.ast.startsWith(args[1]!, "clock")) {
               isClockArg = true;
             }
             if (isClockArg) {
-              const uType = inferExprType(db, args[0], $);
+              const uType = inferExprType(db, args[0]!, $);
               if (uType !== TYPE_UNKNOWN) return uType;
             } else {
               return TYPE_BOOLEAN;
@@ -724,7 +758,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
         ) {
           const args = getCallArguments(db, sib, $);
           if (args.length > 0) {
-            const uType = inferExprType(db, args[0], $);
+            const uType = inferExprType(db, args[0]!, $);
             if (uType !== TYPE_UNKNOWN) return uType;
           }
         }
@@ -903,7 +937,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
  * Resolves a type identifier (e.g. `Real`, `Concentration`, `Voltage`) to its primitive scalar type:
  * TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK, or TYPE_UNKNOWN.
  */
-export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Record<string, u16>): u16 {
+export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: any): u16 {
   if (typeNameId == 0) return TYPE_UNKNOWN;
   const span = db.ast.getTextSpan(typeNameId);
   const cached = db.ast.getCachedByName(1, span);
@@ -913,22 +947,37 @@ export function resolveBasePrimitiveType(db: CodeGraph, typeNameId: u32, $: Reco
   return res;
 }
 
-function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Record<string, u16>, depth: u32): u16 {
+/**
+ * Uncached recursive implementation of {@link resolveBasePrimitiveType} that follows
+ * `short_class_specifier` aliases, `enumeration` definitions, and `extends` clauses.
+ */
+function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: any, depth: u32): u16 {
   if (typeNameId == 0 || depth > 10) return TYPE_UNKNOWN;
-  if (db.ast.startsWith(typeNameId, "Modelica.SIunits.") || db.ast.startsWith(typeNameId, "SIunits.")) {
+  if (
+    db.ast.startsWith(typeNameId, "Modelica.SIunits.") ||
+    db.ast.startsWith(typeNameId, "SIunits.") ||
+    db.ast.startsWith(typeNameId, "Modelica.Units.SI.") ||
+    db.ast.startsWith(typeNameId, "SI.") ||
+    db.ast.startsWith(typeNameId, "Modelica.Units.NonSI.") ||
+    db.ast.startsWith(typeNameId, "NonSI.")
+  ) {
     return TYPE_REAL;
   }
   let targetId: u32 = typeNameId;
+  let idCount: u32 = 0;
   for (const id of db.ast.getDescendants(typeNameId, $.identifier)) {
     targetId = id;
+    idCount = idCount + 1;
   }
 
-  if (db.ast.textEquals(targetId, "Real")) return TYPE_REAL;
-  if (db.ast.textEquals(targetId, "Integer")) return TYPE_INTEGER;
-  if (db.ast.textEquals(targetId, "Boolean")) return TYPE_BOOLEAN;
-  if (db.ast.textEquals(targetId, "String")) return TYPE_STRING;
-  if (db.ast.textEquals(targetId, "Clock")) return TYPE_CLOCK;
-  if (db.ast.textEquals(targetId, "enumeration")) return TYPE_ENUM;
+  if (idCount <= 1) {
+    if (db.ast.textEquals(targetId, "Real")) return TYPE_REAL;
+    if (db.ast.textEquals(targetId, "Integer")) return TYPE_INTEGER;
+    if (db.ast.textEquals(targetId, "Boolean")) return TYPE_BOOLEAN;
+    if (db.ast.textEquals(targetId, "String")) return TYPE_STRING;
+    if (db.ast.textEquals(targetId, "Clock")) return TYPE_CLOCK;
+    if (db.ast.textEquals(targetId, "enumeration")) return TYPE_ENUM;
+  }
 
   const docRoot = db.ast.getRootNode();
   if (docRoot != 0) {
@@ -1028,7 +1077,7 @@ function resolveBasePrimitiveTypeInternal(db: CodeGraph, typeNameId: u32, $: Rec
 /**
  * Resolves the return type of a function called by name `funcNameNode`.
  */
-export function resolveFunctionReturnType(db: CodeGraph, funcNameNode: u32, $: Record<string, u16>): u16 {
+export function resolveFunctionReturnType(db: CodeGraph, funcNameNode: u32, $: any): u16 {
   const docRoot = db.ast.getRootNode();
   if (docRoot == 0) return TYPE_UNKNOWN;
 
@@ -1086,7 +1135,7 @@ export function resolveFunctionReturnType(db: CodeGraph, funcNameNode: u32, $: R
 /**
  * Checks if a node inside a class/composition is declared in a protected section.
  */
-export function isElementProtected(db: CodeGraph, node: u32, $: Record<string, u16>): boolean {
+export function isElementProtected(db: CodeGraph, node: u32, $: any): boolean {
   if (node == 0) return false;
   let elList: u32 = 0;
   let elListParent: u32 = 0;
@@ -1115,7 +1164,7 @@ export function isElementProtected(db: CodeGraph, node: u32, $: Record<string, u
 /**
  * Checks if an element has the 'final' prefix.
  */
-export function isElementFinal(db: CodeGraph, node: u32, $: Record<string, u16>): boolean {
+export function isElementFinal(db: CodeGraph, node: u32, $: any): boolean {
   if (node == 0) return false;
   if (db.ast.startsWith(node, "final")) return true;
   let ch = db.ast.getFirstChild(node);
@@ -1137,7 +1186,7 @@ export function isElementFinal(db: CodeGraph, node: u32, $: Record<string, u16>)
 /**
  * Checks if an element is replaceable (either element_replaceable or has 'replaceable' prefix).
  */
-export function isElementReplaceable(db: CodeGraph, node: u32, $: Record<string, u16>): boolean {
+export function isElementReplaceable(db: CodeGraph, node: u32, $: any): boolean {
   if (node == 0) return false;
   const t = db.ast.getType(node);
   if ($.element_replaceable != 0 && t == $.element_replaceable) return true;
@@ -1149,6 +1198,7 @@ export function isElementReplaceable(db: CodeGraph, node: u32, $: Record<string,
   }
   if ($.element_replaceable != 0) {
     for (const repl of db.ast.getDescendants(node, $.element_replaceable)) {
+      void repl;
       return true;
     }
   }
@@ -1187,7 +1237,7 @@ export function isTypeCompatible(actualType: u16, expectedType: u16): boolean {
 /**
  * Determines the variability of an expression.
  */
-export function getExpressionVariability(db: CodeGraph, exprNode: u32, $: Record<string, u16>): u8 {
+export function getExpressionVariability(db: CodeGraph, exprNode: u32, _$: any): u8 {
   if (exprNode == 0) return VARIABILITY_CONSTANT;
 
   // Check if expression directly references `time` -> Continuous
@@ -1265,7 +1315,7 @@ export function isClassKind(db: CodeGraph, clsNode: u32, kind: string): boolean 
 /**
  * Fast check for whether a component_clause has a specific type prefix (e.g. "constant", "input", "output", "flow", "stream").
  */
-export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string, $: Record<string, u16>): boolean {
+export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string, $: any): boolean {
   if (compClauseNode == 0) return false;
   for (const pfx of db.ast.getDescendants(compClauseNode, $.type_prefix)) {
     if (db.ast.textEquals(pfx, prefix) || db.ast.startsWith(pfx, prefix)) return true;
@@ -1289,6 +1339,10 @@ export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string
   return false;
 }
 
+/**
+ * Checks whether `attrNameNode` is a valid built-in attribute (per MLS §4.8) for the
+ * given primitive scalar type `primType` (e.g., `start`, `fixed`, `min`, `max`, `unit`).
+ */
 export function isPrimitiveAttribute(db: CodeGraph, primType: u16, attrNameNode: u32): boolean {
   if (primType == TYPE_REAL) {
     return (
@@ -1340,13 +1394,21 @@ export function isPrimitiveAttribute(db: CodeGraph, primType: u16, attrNameNode:
   return false;
 }
 
-export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<string, u16>): u32 {
+/**
+ * Resolves a type specifier or identifier CST node to its matching `class_definition`
+ * CST node in the current document (preferring top-level classes over nested classes).
+ */
+export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: any): u32 {
   if (typeSpecNode == 0) return 0;
   const docRoot = db.ast.getRootNode();
   if (docRoot == 0) return 0;
 
+  let prevId: u32 = 0;
   let leafId: u32 = typeSpecNode;
   for (const id of db.ast.getDescendants(typeSpecNode, $.identifier)) {
+    if (leafId != typeSpecNode) {
+      prevId = leafId;
+    }
     leafId = id;
   }
 
@@ -1359,8 +1421,8 @@ export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<stri
     return 0;
   }
 
-  const leafSpan = db.ast.getTextSpan(leafId);
-  const cachedCls = db.ast.getCachedByName(0, leafSpan);
+  const fullSpan = db.ast.getTextSpan(typeSpecNode);
+  const cachedCls = db.ast.getCachedByName(0, fullSpan);
   if (cachedCls >= 0) return cachedCls as u32;
 
   let result: u32 = 0;
@@ -1369,19 +1431,30 @@ export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<stri
     const nameId = db.ast.getChildByFieldId(spec, "name");
     if (nameId != 0 && db.ast.textEqualsNode(leafId, nameId)) {
       let clsNode: u32 = 0;
+      let parentClsNode: u32 = 0;
       let hasParentClass = false;
       for (const cls of db.ast.getAncestors(spec)) {
         if (db.ast.getType(cls) == $.class_definition) {
           if (clsNode == 0) {
             clsNode = cls;
           } else {
+            parentClsNode = cls;
             hasParentClass = true;
             break;
           }
         }
       }
       if (clsNode != 0) {
-        if (!hasParentClass) {
+        if (prevId != 0 && parentClsNode != 0) {
+          for (const pSpec of db.ast.getDescendants(parentClsNode, $.long_class_specifier)) {
+            const pNameId = db.ast.getChildByFieldId(pSpec, "name");
+            if (pNameId != 0 && db.ast.textEqualsNode(prevId, pNameId)) {
+              result = clsNode;
+            }
+            break;
+          }
+          if (result != 0) break;
+        } else if (!hasParentClass) {
           result = clsNode;
           break;
         }
@@ -1394,19 +1467,30 @@ export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<stri
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0 && db.ast.textEqualsNode(leafId, nameId)) {
         let clsNode: u32 = 0;
+        let parentClsNode: u32 = 0;
         let hasParentClass = false;
         for (const cls of db.ast.getAncestors(spec)) {
           if (db.ast.getType(cls) == $.class_definition) {
             if (clsNode == 0) {
               clsNode = cls;
             } else {
+              parentClsNode = cls;
               hasParentClass = true;
               break;
             }
           }
         }
         if (clsNode != 0) {
-          if (!hasParentClass) {
+          if (prevId != 0 && parentClsNode != 0) {
+            for (const pSpec of db.ast.getDescendants(parentClsNode, $.long_class_specifier)) {
+              const pNameId = db.ast.getChildByFieldId(pSpec, "name");
+              if (pNameId != 0 && db.ast.textEqualsNode(prevId, pNameId)) {
+                result = clsNode;
+              }
+              break;
+            }
+            if (result != 0) break;
+          } else if (!hasParentClass) {
             result = clsNode;
             break;
           }
@@ -1416,11 +1500,15 @@ export function findClassByName(db: CodeGraph, typeSpecNode: u32, $: Record<stri
     }
   }
   if (result == 0) result = fallbackNested;
-  db.ast.setCachedByName(0, leafSpan, result);
+  db.ast.setCachedByName(0, fullSpan, result);
   return result;
 }
 
-export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u32 {
+/**
+ * Looks up the `type_specifier` CST node for component `identNode` declared in
+ * `classNode` or inherited from its base classes.
+ */
+export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: any): u32 {
   if (classNode == 0 || identNode == 0) return 0;
   const memoKind: u32 = classNode ^ 0x55550000;
   const span = db.ast.getTextSpan(identNode);
@@ -1431,7 +1519,11 @@ export function findComponentTypeInClass(db: CodeGraph, classNode: u32, identNod
   return res;
 }
 
-function findComponentTypeInClassInternal(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u32 {
+/**
+ * Uncached implementation of {@link findComponentTypeInClass} that searches direct
+ * component declarations and `extends` clauses while respecting `break` modifications.
+ */
+function findComponentTypeInClassInternal(db: CodeGraph, classNode: u32, identNode: u32, $: any): u32 {
   // 1. Direct component declarations
   const decl = findDeclInClass(db, classNode, identNode, $);
   if (decl != 0) {
@@ -1470,12 +1562,7 @@ function findComponentTypeInClassInternal(db: CodeGraph, classNode: u32, identNo
     if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
     if (typeSpec == 0) continue;
 
-    let baseNameId: u32 = typeSpec;
-    for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-      baseNameId = id;
-    }
-
-    const baseClass = findClassByName(db, baseNameId, $);
+    const baseClass = findClassByName(db, typeSpec, $);
     if (baseClass != 0 && baseClass != classNode) {
       const res = findComponentTypeInClass(db, baseClass, identNode, $);
       if (res != 0) return res;
@@ -1507,7 +1594,7 @@ export function resolveComponentClassDefinition(
   db: CodeGraph,
   enclosingClass: u32,
   compRefNode: u32,
-  $: Record<string, u16>,
+  $: any,
   depth: u32 = 0,
 ): u32 {
   if (enclosingClass == 0 || compRefNode == 0 || depth > 15) return 0;
@@ -1523,11 +1610,15 @@ export function resolveComponentClassDefinition(
   return resolveComponentClassDefinitionInternal(db, enclosingClass, compRefNode, $, depth);
 }
 
+/**
+ * Uncached recursive implementation of {@link resolveComponentClassDefinition} that resolves
+ * inner classes, component types, imports, and inherited base classes.
+ */
 function resolveComponentClassDefinitionInternal(
   db: CodeGraph,
   enclosingClass: u32,
   compRefNode: u32,
-  $: Record<string, u16>,
+  $: any,
   depth: u32,
 ): u32 {
   if (enclosingClass == 0 || compRefNode == 0 || depth > 15) return 0;
@@ -1583,7 +1674,7 @@ function resolveComponentClassDefinitionInternal(
 /**
  * Checks if `node` is inside an array subscript within `limitNode`.
  */
-export function isDescendantOfSubscript(db: CodeGraph, node: u32, limitNode: u32, $: Record<string, u16>): boolean {
+export function isDescendantOfSubscript(db: CodeGraph, node: u32, limitNode: u32, $: any): boolean {
   for (const anc of db.ast.getAncestors(node, 0, limitNode)) {
     if (anc == limitNode) break;
     const ancType = db.ast.getType(anc);
@@ -1598,12 +1689,7 @@ export function isDescendantOfSubscript(db: CodeGraph, node: u32, limitNode: u32
  * Resolves a potentially dotted component reference (e.g. `x.p1`) starting from `enclosingClass`
  * down to its leaf class definition (e.g. `Pin1`).
  */
-export function resolveDottedComponentClass(
-  db: CodeGraph,
-  enclosingClass: u32,
-  compRefNode: u32,
-  $: Record<string, u16>,
-): u32 {
+export function resolveDottedComponentClass(db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: any): u32 {
   if (enclosingClass == 0 || compRefNode == 0) return 0;
 
   let currClass = enclosingClass;
@@ -1622,12 +1708,7 @@ export function resolveDottedComponentClass(
  * Checks if a potentially dotted variable reference (e.g. `x` or `x.error` or `x.p1`)
  * is declared across the class hierarchy.
  */
-export function isDottedVariableDeclared(
-  db: CodeGraph,
-  enclosingClass: u32,
-  compRefNode: u32,
-  $: Record<string, u16>,
-): boolean {
+export function isDottedVariableDeclared(db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: any): boolean {
   if (enclosingClass == 0 || compRefNode == 0) return false;
 
   let firstIdent: u32 = 0;
@@ -1730,12 +1811,7 @@ export function isDottedVariableDeclared(
  * Returns the specific unresolved identifier node inside a component_reference
  * (e.g. `b` in `a.b.c` if `a` exists and `b` does not, or `a` in `a[1]` if `a` does not exist).
  */
-export function findUnresolvedComponentIdent(
-  db: CodeGraph,
-  enclosingClass: u32,
-  compRefNode: u32,
-  $: Record<string, u16>,
-): u32 {
+export function findUnresolvedComponentIdent(db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: any): u32 {
   if (enclosingClass == 0 || compRefNode == 0) return compRefNode;
 
   let firstIdent: u32 = 0;
@@ -1798,7 +1874,7 @@ export function findUnresolvedComponentIdent(
 /**
  * Checks if a class is an expandable connector.
  */
-export function isExpandableConnector(db: CodeGraph, clsNode: u32, $: Record<string, u16>): boolean {
+export function isExpandableConnector(db: CodeGraph, clsNode: u32, $: any): boolean {
   if (clsNode == 0) return false;
   for (const pfx of db.ast.getDescendants(clsNode, $.class_prefixes)) {
     if (db.ast.startsWith(pfx, "expandable") || isClassKind(db, pfx, "expandable")) {
@@ -1811,7 +1887,7 @@ export function isExpandableConnector(db: CodeGraph, clsNode: u32, $: Record<str
 /**
  * Checks if two connector classes are compatible for a connect() equation.
  */
-export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u32, $: Record<string, u16>): boolean {
+export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u32, $: any): boolean {
   if (lhsClass == 0 || rhsClass == 0) return true;
   if (lhsClass == rhsClass) return true;
 
@@ -1859,12 +1935,7 @@ export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u3
 /**
  * Finds the component clause containing declaration of `identNode` in `classNode`.
  */
-export function findComponentClauseForIdent(
-  db: CodeGraph,
-  classNode: u32,
-  identNode: u32,
-  $: Record<string, u16>,
-): u32 {
+export function findComponentClauseForIdent(db: CodeGraph, classNode: u32, identNode: u32, $: any): u32 {
   for (const comp of db.ast.getDescendants(classNode, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, classNode, $)) continue;
     for (const decl of db.ast.getDescendants(comp, $.declaration)) {
@@ -1881,7 +1952,7 @@ export function findComponentClauseForIdent(
  * Checks if there is a flow / non-flow mismatch between two connector classes.
  * Returns the mismatched declaration identifier node if found, otherwise 0.
  */
-export function findFlowMismatchInConnectors(db: CodeGraph, lhsClass: u32, rhsClass: u32, $: Record<string, u16>): u32 {
+export function findFlowMismatchInConnectors(db: CodeGraph, lhsClass: u32, rhsClass: u32, $: any): u32 {
   if (lhsClass == 0 || rhsClass == 0) return 0;
   for (const comp of db.ast.getDescendants(lhsClass, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, lhsClass, $)) continue;
@@ -1919,15 +1990,10 @@ export function findFlowMismatchInConnectors(db: CodeGraph, lhsClass: u32, rhsCl
 }
 
 /**
- * Checks if a potentially dotted variable reference is declared with 'stream' variability.
+ * Checks if a leaf component identifier `leafId` is declared with the `stream` prefix
+ * inside `currClass` or any of its inherited base classes.
  */
-function isLeafDeclaredStreamInClass(
-  db: CodeGraph,
-  currClass: u32,
-  leafId: u32,
-  $: Record<string, u16>,
-  depth: u32,
-): boolean {
+function isLeafDeclaredStreamInClass(db: CodeGraph, currClass: u32, leafId: u32, $: any, depth: u32): boolean {
   if (currClass == 0 || depth > 10) return false;
   for (const comp of db.ast.getDescendants(currClass, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, currClass, $)) continue;
@@ -1952,7 +2018,11 @@ function isLeafDeclaredStreamInClass(
   return false;
 }
 
-export function isStreamVariable(db: CodeGraph, enclosingClass: u32, varRefNode: u32, $: Record<string, u16>): boolean {
+/**
+ * Checks if a potentially dotted variable reference (`varRefNode`) resolves to a
+ * connector component declared with the `stream` prefix (per MLS §15.1).
+ */
+export function isStreamVariable(db: CodeGraph, enclosingClass: u32, varRefNode: u32, $: any): boolean {
   if (enclosingClass == 0 || varRefNode == 0) return false;
   let idCount: u32 = 0;
   for (const id of db.ast.getDescendants(varRefNode, $.identifier)) {
@@ -1980,7 +2050,7 @@ export function isStreamVariable(db: CodeGraph, enclosingClass: u32, varRefNode:
 /**
  * Counts flow variables in `classDefNode` or its base classes.
  */
-export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: Record<string, u16>): u32 {
+export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: any): u32 {
   let count: u32 = 0;
   for (const comp of db.ast.getDescendants(classDefNode, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, classDefNode, $)) continue;
@@ -2000,12 +2070,7 @@ export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: Record
       if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
       if (typeSpec == 0) continue;
 
-      let baseNameId: u32 = typeSpec;
-      for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-        baseNameId = id;
-      }
-
-      const cls = findClassByName(db, baseNameId, $);
+      const cls = findClassByName(db, typeSpec, $);
       if (cls != 0) {
         count += getFlowVariableCount(db, cls, $);
       }
@@ -2018,7 +2083,7 @@ export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: Record
 /**
  * Checks if `nameNode` matches a top-level class name declared in the document.
  */
-export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: Record<string, u16>): boolean {
+export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: any): boolean {
   if (nameNode == 0) return false;
   const span = db.ast.getTextSpan(nameNode);
   const cached = db.ast.getCachedByName(2, span);
@@ -2028,7 +2093,11 @@ export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: Record<stri
   return res;
 }
 
-function isTopLevelClassNameInternal(db: CodeGraph, nameNode: u32, $: Record<string, u16>): boolean {
+/**
+ * Uncached implementation of {@link isTopLevelClassName} that checks whether the full,
+ * leading, or trailing identifier of `nameNode` matches a class in the document.
+ */
+function isTopLevelClassNameInternal(db: CodeGraph, nameNode: u32, $: any): boolean {
   let firstIdent: u32 = nameNode;
   for (const id of db.ast.getDescendants(nameNode, $.identifier)) {
     firstIdent = id;
@@ -2049,7 +2118,7 @@ function isTopLevelClassNameInternal(db: CodeGraph, nameNode: u32, $: Record<str
 /**
  * Returns true if `target` is nested inside an inner class_definition child of `classNode`.
  */
-export function isDescendantOfInnerClass(db: CodeGraph, target: u32, classNode: u32, $: Record<string, u16>): boolean {
+export function isDescendantOfInnerClass(db: CodeGraph, target: u32, classNode: u32, $: any): boolean {
   if (classNode == 0 || !hasAnyInnerClass(db, classNode, $)) return false;
   for (const anc of db.ast.getAncestors(target)) {
     if (anc == classNode) break;
@@ -2063,12 +2132,7 @@ export function isDescendantOfInnerClass(db: CodeGraph, target: u32, classNode: 
 /**
  * Checks if a variable identifier `identNode` is declared in `classNode` or any of its inherited base classes via `extends`.
  */
-export function isVariableDeclaredInClass(
-  db: CodeGraph,
-  classNode: u32,
-  identNode: u32,
-  $: Record<string, u16>,
-): boolean {
+export function isVariableDeclaredInClass(db: CodeGraph, classNode: u32, identNode: u32, $: any): boolean {
   if (classNode == 0 || identNode == 0) return false;
   // 1. Direct component declaration in classNode (fastest path for variables in equations)
   if (findDeclInClass(db, classNode, identNode, $) != 0) return true;
@@ -2095,16 +2159,20 @@ export function isVariableDeclaredInClass(
   return getMemberKindInClass(db, classNode, identNode, $) != MEMBER_NONE;
 }
 
+/** Member kind tag indicating that no matching member exists in the class hierarchy. */
 export const MEMBER_NONE: u16 = 0;
+/** Member kind tag indicating a `model`, `block`, or `connector` component declaration. */
 export const MEMBER_COMPONENT: u16 = 1;
+/** Member kind tag indicating an inner class or type definition. */
 export const MEMBER_CLASS: u16 = 2;
+/** Member kind tag indicating a primitive or `record` component declaration. */
 export const MEMBER_RECORD_COMPONENT: u16 = 3;
 
 /**
  * Returns member kind in classNode or its inherited base classes:
  * MEMBER_NONE (0), MEMBER_COMPONENT (1), MEMBER_CLASS (2), or MEMBER_RECORD_COMPONENT (3).
  */
-export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 {
+export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u32, $: any): u16 {
   if (classNode == 0 || identNode == 0) return MEMBER_NONE;
   // kinds 0..15 are reserved for name-only memos; (class node + 16) discriminates per class.
   const memoKind: u32 = classNode + 16;
@@ -2116,13 +2184,11 @@ export function getMemberKindInClass(db: CodeGraph, classNode: u32, identNode: u
   return res;
 }
 
-function getMemberKindInClassInternal(
-  db: CodeGraph,
-  classNode: u32,
-  identNode: u32,
-  $: Record<string, u16>,
-  depth: u32,
-): u16 {
+/**
+ * Uncached recursive implementation of {@link getMemberKindInClass} that classifies
+ * direct and inherited members while respecting `break` inheritance modifications.
+ */
+function getMemberKindInClassInternal(db: CodeGraph, classNode: u32, identNode: u32, $: any, depth: u32): u16 {
   if (classNode == 0 || identNode == 0 || depth > 10) return MEMBER_NONE;
 
   // 1. Direct inner class definitions
@@ -2153,7 +2219,7 @@ function getMemberKindInClassInternal(
           typeIdent = id;
           break;
         }
-        const cDef = findClassByName(db, typeIdent, $);
+        const cDef = findClassByName(db, typeSpec, $);
         if (cDef != 0) {
           if (isClassKind(db, cDef, "model") || isClassKind(db, cDef, "block") || isClassKind(db, cDef, "connector")) {
             return MEMBER_COMPONENT;
@@ -2196,12 +2262,7 @@ function getMemberKindInClassInternal(
           if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
           if (typeSpec == 0) continue;
 
-          let baseNameId: u32 = typeSpec;
-          for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-            baseNameId = id;
-          }
-
-          const baseClass = findClassByName(db, baseNameId, $);
+          const baseClass = findClassByName(db, typeSpec, $);
           if (baseClass != 0 && baseClass != classNode) {
             const res = getMemberKindInClassInternal(db, baseClass, identNode, $, depth + 1);
             if (res != MEMBER_NONE) return res;
@@ -2230,12 +2291,7 @@ function getMemberKindInClassInternal(
       if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
       if (typeSpec == 0) continue;
 
-      let baseNameId: u32 = typeSpec;
-      for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-        baseNameId = id;
-      }
-
-      const baseClass = findClassByName(db, baseNameId, $);
+      const baseClass = findClassByName(db, typeSpec, $);
       if (baseClass != 0 && baseClass != classNode) {
         const res = getMemberKindInClassInternal(db, baseClass, identNode, $, depth + 1);
         if (res != MEMBER_NONE) return res;
@@ -2255,12 +2311,7 @@ function getMemberKindInClassInternal(
     }
     if (typeSpec == 0) continue;
 
-    let baseNameId: u32 = typeSpec;
-    for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-      baseNameId = id;
-    }
-
-    const baseClass = findClassByName(db, baseNameId, $);
+    const baseClass = findClassByName(db, typeSpec, $);
     if (baseClass != 0 && baseClass != classNode) {
       const res = getMemberKindInClass(db, baseClass, identNode, $);
       if (res != MEMBER_NONE) return res;
@@ -2288,13 +2339,7 @@ function getMemberKindInClassInternal(
 /**
  * Checks whether a matching connect(ep1, ep2) exists in classNode or its inherited hierarchy.
  */
-export function hasMatchingConnectEquation(
-  db: CodeGraph,
-  classNode: u32,
-  ep1: u32,
-  ep2: u32,
-  $: Record<string, u16>,
-): boolean {
+export function hasMatchingConnectEquation(db: CodeGraph, classNode: u32, ep1: u32, ep2: u32, $: any): boolean {
   if (classNode == 0 || ep1 == 0 || ep2 == 0) return false;
   const docRoot = db.ast.getRootNode();
 
@@ -2319,12 +2364,7 @@ export function hasMatchingConnectEquation(
     if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
     if (typeSpec == 0) continue;
 
-    let baseNameId: u32 = typeSpec;
-    for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-      baseNameId = id;
-    }
-
-    const baseClass = findClassByName(db, baseNameId, $);
+    const baseClass = findClassByName(db, typeSpec, $);
     if (baseClass != 0 && baseClass != classNode) {
       if (hasMatchingConnectEquation(db, baseClass, ep1, ep2, $)) return true;
     }
@@ -2336,12 +2376,7 @@ export function hasMatchingConnectEquation(
  * Resolves the declared type of a potentially dotted variable reference (e.g. `x` or `x.y`)
  * across the class hierarchy.
  */
-export function getDottedVariableType(
-  db: CodeGraph,
-  enclosingClass: u32,
-  compRefNode: u32,
-  $: Record<string, u16>,
-): u16 {
+export function getDottedVariableType(db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: any): u16 {
   if (enclosingClass == 0 || compRefNode == 0) return TYPE_UNKNOWN;
 
   let firstIdent: u32 = 0;
@@ -2395,7 +2430,7 @@ export function getDottedVariableType(
  * Resolves the declared type (e.g. TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK, or User-Defined Type)
  * of a variable identifier `identNode` in `classNode` or its inherited base classes.
  */
-export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 {
+export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: any): u16 {
   if (classNode == 0 || identNode == 0) return TYPE_UNKNOWN;
   const memoKind: u32 = classNode ^ 0x77770000;
   const span = db.ast.getTextSpan(identNode);
@@ -2406,13 +2441,12 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
   return res;
 }
 
-function getVariableTypeInClassInternal(
-  db: CodeGraph,
-  classNode: u32,
-  identNode: u32,
-  $: Record<string, u16>,
-  depth: u32,
-): u16 {
+/**
+ * Uncached recursive implementation of {@link getVariableTypeInClass} that resolves
+ * primitive types, type aliases, and user-defined type hashes (`0x8000 | hash`) across
+ * direct declarations and `extends` clauses.
+ */
+function getVariableTypeInClassInternal(db: CodeGraph, classNode: u32, identNode: u32, $: any, depth: u32): u16 {
   if (classNode == 0 || identNode == 0 || depth > 10) return TYPE_UNKNOWN;
   const docRoot = db.ast.getRootNode();
   if (docRoot == 0) return TYPE_UNKNOWN;
@@ -2446,7 +2480,7 @@ function getVariableTypeInClassInternal(
             const baseType = resolveBasePrimitiveType(db, lastId, $);
             if (baseType != TYPE_UNKNOWN) return baseType;
 
-            const specCls = findClassByName(db, lastId, $);
+            const specCls = findClassByName(db, tsNode, $);
             if (specCls != 0) {
               for (const scs of db.ast.getDescendants(specCls, $.short_class_specifier)) {
                 for (const ts of db.ast.getDescendants(scs, $.type_specifier)) {
@@ -2488,12 +2522,7 @@ function getVariableTypeInClassInternal(
           if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
           if (typeSpec == 0) continue;
 
-          let baseNameId: u32 = typeSpec;
-          for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-            baseNameId = id;
-          }
-
-          const baseClass = findClassByName(db, baseNameId, $);
+          const baseClass = findClassByName(db, typeSpec, $);
           if (baseClass != 0 && baseClass != classNode) {
             const inheritedType = getVariableTypeInClassInternal(db, baseClass, targetId, $, depth + 1);
             if (inheritedType != TYPE_UNKNOWN) return inheritedType;
@@ -2511,12 +2540,7 @@ function getVariableTypeInClassInternal(
       if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
       if (typeSpec == 0) continue;
 
-      let baseNameId: u32 = typeSpec;
-      for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
-        baseNameId = id;
-      }
-
-      const baseClass = findClassByName(db, baseNameId, $);
+      const baseClass = findClassByName(db, typeSpec, $);
       if (baseClass != 0 && baseClass != classNode) {
         const inheritedType = getVariableTypeInClassInternal(db, baseClass, targetId, $, depth + 1);
         if (inheritedType != TYPE_UNKNOWN) return inheritedType;
@@ -2530,7 +2554,7 @@ function getVariableTypeInClassInternal(
 /**
  * Resolves the declared or inferred SI unit for a component declaration or clause.
  */
-export function getComponentUnit(db: CodeGraph, compNode: u32, $: Record<string, u16>): SIUnit | null {
+export function getComponentUnit(db: CodeGraph, compNode: u32, $: any): SIUnit | null {
   if (compNode == 0) return null;
 
   // 1. Check for explicit (unit = "...") in modification
@@ -2753,12 +2777,7 @@ export function getComponentUnit(db: CodeGraph, compNode: u32, $: Record<string,
 /**
  * Resolves the unit of a variable identifier in a class.
  */
-export function getVariableUnitInClass(
-  db: CodeGraph,
-  classNode: u32,
-  identNode: u32,
-  $: Record<string, u16>,
-): SIUnit | null {
+export function getVariableUnitInClass(db: CodeGraph, classNode: u32, identNode: u32, $: any): SIUnit | null {
   if (classNode == 0 || identNode == 0) return null;
 
   let targetId = identNode;
@@ -2781,7 +2800,7 @@ export function getVariableUnitInClass(
 /**
  * Fast check if a class contains any unit modifications or SI-typed declarations.
  */
-export function hasUnitInClass(db: CodeGraph, classNode: u32, $: Record<string, u16>): boolean {
+export function hasUnitInClass(db: CodeGraph, classNode: u32, $: any): boolean {
   if (classNode == 0) return false;
   let cached = db.ast.getCachedHasUnits(classNode);
   if (cached >= 0) return cached == 1;
@@ -2819,7 +2838,7 @@ export function hasUnitInClass(db: CodeGraph, classNode: u32, $: Record<string, 
 /**
  * Recursively infers the SI unit of an AST expression.
  */
-export function inferExprUnit(db: CodeGraph, exprNode: u32, $: Record<string, u16>, classNode: u32 = 0): SIUnit | null {
+export function inferExprUnit(db: CodeGraph, exprNode: u32, $: any, classNode: u32 = 0): SIUnit | null {
   if (exprNode == 0) return null;
   const nodeType = db.ast.getType(exprNode);
 
@@ -3003,7 +3022,7 @@ export function inferExprUnit(db: CodeGraph, exprNode: u32, $: Record<string, u1
 /**
  * Returns the class specialization kind as a string ("record", "type", "package", "connector", "function", "model", "block", "class").
  */
-export function getClassKindString(db: CodeGraph, clsNode: u32, $: Record<string, u16>): string {
+export function getClassKindString(db: CodeGraph, clsNode: u32, _$: any): string {
   if (isClassKind(db, clsNode, "function")) return "function";
   if (isClassKind(db, clsNode, "record")) return "record";
   if (isClassKind(db, clsNode, "connector")) return "connector";
@@ -3017,7 +3036,7 @@ export function getClassKindString(db: CodeGraph, clsNode: u32, $: Record<string
 /**
  * Resolves the name AST node for a class_definition.
  */
-export function getClassNameNode(db: CodeGraph, clsNode: u32, $: Record<string, u16>): u32 {
+export function getClassNameNode(db: CodeGraph, clsNode: u32, $: any): u32 {
   if (clsNode == 0) return 0;
   for (const spec of db.ast.getDescendants(clsNode, $.long_class_specifier)) {
     const n = db.ast.getChildByFieldId(spec, "name");
@@ -3035,7 +3054,7 @@ export function getClassNameNode(db: CodeGraph, clsNode: u32, $: Record<string, 
 /**
  * Checks whether an extends_clause creates a direct or multi-hop inheritance cycle in the same scope.
  */
-export function hasExtendsCycleInScope(db: CodeGraph, extNode: u32, $: Record<string, u16>): boolean {
+export function hasExtendsCycleInScope(db: CodeGraph, extNode: u32, $: any): boolean {
   const startClass = getEnclosingClass(db, extNode, $);
   if (startClass == 0) return false;
   let typeSpec: u32 = 0;
@@ -3126,7 +3145,7 @@ export function hasExtendsCycleInScope(db: CodeGraph, extNode: u32, $: Record<st
 /**
  * Returns the callee/name node of a function_call or primary call node, or 0 if not a call.
  */
-export function getCallCalleeNode(db: CodeGraph, callNode: u32, $: Record<string, u16>): u32 {
+export function getCallCalleeNode(db: CodeGraph, callNode: u32, $: any): u32 {
   let name = db.ast.getChildByFieldId(callNode, "name");
   if (name == 0) name = db.ast.getChildByFieldId(callNode, "callee");
   if (name != 0) return name;
@@ -3143,7 +3162,7 @@ export function getCallCalleeNode(db: CodeGraph, callNode: u32, $: Record<string
 /**
  * Checks if an extends_clause targets a replaceable inner class in an enclosing class or document.
  */
-export function isReplaceableBaseClassInScope(db: CodeGraph, extNode: u32, $: Record<string, u16>): boolean {
+export function isReplaceableBaseClassInScope(db: CodeGraph, extNode: u32, $: any): boolean {
   let typeSpec = db.ast.getChildByFieldId(extNode, "type_specifier");
   if (typeSpec == 0) {
     for (const ts of db.ast.getDescendants(extNode, $.type_specifier)) {
@@ -3177,7 +3196,7 @@ export function isReplaceableBaseClassInScope(db: CodeGraph, extNode: u32, $: Re
 /**
  * Checks if a non-replaceable component_clause instantiates a partial class.
  */
-export function isPartialTypeComponentInScope(db: CodeGraph, compClause: u32, $: Record<string, u16>): boolean {
+export function isPartialTypeComponentInScope(db: CodeGraph, compClause: u32, $: any): boolean {
   if (isElementReplaceable(db, compClause, $)) return false;
   for (const anc of db.ast.getAncestors(compClause, 0)) {
     if (db.ast.getType(anc) == $.class_definition) {
@@ -3206,7 +3225,7 @@ export function isPartialTypeComponentInScope(db: CodeGraph, compClause: u32, $:
 /**
  * Checks if cardinality() is called with a class name instead of a component.
  */
-export function isCardinalityClassArg(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+export function isCardinalityClassArg(db: CodeGraph, callNode: u32, $: any): boolean {
   const name = getCallCalleeNode(db, callNode, $);
   if (name == 0 || !db.ast.textEquals(name, "cardinality")) return false;
   let firstArg: u32 = 0;
@@ -3236,7 +3255,7 @@ export function isCardinalityClassArg(db: CodeGraph, callNode: u32, $: Record<st
 /**
  * Checks if an expression node is a 3-part range (start : step : stop) over an enumeration type.
  */
-export function isEnumStepRangeExpr(db: CodeGraph, exprNode: u32, $: Record<string, u16>): boolean {
+export function isEnumStepRangeExpr(db: CodeGraph, exprNode: u32, $: any): boolean {
   let unwrapped = exprNode;
   while (unwrapped != 0 && db.ast.getChildCount(unwrapped) == 1) {
     unwrapped = db.ast.getFirstChild(unwrapped);
@@ -3277,7 +3296,7 @@ export function isEnumStepRangeExpr(db: CodeGraph, exprNode: u32, $: Record<stri
 /**
  * Checks if an element_modification assigns a scalar literal to an array component without 'each'.
  */
-export function isNonArrayScalarModification(db: CodeGraph, modNode: u32, $: Record<string, u16>): boolean {
+export function isNonArrayScalarModification(db: CodeGraph, modNode: u32, $: any): boolean {
   for (const anc of db.ast.getAncestors(modNode, 0)) {
     const t = db.ast.getType(anc);
     if (t == $.argument || t == $.element_modification_or_replaceable) {
@@ -3432,7 +3451,7 @@ export function isNonArrayScalarModification(db: CodeGraph, modNode: u32, $: Rec
 /**
  * Checks if a discrete variable is assigned in a continuous equation using 'time' or 'der()' outside a when_equation.
  */
-export function isDiscreteAssignedOutsideWhen(db: CodeGraph, eqNode: u32, $: Record<string, u16>): boolean {
+export function isDiscreteAssignedOutsideWhen(db: CodeGraph, eqNode: u32, $: any): boolean {
   for (const anc of db.ast.getAncestors(eqNode, 0)) {
     if (db.ast.getType(anc) == $.when_equation) return false;
   }
@@ -3494,12 +3513,7 @@ export function isDiscreteAssignedOutsideWhen(db: CodeGraph, eqNode: u32, $: Rec
 /**
  * Checks if a component_clause or its enclosing element has a prefix such as 'inner' or 'outer'.
  */
-export function hasElementOrTypePrefix(
-  db: CodeGraph,
-  compClause: u32,
-  prefix: string,
-  $: Record<string, u16>,
-): boolean {
+export function hasElementOrTypePrefix(db: CodeGraph, compClause: u32, prefix: string, $: any): boolean {
   if (hasTypePrefix(db, compClause, prefix, $)) return true;
   if (db.ast.startsWith(compClause, prefix)) return true;
   for (const anc of db.ast.getAncestors(compClause, 0)) {
@@ -3521,7 +3535,7 @@ export function hasElementOrTypePrefix(
 /**
  * Checks if an outer component_clause has no matching inner declaration in a self-contained document.
  */
-export function isMissingInnerInDocument(db: CodeGraph, compClause: u32, $: Record<string, u16>): boolean {
+export function isMissingInnerInDocument(db: CodeGraph, compClause: u32, $: any): boolean {
   if (!hasElementOrTypePrefix(db, compClause, "outer", $)) return false;
   if (hasElementOrTypePrefix(db, compClause, "inner", $)) return false;
   const encClass = getEnclosingClass(db, compClause, $);
@@ -3557,7 +3571,7 @@ export function isMissingInnerInDocument(db: CodeGraph, compClause: u32, $: Reco
 /**
  * Checks if a binary expression directly mixes two different Clock(...) domains or sample() + previous().
  */
-export function hasMixedClockDomains(db: CodeGraph, exprNode: u32, $: Record<string, u16>): boolean {
+export function hasMixedClockDomains(db: CodeGraph, exprNode: u32, $: any): boolean {
   let unwrapped = exprNode;
   while (unwrapped != 0 && db.ast.getChildCount(unwrapped) == 1) {
     unwrapped = db.ast.getFirstChild(unwrapped);
@@ -3614,7 +3628,7 @@ export function hasMixedClockDomains(db: CodeGraph, exprNode: u32, $: Record<str
 /**
  * Checks if the second positional argument (factor) of subSample/superSample/shiftSample/backSample is <= 0.
  */
-export function hasNonPositiveSampleFactor(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+export function hasNonPositiveSampleFactor(db: CodeGraph, callNode: u32, $: any): boolean {
   let argIdx: u32 = 0;
   let secondArg: u32 = 0;
   for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
@@ -3645,7 +3659,7 @@ export function hasNonPositiveSampleFactor(db: CodeGraph, callNode: u32, $: Reco
 /**
  * Checks if previous() is applied to 'time' or a parameter/constant variable.
  */
-export function isPreviousOnNonClocked(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+export function isPreviousOnNonClocked(db: CodeGraph, callNode: u32, $: any): boolean {
   let firstArg: u32 = 0;
   for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
     firstArg = arg;
@@ -3682,7 +3696,7 @@ export function isPreviousOnNonClocked(db: CodeGraph, callNode: u32, $: Record<s
 /**
  * Checks if an impure function is called inside a pure (non-impure) function.
  */
-export function isImpureCalledInPureFunction(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+export function isImpureCalledInPureFunction(db: CodeGraph, callNode: u32, $: any): boolean {
   const name = getCallCalleeNode(db, callNode, $);
   if (name == 0) return false;
   const callerCls = getEnclosingClass(db, callNode, $);
@@ -3696,7 +3710,7 @@ export function isImpureCalledInPureFunction(db: CodeGraph, callNode: u32, $: Re
 /**
  * Checks if an impure function is called inside a continuous equation_section (outside when_equation).
  */
-export function isImpureCalledInEquationSection(db: CodeGraph, callNode: u32, $: Record<string, u16>): boolean {
+export function isImpureCalledInEquationSection(db: CodeGraph, callNode: u32, $: any): boolean {
   let inEqSec = false;
   for (const anc of db.ast.getAncestors(callNode, 0)) {
     const t = db.ast.getType(anc);

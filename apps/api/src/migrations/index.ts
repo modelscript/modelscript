@@ -10,6 +10,7 @@ import { migration0007 } from "./0007_auth_security_hardening.js";
 import { migration0008 } from "./0008_auth_totp_and_audit.js";
 import { migration0009 } from "./0009_notifications_metadata.js";
 import { migration0010 } from "./0010_thread_governance.js";
+import { migration0011 } from "./0011_concurrent_engineering.js";
 import type { Migration } from "./types.js";
 
 export * from "./runner.js";
@@ -26,4 +27,5 @@ export const allMigrations: Migration[] = [
   migration0008,
   migration0009,
   migration0010,
+  migration0011,
 ];

@@ -38,11 +38,11 @@ export interface ComponentFailureMode {
   /** Failure rate per hour (lambda). 1e-9 / hr = 1 FIT. */
   failureRatePerHour: number;
   /** Safety mechanism name (e.g. "hardware_watchdog", "dual_redundancy"). */
-  safetyMechanism?: string;
+  safetyMechanism?: string | undefined;
   /** Diagnostic coverage K_dc in [0, 1]. E.g. 0.99 for 99%. */
-  diagnosticCoverage?: number;
+  diagnosticCoverage?: number | undefined;
   /** Severity score 1..10 for FMEA. */
-  severityScore?: number;
+  severityScore?: number | undefined;
 }
 
 export type FtaGateType = "AND" | "OR" | "VOTING_K_OF_N" | "PRIMARY_EVENT";
@@ -52,23 +52,23 @@ export interface FtaNode {
   name: string;
   gateType: FtaGateType;
   /** For VOTING_K_OF_N gates: required number of active inputs to fire. */
-  k?: number;
+  k?: number | undefined;
   children: string[];
-  failureModeId?: string;
-  description?: string;
+  failureModeId?: string | undefined;
+  description?: string | undefined;
 }
 
 export interface SystemHazard {
   id: string;
   name: string;
-  asilLevel?: AsilLevel;
-  dalLevel?: DalLevel;
+  asilLevel?: AsilLevel | undefined;
+  dalLevel?: DalLevel | undefined;
   /** Maximum acceptable PMHF target in FIT. (e.g., ASIL-D target < 10 FIT). */
-  targetPmhfFit?: number;
+  targetPmhfFit?: number | undefined;
   /** Target Single-Point Fault Metric (SPFM) fraction (e.g., ASIL-D target >= 0.99). */
-  targetSpfm?: number;
+  targetSpfm?: number | undefined;
   /** Target Latent Fault Metric (LFM) fraction (e.g., ASIL-D target >= 0.90). */
-  targetLfm?: number;
+  targetLfm?: number | undefined;
   rootNodeId: string;
 }
 
@@ -88,9 +88,9 @@ export interface FmeaRow {
 export interface SafetyVerificationReport {
   hazardId: string;
   hazardName: string;
-  targetPmhfFit?: number;
+  targetPmhfFit?: number | undefined;
   actualPmhfFit: number;
-  targetSpfm?: number;
+  targetSpfm?: number | undefined;
   actualSpfm: number;
   actualLfm: number;
   isCompliant: boolean;
@@ -199,7 +199,7 @@ export class SafetyTheoryOracle implements TheoryOracle {
   /**
    * Evaluates satisfaction across all registered system hazards against ASIL/DAL metrics.
    */
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     for (const [, hazard] of this.hazards) {
       const report = this.evaluateHazard(hazard);
       if (!report.isCompliant) {

@@ -1,7 +1,6 @@
 // name: StreamConcept_NoMedium_Total.mo
 // keywords: stream instream connector
 // status: correct
-// xfail:    true
 //
 // Test model from SiemensPower that tests stream connectors.
 //

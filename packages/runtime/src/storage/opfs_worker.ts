@@ -16,7 +16,7 @@ export interface OPFSMessageResponse {
   id: number;
   success: boolean;
   data?: any;
-  error?: string;
+  error?: string | undefined;
 }
 
 let g_storageEngine: PagedStorageEngine | null = null;
@@ -37,7 +37,7 @@ export async function initOPFSWorker(
   }
 
   const env = {
-    abort: (msgPtr: number, filePtr: number, line: number, col: number) => {
+    abort: (_msgPtr: number, _filePtr: number, line: number, col: number) => {
       console.error(`OPFS Worker WASM Abort at line ${line}, col ${col}`);
     },
     trace: (msgPtr: number, n: number) => {
@@ -47,7 +47,7 @@ export async function initOPFSWorker(
 
   const instantiated = await WebAssembly.instantiate(wasmModule, { env });
   const exports = { ...instantiated.exports } as unknown as PagedWasmExports;
-  exports.memory = instantiated.exports.memory as WebAssembly.Memory;
+  exports.memory = instantiated.exports["memory"] as WebAssembly.Memory;
 
   g_syncHandle = syncHandle;
   g_storageEngine = new PagedStorageEngine(exports, 1024); // 1024 frames = 4MB working set

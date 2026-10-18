@@ -75,9 +75,9 @@ interface LocalParticipant {
 export class CosimViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = "modelscript.cosimPanel";
 
-  private view?: vscode.WebviewView;
+  private view?: vscode.WebviewView | undefined;
   private disposables: vscode.Disposable[] = [];
-  private healthPollTimer?: ReturnType<typeof setInterval>;
+  private healthPollTimer?: ReturnType<typeof setInterval> | undefined;
 
   // ── Local mode state ──
   private localMode = false;
@@ -186,8 +186,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       if (response.ok) {
         const data = (await response.json()) as {
           status: string;
-          mqtt?: string;
-          historian?: string;
+          mqtt?: string | undefined;
+          historian?: string | undefined;
         };
         this.postMessage({
           type: "healthUpdate",
@@ -236,8 +236,9 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "updateConfig": {
         const config = vscode.workspace.getConfiguration("modelscript.cosim");
-        if (msg.apiUrl) await config.update("apiUrl", msg.apiUrl as string, vscode.ConfigurationTarget.Global);
-        if (msg.mqttWsUrl) await config.update("mqttWsUrl", msg.mqttWsUrl as string, vscode.ConfigurationTarget.Global);
+        if (msg["apiUrl"]) await config.update("apiUrl", msg["apiUrl"] as string, vscode.ConfigurationTarget.Global);
+        if (msg["mqttWsUrl"])
+          await config.update("mqttWsUrl", msg["mqttWsUrl"] as string, vscode.ConfigurationTarget.Global);
         this.postMessage({
           type: "config",
           apiUrl: this.getApiUrl(),
@@ -254,10 +255,10 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         }
         try {
           const body = {
-            startTime: (msg.startTime as number) ?? 0,
-            stopTime: (msg.stopTime as number) ?? 10,
-            stepSize: (msg.stepSize as number) ?? 0.01,
-            realtimeFactor: (msg.realtimeFactor as number) ?? 1,
+            startTime: (msg["startTime"] as number) ?? 0,
+            stopTime: (msg["stopTime"] as number) ?? 10,
+            stepSize: (msg["stepSize"] as number) ?? 0.01,
+            realtimeFactor: (msg["realtimeFactor"] as number) ?? 1,
           };
           const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions`, {
             method: "POST",
@@ -288,11 +289,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "startSession": {
         if (this.localMode) {
-          this.localStartSession(msg.sessionId as string);
+          this.localStartSession(msg["sessionId"] as string);
           break;
         }
         try {
-          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}/start`, { method: "POST" });
+          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}/start`, { method: "POST" });
           if (resp.ok) {
             void this.fetchSessions();
           } else {
@@ -307,11 +308,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "stopSession": {
         if (this.localMode) {
-          this.localStopSession(msg.sessionId as string);
+          this.localStopSession(msg["sessionId"] as string);
           break;
         }
         try {
-          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}/stop`, { method: "POST" });
+          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}/stop`, { method: "POST" });
           if (resp.ok) {
             void this.fetchSessions();
           } else {
@@ -325,9 +326,9 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "hardwareConnected": {
-        const protocol = (msg.protocol as string) ?? "slcan";
-        const baudRate = (msg.baudRate as number) ?? 500000;
-        const portName = (msg.portName as string) ?? "Serial Device";
+        const protocol = (msg["protocol"] as string) ?? "slcan";
+        const baudRate = (msg["baudRate"] as number) ?? 500000;
+        const portName = (msg["portName"] as string) ?? "Serial Device";
         vscode.window.showInformationMessage(
           `Soft HIL: Connected to ${portName} (${protocol.toUpperCase()} @ ${baudRate} baud).`,
         );
@@ -348,11 +349,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "deleteSession": {
         if (this.localMode) {
-          this.localDeleteSession(msg.sessionId as string);
+          this.localDeleteSession(msg["sessionId"] as string);
           break;
         }
         try {
-          await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}`, { method: "DELETE" });
+          await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}`, { method: "DELETE" });
           void this.fetchSessions();
         } catch (e) {
           this.postMessage({ type: "error", message: `Failed to delete session: ${e}` });
@@ -362,38 +363,38 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "publishModel": {
         if (this.localMode) {
-          this.localPublishModel(msg.sessionId as string);
+          this.localPublishModel(msg["sessionId"] as string);
           break;
         }
-        await this.publishCurrentModel(msg.sessionId as string);
+        await this.publishCurrentModel(msg["sessionId"] as string);
         break;
       }
 
       case "publishFmu": {
         if (this.localMode) {
-          await this.localPublishFmu(msg.sessionId as string);
+          await this.localPublishFmu(msg["sessionId"] as string);
         }
         break;
       }
 
       case "publishCosimModel": {
         if (this.localMode) {
-          await this.localPublishCosimModel(msg.sessionId as string);
+          await this.localPublishCosimModel(msg["sessionId"] as string);
         }
         break;
       }
 
       case "addFmuParticipant": {
         try {
-          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg.sessionId}/participants/fmu`, {
+          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}/participants/fmu`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fmuId: msg.fmuId }),
+            body: JSON.stringify({ fmuId: msg["fmuId"] }),
           });
           if (resp.ok) {
             const data = await resp.json();
             this.postMessage({ type: "participantAdded", data });
-            void this.fetchSessionParticipants(msg.sessionId as string);
+            void this.fetchSessionParticipants(msg["sessionId"] as string);
           } else {
             const err = await resp.text();
             this.postMessage({ type: "error", message: `Failed to add FMU: ${err}` });
@@ -406,25 +407,25 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "fetchParticipants":
         if (this.localMode) {
-          this.localFetchParticipants(msg.sessionId as string);
+          this.localFetchParticipants(msg["sessionId"] as string);
         } else {
-          await this.fetchSessionParticipants(msg.sessionId as string);
+          await this.fetchSessionParticipants(msg["sessionId"] as string);
         }
         break;
 
       case "openLivePlot": {
-        await vscode.commands.executeCommand("modelscript.cosimOpenLivePlot", msg.sessionId, msg.participantId);
+        await vscode.commands.executeCommand("modelscript.cosimOpenLivePlot", msg["sessionId"], msg["participantId"]);
         break;
       }
 
       case "addCoupling": {
         if (this.localMode) {
           this.localAddCoupling(
-            msg.sessionId as string,
-            msg.fromParticipantId as string,
-            msg.fromVariable as string,
-            msg.toParticipantId as string,
-            msg.toVariable as string,
+            msg["sessionId"] as string,
+            msg["fromParticipantId"] as string,
+            msg["fromVariable"] as string,
+            msg["toParticipantId"] as string,
+            msg["toVariable"] as string,
           );
         }
         break;
@@ -432,7 +433,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "createCosimWrapper": {
         if (this.localMode) {
-          await this.localCreateCosimWrapper(msg.sessionId as string);
+          await this.localCreateCosimWrapper(msg["sessionId"] as string);
         }
         break;
       }
@@ -540,7 +541,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     if (!uris || uris.length === 0) return;
 
     try {
-      const fileUri = uris[0];
+      const fileUri = uris[0]!;
       const data = await vscode.workspace.fs.readFile(fileUri);
       const xmlContent = new TextDecoder().decode(data);
       const fileName = fileUri.path.split("/").pop()?.replace(".xml", "").replace(".fmu", "") ?? "FMU";
@@ -570,7 +571,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Publish an SSP archive, creating local FMU participants for each component and wiring them together. */
-  private async localPublishSsp(sessionId: string): Promise<void> {
+  public async localPublishSsp(sessionId: string): Promise<void> {
     const session = this.localSessions.get(sessionId);
     if (!session) {
       this.postMessage({ type: "error", message: "Session not found." });
@@ -586,7 +587,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     if (!uris || uris.length === 0) return;
 
     try {
-      const fileUri = uris[0];
+      const fileUri = uris[0]!;
       const data = await vscode.workspace.fs.readFile(fileUri);
       const sspBytes = new Uint8Array(data);
 
@@ -674,12 +675,14 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       // Call the LSP to extract the co-simulation graph
       const result = (await this.client.sendRequest("modelscript/extractCosimGraph", { uri, text })) as {
         ok: boolean;
-        participants?: { id: string; type: string; className: string; fileName?: string }[];
-        couplings?: {
-          from: { participantId: string; variable: string };
-          to: { participantId: string; variable: string };
-        }[];
-        error?: string;
+        participants?: { id: string; type: string; className: string; fileName?: string | undefined }[] | undefined;
+        couplings?:
+          | {
+              from: { participantId: string; variable: string };
+              to: { participantId: string; variable: string };
+            }[]
+          | undefined;
+        error?: string | undefined;
       };
 
       if (!result.ok || !result.participants) {
@@ -861,7 +864,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         modelName: "CosimWrapper",
         fmus,
         connections,
-      })) as { ok: boolean; source?: string; error?: string };
+      })) as { ok: boolean; source?: string | undefined; error?: string | undefined };
 
       if (!result.ok || !result.source) {
         this.postMessage({
@@ -903,10 +906,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     try {
       const uri = editor.document.uri.toString();
       // Request the LSP server to simulate and register the model
-      const result = await this.client.sendRequest<{ ok: boolean; participantId?: string; error?: string }>(
-        "modelscript/publishParticipant",
-        { uri, sessionId },
-      );
+      const result = await this.client.sendRequest<{
+        ok: boolean;
+        participantId?: string | undefined;
+        error?: string | undefined;
+      }>("modelscript/publishParticipant", { uri, sessionId });
 
       if (result.ok) {
         vscode.window.showInformationMessage(`Published model as participant: ${result.participantId}`);
@@ -981,10 +985,10 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       state: "created",
       participants: [],
       couplings: [],
-      startTime: (msg.startTime as number) ?? 0,
-      stopTime: (msg.stopTime as number) ?? 10,
-      stepSize: (msg.stepSize as number) ?? 0.01,
-      realtimeFactor: (msg.realtimeFactor as number) ?? 1,
+      startTime: (msg["startTime"] as number) ?? 0,
+      stopTime: (msg["stopTime"] as number) ?? 10,
+      stepSize: (msg["stepSize"] as number) ?? 0.01,
+      realtimeFactor: (msg["realtimeFactor"] as number) ?? 1,
     };
     this.localSessions.set(id, session);
     this.postMessage({ type: "sessionCreated", session: { id, state: session.state } });
@@ -1152,7 +1156,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     const timerEntry = this.localSimTimers.get(sessionId);
     if (timerEntry) {
       // For async orchestrator: set abort flag
-      const abortRef = (timerEntry as unknown as { abortRef?: { aborted: boolean } }).abortRef;
+      const abortRef = (timerEntry as unknown as { abortRef?: { aborted: boolean } | undefined }).abortRef;
       if (abortRef) {
         abortRef.aborted = true;
       } else {

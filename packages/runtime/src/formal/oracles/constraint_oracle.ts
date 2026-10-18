@@ -273,7 +273,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     }
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     for (const [varName, interval] of this.intervals.entries()) {
       if (interval === null || interval.lo > interval.hi + 1e-9) {
         const culpritLitIds = this.varJustifications.get(varName) ?? new Set<number>();

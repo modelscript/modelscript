@@ -15,7 +15,7 @@ export interface FeaMeshPayload {
   geometry: {
     positions: number[];
     indices: number[];
-    normals?: number[];
+    normals?: number[] | undefined;
   };
   fields: {
     vonMisesStress: number[];
@@ -24,7 +24,7 @@ export interface FeaMeshPayload {
   stats: {
     maxStress: number;
     maxDisplacement: number;
-    safetyFactor?: number;
+    safetyFactor?: number | undefined;
   };
 }
 
@@ -38,10 +38,10 @@ export function extractSurfaceTriangles(mesh: Tet4Mesh): Uint32Array {
 
   for (let e = 0; e < numElements; e++) {
     const base = e * nodesPerElement;
-    const n0 = elements[base + 0];
-    const n1 = elements[base + 1];
-    const n2 = elements[base + 2];
-    const n3 = elements[base + 3];
+    const n0 = elements[base + 0]!;
+    const n1 = elements[base + 1]!;
+    const n2 = elements[base + 2]!;
+    const n3 = elements[base + 3]!;
 
     // 4 faces of a tetrahedron with outward-consistent vertex orientations
     const faces: [number, number, number][] = [
@@ -71,19 +71,20 @@ export function extractSurfaceTriangles(mesh: Tet4Mesh): Uint32Array {
   return new Uint32Array(surfaceFaces);
 }
 
+/** Configuration options for a 3D structural {@link FeaCoSimParticipant}. */
 export interface FeaCoSimOptions {
   /** Optional boundary patch tag name for fixed Dirichlet support. Defaults to tags containing 'fixed', 'support', 'hub', 'root'. */
-  fixedTag?: string;
+  fixedTag?: string | undefined;
   /** Optional boundary patch tag name where force is applied. Defaults to tags containing 'flange', 'motor', 'load', 'tip'. */
-  loadTag?: string;
+  loadTag?: string | undefined;
   /** Primary axis of applied load: 'x' | 'y' | 'z' (default: 'y'). */
-  loadAxis?: "x" | "y" | "z";
+  loadAxis?: "x" | "y" | "z" | undefined;
   /** PCG convergence tolerance (default: 1e-5). */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** PCG maximum iterations (default: 300). */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** Enable geometrically non-linear corotational kinematics (default: true). */
-  corotational?: boolean;
+  corotational?: boolean | undefined;
 }
 
 /**
@@ -91,22 +92,36 @@ export interface FeaCoSimOptions {
  * Wraps FeaSolver to sync with 1D Modelica dynamic states in real time.
  */
 export class FeaCoSimParticipant implements CoSimParticipant {
+  /** Unique co-simulation participant identifier. */
   public readonly id: string;
+  /** Human-readable FEA model name. */
   public readonly modelName: string;
+  /** Co-simulation participant metadata and exposed port variables. */
   public readonly metadata: ParticipantMetadata;
 
+  /** Underlying 3D Tet4/Tet10 finite element solver instance. */
   public readonly feaSolver: FeaSolver;
+  /** Volumetric tetrahedral mesh. */
   public readonly mesh: Tet4Mesh;
+  /** Isotropic linear elastic material properties ($E, \nu, \rho, \sigma_y$). */
   public readonly material: MaterialProperties;
+  /** Pre-extracted exterior boundary triangle indices for 3D visualization. */
   public readonly surfaceIndices: Uint32Array;
 
+  /** Set of node indices constrained with homogeneous Dirichlet ($u = 0$) boundary conditions. */
   private fixedNodes: Set<number> = new Set();
+  /** Boundary patch tag names receiving external force/load inputs. */
   private loadTags: string[] = [];
+  /** Current input variable values keyed by port name. */
   private currentInputs: Map<string, number> = new Map();
+  /** Most recent FEA displacement and von Mises stress solution. */
   private latestResult: FeaStepResult;
+  /** Current simulation time in seconds. */
   private currentTime = 0;
+  /** Resolved FEA co-simulation solver options. */
   private options: FeaCoSimOptions;
 
+  /** Constructs a 3D FEA co-simulation participant, classifies boundary patches, and computes the initial equilibrium state. */
   constructor(
     id: string,
     modelName: string,
@@ -158,6 +173,7 @@ export class FeaCoSimParticipant implements CoSimParticipant {
     };
   }
 
+  /** Classifies mesh boundary node sets into fixed Dirichlet supports and loaded traction flanges. */
   private autoClassifyBoundaryPatches(): void {
     const { boundaryNodes } = this.mesh;
     this.fixedNodes.clear();
@@ -211,16 +227,19 @@ export class FeaCoSimParticipant implements CoSimParticipant {
     }
   }
 
+  /** Resets the FEA participant clock to `startTime`. */
   public async initialize(startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     this.currentTime = startTime;
   }
 
+  /** Stores incoming force/thrust scalar inputs for the next structural solve step. */
   public async setInputs(values: Map<string, CosimValue>): Promise<void> {
     for (const [k, v] of values.entries()) {
       this.currentInputs.set(k, Number(v));
     }
   }
 
+  /** Distributes input forces across target boundary patch nodes and runs a 3D FEA equilibrium solve. */
   public async doStep(currentTime: number, stepSize: number): Promise<void> {
     this.currentTime = currentTime + stepSize;
 
@@ -261,9 +280,9 @@ export class FeaCoSimParticipant implements CoSimParticipant {
           vec = [0, 0, 0];
           patchForces.set(matchedTag, vec);
         }
-        vec[axisIdx] += v;
+        vec[axisIdx] = vec[axisIdx]! + v;
       } else {
-        globalVector[axisIdx] += v;
+        globalVector[axisIdx] = globalVector[axisIdx]! + v;
         hasGlobalForce = true;
       }
     }
@@ -317,6 +336,7 @@ export class FeaCoSimParticipant implements CoSimParticipant {
     );
   }
 
+  /** Returns peak displacements, von Mises stress, and per-patch average displacements. */
   public async getOutputs(): Promise<Map<string, CosimValue>> {
     const outputs = new Map<string, CosimValue>();
     outputs.set("maxDisplacement", this.latestResult.maxDisplacement);
@@ -385,6 +405,7 @@ export class FeaCoSimParticipant implements CoSimParticipant {
     };
   }
 
+  /** Terminates the FEA co-simulation participant (no-op for in-memory solver). */
   public async terminate(): Promise<void> {
     // No-op
   }

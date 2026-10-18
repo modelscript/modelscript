@@ -20,7 +20,7 @@ import { Interval } from "./wasm_interval.js";
 import { Zonotope } from "./wasm_zonotope.js";
 
 export interface LinearSafetyRequirement {
-  name?: string;
+  name?: string | undefined;
   stateIndex: number;
   operator: "<=" | ">=" | "<" | ">";
   limitValue: number;
@@ -28,27 +28,27 @@ export interface LinearSafetyRequirement {
 
 export interface ZonotopeReachabilityOptions {
   A: number[][];
-  B?: number[][];
-  U?: Zonotope;
+  B?: number[][] | undefined;
+  U?: Zonotope | undefined;
   initialSet: Zonotope | Interval[];
-  nominalInitial?: number[];
+  nominalInitial?: number[] | undefined;
   tSpan: [number, number];
-  dt?: number;
-  maxOrder?: number;
-  expansionOrder?: number;
-  requirements?: LinearSafetyRequirement[];
-  budgetMs?: number;
+  dt?: number | undefined;
+  maxOrder?: number | undefined;
+  expansionOrder?: number | undefined;
+  requirements?: LinearSafetyRequirement[] | undefined;
+  budgetMs?: number | undefined;
   /** Maximum bisection depth for automatic refinement of inconclusive sets (default 0) */
-  maxBisectionDepth?: number;
+  maxBisectionDepth?: number | undefined;
   /** Whether to run falsification search along boundary/corner trajectories on crossing (default true) */
-  enableFalsification?: boolean;
+  enableFalsification?: boolean | undefined;
 }
 
 export interface ZonotopeStepRecord {
   time: number;
   zonotope: Zonotope;
   enclosure: Interval[];
-  stateNominal?: number[];
+  stateNominal?: number[] | undefined;
 }
 
 export interface ZonotopeReachabilityResult {
@@ -56,14 +56,14 @@ export interface ZonotopeReachabilityResult {
   isCertifiedSafe: boolean;
   totalSteps: number;
   steps: ZonotopeStepRecord[];
-  continuousEnclosures?: Interval[][];
+  continuousEnclosures?: Interval[][] | undefined;
   violations: {
     time: number;
     stateIndex: number;
     operator: string;
     worstCaseValue: number;
     limitValue: number;
-    isConcreteWitness?: boolean;
+    isConcreteWitness?: boolean | undefined;
     reason: string;
   }[];
   summary: string;
@@ -83,7 +83,7 @@ export function matrixMultiply(A: number[][], B: number[][]): number[][] {
       if (aVal === 0) continue;
       const rowB = B[k]!;
       for (let j = 0; j < colsB; j++) {
-        C[i]![j] += aVal * rowB[j]!;
+        C[i]![j] = C[i]![j]! + aVal * rowB[j]!;
       }
     }
   }
@@ -164,7 +164,7 @@ export function getZonotopeExtremeSupportPoint(
     const s = g[stateIdx] ?? 0;
     const factor = maximize ? (s >= 0 ? 1 : -1) : s >= 0 ? -1 : 1;
     for (let i = 0; i < dim; i++) {
-      pt[i] += factor * (g[i] ?? 0);
+      pt[i] = pt[i]! + factor * (g[i] ?? 0);
     }
   }
   return pt;
@@ -356,7 +356,7 @@ export class ZonotopeReachabilitySolver {
       if (options.B && nomU) {
         const bNomU = matrixVectorMultiply(options.B, nomU);
         const psiBNomU = matrixVectorMultiply(psiM, bNomU);
-        for (let i = 0; i < n; i++) nextNomX[i] += psiBNomU[i]!;
+        for (let i = 0; i < n; i++) nextNomX[i] = nextNomX[i]! + psiBNomU[i]!;
       }
 
       // 6. Check safety requirements against the continuous time-interval enclosure
@@ -564,19 +564,19 @@ export class ZonotopeReachabilitySolver {
 export interface NonlinearZonotopeReachOptions {
   dae: DaeSystem;
   initialSet: Zonotope | Interval[];
-  nominalInitial?: number[];
+  nominalInitial?: number[] | undefined;
   tSpan: [number, number];
-  dt?: number;
-  maxOrder?: number;
-  expansionOrder?: number;
-  disturbanceSet?: Zonotope | Interval[];
-  algebraicSet?: Interval[];
-  requirements?: LinearSafetyRequirement[];
-  budgetMs?: number; // default 150 ms (looser budget for keystroke tier)
+  dt?: number | undefined;
+  maxOrder?: number | undefined;
+  expansionOrder?: number | undefined;
+  disturbanceSet?: Zonotope | Interval[] | undefined;
+  algebraicSet?: Interval[] | undefined;
+  requirements?: LinearSafetyRequirement[] | undefined;
+  budgetMs?: number | undefined; // default 150 ms (looser budget for keystroke tier)
   /** Maximum bisection depth for automatic refinement of inconclusive sets (default 0) */
-  maxBisectionDepth?: number;
+  maxBisectionDepth?: number | undefined;
   /** Whether to run falsification search along boundary/corner trajectories on crossing (default true) */
-  enableFalsification?: boolean;
+  enableFalsification?: boolean | undefined;
 }
 
 export interface NonlinearZonotopeReachResult {
@@ -591,7 +591,7 @@ export interface NonlinearZonotopeReachResult {
     operator: string;
     worstCaseValue: number;
     limitValue: number;
-    isConcreteWitness?: boolean;
+    isConcreteWitness?: boolean | undefined;
     reason: string;
   }[];
   durationMs: number;
@@ -690,7 +690,7 @@ export class ConservativeLinearizationSolver {
         const eps = 1e-7;
         for (let j = 0; j < n; j++) {
           const xPert = [...c_k];
-          xPert[j] += eps;
+          xPert[j] = xPert[j]! + eps;
           const fPert = dae.f(t, xPert, algNom);
           for (let i = 0; i < n; i++) {
             Ak[i]![j] = (fPert[i]! - f0[i]!) / eps;
@@ -725,9 +725,9 @@ export class ConservativeLinearizationSolver {
       // 6. Effective input set U_eff = Zonotope(dk, diag(lambda)) \oplus distZ
       const uG: number[][] = [];
       for (let j = 0; j < n; j++) {
-        if (lambda[j] > 1e-15) {
+        if (lambda[j]! > 1e-15) {
           const col = new Array<number>(n).fill(0);
-          col[j] = lambda[j];
+          col[j] = lambda[j]!;
           uG.push(col);
         }
       }
@@ -1028,17 +1028,17 @@ export class ConservativeLinearizationSolver {
 }
 
 export interface DroneReachabilityParams {
-  m?: number; // Total mass [kg] (1.2)
-  A?: number; // Frontal area [m²] (0.03)
-  Cd?: number; // Drag coefficient (0.80)
-  rho?: number; // Air density [kg/m³] (1.225)
-  z_target?: number; // Ceiling altitude target [m] (11.0)
-  kz?: number; // Altitude feedback gain [N/m] (3.1)
-  kv?: number; // Velocity damping gain [N/(m/s)] (1.35)
-  w_max?: number; // Wind disturbance force [N] (0.50)
-  v_limit?: number; // SysML v2 velocity limit [m/s] (12.0)
-  tSpan?: [number, number]; // Simulation horizon [s] ([0, 5.0])
-  dt?: number; // Step size [s] (0.02)
+  m?: number | undefined; // Total mass [kg] (1.2)
+  A?: number | undefined; // Frontal area [m²] (0.03)
+  Cd?: number | undefined; // Drag coefficient (0.80)
+  rho?: number | undefined; // Air density [kg/m³] (1.225)
+  z_target?: number | undefined; // Ceiling altitude target [m] (11.0)
+  kz?: number | undefined; // Altitude feedback gain [N/m] (3.1)
+  kv?: number | undefined; // Velocity damping gain [N/(m/s)] (1.35)
+  w_max?: number | undefined; // Wind disturbance force [N] (0.50)
+  v_limit?: number | undefined; // SysML v2 velocity limit [m/s] (12.0)
+  tSpan?: [number, number] | undefined; // Simulation horizon [s] ([0, 5.0])
+  dt?: number | undefined; // Step size [s] (0.02)
 }
 
 export interface DroneReachabilityResult {
@@ -1057,7 +1057,7 @@ export interface DroneReachabilityResult {
   intervalLo: number[];
   intervalHi: number[];
   intervalMaxVelocity: number;
-  intervalBreachTime?: number;
+  intervalBreachTime?: number | undefined;
   settlingDipVelocity: number;
   durationMs: number;
   summary: string;
@@ -1103,15 +1103,15 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
 
   const delta0 = [0.05, 0.2];
   let G_z = [
-    [delta0[0], 0.0],
-    [0.0, delta0[1]],
+    [delta0[0]!, 0.0],
+    [0.0, delta0[1]!],
   ];
-  const int_rad = [delta0[0], delta0[1]];
+  const int_rad = [delta0[0]!, delta0[1]!];
 
-  z_lo[0] = -delta0[1];
-  z_hi[0] = delta0[1];
-  i_lo[0] = -delta0[1];
-  i_hi[0] = delta0[1];
+  z_lo[0] = -delta0[1]!;
+  z_hi[0] = delta0[1]!;
+  i_lo[0] = -delta0[1]!;
+  i_hi[0] = delta0[1]!;
 
   let intervalBreachTime: number | undefined;
   let zonotopeMaxV = 0.0;
@@ -1119,19 +1119,19 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
   let settlingDipV = 0.0;
 
   for (let k = 0; k < N - 1; k++) {
-    const zk = c_z[k][0];
-    const vk = c_z[k][1];
+    const zk = c_z[k]![0];
+    const vk = c_z[k]![1];
 
     const drag = 0.5 * Cd * rho * A * vk * Math.abs(vk);
     const thrust_net = kz * (z_target - zk) - kv * vk;
     const dv = (thrust_net - drag) / m;
     const dz = vk;
 
-    c_z[k + 1][0] = zk + dz * dt;
-    c_z[k + 1][1] = vk + dv * dt;
-    nom[k + 1] = c_z[k + 1][1];
+    c_z[k + 1]![0] = zk + dz * dt;
+    c_z[k + 1]![1] = vk + dv * dt;
+    nom[k + 1] = c_z[k + 1]![1];
 
-    if (nom[k + 1] < settlingDipV) settlingDipV = nom[k + 1];
+    if (nom[k + 1]! < settlingDipV) settlingDipV = nom[k + 1]!;
 
     const df2_dz = -kz / m;
     const df2_dv = -(kv + Cd * rho * A * Math.abs(vk)) / m;
@@ -1140,25 +1140,25 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
       [df2_dz, df2_dv],
     ];
 
-    const A2_00 = A_mat[0][1] * A_mat[1][0];
-    const A2_01 = A_mat[0][1] * A_mat[1][1];
-    const A2_10 = A_mat[1][1] * A_mat[1][0];
-    const A2_11 = A_mat[1][0] * A_mat[0][1] + A_mat[1][1] * A_mat[1][1];
+    const A2_00 = A_mat[0]![1]! * A_mat[1]![0]!;
+    const A2_01 = A_mat[0]![1]! * A_mat[1]![1]!;
+    const A2_10 = A_mat[1]![1]! * A_mat[1]![0]!;
+    const A2_11 = A_mat[1]![0]! * A_mat[0]![1]! + A_mat[1]![1]! * A_mat[1]![1]!;
 
     const Phi = [
-      [1.0 + 0.5 * A2_00 * dt * dt, A_mat[0][1] * dt + 0.5 * A2_01 * dt * dt],
-      [A_mat[1][0] * dt + 0.5 * A2_10 * dt * dt, 1.0 + A_mat[1][1] * dt + 0.5 * A2_11 * dt * dt],
+      [1.0 + 0.5 * A2_00 * dt * dt, A_mat[0]![1]! * dt + 0.5 * A2_01 * dt * dt],
+      [A_mat[1]![0]! * dt + 0.5 * A2_10 * dt * dt, 1.0 + A_mat[1]![1]! * dt + 0.5 * A2_11 * dt * dt],
     ];
 
     const w_step = (w_max / m) * dt;
 
     // Zonotope propagation
-    const numG = G_z[0].length;
+    const numG = G_z[0]!.length;
     const newG0 = new Array(numG + 2);
     const newG1 = new Array(numG + 2);
     for (let j = 0; j < numG; j++) {
-      newG0[j] = Phi[0][0] * G_z[0][j] + Phi[0][1] * G_z[1][j];
-      newG1[j] = Phi[1][0] * G_z[0][j] + Phi[1][1] * G_z[1][j];
+      newG0[j] = Phi[0]![0]! * G_z[0]![j]! + Phi[0]![1]! * G_z[1]![j]!;
+      newG1[j] = Phi[1]![0]! * G_z[0]![j]! + Phi[1]![1]! * G_z[1]![j]!;
     }
     newG0[numG] = 0.005;
     newG1[numG] = 0.0;
@@ -1172,7 +1172,7 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
       let remSum0 = 0.0,
         remSum1 = 0.0;
       for (let i = 0; i < scored.length; i++) {
-        const origIdx = scored[i].idx;
+        const origIdx = scored[i]!.idx;
         if (i < 12) {
           keep0.push(newG0[origIdx]);
           keep1.push(newG1[origIdx]);
@@ -1189,22 +1189,22 @@ export function simulateDroneReachability(params: DroneReachabilityParams = {}):
     }
 
     let rad_v = 0.0;
-    for (let j = 0; j < G_z[1].length; j++) rad_v += Math.abs(G_z[1][j]);
-    z_lo[k + 1] = c_z[k + 1][1] - rad_v;
-    z_hi[k + 1] = c_z[k + 1][1] + rad_v;
-    if (z_hi[k + 1] > zonotopeMaxV) zonotopeMaxV = z_hi[k + 1];
+    for (let j = 0; j < G_z[1]!.length; j++) rad_v += Math.abs(G_z[1]![j]!);
+    z_lo[k + 1] = c_z[k + 1]![1] - rad_v;
+    z_hi[k + 1] = c_z[k + 1]![1] + rad_v;
+    if (z_hi[k + 1]! > zonotopeMaxV) zonotopeMaxV = z_hi[k + 1]!;
 
     // Interval Wrapping Blowup
-    const next_rad0 = Math.abs(Phi[0][0]) * int_rad[0] + Math.abs(Phi[0][1]) * int_rad[1] + 0.005;
-    const next_rad1 = Math.abs(Phi[1][0]) * int_rad[0] + Math.abs(Phi[1][1]) * int_rad[1] + w_step;
+    const next_rad0 = Math.abs(Phi[0]![0]!) * int_rad[0]! + Math.abs(Phi[0]![1]!) * int_rad[1]! + 0.005;
+    const next_rad1 = Math.abs(Phi[1]![0]!) * int_rad[0]! + Math.abs(Phi[1]![1]!) * int_rad[1]! + w_step;
     int_rad[0] = next_rad0;
     int_rad[1] = next_rad1;
 
-    i_lo[k + 1] = c_z[k + 1][1] - int_rad[1];
-    i_hi[k + 1] = c_z[k + 1][1] + int_rad[1];
-    if (i_hi[k + 1] > intervalMaxV) intervalMaxV = i_hi[k + 1];
+    i_lo[k + 1] = c_z[k + 1]![1] - int_rad[1];
+    i_hi[k + 1] = c_z[k + 1]![1] + int_rad[1];
+    if (i_hi[k + 1]! > intervalMaxV) intervalMaxV = i_hi[k + 1]!;
 
-    if (intervalBreachTime === undefined && i_hi[k + 1] > v_limit) {
+    if (intervalBreachTime === undefined && i_hi[k + 1]! > v_limit) {
       intervalBreachTime = time[k + 1];
     }
   }

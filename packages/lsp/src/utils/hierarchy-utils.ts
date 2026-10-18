@@ -90,7 +90,7 @@ export function classKindFromEntry(entry: any): string {
   if (typeof prefixesText !== "string" || !prefixesText) return "class";
   const lower = prefixesText.toLowerCase();
   for (let i = CLASS_KIND_KEYWORDS.length - 1; i >= 0; i--) {
-    if (lower.includes(CLASS_KIND_KEYWORDS[i])) return CLASS_KIND_KEYWORDS[i];
+    if (lower.includes(CLASS_KIND_KEYWORDS[i]!)) return CLASS_KIND_KEYWORDS[i]!;
   }
   return "class";
 }

@@ -5,8 +5,8 @@ import { Cst } from "../../../src-gen/bindings.js";
 export interface DiagnosticRange {
   startByte: number;
   endByte: number;
-  startPosition?: { row: number; column: number };
-  endPosition?: { row: number; column: number };
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
 }
 
 export function getComponentClause(node: any): any {

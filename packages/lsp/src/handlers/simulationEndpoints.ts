@@ -18,7 +18,7 @@ import { ModelScriptParticipant } from "./modelscriptParticipant.js";
 
 const notebookSessions = new Map<string, any>();
 
-function _formatDebugValue(val: unknown): string {
+export function _formatDebugValue(val: unknown): string {
   if (typeof val === "number") return val.toFixed(4);
   if (typeof val === "boolean") return val ? "true" : "false";
   if (typeof val === "object" && val !== null && "elements" in val) {
@@ -40,7 +40,7 @@ export function resolveTargetClass(
   };
   if (className) {
     const parts = className.split(".");
-    const candidates = unifiedIndex.byName.get(parts[parts.length - 1]);
+    const candidates = unifiedIndex.byName.get(parts[parts.length - 1]!);
     if (candidates && candidates.length > 0) {
       for (const id of candidates) {
         const entry = unifiedIndex.symbols.get(id);
@@ -48,7 +48,7 @@ export function resolveTargetClass(
           return {
             symbolId: id,
             className: entry.name,
-            classKind: (entry.metadata?.classKind as string) ?? "class",
+            classKind: (entry.metadata?.["classKind"] as string) ?? "class",
           };
         }
       }
@@ -67,7 +67,7 @@ export function resolveTargetClass(
       return {
         symbolId: id,
         className: entry.name,
-        classKind: (entry.metadata?.classKind as string) ?? "class",
+        classKind: (entry.metadata?.["classKind"] as string) ?? "class",
       };
     }
   }
@@ -136,7 +136,7 @@ export function flattenTargetClass(
         let simClassId = target.symbolId;
         if (!qe.index?.symbols?.has(simClassId)) {
           const c = qe.index?.byName?.get(target.className);
-          if (c && c.length > 0) simClassId = c[0];
+          if (c && c.length > 0) simClassId = c[0]!;
         }
         arena = flattener.flatten(simClassId);
       }
@@ -157,41 +157,50 @@ export function registerSimulationEndpoints(context: LspContext) {
     "modelscript/simulate",
     async (params: {
       uri: string;
-      className?: string;
-      startTime?: number;
-      stopTime?: number;
-      interval?: number;
-      equidistant?: boolean;
-      solver?: string;
-      rtol?: number;
-      atol?: number;
-      numberOfIntervals?: number;
-      maxStep?: number;
-      steadyStateOnly?: boolean;
-      format?: string;
-      parameterOverrides?: Record<string, number>;
-      sweepConfig?: { parameterName: string; start: number; end: number; steps: number };
-      physicsType?: string;
-      domain?: string;
-      cadUri?: string;
+      className?: string | undefined;
+      startTime?: number | undefined;
+      stopTime?: number | undefined;
+      interval?: number | undefined;
+      equidistant?: boolean | undefined;
+      solver?: string | undefined;
+      rtol?: number | undefined;
+      atol?: number | undefined;
+      numberOfIntervals?: number | undefined;
+      maxStep?: number | undefined;
+      steadyStateOnly?: boolean | undefined;
+      format?: string | undefined;
+      parameterOverrides?: Record<string, number> | undefined;
+      sweepConfig?: { parameterName: string; start: number; end: number; steps: number } | undefined;
+      physicsType?: string | undefined;
+      domain?: string | undefined;
+      cadUri?: string | undefined;
     }): Promise<{
       t: number[];
       y: number[][];
       states: string[];
-      parameters?: {
-        name: string;
-        type: "real" | "integer" | "boolean" | "enumeration";
-        defaultValue: number;
-        min?: number;
-        max?: number;
-        step: number;
-        unit?: string;
-        enumLiterals?: { ordinal: number; label: string }[];
-      }[];
-      experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
-      error?: string;
-      sweepResults?: { value: number; y: number[][] }[];
-      telemetry?: { executionTimeMs: number; stepCount: number };
+      parameters?:
+        | {
+            name: string;
+            type: "real" | "integer" | "boolean" | "enumeration";
+            defaultValue: number;
+            min?: number | undefined;
+            max?: number | undefined;
+            step: number;
+            unit?: string | undefined;
+            enumLiterals?: { ordinal: number; label: string }[] | undefined;
+          }[]
+        | undefined;
+      experiment?:
+        | {
+            startTime?: number | undefined;
+            stopTime?: number | undefined;
+            interval?: number | undefined;
+            tolerance?: number | undefined;
+          }
+        | undefined;
+      error?: string | undefined;
+      sweepResults?: { value: number; y: number[][] }[] | undefined;
+      telemetry?: { executionTimeMs: number; stepCount: number } | undefined;
     }> => {
       context.connection.console.info(
         `[simulate] Requested simulation for URI: ${params.uri} class: ${params.className}`,
@@ -626,12 +635,12 @@ export function registerSimulationEndpoints(context: LspContext) {
     (params: {
       uri: string;
       participantId: string;
-      stepSize?: number;
-      className?: string;
+      stepSize?: number | undefined;
+      className?: string | undefined;
     }): {
       ok: boolean;
-      variables?: { name: string; causality: string }[];
-      error?: string;
+      variables?: { name: string; causality: string }[] | undefined;
+      error?: string | undefined;
     } => {
       try {
         const flat = flattenTargetClass(context, params.uri, params.className);
@@ -686,7 +695,7 @@ export function registerSimulationEndpoints(context: LspContext) {
       time: number;
     }): {
       outputs: Record<string, number>;
-      error?: string;
+      error?: string | undefined;
     } => {
       const simState = cosimSimulators.get(params.participantId);
       if (!simState) {
@@ -753,7 +762,7 @@ export function registerSimulationEndpoints(context: LspContext) {
       }[];
       wrapperName: string;
       uri: string;
-    }): Promise<{ ok: boolean; source?: string; error?: string }> => {
+    }): Promise<{ ok: boolean; source?: string | undefined; error?: string | undefined }> => {
       try {
         const fmus = params.modelNames.map((name) => {
           const classInstance = context.workspaceManager.resolveModelicaClassInstance(params.uri, name);
@@ -785,14 +794,14 @@ export function registerSimulationEndpoints(context: LspContext) {
 
   context.connection.onNotification(
     "modelscript/setBreakpoints",
-    (params: { uri: string; breakpoints: { line: number; column?: number }[] }) => {
+    (params: { uri: string; breakpoints: { line: number; column?: number | undefined }[] }) => {
       breakpointsMap.set(params.uri, params.breakpoints);
     },
   );
 
   context.connection.onRequest(
     "modelscript/simulateDebug",
-    async (params: { uri: string; className?: string }): Promise<unknown> => {
+    async (params: { uri: string; className?: string | undefined }): Promise<unknown> => {
       const doc = context.documents.get(params.uri);
       if (doc) {
         await context.validationService.validateTextDocument(doc);
@@ -821,7 +830,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             const col = loc ? loc.startCol : undefined;
 
             const bps = breakpointsMap.get(params.uri) || [];
-            const isBreakpoint = line !== undefined && bps.some((bp) => bp.line === line);
+            const isBreakpoint = line !== undefined && bps.some((bp: { line: number }) => bp.line === line);
 
             if (stepMode || isBreakpoint) {
               stepMode = false;
@@ -1101,7 +1110,7 @@ export function registerSimulationEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/simulatePhysics",
-    async (params: { uri: string; className?: string; physicsType?: string }) => {
+    async (params: { uri: string; className?: string | undefined; physicsType?: string | undefined }) => {
       context.connection.console.info(
         `[simulatePhysics] Received request for ${params.className || params.uri} (type: ${params.physicsType || "FEA"})`,
       );

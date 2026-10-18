@@ -8,7 +8,9 @@
  */
 
 import { ExprKind } from "@modelscript/dsl";
+import { StringWriter } from "@modelscript/dsl/utils";
 import {
+  ArenaDAEPrinter,
   BinOp,
   DAEBuilder,
   inferArenaExprVarType,
@@ -26,6 +28,7 @@ export function exprReferencesRuntimeParameter(
   exprId: number,
   dae: DAEBuilder,
   visited: Set<number> = new Set(),
+  includeInteger = false,
 ): boolean {
   if (exprId < 0 || visited.has(exprId)) return false;
   visited.add(exprId);
@@ -37,7 +40,7 @@ export function exprReferencesRuntimeParameter(
     if (varIdx >= 0) {
       const v = dae.getVarVariability(varIdx);
       if (v === Variability.Parameter && !dae.isVarFinal(varIdx)) {
-        if (dae.getVarType(varIdx) !== VarType.Integer) {
+        if (includeInteger || dae.getVarType(varIdx) !== VarType.Integer) {
           return true;
         }
       }
@@ -58,35 +61,35 @@ export function exprReferencesRuntimeParameter(
     const l = dae.getExprLeft(exprId);
     const r = dae.getExprRight(exprId);
     return (
-      (l >= 0 && exprReferencesRuntimeParameter(l, dae, visited)) ||
-      (r >= 0 && exprReferencesRuntimeParameter(r, dae, visited))
+      (l >= 0 && exprReferencesRuntimeParameter(l, dae, visited, includeInteger)) ||
+      (r >= 0 && exprReferencesRuntimeParameter(r, dae, visited, includeInteger))
     );
   }
   if (k === ExprKind.Unary || k === ExprKind.Negate) {
     const l = dae.getExprLeft(exprId);
-    return l >= 0 && exprReferencesRuntimeParameter(l, dae, visited);
+    return l >= 0 && exprReferencesRuntimeParameter(l, dae, visited, includeInteger);
   }
   if (k === ExprKind.IfElse) {
     const cond = dae.getExprData1(exprId);
     const thenE = dae.getExprLeft(exprId);
     const elseE = dae.getExprRight(exprId);
     return (
-      (cond >= 0 && exprReferencesRuntimeParameter(cond, dae, visited)) ||
-      (thenE >= 0 && exprReferencesRuntimeParameter(thenE, dae, visited)) ||
-      (elseE >= 0 && exprReferencesRuntimeParameter(elseE, dae, visited))
+      (cond >= 0 && exprReferencesRuntimeParameter(cond, dae, visited, includeInteger)) ||
+      (thenE >= 0 && exprReferencesRuntimeParameter(thenE, dae, visited, includeInteger)) ||
+      (elseE >= 0 && exprReferencesRuntimeParameter(elseE, dae, visited, includeInteger))
     );
   }
   if (k === ExprKind.Der || k === ExprKind.Pre) {
     const arg = dae.getExprData1(exprId);
-    return arg >= 0 && exprReferencesRuntimeParameter(arg, dae, visited);
+    return arg >= 0 && exprReferencesRuntimeParameter(arg, dae, visited, includeInteger);
   }
   if (k === ExprKind.Subscript) {
     const base = dae.getExprData1(exprId);
-    if (base >= 0 && exprReferencesRuntimeParameter(base, dae, visited)) return true;
+    if (base >= 0 && exprReferencesRuntimeParameter(base, dae, visited, includeInteger)) return true;
     const subCount = dae.getExprRight(exprId);
     for (let i = 0; i < subCount; i++) {
       const subId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
-      if (subId >= 0 && exprReferencesRuntimeParameter(subId, dae, visited)) return true;
+      if (subId >= 0 && exprReferencesRuntimeParameter(subId, dae, visited, includeInteger)) return true;
     }
     return false;
   }
@@ -94,7 +97,7 @@ export function exprReferencesRuntimeParameter(
     const count = dae.getExprData1(exprId);
     for (let i = 0; i < count; i++) {
       const elemId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
-      if (elemId >= 0 && exprReferencesRuntimeParameter(elemId, dae, visited)) return true;
+      if (elemId >= 0 && exprReferencesRuntimeParameter(elemId, dae, visited, includeInteger)) return true;
     }
     return false;
   }
@@ -102,7 +105,7 @@ export function exprReferencesRuntimeParameter(
     const count = dae.getExprRight(exprId);
     for (let i = 0; i < count; i++) {
       const argId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
-      if (argId >= 0 && exprReferencesRuntimeParameter(argId, dae, visited)) return true;
+      if (argId >= 0 && exprReferencesRuntimeParameter(argId, dae, visited, includeInteger)) return true;
     }
     return false;
   }
@@ -207,9 +210,29 @@ export function getArrayCtorElements(id: number, dae: DAEBuilder): number[] {
   }
   if (kind === ExprKind.IfElse) {
     const condId = dae.getExprData1(id);
-    const thenElems = getArrayCtorElements(dae.getExprLeft(id), dae);
-    const elseElems = getArrayCtorElements(dae.getExprRight(id), dae);
-    if (thenElems.length === elseElems.length && thenElems.length > 0 && exprReferencesRuntimeParameter(condId, dae)) {
+    const thenId = dae.getExprLeft(id);
+    const elseId = dae.getExprRight(id);
+    let thenElems = getArrayCtorElements(thenId, dae);
+    let elseElems = getArrayCtorElements(elseId, dae);
+    if (thenElems.length === 1 && dae.getExprKind(thenId) === ExprKind.Name) {
+      const tName = dae.interner.resolve(dae.getExprData1(thenId));
+      if (tName && dae.hasArrayElements(tName)) {
+        const idxs = dae.getArrayElementIndices(tName);
+        if (idxs.length > 1) {
+          thenElems = idxs.map((vi) => dae.addExpression(ExprKind.Name, dae.interner.intern(dae.getVarName(vi))));
+        }
+      }
+    }
+    if (elseElems.length === 1 && thenElems.length > 1 && dae.getExprKind(elseId) === ExprKind.Call) {
+      elseElems = thenElems.map((_, idx) => dae.addSubscriptExpr(elseId, [dae.addIntLiteral(idx + 1)]));
+    } else if (thenElems.length === 1 && elseElems.length > 1 && dae.getExprKind(thenId) === ExprKind.Call) {
+      thenElems = elseElems.map((_, idx) => dae.addSubscriptExpr(thenId, [dae.addIntLiteral(idx + 1)]));
+    }
+    if (
+      thenElems.length === elseElems.length &&
+      thenElems.length > 0 &&
+      exprReferencesRuntimeParameter(condId, dae, new Set(), Boolean(dae.extensionMetadata?.["isOldFrontend"]))
+    ) {
       const len = thenElems.length;
       const elems: number[] = [];
       for (let i = 0; i < len; i++) {
@@ -233,7 +256,7 @@ export function getArrayCtorElements(id: number, dae: DAEBuilder): number[] {
     }
     return elems;
   }
-  if (kind !== ExprKind.ArrayCtor) {
+  if (kind !== ExprKind.ArrayCtor && kind !== ExprKind.Tuple) {
     return [id];
   }
   const count = dae.getExprData1(id);
@@ -362,6 +385,35 @@ export function mulWithSimplification(leftId: number, rightId: number, dae: DAEB
     return dae.addBinaryExpr(BinOp.Div, newNum, rDen);
   }
 
+  const isNegNode = (id: number): boolean =>
+    dae.getExprKind(id) === ExprKind.Negate ||
+    (dae.getExprKind(id) === ExprKind.Unary && (dae.getExprData1(id) as UnaryOp) === UnaryOp.Negate);
+  if (isNegNode(leftId) && rK === ExprKind.Binary && dae.getExprData1(rightId) === BinOp.Pow) {
+    const innerL = dae.getExprLeft(leftId);
+    if (dae.getExprKind(innerL) === ExprKind.Binary && dae.getExprData1(innerL) === BinOp.Pow) {
+      const lBase = dae.getExprLeft(innerL);
+      const lExp = dae.getExprRight(innerL);
+      const rBase = dae.getExprLeft(rightId);
+      const rExp = dae.getExprRight(rightId);
+      if (
+        exprsEqual(lExp, rExp, dae) &&
+        dae.getExprKind(lBase) === ExprKind.Binary &&
+        dae.getExprData1(lBase) === BinOp.Div
+      ) {
+        const divNum = dae.getExprLeft(lBase);
+        const divDen = dae.getExprRight(lBase);
+        const isOne =
+          (dae.getExprKind(divNum) === ExprKind.RealLiteral && dae.getExprRealValue(divNum) === 1.0) ||
+          (dae.getExprKind(divNum) === ExprKind.IntLiteral && dae.getExprData1(divNum) === 1);
+        if (isOne) {
+          const combinedBase = dae.addBinaryExpr(BinOp.Div, rBase, divDen);
+          const combinedPow = dae.addBinaryExpr(BinOp.Pow, combinedBase, lExp);
+          return dae.addUnaryExpr(UnaryOp.Negate, combinedPow);
+        }
+      }
+    }
+  }
+
   const lReal = isRealExpr(leftId, dae);
   const rReal = isRealExpr(rightId, dae);
   if (lReal && !rReal) {
@@ -370,10 +422,34 @@ export function mulWithSimplification(leftId: number, rightId: number, dae: DAEB
     leftId = castToRealExpr(leftId, dae);
   }
 
-  const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+  const isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
   if (isOldFrontend && exprsEqual(leftId, rightId, dae)) {
     const isReal = isRealExpr(leftId, dae);
     return dae.addBinaryExpr(BinOp.Pow, leftId, isReal ? dae.addRealLiteral(2.0) : dae.addIntLiteral(2));
+  }
+  const curLK = dae.getExprKind(leftId);
+  const curRK = dae.getExprKind(rightId);
+  if (
+    curLK === ExprKind.RealLiteral &&
+    curRK === ExprKind.Binary &&
+    dae.getExprData1(rightId) === BinOp.Mul &&
+    isNegNode(dae.getExprLeft(rightId))
+  ) {
+    const negVal = -dae.getExprRealValue(leftId);
+    const innerLeft = dae.getExprLeft(dae.getExprLeft(rightId));
+    const innerRight = dae.getExprRight(rightId);
+    return dae.addBinaryExpr(
+      BinOp.Mul,
+      dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(negVal), innerLeft),
+      innerRight,
+    );
+  }
+  if (
+    (curRK === ExprKind.RealLiteral || curRK === ExprKind.IntLiteral) &&
+    curLK !== ExprKind.RealLiteral &&
+    curLK !== ExprKind.IntLiteral
+  ) {
+    return dae.addBinaryExpr(BinOp.Mul, rightId, leftId);
   }
   return dae.addBinaryExpr(BinOp.Mul, leftId, rightId);
 }
@@ -462,6 +538,14 @@ export function addWithFactoring(term1: number, term2: number, dae: DAEBuilder):
       const sumInner = dae.addBinaryExpr(BinOp.Add, a, c);
       return dae.addBinaryExpr(BinOp.Mul, b, sumInner);
     }
+  }
+
+  if (
+    (t2K === ExprKind.Negate || (t2K === ExprKind.Unary && (dae.getExprData1(term2) as UnaryOp) === UnaryOp.Negate)) &&
+    dae.getExprKind(dae.getExprLeft(term2)) === ExprKind.Binary &&
+    dae.getExprData1(dae.getExprLeft(term2)) === BinOp.Pow
+  ) {
+    return dae.addBinaryExpr(BinOp.Sub, term1, dae.getExprLeft(term2));
   }
 
   return dae.addBinaryExpr(BinOp.Add, term1, term2);
@@ -693,6 +777,12 @@ export function addArrayBinaryExpr(op: BinOp, leftId: number, rightId: number, d
     if (leftKind === ExprKind.IntLiteral && dae.getExprData1(leftId) === 0) return rightId;
     if (rightKind === ExprKind.RealLiteral && dae.getExprRealValue(rightId) === 0) return leftId;
     if (rightKind === ExprKind.IntLiteral && dae.getExprData1(rightId) === 0) return leftId;
+    if (
+      rightKind === ExprKind.Negate ||
+      (rightKind === ExprKind.Unary && (dae.getExprData1(rightId) as UnaryOp) === UnaryOp.Negate)
+    ) {
+      return dae.addBinaryExpr(BinOp.Sub, leftId, dae.getExprLeft(rightId));
+    }
   }
   if (op === BinOp.Sub) {
     if (rightKind === ExprKind.RealLiteral && dae.getExprRealValue(rightId) === 0) return leftId;
@@ -753,18 +843,24 @@ export function broadcastElemBinOp(
       return dae.addArrayCtorExpr(newElems);
     }
   } else if (lK === ExprKind.ArrayCtor && rK !== ExprKind.ArrayCtor) {
-    const lElems = getArrayCtorElements(leftId, dae);
-    const newElems = lElems.map((e) => broadcastElemBinOp(elemOp, baseOp, e, rightId, dae, flattener, false));
-    return dae.addArrayCtorExpr(newElems);
+    const rDims = getExprDims(rightId, dae, flattener?.db);
+    if (!rDims || rDims.length === 0) {
+      const lElems = getArrayCtorElements(leftId, dae);
+      const newElems = lElems.map((e) => broadcastElemBinOp(elemOp, baseOp, e, rightId, dae, flattener, false));
+      return dae.addArrayCtorExpr(newElems);
+    }
   } else if (lK !== ExprKind.ArrayCtor && rK === ExprKind.ArrayCtor) {
-    const rElems = getArrayCtorElements(rightId, dae);
-    const isStringOp = lK === ExprKind.StringLiteral || inferArenaExprVarType(dae, leftId) === VarType.String;
-    if (!isStringOp && flattener?.options?.omcCompatibility && (baseOp === BinOp.Add || baseOp === BinOp.Mul)) {
-      const newElems = rElems.map((e) => broadcastElemBinOp(elemOp, baseOp, e, leftId, dae, flattener, false));
-      return dae.addArrayCtorExpr(newElems);
-    } else {
-      const newElems = rElems.map((e) => broadcastElemBinOp(elemOp, baseOp, leftId, e, dae, flattener, false));
-      return dae.addArrayCtorExpr(newElems);
+    const lDims = getExprDims(leftId, dae, flattener?.db);
+    if (!lDims || lDims.length === 0) {
+      const rElems = getArrayCtorElements(rightId, dae);
+      const isStringOp = lK === ExprKind.StringLiteral || inferArenaExprVarType(dae, leftId) === VarType.String;
+      if (!isStringOp && flattener?.options?.omcCompatibility && (baseOp === BinOp.Add || baseOp === BinOp.Mul)) {
+        const newElems = rElems.map((e) => broadcastElemBinOp(elemOp, baseOp, e, leftId, dae, flattener, false));
+        return dae.addArrayCtorExpr(newElems);
+      } else {
+        const newElems = rElems.map((e) => broadcastElemBinOp(elemOp, baseOp, leftId, e, dae, flattener, false));
+        return dae.addArrayCtorExpr(newElems);
+      }
     }
   }
 
@@ -975,8 +1071,18 @@ export function findOperatorRecordComponentType(
   dae: DAEBuilder,
   db: QueryDB | undefined,
   flattener: any,
-): { name: string; symId: SymbolId; isArray: boolean; arrayDim?: number } | null {
+): {
+  name: string;
+  symId: SymbolId;
+  isArray: boolean;
+  arrayDim?: number | undefined;
+  arrayDims?: number[] | undefined;
+} | null {
   if (!db) return null;
+  const extractDims = (rawDims: any): number[] | undefined => {
+    if (!Array.isArray(rawDims) || rawDims.length === 0) return undefined;
+    return rawDims.map((d: any) => (typeof d === "number" ? d : typeof d?.value === "number" ? d.value : 0));
+  };
   const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
   let vIdx = dae.getVarIdxByName(baseName);
   if (vIdx < 0 && currentPrefix) {
@@ -990,8 +1096,9 @@ export function findOperatorRecordComponentType(
     if (classSym) {
       const shape = dae.getVarShape(vIdx);
       const isArray = Boolean(shape && shape.length > 0);
+      const arrayDims = isArray ? [...shape] : undefined;
       const arrayDim = isArray ? shape[0] : 0;
-      return { name: classSym.name, symId: classSym.id, isArray, arrayDim };
+      return { name: classSym.name, symId: classSym.id, isArray, arrayDim, arrayDims };
     }
     return null;
   }
@@ -1009,10 +1116,10 @@ export function findOperatorRecordComponentType(
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
       const classSym = db.byName(cleanType).find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
       if (classSym) {
-        const dims = compInst?.arrayDimensions;
-        const isArray = Boolean((dims && dims.length > 0) || (compSym.metadata as any)?.isArray);
-        const arrayDim = dims && dims.length > 0 ? dims[0] : 0;
-        return { name: classSym.name, symId: classSym.id, isArray, arrayDim };
+        const arrayDims = extractDims(compInst?.arrayDimensions);
+        const isArray = Boolean((arrayDims && arrayDims.length > 0) || (compSym.metadata as any)?.isArray);
+        const arrayDim = arrayDims && arrayDims.length > 0 ? arrayDims[0] : 0;
+        return { name: classSym.name, symId: classSym.id, isArray, arrayDim, arrayDims };
       }
       return null;
     }
@@ -1042,12 +1149,12 @@ export function findOperatorRecordComponentType(
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
       const classSym = db.byName(cleanType).find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
       if (classSym) {
-        const dims = compInst?.arrayDimensions;
+        const arrayDims = extractDims(compInst?.arrayDimensions);
         const isArray = Boolean(
-          (dims && dims.length > 0) || (compSym.metadata as any)?.isArray || compSym.name.includes("["),
+          (arrayDims && arrayDims.length > 0) || (compSym.metadata as any)?.isArray || compSym.name.includes("["),
         );
-        const arrayDim = dims && dims.length > 0 ? dims[0] : 0;
-        return { name: classSym.name, symId: classSym.id, isArray, arrayDim };
+        const arrayDim = arrayDims && arrayDims.length > 0 ? arrayDims[0] : 0;
+        return { name: classSym.name, symId: classSym.id, isArray, arrayDim, arrayDims };
       }
     }
   }
@@ -1060,7 +1167,13 @@ export function resolveOperatorRecord(
   dae: DAEBuilder,
   db: QueryDB | undefined,
   flattener: any,
-): { name: string; symId: SymbolId; isArray: boolean; arrayDim?: number } | null {
+): {
+  name: string;
+  symId: SymbolId;
+  isArray: boolean;
+  arrayDim?: number | undefined;
+  arrayDims?: number[] | undefined;
+} | null {
   if (!db) return null;
   if (exprId >= 0) {
     const kind = dae.getExprKind(exprId);
@@ -1078,7 +1191,15 @@ export function resolveOperatorRecord(
 
   const findCompType = (baseName: string) => findOperatorRecordComponentType(baseName, dae, db, flattener);
 
-  const resolvePath = (pathStr: string) => {
+  const resolvePath = (
+    pathStr: string,
+  ): {
+    name: string;
+    symId: number;
+    isArray: boolean;
+    arrayDim?: number | undefined;
+    arrayDims?: number[] | undefined;
+  } | null => {
     if (!pathStr || !/^[a-zA-Z_]\w*(?:\s*\[[^\]]*\]|\.[a-zA-Z_]\w*)*$/.test(pathStr)) return null;
     const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
     let fullIdx = dae.getVarIdxByName(pathStr);
@@ -1090,31 +1211,41 @@ export function resolveOperatorRecord(
     }
     const parts = pathStr
       .split(".")
-      .map((p) => p.split("[")[0].trim())
+      .map((p) => p.split("[")[0]!.trim())
       .filter(Boolean);
     if (parts.length === 0) return null;
-    let curr = findCompType(parts[0]!);
+    let curr: {
+      name: string;
+      symId: number;
+      isArray: boolean;
+      arrayDim?: number | undefined;
+      arrayDims?: number[] | undefined;
+    } | null = findCompType(parts[0]!);
     if (!curr) return null;
     for (let i = 1; i < parts.length; i++) {
       const fieldName = parts[i]!;
-      const children = db.childrenOf(curr.symId).filter((c: any) => c.kind === "Component");
-      const fieldSym = children.find((c: any) => c.name === fieldName);
+      const children: any[] = db.childrenOf(curr.symId).filter((c: any) => c.kind === "Component");
+      const fieldSym: any = children.find((c: any) => c.name === fieldName);
       if (!fieldSym) return null;
-      const compInst = db.query<any>("componentInstance", fieldSym.id);
-      const typeSpec =
+      const compInst: any = db.query<any>("componentInstance", fieldSym.id);
+      const typeSpec: string | null =
         compInst?.typeSpecifier ??
         (fieldSym.metadata as any)?.typeSpecifier ??
         db.query<string | null>("typeSpecifier", fieldSym.id);
       if (!typeSpec) return null;
-      const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
+      const cleanType: string = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
       const classSym = db.byName(cleanType).find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
       if (!classSym) return null;
-      const dims = compInst?.arrayDimensions;
-      const isArray = Boolean(
-        (dims && dims.length > 0) || (fieldSym.metadata as any)?.isArray || fieldSym.name.includes("["),
+      const rawDims: any = compInst?.arrayDimensions;
+      const arrayDims: number[] | undefined =
+        Array.isArray(rawDims) && rawDims.length > 0
+          ? rawDims.map((d: any) => (typeof d === "number" ? d : typeof d?.value === "number" ? d.value : 0))
+          : undefined;
+      const isArray: boolean = Boolean(
+        (arrayDims && arrayDims.length > 0) || (fieldSym.metadata as any)?.isArray || fieldSym.name.includes("["),
       );
-      const arrayDim = dims && dims.length > 0 ? dims[0] : 0;
-      curr = { name: classSym.name, symId: classSym.id, isArray, arrayDim };
+      const arrayDim: number | undefined = arrayDims && arrayDims.length > 0 ? arrayDims[0] : 0;
+      curr = { name: classSym.name, symId: classSym.id, isArray, arrayDim, arrayDims };
     }
     return curr;
   };
@@ -1132,6 +1263,7 @@ export function resolveOperatorRecord(
         symId: res.symId,
         isArray: isSubscripted ? false : res.isArray,
         arrayDim: res.arrayDim,
+        arrayDims: isSubscripted ? undefined : res.arrayDims,
       };
     }
   }
@@ -1149,6 +1281,7 @@ export function resolveOperatorRecord(
             symId: res.symId,
             isArray: isSubscripted ? false : res.isArray,
             arrayDim: res.arrayDim,
+            arrayDims: isSubscripted ? undefined : res.arrayDims,
           };
         }
       }
@@ -1172,7 +1305,7 @@ export function resolveOperatorRecord(
 export function coerceToOperatorRecord(
   argExprId: number,
   recSymId: SymbolId,
-  recName: string,
+  _recName: string,
   dae: DAEBuilder,
   db: QueryDB,
   flattener: any,
@@ -1267,16 +1400,19 @@ export function dispatchBinaryOperator(
 
   const checkParamMatch = (
     param: any,
-    rec: { name: string; symId: SymbolId; isArray: boolean } | null,
+    rec: { name: string; symId: SymbolId; isArray: boolean; arrayDims?: number[] | undefined } | null,
     argId: number,
   ): { matched: boolean; argId: number } => {
     if (param.isArray) {
-      if (rec?.isArray) return { matched: true, argId };
+      if (rec?.isArray && (!rec.arrayDims || rec.arrayDims.length <= 1)) return { matched: true, argId };
       return { matched: false, argId };
     }
     if (rec) {
       if (rec.isArray) return { matched: false, argId };
-      if (param.typeSpec === rec.name) return { matched: true, argId };
+      const cleanTypeSpec = param.typeSpec?.replace(/^\./, "");
+      if (cleanTypeSpec === rec.name || cleanTypeSpec?.split(".").pop() === rec.name) {
+        return { matched: true, argId };
+      }
       return { matched: false, argId };
     }
     // Primitive argument (Real or Integer)
@@ -1288,8 +1424,9 @@ export function dispatchBinaryOperator(
       return { matched: true, argId: finalArg };
     }
     // Try implicit constructor coercion to target operator record
+    const cleanTargetSpec = param.typeSpec?.replace(/^\./, "") ?? "";
     const targetSym = db
-      .byName(param.typeSpec)
+      .byName(cleanTargetSpec)
       .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
     if (targetSym) {
       const coerced = coerceToOperatorRecord(argId, targetSym.id, targetSym.name, dae, db, flattener);
@@ -1324,8 +1461,12 @@ export function dispatchBinaryOperator(
     const directMatches = matched.filter((m) => {
       const p0 = m.overload.inputParams[0];
       const p1 = m.overload.inputParams[1];
-      const lDirect = leftRec ? p0.typeSpec === leftRec.name : p0.typeSpec === "Real" || p0.typeSpec === "Integer";
-      const rDirect = rightRec ? p1.typeSpec === rightRec.name : p1.typeSpec === "Real" || p1.typeSpec === "Integer";
+      const lDirect = leftRec
+        ? p0.typeSpec?.replace(/^\./, "") === leftRec.name
+        : p0.typeSpec === "Real" || p0.typeSpec === "Integer";
+      const rDirect = rightRec
+        ? p1.typeSpec?.replace(/^\./, "") === rightRec.name
+        : p1.typeSpec === "Real" || p1.typeSpec === "Integer";
       return lDirect && rDirect;
     });
     if (directMatches.length === 1) {
@@ -1370,8 +1511,8 @@ export function dispatchBinaryOperator(
   if (isLeftArr || isRightArr) {
     const arrDim = leftRec?.arrayDim ?? rightRec?.arrayDim ?? 0;
     // Find a scalar overload that matches individual elements
-    const scalarLeftRec = leftRec ? { ...leftRec, isArray: false } : null;
-    const scalarRightRec = rightRec ? { ...rightRec, isArray: false } : null;
+    const scalarLeftRec = leftRec ? { ...leftRec, isArray: false, arrayDims: undefined } : null;
+    const scalarRightRec = rightRec ? { ...rightRec, isArray: false, arrayDims: undefined } : null;
 
     let bestScalarOverload: any = null;
     for (const cand of candidates) {
@@ -1384,6 +1525,87 @@ export function dispatchBinaryOperator(
       if (lRes.matched && rRes.matched) {
         bestScalarOverload = cand;
         break;
+      }
+    }
+
+    if (
+      cleanOp === "*" &&
+      leftRec?.arrayDims?.length === 2 &&
+      rightRec?.arrayDims?.length === 2 &&
+      leftRec.arrayDims[1] === rightRec.arrayDims[0] &&
+      leftRec.arrayDims[0]! > 0 &&
+      leftRec.arrayDims[1]! > 0 &&
+      rightRec.arrayDims[1]! > 0 &&
+      bestScalarOverload
+    ) {
+      const M = leftRec.arrayDims[0]!;
+      const K = leftRec.arrayDims[1]!;
+      const N = rightRec.arrayDims[1]!;
+      const addCandidates: any[] = ops ? [...(ops.get("'+'") ?? []), ...(ops.get("+") ?? [])] : [];
+      const scalarAddOverload = addCandidates.find(
+        (cand) =>
+          cand.inputParams?.length === 2 &&
+          !cand.inputParams[0].isArray &&
+          !cand.inputParams[1].isArray &&
+          checkParamMatch(cand.inputParams[0], scalarLeftRec, leftId).matched &&
+          checkParamMatch(cand.inputParams[1], scalarRightRec, rightId).matched,
+      );
+      if (scalarAddOverload) {
+        flattener?.usedOperatorFunctions?.set(bestScalarOverload.qualifiedName, bestScalarOverload.funcSymId);
+        flattener?.usedOperatorFunctions?.set(scalarAddOverload.qualifiedName, scalarAddOverload.funcSymId);
+        const leftBase = leftNode?.text?.trim() ?? "";
+        const rightBase = rightNode?.text?.trim() ?? "";
+        const rows: number[] = [];
+        for (let i = 1; i <= M; i++) {
+          const rowElems: number[] = [];
+          for (let j = 1; j <= N; j++) {
+            let acc = -1;
+            for (let k = 1; k <= K; k++) {
+              const lElem = dae.addExpression(ExprKind.Name, dae.interner.intern(`${leftBase}[${i},${k}]`));
+              const rElem = dae.addExpression(ExprKind.Name, dae.interner.intern(`${rightBase}[${k},${j}]`));
+              const term = dae.addCallExpr(bestScalarOverload.qualifiedName, [lElem, rElem]);
+              acc = k === 1 ? term : dae.addCallExpr(scalarAddOverload.qualifiedName, [term, acc]);
+            }
+            rowElems.push(acc);
+          }
+          rows.push(dae.addArrayCtorExpr(rowElems));
+        }
+        const matExprId = dae.addArrayCtorExpr(rows);
+        if (dae.extensionMetadata?.["isOldFrontend"]) {
+          let compClauseNode: any = leftNode;
+          while (compClauseNode && compClauseNode.type !== "component_clause") {
+            compClauseNode = compClauseNode.parent;
+          }
+          let compName = flattener?.currentBindingCompName;
+          if (!compName && compClauseNode?.text) {
+            const m = /^\s*(?:[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*\s+)+([a-zA-Z_]\w*)/.exec(compClauseNode.text);
+            if (m?.[1]) compName = m[1];
+          }
+          if (compClauseNode && compName) {
+            const printer = new ArenaDAEPrinter(new StringWriter(), dae, true);
+            const modStr = printer.printExprToString(matExprId);
+            const fields = db.childrenOf(recSym.symId).filter((c: any) => c.kind === "Component");
+            const fieldLines = fields.map((f: any) => {
+              const fType =
+                db.query<string | null>("typeSpecifier", f.id) ?? (f.metadata as any)?.typeSpecifier ?? "Real";
+              return `  ${fType} ${f.name};`;
+            });
+            const recTypeBlock = `record ${recSym.name}\n${fieldLines.join("\n")}\nend ${recSym.name};[${M}, ${N}]`;
+            dae.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code,
+              message: `Type mismatch in modifier of component ${compName}, declared type ${recSym.name}[${M},${N}], got modifier ${modStr} of type ${recTypeBlock}.`,
+              range: {
+                startByte: compClauseNode.startIndex ?? compClauseNode.startByte,
+                endByte: compClauseNode.endIndex ?? compClauseNode.endByte,
+                startPosition: compClauseNode.startPosition,
+                endPosition: compClauseNode.endPosition,
+              },
+            });
+            return -1;
+          }
+        }
+        return matExprId;
       }
     }
 
@@ -1535,6 +1757,11 @@ export function negateExpr(operandId: number, dae: DAEBuilder): number {
       const leftId = dae.getExprLeft(operandId);
       const rightId = dae.getExprRight(operandId);
       return dae.addBinaryExpr(BinOp.Div, negateExpr(leftId, dae), rightId);
+    }
+    if (binOp === BinOp.Sub && Boolean(dae.extensionMetadata?.["isOldFrontend"])) {
+      const leftId = dae.getExprLeft(operandId);
+      const rightId = dae.getExprRight(operandId);
+      return dae.addBinaryExpr(BinOp.Sub, rightId, leftId);
     }
   }
   return dae.addExpression(ExprKind.Negate, 0, operandId);

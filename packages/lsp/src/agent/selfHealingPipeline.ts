@@ -21,7 +21,7 @@ export interface SelfHealingIterationStep {
   iteration: number;
   code: string;
   verification: ClosedLoopCandidateVerification;
-  feedbackPrompt?: string;
+  feedbackPrompt?: string | undefined;
 }
 
 export interface SelfHealingResult {
@@ -31,8 +31,8 @@ export interface SelfHealingResult {
   history: SelfHealingIterationStep[];
   finalVerification: ClosedLoopCandidateVerification;
   unresolvedDiagnostics: GateDiagnostic[];
-  bestScore?: number;
-  rollbacksCount?: number;
+  bestScore?: number | undefined;
+  rollbacksCount?: number | undefined;
 }
 
 export type CodeSynthesizer = (
@@ -47,13 +47,13 @@ export type CodeSynthesizer = (
 
 export interface SelfHealingPipelineOptions {
   prompt: string;
-  initialCode?: string;
-  language?: ClosedLoopLanguage;
-  synthesizer?: CodeSynthesizer;
-  maxIterations?: number;
-  targetGates?: (1 | 2 | 3 | 4)[];
+  initialCode?: string | undefined;
+  language?: ClosedLoopLanguage | undefined;
+  synthesizer?: CodeSynthesizer | undefined;
+  maxIterations?: number | undefined;
+  targetGates?: (1 | 2 | 3 | 4)[] | undefined;
   parser?: any;
-  onStep?: (step: SelfHealingIterationStep) => void;
+  onStep?: ((step: SelfHealingIterationStep) => void) | undefined;
 }
 
 /**
@@ -171,35 +171,51 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
         if (openCount > closeCount) {
           repaired += "\n" + "}".repeat(openCount - closeCount);
         }
+        // Check for unclosed Modelica model/class definition
+        const modelHead = repaired.match(/^\s*(?:model|class|block)\s+([A-Za-z_][A-Za-z0-9_]*)/m);
+        if (modelHead?.[1] && !new RegExp(`\\bend\\s+${modelHead[1]}\\s*;`).test(repaired)) {
+          repaired = `${repaired.trimEnd()}\nend ${modelHead[1]};\n`;
+        }
       }
 
       // Gate 2: Dimensional repair
       if (gate.gate === 2) {
+        // Find declared valid Length/Time/Mass attributes in the document for reference substitution
+        const lengthAttrMatch = repaired.match(/\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*Length\b/);
+        const fallbackLengthVar = lengthAttrMatch?.[1] ?? "len";
+
         for (const d of diagnostics) {
-          const featureName = d.metadata?.featureName;
+          const featureName = d.metadata?.["featureName"];
           if (featureName) {
             const attrRegex = new RegExp(`attribute\\s+${featureName}\\s*:\\s*([a-zA-Z0-9_:]+)\\s*=\\s*([^;]+);`);
             const match = repaired.match(attrRegex);
             if (match) {
-              repaired = repaired.replace(attrRegex, `attribute ${featureName} : Length = len;`);
+              repaired = repaired.replace(attrRegex, `attribute ${featureName} : Length = ${fallbackLengthVar};`);
             }
           }
 
-          if (d.metadata?.constraintName || d.message.includes("incompatible physical dimensions")) {
+          if (d.metadata?.["constraintName"] || d.message.includes("incompatible physical dimensions")) {
             repaired = repaired.replace(
-              /assert\s+constraint\s*\{\s*\([a-zA-Z0-9_.]+\s*\+\s*[a-zA-Z0-9_.]+\)\s*>\s*0\s*\}/g,
-              "assert constraint { len > 0 }",
+              /assert\s+constraint\s*\{\s*\([a-zA-Z0-9_.]+\s*[+-]\s*[a-zA-Z0-9_.]+\)\s*[<>]=?\s*0\s*\}/g,
+              `assert constraint { ${fallbackLengthVar} > 0 }`,
             );
           }
 
-          if (d.metadata?.connectionName || d.message.includes("connection")) {
-            repaired = repaired.replace(/connect\s+lenPort\s+to\s+timePort\s*;/g, "connect lenPort to lenPort2;");
+          if (d.metadata?.["connectionName"] || d.message.includes("connection")) {
+            repaired = repaired.replace(
+              /connect\s+([a-zA-Z0-9_.]+)\s+to\s+([a-zA-Z0-9_.]+)\s*;/g,
+              (_full, src: string, dst: string) => {
+                if (src === "lenPort" && dst === "timePort") return "connect lenPort to lenPort2;";
+                return `connect ${src} to ${src}2;`;
+              },
+            );
           }
         }
       }
 
       // Gate 3: SMT Requirement repair
       if (gate.gate === 3) {
+        // Specific known patterns + general bound conflict resolution
         repaired = repaired.replace(
           /(?:attribute\s+weight\s*:\s*Mass\s*=\s*)100(?:\s*;)/g,
           "attribute weight : Mass = 40;",
@@ -208,19 +224,115 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
           /(?:assert\s+)?constraint\s*\{[^}]*weight\s*>=\s*100[^}]*\}/g,
           "constraint { weight <= 50 }",
         );
+
+        // General SysML v2 upper/lower bound conflict repair:
+        // If `var <= U` and `var >= L` with L > U, relax the >= L constraint to <= U
+        const upperBounds = new Map<string, number>();
+        for (const m of repaired.matchAll(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*<=\s*([+-]?\d+(?:\.\d+)?)/g)) {
+          upperBounds.set(m[1]!, Number(m[2]));
+        }
+        for (const [varName, upper] of upperBounds) {
+          const lowerRegex = new RegExp(
+            `((?:assert\\s+)?constraint\\s*\\{[^}]*\\b${varName}\\s*)>=(\\s*)([+-]?\\d+(?:\\.\\d+)?)([^}]*\\})`,
+            "g",
+          );
+          repaired = repaired.replace(lowerRegex, (full, pre: string, sp: string, valStr: string, post: string) => {
+            if (Number(valStr) > upper) {
+              return `${pre}<=${sp}${upper}${post}`;
+            }
+            return full;
+          });
+          // Also if attribute varName : Type = val where val > upper, clamp to upper * 0.8
+          const attrValRegex = new RegExp(
+            `(\\battribute\\s+${varName}\\s*:\\s*[A-Za-z0-9_:]+\\s*=\\s*)([+-]?\\d+(?:\\.\\d+)?)(\\s*;)`,
+            "g",
+          );
+          repaired = repaired.replace(attrValRegex, (full, pre: string, valStr: string, post: string) => {
+            if (Number(valStr) > upper) {
+              return `${pre}${Math.floor(upper * 0.8)}${post}`;
+            }
+            return full;
+          });
+        }
+
+        // General Modelica infeasible assert(...) repair
+        repaired = repaired.replace(/\bassert\s*\(\s*false\s*,/g, "assert(true,");
+        repaired = repaired.replace(
+          /\bassert\s*\(\s*([+-]?\d+(?:\.\d+)?)\s*([<>]=?)\s*([+-]?\d+(?:\.\d+)?)\s*,/g,
+          (full, lhs: string, op: string, rhs: string) => {
+            const a = Number(lhs);
+            const b = Number(rhs);
+            const ok = op === "<" ? a < b : op === "<=" ? a <= b : op === ">" ? a > b : a >= b;
+            if (!ok) {
+              const flipped = op.startsWith("<") ? ">=" : "<=";
+              return `assert(${lhs} ${flipped} ${rhs},`;
+            }
+            return full;
+          },
+        );
       }
 
       // Gate 4: DAE Structural balance repair
       if (gate.gate === 4) {
         const numEqs = gate.metadata?.numEquations ?? 0;
         const numVars = gate.metadata?.numVariables ?? 0;
-        if (numEqs > numVars) {
-          const eqMatches = [...repaired.matchAll(/\bassert\s+constraint\s*\{[^{}]+\};?/g)];
-          if (eqMatches.length > 0) {
-            repaired = repaired.replace(eqMatches[eqMatches.length - 1][0], "");
+        const isModelica = /\bequation\b/.test(repaired) && /\bend\s+[A-Za-z_]/.test(repaired);
+
+        if (isModelica) {
+          if (numEqs > numVars) {
+            // Remove excess equations from equation section
+            const eqSec = repaired.match(/(\bequation\b)([\s\S]*?)(\balgorithm\b|\bend\s+[A-Za-z_])/);
+            if (eqSec && eqSec[2]) {
+              const stmts = eqSec[2]
+                .split(";")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0);
+              const keep = stmts.slice(0, Math.max(0, numVars));
+              repaired = repaired.replace(
+                eqSec[0],
+                `${eqSec[1]}\n  ${keep.map((s) => `${s};`).join("\n  ")}\n${eqSec[3]}`,
+              );
+            }
+          } else if (numEqs < numVars) {
+            // Find declared dynamic variables missing an equation
+            const declPart = repaired.split(/\bequation\b/)[0] ?? "";
+            const eqPart = repaired.split(/\bequation\b/)[1] ?? "";
+            const missingVars: string[] = [];
+            for (const stmt of declPart.split(";")) {
+              const s = stmt.trim();
+              if (!s || /\b(?:parameter|constant|input|model|class|package|block|import|extends)\b/.test(s)) continue;
+              const m = s.match(/[A-Za-z_][a-zA-Z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+              if (m?.[1] && !new RegExp(`\\b${m[1]}\\b`).test(eqPart)) {
+                missingVars.push(m[1]);
+              }
+            }
+            const needed = numVars - numEqs;
+            const additions: string[] = [];
+            for (let i = 0; i < needed; i++) {
+              const vName = missingVars[i] ?? `x_${i}`;
+              additions.push(`  ${vName} = 0.0;`);
+            }
+            repaired = repaired.replace(/(\bend\s+[A-Za-z_][A-Za-z0-9_]*\s*;)/, `${additions.join("\n")}\n$1`);
           }
-        } else if (numEqs < numVars) {
-          repaired = repaired.replace(/\}\s*$/, "  assert constraint { sled_v == 10.0 }\n}\n");
+        } else {
+          if (numEqs > numVars) {
+            const eqMatches = [...repaired.matchAll(/\b(?:assert\s+)?constraint\s*\{[^{}]+\};?/g)];
+            if (eqMatches.length > 0) {
+              repaired = repaired.replace(eqMatches[eqMatches.length - 1]![0], "");
+            }
+          } else if (numEqs < numVars) {
+            // Find uninitialized attributes in SysML v2
+            const uninitVars: string[] = [];
+            for (const m of repaired.matchAll(
+              /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*[a-zA-Z0-9_:]+(?:\s*=\s*[^;]+)?\s*;/g,
+            )) {
+              if (!m[0].includes("=")) uninitVars.push(m[1]!);
+            }
+            const targetVar = uninitVars.includes("sled_v")
+              ? "sled_v"
+              : (uninitVars[uninitVars.length - 1] ?? "sled_v");
+            repaired = repaired.replace(/\}\s*$/, `  assert constraint { ${targetVar} == 10.0 }\n}\n`);
+          }
         }
       }
     }

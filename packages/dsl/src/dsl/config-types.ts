@@ -8,48 +8,62 @@ export interface EnumOption<T extends string = string> {
   type: "enum";
   choices: T[];
   default: T;
-  description?: string;
+  description?: string | undefined;
 }
 
 export interface IntOption {
   type: "int";
   default: number;
-  min?: number;
-  max?: number;
-  description?: string;
+  min?: number | undefined;
+  max?: number | undefined;
+  description?: string | undefined;
 }
 
 export interface FloatOption {
   type: "float";
   default: number;
-  min?: number;
-  max?: number;
-  description?: string;
+  min?: number | undefined;
+  max?: number | undefined;
+  description?: string | undefined;
 }
 
 export interface BoolOption {
   type: "bool";
   default: boolean;
-  description?: string;
+  description?: string | undefined;
 }
 
 export type ConfigOption = EnumOption<any> | IntOption | FloatOption | BoolOption;
 export type ConfigSchemaCategory = Record<string, ConfigOption>;
 export type ConfigSchema = Record<string, ConfigSchemaCategory>;
 
-export function enumOption<T extends string>(opts: { choices: T[]; default: T; description?: string }): EnumOption<T> {
+export function enumOption<T extends string>(opts: {
+  choices: T[];
+  default: T;
+  description?: string | undefined;
+}): EnumOption<T> {
   return { type: "enum", ...opts };
 }
 
-export function intOption(opts: { default: number; min?: number; max?: number; description?: string }): IntOption {
+export function intOption(opts: {
+  default: number;
+  min?: number | undefined;
+  max?: number | undefined;
+  description?: string | undefined;
+}): IntOption {
   return { type: "int", ...opts };
 }
 
-export function floatOption(opts: { default: number; min?: number; max?: number; description?: string }): FloatOption {
+export function floatOption(opts: {
+  default: number;
+  min?: number | undefined;
+  max?: number | undefined;
+  description?: string | undefined;
+}): FloatOption {
   return { type: "float", ...opts };
 }
 
-export function boolOption(opts: { default: boolean; description?: string }): BoolOption {
+export function boolOption(opts: { default: boolean; description?: string | undefined }): BoolOption {
   return { type: "bool", ...opts };
 }
 

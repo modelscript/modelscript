@@ -36,57 +36,57 @@ export type GizmoMode = "translate" | "rotate" | "scale";
 
 export interface CadAnnotation {
   uri: string;
-  feature?: string;
-  position?: [number, number, number];
-  rotation?: [number, number, number];
-  scale?: [number, number, number];
-  dynamicPosition?: string;
-  dynamicRotation?: string;
-  dynamicScale?: string;
-  dynamicDeformation?: string;
+  feature?: string | undefined;
+  position?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined;
+  scale?: [number, number, number] | undefined;
+  dynamicPosition?: string | undefined;
+  dynamicRotation?: string | undefined;
+  dynamicScale?: string | undefined;
+  dynamicDeformation?: string | undefined;
 }
 
 export interface CadPortAnnotation {
   feature: string;
-  offsetPosition?: [number, number, number];
-  offsetRotation?: [number, number, number];
-  offsetScale?: [number, number, number];
+  offsetPosition?: [number, number, number] | undefined;
+  offsetRotation?: [number, number, number] | undefined;
+  offsetScale?: [number, number, number] | undefined;
 }
 
 export interface CadSourceMetadata {
-  parameterName?: string;
-  dimensionParams?: [string | undefined, string | undefined, string | undefined];
-  dimensions?: [number, number, number];
-  transformMethod?: string;
-  argIndex?: number;
-  startByte?: number;
-  endByte?: number;
-  primitiveStartByte?: number;
-  primitiveEndByte?: number;
-  translateRange?: { startByte: number; endByte: number };
-  rotateRange?: { startByte: number; endByte: number };
-  scaleRange?: { startByte: number; endByte: number };
-  translation?: [number, number, number];
-  rotation?: [number, number, number];
-  scale?: [number, number, number];
-  color?: [number, number, number, number];
+  parameterName?: string | undefined;
+  dimensionParams?: [string | undefined, string | undefined, string | undefined] | undefined;
+  dimensions?: [number, number, number] | undefined;
+  transformMethod?: string | undefined;
+  argIndex?: number | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  primitiveStartByte?: number | undefined;
+  primitiveEndByte?: number | undefined;
+  translateRange?: { startByte: number; endByte: number } | undefined;
+  rotateRange?: { startByte: number; endByte: number } | undefined;
+  scaleRange?: { startByte: number; endByte: number } | undefined;
+  translation?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined;
+  scale?: [number, number, number] | undefined;
+  color?: [number, number, number, number] | undefined;
 }
 
 export interface ProceduralMeshData {
   vertices: number[];
   indices: number[];
   normals: number[];
-  color?: [number, number, number, number];
+  color?: [number, number, number, number] | undefined;
 }
 
 export interface GizmoCommitPayload {
   componentName: string;
-  mode?: GizmoMode;
+  mode?: GizmoMode | undefined;
   delta: [number, number, number];
   newPosition: [number, number, number];
-  newRotation?: [number, number, number];
-  newScale?: [number, number, number];
-  sourceMetadata?: CadSourceMetadata;
+  newRotation?: [number, number, number] | undefined;
+  newScale?: [number, number, number] | undefined;
+  sourceMetadata?: CadSourceMetadata | undefined;
 }
 
 export interface CadComponent {
@@ -95,36 +95,38 @@ export interface CadComponent {
   /** Parsed CAD annotation */
   cad: CadAnnotation;
   /** Parsed CADPort annotations from sub-components (connectors) */
-  ports?: { name: string; port: CadPortAnnotation }[];
+  ports?: { name: string; port: CadPortAnnotation }[] | undefined;
   /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
-  dynamicBindings?: { property: string; index: number; variable: string }[];
+  dynamicBindings?: { property: string; index: number; variable: string }[] | undefined;
   /** Source code metadata linking to AST parameters and CST byte ranges */
-  sourceMetadata?: CadSourceMetadata;
+  sourceMetadata?: CadSourceMetadata | undefined;
   /** Procedural triangle mesh for inline CSG/OpenSCAD solids */
-  proceduralMesh?: ProceduralMeshData;
+  proceduralMesh?: ProceduralMeshData | undefined;
 }
 
 interface CadViewerProps {
   /** List of components with CAD annotations to render */
   components: CadComponent[];
   /** Base URL for resolving modelica:// URIs, e.g. "/api/v1/libraries" */
-  assetBaseUrl?: string;
+  assetBaseUrl?: string | undefined;
   /** Currently selected component name (synced with the 2D diagram) */
-  selectedName?: string | null;
+  selectedName?: string | null | undefined;
   /** Callback when user selects a 3D object */
-  onSelect?: (name: string | null) => void;
+  onSelect?: ((name: string | null) => void) | undefined;
   /** Callback when user drags and releases a 3D direct-manipulation transform/dimension gizmo */
-  onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
+  onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
   /** Callback when user saves dynamic variable bindings from CadBindingPickerModal */
-  onCommitCadBinding?: (payload: { componentName: string; bindings: DynamicBindingConfig[]; uri?: string }) => void;
+  onCommitCadBinding?:
+    | ((payload: { componentName: string; bindings: DynamicBindingConfig[]; uri?: string | undefined }) => void)
+    | undefined;
   /** Dark mode toggle */
-  dark?: boolean;
+  dark?: boolean | undefined;
   /** Animation controller for simulation-driven animation */
-  animationController?: AnimationController | null;
+  animationController?: AnimationController | null | undefined;
   /** CFD mesh payload from co-simulation VTK stream */
-  cfdPayload?: CfdMeshPayload | null;
+  cfdPayload?: CfdMeshPayload | null | undefined;
   /** FEA structural mesh payload from co-simulation stream */
-  feaPayload?: FeaMeshPayload | null;
+  feaPayload?: FeaMeshPayload | null | undefined;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -231,9 +233,9 @@ function CadModel({
   assetBaseUrl: string;
   selected: boolean;
   gizmoMode: GizmoMode;
-  onSelect?: (name: string | null) => void;
-  animationController?: AnimationController | null;
-  onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
+  onSelect?: ((name: string | null) => void) | undefined;
+  animationController?: AnimationController | null | undefined;
+  onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const groupRef = useRef<THREE.Group>(null);
@@ -408,7 +410,7 @@ function CadModel({
 
       if (trailGeoRef.current) {
         trailGeoRef.current.setDrawRange(0, trailCount.current);
-        trailGeoRef.current.attributes.position.needsUpdate = true;
+        trailGeoRef.current.attributes["position"]!.needsUpdate = true;
       }
     } else if (!selected && trailCount.current > 0) {
       trailCount.current = 0;
@@ -525,7 +527,7 @@ function CadModel({
       {/* 3D Direct Manipulation Transform Gizmo attached to selected component */}
       {selected && (!animationController || animationController.mode === "stopped") && (
         <TransformControls
-          object={groupRef}
+          object={groupRef as React.RefObject<THREE.Object3D>}
           mode={gizmoMode}
           onObjectChange={handleGizmoChange}
           onMouseUp={handleGizmoMouseUp}
@@ -553,14 +555,14 @@ function SceneContents({
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
-  selectedName?: string | null;
+  selectedName?: string | null | undefined;
   gizmoMode: GizmoMode;
-  onSelect?: (name: string | null) => void;
-  onCommitGizmoDelta?: (payload: GizmoCommitPayload) => void;
-  dark?: boolean;
-  animationController?: AnimationController | null;
-  cfdPayload?: CfdMeshPayload | null;
-  feaPayload?: FeaMeshPayload | null;
+  onSelect?: ((name: string | null) => void) | undefined;
+  onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  dark?: boolean | undefined;
+  animationController?: AnimationController | null | undefined;
+  cfdPayload?: CfdMeshPayload | null | undefined;
+  feaPayload?: FeaMeshPayload | null | undefined;
 }) {
   const { gl } = useThree();
 

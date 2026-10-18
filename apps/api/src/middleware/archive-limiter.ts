@@ -34,7 +34,7 @@ export class ArchiveExportRateLimiter {
 
   public check(userId: string | number): {
     allowed: boolean;
-    reason?: "cooldown" | "limit_exceeded";
+    reason?: "cooldown" | "limit_exceeded" | undefined;
     retryAfterSeconds: number;
     remaining: number;
   } {

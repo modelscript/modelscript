@@ -299,7 +299,7 @@ export class SspEditorProvider implements vscode.CustomReadonlyEditorProvider<Ss
     const doc = await vscode.workspace.openTextDocument(virtualUri);
     await vscode.languages.setTextDocumentLanguage(doc, targetLang);
     await vscode.window.showTextDocument(doc, {
-      viewColumn: webviewPanel.viewColumn,
+      ...(webviewPanel.viewColumn !== undefined ? { viewColumn: webviewPanel.viewColumn } : {}),
       preview: false,
     });
 

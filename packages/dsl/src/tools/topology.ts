@@ -22,9 +22,9 @@ export interface TopologyNode {
 
 export interface TopologyEdge {
   sourceId: SymbolId;
-  sourcePort?: string;
+  sourcePort?: string | undefined;
   targetId: SymbolId;
-  targetPort?: string;
+  targetPort?: string | undefined;
   /** The connection symbol (e.g. SysML allocate, bind, connect) */
   connectionId: SymbolId;
 }
@@ -39,5 +39,5 @@ export interface TopologyGraph {
    * Allows the verifier to resolve constraint operands without guessing
    * how the target simulator flattens hierarchical names.
    */
-  variableMap?: Map<string, string>;
+  variableMap?: Map<string, string> | undefined;
 }

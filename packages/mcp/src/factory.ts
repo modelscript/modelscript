@@ -7,8 +7,8 @@ import { registerTools } from "./tools.js";
 import type { ServerContext } from "./types.js";
 
 export interface CreateMcpServerOptions {
-  name?: string;
-  version?: string;
+  name?: string | undefined;
+  version?: string | undefined;
 }
 
 /**

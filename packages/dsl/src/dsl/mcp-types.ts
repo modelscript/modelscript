@@ -8,44 +8,46 @@ export type McpPrimitiveType = "string" | "number" | "boolean" | "array" | "obje
 
 export interface McpPropertySchema {
   type: McpPrimitiveType;
-  description?: string;
-  required?: boolean;
+  description?: string | undefined;
+  required?: boolean | undefined;
   default?: any;
-  enum?: string[];
-  items?: McpPropertySchema;
-  properties?: Record<string, McpPropertySchema>;
+  enum?: string[] | undefined;
+  items?: McpPropertySchema | undefined;
+  properties?: Record<string, McpPropertySchema> | undefined;
 }
 
 export interface McpToolDeclaration<_RuleName extends string = string, QueryName extends string = string> {
   name: string;
   description: string;
-  category?: "ast" | "query" | "simulation" | "reasoning" | "transformation" | "custom";
+  category?: "ast" | "query" | "simulation" | "reasoning" | "transformation" | "custom" | undefined;
   inputSchema: Record<string, McpPropertySchema>;
-  targetQuery?: QueryName;
-  targetAction?: string;
-  inWasmHandler?: string;
-  pure?: boolean;
-  handler?: (args: any, context: any) => Promise<any> | any;
+  targetQuery?: QueryName | undefined;
+  targetAction?: string | undefined;
+  inWasmHandler?: string | undefined;
+  pure?: boolean | undefined;
+  handler?: ((args: any, context: any) => Promise<any> | any) | undefined;
 }
 
 export interface McpResourceDeclaration {
   uriTemplate: string;
   name: string;
-  mimeType?: string;
-  description?: string;
-  inWasmProvider?: string;
-  provider?: (
-    uri: string,
-    context: any,
-  ) =>
-    | Promise<{ text?: string; blob?: Uint8Array; mimeType?: string }>
-    | { text?: string; blob?: Uint8Array; mimeType?: string };
+  mimeType?: string | undefined;
+  description?: string | undefined;
+  inWasmProvider?: string | undefined;
+  provider?:
+    | ((
+        uri: string,
+        context: any,
+      ) =>
+        | Promise<{ text?: string | undefined; blob?: Uint8Array | undefined; mimeType?: string | undefined }>
+        | { text?: string | undefined; blob?: Uint8Array | undefined; mimeType?: string | undefined })
+    | undefined;
 }
 
 export interface McpPromptDeclaration {
   name: string;
   description: string;
-  arguments?: { name: string; description: string; required?: boolean }[];
+  arguments?: { name: string; description: string; required?: boolean | undefined }[] | undefined;
   template: string | ((args: Record<string, string>) => string);
 }
 
@@ -55,11 +57,11 @@ export interface McpDeclarationConfig<
   QueryName extends string = string,
   _ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
-  serverName?: string;
-  serverVersion?: string;
+  serverName?: string | undefined;
+  serverVersion?: string | undefined;
   tools: McpToolDeclaration<RuleName, QueryName>[];
-  resources?: McpResourceDeclaration[];
-  prompts?: McpPromptDeclaration[];
+  resources?: McpResourceDeclaration[] | undefined;
+  prompts?: McpPromptDeclaration[] | undefined;
 }
 
 export function mcpTool<RuleName extends string = string, QueryName extends string = string>(

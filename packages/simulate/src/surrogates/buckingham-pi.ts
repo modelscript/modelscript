@@ -87,8 +87,8 @@ export const BASE_UNITS_DIMENSIONS: Record<string, DimensionVector> = {
 
 export interface PhysicalVariableSpec {
   name: string;
-  unit?: string;
-  dimension?: DimensionVector;
+  unit?: string | undefined;
+  dimension?: DimensionVector | undefined;
 }
 
 export interface DimensionlessGroup {
@@ -99,7 +99,7 @@ export interface DimensionlessGroup {
   /** Exponents corresponding to each variable: Pi = \prod (x_i ^ e_i). */
   exponents: number[];
   /** Recognized canonical engineering number if applicable. */
-  canonical?: "Reynolds" | "Nusselt" | "Euler" | "Prandtl" | "Mach" | "Froude";
+  canonical?: "Reynolds" | "Nusselt" | "Euler" | "Prandtl" | "Mach" | "Froude" | undefined;
   /** LaTeX / Modelica expression representation. */
   formula: string;
 }
@@ -273,14 +273,14 @@ export class BuckinghamPiEngine {
 
       // Normalize pivot row
       const lv = M[r]![lead]!;
-      for (let j = 0; j < n; j++) M[r]![j] /= lv;
+      for (let j = 0; j < n; j++) M[r]![j] = M[r]![j]! / lv;
 
       // Eliminate column entries in other rows
       for (let k = 0; k < m; k++) {
         if (k !== r) {
           const factor = M[k]![lead]!;
           for (let j = 0; j < n; j++) {
-            M[k]![j] -= factor * M[r]![j]!;
+            M[k]![j] = M[k]![j]! - factor * M[r]![j]!;
           }
         }
       }
@@ -391,7 +391,7 @@ export class BuckinghamPiEngine {
     } else {
       // Fallback: standard division by minNonZero with integer snapping
       for (let i = 0; i < vec.length; i++) {
-        vec[i] /= minNonZero;
+        vec[i] = vec[i]! / minNonZero;
         const roundVal = Math.round(vec[i]!);
         if (Math.abs(vec[i]! - roundVal) < 1e-3) {
           vec[i] = roundVal;

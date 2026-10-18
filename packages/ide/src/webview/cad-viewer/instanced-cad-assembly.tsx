@@ -32,9 +32,9 @@ function resolveModelicaUri(uri: string, baseUrl: string): string {
 interface InstancedCadClusterProps {
   cluster: InstanceCluster;
   assetBaseUrl: string;
-  selectedName?: string | null;
-  onSelect?: (name: string | null) => void;
-  animationController?: AnimationController | null;
+  selectedName?: string | null | undefined;
+  onSelect?: ((name: string | null) => void) | undefined;
+  animationController?: AnimationController | null | undefined;
 }
 
 function InstancedCadCluster({
@@ -92,9 +92,9 @@ function InstancedCadCluster({
           col.set("#f97316"); // Hover orange
         } else {
           col.setRGB(
-            cluster.batchBuffer.colorBuffer[i * 3 + 0],
-            cluster.batchBuffer.colorBuffer[i * 3 + 1],
-            cluster.batchBuffer.colorBuffer[i * 3 + 2],
+            cluster.batchBuffer.colorBuffer[i * 3 + 0]!,
+            cluster.batchBuffer.colorBuffer[i * 3 + 1]!,
+            cluster.batchBuffer.colorBuffer[i * 3 + 2]!,
           );
         }
         mesh.setColorAt(i, col);
@@ -114,7 +114,7 @@ function InstancedCadCluster({
     const matrixBuf = cluster.batchBuffer.matrixBuffer;
 
     for (let i = 0; i < count; i++) {
-      const name = cluster.instanceNames[i];
+      const name = cluster.instanceNames[i]!;
       const tf = animationController.getTransform(name);
 
       composeTransformMatrixDirect(matrixBuf, i * 16, tf.position, tf.quaternion ?? tf.rotation, tf.scale);
@@ -139,7 +139,7 @@ function InstancedCadCluster({
       e.stopPropagation();
       const instanceId = e.instanceId;
       if (instanceId !== undefined && instanceId < cluster.instanceNames.length) {
-        onSelect?.(cluster.instanceNames[instanceId]);
+        onSelect?.(cluster.instanceNames[instanceId]!);
       }
     },
     [cluster.instanceNames, onSelect],
@@ -178,10 +178,10 @@ function InstancedCadCluster({
 export interface InstancedCadAssemblyProps {
   components: CadComponent[];
   assetBaseUrl: string;
-  selectedName?: string | null;
-  onSelect?: (name: string | null) => void;
-  animationController?: AnimationController | null;
-  minInstanceCount?: number;
+  selectedName?: string | null | undefined;
+  onSelect?: ((name: string | null) => void) | undefined;
+  animationController?: AnimationController | null | undefined;
+  minInstanceCount?: number | undefined;
   renderSingleton: (component: CadComponent) => React.ReactNode;
 }
 

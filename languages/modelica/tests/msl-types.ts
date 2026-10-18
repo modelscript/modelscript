@@ -53,6 +53,9 @@ export interface FlattenResult {
   comparison: {
     varCountMatch: boolean;
     eqCountMatch: boolean;
+    varNamesMatch?: boolean;
+    unmatchedVarNames?: number;
+    unmatchedEquations?: number;
     diffLines: number;
     diffSummary?: string;
   };

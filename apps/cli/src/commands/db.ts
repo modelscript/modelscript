@@ -64,7 +64,7 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
       try {
         const res = await fetch(`${apiUrl}/api/v1/admin/db/status`, { headers });
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          const body = (await res.json().catch(() => ({}))) as { error?: string | undefined };
           console.error(c.red(`Failed to fetch database status: ${body.error || res.statusText}`));
           process.exit(1);
         }
@@ -115,7 +115,7 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
         });
 
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          const body = (await res.json().catch(() => ({}))) as { error?: string | undefined };
           console.error(c.red(`Database upgrade failed: ${body.error || res.statusText}`));
           process.exit(1);
         }
@@ -137,7 +137,7 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
       try {
         const res = await fetch(`${apiUrl}/api/v1/admin/db/verify`, { headers });
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          const body = (await res.json().catch(() => ({}))) as { error?: string | undefined };
           console.error(c.red(`Integrity check failed: ${body.error || res.statusText}`));
           process.exit(1);
         }

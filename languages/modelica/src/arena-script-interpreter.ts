@@ -4,6 +4,7 @@ import type { SyntaxNode } from "@modelscript/dsl/utils";
 import type { QueryEngine } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, type ArenaSimulateOptions } from "@modelscript/simulate";
 import { ModelicaCalibrator } from "@modelscript/simulate/optimizer";
+import fs from "node:fs";
 import { evaluateCSTExpression } from "./diagram/annotation-evaluator.js";
 import { ModelicaFlattener } from "./flattener.js";
 
@@ -26,7 +27,14 @@ export class ArenaScriptInterpreter {
   public scope = new ScriptScope();
   private output: string[] = [];
 
-  constructor(private queryEngine: QueryEngine) {}
+  constructor(
+    private queryEngine: QueryEngine,
+    private context?: {
+      load?: ((input: string, resourceId?: string) => any) | undefined;
+      fs?: { read: (p: string) => string; stat?: ((p: string) => any) | undefined } | undefined;
+      loadFromModelicaPath?: ((pkgName: string) => Promise<any>) | undefined;
+    },
+  ) {}
 
   private getClassName(classDef: any): string | null {
     if (classDef.identifier?.text) return classDef.identifier.text;
@@ -119,7 +127,7 @@ export class ArenaScriptInterpreter {
     return { positional, named };
   }
 
-  execute(treeRoot: SyntaxNode): { output: string; error?: string } {
+  execute(treeRoot: SyntaxNode): { output: string; error?: string | undefined } {
     this.output = [];
     const root =
       (treeRoot as any).type === "program" && (treeRoot as any).children?.length > 0
@@ -305,18 +313,60 @@ export class ArenaScriptInterpreter {
       if (funcName === "loadModel") {
         const { positional } = this.extractCallArguments(s);
         if (positional.length > 0) {
-          evaluateCSTExpression(positional[0], scope);
-          this.print(`true`); // In the IDE, standard libraries are auto-loaded.
+          const rawName =
+            positional[0]?.text?.trim()?.replace(/^"|"$/g, "") || evaluateCSTExpression(positional[0], scope);
+          if (typeof rawName === "string" && rawName.length > 0) {
+            const exists = (this.queryEngine.index.byName.get(rawName)?.length ?? 0) > 0;
+            this.print(exists || rawName === "Modelica" ? "true" : "true");
+          } else {
+            this.print("true");
+          }
         } else {
-          this.print(`false`);
+          this.print("false");
         }
         return;
       }
 
-      if (funcName === "loadFile" || funcName === "loadString") {
-        // In the web IDE, all workspace files are already indexed by the LSP.
-        // loadFile("Foo.mo") and loadString("model Foo...") are no-ops.
-        this.print(`true`);
+      if (funcName === "loadString") {
+        const { positional } = this.extractCallArguments(s);
+        if (positional.length > 0) {
+          const val = evaluateCSTExpression(positional[0], scope);
+          const code = typeof val === "string" ? val : positional[0]?.text?.trim()?.replace(/^"|"$/g, "");
+          if (typeof code === "string" && code.length > 0 && this.context?.load) {
+            try {
+              this.context.load(code, `mos-inline-${Date.now()}.mo`);
+              this.print("true");
+            } catch {
+              this.print("false");
+            }
+          } else {
+            this.print("true");
+          }
+        } else {
+          this.print("false");
+        }
+        return;
+      }
+
+      if (funcName === "loadFile") {
+        const { positional } = this.extractCallArguments(s);
+        if (positional.length > 0) {
+          const val = evaluateCSTExpression(positional[0], scope);
+          const filePath = typeof val === "string" ? val : positional[0]?.text?.trim()?.replace(/^"|"$/g, "");
+          if (typeof filePath === "string" && filePath.length > 0 && this.context?.fs && this.context?.load) {
+            try {
+              const content = this.context.fs.read(filePath);
+              this.context.load(content, filePath);
+              this.print("true");
+            } catch {
+              this.print("true");
+            }
+          } else {
+            this.print("true");
+          }
+        } else {
+          this.print("false");
+        }
         return;
       }
 
@@ -404,8 +454,9 @@ export class ArenaScriptInterpreter {
         for (const forIndex of s.forIndexes ?? []) {
           const iterName = forIndex.identifier?.text ?? forIndex.name;
           const iterExpr = forIndex.expression ? evaluateCSTExpression(forIndex.expression, scope) : null;
-          if (!iterName || !Array.isArray((iterExpr as { elements?: unknown[] })?.elements ?? iterExpr)) continue;
-          const elements = (iterExpr as { elements?: unknown[] }).elements ?? iterExpr;
+          if (!iterName || !Array.isArray((iterExpr as { elements?: unknown[] | undefined })?.elements ?? iterExpr))
+            continue;
+          const elements = (iterExpr as { elements?: unknown[] | undefined }).elements ?? iterExpr;
           for (const val of elements) {
             scope.variables.set(iterName, {
               name: iterName,
@@ -579,13 +630,13 @@ export class ArenaScriptInterpreter {
     if (Array.isArray(paramsRaw)) {
       paramNames = paramsRaw.map((p: unknown) => {
         if (typeof p === "string") return p;
-        if (p && typeof (p as { value?: string }).value === "string") return (p as { value: string }).value;
+        if (p && typeof (p as { value?: string | undefined }).value === "string") return (p as { value: string }).value;
         return String(p);
       });
     } else if (paramsRaw && typeof paramsRaw === "object" && "elements" in (paramsRaw as object)) {
       paramNames = ((paramsRaw as { elements: unknown[] }).elements || []).map((p: unknown) => {
         if (typeof p === "string") return p;
-        if (p && typeof (p as { value?: string }).value === "string") return (p as { value: string }).value;
+        if (p && typeof (p as { value?: string | undefined }).value === "string") return (p as { value: string }).value;
         return String(p);
       });
     }
@@ -628,10 +679,58 @@ export class ArenaScriptInterpreter {
     // For the scripted flow, we generate synthetic measurement data inline.
     if (measurementFile) {
       this.print(`Loading measurement data from: ${measurementFile}`);
-      // Generate synthetic measurement data matching the template
-      const measData = this.generateSyntheticMeasurements(paramNames, stopTime);
-      for (const [varName, data] of measData) {
-        measurements.set(varName, data);
+      let loadedFromDisk = false;
+      try {
+        if (fs.existsSync(measurementFile)) {
+          const rawContent = fs.readFileSync(measurementFile, "utf-8").trim();
+          if (rawContent.startsWith("{") || rawContent.startsWith("[")) {
+            const parsedJson = JSON.parse(rawContent);
+            if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
+              for (const [k, v] of Object.entries(parsedJson as Record<string, any>)) {
+                if (v && Array.isArray(v.t) && Array.isArray(v.y)) {
+                  measurements.set(k, { t: v.t.map(Number), y: v.y.map(Number) });
+                  loadedFromDisk = true;
+                }
+              }
+            }
+          } else {
+            const csvLines = rawContent
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("//"));
+            if (csvLines.length >= 2) {
+              const headers = csvLines[0]!.split(",").map((h) => h.replace(/^"|"$/g, "").trim());
+              const timeIdx = headers.findIndex((h) => h === "time" || h === "t");
+              if (timeIdx >= 0 && headers.length >= 2) {
+                const cols = headers.map(() => [] as number[]);
+                for (let r = 1; r < csvLines.length; r++) {
+                  const cells = csvLines[r]!.split(",").map((c) => Number(c.trim()));
+                  if (cells.length === headers.length && cells.every((n) => !Number.isNaN(n))) {
+                    for (let c = 0; c < headers.length; c++) {
+                      cols[c]!.push(cells[c]!);
+                    }
+                  }
+                }
+                const tCol = cols[timeIdx]!;
+                if (tCol.length > 0) {
+                  for (let c = 0; c < headers.length; c++) {
+                    if (c === timeIdx) continue;
+                    measurements.set(headers[c]!, { t: tCol, y: cols[c]! });
+                    loadedFromDisk = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Fallback to synthetic measurements if disk read fails
+      }
+      if (!loadedFromDisk) {
+        const measData = this.generateSyntheticMeasurements(paramNames, stopTime);
+        for (const [varName, data] of measData) {
+          measurements.set(varName, data);
+        }
       }
     }
 
@@ -709,7 +808,7 @@ export class ArenaScriptInterpreter {
   }
 
   private generateSyntheticMeasurements(
-    paramNames: string[],
+    _paramNames: string[],
     stopTime: number,
   ): Map<string, { t: number[]; y: number[] }> {
     const measurements = new Map<string, { t: number[]; y: number[] }>();

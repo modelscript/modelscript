@@ -7,6 +7,7 @@ import { createHandler } from "graphql-http/lib/use/express";
 
 import type { LibraryDatabase } from "../database.js";
 
+/** GraphQL object type representing a key-value modification on a Modelica component. */
 const ModelicaModifierType = new GraphQLObjectType({
   name: "ModelicaModifier",
   fields: {
@@ -15,6 +16,7 @@ const ModelicaModifierType = new GraphQLObjectType({
   },
 });
 
+/** GraphQL object type representing a component declaration inside a Modelica class. */
 const ModelicaComponentType = new GraphQLObjectType({
   name: "ModelicaComponent",
   fields: {
@@ -27,6 +29,7 @@ const ModelicaComponentType = new GraphQLObjectType({
   },
 });
 
+/** GraphQL object type representing an indexed Modelica class definition. */
 const ModelicaClassType = new GraphQLObjectType({
   name: "ModelicaClass",
   fields: {
@@ -38,6 +41,10 @@ const ModelicaClassType = new GraphQLObjectType({
   },
 });
 
+/**
+ * Creates the Express router exposing `/api/v1/libraries/:name/:version/graphql` for querying
+ * indexed Modelica package classes, inheritance hierarchies, and component declarations.
+ */
 export function graphqlRouter(database: LibraryDatabase): Router {
   const router = createRouter();
 
@@ -65,7 +72,7 @@ export function graphqlRouter(database: LibraryDatabase): Router {
               kind: { type: GraphQLString },
               q: { type: GraphQLString },
             },
-            resolve: (_root, args: { kind?: string; q?: string }) => {
+            resolve: (_root, args: { kind?: string | undefined; q?: string | undefined }) => {
               let results = database.getAllClasses(name, version);
 
               if (args.kind) {

@@ -33,21 +33,21 @@
 
 export interface LbfgsbOptions {
   /** Maximum number of stored displacement/gradient pairs (default: 8). */
-  m?: number;
+  m?: number | undefined;
   /** Maximum iterations (default: 100). */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
   /** Gradient infinity-norm convergence tolerance (default: 1e-6). */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Armijo condition constant for line search (default: 1e-4). */
-  c1?: number;
+  c1?: number | undefined;
   /** Wolfe curvature condition constant (default: 0.9). */
-  c2?: number;
+  c2?: number | undefined;
   /** Step reduction factor for backtracking (default: 0.5). */
-  backtrackFactor?: number;
+  backtrackFactor?: number | undefined;
   /** Maximum line search trials per step (default: 20). */
-  maxLineSearchSteps?: number;
+  maxLineSearchSteps?: number | undefined;
   /** Optional callback for iteration logging. */
-  onIteration?: (iter: number, cost: number, gradNorm: number) => void;
+  onIteration?: ((iter: number, cost: number, gradNorm: number) => void) | undefined;
 }
 
 export interface LbfgsbResult {
@@ -145,7 +145,7 @@ export function lbfgsbSolve(
       alphas[i] = alpha;
 
       for (let j = 0; j < n; j++) {
-        if (!active[j]) q[j] -= alpha * y[j]!;
+        if (!active[j]) q[j] = q[j]! - alpha * y[j]!;
       }
     }
 
@@ -184,7 +184,7 @@ export function lbfgsbSolve(
       const beta = rho * dotYr;
 
       for (let j = 0; j < n; j++) {
-        if (!active[j]) r[j] += s[j]! * (alphas[i]! - beta);
+        if (!active[j]) r[j] = r[j]! + s[j]! * (alphas[i]! - beta);
       }
     }
 

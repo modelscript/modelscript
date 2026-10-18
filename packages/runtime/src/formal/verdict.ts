@@ -43,13 +43,13 @@ export interface VerdictWitness {
   /** Concrete state values (by index or name) at the breach. */
   state: Record<string, number> | number[];
   /** Optional full witness trajectory. */
-  trajectory?: { t: number[]; values: number[][] };
+  trajectory?: { t: number[]; values: number[][] } | undefined;
 }
 
 export type VerificationVerdict =
-  | { kind: "proven"; rigor: Exclude<VerdictRigor, "heuristic">; detail?: string }
-  | { kind: "violated"; witness: VerdictWitness; detail?: string }
-  | { kind: "unknown"; reason: UnknownReason; rigor?: VerdictRigor; detail?: string };
+  | { kind: "proven"; rigor: Exclude<VerdictRigor, "heuristic">; detail?: string | undefined }
+  | { kind: "violated"; witness: VerdictWitness; detail?: string | undefined }
+  | { kind: "unknown"; reason: UnknownReason; rigor?: VerdictRigor | undefined; detail?: string | undefined };
 
 /**
  * Derives a verdict from an enclosure-based check.

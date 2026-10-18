@@ -9,9 +9,9 @@ import {
   unregisterLanguage,
 } from "../util/language-registry.js";
 
-interface LanguageArgs {
+export interface LanguageArgs {
   action: "list" | "register" | "unregister";
-  target?: string;
+  target?: string | undefined;
 }
 
 export const Language: CommandModule<any, any> = {

@@ -25,10 +25,10 @@ import type { ArtifactHandler, ArtifactMetadata, ArtifactViewDescriptor } from "
 export interface DatasetColumn {
   name: string;
   type: "number" | "string" | "boolean";
-  min?: number;
-  max?: number;
-  mean?: number;
-  unique?: number;
+  min?: number | undefined;
+  max?: number | undefined;
+  mean?: number | undefined;
+  unique?: number | undefined;
 }
 
 /** Dataset-specific metadata. */
@@ -128,10 +128,10 @@ export class DatasetArtifactHandler implements ArtifactHandler {
   validate(artifact: Record<string, unknown>): string[] {
     const errors: string[] = [];
 
-    if (!artifact.path) {
+    if (!artifact["path"]) {
       errors.push("Dataset artifact must have a 'path' field");
     } else {
-      const p = artifact.path as string;
+      const p = artifact["path"] as string;
       const validExts = [".csv", ".tsv", ".json"];
       if (!validExts.some((ext) => p.toLowerCase().endsWith(ext))) {
         errors.push(`Dataset path must end with ${validExts.join(", ")}, got: "${p}"`);

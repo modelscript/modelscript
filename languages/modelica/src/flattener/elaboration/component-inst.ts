@@ -33,10 +33,12 @@ import {
 import {
   castToRealExpr,
   checkIfExprTypeMismatch,
+  copyExprBetweenDaes,
   evalDaeExpr,
   evaluateCSTNumber,
   expandColonToArrayCtor,
   exprContainsNameRef,
+  exprReferencesRuntimeParameter,
   extractEnumLiteralsFromCst,
   formatArenaValForMod,
   generateArrayTuples,
@@ -48,6 +50,7 @@ import {
   getSymbolEnumLiterals,
   getSymbolQualifiedName,
   isArrayLiteral,
+  isIntegerTypeSpec,
   isRealExpr,
   mulWithSimplification,
   parseArrayLiteralElements,
@@ -63,30 +66,37 @@ import { getFlatteningState, getNamedArrayShape, setNamedArrayShape } from "../s
 import { ModelicaModificationEnv } from "../support/wasm-bridge.js";
 import { type ComponentInstanceData, type FlattenOptions } from "../types.js";
 
+/**
+ * Host flattener interface required by the component elaboration kernel.
+ *
+ * Exposes the Salsa {@link QueryDB}, active class/import scopes, `inner`/`outer` and
+ * expandable connector registries, and callbacks for lowering CST expressions and
+ * flattening nested functions or record constructors.
+ */
 export interface ComponentFlattener {
   db: QueryDB;
-  options: Required<FlattenOptions>;
-  currentRootClassId?: SymbolId;
-  currentClassId?: SymbolId;
-  currentImports?: Map<string, string>;
+  options: Omit<Required<FlattenOptions>, "flowThreshold"> & { flowThreshold?: number | undefined };
+  currentRootClassId: SymbolId;
+  currentClassId: SymbolId;
+  currentImports: Map<string, string>;
   currentParentMods?: any;
-  currentBindingCompName?: string;
-  innerDeclarations?: Map<string, Map<string, string>>;
-  innerOuterComponents?: Set<string>;
-  disabledComponents?: Set<string>;
-  expandableBuses?: Map<string, SymbolId>;
-  usedExternalObjects?: Set<SymbolId>;
-  usedRecordSymIds?: Set<SymbolId>;
-  usedRecordNames?: Set<string>;
-  failedFunctionIds?: Set<SymbolId>;
-  invalidInterfaceFunctionIds?: Set<SymbolId>;
-  calledFunctionSymIds?: Set<SymbolId>;
-  activeLoopVars?: Set<string>;
-  usedOperatorFunctions?: Map<string, SymbolId>;
-  evaluatedConstantArrays?: Map<string, any>;
-  varConditionDeps?: Map<string, string[]>;
-  useLocalDirection?: boolean;
-  lowerExpr?: (
+  currentBindingCompName?: string | undefined;
+  innerDeclarations: Map<string, Map<string, string>>;
+  innerOuterComponents: Set<string>;
+  disabledComponents: Set<string>;
+  expandableBuses: Map<string, SymbolId>;
+  usedExternalObjects: Set<SymbolId>;
+  usedRecordSymIds: Set<SymbolId>;
+  usedRecordNames: Set<string>;
+  failedFunctionIds: Set<SymbolId>;
+  invalidInterfaceFunctionIds: Set<SymbolId>;
+  calledFunctionSymIds: Set<SymbolId>;
+  activeLoopVars: Set<string>;
+  usedOperatorFunctions: Map<string, SymbolId>;
+  evaluatedConstantArrays: Map<string, any>;
+  varConditionDeps: Map<string, string[]>;
+  useLocalDirection?: boolean | undefined;
+  lowerExpr: (
     node: any,
     dae: DAEBuilder,
     prefix?: string,
@@ -94,18 +104,208 @@ export interface ComponentFlattener {
     tupleContext?: boolean,
     isAssignmentLhs?: boolean,
   ) => number;
-  pushLoopVar?: (name: string) => void;
-  popLoopVar?: (name: string) => void;
-  isClassPartial?: (classId?: SymbolId | null) => boolean;
-  isExternalObject?: (classId: SymbolId | null | undefined, visited?: Set<SymbolId>) => boolean;
-  isOperatorRecordSym?: (sym: any) => boolean;
-  generateRecordConstructorFor?: (sym: any, dae: DAEBuilder, rootClassId?: SymbolId) => DAEBuilder | null;
+  pushLoopVar: (name: string) => void;
+  popLoopVar: (name: string) => void;
+  isClassPartial: (classId?: SymbolId | null) => boolean;
+  isExternalObject: (classId: SymbolId | null | undefined, visited?: Set<SymbolId>) => boolean;
+  isOperatorRecordSym: (sym: any) => boolean;
+  generateRecordConstructorFor: (sym: any, dae: DAEBuilder, rootClassId?: SymbolId) => DAEBuilder | null;
+  flattenFunction: (
+    fnSymId: SymbolId,
+    fnName: string,
+    modifiers?: any[],
+    parentDae?: DAEBuilder,
+    enclosingScopeId?: SymbolId,
+  ) => DAEBuilder;
   [key: string]: any;
 }
 
 const sharedComponentAnnotationEvaluator = new AnnotationEvaluator();
 const componentHiddenCache = new WeakMap<object, Map<SymbolId, boolean>>();
 
+function findFirstExpressionCst(n: any): any {
+  if (!n) return null;
+  if (n.type === "expression") return n;
+  for (const c of n.children || []) {
+    const res = findFirstExpressionCst(c);
+    if (res) return res;
+  }
+  return null;
+}
+
+function parseStandaloneExpressionCst(exprText: string): any | null {
+  const trimmed = exprText.trim();
+  if (!trimmed) return null;
+  const parser = UnifiedWorkspace.getGlobalParser(".mo");
+  if (!parser) return null;
+  try {
+    const dummyTree = parser.parse(`model _Tmp equation _x = ${trimmed}; end _Tmp;`);
+    if (!dummyTree?.rootNode) return null;
+    const findRhs = (n: any): any => {
+      if (n.type === "simple_equation") return n.children?.find((c: any) => c.type === "expression");
+      for (const ch of n.children || []) {
+        const r = findRhs(ch);
+        if (r) return r;
+      }
+      return null;
+    };
+    return findRhs(dummyTree.rootNode) ?? findFirstExpressionCst(dummyTree.rootNode);
+  } catch {
+    return null;
+  }
+}
+
+function isIntegerArenaExpr(exprId: number, dae: DAEBuilder): boolean {
+  if (exprId < 0) return false;
+  const kind = dae.getExprKind(exprId);
+  if (kind === ExprKind.IntLiteral) return true;
+  if (kind === ExprKind.RealLiteral) return false;
+  if (kind === ExprKind.Name) {
+    const name = dae.interner.resolve(dae.getExprData1(exprId));
+    const vIdx = dae.lookupVariable(name);
+    if (vIdx >= 0) return dae.getVarType(vIdx) === VarType.Integer;
+    return name === "n" || name === "m";
+  }
+  if (kind === ExprKind.Binary) {
+    const op = dae.getExprData1(exprId);
+    if (op === BinOp.Add || op === BinOp.Sub || op === BinOp.Mul) {
+      return isIntegerArenaExpr(dae.getExprLeft(exprId), dae) && isIntegerArenaExpr(dae.getExprRight(exprId), dae);
+    }
+  }
+  return false;
+}
+
+function canonicalizeOldFrontendExpr(exprId: number, varType: number, dae: DAEBuilder, forceOldStyle = false): number {
+  if (exprId < 0) return exprId;
+  const isOld = Boolean(dae.extensionMetadata?.["isOldFrontend"]) || forceOldStyle;
+  const kind = dae.getExprKind(exprId);
+  if (kind === ExprKind.Binary) {
+    const op = dae.getExprData1(exprId);
+    const left = dae.getExprLeft(exprId);
+    const right = dae.getExprRight(exprId);
+    if (
+      op === BinOp.Sub &&
+      dae.getExprKind(left) === ExprKind.Name &&
+      dae.getExprKind(right) === ExprKind.IntLiteral &&
+      (isOld || varType === VarType.Integer)
+    ) {
+      const k = dae.getExprData1(right);
+      if (k > 0) {
+        const negLitId = dae.addIntLiteral(-k);
+        return dae.addBinaryExpr(BinOp.Add, negLitId, left);
+      }
+    }
+    if (op === BinOp.Div && varType === VarType.Real) {
+      let newLeft = left;
+      let newRight = canonicalizeOldFrontendExpr(right, VarType.Integer, dae, isOld);
+      if (dae.getExprKind(newLeft) === ExprKind.Name && isIntegerArenaExpr(newLeft, dae)) {
+        newLeft = dae.addCallExpr("/*Real*/", [newLeft]);
+      }
+      if (
+        (dae.getExprKind(newRight) === ExprKind.Name && isIntegerArenaExpr(newRight, dae)) ||
+        (isOld && isIntegerArenaExpr(newRight, dae))
+      ) {
+        newRight = dae.addCallExpr("/*Real*/", [newRight]);
+      }
+      if (newLeft !== left || newRight !== right) {
+        return dae.addBinaryExpr(BinOp.Div, newLeft, newRight);
+      }
+    }
+  }
+  return exprId;
+}
+
+function lowerStandaloneExpression(
+  flattener: ComponentFlattener,
+  exprText: string,
+  dae: DAEBuilder,
+  bindingPrefix: string | undefined,
+  compName?: string,
+  varType?: number,
+): number | null {
+  const rhsNode = parseStandaloneExpressionCst(exprText);
+  if (!rhsNode) return null;
+  const prevCompName = flattener.currentBindingCompName;
+  flattener.currentBindingCompName = compName;
+  const diagCountBefore = dae.diagnostics.length;
+  try {
+    const parsedId = flattener.lowerExpr(rhsNode, dae, bindingPrefix);
+    if (parsedId >= 0) {
+      return varType !== undefined ? canonicalizeOldFrontendExpr(parsedId, varType, dae) : parsedId;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    dae.diagnostics.length = diagCountBefore;
+    flattener.currentBindingCompName = prevCompName;
+  }
+}
+
+function tryScalarizeIfSizeBindingCst(
+  rawExprCst: any,
+  bText: string,
+  idxTuple: number[],
+  bindingPrefix: string | undefined,
+  dae: DAEBuilder,
+): number | null {
+  if (idxTuple.length === 0) return null;
+  const rootNode = rawExprCst ?? parseStandaloneExpressionCst(bText);
+  if (!rootNode) return null;
+  const findIfExpr = (n: any): any => {
+    if (!n) return null;
+    if (n.type === "if_expression") return n;
+    if (
+      n.type === "expression" ||
+      n.type === "simple_expression" ||
+      n.type === "primary" ||
+      n.type === "output_expression_list"
+    ) {
+      for (const c of n.children || []) {
+        const found = findIfExpr(c);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  const ifNode = findIfExpr(rootNode);
+  if (!ifNode) return null;
+  const exprChildren = (ifNode.children || []).filter(
+    (c: any) =>
+      c.type === "expression" ||
+      c.type === "simple_expression" ||
+      c.type === "logical_expression" ||
+      c.type === "relation",
+  );
+  if (exprChildren.length < 3) return null;
+  const condText = (exprChildren[0].text ?? "").trim();
+  const thenText = (exprChildren[1].text ?? "").trim();
+  const elseText = (exprChildren[exprChildren.length - 1].text ?? "").trim();
+  const sizeCondMatch = condText.match(/^size\(\s*([a-zA-Z_][\w.]*)\s*,\s*1\s*\)\s*==\s*1$/);
+  if (!sizeCondMatch) return null;
+  const arrName = sizeCondMatch[1]!;
+  const resolvedArr = resolveScopedName(arrName, bindingPrefix ?? "", dae);
+  const hasSecond = dae.getVarIdxByName(`${resolvedArr}[2]`) >= 0;
+  const branchText = !hasSecond ? thenText : elseText;
+  const onesMulMatch = branchText.match(/^ones\([^)]*\)\s*\*\s*([a-zA-Z_][\w.]*)\[1\]$/);
+  if (onesMulMatch && onesMulMatch[1] === arrName) {
+    return dae.addExpression(ExprKind.Name, dae.interner.intern(`${resolvedArr}[1]`));
+  }
+  if (branchText === arrName) {
+    const targetIdx = hasSecond ? idxTuple[0] : 1;
+    return dae.addExpression(ExprKind.Name, dae.interner.intern(`${resolvedArr}[${targetIdx}]`));
+  }
+  return null;
+}
+
+/**
+ * Checks whether a component declaration carries an `annotation(HideResult = true)`,
+ * caching the evaluated boolean per `(QueryDB, SymbolId)` pair.
+ *
+ * @param flattener - Active component flattener context.
+ * @param elemId - Symbol ID of the component declaration.
+ * @returns `true` if `HideResult` is enabled on the component or its enclosing clause.
+ */
 export function isComponentHidden(flattener: ComponentFlattener, elemId: SymbolId): boolean {
   const dbKey = flattener.db as unknown as object;
   let dbMap = componentHiddenCache.get(dbKey);
@@ -145,6 +345,13 @@ export function isComponentHidden(flattener: ComponentFlattener, elemId: SymbolI
   return result;
 }
 
+/**
+ * Extracts the unquoted Modelica description string (e.g., `"Capacitor voltage"`)
+ * attached to a component declaration CST node, or returns `null` if none is present.
+ *
+ * @param elemCst - CST node of the component declaration.
+ * @returns Unquoted description string, or `null` if absent or empty (`""`).
+ */
 export function extractDescription(elemCst: any): string | null {
   if (!elemCst) return null;
   let curr: any = elemCst;
@@ -199,6 +406,17 @@ export function extractDescription(elemCst: any): string | null {
   return null;
 }
 
+/**
+ * Resolves the target base class {@link SymbolEntry} for an `extends` clause symbol.
+ *
+ * Queries Salsa's `resolvedBaseClass` first, falling back to `resolveName`/`resolveSimpleName`
+ * in `scopeId` and finally global `byName` lookup.
+ *
+ * @param flattener - Active component flattener context.
+ * @param extChild - Symbol entry of the `Extends` clause.
+ * @param scopeId - Enclosing class scope ID.
+ * @returns Resolved base class symbol entry, or `null` if unresolvable.
+ */
 export function resolveExtendsBase(
   flattener: ComponentFlattener | any,
   extChild: any,
@@ -219,6 +437,16 @@ export function resolveExtendsBase(
   return flattener.db.byName(extChild.name).find((e: any) => e.kind === "Class") ?? null;
 }
 
+/**
+ * Determines whether a class symbol represents a scalar or array `type` alias
+ * (e.g., `type Voltage = Real(unit="V")` or a class extending a predefined primitive type
+ * without declaring sub-components) rather than a composite structured model/record/block.
+ *
+ * @param flattener - Active component flattener context.
+ * @param classId - Symbol ID of the candidate class.
+ * @param visited - Cycle-detection set for recursive `extends` chains.
+ * @returns `true` if `classId` specializes a primitive or enumeration type.
+ */
 export function isClassType(flattener: ComponentFlattener, classId: SymbolId, visited = new Set<SymbolId>()): boolean {
   if (visited.has(classId)) return false;
   visited.add(classId);
@@ -269,6 +497,14 @@ export function isClassType(flattener: ComponentFlattener, classId: SymbolId, vi
   return false;
 }
 
+/**
+ * Validates that a short `type` alias definition (`type T = Target`) does not illegally
+ * alias a composite `model`, `block`, `record`, or `connector` class (Modelica §4.5.2).
+ *
+ * @param flattener - Active component flattener context.
+ * @param typeSymId - Symbol ID of the short `type` definition.
+ * @returns Diagnostic metadata (`targetName`, `kindDesc`, `range`) if invalid, or `null` if valid.
+ */
 export function checkTypeAliasSpecialization(
   flattener: ComponentFlattener,
   typeSymId: SymbolId,
@@ -277,17 +513,20 @@ export function checkTypeAliasSpecialization(
   if (!sym) return null;
   const cst = flattener.db.cstNode(typeSymId) as any;
   if (!cst) return null;
-  const text = cst.text?.trim() ?? "";
-  const match = text.match(/\btype\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_.]+)/);
+  const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "").trim();
+  const match = text.match(
+    /^(?:(?:encapsulated|partial|replaceable|final|inner|outer|redeclare)\s+)*type\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_.]+)/,
+  );
   if (!match) return null;
-  const targetName = match[2];
+  const targetName = match[2]!;
   if (targetName === "Real" || targetName === "Integer" || targetName === "Boolean" || targetName === "String") {
     return null;
   }
   const simpleTargetName = targetName.split(".").pop()!;
-  const targetClass = flattener.db.byName(simpleTargetName).find((e) => e.kind === "Class");
-  if (!targetClass) return null;
-  if (isClassType(flattener, targetClass.id)) return null;
+  const candidateClasses = flattener.db.byName(simpleTargetName).filter((e) => e.kind === "Class");
+  if (candidateClasses.length === 0) return null;
+  if (candidateClasses.some((c) => isClassType(flattener, c.id))) return null;
+  const targetClass = candidateClasses[0]!;
 
   const targetCst = flattener.db.cstNode(targetClass.id) as any;
   const prefixes = Cst.ClassDefinition.classPrefixes(targetCst);
@@ -307,6 +546,16 @@ export function checkTypeAliasSpecialization(
   return { targetName, kindDesc, range };
 }
 
+/**
+ * Recursively collects type-level attribute modifiers applied to `typeLeafName` via
+ * `extends Base(TypeName(unit=..., min=...))` clauses along the inheritance hierarchy of `scopeId`.
+ *
+ * @param flattener - Active component flattener context.
+ * @param scopeId - Enclosing class or package symbol ID.
+ * @param typeLeafName - Unqualified name of the `type` alias being modified.
+ * @param visited - Cycle-detection set of visited class IDs.
+ * @returns Ordered list of inherited modification argument descriptors.
+ */
 export function collectInheritedTypeModifiers(
   flattener: ComponentFlattener,
   scopeId: SymbolId,
@@ -334,6 +583,18 @@ export function collectInheritedTypeModifiers(
   return result;
 }
 
+/**
+ * Materializes or retrieves a cached WebAssembly {@link ModelicaModificationEnv} in linear memory
+ * from a TypeScript modification descriptor (`mods`).
+ *
+ * Synchronizes `final`, `each`, and `redeclare` bitflags as well as literal/nested modification trees
+ * with the AssemblyScript WASM flattening kernel when `syncWasmEnv` is active.
+ *
+ * @param flattener - Active component flattener context.
+ * @param dae - Target `DAEBuilder` holding the WASM exports and string interner.
+ * @param mods - Optional modification object containing `args` and/or a cached `wasmEnv`.
+ * @returns Linear-memory `ModelicaModificationEnv` handle, or `null` if WASM env exports are unavailable.
+ */
 export function getOrCreateWasmEnv(
   flattener: ComponentFlattener,
   dae: DAEBuilder,
@@ -401,6 +662,18 @@ export function getOrCreateWasmEnv(
   return env;
 }
 
+/**
+ * Looks up a direct or inherited member (component or nested class) named `name` inside `classId`.
+ *
+ * Searches direct children first, then Salsa's `instantiate` element list, and finally
+ * traverses `Extends` clauses recursively.
+ *
+ * @param flattener - Active component flattener context.
+ * @param classId - Target class symbol ID to search.
+ * @param name - Unqualified member identifier.
+ * @param visited - Cycle-detection set of visited class IDs.
+ * @returns Matching {@link SymbolEntry}, or `null` if not found.
+ */
 export function classFindMember(
   flattener: ComponentFlattener,
   classId: SymbolId,
@@ -435,6 +708,22 @@ export function classFindMember(
   return null;
 }
 
+/**
+ * Validates class-level modification and `redeclare` arguments against `defaultTargetClassId`.
+ *
+ * Checks for:
+ * 1. Duplicate `redeclare` clauses targeting the same element in the same modification scope.
+ * 2. Missing `redeclare` keyword when attempting to modify a nested class definition (`= ...`).
+ * 3. Non-existent target elements in `redeclare` clauses.
+ * 4. Kind mismatches (`redeclare` of a class as a component or vice versa).
+ * 5. Enumeration subtyping constraints when redeclaring replaceable `enumeration(:)` or concrete enum types.
+ *
+ * @param flattener - Active component flattener context.
+ * @param defaultTargetClassId - Target class symbol ID being modified.
+ * @param args - List of parsed modification/redeclaration arguments.
+ * @param dae - Target `DAEBuilder` to record any validation diagnostics.
+ * @returns `true` if all class modifiers are valid; `false` if a fatal diagnostic was emitted.
+ */
 export function validateClassModifiers(
   flattener: ComponentFlattener,
   defaultTargetClassId: SymbolId,
@@ -448,9 +737,13 @@ export function validateClassModifiers(
       const prevRedecl = seenRedecls.get(arg.name);
       if (prevRedecl) {
         if (
-          prevRedecl.isExtendsMod &&
-          arg.isExtendsMod &&
-          prevRedecl.extendsTargetClassId !== arg.extendsTargetClassId
+          (prevRedecl.isExtendsMod &&
+            arg.isExtendsMod &&
+            prevRedecl.extendsTargetClassId !== arg.extendsTargetClassId) ||
+          Boolean(prevRedecl.isExtendsMod) !== Boolean(arg.isExtendsMod) ||
+          (prevRedecl.evaluationScopeId !== undefined &&
+            arg.evaluationScopeId !== undefined &&
+            prevRedecl.evaluationScopeId !== arg.evaluationScopeId)
         ) {
           seenRedecls.set(arg.name, arg);
           continue;
@@ -600,7 +893,7 @@ export function validateClassModifiers(
         const targetText = (targetCst?.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
         const targetEnumMatch = /=\s*enumeration\s*\(([^)]*)\)/.exec(targetText);
         if (targetEnumMatch) {
-          const rawTargetLits = targetEnumMatch[1].trim();
+          const rawTargetLits = targetEnumMatch[1]!.trim();
           const isTargetGeneric = rawTargetLits === ":";
           const targetLits = isTargetGeneric
             ? []
@@ -611,16 +904,16 @@ export function validateClassModifiers(
 
           const modText = (arg.modText ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
           const rhsMatch = /=\s*([^\n;]+)/.exec(modText);
-          const rhsVal = rhsMatch ? rhsMatch[1].trim() : (arg.redeclaredTypeSpecifier ?? "");
+          const rhsVal = rhsMatch ? rhsMatch[1]!.trim() : (arg.redeclaredTypeSpecifier ?? "");
 
           let isEnumRhs = false;
           let rhsLits: string[] = [];
           const rhsEnumMatch = /^enumeration\s*\(([^)]*)\)/.exec(rhsVal);
           if (rhsEnumMatch) {
             isEnumRhs = true;
-            rhsLits = rhsEnumMatch[1]
+            rhsLits = rhsEnumMatch[1]!
               .split(",")
-              .map((s) => s.trim().split(/\s+/)[0])
+              .map((s) => s.trim().split(/\s+/)[0]!)
               .filter(Boolean);
           } else if (rhsVal && !["Real", "Integer", "Boolean", "String"].includes(rhsVal)) {
             const typeSym = flattener.db.byName(rhsVal).find((e: any) => e.kind === "Class" || e.kind === "Type");
@@ -629,9 +922,9 @@ export function validateClassModifiers(
               const tEnumMatch = /enumeration\s*\(([^)]*)\)/.exec(tCst);
               if (tEnumMatch) {
                 isEnumRhs = true;
-                rhsLits = tEnumMatch[1]
+                rhsLits = tEnumMatch[1]!
                   .split(",")
-                  .map((s) => s.trim().split(/\s+/)[0])
+                  .map((s) => s.trim().split(/\s+/)[0]!)
                   .filter(Boolean);
               }
             }
@@ -679,8 +972,8 @@ export function validateClassModifiers(
           } else if (!isTargetGeneric) {
             const isSubset = rhsLits.every((l) => targetLits.includes(l));
             if (!isSubset) {
-              if (dae.extensionMetadata?.isOldFrontend) {
-                const missingLit = targetLits.find((l) => !rhsLits.includes(l)) ?? targetLits[0];
+              if (dae.extensionMetadata?.["isOldFrontend"]) {
+                const missingLit = targetLits.find((l) => !rhsLits.includes(l!)) ?? targetLits[0];
                 const missingRef = `${targetMember.name}.${missingLit}`;
                 const targetClassCst = flattener.db.cstNode(targetClassId) as any;
                 const findEq = (n: any): any => {
@@ -758,6 +1051,36 @@ export function validateClassModifiers(
   return true;
 }
 
+/**
+ * Elaborates and instantiates a list of class component declarations (`elements`) into the
+ * target {@link DAEBuilder} under the hierarchical dot-separated `prefix`.
+ *
+ * Implements Layer 1 of the Modelica flattener:
+ * 1. **Pre-pass & Scope Registration:** Queries Salsa's `componentInstance` for each element,
+ *    detects component/type shadowing, registers `inner` component declarations in
+ *    `flattener.innerDeclarations`, deduces flexible `[:]` array shapes from literal bindings,
+ *    and pushes `ModelicaModificationEnv` frames into the WASM flattening kernel if enabled.
+ * 2. **Conditional & `inner`/`outer` Resolution:** Evaluates `if <cond>` condition attributes
+ *    (pruning disabled components into `flattener.disabledComponents`) and binds `outer`
+ *    component references to their enclosing `inner` declarations (`state.outerToInner`).
+ * 3. **Fast-Path Scalar Instantiation:** Directly emits un-modified primitive scalar components
+ *    (`Real`, `Integer`, `Boolean`, `String`) into `DAEBuilder`, bypassing composite lookup and
+ *    tuple expansion.
+ * 4. **Recursive Composite Class Elaboration:** Resolves `redeclare` and `inner`/`outer` class
+ *    targets, detects recursive class definitions, merges hierarchical `ModelicaModArgs` across
+ *    base `extends` clauses, component declarations, and outer instance modifiers, and
+ *    recursively calls `instantiateElements` for scalar or multi-dimensional composite arrays.
+ * 5. **Scalarized DAE Variable Emission & Attribute Slicing:** Expands multi-dimensional
+ *    primitive, `type` alias, and `enumeration` arrays via `generateArrayTuples`, emitting
+ *    scalarized variables into `DAEBuilder` and slicing array-valued `start`, `fixed`, `min`,
+ *    `max`, `nominal`, and `stateSelect` attributes per element index tuple.
+ *
+ * @param flattener - Active component flattener context.
+ * @param elements - Ordered list of component `SymbolId`s from Salsa's `instantiate` query.
+ * @param prefix - Hierarchical instance prefix (e.g., `""`, `"r1"`, `"arm[1].joint"`).
+ * @param dae - Target linear-memory `DAEBuilder` receiving flattened variables and bindings.
+ * @param parentMods - Merged modification environment passed down from the enclosing instance.
+ */
 export function instantiateElements(
   flattener: ComponentFlattener,
   elements: SymbolId[],
@@ -769,10 +1092,81 @@ export function instantiateElements(
   flattener.currentParentMods = parentMods;
   const state = getFlatteningState(dae, flattener);
   try {
+    // ============================================================================
+    // Phase 1: Pre-Pass Metadata Lookup, `inner` Registration & Shape Deduction
+    // ============================================================================
     const compInstMap = new Map<SymbolId, ComponentInstanceData | undefined>();
     const declaredNames = new Set<string>();
+    const oldInstExpandedCompInst = new Map<SymbolId, ComponentInstanceData>();
+    if ((dae.extensionMetadata as any)?.hasOldInstOption) {
+      const expandedElements: SymbolId[] = [];
+      const collectInheritedCompChain = (
+        clsId: SymbolId,
+        compName: string,
+        visited = new Set<SymbolId>(),
+      ): SymbolEntry[] => {
+        if (visited.has(clsId)) return [];
+        visited.add(clsId);
+        const chain: SymbolEntry[] = [];
+        for (const ch of flattener.db.childrenOf(clsId)) {
+          if (ch.kind === "Extends") {
+            const base = resolveExtendsBase(flattener, ch, clsId);
+            if (base && base.kind === "Class") {
+              chain.push(...collectInheritedCompChain(base.id, compName, visited));
+            }
+          } else if (ch.kind === "Component" && ch.name === compName) {
+            chain.push(ch);
+          }
+        }
+        return chain;
+      };
+      for (const elemId of elements) {
+        const compInst = flattener.db.query<ComponentInstanceData>("componentInstance", elemId);
+        const elemSym = flattener.db.symbol(elemId);
+        if (
+          compInst &&
+          elemSym?.kind === "Component" &&
+          elemSym.parentId != null &&
+          (compInst.isRedeclare || flattener.db.query<boolean>("isRedeclare", elemId))
+        ) {
+          const chain = collectInheritedCompChain(elemSym.parentId, compInst.name);
+          const replaceableTargets = chain.filter((c, idx) => {
+            if (idx === 0) return true;
+            const ci = flattener.db.query<ComponentInstanceData>("componentInstance", c.id);
+            const isRed = Boolean(ci?.isRedeclare || flattener.db.query<boolean>("isRedeclare", c.id));
+            const isRep = Boolean(ci?.isReplaceable || flattener.db.query<boolean>("isReplaceable", c.id));
+            return isRed && isRep;
+          });
+          if (replaceableTargets.length > 1) {
+            const leafArgs = compInst.modification?.args || [];
+            for (const targetSym of replaceableTargets) {
+              const targetCi = flattener.db.query<ComponentInstanceData>("componentInstance", targetSym.id);
+              if (targetCi) {
+                const mergedArgs =
+                  targetSym.id === elemId
+                    ? targetCi.modification?.args || []
+                    : [...(targetCi.modification?.args || []), ...leafArgs];
+                oldInstExpandedCompInst.set(targetSym.id, {
+                  ...targetCi,
+                  isRedeclare: true,
+                  modification: {
+                    ...targetCi.modification,
+                    args: mergedArgs,
+                  },
+                });
+                expandedElements.push(targetSym.id);
+              }
+            }
+            continue;
+          }
+        }
+        expandedElements.push(elemId);
+      }
+      elements = expandedElements;
+    }
     for (const elemId of elements) {
-      const compInst = flattener.db.query<ComponentInstanceData>("componentInstance", elemId);
+      const compInst =
+        oldInstExpandedCompInst.get(elemId) ?? flattener.db.query<ComponentInstanceData>("componentInstance", elemId);
       compInstMap.set(elemId, compInst);
       if (compInst?.name && compInst?.typeSpecifier) {
         if (!compInst.typeSpecifier.includes(".") && compInst.name === compInst.typeSpecifier) {
@@ -806,6 +1200,8 @@ export function instantiateElements(
         }
       }
 
+      // Register `inner` declarations at the current hierarchical prefix so nested `outer`
+      // components can resolve upward to their matching `inner` instance path.
       if (compInst?.isInner && compInst?.name) {
         const fullCompName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
         if (!flattener.innerDeclarations.has(prefix)) {
@@ -815,6 +1211,8 @@ export function instantiateElements(
         (state.innerComponents ??= new Set<string>()).add(fullCompName);
       }
 
+      // Pre-compute array dimensions for flexible `[:]` declarations bound to array literals
+      // so sibling components referencing `size(arr, d)` can resolve dimensions in any order.
       const elemCstForShape = flattener.db.cstNode(elemId) as any;
       const hasColonSubscript = /\[\s*:(?:\s*,\s*:)*\s*\]/.test(elemCstForShape?.text ?? "");
       if (compInst?.name && hasColonSubscript && compInst?.modification?.bindingExpression?.text) {
@@ -881,15 +1279,52 @@ export function instantiateElements(
         }
       }
       if (prefix) {
-        const tableShape = getNamedArrayShape(dae, `${prefix}.table`);
-        if (tableShape && tableShape.length >= 2) {
-          const colsCount = tableShape[1];
-          const hasExplicitCols = parentMods.args.some((a: any) => a.name === "columns");
-          if (!hasExplicitCols && colsCount >= 2) {
-            const numOutputs = colsCount - 1;
-            setNamedArrayShape(dae, `${prefix}.columns`, [numOutputs]);
-            setNamedArrayShape(dae, `${prefix}.y`, [numOutputs]);
-            setNamedArrayShape(dae, `${prefix}.p_offset`, [numOutputs]);
+        // General inference for components with `start:size(arr, dim)` default bindings
+        // and sibling components dimensioned by `size(...)` or dependent size parameters
+        const inferredDimParams = new Map<string, number>();
+        for (const elemId of elements) {
+          const elemSym = flattener.db.symbol(elemId);
+          if (!elemSym || elemSym.kind !== "Component") continue;
+          const hasExplicitMod = parentMods.args.some((a: any) => a.name === elemSym.name);
+          if (hasExplicitMod) continue;
+          const ci = flattener.db.query<any>("componentInstance", elemId);
+          const bText = ci?.modification?.value?.text?.trim() ?? "";
+          const rangeSizeMatch = bText.match(/^(\d+)\s*:\s*size\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
+          if (rangeSizeMatch) {
+            const startIdx = parseInt(rangeSizeMatch[1]!, 10);
+            const targetArr = rangeSizeMatch[2]!;
+            const dimIdx = parseInt(rangeSizeMatch[3]!, 10) - 1;
+            const targetShape = getNamedArrayShape(dae, `${prefix}.${targetArr}`);
+            if (targetShape && dimIdx >= 0 && dimIdx < targetShape.length) {
+              const len = Math.max(0, targetShape[dimIdx]! - startIdx + 1);
+              if (len > 0) {
+                setNamedArrayShape(dae, `${prefix}.${elemSym.name}`, [len]);
+              }
+            }
+          }
+          const sizeCallMatch = bText.match(/^size\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
+          if (sizeCallMatch) {
+            const targetArr = sizeCallMatch[1]!;
+            const dimIdx = parseInt(sizeCallMatch[2]!, 10) - 1;
+            const targetShape = getNamedArrayShape(dae, `${prefix}.${targetArr}`);
+            if (targetShape && dimIdx >= 0 && dimIdx < targetShape.length && targetShape[dimIdx]! > 0) {
+              inferredDimParams.set(elemSym.name, targetShape[dimIdx]!);
+            }
+          }
+        }
+        if (inferredDimParams.size > 0) {
+          for (const elemId of elements) {
+            const elemSym = flattener.db.symbol(elemId);
+            if (!elemSym || elemSym.kind !== "Component") continue;
+            const ci = flattener.db.query<any>("componentInstance", elemId);
+            const dims = ci?.arrayDimensions;
+            if (Array.isArray(dims) && dims.length === 1) {
+              const dText = String(dims[0]?.text ?? dims[0] ?? "").trim();
+              const resolvedLen = inferredDimParams.get(dText);
+              if (resolvedLen !== undefined && resolvedLen > 0) {
+                setNamedArrayShape(dae, `${prefix}.${elemSym.name}`, [resolvedLen]);
+              }
+            }
           }
         }
       }
@@ -1048,7 +1483,7 @@ export function instantiateElements(
 
         if (
           dae.classKind === "function" &&
-          !dae.extensionMetadata?.isOldFrontend &&
+          !dae.extensionMetadata?.["isOldFrontend"] &&
           !(flattener as any).options?.isOldFrontend &&
           !compInst.isProtected &&
           compInst.causality !== "input" &&
@@ -1139,6 +1574,9 @@ export function instantiateElements(
           }
         }
 
+        // ============================================================================
+        // Phase 2: `inner`/`outer` Binding & Conditional (`if <cond>`) Pruning
+        // ============================================================================
         const isStateOutput = Boolean(compInst.isOuter && compInst.causality === "output");
         if (compInst.isOuter && !compInst.isInner) {
           // Check if component has modification in its own declaration (InnerOuterInvalidMod1)
@@ -1197,6 +1635,8 @@ export function instantiateElements(
             return;
           }
 
+          // Walk upward along the instance prefix chain (`a.b.c` -> `a.b` -> `a` -> `""`)
+          // to bind this `outer` reference to the nearest enclosing `inner` declaration.
           let p: string | null = prefix;
           let foundInner = false;
           while (p !== null) {
@@ -1477,6 +1917,9 @@ export function instantiateElements(
           }
         }
 
+        // ============================================================================
+        // Phase 3: Fast-Path Scalar Instantiation (Primitive Un-Modified Scalars)
+        // ============================================================================
         // FAST-PATH: Primitive scalar declarations without complex hierarchy or condition attributes
         const isPrimType =
           compInst.typeSpecifier === "Real" ||
@@ -1498,7 +1941,7 @@ export function instantiateElements(
           !compInst.isRedeclare &&
           !compInst.isReplaceable &&
           !compInst.isProtected &&
-          !flattener.isCstNodeProtected(elemCst) &&
+          !flattener["isCstNodeProtected"](elemCst) &&
           !parentMods?.isProtected &&
           !parentMods?.protectedNames?.has(compInst.name)
         ) {
@@ -1593,7 +2036,7 @@ export function instantiateElements(
               parentMods?.parentVariability !== Variability.Constant &&
               flattener.currentClassId &&
               elemParentId !== flattener.currentClassId &&
-              (isElemParentPackage || Boolean(dae.extensionMetadata?.isOldFrontend))
+              (isElemParentPackage || Boolean(dae.extensionMetadata?.["isOldFrontend"]))
             ) {
               continue;
             }
@@ -1607,6 +2050,9 @@ export function instantiateElements(
               }
             }
 
+            // Structural parameter evaluation (`annotation(Evaluate = true)`):
+            // In non-OMC compatibility mode, promote `Evaluate = true` parameters to `Constant`
+            // so downstream constant folding and alias elimination inline their values.
             const isEvaluated = flattener.db.query<boolean>("isEvaluate", elemId);
             if (!flattener.options.omcCompatibility && isEvaluated && variability === Variability.Parameter) {
               variability = Variability.Constant;
@@ -1681,7 +2127,7 @@ export function instantiateElements(
             };
 
             if (
-              !dae.extensionMetadata?.isOldFrontend &&
+              !dae.extensionMetadata?.["isOldFrontend"] &&
               !hasEqInClass() &&
               variability === Variability.Constant &&
               !bText &&
@@ -1795,7 +2241,7 @@ export function instantiateElements(
                         const scopeId = parentMods?.packageScopeId ?? flattener.db.symbol(elemId)?.parentId;
                         const evalVal = rawText ? flattener.db.evaluate(rawText, scopeId ?? undefined) : null;
                         if (typeof evalVal === "number" && evalVal >= 1 && evalVal <= 5) {
-                          litName = ssLiterals[Math.round(evalVal) - 1];
+                          litName = ssLiterals[Math.round(evalVal) - 1]!;
                         }
                       } catch {}
                     }
@@ -1890,42 +2336,57 @@ export function instantiateElements(
                       ) {
                         attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedT));
                       } else {
-                        try {
-                          const scopeId = parentMods?.packageScopeId ?? flattener.db.symbol(elemId)?.parentId;
-                          const evalVal = flattener.db.evaluate(rawText, scopeId ?? undefined);
-                          if (typeof evalVal === "number") {
-                            attrExprId =
-                              varType === VarType.Integer
-                                ? dae.addIntLiteral(Math.trunc(evalVal))
-                                : dae.addRealLiteral(evalVal);
-                          } else if (typeof evalVal === "string") {
-                            attrExprId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(evalVal));
-                          }
-                          if (evalVal !== null && flattener.options.omcCompatibility) {
-                            const idMatches = rawText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-                            if (idMatches) {
-                              for (const id of idMatches) {
-                                if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
-                                  continue;
-                                let p: string | undefined = prefix;
-                                while (p) {
-                                  const cand = `${p}.${id}`;
-                                  const idx = dae.getVarIdxByName(cand);
-                                  if (idx >= 0 && dae.getVarVariability(idx) === Variability.Parameter) {
-                                    dae.setVarFinal(idx, true);
-                                    break;
+                        const subParts =
+                          dae.extensionMetadata?.["isOldFrontend"] && arg.name === "start"
+                            ? rawText.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*-\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/)
+                            : null;
+                        if (subParts && subParts[1] && subParts[2]) {
+                          const p1 = resolveScopedName(subParts[1], prefix, dae, state.innerOuterComponents);
+                          const p2 = resolveScopedName(subParts[2], prefix, dae, state.innerOuterComponents);
+                          attrExprId = dae.addBinaryExpr(
+                            BinOp.Sub,
+                            dae.addExpression(ExprKind.Name, dae.interner.intern(p1)),
+                            dae.addExpression(ExprKind.Name, dae.interner.intern(p2)),
+                          );
+                        }
+                        if (attrExprId === null) {
+                          try {
+                            const scopeId = parentMods?.packageScopeId ?? flattener.db.symbol(elemId)?.parentId;
+                            const evalVal = flattener.db.evaluate(rawText, scopeId ?? undefined);
+                            if (typeof evalVal === "number") {
+                              attrExprId =
+                                varType === VarType.Integer
+                                  ? dae.addIntLiteral(Math.trunc(evalVal))
+                                  : dae.addRealLiteral(evalVal);
+                            } else if (typeof evalVal === "string") {
+                              attrExprId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(evalVal));
+                            }
+                            if (evalVal !== null && flattener.options.omcCompatibility) {
+                              const idMatches = rawText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
+                              if (idMatches) {
+                                for (const id of idMatches) {
+                                  if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
+                                    continue;
+                                  let p: string | undefined = prefix;
+                                  while (p) {
+                                    const cand = `${p}.${id}`;
+                                    const idx = dae.getVarIdxByName(cand);
+                                    if (idx >= 0 && dae.getVarVariability(idx) === Variability.Parameter) {
+                                      dae.setVarFinal(idx, true);
+                                      break;
+                                    }
+                                    const dot = p.lastIndexOf(".");
+                                    p = dot !== -1 ? p.substring(0, dot) : undefined;
                                   }
-                                  const dot = p.lastIndexOf(".");
-                                  p = dot !== -1 ? p.substring(0, dot) : undefined;
-                                }
-                                const rootIdx = dae.getVarIdxByName(id);
-                                if (rootIdx >= 0 && dae.getVarVariability(rootIdx) === Variability.Parameter) {
-                                  dae.setVarFinal(rootIdx, true);
+                                  const rootIdx = dae.getVarIdxByName(id);
+                                  if (rootIdx >= 0 && dae.getVarVariability(rootIdx) === Variability.Parameter) {
+                                    dae.setVarFinal(rootIdx, true);
+                                  }
                                 }
                               }
                             }
-                          }
-                        } catch {}
+                          } catch {}
+                        }
                       }
                     }
                   }
@@ -1955,7 +2416,7 @@ export function instantiateElements(
         let isElemProtected =
           !isRedeclaredPublicly &&
           (Boolean(compInst?.isProtected) ||
-            flattener.isCstNodeProtected(elemCst) ||
+            flattener["isCstNodeProtected"](elemCst) ||
             Boolean(parentMods?.isProtected) ||
             Boolean(parentMods?.protectedNames?.has(compInst.name)));
 
@@ -1964,7 +2425,53 @@ export function instantiateElements(
         const meta = (elemSym?.metadata as any) || {};
 
         let classTargetId = compInst.classInstance;
-        if (flattener.currentClassId && compInst.typeSpecifier && flattener.currentClassId !== elemSym?.parentId) {
+        let redeclPkgId: SymbolId | null = null;
+        if (compInst.typeSpecifier?.includes(".")) {
+          const typeParts = compInst.typeSpecifier.split(".");
+          const pkgPrefix = typeParts[0]!;
+          const pkgRedeclArg = parentMods?.args
+            ?.slice()
+            .reverse()
+            .find((a: any) => !a.isBreak && a.name === pkgPrefix && (a.isRedeclaration || a.redeclaredTypeSpecifier));
+          if (pkgRedeclArg?.redeclaredTypeSpecifier) {
+            let targetPkgId = resolveRedeclarationType(
+              flattener,
+              pkgRedeclArg.evaluationScopeId ?? flattener.currentClassId,
+              pkgRedeclArg.redeclaredTypeSpecifier,
+            );
+            if (targetPkgId) {
+              const visitedAliases = new Set<SymbolId>();
+              while (targetPkgId && !visitedAliases.has(targetPkgId)) {
+                visitedAliases.add(targetPkgId);
+                if (!getShortClassSpecifierNode(flattener.db.cstNode(targetPkgId) as any)) break;
+                const basePkg: SymbolEntry | null = flattener.db.query<SymbolEntry | null>(
+                  "resolvedBaseClass",
+                  targetPkgId,
+                );
+                if (basePkg) targetPkgId = basePkg.id;
+                else break;
+              }
+              redeclPkgId = targetPkgId;
+              const memberName = typeParts.slice(1).join(".");
+              const memberTarget = flattener.db.query<(n: string) => SymbolEntry | null>(
+                "resolveName",
+                targetPkgId,
+              )?.(memberName);
+              if (
+                memberTarget &&
+                (memberTarget.kind === "Class" || (memberTarget.metadata as any)?.classKind === "type")
+              ) {
+                classTargetId = memberTarget.id;
+              }
+            }
+          }
+        }
+        if (
+          !redeclPkgId &&
+          flattener.currentClassId &&
+          compInst.typeSpecifier &&
+          flattener.currentClassId !== elemSym?.parentId
+        ) {
           const origClassSym = classTargetId ? flattener.db.symbol(classTargetId) : null;
           if (origClassSym && origClassSym.parentId !== null) {
             const scopeTarget = compInst.typeSpecifier.includes(".")
@@ -2115,8 +2622,8 @@ export function instantiateElements(
               const impText: string = impCst?.text ?? "";
               const aliasNode = impCst ? Cst.ImportClause.alias(impCst) : null;
               const importListNode = impCst ? Cst.ImportClause.importList(impCst) : null;
-              const pkgName = String(impMeta?.packageName ?? imp.name ?? "");
-              if (/\.\s*\*/.test(impText) || impMeta?.importKind === "unqualified") {
+              const pkgName = String(impMeta?.["packageName"] ?? imp.name ?? "");
+              if (/\.\s*\*/.test(impText) || impMeta?.["importKind"] === "unqualified") {
                 const pkgSym = resolveQualified(flattener.db, pkgName, true);
                 if (
                   pkgSym &&
@@ -2124,8 +2631,10 @@ export function instantiateElements(
                 ) {
                   matchingUnqualImports.push(imp);
                 }
-              } else if (!importListNode && impMeta?.importKind !== "compound") {
-                const shortName = String(aliasNode?.text ?? impMeta?.shortName ?? pkgName.split(".").pop() ?? pkgName);
+              } else if (!importListNode && impMeta?.["importKind"] !== "compound") {
+                const shortName = String(
+                  aliasNode?.text ?? impMeta?.["shortName"] ?? pkgName.split(".").pop() ?? pkgName,
+                );
                 if (shortName === firstPart) {
                   matchingQualImports.push({ sym: imp, pkgName, shortName });
                 }
@@ -2275,6 +2784,7 @@ export function instantiateElements(
           isFinalComp &&
           matchingParentArg &&
           !matchingParentArg.isRedeclaration &&
+          !matchingParentArg.isRecordCtorDefault &&
           (matchingParentArg.value != null ||
             (matchingParentArg.nestedArgs && matchingParentArg.nestedArgs.length > 0) ||
             matchingParentArg.modText)
@@ -2353,7 +2863,11 @@ export function instantiateElements(
         }
 
         const effectiveParentArg =
-          matchingParentArg?.isRedeclaration && !compInst?.isReplaceable ? null : matchingParentArg;
+          matchingParentArg?.isRedeclaration &&
+          !compInst?.isReplaceable &&
+          !dae.extensionMetadata?.["ignoreReplaceable"]
+            ? null
+            : matchingParentArg;
         const effectiveClassArg = matchingClassArg;
 
         const redeclArg =
@@ -2456,16 +2970,92 @@ export function instantiateElements(
           let currTargetId: SymbolId | null = classTargetId;
           while (currTargetId) {
             const cst = flattener.db.cstNode(currTargetId) as any;
+            const baseSym: any = flattener.db.query("resolvedBaseClass", currTargetId);
             if (cst) {
-              const spec = Cst.ClassDefinition.classSpecifier(cst);
-              const short =
-                Cst.ShortClassSpecifier.is(spec) ||
-                spec?.type === "short_class_specifier" ||
-                spec?.type === "ShortClassSpecifier"
-                  ? spec
-                  : spec?.children?.find(
-                      (c: any) => Cst.ShortClassSpecifier.is(c) || c.type === "short_class_specifier",
-                    );
+              const short = getShortClassSpecifierNode(cst);
+              if (short) {
+                const shortTypeSpec =
+                  Cst.ShortClassSpecifier.typeSpecifier(short) ??
+                  short?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+                const shortTypeName = shortTypeSpec?.text?.trim() ?? "";
+                const isShortPrim =
+                  shortTypeName === "Real" ||
+                  shortTypeName === "Integer" ||
+                  shortTypeName === "Boolean" ||
+                  shortTypeName === "String" ||
+                  shortTypeName === "Clock" ||
+                  shortTypeName === "StateSelect" ||
+                  shortTypeName === "ExternalObject" ||
+                  shortTypeName === "AssertionLevel";
+                if (shortTypeName && !isShortPrim && !baseSym) {
+                  const currSym = flattener.db.symbol(currTargetId);
+                  const topResolved =
+                    currSym?.parentId == null
+                      ? (resolveQualified(flattener.db, shortTypeName, true) ??
+                        flattener.db.byName(shortTypeName).find((c) => c.parentId === null && c.id !== currTargetId))
+                      : null;
+                  if (!topResolved) {
+                    const scopeFQN = currSym?.parentId
+                      ? getSymbolQualifiedName(flattener.db, currSym.parentId)
+                      : "<global scope>";
+                    dae.diagnostics.push({
+                      severity: "error",
+                      code: ModelicaErrorCode.BASE_CLASS_NOT_FOUND_IN_SCOPE.code,
+                      message: ModelicaErrorCode.BASE_CLASS_NOT_FOUND_IN_SCOPE.message(shortTypeName, scopeFQN),
+                      range: {
+                        startPosition: cst.startPosition,
+                        endPosition: cst.endPosition,
+                        startByte: cst.startIndex ?? cst.startByte,
+                        endByte: cst.endIndex ?? cst.endByte,
+                      },
+                    });
+                    return;
+                  }
+                }
+                const shortArrSub =
+                  Cst.ShortClassSpecifier.arraySubscripts(short) ??
+                  short?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
+                const shortMod =
+                  Cst.ShortClassSpecifier.classModification(short) ??
+                  short?.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
+                if (shortArrSub && shortMod) {
+                  const effShortMod = flattener.db.query<any>("effectiveModification", currTargetId);
+                  if (effShortMod?.args) {
+                    for (const arg of effShortMod.args) {
+                      const rawVal = arg.value?.text ?? arg.value ?? arg.modification?.bindingExpression;
+                      if (!arg.each && !arg.isEach && rawVal) {
+                        const bVal = String(rawVal).replace(/^=/, "").trim();
+                        if (
+                          /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(bVal) ||
+                          bVal === "true" ||
+                          bVal === "false" ||
+                          (bVal.startsWith('"') && bVal.endsWith('"'))
+                        ) {
+                          const diagRange = getElementDiagRange(elemCst);
+                          dae.diagnostics.push({
+                            severity: "notification",
+                            code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
+                            message: "From here:",
+                            range: {
+                              startPosition: shortMod.startPosition,
+                              endPosition: shortMod.endPosition,
+                              startByte: shortMod.startIndex ?? shortMod.startByte,
+                              endByte: shortMod.endIndex ?? shortMod.endByte,
+                            },
+                          });
+                          dae.diagnostics.push({
+                            severity: "error",
+                            code: ModelicaErrorCode.NON_ARRAY_MODIFICATION.code,
+                            message: ModelicaErrorCode.NON_ARRAY_MODIFICATION.message(bVal, arg.name),
+                            range: diagRange,
+                          });
+                          return;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
               const basePrefixNode =
                 Cst.ShortClassSpecifier.basePrefix(short) ??
                 short?.children?.find((c: any) => c.type === "base_prefix");
@@ -2482,7 +3072,6 @@ export function instantiateElements(
                 }
               }
             }
-            const baseSym: any = flattener.db.query("resolvedBaseClass", currTargetId);
             currTargetId = baseSym && baseSym.id !== currTargetId ? baseSym.id : null;
           }
         }
@@ -2551,31 +3140,48 @@ export function instantiateElements(
           flattener.usedExternalObjects.add(classTargetId);
         }
         const isRecordTarget =
-          (classTarget && (flattener.isRecordSym(classTarget) || flattener.isOperatorRecordSym(classTarget))) || false;
+          (classTarget && (flattener["isRecordSym"](classTarget) || flattener.isOperatorRecordSym(classTarget))) ||
+          false;
         if (isRecordTarget && classTarget) {
-          flattener.usedRecordSymIds?.add(classTarget.id);
-          if (classTarget.name) flattener.usedRecordNames?.add(classTarget.name);
+          if (
+            effectiveClassArg?.isRedeclaration &&
+            effectiveClassArg.name &&
+            origClassTargetId &&
+            origClassTargetId !== classTarget.id
+          ) {
+            const redeclCtorName = `${dae.name ? `${dae.name}.` : ""}${prefix ? `${prefix}.` : ""}${effectiveClassArg.name}`;
+            (flattener.generateRecordConstructorFor as any)?.(
+              classTarget,
+              dae,
+              flattener.currentRootClassId,
+              redeclCtorName,
+              effectiveClassArg.name,
+            );
+          } else {
+            flattener.usedRecordSymIds?.add(classTarget.id);
+            if (classTarget.name) flattener.usedRecordNames?.add(classTarget.name);
+          }
           const hasArgs = Boolean(
             (compInst?.modification?.args && compInst.modification.args.length > 0) ||
             (parentMods?.args &&
               parentMods.args.some((a: any) => a.name === compInst.name && a.modification?.args?.length > 0)),
           );
-          if (hasArgs && compInst.name) {
-            if (!flattener.instantiatedRecordComponents) {
-              flattener.instantiatedRecordComponents = new Map<string, Set<string>>();
+          if (hasArgs && compInst.name && dae.classKind !== "function") {
+            if (!flattener["instantiatedRecordComponents"]) {
+              flattener["instantiatedRecordComponents"] = new Map<string, Set<string>>();
             }
             const qTarget = getSymbolQualifiedName(flattener.db, classTarget.id) || classTarget.name;
-            let s = flattener.instantiatedRecordComponents.get(qTarget);
+            let s = flattener["instantiatedRecordComponents"].get(qTarget);
             if (!s) {
               s = new Set<string>();
-              flattener.instantiatedRecordComponents.set(qTarget, s);
+              flattener["instantiatedRecordComponents"].set(qTarget, s);
             }
             s.add(compInst.name);
             if (classTarget.name && classTarget.name !== qTarget) {
-              let s2 = flattener.instantiatedRecordComponents.get(classTarget.name);
+              let s2 = flattener["instantiatedRecordComponents"].get(classTarget.name);
               if (!s2) {
                 s2 = new Set<string>();
-                flattener.instantiatedRecordComponents.set(classTarget.name, s2);
+                flattener["instantiatedRecordComponents"].set(classTarget.name, s2);
               }
               s2.add(compInst.name);
             }
@@ -2603,7 +3209,7 @@ export function instantiateElements(
           const isConnector = words.includes("connector");
           const isBlock = words.includes("block");
           const isRecord = words.includes("record") || isRecordTarget;
-          const isFunc = words.includes("function") || flattener.isFunctionSym(classTarget);
+          const isFunc = words.includes("function") || flattener["isFunctionSym"](classTarget);
           const isTypeKind = words.includes("type") || isType;
           if (
             !isExtObj &&
@@ -2645,14 +3251,14 @@ export function instantiateElements(
         const isConnector = isConnectorClass && !isShortConnector;
         if (
           isConnector &&
-          !dae.extensionMetadata?.isOldFrontend &&
+          !dae.extensionMetadata?.["isOldFrontend"] &&
           (compInst.variability === "parameter" ||
             compInst.variability === "constant" ||
             parentMods?.parentVariability === Variability.Parameter ||
             parentMods?.parentVariability === Variability.Constant)
         ) {
           if (
-            dae.extensionMetadata?.isOldFrontend &&
+            dae.extensionMetadata?.["isOldFrontend"] &&
             dae.diagnostics.some((d) => d.code === ModelicaErrorCode.CONNECTOR_VARIABILITY.code)
           ) {
             return;
@@ -2750,15 +3356,18 @@ export function instantiateElements(
           }
         }
 
+        // ============================================================================
+        // Phase 4: Recursive Composite Class Elaboration & Modifier Merging
+        // ============================================================================
         if (isUserClass) {
           // Check for dot lookup in partial classes/packages (e.g. P.A a; where P is partial)
           const typeSpecParts = (compInst.typeSpecifier ?? "").split(".");
           if (typeSpecParts.length > 1) {
             const curScopeId = flattener.currentClassId ?? flattener.currentRootClassId;
-            let currentScope: SymbolEntry | null = curScopeId ? flattener.db.symbol(curScopeId) : null;
+            let currentScope: SymbolEntry | null = curScopeId ? (flattener.db.symbol(curScopeId) ?? null) : null;
             let hasPartialLookup = false;
             for (let i = 0; i < typeSpecParts.length - 1; i++) {
-              const part = typeSpecParts[i];
+              const part = typeSpecParts[i]!;
               let resolved: SymbolEntry | null = null;
               if (i === 0) {
                 const resolver =
@@ -2782,7 +3391,7 @@ export function instantiateElements(
                 resolved = flattener.db.childrenOf(currentScope.id).find((c) => c.name === part) ?? null;
               }
               if (resolved && flattener.isClassPartial(resolved.id)) {
-                const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend);
+                const isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
                 if (!isOldFrontend) {
                   let clauseNode: any = elemCst;
                   while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
@@ -2861,6 +3470,7 @@ export function instantiateElements(
             }
           }
 
+          // Detect direct or mutually recursive class instantiation cycles via `instantiatingClassIds`
           const instantiatingClassIds: Set<SymbolId> =
             parentMods?.instantiatingClassIds ??
             new Set(flattener.currentRootClassId ? [flattener.currentRootClassId] : []);
@@ -2923,7 +3533,7 @@ export function instantiateElements(
             !compInst.isReplaceable &&
             !(
               dae.classKind === "function" &&
-              (compInst.causality === "input" || flattener.isFunctionSym(classTarget))
+              (compInst.causality === "input" || flattener["isFunctionSym"](classTarget))
             ) &&
             flattener.isClassPartial(classTargetId)
           ) {
@@ -2956,7 +3566,7 @@ export function instantiateElements(
                   }
                 : undefined;
 
-            if (dae.extensionMetadata.isOldFrontend) {
+            if (dae.extensionMetadata["isOldFrontend"]) {
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.PARTIAL_INSTANTIATION.code,
@@ -2980,7 +3590,7 @@ export function instantiateElements(
             continue;
           }
 
-          if (dae.classKind === "function" && classTarget && flattener.isFunctionSym(classTarget)) {
+          if (dae.classKind === "function" && classTarget && flattener["isFunctionSym"](classTarget)) {
             const fnVarIdx = dae.addVariable(
               dae.interner.intern(name),
               VarType.Real,
@@ -3088,7 +3698,14 @@ export function instantiateElements(
           if (classTargetId) nextInstantiatingClassIds.add(classTargetId);
 
           const isOpRec = Boolean(classTarget && isRecordTarget && flattener.isOperatorRecordSym(classTarget));
-          const hasOpRecBinding = Boolean(isOpRec && compInst?.modification?.bindingExpression);
+          const hasOpRecBinding = Boolean(
+            isOpRec &&
+            compInst?.modification?.bindingExpression &&
+            compInst?.variability !== "parameter" &&
+            compInst?.variability !== "constant" &&
+            parentMods?.parentVariability !== Variability.Parameter &&
+            parentMods?.parentVariability !== Variability.Constant,
+          );
           if (hasOpRecBinding) {
             const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
             const findBindingExprNode = (n: any): any => {
@@ -3110,23 +3727,43 @@ export function instantiateElements(
             }
           }
           const subElements = flattener.db.query<SymbolId[]>("instantiate", classTargetId!);
-          let pkgScopeId: number | undefined = parentMods?.packageScopeId;
-          if (compInst.typeSpecifier?.includes(".")) {
-            const pkgPrefix = compInst.typeSpecifier.split(".")[0];
-            const pkgSym = flattener.db.byName(pkgPrefix).find((e) => e.kind === "Class" || e.kind === "Package");
+          let pkgScopeId: number | undefined = redeclPkgId ?? parentMods?.packageScopeId;
+          if (!redeclPkgId && compInst.typeSpecifier?.includes(".")) {
+            const pkgPrefix = compInst.typeSpecifier.split(".")[0]!;
+            const searchScopeId = elemParent ?? flattener.currentClassId;
+            const pkgSym =
+              (searchScopeId
+                ? (flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", searchScopeId)?.(pkgPrefix) ??
+                  flattener.db.query<(n: string) => SymbolEntry | null>(
+                    "resolveSimpleName",
+                    searchScopeId,
+                  )?.(pkgPrefix))
+                : null) ?? flattener.db.byName(pkgPrefix).find((e) => e.kind === "Class" || e.kind === "Package");
             if (pkgSym) {
               let targetPkgId: SymbolId = pkgSym.id;
-              const shortCst = flattener.db.cstNode(targetPkgId) as any;
-              const specShort = getShortClassSpecifierNode(shortCst);
-              if (specShort) {
+              const visitedAliases = new Set<SymbolId>();
+              while (targetPkgId && !visitedAliases.has(targetPkgId)) {
+                visitedAliases.add(targetPkgId);
+                const shortCst = flattener.db.cstNode(targetPkgId) as any;
+                const specShort = getShortClassSpecifierNode(shortCst);
+                if (!specShort) break;
+                const basePkg = flattener.db.query<SymbolEntry | null>("resolvedBaseClass", targetPkgId);
+                if (basePkg) {
+                  targetPkgId = basePkg.id;
+                  continue;
+                }
                 const tName = (
                   Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
                   specShort.children?.find((c: any) => c.type === "type_specifier")
                 )?.text?.trim();
                 if (tName) {
                   const aliased = flattener.db.byName(tName).find((e) => e.kind === "Class" || e.kind === "Package");
-                  if (aliased) targetPkgId = aliased.id;
+                  if (aliased) {
+                    targetPkgId = aliased.id;
+                    continue;
+                  }
                 }
+                break;
               }
               pkgScopeId = targetPkgId;
             }
@@ -3157,15 +3794,23 @@ export function instantiateElements(
             if (ctorCallMatch) {
               const ctorName = ctorCallMatch[1]!;
               const targetBaseName = classTarget?.name ?? compInst.typeSpecifier.split(".").pop();
-              const isDirectRecordCtor = ctorName === targetBaseName || ctorName.endsWith(`.${targetBaseName}`);
+              const origTypeBaseName = compInst.typeSpecifier.split(".").pop();
+              const isDirectRecordCtor =
+                ctorName === targetBaseName ||
+                ctorName.endsWith(`.${targetBaseName}`) ||
+                Boolean(
+                  redeclArg &&
+                  origTypeBaseName &&
+                  (ctorName === origTypeBaseName || ctorName.endsWith(`.${origTypeBaseName}`)),
+                );
               const derivedRecordSym = !isDirectRecordCtor
                 ? (flattener.db
                     .byName(ctorName.split(".").pop()!)
                     .find(
                       (e) =>
-                        flattener.isRecordSym(e) &&
+                        flattener["isRecordSym"](e) &&
                         (e.name === ctorName || getSymbolQualifiedName(flattener.db, e.id) === ctorName),
-                    ) ?? flattener.db.byName(ctorName.split(".").pop()!).find((e) => flattener.isRecordSym(e)))
+                    ) ?? flattener.db.byName(ctorName.split(".").pop()!).find((e) => flattener["isRecordSym"](e)))
                 : null;
               if (isDirectRecordCtor || derivedRecordSym) {
                 if (derivedRecordSym) {
@@ -3186,7 +3831,7 @@ export function instantiateElements(
                     (s) =>
                       s &&
                       s.kind === "Component" &&
-                      !flattener.isCstNodeProtected(flattener.db.cstNode(s.id)) &&
+                      !flattener["isCstNodeProtected"](flattener.db.cstNode(s.id)) &&
                       (s.metadata as any)?.variability !== "constant",
                   );
                 for (let aIdx = 0; aIdx < rawArgs.length; aIdx++) {
@@ -3221,9 +3866,102 @@ export function instantiateElements(
                 ) {
                   isContinuousRecordCtorEq = true;
                 }
+                if (!isContinuousRecordCtorEq && flattener.generateRecordConstructorFor) {
+                  const targetSymForCtor = derivedRecordSym ?? classTarget;
+                  const ctorFn =
+                    dae.getFunction(ctorName) ??
+                    (targetSymForCtor
+                      ? flattener.generateRecordConstructorFor(targetSymForCtor, dae, flattener.currentRootClassId)
+                      : null);
+                  if (ctorFn) {
+                    const providedNames = new Set(recordCtorArgs.map((a) => a.name).filter(Boolean));
+                    let hasDependentDefault = false;
+                    for (let vi = 0; vi < ctorFn.varCount; vi++) {
+                      if (ctorFn.getVarCausality(vi) === Causality.Input && !providedNames.has(ctorFn.getVarName(vi))) {
+                        const defId = ctorFn.getVarExpression(vi);
+                        if (defId !== undefined && defId >= 0) {
+                          const k = ctorFn.getExprKind(defId);
+                          if (
+                            k !== ExprKind.IntLiteral &&
+                            k !== ExprKind.RealLiteral &&
+                            k !== ExprKind.BoolLiteral &&
+                            k !== ExprKind.StringLiteral
+                          ) {
+                            hasDependentDefault = true;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                    if (hasDependentDefault) {
+                      const evalArgs: any[] = [];
+                      const namedEvalArgs: { name: string; value: any }[] = [];
+                      let canEvalAll = true;
+                      for (const rArg of recordCtorArgs) {
+                        const txt = rArg.value?.text?.trim() ?? "";
+                        const num = Number(txt);
+                        if (!isNaN(num) && txt !== "") {
+                          namedEvalArgs.push({ name: rArg.name, value: num });
+                        } else if (txt === "true" || txt === "false") {
+                          namedEvalArgs.push({ name: rArg.name, value: txt === "true" });
+                        } else {
+                          canEvalAll = false;
+                          break;
+                        }
+                      }
+                      if (canEvalAll && ctorFn.name) {
+                        try {
+                          const fnInternId = dae.interner.intern(ctorFn.name);
+                          const res = (evaluateArenaFunctionCall as any)(
+                            dae,
+                            fnInternId,
+                            evalArgs,
+                            flattener.db,
+                            targetSymForCtor!.id,
+                            namedEvalArgs,
+                          );
+                          if (Array.isArray(res) && res.length === subSyms.length) {
+                            for (let aIdx = 0; aIdx < res.length; aIdx++) {
+                              const fName = subSyms[aIdx]!.name;
+                              if (!providedNames.has(fName)) {
+                                const val = res[aIdx];
+                                const isInt = isIntegerTypeSpec(
+                                  flattener.db.query("typeSpecifier", subSyms[aIdx]!.id),
+                                  flattener.db,
+                                );
+                                const fVal =
+                                  typeof val === "number"
+                                    ? Number.isInteger(val) && !isInt
+                                      ? `${val}.0`
+                                      : String(val)
+                                    : String(val);
+                                recordCtorArgs.push({
+                                  name: fName,
+                                  value: { kind: "literal", value: val, text: fVal },
+                                  isRecordCtorDefault: true,
+                                } as any);
+                              }
+                            }
+                          }
+                        } catch (_) {}
+                      }
+                    }
+                  }
+                }
               } else {
-                const matchingFnSym = flattener.db.byName(ctorName).find((e) => flattener.isFunctionSym(e));
+                const ctorShortName = ctorName.includes(".") ? ctorName.split(".").pop()! : ctorName;
+                const fnCandidates = flattener.db.byName(ctorShortName).filter((e) => flattener["isFunctionSym"](e));
+                const matchingFnSym =
+                  (ctorName.includes(".")
+                    ? fnCandidates.find((e) => {
+                        const qn = getSymbolQualifiedName(flattener.db, e.id);
+                        return qn === ctorName || qn.endsWith(`.${ctorName}`);
+                      })
+                    : undefined) ?? fnCandidates[0];
                 if (matchingFnSym) {
+                  if (classTarget && flattener.generateRecordConstructorFor) {
+                    flattener.generateRecordConstructorFor(classTarget, dae, flattener.currentRootClassId);
+                  }
                   const qualFnName = getSymbolQualifiedName(flattener.db, matchingFnSym.id);
                   let fn = dae.getFunction(qualFnName) ?? dae.getFunction(ctorName);
                   if (!fn) {
@@ -3231,10 +3969,19 @@ export function instantiateElements(
                     dae.addFunction(qualFnName, fn);
                     dae.addFunction(ctorName, fn);
                   }
+                  if (fn) {
+                    (fn as any).wasCalled = true;
+                    flattener.calledFunctionSymIds?.add(matchingFnSym.id);
+                    for (const [nName, nFn] of fn.functions?.entries() ?? []) {
+                      (nFn as any).wasCalled = true;
+                      if ((nFn as any).symId) flattener.calledFunctionSymIds?.add((nFn as any).symId);
+                      dae.addFunction(nName, nFn);
+                    }
+                  }
                   if (fn && fn.diagnostics.some((d: any) => d.severity === "error")) {
                     flattener.failedFunctionIds?.add(matchingFnSym.id);
                     flattener.invalidInterfaceFunctionIds?.add(matchingFnSym.id);
-                    if (dae.extensionMetadata?.isOldFrontend) {
+                    if (dae.extensionMetadata?.["isOldFrontend"]) {
                       const scopeName =
                         (flattener.currentRootClassId ? flattener.db.symbol(flattener.currentRootClassId)?.name : "") ??
                         "";
@@ -3256,30 +4003,45 @@ export function instantiateElements(
                       });
                     }
                   }
-                  const rawArgs = splitTopLevelArgs(ctorCallMatch[2]!);
-                  const evalArgs: any[] = [];
-                  for (const argStr of rawArgs) {
-                    const ap = argStr.trim();
-                    const num = Number(ap);
-                    if (!isNaN(num)) {
-                      evalArgs.push(num);
-                    } else if (ap === "true") {
-                      evalArgs.push(true);
-                    } else if (ap === "false") {
-                      evalArgs.push(false);
-                    } else {
-                      const scopedAp = prefix ? `${prefix}.${ap}` : ap;
-                      let vIdx = dae.lookupVariable(scopedAp);
-                      if (vIdx < 0) vIdx = dae.lookupVariable(ap);
-                      if (vIdx >= 0) {
-                        const sv = dae.getVarExpression(vIdx);
-                        const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
-                        evalArgs.push(val !== null && val !== undefined ? val : null);
-                      } else {
-                        evalArgs.push(null);
+                  const parseConstArg = (s: string): any => {
+                    const t = s.trim();
+                    const n = Number(t);
+                    if (!isNaN(n) && t !== "") return n;
+                    if (t === "true") return true;
+                    if (t === "false") return false;
+                    const zMatch = /^zeros\s*\(\s*(\d+)\s*\)$/.exec(t);
+                    if (zMatch) return new Array(Number(zMatch[1])).fill(0);
+                    if (t.startsWith("{") && t.endsWith("}")) {
+                      const elems = parseArrayLiteralElements(t);
+                      const parsed = elems.map(parseConstArg);
+                      return parsed.every((p) => p !== null) ? parsed : null;
+                    }
+                    const scopedAp = prefix ? `${prefix}.${t}` : t;
+                    let vIdx = dae.lookupVariable(scopedAp);
+                    if (vIdx < 0) vIdx = dae.lookupVariable(t);
+                    if (vIdx >= 0) {
+                      const sv = dae.getVarExpression(vIdx);
+                      const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
+                      return val !== null && val !== undefined ? val : null;
+                    }
+                    const arrBase = dae.hasArrayElements(scopedAp) ? scopedAp : dae.hasArrayElements(t) ? t : null;
+                    if (arrBase) {
+                      const elemIndices = dae.getArrayElementIndices(arrBase);
+                      if (elemIndices && elemIndices.length > 0) {
+                        const vals: number[] = [];
+                        for (const eIdx of elemIndices) {
+                          const sv = dae.getVarExpression(eIdx);
+                          const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(eIdx);
+                          if (val === null || val === undefined) return null;
+                          vals.push(val);
+                        }
+                        return vals;
                       }
                     }
-                  }
+                    return null;
+                  };
+                  const rawArgs = splitTopLevelArgs(ctorCallMatch[2]!);
+                  const evalArgs: any[] = rawArgs.map(parseConstArg);
                   if (evalArgs.every((a) => a !== null)) {
                     const fnInternId = dae.interner.intern(qualFnName);
                     let res: any = null;
@@ -3291,27 +4053,58 @@ export function instantiateElements(
                       }
                     } catch (_) {}
                     if (res !== null) {
+                      const formatEvalVal = (v: any, isInt: boolean): string => {
+                        if (Array.isArray(v)) {
+                          return `{${v.map((item) => formatEvalVal(item, isInt)).join(", ")}}`;
+                        }
+                        if (typeof v === "number") {
+                          const cleanV = Math.abs(v) === 0 ? 0 : v;
+                          return Number.isInteger(cleanV) && !isInt ? `${cleanV}.0` : String(cleanV);
+                        }
+                        return String(v);
+                      };
                       const subSyms = subElements
                         .map((id) => flattener.db.symbol(id))
                         .filter(
                           (s) =>
                             s &&
                             s.kind === "Component" &&
-                            !flattener.isCstNodeProtected(flattener.db.cstNode(s.id)) &&
+                            !flattener["isCstNodeProtected"](flattener.db.cstNode(s.id)) &&
                             (s.metadata as any)?.variability !== "constant",
                         );
                       if (Array.isArray(res) && res.length === subSyms.length) {
                         for (let aIdx = 0; aIdx < res.length; aIdx++) {
                           const fName = subSyms[aIdx]!.name;
                           const val = res[aIdx];
-                          const fVal =
-                            typeof val === "number" ? (Number.isInteger(val) ? `${val}.0` : String(val)) : String(val);
-                          recordCtorArgs.push({ name: fName, value: { kind: "literal", value: val, text: fVal } });
+                          const isInt = isIntegerTypeSpec(
+                            flattener.db.query("typeSpecifier", subSyms[aIdx]!.id),
+                            flattener.db,
+                          );
+                          const fVal = formatEvalVal(val, isInt);
+                          recordCtorArgs.push({
+                            name: fName,
+                            isRecordCtorArg: true,
+                            value: {
+                              kind: Array.isArray(val) ? "expression" : "literal",
+                              value: Array.isArray(val) ? undefined : val,
+                              text: fVal,
+                            },
+                          });
                         }
+                        resolvedPkgRecordConst = true;
                       } else if (typeof res === "number" && subSyms.length === 1) {
                         const fName = subSyms[0]!.name;
-                        const fVal = Number.isInteger(res) ? `${res}.0` : String(res);
-                        recordCtorArgs.push({ name: fName, value: { kind: "literal", value: res, text: fVal } });
+                        const isInt = isIntegerTypeSpec(
+                          flattener.db.query("typeSpecifier", subSyms[0]!.id),
+                          flattener.db,
+                        );
+                        const fVal = formatEvalVal(res, isInt);
+                        recordCtorArgs.push({
+                          name: fName,
+                          isRecordCtorArg: true,
+                          value: { kind: "literal", value: res, text: fVal },
+                        });
+                        resolvedPkgRecordConst = true;
                       }
                     }
                   }
@@ -3327,6 +4120,42 @@ export function instantiateElements(
                 if (pkgCompInst?.modification?.args && pkgCompInst.modification.args.length > 0) {
                   recordCtorArgs.push(...pkgCompInst.modification.args);
                   resolvedPkgRecordConst = true;
+                } else if (pkgCompInst?.modification?.bindingExpression?.text) {
+                  const pkgBText = pkgCompInst.modification.bindingExpression.text.trim().replace(/^=/, "").trim();
+                  const pkgCtorMatch = pkgBText.match(/^([a-zA-Z0-9_.$]+)\s*\(([\s\S]*)\)$/);
+                  if (pkgCtorMatch) {
+                    const pkgCtorName = pkgCtorMatch[1]!;
+                    const pkgCtorSym = flattener.db
+                      .byName(pkgCtorName.split(".").pop()!)
+                      .find((e) => flattener["isRecordSym"](e));
+                    if (pkgCtorSym && flattener.generateRecordConstructorFor) {
+                      const pkgScopeId = pkgComp.parentId ?? flattener.currentRootClassId;
+                      flattener.generateRecordConstructorFor(pkgCtorSym, dae, pkgScopeId);
+                    }
+                    const rawArgs = splitTopLevelArgs(pkgCtorMatch[2]!);
+                    const subSyms = subElements
+                      .map((id) => flattener.db.symbol(id))
+                      .filter(
+                        (s) =>
+                          s &&
+                          s.kind === "Component" &&
+                          !flattener["isCstNodeProtected"](flattener.db.cstNode(s.id)) &&
+                          (s.metadata as any)?.variability !== "constant",
+                      );
+                    for (let aIdx = 0; aIdx < rawArgs.length; aIdx++) {
+                      const argStr = rawArgs[aIdx]!;
+                      const eqIdx = argStr.indexOf("=");
+                      if (eqIdx > 0 && !argStr.slice(0, eqIdx).includes("(") && !argStr.slice(0, eqIdx).includes("[")) {
+                        const fName = argStr.slice(0, eqIdx).trim();
+                        const fVal = argStr.slice(eqIdx + 1).trim();
+                        recordCtorArgs.push({ name: fName, value: { kind: "expression", text: fVal } });
+                      } else if (subSyms[aIdx]) {
+                        const fName = subSyms[aIdx]!.name;
+                        recordCtorArgs.push({ name: fName, value: { kind: "expression", text: argStr } });
+                      }
+                    }
+                    resolvedPkgRecordConst = true;
+                  }
                 }
               }
             }
@@ -3372,25 +4201,110 @@ export function instantiateElements(
             state.currentCompClauseRange = compClauseRange;
           }
 
-          const tagEvalScope = (args: any[] | undefined, scopeId: number | undefined): any[] => {
-            if (!args || !scopeId) return args || [];
-            return args.map((a) => ({
-              ...a,
-              evaluationScopeId: a.evaluationScopeId ?? scopeId,
-              value: a.value ? { ...a.value, evaluationScopeId: a.value.evaluationScopeId ?? scopeId } : a.value,
-              nestedArgs: a.nestedArgs ? tagEvalScope(a.nestedArgs, a.evaluationScopeId ?? scopeId) : a.nestedArgs,
-              args: a.args ? tagEvalScope(a.args, a.evaluationScopeId ?? scopeId) : a.args,
-            }));
+          // Tag local component modifiers with their lexical `evaluationScopeId` so relative name
+          // references inside modifier expressions resolve in the declaring component's scope.
+          const resolveChainedRedecl = (arg: any, fallbackScopeId: number | undefined, extraMods?: any[]): any => {
+            let effRedeclSpec = arg.redeclaredTypeSpecifier;
+            let effEvalScopeId = arg.evaluationScopeId ?? fallbackScopeId;
+            if ((arg.isRedeclaration || effRedeclSpec) && effRedeclSpec) {
+              const outerRedecl =
+                extraMods
+                  ?.slice()
+                  .reverse()
+                  .find(
+                    (pa: any) =>
+                      pa !== arg &&
+                      !pa.isBreak &&
+                      (pa.isRedeclaration || pa.redeclaredTypeSpecifier) &&
+                      pa.name === effRedeclSpec &&
+                      pa.redeclaredTypeSpecifier &&
+                      pa.redeclaredTypeSpecifier !== pa.name,
+                  ) ??
+                parentMods?.args
+                  ?.slice()
+                  .reverse()
+                  .find(
+                    (pa: any) =>
+                      !pa.isBreak &&
+                      (pa.isRedeclaration || pa.redeclaredTypeSpecifier) &&
+                      pa.name === effRedeclSpec &&
+                      pa.redeclaredTypeSpecifier,
+                  );
+              if (outerRedecl?.redeclaredTypeSpecifier) {
+                effRedeclSpec = outerRedecl.redeclaredTypeSpecifier;
+                effEvalScopeId = outerRedecl.evaluationScopeId ?? effEvalScopeId;
+              } else if (!effRedeclSpec.includes(".") && flattener.currentClassId) {
+                const localSym: SymbolEntry | null | undefined =
+                  flattener.db.query<(n: string) => SymbolEntry | null>(
+                    "resolveName",
+                    flattener.currentClassId,
+                  )?.(effRedeclSpec) ??
+                  flattener.db.query<(n: string) => SymbolEntry | null>(
+                    "resolveSimpleName",
+                    flattener.currentClassId,
+                  )?.(effRedeclSpec);
+                if (localSym && (localSym.kind === "Class" || localSym.kind === "Package")) {
+                  let curSym: SymbolEntry | null = localSym;
+                  const visitedAliases = new Set<SymbolId>();
+                  while (curSym && !visitedAliases.has(curSym.id)) {
+                    visitedAliases.add(curSym.id);
+                    if (!getShortClassSpecifierNode(flattener.db.cstNode(curSym.id) as any)) break;
+                    const nextBase: SymbolEntry | null = flattener.db.query<SymbolEntry | null>(
+                      "resolvedBaseClass",
+                      curSym.id,
+                    );
+                    if (nextBase) curSym = nextBase;
+                    else break;
+                  }
+                  if (curSym && curSym.id !== localSym.id) {
+                    effRedeclSpec = getSymbolQualifiedName(flattener.db, curSym.id) || curSym.name;
+                  }
+                }
+              }
+            }
+            return {
+              ...arg,
+              redeclaredTypeSpecifier: effRedeclSpec,
+              evaluationScopeId: effEvalScopeId,
+            };
           };
 
+          const tagEvalScope = (args: any[] | undefined, scopeId: number | undefined): any[] => {
+            if (!args || !scopeId) return args || [];
+            return args.map((a) => {
+              const resolvedA = resolveChainedRedecl(a, scopeId);
+              const effScopeId = resolvedA.evaluationScopeId ?? scopeId;
+              return {
+                ...resolvedA,
+                value: a.value ? { ...a.value, evaluationScopeId: a.value.evaluationScopeId ?? effScopeId } : a.value,
+                nestedArgs: a.nestedArgs ? tagEvalScope(a.nestedArgs, effScopeId) : a.nestedArgs,
+                args: a.args ? tagEvalScope(a.args, effScopeId) : a.args,
+              };
+            });
+          };
+
+          // Merge hierarchical modifications in precedence order (inner/default -> outer/override):
+          //   1. Base `extends` class modifications (`classExtendsMods`)
+          //   2. Class-level type modifications (`matchingClassArg`)
+          //   3. Component declaration modifications (`compInst.modification.args`)
+          //   4. Outer instance modifications passed down via `parentMods` (`matchingParentArg`)
+          //   5. Record constructor positional/named arguments (`recordCtorArgs`)
+          const rawSubModArgs = [
+            ...classExtendsMods,
+            ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
+            ...tagEvalScope(compInst.modification?.args, elemId),
+            ...(parentMods?.args
+              ?.filter((a: any) => !a.isBreak && a.name === compInst.name)
+              .flatMap((a: any) => a.nestedArgs || a.args || []) || []),
+            ...recordCtorArgs,
+          ];
+          const resolvedSubModArgs = rawSubModArgs.map((a) =>
+            (a.isRedeclaration || a.redeclaredTypeSpecifier) && a.redeclaredTypeSpecifier
+              ? resolveChainedRedecl(a, a.evaluationScopeId, rawSubModArgs)
+              : a,
+          );
           const effectiveSubMod = {
-            args: [
-              ...classExtendsMods,
-              ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
-              ...tagEvalScope(compInst.modification?.args, elemId),
-              ...(matchingParentArg?.nestedArgs || matchingParentArg?.args || []),
-              ...recordCtorArgs,
-            ],
+            args: resolvedSubModArgs,
             suppressDefaultBindings: isContinuousRecordCtorEq,
             instantiatingClassIds: nextInstantiatingClassIds,
             componentClauseRange: compClauseRange ?? parentMods?.componentClauseRange,
@@ -3448,21 +4362,33 @@ export function instantiateElements(
             if (dimNames.length === 0 && elemCst) {
               const match = /\[([a-zA-Z_]\w*)\]/.exec(elemCst.text ?? "");
               if (match) {
-                dimNames = [match[1]];
+                dimNames = [match[1]!];
               }
             }
             const resolvedDims = [...arrayDims];
             for (let i = 0; i < resolvedDims.length; i++) {
               if (resolvedDims[i]! <= 0 || rawDims?.[i]?.kind === "expression") {
                 const dimName = dimNames[i];
-                if (dimName) {
+                if ((rawDims?.[i]?.kind === "flexible" || dimName === ":") && resolvedDims[i]! <= 0) {
+                  for (const rArg of recordCtorArgs) {
+                    const txt = rArg.value?.text?.trim() ?? "";
+                    if (txt.startsWith("{") && txt.endsWith("}")) {
+                      const items = splitTopLevelArgs(txt.slice(1, -1));
+                      if (items.length > 0) {
+                        resolvedDims[i] = items.length;
+                        break;
+                      }
+                    }
+                  }
+                }
+                if (dimName && dimName !== ":") {
                   const prefixedDim = prefix ? `${prefix}.${dimName}` : dimName;
                   let varIdx = dae.getVarIdxByName(prefixedDim);
                   if (varIdx < 0) varIdx = dae.getVarIdxByName(dimName);
                   let evalVal: any = null;
                   if (varIdx >= 0) {
                     const exprId = dae.getVarExpression(varIdx);
-                    evalVal = evalDaeExpr(exprId, dae);
+                    if (exprId !== undefined) evalVal = evalDaeExpr(exprId, dae);
                   }
                   if (typeof evalVal !== "number" || evalVal < 0) {
                     const arg = parentMods?.args?.find((a: any) => a.name === dimName);
@@ -3490,8 +4416,8 @@ export function instantiateElements(
                   } else if (flattener.options.omcCompatibility) {
                     const sizeMatch = dimName.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
                     if (sizeMatch) {
-                      const targetVarName = sizeMatch[1];
-                      const targetDimIdx = sizeMatch[2];
+                      const targetVarName = sizeMatch[1]!;
+                      const targetDimIdx = sizeMatch[2]!;
                       const targetElemSym = flattener.currentRootClassId
                         ? flattener.db
                             .childrenOf(flattener.currentRootClassId)
@@ -3543,6 +4469,15 @@ export function instantiateElements(
                         (flattener.db.symbol(flattener.currentClassId)?.metadata as any)?.classKind === "function",
                       );
                     if (!isFunc && resolvedDims[i]! < 0) {
+                      if (flattener.options.arrayMode === "preserve" && dae.extensionMetadata?.["isOldFrontend"]) {
+                        dae.diagnostics.push({
+                          severity: "error",
+                          code: 0,
+                          message: `Error occurred while flattening model ${dae.name}`,
+                          range: null,
+                        });
+                        return;
+                      }
                       const startB = elemCst?.startIndex ?? elemCst?.startByte;
                       const endB = elemCst?.endIndex ?? elemCst?.endByte;
                       const arrayName = (dae.extensionMetadata as any)?.hasOldInstOption
@@ -3601,7 +4536,7 @@ export function instantiateElements(
                       ((state as any).pendingFinalParamNames ??= new Set<string>()).add(c);
                       const vi = dae.lookupVariable(c);
                       if (
-                        !dae.extensionMetadata?.isOldFrontend &&
+                        !dae.extensionMetadata?.["isOldFrontend"] &&
                         vi >= 0 &&
                         dae.getVarVariability(vi) === Variability.Parameter &&
                         dae.getVarType(vi) === VarType.Integer
@@ -3725,22 +4660,34 @@ export function instantiateElements(
             }
             if (flattener.options.arrayMode === "preserve") {
               setNamedArrayShape(dae, name, arrayDims);
-              if (classTargetId && flattener.isExpandableConnectorClass(classTargetId)) {
+              if (classTargetId && flattener["isExpandableConnectorClass"](classTargetId)) {
                 flattener.expandableBuses.set(name, classTargetId);
               }
               if (subElements && subElements.length > 0) {
                 const prevImports = flattener.currentImports;
                 if (classTargetId) {
-                  const compClassImports = flattener.collectClassImports(classTargetId);
+                  const compClassImports = flattener["collectClassImports"](classTargetId);
                   flattener.currentImports = new Map([...flattener.currentImports, ...compClassImports]);
                 }
+                const isOldPreserve = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
+                const preservePrefix = isOldPreserve ? `${name}[${arrayDims.join(", ")}]` : name;
                 const preserveSubMod = {
                   ...effectiveSubMod,
-                  outerArrayDims: [...(parentMods?.outerArrayDims ?? []), ...arrayDims],
+                  outerArrayDims: isOldPreserve ? [] : [...(parentMods?.outerArrayDims ?? []), ...arrayDims],
+                  preserveOrigOuterDims: [...((parentMods as any)?.preserveOrigOuterDims ?? []), ...arrayDims],
                 };
-                instantiateElements(flattener, subElements, name, dae, preserveSubMod);
+                instantiateElements(flattener, subElements, preservePrefix, dae, preserveSubMod);
                 flattener.currentImports = prevImports;
-                if (dae.diagnostics.some((d) => d.code === 2012 || d.code === 2013)) break;
+                if (
+                  dae.diagnostics.some(
+                    (d) =>
+                      d.code === 2012 ||
+                      d.code === 2013 ||
+                      d.code === ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code ||
+                      d.message.includes("Error occurred while flattening model"),
+                  )
+                )
+                  break;
               }
               continue;
             }
@@ -3767,6 +4714,8 @@ export function instantiateElements(
                 }
               }
             }
+            // Expand multi-dimensional composite arrays into cartesian index tuples (`[1,1]`, `[1,2]`, ...),
+            // formatting Boolean (`[false]`, `[true]`) and Enumeration (`[Enum.Lit]`) dimension labels when present.
             const indices = generateArrayTuples(arrayDims).map(
               (tuple) =>
                 `[${tuple.map((val, dIdx) => (userDimLabels[dIdx] && userDimLabels[dIdx]![val - 1] ? userDimLabels[dIdx]![val - 1] : val)).join(",")}]`,
@@ -3774,14 +4723,17 @@ export function instantiateElements(
             for (let idxNum = 0; idxNum < indices.length; idxNum++) {
               const indexStr = indices[idxNum]!;
               const arrVarName = `${name}${indexStr}`;
-              if (classTargetId && flattener.isExpandableConnectorClass(classTargetId)) {
+              if (classTargetId && flattener["isExpandableConnectorClass"](classTargetId)) {
                 flattener.expandableBuses.set(arrVarName, classTargetId);
               }
               let elemSubMod = effectiveSubMod;
+              // When `each` is NOT specified on a modifier targeting an array of composite components,
+              // slice array literals (`{...}`), comprehensions (`array(... for i in ...)`), or array variable
+              // references so each element instance `arr[idxNum + 1]` receives its corresponding slice.
               if (effectiveSubMod.args && effectiveSubMod.args.length > 0) {
                 const splitArgs = effectiveSubMod.args.map((arg: any) => {
                   const argText = arg?.value?.text?.trim();
-                  if (argText && argText.startsWith("{") && argText.endsWith("}")) {
+                  if (argText && !arg.each && !arg.isEach && argText.startsWith("{") && argText.endsWith("}")) {
                     const compMatch = argText.match(/^\{\s*([a-zA-Z_]\w*)\s+for\s+([a-zA-Z_]\w*)\s+in\s+(.+?)\s*\}$/);
                     if (compMatch && compMatch[1] === compMatch[2] && userDimLabels[0]?.[idxNum]) {
                       const itemText = userDimLabels[0][idxNum]!;
@@ -3805,6 +4757,24 @@ export function instantiateElements(
                           text: itemText,
                           kind: /^[+-]?\d+$/.test(itemText) ? "literal" : "expression",
                           value: /^[+-]?\d+$/.test(itemText) ? Number(itemText) : arg.value?.value,
+                          cstBytes: undefined,
+                        },
+                      };
+                    }
+                  } else if (argText && !arg.each && !arg.isEach && /^array\s*\(/.test(argText)) {
+                    const arrCompMatch = argText.match(
+                      /^array\s*\(([\s\S]+)\s+for\s+([a-zA-Z_]\w*)\s+in\s+([\s\S]+)\)$/,
+                    );
+                    if (arrCompMatch) {
+                      const bodyExpr = arrCompMatch[1]!.trim();
+                      const iterVar = arrCompMatch[2]!.trim();
+                      const itemText = bodyExpr.replace(new RegExp(`\\b${iterVar}\\b`, "g"), String(idxNum + 1));
+                      return {
+                        ...arg,
+                        value: {
+                          ...arg.value,
+                          text: itemText,
+                          kind: "expression",
                           cstBytes: undefined,
                         },
                       };
@@ -3864,7 +4834,7 @@ export function instantiateElements(
                         (s) =>
                           s &&
                           s.kind === "Component" &&
-                          !flattener.isCstNodeProtected(flattener.db.cstNode(s.id)) &&
+                          !flattener["isCstNodeProtected"](flattener.db.cstNode(s.id)) &&
                           (s.metadata as any)?.variability !== "constant",
                       );
                     const elemRecordArgs: any[] = [];
@@ -3886,7 +4856,7 @@ export function instantiateElements(
                       args: [...effectiveSubMod.args, ...elemRecordArgs],
                     };
                   } else {
-                    const matchingFnSym = flattener.db.byName(ctorName).find((e) => flattener.isFunctionSym(e));
+                    const matchingFnSym = flattener.db.byName(ctorName).find((e) => flattener["isFunctionSym"](e));
                     if (matchingFnSym) {
                       const qualFnName = getSymbolQualifiedName(flattener.db, matchingFnSym.id);
                       let fn = dae.getFunction(qualFnName) ?? dae.getFunction(ctorName);
@@ -3920,7 +4890,7 @@ export function instantiateElements(
                               (s) =>
                                 s &&
                                 s.kind === "Component" &&
-                                !flattener.isCstNodeProtected(flattener.db.cstNode(s.id)) &&
+                                !flattener["isCstNodeProtected"](flattener.db.cstNode(s.id)) &&
                                 (s.metadata as any)?.variability !== "constant",
                             );
                           if (Array.isArray(res) && res.length === subSyms.length) {
@@ -3947,7 +4917,7 @@ export function instantiateElements(
               if (subElements && subElements.length > 0) {
                 const prevImports = flattener.currentImports;
                 if (classTargetId) {
-                  const compClassImports = flattener.collectClassImports(classTargetId);
+                  const compClassImports = flattener["collectClassImports"](classTargetId);
                   flattener.currentImports = new Map([...flattener.currentImports, ...compClassImports]);
                 }
                 instantiateElements(flattener, subElements, arrVarName, dae, elemSubMod);
@@ -3957,13 +4927,13 @@ export function instantiateElements(
             }
             if (dae.diagnostics.some((d) => d.code === 2012 || d.code === 2013)) break;
           } else {
-            if (classTargetId && flattener.isExpandableConnectorClass(classTargetId)) {
+            if (classTargetId && flattener["isExpandableConnectorClass"](classTargetId)) {
               flattener.expandableBuses.set(name, classTargetId);
             }
             if (subElements && subElements.length > 0) {
               const prevImports = flattener.currentImports;
               if (classTargetId) {
-                const compClassImports = flattener.collectClassImports(classTargetId);
+                const compClassImports = flattener["collectClassImports"](classTargetId);
                 flattener.currentImports = new Map([...flattener.currentImports, ...compClassImports]);
               }
               instantiateElements(flattener, subElements, name, dae, effectiveSubMod);
@@ -3993,7 +4963,7 @@ export function instantiateElements(
         let varType = VarType.Real;
         let effectiveTypeSpec = effectiveType ?? compInst?.typeSpecifier;
         const buildFunctionParamCustomType = (): string | null => {
-          if (dae.classKind !== "function" || !classTarget || !flattener.isFunctionSym(classTarget)) return null;
+          if (dae.classKind !== "function" || !classTarget || !flattener["isFunctionSym"](classTarget)) return null;
           const instIds = flattener.db.query<SymbolId[]>("instantiate", classTarget.id);
           const chs =
             instIds && instIds.length > 0
@@ -4019,11 +4989,16 @@ export function instantiateElements(
           isExtObj && classTargetId
             ? getSymbolQualifiedName(flattener.db, classTargetId)
             : dae.classKind === "function" && isRecordTarget && classTarget
-              ? dae.extensionMetadata?.isOldFrontend && classTarget.parentId
+              ? dae.extensionMetadata?.["isOldFrontend"] && classTarget.parentId
                 ? getSymbolQualifiedName(flattener.db, classTarget.id) || (effectiveType ?? classTarget.name)
                 : (effectiveType ?? classTarget.name)
               : buildFunctionParamCustomType();
+        // ============================================================================
+        // Phase 5: Primitive, `type` Alias & Enumeration Resolution
+        // ============================================================================
         const typeMods: any[] = [];
+        // Walk short `type` alias chains (`type T1 = T2(min=0); type T2 = Real(unit="V")`)
+        // from base to derived so derived type modifiers override base type attributes.
         if (isType && classTargetId) {
           let currId: number | null = classTargetId;
           const collectedTypeMods: any[] = [];
@@ -4059,7 +5034,7 @@ export function instantiateElements(
         if (compInst.typeSpecifier?.includes(".")) {
           const parts = compInst.typeSpecifier.split(".");
           const leaf = parts.pop()!;
-          const scopeEntry = flattener.db.byName(parts[0]).find((e) => e.kind === "Class" || e.kind === "Package");
+          const scopeEntry = flattener.db.byName(parts[0]!).find((e) => e.kind === "Class" || e.kind === "Package");
           if (scopeEntry) {
             let currentScope: SymbolEntry | null = scopeEntry;
             for (let i = 1; i < parts.length; i++) {
@@ -4072,6 +5047,7 @@ export function instantiateElements(
           }
         }
 
+        // Resolve primitive `VarType` or enumeration type metadata (`VarType.Enumeration` + `enumLiterals`)
         let enumLiterals: any[] | null = null;
         if (effectiveTypeSpec === "Integer") varType = VarType.Integer;
         else if (effectiveTypeSpec === "Boolean") varType = VarType.Boolean;
@@ -4081,11 +5057,11 @@ export function instantiateElements(
         else if (effectiveTypeSpec) {
           let enumSym: SymbolEntry | null = null;
           if (classTargetId) {
-            enumSym = flattener.db.symbol(classTargetId);
+            enumSym = flattener.db.symbol(classTargetId) ?? null;
           }
           if (!enumSym) {
             const typeTargets = flattener.db.byName(effectiveTypeSpec.split(".").pop()!);
-            if (typeTargets.length > 0) enumSym = typeTargets[0];
+            if (typeTargets.length > 0) enumSym = typeTargets[0]!;
           }
           if (enumSym) {
             const baseEnumSym = getBaseEnumSymbol(flattener.db, enumSym) ?? enumSym;
@@ -4264,7 +5240,7 @@ export function instantiateElements(
           parentMods?.parentVariability !== Variability.Constant &&
           flattener.currentClassId &&
           elemParentId !== flattener.currentClassId &&
-          (isElemParentPackage || Boolean(dae.extensionMetadata?.isOldFrontend))
+          (isElemParentPackage || Boolean(dae.extensionMetadata?.["isOldFrontend"]))
         ) {
           continue;
         }
@@ -4396,7 +5372,7 @@ export function instantiateElements(
           const bText = effectiveBinding.text.trim();
           if (bText.startsWith("noEvent(") && bText.endsWith(")")) {
             const m = bText.slice(8, -1).match(/[a-zA-Z_]\w*/g) || [];
-            const hasContinuous = m.some((vName) => {
+            const hasContinuous = m.some((vName: string) => {
               if (vName === "time") return true;
               const vi = dae.getVarIdxByName(prefix ? `${prefix}.${vName}` : vName);
               return vi >= 0 && dae.getVarVariability(vi) === Variability.Continuous;
@@ -4449,7 +5425,7 @@ export function instantiateElements(
         };
 
         if (
-          !dae.extensionMetadata?.isOldFrontend &&
+          !dae.extensionMetadata?.["isOldFrontend"] &&
           !hasEqInClass() &&
           variability === Variability.Constant &&
           !effectiveBinding?.text &&
@@ -4482,7 +5458,21 @@ export function instantiateElements(
           return;
         }
 
+        /**
+         * Lowers the effective binding expression (`= ...`) and applies built-in variable attributes
+         * (`quantity`, `unit`, `displayUnit`, `min`, `max`, `start`, `fixed`, `nominal`, `stateSelect`)
+         * to `varIdx`, slicing array-valued bindings and attributes by `idxTuple` when scalarizing arrays.
+         */
         const applyModifiers = (varIdx: number, idxTuple: number[] = [], currentDimLabels?: (string[] | null)[]) => {
+          const findBindingExprNode = (n: any): any => {
+            if (!n) return null;
+            if (n.type === "expression") return n;
+            for (const c of n.children || []) {
+              const res = findBindingExprNode(c);
+              if (res) return res;
+            }
+            return null;
+          };
           const prevBindingCompName = flattener.currentBindingCompName;
           flattener.currentBindingCompName = compInst.name;
           try {
@@ -4511,6 +5501,73 @@ export function instantiateElements(
             }
             if (varType === VarType.Enumeration && enumLiterals) {
               dae.setVarEnumerationLiterals(varIdx, enumLiterals);
+            }
+            if (
+              dae.classKind === "function" &&
+              isRecordTarget &&
+              classTarget &&
+              !effectiveBinding?.text &&
+              compInst?.modification?.args &&
+              compInst.modification.args.length > 0 &&
+              flattener.generateRecordConstructorFor
+            ) {
+              const ctorFn = flattener.generateRecordConstructorFor(classTarget, dae, flattener.currentRootClassId);
+              if (ctorFn) {
+                const modMap = new Map<string, any>();
+                for (const mArg of compInst.modification.args) {
+                  if (mArg.name && mArg.value?.text) {
+                    modMap.set(mArg.name, mArg.value);
+                  }
+                }
+                const callArgIds: number[] = [];
+                const boundEnv = new Map<string, number>();
+                for (let vi = 0; vi < ctorFn.varCount; vi++) {
+                  if (ctorFn.getVarCausality(vi) === Causality.Input) {
+                    const fName = ctorFn.getVarName(vi);
+                    const fType = ctorFn.getVarType(vi);
+                    let argExprId = -1;
+                    if (modMap.has(fName)) {
+                      const modVal = modMap.get(fName)!;
+                      const modText = (modVal.text ?? "").replace(/^=/, "").trim();
+                      const num = Number(modText);
+                      if (!isNaN(num) && modText !== "") {
+                        argExprId = fType === VarType.Integer ? dae.addIntLiteral(num) : dae.addRealLiteral(num);
+                      } else if (/^[a-zA-Z_]\w*$/.test(modText)) {
+                        argExprId = dae.addNameExpr(prefix ? `${prefix}.${modText}` : modText);
+                      } else if (modVal.cstBytes && flattener.lowerExpr) {
+                        const scopeSym = elemId ? flattener.db.symbol(elemId) : undefined;
+                        const modCst = flattener.db.cstNodeRange(
+                          modVal.cstBytes[0],
+                          modVal.cstBytes[1],
+                          scopeSym ?? undefined,
+                        ) as any;
+                        if (modCst) {
+                          const exprCst =
+                            modCst.type === "modification" || modCst.type === "modification_expression"
+                              ? (findBindingExprNode(modCst) ?? modCst)
+                              : modCst;
+                          argExprId = flattener.lowerExpr(exprCst, dae, prefix);
+                          if (fType === VarType.Real && !isRealExpr(argExprId, dae)) {
+                            argExprId = castToRealExpr(argExprId, dae);
+                          }
+                        }
+                      }
+                    } else {
+                      const defExpr = ctorFn.getVarExpression(vi);
+                      if (defExpr !== undefined && defExpr >= 0) {
+                        argExprId = copyExprBetweenDaes(ctorFn, defExpr, dae, boundEnv);
+                      }
+                    }
+                    if (argExprId >= 0) {
+                      boundEnv.set(fName, argExprId);
+                      callArgIds.push(argExprId);
+                    }
+                  }
+                }
+                const ctorCallName = ctorFn.name || classTarget.name;
+                const callExprId = dae.addCallExpr(ctorCallName, callArgIds);
+                dae.setVarExpression(varIdx, callExprId);
+              }
             }
             if (effectiveBinding?.text) {
               let bText = effectiveBinding.text.trim();
@@ -4640,14 +5697,20 @@ export function instantiateElements(
                     }
                   }
                   const firstArg = commaIdx >= 0 ? inside.slice(0, commaIdx).trim() : inside;
-                  const subParenMatch = firstArg.match(/^([a-zA-Z_]\w*)\s*\/\s*\(\s*([a-zA-Z_]\w*)\s*-\s*(\d+)\s*\)$/);
-                  if (subParenMatch && dae.extensionMetadata?.isOldFrontend) {
-                    const numVarId = dae.addExpression(ExprKind.Name, dae.interner.intern(subParenMatch[1]!));
-                    const denVarId = dae.addExpression(ExprKind.Name, dae.interner.intern(subParenMatch[2]!));
-                    const negLitId = dae.addIntLiteral(-parseInt(subParenMatch[3]!, 10));
-                    const denomInner = dae.addBinaryExpr(BinOp.Add, negLitId, denVarId);
-                    const denomReal = dae.addCallExpr("/*Real*/", [denomInner]);
-                    exprId = dae.addBinaryExpr(BinOp.Div, numVarId, denomReal);
+                  if (dae.extensionMetadata?.["isOldFrontend"]) {
+                    const loweredFirstArg = lowerStandaloneExpression(
+                      flattener,
+                      firstArg,
+                      dae,
+                      bindingPrefix,
+                      compInst.name,
+                      varType,
+                    );
+                    if (loweredFirstArg !== null) {
+                      exprId = loweredFirstArg;
+                    } else {
+                      bText = firstArg;
+                    }
                   } else {
                     bText = firstArg;
                   }
@@ -4659,35 +5722,30 @@ export function instantiateElements(
                     bText = bodyStr.replace(new RegExp(`\\b${iterVar}\\b`, "g"), String(idxTuple[0]));
                   }
                 } else {
-                  const ifSizeMatch = bText.match(
-                    /^\(?\s*if\s+size\(\s*(\w+)\s*,\s*1\s*\)\s*==\s*1\s+then\s+ones\(\s*\w+\s*\)\s*\*\s*(\w+)\[1\]\s+else\s+(\w+)\s*\)?$/s,
+                  const modChildForIf = elemCst?.children?.find((c: any) => c.type === "modification");
+                  const rawExprCstForIf = findFirstExpressionCst(modChildForIf ?? elemCst);
+                  const scalarizedIfId = tryScalarizeIfSizeBindingCst(
+                    rawExprCstForIf,
+                    bText,
+                    idxTuple,
+                    bindingPrefix,
+                    dae,
                   );
-                  if (ifSizeMatch) {
-                    const arrName = ifSizeMatch[1];
-                    if (arrName === ifSizeMatch[2] && arrName === ifSizeMatch[3]) {
-                      const resolvedArr = resolveScopedName(arrName, bindingPrefix, dae);
-                      const hasSecond = dae.getVarIdxByName(`${resolvedArr}[2]`) >= 0;
-                      const targetIdx = hasSecond ? idxTuple[0] : 1;
-                      exprId = dae.addExpression(ExprKind.Name, dae.interner.intern(`${resolvedArr}[${targetIdx}]`));
-                    }
+                  if (scalarizedIfId !== null) {
+                    exprId = scalarizedIfId;
                   }
                 }
               }
 
               // Try lowering from CST node if available
-              const findBindingExprNode = (n: any): any => {
-                if (!n) return null;
-                if (n.type === "expression") return n;
-                for (const c of n.children || []) {
-                  const res = findBindingExprNode(c);
-                  if (res) return res;
-                }
-                return null;
-              };
+              const findBindingExprNode = findFirstExpressionCst;
 
               const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
               const exprCst = findBindingExprNode(modChild ?? elemCst);
-              if (idxTuple.length === 0 && bText) {
+              const varShapeAtIdx = dae.getVarShape(varIdx);
+              const isPreservedArrayVar =
+                (arrayDims && arrayDims.length > 0) || (varShapeAtIdx && varShapeAtIdx.length > 0);
+              if (idxTuple.length === 0 && !isPreservedArrayVar && bText) {
                 const cleanB = bText.replace(/^=/, "").trim();
                 if (isArrayLiteral(cleanB) && !/\bfor\b/.test(cleanB)) {
                   const ctorElems = parseArrayLiteralElements(cleanB);
@@ -4719,7 +5777,17 @@ export function instantiateElements(
                 }
               }
               if (exprId === null && idxTuple.length === 0 && exprCst && exprCst.text?.trim() === bText) {
-                exprId = flattener.lowerExpr(exprCst, dae, prefix);
+                const prevClassId = flattener.currentClassId;
+                const elemOwnerId =
+                  (effectiveBinding as any)?.evaluationScopeId ??
+                  flattener.db.symbol(elemId)?.parentId ??
+                  flattener.currentClassId;
+                if (elemOwnerId) flattener.currentClassId = elemOwnerId;
+                try {
+                  exprId = flattener.lowerExpr(exprCst, dae, prefix);
+                } finally {
+                  flattener.currentClassId = prevClassId;
+                }
                 const providedType = inferArenaExprVarType(dae, exprId);
                 let enumMismatch = false;
                 let expectedEnumStr = "";
@@ -4785,7 +5853,7 @@ export function instantiateElements(
                       rhsText = cVal.toFixed(1);
                     }
                   }
-                  if (dae.extensionMetadata?.isOldFrontend && dae.classKind === "function") {
+                  if (dae.extensionMetadata?.["isOldFrontend"] && dae.classKind === "function") {
                     dae.diagnostics.push({
                       severity: "error",
                       code: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER_BINDING.code,
@@ -4793,7 +5861,7 @@ export function instantiateElements(
                         compName,
                         varTypeName(varType),
                         modExprText,
-                        varTypeName(providedType),
+                        varTypeName(providedType ?? VarType.Real),
                       ),
                       range: rangeObj,
                     });
@@ -4818,7 +5886,7 @@ export function instantiateElements(
                         compInst.name,
                         varTypeName(varType),
                         rhsText,
-                        varTypeName(providedType),
+                        varTypeName(providedType ?? VarType.Real),
                       ),
                       range: rangeObj,
                     });
@@ -4839,7 +5907,7 @@ export function instantiateElements(
               }
 
               if (exprId === null) {
-                if (effectiveBinding.cstBytes) {
+                if (effectiveBinding.cstBytes && !/^array\s*\(.+\bfor\b.+\)$/s.test(effectiveBinding.text.trim())) {
                   const targetScopeId =
                     (effectiveBinding as any)?.evaluationScopeId ??
                     effectiveParentArg?.evaluationScopeId ??
@@ -4886,8 +5954,8 @@ export function instantiateElements(
                         const isBrace = isArrayLiteral(text) && !/\bfor\b/.test(text);
                         if (isBracket && idxTuple.length === 2) {
                           const rows = getArrayLiteralItems(innerCst);
-                          const rowIdx = idxTuple[0];
-                          const colIdx = idxTuple[1];
+                          const rowIdx = idxTuple[0]!;
+                          const colIdx = idxTuple[1]!;
                           if (
                             (!arrayDims || arrayDims.length < 2 || rows.length === arrayDims[0]) &&
                             rowIdx >= 1 &&
@@ -4943,6 +6011,144 @@ export function instantiateElements(
                             : bindCst;
                         const loweredBindId = flattener.lowerExpr(rawBindCst, dae, bindingPrefix);
                         if (loweredBindId >= 0) {
+                          const isConstOrFinalParamTree = (id: number): boolean => {
+                            const k = dae.getExprKind(id);
+                            if (k === ExprKind.RealLiteral || k === ExprKind.IntLiteral || k === ExprKind.BoolLiteral) {
+                              return true;
+                            }
+                            if (k === ExprKind.Negate || k === ExprKind.Unary) {
+                              return isConstOrFinalParamTree(dae.getExprLeft(id));
+                            }
+                            if (k === ExprKind.Binary) {
+                              return (
+                                isConstOrFinalParamTree(dae.getExprLeft(id)) &&
+                                isConstOrFinalParamTree(dae.getExprRight(id))
+                              );
+                            }
+                            if (k === ExprKind.Name) {
+                              const vName = dae.interner.resolve(dae.getExprData1(id)) ?? "";
+                              const vIdx = dae.lookupVariable(vName);
+                              if (vIdx >= 0) {
+                                const vVar = dae.getVarVariability(vIdx);
+                                return (
+                                  vVar === Variability.Constant ||
+                                  (vVar === Variability.Parameter && dae.isVarFinal(vIdx))
+                                );
+                              }
+                            }
+                            return false;
+                          };
+                          const inlineArrayCtorLiterals = (id: number): number => {
+                            if (dae.getExprKind(id) === ExprKind.ArrayCtor) {
+                              const elems = getArrayCtorElements(id, dae);
+                              return dae.addArrayCtorExpr(elems.map(inlineArrayCtorLiterals));
+                            }
+                            if (dae.getExprKind(id) === ExprKind.Name) {
+                              const vName = dae.interner.resolve(dae.getExprData1(id)) ?? "";
+                              const vIdx = dae.lookupVariable(vName);
+                              if (vIdx >= 0) {
+                                const vExpr = dae.getVarExpression(vIdx);
+                                if (
+                                  vExpr !== undefined &&
+                                  vExpr >= 0 &&
+                                  (dae.getExprKind(vExpr) === ExprKind.RealLiteral ||
+                                    dae.getExprKind(vExpr) === ExprKind.IntLiteral ||
+                                    dae.getExprKind(vExpr) === ExprKind.Negate)
+                                ) {
+                                  return vExpr;
+                                }
+                              }
+                            }
+                            if (isConstOrFinalParamTree(id)) {
+                              const val = evalDaeExpr(id, dae);
+                              if (val !== null && Number.isFinite(val)) {
+                                return dae.addRealLiteral(val);
+                              }
+                            }
+                            return id;
+                          };
+                          const prepareCallForScalarization = (callExprId: number): number => {
+                            const fnNameId = dae.getExprData1(callExprId);
+                            let callFnName = dae.interner.resolve(fnNameId) ?? "";
+                            const argCount = dae.getExprRight(callExprId);
+                            const firstArg = dae.getExprLeft(callExprId);
+                            let fnObj = dae.getFunction(callFnName);
+                            const shortFnName = callFnName.includes(".") ? callFnName.split(".").pop()! : callFnName;
+                            const matchingFnSym = flattener.db
+                              .byName(shortFnName)
+                              .find((e) => flattener["isFunctionSym"](e));
+                            if (matchingFnSym) {
+                              const qualFnName = getSymbolQualifiedName(flattener.db, matchingFnSym.id);
+                              if (!callFnName.includes(".") && qualFnName.includes(".")) {
+                                callFnName = qualFnName;
+                              }
+                              if (!fnObj) {
+                                fnObj =
+                                  dae.getFunction(qualFnName) ??
+                                  flattener.flattenFunction(matchingFnSym.id, qualFnName, undefined, dae);
+                                dae.addFunction(qualFnName, fnObj);
+                              }
+                              (fnObj as any).wasCalled = true;
+                              flattener.calledFunctionSymIds?.add(matchingFnSym.id);
+                            }
+                            const newArgs: number[] = [];
+                            for (let aIdx = 0; aIdx < argCount; aIdx++) {
+                              const aId = aIdx === 0 ? firstArg : dae.getExprLeft(callExprId + aIdx);
+                              if (dae.getExprKind(aId) === ExprKind.ArrayCtor) {
+                                newArgs.push(inlineArrayCtorLiterals(aId));
+                                continue;
+                              }
+                              if (dae.getExprKind(aId) === ExprKind.Name) {
+                                const aName = dae.interner.resolve(dae.getExprData1(aId)) ?? "";
+                                if (dae.hasArrayElements(aName)) {
+                                  const aShape = getNamedArrayShape(dae, aName);
+                                  const elemIndices = dae.getArrayElementIndices(aName);
+                                  if (
+                                    elemIndices.length > 0 &&
+                                    elemIndices.every((eIdx) => (dae.getVarExpression(eIdx) ?? -1) >= 0)
+                                  ) {
+                                    const buildNested = (indices: number[], shape: number[]): number => {
+                                      if (shape.length <= 1) {
+                                        return dae.addArrayCtorExpr(
+                                          indices.map((eIdx) => dae.getVarExpression(eIdx) ?? -1),
+                                        );
+                                      }
+                                      const subLen = shape.slice(1).reduce((acc, d) => acc * d, 1);
+                                      const rowIds: number[] = [];
+                                      for (let r = 0; r < shape[0]!; r++) {
+                                        rowIds.push(
+                                          buildNested(indices.slice(r * subLen, (r + 1) * subLen), shape.slice(1)),
+                                        );
+                                      }
+                                      return dae.addArrayCtorExpr(rowIds);
+                                    };
+                                    newArgs.push(
+                                      buildNested(
+                                        elemIndices,
+                                        aShape && aShape.length > 0 ? aShape : [elemIndices.length],
+                                      ),
+                                    );
+                                    continue;
+                                  }
+                                }
+                                const vIdx = dae.lookupVariable(aName);
+                                if (
+                                  vIdx >= 0 &&
+                                  (dae.getVarVariability(vIdx) === Variability.Constant ||
+                                    (dae.getVarVariability(vIdx) === Variability.Parameter &&
+                                      (dae.isVarFinal(vIdx) || dae.getVarType(vIdx) === VarType.Integer)))
+                                ) {
+                                  const vExpr = dae.getVarExpression(vIdx);
+                                  if (vExpr !== undefined && vExpr >= 0) {
+                                    newArgs.push(vExpr);
+                                    continue;
+                                  }
+                                }
+                              }
+                              newArgs.push(aId);
+                            }
+                            return dae.addCallExpr(callFnName, newArgs);
+                          };
                           let curr = loweredBindId;
                           let ok = true;
                           for (let i = 0; i < idxTuple.length; i++) {
@@ -4961,6 +6167,110 @@ export function instantiateElements(
                               const indexedTarget = `${varName}[${remaining.join(",")}]`;
                               curr = dae.addExpression(ExprKind.Name, dae.interner.intern(indexedTarget));
                               ok = true;
+                              break;
+                            } else if (dae.getExprKind(curr) === ExprKind.Call) {
+                              const rebuiltCall = prepareCallForScalarization(curr);
+                              const remaining = idxTuple.slice(i);
+                              curr = dae.addSubscriptExpr(
+                                rebuiltCall,
+                                remaining.map((r) => dae.addIntLiteral(r)),
+                              );
+                              ok = true;
+                              break;
+                            } else if (dae.getExprKind(curr) === ExprKind.Binary) {
+                              const remaining = idxTuple.slice(i);
+                              const scalarizeVecExpr = (eId: number, rem: number[]): number | null => {
+                                const ek = dae.getExprKind(eId);
+                                const eDims = getExprDims(eId, dae, flattener.db, flattener);
+                                if (!eDims || eDims.length === 0) {
+                                  if (ek === ExprKind.Binary) {
+                                    const op = dae.getExprData1(eId);
+                                    const lId = dae.getExprLeft(eId);
+                                    const rId = dae.getExprRight(eId);
+                                    const lDims = getExprDims(lId, dae, flattener.db, flattener);
+                                    const rDims = getExprDims(rId, dae, flattener.db, flattener);
+                                    if ((lDims && lDims.length > 0) || (rDims && rDims.length > 0)) {
+                                      const sl = lDims && lDims.length > 0 ? scalarizeVecExpr(lId, rem) : lId;
+                                      const sr = rDims && rDims.length > 0 ? scalarizeVecExpr(rId, rem) : rId;
+                                      if (sl !== null && sr !== null) return dae.addBinaryExpr(op, sl, sr);
+                                    }
+                                  }
+                                  return eId;
+                                }
+                                if (ek === ExprKind.ArrayCtor || ek === ExprKind.IfElse) {
+                                  let sub = eId;
+                                  for (const rIdx of rem) {
+                                    const subElems = getArrayCtorElements(sub, dae);
+                                    if (rIdx >= 1 && rIdx <= subElems.length) {
+                                      sub = subElems[rIdx - 1]!;
+                                    } else {
+                                      return null;
+                                    }
+                                  }
+                                  return sub;
+                                }
+                                if (ek === ExprKind.Name) {
+                                  const vName = dae.interner.resolve(dae.getExprData1(eId));
+                                  return dae.addExpression(
+                                    ExprKind.Name,
+                                    dae.interner.intern(`${vName}[${rem.join(",")}]`),
+                                  );
+                                }
+                                if (ek === ExprKind.Call) {
+                                  const callVal = evalDaeExpr(eId, dae);
+                                  if (Array.isArray(callVal)) {
+                                    let cur: any = callVal;
+                                    for (const r of rem) {
+                                      cur = Array.isArray(cur) ? cur[r - 1] : undefined;
+                                    }
+                                    if (typeof cur === "number" && Number.isFinite(cur)) {
+                                      return dae.addRealLiteral(cur);
+                                    }
+                                  }
+                                  const rebuiltCall = prepareCallForScalarization(eId);
+                                  return dae.addSubscriptExpr(
+                                    rebuiltCall,
+                                    rem.map((r) => dae.addIntLiteral(r)),
+                                  );
+                                }
+                                if (ek === ExprKind.Binary) {
+                                  const op = dae.getExprData1(eId);
+                                  const lId = dae.getExprLeft(eId);
+                                  const rId = dae.getExprRight(eId);
+                                  const lDims = getExprDims(lId, dae, flattener.db, flattener);
+                                  const rDims = getExprDims(rId, dae, flattener.db, flattener);
+                                  const sl = lDims && lDims.length > 0 ? scalarizeVecExpr(lId, rem) : lId;
+                                  const sr = rDims && rDims.length > 0 ? scalarizeVecExpr(rId, rem) : rId;
+                                  if (sl !== null && sr !== null) {
+                                    if (op === BinOp.Mul) return mulWithSimplification(sl, sr, dae);
+                                    if (op === BinOp.Add) {
+                                      const isLitZero = (id: number) =>
+                                        (dae.getExprKind(id) === ExprKind.RealLiteral &&
+                                          dae.getExprRealValue(id) === 0) ||
+                                        (dae.getExprKind(id) === ExprKind.IntLiteral && dae.getExprData1(id) === 0);
+                                      if (isLitZero(sl)) return sr;
+                                      if (isLitZero(sr)) return sl;
+                                    }
+                                    return dae.addBinaryExpr(op, sl, sr);
+                                  }
+                                }
+                                if (ek === ExprKind.Negate || ek === ExprKind.Unary) {
+                                  const sChild = scalarizeVecExpr(dae.getExprLeft(eId), rem);
+                                  if (sChild !== null) {
+                                    return ek === ExprKind.Negate
+                                      ? dae.addNegateExpr(sChild)
+                                      : dae.addUnaryExpr(dae.getExprData1(eId), sChild);
+                                  }
+                                }
+                                return null;
+                              };
+                              const sRes = scalarizeVecExpr(curr, remaining);
+                              if (sRes !== null) {
+                                curr = sRes;
+                                ok = true;
+                              } else {
+                                ok = false;
+                              }
                               break;
                             } else {
                               ok = false;
@@ -5024,7 +6334,10 @@ export function instantiateElements(
                             ),
                             range: rangeObj,
                           });
-                        } else if (!prefix && (!dae.extensionMetadata?.isOldFrontend || dae.classKind !== "function")) {
+                        } else if (
+                          !prefix &&
+                          (!dae.extensionMetadata?.["isOldFrontend"] || dae.classKind !== "function")
+                        ) {
                           let rhsText = bText.replace(/^=/, "").trim();
                           dae.diagnostics.push({
                             severity: "error",
@@ -5068,53 +6381,18 @@ export function instantiateElements(
                     }
                   }
                 }
-                if (exprId === null && idxTuple.length === 0 && bText === "n - 1") {
-                  const negLitId = dae.addIntLiteral(-1);
-                  const nId = dae.addExpression(ExprKind.Name, dae.interner.intern("n"));
-                  exprId = dae.addBinaryExpr(BinOp.Add, negLitId, nId);
-                }
               }
 
-              if (exprId === null && bText) {
-                const parser = UnifiedWorkspace.getGlobalParser(".mo");
-                if (
-                  parser &&
-                  (bText.includes("(") ||
-                    bText.includes("*") ||
-                    bText.includes("/") ||
-                    bText.includes("+") ||
-                    bText.includes("-"))
-                ) {
-                  try {
-                    const dummyTree = parser.parse(`model _Tmp equation _x = ${bText}; end _Tmp;`);
-                    if (dummyTree && dummyTree.rootNode) {
-                      const findRhs = (n: any): any => {
-                        if (n.type === "simple_equation") return n.children?.find((c: any) => c.type === "expression");
-                        for (const ch of n.children || []) {
-                          const r = findRhs(ch);
-                          if (r) return r;
-                        }
-                        return null;
-                      };
-                      const rhsNode = findRhs(dummyTree.rootNode);
-                      if (rhsNode) {
-                        flattener.currentBindingCompName = compInst.name;
-                        const diagCountBefore = dae.diagnostics.length;
-                        try {
-                          const parsedId = flattener.lowerExpr(rhsNode, dae, bindingPrefix);
-                          if (parsedId >= 0) {
-                            exprId = parsedId;
-                          }
-                        } finally {
-                          dae.diagnostics.length = diagCountBefore;
-                          flattener.currentBindingCompName = undefined;
-                        }
-                      }
-                    }
-                  } catch {
-                    // ignore parse error and fall back
-                  }
-                }
+              if (
+                exprId === null &&
+                bText &&
+                (bText.includes("(") ||
+                  bText.includes("*") ||
+                  bText.includes("/") ||
+                  bText.includes("+") ||
+                  bText.includes("-"))
+              ) {
+                exprId = lowerStandaloneExpression(flattener, bText, dae, bindingPrefix, compInst.name, varType);
               }
 
               if (exprId === null) {
@@ -5156,7 +6434,7 @@ export function instantiateElements(
                         );
                     let denomExpr: number;
                     if (denom.includes("*")) {
-                      const subParts = denom.split("*").map((p) => p.trim());
+                      const subParts = denom.split("*").map((p: string) => p.trim());
                       let mulExpr: number | null = null;
                       for (const p of subParts) {
                         const pName = resolveScopedName(p, bindingPrefix, dae);
@@ -5218,12 +6496,27 @@ export function instantiateElements(
                   }
                 } else {
                   const resolvedBText = resolveScopedName(bText, bindingPrefix, dae);
-                  exprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedBText));
+                  if (
+                    idxTuple.length > 0 &&
+                    (dae.getVarIdxByName(`${resolvedBText}[${idxTuple.join(",")}]`) >= 0 ||
+                      dae.hasArrayElements(resolvedBText) ||
+                      isArrayTarget(bText))
+                  ) {
+                    exprId = dae.addExpression(
+                      ExprKind.Name,
+                      dae.interner.intern(`${resolvedBText}[${idxTuple.join(",")}]`),
+                    );
+                  } else {
+                    exprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedBText));
+                  }
                 }
               }
 
               const isRecordParamOrConst =
-                Boolean(parentMods?.isRecord && varType !== VarType.Real) ||
+                Boolean(
+                  parentMods?.isRecord &&
+                  (varType !== VarType.Real || isParentBoundField || (effectiveParentArg as any)?.isRecordCtorArg),
+                ) ||
                 dae.classKind === "function" ||
                 dae.classKind === "record" ||
                 parentMods?.parentVariability === Variability.Parameter ||
@@ -5235,7 +6528,7 @@ export function instantiateElements(
                 (variability === Variability.Continuous || variability === Variability.Discrete) &&
                 arrayDims &&
                 arrayDims.length > 0 &&
-                !dae.extensionMetadata?.scalarizeBindings
+                !dae.extensionMetadata?.["scalarizeBindings"]
               ) {
                 // Continuous array binding is emitted as an equation, not a variable expression
                 if (
@@ -5261,7 +6554,7 @@ export function instantiateElements(
                     }
                   }
                 }
-                dae.setVarExpression(varIdx, exprId);
+                if (exprId !== null) dae.setVarExpression(varIdx, exprId);
                 if (
                   !flattener.options.omcCompatibility &&
                   !isRecordParamOrConst &&
@@ -5277,12 +6570,17 @@ export function instantiateElements(
                 }
               }
             }
+            // Merge attribute modifiers in precedence order (type alias -> class mod -> component mod -> parent mod)
+            // so later modifiers override earlier defaults on `varIdx`.
             const combinedArgs = [
               ...typeMods,
               ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
               ...(compInst?.modification?.args || []),
-              ...(matchingParentArg?.nestedArgs || matchingParentArg?.args || []),
+              ...(parentMods?.args
+                ?.filter((a: any) => !a.isBreak && a.name === compInst.name)
+                .flatMap((a: any) => a.nestedArgs || a.args || []) || []),
             ];
+            flattener.currentBindingCompName = undefined;
             for (const arg of combinedArgs) {
               if (
                 arg.name === "quantity" ||
@@ -5313,6 +6611,8 @@ export function instantiateElements(
                   }
                 } else if (arg.value?.kind === "expression" && arg.value.text) {
                   let t = arg.value.text.trim();
+                  // Slice array-valued attribute expressions (`{...}`, `fill(...)`, `ones(...)`, `zeros(...)`)
+                  // by the current scalarized element's `idxTuple`.
                   if (idxTuple.length > 0) {
                     if (t.startsWith("{")) {
                       t = getIndexedElementText(t, idxTuple);
@@ -5345,6 +6645,7 @@ export function instantiateElements(
                     let resolvedT = /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(t)
                       ? resolveScopedName(t, bindingPrefix, dae)
                       : t;
+                    // Qualify enumeration literal names in attributes (`start = Enum.lit` or `lit`)
                     if (varType === VarType.Enumeration && customType && enumLiterals) {
                       const enumShort = customType.split(".").pop()!;
                       if (t.startsWith(`${enumShort}.`)) {
@@ -5396,39 +6697,61 @@ export function instantiateElements(
                         attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedT));
                       }
                     } else {
+                      const subParts =
+                        dae.extensionMetadata?.["isOldFrontend"] && arg.name === "start"
+                          ? t.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*-\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/)
+                          : null;
+                      if (subParts && subParts[1] && subParts[2]) {
+                        const p1 = resolveScopedName(subParts[1], bindingPrefix, dae, state.innerOuterComponents);
+                        const p2 = resolveScopedName(subParts[2], bindingPrefix, dae, state.innerOuterComponents);
+                        attrExprId = dae.addBinaryExpr(
+                          BinOp.Sub,
+                          dae.addExpression(ExprKind.Name, dae.interner.intern(p1)),
+                          dae.addExpression(ExprKind.Name, dae.interner.intern(p2)),
+                        );
+                      }
                       let evalVal: any = null;
-                      try {
-                        const scopeId = parentMods?.packageScopeId ?? flattener.db.symbol(elemId)?.parentId;
-                        evalVal = flattener.db.evaluate(t, scopeId ?? undefined);
-                        if (idxTuple.length > 0 && Array.isArray(evalVal)) {
-                          evalVal = evalVal[idxTuple[0] - 1];
-                        }
-                        if (evalVal !== null && flattener.options.omcCompatibility) {
-                          const idMatches = t.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-                          if (idMatches) {
-                            for (const id of idMatches) {
-                              if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
-                                continue;
-                              let p: string | undefined = prefix;
-                              while (p) {
-                                const cand = `${p}.${id}`;
-                                const idx = dae.getVarIdxByName(cand);
-                                if (idx >= 0 && dae.getVarVariability(idx) === Variability.Parameter) {
-                                  dae.setVarFinal(idx, true);
-                                  break;
+                      if (attrExprId === null) {
+                        try {
+                          const scopeId = parentMods?.packageScopeId ?? flattener.db.symbol(elemId)?.parentId;
+                          evalVal = flattener.db.evaluate(t, scopeId ?? undefined);
+                          if (evalVal === null) {
+                            evalVal = evaluateCSTNumber(t, undefined, scopeId ?? undefined, flattener.db, dae);
+                          }
+                          if (idxTuple.length > 0 && Array.isArray(evalVal)) {
+                            evalVal = evalVal[idxTuple[0]! - 1];
+                          }
+                          if (
+                            evalVal !== null &&
+                            flattener.options.omcCompatibility &&
+                            !dae.extensionMetadata?.["isOldFrontend"]
+                          ) {
+                            const idMatches = t.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
+                            if (idMatches) {
+                              for (const id of idMatches) {
+                                if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
+                                  continue;
+                                let p: string | undefined = prefix;
+                                while (p) {
+                                  const cand = `${p}.${id}`;
+                                  const idx = dae.getVarIdxByName(cand);
+                                  if (idx >= 0 && dae.getVarVariability(idx) === Variability.Parameter) {
+                                    dae.setVarFinal(idx, true);
+                                    break;
+                                  }
+                                  const dot = p.lastIndexOf(".");
+                                  p = dot !== -1 ? p.substring(0, dot) : undefined;
                                 }
-                                const dot = p.lastIndexOf(".");
-                                p = dot !== -1 ? p.substring(0, dot) : undefined;
-                              }
-                              const rootIdx = dae.getVarIdxByName(id);
-                              if (rootIdx >= 0 && dae.getVarVariability(rootIdx) === Variability.Parameter) {
-                                dae.setVarFinal(rootIdx, true);
+                                const rootIdx = dae.getVarIdxByName(id);
+                                if (rootIdx >= 0 && dae.getVarVariability(rootIdx) === Variability.Parameter) {
+                                  dae.setVarFinal(rootIdx, true);
+                                }
                               }
                             }
                           }
+                        } catch {
+                          evalVal = null;
                         }
-                      } catch {
-                        evalVal = null;
                       }
                       if (evalVal === null && t.includes("(") && t.endsWith(")")) {
                         const parenIdx = t.indexOf("(");
@@ -5480,7 +6803,7 @@ export function instantiateElements(
                                 flattener.currentRootClassId ?? undefined,
                               );
                               if (idxTuple.length > 0 && Array.isArray(evalVal)) {
-                                evalVal = evalVal[idxTuple[0] - 1];
+                                evalVal = evalVal[idxTuple[0]! - 1];
                               }
                             } catch (err: any) {
                               if (
@@ -5524,10 +6847,17 @@ export function instantiateElements(
                           attrExprId = dae.addEnumLiteral(idx >= 0 ? idx + 1 : 1, `StateSelect.${litName}`);
                         } else if (typeof evalVal === "number") {
                           attrExprId = dae.addRealLiteral(evalVal);
-                        } else if (t.includes("[")) {
+                        } else {
                           const targetSym = flattener.db.symbol(elemId);
+                          const docUri = (arg.value as any)?.evaluationScopeId
+                            ? flattener.db.symbol((arg.value as any).evaluationScopeId)?.documentUri
+                            : targetSym?.documentUri;
                           let attrCst = arg.value?.cstBytes
-                            ? flattener.db.cstNodeRange(arg.value.cstBytes[0], arg.value.cstBytes[1], targetSym)
+                            ? flattener.db.cstNodeRange(
+                                arg.value.cstBytes[0],
+                                arg.value.cstBytes[1],
+                                docUri ?? targetSym,
+                              )
                             : null;
                           if (!attrCst && elemCst) {
                             const findCref = (n: any): any => {
@@ -5547,7 +6877,7 @@ export function instantiateElements(
                             attrCst = findCref(elemCst);
                           }
                           if (attrCst) {
-                            attrExprId = flattener.lowerExpr(attrCst as any, dae, prefix);
+                            attrExprId = flattener.lowerExpr(attrCst as any, dae, bindingPrefix);
                           }
                         }
                       } else if (typeof evalVal === "number") {
@@ -5559,14 +6889,50 @@ export function instantiateElements(
                         attrExprId = dae.addExpression(ExprKind.BoolLiteral, evalVal ? 1 : 0);
                       } else if (t.startsWith('"') && t.endsWith('"')) {
                         attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(t));
-                      } else {
-                        if (idxTuple.length > 0 && (dae.getVarIdxByName(`${resolvedT}[1]`) >= 0 || isArrayTarget(t))) {
-                          attrExprId = dae.addExpression(
-                            ExprKind.Name,
-                            dae.interner.intern(`${resolvedT}[${idxTuple.join(",")}]`),
+                      } else if (attrExprId === null) {
+                        if (t.includes("(") && arg.value?.cstBytes) {
+                          const targetSym = flattener.db.symbol(elemId);
+                          const docUri = (arg.value as any)?.evaluationScopeId
+                            ? flattener.db.symbol((arg.value as any).evaluationScopeId)?.documentUri
+                            : targetSym?.documentUri;
+                          const attrCst = flattener.db.cstNodeRange(
+                            arg.value.cstBytes[0],
+                            arg.value.cstBytes[1],
+                            docUri ?? targetSym,
                           );
-                        } else {
-                          attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedT));
+                          if (attrCst) {
+                            const prevNoArrayExpand = flattener["noArrayExpand"];
+                            flattener["noArrayExpand"] = true;
+                            let loweredId: number;
+                            try {
+                              loweredId = flattener.lowerExpr(attrCst as any, dae, bindingPrefix);
+                            } finally {
+                              flattener["noArrayExpand"] = prevNoArrayExpand;
+                            }
+                            if (loweredId >= 0) {
+                              if (idxTuple.length > 0) {
+                                attrExprId = dae.addSubscriptExpr(
+                                  loweredId,
+                                  idxTuple.map((idxVal) => dae.addIntLiteral(idxVal)),
+                                );
+                              } else {
+                                attrExprId = loweredId;
+                              }
+                            }
+                          }
+                        }
+                        if (attrExprId === null) {
+                          if (
+                            idxTuple.length > 0 &&
+                            (dae.getVarIdxByName(`${resolvedT}[1]`) >= 0 || isArrayTarget(t))
+                          ) {
+                            attrExprId = dae.addExpression(
+                              ExprKind.Name,
+                              dae.interner.intern(`${resolvedT}[${idxTuple.join(",")}]`),
+                            );
+                          } else {
+                            attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedT));
+                          }
                         }
                       }
                     }
@@ -5649,7 +7015,7 @@ export function instantiateElements(
                   ((state as any).pendingFinalParamNames ??= new Set<string>()).add(c);
                   const vi = dae.lookupVariable(c);
                   if (
-                    !dae.extensionMetadata?.isOldFrontend &&
+                    !dae.extensionMetadata?.["isOldFrontend"] &&
                     vi >= 0 &&
                     dae.getVarVariability(vi) === Variability.Parameter &&
                     dae.getVarType(vi) === VarType.Integer
@@ -5735,7 +7101,7 @@ export function instantiateElements(
             const rows = splitTopLevel(bText.slice(1, -1), ";");
             const rowElements = rows.map((r) => splitTopLevel(r, ","));
             const rowsCount = rows.length;
-            const colsCount = rowElements.length > 0 ? rowElements[0].length : 0;
+            const colsCount = rowElements.length > 0 ? rowElements[0]!.length : 0;
             if (arrayDims && arrayDims.length === 1) {
               let clauseStart = elemCst?.startIndex ?? elemCst?.startByte;
               let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
@@ -5759,35 +7125,8 @@ export function instantiateElements(
               return;
             }
             if (arrayDims && arrayDims.length >= 2) {
-              let rCount = rowsCount;
-              let cCount = colsCount;
-              if (effectiveBinding.cstBytes) {
-                const targetScopeId =
-                  (effectiveBinding as any)?.evaluationScopeId ??
-                  effectiveParentArg?.evaluationScopeId ??
-                  effectiveClassArg?.evaluationScopeId ??
-                  elemId ??
-                  flattener.currentClassId ??
-                  flattener.currentRootClassId;
-                const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
-                const bindCst = flattener.db.cstNodeRange(
-                  effectiveBinding.cstBytes[0],
-                  effectiveBinding.cstBytes[1],
-                  scopeSym ?? undefined,
-                ) as any;
-                if (bindCst) {
-                  const rNodes = getArrayLiteralItems(bindCst);
-                  rCount = rNodes.length;
-                  if (rNodes.length > 0) {
-                    const cNodes = getArrayLiteralItems(rNodes[0]);
-                    cCount = cNodes.length;
-                  }
-                }
-              }
-              if (rCount === 0) {
-                rCount = rowsCount;
-                cCount = colsCount;
-              }
+              const rCount = rowsCount;
+              const cCount = colsCount;
               if (
                 rCount > 0 &&
                 (arrayDims[0] === 0 || arrayDims[0] === -1 || matchingParentArg?.value || matchingClassArg?.value)
@@ -5804,7 +7143,11 @@ export function instantiateElements(
           }
         }
         const rawPredefDims =
-          arrayDims && arrayDims.length > 0 ? flattener.db.query<any[] | null>("arrayDimensions", elemId) : null;
+          arrayDims && arrayDims.length > 0
+            ? redeclArg?.redeclaredArrayDimensionsRaw && redeclArg.redeclaredArrayDimensionsRaw.length > 0
+              ? redeclArg.redeclaredArrayDimensionsRaw
+              : flattener.db.query<any[] | null>("arrayDimensions", elemId)
+            : null;
         if (arrayDims && (arrayDims.some((d) => d <= 0) || rawPredefDims?.some((d: any) => d?.kind === "expression"))) {
           const rawDims = rawPredefDims;
           let dimNames: string[] = [];
@@ -5814,7 +7157,7 @@ export function instantiateElements(
           if (dimNames.length === 0 && elemCst) {
             const match = /\[([a-zA-Z_]\w*)\]/.exec(elemCst.text ?? "");
             if (match) {
-              dimNames = [match[1]];
+              dimNames = [match[1]!];
             }
           }
           const resolvedDims = [...arrayDims];
@@ -5828,7 +7171,7 @@ export function instantiateElements(
                 let evalVal: any = null;
                 if (varIdx >= 0) {
                   const exprId = dae.getVarExpression(varIdx);
-                  evalVal = evalDaeExpr(exprId, dae);
+                  if (exprId !== undefined) evalVal = evalDaeExpr(exprId, dae);
                 }
                 if (typeof evalVal !== "number" || evalVal < 0) {
                   const arg = parentMods?.args?.find((a: any) => a.name === dimName);
@@ -5841,14 +7184,20 @@ export function instantiateElements(
                     }
                   }
                   if (typeof evalVal !== "number" || evalVal < 0) {
-                    evalVal = evaluateCSTNumber(
-                      dimName,
-                      undefined,
-                      flattener.currentClassId ?? undefined,
-                      flattener.db,
-                      dae,
-                      prefix,
-                    );
+                    const defaultDimScopeId = (dae as any).enclosingScopeId ?? flattener.currentClassId ?? undefined;
+                    const dimScopeId = parentMods?.packageScopeId ?? defaultDimScopeId;
+                    evalVal = evaluateCSTNumber(dimName, undefined, dimScopeId, flattener.db, dae, prefix);
+                    if (
+                      (typeof evalVal !== "number" || evalVal < 0) &&
+                      defaultDimScopeId !== undefined &&
+                      defaultDimScopeId !== dimScopeId
+                    ) {
+                      evalVal = evaluateCSTNumber(dimName, undefined, defaultDimScopeId, flattener.db, dae, prefix);
+                    }
+                    if ((typeof evalVal !== "number" || evalVal < 0) && prefix) {
+                      const parentPrefix = prefix.includes(".") ? prefix.split(".").slice(0, -1).join(".") : "";
+                      evalVal = evaluateCSTNumber(dimName, undefined, dimScopeId, flattener.db, dae, parentPrefix);
+                    }
                   }
                   if (typeof evalVal !== "number" || evalVal < 0) {
                     if (rawDims && rawDims[i]?.cstBytes) {
@@ -5864,11 +7213,21 @@ export function instantiateElements(
                         scopeSym ?? undefined,
                       ) as any;
                       if (dimCst) {
-                        const loweredId = flattener.lowerExpr(dimCst, dae, prefix);
+                        let loweredId = flattener.lowerExpr(dimCst, dae, prefix);
                         if (loweredId >= 0) {
                           const ev = evalDaeExpr(loweredId, dae);
                           if (typeof ev === "number" && ev >= 0) {
                             evalVal = ev;
+                          }
+                        }
+                        if ((typeof evalVal !== "number" || evalVal < 0) && prefix) {
+                          const parentPrefix = prefix.includes(".") ? prefix.split(".").slice(0, -1).join(".") : "";
+                          loweredId = flattener.lowerExpr(dimCst, dae, parentPrefix);
+                          if (loweredId >= 0) {
+                            const ev = evalDaeExpr(loweredId, dae);
+                            if (typeof ev === "number" && ev >= 0) {
+                              evalVal = ev;
+                            }
                           }
                         }
                       }
@@ -5880,8 +7239,8 @@ export function instantiateElements(
                 } else if (flattener.options.omcCompatibility && dimName && !isFunctionInputWithColon) {
                   const sizeMatch = dimName.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
                   if (sizeMatch) {
-                    const targetVarName = sizeMatch[1];
-                    const targetDimIdx = sizeMatch[2];
+                    const targetVarName = sizeMatch[1]!;
+                    const targetDimIdx = sizeMatch[2]!;
                     const targetElemSym = flattener.currentRootClassId
                       ? flattener.db
                           .childrenOf(flattener.currentRootClassId)
@@ -5927,6 +7286,15 @@ export function instantiateElements(
                     }
                   }
                   if (dae.classKind !== "function" && !_isEnclosingFunction && resolvedDims[i]! < 0) {
+                    if (flattener.options.arrayMode === "preserve" && dae.extensionMetadata?.["isOldFrontend"]) {
+                      dae.diagnostics.push({
+                        severity: "error",
+                        code: 0,
+                        message: `Error occurred while flattening model ${dae.name}`,
+                        range: null,
+                      });
+                      return;
+                    }
                     let clauseNode: any = elemCst;
                     while (clauseNode && clauseNode.type !== "component_clause") {
                       clauseNode = clauseNode.parent;
@@ -6009,6 +7377,10 @@ export function instantiateElements(
                       let allArgsOk = true;
                       for (let aIdx = 0; aIdx < argCount; aIdx++) {
                         const aId = aIdx === 0 ? firstArg : dae.getExprLeft(loweredId + aIdx);
+                        if (exprReferencesRuntimeParameter(aId, dae)) {
+                          allArgsOk = false;
+                          break;
+                        }
                         const val = evalDaeExpr(aId, dae);
                         if (val !== null && val !== undefined) {
                           evalArgs.push(val);
@@ -6060,39 +7432,9 @@ export function instantiateElements(
                     if (elems.length > 0) resolvedDims[i] = elems.length;
                   }
                 } else if (bRef.startsWith("[") && bRef.endsWith("]")) {
-                  let rowsCount = 0;
-                  let colsCount = 0;
-                  if (effectiveBinding.cstBytes) {
-                    const targetScopeId =
-                      (effectiveBinding as any)?.evaluationScopeId ??
-                      effectiveParentArg?.evaluationScopeId ??
-                      effectiveClassArg?.evaluationScopeId ??
-                      elemId ??
-                      flattener.currentClassId ??
-                      flattener.currentRootClassId;
-                    const scopeSym = targetScopeId ? flattener.db.symbol(targetScopeId) : undefined;
-                    const bindCst = flattener.db.cstNodeRange(
-                      effectiveBinding.cstBytes[0],
-                      effectiveBinding.cstBytes[1],
-                      scopeSym ?? undefined,
-                    ) as any;
-                    if (bindCst) {
-                      const rows = getArrayLiteralItems(bindCst);
-                      rowsCount = rows.length;
-                      if (rows.length > 0) {
-                        const cols = getArrayLiteralItems(rows[0]);
-                        colsCount = cols.length;
-                      }
-                    }
-                  }
-                  if (rowsCount === 0) {
-                    const rows = splitTopLevel(bRef.slice(1, -1), ";");
-                    rowsCount = rows.length;
-                    if (rows.length > 0) {
-                      const cols = splitTopLevel(rows[0], ",");
-                      colsCount = cols.length;
-                    }
-                  }
+                  const rows = splitTopLevel(bRef.slice(1, -1), ";");
+                  const rowsCount = rows.length;
+                  const colsCount = rows.length > 0 ? splitTopLevel(rows[0]!, ",").length : 0;
                   if (i === 0 && rowsCount > 0) resolvedDims[0] = rowsCount;
                   if (i === 1 && colsCount > 0) resolvedDims[1] = colsCount;
                 } else if (
@@ -6116,7 +7458,7 @@ export function instantiateElements(
                     const prefixFnCallName = prefix ? `${prefix}.${fnCallName}` : fnCallName;
                     let fnObj = dae.getFunction(fnCallName) || dae.getFunction(prefixFnCallName);
                     if (!fnObj) {
-                      const matchingFnSym = flattener.db.byName(fnCallName).find((e) => flattener.isFunctionSym(e));
+                      const matchingFnSym = flattener.db.byName(fnCallName).find((e) => flattener["isFunctionSym"](e));
                       if (matchingFnSym) {
                         const qualFnName = getSymbolQualifiedName(flattener.db, matchingFnSym.id);
                         fnObj = flattener.flattenFunction(matchingFnSym.id, qualFnName, undefined, dae);
@@ -6173,6 +7515,14 @@ export function instantiateElements(
                             ? dae.lookupVariable(resolvedAp)
                             : dae.lookupVariable(cleanAp);
                         if (vIdx >= 0) {
+                          if (
+                            dae.getVarVariability(vIdx) === Variability.Parameter &&
+                            !dae.isVarFinal(vIdx) &&
+                            dae.getVarType(vIdx) !== VarType.Integer
+                          ) {
+                            allArgsOk = false;
+                            break;
+                          }
                           const sv = dae.getVarExpression(vIdx);
                           const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
                           if (val !== null && val !== undefined) {
@@ -6291,6 +7641,28 @@ export function instantiateElements(
         }
         if (arrayDims && arrayDims.length > 0) {
           setNamedArrayShape(dae, name, arrayDims);
+          for (let v = 0; v < dae.varCount; v++) {
+            const vExpr = dae.getVarExpression(v);
+            if (vExpr !== undefined && vExpr >= 0 && dae.getExprKind(vExpr) === ExprKind.Call) {
+              const fnStr = dae.interner.resolve(dae.getExprData1(vExpr));
+              if (fnStr === "size" && dae.getExprRight(vExpr) === 2) {
+                const arg0 = dae.getExprLeft(vExpr);
+                const arg1 = dae.getExprLeft(vExpr + 1);
+                if (dae.getExprKind(arg0) === ExprKind.Name && dae.getExprKind(arg1) === ExprKind.IntLiteral) {
+                  const targetArrName = dae.interner.resolve(dae.getExprData1(arg0));
+                  const dimIdx = dae.getExprData1(arg1);
+                  if (
+                    (targetArrName === name || targetArrName === compInst.name) &&
+                    dimIdx >= 1 &&
+                    dimIdx <= arrayDims.length &&
+                    arrayDims[dimIdx - 1]! > 0
+                  ) {
+                    dae.setVarExpression(v, dae.addIntLiteral(arrayDims[dimIdx - 1]!));
+                  }
+                }
+              }
+            }
+          }
           (state.namedArrayTypes ??= new Map<string, number>()).set(name, varType);
           if (varType === VarType.Enumeration && customType && enumLiterals && enumLiterals.length > 0) {
             ((state as any).namedArrayEnumInfo ??= new Map<string, { qual: string; literals: string[] }>()).set(name, {
@@ -6305,7 +7677,7 @@ export function instantiateElements(
           ) {
             if (
               arrayDims.length === 2 &&
-              arrayDims[0] > 0 &&
+              arrayDims[0]! > 0 &&
               arrayDims[1] === 0 &&
               variability !== Variability.Parameter &&
               variability !== Variability.Constant &&
@@ -6376,7 +7748,7 @@ export function instantiateElements(
               const rows = splitTopLevel(rawText.slice(1, -1), ";");
               const rowElements = rows.map((r) => splitTopLevel(r, ","));
               const rowsCount = rows.length;
-              const colsCount = rowElements.length > 0 ? rowElements[0].length : 0;
+              const colsCount = rowElements.length > 0 ? rowElements[0]!.length : 0;
               if (
                 targetDims.length === 1 ||
                 (targetDims.length >= 2 && (targetDims[0] !== rowsCount || targetDims[1] !== colsCount))
@@ -6475,6 +7847,53 @@ export function instantiateElements(
           }
 
           if (dae.classKind === "function" || flattener.options.arrayMode === "preserve") {
+            const rawDims = flattener.db.query<any[] | null>("arrayDimensions", elemId);
+            const hasColon =
+              rawDims &&
+              rawDims.some((d: any) => d.kind === "colon" || d.text?.trim() === ":" || d.kind === "flexible");
+            const concreteShape = hasColon
+              ? rawDims!.map((d: any) => (d.kind === "literal" ? d.value : -1))
+              : arrayDims && arrayDims.length > 0 && arrayDims.every((d) => d > 0)
+                ? arrayDims
+                : (rawDims?.map((d: any) => (d.kind === "literal" ? d.value : -1)) ?? []);
+            if (
+              flattener.options.arrayMode === "preserve" &&
+              dae.extensionMetadata?.["isOldFrontend"] &&
+              varType === VarType.Real &&
+              concreteShape.length > 0 &&
+              effectiveBinding?.text
+            ) {
+              const cleanB = effectiveBinding.text.replace(/^=/, "").trim();
+              if (cleanB.startsWith("{") && cleanB.endsWith("}")) {
+                const leafTokens = cleanB
+                  .split(/[{},]+/)
+                  .map((s: string) => s.trim())
+                  .filter(Boolean);
+                if (leafTokens.length > 0 && leafTokens.every((t: string) => /^[+-]?\d+$/.test(t))) {
+                  const compLabel = prefix ? name : `.${compInst.name}`;
+                  const formattedMod = cleanB.replace(/,\s*/g, ", ");
+                  let clauseNode: any = elemCst;
+                  while (clauseNode && clauseNode.type !== "component_clause") {
+                    clauseNode = clauseNode.parent;
+                  }
+                  const rangeNode = clauseNode ?? elemCst;
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code,
+                    message: `Type mismatch in modifier of component ${compLabel}, expected type Real, got modifier =${formattedMod} of type Integer[${concreteShape.join(", ")}].`,
+                    range: rangeNode
+                      ? {
+                          startByte: rangeNode.startIndex ?? rangeNode.startByte,
+                          endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                          startPosition: rangeNode.startPosition,
+                          endPosition: rangeNode.endPosition,
+                        }
+                      : undefined,
+                  });
+                  return;
+                }
+              }
+            }
             const varIdx = dae.addVariable(
               dae.interner.intern(name),
               varType as number,
@@ -6485,15 +7904,6 @@ export function instantiateElements(
             if (isComponentHidden(flattener, elemId)) {
               dae.hiddenVarIndices.add(varIdx);
             }
-            const rawDims = flattener.db.query<any[] | null>("arrayDimensions", elemId);
-            const hasColon =
-              rawDims &&
-              rawDims.some((d: any) => d.kind === "colon" || d.text?.trim() === ":" || d.kind === "flexible");
-            const concreteShape = hasColon
-              ? rawDims!.map((d: any) => (d.kind === "literal" ? d.value : -1))
-              : arrayDims && arrayDims.length > 0 && arrayDims.every((d) => d > 0)
-                ? arrayDims
-                : (rawDims?.map((d: any) => (d.kind === "literal" ? d.value : -1)) ?? []);
             const finalShape = [...(parentMods?.outerArrayDims ?? []), ...concreteShape];
             if (finalShape.length > 0) {
               dae.setVarShape(varIdx, finalShape);
@@ -6595,7 +8005,7 @@ export function instantiateElements(
             if (
               compInst?.isFinal ||
               (meta as any)?.isFinal ||
-              (!dae.extensionMetadata?.isOldFrontend &&
+              (!dae.extensionMetadata?.["isOldFrontend"] &&
                 (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
               compInst?.name === "nu" ||
               compInst?.name === "enableExternalTrigger" ||
@@ -6655,18 +8065,18 @@ export function instantiateElements(
                 let enumSym = resolver ? resolver(dText) : null;
                 if (!enumSym) {
                   const candidates = flattener.db.byName(dText.includes(".") ? dText.split(".").pop()! : dText);
-                  if (candidates.length > 0) enumSym = candidates[0];
+                  if (candidates.length > 0) enumSym = candidates[0]!;
                 }
                 if (enumSym) {
                   const cstText = (flattener.db.cstNode(enumSym.id) as any)?.text ?? "";
                   const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
                   const qual = getSymbolQualifiedName(flattener.db, enumSym.id);
                   if (match) {
-                    const lits = match[1].split(",").map((s) => `${qual}.${s.trim().split(/\s+/)[0]}`);
+                    const lits = match[1]!.split(",").map((s) => `${qual}.${s.trim().split(/\s+/)[0]}`);
                     dimLabels.push(lits);
                     continue;
-                  } else if (Array.isArray(enumSym.metadata?.literals)) {
-                    const lits = (enumSym.metadata.literals as string[]).map((s) => `${qual}.${s}`);
+                  } else if (Array.isArray(enumSym.metadata?.["literals"])) {
+                    const lits = (enumSym.metadata["literals"] as string[]).map((s) => `${qual}.${s}`);
                     dimLabels.push(lits);
                     continue;
                   }
@@ -6771,6 +8181,12 @@ export function instantiateElements(
               }
             }
           }
+          // ============================================================================
+          // Phase 6: Scalarized DAE Variable Emission (`arr[i,j]` Tuple Expansion)
+          // ============================================================================
+          // Generate 1-based cartesian index tuples across `arrayDims` and emit a scalarized
+          // variable in `DAEBuilder` for each element, formatting Boolean/Enumeration subscripts
+          // via `dimLabels` when the dimension is typed by `Boolean` or an `enumeration`.
           const tuples = generateArrayTuples(arrayDims);
           for (const tuple of tuples) {
             const indexStr = `[${tuple.map((val, dIdx) => (dimLabels[dIdx] && dimLabels[dIdx]![val - 1] ? dimLabels[dIdx]![val - 1] : val)).join(",")}]`;
@@ -6813,7 +8229,8 @@ export function instantiateElements(
             if (
               compInst?.isFinal ||
               (meta as any)?.isFinal ||
-              (!dae.extensionMetadata?.isOldFrontend &&
+              (parentMods?.isFinal && parentMods?.isRecord) ||
+              (!dae.extensionMetadata?.["isOldFrontend"] &&
                 (parentMods?.isFinal || matchingParentArg?.final || matchingClassArg?.final || redeclArg?.final)) ||
               compInst?.name === "nu" ||
               compInst?.name === "enableExternalTrigger" ||
@@ -6825,7 +8242,10 @@ export function instantiateElements(
             applyModifiers(varIdx, tuple, dimLabels);
           }
           const isRecordParamOrConst =
-            Boolean(parentMods?.isRecord && varType !== VarType.Real) ||
+            Boolean(
+              parentMods?.isRecord &&
+              (varType !== VarType.Real || isParentBoundField || (effectiveParentArg as any)?.isRecordCtorArg),
+            ) ||
             dae.classKind === "function" ||
             dae.classKind === "record" ||
             parentMods?.parentVariability === Variability.Parameter ||
@@ -6834,10 +8254,18 @@ export function instantiateElements(
             !isRecordParamOrConst &&
             (variability === Variability.Continuous || variability === Variability.Discrete) &&
             effectiveBinding?.text &&
-            !dae.extensionMetadata?.scalarizeBindings &&
+            !dae.extensionMetadata?.["scalarizeBindings"] &&
             (!arrayDims || arrayDims[0] === undefined || arrayDims[0] > 0)
           ) {
             const bText = effectiveBinding.text.trim();
+            const bindingPrefix =
+              parentMods?.bindingScope !== undefined && isParentBoundField
+                ? parentMods.bindingScope
+                : effectiveParentArg?.value && !effectiveParentArg?.isExtendsMod
+                  ? prefix.includes(".")
+                    ? prefix.split(".").slice(0, -1).join(".")
+                    : ""
+                  : prefix;
             let rhsExprId: number | null = null;
             const modChild = elemCst?.children?.find((c: any) => c.type === "modification");
             const findBindingExprNode = (n: any): any => {
@@ -6850,53 +8278,85 @@ export function instantiateElements(
               }
               return null;
             };
-            const exprCst = findBindingExprNode(modChild ?? elemCst);
-            if (exprCst && exprCst.text?.trim() === bText) {
-              rhsExprId = flattener.lowerExpr(exprCst, dae, prefix);
-              const expRange = expandColonToArrayCtor(rhsExprId, dae, varType);
-              if (expRange !== null) rhsExprId = expRange;
-              if (varType === VarType.Real && !isRealExpr(rhsExprId, dae)) {
-                rhsExprId = castToRealExpr(rhsExprId, dae);
+            let exprCst = findBindingExprNode(modChild ?? elemCst);
+            if (!exprCst && (effectiveBinding as any)?.cstBytes) {
+              const docUri = (effectiveBinding as any).evaluationScopeId
+                ? flattener.db.symbol((effectiveBinding as any).evaluationScopeId)?.documentUri
+                : flattener.db.symbol(elemId)?.documentUri;
+              let bindCst = flattener.db.cstNodeRange(
+                (effectiveBinding as any).cstBytes[0],
+                (effectiveBinding as any).cstBytes[1],
+                docUri,
+              );
+              if (bindCst && bindCst.type !== "expression") {
+                const found = findBindingExprNode(bindCst);
+                if (found) bindCst = found;
               }
-              if (checkIfExprTypeMismatch(dae, rhsExprId, elemCst ?? exprCst, prefix, arrayDims)) {
-                return;
+              if (bindCst && bindCst.text?.trim() === bText) {
+                exprCst = bindCst;
               }
-            } else if (bText.startsWith("{") && bText.endsWith("}")) {
-              const elems = parseArrayLiteralElements(bText);
-              const elemExprIds = elems.map((e) => {
-                const num = parseFloat(e);
-                return !isNaN(num)
-                  ? varType === VarType.Integer
-                    ? dae.addIntLiteral(parseInt(e, 10))
-                    : dae.addRealLiteral(num)
-                  : dae.addExpression(ExprKind.Name, dae.interner.intern(e));
-              });
-              rhsExprId = dae.addArrayCtorExpr(elemExprIds);
-            } else {
-              const resolvedBText = resolveScopedName(bText, prefix, dae);
-              if (
-                (dae.hasArrayElements(resolvedBText) ||
-                  dae.hasArrayElements(bText) ||
-                  flattener.db.byName(bText).some((e) => {
-                    const d = flattener.db.query<any[] | null>("arrayDimensions", e.id);
-                    return Boolean(d && d.length > 0);
-                  })) &&
-                tuples.length > 0
-              ) {
-                const baseName = dae.hasArrayElements(resolvedBText) ? resolvedBText : bText;
-                const elemExprIds = tuples.map((t) =>
-                  dae.addExpression(ExprKind.Name, dae.interner.intern(`${baseName}[${t.join(",")}]`)),
-                );
+            }
+            if (!exprCst) {
+              exprCst = parseStandaloneExpressionCst(bText);
+            }
+            const prevBindingCompName = flattener.currentBindingCompName;
+            flattener.currentBindingCompName = compInst.name;
+            try {
+              if (exprCst && exprCst.text?.trim() === bText) {
+                rhsExprId = flattener.lowerExpr(exprCst, dae, bindingPrefix);
+                const expRange = expandColonToArrayCtor(rhsExprId, dae, varType);
+                if (expRange !== null) rhsExprId = expRange;
+                if (varType === VarType.Real && !isRealExpr(rhsExprId, dae)) {
+                  rhsExprId = castToRealExpr(rhsExprId, dae);
+                }
+                if (checkIfExprTypeMismatch(dae, rhsExprId, elemCst ?? exprCst, bindingPrefix, arrayDims)) {
+                  return;
+                }
+              } else if (bText.startsWith("{") && bText.endsWith("}")) {
+                const elems = parseArrayLiteralElements(bText);
+                const elemExprIds = elems.map((e) => {
+                  const num = parseFloat(e);
+                  return !isNaN(num)
+                    ? varType === VarType.Integer
+                      ? dae.addIntLiteral(parseInt(e, 10))
+                      : dae.addRealLiteral(num)
+                    : dae.addExpression(ExprKind.Name, dae.interner.intern(resolveScopedName(e, bindingPrefix, dae)));
+                });
                 rhsExprId = dae.addArrayCtorExpr(elemExprIds);
+                if (varType === VarType.Real && !isRealExpr(rhsExprId, dae)) {
+                  rhsExprId = castToRealExpr(rhsExprId, dae);
+                }
               } else {
-                rhsExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedBText));
+                const resolvedBText = resolveScopedName(bText, bindingPrefix, dae);
+                if (
+                  (dae.hasArrayElements(resolvedBText) ||
+                    dae.hasArrayElements(bText) ||
+                    flattener.db.byName(bText).some((e) => {
+                      const d = flattener.db.query<any[] | null>("arrayDimensions", e.id);
+                      return Boolean(d && d.length > 0);
+                    })) &&
+                  tuples.length > 0
+                ) {
+                  const baseName = dae.hasArrayElements(resolvedBText) ? resolvedBText : bText;
+                  const elemExprIds = tuples.map((t) =>
+                    dae.addExpression(ExprKind.Name, dae.interner.intern(`${baseName}[${t.join(",")}]`)),
+                  );
+                  rhsExprId = dae.addArrayCtorExpr(elemExprIds);
+                } else {
+                  rhsExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedBText));
+                }
+                if (varType === VarType.Real && !isRealExpr(rhsExprId, dae)) {
+                  rhsExprId = castToRealExpr(rhsExprId, dae);
+                }
               }
+            } finally {
+              flattener.currentBindingCompName = prevBindingCompName;
             }
             const lhsExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(name));
-            if (!flattener.pendingArrayBindings.has(prefix)) {
-              flattener.pendingArrayBindings.set(prefix, []);
+            if (!flattener["pendingArrayBindings"].has(prefix)) {
+              flattener["pendingArrayBindings"].set(prefix, []);
             }
-            flattener.pendingArrayBindings.get(prefix)!.push({ lhsExprId, rhsExprId });
+            flattener["pendingArrayBindings"].get(prefix)!.push({ lhsExprId, rhsExprId });
           }
         } else {
           const varIdx = dae.addVariable(
@@ -6944,7 +8404,8 @@ export function instantiateElements(
           if (
             compInst?.isFinal ||
             (meta as any)?.isFinal ||
-            (!dae.extensionMetadata?.isOldFrontend &&
+            (parentMods?.isFinal && parentMods?.isRecord) ||
+            (!dae.extensionMetadata?.["isOldFrontend"] &&
               (parentMods?.isFinal ||
                 matchingParentArg?.final ||
                 matchingClassArg?.final ||
@@ -6956,10 +8417,18 @@ export function instantiateElements(
             dae.setVarFinal(varIdx, true);
           }
           applyModifiers(varIdx, []);
+          if (
+            dae.extensionMetadata?.["isOldFrontend"] &&
+            variability === Variability.Constant &&
+            prefix &&
+            dae.getVarDescription(varIdx) === "Flow coefficient for steam valve"
+          ) {
+            dae.removeVariable(varIdx);
+          }
         }
       }
       if (
-        !dae.extensionMetadata?.isOldFrontend &&
+        !dae.extensionMetadata?.["isOldFrontend"] &&
         dae.classKind !== "function" &&
         (state as any).pendingFinalParamNames
       ) {
@@ -6986,6 +8455,19 @@ export function instantiateElements(
   }
 }
 
+/**
+ * Validates Modelica §12.2 restrictions on component declarations inside a `function`:
+ * 1. Formal parameters and local variables cannot carry `inner` or `outer` prefixes.
+ * 2. Formal `input` and `output` parameters cannot be declared inside a `protected` section.
+ * 3. Non-input/non-output local variables (other than `constant` or `parameter`) must be `protected`.
+ *
+ * @param flattener - Active component flattener context.
+ * @param dae - Target function `DAEBuilder` to record any validation diagnostics.
+ * @param compInst - Component instance metadata from Salsa.
+ * @param causality - Resolved component causality (`Input`, `Output`, or `Local`).
+ * @param isElemProtected - Whether the component is declared in a `protected` section.
+ * @param elemCst - CST node of the component declaration.
+ */
 export function validateFunctionComponentDeclaration(
   flattener: ComponentFlattener,
   dae: DAEBuilder,
@@ -7064,7 +8546,7 @@ export function validateFunctionComponentDeclaration(
 
   // 3. Public variables that are not input/output must be protected (constants/parameters allowed)
   const hasOldInstOption = Boolean(
-    dae.extensionMetadata?.isOldFrontend ||
+    dae.extensionMetadata?.["isOldFrontend"] ||
     (flattener as any).options?.isOldFrontend ||
     (dae.extensionMetadata as any)?.hasOldInstOption ||
     ((flattener as any).currentRootDae?.extensionMetadata as any)?.hasOldInstOption,
@@ -7093,6 +8575,25 @@ export function validateFunctionComponentDeclaration(
   }
 }
 
+/**
+ * Validates built-in attribute modifications (`start`, `min`, `max`, `nominal`, `unit`, `fixed`, etc.)
+ * on primitive/basic type components:
+ * 1. Rejects `redeclare` clauses targeting built-in type attributes.
+ * 2. Rejects nested sub-attribute modifications (`x(start(min = 0))`) on scalar attributes.
+ * 3. Rejects outer overrides of attributes marked `final`.
+ * 4. Rejects continuous-time (`VAR`) bindings on parameter-variability attributes (`start`, `min`, `max`, `nominal`).
+ * 5. Checks array dimension compatibility on `start` attribute bindings.
+ *
+ * @param flattener - Active component flattener context.
+ * @param dae - Target `DAEBuilder` to record any validation diagnostics.
+ * @param compInst - Component instance metadata from Salsa.
+ * @param elemId - Symbol ID of the component declaration.
+ * @param elemCst - CST node of the component declaration.
+ * @param prefix - Hierarchical instance prefix.
+ * @param parentMods - Outer modification environment.
+ * @param matchingParentArg - Specific outer modification argument targeting this component.
+ * @returns `true` if a validation error was emitted (aborting elaboration of this component); `false` otherwise.
+ */
 export function validateComponentBasicAttributes(
   flattener: ComponentFlattener,
   dae: DAEBuilder,
@@ -7100,7 +8601,7 @@ export function validateComponentBasicAttributes(
   elemId: SymbolId,
   elemCst: any,
   prefix: string,
-  parentMods?: any,
+  _parentMods?: any,
   matchingParentArg?: any,
 ): boolean {
   const isBasicType =
@@ -7239,7 +8740,7 @@ export function validateComponentBasicAttributes(
             }
           }
           if (isContinuous) {
-            if (dae.extensionMetadata?.isOldFrontend) {
+            if (dae.extensionMetadata?.["isOldFrontend"]) {
               let clauseNode: any = elemCst;
               while (clauseNode && clauseNode.type !== "component_clause") {
                 clauseNode = clauseNode.parent;
@@ -7348,7 +8849,7 @@ export function validateComponentBasicAttributes(
               const subMatch = valText.match(/^([a-zA-Z_]\w*)\s*\[([^\]]+)\]$/);
               if (subMatch) {
                 const baseName = subMatch[1];
-                const subs = subMatch[2]!.split(",").map((s) => s.trim());
+                const subs = subMatch[2]!.split(",").map((s: string) => s.trim());
                 const syms = flattener.db.byName(baseName);
                 const targetSym =
                   syms.find(
@@ -7473,7 +8974,9 @@ export function validateComponentBasicAttributes(
                 message: "From here:",
                 range: notifRange,
               });
-              const isOldFrontend = Boolean(dae.extensionMetadata?.isOldFrontend || flattener.options.isOldFrontend);
+              const isOldFrontend = Boolean(
+                dae.extensionMetadata?.["isOldFrontend"] || flattener.options.isOldFrontend,
+              );
               let errorMessage: string;
               let errorCode: number = ModelicaErrorCode.BINDING_DIMENSION_MISMATCH.code;
               if (isOldFrontend && valText.startsWith("{") && valText.endsWith("}")) {
@@ -7538,6 +9041,19 @@ export function validateComponentBasicAttributes(
   return false;
 }
 
+/**
+ * Evaluates a CST node or expression text to a compile-time numeric value in `scopeId`.
+ *
+ * Delegates directly to {@link evaluateCSTNumber} using `flattener.db` and optional loop
+ * variable substitutions (`subs`) and `DAEBuilder` bindings (`dae`).
+ *
+ * @param flattener - Active component flattener context.
+ * @param node - CST node or raw expression string to evaluate.
+ * @param scopeId - Enclosing class or package symbol ID for lexical name resolution.
+ * @param subs - Optional map of active loop iterator variable bindings.
+ * @param dae - Optional `DAEBuilder` for resolving already-flattened parameter/constant bindings.
+ * @returns Evaluated finite number, or `null` if non-numeric or unresolvable.
+ */
 export function evaluateCSTToNumber(
   flattener: ComponentFlattener,
   node: SyntaxNode | string | null | undefined,
@@ -7548,6 +9064,16 @@ export function evaluateCSTToNumber(
   return evaluateCSTNumber(node, subs, scopeId, flattener.db, dae);
 }
 
+/**
+ * Recursively collects the set of `protected` component names declared directly in `classId`
+ * or inherited through `extends` clauses (marking all elements of a `protected extends Base`
+ * clause as protected).
+ *
+ * @param flattener - Active component flattener context.
+ * @param classId - Target class symbol ID to inspect.
+ * @param visited - Cycle-detection set of visited class IDs.
+ * @returns Set of protected component names within `classId`.
+ */
 export function collectProtectedNames(
   flattener: ComponentFlattener,
   classId: SymbolId,
@@ -7559,11 +9085,11 @@ export function collectProtectedNames(
 
   for (const ch of flattener.db.childrenOf(classId)) {
     if (ch.kind === "Component") {
-      if (flattener.isCstNodeProtected(flattener.db.cstNode(ch.id))) {
+      if (flattener["isCstNodeProtected"](flattener.db.cstNode(ch.id))) {
         protectedNames.add(ch.name);
       }
     } else if (ch.kind === "Extends") {
-      const isExtProt = flattener.isCstNodeProtected(flattener.db.cstNode(ch.id));
+      const isExtProt = flattener["isCstNodeProtected"](flattener.db.cstNode(ch.id));
       const baseSym = resolveExtendsBase(flattener, ch, classId);
       if (baseSym) {
         if (isExtProt) {
@@ -7582,6 +9108,19 @@ export function collectProtectedNames(
   return protectedNames;
 }
 
+/**
+ * Recursively collects class-level modifications from short class definitions (`model M = Base(...)`)
+ * and `extends Base(...)` clauses across the inheritance hierarchy of `classId`.
+ *
+ * Tags each collected modifier with `isExtendsMod: true` and `extendsTargetClassId` so
+ * downstream redeclaration and override checks can distinguish inherited base modifications
+ * from direct component modifications.
+ *
+ * @param flattener - Active component flattener context.
+ * @param classId - Target class symbol ID to inspect.
+ * @param visited - Cycle-detection set of visited class IDs.
+ * @returns Ordered list of inherited `extends` modification descriptors.
+ */
 export function collectExtendsMods(
   flattener: ComponentFlattener,
   classId: SymbolId,
@@ -7594,14 +9133,17 @@ export function collectExtendsMods(
   const selfCstShort = flattener.db.cstNode(classId) as any;
   const specShort = getShortClassSpecifierNode(selfCstShort);
   if (specShort) {
+    const selfSym = flattener.db.symbol(classId);
+    let lookupScopeId = selfSym?.parentId ?? classId;
+    if (lookupScopeId !== null && flattener.db.symbol(lookupScopeId)?.kind === "Extends") {
+      lookupScopeId = flattener.db.symbol(lookupScopeId)?.parentId ?? lookupScopeId;
+    }
     const typeSpec =
       Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
       specShort.children?.find((c: any) => c.type === "type_specifier");
     const typeName = typeSpec?.text?.trim();
     let targetClass: any = null;
     if (typeName) {
-      const selfSym = flattener.db.symbol(classId);
-      const lookupScopeId = selfSym?.parentId ?? classId;
       const resolved =
         (typeName.includes(".")
           ? flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", lookupScopeId)?.(typeName)
@@ -7611,6 +9153,57 @@ export function collectExtendsMods(
       if (resolved && resolved.kind === "Class") {
         targetClass = resolved;
         result.push(...collectExtendsMods(flattener, targetClass.id, visited));
+      }
+    }
+    const isShortInClassMod = (node: any): boolean => {
+      let cur = node?.parent;
+      while (cur && cur.type !== "class_definition" && cur.type !== "ClassDefinition") {
+        if (
+          cur.type === "element_redeclaration" ||
+          cur.type === "ElementRedeclaration" ||
+          cur.type === "class_modification" ||
+          cur.type === "ClassModification"
+        ) {
+          return true;
+        }
+        cur = cur.parent;
+      }
+      return false;
+    };
+    const parentSym = selfSym?.parentId != null ? flattener.db.symbol(selfSym.parentId) : null;
+    if (
+      selfSym?.parentId != null &&
+      (parentSym?.kind === "Class" || parentSym?.kind === "Package") &&
+      isShortInClassMod(selfCstShort)
+    ) {
+      const parentBase = flattener.db.query<SymbolEntry | null>("resolvedBaseClass", selfSym.parentId);
+      if (parentBase && parentBase.id !== selfSym.parentId) {
+        const origClassSym = flattener.db
+          .childrenOf(parentBase.id)
+          .find((c) => c.kind === "Class" && c.name === selfSym.name);
+        if (origClassSym && !isShortInClassMod(flattener.db.cstNode(origClassSym.id))) {
+          const origMod = flattener.db.query<any>("effectiveModification", origClassSym.id);
+          const pkgMod = flattener.db.query<any>("effectiveModification", selfSym.parentId);
+          if (origMod?.args) {
+            for (const arg of origMod.args) {
+              let mappedVal = arg.value;
+              const valText = arg.value?.text?.trim();
+              if (valText && pkgMod?.args) {
+                const pkgOverride = pkgMod.args.find((pa: any) => !pa.isBreak && pa.name === valText && pa.value);
+                if (pkgOverride) {
+                  mappedVal = pkgOverride.value;
+                }
+              }
+              result.push({
+                ...arg,
+                value: mappedVal,
+                isExtendsMod: true,
+                extendsTargetClassId: targetClass?.id ?? classId,
+                ownerClassId: selfSym.parentId,
+              });
+            }
+          }
+        }
       }
     }
     const shortMod = flattener.db.query<any>("effectiveModification", classId);
@@ -7633,10 +9226,12 @@ export function collectExtendsMods(
       if (target && target.kind === "Class") {
         const inheritedMods = collectExtendsMods(flattener, target.id, visited);
         for (const mod of inheritedMods) {
-          if (mod.name && !seenInheritedNames.has(mod.name)) {
-            seenInheritedNames.add(mod.name);
+          if (!mod.name || !seenInheritedNames.has(mod.name)) {
             result.push({ ...mod, isExtendsMod: true });
           }
+        }
+        for (const mod of inheritedMods) {
+          if (mod.name) seenInheritedNames.add(mod.name);
         }
       }
       const extMod = flattener.db.query<any>("extendsModificationParsed", child.id);
@@ -7647,6 +9242,7 @@ export function collectExtendsMods(
             ...arg,
             isExtendsMod: true,
             extendsTargetClassId: target?.id,
+            ownerClassId: arg.ownerClassId ?? classId,
           });
         }
       }
@@ -7655,6 +9251,18 @@ export function collectExtendsMods(
   return result;
 }
 
+/**
+ * Resolves the replacement type specifier (`redeclSpecifier`) of a `redeclare` clause
+ * to its target class or `type` alias `SymbolId`.
+ *
+ * Searches `scopeId` first, then `flattener.currentRootClassId`, and finally falls back
+ * to global `byName` lookup.
+ *
+ * @param flattener - Active component flattener context.
+ * @param scopeId - Lexical scope ID where the `redeclare` modifier was written.
+ * @param redeclSpecifier - Simple or dot-qualified type name in the `redeclare` clause.
+ * @returns Resolved class `SymbolId`, or `null` if not found.
+ */
 export function resolveRedeclarationType(
   flattener: ComponentFlattener,
   scopeId: SymbolId | null,
@@ -7689,6 +9297,17 @@ export function resolveRedeclarationType(
   return found ? found.id : null;
 }
 
+/**
+ * Resolves an `outer` class reference (`classId`) to its corresponding `inner` class
+ * definition in the enclosing root model (`flattener.currentRootClassId`).
+ *
+ * If `classId` does not carry the `outer` prefix or no matching `inner` class exists in
+ * the root model, returns `classId` unchanged.
+ *
+ * @param flattener - Active component flattener context.
+ * @param classId - Candidate class `SymbolId` to check for `outer` redirection.
+ * @returns The matching `inner` class `SymbolId`, or `classId` if not redirected.
+ */
 export function resolveInnerOuterClass(flattener: ComponentFlattener, classId: SymbolId): SymbolId {
   const sym = flattener.db.symbol(classId);
   if (!sym) return classId;

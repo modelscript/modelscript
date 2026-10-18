@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * Severity level for an OWL 2 linter or reasoner diagnostic.
+ */
 export type Owl2DiagnosticSeverity = "error" | "warning" | "info";
 
+/**
+ * Definition of an OWL 2 diagnostic error code, rule slug, severity, and message formatter.
+ */
 export interface Owl2ErrorCodeDef {
   readonly code: number;
   readonly rule: string;
@@ -191,7 +197,9 @@ export const Owl2ErrorCode = {
   },
 } as const;
 
+/** Index mapping numeric OWL 2 error codes (e.g. `1001`) to their `Owl2ErrorCodeDef`. */
 const BY_CODE = new Map<number, Owl2ErrorCodeDef>();
+/** Index mapping kebab-case OWL 2 rule names (e.g. `"parse-error"`) to their `Owl2ErrorCodeDef`. */
 const BY_RULE = new Map<string, Owl2ErrorCodeDef>();
 
 for (const def of Object.values(Owl2ErrorCode)) {
@@ -199,10 +207,16 @@ for (const def of Object.values(Owl2ErrorCode)) {
   BY_RULE.set(def.rule, def);
 }
 
+/**
+ * Looks up an `Owl2ErrorCodeDef` by its numeric code (e.g., `3001`).
+ */
 export function getOwl2ErrorCodeDef(code: number): Owl2ErrorCodeDef | undefined {
   return BY_CODE.get(code);
 }
 
+/**
+ * Looks up an `Owl2ErrorCodeDef` by its kebab-case rule identifier (e.g., `"illegal-property-punning"`).
+ */
 export function getOwl2ErrorByRule(rule: string): Owl2ErrorCodeDef | undefined {
   return BY_RULE.get(rule);
 }

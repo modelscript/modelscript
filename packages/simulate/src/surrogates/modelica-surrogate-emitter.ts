@@ -14,56 +14,56 @@ import type { TrainedROM } from "./rom-trainer.js";
 
 export interface ModelicaEmissionOptions {
   modelName: string;
-  packageName?: string;
-  description?: string;
+  packageName?: string | undefined;
+  description?: string | undefined;
   /** Units for parameters (e.g. { "velocity": "Modelica.Units.SI.Velocity" }) */
-  parameterUnits?: Record<string, string>;
+  parameterUnits?: Record<string, string> | undefined;
   /** Units for scalar outputs (e.g. { "drag": "Modelica.Units.SI.Force" }) */
-  outputUnits?: Record<string, string>;
+  outputUnits?: Record<string, string> | undefined;
   /** Default parameter values */
-  defaultParameters?: Record<string, number>;
+  defaultParameters?: Record<string, number> | undefined;
   /** Explicit bounds for parameter validation (e.g. { "velocity": { min: 0.1, max: 50.0 } }) */
-  parameterBounds?: Record<string, { min: number; max: number }>;
+  parameterBounds?: Record<string, { min: number; max: number }> | undefined;
   /** Multivariate ellipsoid bounds for Mahalanobis extrapolation detection */
-  multivariateBounds?: MultivariateBounds;
+  multivariateBounds?: MultivariateBounds | undefined;
   /** Whether to emit multivariate Mahalanobis extrapolation checks (default: true if bounds exist). */
-  enableMultivariateGuardrails?: boolean;
+  enableMultivariateGuardrails?: boolean | undefined;
   /**
    * Whether to emit extrapolation checks in the Modelica model.
    * If true (or when parameterBounds are provided and this is not explicitly false),
    * emits Modelica assert statements for out-of-bound inputs.
    */
-  enableExtrapolationWarnings?: boolean;
+  enableExtrapolationWarnings?: boolean | undefined;
   /** Severity level for Modelica assertions: "warning" | "error" (default: "warning"). */
-  extrapolationLevel?: "warning" | "error";
+  extrapolationLevel?: "warning" | "error" | undefined;
   /** Whether to emit a Boolean 'isExtrapolating' output flag (default: false). */
-  emitExtrapolationFlag?: boolean;
+  emitExtrapolationFlag?: boolean | undefined;
 }
 
 export interface ModelicaRomEmissionOptions {
   modelName: string;
-  packageName?: string;
-  description?: string;
+  packageName?: string | undefined;
+  description?: string | undefined;
   /** Units for parameters/inputs (e.g. { "airspeed": "Modelica.Units.SI.Velocity" }) */
-  inputUnits?: Record<string, string>;
+  inputUnits?: Record<string, string> | undefined;
   /** Units for scalar outputs (e.g. { "drag": "Modelica.Units.SI.Force" }) */
-  outputUnits?: Record<string, string>;
+  outputUnits?: Record<string, string> | undefined;
   /** Explicit bounds for parameter validation (e.g. { "velocity": { min: 0.1, max: 50.0 } }) */
-  parameterBounds?: Record<string, { min: number; max: number }>;
+  parameterBounds?: Record<string, { min: number; max: number }> | undefined;
   /** Multivariate ellipsoid bounds for Mahalanobis extrapolation detection */
-  multivariateBounds?: MultivariateBounds;
+  multivariateBounds?: MultivariateBounds | undefined;
   /** Whether to emit multivariate Mahalanobis extrapolation checks (default: true if bounds exist). */
-  enableMultivariateGuardrails?: boolean;
+  enableMultivariateGuardrails?: boolean | undefined;
   /**
    * Whether to emit extrapolation checks in the Modelica model.
    * If true (or when parameterBounds are provided and this is not explicitly false),
    * emits Modelica assert statements for out-of-bound inputs.
    */
-  enableExtrapolationWarnings?: boolean;
+  enableExtrapolationWarnings?: boolean | undefined;
   /** Severity level for Modelica assertions: "warning" | "error" (default: "warning"). */
-  extrapolationLevel?: "warning" | "error";
+  extrapolationLevel?: "warning" | "error" | undefined;
   /** Whether to emit a Boolean 'isExtrapolating' output flag (default: true when bounds exist). */
-  emitExtrapolationFlag?: boolean;
+  emitExtrapolationFlag?: boolean | undefined;
 }
 
 export class ModelicaSurrogateEmitter {

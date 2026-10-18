@@ -20,9 +20,9 @@ interface ParticipantVariable {
   name: string;
   causality: "input" | "output" | "parameter" | "local";
   type: string;
-  unit?: string;
-  start?: number;
-  description?: string;
+  unit?: string | undefined;
+  start?: number | undefined;
+  description?: string | undefined;
 }
 
 /** Participant metadata from MQTT birth certificate. */
@@ -31,22 +31,22 @@ interface MqttParticipant {
   modelName: string;
   type: string;
   classKind: string;
-  description?: string;
+  description?: string | undefined;
   variables: ParticipantVariable[];
-  iconSvg?: string;
+  iconSvg?: string | undefined;
   timestamp: string;
   online: boolean;
 }
 
 interface MqttTreeWidgetProps {
   /** API base URL for fetching participant data. */
-  apiBaseUrl?: string;
+  apiBaseUrl?: string | undefined;
   /** Callback when a participant is selected. */
-  onSelect?: (participant: MqttParticipant) => void;
+  onSelect?: ((participant: MqttParticipant) => void) | undefined;
   /** Optional width for the widget. */
-  width?: number | string;
+  width?: number | string | undefined;
   /** Polling interval in ms (default: 5000). */
-  pollInterval?: number;
+  pollInterval?: number | undefined;
 }
 
 /**

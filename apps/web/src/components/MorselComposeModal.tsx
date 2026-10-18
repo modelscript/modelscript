@@ -96,7 +96,7 @@ interface MorselComposeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAttach: (artifact: { code: string; title: string; dialect: string }) => void;
-  initialCode?: string;
+  initialCode?: string | undefined;
 }
 
 export const MorselComposeModal: React.FC<MorselComposeModalProps> = ({
@@ -126,7 +126,7 @@ end MySystem;`,
   const handleAttach = () => {
     // Extract model / class name from code if possible
     const match = code.match(/(?:model|package|class|block)\s+([A-Za-z0-9_]+)/);
-    const title = match ? match[1] : "Interactive Morsel Model";
+    const title = match ? match[1]! : "Interactive Morsel Model";
     onAttach({
       code,
       title,

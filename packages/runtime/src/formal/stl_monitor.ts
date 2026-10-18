@@ -62,10 +62,10 @@ export interface StlEvaluationResult {
   robustness: number; // rho at t = 0
   isSatisfied: boolean;
   worstRobustness: number;
-  timeOfWorstViolation?: number;
+  timeOfWorstViolation?: number | undefined;
   violationIntervals: [number, number][];
   robustnessTrajectory: Float64Array; // rho(t) for each time point
-  diagnosticExplanation?: string;
+  diagnosticExplanation?: string | undefined;
 }
 
 export class StlMonitor {
@@ -112,8 +112,8 @@ export class StlMonitor {
     b: number,
     outPtr: number,
   ): void {
-    if (typeof wasmExports.stl_eval_always === "function") {
-      wasmExports.stl_eval_always(timePtr, valPtr, n, a, b, outPtr);
+    if (typeof wasmExports["stl_eval_always"] === "function") {
+      wasmExports["stl_eval_always"](timePtr, valPtr, n, a, b, outPtr);
     }
   }
 
@@ -129,8 +129,8 @@ export class StlMonitor {
     b: number,
     outPtr: number,
   ): void {
-    if (typeof wasmExports.stl_eval_eventually === "function") {
-      wasmExports.stl_eval_eventually(timePtr, valPtr, n, a, b, outPtr);
+    if (typeof wasmExports["stl_eval_eventually"] === "function") {
+      wasmExports["stl_eval_eventually"](timePtr, valPtr, n, a, b, outPtr);
     }
   }
 
@@ -147,8 +147,8 @@ export class StlMonitor {
     b: number,
     outPtr: number,
   ): void {
-    if (typeof wasmExports.stl_eval_until === "function") {
-      wasmExports.stl_eval_until(timePtr, lPtr, rPtr, n, a, b, outPtr);
+    if (typeof wasmExports["stl_eval_until"] === "function") {
+      wasmExports["stl_eval_until"](timePtr, lPtr, rPtr, n, a, b, outPtr);
     }
   }
 

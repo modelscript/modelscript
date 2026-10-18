@@ -246,7 +246,7 @@ export class OntologyTheoryOracle implements TheoryOracle {
    *   1. No individual has multiple types that are disjoint.
    *   2. No individuals that are marked different are inferred to be the same.
    */
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     // 1. Check disjointness violation across all individuals
     for (const [ind] of this.sameIndividualMap.entries()) {
       const root = this.findRootIndividual(ind);

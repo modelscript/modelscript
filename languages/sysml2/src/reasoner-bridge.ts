@@ -125,8 +125,8 @@ export function emitAxioms(db: QueryDB, self: SymbolEntry): OWL2Axiom[] {
         });
 
         // Multiplicity constraints: exact, min, max cardinality
-        const lower = entry.metadata?.multiplicityLower as string | undefined;
-        const upper = entry.metadata?.multiplicityUpper as string | undefined;
+        const lower = entry.metadata?.["multiplicityLower"] as string | undefined;
+        const upper = entry.metadata?.["multiplicityUpper"] as string | undefined;
         const primaryType = typeChildren[0]?.name;
         const fillerClassIri = primaryType ? `sysml:${primaryType}` : iri;
 

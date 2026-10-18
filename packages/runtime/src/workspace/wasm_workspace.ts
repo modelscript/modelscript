@@ -15,33 +15,65 @@ import {
 import { computeEditRanges, type EditRange } from "../util/diff.js";
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
 
+/**
+ * Common interface implemented by single-language (`LanguageWorkspaceIndex`) and
+ * polyglot (`UnifiedWorkspace`) workspace symbol indices.
+ */
 export interface IWorkspaceIndex {
+  /** Monotonically increasing document/symbol mutation counter. */
   readonly version: number;
-  readonly structuralRevision?: number;
-  readonly fileCount?: number;
+  /** Monotonically increasing counter incremented only when symbol signatures or hierarchy change. */
+  readonly structuralRevision?: number | undefined;
+  /** Total number of registered documents in the workspace. */
+  readonly fileCount?: number | undefined;
+  /** Materializes and returns the complete `SymbolIndex`, evaluating any pending lazy file loaders. */
   toSymbolIndex?(): SymbolIndex;
+  /** Alias for `toSymbolIndex()` returning the unified `SymbolIndex` across all indexed files. */
   toUnified?(): SymbolIndex;
+  /** Asynchronously materializes and returns the unified `SymbolIndex`. */
   toUnifiedAsync?(): Promise<SymbolIndex>;
+  /** Returns the currently materialized `SymbolIndex` without forcing evaluation of pending lazy loaders. */
   toUnifiedPartial?(): SymbolIndex;
+  /** Returns a lightweight top-level skeleton `SymbolIndex` for workspace navigation. */
   getSkeletonIndex?(): SymbolIndex;
 }
 
+/**
+ * Compact WebAssembly Tier 1 declaration stub record representing a symbol's location,
+ * hierarchy link, and Merkle hash in linear memory.
+ */
 export interface WasmStubSymbol {
+  /** Integer file identifier assigned by `LanguageWorkspaceIndex.getFileId()`. */
   fileId: number;
+  /** Unique integer symbol identifier within the workspace index. */
   symbolId: number;
+  /** Enclosing parent symbol ID (`0` for top-level declarations). */
   parentSymbolId: number;
+  /** Numeric symbol kind tag. */
   kind: number;
+  /** Bitmask of declaration flags (e.g. visibility, variability, replaceable). */
   flags: number;
+  /** 32-bit hash of the symbol's simple name for SIMD lookup acceleration. */
   nameHash: number;
+  /** Start byte offset of the declaration in its source file. */
   startByte: number;
+  /** End byte offset of the declaration in its source file. */
   endByte: number;
-  startOffset?: number;
-  endOffset?: number;
-  merkleLow?: number;
-  merkleHigh?: number;
+  /** Optional start character offset in the source file. */
+  startOffset?: number | undefined;
+  /** Optional end character offset in the source file. */
+  endOffset?: number | undefined;
+  /** Optional low 32 bits of the declaration's structural Merkle hash. */
+  merkleLow?: number | undefined;
+  /** Optional high 32 bits of the declaration's structural Merkle hash. */
+  merkleHigh?: number | undefined;
 }
 
+/**
+ * Low-level WebAssembly Tier 1 symbol stub store interface exported by language indexer modules.
+ */
 export interface WasmLanguageInstance {
+  /** Registers a symbol stub in WebAssembly linear memory and returns its assigned stub ID. */
   registerSymbol(
     fileId: number,
     symbolId: number,
@@ -55,21 +87,38 @@ export interface WasmLanguageInstance {
     merkleHigh?: number,
     parentFqn?: string,
   ): number;
+  /** Associates a file ID with its enclosing `within` package FQN in the WASM stub table. */
   registerFileParentFQN(fileId: number, parentFQN: string): void;
+  /** Binds a fully qualified name string to a stub ID in the WASM FQN table. */
   bindFqnStub(fqn: string, stubId: number): void;
+  /** Links a child stub ID to its parent package FQN and returns the resolved parent stub ID. */
   stitchParentFQN(childStubId: number, parentFQN: string): number;
+  /** Removes all symbol stubs registered for `fileId` (or all files when `fileId` is `0`/omitted). */
   clearFileStubs(fileId?: number): void;
+  /** Finds all declaration stubs matching `name`. */
   findStubsByName(name: string): WasmStubSymbol[];
+  /** SIMD-accelerated stub lookup by `name`, prioritizing results from `preferredFileId`. */
   findStubsByNameSIMD(name: string, preferredFileId?: number): WasmStubSymbol[];
+  /** Returns all declaration stubs registered for `fileId`. */
   getFileSymbols(fileId: number): WasmStubSymbol[];
+  /** Returns all direct child stubs of `parentSymbolId`. */
   getStubChildren(parentSymbolId: number): WasmStubSymbol[];
+  /** Returns the total number of stubs stored in linear memory. */
   getStubCount(): number;
+  /** Serializes the WASM stub store and string pool into a compact binary snapshot. */
   exportStubBinary(): Uint8Array;
+  /** Deserializes a binary snapshot into the WASM stub store. */
   importStubBinary(buffer: Uint8Array): boolean;
+  /** Bulk-inserts packed `Uint32Array` stub records produced by background worker threads. */
   bulkRegisterStubs(payload: Uint32Array): number;
+  /** Computes the 32-bit FNV/hash of `str` used by the WASM stub table. */
   hashString(str: string): number;
 }
 
+/**
+ * Searches a CST node and its non-body descendants for a child matching `fieldName`
+ * (or an identifier child when `fieldName === "name"`).
+ */
 function findDescendantByFieldName(node: any, fieldName: string): any | null {
   const direct = node.childForFieldName ? node.childForFieldName(fieldName) : null;
   if (direct) return direct;
@@ -94,6 +143,10 @@ function findDescendantByFieldName(node: any, fieldName: string): any | null {
   return null;
 }
 
+/**
+ * Resolves a dot-separated field path (e.g. `"parent.name"`, `"$self"`, or `"type_specifier"`)
+ * starting from `node` in the CST.
+ */
 function resolveFieldPath(node: any, fieldPath: string): any | null {
   if (!fieldPath || fieldPath === "$self") return node;
   const parts = fieldPath.split(".");
@@ -120,10 +173,12 @@ function resolveFieldPath(node: any, fieldPath: string): any | null {
   return current;
 }
 
+/** Returns the trimmed source text of a CST node, or `""` if unavailable. */
 function getNodeText(node: any): string {
   return node.text ? node.text.trim() : "";
 }
 
+/** Scans direct CST children of `node` for a modifier or direction keyword token matching `fieldName`. */
 function scanForKeyword(node: any, fieldName: string): string | null {
   let keyword: string | null = null;
   let keywords: string[] | null = null;
@@ -148,6 +203,7 @@ function scanForKeyword(node: any, fieldName: string): string | null {
   return null;
 }
 
+/** Extracts a key-value metadata dictionary from a CST `node` using the field paths configured on `hook`. */
 function extractMetadata(node: any, hook: IndexerHook): Record<string, unknown> {
   const metadata: Record<string, unknown> = {};
   if (!hook.metadataFieldPaths) return metadata;
@@ -162,6 +218,7 @@ function extractMetadata(node: any, hook: IndexerHook): Record<string, unknown> 
   return metadata;
 }
 
+/** Extracts an array of non-empty trimmed string values from `node` for each field path in `paths`. */
 function extractStringList(node: any, paths?: string[]): string[] {
   if (!paths || paths.length === 0) return [];
   const results: string[] = [];
@@ -175,27 +232,53 @@ function extractStringList(node: any, paths?: string[]): string[] {
   return results;
 }
 
+/**
+ * Single-language multi-file workspace symbol indexer (`WorkspaceIndex` / `WasmWorkspaceIndex`).
+ *
+ * Manages document URI-to-`fileId` mappings, demand-driven lazy CST loaders for large libraries
+ * (such as the Modelica Standard Library), incremental CST re-indexing with stable `SymbolId`
+ * preservation, and unified `SymbolIndex` materialization.
+ */
 export class LanguageWorkspaceIndex implements IWorkspaceIndex {
+  /** Underlying WebAssembly Tier 1 symbol stub store instance (or fallback host object). */
   private instance: WasmLanguageInstance;
+  /** Map from document URI string to sequential integer `fileId`. */
   private uriToId = new Map<string, number>();
+  /** Reverse map from integer `fileId` back to document URI string. */
   private idToUri = new Map<number, string>();
+  /** Next sequential integer `fileId` to allocate for a newly registered URI. */
   private nextFileId = 1;
+  /** Next sequential integer `SymbolId` to allocate for a newly discovered symbol declaration. */
   private nextSymbolId = 1;
+  /** Monotonically increasing workspace mutation version counter. */
   private _version = 0;
+  /** Monotonically increasing revision counter incremented only when symbol structure/signatures change. */
   private _structuralRevision = 0;
+  /** Per-document structural revision counters keyed by document URI. */
   private fileStructuralRevisions = new Map<string, number>();
+  /** Grammar CST rule name -> `IndexerHook` lookup table driving `indexCst()`. */
   private hookMap = new Map<string, IndexerHook>();
+  /** Map from document URI to the ordered list of `SymbolId`s declared in that file. */
   private fileSymbols = new Map<string, SymbolId[]>();
-  private fileLoaders = new Map<string, { loader: () => any; parentFQN?: string; editRanges?: any }>();
+  /** Pending lazy CST loader callbacks keyed by document URI for on-demand package indexing. */
+  private fileLoaders = new Map<string, { loader: () => any; parentFQN?: string | undefined; editRanges?: any }>();
+  /** Map from top-level package/class FQN to the document URI that defines it. */
   private fqnToUri = new Map<string, string>();
+  /** Re-entrancy guard set tracking FQNs currently being materialized in `ensureFQNIndexed()`. */
   private ensuringFQNSet = new Set<string>();
+  /** Re-entrancy guard set tracking URIs currently being materialized in `ensureIndexed()`. */
   private ensuringUriSet = new Set<string>();
+  /** Unified in-memory `SymbolIndex` aggregating all indexed declarations across files. */
   private unifiedIndex: SymbolIndex = {
     symbols: new Map<SymbolId, SymbolEntry>(),
     byName: new Map<string, SymbolId[]>(),
     childrenOf: new Map<SymbolId | null, SymbolId[]>(),
   };
 
+  /**
+   * Creates a new `LanguageWorkspaceIndex` from either an array of grammar `IndexerHook`s
+   * or a low-level `WasmLanguageInstance`.
+   */
   constructor(instanceOrHooks: WasmLanguageInstance | IndexerHook[] | any = {}) {
     if (Array.isArray(instanceOrHooks)) {
       for (const hook of instanceOrHooks) {
@@ -209,28 +292,34 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
+  /** Current workspace mutation version counter. */
   get version(): number {
     return this._version;
   }
 
+  /** Current workspace structural revision counter (incremented when symbol hierarchy or signatures change). */
   get structuralRevision(): number {
     return this._structuralRevision;
   }
 
+  /** Returns the structural revision counter for a specific document `uri`. */
   getFileStructuralRevision(uri: string): number {
     return this.fileStructuralRevisions.get(uri) ?? 0;
   }
 
+  /** Increments the per-file structural revision counter for `uri`. */
   bumpFileStructuralRevision(uri?: string): void {
     if (uri) {
       this.fileStructuralRevisions.set(uri, (this.fileStructuralRevisions.get(uri) ?? 0) + 1);
     }
   }
 
+  /** Total number of registered document URIs in this workspace index. */
   get fileCount(): number {
     return this.uriToId.size;
   }
 
+  /** Array of all document URIs registered in this workspace index. */
   get uris(): string[] {
     return Array.from(this.uriToId.keys());
   }
@@ -279,7 +368,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const filename = rawFilename?.replace(/\.(mo|sysml|csv|step)$/i, "");
     if (filename === "package") {
       const parts = uri.split("/");
-      const pkgDirRaw = parts.length >= 2 ? decodeURIComponent(parts[parts.length - 2]).split(" ")[0] : "";
+      const pkgDirRaw = parts.length >= 2 ? decodeURIComponent(parts[parts.length - 2]!).split(" ")[0] : "";
       if (pkgDirRaw) {
         let pkgFqn = pkgDirRaw;
         if (parentFQN) {
@@ -347,7 +436,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       this.ensureChildrenIndexed("");
       let prefix = "";
       for (let i = 0; i < parts.length; i++) {
-        prefix = prefix ? `${prefix}.${parts[i]}` : parts[i];
+        prefix = prefix ? `${prefix}.${parts[i]!}` : parts[i]!;
         let uri = this.fqnToUri.get(prefix);
         if (!uri && prefix.includes(".")) {
           const pParts = prefix.split(".");
@@ -453,21 +542,27 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return uri;
   }
 
+  /** Checks whether `uri` is registered (either eagerly indexed or pending in `fileLoaders`). */
   has(uri: string): boolean {
     return this.uriToId.has(uri) || this.fileSymbols.has(uri) || this.fileLoaders.has(uri);
   }
 
+  /** Per-document dirty byte/offset edit ranges used to narrow incremental symbol invalidation during `indexCst()`. */
   private fileDirtyRanges = new Map<
     string,
-    { startByte: number; endByte: number; startOffset?: number; endOffset?: number }[]
+    { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }[]
   >();
 
+  /** Returns the pending dirty byte/offset edit ranges recorded for `uri`, if any. */
   getDirtyRanges(
     uri: string,
-  ): { startByte: number; endByte: number; startOffset?: number; endOffset?: number }[] | undefined {
+  ):
+    | { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }[]
+    | undefined {
     return this.fileDirtyRanges.get(uri);
   }
 
+  /** Clears recorded dirty edit ranges for `uri` after incremental indexing completes. */
   clearDirtyRanges(uri: string): void {
     this.fileDirtyRanges.delete(uri);
   }
@@ -493,6 +588,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
+  /**
+   * Extracts the enclosing package FQN declared by a top-level `within <package>;` clause
+   * from `rootNode`, returning `""` for root `within;` or `null` if no `within` clause is present.
+   */
   private extractDeclaredWithin(rootNode: any): string | null {
     if (!rootNode) return null;
     const findInNode = (n: any): string | null => {
@@ -541,10 +640,13 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     this.reindexDocument(uri, loader, editRanges, totalDelta);
   }
 
+  /** Accumulated set of `SymbolId`s modified since the last `takeGlobalChangedIds()` call. */
   private globalChangedIds = new Set<number>();
+  /** Accumulated set of `SymbolId`s whose structural signature/children changed since the last `takeGlobalChangedIds()` call. */
   private globalStructuralChangedIds = new Set<number>();
 
-  takeGlobalChangedIds(): { changedIds: Set<number>; structuralChangedIds?: Set<number> } | null {
+  /** Drains and returns the accumulated sets of modified and structurally modified `SymbolId`s for Salsa invalidation. */
+  takeGlobalChangedIds(): { changedIds: Set<number>; structuralChangedIds?: Set<number> | undefined } | null {
     const ids = new Set(this.globalChangedIds);
     const structIds = new Set(this.globalStructuralChangedIds);
     this.globalChangedIds.clear();
@@ -552,11 +654,26 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return { changedIds: ids, structuralChangedIds: structIds };
   }
 
+  /** Returns the drained set of globally modified symbol names (if tracked). */
   takeGlobalChangedNames(): Set<string> | null {
     return new Set<string>();
   }
 
+  /**
+   * Walks the green CST of a parsed document to populate or incrementally update
+   * the unified `SymbolIndex` (classes, components, `extends` clauses, `connect`
+   * equations, and FQN symbol lookup tables).
+   *
+   * Preserves existing `SymbolId` allocations when a declaration's parent, kind,
+   * name, and grammar rule match its prior incarnation, minimizing Salsa query
+   * invalidations across incremental edits.
+   *
+   * @param uri Document resource URI being indexed.
+   * @param rootNode Root CST node produced by the WASM GLR parser.
+   * @param _parentFQN Optional enclosing package FQN (inferred from `within` clause if omitted).
+   */
   private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
+    // Step 1: Resolve enclosing package scope from top-level `within <package>;` declaration if not explicitly provided.
     if (!_parentFQN && rootNode) {
       const declared = this.extractDeclaredWithin(rootNode);
       if (declared !== null) {
@@ -568,6 +685,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const oldEntriesByKey = new Map<string, SymbolEntry>();
     const oldSymbolsToDelete = new Set<SymbolId>();
 
+    // Step 2: Snapshot prior symbols for this URI so stable declarations can reuse their SymbolIds,
+    // and temporarily detach old entries from parent-child and byName lookup tables before re-walking.
     if (existingIds) {
       for (const id of existingIds) {
         const entry = this.unifiedIndex.symbols.get(id);
@@ -627,6 +746,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
     }
 
+    // Step 3: Helper to purge any prior symbols that were not matched and reclaimed during the new CST walk,
+    // recording both the removed symbols and their parents in the global changed/structural sets for Salsa invalidation.
     const cleanupDeletedSymbols = () => {
       for (const oldId of oldSymbolsToDelete) {
         this.globalChangedIds.add(oldId);
@@ -659,6 +780,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
     const newIds: SymbolId[] = [];
 
+    // Step 4: Special-case tabular `.csv` resources by synthesizing a package-like root Class symbol
+    // and virtual Component symbols (`numRows`, `numCols`, `values`, and per-column arrays).
     if (uri.endsWith(".csv")) {
       const filename = uri.split(/[/\\]/).pop() || "";
       const basename = filename.replace(/\.csv$/i, "");
@@ -811,10 +934,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       return;
     }
 
+    // Step 5: Recursive green CST walker that extracts symbols (Classes, Components, Extends, Connect, etc.)
+    // according to language grammar `IndexerHook` definitions.
     const walk = (node: any, parentId: SymbolId | null) => {
       let currentId = parentId;
       const hook = this.hookMap.get(node.type);
 
+      // Step 5a: Handle `class extends <Name>` (long_class_specifier with leading `extends` keyword)
+      // by synthesizing an implicit `Extends` symbol entry attached to the enclosing class.
       if (node.type === "long_class_specifier" || node.type === "LongClassSpecifier") {
         const firstChild = (node.children || [])[0];
         const isExtends =
@@ -900,6 +1027,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         }
       }
 
+      // Step 5b: If the CST node type matches a registered grammar IndexerHook (e.g. class_definition,
+      // component_clause, extends_clause, connect_clause), extract its name, byte/offset spans, and metadata.
       if (hook) {
         const nameNode = hook.namePath ? resolveFieldPath(node, hook.namePath) : null;
         let name = nameNode ? getNodeText(nameNode) : "";
@@ -907,6 +1036,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           name = node.type;
         }
 
+        // Attempt to reuse the previous SymbolId if a symbol with the same parent, kind, name, and rule existed.
         const parentKey = parentId === null ? "root" : String(parentId);
         const matchKey = `${parentKey}:${hook.kind}:${name}:${hook.ruleName}`;
         let symId: SymbolId;
@@ -916,6 +1046,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
           symId = existingEntry.id;
           oldSymbolsToDelete.delete(symId);
+          // Mark symbol dirty only if its span intersects the incremental edit ranges or shifted bounds.
           const dirtyRanges = this.fileDirtyRanges.get(uri);
           const existingStart = existingEntry.startOffset ?? existingEntry.startByte;
           const existingEnd = existingEntry.endOffset ?? existingEntry.endByte;
@@ -948,8 +1079,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         currentId = symId;
         newIds.push(symId);
 
+        // Capture precise identifier field ranges for diagnostic underlines and go-to-definition.
         let fieldRanges:
-          | Record<string, { startByte: number; endByte: number; startOffset?: number; endOffset?: number }>
+          | Record<
+              string,
+              { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
+            >
           | undefined;
         if (nameNode) {
           const nameStartOff = nameNode.startOffset ?? nameNode.startByte ?? nameNode.startIndex ?? nodeStart;
@@ -965,7 +1100,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             },
           };
           if (hook.namePath) {
-            fieldRanges[hook.namePath] = fieldRanges.name;
+            fieldRanges[hook.namePath] = fieldRanges["name"]!;
           }
         }
 
@@ -988,6 +1123,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           metadata: extractMetadata(node, hook),
         };
 
+        // Step 5c: Register symbol in the primary table, simple-name index, curried/prefixed local name index,
+        // top-level FQN index (`_parentFQN.name`), and parent->children tree.
         this.unifiedIndex.symbols.set(symId, entry);
 
         const list = this.unifiedIndex.byName.get(name) || [];
@@ -1020,6 +1157,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         this.unifiedIndex.childrenOf.set(parentId ?? 0, childList);
       }
 
+      // Step 5d: Prune CST subtrees that cannot contain structural symbol declarations
+      // (expressions, algorithm statements, comments, annotations are lowered directly during flattening).
       if (
         node.type === "expression" ||
         node.type === "array_arguments" ||
@@ -1036,6 +1175,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
     };
 
+    // Step 6: Resolve the initial parent SymbolId from `_parentFQN` (lazily indexing the parent package if needed)
+    // and execute the CST walk from `rootNode`.
     let initialParentId: SymbolId | null = null;
     if (_parentFQN) {
       if (typeof this.ensureFQNIndexed === "function") {
@@ -1055,6 +1196,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
     walk(rootNode, initialParentId);
 
+    // Step 7: Finalize symbol cleanup, record the file's symbol list, and bump structural revisions
+    // only if the ordered signature sequence (`name:kind:ruleName`) of declared symbols changed.
     cleanupDeletedSymbols();
 
     this.fileSymbols.set(uri, newIds);
@@ -1079,11 +1222,16 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
+  /** Ensures `uri` is indexed and returns the partial unified `SymbolIndex`. */
   getFileIndex(uri: string): SymbolIndex {
     this.ensureIndexed(uri);
     return this.toUnifiedPartial();
   }
 
+  /**
+   * Hydrates pre-serialized `SymbolIndex` bundle data (`symbols`, `byName`, `childrenOf`)
+   * for `uri` into `unifiedIndex`, remapping symbol IDs to avoid collisions with existing entries.
+   */
   hydrate(uri: string, indexData: any, parentFQN?: string, mapResourceId?: (path: string) => string): void {
     if (!indexData) {
       this._version++;
@@ -1123,7 +1271,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       if (entry.fieldRanges) {
         const mappedRanges: Record<
           string,
-          { startByte: number; endByte: number; startOffset?: number; endOffset?: number }
+          { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
         > = {};
         for (const [k, v] of Object.entries(entry.fieldRanges)) {
           if (v) {
@@ -1228,6 +1376,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     this.bumpFileStructuralRevision(uri);
   }
 
+  /** Evaluates all remaining lazy loaders and returns the complete unified `SymbolIndex`. */
   toSymbolIndex(): SymbolIndex {
     if (this.fileLoaders.size > 0) {
       const uris = Array.from(this.fileLoaders.keys());
@@ -1240,24 +1389,29 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return this.unifiedIndex;
   }
 
+  /** Alias for `toSymbolIndex()` returning the complete unified `SymbolIndex`. */
   toUnified(): SymbolIndex {
     return this.toSymbolIndex();
   }
 
+  /** Returns the currently materialized `SymbolIndex` without evaluating pending lazy loaders. */
   toTreeIndex(): SymbolIndex {
     return this.toUnifiedPartial();
   }
 
+  /** Asynchronously evaluates remaining lazy loaders and returns the unified `SymbolIndex`. */
   async toUnifiedAsync(): Promise<SymbolIndex> {
     return this.toSymbolIndex();
   }
 
+  /** Returns the currently materialized `SymbolIndex` with `workspace` back-references attached. */
   toUnifiedPartial(): SymbolIndex {
     (this.unifiedIndex as any).workspace = this;
     (this.unifiedIndex as any).workspaceIndex = this;
     return this.unifiedIndex;
   }
 
+  /** Returns the workspace skeleton `SymbolIndex` (delegating to `toSymbolIndex()`). */
   getSkeletonIndex(): SymbolIndex {
     return this.toSymbolIndex();
   }
@@ -1589,29 +1743,57 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 }
 
+/**
+ * In-memory document entry stored by `UnifiedWorkspace` containing source text,
+ * mutation version, and cached WASM GLR syntax tree.
+ */
 export interface DocumentRecord {
+  /** Document resource URI. */
   uri: string;
+  /** Full UTF-16 source text of the document. */
   text: string;
+  /** Monotonically increasing per-document edit version. */
   version: number;
+  /** Cached parsed syntax tree (`CSTTree`), if parsed. */
   tree?: any;
 }
 
+/**
+ * Polyglot multi-language workspace coordinator (`UnifiedWorkspace`).
+ *
+ * Aggregates per-language `LanguageWorkspaceIndex` instances, `WasmQueryEngine` instances,
+ * WASM GLR parsers, document text/tree stores, OWL2 ontology stores, and cross-domain
+ * `SymbolIndex` merging with optional domain-prefixed `SymbolId` partitioning.
+ */
 export class UnifiedWorkspace implements IWorkspaceIndex {
+  /** Embedded WebAssembly OWL2 ontology store for semantic knowledge graph queries. */
   public owl2Store: WasmOntologyStore;
+  /** Cross-language type registry used by `PolyglotTransformer` projections. */
   public typeRegistry = new WorkspaceTypeRegistry();
+  /** Map from language identifier (e.g. `"modelica"`, `"sysml2"`) to its `LanguageWorkspaceIndex`. */
   private workspaces = new Map<string, any>();
+  /** Map from language identifier to its associated `WasmQueryEngine`. */
   private queryEngines = new Map<string, any>();
+  /** Map from language identifier to its registered language configuration object. */
   private configs = new Map<string, any>();
+  /** Monotonically increasing workspace mutation counter. */
   private _version = 0;
 
+  /** Process-wide fallback registry mapping file extensions (e.g. `".mo"`) to WASM GLR parser instances. */
   private static globalParsers = new Map<string, any>();
+  /** Instance-level registry mapping file extensions to WASM GLR parser instances. */
   private parsers = new Map<string, any>();
+  /** Map from document URI to its `DocumentRecord` (text, version, and parsed CST tree). */
   private documents = new Map<string, DocumentRecord>();
 
-  public cstNodeProvider?: (id: SymbolId) => unknown | null;
-  public cstTextProvider?: (startByte: number, endByte: number, entry: SymbolEntry) => string | null;
-  public queryProvider?: (queryName: string, id: SymbolId) => unknown | null;
+  /** Callback used to resolve a `SymbolId` to its backing CST node across workspace documents. */
+  public cstNodeProvider?: ((id: SymbolId) => unknown | null) | undefined;
+  /** Callback used to slice raw source text `[startByte, endByte]` for a `SymbolEntry`. */
+  public cstTextProvider?: ((startByte: number, endByte: number, entry: SymbolEntry) => string | null) | undefined;
+  /** Callback routing semantic `query(queryName, id)` invocations to the appropriate language `QueryEngine`. */
+  public queryProvider?: ((queryName: string, id: SymbolId) => unknown | null) | undefined;
 
+  /** Initializes a new `UnifiedWorkspace` with default CST node, text, and query providers. */
   constructor() {
     this.owl2Store = new WasmOntologyStore(null, this);
 
@@ -1651,16 +1833,19 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // CST & Semantic Query Methods
   // ---------------------------------------------------------------------------
 
+  /** Recovers the CST node for `id` using `cstNodeProvider`. */
   getCstNode(id: SymbolId): any | null {
     if (this.cstNodeProvider) return this.cstNodeProvider(id);
     return null;
   }
 
+  /** Extracts the source text slice `[startByte, endByte]` for `entry` using `cstTextProvider`. */
   getCstText(startByte: number, endByte: number, entry: SymbolEntry): string | null {
     if (this.cstTextProvider) return this.cstTextProvider(startByte, endByte, entry);
     return null;
   }
 
+  /** Evaluates a semantic query `queryName` on `id` via the owning language's `QueryEngine`. */
   query(queryName: string, id: SymbolId): unknown | null {
     if (this.queryProvider) return this.queryProvider(queryName, id);
     return null;
@@ -1670,27 +1855,35 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // Parser Registry
   // ---------------------------------------------------------------------------
 
+  /** Registers a WASM GLR parser globally for the file extension `extname` (e.g. `".mo"`). */
   static registerGlobalParser(extname: string, parser: any): void {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     UnifiedWorkspace.globalParsers.set(ext, parser);
   }
 
+  /** Retrieves the globally registered WASM GLR parser for `extname`, if any. */
   static getGlobalParser(extname: string): any | undefined {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     return UnifiedWorkspace.globalParsers.get(ext);
   }
 
+  /** Registers a WASM GLR parser on both this workspace instance and the global parser registry. */
   registerParser(extname: string, parser: any): void {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     this.parsers.set(ext, parser);
     UnifiedWorkspace.registerGlobalParser(ext, parser);
   }
 
+  /** Returns the parser registered for `extname` (checking instance parsers first, then global parsers). */
   getParser(extname: string): any | undefined {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     return this.parsers.get(ext) ?? UnifiedWorkspace.getGlobalParser(ext);
   }
 
+  /**
+   * Parses `input` using the WASM GLR parser registered for `uriOrExt`, supporting incremental
+   * re-parsing when `oldTree` and `editBounds` are provided.
+   */
   parse(uriOrExt: string, input: string, oldTree?: any, editBounds?: any): any {
     const ext = uriOrExt.includes(".") ? `.${uriOrExt.split(".").pop()}` : uriOrExt;
     const parser = this.getParser(ext);
@@ -1714,10 +1907,21 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // Document & CST Tree Store
   // ---------------------------------------------------------------------------
 
+  /**
+   * Stores or updates a document's text in the workspace, computing incremental diff ranges,
+   * re-parsing its CST tree (unless `options.parse === false`), and indexing its symbols into
+   * the corresponding `LanguageWorkspaceIndex` (unless `options.index === false`).
+   */
   setDocument(
     uri: string,
     text: string,
-    options?: { parse?: boolean; oldTree?: any; editBounds?: any; editRanges?: EditRange[]; index?: boolean },
+    options?: {
+      parse?: boolean | undefined;
+      oldTree?: any;
+      editBounds?: any;
+      editRanges?: EditRange[] | undefined;
+      index?: boolean | undefined;
+    },
   ): { editRanges: EditRange[]; delta: number; tree?: any } {
     const prev = this.documents.get(uri);
     let editRanges: EditRange[] = options?.editRanges ?? [];
@@ -1761,14 +1965,17 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return { editRanges, delta, tree };
   }
 
+  /** Returns the `DocumentRecord` for `uri`, or `undefined` if not stored. */
   getDocument(uri: string): DocumentRecord | undefined {
     return this.documents.get(uri);
   }
 
+  /** Returns the raw source text for `uri`, or `undefined` if not stored. */
   getDocumentText(uri: string): string | undefined {
     return this.documents.get(uri)?.text;
   }
 
+  /** Returns the parsed CST tree for `uri`, parsing on-demand if only source text is currently stored. */
   getDocumentTree(uri: string): any | undefined {
     const doc = this.documents.get(uri);
     if (!doc) return undefined;
@@ -1785,6 +1992,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return doc.tree;
   }
 
+  /** Explicitly attaches a pre-parsed CST `tree` to `uri` in the document store. */
   setDocumentTree(uri: string, tree: any): void {
     const doc = this.documents.get(uri);
     if (doc) {
@@ -1794,6 +2002,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     }
   }
 
+  /** Removes `uri` from the document store and clears its indexed symbols from the owning language workspace. */
   deleteDocument(uri: string): boolean {
     const existed = this.documents.delete(uri);
     const lang = this.detectLanguage(uri);
@@ -1807,6 +2016,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return existed;
   }
 
+  /** Static lookup table mapping file extensions (e.g. `".mo"`, `".sysml"`) to canonical language IDs. */
   private static languageExtensionMap = new Map<string, string>([
     [".sysml", "sysml2"],
     [".sysml2", "sysml2"],
@@ -1827,15 +2037,18 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     [".cfg", "cfd"],
   ]);
 
+  /** Globally associates a file extension `ext` with a canonical language identifier `lang`. */
   static registerLanguageExtension(ext: string, lang: string): void {
     const normalized = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
     UnifiedWorkspace.languageExtensionMap.set(normalized, lang.toLowerCase());
   }
 
+  /** Instance helper that delegates to `UnifiedWorkspace.registerLanguageExtension(ext, lang)`. */
   registerLanguageExtension(ext: string, lang: string): void {
     UnifiedWorkspace.registerLanguageExtension(ext, lang);
   }
 
+  /** Infers the canonical language identifier (e.g. `"modelica"`, `"sysml2"`) from a document URI's file extension. */
   detectLanguage(uri: string): string | undefined {
     const ext = uri.includes(".") ? `.${uri.split(".").pop()?.toLowerCase()}` : "";
     if (UnifiedWorkspace.languageExtensionMap.has(ext)) {
@@ -1848,6 +2061,10 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // Polyglot Directory Ingestion
   // ---------------------------------------------------------------------------
 
+  /**
+   * Recursively crawls `dirPath` using the provided virtual/host `fs` adapter, loading and
+   * indexing all files whose extension has a registered parser.
+   */
   async loadDirectory(
     dirPath: string,
     fs: {
@@ -1856,7 +2073,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       read: (p: string) => string;
       join: (...p: string[]) => string;
     },
-    options?: { ignore?: string[] },
+    options?: { ignore?: string[] | undefined },
   ): Promise<string[]> {
     const loadedUris: string[] = [];
     const ignoreList = new Set(options?.ignore ?? ["node_modules", "dist", ".git", "testsuite"]);
@@ -1892,10 +2109,12 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // Workspace & Query Engine Management
   // ---------------------------------------------------------------------------
 
+  /** Total number of documents stored in `this.documents`. */
   get fileCount(): number {
     return this.documents.size;
   }
 
+  /** Aggregate mutation version across `UnifiedWorkspace` and all registered language workspaces. */
   get version(): number {
     let v = this._version;
     for (const ws of this.workspaces.values()) {
@@ -1904,6 +2123,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return v;
   }
 
+  /** Aggregate structural revision sum across all registered language workspaces. */
   get structuralRevision(): number {
     let r = 0;
     for (const ws of this.workspaces.values()) {
@@ -1912,6 +2132,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return r;
   }
 
+  /** Returns the per-file structural revision for `uri` from its owning language workspace. */
   getFileStructuralRevision(uri: string): number {
     for (const ws of this.workspaces.values()) {
       if (ws && typeof (ws as any).getFileStructuralRevision === "function") {
@@ -1922,6 +2143,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return 0;
   }
 
+  /** Registers a language workspace index (and optional language DSL configuration) under `language`. */
   registerWorkspace(language: string, index: any, config?: any): void {
     if (!index) return;
     this.workspaces.set(language, index);
@@ -1931,6 +2153,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     this._version++;
   }
 
+  /** Unregisters the workspace index, configuration, and query engine for `language`. */
   unregisterWorkspace(language: string): boolean {
     const existed = this.workspaces.has(language);
     this.workspaces.delete(language);
@@ -1942,37 +2165,48 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return existed;
   }
 
+  /** Returns the registered workspace index for `language`, if any. */
   getWorkspace(language: string): any {
     return this.workspaces.get(language);
   }
 
+  /** Returns the registered language configuration for `language`, if any. */
   getLanguageConfig(language: string): any {
     return this.configs.get(language);
   }
 
+  /** Creates a `PolyglotTransformer` for `language` if its config defines polyglot projection rules. */
   createPolyglotTransformer(language: string): PolyglotTransformer | null {
     const config = this.configs.get(language);
     if (!config?.polyglot) return null;
     return new PolyglotTransformer(config.polyglot, this.typeRegistry);
   }
 
+  /** Projects a `PolyglotNode` from `sourceLang` into `targetLang` source text. */
   projectPolyglot(sourceLang: string, targetLang: string, node: PolyglotNode): string | null {
     const transformer = this.createPolyglotTransformer(sourceLang);
     if (!transformer) return null;
     return transformer.transform(node, targetLang);
   }
 
+  /** Registers a `WasmQueryEngine` instance for `language`. */
   registerQueryEngine(language: string, engine: any): void {
     this.queryEngines.set(language, engine);
     this._version++;
   }
 
+  /** Returns the registered `WasmQueryEngine` for `language`, if any. */
   getQueryEngine(language: string): any {
     return this.queryEngines.get(language);
   }
 
+  /** When `true`, forces symbol IDs merged across multiple languages to be bit-prefixed with their `LanguageDomainId`. */
   public domainPartitioning = false;
 
+  /**
+   * Merges per-language `SymbolIndex` snapshots into `merged`, applying `makePolyglotSymbolId`
+   * domain bit-partitioning whenever `domainPartitioning` is enabled or a `SymbolId` collision is detected.
+   */
   private mergeIndices(merged: SymbolIndex, entries: [string, SymbolIndex | null][]): SymbolIndex {
     for (const [lang, idx] of entries) {
       if (!idx) continue;
@@ -2043,6 +2277,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return merged;
   }
 
+  /** Materializes and merges the complete `SymbolIndex` across all registered language workspaces. */
   toSymbolIndex(): SymbolIndex {
     if (this.workspaces.size === 0) {
       return {
@@ -2080,6 +2315,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return this.mergeIndices(merged, entries);
   }
 
+  /** Ensures all direct child files under `parentFQN` are indexed across all language workspaces. */
   ensureChildrenIndexed(parentFQN?: string): void {
     for (const ws of this.workspaces.values()) {
       if (ws && typeof (ws as any).ensureChildrenIndexed === "function") {
@@ -2088,6 +2324,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     }
   }
 
+  /** Ensures all ancestor packages and files along `fqn` are indexed across all language workspaces. */
   ensureFQNIndexed(fqn: string): void {
     for (const ws of this.workspaces.values()) {
       if (ws && typeof (ws as any).ensureFQNIndexed === "function") {
@@ -2096,6 +2333,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     }
   }
 
+  /** Resolves a fully qualified name `fqn` to its defining document URI across all language workspaces. */
   getFileUriForFQN(fqn: string): string | undefined {
     for (const ws of this.workspaces.values()) {
       if (ws && typeof (ws as any).getFileUriForFQN === "function") {
@@ -2113,6 +2351,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return undefined;
   }
 
+  /** Checks whether any language workspace has unindexed lazy loaders under `parentFQN`. */
   hasPendingChildren(parentFQN?: string): boolean {
     for (const ws of this.workspaces.values()) {
       if (ws && typeof (ws as any).hasPendingChildren === "function") {
@@ -2122,6 +2361,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return false;
   }
 
+  /** Materializes and returns the unified `SymbolIndex` across all registered language workspaces. */
   toUnified(): SymbolIndex {
     if (this.workspaces.size === 0) {
       return {
@@ -2161,10 +2401,12 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return merged;
   }
 
+  /** Alias for `toUnifiedPartial()` returning the currently materialized symbol tree index. */
   toTreeIndex(): SymbolIndex {
     return this.toUnifiedPartial();
   }
 
+  /** Asynchronously materializes and merges the `SymbolIndex` across all registered language workspaces. */
   async toSymbolIndexAsync(): Promise<SymbolIndex> {
     if (this.workspaces.size === 0) {
       return {
@@ -2212,10 +2454,12 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return this.mergeIndices(merged, entries);
   }
 
+  /** Alias for `toSymbolIndexAsync()`. */
   async toUnifiedAsync(): Promise<SymbolIndex> {
     return this.toSymbolIndexAsync();
   }
 
+  /** Returns the merged `SymbolIndex` of all currently indexed files without evaluating pending lazy loaders. */
   toUnifiedPartial(): SymbolIndex {
     if (this.workspaces.size === 0) {
       return {
@@ -2259,6 +2503,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return merged;
   }
 
+  /** Returns a lightweight skeleton `SymbolIndex` across registered language workspaces. */
   getSkeletonIndex(): SymbolIndex {
     for (const ws of this.workspaces.values()) {
       if (ws && typeof ws.getSkeletonIndex === "function") {

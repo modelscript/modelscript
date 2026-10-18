@@ -15,20 +15,20 @@ export interface ProofManifestItem {
   identifier: string; // e.g. "file:///path/to/model.mo" or "SysML::SafetyReq"
   sha256: string;
   verificationStatus: "CERTIFIED_SAFE" | "UNSAT" | "FALSIFIED" | "UNCHECKED";
-  engine?: string; // e.g. "ic3", "dpll_t", "reachability", "contract_algebra"
+  engine?: string | undefined; // e.g. "ic3", "dpll_t", "reachability", "contract_algebra"
   /**
    * Rigor of the evidence behind a safe status. A `heuristic` item can never make the manifest compliant;
    * `float-sound` is sound in exact arithmetic with uncontrolled floating-point rounding.
    */
-  rigor?: "rigorous" | "float-sound" | "heuristic";
-  witnessTraceId?: string;
-  timestamp?: string;
+  rigor?: "rigorous" | "float-sound" | "heuristic" | undefined;
+  witnessTraceId?: string | undefined;
+  timestamp?: string | undefined;
 }
 
 export interface ManifestSigningOptions {
-  algorithm?: "sha256" | "ed25519";
-  privateKey?: crypto.KeyObject | string;
-  publicKey?: crypto.KeyObject | string;
+  algorithm?: "sha256" | "ed25519" | undefined;
+  privateKey?: crypto.KeyObject | string | undefined;
+  publicKey?: crypto.KeyObject | string | undefined;
 }
 
 export interface DigitalThreadProofManifest {
@@ -40,8 +40,8 @@ export interface DigitalThreadProofManifest {
   compositeRootHash: string;
   isCertifiedCompliant: boolean;
   signatureToken: string;
-  signatureAlgorithm?: "sha256" | "ed25519";
-  publicKey?: string;
+  signatureAlgorithm?: "sha256" | "ed25519" | undefined;
+  publicKey?: string | undefined;
 }
 
 export class ProofManifestGenerator {
@@ -137,7 +137,7 @@ export class ProofManifestGenerator {
   public static verifyManifest(manifest: DigitalThreadProofManifest): {
     isValid: boolean;
     computedRootHash: string;
-    reason?: string;
+    reason?: string | undefined;
   } {
     const hash = crypto.createHash("sha256");
     hash.update(manifest.gitCommitSha);

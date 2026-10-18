@@ -235,9 +235,9 @@ export function routeOrthogonalAStarWasm(options: {
   startY: number;
   endX: number;
   endY: number;
-  startDir?: number;
-  bendPenalty?: number;
-  crossingPenalty?: number;
+  startDir?: number | undefined;
+  bendPenalty?: number | undefined;
+  crossingPenalty?: number | undefined;
   grid: Uint8Array;
 }): [number, number][] {
   const wasm: any = getDefaultWasmExports();

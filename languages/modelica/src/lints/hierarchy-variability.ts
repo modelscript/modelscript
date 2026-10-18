@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @module lints/hierarchy-variability
+ *
+ * CST-level linter rules for Modelica lexical/hierarchical name lookup, inheritance cycles,
+ * duplicate modifications, structural equation balance, expression variability hierarchy,
+ * `when`/`elsewhen` discrete variable constraints, and inheritance `break` modifications
+ * (MLS §3.8, §4.4, §4.7, §5.3, §7.1, §7.2, §8.3.5).
+ */
+
 import type { CodeGraph, CompilerLint, u16, u32, u64 } from "@modelscript/dsl";
 import {
   findClassByName,
@@ -33,9 +42,15 @@ import {
   VARIABILITY_CONTINUOUS,
 } from "./helpers.js";
 
+/**
+ * Compiler lint rules enforcing scope resolution, inheritance hierarchy rules, modification uniqueness, and variability constraints.
+ */
 export const modelicaHierarchyLints: Record<string, CompilerLint> = {
   /**
-   * M2002: Variable not found in scope.
+   * M2002: Variable or component reference not found in scope (MLS §5.3).
+   *
+   * Resolves simple and dotted component references against the enclosing class,
+   * inherited base classes, outer classes, loop iterators, and built-in operators.
    */
   variableNotFound: {
     nodes: ["component_reference"],
@@ -47,7 +62,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         ? `Variable ${vName} not found in scope ${className.text}.`
         : `Variable ${vName} not found in scope.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       let rootId: u32 = 0;
       for (const id of db.ast.getDescendants(node, $.identifier)) {
         rootId = id;
@@ -177,6 +192,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         db.ast.textEquals(rootId, "ones") ||
         db.ast.textEquals(rootId, "identity") ||
         db.ast.textEquals(rootId, "diagonal") ||
+        db.ast.textEquals(rootId, "array") ||
         db.ast.textEquals(rootId, "StateSelect") ||
         db.ast.startsWith(rootId, "StateSelect.") ||
         db.ast.startsWith(node, "StateSelect.") ||
@@ -188,10 +204,21 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
 
       // Check if inside inheritance_modification (break clauses) or annotation
-      // or for_equation / for_index iterator variable in ancestors
+      // or conditional component modification or for_equation / for_index iterator variable in ancestors
+      let inModification = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc == enclosingClass) break;
         const ancType = db.ast.getType(anc);
+        if ($.modification != 0 && ancType == $.modification) {
+          inModification = true;
+        }
+        if (inModification && $.component_declaration != 0 && ancType == $.component_declaration) {
+          if ($.condition_attribute != 0) {
+            for (const _cond of db.ast.getDescendants(anc, $.condition_attribute)) {
+              return;
+            }
+          }
+        }
         if (
           ($.inheritance_modification != 0 && ancType == $.inheritance_modification) ||
           ($.annotation != 0 && ancType == $.annotation) ||
@@ -261,12 +288,22 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           }
           if (topClassNode != 0) break;
         }
-        if (
-          topClassNode != 0 &&
-          !isExpandableConnector(db, topClassNode, $) &&
-          isDottedVariableDeclared(db, topClassNode, node, $)
-        ) {
-          return;
+        if (topClassNode != 0 && !isExpandableConnector(db, topClassNode, $)) {
+          if (isDottedVariableDeclared(db, topClassNode, node, $)) {
+            return;
+          }
+          let secondId: u32 = 0;
+          let idxCount: u32 = 0;
+          for (const id of db.ast.getDescendants(node, $.identifier)) {
+            if (idxCount == 1) {
+              secondId = id;
+              break;
+            }
+            idxCount++;
+          }
+          if (secondId != 0 && isVariableDeclaredInClass(db, topClassNode, secondId, $)) {
+            return;
+          }
         }
       }
 
@@ -282,7 +319,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M2003: Type / class not found in scope.
+   * M2003: Type or class specifier not found in scope (MLS §5.3).
+   *
+   * Resolves simple and qualified type specifiers against built-in primitive types,
+   * nested/enclosing class definitions, and top-level classes in the document.
    */
   typeNotFound: {
     nodes: ["type_specifier"],
@@ -290,7 +330,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 2003,
     message: (target, fullType) =>
       `Class or type '${fullType && fullType.text && fullType.text !== "0" ? fullType.text : target.text}' not found in scope.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       let firstIdent: u32 = 0;
       let identCount = 0;
       for (const id of db.ast.getDescendants(node, $.identifier)) {
@@ -395,14 +435,15 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4001: Extends cycle detected.
+   * M4001: Circular `extends` inheritance chain detected (MLS §7.1.4).
    */
   extendsCycle: {
     nodes: ["extends_clause"],
     severity: "error",
     code: 4001,
     message: (target) => `Extends cycle detected for '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Traverse base classes reachable from `node` and report if the enclosing class is revisited
       if (hasExtendsCycleInScope(db, node, $)) {
         db.diagnostic(node);
       }
@@ -410,14 +451,15 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4002-notification: Notification for duplicate modification.
+   * M2093 (M4002-notification): Companion `From here:` location note for duplicate modification of the same element (MLS §7.2).
    */
   duplicateModificationNotification: {
     nodes: ["class_modification", "class_or_inheritance_modification"],
     severity: "info",
     code: 2093,
     message: () => `From here:`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Emit source-location note pointing to the conflicting modification/redeclaration clause
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc == node) continue;
@@ -657,7 +699,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4002: Duplicate modification of element.
+   * M4002: Duplicate modification of the same element in a single modification clause (MLS §7.2.2).
+   *
+   * Detects both repeated direct modifications `(x = 1, x = 2)` and conflicting nested vs. dotted
+   * modifications `(a(b = 1), a.b = 2)`.
    */
   duplicateModification: {
     nodes: ["class_modification", "class_or_inheritance_modification"],
@@ -675,7 +720,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const tName = targetName && targetName.text !== "0" && targetName.text !== "" ? targetName.text : "";
       return `Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Track 64-bit hashes of modified element paths in `node` to flag duplicate assignments
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc == node) continue;
@@ -980,14 +1026,20 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4004: Unbalanced model (variable / equation count mismatch).
+   *
+   * Per MLS §4.7, a simulatable model or block should have the same number of
+   * local scalar unknown variables and equations. Counts non-parameter,
+   * non-constant, non-input component declarations (expanding array dimensions)
+   * and compares against the number of simple equations.
    */
   unbalancedModel: {
     nodes: ["class_definition"],
     severity: "warning",
     code: 4004,
     message: (target, eqCount, varCount) =>
-      `Model '${target.name || target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      `Model '${target["name"] || target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Skip non-equation-bearing specialized classes (functions, records, types, connectors, packages)
       if (
         isClassKind(db, node, "function") ||
         isClassKind(db, node, "record") ||
@@ -999,6 +1051,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
       let varCount = 0;
       let eqCount = 0;
+      // Count continuous/discrete local variables (multiplying by explicit or parameter array dimensions)
       for (const clause of db.ast.getDescendants(node, $.component_clause)) {
         if (clause == 0 || isDescendantOfInnerClass(db, clause, node, $)) continue;
         if (
@@ -1102,6 +1155,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4027: Parameter with continuous binding.
+   *
+   * Per MLS §3.8, a `parameter` component's binding expression must have at
+   * most parameter variability and cannot depend on continuous-time variables.
    */
   variabilityBindingMismatch: {
     nodes: ["declaration"],
@@ -1109,7 +1165,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4027,
     message: (target) =>
       `Component '${target.text}' of variability parameter has binding of higher continuous variability.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Check if an enclosing parameter component_clause has a continuous-variability binding
       for (const comp of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(comp) == $.component_clause) {
           for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
@@ -1135,6 +1192,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4030: Modifier applied directly to outer element.
+   *
+   * Per MLS §5.4, an `outer` element references an `inner` declaration in an
+   * enclosing scope and is not allowed to carry its own modifications.
    */
   outerModifier: {
     nodes: ["component_clause", "short_class_definition"],
@@ -1142,7 +1202,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4030,
     message: (target, modNode, nameNode) =>
       `Modifier '${modNode ? modNode.text : ""}' found on outer element ${nameNode ? nameNode.text : target.text}.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Check whether the enclosing element has the 'outer' prefix
       let isOuter = false;
       for (const el of db.ast.getAncestors(node, $.element)) {
         let ch = db.ast.getFirstChild(el);
@@ -1184,6 +1245,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4034: Base class of extends cannot be replaceable.
+   *
+   * Per MLS §7.1.4, the base class name in an `extends` clause must be
+   * transitively non-replaceable.
    */
   replaceableBaseClass: {
     nodes: ["extends_clause"],
@@ -1191,7 +1255,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4034,
     message: (target) =>
       `Class '${target.text}' in 'extends ${target.text}' is replaceable, the base class name must be transitively non-replaceable.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Flag extends clauses whose target class is declared replaceable in scope
       if (isReplaceableBaseClassInScope(db, node, $)) {
         for (const typeSpec of db.ast.getDescendants(node, $.type_specifier)) {
           db.diagnostic(typeSpec);
@@ -1203,13 +1268,17 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4043: Constant variable has binding with higher variability.
+   *
+   * Per MLS §3.8.1, a `constant` component's binding expression must be a
+   * constant expression and cannot depend on parameters, discrete, or continuous variables.
    */
   constantVariabilityViolation: {
     nodes: ["declaration"],
     severity: "error",
     code: 4043,
     message: (target) => `Component '${target.text}' of variability constant has binding of higher variability.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Verify that constant component declarations do not have continuous-variability bindings
       for (const comp of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(comp) == $.component_clause) {
           for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
@@ -1235,6 +1304,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4044: Non-array modification on array component.
+   *
+   * Per MLS §7.2.4, applying a scalar modification expression to an array
+   * component without the `each` prefix is illegal.
    */
   nonArrayModification: {
     nodes: ["element_modification"],
@@ -1242,7 +1314,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4044,
     message: (target, fullMod) =>
       `Non-array modification '${fullMod && fullMod.text && fullMod.text !== "0" ? fullMod.text : target.text}' for array component, possibly due to missing 'each'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Check if an array component is modified by a scalar expression without 'each'
       if (isNonArrayScalarModification(db, node, $)) {
         const name = db.ast.getChildByFieldId(node, "name");
         db.diagnostic(name != 0 ? name : node, node);
@@ -1252,13 +1325,17 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M5023: Variables in elsewhen clause must match when clause.
+   *
+   * Per MLS §8.3.5, every `elsewhen` branch of a `when` equation or statement
+   * must solve for the exact same set of variables as the initial `when` branch.
    */
   elsewhenVariableMismatch: {
     nodes: ["when_equation", "when_statement"],
     severity: "error",
     code: 5023,
     message: () => `The same variables must be solved in elsewhen clause as in the when clause.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Partition LHS targets by branch ('when' vs each 'elsewhen') and compare sorted hash sets
       let ch = db.ast.getFirstChild(node);
       const branches: u64[][] = [[]];
       let branchIdx = 0;
@@ -1268,7 +1345,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           branchIdx++;
           branches.push([]);
         } else {
-          const currentList = branches[branchIdx];
+          const currentList = branches[branchIdx]!;
           if ($.simple_equation != 0) {
             if (db.ast.getType(ch) == $.simple_equation) {
               let lhs = db.ast.getChildByFieldId(ch, "lhs");
@@ -1334,10 +1411,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
 
       if (branches.length > 1) {
-        const baseSet = branches[0];
+        const baseSet = branches[0]!;
         baseSet.sort();
         for (let b = 1; b < branches.length; b++) {
-          const compSet = branches[b];
+          const compSet = branches[b]!;
           compSet.sort();
           if (baseSet.length != compSet.length) {
             db.diagnostic(node);
@@ -1356,6 +1433,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4039: Discrete variable not on LHS of when-statement.
+   *
+   * Per MLS §3.8.3 and §8.3.5, a variable declared with the `discrete` prefix
+   * may only be solved in a `when` equation or assigned in a `when` statement.
    */
   discreteNotOnLhs: {
     nodes: ["simple_equation"],
@@ -1363,7 +1443,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4039,
     message: (target) =>
       `Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
+      // Flag simple equations outside 'when' blocks that assign to a discrete variable
       if (isDiscreteAssignedOutsideWhen(db, node, $)) {
         const lhs = db.ast.getChildByFieldId(node, "lhs");
         db.diagnostic(lhs != 0 ? lhs : node);
@@ -1373,6 +1454,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4045: Modified element / attribute not found in class or built-in type.
+   *
+   * Per MLS §7.2, every element modification or `break` inheritance modification
+   * must target a declared component, inner class, or built-in type attribute of
+   * the modified type.
    */
   modifiedElementNotFound: {
     nodes: ["element_modification", "inheritance_modification"],
@@ -1383,12 +1468,13 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const tText = typeName.text === "String" && eText === "value" ? "Real" : typeName.text;
       return `Modified element ${eText} not found in class ${tText}.`;
     },
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       const isInheritanceMod = $.inheritance_modification != 0 && db.ast.getType(node) == $.inheritance_modification;
       let nameNode: u32 = 0;
       if (isInheritanceMod) {
         if ($.connect_equation != 0) {
           for (const c of db.ast.getDescendants(node, $.connect_equation)) {
+            void c;
             return;
           }
         }
@@ -1414,6 +1500,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         if (
           type == $.component_clause1 ||
           type == $.element_redeclaration ||
+          type == $.element_replaceable ||
+          type == $.short_class_definition ||
+          type == $.short_class_specifier ||
           type == $.component_clause ||
           type == $.extends_clause
         ) {
@@ -1511,9 +1600,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
               }
               const compClass = findClassByName(db, compType, $);
               if (compClass != 0) {
-                if (!isVariableDeclaredInClass(db, compClass, nameNode, $)) {
-                  db.diagnostic(nameNode, outerName, nameNode);
-                }
                 return;
               }
             }
@@ -1689,15 +1775,20 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4049: Invalid use of break on non-component.
+   *
+   * Per OpenModelica's `break` inheritance modification extension, `break <ident>`
+   * may only target a component or `connect(...)` equation, not an inner class or
+   * built-in type attribute.
    */
   breakOnNonComponent: {
     nodes: ["inheritance_modification"],
     severity: "error",
     code: 4049,
     message: (target, ident) => `Invalid use of break on non-component '${ident ? ident.text : target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       if ($.connect_equation != 0) {
         for (const c of db.ast.getDescendants(node, $.connect_equation)) {
+          void c;
           return;
         }
       }
@@ -1762,6 +1853,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4050: Invalid use of break on component of invalid type (must be model, block, or connector).
+   *
+   * Per OpenModelica's `break` inheritance modification extension, `break <comp>`
+   * may only remove components whose specialized class is `model`, `block`, or `connector`
+   * (not `record` or primitive types).
    */
   breakComponentInvalidType: {
     nodes: ["inheritance_modification"],
@@ -1769,9 +1864,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4050,
     message: (target, ident) =>
       `Invalid use of break on component '${ident ? ident.text : target.text}', component must be a model, block, or connector.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       if ($.connect_equation != 0) {
         for (const c of db.ast.getDescendants(node, $.connect_equation)) {
+          void c;
           return;
         }
       }
@@ -1828,13 +1924,17 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
   /**
    * M4051: No matching element found for break connect.
+   *
+   * Per OpenModelica's `break connect(a, b)` inheritance modification extension,
+   * the base class must contain a matching `connect(a, b)` or `connect(b, a)`
+   * equation whose endpoints have not already been removed by an earlier `break`.
    */
   breakConnectNotFound: {
     nodes: ["inheritance_modification"],
     severity: "error",
     code: 4051,
     message: (target) => `No matching element found for '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32, $: any) => {
       let connNode: u32 = 0;
       for (const c of db.ast.getDescendants(node, $.connect_equation)) {
         connNode = c;

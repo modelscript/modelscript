@@ -21,7 +21,7 @@ export interface PropertyChangeEvent {
   value: any;
   previousValue: any;
   isValid: boolean;
-  error?: string | null;
+  error?: string | null | undefined;
 }
 
 export type PropertySheetListener = () => void;
@@ -37,7 +37,7 @@ export class PropertySheetController {
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private debounceMs: number;
 
-  constructor(options: { debounceMs?: number } = {}) {
+  constructor(options: { debounceMs?: number | undefined } = {}) {
     this.debounceMs = options.debounceMs ?? 150;
   }
 
@@ -124,7 +124,7 @@ export class PropertySheetController {
       return savedTab;
     }
 
-    const firstTab = tabs[0].id;
+    const firstTab = tabs[0]!.id;
     this.activeTabMap.set(this.componentId, firstTab);
     return firstTab;
   }

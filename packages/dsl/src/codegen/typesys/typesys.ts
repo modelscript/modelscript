@@ -52,13 +52,13 @@ export function generateTypeSystem(grammar: GrammarOptions, customCode: string):
           let tgtParamName = "";
 
           if (queryInfo.params.length >= 3) {
-            srcParamName = queryInfo.params[1];
-            tgtParamName = queryInfo.params[2];
+            srcParamName = queryInfo.params[1]!;
+            tgtParamName = queryInfo.params[2]!;
           } else if (queryInfo.params.length === 2) {
-            srcParamName = queryInfo.params[0];
-            tgtParamName = queryInfo.params[1];
+            srcParamName = queryInfo.params[0]!;
+            tgtParamName = queryInfo.params[1]!;
           } else if (queryInfo.params.length === 1) {
-            srcParamName = queryInfo.params[0];
+            srcParamName = queryInfo.params[0]!;
           }
 
           if (srcParamName && srcParamName !== "sourceId") {

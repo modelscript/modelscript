@@ -20,12 +20,26 @@ import { lintCsv, type CsvDiagnostic } from "./src/csv-parser.js";
 
 export { lintCsv, type CsvDiagnostic };
 
+/**
+ * Metadata attached to virtual CSV component symbols by the workspace indexer.
+ */
 interface CsvMetadata {
-  typeSpecifier?: string;
-  arrayDimensions?: number[];
+  /** Inferred or explicitly declared Modelica type name (e.g., `"Real"`). */
+  typeSpecifier?: string | undefined;
+  /** Dimensions of the tabular column or matrix. */
+  arrayDimensions?: number[] | undefined;
+  /** Parsed literal array or scalar value extracted from the CSV table. */
   csvValue?: unknown;
 }
 
+/**
+ * ModelScript CSV language specification.
+ *
+ * Defines grammar rules for delimiter-separated tables (`,`, `;`, `\t`),
+ * virtual component queries for polyglot workspace indexing, semantic table
+ * validation hooks, and Triple Graph Grammar (TGG) rules projecting CSV files
+ * into Modelica parameter packages.
+ */
 export const csvLanguage = language({
   name: "csv",
   fileExtensions: [".csv"],
@@ -37,6 +51,7 @@ export const csvLanguage = language({
     },
   },
 
+  // In-place cell value writeback using byte offsets recorded on the symbol entry
   writeback: (ctx) => {
     const { entry, newValue } = ctx;
     if (entry?.startByte != null && entry?.endByte != null && entry.endByte >= entry.startByte) {
@@ -45,6 +60,7 @@ export const csvLanguage = language({
     return null;
   },
 
+  // IDE and AI agent actions for telemetry plotting and Modelica package generation
   actions: [
     {
       id: "plot_telemetry",
@@ -97,15 +113,21 @@ export const csvLanguage = language({
 
     SourceFile: ($) =>
       def({
-        syntax: seq(field("rows", $.Row), repeat(seq($._newline, field("rows", $.Row))), optional($._newline)),
+        syntax: seq(
+          field("rows", $["Row"]!),
+          repeat(seq($["_newline"]!, field("rows", $["Row"]!))),
+          optional($["_newline"]!),
+        ),
         symbol: (self: Record<string, string>) => ({
           kind: "Class",
-          name: self.rows, // dummy access to record namePath
+          name: self["rows"], // dummy access to record namePath
         }),
         queries: {
+          // Return all virtual column/matrix component symbols belonging to this CSV document
           instantiate: (db: QueryDB, self: SymbolEntry): SymbolId[] => {
             return db.childrenOf(self.id).map((c) => c.id);
           },
+          // Resolve column component names within the CSV document scope
           resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
             const children = db.childrenOf(self.id);
             const byNameMap = new Map<string, SymbolEntry>();
@@ -114,8 +136,9 @@ export const csvLanguage = language({
             }
             return (name: string) => byNameMap.get(name) ?? null;
           },
+          // Validate header uniqueness, row column counts, numeric cells, and time monotonicity
           lint__csvTableValidity: (db: QueryDB, self: SymbolEntry) => {
-            const text = db.cstText(self.startByte, self.endByte, self);
+            const text = db["cstText"](self.startByte, self.endByte, self);
             if (!text) return null;
             const diags = lintCsv(text, self.startByte ?? 0);
             if (diags.length === 0) return null;
@@ -132,11 +155,11 @@ export const csvLanguage = language({
 
     Row: ($) =>
       choice(
-        seq(field("cells", $.Cell), repeat(seq($._delimiter, optional(field("cells", $.Cell))))),
-        seq($._delimiter, repeat(seq($._delimiter, optional(field("cells", $.Cell))))),
+        seq(field("cells", $["Cell"]!), repeat(seq($["_delimiter"]!, optional(field("cells", $["Cell"]!))))),
+        seq($["_delimiter"]!, repeat(seq($["_delimiter"]!, optional(field("cells", $["Cell"]!))))),
       ),
 
-    Cell: ($) => choice($._quoted_cell, $._unquoted_cell),
+    Cell: ($) => choice($["_quoted_cell"]!, $["_unquoted_cell"]!),
 
     _quoted_cell: () => /"([^"]|"")*"/,
     _unquoted_cell: () => /[^,\r\n\t;"]+/,
@@ -154,15 +177,17 @@ export const csvLanguage = language({
         syntax: "CSVVirtualComponent",
         symbol: (self: Record<string, string>) => ({
           kind: "Component",
-          name: self.syntax ?? "", // dummy access to record namePath
+          name: self["syntax"] ?? "", // dummy access to record namePath
         }),
         queries: {
+          // Resolve the target scalar class (defaults to top-level "Real")
           resolvedType: (db: QueryDB, self: SymbolEntry): SymbolEntry | null => {
             const metadata = self.metadata as CsvMetadata | undefined;
             const typeName = metadata?.typeSpecifier ?? "Real";
             const entries = db.byName(typeName);
             return entries.find((e) => e.kind === "Class" && e.parentId === null) ?? null;
           },
+          // Map the virtual CSV column to its corresponding top-level class symbol ID
           classInstance: (db: QueryDB, self: SymbolEntry): SymbolId | null => {
             const metadata = self.metadata as CsvMetadata | undefined;
             const typeName = metadata?.typeSpecifier ?? "Real";
@@ -176,18 +201,21 @@ export const csvLanguage = language({
           isInner: (): boolean => false,
           isProtected: (): boolean => false,
           isFinal: (): boolean => false,
-          resolvedArrayDimensions: (db: QueryDB, self: SymbolEntry): number[] | null => {
+          // Return raw numeric array dimensions attached by the workspace indexer
+          resolvedArrayDimensions: (_db: QueryDB, self: SymbolEntry): number[] | null => {
             const metadata = self.metadata as CsvMetadata | undefined;
             const dims = metadata?.arrayDimensions;
             return dims ?? null;
           },
-          arrayDimensions: (db: QueryDB, self: SymbolEntry) => {
+          // Wrap numeric dimensions as literal expressions for the Modelica flattener
+          arrayDimensions: (_db: QueryDB, self: SymbolEntry) => {
             const metadata = self.metadata as CsvMetadata | undefined;
             const dims = metadata?.arrayDimensions;
             if (!dims || dims.length === 0) return null;
             return dims.map((d: number) => ({ kind: "literal", value: d }));
           },
-          effectiveModification: (db: QueryDB, self: SymbolEntry) => {
+          // Expose parsed CSV cell/column values as a constant literal binding expression
+          effectiveModification: (_db: QueryDB, self: SymbolEntry) => {
             const metadata = self.metadata as CsvMetadata | undefined;
             const csvValue = metadata?.csvValue;
             if (csvValue === undefined) return null;
@@ -200,6 +228,7 @@ export const csvLanguage = language({
       }),
   },
 
+  // Polyglot TGG rules mapping CSV files and virtual columns to Modelica packages and constant components
   polyglot: {
     languages: ["modelica"],
     rules: [

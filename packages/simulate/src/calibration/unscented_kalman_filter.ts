@@ -16,9 +16,9 @@ import { getDefaultWasmExports } from "@modelscript/runtime";
 export interface UkfConfig {
   stateDim: number;
   measDim: number;
-  alpha?: number; // Spread parameter (default: 1e-3)
-  beta?: number; // Prior distribution parameter (default: 2.0 for Gaussian)
-  kappa?: number; // Secondary scaling parameter (default: 0.0)
+  alpha?: number | undefined; // Spread parameter (default: 1e-3)
+  beta?: number | undefined; // Prior distribution parameter (default: 2.0 for Gaussian)
+  kappa?: number | undefined; // Secondary scaling parameter (default: 0.0)
   processNoiseQ: Float64Array; // Diagonal or full covariance (stateDim x stateDim)
   measNoiseR: Float64Array; // Diagonal or full covariance (measDim x measDim)
 }
@@ -156,14 +156,16 @@ export class UnscentedKalmanFilter {
     return true;
   }
 
-  private wasmUkfScratch?: {
-    wasm: any;
-    L: number;
-    statePtr: number;
-    covPtr: number;
-    cholPtr: number;
-    sigmaPtr: number;
-  };
+  private wasmUkfScratch?:
+    | {
+        wasm: any;
+        L: number;
+        statePtr: number;
+        covPtr: number;
+        cholPtr: number;
+        sigmaPtr: number;
+      }
+    | undefined;
 
   /**
    * Generates 2L + 1 sigma points around current mean and covariance.
@@ -246,7 +248,7 @@ export class UnscentedKalmanFilter {
     for (let i = 0; i < numPoints; i++) {
       const w = this.Wm[i]!;
       for (let j = 0; j < L; j++) {
-        this.state[j] += w * this.propSigmaPoints[i * L + j]!;
+        this.state[j] = this.state[j]! + w * this.propSigmaPoints[i * L + j]!;
       }
     }
 
@@ -260,14 +262,14 @@ export class UnscentedKalmanFilter {
       }
       for (let r = 0; r < L; r++) {
         for (let c = 0; c < L; c++) {
-          this.cov[r * L + c] += w * diff[r]! * diff[c]!;
+          this.cov[r * L + c] = this.cov[r * L + c]! + w * diff[r]! * diff[c]!;
         }
       }
     }
 
     // Add process noise Q
     for (let i = 0; i < L * L; i++) {
-      this.cov[i] += this.Q[i]!;
+      this.cov[i] = this.cov[i]! + this.Q[i]!;
     }
   }
 
@@ -292,7 +294,7 @@ export class UnscentedKalmanFilter {
     for (let i = 0; i < numPoints; i++) {
       const w = this.Wm[i]!;
       for (let m = 0; m < M; m++) {
-        this.predMeas[m] += w * this.measSigmaPoints[i * M + m]!;
+        this.predMeas[m] = this.predMeas[m]! + w * this.measSigmaPoints[i * M + m]!;
       }
     }
 
@@ -314,20 +316,20 @@ export class UnscentedKalmanFilter {
 
       for (let r = 0; r < M; r++) {
         for (let c = 0; c < M; c++) {
-          this.Pyy[r * M + c] += w * yDiff[r]! * yDiff[c]!;
+          this.Pyy[r * M + c] = this.Pyy[r * M + c]! + w * yDiff[r]! * yDiff[c]!;
         }
       }
 
       for (let r = 0; r < L; r++) {
         for (let c = 0; c < M; c++) {
-          this.Pxy[r * M + c] += w * xDiff[r]! * yDiff[c]!;
+          this.Pxy[r * M + c] = this.Pxy[r * M + c]! + w * xDiff[r]! * yDiff[c]!;
         }
       }
     }
 
     // Add measurement noise R
     for (let i = 0; i < M * M; i++) {
-      this.Pyy[i] += this.R[i]!;
+      this.Pyy[i] = this.Pyy[i]! + this.R[i]!;
     }
 
     // Invert Pyy (using Gauss-Jordan for small M)
@@ -357,7 +359,7 @@ export class UnscentedKalmanFilter {
       for (let c = 0; c < M; c++) {
         delta += this.K[r * M + c]! * residual[c]!;
       }
-      this.state[r] += delta;
+      this.state[r] = this.state[r]! + delta;
     }
 
     // Covariance update: P = P - K * Pyy * K^T
@@ -380,7 +382,7 @@ export class UnscentedKalmanFilter {
         for (let k = 0; k < M; k++) {
           sum += KPyy[r * M + k]! * this.K[c * M + k]!; // K^T[k, c] = K[c, k]
         }
-        this.cov[r * L + c] -= sum;
+        this.cov[r * L + c] = this.cov[r * L + c]! - sum;
       }
     }
 
@@ -430,7 +432,7 @@ export class UnscentedKalmanFilter {
       const pivot = aug[col * (2 * n) + col]!;
       const invPivot = Math.abs(pivot) > 1e-14 ? 1.0 / pivot : 1.0;
       for (let c = 0; c < 2 * n; c++) {
-        aug[col * (2 * n) + c] *= invPivot;
+        aug[col * (2 * n) + c] = aug[col * (2 * n) + c]! * invPivot;
       }
 
       for (let r = 0; r < n; r++) {
@@ -438,7 +440,7 @@ export class UnscentedKalmanFilter {
         const factor = aug[r * (2 * n) + col]!;
         if (Math.abs(factor) > 1e-15) {
           for (let c = 0; c < 2 * n; c++) {
-            aug[r * (2 * n) + c] -= factor * aug[col * (2 * n) + c]!;
+            aug[r * (2 * n) + c] = aug[r * (2 * n) + c]! - factor * aug[col * (2 * n) + c]!;
           }
         }
       }

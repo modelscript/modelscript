@@ -20,9 +20,9 @@ import {
 import { type ActivityGraph, extractActivityGraphsFromText } from "./activity-cfa.js";
 
 export interface SysML2EventExplorationOptions {
-  scope?: number; // Scope k for loop unrolling / instances (default: 2)
-  maxTraces?: number; // Maximum number of non-isomorphic traces to explore
-  targetActivities?: string[]; // Specific action defs to explore
+  scope?: number | undefined; // Scope k for loop unrolling / instances (default: 2)
+  maxTraces?: number | undefined; // Maximum number of non-isomorphic traces to explore
+  targetActivities?: string[] | undefined; // Specific action defs to explore
 }
 
 export interface SysML2EventTraceViolation {

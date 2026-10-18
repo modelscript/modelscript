@@ -31,7 +31,7 @@ export interface FormatOptions {
 
 export interface ResolvedLanguage {
   manifest: LanguageManifest;
-  loadParser(): Promise<{ parser: TreeSitterParser; facade?: LspFacade; binding?: unknown }>;
+  loadParser(): Promise<{ parser: TreeSitterParser; facade?: LspFacade | undefined; binding?: unknown }>;
   format(content: string, options?: FormatOptions): Promise<string>;
   unparse(content: string, options?: FormatOptions): Promise<string>;
 }
@@ -46,8 +46,8 @@ export interface UserRegistryCatalog {
 // ---------------------------------------------------------------------------
 
 export function getRegistryDir(): string {
-  if (process.env.MODELSCRIPT_LANGUAGES_DIR) {
-    return path.resolve(process.env.MODELSCRIPT_LANGUAGES_DIR);
+  if (process.env["MODELSCRIPT_LANGUAGES_DIR"]) {
+    return path.resolve(process.env["MODELSCRIPT_LANGUAGES_DIR"]);
   }
   return path.join(os.homedir(), ".modelscript", "languages");
 }
@@ -562,7 +562,7 @@ function createResolvedLanguage(manifest: LanguageManifest): ResolvedLanguage {
           const edits = formatStepDocument({
             getText: () => content,
             lineCount: lines.length,
-            offsetAt: (pos: { line: number; character?: number }) => {
+            offsetAt: (pos: { line: number; character?: number | undefined }) => {
               let off = 0;
               for (let i = 0; i < pos.line && i < lines.length; i++) {
                 off += (lines[i]?.length ?? 0) + 1;

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * Scans raw STEP ISO 10303-21 text to extract all `#N = ENTITY(...)` instance definitions
+ * and `#N` entity reference occurrences (skipping comments and single-quoted strings).
+ */
 export function parseStepReferences(text: string) {
   const definitions = new Map<string, { startOffset: number; endOffset: number; text: string; type: string }>();
   const references: { id: string; startOffset: number; endOffset: number }[] = [];
 
+  // Pass 1: index all `#id = KEYWORD(...)` or complex `#id = (...)` definitions
   const defPattern = /#([0-9]+)\s*=\s*([A-Z][A-Z0-9_]*|\()/g;
   let match;
   while ((match = defPattern.exec(text)) !== null) {
@@ -11,10 +16,11 @@ export function parseStepReferences(text: string) {
       startOffset: match.index,
       endOffset: match.index + match[0].length,
       text: match[0],
-      type: match[2] === "(" ? "COMPLEX_ENTITY" : match[2],
+      type: match[2] === "(" ? "COMPLEX_ENTITY" : match[2]!,
     });
   }
 
+  // Pass 2: scan for `#id` references outside `/* ... */` comments and `'...'` string literals
   let inString = false;
   for (let i = 0; i < text.length; i++) {
     if (!inString && text[i] === "/" && text[i + 1] === "*") {
@@ -37,7 +43,7 @@ export function parseStepReferences(text: string) {
       const start = i;
       i++;
       let idStr = "#";
-      while (i < text.length && text[i] >= "0" && text[i] <= "9") {
+      while (i < text.length && text[i]! >= "0" && text[i]! <= "9") {
         idStr += text[i];
         i++;
       }
@@ -46,6 +52,7 @@ export function parseStepReferences(text: string) {
         while (j < text.length && (text[j] === " " || text[j] === "\t")) {
           j++;
         }
+        // Only record as a reference if not followed by `=` (which marks a definition LHS)
         if (text[j] !== "=") {
           references.push({
             id: idStr,
@@ -61,6 +68,10 @@ export function parseStepReferences(text: string) {
   return { definitions, references };
 }
 
+/**
+ * EXPRESS schema catalog for common STEP AP203 / AP214 / AP242 geometric, topological,
+ * product structure, and representation entities used for hover documentation and completion.
+ */
 export const STEP_SCHEMA: Record<string, { description: string; parameters: { name: string; type: string }[] }> = {
   CARTESIAN_POINT: {
     description: "A point defined by its coordinates in a rectangular Cartesian coordinate system.",

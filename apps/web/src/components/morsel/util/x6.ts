@@ -32,11 +32,11 @@ export type ModelicaComponentInstance = any;
 
 export interface X6Markup {
   tagName: string;
-  selector?: string;
-  groupSelector?: string;
-  attrs?: Record<string, string | number | undefined>;
-  children?: X6Markup[];
-  textContent?: string;
+  selector?: string | undefined;
+  groupSelector?: string | undefined;
+  attrs?: Record<string, string | number | undefined> | undefined;
+  children?: X6Markup[] | undefined;
+  textContent?: string | undefined;
 }
 
 // ── Color inversion for dark mode (core algorithm from @modelscript/core) ──

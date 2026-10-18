@@ -150,13 +150,13 @@ export interface CompileDaeOptions {
    * If true, symbolically isolates linear implicit der() terms into explicit der(x) = f(...) form.
    * Defaults to false for strict validation.
    */
-  isolateImplicitDer?: boolean;
+  isolateImplicitDer?: boolean | undefined;
 
   /**
    * If true, applies Pantelides structural index reduction before compiling high-index DAEs.
    * Defaults to false for strict validation.
    */
-  enablePantelides?: boolean;
+  enablePantelides?: boolean | undefined;
 }
 
 export type CompileResult = { ok: true; compiled: CompiledDae } | { ok: false; reason: string };
@@ -227,7 +227,10 @@ export function compileArenaToDae(arena: DAEBuilder, options?: CompileDaeOptions
       case ExprKind.Call: {
         const n = arena.getExprRight(id);
         const first = arena.getExprLeft(id);
-        for (let k = 0; k < n; k++) collectDerStates(first + k, set);
+        for (let k = 0; k < n; k++) {
+          const argExpr = k === 0 ? first : arena.getExprLeft(id + k);
+          if (argExpr >= 0) collectDerStates(argExpr, set);
+        }
         break;
       }
     }
@@ -266,7 +269,8 @@ export function compileArenaToDae(arena: DAEBuilder, options?: CompileDaeOptions
         const count = arena.getExprRight(exprId);
         const first = arena.getExprLeft(exprId);
         for (let i = 0; i < count; i++) {
-          if (containsDerOfState(first + i, stateVarIdx)) return true;
+          const argExpr = i === 0 ? first : arena.getExprLeft(exprId + i);
+          if (argExpr >= 0 && containsDerOfState(argExpr, stateVarIdx)) return true;
         }
         return false;
       }

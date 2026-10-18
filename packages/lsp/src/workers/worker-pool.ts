@@ -38,7 +38,7 @@ export interface WorkerStubResult {
   /** FNV-1a / Murmur3 hash of the symbol's unqualified identifier. */
   nameHash: number;
   /** Optional string arena handle for the symbol name. */
-  nameHandle?: number;
+  nameHandle?: number | undefined;
   /** Starting UTF-8 byte offset in the source buffer. */
   startByte: number;
   /** Ending UTF-8 byte offset in the source buffer. */
@@ -54,9 +54,9 @@ export interface IndexBatchResult {
   /** High-level array of parsed symbol stubs. */
   stubs: WorkerStubResult[];
   /** Optional raw binary Uint32Array payload formatted for direct WASM stub store ingestion. */
-  rawPayload?: Uint32Array;
+  rawPayload?: Uint32Array | undefined;
   /** Optional error encountered during batch processing if partial failure occurred. */
-  error?: Error;
+  error?: Error | undefined;
 }
 
 /**
@@ -95,8 +95,10 @@ export class LspWorkerPool {
    * @returns An array of task batches ready for concurrent execution.
    */
   partitionTasks(tasks: IndexFileTask[], batchSize: number = 50): IndexFileTask[][] {
+    // Sanitize batchSize to a positive integer to prevent infinite loops on 0/NaN/negative inputs
     const size = Number.isFinite(batchSize) ? Math.max(1, Math.floor(batchSize)) : 50;
     const batches: IndexFileTask[][] = [];
+    // Slice tasks into contiguous chunks of `size` for balanced worker dispatch
     for (let i = 0; i < tasks.length; i += size) {
       batches.push(tasks.slice(i, i + size));
     }
@@ -148,7 +150,7 @@ export class LspWorkerPool {
       while (nextIndex < total) {
         // Atomically claim the next batch index
         const batchIndex = nextIndex++;
-        const batch = batches[batchIndex];
+        const batch = batches[batchIndex]!;
 
         // Process the batch via the user-supplied worker handler
         const result = await workerHandler(batch, batchIndex);

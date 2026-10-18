@@ -73,7 +73,7 @@ export class ToleranceStackOracle implements TheoryOracle {
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.assertedLiterals.set(lit.id, lit);
     if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1].assertedLitIds.push(lit.id);
+      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
     }
 
     if (lit.predicate === "gdtTolerance") {
@@ -213,7 +213,7 @@ export class ToleranceStackOracle implements TheoryOracle {
     };
   }
 
-  public checkSat(): { isSat: boolean; conflict?: ConflictClause } {
+  public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     for (const [chainId, chain] of this.chains.entries()) {
       const res = this.calculateChain(chain);
       if (!res.isSatisfied) {

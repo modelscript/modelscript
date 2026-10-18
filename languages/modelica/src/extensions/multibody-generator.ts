@@ -4,11 +4,11 @@ export interface MultiBodyAssembly {
   name: string;
   bodies: {
     name: string;
-    frameVariable?: string;
+    frameVariable?: string | undefined;
     mass: number;
     inertia: { I_11: number; I_22: number; I_33: number; I_21: number; I_31: number; I_32: number };
     r_CM: number[];
-    shapeRef?: string;
+    shapeRef?: string | undefined;
   }[];
   joints: {
     name: string;

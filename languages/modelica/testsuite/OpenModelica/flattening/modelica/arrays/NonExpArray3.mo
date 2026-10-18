@@ -1,7 +1,6 @@
 // name:     Non-expanded Array3
 // keywords: array
 // status:   correct
-// xfail:    true
 //
 // A test of non-expanded arrays for the case of array containing arrays with bindings.
 //

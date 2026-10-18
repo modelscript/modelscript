@@ -10,12 +10,12 @@ export interface RTECheckResult {
   category: "division_by_zero" | "array_out_of_bounds" | "math_domain" | "uninitialized_read" | "loop_termination";
   verdict: RTEVerdict;
   description: string;
-  astNodeId?: number;
-  startByte?: number;
-  endByte?: number;
-  startOffset?: number;
-  endOffset?: number;
-  witnessValues?: Record<string, string>;
+  astNodeId?: number | undefined;
+  startByte?: number | undefined;
+  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  witnessValues?: Record<string, string> | undefined;
 }
 
 export interface VerificationSummary {
@@ -71,7 +71,7 @@ export class FixpointSolver {
     private cfg: GenericCFG,
     private transferFn: InstructionTransferFunction,
     private thresholds: number[] = [-1, 0, 1, 10, 100, 1000],
-    private maxWideningSteps: number = 20,
+    _maxWideningSteps: number = 20,
     private edgeTransferFn?: EdgeTransferFunction,
   ) {}
 

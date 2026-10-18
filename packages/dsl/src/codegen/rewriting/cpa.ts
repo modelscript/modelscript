@@ -34,8 +34,8 @@ import type { TGGConstraint, TGGRuleOptions } from "../../dsl/language.js";
 export interface CpaConflict {
   kind: "overlap" | "target-collision" | "cycle" | "incompatible-assignment";
   rule1: string;
-  rule2?: string;
-  nodeType?: string;
+  rule2?: string | undefined;
+  nodeType?: string | undefined;
   description: string;
   severity: "error" | "warning";
 }
@@ -47,18 +47,127 @@ export interface CpaReport {
   ruleCount: number;
 }
 
+export const DEFAULT_NODE_DOMAIN_MAP: Record<string, string> = {
+  // SysML v2 / KerML
+  BlockDefinition: "sysml2",
+  PartDefinition: "sysml2",
+  PartUsage: "sysml2",
+  ConnectionUsage: "sysml2",
+  ConstraintDefinition: "sysml2",
+  ConstraintUsage: "sysml2",
+  PortDefinition: "sysml2",
+  PortUsage: "sysml2",
+  AttributeDefinition: "sysml2",
+  AttributeUsage: "sysml2",
+  ItemDefinition: "sysml2",
+  ItemUsage: "sysml2",
+  ActionDefinition: "sysml2",
+  ActionUsage: "sysml2",
+  StateDefinition: "sysml2",
+  StateUsage: "sysml2",
+  RequirementDefinition: "sysml2",
+  RequirementUsage: "sysml2",
+  AllocationUsage: "sysml2",
+  InterfaceDefinition: "sysml2",
+  InterfaceUsage: "sysml2",
+  FlowConnectionUsage: "sysml2",
+  Specialization: "sysml2",
+  SysMLBlock: "sysml2",
+  SysMLPart: "sysml2",
+  SysMLPort: "sysml2",
+  // Modelica 3.x
+  ClassDefinition: "modelica",
+  ShortClassDefinition: "modelica",
+  ComponentClause: "modelica",
+  ComponentDeclaration: "modelica",
+  ConnectClause: "modelica",
+  EquationClause: "modelica",
+  AlgorithmSection: "modelica",
+  ExtendsClause: "modelica",
+  ModelicaClass: "modelica",
+  ModelicaBlock: "modelica",
+  ModelicaModel: "modelica",
+  ModelicaConnector: "modelica",
+  // OWL2 Functional Syntax
+  ClassDeclaration: "owl2",
+  SubClassOfAxiom: "owl2",
+  EquivalentClassesAxiom: "owl2",
+  DisjointClassesAxiom: "owl2",
+  ObjectPropertyDeclaration: "owl2",
+  DataPropertyDeclaration: "owl2",
+  NamedIndividualDeclaration: "owl2",
+  ClassAssertionAxiom: "owl2",
+  ObjectPropertyAssertionAxiom: "owl2",
+  DataPropertyAssertionAxiom: "owl2",
+  // STEP (ISO 10303)
+  ProductDefinition: "step",
+  PropertyDefinition: "step",
+  Axis2Placement3D: "step",
+  NextAssemblyUsageOccurrence: "step",
+  ManifoldSolidBrep: "step",
+  AdvancedFace: "step",
+  CartesianPoint: "step",
+  Direction: "step",
+  GeometricRepresentationContext: "step",
+  ApplicationContext: "step",
+  EntityInstance: "step",
+  // CSV
+  CsvColumnHeader: "csv",
+  CSVVirtualComponent: "csv",
+  SourceFile: "csv",
+  CsvRow: "csv",
+  CsvRecord: "csv",
+  CsvTable: "csv",
+  // SSP
+  System: "ssp",
+  Component: "ssp",
+  Connector: "ssp",
+  Connection: "ssp",
+  SystemStructureDescription: "ssp",
+  // PSCAD / Power Systems
+  PscadComponent: "pscad",
+  PscadSchematic: "pscad",
+  PscadWire: "pscad",
+  PscadBus: "pscad",
+  // FEA / CFD / SCAD
+  FeaMesh: "fea",
+  FeaMaterial: "fea",
+  FeaBoundaryCondition: "fea",
+  CfdMesh: "cfd",
+  Su2Config: "cfd",
+  ScadModule: "scad",
+  ScadPrimitive: "scad",
+};
+
 export function inferRuleLanguages(
   rule: TGGRuleOptions,
   evaluatedSource: any,
   evaluatedTarget: any,
   constraints: TGGConstraint[] = [],
-): { sourceLang?: string; targetLang?: string } {
-  let sourceLang = rule.sourceLang;
-  let targetLang = rule.targetLang;
+  nodeDomainMap?: Record<string, string>,
+): { sourceLang?: string | undefined; targetLang?: string | undefined } {
+  const anyRule = rule as any;
+  let sourceLang: string | undefined =
+    rule.sourceLang || anyRule.sourceLanguage || anyRule.domain || evaluatedSource?.lang || evaluatedSource?.domain;
+  let targetLang: string | undefined =
+    rule.targetLang ||
+    anyRule.targetLanguage ||
+    anyRule.targetSyncDomain ||
+    evaluatedTarget?.lang ||
+    evaluatedTarget?.domain;
 
-  // 1. Check constraints for typeMap
+  // 1. Check constraints for explicit language/dialect metadata (typeMap, exprMap)
   for (const c of constraints) {
-    if (c.kind === "typeMap" && typeof c.args[2] === "string") {
+    if (c.kind === "exprMap" && typeof c.args[2] === "string") {
+      const dialect = c.args[2].toLowerCase();
+      if (dialect === "modelica-sysml2") {
+        sourceLang = sourceLang || "modelica";
+        targetLang = targetLang || "sysml2";
+      } else if (dialect === "sysml2-modelica") {
+        sourceLang = sourceLang || "sysml2";
+        targetLang = targetLang || "modelica";
+      }
+    } else if (c.kind === "typeMap" && typeof c.args[2] === "string") {
       const mapKey = c.args[2].toLowerCase();
       if (mapKey.includes("sysml2") || mapKey.includes("sysml")) targetLang = targetLang || "sysml2";
       else if (mapKey.includes("modelica")) targetLang = targetLang || "modelica";
@@ -66,13 +175,28 @@ export function inferRuleLanguages(
       else if (mapKey.includes("step")) targetLang = targetLang || "step";
       else if (mapKey.includes("csv")) targetLang = targetLang || "csv";
       else if (mapKey.includes("ssp")) targetLang = targetLang || "ssp";
+      else if (mapKey.includes("pscad")) targetLang = targetLang || "pscad";
+      else if (mapKey.includes("fea")) targetLang = targetLang || "fea";
+      else if (mapKey.includes("cfd")) targetLang = targetLang || "cfd";
+      else if (mapKey.includes("scad")) targetLang = targetLang || "scad";
     }
   }
 
-  // 2. Check rule name
+  // 2. Lookup source and target AST node types in dynamic/registered node-to-domain map
+  const effectiveDomainMap = nodeDomainMap ? { ...DEFAULT_NODE_DOMAIN_MAP, ...nodeDomainMap } : DEFAULT_NODE_DOMAIN_MAP;
+  const srcType = evaluatedSource?.nodeType || "";
+  const tgtType = evaluatedTarget?.nodeType || "";
+  if (!sourceLang && srcType && effectiveDomainMap[srcType]) {
+    sourceLang = effectiveDomainMap[srcType];
+  }
+  if (!targetLang && tgtType && effectiveDomainMap[tgtType]) {
+    targetLang = effectiveDomainMap[tgtType];
+  }
+
+  // 3. Fallback: Check rule name conventions if still unresolved
   const name = rule.name || "";
   if (!targetLang) {
-    if (name.includes("ToSysml") || name.includes("ToSysML2")) targetLang = "sysml2";
+    if (name.includes("ToSysml") || name.includes("ToSysML2") || name.includes("ToSysML")) targetLang = "sysml2";
     else if (name.includes("ToModelica") || name.includes("ToModel")) targetLang = "modelica";
     else if (name.includes("ToOWL2") || name.includes("ToOwl2")) targetLang = "owl2";
     else if (name.includes("ToStep") || name.includes("ToSTEP")) targetLang = "step";
@@ -83,6 +207,7 @@ export function inferRuleLanguages(
   if (!sourceLang) {
     if (
       name.startsWith("SysML2") ||
+      name.startsWith("SysML") ||
       name.startsWith("Sysml") ||
       name.startsWith("PartDef") ||
       name.startsWith("AttributeUsage") ||
@@ -94,51 +219,6 @@ export function inferRuleLanguages(
     else if (name.startsWith("Step") || name.startsWith("STEP")) sourceLang = "step";
     else if (name.startsWith("OWL2") || name.startsWith("Owl2")) sourceLang = "owl2";
     else if (name.startsWith("Ssp") || name.startsWith("SSP")) sourceLang = "ssp";
-  }
-
-  // 3. Check target node types
-  const tgtType = evaluatedTarget?.nodeType || "";
-  if (!targetLang) {
-    if (
-      [
-        "BlockDefinition",
-        "PartUsage",
-        "ConnectionUsage",
-        "ConstraintUsage",
-        "PortUsage",
-        "AttributeUsage",
-        "Specialization",
-      ].includes(tgtType)
-    ) {
-      targetLang = "sysml2";
-    } else if (
-      [
-        "ClassDefinition",
-        "ComponentClause",
-        "ConnectClause",
-        "EquationClause",
-        "ModelicaClass",
-        "ModelicaBlock",
-      ].includes(tgtType)
-    ) {
-      targetLang = "modelica";
-    } else if (
-      [
-        "ClassDeclaration",
-        "SubClassOfAxiom",
-        "ObjectPropertyDeclaration",
-        "DataPropertyDeclaration",
-        "NamedIndividualDeclaration",
-      ].includes(tgtType)
-    ) {
-      targetLang = "owl2";
-    } else if (["ProductDefinition", "PropertyDefinition", "Axis2Placement3D"].includes(tgtType)) {
-      targetLang = "step";
-    } else if (["CsvColumnHeader", "CSVVirtualComponent", "SourceFile"].includes(tgtType)) {
-      targetLang = "csv";
-    } else if (["System", "Component", "Connector", "Connection"].includes(tgtType)) {
-      targetLang = "ssp";
-    }
   }
 
   return { sourceLang, targetLang };
@@ -153,8 +233,8 @@ interface RuleSignature {
   targetBindings: Record<string, any>;
   constraints: TGGConstraint[];
   priority: number;
-  targetLang?: string;
-  sourceLang?: string;
+  targetLang?: string | undefined;
+  sourceLang?: string | undefined;
 }
 
 /**
@@ -182,7 +262,7 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
 
   // 1. Extract rule signatures
   for (let i = 0; i < rules.length; i++) {
-    const rule = rules[i];
+    const rule = rules[i]!;
     const evaluatedSource = typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source;
     const evaluatedTarget = typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target;
     const constraints = typeof rule.where === "function" ? rule.where(vProxy) : rule.where || [];
@@ -205,8 +285,8 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
   // 2. Pairwise Critical Pair Analysis
   for (let i = 0; i < signatures.length; i++) {
     for (let j = i + 1; j < signatures.length; j++) {
-      const r1 = signatures[i];
-      const r2 = signatures[j];
+      const r1 = signatures[i]!;
+      const r2 = signatures[j]!;
 
       // Check for source pattern overlap (both match the same source AST type)
       if (r1.sourceNodeType === r2.sourceNodeType && r1.sourceNodeType !== "UnknownNode") {

@@ -127,41 +127,41 @@ export type LpMethod =
 /** Options for Stochastic Differential Equation integrators. */
 export interface SDEOptions {
   /** Fixed step size dt (default: (tEnd - t0) / 1000). */
-  dt?: number;
+  dt?: number | undefined;
   /** Absolute error tolerance (for adaptive SDE solvers like SRIW1). */
-  atol?: number;
+  atol?: number | undefined;
   /** Relative error tolerance (for adaptive SDE solvers like SRIW1). */
-  rtol?: number;
+  rtol?: number | undefined;
   /** PRNG seed for reproducible Brownian motion paths. */
-  seed?: number;
+  seed?: number | undefined;
   /** Noise structure. */
-  noiseType?: "diagonal" | "scalar" | "matrix";
+  noiseType?: "diagonal" | "scalar" | "matrix" | undefined;
 }
 
 /** Options for Delay Differential Equation integrators. */
 export interface DDEOptions {
   /** Absolute error tolerance (default: 1e-6). */
-  atol?: number;
+  atol?: number | undefined;
   /** Relative error tolerance (default: 1e-6). */
-  rtol?: number;
+  rtol?: number | undefined;
   /** Maximum step size. */
-  maxStep?: number;
+  maxStep?: number | undefined;
   /** Initial step size. */
-  initialStep?: number;
+  initialStep?: number | undefined;
   /** Ring buffer capacity for historical samples. */
-  bufferCapacity?: number;
+  bufferCapacity?: number | undefined;
 }
 
 /** Options for Boundary Value Problem solvers. */
 export interface BVPOptions {
   /** Discretization / transcription method (default: "collocation-lgr"). */
-  method?: "collocation-lgr" | "collocation-trapezoidal" | "multiple-shooting" | "single-shooting";
+  method?: "collocation-lgr" | "collocation-trapezoidal" | "multiple-shooting" | "single-shooting" | undefined;
   /** Number of mesh intervals or shooting nodes (default: 20). */
-  numIntervals?: number;
+  numIntervals?: number | undefined;
   /** Convergence tolerance (default: 1e-6). */
-  tolerance?: number;
+  tolerance?: number | undefined;
   /** Maximum nonlinear solver iterations (default: 50). */
-  maxIterations?: number;
+  maxIterations?: number | undefined;
 }
 
 // ── Unified Options ──
@@ -174,49 +174,49 @@ export interface BVPOptions {
  */
 export interface SolverOptions {
   /** ODE/DAE integration method (default: "dopri5"). */
-  integrator?: IntegratorMethod;
+  integrator?: IntegratorMethod | undefined;
 
   /** Nonlinear solver for algebraic loops & initialization (default: "newton"). */
-  nonlinear?: NonlinearMethod;
+  nonlinear?: NonlinearMethod | undefined;
 
   /** Linear solver for Jacobian systems (default: "dense-lu"). */
-  linear?: LinearMethod;
+  linear?: LinearMethod | undefined;
 
   /** Jacobian computation method (default: "finite-difference"). */
-  jacobian?: JacobianMethod;
+  jacobian?: JacobianMethod | undefined;
 
   /** Optimization solver (default: "sqp"). */
-  optimizer?: OptimizerMethod;
+  optimizer?: OptimizerMethod | undefined;
 
   /** LP/MILP solver (default: "built-in"). */
-  lpSolver?: LpMethod;
+  lpSolver?: LpMethod | undefined;
 
   /** Absolute tolerance for integrators and nonlinear solvers (default: 1e-6). */
-  atol?: number;
+  atol?: number | undefined;
 
   /** Relative tolerance for integrators and nonlinear solvers (default: 1e-6). */
-  rtol?: number;
+  rtol?: number | undefined;
 
   /** Maximum Newton/KINSOL iterations for nonlinear solvers (default: 20). */
-  maxNonlinearIterations?: number;
+  maxNonlinearIterations?: number | undefined;
 
   /** Maximum integrator steps (default: 100000). */
-  maxSteps?: number;
+  maxSteps?: number | undefined;
 
   /** Maximum integrator step size (0 = unlimited). */
-  maxStep?: number;
+  maxStep?: number | undefined;
 
   /** Initial integrator step size (0 = auto). */
-  initialStep?: number;
+  initialStep?: number | undefined;
 
   /** Uncertainty propagation method (default: "auto"). */
-  uncertainty?: UncertaintyMethod;
+  uncertainty?: UncertaintyMethod | undefined;
 
   /** Monte Carlo sample count (default: 1000). */
-  mcSamples?: number;
+  mcSamples?: number | undefined;
 
   /** Monte Carlo seed for reproducibility (default: undefined = random). */
-  mcSeed?: number;
+  mcSeed?: number | undefined;
 }
 
 /** Default solver options — pure TS methods, no WASM dependencies. */

@@ -57,8 +57,8 @@ import type { AnySpatialPin } from "./spatial-pin";
 interface ArtifactViewCardProps {
   artifactId: number;
   initialArtifactView?: any;
-  onPinCreated?: (pin: AnySpatialPin) => void;
-  onThreadNodeSelected?: (threadId: string | number) => void;
+  onPinCreated?: ((pin: AnySpatialPin) => void) | undefined;
+  onThreadNodeSelected?: ((threadId: string | number) => void) | undefined;
 }
 
 const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({

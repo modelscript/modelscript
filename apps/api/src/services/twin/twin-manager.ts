@@ -14,30 +14,46 @@ import { SocialTwinNotifier } from "./social-twin-notifier.js";
 
 export interface TwinConfig {
   channels: string[]; // e.g. ["T", "speed"]
-  mheWindowDuration?: number; // e.g. 4.0 seconds
-  mheIntervals?: number; // e.g. 41 points
+  mheWindowDuration?: number | undefined; // e.g. 4.0 seconds
+  mheIntervals?: number | undefined; // e.g. 41 points
   parametersToEstimate: string[]; // e.g. ["R_th"]
-  parameterBounds?: Record<string, { min?: number; max?: number; prior?: number; regWeight?: number }>;
-  driftChannels?: {
-    name: string;
-    expectedMean?: number;
-    expectedStd?: number;
-    minShift?: number;
-    threshold?: number;
-  }[];
-  virtualSensors?: {
-    id: string;
-    name: string;
-    unit: string;
-    daeVariableName: string;
-    alarmThreshold?: number;
-  }[];
-  rul?: {
-    type?: "arrhenius" | "fatigue_miner" | "linear_wear";
-    rateConstant?: number;
-    activationEnergy?: number;
-    criticalDamageThreshold?: number;
-  };
+  parameterBounds?:
+    | Record<
+        string,
+        {
+          min?: number | undefined;
+          max?: number | undefined;
+          prior?: number | undefined;
+          regWeight?: number | undefined;
+        }
+      >
+    | undefined;
+  driftChannels?:
+    | {
+        name: string;
+        expectedMean?: number | undefined;
+        expectedStd?: number | undefined;
+        minShift?: number | undefined;
+        threshold?: number | undefined;
+      }[]
+    | undefined;
+  virtualSensors?:
+    | {
+        id: string;
+        name: string;
+        unit: string;
+        daeVariableName: string;
+        alarmThreshold?: number | undefined;
+      }[]
+    | undefined;
+  rul?:
+    | {
+        type?: "arrhenius" | "fatigue_miner" | "linear_wear" | undefined;
+        rateConstant?: number | undefined;
+        activationEnergy?: number | undefined;
+        criticalDamageThreshold?: number | undefined;
+      }
+    | undefined;
 }
 
 export interface ActiveTwinSession {
@@ -87,7 +103,11 @@ export class TwinManager {
   /**
    * Helper to construct a standard DAE arena for the digital twin model.
    */
-  private buildArenaForClass(modelicaClass: string, initialParams: Record<string, number>): DAEBuilder {
+  private buildArenaForClass(
+    _modelicaClass: string,
+    initialParams: Record<string, number>,
+    channels: string[] = [],
+  ): DAEBuilder {
     const arena = new DAEBuilder();
 
     // Inverter Thermal Cooling Loop model:
@@ -111,6 +131,24 @@ export class TwinManager {
 
     const p_Tamb = arena.addVariable("T_amb", VarType.Real, Variability.Parameter, 0, tAmb);
     arena.setVarExpression(p_Tamb, arena.addRealLiteral(tAmb));
+
+    // Register any additional custom parameters supplied for the twin class
+    const builtInNames = new Set(["T", "R_th", "P_loss", "C_th", "T_amb"]);
+    for (const [paramName, paramVal] of Object.entries(initialParams)) {
+      if (!builtInNames.has(paramName) && typeof paramVal === "number") {
+        const pIdx = arena.addVariable(paramName, VarType.Real, Variability.Parameter, 0, paramVal);
+        arena.setVarExpression(pIdx, arena.addRealLiteral(paramVal));
+        builtInNames.add(paramName);
+      }
+    }
+
+    for (const ch of channels) {
+      if (!builtInNames.has(ch)) {
+        const chIdx = arena.addVariable(ch, VarType.Real, Variability.Continuous, 0, 0.0);
+        arena.setVarStartValue(chIdx, 0.0);
+        builtInNames.add(ch);
+      }
+    }
 
     const tExpr = arena.addNameExpr("T");
     const derT = arena.addDerExpr(tExpr);
@@ -161,7 +199,7 @@ export class TwinManager {
       currentParams = { R_th: 0.15, P_loss: 100.0, C_th: 20.0, T_amb: 25.0 };
     }
 
-    const arena = this.buildArenaForClass(row.modelica_class, currentParams);
+    const arena = this.buildArenaForClass(row.modelica_class, currentParams, config.channels);
 
     const buffer = new CircularTelemetryBuffer({
       numChannels: config.channels.length || 1,

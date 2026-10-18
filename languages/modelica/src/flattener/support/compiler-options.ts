@@ -41,6 +41,10 @@ export function extractCompilerOptions(
 
   const ignoreCycles = Boolean(cmdOptions.includes("-d=ignoreCycles") || combined.includes("-d=ignoreCycles"));
 
+  const ignoreReplaceable = Boolean(
+    cmdOptions.includes("--ignoreReplaceable") || combined.includes("--ignoreReplaceable"),
+  );
+
   const scalarizeBindings = Boolean(
     options?.scalarizeBindings || cmdOptions.includes("+scalarizeBindings") || combined.includes("+scalarizeBindings"),
   );
@@ -55,7 +59,7 @@ export function extractCompilerOptions(
   if (flowThreshold === undefined) {
     const match = cmdOptions.match(/--flowThreshold=([0-9.eE+-]+)/) || combined.match(/--flowThreshold=([0-9.eE+-]+)/);
     if (match) {
-      flowThreshold = parseFloat(match[1]);
+      flowThreshold = parseFloat(match[1]!);
     }
   }
 
@@ -64,6 +68,7 @@ export function extractCompilerOptions(
     hasOldInstAnnotation,
     isGen,
     ignoreCycles,
+    ignoreReplaceable,
     scalarizeBindings,
     scalarizeMinMax,
     flowThreshold,

@@ -132,14 +132,14 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
     const db: LibraryDatabase | undefined =
       databaseInstance ||
       (req as any).database ||
-      req.app?.locals?.database ||
+      req.app?.locals?.["database"] ||
       ((req.app as any)?.get ? (req.app as any).get("database") : undefined);
 
     try {
       if (process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-sig"] === "true") {
         const actor = req.body?.actor || "https://test.example.com/users/test";
-        (req as Request & { actorId?: string }).actorId = actor;
-        (req as Request & { actorProfile?: Record<string, unknown> }).actorProfile = {
+        (req as Request & { actorId?: string | undefined }).actorId = actor;
+        (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile = {
           id: actor,
           preferredUsername: typeof actor === "string" ? actor.split("/").pop() || "testuser" : "testuser",
           publicKey: {
@@ -204,7 +204,7 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
 
         // Parse signature value from Signature header: label=:base64:
-        const sigHeader = (req.headers.signature as string) || "";
+        const sigHeader = (req.headers["signature"] as string) || "";
         let signatureValue = "";
         for (const item of sigHeader.split(",")) {
           const itemEq = item.indexOf("=");
@@ -283,8 +283,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           actorPayload = (await actorResponse.json()) as Record<string, unknown>;
 
           // Look in assertionMethod (FEP-521a Multikey)
-          if (Array.isArray(actorPayload.assertionMethod)) {
-            const matchingKey = actorPayload.assertionMethod.find(
+          if (Array.isArray(actorPayload["assertionMethod"])) {
+            const matchingKey = actorPayload["assertionMethod"].find(
               (k: any) => k.id === keyId || (k.id && actorUrl.hash && k.id.endsWith(actorUrl.hash)),
             );
             if (matchingKey) {
@@ -297,8 +297,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           }
 
           if (!publicKeyPem) {
-            const pkObj = (actorPayload.publicKey as any) || {};
-            publicKeyPem = pkObj.publicKeyPem || (actorPayload.publicKeyPem as string);
+            const pkObj = (actorPayload["publicKey"] as any) || {};
+            publicKeyPem = pkObj.publicKeyPem || (actorPayload["publicKeyPem"] as string);
           }
 
           if (!publicKeyPem) {
@@ -364,13 +364,13 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
 
         (req as Request & { actorId?: string | undefined }).actorId = (keyId as string).split("#")[0];
-        (req as Request & { actorProfile?: Record<string, unknown> }).actorProfile = actorPayload;
+        (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile = actorPayload;
         next();
         return;
       }
 
       // ── Legacy Draft-Cavage HTTP Signatures branch ────────────────────
-      const signatureHeader = req.headers.signature as string | undefined;
+      const signatureHeader = req.headers["signature"] as string | undefined;
       if (!signatureHeader) {
         res.status(401).json({ error: "Missing Signature header" });
         return;
@@ -390,14 +390,14 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
       }
 
-      if (!parts.keyId || !parts.signature || !parts.headers) {
+      if (!parts["keyId"] || !parts["signature"] || !parts["headers"]) {
         res.status(401).json({ error: "Invalid Signature header format" });
         return;
       }
 
       let actorUrl: URL;
       try {
-        actorUrl = assertSafePublicUrl(parts.keyId);
+        actorUrl = assertSafePublicUrl(parts["keyId"]);
       } catch {
         res.status(400).json({ error: "Invalid or forbidden keyId URL" });
         return;
@@ -443,9 +443,9 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         const payload = (await actorResponse.json()) as Record<string, unknown>;
 
         // Check assertionMethod (FEP-521a Multikey)
-        if (Array.isArray(payload.assertionMethod)) {
-          const matchingKey = payload.assertionMethod.find(
-            (k: any) => k.id === parts.keyId || (k.id && actorUrl.hash && k.id.endsWith(actorUrl.hash)),
+        if (Array.isArray(payload["assertionMethod"])) {
+          const matchingKey = payload["assertionMethod"].find(
+            (k: any) => k.id === parts["keyId"] || (k.id && actorUrl.hash && k.id.endsWith(actorUrl.hash)),
           );
           if (matchingKey) {
             if (matchingKey.publicKeyMultibase) {
@@ -457,8 +457,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
 
         if (!publicKeyPem) {
-          const pkObj = (payload.publicKey as any) || {};
-          publicKeyPem = pkObj.publicKeyPem || (payload.publicKeyPem as string);
+          const pkObj = (payload["publicKey"] as any) || {};
+          publicKeyPem = pkObj.publicKeyPem || (payload["publicKeyPem"] as string);
         }
         actor = payload;
 
@@ -481,7 +481,7 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
       }
 
       // Reconstruct the string to sign
-      const headersList = parts.headers.split(" ");
+      const headersList = parts["headers"].split(" ");
 
       if (headersList.includes("digest")) {
         const digestHeader = req.headers["digest"] as string | undefined;
@@ -517,17 +517,17 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
 
       let isValid = false;
       try {
-        if (parts.algorithm === "ed25519" || (parts.keyId && parts.keyId.includes("ed25519"))) {
+        if (parts["algorithm"] === "ed25519" || (parts["keyId"] && parts["keyId"].includes("ed25519"))) {
           isValid = crypto.verify(
             null,
             Buffer.from(signedString),
             publicKeyPem,
-            Buffer.from(parts.signature, "base64"),
+            Buffer.from(parts["signature"], "base64"),
           );
         } else {
           const verifier = crypto.createVerify("RSA-SHA256");
           verifier.update(signedString);
-          isValid = verifier.verify(publicKeyPem, parts.signature, "base64");
+          isValid = verifier.verify(publicKeyPem, parts["signature"], "base64");
         }
       } catch (err) {
         console.error("Cavage signature verification exception:", err);
@@ -540,8 +540,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
       }
 
       // Add actor data to request for downstream handlers
-      (req as Request & { actorId?: string | undefined }).actorId = (parts.keyId as string).split("#")[0];
-      (req as Request & { actorProfile?: Record<string, unknown> }).actorProfile = actor;
+      (req as Request & { actorId?: string | undefined }).actorId = (parts["keyId"] as string).split("#")[0];
+      (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile = actor;
 
       next();
     } catch (err) {

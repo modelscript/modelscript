@@ -23,7 +23,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
   static readonly viewType = "modelscript.requirementsEditor";
 
   constructor(
-    private readonly extensionUri: vscode.Uri,
+    _extensionUri: vscode.Uri,
     private readonly client: LanguageClient,
   ) {}
 
@@ -124,7 +124,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         case "createTraceLink": {
           const { sourceUri, sourceName, targetName, linkKind } = msg;
           try {
-            const res = await this.client.sendRequest<{ success: boolean; error?: string }>(
+            const res = await this.client.sendRequest<{ success: boolean; error?: string | undefined }>(
               "modelscript/createTraceLink",
               {
                 sourceUri: sourceUri || document.uri.toString(),
@@ -150,10 +150,11 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         case "batchUpdateTraceLinks": {
           const { additions, deletions } = msg;
           try {
-            const res = await this.client.sendRequest<{ success: boolean; appliedCount: number; errors?: string[] }>(
-              "modelscript/batchUpdateTraceLinks",
-              { additions, deletions },
-            );
+            const res = await this.client.sendRequest<{
+              success: boolean;
+              appliedCount: number;
+              errors?: string[] | undefined;
+            }>("modelscript/batchUpdateTraceLinks", { additions, deletions });
             if (res.success) {
               vscode.window.showInformationMessage(
                 `Batch updated ${res.appliedCount} trace link(s)` +
@@ -172,7 +173,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         case "deleteTraceLink": {
           const { declarationUri, sourceName, targetName, linkKind, declarationRange } = msg;
           try {
-            const res = await this.client.sendRequest<{ success: boolean; error?: string }>(
+            const res = await this.client.sendRequest<{ success: boolean; error?: string | undefined }>(
               "modelscript/deleteTraceLink",
               {
                 declarationUri: declarationUri || document.uri.toString(),

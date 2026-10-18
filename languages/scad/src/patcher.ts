@@ -180,15 +180,15 @@ export class ScadPatcher {
     targetMethod: "translate" | "rotate" | "scale",
     newVec: [number, number, number],
     sourceMetadata?: {
-      transformMethod?: string;
-      argIndex?: number;
-      startByte?: number;
-      endByte?: number;
-      primitiveStartByte?: number;
-      primitiveEndByte?: number;
-      translateRange?: { startByte: number; endByte: number; isFluent?: boolean };
-      rotateRange?: { startByte: number; endByte: number; isFluent?: boolean };
-      scaleRange?: { startByte: number; endByte: number; isFluent?: boolean };
+      transformMethod?: string | undefined;
+      argIndex?: number | undefined;
+      startByte?: number | undefined;
+      endByte?: number | undefined;
+      primitiveStartByte?: number | undefined;
+      primitiveEndByte?: number | undefined;
+      translateRange?: { startByte: number; endByte: number; isFluent?: boolean | undefined } | undefined;
+      rotateRange?: { startByte: number; endByte: number; isFluent?: boolean | undefined } | undefined;
+      scaleRange?: { startByte: number; endByte: number; isFluent?: boolean | undefined } | undefined;
     },
   ): PatchResult | null {
     const specificRange =

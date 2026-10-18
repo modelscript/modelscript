@@ -11,7 +11,7 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
   public static readonly viewType = "modelscript.elementTable";
 
   constructor(
-    private readonly extensionUri: vscode.Uri,
+    _extensionUri: vscode.Uri,
     private readonly client: LanguageClient,
   ) {}
 
@@ -91,7 +91,7 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
         case "updateAttribute": {
           const { qualifiedName, attributeName, newValue } = msg;
           try {
-            const res = await this.client.sendRequest<{ success: boolean; error?: string }>(
+            const res = await this.client.sendRequest<{ success: boolean; error?: string | undefined }>(
               "modelscript/updateElementAttribute",
               {
                 uri,
@@ -139,7 +139,7 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
         case "validateCell": {
           const { requestId, attributeName, value } = msg;
           try {
-            const res = await this.client.sendRequest<{ valid: boolean; error?: string }>(
+            const res = await this.client.sendRequest<{ valid: boolean; error?: string | undefined }>(
               "modelscript/validateTableCell",
               {
                 attributeName,
