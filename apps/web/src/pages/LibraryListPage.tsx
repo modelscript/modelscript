@@ -730,9 +730,11 @@ const LibraryListPage: React.FC = () => {
                         >
                           {lib.name}
                         </Heading>
-                        <Label variant="secondary" style={{ fontSize: 11 }}>
-                          v{lib.latestVersion || "1.0.0"}
-                        </Label>
+                        {lib.latestVersion && (
+                          <Label variant="secondary" style={{ fontSize: 11 }}>
+                            v{lib.latestVersion}
+                          </Label>
+                        )}
                         {lib.isYanked && (
                           <Label variant="danger" style={{ fontSize: 10 }}>
                             <AlertFillIcon size={10} /> yanked

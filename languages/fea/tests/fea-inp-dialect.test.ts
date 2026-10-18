@@ -117,7 +117,13 @@ Cantilever Beam Study
     };
 
     const fixSnippet = synthesizeFeaBoundary(fixAction, "calculix");
-    assert.strictEqual(fixSnippet, "*BOUNDARY\nFIXED_ROOT, 1, 3, 0.0");
+    assert.strictEqual(fixSnippet, "*BOUNDARY\nFIXED_ROOT, 1, 1, 0.0\nFIXED_ROOT, 3, 3, 0.0");
+
+    const contiguousFixSnippet = synthesizeFeaBoundary(
+      { kind: "fix", targetId: "FIXED_ROOT", dofs: [1, 2, 3] },
+      "calculix",
+    );
+    assert.strictEqual(contiguousFixSnippet, "*BOUNDARY\nFIXED_ROOT, 1, 3, 0.0");
 
     const forceSnippet = synthesizeFeaBoundary(forceAction, "calculix");
     assert.ok(forceSnippet.includes("*CLOAD"));
@@ -137,7 +143,7 @@ Cantilever Plate
 `;
 
     const updated = applyBoundaryActionToDeck(baseDeck, fixAction, "calculix");
-    assert.ok(updated.includes("*BOUNDARY\nFIXED_ROOT, 1, 3, 0.0"));
+    assert.ok(updated.includes("*BOUNDARY\nFIXED_ROOT, 1, 1, 0.0\nFIXED_ROOT, 3, 3, 0.0"));
     assert.ok(
       updated.indexOf("*BOUNDARY") < updated.indexOf("*END STEP"),
       "*BOUNDARY must be inserted before *END STEP",
@@ -283,6 +289,12 @@ Multiline Element and Sets Test
     assert.ok(inpSnippet.includes("*CLOAD"));
     assert.ok(inpSnippet.includes("10, 5, 250"));
 
+    const bdfMomentVec = synthesizeFeaBoundary(
+      { kind: "moment", targetId: 10, magnitude: 250.0, vector: [0.0, 1.0, 0.0] },
+      "bdf",
+    );
+    assert.strictEqual(bdfMomentVec, "MOMENT, 1, 10, 0, 250.00, 0.0000, 1.0000, 0.0000");
+
     const bdfFixAction: BoundaryActionPayload = {
       kind: "fix",
       targetId: 101,
@@ -365,10 +377,112 @@ Plastic and Prescribed Boundary Test
       "+CT10, 7, 8, 9, 10",
       "CHEXA, 20, 1, 1, 2, 3, 4, 5, 6, +CH20",
       "+CH20, 7, 8",
+      "CHEXA, 21, 1, 1, 2, 3, 4, 5, 6, +CH21A",
+      "+CH21A, 7, 8, 9, 10, 11, 12, 13, 14, +CH21B",
+      "+CH21B, 15, 16, 17, 18, 19, 20",
+      "SPC, 1, 1, 123, 0.0, 2, 3, 0.005",
       "ENDDATA",
     ].join("\n");
     const parsedBdf = bdfDialect.parse(bdfDeck);
     assert.deepStrictEqual(parsedBdf.elements.get(10)?.nodes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     assert.deepStrictEqual(parsedBdf.elements.get(20)?.nodes, [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.strictEqual(parsedBdf.elements.get(21)?.nodes.length, 20);
+    assert.ok(parsedBdf.fixedDofs?.get(1)?.has(1) && parsedBdf.fixedDofs?.get(1)?.has(3));
+    assert.deepStrictEqual(parsedBdf.displacements?.get(2), [0, 0, 0.005]);
+  });
+
+  it("solves C3D6 wedges, S3/S4 CST shells, T3D2/B31 bars, *DLOAD pressure on ELSET, and >500-node sparse PCG meshes", () => {
+    // 1. 6-node wedge (C3D6) under *DLOAD pressure on ELSET
+    const wedgeDeck = `*HEADING
+Wedge Pressure Test
+*NODE
+1, 0.0, 0.0, 0.0
+2, 1.0, 0.0, 0.0
+3, 0.0, 1.0, 0.0
+4, 0.0, 0.0, 1.0
+5, 1.0, 0.0, 1.0
+6, 0.0, 1.0, 1.0
+*ELEMENT, TYPE=C3D6, ELSET=EWEDGE
+1, 1, 2, 3, 4, 5, 6
+*MATERIAL, NAME=STEEL
+*ELASTIC
+2.0e11, 0.3
+*DENSITY
+8000.0
+*BOUNDARY
+1, ENCASTRE
+2, PINNED
+3, ZSYMM
+*STEP
+*STATIC
+*DLOAD
+EWEDGE, P2, 1.0e6
+*END STEP
+`;
+    const wedgeProps = extractFeaSlicingProperties(wedgeDeck);
+    // Exact wedge volume = 0.5 * 1 * 1 * 1 = 0.5 m^3, mass = 0.5 * 8000 = 4000 kg
+    assert.ok(Math.abs((wedgeProps.totalVolumeM3 ?? 0) - 0.5) < 1e-8);
+    assert.strictEqual(wedgeProps.mass, 4000);
+    assert.ok(wedgeProps.maxVonMisesPa > 0.5e6 && wedgeProps.maxVonMisesPa < 5.0e6);
+
+    // 2. S4 Quad Shell CST membrane under in-plane tension
+    const shellDeck = `*HEADING
+Quad Shell Membrane Tension
+*NODE, NSET=LEFT
+1, 0.0, 0.0, 0.0
+4, 0.0, 1.0, 0.0
+*NODE, NSET=RIGHT
+2, 1.0, 0.0, 0.0
+3, 1.0, 1.0, 0.0
+*ELEMENT, TYPE=S4, ELSET=EPLATE
+1, 1, 2, 3, 4
+*SHELL SECTION, ELSET=EPLATE, MATERIAL=ALU
+0.01
+*MATERIAL, NAME=ALU
+*ELASTIC
+7.0e10, 0.3
+*DENSITY
+2700.0
+*BOUNDARY
+1, 1, 3, 0.0
+4, 1, 1, 0.0
+4, 3, 3, 0.0
+*STEP
+*STATIC
+*CLOAD
+RIGHT, 1, 5000.0
+*END STEP
+`;
+    const shellProps = extractFeaSlicingProperties(shellDeck);
+    // NSET=RIGHT has 2 nodes, each receiving 5000 N -> total F_x = 10000 N across cross-section 1.0m * 0.01m = 0.01 m^2 -> sigma_xx = 1.0 MPa
+    assert.strictEqual(shellProps.mass, 27);
+    assert.ok(Math.abs(shellProps.maxVonMisesPa - 1.0e6) < 1e4);
+
+    // 3. T3D2 Truss bar under prescribed axial displacement + >500-node sparse PCG chain
+    const lines: string[] = ["*HEADING", "Large Sparse Bar Chain", "*NODE"];
+    const numChainNodes = 550;
+    for (let i = 1; i <= numChainNodes; i++) {
+      lines.push(`${i}, ${(i - 1) * 0.01}, 0.0, 0.0`);
+    }
+    lines.push("*ELEMENT, TYPE=T3D2, ELSET=EBARS");
+    for (let i = 1; i < numChainNodes; i++) {
+      lines.push(`${i}, ${i}, ${i + 1}`);
+    }
+    lines.push(
+      "*SOLID SECTION, ELSET=EBARS, MATERIAL=STEEL",
+      "0.0001",
+      "*MATERIAL, NAME=STEEL",
+      "*ELASTIC",
+      "2.0e11, 0.3",
+      "*DENSITY",
+      "7850.0",
+      "*BOUNDARY",
+      "1, 1, 3, 0.0",
+      `${numChainNodes}, 1, 1, 0.00549`,
+    );
+    const largeProps = extractFeaSlicingProperties(lines.join("\n"));
+    assert.strictEqual(largeProps.nodeCount, numChainNodes);
+    assert.ok((largeProps.maxDisplacementM ?? 0) >= 0.0054);
+    assert.ok(largeProps.maxVonMisesPa > 1.0e8);
   });
 });

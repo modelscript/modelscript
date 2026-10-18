@@ -95,6 +95,7 @@ export class ToleranceStackVerifier {
     let totalElasticMax = 0;
 
     let varianceSum = 0;
+    let meanTolShift = 0;
 
     const contributors: ToleranceContributor[] = [];
 
@@ -112,6 +113,7 @@ export class ToleranceStackVerifier {
 
       worstMinGap += dir * d.nominal + Math.min(tolLow, tolHigh);
       worstMaxGap += dir * d.nominal + Math.max(tolLow, tolHigh);
+      meanTolShift += dir * ((d.upperTol + d.lowerTol) / 2);
 
       // RSS variance calculation (assuming 3-sigma tolerance distribution)
       const halfTol = (d.upperTol - d.lowerTol) / 2;
@@ -122,7 +124,7 @@ export class ToleranceStackVerifier {
       let dThermalMin = 0;
       let dThermalMax = 0;
 
-      if (d.material && d.material.ctePpmK > 0) {
+      if (d.material && d.material.ctePpmK !== 0) {
         const alpha = d.material.ctePpmK * 1e-6;
         const dTLow = tMin - refTemp;
         const dTHigh = tMax - refTemp;
@@ -183,7 +185,8 @@ export class ToleranceStackVerifier {
     // Statistical Root-Sum-Square (RSS) 3-sigma estimate
     const sigmaGap = Math.sqrt(varianceSum);
     const threeSigma = 3 * sigmaGap;
-    const meanGap = nominalGap + (totalThermalMin + totalThermalMax) / 2 + (totalElasticMin + totalElasticMax) / 2;
+    const meanGap =
+      nominalGap + meanTolShift + (totalThermalMin + totalThermalMax) / 2 + (totalElasticMin + totalElasticMax) / 2;
 
     const isCertifiedSafe = worstMinGap >= minRequiredClearance;
 

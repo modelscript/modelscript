@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { CfdDialect } from "../types.js";
+import type { CfdDialect, CfdModelData } from "../types.js";
 import { OpenFoamDialect } from "./openfoam.js";
 import { Su2Dialect } from "./su2.js";
 
@@ -31,6 +31,10 @@ export function getCfdDialect(idOrExt: string): CfdDialect {
   }
   // Default to SU2 dialect
   return defaultSu2;
+}
+
+export function parseCfdConfig(text: string, idOrExt = "su2"): CfdModelData {
+  return getCfdDialect(idOrExt).parse(text);
 }
 
 export * from "./openfoam.js";

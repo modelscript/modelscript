@@ -42,7 +42,7 @@ end BouncingBall;`;
       const u = entry?.resourceId ?? uri;
       const dt = docTrees.get(u);
       if (!dt) return null;
-      return dt.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+      return dt.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
     },
   };
 

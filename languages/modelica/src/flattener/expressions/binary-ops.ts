@@ -36,12 +36,27 @@ export function exprReferencesRuntimeParameter(
   if (k === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
     if (!name) return false;
+    const isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
     const varIdx = dae.lookupVariable(name);
     if (varIdx >= 0) {
       const v = dae.getVarVariability(varIdx);
-      if (v === Variability.Parameter && !dae.isVarFinal(varIdx)) {
+      if (v === Variability.Parameter && (!dae.isVarFinal(varIdx) || (isOldFrontend && name.includes(".")))) {
         if (includeInteger || dae.getVarType(varIdx) !== VarType.Integer) {
           return true;
+        }
+      }
+    } else {
+      const state = getFlatteningState(dae);
+      const db: QueryDB | undefined = state.flattener?.db ?? state.db;
+      if (db) {
+        const leaf = (name.includes(".") ? name.split(".").pop()! : name).replace(/\[.*\]$/, "");
+        for (const s of db.byName(leaf)) {
+          if (s.kind === "Component" && db.query("variability", s.id) === "parameter") {
+            const ts = db.query<string | null>("typeSpecifier", s.id);
+            if (includeInteger || ts !== "Integer") {
+              return true;
+            }
+          }
         }
       }
     }
@@ -365,7 +380,11 @@ export function mulWithSimplification(leftId: number, rightId: number, dae: DAEB
     const newNum = mulWithSimplification(lNum, rNum, dae);
     const rDenKind = dae.getExprKind(rDen);
     let newDen: number;
-    if (rDenKind === ExprKind.Call || rDenKind === ExprKind.Name) {
+    if (
+      rDenKind === ExprKind.Call ||
+      rDenKind === ExprKind.Name ||
+      (rDenKind === ExprKind.Binary && dae.getExprKind(lDen) === ExprKind.Name)
+    ) {
       newDen = mulWithSimplification(rDen, lDen, dae);
     } else {
       newDen = mulWithSimplification(lDen, rDen, dae);
@@ -429,6 +448,10 @@ export function mulWithSimplification(leftId: number, rightId: number, dae: DAEB
   }
   const curLK = dae.getExprKind(leftId);
   const curRK = dae.getExprKind(rightId);
+  if (curLK === ExprKind.RealLiteral && isNegNode(rightId)) {
+    const negVal = -dae.getExprRealValue(leftId);
+    return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(negVal), dae.getExprLeft(rightId));
+  }
   if (
     curLK === ExprKind.RealLiteral &&
     curRK === ExprKind.Binary &&
@@ -443,6 +466,40 @@ export function mulWithSimplification(leftId: number, rightId: number, dae: DAEB
       dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(negVal), innerLeft),
       innerRight,
     );
+  }
+  const extractLeadingLit = (id: number): { litId: number; restId: number } | null => {
+    if (id < 0 || dae.getExprKind(id) !== ExprKind.Binary || dae.getExprData1(id) !== BinOp.Mul) {
+      return null;
+    }
+    const l = dae.getExprLeft(id);
+    const r = dae.getExprRight(id);
+    const lKind = dae.getExprKind(l);
+    if (lKind === ExprKind.RealLiteral || lKind === ExprKind.IntLiteral) {
+      return { litId: l, restId: r };
+    }
+    const sub = extractLeadingLit(l);
+    if (sub) {
+      return { litId: sub.litId, restId: dae.addBinaryExpr(BinOp.Mul, sub.restId, r) };
+    }
+    return null;
+  };
+  const isCurLLit = curLK === ExprKind.RealLiteral || curLK === ExprKind.IntLiteral;
+  const isCurRLit = curRK === ExprKind.RealLiteral || curRK === ExprKind.IntLiteral;
+  if (isCurLLit) {
+    const subR = extractLeadingLit(rightId);
+    if (subR) {
+      return dae.addBinaryExpr(BinOp.Mul, mulWithSimplification(leftId, subR.litId, dae), subR.restId);
+    }
+  } else if (isCurRLit) {
+    const subL = extractLeadingLit(leftId);
+    if (subL) {
+      return dae.addBinaryExpr(BinOp.Mul, mulWithSimplification(subL.litId, rightId, dae), subL.restId);
+    }
+  } else if (isOldFrontend) {
+    const subR = extractLeadingLit(rightId);
+    if (subR) {
+      return dae.addBinaryExpr(BinOp.Mul, subR.litId, dae.addBinaryExpr(BinOp.Mul, leftId, subR.restId));
+    }
   }
   if (
     (curRK === ExprKind.RealLiteral || curRK === ExprKind.IntLiteral) &&
@@ -546,6 +603,15 @@ export function addWithFactoring(term1: number, term2: number, dae: DAEBuilder):
     dae.getExprData1(dae.getExprLeft(term2)) === BinOp.Pow
   ) {
     return dae.addBinaryExpr(BinOp.Sub, term1, dae.getExprLeft(term2));
+  }
+
+  if (
+    Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+    (t1K === ExprKind.Negate || (t1K === ExprKind.Unary && (dae.getExprData1(term1) as UnaryOp) === UnaryOp.Negate)) &&
+    t2K !== ExprKind.Negate &&
+    !(t2K === ExprKind.Unary && (dae.getExprData1(term2) as UnaryOp) === UnaryOp.Negate)
+  ) {
+    return dae.addBinaryExpr(BinOp.Sub, term2, dae.getExprLeft(term1));
   }
 
   return dae.addBinaryExpr(BinOp.Add, term1, term2);
@@ -1758,7 +1824,14 @@ export function negateExpr(operandId: number, dae: DAEBuilder): number {
       const rightId = dae.getExprRight(operandId);
       return dae.addBinaryExpr(BinOp.Div, negateExpr(leftId, dae), rightId);
     }
-    if (binOp === BinOp.Sub && Boolean(dae.extensionMetadata?.["isOldFrontend"])) {
+    if (
+      binOp === BinOp.Sub &&
+      Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+      !(
+        dae.getExprKind(dae.getExprLeft(operandId)) === ExprKind.Binary &&
+        dae.getExprData1(dae.getExprLeft(operandId)) === BinOp.Div
+      )
+    ) {
       const leftId = dae.getExprLeft(operandId);
       const rightId = dae.getExprRight(operandId);
       return dae.addBinaryExpr(BinOp.Sub, rightId, leftId);

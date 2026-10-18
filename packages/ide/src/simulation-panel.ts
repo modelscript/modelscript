@@ -29,16 +29,40 @@ export interface FlowpipeEnvelope {
 }
 
 /**
- * Reachability verification dataset containing nominal trajectories, flowpipe envelopes, and safety limits.
+ * Per-variable reachability profile containing flowpipe envelopes, requirement bounds, and status badges.
  */
-export interface ReachabilityData {
-  /** Time step array in seconds. */
-  t: number[];
+export interface VariableReachabilityProfile {
   /** Monitored state or variable identifier. */
   variable: string;
   /** Nominal center trajectory values across time steps. */
   nominalTrajectory: number[];
   /** Flowpipe over-approximation envelopes. */
+  envelopes: FlowpipeEnvelope[];
+  /** Numerical safety threshold from the requirement specification or variable bounds. */
+  requirementLimit?: number | undefined;
+  /** Direction of the safety threshold ("max" for upper bound, "min" for lower bound). */
+  requirementDirection?: "max" | "min" | undefined;
+  /** Human-readable label for the safety requirement threshold. */
+  requirementLabel?: string | undefined;
+  /** Whether all primary flowpipe envelopes remain strictly within the requirement limit. */
+  isCertifiedSafe: boolean;
+  /** Optional status badges summarizing pass/warn/fail verification gates. */
+  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[] | undefined;
+  /** Optional Y-axis display range `[min, max]`. */
+  yRange?: [number, number] | undefined;
+}
+
+/**
+ * Reachability verification dataset containing nominal trajectories, flowpipe envelopes, and safety limits.
+ */
+export interface ReachabilityData {
+  /** Time step array in seconds. */
+  t: number[];
+  /** Primary monitored state or variable identifier. */
+  variable: string;
+  /** Nominal center trajectory values across time steps for the primary variable. */
+  nominalTrajectory: number[];
+  /** Flowpipe over-approximation envelopes for the primary variable. */
   envelopes: FlowpipeEnvelope[];
   /** Numerical safety threshold from the requirement specification. */
   requirementLimit: number;
@@ -50,6 +74,24 @@ export interface ReachabilityData {
   statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[] | undefined;
   /** Optional Y-axis display range `[min, max]`. */
   yRange?: [number, number] | undefined;
+  /** Per-variable reachability profiles keyed by variable name. */
+  variables?: Record<string, VariableReachabilityProfile> | undefined;
+  /** Ordered list of all model state/algebraic variable names. */
+  states?: string[] | undefined;
+  /** Full nominal trajectory matrix (`y[timeIndex][varIndex]`). */
+  y?: number[][] | undefined;
+  /** Tunable model parameters discovered for interactive sliders and sweeps. */
+  parameters?: SimulationResult["parameters"] | undefined;
+  /** Experiment configuration metadata extracted from model annotations. */
+  experiment?: SimulationResult["experiment"] | undefined;
+  /** Solver execution telemetry metrics. */
+  telemetry?: SimulationResult["telemetry"] | undefined;
+  /** Resolved Modelica class name. */
+  modelName?: string | undefined;
+  /** Human-readable summary of the reachability analysis. */
+  summary?: string | undefined;
+  /** Optional error message if reachability analysis failed. */
+  error?: string | undefined;
 }
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
@@ -127,6 +169,8 @@ export class SimulationPanel {
   public isReady = false;
   /** Most recent batch simulation result cached for webview reloads. */
   private lastResult?: SimulationResult | undefined;
+  /** Most recent reachability result cached for webview reloads. */
+  private lastReachabilityData?: ReachabilityData | undefined;
   /** Most recent live streaming configuration cached for webview reloads. */
   private lastLiveConfig?:
     | {
@@ -196,6 +240,72 @@ export class SimulationPanel {
         SimulationPanel.currentPanel.client = client;
         SimulationPanel.currentPanel.sourceUri = uri;
         SimulationPanel.currentPanel.postResults(result);
+      },
+    );
+  }
+
+  /**
+   * Executes dynamic reachability flowpipe analysis for the target model via the LSP server
+   * and opens or updates the simulation results webview panel in reachability mode.
+   */
+  static async createOrShowReachability(
+    extensionUri: vscode.Uri,
+    client: LanguageClient,
+    targetUri?: string,
+    className?: string,
+  ): Promise<ReachabilityData | undefined> {
+    const uri = targetUri || vscode.window.activeTextEditor?.document.uri.toString();
+    if (!uri) {
+      vscode.window.showWarningMessage("Open a model file to run reachability analysis.");
+      return undefined;
+    }
+
+    return vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Computing reachability flowpipes...",
+        cancellable: false,
+      },
+      async () => {
+        const reachResult: ReachabilityData = await client.sendRequest("modelscript/computeReachability", {
+          uri,
+          className,
+        });
+
+        if (reachResult.error) {
+          vscode.window.showErrorMessage(`Reachability analysis failed: ${reachResult.error}`);
+          return reachResult;
+        }
+
+        if (!reachResult.t || reachResult.t.length === 0) {
+          vscode.window.showWarningMessage("Reachability analysis produced no data.");
+          return reachResult;
+        }
+
+        if (SimulationPanel.currentPanel) {
+          SimulationPanel.currentPanel.sourceUri = uri;
+          SimulationPanel.currentPanel.client = client;
+          SimulationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+          SimulationPanel.postReachabilityData(reachResult);
+          return reachResult;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+          SimulationPanel.viewType,
+          "Simulation Results",
+          vscode.ViewColumn.Beside,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
+          },
+        );
+
+        SimulationPanel.currentPanel = new SimulationPanel(panel, extensionUri, false);
+        SimulationPanel.currentPanel.client = client;
+        SimulationPanel.currentPanel.sourceUri = uri;
+        SimulationPanel.postReachabilityData(reachResult);
+        return reachResult;
       },
     );
   }
@@ -321,7 +431,9 @@ export class SimulationPanel {
       async (msg) => {
         if (msg.type === "ready") {
           this.isReady = true;
-          if (this.lastResult) {
+          if (this.lastReachabilityData) {
+            SimulationPanel.postReachabilityData(this.lastReachabilityData);
+          } else if (this.lastResult) {
             this.postResults(this.lastResult);
           } else if (this.lastLiveConfig) {
             if (this.lastLiveConfig.type === "live") {
@@ -337,6 +449,50 @@ export class SimulationPanel {
         } else if (msg.type === "simulateRequest" && this.client) {
           const uri = this.sourceUri;
           if (!uri) return;
+
+          if (msg.payload?.reachabilityMode && !msg.payload?.sweepConfig) {
+            await vscode.window.withProgress(
+              {
+                location: vscode.ProgressLocation.Notification,
+                title: "Recomputing reachability flowpipes...",
+                cancellable: false,
+              },
+              async () => {
+                if (!this.client) return;
+                const reachResult: ReachabilityData = await this.client.sendRequest("modelscript/computeReachability", {
+                  uri,
+                  startTime: msg.payload?.startTime,
+                  stopTime: msg.payload?.stopTime,
+                  interval: msg.payload?.interval,
+                  solver: msg.payload?.solver,
+                  rtol: msg.payload?.rtol,
+                  atol: msg.payload?.atol,
+                  numberOfIntervals: msg.payload?.numberOfIntervals,
+                  maxStep: msg.payload?.maxStep,
+                  parameterOverrides: msg.payload?.parameterOverrides,
+                });
+                if (reachResult.error) {
+                  vscode.window.showErrorMessage(`Reachability analysis failed: ${reachResult.error}`);
+                  return;
+                }
+                if (reachResult.experiment) {
+                  if (msg.payload?.startTime !== undefined) reachResult.experiment.startTime = msg.payload.startTime;
+                  if (msg.payload?.stopTime !== undefined) reachResult.experiment.stopTime = msg.payload.stopTime;
+                  if (msg.payload?.interval !== undefined) reachResult.experiment.interval = msg.payload.interval;
+                  if (msg.payload?.tolerance !== undefined) reachResult.experiment.tolerance = msg.payload.tolerance;
+                }
+                if (reachResult.parameters && msg.payload?.parameterOverrides) {
+                  for (const p of reachResult.parameters) {
+                    if (msg.payload.parameterOverrides[p.name] !== undefined) {
+                      p.defaultValue = msg.payload.parameterOverrides[p.name];
+                    }
+                  }
+                }
+                SimulationPanel.postReachabilityData(reachResult);
+              },
+            );
+            return;
+          }
 
           await vscode.window.withProgress(
             {
@@ -459,6 +615,7 @@ export class SimulationPanel {
    */
   public postResults(result: SimulationResult) {
     this.lastResult = result;
+    this.lastReachabilityData = undefined;
     const isDark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
@@ -555,6 +712,7 @@ export class SimulationPanel {
    */
   static postReachabilityData(data: ReachabilityData, isDark?: boolean): void {
     if (SimulationPanel.currentPanel) {
+      SimulationPanel.currentPanel.lastReachabilityData = data;
       const dark =
         isDark ??
         (vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||

@@ -266,4 +266,112 @@ describe("Salsa Connect & Short Class Specifier Lint Suite", () => {
     );
     assert.equal(m2002.length, 0, "Should not emit cascading M2002 for unresolved component type");
   });
+
+  it("should produce 0 M3007 diagnostics on RLC connect(Vb.p, L.p) when multi-file packages are lazily indexed", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const files: Record<string, { parentFQN: string; content: string }> = {
+      "file:///msl/Modelica/package.mo": {
+        parentFQN: "",
+        content: `package Modelica end Modelica;`,
+      },
+      "file:///msl/Modelica/Electrical/package.mo": {
+        parentFQN: "Modelica",
+        content: `within Modelica; package Electrical end Electrical;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/package.mo": {
+        parentFQN: "Modelica.Electrical",
+        content: `within Modelica.Electrical; package Analog end Analog;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Interfaces/package.mo": {
+        parentFQN: "Modelica.Electrical.Analog",
+        content: `within Modelica.Electrical.Analog; package Interfaces end Interfaces;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Interfaces/PositivePin.mo": {
+        parentFQN: "Modelica.Electrical.Analog.Interfaces",
+        content: `within Modelica.Electrical.Analog.Interfaces;
+connector PositivePin
+  Real v;
+  flow Real i;
+end PositivePin;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Interfaces/NegativePin.mo": {
+        parentFQN: "Modelica.Electrical.Analog.Interfaces",
+        content: `within Modelica.Electrical.Analog.Interfaces;
+connector NegativePin
+  Real v;
+  flow Real i;
+end NegativePin;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Interfaces/TwoPin.mo": {
+        parentFQN: "Modelica.Electrical.Analog.Interfaces",
+        content: `within Modelica.Electrical.Analog.Interfaces;
+partial model TwoPin
+  PositivePin p;
+  NegativePin n;
+end TwoPin;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Interfaces/OnePort.mo": {
+        parentFQN: "Modelica.Electrical.Analog.Interfaces",
+        content: `within Modelica.Electrical.Analog.Interfaces;
+partial model OnePort
+  extends TwoPin;
+end OnePort;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Interfaces/VoltageSource.mo": {
+        parentFQN: "Modelica.Electrical.Analog.Interfaces",
+        content: `within Modelica.Electrical.Analog.Interfaces;
+partial model VoltageSource
+  extends OnePort;
+end VoltageSource;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Sources/package.mo": {
+        parentFQN: "Modelica.Electrical.Analog",
+        content: `within Modelica.Electrical.Analog; package Sources end Sources;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Sources/SineVoltage.mo": {
+        parentFQN: "Modelica.Electrical.Analog.Sources",
+        content: `within Modelica.Electrical.Analog.Sources;
+model SineVoltage
+  extends Interfaces.VoltageSource;
+end SineVoltage;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Basic/package.mo": {
+        parentFQN: "Modelica.Electrical.Analog",
+        content: `within Modelica.Electrical.Analog; package Basic end Basic;`,
+      },
+      "file:///msl/Modelica/Electrical/Analog/Basic/Inductor.mo": {
+        parentFQN: "Modelica.Electrical.Analog.Basic",
+        content: `within Modelica.Electrical.Analog.Basic;
+model Inductor
+  extends Modelica.Electrical.Analog.Interfaces.OnePort;
+end Inductor;`,
+      },
+    };
+
+    for (const [uri, { parentFQN, content }] of Object.entries(files)) {
+      ctx.workspaceIndex.register(uri, () => parser.parse(content, null, 0, 0, 0, uri).rootNode as any, parentFQN);
+    }
+    // Only index root Modelica/package.mo eagerly, leaving all subpackages lazy
+    ctx.workspaceIndex.ensureIndexed("file:///msl/Modelica/package.mo");
+
+    const rlcUri = "file:///test/RLC.mo";
+    const rlcCode = `
+model RLC
+  Modelica.Electrical.Analog.Sources.SineVoltage Vb;
+  Modelica.Electrical.Analog.Basic.Inductor L;
+equation
+  connect(Vb.p, L.p);
+end RLC;
+`;
+    ctx.workspaceIndex.register(rlcUri, () => parser.parse(rlcCode, null, 0, 0, 0, rlcUri).rootNode as any);
+    const fileIndex = ctx.workspaceIndex.getFileIndex(rlcUri);
+    ctx.queryEngine.updateIndex(ctx.workspaceIndex.toUnifiedPartial());
+
+    const fileIds = fileIndex ? new Set(fileIndex.symbols.keys()) : new Set<number>();
+    const diags = await ctx.queryEngine.runAllLintsAsync(rlcUri, undefined, fileIds);
+    assert.equal(diags.length, 0, `Expected 0 diagnostics on RLC model, got: ${JSON.stringify(diags)}`);
+  });
 });

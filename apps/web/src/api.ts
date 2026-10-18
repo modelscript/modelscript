@@ -1782,6 +1782,11 @@ export const createPost = async (payload: Record<string, any>): Promise<{ post: 
   return data;
 };
 
+export const updatePost = async (id: string | number, payload: Record<string, any>): Promise<{ post: any }> => {
+  const { data } = await api.put(`/social/posts/${id}`, payload);
+  return data;
+};
+
 export const getBookmarks = async (): Promise<{ posts: any[] }> => {
   const { data } = await api.get("/social/bookmarks");
   return data;

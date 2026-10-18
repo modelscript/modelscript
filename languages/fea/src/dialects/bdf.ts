@@ -32,7 +32,11 @@ export class BdfDialect implements FeaDialect {
       elementSets: new Map(),
       materials: new Map(),
       fixedNodes: new Set(),
+      fixedDofs: new Map(),
       nodalLoads: new Map(),
+      elsetMaterials: new Map(),
+      sectionThickness: new Map(),
+      beamAreas: new Map(),
     };
 
     /**
@@ -48,6 +52,15 @@ export class BdfDialect implements FeaDialect {
         return parseFloat(`${shortMatch[1]}e${shortMatch[2]}`);
       }
       return parseFloat(trimmed);
+    }
+
+    function parseComponentDofs(cField: string | undefined): number[] {
+      const digits = (cField || "123456")
+        .trim()
+        .split("")
+        .map((ch) => parseInt(ch, 10))
+        .filter((d) => !isNaN(d) && d >= 1 && d <= 6);
+      return digits.length > 0 ? digits : [1, 2, 3];
     }
 
     const cardTokensList: string[][] = [];
@@ -82,8 +95,13 @@ export class BdfDialect implements FeaDialect {
 
       if (isContinuation && cardTokensList.length > 0) {
         const prev = cardTokensList[cardTokensList.length - 1]!;
-        // Remove trailing continuation marker on previous line if present (e.g. "+C1" at index 9)
-        if (prev.length >= 10 && (prev[prev.length - 1]!.startsWith("+") || prev[prev.length - 1]!.startsWith("*"))) {
+        // Remove trailing continuation marker on previous line if present (e.g. "+C1")
+        if (
+          prev.length >= 2 &&
+          (prev[prev.length - 1]!.startsWith("+") ||
+            prev[prev.length - 1]!.startsWith("*") ||
+            prev[prev.length - 1] === "")
+        ) {
           prev.pop();
         }
         // Skip leading continuation marker in tokens[0]
@@ -149,12 +167,47 @@ export class BdfDialect implements FeaDialect {
         }
       } else if (card === "CHEXA" && tokens.length >= 11) {
         const id = parseInt(tokens[1]!, 10);
+        const maxNodeIdx = tokens.length >= 23 ? 23 : tokens.length;
         const nodes = tokens
-          .slice(3, 11)
+          .slice(3, maxNodeIdx)
           .map((t) => parseInt(t, 10))
           .filter((n) => !isNaN(n));
-        if (!isNaN(id)) {
+        if (!isNaN(id) && nodes.length >= 8) {
           data.elements.set(id, { id, type: "CHEXA", family: "solid", nodes });
+        }
+      } else if (card === "CPENTA" && tokens.length >= 9) {
+        const id = parseInt(tokens[1]!, 10);
+        const maxNodeIdx = tokens.length >= 18 ? 18 : 9;
+        const nodes = tokens
+          .slice(3, maxNodeIdx)
+          .map((t) => parseInt(t, 10))
+          .filter((n) => !isNaN(n));
+        if (!isNaN(id) && nodes.length >= 6) {
+          data.elements.set(id, { id, type: "CPENTA", family: "solid", nodes });
+        }
+      } else if ((card === "CBAR" || card === "CBEAM" || card === "CROD") && tokens.length >= 5) {
+        const id = parseInt(tokens[1]!, 10);
+        const n1 = parseInt(tokens[3]!, 10);
+        const n2 = parseInt(tokens[4]!, 10);
+        if (!isNaN(id) && !isNaN(n1) && !isNaN(n2)) {
+          data.elements.set(id, {
+            id,
+            type: card,
+            family: card === "CROD" ? "truss" : "beam",
+            nodes: [n1, n2],
+          });
+        }
+      } else if (card === "CONROD" && tokens.length >= 4) {
+        const id = parseInt(tokens[1]!, 10);
+        const n1 = parseInt(tokens[2]!, 10);
+        const n2 = parseInt(tokens[3]!, 10);
+        if (!isNaN(id) && !isNaN(n1) && !isNaN(n2)) {
+          data.elements.set(id, {
+            id,
+            type: "CROD",
+            family: "truss",
+            nodes: [n1, n2],
+          });
         }
       } else if (card === "MAT1" && tokens.length >= 3) {
         const mid = tokens[1]!;
@@ -167,16 +220,22 @@ export class BdfDialect implements FeaDialect {
           nu: nu !== undefined && !isNaN(nu) ? nu : undefined,
           rho: rho !== undefined && !isNaN(rho) ? rho : undefined,
         });
-      } else if ((card === "SPC" || card === "SPC1") && tokens.length >= 3) {
-        const startIdx = card === "SPC1" ? 3 : 2;
+      } else if (card === "SPC1" && tokens.length >= 4) {
+        const compDofs = parseComponentDofs(tokens[2]);
+        const applyFixedDofs = (g: number) => {
+          data.fixedNodes.add(g);
+          if (!data.fixedDofs!.has(g)) data.fixedDofs!.set(g, new Set());
+          const set = data.fixedDofs!.get(g)!;
+          for (const d of compDofs) set.add(d);
+        };
         let lastGrid: number | null = null;
-        for (let j = startIdx; j < tokens.length; j += card === "SPC" ? 3 : 1) {
+        for (let j = 3; j < tokens.length; j++) {
           const tokenStr = tokens[j]!.toUpperCase();
           if (tokenStr === "THRU" && lastGrid !== null && j + 1 < tokens.length) {
             const endGrid = parseInt(tokens[j + 1]!, 10);
             if (!isNaN(endGrid) && endGrid >= lastGrid) {
               for (let g = lastGrid + 1; g <= endGrid; g++) {
-                data.fixedNodes.add(g);
+                applyFixedDofs(g);
               }
             }
             j++; // skip next grid token
@@ -184,8 +243,34 @@ export class BdfDialect implements FeaDialect {
           }
           const g = parseInt(tokenStr, 10);
           if (!isNaN(g)) {
-            data.fixedNodes.add(g);
+            applyFixedDofs(g);
             lastGrid = g;
+          }
+        }
+      } else if (card === "SPC" && tokens.length >= 4) {
+        for (let j = 2; j < tokens.length; j += 3) {
+          const g = parseInt(tokens[j]!, 10);
+          if (isNaN(g)) continue;
+          const compDofs = parseComponentDofs(tokens[j + 1]);
+          const dispVal = j + 2 < tokens.length && tokens[j + 2] !== "" ? parseNastranFloat(tokens[j + 2]!) : 0.0;
+          if (!isNaN(dispVal) && Math.abs(dispVal) > 0) {
+            if (!data.displacements) data.displacements = new Map();
+            if (!data.displacements.has(g)) data.displacements.set(g, [0, 0, 0]);
+            if (!data.prescribedDisplacements) data.prescribedDisplacements = new Map();
+            if (!data.prescribedDisplacements.has(g)) data.prescribedDisplacements.set(g, new Map());
+            const vec = data.displacements.get(g)!;
+            const dofMap = data.prescribedDisplacements.get(g)!;
+            for (const d of compDofs) {
+              if (d >= 1 && d <= 3) {
+                vec[d - 1] = dispVal;
+                dofMap.set(d, dispVal);
+              }
+            }
+          } else {
+            data.fixedNodes.add(g);
+            if (!data.fixedDofs!.has(g)) data.fixedDofs!.set(g, new Set());
+            const set = data.fixedDofs!.get(g)!;
+            for (const d of compDofs) set.add(d);
           }
         }
       } else if (card === "FORCE" && tokens.length >= 8) {

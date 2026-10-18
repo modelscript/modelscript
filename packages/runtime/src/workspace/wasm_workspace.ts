@@ -266,6 +266,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   private fqnToUri = new Map<string, string>();
   /** Re-entrancy guard set tracking FQNs currently being materialized in `ensureFQNIndexed()`. */
   private ensuringFQNSet = new Set<string>();
+  /** Set of FQNs that have already been fully materialized by `ensureFQNIndexed()`. */
+  private ensuredFQNs = new Set<string>();
   /** Re-entrancy guard set tracking URIs currently being materialized in `ensureIndexed()`. */
   private ensuringUriSet = new Set<string>();
   /** Unified in-memory `SymbolIndex` aggregating all indexed declarations across files. */
@@ -384,6 +386,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     if (typeof loader === "function") {
       if (lazy) {
         this.fileLoaders.set(uri, { loader, parentFQN, editRanges });
+        this.ensuredFQNs.clear();
       } else {
         this.fileLoaders.delete(uri);
         const rootNode = loader();
@@ -429,7 +432,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Ensures that all ancestor packages and files along the specified FQN path are indexed in hierarchical order.
    */
   ensureFQNIndexed(fqn: string): void {
-    if (!fqn || this.ensuringFQNSet.has(fqn)) return;
+    if (!fqn || this.fileLoaders.size === 0 || this.ensuredFQNs.has(fqn) || this.ensuringFQNSet.has(fqn)) return;
     this.ensuringFQNSet.add(fqn);
     try {
       const parts = fqn.split(".");
@@ -460,7 +463,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           this.ensureIndexed(uri);
         }
         this.ensureChildrenIndexed(prefix);
+        this.ensuredFQNs.add(prefix);
       }
+      this.ensuredFQNs.add(fqn);
     } finally {
       this.ensuringFQNSet.delete(fqn);
     }
@@ -644,6 +649,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   private globalChangedIds = new Set<number>();
   /** Accumulated set of `SymbolId`s whose structural signature/children changed since the last `takeGlobalChangedIds()` call. */
   private globalStructuralChangedIds = new Set<number>();
+  /** Accumulated set of `SymbolId`s modified during lazy `ensureFQNIndexed()` / `ensureIndexed()` calls. */
+  private lazyChangedIds = new Set<number>();
+  /** Accumulated set of `SymbolId`s whose structural signature/children changed during lazy `ensureFQNIndexed()` / `ensureIndexed()` calls. */
+  private lazyStructuralChangedIds = new Set<number>();
 
   /** Drains and returns the accumulated sets of modified and structurally modified `SymbolId`s for Salsa invalidation. */
   takeGlobalChangedIds(): { changedIds: Set<number>; structuralChangedIds?: Set<number> | undefined } | null {
@@ -651,6 +660,16 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const structIds = new Set(this.globalStructuralChangedIds);
     this.globalChangedIds.clear();
     this.globalStructuralChangedIds.clear();
+    return { changedIds: ids, structuralChangedIds: structIds };
+  }
+
+  /** Drains and returns the accumulated sets of modified and structurally modified `SymbolId`s from lazy indexing. */
+  takeLazyChangedIds(): { changedIds: Set<number>; structuralChangedIds: Set<number> } | null {
+    if (this.lazyChangedIds.size === 0 && this.lazyStructuralChangedIds.size === 0) return null;
+    const ids = new Set(this.lazyChangedIds);
+    const structIds = new Set(this.lazyStructuralChangedIds);
+    this.lazyChangedIds.clear();
+    this.lazyStructuralChangedIds.clear();
     return { changedIds: ids, structuralChangedIds: structIds };
   }
 
@@ -673,11 +692,15 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * @param _parentFQN Optional enclosing package FQN (inferred from `within` clause if omitted).
    */
   private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
-    // Step 1: Resolve enclosing package scope from top-level `within <package>;` declaration if not explicitly provided.
-    if (!_parentFQN && rootNode) {
+    // Step 1: Resolve enclosing package scope from top-level `within <package>;` declaration.
+    if (rootNode) {
       const declared = this.extractDeclaredWithin(rootNode);
       if (declared !== null) {
-        _parentFQN = declared.length > 0 ? declared : undefined;
+        if (declared.length > 0) {
+          _parentFQN = declared;
+        } else if (!uri.endsWith("/package.mo") && !uri.endsWith("package.mo")) {
+          _parentFQN = undefined;
+        }
       }
     }
     const existingIds = this.fileSymbols.get(uri);
@@ -1052,27 +1075,38 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           const existingEnd = existingEntry.endOffset ?? existingEntry.endByte;
           const intersectsDirty =
             dirtyRanges && dirtyRanges.length > 0
-              ? dirtyRanges.some(
-                  (r) =>
-                    Math.max(r.startOffset ?? r.startByte, existingStart) <=
-                    Math.min(r.endOffset ?? r.endByte, existingEnd),
-                )
+              ? dirtyRanges.some((r: any) => {
+                  const rStart = r.startOffset ?? r.startByte ?? 0;
+                  const rEnd = r.endOffset ?? r.endByte ?? 0;
+                  return (
+                    Math.max(rStart, existingStart) <= Math.min(rEnd, existingEnd) ||
+                    Math.max(rStart, nodeStart) <= Math.min(rEnd, nodeEnd)
+                  );
+                })
               : existingStart !== nodeStart || existingEnd !== nodeEnd;
           if (intersectsDirty) {
             this.globalChangedIds.add(symId);
             this.globalStructuralChangedIds.add(symId);
+            this.lazyChangedIds.add(symId);
+            this.lazyStructuralChangedIds.add(symId);
             if (parentId !== null) {
               this.globalChangedIds.add(parentId);
               this.globalStructuralChangedIds.add(parentId);
+              this.lazyChangedIds.add(parentId);
+              this.lazyStructuralChangedIds.add(parentId);
             }
           }
         } else {
           symId = this.nextSymbolId++;
           this.globalChangedIds.add(symId);
           this.globalStructuralChangedIds.add(symId);
+          this.lazyChangedIds.add(symId);
+          this.lazyStructuralChangedIds.add(symId);
           if (parentId !== null) {
             this.globalChangedIds.add(parentId);
             this.globalStructuralChangedIds.add(parentId);
+            this.lazyChangedIds.add(parentId);
+            this.lazyStructuralChangedIds.add(parentId);
           }
         }
 
@@ -1184,9 +1218,31 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
       let parentEntries = this.unifiedIndex.byName.get(_parentFQN);
       if (!parentEntries || parentEntries.length === 0) {
-        const lastPart = _parentFQN.split(".").pop();
+        const parts = _parentFQN.split(".");
+        const lastPart = parts.pop();
         if (lastPart) {
-          parentEntries = this.unifiedIndex.byName.get(lastPart);
+          const candidates = this.unifiedIndex.byName.get(lastPart);
+          if (candidates && candidates.length > 0) {
+            if (parts.length === 0) {
+              parentEntries = candidates;
+            } else {
+              const matched = candidates.filter((candId) => {
+                let curr: SymbolId | null = candId;
+                for (let pIdx = parts.length; pIdx >= 0; pIdx--) {
+                  if (curr === null) return false;
+                  const sym = this.unifiedIndex.symbols.get(curr);
+                  if (!sym) return false;
+                  const expectedName = pIdx === parts.length ? lastPart : parts[pIdx]!;
+                  if (sym.name !== expectedName) return false;
+                  curr = sym.parentId;
+                }
+                return curr === null;
+              });
+              if (matched.length > 0) {
+                parentEntries = matched;
+              }
+            }
+          }
         }
       }
       if (parentEntries && parentEntries.length > 0) {
@@ -2208,8 +2264,10 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
    * domain bit-partitioning whenever `domainPartitioning` is enabled or a `SymbolId` collision is detected.
    */
   private mergeIndices(merged: SymbolIndex, entries: [string, SymbolIndex | null][]): SymbolIndex {
+    const seenIndices = new Set<SymbolIndex>();
     for (const [lang, idx] of entries) {
-      if (!idx) continue;
+      if (!idx || seenIndices.has(idx)) continue;
+      seenIndices.add(idx);
 
       const domain = getLanguageDomainId(lang);
       const mustRemap = this.domainPartitioning && domain !== LanguageDomainId.Default;
@@ -2331,6 +2389,22 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         (ws as any).ensureFQNIndexed(fqn);
       }
     }
+  }
+
+  /** Drains symbol IDs mutated during lazy file loading across all language workspaces. */
+  takeLazyChangedIds(): { changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> } {
+    const changedIds = new Set<SymbolId>();
+    const structuralChangedIds = new Set<SymbolId>();
+    for (const ws of this.workspaces.values()) {
+      if (ws && typeof (ws as any).takeLazyChangedIds === "function") {
+        const res = (ws as any).takeLazyChangedIds();
+        if (res) {
+          for (const id of res.changedIds) changedIds.add(id);
+          for (const id of res.structuralChangedIds) structuralChangedIds.add(id);
+        }
+      }
+    }
+    return { changedIds, structuralChangedIds };
   }
 
   /** Resolves a fully qualified name `fqn` to its defining document URI across all language workspaces. */

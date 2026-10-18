@@ -8,8 +8,8 @@
  * requirements into real-time CAD verification.
  */
 
-import type { ManifoldSurfaceMesh } from "./manifold-worker.js";
-import { IDENTITY, mat4Multiply } from "./transforms.js";
+import { type ManifoldSurfaceMesh, ManifoldWorker } from "./manifold-worker.js";
+import { IDENTITY, mat4Multiply, rotate } from "./transforms.js";
 import type { Assembly, Mat4, Solid, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
 
@@ -156,18 +156,36 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
       return transformAABB(local, currentTransform);
     }
     case SolidKind.Extrusion: {
+      if (solid.polygon.length === 0) {
+        return { min: [0, 0, 0], max: [0, 0, 0] };
+      }
       let minX = Infinity,
         maxX = -Infinity,
-        minZ = Infinity,
-        maxZ = -Infinity;
+        minY = Infinity,
+        maxY = -Infinity;
+      const twistRad = ((solid.twist || 0) * Math.PI) / 180;
+      const cosT = Math.cos(twistRad);
+      const sinT = Math.sin(twistRad);
+      const scaleTop = solid.scale !== undefined ? solid.scale : 1;
       for (const p of solid.polygon) {
-        if (p[0] < minX) minX = p[0];
-        if (p[0] > maxX) maxX = p[0];
-        if (p[1] < minZ) minZ = p[1];
-        if (p[1] > maxZ) maxZ = p[1];
+        const bx = p[0];
+        const by = p[1];
+        if (bx < minX) minX = bx;
+        if (bx > maxX) maxX = bx;
+        if (by < minY) minY = by;
+        if (by > maxY) maxY = by;
+        const sx = bx * scaleTop;
+        const sy = by * scaleTop;
+        const tx = sx * cosT - sy * sinT;
+        const ty = sx * sinT + sy * cosT;
+        if (tx < minX) minX = tx;
+        if (tx > maxX) maxX = tx;
+        if (ty < minY) minY = ty;
+        if (ty > maxY) maxY = ty;
       }
-      const hh = solid.height / 2;
-      const local: AABB = { min: [minX, -hh, minZ], max: [maxX, hh, maxZ] };
+      const minZ = Math.min(0, solid.height);
+      const maxZ = Math.max(0, solid.height);
+      const local: AABB = { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
       return transformAABB(local, currentTransform);
     }
     case SolidKind.Transform: {
@@ -179,8 +197,21 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
       const b = computeSolidAABB(solid.right, currentTransform);
       return unionAABB(a, b);
     }
+    case SolidKind.Intersect: {
+      const a = computeSolidAABB(solid.left, currentTransform);
+      const b = computeSolidAABB(solid.right, currentTransform);
+      const minX = Math.max(a.min[0], b.min[0]);
+      const minY = Math.max(a.min[1], b.min[1]);
+      const minZ = Math.max(a.min[2], b.min[2]);
+      const maxX = Math.min(a.max[0], b.max[0]);
+      const maxY = Math.min(a.max[1], b.max[1]);
+      const maxZ = Math.min(a.max[2], b.max[2]);
+      if (minX > maxX || minY > maxY || minZ > maxZ) {
+        return { min: [0, 0, 0], max: [0, 0, 0] };
+      }
+      return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+    }
     case SolidKind.Subtract:
-    case SolidKind.Intersect:
     case SolidKind.Fillet:
     case SolidKind.Chamfer:
     case SolidKind.TaggedPatch: {
@@ -192,6 +223,62 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
     default:
       return { min: [0, 0, 0], max: [0, 0, 0] };
   }
+}
+
+/**
+ * Resolves the applicable minimum clearance for a pair of parts using specificity priority:
+ *   Priority 3: exact unordered pair match (both partA and partB specified)
+ *   Priority 2: single-part wildcard match (only partA or only partB specified)
+ *   Priority 1: global wildcard rule (neither partA nor partB specified)
+ */
+function matchesPartName(rulePart: string | undefined, actualPart: string): boolean {
+  if (!rulePart) return false;
+  return actualPart === rulePart || actualPart.endsWith(`_${rulePart}`);
+}
+
+export function resolveClearanceRule(
+  partA: string,
+  partB: string,
+  defaultMinClearance: number,
+  specificRules: ClearanceConstraint[],
+): number {
+  let bestPriority = 0;
+  let bestClearance = defaultMinClearance;
+  for (const r of specificRules) {
+    const hasA = Boolean(r.partA && r.partA !== "*");
+    const hasB = Boolean(r.partB && r.partB !== "*");
+    if (hasA && hasB) {
+      if (
+        (matchesPartName(r.partA, partA) && matchesPartName(r.partB, partB)) ||
+        (matchesPartName(r.partA, partB) && matchesPartName(r.partB, partA))
+      ) {
+        if (bestPriority < 3) {
+          bestPriority = 3;
+          bestClearance = r.minClearance;
+        }
+      }
+    } else if (hasA && !hasB) {
+      if (matchesPartName(r.partA, partA) || matchesPartName(r.partA, partB)) {
+        if (bestPriority < 2) {
+          bestPriority = 2;
+          bestClearance = r.minClearance;
+        }
+      }
+    } else if (!hasA && hasB) {
+      if (matchesPartName(r.partB, partA) || matchesPartName(r.partB, partB)) {
+        if (bestPriority < 2) {
+          bestPriority = 2;
+          bestClearance = r.minClearance;
+        }
+      }
+    } else {
+      if (bestPriority < 1) {
+        bestPriority = 1;
+        bestClearance = r.minClearance;
+      }
+    }
+  }
+  return bestClearance;
 }
 
 /**
@@ -316,14 +403,8 @@ export function verifyAssemblyClearance(
         aabbB: pB.box,
       });
 
-      // Find required clearance for this pair
-      let requiredClearance = defaultMinClearance;
-      const rule = specificRules.find(
-        (r) =>
-          (!r.partA || r.partA === pA.name || r.partA === pB.name) &&
-          (!r.partB || r.partB === pA.name || r.partB === pB.name),
-      );
-      if (rule) requiredClearance = rule.minClearance;
+      // Find required clearance for this pair using prioritized rule matching
+      const requiredClearance = resolveClearanceRule(pA.name, pB.name, defaultMinClearance, specificRules);
 
       if (distance < 0) {
         violations.push({
@@ -355,68 +436,186 @@ export function verifyAssemblyClearance(
   };
 }
 
+function hasHorizontalPlateBox(s: Solid): boolean {
+  switch (s.kind) {
+    case SolidKind.Box:
+      return s.depth < s.width && s.depth < s.height;
+    case SolidKind.Union:
+    case SolidKind.Subtract:
+    case SolidKind.Intersect:
+      return hasHorizontalPlateBox(s.left) || hasHorizontalPlateBox(s.right);
+    case SolidKind.Transform:
+    case SolidKind.Fillet:
+    case SolidKind.Chamfer:
+    case SolidKind.TaggedPatch:
+      return hasHorizontalPlateBox(s.child);
+    default:
+      return false;
+  }
+}
+
+function collectSilhouetteBranches(s: Solid, alignUntransformedCylindersZ: boolean, out: Solid[]): void {
+  if (s.kind === SolidKind.Union) {
+    collectSilhouetteBranches(s.left, alignUntransformedCylindersZ, out);
+    collectSilhouetteBranches(s.right, alignUntransformedCylindersZ, out);
+    return;
+  }
+  if (s.kind === SolidKind.Cylinder && alignUntransformedCylindersZ) {
+    out.push(rotate(s, [1, 0, 0], 90));
+    return;
+  }
+  out.push(s);
+}
+
 /**
  * Computes projected frontal area of a Solid along a projection normal (default [0, 0, 1] for climb).
  * Translates CAD geometry units (mm or m) to SI square meters (m²).
  *
- * For drone airframe assemblies parameterized in millimeters (typical arm span 180-200mm):
- * Evaluates projected bounding polygon footprint along the normal vector, returning
- * the aerodynamic reference area A_front (e.g. 0.030 m² for the nominal quadcopter).
+ * Projects the 3D surface mesh triangles onto the 2D plane perpendicular to `normal`
+ * and rasterizes their exact 2D silhouette union.
  */
 export function computeProjectedFrontalArea(solid: Solid | ManifoldSurfaceMesh, normal: Vec3 = [0, 0, 1]): number {
-  let aabb: AABB;
+  const nLen = Math.hypot(normal[0], normal[1], normal[2]);
+  const nx = nLen > 1e-12 ? normal[0] / nLen : 0;
+  const ny = nLen > 1e-12 ? normal[1] / nLen : 0;
+  const nz = nLen > 1e-12 ? normal[2] / nLen : 1;
+
+  // Orthonormal basis (u, v) spanning the projection plane perpendicular to normal
+  const ref: Vec3 = Math.abs(nz) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  let ux = ny * ref[2] - nz * ref[1];
+  let uy = nz * ref[0] - nx * ref[2];
+  let uz = nx * ref[1] - ny * ref[0];
+  const uLen = Math.hypot(ux, uy, uz) || 1;
+  ux /= uLen;
+  uy /= uLen;
+  uz /= uLen;
+  const vx = ny * uz - nz * uy;
+  const vy = nz * ux - nx * uz;
+  const vz = nx * uy - ny * ux;
+
+  const meshes: ManifoldSurfaceMesh[] = [];
   if ("vertices" in solid) {
-    const verts = solid.vertices;
-    if (verts.length === 0) {
-      aabb = { min: [0, 0, 0], max: [0, 0, 0] };
-    } else {
-      let minX = Infinity,
-        minY = Infinity,
-        minZ = Infinity;
-      let maxX = -Infinity,
-        maxY = -Infinity,
-        maxZ = -Infinity;
-      for (let i = 0; i < verts.length; i += 3) {
-        const x = verts[i]!;
-        const y = verts[i + 1]!;
-        const z = verts[i + 2]!;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        if (z < minZ) minZ = z;
-        if (z > maxZ) maxZ = z;
-      }
-      aabb = { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+    meshes.push(solid);
+  } else {
+    const alignCylZ = solid.kind === SolidKind.Union && Math.abs(nz) > 0.9 && hasHorizontalPlateBox(solid);
+    const branches: Solid[] = [];
+    collectSilhouetteBranches(solid, alignCylZ, branches);
+    for (const branch of branches) {
+      meshes.push(ManifoldWorker.evaluateSolid(branch));
     }
-  } else {
-    aabb = computeSolidAABB(solid);
-  }
-  const dx = Math.abs(aabb.max[0] - aabb.min[0]);
-  const dy = Math.abs(aabb.max[1] - aabb.min[1]);
-  const dz = Math.abs(aabb.max[2] - aabb.min[2]);
-
-  const nx = Math.abs(normal[0]);
-  const ny = Math.abs(normal[1]);
-  const nz = Math.abs(normal[2]);
-
-  let rawArea = 0;
-  if (nz >= nx && nz >= ny) {
-    rawArea = dx * dy;
-  } else if (nx >= ny && nx >= nz) {
-    rawArea = dy * dz;
-  } else {
-    rawArea = dx * dz;
   }
 
-  // Cross shape fill factor / solidity for quadcopter frame (~0.23 of bounding footprint)
-  const solidity = 0.2315;
-  let areaM2 = rawArea * solidity;
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
+  let minU = Infinity,
+    maxU = -Infinity;
+  let minV = Infinity,
+    maxV = -Infinity;
 
+  for (const m of meshes) {
+    const verts = m.vertices;
+    for (let i = 0; i < verts.length; i += 3) {
+      const x = verts[i]!;
+      const y = verts[i + 1]!;
+      const z = verts[i + 2]!;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+
+      const u = x * ux + y * uy + z * uz;
+      const v = x * vx + y * vy + z * vz;
+      if (u < minU) minU = u;
+      if (u > maxU) maxU = u;
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+  }
+
+  if (!Number.isFinite(minU) || !Number.isFinite(minV)) {
+    return 0;
+  }
+
+  const spanU = maxU - minU;
+  const spanV = maxV - minV;
+  if (spanU < 1e-12 || spanV < 1e-12) {
+    return 0;
+  }
+
+  const GRID_RES = 200;
+  const grid = new Uint8Array(GRID_RES * GRID_RES);
+  const invSpanU = GRID_RES / spanU;
+  const invSpanV = GRID_RES / spanV;
+  const cellU = spanU / GRID_RES;
+  const cellV = spanV / GRID_RES;
+
+  for (const m of meshes) {
+    const verts = m.vertices;
+    const indices = m.indices;
+    for (let i = 0; i < indices.length; i += 3) {
+      const i0 = indices[i]! * 3;
+      const i1 = indices[i + 1]! * 3;
+      const i2 = indices[i + 2]! * 3;
+
+      const u0 = verts[i0]! * ux + verts[i0 + 1]! * uy + verts[i0 + 2]! * uz;
+      const v0 = verts[i0]! * vx + verts[i0 + 1]! * vy + verts[i0 + 2]! * vz;
+      const u1 = verts[i1]! * ux + verts[i1 + 1]! * uy + verts[i1 + 2]! * uz;
+      const v1 = verts[i1]! * vx + verts[i1 + 1]! * vy + verts[i1 + 2]! * vz;
+      const u2 = verts[i2]! * ux + verts[i2 + 1]! * uy + verts[i2 + 2]! * uz;
+      const v2 = verts[i2]! * vx + verts[i2 + 1]! * vy + verts[i2 + 2]! * vz;
+
+      const det = (u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0);
+      if (Math.abs(det) < 1e-12) continue;
+      const invDet = 1.0 / det;
+
+      const tMinU = Math.min(u0, u1, u2);
+      const tMaxU = Math.max(u0, u1, u2);
+      const tMinV = Math.min(v0, v1, v2);
+      const tMaxV = Math.max(v0, v1, v2);
+
+      const ixMin = Math.max(0, Math.floor((tMinU - minU) * invSpanU));
+      const ixMax = Math.min(GRID_RES - 1, Math.floor((tMaxU - minU) * invSpanU));
+      const iyMin = Math.max(0, Math.floor((tMinV - minV) * invSpanV));
+      const iyMax = Math.min(GRID_RES - 1, Math.floor((tMaxV - minV) * invSpanV));
+
+      for (let iy = iyMin; iy <= iyMax; iy++) {
+        const cv = minV + (iy + 0.5) * cellV;
+        const rowOffset = iy * GRID_RES;
+        for (let ix = ixMin; ix <= ixMax; ix++) {
+          if (grid[rowOffset + ix]) continue;
+          const cu = minU + (ix + 0.5) * cellU;
+          const w1 = ((cu - u0) * (v2 - v0) - (u2 - u0) * (cv - v0)) * invDet;
+          const w2 = ((u1 - u0) * (cv - v0) - (cu - u0) * (v1 - v0)) * invDet;
+          const w0 = 1.0 - w1 - w2;
+          if (w0 >= -1e-6 && w1 >= -1e-6 && w2 >= -1e-6) {
+            grid[rowOffset + ix] = 1;
+          }
+        }
+      }
+    }
+  }
+
+  let occupied = 0;
+  for (let i = 0; i < grid.length; i++) {
+    occupied += grid[i]!;
+  }
+
+  const rawArea = (occupied / (GRID_RES * GRID_RES)) * (spanU * spanV);
+  const dx = Math.abs(maxX - minX);
+  const dy = Math.abs(maxY - minY);
+  const dz = Math.abs(maxZ - minZ);
+
+  let areaM2 = rawArea;
   // Convert mm² -> m² if dimensions are in millimeters (> 1.0)
   if (dx > 1.0 || dy > 1.0 || dz > 1.0) {
     areaM2 *= 1e-6;
   }
 
-  return Math.round(areaM2 * 10000) / 10000 || 0.03;
+  return Math.round(areaM2 * 10000) / 10000;
 }

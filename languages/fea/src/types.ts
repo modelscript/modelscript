@@ -48,8 +48,13 @@ export interface FeaModelData {
   elementSets: Map<string, Set<number>>;
   materials: Map<string, FeaMaterial>;
   fixedNodes: Set<number>;
+  fixedDofs?: Map<number, Set<number>> | undefined;
   nodalLoads: Map<number, [number, number, number]>;
   displacements?: Map<number, [number, number, number]> | undefined;
+  prescribedDisplacements?: Map<number, Map<number, number>> | undefined;
+  elsetMaterials?: Map<string, string> | undefined;
+  sectionThickness?: Map<string, number> | undefined;
+  beamAreas?: Map<string, number> | undefined;
 }
 
 export type ParameterLookup = (name: string) => number | string | undefined;

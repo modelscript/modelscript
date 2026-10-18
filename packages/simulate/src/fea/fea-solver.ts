@@ -301,6 +301,117 @@ export class FeaSolver {
   }
 
   /**
+   * Computes the rotated element stiffness matrix K_rot = T_e * Ke * T_e^T into this.scratchKeRot.
+   */
+  private computeRotatedElementStiffness(e: number, u: Float64Array): { KeRot: Float64Array; R: Float64Array } {
+    const KeBase = this.elementKe[e]!;
+    const npe = this.nodesPerElement;
+    const edof = npe * 3;
+    const R = this.computeElementRotation(e, u);
+    const Ke = this.scratchKeRot;
+    const M = this.scratchM;
+    const RM = this.scratchRM;
+
+    for (let i = 0; i < npe; i++) {
+      for (let j = 0; j < npe; j++) {
+        // Extract 3x3 block M = Ke[i, j]
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            M[r * 3 + c] = KeBase[(i * 3 + r) * edof + (j * 3 + c)]!;
+          }
+        }
+        // Compute R * M * R^T
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            let sum = 0.0;
+            for (let k = 0; k < 3; k++) sum += R[r * 3 + k]! * M[k * 3 + c]!;
+            RM[r * 3 + c] = sum;
+          }
+        }
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            let sum = 0.0;
+            for (let k = 0; k < 3; k++) sum += RM[r * 3 + k]! * R[c * 3 + k]!;
+            Ke[(i * 3 + r) * edof + (j * 3 + c)] = sum;
+          }
+        }
+      }
+    }
+    return { KeRot: Ke, R };
+  }
+
+  /**
+   * Accumulates the corotational geometric load correction -T_e * Ke * (R_e^T - I) * (X_e - X_c) into rhs.
+   */
+  private accumulateCorotationalGeometricLoad(u: Float64Array, rhs: Float64Array, fixedDofs: Set<number>): void {
+    const { nodeCoords, elements, numElements } = this.mesh;
+    const npe = this.nodesPerElement;
+    const edof = npe * 3;
+    const ge = new Float64Array(edof);
+    const fLocal = new Float64Array(edof);
+
+    for (let e = 0; e < numElements; e++) {
+      const R = this.computeElementRotation(e, u);
+      const KeBase = this.elementKe[e]!;
+      const eBase = e * npe;
+
+      let Xcx = 0.0,
+        Xcy = 0.0,
+        Xcz = 0.0;
+      for (let i = 0; i < npe; i++) {
+        const ni = elements[eBase + i]!;
+        Xcx += nodeCoords[ni * 3 + 0]!;
+        Xcy += nodeCoords[ni * 3 + 1]!;
+        Xcz += nodeCoords[ni * 3 + 2]!;
+      }
+      Xcx /= npe;
+      Xcy /= npe;
+      Xcz /= npe;
+
+      // g_{e,i} = (R^T - I) * (X_i - X_c)
+      for (let i = 0; i < npe; i++) {
+        const ni = elements[eBase + i]!;
+        const dXx = nodeCoords[ni * 3 + 0]! - Xcx;
+        const dXy = nodeCoords[ni * 3 + 1]! - Xcy;
+        const dXz = nodeCoords[ni * 3 + 2]! - Xcz;
+
+        ge[i * 3 + 0] = (R[0]! - 1.0) * dXx + R[3]! * dXy + R[6]! * dXz;
+        ge[i * 3 + 1] = R[1]! * dXx + (R[4]! - 1.0) * dXy + R[7]! * dXz;
+        ge[i * 3 + 2] = R[2]! * dXx + R[5]! * dXy + (R[8]! - 1.0) * dXz;
+      }
+
+      // fLocal = KeBase * ge
+      for (let r = 0; r < edof; r++) {
+        let sum = 0.0;
+        const rOff = r * edof;
+        for (let c = 0; c < edof; c++) {
+          sum += KeBase[rOff + c]! * ge[c]!;
+        }
+        fLocal[r] = sum;
+      }
+
+      // Rotate to global and subtract from rhs: rhs -= T_e * fLocal
+      for (let i = 0; i < npe; i++) {
+        const ni = elements[eBase + i]!;
+        const flx = fLocal[i * 3 + 0]!;
+        const fly = fLocal[i * 3 + 1]!;
+        const flz = fLocal[i * 3 + 2]!;
+
+        const fgx = R[0]! * flx + R[1]! * fly + R[2]! * flz;
+        const fgy = R[3]! * flx + R[4]! * fly + R[5]! * flz;
+        const fgz = R[6]! * flx + R[7]! * fly + R[8]! * flz;
+
+        const r0 = ni * 3 + 0;
+        const r1 = ni * 3 + 1;
+        const r2 = ni * 3 + 2;
+        if (!fixedDofs.has(r0)) rhs[r0] = rhs[r0]! - fgx;
+        if (!fixedDofs.has(r1)) rhs[r1] = rhs[r1]! - fgy;
+        if (!fixedDofs.has(r2)) rhs[r2] = rhs[r2]! - fgz;
+      }
+    }
+  }
+
+  /**
    * Assembles the global stiffness values and enforces Dirichlet boundary constraints.
    * If dynFactors is provided, assembles the dynamic effective matrix KeEff = kFactor * Ke + mFactor * Me.
    */
@@ -308,8 +419,11 @@ export class FeaSolver {
     fixedDofs: Set<number>,
     corotational: boolean = false,
     dynFactors?: { kFactor: number; mFactor: number },
+    prescribedDisplacements?: Map<number, number>,
+    prescribedCorr?: Float64Array,
   ): void {
     this.values.fill(0);
+    if (prescribedCorr) prescribedCorr.fill(0);
     const { elements, numElements } = this.mesh;
     const npe = this.nodesPerElement;
     const edof = npe * 3;
@@ -331,37 +445,7 @@ export class FeaSolver {
       let Ke = KeBase;
 
       if (corotational) {
-        const R = this.computeElementRotation(e, this.lastDisplacements);
-        // Rotate Ke: K_rot = T * Ke * T^T
-        Ke = this.scratchKeRot;
-        const M = this.scratchM;
-        const RM = this.scratchRM;
-
-        for (let i = 0; i < npe; i++) {
-          for (let j = 0; j < npe; j++) {
-            // Extract 3x3 block M = Ke[i, j]
-            for (let r = 0; r < 3; r++) {
-              for (let c = 0; c < 3; c++) {
-                M[r * 3 + c] = KeBase[(i * 3 + r) * edof + (j * 3 + c)]!;
-              }
-            }
-            // Compute R * M * R^T
-            for (let r = 0; r < 3; r++) {
-              for (let c = 0; c < 3; c++) {
-                let sum = 0.0;
-                for (let k = 0; k < 3; k++) sum += R[r * 3 + k]! * M[k * 3 + c]!;
-                RM[r * 3 + c] = sum;
-              }
-            }
-            for (let r = 0; r < 3; r++) {
-              for (let c = 0; c < 3; c++) {
-                let sum = 0.0;
-                for (let k = 0; k < 3; k++) sum += RM[r * 3 + k]! * R[c * 3 + k]!;
-                Ke[(i * 3 + r) * edof + (j * 3 + c)] = sum;
-              }
-            }
-          }
-        }
+        Ke = this.computeRotatedElementStiffness(e, this.lastDisplacements).KeRot;
       }
 
       let KeEff = Ke;
@@ -393,6 +477,11 @@ export class FeaSolver {
                 if (isRowFixed || isColFixed) {
                   if (row === col) {
                     this.values[p] = 1.0;
+                  } else if (!isRowFixed && isColFixed && prescribedDisplacements && prescribedCorr) {
+                    const uBar = prescribedDisplacements.get(col);
+                    if (uBar !== undefined && uBar !== 0.0) {
+                      prescribedCorr[row] = prescribedCorr[row]! - keVal * uBar;
+                    }
                   }
                 } else {
                   this.values[p] = this.values[p]! + keVal;
@@ -435,12 +524,23 @@ export class FeaSolver {
       this.currentAccelerations.fill(0);
     }
 
-    // 1. Identify all constrained DOFs
+    // 1. Identify all constrained DOFs (from fixedNodes, fixedDofs, and prescribedDisplacements)
     const fixedDofs = new Set<number>();
     for (const n of bcs.fixedNodes) {
       fixedDofs.add(n * 3 + 0);
       fixedDofs.add(n * 3 + 1);
       fixedDofs.add(n * 3 + 2);
+    }
+    if (bcs.fixedDofs) {
+      for (const dof of bcs.fixedDofs) {
+        fixedDofs.add(dof);
+      }
+    }
+    const prescribed = bcs.prescribedDisplacements;
+    if (prescribed) {
+      for (const dof of prescribed.keys()) {
+        fixedDofs.add(dof);
+      }
     }
 
     // 2. Determine solver mode (static vs. transient Newmark-beta)
@@ -449,6 +549,7 @@ export class FeaSolver {
     const dt = bcs.dt ?? 0.005;
     const alphaM = this.material.alphaM ?? 0.05;
     const betaK = this.material.betaK ?? 0.001;
+    const prescribedCorr = new Float64Array(this.numDofs);
 
     let a0 = 0,
       a1 = 0,
@@ -470,22 +571,34 @@ export class FeaSolver {
       a6 = dt * (1.0 - gamma);
       a7 = gamma * dt;
 
-      this.assembleGlobalStiffness(fixedDofs, corotational, {
-        kFactor: 1.0 + a1 * betaK,
-        mFactor: a0 + a1 * alphaM,
-      });
+      this.assembleGlobalStiffness(
+        fixedDofs,
+        corotational,
+        {
+          kFactor: 1.0 + a1 * betaK,
+          mFactor: a0 + a1 * alphaM,
+        },
+        prescribed,
+        prescribedCorr,
+      );
     } else {
-      this.assembleGlobalStiffness(fixedDofs, corotational);
+      this.assembleGlobalStiffness(fixedDofs, corotational, undefined, prescribed, prescribedCorr);
     }
 
     // 3. Assemble RHS load vector f
-    const rhs = new Float64Array(this.numDofs);
+    const baseRhs = new Float64Array(this.numDofs);
     for (const [node, force] of bcs.nodalLoads) {
-      if (!bcs.fixedNodes.has(node)) {
-        rhs[node * 3 + 0] = rhs[node * 3 + 0]! + force[0];
-        rhs[node * 3 + 1] = rhs[node * 3 + 1]! + force[1];
-        rhs[node * 3 + 2] = rhs[node * 3 + 2]! + force[2];
+      for (let d = 0; d < 3; d++) {
+        const dof = node * 3 + d;
+        if (!fixedDofs.has(dof)) {
+          baseRhs[dof] = baseRhs[dof]! + force[d]!;
+        }
       }
+    }
+
+    const rhs = new Float64Array(baseRhs);
+    for (let i = 0; i < this.numDofs; i++) {
+      rhs[i] = rhs[i]! + prescribedCorr[i]!;
     }
 
     if (isTransient) {
@@ -508,7 +621,9 @@ export class FeaSolver {
       const edof = npe * 3;
       for (let e = 0; e < numElements; e++) {
         const Me = this.elementMe[e]!;
-        const Ke = this.elementKe[e]!;
+        const Ke = corotational
+          ? this.computeRotatedElementStiffness(e, this.lastDisplacements).KeRot
+          : this.elementKe[e]!;
         for (let i = 0; i < npe; i++) {
           const ni = elements[e * npe + i]!;
           for (let di = 0; di < 3; di++) {
@@ -527,31 +642,29 @@ export class FeaSolver {
           }
         }
       }
+
+      if (corotational) {
+        this.accumulateCorotationalGeometricLoad(this.lastDisplacements, rhs, fixedDofs);
+      }
+    } else if (corotational) {
+      this.accumulateCorotationalGeometricLoad(this.lastDisplacements, rhs, fixedDofs);
     }
 
     for (const dof of fixedDofs) {
-      rhs[dof] = 0.0;
+      rhs[dof] = prescribed?.get(dof) ?? 0.0;
     }
 
     // 4. Solve Ku = f via Preconditioned Conjugate Gradient (PCG)
-    let isInitialZero = true;
-    for (let i = 0; i < this.numDofs; i++) {
-      if (Math.abs(this.lastDisplacements[i]!) > 1e-18) {
-        isInitialZero = false;
-        break;
-      }
-    }
-
     const u = new Float64Array(this.lastDisplacements); // warm-start from previous step
     for (const dof of fixedDofs) {
-      u[dof] = 0.0;
+      u[dof] = prescribed?.get(dof) ?? 0.0;
     }
 
     this.solvePcg(rhs, u, tol, maxIters);
 
-    // If static corotational solve started from zero displacement, perform a second
-    // Picard iteration with updated element rotations R(u^(0)) so one-shot solve() is non-linear
-    if (corotational && !isTransient && isInitialZero) {
+    // For static corotational solves, perform up to 5 nonlinear Picard/Newton iterations
+    // with updated element rotations R(u^(k)) and corotational geometric load correction
+    if (corotational && !isTransient) {
       let hasNonZeroDisp = false;
       for (let i = 0; i < this.numDofs; i++) {
         if (Math.abs(u[i]!) > 1e-12) {
@@ -560,9 +673,35 @@ export class FeaSolver {
         }
       }
       if (hasNonZeroDisp) {
-        this.lastDisplacements.set(u);
-        this.assembleGlobalStiffness(fixedDofs, true);
-        this.solvePcg(rhs, u, tol, maxIters);
+        const uPrev = new Float64Array(this.numDofs);
+        const maxNonlinearIters = 5;
+        for (let nlIter = 0; nlIter < maxNonlinearIters; nlIter++) {
+          uPrev.set(u);
+          this.lastDisplacements.set(u);
+          this.assembleGlobalStiffness(fixedDofs, true, undefined, prescribed, prescribedCorr);
+          rhs.set(baseRhs);
+          for (let i = 0; i < this.numDofs; i++) {
+            rhs[i] = rhs[i]! + prescribedCorr[i]!;
+          }
+          this.accumulateCorotationalGeometricLoad(u, rhs, fixedDofs);
+          for (const dof of fixedDofs) {
+            const val = prescribed?.get(dof) ?? 0.0;
+            rhs[dof] = val;
+            u[dof] = val;
+          }
+          this.solvePcg(rhs, u, tol, maxIters);
+
+          let diffSq = 0.0;
+          let normSq = 0.0;
+          for (let i = 0; i < this.numDofs; i++) {
+            const d = u[i]! - uPrev[i]!;
+            diffSq += d * d;
+            normSq += u[i]! * u[i]!;
+          }
+          if (normSq < 1e-24 || Math.sqrt(diffSq / normSq) < Math.max(tol, 1e-4)) {
+            break;
+          }
+        }
       }
     }
 
@@ -701,9 +840,11 @@ export class FeaSolver {
     }
 
     let rzOld = this.dot(r, z);
-    const initialResidual = Math.sqrt(rzOld);
+    const initialResidual = Math.sqrt(Math.max(0, rzOld));
+    const rhsNorm = Math.sqrt(Math.max(0, this.dot(b, b)));
+    const refNorm = Math.max(rhsNorm, initialResidual, 1e-30);
 
-    if (initialResidual < 1e-18) return;
+    if (initialResidual < 1e-18 || initialResidual / refNorm < tol) return;
 
     for (let iter = 0; iter < maxIters; iter++) {
       this.spmv(p, Ap);
@@ -718,7 +859,7 @@ export class FeaSolver {
       }
 
       const rzNew = this.dot(r, z);
-      if (Math.sqrt(Math.max(0, rzNew)) / initialResidual < tol) {
+      if (Math.sqrt(Math.max(0, rzNew)) / refNorm < tol) {
         break;
       }
 
@@ -786,17 +927,17 @@ export class FeaSolver {
 
       if (corotational) {
         const R = this.computeElementRotation(e, u);
-        // Compute element centroid in undeformed and deformed states
+        // Compute element centroid in undeformed and deformed states across all npe nodes
         let Xc = [0, 0, 0];
         let xc = [0, 0, 0];
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < npe; i++) {
           const ni = elNodes[i]!;
-          Xc[0] = Xc[0]! + nodeCoords[ni * 3 + 0]! / 4;
-          Xc[1] = Xc[1]! + nodeCoords[ni * 3 + 1]! / 4;
-          Xc[2] = Xc[2]! + nodeCoords[ni * 3 + 2]! / 4;
-          xc[0] = xc[0]! + (nodeCoords[ni * 3 + 0]! + u[ni * 3 + 0]!) / 4;
-          xc[1] = xc[1]! + (nodeCoords[ni * 3 + 1]! + u[ni * 3 + 1]!) / 4;
-          xc[2] = xc[2]! + (nodeCoords[ni * 3 + 2]! + u[ni * 3 + 2]!) / 4;
+          Xc[0] = Xc[0]! + nodeCoords[ni * 3 + 0]! / npe;
+          Xc[1] = Xc[1]! + nodeCoords[ni * 3 + 1]! / npe;
+          Xc[2] = Xc[2]! + nodeCoords[ni * 3 + 2]! / npe;
+          xc[0] = xc[0]! + (nodeCoords[ni * 3 + 0]! + u[ni * 3 + 0]!) / npe;
+          xc[1] = xc[1]! + (nodeCoords[ni * 3 + 1]! + u[ni * 3 + 1]!) / npe;
+          xc[2] = xc[2]! + (nodeCoords[ni * 3 + 2]! + u[ni * 3 + 2]!) / npe;
         }
 
         // Local displacement u_local = R^T * (x - xc) + Xc - X

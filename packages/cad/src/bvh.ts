@@ -227,8 +227,10 @@ export class AssemblyBVH {
     if (len === 0) return null;
     const dir: [number, number, number] = [rayDir[0] / len, rayDir[1] / len, rayDir[2] / len];
 
+    // Use flat WASM kernel only when the tree is a single leaf node; for multi-level hierarchies
+    // use O(log N) BVH tree pruning so large assemblies avoid O(N) linear scans and buffer copies.
     const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
-    if (this.totalItems > 0 && wasm && typeof wasm.cad_bvh_raycast === "function") {
+    if (this.totalItems > 0 && this.depth <= 1 && wasm && typeof wasm.cad_bvh_raycast === "function") {
       const n = this.totalItems;
       const sc = ensureBvhWasmScratch(wasm, n);
       const buf = wasm.memory.buffer as ArrayBuffer;
@@ -266,35 +268,40 @@ export class AssemblyBVH {
 
     const traverse = (node: BVHNode) => {
       const boxHit = intersectRayAABB(rayOrigin, dir, node.aabb);
-      if (!boxHit || boxHit.tMin > closestDist) return;
+      if (!boxHit || Math.max(0, boxHit.tMin) > closestDist) return;
 
       if (node.items) {
         for (const item of node.items) {
           const itemHit = intersectRayAABB(rayOrigin, dir, item.aabb);
-          if (itemHit && itemHit.tMin < closestDist && itemHit.tMin >= 0) {
-            closestDist = itemHit.tMin;
-            closestHit = {
-              id: item.id,
-              distance: closestDist,
-              point: [
-                rayOrigin[0] + dir[0] * closestDist,
-                rayOrigin[1] + dir[1] * closestDist,
-                rayOrigin[2] + dir[2] * closestDist,
-              ],
-            };
+          if (itemHit && itemHit.tMax >= 0) {
+            const hitDist = Math.max(0, itemHit.tMin);
+            if (hitDist < closestDist) {
+              closestDist = hitDist;
+              closestHit = {
+                id: item.id,
+                distance: closestDist,
+                point: [
+                  rayOrigin[0] + dir[0] * closestDist,
+                  rayOrigin[1] + dir[1] * closestDist,
+                  rayOrigin[2] + dir[2] * closestDist,
+                ],
+              };
+            }
           }
         }
       } else {
         // Traverse closer child first
-        const leftDist = node.left ? (intersectRayAABB(rayOrigin, dir, node.left.aabb)?.tMin ?? Infinity) : Infinity;
-        const rightDist = node.right ? (intersectRayAABB(rayOrigin, dir, node.right.aabb)?.tMin ?? Infinity) : Infinity;
+        const leftHit = node.left ? intersectRayAABB(rayOrigin, dir, node.left.aabb) : null;
+        const rightHit = node.right ? intersectRayAABB(rayOrigin, dir, node.right.aabb) : null;
+        const leftDist = leftHit ? Math.max(0, leftHit.tMin) : Infinity;
+        const rightDist = rightHit ? Math.max(0, rightHit.tMin) : Infinity;
 
         if (leftDist < rightDist) {
-          if (node.left) traverse(node.left);
-          if (node.right && rightDist < closestDist) traverse(node.right);
+          if (node.left && leftDist <= closestDist) traverse(node.left);
+          if (node.right && rightDist <= closestDist) traverse(node.right);
         } else {
-          if (node.right) traverse(node.right);
-          if (node.left && leftDist < closestDist) traverse(node.left);
+          if (node.right && rightDist <= closestDist) traverse(node.right);
+          if (node.left && leftDist <= closestDist) traverse(node.left);
         }
       }
     };
@@ -373,6 +380,8 @@ function intersectRayAABB(
 
     if (tMax < tMin) return null;
   }
+
+  if (tMax < 0) return null;
 
   return { tMin, tMax };
 }

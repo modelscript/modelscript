@@ -103,10 +103,12 @@ export class LbmVoxelizer {
         const cx = cyl.center[0] * nx;
         const cy = cyl.center[1] * ny;
         const cz = cyl.center[2] * nz;
-        const rCells = cyl.radius * Math.min(ny, nz);
+        const rCells =
+          cyl.radius * (cyl.axis === "x" ? Math.min(ny, nz) : cyl.axis === "y" ? Math.min(nx, nz) : Math.min(nx, ny));
         const rSq = rCells * rCells;
 
-        const halfLen = (cyl.length * nx) / 2;
+        const axisCells = cyl.axis === "z" ? nz : cyl.axis === "x" ? nx : ny;
+        const halfLen = (cyl.length * axisCells) / 2;
 
         for (let z = 1; z < nz - 1; z++) {
           for (let y = 1; y < ny - 1; y++) {
@@ -193,35 +195,50 @@ export class LbmVoxelizer {
               continue;
             }
 
+            let bestS = Infinity;
+
             // Neighbor is solid obstacle. Check exact boundary distance along ray
             if (obstacles.cylinders) {
               for (const cyl of obstacles.cylinders) {
                 const cx = cyl.center[0] * nx;
                 const cy = cyl.center[1] * ny;
                 const cz = cyl.center[2] * nz;
-                const r = cyl.radius * Math.min(ny, nz);
+                const r =
+                  cyl.radius *
+                  (cyl.axis === "x" ? Math.min(ny, nz) : cyl.axis === "y" ? Math.min(nx, nz) : Math.min(nx, ny));
+                const axisCells = cyl.axis === "z" ? nz : cyl.axis === "x" ? nx : ny;
+                const halfLen = (cyl.length * axisCells) / 2;
 
                 let p0x = 0,
                   p0y = 0,
+                  p0z = 0,
                   dx = 0,
-                  dy = 0;
+                  dy = 0,
+                  dz = 0;
                 if (cyl.axis === "z") {
                   p0x = x - cx;
                   p0y = y - cy;
+                  p0z = z - cz;
                   dx = CX[i]!;
                   dy = CY[i]!;
+                  dz = CZ[i]!;
                 } else if (cyl.axis === "x") {
                   p0x = y - cy;
                   p0y = z - cz;
+                  p0z = x - cx;
                   dx = CY[i]!;
                   dy = CZ[i]!;
+                  dz = CX[i]!;
                 } else {
                   p0x = x - cx;
                   p0y = z - cz;
+                  p0z = y - cy;
                   dx = CX[i]!;
                   dy = CZ[i]!;
+                  dz = CY[i]!;
                 }
 
+                // 1. Curved lateral cylinder surface
                 const a = dx * dx + dy * dy;
                 if (a > 0) {
                   const b = 2 * (p0x * dx + p0y * dy);
@@ -229,12 +246,72 @@ export class LbmVoxelizer {
                   const disc = b * b - 4 * a * c;
                   if (disc >= 0) {
                     const s = (-b - Math.sqrt(disc)) / (2 * a);
-                    if (s > 0 && s <= 1.0) {
-                      deltaWall[i * totalCells + idx] = Math.max(0.05, Math.min(0.95, s));
+                    if (s > 0 && s <= 1.0 && Math.abs(p0z + s * dz) <= halfLen + 1e-6) {
+                      if (s < bestS) bestS = s;
+                    }
+                  }
+                }
+
+                // 2. Flat axial end-caps at p0z + s * dz = +-halfLen
+                if (dz !== 0) {
+                  for (const capZ of [-halfLen, halfLen]) {
+                    const sCap = (capZ - p0z) / dz;
+                    if (sCap > 0 && sCap <= 1.0) {
+                      const rx = p0x + sCap * dx;
+                      const ry = p0y + sCap * dy;
+                      if (rx * rx + ry * ry <= r * r + 1e-6 && sCap < bestS) {
+                        bestS = sCap;
+                      }
                     }
                   }
                 }
               }
+            }
+
+            if (obstacles.boxes) {
+              for (const box of obstacles.boxes) {
+                const bMinX = box.min[0] * nx,
+                  bMaxX = box.max[0] * nx;
+                const bMinY = box.min[1] * ny,
+                  bMaxY = box.max[1] * ny;
+                const bMinZ = box.min[2] * nz,
+                  bMaxZ = box.max[2] * nz;
+
+                let tMin = -Infinity;
+                let tMax = Infinity;
+                const orig = [x, y, z];
+                const dir = [CX[i]!, CY[i]!, CZ[i]!];
+                const bMin = [bMinX, bMinY, bMinZ];
+                const bMax = [bMaxX, bMaxY, bMaxZ];
+                let hit = true;
+                for (let axis = 0; axis < 3; axis++) {
+                  const d = dir[axis]!;
+                  const o = orig[axis]!;
+                  if (d === 0) {
+                    if (o < bMin[axis]! || o > bMax[axis]!) {
+                      hit = false;
+                      break;
+                    }
+                  } else {
+                    let t1 = (bMin[axis]! - o) / d;
+                    let t2 = (bMax[axis]! - o) / d;
+                    if (t1 > t2) {
+                      const tmp = t1;
+                      t1 = t2;
+                      t2 = tmp;
+                    }
+                    if (t1 > tMin) tMin = t1;
+                    if (t2 < tMax) tMax = t2;
+                  }
+                }
+                if (hit && tMin <= tMax && tMin > 0 && tMin <= 1.0 && tMin < bestS) {
+                  bestS = tMin;
+                }
+              }
+            }
+
+            if (bestS <= 1.0) {
+              deltaWall[i * totalCells + idx] = Math.max(0.05, Math.min(0.95, bestS));
             }
           }
         }

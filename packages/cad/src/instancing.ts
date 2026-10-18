@@ -8,9 +8,10 @@
  * 1,000 to 50,000+ components at 60 FPS.
  */
 
-import type { AABB } from "./clearance.js";
+import { computeSolidAABB, type AABB } from "./clearance.js";
 import { quaternionFromEuler } from "./kinematics.js";
-import type { Assembly, PartEntry } from "./types.js";
+import { IDENTITY, mat4Multiply } from "./transforms.js";
+import { SolidKind, type Assembly, type Mat4, type PartEntry, type Solid } from "./types.js";
 
 export interface InstancedPartDescriptor {
   name: string;
@@ -297,13 +298,38 @@ export class AssemblyClusteringEngine {
    */
   static clusterAssembly(cadAssembly: Assembly, options: ClusteringOptions = {}): ClusteringResult {
     const descriptors: InstancedPartDescriptor[] = cadAssembly.parts.map((p, idx) => {
-      // Determine signature based on solid kind and parameters
-      const signature = computeSolidSignature(p);
+      let cur: Solid = p.solid;
+      let worldMat: Mat4 = IDENTITY;
+      while (cur.kind === SolidKind.Transform) {
+        worldMat = mat4Multiply(worldMat, cur.matrix);
+        cur = cur.child;
+      }
+
+      const pos: [number, number, number] = [worldMat[12], worldMat[13], worldMat[14]];
+      const sx = Math.hypot(worldMat[0], worldMat[1], worldMat[2]) || 1;
+      const sy = Math.hypot(worldMat[4], worldMat[5], worldMat[6]) || 1;
+      const sz = Math.hypot(worldMat[8], worldMat[9], worldMat[10]) || 1;
+      const quat = quaternionFromRotationMatrix(
+        worldMat[0] / sx,
+        worldMat[4] / sy,
+        worldMat[8] / sz,
+        worldMat[1] / sx,
+        worldMat[5] / sy,
+        worldMat[9] / sz,
+        worldMat[2] / sx,
+        worldMat[6] / sy,
+        worldMat[10] / sz,
+      );
+
+      const signature = computeSolidSignatureFromNode(cur);
       return {
-        name: `part_${idx}`,
+        name: p.solid.name || `part_${idx}`,
         geometryKey: signature,
+        position: pos,
+        quaternion: quat,
+        scale: [sx, sy, sz],
         color: p.color,
-        boundingBox: p.boundingBox,
+        boundingBox: (p as any).boundingBox ?? computeSolidAABB(p.solid),
       };
     });
 
@@ -311,10 +337,86 @@ export class AssemblyClusteringEngine {
   }
 }
 
+function quaternionFromRotationMatrix(
+  m00: number,
+  m01: number,
+  m02: number,
+  m10: number,
+  m11: number,
+  m12: number,
+  m20: number,
+  m21: number,
+  m22: number,
+): [number, number, number, number] {
+  const trace = m00 + m11 + m22;
+  let qx: number, qy: number, qz: number, qw: number;
+  if (trace > 0) {
+    const s = 0.5 / Math.sqrt(trace + 1.0);
+    qw = 0.25 / s;
+    qx = (m21 - m12) * s;
+    qy = (m02 - m20) * s;
+    qz = (m10 - m01) * s;
+  } else if (m00 > m11 && m00 > m22) {
+    const s = 2.0 * Math.sqrt(1.0 + m00 - m11 - m22);
+    qw = (m21 - m12) / s;
+    qx = 0.25 * s;
+    qy = (m01 + m10) / s;
+    qz = (m02 + m20) / s;
+  } else if (m11 > m22) {
+    const s = 2.0 * Math.sqrt(1.0 + m11 - m00 - m22);
+    qw = (m02 - m20) / s;
+    qx = (m01 + m10) / s;
+    qy = 0.25 * s;
+    qz = (m12 + m21) / s;
+  } else {
+    const s = 2.0 * Math.sqrt(1.0 + m22 - m00 - m11);
+    qw = (m10 - m01) / s;
+    qx = (m02 + m20) / s;
+    qy = (m12 + m21) / s;
+    qz = 0.25 * s;
+  }
+  const len = Math.hypot(qx, qy, qz, qw) || 1;
+  return [qx / len, qy / len, qz / len, qw / len];
+}
+
+function computeSolidSignatureFromNode(solid: Solid): string {
+  switch (solid.kind) {
+    case SolidKind.Box:
+      return `box:${solid.width}:${solid.height}:${solid.depth}`;
+    case SolidKind.Cylinder:
+      return `cylinder:${solid.radius}:${solid.radiusBottom ?? solid.radius}:${solid.radiusTop ?? solid.radius}:${solid.height}:${solid.segments}`;
+    case SolidKind.Sphere:
+      return `sphere:${solid.radius}:${solid.widthSegments}:${solid.heightSegments}`;
+    case SolidKind.Torus:
+      return `torus:${solid.major}:${solid.minor}:${solid.majorSegments}:${solid.minorSegments}`;
+    case SolidKind.Extrusion:
+      return `extrude:${solid.height}:${solid.twist ?? 0}:${solid.scale ?? 1}:${JSON.stringify(solid.polygon)}`;
+    case SolidKind.Polyhedron:
+      return `polyhedron:${JSON.stringify(solid.points)}:${JSON.stringify(solid.faces)}`;
+    case SolidKind.Union:
+    case SolidKind.Subtract:
+    case SolidKind.Intersect:
+      return `${solid.kind}:(${computeSolidSignatureFromNode(solid.left)},${computeSolidSignatureFromNode(solid.right)})`;
+    case SolidKind.Transform:
+      return `transform:${solid.matrix.join(",")}:(${computeSolidSignatureFromNode(solid.child)})`;
+    case SolidKind.Fillet:
+      return `fillet:${solid.radius}:(${computeSolidSignatureFromNode(solid.child)})`;
+    case SolidKind.Chamfer:
+      return `chamfer:${solid.distance}:(${computeSolidSignatureFromNode(solid.child)})`;
+    case SolidKind.TaggedPatch:
+      return `tag:${solid.tag.portName}:${solid.tag.portType}:(${computeSolidSignatureFromNode(solid.child)})`;
+    default:
+      return `${(solid as any).kind}:${JSON.stringify((solid as any).args ?? {})}`;
+  }
+}
+
 /**
  * Computes a deterministic signature string for an analytical solid.
  */
-function computeSolidSignature(partEntry: PartEntry): string {
-  const solid = partEntry.solid;
-  return `${solid.kind}:${JSON.stringify((solid as any).args ?? {})}`;
+export function computeSolidSignature(partEntry: PartEntry): string {
+  let cur: Solid = partEntry.solid;
+  while (cur.kind === SolidKind.Transform) {
+    cur = cur.child;
+  }
+  return computeSolidSignatureFromNode(cur);
 }

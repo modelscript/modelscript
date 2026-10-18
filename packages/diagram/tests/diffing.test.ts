@@ -2,18 +2,27 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { isEphemeralDiagramNode } from "../src/drop-placeholder.js";
 
 describe("Diagram Diffing & Ephemeral Cell Exclusion", () => {
+  it("should classify background, axes, solder dots, stems, and ghosts as ephemeral", () => {
+    assert.strictEqual(isEphemeralDiagramNode("__diagram_background__"), true);
+    assert.strictEqual(isEphemeralDiagramNode("__diagram_axes__"), true);
+    assert.strictEqual(isEphemeralDiagramNode("solder_dot_e1_e2"), true);
+    assert.strictEqual(isEphemeralDiagramNode("__seq_stem_node1"), true);
+    assert.strictEqual(isEphemeralDiagramNode("placement-ghost"), true);
+    assert.strictEqual(isEphemeralDiagramNode("__drop_placeholder__"), true);
+    assert.strictEqual(isEphemeralDiagramNode("R1"), false);
+    assert.strictEqual(isEphemeralDiagramNode("ground"), false);
+  });
+
   it("should preserve fast path when solder dots, background, and stems exist", () => {
-    const isEphemeral = (id: string) =>
-      id === "__diagram_background__" ||
-      id.startsWith("solder_dot_") ||
-      id.startsWith("__seq_stem_") ||
-      id === "placement-ghost";
+    const isEphemeral = isEphemeralDiagramNode;
 
     // Simulate existing cells in graph (including background and solder dots)
     const existingCells = [
       { id: "__diagram_background__", isNode: () => true, isEdge: () => false },
+      { id: "__diagram_axes__", isNode: () => true, isEdge: () => false },
       { id: "node_resistor1", isNode: () => true, isEdge: () => false },
       { id: "node_resistor2", isNode: () => true, isEdge: () => false },
       { id: "edge_r1_r2", isNode: () => false, isEdge: () => true },

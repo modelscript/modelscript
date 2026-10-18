@@ -47,8 +47,10 @@ function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
   if (!sym) return "";
   if ((sym as any)._fqn !== undefined) return (sym as any)._fqn;
   const parts: string[] = [];
+  const seen = new Set<SymbolId>();
   let curr: SymbolEntry | null | undefined = sym;
-  while (curr) {
+  while (curr && !seen.has(curr.id)) {
+    seen.add(curr.id);
     parts.unshift(curr.name);
     curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
   }
@@ -1141,7 +1143,7 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
       text = (cst.text ?? "").slice(0, 120);
     }
   }
-  const res = /\bencapsulated\b/.test(text);
+  const res = /^(?:\s*(?:within\b[^;]*;|final|inner|outer|redeclare|replaceable)\b)*\s*encapsulated\b/.test(text);
   (sym as any)._isEncapsulated = res;
   return res;
 }
@@ -1158,8 +1160,10 @@ export function isScopeEncapsulated(db: QueryDB, symbolId: SymbolId | null | und
   const rootSym = db.symbol(symbolId);
   if (!rootSym) return false;
   if ((rootSym as any)._isScopeEncapsulated !== undefined) return (rootSym as any)._isScopeEncapsulated;
+  const seen = new Set<SymbolId>();
   let curr: SymbolEntry | null | undefined = rootSym;
-  while (curr) {
+  while (curr && !seen.has(curr.id)) {
+    seen.add(curr.id);
     if (isSymbolEncapsulated(db, curr)) {
       (rootSym as any)._isScopeEncapsulated = true;
       return true;
@@ -1394,19 +1398,8 @@ export function resolveSimpleNameHelper(
   ) {
     const parentEntry = db.symbol(scope.parentId);
     if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
-      if (visited.size === 1) {
-        const parentResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
-          "resolveSimpleName",
-          parentEntry.id,
-        );
-        const found = parentResolver
-          ? parentResolver(name, false, skipInherited)
-          : resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited, visited, false);
-        if (found) return found;
-      } else {
-        const found = resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited, visited, false);
-        if (found) return found;
-      }
+      const found = resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited, visited, false);
+      if (found) return found;
     }
   }
 
@@ -2037,22 +2030,29 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
 
   // Check if it's an enumeration type (return literal count)
   if (resolved.kind === "Class") {
-    const meta = resolved.metadata as Record<string, unknown>;
-    const classPrefixes = meta?.["classPrefixes"];
-    const cstText = (db.cstNode(resolved.id) as any)?.text ?? "";
-    const isEnum =
-      (typeof classPrefixes === "string" && classPrefixes.includes("enumeration")) || cstText.includes("enumeration(");
-    if (isEnum) {
-      const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-      if (enumMatch) {
-        const lits = enumMatch[1]!
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (lits.length > 0) return lits.length;
+    let curCls: SymbolEntry | null = resolved;
+    const visitedCls = new Set<SymbolId>();
+    while (curCls && !visitedCls.has(curCls.id)) {
+      visitedCls.add(curCls.id);
+      const meta = curCls.metadata as Record<string, unknown>;
+      const classPrefixes = meta?.["classPrefixes"];
+      const cstText = (db.cstNode(curCls.id) as any)?.text ?? "";
+      const isEnum =
+        (typeof classPrefixes === "string" && classPrefixes.includes("enumeration")) ||
+        /\benumeration\s*\(/.test(cstText);
+      if (isEnum) {
+        const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+        if (enumMatch) {
+          const lits = enumMatch[1]!
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (lits.length > 0) return lits.length;
+        }
+        const children = db.childrenOf(curCls.id);
+        return children.filter((c) => c.kind === "Component").length;
       }
-      const children = db.childrenOf(resolved.id);
-      return children.filter((c) => c.kind === "Component").length;
+      curCls = db.query<SymbolEntry | null>("resolvedBaseClass", curCls.id);
     }
   }
 
@@ -2287,6 +2287,9 @@ function isRedeclareQuery(db: QueryDB, self: SymbolEntry): boolean {
     current = current.parent;
   }
   while (current) {
+    if (current.type === "element_redeclaration" || current.type === "ElementRedeclaration") {
+      return true;
+    }
     if (
       current.type === "ComponentClause" ||
       current.type === "component_clause" ||
@@ -2996,7 +2999,18 @@ export const classDefinitionQueries: Record<string, any> = {
    * Check if this class is a connector type.
    */
   isConnector: (db: QueryDB, self: SymbolEntry) => {
-    const kind = (self.metadata as Record<string, unknown>)?.["classPrefixes"];
+    let kind = String(
+      (self.metadata as Record<string, unknown>)?.["classPrefixes"] ??
+        (self.metadata as Record<string, unknown>)?.["classKind"] ??
+        "",
+    );
+    if (!kind) {
+      const cst = db.cstNode(self.id) as any;
+      if (cst) {
+        const prefixes = Cst.ClassDefinition.classPrefixes(cst);
+        if (prefixes?.text) kind = prefixes.text;
+      }
+    }
     if (
       kind === "connector" ||
       kind === "expandable connector" ||
@@ -3351,8 +3365,15 @@ export const classDefinitionQueries: Record<string, any> = {
    * according to Modelica §5.3 lookup rules (direct members, inherited members, imports, enclosing scopes).
    */
   resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
+    db.symbol(self.id);
     const cache = new Map<string, SymbolEntry | null>();
+    let lastRev = db.getRevision?.() ?? 0;
     return (name: string, encapsulated = false, skipInherited = false, memberOnly = false): SymbolEntry | null => {
+      const curRev = db.getRevision?.() ?? 0;
+      if (curRev !== lastRev) {
+        cache.clear();
+        lastRev = curRev;
+      }
       const key =
         !encapsulated && !skipInherited && !memberOnly
           ? name
@@ -3360,7 +3381,9 @@ export const classDefinitionQueries: Record<string, any> = {
       const cached = cache.get(key);
       if (cached !== undefined) return cached;
       const res = resolveSimpleNameHelper(db, self.id, name, encapsulated, skipInherited, new Set(), memberOnly);
-      cache.set(key, res);
+      if (res !== null) {
+        cache.set(key, res);
+      }
       return res;
     };
   },
@@ -3372,8 +3395,15 @@ export const classDefinitionQueries: Record<string, any> = {
    * into children for each subsequent part.
    */
   resolveName: (db: QueryDB, self: SymbolEntry) => {
+    db.symbol(self.id);
     const cache = new Map<string, SymbolEntry | null>();
+    let lastRev = db.getRevision?.() ?? 0;
     return (qualifiedName: string, skipInherited = false, allowMemberImports = false): SymbolEntry | null => {
+      const curRev = db.getRevision?.() ?? 0;
+      if (curRev !== lastRev) {
+        cache.clear();
+        lastRev = curRev;
+      }
       const key =
         !skipInherited && !allowMemberImports
           ? qualifiedName
@@ -3383,7 +3413,6 @@ export const classDefinitionQueries: Record<string, any> = {
 
       const parts = qualifiedName.split(".");
       if (parts.length === 0) {
-        cache.set(key, null);
         return null;
       }
 
@@ -3464,7 +3493,9 @@ export const classDefinitionQueries: Record<string, any> = {
         result = tryResolve();
       }
 
-      cache.set(key, result);
+      if (result !== null) {
+        cache.set(key, result);
+      }
       return result;
     };
   },
@@ -5565,13 +5596,34 @@ export const connectEquationQueries: Record<string, any> = {
         currentEntry = found;
         if (found.kind === "Component") {
           const nextClassId = db.query<SymbolId | null>("classInstance", found.id);
-          const isC = nextClassId ? db.query<boolean>("isConnector", nextClassId) || false : false;
-          compConnectors.push(isC);
-          if (i < rawSegments.length - 1) {
-            if (!nextClassId) {
+          if (!nextClassId) {
+            let typeName = String(
+              (found.metadata as any)?.typeSpecifier ?? (found.metadata as any)?.type_specifier ?? "",
+            ).trim();
+            if (!typeName) {
+              let cur = db.cstNode(found.id) as any;
+              while (cur && cur.type !== "ComponentClause" && cur.type !== "component_clause") {
+                cur = cur.parent;
+              }
+              typeName = Cst.ComponentClause.typeSpecifier(cur)?.text?.trim() ?? "";
+            }
+            const isBuiltinNonConnector =
+              typeName === "Real" ||
+              typeName === "Integer" ||
+              typeName === "Boolean" ||
+              typeName === "String" ||
+              typeName === "Clock" ||
+              typeName === "StateSelect" ||
+              typeName === "AssertionLevel" ||
+              typeName === "ExternalObject";
+            if (!isBuiltinNonConnector || i < rawSegments.length - 1) {
               const fullMissing = rawSegments.slice(0, i + 1).join(".");
               return { resolved: false, unresolvableType: true, missingSegment: fullMissing, missingSegmentIndex: i };
             }
+          }
+          const isC = nextClassId ? db.query<boolean>("isConnector", nextClassId) || false : false;
+          compConnectors.push(isC);
+          if (i < rawSegments.length - 1 && nextClassId) {
             currentClassId = nextClassId;
           }
         } else if (found.kind === "Class" || found.kind === "Package") {

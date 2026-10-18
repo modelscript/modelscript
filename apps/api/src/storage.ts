@@ -49,7 +49,8 @@ export class LibraryStorage {
           return "@" + d.name.slice(1).replace(/__/g, "/");
         }
         return d.name;
-      });
+      })
+      .filter((name) => this.versions(name).length > 0);
 
     if (query) {
       const lower = query.toLowerCase();
@@ -298,8 +299,10 @@ export class LibraryStorage {
       return false;
     }
 
-    // Remove the zip file
+    // Remove the zip file and its sha256 sidecar
     fs.rmSync(zipPath, { force: true });
+    const shaPath = path.resolve(this.#dataDir, this.#safe(name), `${this.#safe(version)}.sha256`);
+    fs.rmSync(shaPath, { force: true });
 
     // Remove the version data directory (svgs, extracted, etc.)
     const versionDir = path.resolve(this.#dataDir, this.#safe(name), this.#safe(version));
@@ -310,8 +313,7 @@ export class LibraryStorage {
     // Clean up the library directory if no more versions exist
     const libraryDir = path.resolve(this.#dataDir, this.#safe(name));
     if (fs.existsSync(libraryDir)) {
-      const remaining = fs.readdirSync(libraryDir);
-      if (remaining.length === 0) {
+      if (this.versions(name).length === 0) {
         fs.rmSync(libraryDir, { recursive: true, force: true });
       }
     }

@@ -33,6 +33,13 @@ function parseNotebookPayload(
   notebookMeta: {
     isNotebook: boolean;
     title?: string | undefined;
+    summary?: string | undefined;
+    difficulty?: string | undefined;
+    series?: string | undefined;
+    seriesPart?: number | undefined;
+    dialect?: string | undefined;
+    companionRepo?: string | undefined;
+    estimatedReadMinutes?: number | undefined;
     cells: Array<
       | { id: string; type: "markdown"; content: string }
       | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined }
@@ -43,6 +50,29 @@ function parseNotebookPayload(
   const inputCells = Array.isArray(rawNotebook?.cells) ? rawNotebook.cells : null;
   const notebookTitle =
     typeof rawNotebook?.title === "string" && rawNotebook.title.trim() ? rawNotebook.title.trim() : undefined;
+  const extraTutorialFields = {
+    ...(typeof rawNotebook?.summary === "string" && rawNotebook.summary.trim()
+      ? { summary: rawNotebook.summary.trim() }
+      : {}),
+    ...(typeof rawNotebook?.difficulty === "string" && rawNotebook.difficulty.trim()
+      ? { difficulty: rawNotebook.difficulty.trim() }
+      : {}),
+    ...(typeof rawNotebook?.series === "string" && rawNotebook.series.trim()
+      ? { series: rawNotebook.series.trim() }
+      : {}),
+    ...(Number.isFinite(Number(rawNotebook?.seriesPart)) && Number(rawNotebook?.seriesPart) > 0
+      ? { seriesPart: Number(rawNotebook.seriesPart) }
+      : {}),
+    ...(typeof rawNotebook?.dialect === "string" && rawNotebook.dialect.trim()
+      ? { dialect: rawNotebook.dialect.trim() }
+      : {}),
+    ...(typeof rawNotebook?.companionRepo === "string" && rawNotebook.companionRepo.trim()
+      ? { companionRepo: rawNotebook.companionRepo.trim() }
+      : {}),
+    ...(Number.isFinite(Number(rawNotebook?.estimatedReadMinutes)) && Number(rawNotebook?.estimatedReadMinutes) > 0
+      ? { estimatedReadMinutes: Number(rawNotebook.estimatedReadMinutes) }
+      : {}),
+  };
 
   if (inputCells && inputCells.length > 0) {
     const normalizedCells: Array<
@@ -98,6 +128,7 @@ function parseNotebookPayload(
           rawNotebook?.isNotebook ?? (normalizedCells.length > 1 || artifactIds.length > 1 || notebookTitle),
         ),
         ...(notebookTitle ? { title: notebookTitle } : {}),
+        ...extraTutorialFields,
         cells: normalizedCells,
         artifactIds,
       },
@@ -152,6 +183,7 @@ function parseNotebookPayload(
         notebookMeta: {
           isNotebook: true,
           ...(notebookTitle ? { title: notebookTitle } : {}),
+          ...extraTutorialFields,
           cells,
           artifactIds,
         },
@@ -165,6 +197,7 @@ function parseNotebookPayload(
       notebookMeta: {
         isNotebook: true,
         ...(notebookTitle ? { title: notebookTitle } : {}),
+        ...extraTutorialFields,
         cells: [
           ...(rawContent ? [{ id: "md-0", type: "markdown" as const, content: rawContent }] : []),
           { id: "art-0", type: "artifact" as const, artifactId: Number(fallbackArtifactId) },
@@ -525,6 +558,86 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       res.status(500).json({ error: "Failed to create post", details: String(err) });
     }
   });
+
+  /**
+   * PUT /api/v1/social/posts/:id
+   * Updates an existing post or long-form notebook tutorial.
+   */
+  const handleUpdatePost = (req: Request, res: Response) => {
+    const postId = Number(req.params["id"]);
+    const userId = req.user!.id;
+
+    try {
+      const existingPost = database.getPost(postId, userId);
+      if (!existingPost) {
+        res.status(404).json({ error: "Post not found" });
+        return;
+      }
+
+      if (existingPost.author_id !== userId && req.user!.role !== "admin") {
+        res.status(403).json({ error: "You can only edit your own posts" });
+        return;
+      }
+
+      const {
+        content: rawContent,
+        artifact_view_id: raw_artifact_view_id,
+        artifactId,
+        client_signature,
+        key_id_string,
+        metadata: rawMetadata,
+        reply_visibility,
+        content_warning,
+        notebook: topLevelNotebook,
+        cells: topLevelCells,
+      } = req.body;
+
+      const explicitArtifactId = raw_artifact_view_id ?? artifactId;
+      const rawNotebookInput =
+        topLevelNotebook ||
+        (Array.isArray(topLevelCells) ? { isNotebook: true, cells: topLevelCells } : null) ||
+        (typeof rawMetadata === "object" && rawMetadata !== null ? (rawMetadata as any).notebook : null);
+
+      const { effectiveContent: content, notebookMeta } = parseNotebookPayload(
+        rawContent !== undefined ? rawContent : existingPost.content,
+        rawNotebookInput,
+        explicitArtifactId !== undefined ? explicitArtifactId : existingPost.artifact_view_id,
+      );
+
+      const artifact_view_id =
+        explicitArtifactId !== undefined
+          ? explicitArtifactId
+          : (notebookMeta?.artifactIds?.[0] ?? existingPost.artifact_view_id);
+
+      const existingMeta =
+        typeof existingPost.metadata === "object" && existingPost.metadata !== null ? existingPost.metadata : {};
+
+      const mergedMetadata = {
+        ...existingMeta,
+        ...(typeof rawMetadata === "object" && rawMetadata !== null ? rawMetadata : {}),
+        ...(notebookMeta ? { notebook: notebookMeta } : {}),
+        ...(content_warning !== undefined ? { contentWarning: content_warning } : {}),
+        ...(client_signature ? { clientSignature: client_signature, client_signature } : {}),
+        ...(key_id_string ? { keyIdString: key_id_string, key_id_string } : {}),
+      };
+
+      database.updatePost(postId, {
+        content: content ?? existingPost.content,
+        artifactViewId: artifact_view_id,
+        metadata: mergedMetadata,
+        replyVisibility: reply_visibility ?? existingPost.reply_visibility,
+      });
+
+      const updatedPost = database.getPost(postId, userId);
+      res.json({ post: updatedPost });
+    } catch (err: any) {
+      console.error("PUT /posts/:id error:", err);
+      res.status(500).json({ error: err.message || "Failed to update post" });
+    }
+  };
+
+  router.put("/posts/:id", requireAuth, handleUpdatePost);
+  router.patch("/posts/:id", requireAuth, handleUpdatePost);
 
   /**
    * DELETE /api/v1/social/posts/:id

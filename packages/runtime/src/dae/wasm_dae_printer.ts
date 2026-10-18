@@ -297,7 +297,7 @@ export class ArenaDAEPrinter {
         if (Number.isInteger(v) && Math.abs(v) >= 1e5) s = v.toExponential();
         else if (!Number.isInteger(v) && Math.abs(v) >= 1e6) s = v.toExponential();
         else if (Math.abs(v) < 0.001 && Math.abs(v) > 0)
-          s = v.toExponential().replace(/^(-?\d)\.(\1{15})\1e/, "$1.$2e");
+          s = v.toExponential().replace(/^(-?\d)\.((\d)\3{14})\3e/, "$1.$2e");
         else s = v.toString();
         this.out.write(s.replace(/e\+/g, "e"));
         break;
@@ -408,7 +408,7 @@ export class ArenaDAEPrinter {
         // ── OMC algebraic identity: a - lit → -lit + a ──
         // Rewrite subtraction of a numeric literal into addition with
         // negated literal, then fall through to the Add associative path.
-        if (op === BinOp.Sub && this.isNumericLiteral(a.getExprRight(id))) {
+        if (this.omcCompatibility && op === BinOp.Sub && this.isNumericLiteral(a.getExprRight(id))) {
           const lhsId = a.getExprLeft(id);
           const rhsVal = this.getNumericValue(a.getExprRight(id));
           // Collect additive operands: flatten the LHS if it's also Add/Sub
@@ -481,7 +481,7 @@ export class ArenaDAEPrinter {
         // ── OMC algebraic identity: a / lit → (1/lit) * a ──
         // Rewrite division by a numeric literal into multiplication by
         // its reciprocal, then fall through to the Mul associative path.
-        if (op === BinOp.Div && this.isNumericLiteral(a.getExprRight(id))) {
+        if (this.omcCompatibility && op === BinOp.Div && this.isNumericLiteral(a.getExprRight(id))) {
           let lhsId = a.getExprLeft(id);
           const rhsVal = this.getNumericValue(a.getExprRight(id));
           if (rhsVal !== 0) {
@@ -572,7 +572,13 @@ export class ArenaDAEPrinter {
               this.printExpr(cId);
             }
             this.out.write(" / ");
-            if (needsParens(bId, true)) {
+            const bNeedsParens =
+              needsParens(bId, true) ||
+              (bId >= 0 &&
+                a.getExprKind(bId) === ExprKind.Binary &&
+                a.getExprData1(bId) !== BinOp.Pow &&
+                a.getExprData1(bId) !== BinOp.ElemPow);
+            if (bNeedsParens) {
               this.out.write("(");
               this.printExpr(bId);
               this.out.write(")");
@@ -686,7 +692,7 @@ export class ArenaDAEPrinter {
               if (vIdx >= 0 && (a.getVarShape(vIdx)?.length ?? 0) > 0) return true;
               return false;
             };
-            if (op === BinOp.Mul && !nonLiterals.some(isArrayName)) {
+            if (op === BinOp.Mul && a.classKind !== "function" && !nonLiterals.some(isArrayName)) {
               nonLiterals.sort((x, y) => {
                 const xKind = a.getExprKind(x);
                 const yKind = a.getExprKind(y);
@@ -713,8 +719,22 @@ export class ArenaDAEPrinter {
                 return 0;
               });
             }
+            const keepParamMulOrder =
+              op === BinOp.Mul &&
+              this.isOldFrontend &&
+              operands.length === 2 &&
+              nonLiterals.length === 1 &&
+              literals.length === 1 &&
+              operands[0] === nonLiterals[0] &&
+              a.getExprKind(nonLiterals[0]!) === ExprKind.Name &&
+              (a.interner.resolve(a.getExprData1(nonLiterals[0]!)) ?? "").includes("[") &&
+              getOperandRank(nonLiterals[0]!) === 2;
             operands.length = 0;
-            operands.push(...literals, ...nonLiterals);
+            if (keepParamMulOrder) {
+              operands.push(nonLiterals[0]!, literals[0]!);
+            } else {
+              operands.push(...literals, ...nonLiterals);
+            }
           }
 
           for (let i = 0; i < operands.length; i++) {
@@ -851,7 +871,17 @@ export class ArenaDAEPrinter {
           operand >= 0 &&
           a.getExprKind(operand) === ExprKind.Binary &&
           (a.getExprData1(operand) === BinOp.Pow || a.getExprData1(operand) === BinOp.ElemPow);
-        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary && !isPow;
+        const isRel =
+          a.getExprData1(id) === UnaryOp.Not &&
+          operand >= 0 &&
+          a.getExprKind(operand) === ExprKind.Binary &&
+          (a.getExprData1(operand) === BinOp.Eq ||
+            a.getExprData1(operand) === BinOp.Neq ||
+            a.getExprData1(operand) === BinOp.Lt ||
+            a.getExprData1(operand) === BinOp.Lte ||
+            a.getExprData1(operand) === BinOp.Gt ||
+            a.getExprData1(operand) === BinOp.Gte);
+        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary && !isPow && !isRel;
         if (needsP) this.out.write("(");
         this.printExpr(operand);
         if (needsP) this.out.write(")");
@@ -1202,33 +1232,40 @@ export class ArenaDAEPrinter {
         }
         return false;
       };
-      const sortedKeys = [...attrs.keys()]
-        .filter(
-          (k) =>
-            k !== "unbounded" &&
-            !(type === VarType.String && k === "fixed") &&
+      const sortedKeys = [...attrs.keys()].filter(
+        (k) =>
+          k !== "unbounded" &&
+          !(type === VarType.String && k === "fixed") &&
+          !(
+            this.arena.classKind === "function" &&
+            shape.length > 0 &&
+            (k === "min" || k === "max") &&
+            (this.arena.getExprKind(attrs.get(k)!) === ExprKind.ArrayCtor ||
+              this.printExprToString(attrs.get(k)!).startsWith("{"))
+          ) &&
+          !(
+            k === "start" &&
+            hasBindingExpr &&
+            !attrs.has("fixed") &&
             !(
-              this.arena.classKind === "function" &&
-              shape.length > 0 &&
-              (k === "min" || k === "max") &&
-              (this.arena.getExprKind(attrs.get(k)!) === ExprKind.ArrayCtor ||
-                this.printExprToString(attrs.get(k)!).startsWith("{"))
-            ) &&
-            !(
-              k === "start" &&
-              hasBindingExpr &&
-              !attrs.has("fixed") &&
-              !(
-                this.isNumericLiteral(attrs.get("start")!) &&
-                (this.isNumericLiteral(expr) ||
-                  (Boolean(this.arena.extensionMetadata?.["isOldFrontend"]) &&
-                    attrs.get("start") !== this.arena.getVarExpression(idx))) &&
-                (!isStartSameAsBinding(attrs.get("start"), expr) ||
-                  (isFinal && variability === Variability.Continuous && attrs.get("start") !== expr))
-              )
-            ),
-        )
-        .sort((a, b) => {
+              this.isNumericLiteral(attrs.get("start")!) &&
+              (this.isNumericLiteral(expr) ||
+                (Boolean(this.arena.extensionMetadata?.["isOldFrontend"]) &&
+                  attrs.get("start") !== this.arena.getVarExpression(idx))) &&
+              (!isStartSameAsBinding(attrs.get("start"), expr) ||
+                (((Boolean(this.arena.extensionMetadata?.["isOldFrontend"]) &&
+                  a.isVarProtected(idx) &&
+                  attrs.has("nominal")) ||
+                  (isFinal && variability === Variability.Continuous)) &&
+                  attrs.get("start") !== expr))
+            )
+          ),
+      );
+      const isRecordCtor =
+        this.arena.classKind === "function" &&
+        Boolean(this.arena.description?.startsWith("Automatically generated record constructor"));
+      if (!isRecordCtor) {
+        sortedKeys.sort((a, b) => {
           const ai = ORDER.indexOf(a);
           const bi = ORDER.indexOf(b);
           if (ai >= 0 && bi >= 0) return ai - bi;
@@ -1236,6 +1273,7 @@ export class ArenaDAEPrinter {
           if (bi >= 0) return 1;
           return a.localeCompare(b);
         });
+      }
       if (sortedKeys.length > 0) {
         this.out.write("(");
         let first = true;
@@ -1325,14 +1363,15 @@ export class ArenaDAEPrinter {
             }
             this.depth--;
           }
+          if (meta.elseEquations && meta.elseEquations.length > 0) {
+            this.out.write(this.indent() + "else\n");
+            this.depth++;
+            for (const body of meta.elseEquations) {
+              this.printInlineEq(body);
+            }
+            this.depth--;
+          }
           this.out.write(this.indent() + "end when;\n");
-        } else {
-          // Fallback: print as simple
-          this.out.write(this.indent());
-          this.printExpr(a.getEqLhs(idx));
-          this.out.write(" = ");
-          this.printExpr(a.getEqRhs(idx));
-          this.out.write(";\n");
         }
         break;
       }
@@ -1352,13 +1391,6 @@ export class ArenaDAEPrinter {
           }
           this.depth--;
           this.out.write(this.indent() + "end for;\n");
-        } else {
-          // Fallback: print as simple
-          this.out.write(this.indent());
-          this.printExpr(a.getEqLhs(idx));
-          this.out.write(" = ");
-          this.printExpr(a.getEqRhs(idx));
-          this.out.write(";\n");
         }
         break;
       }
@@ -1454,13 +1486,6 @@ export class ArenaDAEPrinter {
             this.depth--;
           }
           this.out.write(this.indent() + "end if;\n");
-        } else {
-          // Fallback: print as simple
-          this.out.write(this.indent());
-          this.printExpr(a.getEqLhs(idx));
-          this.out.write(" = ");
-          this.printExpr(a.getEqRhs(idx));
-          this.out.write(";\n");
         }
         break;
       }
@@ -1630,7 +1655,21 @@ export class ArenaDAEPrinter {
           const fnNameId = a.getExprKind(callExprId) === ExprKind.Call ? a.getExprData1(callExprId) : -1;
           const fnName = fnNameId >= 0 ? a.interner.resolve(fnNameId) : "";
           if (fnName && fnName === a.name) {
-            this.out.write("return ");
+            if (this.omcCompatibility) {
+              this.out.write("return ");
+            } else {
+              let outputVarName: string | null = null;
+              let outputCount = 0;
+              for (let v = 0; v < a.varCount; v++) {
+                if (a.getVarCausality(v) === 2 /* Output */) {
+                  outputCount++;
+                  if (!outputVarName) outputVarName = a.getVarName(v);
+                }
+              }
+              if (outputCount === 1 && outputVarName) {
+                this.out.write(outputVarName + " := ");
+              }
+            }
           }
         }
         this.printExpr(callExprId);
@@ -1684,7 +1723,7 @@ export class ArenaDAEPrinter {
             this.out.write(this.indent() + "elseif ");
             this.printExpr(blockCond);
             this.out.write(" then\n");
-          } else if (blockCount > 0) {
+          } else if (blockCount > 0 || this.isOldFrontend) {
             this.out.write(this.indent() + "else\n");
           }
           this.depth++;
@@ -2363,7 +2402,7 @@ export class ArenaDAEPrinter {
       const virtualVars: number[] = [];
       const normalVars: number[] = [];
       for (const idx of varIndices) {
-        if (dae.getVarDescription(idx) === "virtual variable in expandable connector") {
+        if (dae.isVarVirtual(idx) || dae.getVarDescription(idx) === "virtual variable in expandable connector") {
           virtualVars.push(idx);
         } else {
           normalVars.push(idx);

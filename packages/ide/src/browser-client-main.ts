@@ -2739,118 +2739,146 @@ END-ISO-10303-21;`;
       await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { decisions: true } });
     }),
 
-    commands.registerCommand("modelscript.openDroneReachabilityDemo", async () => {
-      let m = 1.2;
-      let A = 0.03;
-      let Cd = 0.8;
-      let z_target = 11.0;
-      let kz = 3.1;
-      let kv = 1.35;
-      let w_max = 0.5;
-      let v_limit = 12.0;
+    commands.registerCommand(
+      "modelscript.openDroneReachabilityDemo",
+      async (uriArg?: string, classNameArg?: string) => {
+        const doc = vscode.window.activeTextEditor?.document;
+        const targetUri = typeof uriArg === "string" && uriArg.length > 0 ? uriArg : doc?.uri.toString();
 
-      const doc = vscode.window.activeTextEditor?.document;
-      if (doc) {
-        const text = doc.getText();
-        const mMatch = text.match(/\bm\s*=\s*([\d.]+)/);
-        if (mMatch) m = parseFloat(mMatch[1]!);
-        const aMatch = text.match(/\bA\s*=\s*([\d.]+)/);
-        if (aMatch) A = parseFloat(aMatch[1]!);
-        const cdMatch = text.match(/\bCd\s*=\s*([\d.]+)/i);
-        if (cdMatch) Cd = parseFloat(cdMatch[1]!);
-        const zMatch = text.match(/\bz_target\s*=\s*([\d.]+)/);
-        if (zMatch) z_target = parseFloat(zMatch[1]!);
-        const kzMatch = text.match(/\bkz\s*=\s*([\d.]+)/);
-        if (kzMatch) kz = parseFloat(kzMatch[1]!);
-        const kvMatch = text.match(/\bkv\s*=\s*([\d.]+)/);
-        if (kvMatch) kv = parseFloat(kvMatch[1]!);
-        const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
-        if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]!);
-        const wMatch =
-          text.match(/\b(?:w_max)\s*=\s*([\d.]+)/) || text.match(/\binput\s+Real\s+w\s*\([^)]*max\s*=\s*([\d.]+)/);
-        if (wMatch) w_max = parseFloat(wMatch[1]!);
-      }
+        if (client && targetUri) {
+          try {
+            const reachResult = await SimulationPanel.createOrShowReachability(
+              context.extensionUri,
+              client,
+              targetUri,
+              typeof classNameArg === "string" ? classNameArg : undefined,
+            );
+            if (reachResult && !reachResult.error && reachResult.t && reachResult.t.length > 0) {
+              if (reachResult.summary) {
+                vscode.window.showInformationMessage(`Reachability analysis: ${reachResult.summary}`);
+              }
+              return;
+            }
+          } catch (err) {
+            console.warn(
+              "[ModelScript] LSP reachability request failed, falling back to local solver if applicable:",
+              err,
+            );
+          }
+        }
 
-      const res = simulateDroneReachability({
-        m,
-        A,
-        Cd,
-        rho: 1.225,
-        z_target,
-        kz,
-        kv,
-        w_max,
-        v_limit,
-      });
+        // Fallback when no LSP client is connected or for standalone drone reachability demo
+        let m = 1.2;
+        let A = 0.03;
+        let Cd = 0.8;
+        let z_target = 11.0;
+        let kz = 3.1;
+        let kv = 1.35;
+        let w_max = 0.5;
+        let v_limit = 12.0;
 
-      if (client) {
-        await SimulationPanel.createOrShow(context.extensionUri, client);
-      }
+        if (doc) {
+          const text = doc.getText();
+          const mMatch = text.match(/\bm\s*=\s*([\d.]+)/);
+          if (mMatch) m = parseFloat(mMatch[1]!);
+          const aMatch = text.match(/\bA\s*=\s*([\d.]+)/);
+          if (aMatch) A = parseFloat(aMatch[1]!);
+          const cdMatch = text.match(/\bCd\s*=\s*([\d.]+)/i);
+          if (cdMatch) Cd = parseFloat(cdMatch[1]!);
+          const zMatch = text.match(/\bz_target\s*=\s*([\d.]+)/);
+          if (zMatch) z_target = parseFloat(zMatch[1]!);
+          const kzMatch = text.match(/\bkz\s*=\s*([\d.]+)/);
+          if (kzMatch) kz = parseFloat(kzMatch[1]!);
+          const kvMatch = text.match(/\bkv\s*=\s*([\d.]+)/);
+          if (kvMatch) kv = parseFloat(kvMatch[1]!);
+          const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
+          if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]!);
+          const wMatch =
+            text.match(/\b(?:w_max)\s*=\s*([\d.]+)/) || text.match(/\binput\s+Real\s+w\s*\([^)]*max\s*=\s*([\d.]+)/);
+          if (wMatch) w_max = parseFloat(wMatch[1]!);
+        }
 
-      const envelopes: FlowpipeEnvelope[] = [
-        {
-          name: "Interval Arithmetic (linearized, non-rigorous)",
-          kind: "interval",
-          color: "#ef4444",
-          fillColor: "rgba(239, 68, 68, 0.12)",
-          borderDash: [5, 4],
-          lo: res.intervalLo,
-          hi: res.intervalHi,
-          peakVal: res.intervalMaxVelocity,
-          breachTime: res.intervalBreachTime,
-          isViolation: res.intervalBreachTime !== undefined,
-        },
-        {
-          name: "Taylor Model (Order 4)",
-          kind: "affine",
-          color: "#8b5cf6",
-          fillColor: "rgba(139, 92, 246, 0.18)",
-          borderDash: [3, 2],
-          lo: res.zonotopeLo.map((lo, i) => res.nominal[i]! - (res.nominal[i]! - lo) * 1.08),
-          hi: res.zonotopeHi.map((hi, i) => res.nominal[i]! + (hi - res.nominal[i]!) * 1.08),
-          peakVal: parseFloat((res.zonotopeMaxVelocity * 1.04).toFixed(2)),
-        },
-        {
-          name: "Zonotope (linearized, non-rigorous)",
-          kind: "zonotope",
-          color: "#22c55e",
-          fillColor: "rgba(34, 197, 94, 0.28)",
-          lo: res.zonotopeLo,
-          hi: res.zonotopeHi,
-          peakVal: res.zonotopeMaxVelocity,
-        },
-      ];
-
-      const statusBadges: { text: string; kind: "pass" | "warn" | "fail" }[] = [
-        {
-          text: res.envelopeWithinLimit
-            ? `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} <= ${v_limit} m/s (not a proof)`
-            : `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} > ${v_limit} m/s (not a proof)`,
-          kind: "warn",
-        },
-      ];
-      if (res.intervalBreachTime !== undefined) {
-        statusBadges.push({
-          text: `Interval wrapping blow-up crosses limit @ t = ${res.intervalBreachTime}s`,
-          kind: "warn",
+        const res = simulateDroneReachability({
+          m,
+          A,
+          Cd,
+          rho: 1.225,
+          z_target,
+          kz,
+          kv,
+          w_max,
+          v_limit,
         });
-      }
 
-      SimulationPanel.postReachabilityData({
-        t: res.time,
-        variable: "v",
-        nominalTrajectory: res.nominal,
-        envelopes,
-        requirementLimit: v_limit,
-        requirementLabel: `SysML v2 FlightCeiling: v(t) <= ${v_limit} m/s`,
-        // Webview field drives requirement-line coloring only; this is an estimate, not a certificate.
-        isCertifiedSafe: res.envelopeWithinLimit,
-        statusBadges,
-        yRange: [-6.0, 15.5],
-      });
+        if (client) {
+          await SimulationPanel.createOrShow(context.extensionUri, client);
+        }
 
-      vscode.window.showInformationMessage(`Reachability estimate (non-rigorous): ${res.summary}`);
-    }),
+        const envelopes: FlowpipeEnvelope[] = [
+          {
+            name: "Interval Arithmetic (linearized, non-rigorous)",
+            kind: "interval",
+            color: "#ef4444",
+            fillColor: "rgba(239, 68, 68, 0.12)",
+            borderDash: [5, 4],
+            lo: res.intervalLo,
+            hi: res.intervalHi,
+            peakVal: res.intervalMaxVelocity,
+            breachTime: res.intervalBreachTime,
+            isViolation: res.intervalBreachTime !== undefined,
+          },
+          {
+            name: "Taylor Model (Order 4)",
+            kind: "affine",
+            color: "#8b5cf6",
+            fillColor: "rgba(139, 92, 246, 0.18)",
+            borderDash: [3, 2],
+            lo: res.zonotopeLo.map((lo, i) => res.nominal[i]! - (res.nominal[i]! - lo) * 1.08),
+            hi: res.zonotopeHi.map((hi, i) => res.nominal[i]! + (hi - res.nominal[i]!) * 1.08),
+            peakVal: parseFloat((res.zonotopeMaxVelocity * 1.04).toFixed(2)),
+          },
+          {
+            name: "Zonotope (linearized, non-rigorous)",
+            kind: "zonotope",
+            color: "#22c55e",
+            fillColor: "rgba(34, 197, 94, 0.28)",
+            lo: res.zonotopeLo,
+            hi: res.zonotopeHi,
+            peakVal: res.zonotopeMaxVelocity,
+          },
+        ];
+
+        const statusBadges: { text: string; kind: "pass" | "warn" | "fail" }[] = [
+          {
+            text: res.envelopeWithinLimit
+              ? `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} <= ${v_limit} m/s (not a proof)`
+              : `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} > ${v_limit} m/s (not a proof)`,
+            kind: "warn",
+          },
+        ];
+        if (res.intervalBreachTime !== undefined) {
+          statusBadges.push({
+            text: `Interval wrapping blow-up crosses limit @ t = ${res.intervalBreachTime}s`,
+            kind: "warn",
+          });
+        }
+
+        SimulationPanel.postReachabilityData({
+          t: res.time,
+          variable: "v",
+          nominalTrajectory: res.nominal,
+          envelopes,
+          requirementLimit: v_limit,
+          requirementLabel: `SysML v2 FlightCeiling: v(t) <= ${v_limit} m/s`,
+          // Webview field drives requirement-line coloring only; this is an estimate, not a certificate.
+          isCertifiedSafe: res.envelopeWithinLimit,
+          statusBadges,
+          yRange: [-6.0, 15.5],
+        });
+
+        vscode.window.showInformationMessage(`Reachability estimate (non-rigorous): ${res.summary}`);
+      },
+    ),
     commands.registerCommand("modelscript.syncDigitalThreadParams", async () => {
       try {
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -2965,9 +2993,12 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.openTraceReplay", (trace?: any) => {
       TraceReplayPanel.createOrShow(context.extensionUri, client, trace);
     }),
-    commands.registerCommand("modelscript.openContractExplorer", (contractName?: string) => {
-      ContractHierarchyPanel.createOrShow(context.extensionUri, client, contractName);
-    }),
+    commands.registerCommand(
+      "modelscript.openContractExplorer",
+      (uriOrContractName?: string, contractName?: string) => {
+        ContractHierarchyPanel.createOrShow(context.extensionUri, client, uriOrContractName, contractName);
+      },
+    ),
     commands.registerCommand("modelscript.openPacemakerProgrammer", (uri?: string) => {
       PacemakerProgrammerPanel.createOrShow(context.extensionUri, client, uri);
     }),

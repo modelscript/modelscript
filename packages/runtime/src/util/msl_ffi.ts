@@ -14,7 +14,9 @@ interface Table1DEntry {
   tableName: string;
   fileName: string;
   table: number[][];
+  columns: number[];
   smoothness: number;
+  extrapolation: number;
 }
 
 interface Table2DEntry {
@@ -188,8 +190,11 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const tableName = String(args[0] ?? "");
       const fileName = String(args[1] ?? "");
       const table = Array.isArray(args[2]) ? args[2] : [];
-      const smoothness = Number(args[5] ?? 1);
-      table1DStore.set(handle, { tableName, fileName, table, smoothness });
+      const hasColumnsArg = Array.isArray(args[5]);
+      const columns = hasColumnsArg ? (args[5] as number[]).map(Number) : [];
+      const smoothness = hasColumnsArg ? Number(args[7] ?? 1) : Number(args[5] ?? 1);
+      const extrapolation = hasColumnsArg ? Number(args[8] ?? 1) : 1;
+      table1DStore.set(handle, { tableName, fileName, table, columns, smoothness, extrapolation });
       return handle;
     }
     case "ModelicaStandardTables_CombiTable1D_getValue": {
@@ -198,7 +203,11 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const u = Number(args[2] ?? 0.0);
       const entry = table1DStore.get(handle);
       if (!entry) return 0.0;
-      return interpolate1D(entry.table, icol, u, entry.smoothness, 1);
+      const colIdx =
+        entry.columns && entry.columns.length >= icol && entry.columns[icol - 1]! >= 2
+          ? entry.columns[icol - 1]! - 1
+          : icol;
+      return interpolate1D(entry.table, colIdx, u, entry.smoothness, entry.extrapolation);
     }
     case "ModelicaStandardTables_CombiTable1D_close": {
       const handle = Number(args[0] ?? 0);
@@ -214,7 +223,7 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const tableName = String(args[1] ?? "");
       const table = Array.isArray(args[2]) ? args[2] : [];
       const startTime = Number(args[5] ?? 0.0);
-      const columns = Array.isArray(args[6]) ? args[6] : [1];
+      const columns = Array.isArray(args[6]) ? args[6].map(Number) : [];
       const smoothness = Number(args[8] ?? 1);
       const extrapolation = Number(args[9] ?? 1);
       const shiftTime = Number(args[10] ?? 0.0);
@@ -237,7 +246,11 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const entry = timeTableStore.get(handle);
       if (!entry) return 0.0;
       const effectiveTime = timeIn - entry.shiftTime;
-      return interpolate1D(entry.table, icol, effectiveTime, entry.smoothness, entry.extrapolation);
+      const colIdx =
+        entry.columns && entry.columns.length >= icol && entry.columns[icol - 1]! >= 2
+          ? entry.columns[icol - 1]! - 1
+          : icol;
+      return interpolate1D(entry.table, colIdx, effectiveTime, entry.smoothness, entry.extrapolation);
     }
     case "ModelicaStandardTables_CombiTimeTable_minimumTime": {
       const handle = Number(args[0] ?? 0);

@@ -113,6 +113,7 @@ export {
   computeAABBDistance,
   computeProjectedFrontalArea,
   computeSolidAABB,
+  resolveClearanceRule,
   transformAABB,
   unionAABB,
   verifyAssemblyClearance,

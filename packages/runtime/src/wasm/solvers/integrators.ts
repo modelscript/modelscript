@@ -16,10 +16,16 @@ import {
   FLAG_VAR_STATE,
   FLAG_TEARING_VAR,
 } from "../dae/builder";
-import { evalEquationResidual } from "../dae/eval";
+import { evalEquationResidual, evalExpr } from "../dae/eval";
 import { EventDetector } from "../simulation/events";
 import { luFactor, luSolve, vectorNormInf } from "./matrix";
-import { UnmanagedUint32Array, UnmanagedFloat64Array, DenseMatrixView } from "../core/array";
+import {
+  UnmanagedUint32Array,
+  UnmanagedFloat64Array,
+  DenseMatrixView,
+  atomicChunkAlloc,
+  atomicChunkFree,
+} from "../core/array";
 
 /**
  * Solves N x N coupled algebraic constraints using multi-variable Newton-Raphson
@@ -193,6 +199,7 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
   let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
 
   for (let i: u32 = 0; i < dae.eqCount; i++) {
+    if (dae.isEqInitial(i) || dae.isEqRemoved(i)) continue;
     let offset = i * EQ_STRIDE;
     if (dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
 
@@ -204,7 +211,7 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
     let lhsKind = dae.getExprData().get(lhsOffset + EXPR_KIND);
     if (lhsKind != ExprKind.Name) continue; // Only handle algebraic variable assignments
 
-    let targetVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
+    let targetVarIdx = dae.resolveExprVarId(lhsExpr) as u32;
     if (targetVarIdx >= dae.varCount) continue;
 
     let varFlags = dae.getVarData().get(targetVarIdx * VAR_STRIDE + VAR_FLAGS);
@@ -269,26 +276,27 @@ export function stepEuler(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
 
   // 1. Explicit ODE State Update
   for (let i: u32 = 0; i < dae.eqCount; i++) {
+    if (dae.isEqInitial(i) || dae.isEqRemoved(i)) continue;
     let offset = i * EQ_STRIDE;
     if (dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
 
     let lhsExpr = dae.getEqData().get(offset + EQ_LHS);
-    if (lhsExpr == 0xffffffff) continue;
+    let rhsExpr = dae.getEqData().get(offset + EQ_RHS);
+    if (lhsExpr == 0xffffffff || rhsExpr == 0xffffffff) continue;
 
     let lhsOffset = lhsExpr * EXPR_STRIDE;
     if (dae.getExprData().get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
       let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
       if (
-        stateVarIdx >= dae.varCount &&
         stateVarIdx < dae.exprCount &&
         dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name
       ) {
-        stateVarIdx = dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_DATA1) as u32;
+        stateVarIdx = dae.resolveExprVarId(stateVarIdx) as u32;
       }
       if (stateVarIdx < dae.varCount) {
-        let res = evalEquationResidual(i, dae, varValuesPtr);
+        let deriv = evalExpr(rhsExpr, dae, varValuesPtr);
         let stateVal = varValues[stateVarIdx];
-        varValues[stateVarIdx] = stateVal + dt * res;
+        varValues[stateVarIdx] = stateVal + dt * deriv;
       }
     }
   }
@@ -409,6 +417,9 @@ export function runSimulationLoopWithEvents(
   let numVars = dae.varCount;
   let varValues = changetype<UnmanagedFloat64Array>(varValuesPtr as usize);
   let tempValues = changetype<UnmanagedFloat64Array>(tempValuesPtr as usize);
+  let interpByteLen = (numVars > 0 ? numVars : 1) * 8;
+  let interpValuesPtr = atomicChunkAlloc(interpByteLen) as u32;
+  let interpValues = changetype<UnmanagedFloat64Array>(interpValuesPtr as usize);
 
   for (let step: u32 = 0; step < steps; step++) {
     let t0 = startTime + (step as f64) * stepSize;
@@ -429,10 +440,13 @@ export function runSimulationLoopWithEvents(
         zcfIdx as u32,
         tempValuesPtr,
         varValuesPtr,
-        varValuesPtr, // stores interpolated result
+        interpValuesPtr, // separate scratch buffer so varValuesPtr (vEndArr) is preserved during bisection
         t0,
         t0 + stepSize
       );
+      for (let v: u32 = 0; v < numVars; v++) {
+        varValues[v] = interpValues[v];
+      }
 
       // Enforce constraints & update signs at tEvent
       solveAlgebraicConstraints(dae, varValuesPtr);
@@ -440,6 +454,7 @@ export function runSimulationLoopWithEvents(
     }
   }
 
+  atomicChunkFree(interpValuesPtr as usize);
   return steps;
 }
 
@@ -456,25 +471,26 @@ export function computeDerivatives(dae: DaeBuilder, varValuesPtr: u32, kOutPtr: 
   }
 
   for (let i: u32 = 0; i < dae.eqCount; i++) {
+    if (dae.isEqInitial(i) || dae.isEqRemoved(i)) continue;
     let offset = i * EQ_STRIDE;
     if (dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
 
     let lhsExpr = dae.getEqData().get(offset + EQ_LHS);
-    if (lhsExpr == 0xffffffff) continue;
+    let rhsExpr = dae.getEqData().get(offset + EQ_RHS);
+    if (lhsExpr == 0xffffffff || rhsExpr == 0xffffffff) continue;
 
     let lhsOffset = lhsExpr * EXPR_STRIDE;
     if (dae.getExprData().get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
       let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
       if (
-        stateVarIdx >= numVars &&
         stateVarIdx < dae.exprCount &&
         dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name
       ) {
-        stateVarIdx = dae.getExprData().get(stateVarIdx * EXPR_STRIDE + EXPR_DATA1) as u32;
+        stateVarIdx = dae.resolveExprVarId(stateVarIdx) as u32;
       }
       if (stateVarIdx < numVars) {
-        let res = evalEquationResidual(i, dae, varValuesPtr);
-        kOut[stateVarIdx] = res;
+        let deriv = evalExpr(rhsExpr, dae, varValuesPtr);
+        kOut[stateVarIdx] = deriv;
       }
     }
   }

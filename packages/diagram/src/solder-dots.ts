@@ -15,12 +15,76 @@ export interface EdgePath {
   id: string;
   points: { x: number; y: number }[];
   color?: string | undefined;
+  netId?: string | undefined;
+  sourceKey?: string | undefined;
+  targetKey?: string | undefined;
 }
 
 export interface ComputeSolderDotsOptions {
   cellSize?: number | undefined;
   tolerance?: number | undefined;
   portPoints?: { x: number; y: number }[] | undefined;
+}
+
+/**
+ * Computes connected electrical net IDs for edges using Union-Find over their endpoint port keys.
+ * Edges that share a common port endpoint belong to the same electrical net.
+ */
+export function computeEdgeNetIds(
+  edges: {
+    id: string;
+    netId?: string | undefined;
+    sourceKey?: string | undefined;
+    targetKey?: string | undefined;
+  }[],
+): Map<string, string> {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let root = x;
+    while (parent.has(root) && parent.get(root) !== root) {
+      root = parent.get(root)!;
+    }
+    let curr = x;
+    while (curr !== root) {
+      const nxt = parent.get(curr)!;
+      parent.set(curr, root);
+      curr = nxt;
+    }
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) {
+      if (ra < rb) parent.set(rb, ra);
+      else parent.set(ra, rb);
+    }
+  };
+
+  for (const e of edges) {
+    if (e.netId) continue;
+    if (e.sourceKey && !parent.has(e.sourceKey)) {
+      parent.set(e.sourceKey, e.sourceKey);
+    }
+    if (e.targetKey && !parent.has(e.targetKey)) {
+      parent.set(e.targetKey, e.targetKey);
+    }
+    if (e.sourceKey && e.targetKey) {
+      union(e.sourceKey, e.targetKey);
+    }
+  }
+
+  const result = new Map<string, string>();
+  for (const e of edges) {
+    if (e.netId) {
+      result.set(e.id, e.netId);
+    } else if (e.sourceKey) {
+      result.set(e.id, find(e.sourceKey));
+    } else if (e.targetKey) {
+      result.set(e.id, find(e.targetKey));
+    }
+  }
+  return result;
 }
 
 export function distToSegmentSquared(px: number, py: number, vx: number, vy: number, wx: number, wy: number): number {
@@ -35,6 +99,8 @@ export function distToSegmentSquared(px: number, py: number, vx: number, vy: num
 /**
  * Computes solder junction dots for an array of edge paths using an O(V) spatial hash grid,
  * topological branch degree counting, and subpixel coordinate clustering.
+ * When edges carry `netId` or `sourceKey`/`targetKey` metadata, junctions are only formed
+ * between edges belonging to the same connected electrical net.
  */
 export function computeSolderDots(
   edges: EdgePath[],
@@ -42,13 +108,38 @@ export function computeSolderDots(
 ): SolderDot[] {
   const opts: ComputeSolderDotsOptions =
     typeof optionsOrCellSize === "number" ? { cellSize: optionsOrCellSize } : optionsOrCellSize || {};
+
+  const validEdges = edges.filter((e) => e.points && e.points.length >= 2);
+  if (validEdges.length === 0) return [];
+
+  const netIds = computeEdgeNetIds(validEdges);
+  if (netIds.size > 0) {
+    const groups = new Map<string, EdgePath[]>();
+    for (const edge of validEdges) {
+      const key = netIds.get(edge.id) ?? "";
+      let list = groups.get(key);
+      if (!list) {
+        list = [];
+        groups.set(key, list);
+      }
+      list.push(edge);
+    }
+    const allDots: SolderDot[] = [];
+    for (const groupEdges of groups.values()) {
+      if (groupEdges.length < 2) continue;
+      allDots.push(...computeSolderDotsSingleNet(groupEdges, opts));
+    }
+    return allDots;
+  }
+
+  return computeSolderDotsSingleNet(validEdges, opts);
+}
+
+function computeSolderDotsSingleNet(validEdges: EdgePath[], opts: ComputeSolderDotsOptions): SolderDot[] {
   const cellSize = opts.cellSize ?? 40;
   const tolerance = opts.tolerance ?? 2.5;
   const tolSq = tolerance * tolerance;
   const portPoints = opts.portPoints;
-
-  const validEdges = edges.filter((e) => e.points && e.points.length >= 2);
-  if (validEdges.length === 0) return [];
 
   // 1. Gather all candidate vertices from all valid edges
   interface RawCandidate {

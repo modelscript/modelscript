@@ -41,6 +41,7 @@ import {
   getLanguageDomainId,
   getSymbolDomain,
   LanguageDomainId,
+  makePolyglotSymbolId,
   type Memo,
   type ParityReport,
   type QueryCacheStore,
@@ -239,18 +240,22 @@ export class WasmQueryEngine {
     return id;
   }
 
-  /** Next sequential integer ID to assign to a newly encountered parameterized query argument hash. */
-  private static nextArgsId = 1;
-  /** Global intern table mapping canonicalized query argument hashes to compact integer IDs. */
-  private static argsIds = new Map<string, number>();
+  /** Per-instance intern table mapping `(symbolId, queryId)` to sequential `argsHash` IDs (`1..9999`). */
+  private argsIdsByTarget = new Map<number, Map<string, number>>();
 
-  /** Returns or assigns a compact interned integer ID for a serialized `argsHash` (`0` if unparameterized). */
-  private getArgsId(argsHash?: string): number {
+  /** Returns or assigns a compact sequential integer ID for `argsHash` scoped to `(symbolId, queryId)` (`0` if unparameterized). */
+  private getArgsId(argsHash?: string, symbolId: SymbolId = 0, queryId = 0): number {
     if (!argsHash) return 0;
-    let id = WasmQueryEngine.argsIds.get(argsHash);
+    const targetKey = symbolId * 1000 + (queryId % 1000);
+    let map = this.argsIdsByTarget.get(targetKey);
+    if (!map) {
+      map = new Map<string, number>();
+      this.argsIdsByTarget.set(targetKey, map);
+    }
+    let id = map.get(argsHash);
     if (id === undefined) {
-      id = WasmQueryEngine.nextArgsId++;
-      WasmQueryEngine.argsIds.set(argsHash, id);
+      id = map.size + 1;
+      map.set(argsHash, id);
     }
     return id;
   }
@@ -503,7 +508,7 @@ export class WasmQueryEngine {
   public memoKey(queryName: string, symbolId: SymbolId, argsHash?: string): number {
     // Intern the query name and optional serialized arguments into small integer IDs.
     const qId = this.getQueryId(queryName);
-    const aId = this.getArgsId(argsHash);
+    const aId = this.getArgsId(argsHash, symbolId, qId);
     // Extract sign bit for virtual (negative) SymbolIds and fold domain + local symbol sequence into `compactSym`.
     const absSymbolId = Math.abs(symbolId);
     const signBit = symbolId < 0 ? 1 : 0;
@@ -555,11 +560,22 @@ export class WasmQueryEngine {
         return doc.getText().substring(start, end);
       }
     }
+    if (this.tree && typeof (this.tree as any).sourceCode === "string") {
+      const src = (this.tree as any).sourceCode as string;
+      if (start >= 0 && start <= src.length) {
+        return src.substring(start, Math.min(end, src.length));
+      }
+    }
     if (this.tree && (this.tree as any).rootNode) {
       const root = (this.tree as any).rootNode;
-      const text = root.text ?? root.tree?.text;
-      if (typeof text === "string" && start >= 0 && end <= text.length) {
-        return text.substring(start, end);
+      const src = root.tree?.sourceCode ?? root.tree?.text;
+      if (typeof src === "string" && start >= 0 && start <= src.length) {
+        return src.substring(start, Math.min(end, src.length));
+      }
+      const text = root.text;
+      const offset = root.startOffset ?? root.startIndex ?? root.startByte ?? 0;
+      if (typeof text === "string" && start >= offset && start - offset <= text.length) {
+        return text.substring(start - offset, Math.min(end - offset, text.length));
       }
     }
     return null;
@@ -773,7 +789,44 @@ export class WasmQueryEngine {
   ): void {
     // Bump global Salsa revision counter.
     this.currentRevision++;
-    const ids = changedSymbolIds instanceof Set ? changedSymbolIds : new Set(changedSymbolIds);
+    const rawIds = changedSymbolIds instanceof Set ? changedSymbolIds : new Set(changedSymbolIds);
+    const ids = new Set<SymbolId>(rawIds);
+    const structIds = structuralChangedIds ? new Set<SymbolId>(structuralChangedIds) : undefined;
+
+    // Expand local un-prefixed SymbolIds to matching polyglot domain-prefixed SymbolIds when
+    // the engine backs a merged UnifiedWorkspace whose per-language indices were remapped.
+    for (const id of rawIds) {
+      if (id > 0 && getSymbolDomain(id) === 0) {
+        for (let d = 1; d <= 11; d++) {
+          const polyId = makePolyglotSymbolId(d, id);
+          if (
+            this.index.symbols.has(polyId) ||
+            this.symbolNames.has(polyId) ||
+            this.inputRevisions.has(polyId) ||
+            this.inputReverseDependencies.has(polyId)
+          ) {
+            ids.add(polyId);
+          }
+        }
+      }
+    }
+    if (structuralChangedIds && structIds) {
+      for (const id of structuralChangedIds) {
+        if (id > 0 && getSymbolDomain(id) === 0) {
+          for (let d = 1; d <= 11; d++) {
+            const polyId = makePolyglotSymbolId(d, id);
+            if (
+              this.index.symbols.has(polyId) ||
+              this.symbolNames.has(polyId) ||
+              this.inputRevisions.has(polyId) ||
+              this.inputReverseDependencies.has(polyId)
+            ) {
+              structIds.add(polyId);
+            }
+          }
+        }
+      }
+    }
 
     // Step 1: Bump per-symbol input revisions, domain revisions, and invalidate `byName` reverse dependencies
     // whenever a symbol is newly added, renamed, or deleted.
@@ -808,8 +861,8 @@ export class WasmQueryEngine {
 
     // Step 3: Traverse `inputReverseDependencies` for structurally changed symbols,
     // evicting dependent memos and marking their target symbols dirty for re-linting.
-    if (structuralChangedIds) {
-      for (const id of structuralChangedIds) {
+    if (structIds) {
+      for (const id of structIds) {
         const dependentKeys = this.inputReverseDependencies.get(id);
         if (dependentKeys) {
           for (const key of dependentKeys) {
@@ -1653,19 +1706,26 @@ export class WasmQueryEngine {
     /* eslint-disable-next-line @typescript-eslint/no-this-alias */
     const engine = this;
     const tracker = this.activeTracker;
+    const getTracker = () => engine.activeTracker ?? tracker;
 
     return {
       ensureFQNIndexed(fqn: string): void {
         engine.ensureFQNIndexed(fqn);
       },
 
+      getRevision(): Revision {
+        return engine.currentRevision;
+      },
+
       symbol(id: SymbolId): SymbolEntry | undefined {
-        if (tracker) tracker.recordInput(id);
+        const t = getTracker();
+        if (t) t.recordInput(id);
         return engine.resolveEntry(id);
       },
 
       childrenOf(id: SymbolId): SymbolEntry[] {
-        if (tracker) tracker.recordInput(id);
+        const t = getTracker();
+        if (t) t.recordInput(id);
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
         const childIds = engine.index.childrenOf.get(lookupId ?? 0);
@@ -1673,7 +1733,7 @@ export class WasmQueryEngine {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
             if (entry) {
-              if (tracker) tracker.recordInput(cid);
+              if (t) t.recordInput(cid);
               results.push(entry);
             }
           }
@@ -1685,7 +1745,8 @@ export class WasmQueryEngine {
       },
 
       childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
-        if (tracker) tracker.recordInput(id);
+        const t = getTracker();
+        if (t) t.recordInput(id);
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
         const childIds = engine.index.childrenOf.get(lookupId ?? 0);
@@ -1693,7 +1754,7 @@ export class WasmQueryEngine {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
             if (entry && entry.fieldName === fieldName) {
-              if (tracker) tracker.recordInput(cid);
+              if (t) t.recordInput(cid);
               results.push(entry);
             }
           }
@@ -1719,12 +1780,13 @@ export class WasmQueryEngine {
       },
 
       byName(name: string): SymbolEntry[] {
-        if (tracker) tracker.recordByName(name);
+        const t = getTracker();
+        if (t) t.recordByName(name);
         const ids = engine.index.byName.get(name);
         if (!ids) return [];
         return ids
           .map((id: SymbolId) => {
-            if (tracker) tracker.recordInput(id);
+            if (t) t.recordInput(id);
             return engine.resolveEntry(id);
           })
           .filter(Boolean) as SymbolEntry[];
@@ -1735,44 +1797,50 @@ export class WasmQueryEngine {
       },
 
       resolvePolyglotSymbol(fqn: string, targetDomain?: LanguageDomainId): SymbolId | null {
-        if (tracker) tracker.recordByName(fqn);
+        const t = getTracker();
+        if (t) t.recordByName(fqn);
         return engine.resolvePolyglotSymbol(fqn, targetDomain);
       },
 
       crossDomainBinding(symbolId: SymbolId): SymbolId[] {
-        if (tracker) tracker.recordInput(symbolId);
+        const t = getTracker();
+        if (t) t.recordInput(symbolId);
         const results = engine.crossDomainBinding(symbolId);
-        if (tracker) {
+        if (t) {
           for (const rid of results) {
-            tracker.recordInput(rid);
+            t.recordInput(rid);
           }
         }
         return results;
       },
 
       physicalQuantityParity(modelicaVarId: SymbolId, sysmlAttrId: SymbolId): ParityReport {
-        if (tracker) {
-          tracker.recordInput(modelicaVarId);
-          tracker.recordInput(sysmlAttrId);
+        const t = getTracker();
+        if (t) {
+          t.recordInput(modelicaVarId);
+          t.recordInput(sysmlAttrId);
         }
         return engine.physicalQuantityParity(modelicaVarId, sysmlAttrId);
       },
 
       geometricShapeBinding(cadSymbolId: SymbolId, feaMeshId: SymbolId): ShapeBinding {
-        if (tracker) {
-          tracker.recordInput(cadSymbolId);
-          tracker.recordInput(feaMeshId);
+        const t = getTracker();
+        if (t) {
+          t.recordInput(cadSymbolId);
+          t.recordInput(feaMeshId);
         }
         return engine.geometricShapeBinding(cadSymbolId, feaMeshId);
       },
 
       getDomainRevision(domain: LanguageDomainId): Revision {
-        if (tracker) tracker.recordDomain(domain);
+        const t = getTracker();
+        if (t) t.recordDomain(domain);
         return engine.getDomainRevision(domain);
       },
 
       hasDomainChanged(domain: LanguageDomainId, sinceRevision: Revision): boolean {
-        if (tracker) tracker.recordDomain(domain);
+        const t = getTracker();
+        if (t) t.recordDomain(domain);
         return engine.hasDomainChanged(domain, sinceRevision);
       },
 
@@ -1828,17 +1896,20 @@ export class WasmQueryEngine {
       },
 
       cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
-        if (tracker && entry) tracker.recordInput(entry.id);
+        const t = getTracker();
+        if (t && entry) t.recordInput(entry.id);
         return engine.getCstText(startByte, endByte, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
-        if (tracker) tracker.recordInput(id);
+        const t = getTracker();
+        if (t) t.recordInput(id);
         return engine.getCstNode(id);
       },
 
       cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
-        if (tracker && entry) tracker.recordInput(entry.id);
+        const t = getTracker();
+        if (t && entry) t.recordInput(entry.id);
         return engine.getCstNodeRange(startByte, endByte, entry);
       },
 
@@ -1852,7 +1923,8 @@ export class WasmQueryEngine {
 
   /**
    * Ensures that all lazy-loaded workspace files along the package hierarchy of `fqn`
-   * have been parsed and merged into `this.index`.
+   * have been parsed and merged into `this.index`, invalidating any stale Salsa memos
+   * for newly populated package scopes.
    */
   public ensureFQNIndexed(fqn: string): void {
     const ws =
@@ -1861,7 +1933,12 @@ export class WasmQueryEngine {
       (this.index as any)?.globalWorkspaceIndex;
     if (ws && typeof ws.ensureFQNIndexed === "function") {
       ws.ensureFQNIndexed(fqn);
-      if (typeof ws.toUnifiedPartial === "function" && this.index) {
+      const lazyChanges =
+        typeof ws.takeLazyChangedIds === "function"
+          ? (ws.takeLazyChangedIds() as { changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> })
+          : null;
+      const hadChanges = lazyChanges ? lazyChanges.changedIds.size > 0 : true;
+      if (hadChanges && typeof ws.toUnifiedPartial === "function" && this.index) {
         const newIdx = ws.toUnifiedPartial();
         if (newIdx && newIdx !== this.index) {
           if (newIdx.symbols && this.index.symbols) {
@@ -1892,6 +1969,9 @@ export class WasmQueryEngine {
             }
           }
         }
+      }
+      if (lazyChanges && lazyChanges.changedIds.size > 0) {
+        this.invalidate(lazyChanges.changedIds, lazyChanges.structuralChangedIds);
       }
     }
   }
@@ -2176,6 +2256,10 @@ export class WasmQueryEngine {
     const db: QueryDB = {
       ensureFQNIndexed(fqn: string): void {
         engine.ensureFQNIndexed(fqn);
+      },
+
+      getRevision(): Revision {
+        return engine.currentRevision;
       },
 
       symbol(id: SymbolId): SymbolEntry | undefined {

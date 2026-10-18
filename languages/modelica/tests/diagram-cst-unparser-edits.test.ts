@@ -533,5 +533,76 @@ end Circuit;`;
       assert.strictEqual(diagram.edges[1]!.router, undefined);
       assert.strictEqual(diagram.edges[1]!.vertices?.length, 2);
     });
+
+    it("computeEdgePointEdits and computeConnectRemove handle real GLR CST connect_equation wrapped in some_equation", () => {
+      const code = `model RLC
+equation
+  connect(L.n, C.p) annotation(Line(points={{10, 40}, {20, 40}, {20, 30}}, color={0, 0, 255}));
+  connect(R.n, L.p);
+end RLC;`;
+      const tree = parser.parse(code);
+      const connectNodes: any[] = [];
+      const collectConnects = (n: any) => {
+        if (!n) return;
+        if (n.type === "connect_equation") connectNodes.push(n);
+        for (const ch of n.children || []) collectConnects(ch);
+      };
+      collectConnects(tree.rootNode);
+      assert.strictEqual(connectNodes.length, 2);
+
+      const classInstance = {
+        name: "RLC",
+        components: [],
+        connectEquations: [
+          {
+            lhs: "L.n",
+            rhs: "C.p",
+            cstNode: connectNodes[0],
+          },
+          {
+            lhs: "R.n",
+            rhs: "L.p",
+            cstNode: connectNodes[1],
+          },
+        ],
+      };
+
+      const lines = code.split("\n");
+      const edits = computeEdgePointEdits(lines, classInstance as any, [
+        {
+          source: "L.n",
+          target: "C.p",
+          points: [
+            { x: 10, y: 42 },
+            { x: 35, y: 42 },
+            { x: 35, y: 15 },
+          ],
+        },
+        {
+          source: "R.n",
+          target: "L.p",
+          points: [
+            { x: -10, y: 40 },
+            { x: -10, y: 42 },
+          ],
+        },
+      ]);
+
+      assert.strictEqual(edits.length, 2);
+      assert.ok(edits[0]!.newText.includes("Line(points={{10,42}, {35,42}, {35,15}}, color={0, 0, 255})"));
+      assert.ok(
+        edits[1]!.newText.includes(
+          "connect(R.n, L.p) annotation(Line(points={{-10,40}, {-10,42}}, color={0, 0, 255}))",
+        ),
+      );
+
+      // Removing the annotated connect equation should delete the entire line (including annotation and trailing ';')
+      const removeEdits = computeConnectRemove(code, classInstance as any, "L.n", "C.p");
+      assert.strictEqual(removeEdits.length, 1);
+      assert.strictEqual(removeEdits[0]!.range.start.line, 2);
+      assert.strictEqual(removeEdits[0]!.range.start.character, 0);
+      assert.strictEqual(removeEdits[0]!.range.end.line, 3);
+      assert.strictEqual(removeEdits[0]!.range.end.character, 0);
+    });
   });
 });

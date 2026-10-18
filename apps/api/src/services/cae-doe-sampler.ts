@@ -149,11 +149,7 @@ export class CaeDoeSampler {
         const stddev = v.stdDev ?? Math.max(1e-6, (v.max - v.min) / 6);
         dist = { type: "gaussian", mean, stddev };
       } else if (v.distribution === "log-uniform" && v.min > 0 && v.max > 0) {
-        const logLo = Math.log(v.min);
-        const logHi = Math.log(v.max);
-        const mu = (logLo + logHi) / 2;
-        const sigma = Math.max(1e-6, (logHi - logLo) / 4);
-        dist = { type: "lognormal", mu, sigma };
+        dist = { type: "uniform", lo: Math.log(v.min), hi: Math.log(v.max) };
       } else {
         dist = { type: "uniform", lo: v.min, hi: v.max };
       }
@@ -173,7 +169,13 @@ export class CaeDoeSampler {
     return mapSamples.map((map) => {
       const rec: Record<string, number> = {};
       for (const v of variables) {
-        let val = map.get(v.name) ?? v.nominal ?? (v.min + v.max) / 2;
+        const raw = map.get(v.name);
+        let val =
+          raw !== undefined
+            ? v.distribution === "log-uniform" && v.min > 0 && v.max > 0
+              ? Math.exp(raw)
+              : raw
+            : (v.nominal ?? (v.min + v.max) / 2);
         // Clamp to min/max bounds
         val = Math.max(v.min, Math.min(v.max, val));
         rec[v.name] = Number(val.toFixed(6));
@@ -189,7 +191,13 @@ export class CaeDoeSampler {
     return mapSamples.map((map) => {
       const rec: Record<string, number> = {};
       for (const v of variables) {
-        let val = map.get(v.name) ?? v.nominal ?? (v.min + v.max) / 2;
+        const raw = map.get(v.name);
+        let val =
+          raw !== undefined
+            ? v.distribution === "log-uniform" && v.min > 0 && v.max > 0
+              ? Math.exp(raw)
+              : raw
+            : (v.nominal ?? (v.min + v.max) / 2);
         val = Math.max(v.min, Math.min(v.max, val));
         rec[v.name] = Number(val.toFixed(6));
       }
@@ -208,10 +216,19 @@ export class CaeDoeSampler {
     const grids: number[][] = variables.map((v, idx) => {
       const steps = stepsPerVar[idx]!;
       if (steps <= 1) return [v.nominal ?? (v.min + v.max) / 2];
-      const delta = (v.max - v.min) / (steps - 1);
       const arr: number[] = [];
-      for (let s = 0; s < steps; s++) {
-        arr.push(Number((v.min + s * delta).toFixed(6)));
+      if (v.distribution === "log-uniform" && v.min > 0 && v.max > 0) {
+        const logMin = Math.log(v.min);
+        const logMax = Math.log(v.max);
+        const logDelta = (logMax - logMin) / (steps - 1);
+        for (let s = 0; s < steps; s++) {
+          arr.push(Number(Math.exp(logMin + s * logDelta).toFixed(6)));
+        }
+      } else {
+        const delta = (v.max - v.min) / (steps - 1);
+        for (let s = 0; s < steps; s++) {
+          arr.push(Number((v.min + s * delta).toFixed(6)));
+        }
       }
       return arr;
     });
@@ -247,7 +264,20 @@ export class CaeDoeSampler {
       const rec: Record<string, number> = {};
       for (const v of variables) {
         const u = rng.random();
-        const val = v.min + u * (v.max - v.min);
+        let val: number;
+        if (v.distribution === "log-uniform" && v.min > 0 && v.max > 0) {
+          const logMin = Math.log(v.min);
+          const logMax = Math.log(v.max);
+          val = Math.exp(logMin + u * (logMax - logMin));
+        } else if (v.distribution === "normal") {
+          const u2 = Math.max(1e-12, rng.random());
+          const z = Math.sqrt(-2 * Math.log(Math.max(1e-12, u))) * Math.cos(2 * Math.PI * u2);
+          const mean = v.mean ?? (v.nominal !== undefined ? v.nominal : (v.min + v.max) / 2);
+          const stdDev = v.stdDev ?? Math.max(1e-6, (v.max - v.min) / 6);
+          val = Math.max(v.min, Math.min(v.max, mean + z * stdDev));
+        } else {
+          val = v.min + u * (v.max - v.min);
+        }
         rec[v.name] = Number(val.toFixed(6));
       }
       result.push(rec);

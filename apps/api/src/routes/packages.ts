@@ -717,6 +717,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const contentHash = release?.content_hash || storage.getContentHash(name, version);
       const canManage = Boolean(req.user && database.canUserManagePackage(name, req.user.id));
 
+      const pkgRecord = database.getPackage(name);
+
       try {
         const packageMoContent = await extractPackageMoFromZip(file.buffer);
         const parsed = parsePackageMo(packageMoContent);
@@ -724,7 +726,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         res.json({
           name,
           version,
-          description: parsed.description,
+          description: parsed.description ?? pkgRecord?.description ?? null,
           modelicaVersion: parsed.version,
           size: file.size,
           contentHash: contentHash || undefined,
@@ -738,11 +740,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           canManage,
         });
       } catch {
-        // If we cannot parse the zip, still return basic info
+        // If we cannot parse package.mo from the zip (e.g. polyglot package.json archive), return DB metadata
         res.json({
           name,
           version,
-          description: null,
+          description: pkgRecord?.description ?? null,
           modelicaVersion: null,
           size: file.size,
           contentHash: contentHash || undefined,

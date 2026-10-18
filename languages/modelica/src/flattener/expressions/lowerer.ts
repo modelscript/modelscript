@@ -31,7 +31,7 @@ import {
 import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { BUILTIN_FUNCTIONS } from "../../builtins.js";
 import { ModelicaErrorCode } from "../../errors.js";
-import { isScopeEncapsulated } from "../../queries.js";
+import { isScopeEncapsulated, resolveQualified } from "../../queries.js";
 import { getElementDiagRange } from "../support/range-utils.js";
 import {
   getFlatteningState,
@@ -689,6 +689,8 @@ export function lowerCSTExpression(
             const vari = dae.getVarVariability(vIdx);
             const vt = dae.getVarType(vIdx);
             if (
+              !flattener?.isOldFrontend &&
+              !dae.extensionMetadata?.["isOldFrontend"] &&
               vari === Variability.Continuous &&
               vt !== VarType.Integer &&
               vt !== VarType.Boolean &&
@@ -713,6 +715,7 @@ export function lowerCSTExpression(
                 if (root) {
                   const leafName = vName.includes(".") ? vName.split(".").pop()! : vName;
                   const re = new RegExp(`\\b${leafName}\\b`);
+                  const reinitRe = new RegExp(`\\breinit\\s*\\(\\s*${leafName}\\b`);
                   const stack = [root];
                   while (stack.length > 0) {
                     const n = stack.pop();
@@ -720,6 +723,10 @@ export function lowerCSTExpression(
                     if (n.type === "when_statement" || n.type === "when_equation") {
                       const text = n.text ?? "";
                       if (re.test(text)) {
+                        if (reinitRe.test(text)) {
+                          isAssignedInWhen = true;
+                          break;
+                        }
                         const innerStack = [...(n.children || [])];
                         while (innerStack.length > 0) {
                           const inNode = innerStack.pop();
@@ -1705,7 +1712,7 @@ export function lowerCSTExpression(
       }
       const isOuterFn = isOuterFunctionSymbol(db, calledFnSym);
       const hasInnerMatch = isOuterFn && hasMatchingInnerFunction(db, flattener, calledFnSym?.name ?? cleanFnName);
-      if (calledFnSym && flattener.isClassPartial?.(calledFnSym.id)) {
+      if (calledFnSym) {
         const currentParentMods = flattener?.currentParentMods;
         const redeclArg = currentParentMods?.args?.findLast
           ? currentParentMods.args.findLast(
@@ -1740,6 +1747,47 @@ export function lowerCSTExpression(
               .find((e: any) => (e.kind === "Class" || e.kind === "Function") && flattener.isFunctionSym?.(e));
           if (redeclTarget) {
             calledFnSym = redeclTarget;
+          }
+        } else if (cleanFnName.includes(".")) {
+          const pkgPrefix = cleanFnName.split(".")[0]!;
+          const fnRest = cleanFnName.split(".").slice(1).join(".");
+          const pkgRedecl = currentParentMods?.args?.findLast
+            ? currentParentMods.args.findLast(
+                (a: any) =>
+                  !a.isBreak &&
+                  a.name === pkgPrefix &&
+                  (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                  a.redeclaredTypeSpecifier,
+              )
+            : currentParentMods?.args?.find(
+                (a: any) =>
+                  !a.isBreak &&
+                  a.name === pkgPrefix &&
+                  (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                  a.redeclaredTypeSpecifier,
+              );
+          if (pkgRedecl?.redeclaredTypeSpecifier) {
+            const evalScopeId =
+              pkgRedecl.evaluationScopeId ??
+              pkgRedecl.ownerClassId ??
+              currentParentMods?.ownerClassId ??
+              flattener?.currentClassId ??
+              flattener?.currentRootClassId;
+            const pkgSpec = String(pkgRedecl.redeclaredTypeSpecifier).replace(/^\.+/, "");
+            const pkgTarget =
+              (evalScopeId
+                ? db.query<(n: string) => SymbolEntry | null>("resolveName", evalScopeId)?.(pkgSpec)
+                : null) ??
+              (flattener?.currentRootClassId
+                ? db.query<(n: string) => SymbolEntry | null>("resolveName", flattener.currentRootClassId)?.(pkgSpec)
+                : null) ??
+              db.byName(pkgSpec.split(".").pop()!).find((e: any) => e.kind === "Class" || e.kind === "Package");
+            if (pkgTarget) {
+              const fnInPkg = db.query<(n: string) => SymbolEntry | null>("resolveName", pkgTarget.id)?.(fnRest);
+              if (fnInPkg) {
+                calledFnSym = fnInPkg;
+              }
+            }
           }
         }
       }
@@ -2449,10 +2497,47 @@ export function lowerCSTExpression(
           if (k === ExprKind.Name) {
             const vName = dae.interner.resolve(dae.getExprData1(aid));
             if (vName) {
-              const sym = db?.byName(vName)[0];
-              const meta = sym?.metadata as any;
-              if (meta?.typeSpecifier && !["Real", "Integer", "Boolean", "String"].includes(meta.typeSpecifier)) {
-                isInvalidStringCall = true;
+              const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
+              let fullIdx = dae.getVarIdxByName(vName);
+              if (fullIdx < 0 && currentPrefix) {
+                fullIdx = dae.getVarIdxByName(`${currentPrefix}.${vName}`);
+              }
+              if (fullIdx >= 0 && !dae.getVarCustomType(fullIdx)) {
+                // Valid primitive or enumeration variable in DAE
+              } else {
+                const scopeId =
+                  flattener?.currentFlatteningFunctionId ?? flattener?.currentClassId ?? flattener?.currentRootClassId;
+                const sym =
+                  scopeId !== undefined && scopeId !== null
+                    ? (db?.query<(n: string) => SymbolEntry | null>("resolveSimpleName", scopeId)?.(vName) ??
+                      db?.query<(n: string) => SymbolEntry | null>("resolveName", scopeId)?.(vName) ??
+                      db?.byName(vName)[0])
+                    : db?.byName(vName)[0];
+                const meta = sym?.metadata as any;
+                if (meta?.typeSpecifier && !["Real", "Integer", "Boolean", "String"].includes(meta.typeSpecifier)) {
+                  const typeSym =
+                    sym?.parentId !== undefined && sym?.parentId !== null
+                      ? (db?.query<(n: string) => SymbolEntry | null>(
+                          "resolveSimpleName",
+                          sym.parentId,
+                        )?.(meta.typeSpecifier) ??
+                        db?.query<(n: string) => SymbolEntry | null>(
+                          "resolveName",
+                          sym.parentId,
+                        )?.(meta.typeSpecifier) ??
+                        (db ? resolveQualified(db, meta.typeSpecifier) : null) ??
+                        db?.byName(meta.typeSpecifier.split(".").pop()!)[0])
+                      : ((db ? resolveQualified(db, meta.typeSpecifier) : null) ??
+                        db?.byName(meta.typeSpecifier.split(".").pop()!)[0]);
+                  const isTypeAliasOrEnum =
+                    typeSym &&
+                    (typeSym.kind === "type" ||
+                      (typeSym.metadata as any)?.restriction === "type" ||
+                      (typeSym.metadata as any)?.isEnumeration);
+                  if (!isTypeAliasOrEnum) {
+                    isInvalidStringCall = true;
+                  }
+                }
               }
             }
           }
@@ -4396,9 +4481,15 @@ export function lowerCSTExpression(
         const arrs = argExprIds.slice(1).map((a) => {
           if (dae.getExprKind(a) === ExprKind.Name) {
             const vName = dae.interner.resolve(dae.getExprData1(a));
-            if (vName && dae.hasArrayElements(vName)) {
-              const ctor = expandVarToArrayCtor(vName, dae);
-              if (ctor !== null) return ctor;
+            if (vName) {
+              const arrShape = getNamedArrayShape(dae, vName);
+              if (arrShape && arrShape.some((d) => d === 0)) {
+                return dae.addArrayCtorExpr([]);
+              }
+              if (dae.hasArrayElements(vName)) {
+                const ctor = expandVarToArrayCtor(vName, dae);
+                if (ctor !== null) return ctor;
+              }
             }
           }
           return a;
@@ -4542,6 +4633,9 @@ export function lowerCSTExpression(
         const litShort = enumPath.includes(".") ? enumPath.split(".").pop()! : enumPath;
         return dae.addStringLiteral(litShort);
       }
+      if (argExprIds.length === 1 && namedArgs.size === 0 && dae.getExprKind(argExprIds[0]!) === ExprKind.IntLiteral) {
+        return dae.addStringLiteral(String(dae.getExprData1(argExprIds[0]!)));
+      }
       if (argExprIds.length === 1 && isRealExpr(argExprIds[0]!, dae)) {
         if (namedArgs.has("format")) {
           argExprIds.push(namedArgs.get("format")!);
@@ -4554,6 +4648,18 @@ export function lowerCSTExpression(
           argExprIds.push(namedArgs.get("significantDigits")!);
         } else {
           argExprIds.push(namedArgs.get("significantDigits") ?? dae.addIntLiteral(6));
+          argExprIds.push(namedArgs.get("minimumLength") ?? dae.addIntLiteral(0));
+          argExprIds.push(namedArgs.get("leftJustified") ?? dae.addBoolLiteral(true));
+        }
+      } else if (
+        argExprIds.length === 1 &&
+        dae.getExprKind(argExprIds[0]!) !== ExprKind.IntLiteral &&
+        dae.getExprKind(argExprIds[0]!) !== ExprKind.BoolLiteral &&
+        dae.getExprKind(argExprIds[0]!) !== ExprKind.StringLiteral
+      ) {
+        if (namedArgs.has("format")) {
+          argExprIds.push(namedArgs.get("format")!);
+        } else {
           argExprIds.push(namedArgs.get("minimumLength") ?? dae.addIntLiteral(0));
           argExprIds.push(namedArgs.get("leftJustified") ?? dae.addBoolLiteral(true));
         }
@@ -4735,11 +4841,13 @@ export function lowerCSTExpression(
 
     const hasParentRedecl = Boolean(
       (dae as any)?.specializedPrefix ||
+      flattener?.currentParentMods?.specializedPkgPrefix ||
       flattener?.currentParentMods?.args?.some(
         (a: any) =>
           !a.isBreak &&
           (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
           (a.name === cleanFnName ||
+            a.name === cleanFnName.split(".")[0] ||
             (!cleanFnName.includes(".") &&
               (a.name === cleanFnName || Boolean(prefix && dae.classKind !== "function")))),
       ),
@@ -4906,16 +5014,68 @@ export function lowerCSTExpression(
                 matchingFnSym = memberFn;
                 const classQual = getSymbolQualifiedName(db, compClassId);
                 const compPrefix = prefix ? `${prefix}.${prefixStr}` : prefixStr;
-                const specPrefix = `${classQual}$${compPrefix.replace(/\./g, "$")}`;
+                const compMod = db.query<any>("effectiveModification", prefixSym.id);
+                const hasCompMod = Boolean(compMod?.args && compMod.args.length > 0);
+                const specPrefix = hasCompMod ? `${classQual}$${compPrefix.replace(/\./g, "$")}` : classQual;
                 specializedQualifiedName = `${specPrefix}.${fnBaseName}`;
                 enclosingScopeId = compClassId;
                 componentInstancePrefix = compPrefix;
-                componentSpecializedPrefix = specPrefix;
+                componentSpecializedPrefix = hasCompMod ? specPrefix : undefined;
               }
             }
           } else {
             const effectivePrefixSym = aliasPrefixSym ?? prefixSym;
-            const memberFn = db.query<(n: string) => SymbolEntry | null>("resolveName", prefixSym.id)?.(fnBaseName);
+            const outerPkgRedeclCandidate = currentParentMods?.args?.findLast
+              ? currentParentMods.args.findLast(
+                  (a: any) =>
+                    !a.isBreak &&
+                    a.name === prefixStr &&
+                    (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                    a.redeclaredTypeSpecifier,
+                )
+              : currentParentMods?.args?.find(
+                  (a: any) =>
+                    !a.isBreak &&
+                    a.name === prefixStr &&
+                    (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                    a.redeclaredTypeSpecifier,
+                );
+            let preResolvedRedeclPkgSym: SymbolEntry | null = null;
+            if (outerPkgRedeclCandidate?.redeclaredTypeSpecifier) {
+              const pkgSpec = String(outerPkgRedeclCandidate.redeclaredTypeSpecifier).replace(/^\.+/, "");
+              let pkgScopeId =
+                outerPkgRedeclCandidate.evaluationScopeId ??
+                outerPkgRedeclCandidate.ownerClassId ??
+                currentScope ??
+                flattener?.currentRootClassId;
+              if (pkgScopeId && db.symbol(pkgScopeId)?.kind === "Component") {
+                pkgScopeId = db.symbol(pkgScopeId)?.parentId ?? flattener?.currentRootClassId;
+              }
+              preResolvedRedeclPkgSym =
+                (pkgScopeId
+                  ? pkgSpec.includes(".")
+                    ? db.query<(n: string) => SymbolEntry | null>("resolveName", pkgScopeId)?.(pkgSpec)
+                    : db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", pkgScopeId)?.(pkgSpec)
+                  : null) ??
+                (flattener?.currentRootClassId
+                  ? pkgSpec.includes(".")
+                    ? db.query<(n: string) => SymbolEntry | null>(
+                        "resolveName",
+                        flattener.currentRootClassId,
+                      )?.(pkgSpec)
+                    : db.query<(n: string) => SymbolEntry | null>(
+                        "resolveSimpleName",
+                        flattener.currentRootClassId,
+                      )?.(pkgSpec)
+                  : null) ??
+                db.byName(pkgSpec.split(".").pop()!).find((e: any) => e.kind === "Class" || e.kind === "Package") ??
+                null;
+            }
+            const memberFn =
+              db.query<(n: string) => SymbolEntry | null>("resolveName", prefixSym.id)?.(fnBaseName) ??
+              (preResolvedRedeclPkgSym
+                ? db.query<(n: string) => SymbolEntry | null>("resolveName", preResolvedRedeclPkgSym.id)?.(fnBaseName)
+                : null);
             if (
               memberFn &&
               (memberFn.kind === "Class" || memberFn.kind === "Function") &&
@@ -4943,6 +5103,8 @@ export function lowerCSTExpression(
                       (a.name === intermediateFnName || a.name === memberFn.name) &&
                       (a.isRedeclaration || a.redeclaredTypeSpecifier),
                   );
+              const outerPkgRedeclArg = !pkgRedeclArg ? outerPkgRedeclCandidate : null;
+              const redeclaredPkgSym: SymbolEntry | null = outerPkgRedeclArg ? preResolvedRedeclPkgSym : null;
               const targetSpec = pkgRedeclArg?.redeclaredTypeSpecifier ?? prefixRedeclArg?.redeclaredTypeSpecifier;
               let lookupScopeId =
                 pkgRedeclArg?.evaluationScopeId ??
@@ -4972,22 +5134,35 @@ export function lowerCSTExpression(
                   db
                     .byName(targetSpec.split(".").pop()!)
                     .find((e: any) => (e.kind === "Class" || e.kind === "Function") && flattener.isFunctionSym?.(e)))
-                : null;
+                : redeclaredPkgSym
+                  ? db.query<(n: string) => SymbolEntry | null>("resolveName", redeclaredPkgSym.id)?.(fnBaseName)
+                  : null;
               if (pkgRedeclTarget) {
                 matchingFnSym = pkgRedeclTarget;
-                const ownerQual = effectivePrefixSym.parentId
-                  ? getSymbolQualifiedName(db, effectivePrefixSym.parentId)
-                  : getSymbolQualifiedName(db, effectivePrefixSym.id);
-                specializedQualifiedName =
-                  prefix && pkgRedeclArg
-                    ? `${ownerQual}$${prefix.replace(/\./g, "$")}.${prefixStr}.${fnBaseName}`
-                    : `${ownerQual}.${prefixStr}.${fnBaseName}`;
-                enclosingScopeId = pkgRedeclTarget.parentId ?? undefined;
+                const compConcreteClassId =
+                  currentParentMods?.currentClassId ?? currentParentMods?.ownerClassId ?? currentScope;
+                const ownerQual =
+                  redeclaredPkgSym && compConcreteClassId && db.symbol(compConcreteClassId)?.kind === "Class"
+                    ? getSymbolQualifiedName(db, compConcreteClassId)
+                    : effectivePrefixSym.parentId
+                      ? getSymbolQualifiedName(db, effectivePrefixSym.parentId)
+                      : getSymbolQualifiedName(db, effectivePrefixSym.id);
+                const specPkgPrefix =
+                  prefix && (pkgRedeclArg || outerPkgRedeclArg)
+                    ? `${ownerQual}$${prefix.replace(/\./g, "$")}.${prefixStr}`
+                    : `${ownerQual}.${prefixStr}`;
+                specializedQualifiedName = `${specPkgPrefix}.${fnBaseName}`;
+                enclosingScopeId = redeclaredPkgSym?.id ?? pkgRedeclTarget.parentId ?? undefined;
+                if (redeclaredPkgSym && prefix) {
+                  componentSpecializedPrefix = specPkgPrefix;
+                }
               } else {
                 matchingFnSym = memberFn;
                 const prefixQual = getSymbolQualifiedName(db, effectivePrefixSym.id);
                 specializedQualifiedName = `${prefixQual}.${fnBaseName}`;
                 enclosingScopeId = effectivePrefixSym.id;
+                componentInstancePrefix = undefined;
+                componentSpecializedPrefix = undefined;
               }
             }
           }
@@ -5006,7 +5181,7 @@ export function lowerCSTExpression(
           if (
             encScopeFn &&
             (encScopeFn.kind === "Class" || encScopeFn.kind === "Function") &&
-            flattener.isFunctionSym?.(encScopeFn)
+            (flattener.isFunctionSym?.(encScopeFn) || flattener.isRecordSym?.(encScopeFn))
           ) {
             const encScopeQual = componentSpecializedPrefix ?? getSymbolQualifiedName(db, fnEncScope);
             if (!(SCALAR_VECTORIZABLE_FUNCTIONS.has(cleanFnName) && encScopeQual.includes("ComplexMath"))) {
@@ -5017,6 +5192,26 @@ export function lowerCSTExpression(
                 enclosingScopeId = fnEncScope;
               }
             }
+          }
+        }
+
+        if (!matchingFnSym && currentParentMods?.packageScopeId && currentParentMods?.specializedPkgPrefix) {
+          const pkgFn =
+            db.query<(n: string) => SymbolEntry | null>(
+              "resolveSimpleName",
+              currentParentMods.packageScopeId,
+            )?.(cleanFnName) ??
+            db.query<(n: string) => SymbolEntry | null>("resolveName", currentParentMods.packageScopeId)?.(cleanFnName);
+          if (
+            pkgFn &&
+            (pkgFn.kind === "Class" || pkgFn.kind === "Function") &&
+            (flattener.isFunctionSym?.(pkgFn) || flattener.isRecordSym?.(pkgFn))
+          ) {
+            matchingFnSym = pkgFn;
+            componentSpecializedPrefix = currentParentMods.specializedPkgPrefix;
+            componentInstancePrefix = currentParentMods.specializedPkgInstPrefix;
+            specializedQualifiedName = `${currentParentMods.specializedPkgPrefix}.${cleanFnName}`;
+            enclosingScopeId = currentParentMods.packageScopeId;
           }
         }
 
@@ -5041,7 +5236,7 @@ export function lowerCSTExpression(
             if (
               inScopeFn &&
               (inScopeFn.kind === "Class" || inScopeFn.kind === "Function") &&
-              flattener.isFunctionSym?.(inScopeFn)
+              (flattener.isFunctionSym?.(inScopeFn) || flattener.isRecordSym?.(inScopeFn))
             ) {
               const inScopeQual = getSymbolQualifiedName(db, inScopeFn.id);
               if (!(SCALAR_VECTORIZABLE_FUNCTIONS.has(cleanFnName) && inScopeQual.includes("ComplexMath"))) {
@@ -5152,15 +5347,26 @@ export function lowerCSTExpression(
         return dae.addCallExpr(ctorName, argExprIds);
       }
       if (matchingFnSym && (flattener.isRecordSym(matchingFnSym) || flattener.isOperatorRecordSym(matchingFnSym))) {
-        flattener.usedRecordSymIds?.add(matchingFnSym.id);
-        if (matchingFnSym.name) flattener.usedRecordNames?.add(matchingFnSym.name);
-        let ctorFn = dae.getFunction(cleanFnName) ?? dae.getFunction(fnName);
+        const targetCtorName =
+          specializedQualifiedName && specializedQualifiedName.includes("$") ? specializedQualifiedName : undefined;
+        if (!targetCtorName) {
+          flattener.usedRecordSymIds?.add(matchingFnSym.id);
+          if (matchingFnSym.name) flattener.usedRecordNames?.add(matchingFnSym.name);
+        }
+        let ctorFn = targetCtorName
+          ? dae.getFunction(targetCtorName)
+          : (dae.getFunction(cleanFnName) ?? dae.getFunction(fnName));
         if (!ctorFn && flattener.generateRecordConstructorFor) {
-          ctorFn = flattener.generateRecordConstructorFor(matchingFnSym, dae, flattener.currentRootClassId);
+          ctorFn = flattener.generateRecordConstructorFor(
+            matchingFnSym,
+            dae,
+            flattener.currentRootClassId,
+            targetCtorName,
+          );
         }
         if (ctorFn) {
           fnDae = ctorFn;
-          fnName = ctorFn.name || cleanFnName;
+          fnName = targetCtorName ?? (ctorFn.name || cleanFnName);
         }
       } else if (matchingFnSym && flattener.isFunctionSym(matchingFnSym)) {
         const isOuterFn = isOuterFunctionSymbol(db, matchingFnSym);
@@ -5865,16 +6071,41 @@ export function lowerCSTExpression(
         }
       }
 
+      let allConstant = true;
+      const constArgs: any[] = [];
+      for (const aid of argExprIds) {
+        let evalAid = aid;
+        if (dae.getExprKind(aid) === ExprKind.Name) {
+          const vName = dae.interner.resolve(dae.getExprData1(aid));
+          const expanded = vName ? expandVarToArrayCtor(vName, dae) : null;
+          if (expanded !== null) evalAid = expanded;
+        }
+        if (
+          exprContainsNonConstantRef(evalAid, dae) &&
+          !(fnDae.name.endsWith("Vectors.normalize") && dae.getExprKind(evalAid) === ExprKind.ArrayCtor)
+        ) {
+          allConstant = false;
+          break;
+        }
+        const cVal = evalDaeExpr(evalAid, dae);
+        if (cVal === null) {
+          allConstant = false;
+          break;
+        }
+        constArgs.push(cVal);
+      }
+
       if (
         flattener?.options?.omcCompatibility &&
-        !(dae.extensionMetadata as any)?.hasOldInstOption &&
+        Boolean((dae.extensionMetadata as any)?.hasOldInstOption) &&
         !(fnDae as any).isBeingFlattened &&
         !(fnDae as any).isRecursive &&
         (!(fnDae as any).symId || !flattener.activeFlatteningFunctionIds?.has((fnDae as any).symId)) &&
         fnDae.eqCount === 0 &&
         fnDae.algorithmSections.length === 0 &&
         !fnDae.externalDecl &&
-        !hasOutputExpr
+        !hasOutputExpr &&
+        argExprIds.every((aid) => evalDaeExpr(aid, dae) !== null)
       ) {
         let firstOutputType: VarType | null = null;
         let firstOutputHasArrayDims = false;
@@ -5902,29 +6133,6 @@ export function lowerCSTExpression(
         }
       }
 
-      let allConstant = true;
-      const constArgs: any[] = [];
-      for (const aid of argExprIds) {
-        let evalAid = aid;
-        if (dae.getExprKind(aid) === ExprKind.Name) {
-          const vName = dae.interner.resolve(dae.getExprData1(aid));
-          const expanded = vName ? expandVarToArrayCtor(vName, dae) : null;
-          if (expanded !== null) evalAid = expanded;
-        }
-        if (
-          exprContainsNonConstantRef(evalAid, dae) &&
-          !(fnDae.name.endsWith("Vectors.normalize") && dae.getExprKind(evalAid) === ExprKind.ArrayCtor)
-        ) {
-          allConstant = false;
-          break;
-        }
-        const cVal = evalDaeExpr(evalAid, dae);
-        if (cVal === null) {
-          allConstant = false;
-          break;
-        }
-        constArgs.push(cVal);
-      }
       if (
         allConstant &&
         !(fnDae as any).isExplicitImpure &&
@@ -5945,11 +6153,15 @@ export function lowerCSTExpression(
             (fnDae as any).wasCalled = true;
             let outputCount = 0;
             let firstOutputType: VarType | null = null;
+            let firstOutputCustomType: string | null = null;
+            let firstOutputIsScalar = true;
             const outputTypes: VarType[] = [];
             for (let i = 0; i < fnDae.varCount; i++) {
               if (fnDae.getVarCausality(i) === Causality.Output) {
                 if (outputCount === 0) {
                   firstOutputType = fnDae.getVarType(i);
+                  firstOutputCustomType = fnDae.getVarCustomType(i) ?? null;
+                  firstOutputIsScalar = (fnDae.getVarShape(i)?.length ?? 0) === 0;
                 }
                 outputTypes.push(fnDae.getVarType(i));
                 outputCount++;
@@ -5966,6 +6178,25 @@ export function lowerCSTExpression(
               }
             }
             const firstVal = Array.isArray(outVal) && outputCount > 1 ? outVal[0] : outVal;
+            if (firstOutputCustomType && firstOutputIsScalar && Array.isArray(firstVal)) {
+              const ctorFn =
+                dae.getFunction(firstOutputCustomType) ??
+                (firstOutputCustomType.includes(".")
+                  ? dae.getFunction(firstOutputCustomType.split(".").pop()!)
+                  : undefined);
+              const fieldTypes: VarType[] = [];
+              if (ctorFn) {
+                for (let vi = 0; vi < ctorFn.varCount; vi++) {
+                  if (!ctorFn.isVarRemoved(vi) && ctorFn.getVarCausality(vi) === Causality.Input) {
+                    fieldTypes.push(ctorFn.getVarType(vi));
+                  }
+                }
+              }
+              const ctorElemIds = firstVal.map((v, idx) => addArenaValueAsExpr(dae, v, fieldTypes[idx]));
+              if (ctorElemIds.every((id) => id >= 0)) {
+                return dae.addCallExpr(firstOutputCustomType, ctorElemIds);
+              }
+            }
             const inlinedId = addArenaValueAsExpr(dae, firstVal, firstOutputType ?? undefined);
             if (inlinedId >= 0) return inlinedId;
           }
@@ -6311,6 +6542,18 @@ export function lowerCSTExpression(
         }
       }
     }
+    if (
+      cleanFn === "sqrt" &&
+      argExprIds.length === 1 &&
+      Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+      argExprIds[0]! >= 0 &&
+      dae.getExprKind(argExprIds[0]!) === ExprKind.Call &&
+      dae.interner.resolve(dae.getExprData1(argExprIds[0]!)) === "sqrt" &&
+      dae.getExprRight(argExprIds[0]!) === 1
+    ) {
+      const innerArg = dae.getExprLeft(argExprIds[0]!);
+      return dae.addBinaryExpr(BinOp.Pow, innerArg, dae.addRealLiteral(0.25));
+    }
     if (cleanFn === "noEvent" && argExprIds.length === 1 && flattener?.options?.omcCompatibility) {
       const innerId = argExprIds[0]!;
       if (innerId >= 0 && dae.getExprKind(innerId) === ExprKind.Binary) {
@@ -6324,6 +6567,26 @@ export function lowerCSTExpression(
         ) {
           return innerId;
         }
+      }
+    }
+    if ((cleanFn === "inStream" || cleanFn === "actualStream") && argExprIds.length === 1) {
+      const innerId = argExprIds[0]!;
+      if (innerId >= 0 && dae.getExprKind(innerId) === ExprKind.Name) {
+        const vName = dae.interner.resolve(dae.getExprData1(innerId));
+        const arrShape = vName ? getNamedArrayShape(dae, vName) : null;
+        if (arrShape && arrShape.some((d) => d === 0)) {
+          return dae.addArrayCtorExpr([]);
+        }
+      }
+      if (innerId >= 0 && dae.getExprKind(innerId) === ExprKind.ArrayCtor) {
+        const count = dae.getExprData1(innerId);
+        if (count === 0) return innerId;
+        const elems: number[] = [];
+        for (let i = 0; i < count; i++) {
+          const eId = i === 0 ? dae.getExprLeft(innerId) : dae.getExprLeft(innerId + i);
+          elems.push(dae.addCallExpr(cleanFn, [eId]));
+        }
+        return dae.addArrayCtorExpr(elems);
       }
     }
 
@@ -6970,7 +7233,7 @@ export function lowerCSTExpression(
       const effStopId = isAnyReal ? castToRealExpr(stopId, dae) : stopId;
       const rangeId = dae.addExpression(ExprKind.Range, effStartId, effStepId, effStopId);
       const isMulOperand = (() => {
-        if (dae.classKind !== "function") return false;
+        if (dae.classKind !== "function" || (dae as any).isEarlyInline) return false;
         let cur: any = node.parent;
         while (cur && (cur.childCount === 1 || (cur.childCount === 3 && cur.child(0)?.text?.trim() === "("))) {
           cur = cur.parent;
@@ -7013,7 +7276,7 @@ export function lowerCSTExpression(
       const effStopId = isAnyReal ? castToRealExpr(stopId, dae) : stopId;
       const rangeId = dae.addExpression(ExprKind.Range, effStartId, -1, effStopId);
       const isMulOperand = (() => {
-        if (dae.classKind !== "function") return false;
+        if (dae.classKind !== "function" || (dae as any).isEarlyInline) return false;
         let cur: any = node.parent;
         while (cur && (cur.childCount === 1 || (cur.childCount === 3 && cur.child(0)?.text?.trim() === "("))) {
           cur = cur.parent;
@@ -7115,7 +7378,7 @@ export function lowerCSTExpression(
     const effStopId = isAnyReal ? castToRealExpr(stopId, dae) : stopId;
     const rangeId = dae.addExpression(ExprKind.Range, effStartId, effStepId, effStopId);
     const isMulOperand = (() => {
-      if (dae.classKind !== "function") return false;
+      if (dae.classKind !== "function" || (dae as any).isEarlyInline) return false;
       let cur: any = node.parent;
       while (cur && (cur.childCount === 1 || (cur.childCount === 3 && cur.child(0)?.text?.trim() === "("))) {
         cur = cur.parent;
@@ -7149,23 +7412,32 @@ export function lowerCSTExpression(
     let takenBranchIdx = -1;
     let allFalseSoFar = true;
     const isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
+    const hasBranchDer =
+      !isOldFrontend &&
+      (branches.some((br) => /\bder\s*\(/.test(br.thenNode?.text ?? "")) || /\bder\s*\(/.test(elseNode?.text ?? ""));
     for (let b = 0; b < branches.length; b++) {
       const condId = lowerCSTExpression(branches[b]!.condNode, dae, prefix, substitutions, imports, db, flattener);
-      const isRuntimeParam =
-        isOldFrontend && !prefix
+      const isRuntimeParam = hasBranchDer
+        ? false
+        : isOldFrontend && !prefix
           ? exprReferencesEnumParameter(condId, dae)
-          : exprReferencesRuntimeParameter(
-              condId,
-              dae,
-              new Set(),
-              Boolean(isOldFrontend && flattener?.currentBindingCompName && prefix),
-            );
+          : exprReferencesRuntimeParameter(condId, dae, new Set(), Boolean(isOldFrontend && prefix));
       if (isRuntimeParam) {
         loweredConds.push({ condId, condVal: null });
         allFalseSoFar = false;
         break;
       }
       const condVal = evalDaeExpr(condId, dae);
+      if (hasBranchDer && (condVal === true || condVal === 1 || condVal === false || condVal === 0)) {
+        const condVars = new Set<string>();
+        dae.collectExprVarNames(condId, condVars);
+        for (const vName of condVars) {
+          const vIdx = dae.getVarIdxByName(vName);
+          if (vIdx >= 0 && dae.getVarVariability(vIdx) === Variability.Parameter) {
+            dae.setVarFinal(vIdx, true);
+          }
+        }
+      }
       if (condVal === true || condVal === 1) {
         takenBranchIdx = b;
         allFalseSoFar = false;
@@ -7323,6 +7595,21 @@ export function lowerCSTExpression(
       const rightNode = node.childForFieldName?.("right") ?? node.child(2);
       let leftId = lowerCSTExpression(leftNode, dae, prefix, substitutions, imports, db, flattener);
       let rightId = lowerCSTExpression(rightNode, dae, prefix, substitutions, imports, db, flattener);
+      if (
+        (binOp === BinOp.Eq ||
+          binOp === BinOp.Neq ||
+          binOp === BinOp.Lt ||
+          binOp === BinOp.Lte ||
+          binOp === BinOp.Gt ||
+          binOp === BinOp.Gte) &&
+        leftNode &&
+        /^not\b/.test(leftNode.text?.trim() ?? "") &&
+        dae.getExprKind(leftId) === ExprKind.Unary &&
+        dae.getExprData1(leftId) === UnaryOp.Not
+      ) {
+        const innerLeft = dae.getExprLeft(leftId);
+        return dae.addExpression(ExprKind.Unary, UnaryOp.Not, dae.addBinaryExpr(binOp, innerLeft, rightId));
+      }
       // 1. Operator record overload resolution (`operator '+'`, `operator '*'`, etc.):
       //    If either operand is an `operator record`, dispatch to the matching overloaded operator function.
       if (db && flattener) {
@@ -7738,31 +8025,54 @@ export function lowerCSTExpression(
             return dae.addBinaryExpr(BinOp.Sub, firstAdd, addR);
           }
         }
-        if (rightKind === ExprKind.Binary && dae.getExprData1(rightId) === BinOp.Mul) {
-          const mulL = dae.getExprLeft(rightId);
-          const mulR = dae.getExprRight(rightId);
-          const mulLKind = dae.getExprKind(mulL);
-          const mulRKind = dae.getExprKind(mulR);
-          if (mulLKind === ExprKind.RealLiteral) {
-            const negLit = dae.addRealLiteral(-dae.getExprRealValue(mulL));
-            const negMul = dae.addBinaryExpr(BinOp.Mul, negLit, mulR);
-            return dae.addBinaryExpr(BinOp.Add, leftId, negMul);
+        const negateLeadingMulDivLiteral = (id: number): number | null => {
+          if (id < 0 || dae.getExprKind(id) !== ExprKind.Binary) return null;
+          const op = dae.getExprData1(id) as BinOp;
+          if (op === BinOp.Mul) {
+            const mulL = dae.getExprLeft(id);
+            const mulR = dae.getExprRight(id);
+            const mulLKind = dae.getExprKind(mulL);
+            const mulRKind = dae.getExprKind(mulR);
+            if (mulLKind === ExprKind.RealLiteral) {
+              return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-dae.getExprRealValue(mulL)), mulR);
+            }
+            if (mulLKind === ExprKind.IntLiteral) {
+              return dae.addBinaryExpr(BinOp.Mul, dae.addIntLiteral(-dae.getExprData1(mulL)), mulR);
+            }
+            if (mulRKind === ExprKind.RealLiteral) {
+              return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-dae.getExprRealValue(mulR)), mulL);
+            }
+            if (mulRKind === ExprKind.IntLiteral) {
+              return dae.addBinaryExpr(BinOp.Mul, dae.addIntLiteral(-dae.getExprData1(mulR)), mulL);
+            }
+            if (Boolean(dae.extensionMetadata?.["isOldFrontend"]) && dae.classKind === "function") {
+              if (mulLKind === ExprKind.Binary && (dae.getExprData1(mulL) as BinOp) === BinOp.Sub) {
+                const negSubL = negateLeadingMulDivLiteral(dae.getExprLeft(mulL));
+                if (negSubL !== null) {
+                  return dae.addBinaryExpr(
+                    BinOp.Mul,
+                    dae.addBinaryExpr(BinOp.Add, dae.getExprRight(mulL), negSubL),
+                    mulR,
+                  );
+                }
+              }
+              const negL = negateLeadingMulDivLiteral(mulL);
+              if (negL !== null) return dae.addBinaryExpr(BinOp.Mul, negL, mulR);
+            }
+          } else if (
+            op === BinOp.Div &&
+            Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+            dae.classKind === "function"
+          ) {
+            const negL = negateLeadingMulDivLiteral(dae.getExprLeft(id));
+            if (negL !== null) return dae.addBinaryExpr(BinOp.Div, negL, dae.getExprRight(id));
           }
-          if (mulLKind === ExprKind.IntLiteral) {
-            const negLit = dae.addIntLiteral(-dae.getExprData1(mulL));
-            const negMul = dae.addBinaryExpr(BinOp.Mul, negLit, mulR);
-            return dae.addBinaryExpr(BinOp.Add, leftId, negMul);
-          }
-          if (mulRKind === ExprKind.RealLiteral) {
-            const negLit = dae.addRealLiteral(-dae.getExprRealValue(mulR));
-            const negMul = dae.addBinaryExpr(BinOp.Mul, negLit, mulL);
-            return dae.addBinaryExpr(BinOp.Add, leftId, negMul);
-          }
-          if (mulRKind === ExprKind.IntLiteral) {
-            const negLit = dae.addIntLiteral(-dae.getExprData1(mulR));
-            const negMul = dae.addBinaryExpr(BinOp.Mul, negLit, mulL);
-            return dae.addBinaryExpr(BinOp.Add, leftId, negMul);
-          }
+          return null;
+        };
+        const negRight = negateLeadingMulDivLiteral(rightId);
+        if (negRight !== null) {
+          binOp = BinOp.Add;
+          rightId = negRight;
         }
       }
       if (binOp === BinOp.Mul) {
@@ -8032,6 +8342,17 @@ export function lowerCSTExpression(
           return false;
         };
         if (isOne(rightId)) return leftId;
+        const isZero = (id: number): boolean => {
+          const k = dae.getExprKind(id);
+          if (k === ExprKind.IntLiteral && dae.getExprData1(id) === 0) return true;
+          if (k === ExprKind.RealLiteral && dae.getExprRealValue(id) === 0.0) return true;
+          return false;
+        };
+        if (isZero(rightId)) {
+          return isRealExpr(leftId, dae) || rightKind === ExprKind.RealLiteral
+            ? dae.addRealLiteral(1.0)
+            : dae.addIntLiteral(1);
+        }
 
         // Power of power simplification: (x ^ a) ^ b
         if (leftKind === ExprKind.Binary && dae.getExprData1(leftId) === BinOp.Pow) {
@@ -8231,9 +8552,70 @@ export function lowerCSTExpression(
           }
         }
       }
+      const hasNoCallExpr = (id: number): boolean => {
+        if (id < 0) return false;
+        const k = dae.getExprKind(id);
+        if (k === ExprKind.Call) return false;
+        if (k === ExprKind.Binary) {
+          return hasNoCallExpr(dae.getExprLeft(id)) && hasNoCallExpr(dae.getExprRight(id));
+        }
+        if (k === ExprKind.Unary || k === ExprKind.Negate) {
+          return hasNoCallExpr(dae.getExprLeft(id));
+        }
+        return true;
+      };
+      const extractLeadingMulLiteral = (id: number, reverseRest = false): { cVal: number; restId: number } | null => {
+        if (id < 0 || dae.getExprKind(id) !== ExprKind.Binary || (dae.getExprData1(id) as BinOp) !== BinOp.Mul) {
+          return null;
+        }
+        const l = dae.getExprLeft(id);
+        const r = dae.getExprRight(id);
+        const lK = dae.getExprKind(l);
+        if (lK === ExprKind.RealLiteral || lK === ExprKind.IntLiteral) {
+          const cVal = lK === ExprKind.RealLiteral ? dae.getExprRealValue(l) : dae.getExprData1(l);
+          return cVal !== 0 ? { cVal, restId: r } : null;
+        }
+        const subL = extractLeadingMulLiteral(l, reverseRest);
+        if (subL) {
+          const reverseFactors =
+            reverseRest &&
+            Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+            hasNoCallExpr(subL.restId) &&
+            hasNoCallExpr(r);
+          return {
+            cVal: subL.cVal,
+            restId: reverseFactors
+              ? dae.addBinaryExpr(BinOp.Mul, r, subL.restId)
+              : dae.addBinaryExpr(BinOp.Mul, subL.restId, r),
+          };
+        }
+        return null;
+      };
       if (binOp === BinOp.Div) {
         const leftKind = dae.getExprKind(leftId);
         const rightKind = dae.getExprKind(rightId);
+        if (
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+          ((leftKind === ExprKind.IntLiteral && dae.getExprData1(leftId) === 1) ||
+            (leftKind === ExprKind.RealLiteral && dae.getExprRealValue(leftId) === 1.0)) &&
+          rightKind === ExprKind.Binary &&
+          (dae.getExprData1(rightId) as BinOp) === BinOp.Pow
+        ) {
+          const baseId = dae.getExprLeft(rightId);
+          const expId = dae.getExprRight(rightId);
+          const expK = dae.getExprKind(expId);
+          if (
+            dae.getExprKind(baseId) === ExprKind.Name &&
+            (expK === ExprKind.IntLiteral || expK === ExprKind.RealLiteral)
+          ) {
+            const eVal = expK === ExprKind.RealLiteral ? dae.getExprRealValue(expId) : dae.getExprData1(expId);
+            return dae.addBinaryExpr(
+              BinOp.Pow,
+              isRealExpr(baseId, dae) ? baseId : castToRealExpr(baseId, dae),
+              dae.addRealLiteral(-eVal),
+            );
+          }
+        }
         if (
           (leftKind === ExprKind.IntLiteral || leftKind === ExprKind.RealLiteral) &&
           (rightKind === ExprKind.IntLiteral || rightKind === ExprKind.RealLiteral)
@@ -8253,7 +8635,7 @@ export function lowerCSTExpression(
           const rVal = rightKind === ExprKind.IntLiteral ? dae.getExprData1(rightId) : dae.getExprRealValue(rightId);
           if (rVal !== 0) {
             const reciprocal = 1 / rVal;
-            let realLeftId = isRealExpr(leftId, dae) ? leftId : castToRealExpr(leftId, dae);
+            const realLeftId = isRealExpr(leftId, dae) ? leftId : castToRealExpr(leftId, dae);
             if (leftKind === ExprKind.Negate) {
               return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-reciprocal), dae.getExprLeft(realLeftId));
             }
@@ -8265,45 +8647,109 @@ export function lowerCSTExpression(
               const elems = getArrayCtorElements(leftId, dae);
               return dae.addArrayCtorExpr(elems.map((e) => mulWithSimplification(recId, e, dae)));
             }
-            return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(reciprocal), realLeftId);
+            if (
+              Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+              leftKind === ExprKind.Binary &&
+              (dae.getExprData1(leftId) as BinOp) === BinOp.Add &&
+              extractLeadingMulLiteral(dae.getExprRight(leftId)) !== null
+            ) {
+              const recId = dae.addRealLiteral(reciprocal);
+              return dae.addBinaryExpr(
+                BinOp.Add,
+                mulWithSimplification(recId, dae.getExprLeft(realLeftId), dae),
+                mulWithSimplification(recId, dae.getExprRight(realLeftId), dae),
+              );
+            }
+            return dae.classKind === "function"
+              ? mulWithSimplification(dae.addRealLiteral(reciprocal), realLeftId, dae)
+              : dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(reciprocal), realLeftId);
           }
         }
         if (
           flattener?.options?.omcCompatibility &&
-          (leftKind === ExprKind.IntLiteral || leftKind === ExprKind.RealLiteral) &&
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
           rightKind === ExprKind.Binary &&
+          (dae.getExprData1(rightId) as BinOp) === BinOp.Div
+        ) {
+          // Unwrap a / (b / c) -> (a * c) / b
+          let numId = isRealExpr(leftId, dae) ? leftId : castToRealExpr(leftId, dae);
+          let denId = rightId;
+          while (dae.getExprKind(denId) === ExprKind.Binary && (dae.getExprData1(denId) as BinOp) === BinOp.Div) {
+            const dL = dae.getExprLeft(denId);
+            const dR = dae.getExprRight(denId);
+            const dRReal = isRealExpr(dR, dae) ? dR : castToRealExpr(dR, dae);
+            numId = mulWithSimplification(numId, dRReal, dae);
+            denId = dL;
+          }
+          leftId = numId;
+          rightId = denId;
+        }
+        if (
+          flattener?.options?.omcCompatibility &&
+          (dae.getExprKind(leftId) === ExprKind.IntLiteral || dae.getExprKind(leftId) === ExprKind.RealLiteral) &&
+          dae.getExprKind(rightId) === ExprKind.Binary &&
           (dae.getExprData1(rightId) as BinOp) === BinOp.Mul
         ) {
-          const rLeft = dae.getExprLeft(rightId);
-          const rRight = dae.getExprRight(rightId);
-          const rLeftKind = dae.getExprKind(rLeft);
-          if (rLeftKind === ExprKind.RealLiteral || rLeftKind === ExprKind.IntLiteral) {
-            const lVal = leftKind === ExprKind.RealLiteral ? dae.getExprRealValue(leftId) : dae.getExprData1(leftId);
-            const cVal = rLeftKind === ExprKind.RealLiteral ? dae.getExprRealValue(rLeft) : dae.getExprData1(rLeft);
-            if (cVal !== 0) {
-              const rRightReal = isRealExpr(rRight, dae) ? rRight : castToRealExpr(rRight, dae);
-              return dae.addBinaryExpr(BinOp.Div, dae.addRealLiteral(lVal / cVal), rRightReal);
+          const lK = dae.getExprKind(leftId);
+          const lVal = lK === ExprKind.RealLiteral ? dae.getExprRealValue(leftId) : dae.getExprData1(leftId);
+          if (!dae.extensionMetadata?.["isOldFrontend"] || lVal === 1) {
+            const extracted = extractLeadingMulLiteral(rightId, true);
+            if (extracted) {
+              const rRightReal = isRealExpr(extracted.restId, dae)
+                ? extracted.restId
+                : castToRealExpr(extracted.restId, dae);
+              return dae.addBinaryExpr(BinOp.Div, dae.addRealLiteral(lVal / extracted.cVal), rRightReal);
             }
           }
         }
         if (
           flattener?.options?.omcCompatibility &&
-          dae.description?.includes("record constructor") &&
-          rightKind === ExprKind.Binary &&
+          (dae.description?.includes("record constructor") || Boolean(dae.extensionMetadata?.["isOldFrontend"])) &&
+          !(dae.getExprKind(leftId) === ExprKind.IntLiteral || dae.getExprKind(leftId) === ExprKind.RealLiteral) &&
+          dae.getExprKind(rightId) === ExprKind.Binary &&
           (dae.getExprData1(rightId) as BinOp) === BinOp.Mul
         ) {
-          const rLeft = dae.getExprLeft(rightId);
-          const rRight = dae.getExprRight(rightId);
-          const rLeftKind = dae.getExprKind(rLeft);
-          if (rLeftKind === ExprKind.RealLiteral || rLeftKind === ExprKind.IntLiteral) {
-            const cVal = rLeftKind === ExprKind.RealLiteral ? dae.getExprRealValue(rLeft) : dae.getExprData1(rLeft);
-            if (cVal !== 0) {
-              const reciprocal = 1 / cVal;
-              const realLeftId = isRealExpr(leftId, dae) ? leftId : castToRealExpr(leftId, dae);
-              const scaledLeft = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(reciprocal), realLeftId);
-              return dae.addBinaryExpr(BinOp.Div, scaledLeft, rRight);
+          const extracted = extractLeadingMulLiteral(rightId, true);
+          if (extracted) {
+            const reciprocal = 1 / extracted.cVal;
+            const realLeftId = isRealExpr(leftId, dae) ? leftId : castToRealExpr(leftId, dae);
+            const rRightReal = isRealExpr(extracted.restId, dae)
+              ? extracted.restId
+              : castToRealExpr(extracted.restId, dae);
+            if (
+              Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+              dae.getExprKind(realLeftId) === ExprKind.Binary &&
+              (dae.getExprData1(realLeftId) as BinOp) === BinOp.Pow &&
+              dae.getExprKind(rRightReal) === ExprKind.Binary &&
+              (dae.getExprData1(rRightReal) as BinOp) === BinOp.Pow &&
+              exprsEqual(dae.getExprRight(realLeftId), dae.getExprRight(rRightReal), dae)
+            ) {
+              const combinedBase = dae.addBinaryExpr(
+                BinOp.Div,
+                dae.getExprLeft(realLeftId),
+                dae.getExprLeft(rRightReal),
+              );
+              const combinedPow = dae.addBinaryExpr(BinOp.Pow, combinedBase, dae.getExprRight(realLeftId));
+              return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(reciprocal), combinedPow);
             }
+            const leftExtracted = extractLeadingMulLiteral(realLeftId);
+            const scaledLeft = leftExtracted
+              ? dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(reciprocal * leftExtracted.cVal), leftExtracted.restId)
+              : mulWithSimplification(dae.addRealLiteral(reciprocal), realLeftId, dae);
+            return dae.addBinaryExpr(BinOp.Div, scaledLeft, rRightReal);
           }
+        }
+        if (
+          flattener?.options?.omcCompatibility &&
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+          dae.getExprKind(leftId) === ExprKind.Binary &&
+          (dae.getExprData1(leftId) as BinOp) === BinOp.Div &&
+          extractLeadingMulLiteral(dae.getExprLeft(leftId)) !== null
+        ) {
+          const aId = dae.getExprLeft(leftId);
+          const bId = dae.getExprRight(leftId);
+          const realRight = isRealExpr(rightId, dae) ? rightId : castToRealExpr(rightId, dae);
+          return dae.addBinaryExpr(BinOp.Div, aId, dae.addBinaryExpr(BinOp.Mul, bId, realRight));
         }
         if (leftKind === ExprKind.Call && rightKind === ExprKind.Call) {
           const leftFn = dae.interner.resolve(dae.getExprData1(leftId));
@@ -8380,12 +8826,23 @@ export function lowerCSTExpression(
         if (isOne(leftId)) return rightId;
         if (isOne(rightId)) return leftId;
         const isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
-        if (isOldFrontend && exprsEqual(leftId, rightId, dae) && dae.classKind !== "function") {
+        const leftMulDims = getExprDims(leftId, dae, flattener?.db, flattener);
+        const rightMulDims = getExprDims(rightId, dae, flattener?.db, flattener);
+        const isScalarMul = (!leftMulDims || leftMulDims.length === 0) && (!rightMulDims || rightMulDims.length === 0);
+        const leftMulText =
+          dae.getExprKind(leftId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(leftId)) : null;
+        const rightMulText =
+          dae.getExprKind(rightId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(rightId)) : null;
+        const isFnFieldAccess =
+          dae.classKind === "function" && Boolean(leftMulText?.includes(".") || rightMulText?.includes("."));
+        if (isOldFrontend && isScalarMul && !isFnFieldAccess && exprsEqual(leftId, rightId, dae)) {
           const isReal = isRealExpr(leftId, dae);
           return dae.addBinaryExpr(BinOp.Pow, leftId, isReal ? dae.addRealLiteral(2.0) : dae.addIntLiteral(2));
         }
         if (
           isOldFrontend &&
+          isScalarMul &&
+          !isFnFieldAccess &&
           dae.getExprKind(leftId) === ExprKind.Binary &&
           dae.getExprData1(leftId) === BinOp.Mul &&
           exprsEqual(dae.getExprRight(leftId), rightId, dae)
@@ -8395,6 +8852,38 @@ export function lowerCSTExpression(
           const isReal = isRealExpr(mR, dae);
           const powExpr = dae.addBinaryExpr(BinOp.Pow, mR, isReal ? dae.addRealLiteral(2.0) : dae.addIntLiteral(2));
           return dae.addBinaryExpr(BinOp.Mul, mL, powExpr);
+        }
+        if (
+          isOldFrontend &&
+          isScalarMul &&
+          dae.getExprKind(rightId) === ExprKind.Binary &&
+          dae.getExprData1(rightId) === BinOp.Pow
+        ) {
+          const rBase = dae.getExprLeft(rightId);
+          const rExp = dae.getExprRight(rightId);
+          if (
+            dae.getExprKind(leftId) === ExprKind.Binary &&
+            dae.getExprData1(leftId) === BinOp.Pow &&
+            exprsEqual(dae.getExprRight(leftId), rExp, dae)
+          ) {
+            return dae.addBinaryExpr(BinOp.Pow, mulWithSimplification(dae.getExprLeft(leftId), rBase, dae), rExp);
+          }
+          if (dae.getExprKind(leftId) === ExprKind.Binary && dae.getExprData1(leftId) === BinOp.Mul) {
+            const mL = dae.getExprLeft(leftId);
+            const mR = dae.getExprRight(leftId);
+            if (
+              dae.getExprKind(mR) === ExprKind.Binary &&
+              dae.getExprData1(mR) === BinOp.Pow &&
+              exprsEqual(dae.getExprRight(mR), rExp, dae)
+            ) {
+              const combinedPow = dae.addBinaryExpr(
+                BinOp.Pow,
+                mulWithSimplification(dae.getExprLeft(mR), rBase, dae),
+                rExp,
+              );
+              return dae.addBinaryExpr(BinOp.Mul, mL, combinedPow);
+            }
+          }
         }
         const leftText =
           dae.getExprKind(leftId) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(leftId)) : null;
@@ -8498,6 +8987,21 @@ export function lowerCSTExpression(
           return dae.addBinaryExpr(BinOp.Sub, rightId, negL.posId);
         }
         if (
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+          dae.getExprKind(leftId) === ExprKind.Binary &&
+          (dae.getExprData1(leftId) as BinOp) === BinOp.Sub
+        ) {
+          const subL = dae.getExprLeft(leftId);
+          const subR = dae.getExprRight(leftId);
+          const newAdd =
+            dae.getExprKind(subL) === ExprKind.IntLiteral && dae.getExprKind(rightId) === ExprKind.IntLiteral
+              ? dae.addIntLiteral(dae.getExprData1(subL) + dae.getExprData1(rightId))
+              : dae.getExprKind(subL) === ExprKind.RealLiteral && dae.getExprKind(rightId) === ExprKind.RealLiteral
+                ? dae.addRealLiteral(dae.getExprRealValue(subL) + dae.getExprRealValue(rightId))
+                : dae.addBinaryExpr(BinOp.Add, subL, rightId);
+          return dae.addBinaryExpr(BinOp.Sub, newAdd, subR);
+        }
+        if (
           (dae.classKind !== "function" ||
             Boolean(dae.extensionMetadata?.["isOldFrontend"]) ||
             Boolean((flattener as any)?.options?.isOldFrontend)) &&
@@ -8542,7 +9046,63 @@ export function lowerCSTExpression(
         const rightKind = dae.getExprKind(rightId);
         const isLeftLit = leftKind === ExprKind.IntLiteral || leftKind === ExprKind.RealLiteral;
         const isRightLit = rightKind === ExprKind.IntLiteral || rightKind === ExprKind.RealLiteral;
-        if (!isLeftLit && isRightLit) {
+        if (
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+          isLeftLit &&
+          (rightKind === ExprKind.Negate ||
+            (rightKind === ExprKind.Unary && (dae.getExprData1(rightId) as UnaryOp) === UnaryOp.Negate))
+        ) {
+          const lVal = leftKind === ExprKind.RealLiteral ? dae.getExprRealValue(leftId) : dae.getExprData1(leftId);
+          leftId = leftKind === ExprKind.RealLiteral ? dae.addRealLiteral(-lVal) : dae.addIntLiteral(-lVal);
+          rightId = dae.getExprLeft(rightId);
+        } else if (
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+          isRightLit &&
+          (leftKind === ExprKind.Negate ||
+            (leftKind === ExprKind.Unary && (dae.getExprData1(leftId) as UnaryOp) === UnaryOp.Negate))
+        ) {
+          const rVal = rightKind === ExprKind.RealLiteral ? dae.getExprRealValue(rightId) : dae.getExprData1(rightId);
+          const innerL = dae.getExprLeft(leftId);
+          leftId = rightKind === ExprKind.RealLiteral ? dae.addRealLiteral(-rVal) : dae.addIntLiteral(-rVal);
+          rightId = innerL;
+        } else if (
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+          dae.classKind === "function" &&
+          isLeftLit &&
+          rightKind === ExprKind.Binary &&
+          dae.getExprData1(rightId) === BinOp.Div
+        ) {
+          return mulWithSimplification(leftId, rightId, dae);
+        } else if (
+          Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
+          dae.classKind === "function" &&
+          leftKind === ExprKind.Binary &&
+          dae.getExprData1(leftId) === BinOp.Div &&
+          ((rightKind === ExprKind.Binary && dae.getExprData1(rightId) === BinOp.Div) ||
+            extractLeadingMulLiteral(rightId) !== null ||
+            (() => {
+              let num = dae.getExprLeft(leftId);
+              while (dae.getExprKind(num) === ExprKind.Binary && dae.getExprData1(num) === BinOp.Div) {
+                num = dae.getExprLeft(num);
+              }
+              return (
+                dae.getExprKind(num) === ExprKind.RealLiteral ||
+                dae.getExprKind(num) === ExprKind.IntLiteral ||
+                extractLeadingMulLiteral(num) !== null
+              );
+            })())
+        ) {
+          return mulWithSimplification(leftId, rightId, dae);
+        } else if (
+          (isLeftLit && extractLeadingMulLiteral(rightId) !== null) ||
+          (isRightLit && extractLeadingMulLiteral(leftId) !== null)
+        ) {
+          return mulWithSimplification(leftId, rightId, dae);
+        } else if (
+          !isLeftLit &&
+          isRightLit &&
+          !(leftKind === ExprKind.Binary && dae.getExprData1(leftId) === BinOp.Div)
+        ) {
           [leftId, rightId] = [rightId, leftId];
         }
       }
@@ -8617,6 +9177,15 @@ export function lowerCSTExpression(
           return dae.addBoolLiteral(res);
         }
       }
+      if ((binOp === BinOp.And || binOp === BinOp.Or) && dae.classKind !== "function") {
+        const lKind = dae.getExprKind(leftId);
+        const rKind = dae.getExprKind(rightId);
+        if (lKind === ExprKind.BoolLiteral && rKind === ExprKind.BoolLiteral) {
+          const lBool = dae.getExprData1(leftId) === 1;
+          const rBool = dae.getExprData1(rightId) === 1;
+          return dae.addBoolLiteral(binOp === BinOp.And ? lBool && rBool : lBool || rBool);
+        }
+      }
       return dae.addBinaryExpr(binOp, leftId, rightId);
     }
   }
@@ -8625,7 +9194,7 @@ export function lowerCSTExpression(
   if (node.childCount === 2) {
     const rawOp = node.child(0)?.text?.trim() ?? node.child(0)?.type ?? "";
     const op = rawOp.replace(/^"|"$/g, "");
-    if (op === "-") {
+    if (op === "-" || op === "-.") {
       const operandId = lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
       if (db && flattener) {
         const dispatched = dispatchUnaryOperator("'-'", operandId, node.child(1), dae, db, flattener);
@@ -8634,7 +9203,7 @@ export function lowerCSTExpression(
       return negateExpr(operandId, dae);
     }
 
-    if (op === "+") {
+    if (op === "+" || op === "+.") {
       const operandId = lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
       if (db && flattener) {
         const dispatched = dispatchUnaryOperator("'+'", operandId, node.child(1), dae, db, flattener);
@@ -9084,6 +9653,12 @@ export function lowerCSTExpression(
                     const s = subsWithEnd.get(it);
                     if (typeof s === "number") iv = s;
                   }
+                  if (isNaN(iv)) {
+                    const ev =
+                      evaluateCSTNumber(it, subsWithEnd as any, undefined, db, dae, prefix) ??
+                      evalArithmeticText(it, subsWithEnd as any);
+                    if (ev !== null) iv = ev;
+                  }
                   if (!isNaN(iv)) {
                     vals.push(iv);
                   }
@@ -9204,8 +9779,9 @@ export function lowerCSTExpression(
               if (!isLoopVar && (/\b\d+\.\d+\b/.test(subText) || /[a-zA-Z0-9_)]\s*\/\s*[a-zA-Z0-9_(]/.test(subText))) {
                 isRealSub = true;
               }
+              const isBoolLiteralSub = subText === "false" || subText === "true";
               const evaluatedNum =
-                isLoopVar || isRealSub
+                isLoopVar || isRealSub || isBoolLiteralSub
                   ? null
                   : (evaluateCSTNumber(expr, subsWithEnd as any, undefined, undefined, dae, prefix) ??
                     evalArithmeticText(subText, subsWithEnd as any));
@@ -9316,6 +9892,9 @@ export function lowerCSTExpression(
                   if (dae.getExprKind(subId) === ExprKind.EnumLiteral && !isLoopVar) {
                     numVal = dae.getExprData1(subId);
                     enumLiteralText = dae.interner.resolve(dae.getExprLeft(subId));
+                  } else if (dae.getExprKind(subId) === ExprKind.BoolLiteral && !isLoopVar) {
+                    numVal = dae.getExprData1(subId) ? 2 : 1;
+                    enumLiteralText = dae.getExprData1(subId) ? "true" : "false";
                   } else if (dae.getExprKind(subId) === ExprKind.IntLiteral && !isRealSub && !isLoopVar) {
                     numVal = dae.getExprData1(subId);
                   } else if (!isRealSub && !isLoopVar) {
@@ -9728,8 +10307,11 @@ export function lowerCSTExpression(
             if (baseName.startsWith(".")) baseName = baseName.slice(1);
             const subStr = candidate.slice(candidate.indexOf("[") + 1, candidate.indexOf("]"));
             const subIndices = subStr.split(",").map((s) => parseInt(s.trim(), 10));
+            const pkgScopeId = flattener?.currentParentMods?.packageScopeId;
             const scopeId = flattener?.currentClassId ?? flattener?.currentRootClassId;
-            const constRes = lookupDbConstant(baseName, db, scopeId);
+            const constRes =
+              (pkgScopeId ? lookupDbConstant(baseName, db, pkgScopeId) : null) ??
+              lookupDbConstant(baseName, db, scopeId);
             if (constRes && Array.isArray(constRes.value)) {
               let val: any = constRes.value;
               for (const idx of subIndices) {
@@ -9740,7 +10322,11 @@ export function lowerCSTExpression(
                   break;
                 }
               }
+              if (typeof val === "string") {
+                return dae.addStringLiteral(val);
+              }
               if (typeof val === "number") {
+                if (constRes.isBoolean) return dae.addBoolLiteral(val !== 0);
                 return constRes.isInteger ? dae.addIntLiteral(val) : dae.addRealLiteral(val);
               }
             }
@@ -9917,24 +10503,62 @@ export function lowerCSTExpression(
             if (baseIdx >= 0 && dae.getVarVariability(baseIdx) !== Variability.Constant) {
               return dae.addExpression(ExprKind.Name, dae.interner.intern(candidate));
             }
+          } else if (
+            !isAssignmentLhs &&
+            !noArrayExpand &&
+            flattener?.options?.arrayMode !== "preserve" &&
+            !(dae.classKind === "function" && flattener?.currentBindingCompName === candidate)
+          ) {
+            const ctor = expandVarToArrayCtor(candidate, dae);
+            if (ctor !== null) return ctor;
           }
         } else {
           return dae.addExpression(ExprKind.Name, dae.interner.intern(candidate));
         }
         if (db) {
+          const pkgScopeId = flattener?.currentParentMods?.packageScopeId;
           const scopeId =
             (dae as any).enclosingScopeId ??
             flattener?.currentClassId ??
             flattener?.currentFlatteningFunctionId ??
             flattener?.currentRootClassId;
           const rootScopeId = flattener?.currentRootClassId;
+          const pkgRedeclForConst =
+            parts.length >= 2
+              ? flattener?.currentParentMods?.args?.findLast
+                ? flattener.currentParentMods.args.findLast(
+                    (a: any) =>
+                      !a.isBreak &&
+                      a.name === parts[0] &&
+                      (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                      a.redeclaredTypeSpecifier,
+                  )
+                : flattener?.currentParentMods?.args?.find(
+                    (a: any) =>
+                      !a.isBreak &&
+                      a.name === parts[0] &&
+                      (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                      a.redeclaredTypeSpecifier,
+                  )
+              : null;
+          const redeclJoined = pkgRedeclForConst?.redeclaredTypeSpecifier
+            ? [String(pkgRedeclForConst.redeclaredTypeSpecifier).replace(/^\.+/, ""), ...parts.slice(1)].join(".")
+            : null;
+          const redeclScopeId = pkgRedeclForConst?.evaluationScopeId ?? pkgRedeclForConst?.ownerClassId ?? scopeId;
           const constRes =
+            (redeclJoined
+              ? (lookupDbConstant(redeclJoined, db, redeclScopeId) ??
+                (rootScopeId && rootScopeId !== redeclScopeId ? lookupDbConstant(redeclJoined, db, rootScopeId) : null))
+              : null) ??
+            (pkgScopeId && pkgScopeId !== scopeId
+              ? (lookupDbConstant(candidate, db, pkgScopeId) ?? lookupDbConstant(joined, db, pkgScopeId))
+              : null) ??
             lookupDbConstant(candidate, db, scopeId) ??
             lookupDbConstant(joined, db, scopeId) ??
             (rootScopeId && rootScopeId !== scopeId
               ? (lookupDbConstant(candidate, db, rootScopeId) ?? lookupDbConstant(joined, db, rootScopeId))
               : null);
-          if (constRes !== null) {
+          if (constRes !== null && !(Array.isArray(constRes.value) && constRes.value.length === 0)) {
             if (
               dae.extensionMetadata?.["isOldFrontend"] &&
               flattener &&
@@ -9955,10 +10579,22 @@ export function lowerCSTExpression(
               }
             }
             if (Array.isArray(constRes.value)) {
-              const elemIds = constRes.value.map((v) =>
-                constRes.isInteger ? dae.addIntLiteral(v) : dae.addRealLiteral(v),
+              const elemIds = constRes.value.map((v: any) =>
+                typeof v === "string"
+                  ? dae.addStringLiteral(v)
+                  : constRes.isBoolean
+                    ? dae.addBoolLiteral(v !== 0)
+                    : constRes.isInteger
+                      ? dae.addIntLiteral(v)
+                      : dae.addRealLiteral(v),
               );
               return dae.addArrayCtorExpr(elemIds);
+            }
+            if (typeof constRes.value === "string") {
+              return dae.addStringLiteral(constRes.value);
+            }
+            if (constRes.isBoolean) {
+              return dae.addBoolLiteral(constRes.value !== 0);
             }
             return constRes.isInteger
               ? dae.addIntLiteral(Math.round(constRes.value))
@@ -9981,17 +10617,49 @@ export function lowerCSTExpression(
             }
             return false;
           })();
-          const firstPart = imports && imports.has(parts[0]!) ? imports.get(parts[0]!)! : parts[0]!;
+          const pkgRedeclForClass = !isLocalComp
+            ? flattener?.currentParentMods?.args?.findLast
+              ? flattener.currentParentMods.args.findLast(
+                  (a: any) =>
+                    !a.isBreak &&
+                    a.name === parts[0] &&
+                    (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                    a.redeclaredTypeSpecifier,
+                )
+              : flattener?.currentParentMods?.args?.find(
+                  (a: any) =>
+                    !a.isBreak &&
+                    a.name === parts[0] &&
+                    (a.isRedeclaration || a.redeclaredTypeSpecifier) &&
+                    a.redeclaredTypeSpecifier,
+                )
+            : null;
+          const firstPart = pkgRedeclForClass?.redeclaredTypeSpecifier
+            ? String(pkgRedeclForClass.redeclaredTypeSpecifier).replace(/^\.+/, "")
+            : imports && imports.has(parts[0]!)
+              ? imports.get(parts[0]!)!
+              : parts[0]!;
+          const pkgLookupScopeId = pkgRedeclForClass?.evaluationScopeId ?? pkgRedeclForClass?.ownerClassId ?? curClsId;
           const pkgOrClass = isLocalComp
             ? undefined
-            : ((curClsId
+            : ((pkgLookupScopeId
                 ? (() => {
                     const res =
-                      db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", curClsId)?.(firstPart) ??
-                      db.query<(n: string) => SymbolEntry | null>("resolveName", curClsId)?.(firstPart);
+                      db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", pkgLookupScopeId)?.(firstPart) ??
+                      db.query<(n: string) => SymbolEntry | null>("resolveName", pkgLookupScopeId)?.(firstPart);
                     return res && (res.kind === "Class" || res.kind === "Package") ? res : undefined;
                   })()
-                : undefined) ?? db.byName(firstPart).find((e) => e.kind === "Class" || e.kind === "Package"));
+                : undefined) ??
+              (flattener?.currentRootClassId
+                ? (() => {
+                    const res = db.query<(n: string) => SymbolEntry | null>(
+                      "resolveName",
+                      flattener.currentRootClassId,
+                    )?.(firstPart);
+                    return res && (res.kind === "Class" || res.kind === "Package") ? res : undefined;
+                  })()
+                : undefined) ??
+              db.byName(firstPart.split(".").pop()!).find((e) => e.kind === "Class" || e.kind === "Package"));
           if (pkgOrClass) {
             const pkgEntry = db.symbol(pkgOrClass.id);
             const hasPkgRestrictionError = dae.diagnostics.some(
@@ -10146,7 +10814,7 @@ export function lowerCSTExpression(
                       const prevClassId = flattener.currentClassId;
                       flattener.currentClassId =
                         modArg?.evaluationScopeId ?? pkgOrClass.id ?? child.parentId ?? flattener.currentClassId;
-                      const lowered = flattener.lowerExpr(exprNode, dae, prefix, substitutions);
+                      const lowered = flattener.lowerExpr(exprNode, dae, "", substitutions);
                       flattener.currentClassId = prevClassId;
                       if (lowered >= 0) return lowered;
                     }
@@ -10167,7 +10835,7 @@ export function lowerCSTExpression(
                       return pkgSym ? db.childrenOf(pkgSym.id).some((c) => c.name === part) : false;
                     }),
                   );
-                if (isImportedInCur) {
+                if (isImportedInCur && !flattener?.isOldFrontend && !dae.extensionMetadata?.["isOldFrontend"]) {
                   let stmtOrEqNode: any = node;
                   while (
                     stmtOrEqNode?.parent &&
@@ -10238,10 +10906,22 @@ export function lowerCSTExpression(
           if (constRes !== null) {
             ensureOldFrontendPiAsin(mapped);
             if (Array.isArray(constRes.value)) {
-              const elemIds = constRes.value.map((v) =>
-                constRes.isInteger ? dae.addIntLiteral(v) : dae.addRealLiteral(v),
+              const elemIds = constRes.value.map((v: any) =>
+                typeof v === "string"
+                  ? dae.addStringLiteral(v)
+                  : constRes.isBoolean
+                    ? dae.addBoolLiteral(v !== 0)
+                    : constRes.isInteger
+                      ? dae.addIntLiteral(v)
+                      : dae.addRealLiteral(v),
               );
               return dae.addArrayCtorExpr(elemIds);
+            }
+            if (typeof constRes.value === "string") {
+              return dae.addStringLiteral(constRes.value);
+            }
+            if (constRes.isBoolean) {
+              return dae.addBoolLiteral(constRes.value !== 0);
             }
             return constRes.isInteger
               ? dae.addIntLiteral(Math.round(constRes.value))
@@ -10256,10 +10936,22 @@ export function lowerCSTExpression(
       if (constRes !== null) {
         ensureOldFrontendPiAsin(rawName);
         if (Array.isArray(constRes.value)) {
-          const elemIds = constRes.value.map((v) =>
-            constRes.isInteger ? dae.addIntLiteral(v) : dae.addRealLiteral(v),
+          const elemIds = constRes.value.map((v: any) =>
+            typeof v === "string"
+              ? dae.addStringLiteral(v)
+              : constRes.isBoolean
+                ? dae.addBoolLiteral(v !== 0)
+                : constRes.isInteger
+                  ? dae.addIntLiteral(v)
+                  : dae.addRealLiteral(v),
           );
           return dae.addArrayCtorExpr(elemIds);
+        }
+        if (typeof constRes.value === "string") {
+          return dae.addStringLiteral(constRes.value);
+        }
+        if (constRes.isBoolean) {
+          return dae.addBoolLiteral(constRes.value !== 0);
         }
         return constRes.isInteger ? dae.addIntLiteral(Math.round(constRes.value)) : dae.addRealLiteral(constRes.value);
       }
@@ -10491,8 +11183,100 @@ export function lowerCSTExpression(
     return dae.addExpression(ExprKind.Name, dae.interner.intern(rawName));
   }
 
-  // Fallback: treat raw text as Name
+  // Unwrap any remaining single-child CST wrapper node before raw-text fallback
+  if (node.childCount === 1 && node.child(0) && (node.child(0)!.childCount > 0 || node.child(0)!.type !== node.type)) {
+    return lowerCSTExpression(node.child(0), dae, ctx);
+  }
+  if (
+    node.childCount === 3 &&
+    (node.child(0)?.type === "(" || node.child(0)?.text?.trim() === "(") &&
+    (node.child(2)?.type === ")" || node.child(2)?.text?.trim() === ")") &&
+    node.child(1)
+  ) {
+    return lowerCSTExpression(node.child(1), dae, ctx);
+  }
+
+  // Fallback: treat raw text as Name (after checking structural array/range/unary/paren forms)
   let fallback = node.text ? node.text.trim() : "";
+  if (fallback.startsWith("{") && fallback.endsWith("}")) {
+    const items = getArrayLiteralItems(node);
+    if (items.length > 0 || fallback.slice(1, -1).trim() === "") {
+      const elemIds = items.map((it) => lowerCSTExpression(it, dae, ctx));
+      if (elemIds.some((e) => isRealExpr(e, dae))) {
+        for (let k = 0; k < elemIds.length; k++) {
+          if (!isRealExpr(elemIds[k]!, dae)) {
+            elemIds[k] = castToRealExpr(elemIds[k]!, dae);
+          }
+        }
+      }
+      return dae.addArrayCtorExpr(elemIds);
+    }
+  }
+  if (fallback.includes(":") && !fallback.startsWith('"')) {
+    const colonNodes = flattenColonNodes(node);
+    if (colonNodes.length === 2 || colonNodes.length === 3) {
+      const isForIndex = isInsideForIndex(node);
+      const startId = lowerCSTExpression(colonNodes[0], dae, ctx);
+      const stepId = colonNodes.length === 3 ? lowerCSTExpression(colonNodes[1], dae, ctx) : -1;
+      const stopId = lowerCSTExpression(colonNodes[colonNodes.length - 1], dae, ctx);
+      const isAnyReal = isRealExpr(startId, dae) || (stepId >= 0 && isRealExpr(stepId, dae)) || isRealExpr(stopId, dae);
+      const effStartId = isAnyReal ? castToRealExpr(startId, dae) : startId;
+      const effStepId = stepId >= 0 ? (isAnyReal ? castToRealExpr(stepId, dae) : stepId) : -1;
+      const effStopId = isAnyReal ? castToRealExpr(stopId, dae) : stopId;
+      const rangeId = dae.addExpression(ExprKind.Range, effStartId, effStepId, effStopId);
+      const expanded = !isForIndex ? expandColonToArrayCtor(rangeId, dae) : null;
+      return expanded !== null ? expanded : rangeId;
+    }
+  }
+  if (fallback.startsWith("(") && fallback.endsWith(")")) {
+    let depth = 0;
+    let inQuotes = false;
+    let quoteChar = "";
+    let outerBalanced = true;
+    for (let i = 0; i < fallback.length; i++) {
+      const ch = fallback[i]!;
+      if (inQuotes) {
+        if (ch === "\\" && i + 1 < fallback.length) {
+          i++;
+          continue;
+        }
+        if (ch === quoteChar) inQuotes = false;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inQuotes = true;
+        quoteChar = ch;
+        continue;
+      }
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (ch === ")" || ch === "]" || ch === "}") {
+        depth--;
+        if (depth === 0 && i < fallback.length - 1) {
+          outerBalanced = false;
+          break;
+        }
+      }
+    }
+    if (outerBalanced && depth === 0) {
+      const innerText = fallback.slice(1, -1).trim();
+      if (flattener && typeof flattener.lowerStandaloneText === "function") {
+        const lowered = flattener.lowerStandaloneText(innerText, dae, prefix, substitutions);
+        if (typeof lowered === "number" && lowered >= 0) return lowered;
+      }
+      fallback = innerText;
+    }
+  }
+  if ((fallback.startsWith("-") || fallback.startsWith("+")) && fallback.length > 1) {
+    const isNeg = fallback.startsWith("-");
+    if (node.childCount >= 2 && node.child(node.childCount - 1)) {
+      const innerId = lowerCSTExpression(node.child(node.childCount - 1), dae, ctx);
+      if (innerId >= 0) return isNeg ? negateExpr(innerId, dae) : innerId;
+    }
+    if (flattener && typeof flattener.lowerStandaloneText === "function") {
+      const innerId = flattener.lowerStandaloneText(fallback.slice(1).trim(), dae, prefix, substitutions);
+      if (typeof innerId === "number" && innerId >= 0) return isNeg ? negateExpr(innerId, dae) : innerId;
+    }
+  }
   if (substitutions && substitutions.has(fallback)) {
     const sVal = substitutions.get(fallback)!;
     if (typeof sVal === "number") return dae.addIntLiteral(sVal);

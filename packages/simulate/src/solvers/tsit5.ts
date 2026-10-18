@@ -209,9 +209,9 @@ export function tsit5(
           return gProbe > 0 ? 1e-10 : -1e-10;
         }
         const reqDir = effEventDirections?.[gIdx] ?? 0;
-        if (reqDir < 0) return 1e-10;
-        if (reqDir > 0) return -1e-10;
-        return 1e-10;
+        if (reqDir < 0) return -1e-10;
+        if (reqDir > 0) return 1e-10;
+        return 0;
       }
       return gVal;
     });
@@ -291,6 +291,8 @@ export function tsit5(
         const currEventVals = effEventFunctions.map((ef) => ef(t + h, yNew));
         let eventTriggered = -1;
         let eventDir: 1 | -1 = 1;
+        let bestTEvent = tEnd >= t0 ? Infinity : -Infinity;
+        let bestYEvent: number[] = [...yNew];
 
         for (let ei = 0; ei < effEventFunctions.length; ei++) {
           const vPrev = prevEventVals[ei] ?? 0;
@@ -300,51 +302,86 @@ export function tsit5(
           if (vPrev * vCurr < 0) {
             const dir: 1 | -1 = vCurr > vPrev ? 1 : -1;
             if (expectedDir === 0 || expectedDir === dir) {
-              eventTriggered = ei;
-              eventDir = dir;
-              break;
+              // Bisection root finding for candidate ei
+              let tLeft = t;
+              let tRight = t + h;
+              let yCand = [...yNew];
+              let valLeft = vPrev;
+
+              for (let iter = 0; iter < 30; iter++) {
+                const tMid = 0.5 * (tLeft + tRight);
+                const thetaMid = (tMid - t) / h;
+                const yMid = tsit5Interpolate(y, yNew, k, h, thetaMid);
+                const valMid = effEventFunctions[ei]!(tMid, yMid);
+
+                if (Math.abs(valMid) < 1e-12 || Math.abs(tRight - tLeft) < 1e-14) {
+                  yCand = yMid;
+                  tRight = tMid;
+                  break;
+                }
+                if (valLeft * valMid <= 0) {
+                  tRight = tMid;
+                } else {
+                  tLeft = tMid;
+                  valLeft = valMid;
+                }
+                yCand = yMid;
+              }
+
+              const isEarlier = tEnd >= t0 ? tRight < bestTEvent : tRight > bestTEvent;
+              if (isEarlier) {
+                bestTEvent = tRight;
+                bestYEvent = yCand;
+                eventTriggered = ei;
+                eventDir = dir;
+              }
             }
           }
         }
 
         if (eventTriggered >= 0) {
-          // Bisection root finding
-          let tLeft = t;
-          let tRight = t + h;
-          let yEvent = [...yNew];
+          const tEvent = bestTEvent;
+          const yEvent = bestYEvent;
+          const hasOutputGrid = denseOutputs && options.equidistantOutput !== false;
 
-          for (let iter = 0; iter < 20; iter++) {
-            const tMid = 0.5 * (tLeft + tRight);
-            const thetaMid = (tMid - t) / h;
-            const yMid = tsit5Interpolate(y, yNew, k, h, thetaMid);
-            const valMid = effEventFunctions[eventTriggered]!(tMid, yMid);
-
-            if (Math.abs(valMid) < 1e-10 || tRight - tLeft < 1e-12) {
-              yEvent = yMid;
-              tRight = tMid;
-              break;
+          if (hasOutputGrid && outputTimes) {
+            while (outIdx < outputTimes.length) {
+              const tTarget = outputTimes[outIdx]!;
+              const beforeEvent = tEnd >= t0 ? tTarget < tEvent - 1e-14 : tTarget > tEvent + 1e-14;
+              if (beforeEvent) {
+                const theta = (tTarget - t) / h;
+                const yTarget = tsit5Interpolate(y, yNew, k, h, theta);
+                resultTimes.push(tTarget);
+                resultStates.push(yTarget);
+                outIdx++;
+              } else {
+                break;
+              }
             }
-            const valLeft = effEventFunctions[eventTriggered]!(tLeft, tsit5Interpolate(y, yNew, k, h, (tLeft - t) / h));
-            if (valLeft * valMid <= 0) {
-              tRight = tMid;
-            } else {
-              tLeft = tMid;
-            }
-            yEvent = yMid;
           }
 
           if (effEventCallback) {
-            y = effEventCallback(tRight, yEvent, eventTriggered, eventDir);
+            y = effEventCallback(tEvent, yEvent, eventTriggered, eventDir);
           } else {
             y = yEvent;
           }
-          t = tRight;
+
+          if (hasOutputGrid && outputTimes) {
+            if (outIdx < outputTimes.length && Math.abs(outputTimes[outIdx]! - tEvent) <= 1e-14) {
+              resultTimes.push(outputTimes[outIdx]!);
+              resultStates.push([...y]);
+              outIdx++;
+            }
+          } else {
+            resultTimes.push(tEvent);
+            resultStates.push([...y]);
+          }
+
+          t = tEvent;
           k[0] = f(t, y);
           stats.fEvals++;
           prevEventVals = computeEventValuesWithProbe(t, y);
 
-          resultTimes.push(t);
-          resultStates.push([...y]);
           h = Math.max(minStep, Math.min(h * 0.5, maxStep));
           continue;
         }

@@ -377,4 +377,121 @@ cube([10, 10, 10]);
     expect(titles.some((t: string) => t.includes("Volume: 1000.0 mm³"))).toBe(true);
     expect(titles.some((t: string) => t.includes("Open Interactive 3D CAD Editor"))).toBe(true);
   });
+
+  it("4. Dynamic Reachability Endpoint (modelscript/computeReachability): computes per-variable flowpipes for arbitrary models (RLC) without hardcoded Drone state", async () => {
+    const { BinOp, Causality, DAEBuilder, EqKind, UnaryOp, Variability, VarType, initBltWasm } =
+      await import("@modelscript/runtime");
+    const { computeModelReachability } = await import("../src/handlers/simulationEndpoints.js");
+    await initBltWasm();
+
+    // Build an RLC-like DAE arena:
+    // parameter Real R = 10;
+    // parameter Real C = 0.01;
+    // Real C.v(start = 5.0, fixed = true);
+    // Real R.i;
+    // equation
+    //   R.i = C.v / R;
+    //   der(C.v) = -R.i / C;
+    const buildRlcArena = () => {
+      const b = new DAEBuilder();
+      b.experiment = { startTime: 0, stopTime: 0.2, interval: 0.002 };
+
+      const rVar = b.addVariable("R", VarType.Real, Variability.Parameter, Causality.Local);
+      b.setVarStartValue(rVar, 10.0);
+
+      const cVar = b.addVariable("C", VarType.Real, Variability.Parameter, Causality.Local);
+      b.setVarStartValue(cVar, 0.01);
+
+      const vcVar = b.addVariable("C.v", VarType.Real, Variability.Continuous, Causality.Local);
+      b.setVarStartValue(vcVar, 5.0);
+      b.setVarFixed(vcVar);
+      b.setVarState(vcVar);
+
+      b.addVariable("R.i", VarType.Real, Variability.Continuous, Causality.Local);
+
+      const vcRef = b.addNameExpr("C.v");
+      const rRef = b.addNameExpr("R");
+      const cRef = b.addNameExpr("C");
+      const irRef = b.addNameExpr("R.i");
+      const derVc = b.addDer(vcRef);
+
+      // R.i = C.v / R
+      b.addEquation(EqKind.Simple, irRef, b.addBinaryExpr(BinOp.Div, vcRef, rRef));
+      // der(C.v) = -R.i / C
+      b.addEquation(EqKind.Simple, derVc, b.addBinaryExpr(BinOp.Div, b.addUnaryExpr(UnaryOp.Neg, irRef), cRef));
+      return b;
+    };
+
+    const rlcUri = "file:///workspace/circuits/RLC.mo";
+    const rlcDoc = TextDocument.create(
+      rlcUri,
+      "modelica",
+      1,
+      "model RLC\n  parameter Real R = 10;\n  parameter Real C = 0.01;\n  Real v(start = 5.0, fixed = true);\nend RLC;",
+    );
+    const droneSysmlUri = "file:///workspace/drone/sysml/drone_specs.sysml";
+    const droneSysmlDoc = TextDocument.create(droneSysmlUri, "sysml2", 1, sysmlCode);
+
+    const mockContext: any = {
+      connection: {
+        console: { info: () => {}, warn: () => {}, error: () => {} },
+      },
+      documents: {
+        get: (u: string) => (u === rlcUri ? rlcDoc : u === droneSysmlUri ? droneSysmlDoc : undefined),
+        all: () => [rlcDoc, droneSysmlDoc],
+      },
+      documentManager: {
+        documents: new Map([
+          [rlcUri, rlcDoc],
+          [droneSysmlUri, droneSysmlDoc],
+        ]),
+        documentTrees: new Map(),
+      },
+      validationService: {
+        validateTextDocument: async () => {},
+      },
+      state: {
+        activeValidationPromises: new Map(),
+      },
+      workspaceManager: {
+        unifiedWorkspace: {
+          toUnifiedPartial: () => ({
+            symbols: new Map([
+              [
+                1,
+                {
+                  id: 1,
+                  name: "RLC",
+                  kind: "Class",
+                  parentId: null,
+                  resourceId: rlcUri,
+                  metadata: { classKind: "model" },
+                },
+              ],
+            ]),
+            byName: new Map([["RLC", [1]]]),
+            childrenOf: new Map(),
+          }),
+        },
+      },
+      parserService: {
+        sharedContext: {
+          flattenArena: () => buildRlcArena(),
+        },
+      },
+    };
+
+    const rlcReach = await computeModelReachability(mockContext, { uri: rlcUri });
+    expect(rlcReach.error).toBe(undefined);
+    expect(rlcReach.modelName).toBe("RLC");
+    expect(rlcReach.variable).toBe("C.v");
+    expect(rlcReach.states.includes("C.v")).toBe(true);
+    expect(rlcReach.states.includes("R.i")).toBe(true);
+    expect(rlcReach.envelopes.length).toBe(3);
+    expect(rlcReach.requirementLabel.includes("FlightCeiling")).toBe(false);
+    expect(rlcReach.variables["C.v"]).toBeDefined();
+    expect(rlcReach.variables["R.i"]).toBeDefined();
+    expect(rlcReach.parameters.some((p: any) => p.name === "R")).toBe(true);
+    expect(rlcReach.experiment.stopTime).toBe(0.2);
+  });
 });

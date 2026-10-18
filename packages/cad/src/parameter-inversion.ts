@@ -45,6 +45,26 @@ export interface CertifiedInversionResult extends InversionResult {
 
 export class ParameterInversionEngine {
   /**
+   * Extracts scalar numeric parameters declared in MCAD source code.
+   */
+  static extractParameters(mcadSource: string): Record<string, number> {
+    const params: Record<string, number> = {};
+    const assignRegex = /\b(?:const|let|var)?\s*([A-Za-z_]\w*)\s*=\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*;/g;
+    let m: RegExpExecArray | null;
+    while ((m = assignRegex.exec(mcadSource)) !== null) {
+      params[m[1]!] = parseFloat(m[2]!);
+    }
+    const propRegex = /\b([A-Za-z_]\w*)\s*:\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*[,;}]/g;
+    while ((m = propRegex.exec(mcadSource)) !== null) {
+      const key = m[1]!;
+      if (!(key in params)) {
+        params[key] = parseFloat(m[2]!);
+      }
+    }
+    return params;
+  }
+
+  /**
    * Updates named scalar parameters in procedural MCAD source code.
    * Matches definitions like:
    *   const ARM_LENGTH = 7;
@@ -57,10 +77,11 @@ export class ParameterInversionEngine {
   ): { updatedSource: string; appliedUpdates: ParameterInversionUpdate[] } {
     let result = mcadSource;
     const appliedUpdates: ParameterInversionUpdate[] = [];
+    const numPattern = "([+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?)";
 
     for (const [paramName, newVal] of Object.entries(updates)) {
       // Regex matches const/let/var or assignment
-      const regex = new RegExp(`(\\b(?:const|let|var)?\\s*${paramName}\\s*=\\s*)([\\d.]+)(\\s*;)`, "g");
+      const regex = new RegExp(`(\\b(?:const|let|var)?\\s*${paramName}\\s*=\\s*)${numPattern}(\\s*;)`, "g");
       let matched = false;
 
       result = result.replace(regex, (_match, prefix, oldValStr, suffix) => {
@@ -76,7 +97,7 @@ export class ParameterInversionEngine {
 
       if (!matched) {
         // Also match property key in object literal: e.g. "width: 10,"
-        const propRegex = new RegExp(`(\\b${paramName}\\s*:\\s*)([\\d.]+)(\\s*[,;])`, "g");
+        const propRegex = new RegExp(`(\\b${paramName}\\s*:\\s*)${numPattern}(\\s*[,;}])`, "g");
         result = result.replace(propRegex, (_match, prefix, oldValStr, suffix) => {
           const oldVal = parseFloat(oldValStr);
           appliedUpdates.push({
@@ -102,10 +123,14 @@ export class ParameterInversionEngine {
     guard: SafeRegionGuard,
   ): CertifiedInversionResult {
     const violations: string[] = [];
+    const effectiveParams: Record<string, number> = {
+      ...this.extractParameters(mcadSource),
+      ...updates,
+    };
 
     // 1. Check explicit parameter bounds
     if (guard.parameterBounds) {
-      for (const [param, val] of Object.entries(updates)) {
+      for (const [param, val] of Object.entries(effectiveParams)) {
         const bound = guard.parameterBounds[param];
         if (bound) {
           if (bound.min !== undefined && val < bound.min) {
@@ -122,7 +147,7 @@ export class ParameterInversionEngine {
     if (guard.constraints) {
       for (const rule of guard.constraints) {
         try {
-          const isSatisfied = rule.evaluate(updates);
+          const isSatisfied = rule.evaluate(effectiveParams);
           if (!isSatisfied) {
             violations.push(
               rule.description || `Multidisciplinary constraint '${rule.name}' violated by candidate parameter set.`,
@@ -136,7 +161,7 @@ export class ParameterInversionEngine {
 
     // 3. Check custom validator
     if (guard.customValidator) {
-      const customRes = guard.customValidator(updates);
+      const customRes = guard.customValidator(effectiveParams);
       if (!customRes.isSafe) {
         violations.push(...customRes.violations);
       }

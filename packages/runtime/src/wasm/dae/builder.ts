@@ -12,7 +12,7 @@ export {
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
   FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_STREAM,
   FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
-  FLAG_EQ_INITIAL, FLAG_EQ_OVERCONSTRAINED, FLAG_EQ_STREAM_CONNECT, FLAG_HIGH_INDEX_EQ,
+  FLAG_EQ_INITIAL, FLAG_EQ_OVERCONSTRAINED, FLAG_EQ_STREAM_CONNECT, FLAG_HIGH_INDEX_EQ, FLAG_EQ_REMOVED,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
   STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT,
@@ -30,6 +30,7 @@ import {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
   FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
+  FLAG_EQ_INITIAL, FLAG_EQ_REMOVED,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
   STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT,
@@ -793,6 +794,50 @@ export class DaeBuilder {
     return this.getExprData().get(exprId * 4 + 3) as u32;
   }
 
+  /**
+   * Resolves an expression payload (`EXPR_DATA1` of `Name` or `Der`) that may store
+   * either an interned `StringId` or a direct 0-based `varIdx`.
+   * Checks `lookupVariableByName` first so small interned `StringId`s are not
+   * misidentified as variable indices.
+   */
+  @inline
+  resolveExprVarId(nameOrVarId: u32): i32 {
+    if (nameOrVarId == 0xffffffff) return -1;
+    let lookedUp = this.lookupVariableByName(nameOrVarId);
+    if (lookedUp >= 0) return lookedUp;
+    return nameOrVarId < this.varCount ? (nameOrVarId as i32) : -1;
+  }
+
+  /**
+   * Resolves the expression ID of argument `argIdx` (0-based) for a `Call` expression,
+   * supporting both the canonical `addCallExpr` layout (`Tuple` slots at `callExprId + argIdx`
+   * with `EXPR_LEFT = argExprId`) and legacy binary/contiguous layouts.
+   */
+  @inline
+  getCallArgExprId(callExprId: u32, argIdx: u32): u32 {
+    if (callExprId >= this.exprCount) return 0xffffffff;
+    let firstArg = this.getExprLeft(callExprId);
+    if (argIdx == 0) return firstArg;
+    let slotIdx = callExprId + argIdx;
+    if (slotIdx < this.exprCount && this.getExprKind(slotIdx) == ExprKind.Tuple) {
+      return this.getExprLeft(slotIdx);
+    }
+    let right = this.getExprRight(callExprId);
+    if (right < this.exprCount && right != callExprId && this.getExprKind(right) == ExprKind.Tuple) {
+      if (argIdx == 1) {
+        let tLeft = this.getExprLeft(right);
+        return tLeft != 0xffffffff ? tLeft : this.getExprData1(right);
+      }
+    }
+    if (argIdx == 1 && right != 2 && right != 3 && right < this.exprCount && right != callExprId) {
+      return right;
+    }
+    if (firstArg != 0xffffffff && firstArg + argIdx < this.exprCount) {
+      return firstArg + argIdx;
+    }
+    return 0xffffffff;
+  }
+
   @inline
   getVarCount(): i32 {
     return this.varCount as i32;
@@ -808,6 +853,48 @@ export class DaeBuilder {
   isVarRemoved(varIdx: u32): bool {
     if (varIdx >= this.varCount) return true;
     return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_REMOVED) != 0;
+  }
+
+  @inline
+  setVarRemoved(varIdx: u32, removed: bool = true): void {
+    if (varIdx >= this.varCount) return;
+    let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
+    let flags = this.getVarData().get(offset);
+    if (removed) {
+      this.getVarData().set(offset, flags | FLAG_VAR_REMOVED);
+    } else {
+      this.getVarData().set(offset, flags & ~FLAG_VAR_REMOVED);
+    }
+  }
+
+  @inline
+  isEqInitial(eqIdx: u32): bool {
+    if (eqIdx >= this.eqCount) return false;
+    let offset = eqIdx * EQ_STRIDE;
+    let k = this.getEqData().get(offset + EQ_KIND);
+    if (k == EqKind.InitialSimple || k == EqKind.InitialFor || k == EqKind.InitialFunctionCall) return true;
+    let aux = this.getEqData().get(offset + EQ_AUX);
+    return aux != -1 && (aux & FLAG_EQ_INITIAL) != 0;
+  }
+
+  @inline
+  isEqRemoved(eqIdx: u32): bool {
+    if (eqIdx >= this.eqCount) return true;
+    let aux = this.getEqData().get(eqIdx * EQ_STRIDE + EQ_AUX);
+    return aux != -1 && (aux & FLAG_EQ_REMOVED) != 0;
+  }
+
+  @inline
+  setEqRemoved(eqIdx: u32, removed: bool = true): void {
+    if (eqIdx >= this.eqCount) return;
+    let offset = eqIdx * EQ_STRIDE + EQ_AUX;
+    let aux = this.getEqData().get(offset);
+    if (aux == -1) aux = 0;
+    if (removed) {
+      this.getEqData().set(offset, aux | FLAG_EQ_REMOVED);
+    } else {
+      this.getEqData().set(offset, aux & ~FLAG_EQ_REMOVED);
+    }
   }
 
   @inline
@@ -962,6 +1049,11 @@ export class DaeBuilder {
     const oldVarCount = this.varCount;
     this.varCount = this.snapshotVarCount;
     this.getVarData().length = this.varCount * VAR_STRIDE;
+    this.getAliasData().length = this.varCount;
+    this.getVarAttrData().length = this.varCount * VAR_ATTR_STRIDE;
+    this.getVarShapes().length = this.varCount * 4;
+    this.getVarSymbolicShapes().length = this.varCount * 4;
+    this.getVarClockMap().length = this.varCount;
 
     if (this.varCount < oldVarCount) {
       const idxMap = this.getNameIndex();
@@ -975,6 +1067,7 @@ export class DaeBuilder {
     
     this.eqCount = this.snapshotEqCount;
     this.getEqData().length = this.eqCount * EQ_STRIDE;
+    this.getEqClockMap().length = this.eqCount;
     
     this.exprCount = this.snapshotExprCount;
     this.getExprData().length = this.exprCount * EXPR_STRIDE;

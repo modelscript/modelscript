@@ -76,6 +76,9 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
   let gx = i32(gid.x);
   let gy = i32(gid.y);
   let gz = i32(gid.z);
+  var cellFx: f32 = 0.0;
+  var cellFy: f32 = 0.0;
+  var cellFz: f32 = 0.0;
 
   // 1. Pull streaming with boundary conditions
   for (var i: u32 = 0u; i < 19u; i = i + 1u) {
@@ -89,9 +92,14 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (nxCoord < 0 || nxCoord >= i32(u.nx) ||
         nyCoord < 0 || nyCoord >= i32(u.ny) ||
         nzCoord < 0 || nzCoord >= i32(u.nz)) {
-      // Bounce back from domain boundary
-      let oppI = OPP[i];
-      pulledF = f_ping[getSoAIndex(oppI, cellIdx)];
+      if (nxCoord >= i32(u.nx) && cType == 4u) {
+        // Open pressure outlet: zero-gradient extrapolation from outlet cell
+        pulledF = f_ping[getSoAIndex(i, cellIdx)];
+      } else {
+        // Bounce back from domain boundary
+        let oppI = OPP[i];
+        pulledF = f_ping[getSoAIndex(oppI, cellIdx)];
+      }
     } else {
       let upIdx = getCellIndex(u32(nxCoord), u32(nyCoord), u32(nzCoord));
       let upType = cellTypes[upIdx];
@@ -99,7 +107,8 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
       if (upType == 1u || upType == 2u) {
         // Obstacle or channel wall bounce back
         let oppI = OPP[i];
-        var fRefl = f_ping[getSoAIndex(oppI, cellIdx)];
+        let fOut = f_ping[getSoAIndex(oppI, cellIdx)];
+        var fRefl = fOut;
 
         // Bouzidi curved boundary interpolation (ray from cellIdx to solid upIdx is along oppI)
         if (u.useBouzidi != 0u && upType == 1u) {
@@ -122,14 +131,21 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
           }
         }
 
-        // Moving wall momentum injection
+        // Moving wall momentum injection: incoming direction i has c_i = -c_{oppI}, so +6 * W[i] * rho_w * (c_i . u_w)
         if (upType == 1u && (u.movingWallVx != 0.0 || u.movingWallVy != 0.0 || u.movingWallVz != 0.0)) {
           let uwx = u.movingWallVx * (u.dt / u.dx);
           let uwy = u.movingWallVy * (u.dt / u.dx);
           let uwz = u.movingWallVz * (u.dt / u.dx);
           let cuW = f32(CX[i]) * uwx + f32(CY[i]) * uwy + f32(CZ[i]) * uwz;
           let deltaF = 6.0 * W[i] * 1.0 * cuW;
-          fRefl -= deltaF;
+          fRefl += deltaF;
+        }
+
+        if (upType == 1u) {
+          let mom = fOut + fRefl;
+          cellFx += f32(CX[oppI]) * mom;
+          cellFy += f32(CY[oppI]) * mom;
+          cellFz += f32(CZ[oppI]) * mom;
         }
 
         pulledF = fRefl;
@@ -190,6 +206,9 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
     let cu = cx * ux + cy * uy + cz * uz;
     let feq = W[i] * rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * uSq);
     feqs[i] = feq;
+    if (cType == 4u && gx - CX[i] >= i32(u.nx)) {
+      fIn[i] = feq;
+    }
 
     if (u.useLES != 0u) {
       let fneq = fIn[i] - feq;
@@ -221,5 +240,11 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
   let physVy = uy * (u.dx / u.dt);
   let physVz = uz * (u.dx / u.dt);
   macroFields[cellIdx] = vec4<f32>(physVx, physVy, physVz, rho);
+
+  if (cellFx != 0.0 || cellFy != 0.0 || cellFz != 0.0) {
+    dragOutput[0] = cellFx;
+    dragOutput[1] = cellFy;
+    dragOutput[2] = cellFz;
+  }
 }
 `;

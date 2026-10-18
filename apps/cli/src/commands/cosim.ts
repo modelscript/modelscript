@@ -344,6 +344,7 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
     const minBounds = new Float64Array(paramRanges.map((p) => p.min));
     const maxBounds = new Float64Array(paramRanges.map((p) => p.max));
 
+    let warnedOfflineFallback = false;
     const evalCandidate = async (x: Float64Array): Promise<number> => {
       const paramObj: Record<string, number> = {};
       for (let i = 0; i < dim; i++) {
@@ -369,7 +370,12 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
           return score;
         }
       } catch {
-        // Fallback when standalone/offline
+        if (!warnedOfflineFallback) {
+          warnedOfflineFallback = true;
+          console.warn(
+            `  [Warning] Co-simulation API at ${args["api-url"]} unreachable; using local offline surrogate evaluation.`,
+          );
+        }
       }
 
       const archiveTargets = new Map<string, number>();
@@ -426,6 +432,9 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
     }
 
     console.log("\nOptimization Complete:");
+    if (warnedOfflineFallback) {
+      console.log(`  Evaluation Mode: Local Offline Fallback`);
+    }
     console.log(`  Best Objective (${args.objective}): ${result.bestFitness.toExponential(4)}`);
     console.log(`  Generations: ${result.iterations}`);
     console.log(`  Evaluations: ${result.evaluations}`);

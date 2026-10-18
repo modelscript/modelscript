@@ -23,14 +23,9 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
   }
 
   if (kind == ExprKind.Name) {
-    let varId = e.varId;
-    if (varId == 0xffffffff) return 0.0;
-    if (varId >= dae.varCount) {
-      let lookedUp = dae.lookupVariableByName(varId);
-      if (lookedUp < 0) return 0.0;
-      varId = lookedUp as u32;
-    }
-    return changetype<UnmanagedFloat64Array>(varValuesPtr)[varId];
+    let resolved = dae.resolveExprVarId(e.varId);
+    if (resolved < 0) return 0.0;
+    return changetype<UnmanagedFloat64Array>(varValuesPtr)[resolved as u32];
   }
 
   if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
@@ -77,7 +72,6 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
 
   if (kind == ExprKind.Call) {
     let left = e.left;
-    let right = e.right;
     let funcId = dae.resolveBuiltinMathFunc(e.funcId as i32);
     let v1 = evalExpr(left, dae, varValuesPtr);
 
@@ -109,16 +103,7 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
       funcId == BuiltinMathFunc.Smooth ||
       funcId == BuiltinMathFunc.SemiLinear
     ) {
-      let secondArgId = right;
-      if (exprId + 1 < dae.exprCount) {
-        let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
-        if (nextAcc.kind == ExprKind.Tuple) {
-          secondArgId = nextAcc.left;
-        }
-      }
-      if (secondArgId >= dae.exprCount && left + 1 < dae.exprCount) {
-        secondArgId = left + 1;
-      }
+      let secondArgId = dae.getCallArgExprId(exprId, 1);
       let v2 = evalExpr(secondArgId, dae, varValuesPtr);
       if (funcId == BuiltinMathFunc.Atan2)  return Math.atan2(v1, v2);
       if (funcId == BuiltinMathFunc.Min)    return Math.min(v1, v2);
@@ -127,13 +112,7 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: usize): f64
       if (funcId == BuiltinMathFunc.Pow)    return Math.pow(v1, v2);
       if (funcId == BuiltinMathFunc.Smooth) return v2;
       if (funcId == BuiltinMathFunc.SemiLinear) {
-        let thirdArgId: u32 = 0xffffffff;
-        if (exprId + 2 < dae.exprCount) {
-          let next2Acc = ExprAccessor.at(dae.getExprData(), exprId + 2);
-          if (next2Acc.kind == ExprKind.Tuple) {
-            thirdArgId = next2Acc.left;
-          }
-        }
+        let thirdArgId = dae.getCallArgExprId(exprId, 2);
         let v3 = thirdArgId < dae.exprCount ? evalExpr(thirdArgId, dae, varValuesPtr) : 0.0;
         return v1 >= 0.0 ? v2 * v1 : v3 * v1;
       }

@@ -151,7 +151,7 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
         const baseName = segments[segments.length - 1];
         const depth = segments.length;
 
-        if (baseName === "package.json") {
+        if (baseName === "package.json" || baseName === "modelscript.json") {
           if (!bestJson || depth < bestJson.depth) {
             bestJson = { depth, entry };
           }
@@ -167,7 +167,7 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
       zipfile.on("end", () => {
         const target = bestJson ?? bestMo;
         if (!target) {
-          reject(new Error("No package.json or package.mo file found in the zip archive"));
+          reject(new Error("No package.json, modelscript.json, or package.mo file found in the zip archive"));
           return;
         }
 
@@ -195,11 +195,15 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
 
 /**
  * Find the library root directory inside an extracted zip.
- * Looks for the shallowest `package.json` or `package.mo` file.
+ * Looks for the shallowest `package.json`, `modelscript.json`, or `package.mo` file.
  */
 export function findLibraryRoot(dir: string): string | null {
-  // Check if package.json or package.mo is directly in the directory
-  if (fs.existsSync(path.join(dir, "package.json")) || fs.existsSync(path.join(dir, "package.mo"))) {
+  // Check if package.json, modelscript.json, or package.mo is directly in the directory
+  if (
+    fs.existsSync(path.join(dir, "package.json")) ||
+    fs.existsSync(path.join(dir, "modelscript.json")) ||
+    fs.existsSync(path.join(dir, "package.mo"))
+  ) {
     return dir;
   }
 
@@ -207,8 +211,9 @@ export function findLibraryRoot(dir: string): string | null {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       const candidateJson = path.join(dir, entry.name, "package.json");
+      const candidateMsJson = path.join(dir, entry.name, "modelscript.json");
       const candidateMo = path.join(dir, entry.name, "package.mo");
-      if (fs.existsSync(candidateJson) || fs.existsSync(candidateMo)) {
+      if (fs.existsSync(candidateJson) || fs.existsSync(candidateMsJson) || fs.existsSync(candidateMo)) {
         return path.join(dir, entry.name);
       }
     }

@@ -68,11 +68,11 @@ export class Su2Dialect implements CfdDialect {
         data.reynoldsNumber = parseFloat(val);
       } else if (key === "MESH_FILENAME") {
         data.meshFilename = val.replace(/^["']|["']$/g, "").trim();
-      } else if (key === "FREESTREAM_DENSITY") {
+      } else if (key === "FREESTREAM_DENSITY" || key === "INC_DENSITY_INIT") {
         data.density = parseFloat(val);
-      } else if (key === "FREESTREAM_VISCOSITY") {
+      } else if (key === "FREESTREAM_VISCOSITY" || key === "MU_CONSTANT") {
         data.viscosity = parseFloat(val);
-      } else if (key === "FREESTREAM_VELOCITY") {
+      } else if (key === "FREESTREAM_VELOCITY" || key === "INC_VELOCITY_INIT") {
         const tupleMatch = val.match(/\(\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)(?:\s*,\s*([0-9.eE+-]+))?\s*\)/);
         if (tupleMatch) {
           const vx = parseFloat(tupleMatch[1]!);
@@ -130,13 +130,18 @@ export class Su2Dialect implements CfdDialect {
               data.inletMarker = markerName;
               if (!inletMarkers.includes(markerName)) inletMarkers.push(markerName);
               if (options.length >= 1 && data.freestreamVelocity === undefined) {
-                const velMag = typeof options[0] === "number" ? options[0] : parseFloat(String(options[0]));
+                // 6-tuple: ( name, T0, V_or_P0, nx, ny, nz ) -> options has length >= 5, velMag at options[1] (parts[2])
+                // 5-tuple: ( name, velMag, nx, ny, nz ) -> options has length 4, velMag at options[0] (parts[1])
+                const isSixTuple = parts.length >= 6;
+                const rawVel = isSixTuple ? options[1] : options[0];
+                const dirOffset = isSixTuple ? 2 : 1;
+                const velMag = typeof rawVel === "number" ? rawVel : parseFloat(String(rawVel));
                 if (!isNaN(velMag)) {
                   data.freestreamVelocity = velMag;
-                  if (options.length >= 4) {
-                    const nx = Number(options[1]) || 0;
-                    const ny = Number(options[2]) || 0;
-                    const nz = Number(options[3]) || 0;
+                  if (options.length >= dirOffset + 3) {
+                    const nx = Number(options[dirOffset]) || 0;
+                    const ny = Number(options[dirOffset + 1]) || 0;
+                    const nz = Number(options[dirOffset + 2]) || 0;
                     data.inletVelocity = [velMag * nx, velMag * ny, velMag * nz];
                   }
                 }

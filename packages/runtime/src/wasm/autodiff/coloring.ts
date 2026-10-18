@@ -100,12 +100,18 @@ function exprHasVar(dae: DaeBuilder, exprId: u32, targetVar: u32): boolean {
   let kind = dae.getExprData().get(offset + EXPR_KIND);
 
   if (kind == ExprKind.Name) {
-    return (dae.getExprData().get(offset + EXPR_DATA1) as u32) == targetVar;
+    let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let resolved = dae.resolveExprVarId(rawId);
+    if (resolved >= 0 && (resolved as u32) == targetVar) return true;
+    return rawId == targetVar;
   }
   if (kind == ExprKind.Der) {
     let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
-      return (dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32) == targetVar;
+      let rawId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+      let resolved = dae.resolveExprVarId(rawId);
+      if (resolved >= 0 && (resolved as u32) == targetVar) return true;
+      return rawId == targetVar;
     }
   }
   if (kind == ExprKind.Binary || kind == ExprKind.Range) {
@@ -125,18 +131,9 @@ function exprHasVar(dae: DaeBuilder, exprId: u32, targetVar: u32): boolean {
   }
   if (kind == ExprKind.Call) {
     let count = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
-    let first = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     for (let i: u32 = 0; i < count; i++) {
-      let argExpr: u32 = first + i;
-      if (i > 0 && exprId + i < dae.exprCount) {
-        let slotOffset = (exprId + i) * EXPR_STRIDE;
-        if (dae.getExprData().get(slotOffset + EXPR_KIND) == ExprKind.Tuple) {
-          argExpr = dae.getExprData().get(slotOffset + EXPR_LEFT) as u32;
-        }
-      } else if (i == 0) {
-        argExpr = first;
-      }
-      if (exprHasVar(dae, argExpr, targetVar)) return true;
+      let argExpr = dae.getCallArgExprId(exprId, i);
+      if (argExpr != 0xffffffff && exprHasVar(dae, argExpr, targetVar)) return true;
     }
   }
   return false;
@@ -293,15 +290,19 @@ export function evalExprDerivative(
   }
 
   if (kind == ExprKind.Name) {
-    let vId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
-    return vId == targetVar ? 1.0 : 0.0;
+    let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let resolved = dae.resolveExprVarId(rawId);
+    if (resolved >= 0 && (resolved as u32) == targetVar) return 1.0;
+    return rawId == targetVar ? 1.0 : 0.0;
   }
 
   if (kind == ExprKind.Der) {
     let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
-      let vId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
-      return vId == targetVar ? 1.0 : 0.0;
+      let rawId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+      let resolved = dae.resolveExprVarId(rawId);
+      if (resolved >= 0 && (resolved as u32) == targetVar) return 1.0;
+      return rawId == targetVar ? 1.0 : 0.0;
     }
     return 0.0;
   }

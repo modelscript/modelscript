@@ -919,19 +919,19 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("  } else if (stage == 2u) {");
   lines.push("    let k0 = stage_scratch[0u * N + idx];");
   lines.push("    let k1 = stage_scratch[1u * N + idx];");
-  lines.push("    let a41 = ds_from_f32(2.897153052710749);");
-  lines.push("    let a42 = ds_from_f32(-6.888838239993134);");
-  lines.push("    let a43 = ds_from_f32(4.891685187282385);");
+  lines.push("    let a41 = ds_from_f32(1.446818269924256);");
+  lines.push("    let a42 = ds_from_f32(-2.742999999999999);");
+  lines.push("    let a43 = ds_from_f32(2.196181730075743);");
   lines.push("    let sum = ds_add(ds_mul(a41, k0), ds_add(ds_mul(a42, k1), ds_mul(a43, k)));");
   lines.push("    state[state_idx] = ds_add(y0[idx], ds_mul(dt, sum));");
   lines.push("  } else if (stage == 3u) {");
   lines.push("    let k0 = stage_scratch[0u * N + idx];");
   lines.push("    let k1 = stage_scratch[1u * N + idx];");
   lines.push("    let k2 = stage_scratch[2u * N + idx];");
-  lines.push("    let a51 = ds_from_f32(1.023998522497125);");
-  lines.push("    let a52 = ds_from_f32(-2.223202490331607);");
-  lines.push("    let a53 = ds_from_f32(1.6499129963539006);");
-  lines.push("    let a54 = ds_from_f32(0.5292910714805814);");
+  lines.push("    let a51 = ds_from_f32(5.335864802431331);");
+  lines.push("    let a52 = ds_from_f32(-11.33664346129377);");
+  lines.push("    let a53 = ds_from_f32(7.460168638136345);");
+  lines.push("    let a54 = ds_from_f32(-0.4673899792739051);");
   lines.push(
     "    let sum = ds_add(ds_add(ds_mul(a51, k0), ds_mul(a52, k1)), ds_add(ds_mul(a53, k2), ds_mul(a54, k)));",
   );
@@ -941,11 +941,11 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("    let k1 = stage_scratch[1u * N + idx];");
   lines.push("    let k2 = stage_scratch[2u * N + idx];");
   lines.push("    let k3 = stage_scratch[3u * N + idx];");
-  lines.push("    let a61 = ds_from_f32(0.3412240537877472);");
-  lines.push("    let a62 = ds_from_f32(-0.6204905971302865);");
-  lines.push("    let a63 = ds_from_f32(0.4398418855424759);");
-  lines.push("    let a64 = ds_from_f32(0.6762436790995681);");
-  lines.push("    let a65 = ds_from_f32(0.1631810787004953);");
+  lines.push("    let a61 = ds_from_f32(-5.86145544294642);");
+  lines.push("    let a62 = ds_from_f32(12.0);");
+  lines.push("    let a63 = ds_from_f32(-6.159922051962211);");
+  lines.push("    let a64 = ds_from_f32(1.258845092403438);");
+  lines.push("    let a65 = ds_from_f32(-0.2374675974948073);");
   lines.push(
     "    let sum = ds_add(ds_add(ds_mul(a61, k0), ds_mul(a62, k1)), ds_add(ds_mul(a63, k2), ds_add(ds_mul(a64, k3), ds_mul(a65, k))));",
   );
@@ -956,12 +956,12 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("    let k2 = stage_scratch[2u * N + idx];");
   lines.push("    let k3 = stage_scratch[3u * N + idx];");
   lines.push("    let k4 = stage_scratch[4u * N + idx];");
-  lines.push("    let b0 = ds_from_f32(0.0964607668120738);");
+  lines.push("    let b0 = ds_from_f32(0.09646076681806523);");
   lines.push("    let b1 = ds_from_f32(0.01);");
   lines.push("    let b2 = ds_from_f32(0.4798896504144996);");
   lines.push("    let b3 = ds_from_f32(1.379008574103742);");
   lines.push("    let b4 = ds_from_f32(-3.290069515436081);");
-  lines.push("    let b5 = ds_from_f32(2.3247105241057654);");
+  lines.push("    let b5 = ds_from_f32(2.324710524100774);");
   lines.push(
     "    let sum = ds_add(ds_add(ds_mul(b0, k0), ds_mul(b1, k1)), ds_add(ds_mul(b2, k2), ds_add(ds_mul(b3, k3)), ds_add(ds_mul(b4, k4), ds_mul(b5, k)))));",
   );
@@ -973,13 +973,13 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   lines.push("    let k3 = stage_scratch[3u * N + idx];");
   lines.push("    let k4 = stage_scratch[4u * N + idx];");
   lines.push("    let k5 = stage_scratch[5u * N + idx];");
-  lines.push("    let d0 = ds_from_f32(0.0946807557598478);");
-  lines.push("    let d1 = ds_from_f32(0.009185641321671);");
-  lines.push("    let d2 = ds_from_f32(-0.5064721843617644);");
-  lines.push("    let d3 = ds_from_f32(1.643191441986318);");
-  lines.push("    let d4 = ds_from_f32(-3.6976777292287);");
-  lines.push("    let d5 = ds_from_f32(2.5118683373499944);");
-  lines.push("    let d6 = ds_from_f32(-0.054776262827407);");
+  lines.push("    let d0 = ds_from_f32(0.001780011052225777);");
+  lines.push("    let d1 = ds_from_f32(0.0008164344596567469);");
+  lines.push("    let d2 = ds_from_f32(-0.007880878010261995);");
+  lines.push("    let d3 = ds_from_f32(0.1447110071732629);");
+  lines.push("    let d4 = ds_from_f32(-0.5823571654525552);");
+  lines.push("    let d5 = ds_from_f32(0.4580821059291869);");
+  lines.push("    let d6 = ds_from_f32(-0.01515151515151515);");
   lines.push(
     "    let err_sum = ds_add(ds_add(ds_mul(d0, k0), ds_mul(d1, k1)), ds_add(ds_mul(d2, k2), ds_add(ds_mul(d3, k3)), ds_add(ds_mul(d4, k4), ds_add(ds_mul(d5, k5), ds_mul(d6, k))))));",
   );

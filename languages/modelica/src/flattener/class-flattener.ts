@@ -97,6 +97,10 @@ export class ModelicaFlattener {
   public currentRootClassId: SymbolId = 0;
   public currentClassId: SymbolId = 0;
 
+  public get isOldFrontend(): boolean {
+    return Boolean(this.options.isOldFrontend);
+  }
+
   private getElementDiagRange(target: any): any {
     return getElementDiagRange(target);
   }
@@ -1576,7 +1580,9 @@ export class ModelicaFlattener {
     const ownOldInstText: string = classCst?.text ?? "";
     const optIdx = ownOldInstText.lastIndexOf("-d=-newInst");
     const optIsNested = optIdx >= 0 && /\bend\s+[A-Za-z_]\w*\s*;[\s\S]*\bend\s/.test(ownOldInstText.slice(optIdx));
-    const allowOldInstSpec = isOldInst && !(specKind === "package" && optIsNested);
+    const hasExtendsInPkg =
+      specKind === "package" && optIdx < 0 && this.db.childrenOf(rootClassId).some((c) => c.kind === "Extends");
+    const allowOldInstSpec = isOldInst && !(specKind === "package" && (optIsNested || hasExtendsInPkg));
     if (specKind && !((specKind === "function" || specKind === "package") && allowOldInstSpec)) {
       let startPos = classCstForCheck?.startPosition;
       let startB = classCstForCheck?.startIndex ?? (classCstForCheck as any)?.startByte ?? 0;
@@ -2504,6 +2510,7 @@ export class ModelicaFlattener {
       this.explicitArrayMode !== "preserve" &&
       (this.options.backend === "wasm" ||
         ((this.options.backend === "hybrid" || !this.options.backend) &&
+          !this.options.omcCompatibility &&
           Boolean(this.options.useWasmKernel) &&
           !this.useLocalDirection &&
           !this.classHasRedeclare(rootClassId) &&
@@ -3100,67 +3107,7 @@ export class ModelicaFlattener {
     }
 
     if (!isOldFrontend) {
-      const condParamLeaves = new Set<string>();
-      const visitedClasses = new Set<SymbolId>();
-      const classQueue: SymbolId[] = [rootClassId];
-      while (classQueue.length > 0) {
-        const cid = classQueue.pop()!;
-        if (visitedClasses.has(cid)) continue;
-        visitedClasses.add(cid);
-        const cSym = this.db.symbol(cid) as any;
-        let cachedInfo = cSym?._cachedCondParamInfo as { leaves: string[]; childClassIds: SymbolId[] } | undefined;
-        if (!cachedInfo) {
-          const leaves: string[] = [];
-          const childClassIds: SymbolId[] = [];
-          const cCst = this.db.cstNode(cid) as any;
-          const rawCText: string = cCst?.text ?? "";
-          if (rawCText.includes("if ")) {
-            const cleanCText = stripCommentsAndStrings(rawCText);
-            for (const m of cleanCText.matchAll(/\bif\s+([^;]+);/g)) {
-              const condExpr = m[1] ?? "";
-              if (/\bthen\b/.test(condExpr)) continue;
-              const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
-              for (const id of ids) {
-                if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
-                  leaves.push(id);
-                }
-              }
-            }
-          }
-          for (const ch of this.db.childrenOf(cid)) {
-            if (ch.kind === "Extends") {
-              const baseSym = this.db.query<any>("resolvedBaseClass", ch.id) ?? this.db.byName(ch.name)?.[0];
-              if (baseSym?.id) childClassIds.push(baseSym.id);
-            } else if (ch.kind === "Component") {
-              const targetSym = this.db.query<any>("classInstance", ch.id) ?? this.db.query<any>("resolvedType", ch.id);
-              const ci = this.db.query<any>("componentInstance", ch.id);
-              const tid =
-                typeof targetSym === "number"
-                  ? targetSym
-                  : (targetSym?.id ??
-                    (ci?.typeSpecifier ? this.db.byName(ci.typeSpecifier.split(".").pop()!)?.[0]?.id : undefined));
-              if (tid) childClassIds.push(tid);
-            }
-          }
-          cachedInfo = { leaves, childClassIds };
-          if (cSym) cSym._cachedCondParamInfo = cachedInfo;
-        }
-        for (const leaf of cachedInfo.leaves) condParamLeaves.add(leaf);
-        for (const tid of cachedInfo.childClassIds) {
-          if (!visitedClasses.has(tid)) classQueue.push(tid);
-        }
-      }
-      if (condParamLeaves.size > 0) {
-        for (let i = 0; i < dae.varCount; i++) {
-          if (dae.getVarVariability(i) === Variability.Parameter) {
-            const vName = dae.getVarName(i);
-            const leaf = vName.split(".").pop()!.split("[")[0]!;
-            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0]!)) {
-              dae.setVarFinal(i, true);
-            }
-          }
-        }
-      }
+      this.markConditionalParametersFinal(dae, rootClassId);
     }
 
     const varCountBeforeConnections = dae.varCount;
@@ -3381,45 +3328,292 @@ export class ModelicaFlattener {
     }
   }
 
+  private markConditionalParametersFinal(dae: DAEBuilder, rootClassId: SymbolId): void {
+    const condParamsByClassId = new Map<SymbolId, Set<string>>();
+    const condParamsByClassName = new Map<string, Set<string>>();
+    const baseClassesOf = new Map<SymbolId, SymbolId[]>();
+    const visitedClasses = new Set<SymbolId>();
+    const classQueue: SymbolId[] = [rootClassId];
+
+    const extractDirectCondLeaves = (cCst: any): string[] => {
+      if (!cCst) return [];
+      const rawCText: string = cCst.text ?? "";
+      if (!rawCText.includes("if ")) return [];
+      const leaves: string[] = [];
+      const collectFromText = (txt: string): void => {
+        if (!txt.includes("if ")) return;
+        const clean = stripCommentsAndStrings(txt);
+        for (const m of clean.matchAll(/\bif\s+([^;]+);?/g)) {
+          const condExpr = m[1] ?? "";
+          if (/\bthen\b/.test(condExpr)) continue;
+          const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
+          for (const id of ids) {
+            if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
+              leaves.push(id);
+            }
+          }
+        }
+      };
+      if (Array.isArray(cCst.children) && cCst.children.length > 0) {
+        const walkOwnDecls = (node: any): void => {
+          if (!node) return;
+          if (node !== cCst && node.type === "class_definition") return;
+          if (node.type === "equation_section" || node.type === "algorithm_section") return;
+          if (node.type === "condition_attribute") {
+            const clean = stripCommentsAndStrings(node.text ?? "");
+            const ids = clean.replace(/^\s*if\b/, "").match(/[a-zA-Z_]\w*/g) || [];
+            for (const id of ids) {
+              if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
+                leaves.push(id);
+              }
+            }
+            return;
+          }
+          if (
+            node.type === "component_clause" ||
+            node.type === "component_clause1" ||
+            node.type === "component_declaration" ||
+            node.type === "component_declaration1"
+          ) {
+            collectFromText(node.text ?? "");
+            return;
+          }
+          for (const ch of node.children || []) {
+            walkOwnDecls(ch);
+          }
+        };
+        walkOwnDecls(cCst);
+      } else {
+        collectFromText(rawCText);
+      }
+      return leaves;
+    };
+
+    while (classQueue.length > 0) {
+      const cid = classQueue.pop()!;
+      if (visitedClasses.has(cid)) continue;
+      visitedClasses.add(cid);
+      const cSym = this.db.symbol(cid) as any;
+      let cachedInfo = cSym?._cachedCondParamInfo as
+        | { leaves: string[]; baseClassIds: SymbolId[]; childClassIds: SymbolId[] }
+        | undefined;
+      if (!cachedInfo || !Array.isArray(cachedInfo.baseClassIds)) {
+        const leaves = extractDirectCondLeaves(this.db.cstNode(cid) as any);
+        const baseClassIds: SymbolId[] = [];
+        const childClassIds: SymbolId[] = [];
+        for (const ch of this.db.childrenOf(cid)) {
+          if (ch.kind === "Extends") {
+            const baseSym =
+              this.db.query<any>("resolvedBaseClass", ch.id) ??
+              this.db.query<any>("extendsTarget", ch.id) ??
+              this.db.byName(ch.name)?.[0];
+            if (baseSym?.id) {
+              baseClassIds.push(baseSym.id);
+              childClassIds.push(baseSym.id);
+            }
+          } else if (ch.kind === "Component") {
+            const targetSym = this.db.query<any>("classInstance", ch.id) ?? this.db.query<any>("resolvedType", ch.id);
+            const ci = this.db.query<any>("componentInstance", ch.id);
+            const tid =
+              typeof targetSym === "number"
+                ? targetSym
+                : (targetSym?.id ??
+                  (ci?.typeSpecifier ? this.db.byName(ci.typeSpecifier.split(".").pop()!)?.[0]?.id : undefined));
+            if (tid) childClassIds.push(tid);
+          }
+        }
+        cachedInfo = { leaves, baseClassIds, childClassIds };
+        if (cSym) cSym._cachedCondParamInfo = cachedInfo;
+      }
+      condParamsByClassId.set(cid, new Set(cachedInfo.leaves));
+      baseClassesOf.set(cid, cachedInfo.baseClassIds);
+      for (const tid of cachedInfo.childClassIds) {
+        if (!visitedClasses.has(tid)) classQueue.push(tid);
+      }
+    }
+
+    // Propagate conditional parameter leaves from base classes along Extends edges
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const [cid, bases] of baseClassesOf) {
+        const targetSet = condParamsByClassId.get(cid);
+        if (!targetSet) continue;
+        for (const bid of bases) {
+          const baseSet = condParamsByClassId.get(bid);
+          if (!baseSet) continue;
+          for (const leaf of baseSet) {
+            if (!targetSet.has(leaf)) {
+              targetSet.add(leaf);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+
+    let hasAnyCondParams = false;
+    for (const [cid, set] of condParamsByClassId) {
+      if (set.size > 0) {
+        hasAnyCondParams = true;
+        const sym = this.db.symbol(cid);
+        if (sym?.name) {
+          let byNameSet = condParamsByClassName.get(sym.name);
+          if (!byNameSet) {
+            byNameSet = new Set();
+            condParamsByClassName.set(sym.name, byNameSet);
+          }
+          for (const leaf of set) byNameSet.add(leaf);
+        }
+      }
+    }
+    if (!hasAnyCondParams) return;
+
+    const findComponentTargetClass = (
+      ownerCid: SymbolId,
+      compName: string,
+    ): { cid: SymbolId | null; typeName: string | null } => {
+      const seen = new Set<SymbolId>();
+      const queue: SymbolId[] = [ownerCid];
+      while (queue.length > 0) {
+        const cur = queue.pop()!;
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        for (const ch of this.db.childrenOf(cur)) {
+          if (ch.kind === "Component" && ch.name === compName) {
+            const targetSym = this.db.query<any>("classInstance", ch.id) ?? this.db.query<any>("resolvedType", ch.id);
+            const ci = this.db.query<any>("componentInstance", ch.id);
+            const typeName = ci?.typeSpecifier ? String(ci.typeSpecifier).split(".").pop()! : null;
+            const tid =
+              typeof targetSym === "number"
+                ? targetSym
+                : (targetSym?.id ?? (typeName ? this.db.byName(typeName)?.[0]?.id : undefined) ?? null);
+            return { cid: tid, typeName };
+          }
+          if (ch.kind === "Extends") {
+            const baseSym =
+              this.db.query<any>("resolvedBaseClass", ch.id) ??
+              this.db.query<any>("extendsTarget", ch.id) ??
+              this.db.byName(ch.name)?.[0];
+            if (baseSym?.id && !seen.has(baseSym.id)) {
+              queue.push(baseSym.id);
+            }
+          }
+        }
+      }
+      return { cid: null, typeName: null };
+    };
+
+    const rootSet = condParamsByClassId.get(rootClassId);
+    for (let i = 0; i < dae.varCount; i++) {
+      if (dae.getVarVariability(i) !== Variability.Parameter) continue;
+      const vName = dae.getVarName(i);
+      const cleanName = vName.replace(/\[[^\]]*\]/g, "");
+      const parts = cleanName.split(".");
+      const leaf = parts[parts.length - 1]!.split("[")[0]!;
+      if (parts.length === 1) {
+        if (rootSet?.has(leaf)) {
+          dae.setVarFinal(i, true);
+        }
+      } else {
+        let currCid: SymbolId | null = rootClassId;
+        let lastTypeName: string | null = null;
+        for (let p = 0; p < parts.length - 1; p++) {
+          const seg = parts[p]!.replace(/\[.*\]$/, "");
+          if (currCid != null) {
+            const resolved = findComponentTargetClass(currCid, seg);
+            currCid = resolved.cid;
+            lastTypeName = resolved.typeName;
+          } else {
+            currCid = null;
+            lastTypeName = null;
+            break;
+          }
+        }
+        if (currCid != null) {
+          if (condParamsByClassId.get(currCid)?.has(leaf)) {
+            dae.setVarFinal(i, true);
+          }
+        } else if (lastTypeName != null) {
+          if (condParamsByClassName.get(lastTypeName)?.has(leaf)) {
+            dae.setVarFinal(i, true);
+          }
+        }
+      }
+    }
+  }
+
   private recordWasmSourceRanges(dae: DAEBuilder, classId: SymbolId): void {
     const cst = this.db.cstNode(classId) as any;
     if (!cst) return;
 
-    let eqIdx = 0;
-    const walkEqs = (node: any): void => {
+    const topEqNodes: any[] = [];
+    const bodyForEqNodes: any[] = [];
+    let hasCompoundEq = false;
+    const walkEqs = (node: any, insideCompound = false): void => {
       if (!node) return;
       if (
         (node !== cst && node.type === "class_definition") ||
         node.type === "extends_clause" ||
         node.type === "component_clause" ||
         node.type === "component_clause1" ||
-        node.type === "component_declaration"
+        node.type === "component_declaration" ||
+        node.type === "algorithm_section"
       ) {
         return;
       }
 
+      if (node.type === "for_equation" || node.type === "if_equation" || node.type === "when_equation") {
+        hasCompoundEq = true;
+        for (const child of node.children || []) {
+          walkEqs(child, true);
+        }
+        return;
+      }
+
       if (node.type === "simple_equation" || node.type === "connect_equation" || node.type === "function_call") {
-        const sB = node.startIndex ?? node.startByte;
-        const eB = node.endIndex ?? node.endByte;
-        if (sB != null && eB != null && eqIdx < dae.getEqCount()) {
-          dae.setEqSourceRange(eqIdx, sB, eB);
-          for (const c of node.children || []) {
-            if (c.type === "description" || c.type === "description_string" || c.type === "string_literal") {
-              const t = c.text?.trim();
-              if (t) dae.setEqDescription(eqIdx, t);
-              break;
-            }
-          }
-          eqIdx++;
+        if (insideCompound) {
+          bodyForEqNodes.push(node);
+        } else {
+          topEqNodes.push(node);
         }
         return;
       }
 
       for (const child of node.children || []) {
-        walkEqs(child);
+        walkEqs(child, insideCompound);
       }
     };
-    walkEqs(cst);
+    walkEqs(cst, false);
+
+    const applyEqNodeMeta = (eqIdx: number, node: any): void => {
+      const sB = node.startIndex ?? node.startByte;
+      const eB = node.endIndex ?? node.endByte;
+      if (sB != null && eB != null && eqIdx >= 0 && eqIdx < dae.getEqCount()) {
+        dae.setEqSourceRange(eqIdx, sB, eB);
+        for (const c of node.children || []) {
+          if (c.type === "description" || c.type === "description_string" || c.type === "string_literal") {
+            const t = c.text?.trim();
+            if (t) dae.setEqDescription(eqIdx, t);
+            break;
+          }
+        }
+      }
+    };
+
+    const totalEqs = dae.getEqCount();
+    if (!hasCompoundEq && topEqNodes.length > 0 && topEqNodes.length <= totalEqs) {
+      // Root class equations are emitted after inherited/subcomponent equations in WASM flattening
+      const offset = totalEqs - topEqNodes.length;
+      for (let i = 0; i < topEqNodes.length; i++) {
+        applyEqNodeMeta(offset + i, topEqNodes[i]);
+      }
+    } else if (hasCompoundEq && topEqNodes.length === 0 && bodyForEqNodes.length === 1 && totalEqs > 0) {
+      // Single unrolled loop/branch body equation: propagate its source range and description
+      for (let i = 0; i < totalEqs; i++) {
+        applyEqNodeMeta(i, bodyForEqNodes[0]);
+      }
+    }
 
     // Pre-resolve all variable names so interner lookup succeeds in getVarIdxByName
     const varCount = dae.varCount;
@@ -3554,47 +3748,7 @@ export class ModelicaFlattener {
     walkVars(cst);
 
     if (!dae.extensionMetadata?.["isOldFrontend"]) {
-      const condParamLeaves = new Set<string>();
-      const visitedClasses = new Set<SymbolId>();
-      const classQueue: SymbolId[] = [classId];
-      while (classQueue.length > 0) {
-        const cid = classQueue.pop()!;
-        if (visitedClasses.has(cid)) continue;
-        visitedClasses.add(cid);
-        const cCst = this.db.cstNode(cid) as any;
-        const rawCText: string = cCst?.text ?? "";
-        const cleanCText = rawCText.includes("if ") ? stripCommentsAndStrings(rawCText) : "";
-        for (const m of cleanCText.matchAll(/\bif\s+([^;]+);/g)) {
-          const condExpr = m[1] ?? "";
-          if (/\bthen\b/.test(condExpr)) continue;
-          const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
-          for (const id of ids) {
-            if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
-              condParamLeaves.add(id);
-            }
-          }
-        }
-        for (const ch of this.db.childrenOf(cid)) {
-          if (ch.kind === "Extends") {
-            const baseSym = this.db.query<any>("extendsTarget", ch.id);
-            if (baseSym?.id) classQueue.push(baseSym.id);
-          } else if (ch.kind === "Component") {
-            const targetSym = this.db.query<any>("classInstance", ch.id);
-            if (targetSym?.id) classQueue.push(targetSym.id);
-          }
-        }
-      }
-      if (condParamLeaves.size > 0) {
-        for (let i = 0; i < dae.varCount; i++) {
-          if (dae.getVarVariability(i) === Variability.Parameter) {
-            const vName = dae.getVarName(i);
-            const leaf = vName.split(".").pop()!.split("[")[0]!;
-            if (condParamLeaves.has(leaf) || condParamLeaves.has(vName.split("[")[0]!)) {
-              dae.setVarFinal(i, true);
-            }
-          }
-        }
-      }
+      this.markConditionalParametersFinal(dae, classId);
     }
 
     for (let i = 0; i < dae.varCount; i++) {
@@ -3708,12 +3862,8 @@ export class ModelicaFlattener {
               const nameId = dae.interner.intern(typeName);
               const targetOffset =
                 targetCst._startOffset !== undefined
-                  ? targetCst._startOffset
-                  : Math.max(
-                      0,
-                      (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize -
-                        (targetCst._cachedPad ?? 0),
-                    );
+                  ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
+                  : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
               register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
             }
             queue.push(resolved.id);
@@ -3734,12 +3884,8 @@ export class ModelicaFlattener {
             const nameId = dae.interner.intern(shortName);
             const targetOffset =
               targetCst._startOffset !== undefined
-                ? targetCst._startOffset
-                : Math.max(
-                    0,
-                    (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize -
-                      (targetCst._cachedPad ?? 0),
-                  );
+                ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
+                : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
             register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
             register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
           }
@@ -3765,12 +3911,8 @@ export class ModelicaFlattener {
                 const nameId = dae.interner.intern(extName);
                 const targetOffset =
                   targetCst._startOffset !== undefined
-                    ? targetCst._startOffset
-                    : Math.max(
-                        0,
-                        (targetCst.startIndex ?? targetCst.startOffset ?? resolved.startByte ?? 0) * unitSize -
-                          (targetCst._cachedPad ?? 0),
-                      );
+                    ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
+                    : (targetCst.startIndex ?? targetCst.startOffset ?? resolved.startByte ?? 0) * unitSize;
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }
@@ -3800,16 +3942,11 @@ export class ModelicaFlattener {
                 const nameId = dae.interner.intern(typeSpec);
                 const targetOffset =
                   targetCst._startOffset !== undefined
-                    ? targetCst._startOffset
-                    : Math.max(
-                        0,
-                        (targetCst.startIndex ??
-                          targetCst.startOffset ??
-                          (this.db.symbol(targetId) as any)?.startByte ??
-                          0) *
-                          unitSize -
-                          (targetCst._cachedPad ?? 0),
-                      );
+                    ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
+                    : (targetCst.startIndex ??
+                        targetCst.startOffset ??
+                        (this.db.symbol(targetId) as any)?.startByte ??
+                        0) * unitSize;
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }
@@ -3867,13 +4004,8 @@ export class ModelicaFlattener {
                 const nameId = dae.interner.intern(child.name);
                 const targetOffset =
                   targetCst._startOffset !== undefined
-                    ? targetCst._startOffset
-                    : Math.max(
-                        0,
-                        (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) *
-                          unitSize -
-                          (targetCst._cachedPad ?? 0),
-                      );
+                    ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
+                    : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }

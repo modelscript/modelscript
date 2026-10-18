@@ -126,6 +126,125 @@ action def SpeedGovernor {
       assert.strictEqual(result.hierarchy.isCompatible, true);
       assert.ok(result.hierarchy.system.name.includes("Powertrain"));
       assert.strictEqual(result.hierarchy.components.length, 2);
+
+      // Verify dynamic extraction from actual VehicleSystem.sysml model
+      const vehicleSysml = `
+package VehicleSystem {
+  port def TorquePort {
+    attribute torqueValue : Real;
+  }
+  port def ElectricalPort {
+    attribute voltage : Real;
+    attribute current : Real;
+  }
+  port def FuelPort {
+    attribute flowRate : Real;
+  }
+  part def Engine {
+    attribute horsePower : Real;
+    attribute displacement : Real;
+    port torqueOut : TorquePort;
+    port fuelIn : FuelPort;
+  }
+  part def Transmission {
+    attribute gearRatio : Real;
+    attribute numberOfGears : Integer;
+    port torqueIn : TorquePort;
+    port torqueOut : TorquePort;
+  }
+  part def Battery {
+    attribute capacity : Real;
+    attribute voltage : Real;
+    port electricalOut : ElectricalPort;
+  }
+  part def BrakeSystem {
+    attribute maxBrakingForce : Real;
+    attribute absEnabled : Boolean;
+  }
+  part def Wheel {
+    attribute diameter : Real;
+    attribute tirePressure : Real;
+  }
+  part def FuelTank {
+    attribute capacity : Real;
+    port fuelOut : FuelPort;
+  }
+  part def Vehicle {
+    attribute mass : Real;
+    attribute topSpeed : Real;
+    part engine : Engine;
+    part transmission : Transmission;
+    part battery : Battery;
+    part brakes : BrakeSystem;
+    part frontLeft : Wheel;
+    part fuelTank : FuelTank;
+    connect engine.torqueOut to transmission.torqueIn;
+    connect fuelTank.fuelOut to engine.fuelIn;
+  }
+  part def Driver { doc /* Primary operator. */ }
+  use case def DriveVehicle {
+    subject vehicle : Vehicle;
+    actor driver : Driver;
+    include use case startUp : StartVehicle;
+  }
+}
+package VehicleBehavior {
+  action def StartEngine {
+    in ignitionSignal : Boolean;
+    out engineRunning : Boolean;
+  }
+  state def VehicleStates {
+    state off;
+    state idle;
+    state driving;
+    transition off_to_idle first off then idle;
+    transition idle_to_driving first idle then driving;
+  }
+}
+package VehicleRequirements {
+  requirement def MassRequirement {
+    doc /* Total mass shall not exceed 2000 kg. */
+    attribute maxMass : Real;
+  }
+  requirement def SafetyRequirement {
+    doc /* Vehicle shall pass NCAP 5-star rating. */
+    attribute minRating : Integer;
+  }
+}
+package VehicleIntegration {
+  part vehicle : VehicleSystem::Vehicle;
+  satisfy MassRequirement by vehicle;
+  satisfy SafetyRequirement by vehicle;
+}
+`;
+      const vehicleRes = await handler({
+        uri: "file:///workspace/VehicleSystem.sysml",
+        sourceText: vehicleSysml,
+        systemContractName: "Battery",
+      });
+
+      assert.strictEqual(vehicleRes.success, true);
+      assert.strictEqual(vehicleRes.hierarchy.system.name, "Vehicle");
+      assert.strictEqual(vehicleRes.hierarchy.isCompatible, true);
+      assert.strictEqual(vehicleRes.hierarchy.isRefined, true);
+      assert.strictEqual(vehicleRes.hierarchy.components.length, 6);
+      assert.strictEqual(vehicleRes.hierarchy.focusedComponent, "Battery");
+      assert.strictEqual(vehicleRes.hierarchy.components[0].name, "Battery");
+      assert.strictEqual(vehicleRes.hierarchy.components[0].isFocused, true);
+      assert.ok(
+        vehicleRes.hierarchy.components.some(
+          (c: any) => c.name === "Engine" && c.assumptions.some((a: string) => a.includes("flowRate")),
+        ),
+        "Engine must assume flowRate from connected FuelPort",
+      );
+      assert.ok(
+        vehicleRes.hierarchy.components.some(
+          (c: any) => c.name === "Transmission" && c.assumptions.some((a: string) => a.includes("torqueValue")),
+        ),
+        "Transmission must assume torqueValue from connected TorquePort",
+      );
+      assert.ok(vehicleRes.hierarchy.traces.length >= 5, "Must synthesize Monterey Phoenix traces from model");
+      assert.deepStrictEqual(vehicleRes.hierarchy.states, ["off", "idle", "driving"]);
     },
   );
 

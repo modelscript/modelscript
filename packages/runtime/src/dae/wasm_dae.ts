@@ -1711,7 +1711,18 @@ export class WasmDaeBridge implements IDaeBuilder {
     const val = this.varAttrs.get(varIdx)?.get(attrName);
     if (val !== undefined) return val;
     if (this.exports?.dae_getVarAttrExpr) {
-      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed", "binding", "quantity"];
+      const ATTR_NAMES = [
+        "min",
+        "max",
+        "unit",
+        "displayUnit",
+        "nominal",
+        "start",
+        "fixed",
+        "binding",
+        "quantity",
+        "description",
+      ];
       const k = ATTR_NAMES.indexOf(attrName);
       if (k >= 0) {
         const exprId = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, k);
@@ -1729,10 +1740,21 @@ export class WasmDaeBridge implements IDaeBuilder {
   getVarAttrExprIds(varIdx: number): Map<string, number> | undefined {
     let map = this.varAttrs.get(varIdx);
     if (this.exports?.dae_getVarAttrExpr) {
-      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed", "binding", "quantity"];
+      const ATTR_NAMES = [
+        "min",
+        "max",
+        "unit",
+        "displayUnit",
+        "nominal",
+        "start",
+        "fixed",
+        "binding",
+        "quantity",
+        "description",
+      ];
       for (let k = 0; k < ATTR_NAMES.length; k++) {
         const attrName = ATTR_NAMES[k]!;
-        if (attrName === "binding") continue;
+        if (attrName === "binding" || attrName === "description") continue;
         if (!map || !map.has(attrName)) {
           const exprId = this.exports.dae_getVarAttrExpr(this.ptr, varIdx, k);
           if (exprId !== 0xffffffff && exprId !== -1 && exprId >>> 0 < this.exprCount) {
@@ -1748,6 +1770,8 @@ export class WasmDaeBridge implements IDaeBuilder {
     return map;
   }
 
+  public rawVarAttrs: Map<number, Map<string, number>> = new Map();
+
   /**
    * Sets a named attribute (`"min"`, `"max"`, `"start"`, `"fixed"`, `"unit"`, etc.) on `varIdx` to `exprId`.
    */
@@ -1758,6 +1782,16 @@ export class WasmDaeBridge implements IDaeBuilder {
       this.varAttrs.set(varIdx, map);
     }
     map.set(attrName, exprId);
+    if (!Number.isInteger(exprId) || exprId < 0 || exprId >= this.exprCount) {
+      let rawMap = this.rawVarAttrs.get(varIdx);
+      if (!rawMap) {
+        rawMap = new Map<string, number>();
+        this.rawVarAttrs.set(varIdx, rawMap);
+      }
+      rawMap.set(attrName, exprId);
+    } else {
+      this.rawVarAttrs.get(varIdx)?.delete(attrName);
+    }
     if (attrName === "start") {
       this.setVarAttrExpr(varIdx, VarAttrKind.Start, exprId);
       if (this.getExprKind(exprId) === ExprKind.RealLiteral) {
@@ -1780,8 +1814,24 @@ export class WasmDaeBridge implements IDaeBuilder {
     if (map) {
       map.delete(attrName);
     }
+    if (attrName === "binding") {
+      this.varExpressions.delete(varIdx);
+    } else if (attrName === "description") {
+      this.varDescriptions.delete(varIdx);
+    }
     if (this.exports?.dae_setVarAttrExpr) {
-      const ATTR_NAMES = ["min", "max", "unit", "displayUnit", "nominal", "start", "fixed"];
+      const ATTR_NAMES = [
+        "min",
+        "max",
+        "unit",
+        "displayUnit",
+        "nominal",
+        "start",
+        "fixed",
+        "binding",
+        "quantity",
+        "description",
+      ];
       const k = ATTR_NAMES.indexOf(attrName);
       if (k >= 0) {
         this.exports.dae_setVarAttrExpr(this.ptr, varIdx, k, 0xffffffff);
@@ -1792,7 +1842,7 @@ export class WasmDaeBridge implements IDaeBuilder {
   /**
    * Records a variable alias mapping from `varIdx` to `targetNameId` in WASM memory.
    */
-  addAlias(varIdx: number, targetNameId: number): void {
+  addAlias(varIdx: number, targetNameId: number, _negated?: boolean): void {
     if (this.exports?.dae_addAlias) this.exports.dae_addAlias(this.ptr, varIdx, targetNameId);
   }
 
@@ -2105,6 +2155,28 @@ export class WasmDaeBridge implements IDaeBuilder {
         this.exprReferencesName(this.getExprRight(exprId), name)
       );
     }
+    if (kind === ExprKind.Subscript) {
+      if (this.exprReferencesName(this.getExprData1(exprId), name)) return true;
+      const subCount = this.getExprRight(exprId);
+      if (subCount > 0) {
+        if (this.exprReferencesName(this.getExprLeft(exprId), name)) return true;
+        for (let i = 1; i < subCount; i++) {
+          if (this.exprReferencesName(this.getExprLeft(exprId + i), name)) return true;
+        }
+      } else {
+        const subId = this.getExprLeft(exprId);
+        if (subId >= 0 && subId !== 0xffffffff && this.exprReferencesName(subId, name)) return true;
+      }
+      return false;
+    }
+    if (kind === ExprKind.Range) {
+      if (this.exprReferencesName(this.getExprData1(exprId), name)) return true;
+      const stepId = this.getExprLeft(exprId);
+      if (stepId >= 0 && stepId !== 0xffffffff && this.exprReferencesName(stepId, name)) return true;
+      const stopId = this.getExprRight(exprId);
+      if (stopId >= 0 && stopId !== 0xffffffff && this.exprReferencesName(stopId, name)) return true;
+      return false;
+    }
     if (kind === ExprKind.Call) {
       const argCount = this.getExprRight(exprId);
       if (argCount > 0) {
@@ -2113,8 +2185,21 @@ export class WasmDaeBridge implements IDaeBuilder {
           if (this.exprReferencesName(this.getExprLeft(exprId + i), name)) return true;
         }
       }
+      return false;
     }
     if (kind === ExprKind.ArrayCtor) {
+      const count = this.getExprData1(exprId);
+      if (count > 0) {
+        const redirect = this.getExprRight(exprId);
+        const baseId = redirect >= 0 && redirect !== 0xffffffff ? redirect : exprId;
+        if (this.exprReferencesName(this.getExprLeft(exprId), name)) return true;
+        for (let i = 1; i < count; i++) {
+          if (this.exprReferencesName(this.getExprLeft(baseId + i), name)) return true;
+        }
+      }
+      return false;
+    }
+    if (kind === ExprKind.Tuple) {
       const count = this.getExprData1(exprId);
       if (count > 0) {
         if (this.exprReferencesName(this.getExprLeft(exprId), name)) return true;
@@ -2122,6 +2207,16 @@ export class WasmDaeBridge implements IDaeBuilder {
           if (this.exprReferencesName(this.getExprLeft(exprId + i), name)) return true;
         }
       }
+      return false;
+    }
+    if (kind === ExprKind.Comprehension) {
+      const bodyId = this.getExprLeft(exprId);
+      const iterCount = this.getExprRight(exprId);
+      if (this.exprReferencesName(bodyId, name)) return true;
+      for (let i = 0; i < iterCount; i++) {
+        if (this.exprReferencesName(this.getExprLeft(exprId + 1 + i), name)) return true;
+      }
+      return false;
     }
     return false;
   }
@@ -2139,7 +2234,13 @@ export class WasmDaeBridge implements IDaeBuilder {
     const kind = this.getExprKind(exprId);
     if (kind === ExprKind.Name) {
       const name = this.interner.resolve(this.getExprData1(exprId));
-      if (name) out.add(name);
+      if (name) {
+        out.add(name);
+        const bracketIdx = name.indexOf("[");
+        if (bracketIdx > 0) {
+          out.add(name.slice(0, bracketIdx));
+        }
+      }
       return out;
     }
     if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
@@ -2153,6 +2254,30 @@ export class WasmDaeBridge implements IDaeBuilder {
       this.collectExprVarNames(this.getExprData1(exprId), out, visited);
       this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
       this.collectExprVarNames(this.getExprRight(exprId), out, visited);
+    } else if (kind === ExprKind.Subscript) {
+      this.collectExprVarNames(this.getExprData1(exprId), out, visited);
+      const subCount = this.getExprRight(exprId);
+      if (subCount > 0) {
+        this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+        for (let i = 1; i < subCount; i++) {
+          this.collectExprVarNames(this.getExprLeft(exprId + i), out, visited);
+        }
+      } else {
+        const subId = this.getExprLeft(exprId);
+        if (subId >= 0 && subId !== 0xffffffff) {
+          this.collectExprVarNames(subId, out, visited);
+        }
+      }
+    } else if (kind === ExprKind.Range) {
+      this.collectExprVarNames(this.getExprData1(exprId), out, visited);
+      const stepId = this.getExprLeft(exprId);
+      if (stepId >= 0 && stepId !== 0xffffffff) {
+        this.collectExprVarNames(stepId, out, visited);
+      }
+      const stopId = this.getExprRight(exprId);
+      if (stopId >= 0 && stopId !== 0xffffffff) {
+        this.collectExprVarNames(stopId, out, visited);
+      }
     } else if (kind === ExprKind.Call) {
       const argCount = this.getExprRight(exprId);
       if (argCount > 0) {
@@ -2164,10 +2289,27 @@ export class WasmDaeBridge implements IDaeBuilder {
     } else if (kind === ExprKind.ArrayCtor) {
       const count = this.getExprData1(exprId);
       if (count > 0) {
+        const redirect = this.getExprRight(exprId);
+        const baseId = redirect >= 0 && redirect !== 0xffffffff ? redirect : exprId;
+        this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+        for (let i = 1; i < count; i++) {
+          this.collectExprVarNames(this.getExprLeft(baseId + i), out, visited);
+        }
+      }
+    } else if (kind === ExprKind.Tuple) {
+      const count = this.getExprData1(exprId);
+      if (count > 0) {
         this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
         for (let i = 1; i < count; i++) {
           this.collectExprVarNames(this.getExprLeft(exprId + i), out, visited);
         }
+      }
+    } else if (kind === ExprKind.Comprehension) {
+      const bodyId = this.getExprLeft(exprId);
+      const iterCount = this.getExprRight(exprId);
+      this.collectExprVarNames(bodyId, out, visited);
+      for (let i = 0; i < iterCount; i++) {
+        this.collectExprVarNames(this.getExprLeft(exprId + 1 + i), out, visited);
       }
     }
     return out;
@@ -2208,6 +2350,18 @@ export class WasmDaeBridge implements IDaeBuilder {
    */
   getEqFlags(eqId: number): number {
     return this.getEqAux(eqId);
+  }
+
+  /**
+   * Returns `true` if equation `eqId` is an initial equation (`initial equation` section).
+   */
+  isEqInitial(eqId: number): boolean {
+    const kind = this.getEqKind(eqId);
+    if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor || kind === EqKind.InitialFunctionCall) {
+      return true;
+    }
+    const flags = this.getEqFlags(eqId);
+    return flags !== -1 && flags >>> 0 !== 0xffffffff && (flags & 1) /* FLAG_EQ_INITIAL */ !== 0;
   }
 
   /**
@@ -2620,15 +2774,37 @@ export class WasmDaeBridge implements IDaeBuilder {
       "homotopy",
       "semiLinear",
     ];
-    if (
-      funcNameId >= 0 &&
-      funcNameId < BUILTIN_NAMES.length &&
-      resolved !== "Real" &&
-      resolved !== "Integer" &&
-      resolved !== "Boolean" &&
-      resolved !== "String"
-    ) {
-      return BUILTIN_NAMES[funcNameId]!;
+    const PREDEFINED_NON_FUNC_KEYWORDS = new Set([
+      "parameter",
+      "constant",
+      "discrete",
+      "continuous",
+      "input",
+      "output",
+      "model",
+      "record",
+      "block",
+      "connector",
+      "type",
+      "package",
+      "function",
+      "equation",
+      "algorithm",
+      "initial equation",
+      "initial algorithm",
+      "public",
+      "protected",
+      "encapsulated",
+      "partial",
+    ]);
+    if (funcNameId >= 0 && funcNameId < BUILTIN_NAMES.length) {
+      if (!resolved || resolved === "<invalid>" || PREDEFINED_NON_FUNC_KEYWORDS.has(resolved)) {
+        return BUILTIN_NAMES[funcNameId]!;
+      }
+      return resolved;
+    }
+    if ((!resolved || resolved === "<invalid>") && funcNameId >= 56 && funcNameId < 56 + BUILTIN_NAMES.length) {
+      return BUILTIN_NAMES[funcNameId - 56]!;
     }
     return resolved;
   }
@@ -3108,18 +3284,107 @@ export class WasmDaeBridge implements IDaeBuilder {
     return arr;
   }
 
+  /** Stack of host-side metadata snapshots saved by {@link snapshot} and restored by {@link rollback}. */
+  private _hostSnapshots: {
+    varShapes: Map<number, number[]>;
+    varShapeExprs: Map<number, number[]>;
+    varAttrs: Map<number, Map<string, number>>;
+    varExpressions: Map<number, number>;
+    varDescriptions: Map<number, string>;
+    eqDescriptions: Map<number, string>;
+    eqKinds: Map<number, EqKind>;
+    removedEquations: Set<number>;
+    origEqRhs: Map<number, number>;
+    whenMeta: Map<number, WhenEquationMeta>;
+    forMeta: Map<number, ForEquationMeta>;
+    ifMeta: Map<number, IfEquationMeta>;
+    nameExprIndicesLen: number;
+    paramNameToEqs: Map<string, Set<number>>;
+    baseArrayIndices: Map<string, number[]>;
+  }[] = [];
+
   /**
-   * Saves a checkpoint snapshot of the current WASM arena lengths so speculative additions can be rolled back.
+   * Saves a checkpoint snapshot of the current WASM arena lengths and host-side maps
+   * so speculative additions can be rolled back.
    */
-  snapshot(): void {
+  snapshot(): number {
     if (this.exports?.dae_snapshot) this.exports.dae_snapshot(this.ptr);
+    const snap = {
+      varShapes: new Map(Array.from(this.varShapes.entries(), ([k, v]) => [k, [...v]])),
+      varShapeExprs: new Map(Array.from(this.varShapeExprs.entries(), ([k, v]) => [k, [...v]])),
+      varAttrs: new Map(Array.from(this.varAttrs.entries(), ([k, v]) => [k, new Map(v)])),
+      varExpressions: new Map(this.varExpressions),
+      varDescriptions: new Map(this.varDescriptions),
+      eqDescriptions: new Map(this.eqDescriptions),
+      eqKinds: new Map(this.eqKinds),
+      removedEquations: new Set(this.removedEquations),
+      origEqRhs: new Map(this.origEqRhs),
+      whenMeta: new Map(
+        Array.from(this.whenMeta.entries(), ([k, v]) => [
+          k,
+          {
+            ...v,
+            equations: [...v.equations],
+            bodyEquations: [...v.bodyEquations],
+            elseWhenClauses: v.elseWhenClauses.map((ew) => ({ ...ew, bodyEquations: [...ew.bodyEquations] })),
+            ...(v.elseEquations ? { elseEquations: [...v.elseEquations] } : {}),
+          },
+        ]),
+      ),
+      forMeta: new Map(
+        Array.from(this.forMeta.entries(), ([k, v]) => [
+          k,
+          { ...v, equations: [...v.equations], bodyEquations: [...v.bodyEquations] },
+        ]),
+      ),
+      ifMeta: new Map(
+        Array.from(this.ifMeta.entries(), ([k, v]) => [
+          k,
+          {
+            ...v,
+            thenEquations: [...v.thenEquations],
+            elseIfClauses: v.elseIfClauses.map((ei) => ({ ...ei, bodyEquations: [...ei.bodyEquations] })),
+            elseEquations: v.elseEquations ? [...v.elseEquations] : [],
+          },
+        ]),
+      ),
+      nameExprIndicesLen: this.nameExprIndices.length,
+      paramNameToEqs: new Map(Array.from(this.paramNameToEqs.entries(), ([k, v]) => [k, new Set(v)])),
+      baseArrayIndices: new Map(Array.from(this.baseArrayIndices.entries(), ([k, v]) => [k, [...v]])),
+    };
+    this._hostSnapshots.push(snap);
+    return this._hostSnapshots.length - 1;
   }
 
   /**
-   * Rolls back the WASM arena lengths to the most recently saved {@link snapshot}.
+   * Rolls back the WASM arena lengths and host-side maps to the most recently saved {@link snapshot}.
    */
-  rollback(): void {
+  rollback(snapId?: number): void {
     if (this.exports?.dae_rollback) this.exports.dae_rollback(this.ptr);
+    let snap = undefined;
+    if (snapId !== undefined && snapId >= 0 && snapId < this._hostSnapshots.length) {
+      snap = this._hostSnapshots[snapId];
+      this._hostSnapshots.length = snapId;
+    } else {
+      snap = this._hostSnapshots.pop();
+    }
+    if (snap) {
+      this.varShapes = snap.varShapes;
+      this.varShapeExprs = snap.varShapeExprs;
+      this.varAttrs = snap.varAttrs;
+      this.varExpressions = snap.varExpressions;
+      this.varDescriptions = snap.varDescriptions;
+      this.eqDescriptions = snap.eqDescriptions;
+      this.eqKinds = snap.eqKinds;
+      this.removedEquations = snap.removedEquations;
+      this.origEqRhs = snap.origEqRhs;
+      this.whenMeta = snap.whenMeta;
+      this.forMeta = snap.forMeta;
+      this.ifMeta = snap.ifMeta;
+      this.nameExprIndices.length = snap.nameExprIndicesLen;
+      this.paramNameToEqs = snap.paramNameToEqs;
+      this.baseArrayIndices = snap.baseArrayIndices;
+    }
   }
 
   /**
@@ -3176,6 +3441,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     copy.objectiveIntegrandExprId = this.objectiveIntegrandExprId;
     copy.startTimeExprId = this.startTimeExprId;
     copy.finalTimeExprId = this.finalTimeExprId;
+    copy.homotopyLambda = this.homotopyLambda;
     copy.externalIncludes = [...this.externalIncludes];
     copy.externalObjects = this.externalObjects.map((o) => ({ ...o }));
     copy.equationAnnotations = [...this.equationAnnotations];
@@ -3184,6 +3450,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     copy.experiment = { ...this.experiment };
     copy.hiddenVarIndices = new Set(this.hiddenVarIndices);
     copy.removedEquations = new Set(this.removedEquations);
+    copy.boundaryNodes = [...this.boundaryNodes];
     for (const [k, v] of this.diffusionExprIds) copy.diffusionExprIds.set(k, v);
     copy.extensionMetadata = {
       ...this.extensionMetadata,
@@ -3209,6 +3476,8 @@ export class WasmDaeBridge implements IDaeBuilder {
     for (const s of this._algorithmSections) copy._algorithmSections.push({ ...s });
     for (const s of this._initialAlgorithmSections) copy._initialAlgorithmSections.push({ ...s });
     for (const [k, v] of this.stmtLocations) copy.stmtLocations.set(k, { ...v });
+    for (const [k, v] of this.stmtData1Overrides) copy.stmtData1Overrides.set(k, v);
+    for (const [k, v] of this.stmtLeftOverrides) copy.stmtLeftOverrides.set(k, v);
     for (const [k, v] of this.varShapes) copy.varShapes.set(k, [...v]);
     for (const [k, v] of this.varShapeExprs) copy.varShapeExprs.set(k, [...v]);
     for (const [k, v] of this.varAttrs) copy.varAttrs.set(k, new Map(v));
@@ -3217,30 +3486,30 @@ export class WasmDaeBridge implements IDaeBuilder {
     for (const [k, v] of this.varCadAnnotations) copy.varCadAnnotations.set(k, v);
     for (const [k, v] of this.varCustomTypes) copy.varCustomTypes.set(k, v);
     for (const [k, v] of this.varEnumLiterals) copy.varEnumLiterals.set(k, v);
+    for (const [k, v] of this.eqDescriptions) copy.eqDescriptions.set(k, v);
+    for (const [k, v] of this.eqOrders) copy.eqOrders.set(k, v);
+    for (const [k, v] of this.eqKinds) copy.eqKinds.set(k, v);
     for (const [k, v] of this.whenMeta)
       copy.whenMeta.set(k, {
         ...v,
         equations: [...v.equations],
         bodyEquations: [...v.bodyEquations],
-        elseWhenClauses: [...v.elseWhenClauses],
+        elseWhenClauses: v.elseWhenClauses.map((ew) => ({ ...ew, bodyEquations: [...ew.bodyEquations] })),
+        ...(v.elseEquations ? { elseEquations: [...v.elseEquations] } : {}),
       });
     for (const [k, v] of this.forMeta)
       copy.forMeta.set(k, { ...v, equations: [...v.equations], bodyEquations: [...v.bodyEquations] });
     for (const [k, v] of this.ifMeta)
-      copy.ifMeta.set(k, { ...v, thenEquations: [...v.thenEquations], elseIfClauses: [...v.elseIfClauses] });
+      copy.ifMeta.set(k, {
+        ...v,
+        thenEquations: [...v.thenEquations],
+        elseIfClauses: v.elseIfClauses.map((ei) => ({ ...ei, bodyEquations: [...ei.bodyEquations] })),
+        elseEquations: v.elseEquations ? [...v.elseEquations] : [],
+      });
     copy.stateMachines = this.stateMachines.map((sm) => ({ ...sm }));
     for (const [k, v] of this.eqSourceRanges) copy.eqSourceRanges.set(k, { ...v });
     for (const [k, v] of this.varSourceRanges) copy.varSourceRanges.set(k, { ...v });
     for (const [k, v] of this.paramNameToEqs) copy.paramNameToEqs.set(k, new Set(v));
-    if (this.cachedBlt) {
-      copy.cachedBlt = {
-        sortedEquations: [...this.cachedBlt.sortedEquations],
-        blocks: this.cachedBlt.blocks.map((b) => ({ eqIdxs: [...b.eqIdxs], vars: [...b.vars] })),
-        varCount: this.cachedBlt.varCount,
-        eqCount: this.cachedBlt.eqCount,
-      };
-    }
-
     if (this._renamedVars.size > 0) {
       copy._renamedVars = new Map(this._renamedVars);
       copy._renamedVarsReverse = new Map(this._renamedVarsReverse);
@@ -3258,17 +3527,20 @@ export class WasmDaeBridge implements IDaeBuilder {
         this.getVarFlags(i),
       );
     }
+    for (let i = 0; i < this.exprCount; i++) {
+      copy.addExpression(this.getExprKind(i), this.getExprData1(i), this.getExprLeft(i), this.getExprRight(i));
+    }
     for (let i = 0; i < this.eqCount; i++) {
       copy.addEquation(this.getEqKind(i), this.getEqLhs(i), this.getEqRhs(i), this.getEqAux(i));
     }
     for (const [k, v] of this.origEqRhs) {
       copy.origEqRhs.set(k, v);
     }
-    for (let i = 0; i < this.exprCount; i++) {
-      copy.addExpression(this.getExprKind(i), this.getExprData1(i), this.getExprLeft(i), this.getExprRight(i));
-    }
     for (let i = 0; i < this.stmtCount; i++) {
       copy.addStatement(this.getStmtKind(i), this.getStmtData1(i), this.getStmtLeft(i), this.getStmtRight(i));
+    }
+    for (const id of this.eventIndicatorExprIds) {
+      copy.addEventIndicator(id);
     }
     if (this.cachedBlt) {
       copy.cachedBlt = {
@@ -3316,6 +3588,8 @@ function areArenaExprsEqual(arena: WasmDaeBridge, a: number, b: number): boolean
     return valA !== null && valB !== null && valA === valB;
   }
   switch (kindA) {
+    case ExprKind.Colon:
+      return true;
     case ExprKind.RealLiteral:
       return arena.getExprRealValue(a) === arena.getExprRealValue(b);
     case ExprKind.IntLiteral:
@@ -3323,6 +3597,8 @@ function areArenaExprsEqual(arena: WasmDaeBridge, a: number, b: number): boolean
     case ExprKind.StringLiteral:
     case ExprKind.Name:
       return arena.getExprData1(a) === arena.getExprData1(b);
+    case ExprKind.EnumLiteral:
+      return arena.getExprData1(a) === arena.getExprData1(b) && arena.getExprLeft(a) === arena.getExprLeft(b);
     case ExprKind.Der:
     case ExprKind.Pre:
       return areArenaExprsEqual(arena, arena.getExprData1(a), arena.getExprData1(b));
@@ -3339,6 +3615,74 @@ function areArenaExprsEqual(arena: WasmDaeBridge, a: number, b: number): boolean
         areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b)) &&
         areArenaExprsEqual(arena, arena.getExprRight(a), arena.getExprRight(b))
       );
+    case ExprKind.IfElse:
+      return (
+        areArenaExprsEqual(arena, arena.getExprData1(a), arena.getExprData1(b)) &&
+        areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b)) &&
+        areArenaExprsEqual(arena, arena.getExprRight(a), arena.getExprRight(b))
+      );
+    case ExprKind.Range: {
+      const stepA = arena.getExprLeft(a);
+      const stepB = arena.getExprLeft(b);
+      const hasStepA = stepA >= 0 && stepA !== 0xffffffff;
+      const hasStepB = stepB >= 0 && stepB !== 0xffffffff;
+      if (hasStepA !== hasStepB) return false;
+      if (hasStepA && !areArenaExprsEqual(arena, stepA, stepB)) return false;
+      return (
+        areArenaExprsEqual(arena, arena.getExprData1(a), arena.getExprData1(b)) &&
+        areArenaExprsEqual(arena, arena.getExprRight(a), arena.getExprRight(b))
+      );
+    }
+    case ExprKind.Call: {
+      if (arena.getExprFuncName(a) !== arena.getExprFuncName(b)) return false;
+      const countA = arena.getExprRight(a);
+      const countB = arena.getExprRight(b);
+      if (countA !== countB) return false;
+      if (countA <= 0) return true;
+      if (!areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b))) return false;
+      for (let i = 1; i < countA; i++) {
+        if (!areArenaExprsEqual(arena, arena.getExprLeft(a + i), arena.getExprLeft(b + i))) return false;
+      }
+      return true;
+    }
+    case ExprKind.Subscript: {
+      if (!areArenaExprsEqual(arena, arena.getExprData1(a), arena.getExprData1(b))) return false;
+      const countA = arena.getExprRight(a);
+      const countB = arena.getExprRight(b);
+      if (countA !== countB) return false;
+      if (countA <= 0) return true;
+      if (!areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b))) return false;
+      for (let i = 1; i < countA; i++) {
+        if (!areArenaExprsEqual(arena, arena.getExprLeft(a + i), arena.getExprLeft(b + i))) return false;
+      }
+      return true;
+    }
+    case ExprKind.ArrayCtor: {
+      const countA = arena.getExprData1(a);
+      const countB = arena.getExprData1(b);
+      if (countA !== countB) return false;
+      if (countA <= 0) return true;
+      if (!areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b))) return false;
+      const redA = arena.getExprRight(a);
+      const redB = arena.getExprRight(b);
+      const baseA = redA >= 0 && redA !== 0xffffffff ? redA : a;
+      const baseB = redB >= 0 && redB !== 0xffffffff ? redB : b;
+      for (let i = 1; i < countA; i++) {
+        if (!areArenaExprsEqual(arena, arena.getExprLeft(baseA + i), arena.getExprLeft(baseB + i))) return false;
+      }
+      return true;
+    }
+    case ExprKind.Tuple: {
+      const countA = arena.getExprData1(a);
+      const countB = arena.getExprData1(b);
+      if (countA !== countB) return false;
+      if (countA <= 0) return true;
+      if (!areArenaExprsEqual(arena, arena.getExprLeft(a), arena.getExprLeft(b))) return false;
+      for (let i = 1; i < countA; i++) {
+        if (!areArenaExprsEqual(arena, arena.getExprLeft(a + i), arena.getExprLeft(b + i))) return false;
+      }
+      return true;
+    }
     default:
       return false;
   }
@@ -3362,6 +3706,7 @@ export function simplifyArenaExpression(arena: WasmDaeBridge, exprId: number): n
     case ExprKind.RealLiteral:
     case ExprKind.BoolLiteral:
     case ExprKind.StringLiteral:
+    case ExprKind.EnumLiteral:
     case ExprKind.Name:
     case ExprKind.Colon:
       return exprId;
@@ -3518,6 +3863,99 @@ export function simplifyArenaExpression(arena: WasmDaeBridge, exprId: number): n
       return arena.addIfElse(cond, trueBranch, falseBranch);
     }
 
+    case ExprKind.Call: {
+      const funcNameId = arena.getExprData1(exprId);
+      const argCount = arena.getExprRight(exprId);
+      if (argCount <= 0) return exprId;
+      const args: number[] = [];
+      let changed = false;
+      const firstArg = arena.getExprLeft(exprId);
+      const simpFirst = simplifyArenaExpression(arena, firstArg);
+      if (simpFirst !== firstArg) changed = true;
+      args.push(simpFirst);
+      for (let i = 1; i < argCount; i++) {
+        const argId = arena.getExprLeft(exprId + i);
+        const simpArg = simplifyArenaExpression(arena, argId);
+        if (simpArg !== argId) changed = true;
+        args.push(simpArg);
+      }
+      if (!changed) return exprId;
+      return arena.addCallExpr(funcNameId, args);
+    }
+
+    case ExprKind.Subscript: {
+      const baseExpr = arena.getExprData1(exprId);
+      const subCount = arena.getExprRight(exprId);
+      const simpBase = simplifyArenaExpression(arena, baseExpr);
+      let changed = simpBase !== baseExpr;
+      const subs: number[] = [];
+      if (subCount > 0) {
+        const s0 = arena.getExprLeft(exprId);
+        const ss0 = simplifyArenaExpression(arena, s0);
+        if (ss0 !== s0) changed = true;
+        subs.push(ss0);
+        for (let i = 1; i < subCount; i++) {
+          const si = arena.getExprLeft(exprId + i);
+          const ssi = simplifyArenaExpression(arena, si);
+          if (ssi !== si) changed = true;
+          subs.push(ssi);
+        }
+      }
+      if (!changed) return exprId;
+      return arena.addSubscriptExpr(simpBase, subs);
+    }
+
+    case ExprKind.ArrayCtor: {
+      const count = arena.getExprData1(exprId);
+      if (count <= 0) return exprId;
+      const redirect = arena.getExprRight(exprId);
+      const baseId = redirect >= 0 && redirect !== 0xffffffff ? redirect : exprId;
+      const elems: number[] = [];
+      let changed = false;
+      const e0 = arena.getExprLeft(exprId);
+      const se0 = simplifyArenaExpression(arena, e0);
+      if (se0 !== e0) changed = true;
+      elems.push(se0);
+      for (let i = 1; i < count; i++) {
+        const ei = arena.getExprLeft(baseId + i);
+        const sei = simplifyArenaExpression(arena, ei);
+        if (sei !== ei) changed = true;
+        elems.push(sei);
+      }
+      if (!changed) return exprId;
+      return arena.addArrayCtorExpr(elems);
+    }
+
+    case ExprKind.Tuple: {
+      const count = arena.getExprData1(exprId);
+      if (count <= 0) return exprId;
+      const elems: number[] = [];
+      let changed = false;
+      const e0 = arena.getExprLeft(exprId);
+      const se0 = simplifyArenaExpression(arena, e0);
+      if (se0 !== e0) changed = true;
+      elems.push(se0);
+      for (let i = 1; i < count; i++) {
+        const ei = arena.getExprLeft(exprId + i);
+        const sei = simplifyArenaExpression(arena, ei);
+        if (sei !== ei) changed = true;
+        elems.push(sei);
+      }
+      if (!changed) return exprId;
+      return arena.addTupleExpr(elems);
+    }
+
+    case ExprKind.Range: {
+      const start = arena.getExprData1(exprId);
+      const step = arena.getExprLeft(exprId);
+      const stop = arena.getExprRight(exprId);
+      const simpStart = simplifyArenaExpression(arena, start);
+      const simpStep = step >= 0 && step !== 0xffffffff ? simplifyArenaExpression(arena, step) : step;
+      const simpStop = simplifyArenaExpression(arena, stop);
+      if (simpStart === start && simpStep === step && simpStop === stop) return exprId;
+      return arena.addRange(simpStart, simpStop, simpStep);
+    }
+
     default:
       return exprId;
   }
@@ -3662,7 +4100,7 @@ export function substituteArenaExpr(
       const count = arena.getExprData1(exprId);
       if (count <= 0) return exprId;
       const redirect = arena.getExprRight(exprId);
-      const baseId = redirect >= 0 ? redirect : exprId;
+      const baseId = redirect >= 0 && redirect !== 0xffffffff ? redirect : exprId;
       const elems: number[] = [];
       let changed = false;
       const e0 = arena.getExprLeft(exprId);
@@ -3710,6 +4148,34 @@ export function substituteArenaExpr(
       return arena.addRange(newStart, newStop, newStep);
     }
 
+    case ExprKind.Comprehension: {
+      const sId = arena.getExprData1(exprId);
+      const bodyId = arena.getExprLeft(exprId);
+      const iterCount = arena.getExprRight(exprId);
+      const iters: { iterNameId: number; rangeExprId: number }[] = [];
+      let shadowed = false;
+      let changed = false;
+      for (let i = 0; i < iterCount; i++) {
+        const iterSlot = exprId + 1 + i;
+        const iterNameId = arena.getExprData1(iterSlot);
+        const rangeExprId = arena.getExprLeft(iterSlot);
+        const newRangeExprId = shadowed
+          ? rangeExprId
+          : substituteArenaExpr(arena, rangeExprId, targetNameId, replacementExprId);
+        if (newRangeExprId !== rangeExprId) changed = true;
+        if (iterNameId === targetNameId) shadowed = true;
+        iters.push({ iterNameId, rangeExprId: newRangeExprId });
+      }
+      const newBodyId = shadowed ? bodyId : substituteArenaExpr(arena, bodyId, targetNameId, replacementExprId);
+      if (newBodyId !== bodyId) changed = true;
+      if (!changed) return exprId;
+      const compId = arena.addExpression(ExprKind.Comprehension, sId, newBodyId, iters.length);
+      for (const iter of iters) {
+        arena.addExpression(ExprKind.Tuple, iter.iterNameId, iter.rangeExprId, 0);
+      }
+      return compId;
+    }
+
     default:
       return exprId;
   }
@@ -3743,14 +4209,24 @@ export function differentiateArenaExpression(
  * Retrieves the expression arena ID of the second argument of a function call node (`exprId`).
  */
 function getCallSecondArgId(arena: WasmDaeBridge, exprId: number, firstArgId: number): number {
-  const right = arena.getExprRight(exprId);
   if (exprId + 1 < arena.exprCount && arena.getExprKind(exprId + 1) === ExprKind.Tuple) {
     return arena.getExprLeft(exprId + 1);
   }
-  if (right >= 0 && right < arena.exprCount && right !== 2) {
+  const right = arena.getExprRight(exprId);
+  if (right >= 0 && right < exprId && !(right === 2 && exprId === firstArgId + 2)) {
     return right;
   }
   return firstArgId + 1 < arena.exprCount ? firstArgId + 1 : right;
+}
+
+/**
+ * Retrieves the expression arena ID of the third argument of a function call node (`exprId`).
+ */
+function getCallThirdArgId(arena: WasmDaeBridge, exprId: number, firstArgId: number): number {
+  if (exprId + 2 < arena.exprCount && arena.getExprKind(exprId + 2) === ExprKind.Tuple) {
+    return arena.getExprLeft(exprId + 2);
+  }
+  return firstArgId + 2 < arena.exprCount ? firstArgId + 2 : arena.getExprLeft(exprId + 2);
 }
 
 /**
@@ -3813,6 +4289,11 @@ function formatArenaDerOrSubscriptName(
   return null;
 }
 
+function isZeroLiteral(arena: WasmDaeBridge, exprId: number): boolean {
+  const val = getNumericLiteralValue(arena, exprId);
+  return val === 0;
+}
+
 /**
  * Applies the chain rule to differentiate a built-in mathematical or Modelica intrinsic
  * function call node (`exprId`) using the provided recursive child differentiation callback `diffFn`.
@@ -3844,7 +4325,16 @@ function differentiateCallCommon(arena: WasmDaeBridge, exprId: number, diffFn: (
     return arena.addRealLiteral(0.0);
   }
   if ((funcName === "mod" || funcName === "rem" || funcName === "fmod") && argCount >= 1) {
-    return diffFn(firstArgId);
+    const dx = diffFn(firstArgId);
+    if (argCount >= 2) {
+      const yId = getCallSecondArgId(arena, exprId, firstArgId);
+      const dy = diffFn(yId);
+      if (!isZeroLiteral(arena, dy)) {
+        const floorXY = arena.addCallExpr("floor", [arena.addBinaryExpr(BinOp.Div, firstArgId, yId)]);
+        return arena.addBinaryExpr(BinOp.Sub, dx, arena.addBinaryExpr(BinOp.Mul, floorXY, dy));
+      }
+    }
+    return dx;
   }
   if (funcName === "smooth" && argCount >= 2) {
     return diffFn(getCallSecondArgId(arena, exprId, firstArgId));
@@ -3874,11 +4364,19 @@ function differentiateCallCommon(arena: WasmDaeBridge, exprId: number, diffFn: (
   if (funcName === "semiLinear" && argCount >= 3) {
     const xId = firstArgId;
     const kPosId = getCallSecondArgId(arena, exprId, firstArgId);
-    const kNegId = arena.getExprLeft(exprId + 2);
+    const kNegId = getCallThirdArgId(arena, exprId, firstArgId);
     const dx = diffFn(xId);
+    const dkPos = diffFn(kPosId);
+    const dkNeg = diffFn(kNegId);
     const cond = arena.addBinaryExpr(BinOp.Gte, xId, arena.addRealLiteral(0.0));
-    const posBranch = arena.addBinaryExpr(BinOp.Mul, kPosId, dx);
-    const negBranch = arena.addBinaryExpr(BinOp.Mul, kNegId, dx);
+    let posBranch = arena.addBinaryExpr(BinOp.Mul, kPosId, dx);
+    if (!isZeroLiteral(arena, dkPos)) {
+      posBranch = arena.addBinaryExpr(BinOp.Add, posBranch, arena.addBinaryExpr(BinOp.Mul, xId, dkPos));
+    }
+    let negBranch = arena.addBinaryExpr(BinOp.Mul, kNegId, dx);
+    if (!isZeroLiteral(arena, dkNeg)) {
+      negBranch = arena.addBinaryExpr(BinOp.Add, negBranch, arena.addBinaryExpr(BinOp.Mul, xId, dkNeg));
+    }
     return arena.addIfElse(cond, posBranch, negBranch);
   }
   if (funcName === "pow" && argCount >= 2) {
@@ -4023,8 +4521,17 @@ export function differentiateArenaExpressionWrt(arena: WasmDaeBridge, exprId: nu
 
     case ExprKind.Subscript: {
       const info = formatArenaDerOrSubscriptName(arena, exprId);
-      if (info && (arena.interner.intern(info.fullName) === wrtVarId || info.baseNameId === wrtVarId)) {
-        return arena.addRealLiteral(1.0);
+      if (info) {
+        const fullNameId = arena.interner.intern(info.fullName);
+        if (fullNameId === wrtVarId) {
+          return arena.addRealLiteral(1.0);
+        }
+        const baseName = arena.interner.resolve(info.baseNameId);
+        const isScalarizedElemPresent =
+          arena.lookupVariable(fullNameId) >= 0 || (baseName ? arena.hasArrayElements(baseName) : false);
+        if (!isScalarizedElemPresent && info.baseNameId === wrtVarId) {
+          return arena.addRealLiteral(1.0);
+        }
       }
       return arena.addRealLiteral(0.0);
     }
@@ -4118,6 +4625,30 @@ export function differentiateArenaExpressionWrt(arena: WasmDaeBridge, exprId: nu
         differentiateArenaExpressionWrt(arena, childId, wrtVarId),
       );
 
+    case ExprKind.ArrayCtor: {
+      const count = arena.getExprData1(exprId);
+      if (count <= 0) return exprId;
+      const redirect = arena.getExprRight(exprId);
+      const baseId = redirect >= 0 && redirect !== 0xffffffff ? redirect : exprId;
+      const elems: number[] = [];
+      elems.push(differentiateArenaExpressionWrt(arena, arena.getExprLeft(exprId), wrtVarId));
+      for (let i = 1; i < count; i++) {
+        elems.push(differentiateArenaExpressionWrt(arena, arena.getExprLeft(baseId + i), wrtVarId));
+      }
+      return arena.addArrayCtorExpr(elems);
+    }
+
+    case ExprKind.Tuple: {
+      const count = arena.getExprData1(exprId);
+      if (count <= 0) return exprId;
+      const elems: number[] = [];
+      elems.push(differentiateArenaExpressionWrt(arena, arena.getExprLeft(exprId), wrtVarId));
+      for (let i = 1; i < count; i++) {
+        elems.push(differentiateArenaExpressionWrt(arena, arena.getExprLeft(exprId + i), wrtVarId));
+      }
+      return arena.addTupleExpr(elems);
+    }
+
     default:
       return arena.addRealLiteral(0.0);
   }
@@ -4152,8 +4683,17 @@ function differentiateArenaExpressionWrtSet(arena: WasmDaeBridge, exprId: number
 
     case ExprKind.Subscript: {
       const info = formatArenaDerOrSubscriptName(arena, exprId);
-      if (info && info.intermediateNameIds.some((id) => wrtVarIds.has(id))) {
-        return arena.addDerExpr(exprId);
+      if (info) {
+        const fullNameId = arena.interner.intern(info.fullName);
+        if (wrtVarIds.has(fullNameId)) {
+          return arena.addDerExpr(exprId);
+        }
+        const baseName = arena.interner.resolve(info.baseNameId);
+        const isScalarizedElemPresent =
+          arena.lookupVariable(fullNameId) >= 0 || (baseName ? arena.hasArrayElements(baseName) : false);
+        if (!isScalarizedElemPresent && info.intermediateNameIds.some((id) => wrtVarIds.has(id))) {
+          return arena.addDerExpr(exprId);
+        }
       }
       return arena.addRealLiteral(0.0);
     }
@@ -4253,6 +4793,30 @@ function differentiateArenaExpressionWrtSet(arena: WasmDaeBridge, exprId: number
       return differentiateCallCommon(arena, exprId, (childId) =>
         differentiateArenaExpressionWrtSet(arena, childId, wrtVarIds),
       );
+
+    case ExprKind.ArrayCtor: {
+      const count = arena.getExprData1(exprId);
+      if (count <= 0) return exprId;
+      const redirect = arena.getExprRight(exprId);
+      const baseId = redirect >= 0 && redirect !== 0xffffffff ? redirect : exprId;
+      const elems: number[] = [];
+      elems.push(differentiateArenaExpressionWrtSet(arena, arena.getExprLeft(exprId), wrtVarIds));
+      for (let i = 1; i < count; i++) {
+        elems.push(differentiateArenaExpressionWrtSet(arena, arena.getExprLeft(baseId + i), wrtVarIds));
+      }
+      return arena.addArrayCtorExpr(elems);
+    }
+
+    case ExprKind.Tuple: {
+      const count = arena.getExprData1(exprId);
+      if (count <= 0) return exprId;
+      const elems: number[] = [];
+      elems.push(differentiateArenaExpressionWrtSet(arena, arena.getExprLeft(exprId), wrtVarIds));
+      for (let i = 1; i < count; i++) {
+        elems.push(differentiateArenaExpressionWrtSet(arena, arena.getExprLeft(exprId + i), wrtVarIds));
+      }
+      return arena.addTupleExpr(elems);
+    }
 
     default:
       return arena.addRealLiteral(0.0);
@@ -4436,6 +5000,7 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
   }
 
   for (let i = 0; i < dae.eqCount; i++) {
+    if (dae.isEqRemoved(i) || dae.isEqInitial(i)) continue;
     const kind = dae.getEqKind(i);
     if (kind === EqKind.Connect || kind === EqKind.Simple) {
       const lhs = dae.getEqLhs(i);
@@ -4482,6 +5047,9 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     if (elimStartAttr !== undefined && dae.getVarAttrExprId(vRoot, "start") === undefined) {
       dae.setVarAttrExpr(vRoot, VarAttrKind.Start, elimStartAttr);
     }
+
+    dae.removeVariable(vElim);
+    dae.addAlias(vElim, rootNameId, false);
   }
 
   const nameIndices = (dae as any).nameExprIndices;
@@ -4505,6 +5073,46 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
             dae.exports.dae_setExprData1(dae.ptr, i, rootId);
           }
         }
+      }
+    }
+  }
+
+  // Update targetNameId in stateMachines if any state equation targets an aliased variable
+  const updateStateMachineAliases = (sm: ArenaStateMachine): void => {
+    for (const st of sm.states) {
+      for (const eq of st.equations) {
+        const rootId = find(eq.targetNameId);
+        if (rootId !== eq.targetNameId) {
+          eq.targetNameId = rootId;
+        }
+      }
+      if (st.stateMachines) {
+        for (const childSm of st.stateMachines) {
+          updateStateMachineAliases(childSm);
+        }
+      }
+    }
+  };
+  for (const sm of dae.stateMachines) {
+    updateStateMachineAliases(sm);
+  }
+
+  // Remove trivial self-equations (x = x) introduced by alias substitution in non-initial equations
+  for (let i = 0; i < dae.eqCount; i++) {
+    if (dae.isEqRemoved(i) || dae.isEqInitial(i)) continue;
+    const kind = dae.getEqKind(i);
+    if (kind === EqKind.Simple || kind === EqKind.Connect) {
+      const lhs = dae.getEqLhs(i);
+      const rhs = dae.getEqRhs(i);
+      if (
+        lhs >= 0 &&
+        rhs >= 0 &&
+        (lhs === rhs ||
+          (dae.getExprKind(lhs) === ExprKind.Name &&
+            dae.getExprKind(rhs) === ExprKind.Name &&
+            dae.getExprData1(lhs) === dae.getExprData1(rhs)))
+      ) {
+        dae.removeEquation(i);
       }
     }
   }

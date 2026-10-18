@@ -88,6 +88,7 @@ export function eliminateAliases(dae: DaeBuilder): u32 {
   let exprCount = dae.exprCount;
 
   for (let i: u32 = 0; i < eqCount; i++) {
+    if (dae.isEqInitial(i) || dae.isEqRemoved(i)) continue;
     let eqOffset = i * EQ_STRIDE;
     let kind = dae.getEqData().get(eqOffset + EQ_KIND);
 
@@ -106,8 +107,8 @@ export function eliminateAliases(dae: DaeBuilder): u32 {
           let lhsNameId = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
           let rhsNameId = dae.getExprData().get(rhsOffset + EXPR_DATA1) as u32;
 
-          let lhsVarIdx = dae.lookupVariableByName(lhsNameId);
-          let rhsVarIdx = dae.lookupVariableByName(rhsNameId);
+          let lhsVarIdx = dae.resolveExprVarId(lhsNameId);
+          let rhsVarIdx = dae.resolveExprVarId(rhsNameId);
 
           if (lhsVarIdx >= 0 && rhsVarIdx >= 0) {
             if (kind == EqKind.Connect && (dae.isVarFlow(lhsVarIdx as u32) || dae.isVarFlow(rhsVarIdx as u32))) {
@@ -118,7 +119,9 @@ export function eliminateAliases(dae: DaeBuilder): u32 {
 
             if (lhsType == rhsType) {
               // Both are valid variables of the same type, merge them
-              uf.union(lhsVarIdx as u32, rhsVarIdx as u32);
+              if (uf.union(lhsVarIdx as u32, rhsVarIdx as u32) || uf.find(lhsVarIdx as u32) == uf.find(rhsVarIdx as u32)) {
+                dae.setEqRemoved(i, true);
+              }
             }
           }
         }
@@ -132,6 +135,7 @@ export function eliminateAliases(dae: DaeBuilder): u32 {
     if (rootIdx != v) {
       let rootNameId = dae.getVarData().get(rootIdx * VAR_STRIDE + VAR_NAME) as u32;
       dae.addAlias(v, rootNameId);
+      dae.setVarRemoved(v, true);
     }
   }
 
@@ -143,14 +147,18 @@ export function eliminateAliases(dae: DaeBuilder): u32 {
 
     if (kind == ExprKind.Name) {
       let nameId = dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
-      let varIdx = dae.lookupVariableByName(nameId);
+      let varIdx = dae.resolveExprVarId(nameId);
 
       if (varIdx >= 0) {
         let rootIdx = uf.find(varIdx as u32);
         if (rootIdx != (varIdx as u32)) {
-          // Overwrite data1 with the canonical root's StringId
+          // Overwrite data1 with the canonical root's StringId (or varIdx if un-interned)
           let rootNameId = dae.getVarData().get(rootIdx * VAR_STRIDE + VAR_NAME) as u32;
-          dae.getExprData().set(exprOffset + EXPR_DATA1, rootNameId);
+          if (rootNameId != 0 && dae.lookupVariableByName(nameId) >= 0) {
+            dae.getExprData().set(exprOffset + EXPR_DATA1, rootNameId);
+          } else {
+            dae.getExprData().set(exprOffset + EXPR_DATA1, rootIdx);
+          }
           rewrittenCount++;
         }
       }

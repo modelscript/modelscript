@@ -43,6 +43,7 @@ test("Organizations, Scoped Namespaces & Package Collaborators RBAC", async (t) 
 
   t.after(() => {
     try {
+      app.locals["jobQueue"]?.clear();
       db.db.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {

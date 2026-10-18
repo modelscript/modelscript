@@ -93,12 +93,18 @@ export const stepLanguage = language({
           (stepText ? extractStepAssembly(stepText) : undefined) ??
           ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel?.(targetUri);
 
-        const bodyLines: string[] = [];
+        const bodyLines: string[] = ["  inner Modelica.Mechanics.MultiBody.World world;"];
+        const eqLines: string[] = [];
+        const partIdToSafeName = new Map<string, string>();
+        const safeNames: string[] = [];
+
         if (assembly && (assembly.parts.size > 0 || assembly.joints.length > 0)) {
           const defaultMass = assembly.massProperties.values().next().value?.mass ?? 1.0;
           let idx = 0;
           for (const [, part] of assembly.parts) {
             const safeName = part.name.replace(/[^a-zA-Z0-9_]/g, "_") || `body_${idx + 1}`;
+            partIdToSafeName.set(part.id, safeName);
+            safeNames.push(safeName);
             const partProps = assembly.massProperties.get(part.id);
             const partMass =
               partProps?.mass ?? (idx === 0 ? defaultMass : Math.max(0.1, defaultMass / assembly.parts.size));
@@ -109,18 +115,46 @@ export const stepLanguage = language({
             );
             idx++;
           }
-          if (bodyLines.length === 0) {
-            bodyLines.push(`  Parts.BodyBox ${name}_body(r = {0, 0, 0}, m = ${defaultMass.toFixed(4)}) "${name}";`);
+          if (safeNames.length === 0) {
+            const fallbackBody = `${name}_body`;
+            safeNames.push(fallbackBody);
+            bodyLines.push(`  Parts.BodyBox ${fallbackBody}(r = {0, 0, 0}, m = ${defaultMass.toFixed(4)}) "${name}";`);
           }
+
+          const connectedChildren = new Set<string>();
           for (let jIdx = 0; jIdx < assembly.joints.length; jIdx++) {
             const j = assembly.joints[jIdx]!;
+            const jName = `joint_${jIdx + 1}`;
             const jClass = j.type === "prismatic" ? "Prismatic" : j.type === "spherical" ? "Spherical" : "Revolute";
             bodyLines.push(
-              `  Joints.${jClass} joint_${jIdx + 1}(n = {${j.axis[0]}, ${j.axis[1]}, ${j.axis[2]}}) "${j.type} joint";`,
+              `  Joints.${jClass} ${jName}(n = {${j.axis[0]}, ${j.axis[1]}, ${j.axis[2]}}) "${j.type} joint";`,
             );
+            const nameA = partIdToSafeName.get(j.partA) ?? safeNames[0]!;
+            const nameB = partIdToSafeName.get(j.partB) ?? safeNames[Math.min(1, safeNames.length - 1)]!;
+            eqLines.push(`  connect(${nameA}.frame_b, ${jName}.frame_a);`);
+            eqLines.push(`  connect(${jName}.frame_b, ${nameB}.frame_a);`);
+            connectedChildren.add(nameB);
           }
+
+          let offsetIdx = 1;
+          for (const edge of assembly.edges) {
+            const nameA = partIdToSafeName.get(edge.parentPartId);
+            const nameB = partIdToSafeName.get(edge.childPartId);
+            if (!nameA || !nameB || connectedChildren.has(nameB)) continue;
+            const offName = `offset_${offsetIdx++}`;
+            const loc = edge.placement?.location ?? [0, 0, 0];
+            bodyLines.push(`  Parts.FixedTranslation ${offName}(r = {${loc[0]}, ${loc[1]}, ${loc[2]}});`);
+            eqLines.push(`  connect(${nameA}.frame_b, ${offName}.frame_a);`);
+            eqLines.push(`  connect(${offName}.frame_b, ${nameB}.frame_a);`);
+            connectedChildren.add(nameB);
+          }
+
+          const roots = safeNames.filter((n) => !connectedChildren.has(n));
+          const rootBody = roots[0] ?? safeNames[0]!;
+          eqLines.unshift(`  connect(world.frame_b, ${rootBody}.frame_a);`);
         } else {
           // Extract solid brep / shell names and bounding box volume directly from STEP text
+          const lengthScale = /SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(stepText) ? 1e-3 : 1.0;
           const brepRegex = /(?:MANIFOLD_SOLID_BREP|BREP_WITH_VOIDS|CLOSED_SHELL)\s*\(\s*'([^']*)'/gi;
           const solidNames: string[] = [];
           let bm: RegExpExecArray | null;
@@ -138,9 +172,9 @@ export const stepLanguage = language({
           let ptCount = 0;
           let pm: RegExpExecArray | null;
           while ((pm = ptRegex.exec(stepText)) !== null) {
-            const x = parseFloat(pm[1]!),
-              y = parseFloat(pm[2]!),
-              z = parseFloat(pm[3]!);
+            const x = parseFloat(pm[1]!) * lengthScale,
+              y = parseFloat(pm[2]!) * lengthScale,
+              z = parseFloat(pm[3]!) * lengthScale;
             if (x < minX) minX = x;
             if (y < minY) minY = y;
             if (z < minZ) minZ = z;
@@ -157,18 +191,26 @@ export const stepLanguage = language({
             const perSolidMass = Math.max(0.01, estMass / solidNames.length);
             solidNames.forEach((sName, sIdx) => {
               const safe = sName.replace(/[^a-zA-Z0-9_]/g, "_") || `solid_${sIdx + 1}`;
+              safeNames.push(safe);
               bodyLines.push(
                 `  Parts.BodyBox ${safe}(r = {${dx.toFixed(4)}, 0, 0}, m = ${perSolidMass.toFixed(4)}) "${sName}";`,
               );
+              if (sIdx === 0) {
+                eqLines.push(`  connect(world.frame_b, ${safe}.frame_a);`);
+              } else {
+                eqLines.push(`  connect(${safeNames[sIdx - 1]!}.frame_b, ${safe}.frame_a);`);
+              }
             });
           } else {
+            const fallbackBody = `${name}_body`;
             bodyLines.push(
-              `  Parts.BodyBox ${name}_body(r = {${dx.toFixed(4)}, ${dy.toFixed(4)}, ${dz.toFixed(4)}}, m = ${estMass.toFixed(4)}) "${name}";`,
+              `  Parts.BodyBox ${fallbackBody}(r = {${dx.toFixed(4)}, ${dy.toFixed(4)}, ${dz.toFixed(4)}}, m = ${estMass.toFixed(4)}) "${name}";`,
             );
+            eqLines.push(`  connect(world.frame_b, ${fallbackBody}.frame_a);`);
           }
         }
 
-        const moCode = `model ${name}_MultiBody "Modelica MultiBody assembly translated from STEP CAD"\n  import Modelica.Mechanics.MultiBody.Parts;\n  import Modelica.Mechanics.MultiBody.Joints;\n\n${bodyLines.join("\n")}\nend ${name}_MultiBody;\n`;
+        const moCode = `model ${name}_MultiBody "Modelica MultiBody assembly translated from STEP CAD"\n  import Modelica.Mechanics.MultiBody.Parts;\n  import Modelica.Mechanics.MultiBody.Joints;\n\n${bodyLines.join("\n")}\nequation\n${eqLines.join("\n")}\nend ${name}_MultiBody;\n`;
         return {
           success: true,
           uri: targetUri,
@@ -208,6 +250,7 @@ export const stepLanguage = language({
           ctx.documentText ??
           (targetUri ? ctx.documents?.get?.(targetUri)?.getText?.() : undefined) ??
           "";
+        const lengthScale = /SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(stepText) ? 1e-3 : 1.0;
         const ptRegex =
           /CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
         let minX = Infinity,
@@ -219,9 +262,9 @@ export const stepLanguage = language({
         let ptCount = 0;
         let m: RegExpExecArray | null;
         while ((m = ptRegex.exec(stepText)) !== null) {
-          const x = parseFloat(m[1]!),
-            y = parseFloat(m[2]!),
-            z = parseFloat(m[3]!);
+          const x = parseFloat(m[1]!) * lengthScale,
+            y = parseFloat(m[2]!) * lengthScale,
+            z = parseFloat(m[3]!) * lengthScale;
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (z < minZ) minZ = z;
@@ -334,6 +377,7 @@ export const stepLanguage = language({
           ctx.documentText ??
           (targetUri ? ctx.documents?.get?.(targetUri)?.getText?.() : undefined) ??
           "";
+        const lengthScale = /SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(stepText) ? 1e-3 : 1.0;
         let minX = -0.1,
           maxX = 0.1,
           minY = -0.1,
@@ -352,9 +396,9 @@ export const stepLanguage = language({
           let count = 0;
           let m: RegExpExecArray | null;
           while ((m = ptRegex.exec(stepText)) !== null) {
-            const x = parseFloat(m[1]!),
-              y = parseFloat(m[2]!),
-              z = parseFloat(m[3]!);
+            const x = parseFloat(m[1]!) * lengthScale,
+              y = parseFloat(m[2]!) * lengthScale,
+              z = parseFloat(m[3]!) * lengthScale;
             if (x < bx0) bx0 = x;
             if (y < by0) by0 = y;
             if (z < bz0) bz0 = z;
@@ -770,25 +814,133 @@ export const stepLanguage = language({
               ptMap.set(m[1]!, pt);
               allPts.push(pt);
             }
+            const dirMap = new Map<string, [number, number, number]>();
+            const dirRegex =
+              /(#\d+)\s*=\s*DIRECTION\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
+            while ((m = dirRegex.exec(srcText)) !== null) {
+              dirMap.set(m[1]!, [parseFloat(m[2]!), parseFloat(m[3]!), parseFloat(m[4]!)]);
+            }
+            const axis2Map = new Map<
+              string,
+              { loc: [number, number, number]; axis: [number, number, number]; refDir: [number, number, number] }
+            >();
+            const axRegex =
+              /(#\d+)\s*=\s*AXIS2_PLACEMENT_3D\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*(?:,\s*(#\d+|\$)\s*(?:,\s*(#\d+|\$))?)?\s*\)/gi;
+            while ((m = axRegex.exec(srcText)) !== null) {
+              const loc = ptMap.get(m[2]!) ?? [0, 0, 0];
+              const axis = (m[3] ? dirMap.get(m[3]) : undefined) ?? [0, 0, 1];
+              const refDir = (m[4] ? dirMap.get(m[4]) : undefined) ?? [1, 0, 0];
+              axis2Map.set(m[1]!, { loc, axis, refDir });
+            }
+            const circleMap = new Map<string, { axis2Ref: string; radius: number }>();
+            const circRegex = /(#\d+)\s*=\s*CIRCLE\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
+            while ((m = circRegex.exec(srcText)) !== null) {
+              circleMap.set(m[1]!, { axis2Ref: m[2]!, radius: Math.abs(parseFloat(m[3]!)) || 1.0 });
+            }
+            const bsplineMap = new Map<string, [number, number, number][]>();
+            const bsRegex = /(#\d+)\s*=\s*B_SPLINE_CURVE_WITH_KNOTS\s*\(\s*'[^']*'\s*,\s*\d+\s*,\s*\(([^)]+)\)/gi;
+            while ((m = bsRegex.exec(srcText)) !== null) {
+              const ctrlRefs = m[2]!.match(/#\d+/g) || [];
+              const ctrlPts: [number, number, number][] = [];
+              for (const r of ctrlRefs) {
+                const p = ptMap.get(r);
+                if (p) ctrlPts.push(p);
+              }
+              if (ctrlPts.length >= 2) bsplineMap.set(m[1]!, ctrlPts);
+            }
+
             const vpMap = new Map<string, [number, number, number]>();
             const vpRegex = /(#\d+)\s*=\s*VERTEX_POINT\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*\)/gi;
             while ((m = vpRegex.exec(srcText)) !== null) {
               const cp = ptMap.get(m[2]!);
               if (cp) vpMap.set(m[1]!, cp);
             }
-            const edgeMap = new Map<string, [[number, number, number], [number, number, number]]>();
-            const ecRegex = /(#\d+)\s*=\s*EDGE_CURVE\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*,\s*(#\d+)/gi;
+
+            const edgeChainMap = new Map<string, [number, number, number][]>();
+            const ecRegex =
+              /(#\d+)\s*=\s*EDGE_CURVE\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*,\s*(#\d+)\s*(?:,\s*(#\d+))?(?:\s*,\s*(\.[TF]\.))?\s*\)/gi;
             while ((m = ecRegex.exec(srcText)) !== null) {
               const pA = vpMap.get(m[2]!) ?? ptMap.get(m[2]!);
               const pB = vpMap.get(m[3]!) ?? ptMap.get(m[3]!);
-              if (pA && pB) edgeMap.set(m[1]!, [pA, pB]);
+              const curveRef = m[4];
+              if (pA && pB) {
+                const circ = curveRef ? circleMap.get(curveRef) : undefined;
+                const bspline = curveRef ? bsplineMap.get(curveRef) : undefined;
+                if (circ) {
+                  const ax = axis2Map.get(circ.axis2Ref) ?? {
+                    loc: [0, 0, 0] as [number, number, number],
+                    axis: [0, 0, 1] as [number, number, number],
+                    refDir: [1, 0, 0] as [number, number, number],
+                  };
+                  const r = circ.radius;
+                  const c = ax.loc;
+                  const u = ax.refDir;
+                  const z = ax.axis;
+                  // v = z x u
+                  const v: [number, number, number] = [
+                    z[1] * u[2] - z[2] * u[1],
+                    z[2] * u[0] - z[0] * u[2],
+                    z[0] * u[1] - z[1] * u[0],
+                  ];
+                  const distAB = Math.hypot(pA[0] - pB[0], pA[1] - pB[1], pA[2] - pB[2]);
+                  const segs = 16;
+                  const chain: [number, number, number][] = [];
+                  if (distAB < 1e-6) {
+                    // Full circle
+                    for (let s = 0; s < segs; s++) {
+                      const th = (s / segs) * 2 * Math.PI;
+                      const cs = Math.cos(th),
+                        sn = Math.sin(th);
+                      const pt: [number, number, number] = [
+                        c[0] + r * (cs * u[0] + sn * v[0]),
+                        c[1] + r * (cs * u[1] + sn * v[1]),
+                        c[2] + r * (cs * u[2] + sn * v[2]),
+                      ];
+                      chain.push(pt);
+                      allPts.push(pt);
+                    }
+                  } else {
+                    // Circular arc between pA and pB
+                    const dA = [pA[0] - c[0], pA[1] - c[1], pA[2] - c[2]];
+                    const dB = [pB[0] - c[0], pB[1] - c[1], pB[2] - c[2]];
+                    const thA = Math.atan2(
+                      dA[0]! * v[0] + dA[1]! * v[1] + dA[2]! * v[2],
+                      dA[0]! * u[0] + dA[1]! * u[1] + dA[2]! * u[2],
+                    );
+                    let thB = Math.atan2(
+                      dB[0]! * v[0] + dB[1]! * v[1] + dB[2]! * v[2],
+                      dB[0]! * u[0] + dB[1]! * u[1] + dB[2]! * u[2],
+                    );
+                    while (thB <= thA + 1e-6) thB += 2 * Math.PI;
+                    const arcSegs = Math.max(4, Math.round(((thB - thA) / (2 * Math.PI)) * segs));
+                    for (let s = 0; s <= arcSegs; s++) {
+                      const th = thA + (s / arcSegs) * (thB - thA);
+                      const cs = Math.cos(th),
+                        sn = Math.sin(th);
+                      const pt: [number, number, number] = [
+                        c[0] + r * (cs * u[0] + sn * v[0]),
+                        c[1] + r * (cs * u[1] + sn * v[1]),
+                        c[2] + r * (cs * u[2] + sn * v[2]),
+                      ];
+                      chain.push(pt);
+                      allPts.push(pt);
+                    }
+                  }
+                  edgeChainMap.set(m[1]!, chain);
+                } else if (bspline) {
+                  edgeChainMap.set(m[1]!, bspline);
+                } else {
+                  edgeChainMap.set(m[1]!, [pA, pB]);
+                }
+              }
             }
-            const oeMap = new Map<string, [number, number, number]>();
+            const oeChainMap = new Map<string, [number, number, number][]>();
             const oeRegex = /(#\d+)\s*=\s*ORIENTED_EDGE\s*\([^,]*,[^,]*,[^,]*,\s*(#\d+)\s*,\s*(\.[TF]\.)\s*\)/gi;
             while ((m = oeRegex.exec(srcText)) !== null) {
-              const edge = edgeMap.get(m[2]!);
-              if (edge) {
-                oeMap.set(m[1]!, m[3]!.toUpperCase() === ".T." ? edge[0] : edge[1]);
+              const chain = edgeChainMap.get(m[2]!);
+              if (chain && chain.length > 0) {
+                const forward = m[3]!.toUpperCase() === ".T.";
+                oeChainMap.set(m[1]!, forward ? chain : [...chain].reverse());
               }
             }
 
@@ -820,13 +972,36 @@ export const stepLanguage = language({
               indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
             };
 
+            const pushUniquePt = (arr: [number, number, number][], p: [number, number, number]) => {
+              if (arr.length > 0) {
+                const last = arr[arr.length - 1]!;
+                if (Math.hypot(last[0] - p[0], last[1] - p[1], last[2] - p[2]) < 1e-7) return;
+              }
+              arr.push(p);
+            };
+
             const loopRegex = /(#\d+)\s*=\s*(?:POLY_LOOP|EDGE_LOOP)\s*\(\s*'[^']*'\s*,\s*\(([^)]+)\)\s*\)/gi;
             while ((m = loopRegex.exec(srcText)) !== null) {
               const refs = m[2]!.match(/#\d+/g) || [];
               const loopPts: [number, number, number][] = [];
               for (const r of refs) {
-                const pt = ptMap.get(r) ?? vpMap.get(r) ?? oeMap.get(r);
-                if (pt) loopPts.push(pt);
+                const oeChain = oeChainMap.get(r);
+                if (oeChain) {
+                  for (const p of oeChain) pushUniquePt(loopPts, p);
+                  continue;
+                }
+                const pt = ptMap.get(r) ?? vpMap.get(r);
+                if (pt) pushUniquePt(loopPts, pt);
+              }
+              if (
+                loopPts.length >= 2 &&
+                Math.hypot(
+                  loopPts[0]![0] - loopPts[loopPts.length - 1]![0],
+                  loopPts[0]![1] - loopPts[loopPts.length - 1]![1],
+                  loopPts[0]![2] - loopPts[loopPts.length - 1]![2],
+                ) < 1e-7
+              ) {
+                loopPts.pop();
               }
               if (loopPts.length >= 3) {
                 for (let i = 1; i < loopPts.length - 1; i++) {

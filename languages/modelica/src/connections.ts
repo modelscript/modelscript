@@ -195,6 +195,161 @@ export class ModelicaPortBalancer {
     const outsideOutsidePairs: [number, number][] = [];
     const varConnectEqIdx = new Map<number, number>();
 
+    const stripConnectorSubscripts = (s: string): string => s.replace(/\[[^\]]*\]/g, "");
+    const matchesConnectorPrefix = (varName: string, candidate: string): boolean => {
+      if (!candidate) return false;
+      if (varName === candidate || varName.startsWith(candidate + ".") || varName.startsWith(candidate + "[")) {
+        return true;
+      }
+      const strippedVar = stripConnectorSubscripts(varName);
+      const strippedCand = stripConnectorSubscripts(candidate);
+      return Boolean(strippedCand) && (strippedVar === strippedCand || strippedVar.startsWith(strippedCand + "."));
+    };
+
+    const dbInnerOuterCompNames = new Set<string>();
+    const topLevelConnectorPrefixes = new Set<string>();
+    const isSymInnerOrOuter = (sym: any): boolean => {
+      if (!sym || sym.kind !== "Component") return false;
+      const meta = sym.metadata as any;
+      if (meta?.isInner || meta?.isOuter) return true;
+      const ci = state.db?.query?.("componentInstance", sym.id);
+      if (ci?.isInner || ci?.isOuter) return true;
+      let cst = (state.db as any)?.cstNode?.(sym.id);
+      while (cst && cst.type !== "element" && cst.parent) {
+        cst = cst.parent;
+      }
+      if (
+        cst?.children?.some(
+          (ch: any) => ch.type === "inner" || ch.type === "outer" || ch.text === "inner" || ch.text === "outer",
+        )
+      ) {
+        return true;
+      }
+      if (cst?.text && /^\s*(?:redeclare\s+|final\s+|replaceable\s+)*(?:inner|outer)\b/.test(cst.text)) {
+        return true;
+      }
+      return false;
+    };
+
+    if (state.db) {
+      const rootClassId = state.flattener?.currentRootClassId ?? state.currentRootClassId ?? state.currentClassId;
+      if (rootClassId) {
+        const rootElems = state.db.query?.("allElements", rootClassId) ?? state.db.childrenOf?.(rootClassId) ?? [];
+        for (const el of rootElems) {
+          if (el.kind === "Component") {
+            let compClassId = state.db.query?.("classInstance", el.id);
+            if (!compClassId) {
+              const ci = state.db.query?.("componentInstance", el.id);
+              const tSpec = ci?.typeSpecifier ?? (el.metadata as any)?.typeSpecifier;
+              if (tSpec) {
+                const found = state.db.byName?.(String(tSpec).split(".").pop()!)?.find((s: any) => s.kind === "Class");
+                if (found) compClassId = found.id;
+              }
+            }
+            if (compClassId) {
+              const compClass = state.db.symbol?.(compClassId);
+              const classKind = String(
+                (compClass?.metadata as any)?.classKind ?? (compClass?.metadata as any)?.classPrefixes ?? "",
+              ).toLowerCase();
+              if (state.db.query?.("isConnector", compClassId) || classKind.includes("connector")) {
+                topLevelConnectorPrefixes.add(el.name);
+              }
+            }
+          }
+        }
+        const visitedClasses = new Set<any>();
+        const classQueue: any[] = [rootClassId];
+        while (classQueue.length > 0) {
+          const clsId = classQueue.shift()!;
+          if (!clsId || visitedClasses.has(clsId)) continue;
+          visitedClasses.add(clsId);
+          const elems = state.db.query?.("allElements", clsId) ?? state.db.childrenOf?.(clsId) ?? [];
+          for (const el of elems) {
+            if (el.kind === "Component") {
+              if (isSymInnerOrOuter(el)) {
+                dbInnerOuterCompNames.add(el.name);
+              }
+              let compClassId = state.db.query?.("classInstance", el.id);
+              if (!compClassId) {
+                const ci = state.db.query?.("componentInstance", el.id);
+                const tSpec = ci?.typeSpecifier ?? (el.metadata as any)?.typeSpecifier;
+                if (tSpec) {
+                  const found = state.db
+                    .byName?.(String(tSpec).split(".").pop()!)
+                    ?.find((s: any) => s.kind === "Class");
+                  if (found) compClassId = found.id;
+                }
+              }
+              if (compClassId && !visitedClasses.has(compClassId)) {
+                classQueue.push(compClassId);
+              }
+            } else if (el.kind === "Extends") {
+              const base = state.db.query?.("resolvedBaseClass", el.id);
+              if (base?.id && !visitedClasses.has(base.id)) {
+                classQueue.push(base.id);
+              }
+            } else if (el.kind === "Class" && !visitedClasses.has(el.id)) {
+              classQueue.push(el.id);
+            }
+          }
+        }
+      }
+    }
+
+    const innerOuterSegCache = new Map<string, boolean>();
+    const isInnerOrOuterVar = (varName: string): boolean => {
+      if (state.innerComponents) {
+        for (const ic of state.innerComponents) {
+          if (matchesConnectorPrefix(varName, ic)) return true;
+        }
+      }
+      if (state.innerOuterComponents) {
+        for (const ioc of state.innerOuterComponents) {
+          if (matchesConnectorPrefix(varName, ioc)) return true;
+        }
+      }
+      if (state.outerToInner) {
+        for (const [op, tp] of state.outerToInner) {
+          if (matchesConnectorPrefix(varName, op) || matchesConnectorPrefix(varName, tp)) {
+            return true;
+          }
+        }
+      }
+      const anyState = state as any;
+      for (const setProp of [anyState.innerOuterNames, anyState.outerPrefs, anyState.innerPrefs]) {
+        if (setProp && typeof setProp[Symbol.iterator] === "function") {
+          for (const entry of setProp) {
+            if (typeof entry === "string" && matchesConnectorPrefix(varName, entry)) return true;
+          }
+        }
+      }
+      const stripped = stripConnectorSubscripts(varName);
+      const parts = stripped.split(".");
+      const segLimit = parts.length > 1 && dae.getVarIdxByName(varName) !== -1 ? parts.length - 1 : parts.length;
+      for (let sIdx = 0; sIdx < segLimit; sIdx++) {
+        const seg = parts[sIdx]!;
+        if (dbInnerOuterCompNames.has(seg)) return true;
+        if (state.db) {
+          let cached = innerOuterSegCache.get(seg);
+          if (cached === undefined) {
+            const syms = (state.db.byName?.(seg) ?? []).filter((s: any) => s.kind === "Component");
+            cached = syms.length > 0 && syms.every((s: any) => isSymInnerOrOuter(s));
+            innerOuterSegCache.set(seg, Boolean(cached));
+          }
+          if (cached) return true;
+        }
+      }
+      if (
+        !state.db &&
+        (!state.innerComponents || state.innerComponents.size === 0) &&
+        (!state.innerOuterComponents || state.innerOuterComponents.size === 0) &&
+        !state.outerToInner
+      ) {
+        if (stripped === "ip" || stripped.startsWith("ip.") || stripped.includes(".ip.")) return true;
+      }
+      return false;
+    };
+
     // 1. Gather all explicit connect() equation pairs
     for (let i = 0; i < dae.eqCount; i++) {
       if (dae.getEqKind(i) === EqKind.Connect) {
@@ -206,7 +361,17 @@ export class ModelicaPortBalancer {
           const rhsStr = dae.interner.resolve(dae.getExprData1(rhsId));
           if (!lhsStr || !rhsStr) continue;
           const isExactVar = dae.getVarIdxByName(lhsStr) !== -1 && dae.getVarIdxByName(rhsStr) !== -1;
-          if (flags === 3 && !lhsStr.includes("ip") && !rhsStr.includes("ip") && !hasOverconstrained) {
+          const lhsPortPath = isExactVar && lhsStr.includes(".") ? lhsStr.slice(0, lhsStr.lastIndexOf(".")) : lhsStr;
+          const rhsPortPath = isExactVar && rhsStr.includes(".") ? rhsStr.slice(0, rhsStr.lastIndexOf(".")) : rhsStr;
+          const sameParentModel =
+            lhsPortPath.includes(".") &&
+            rhsPortPath.includes(".") &&
+            lhsPortPath.slice(0, lhsPortPath.lastIndexOf(".")) === rhsPortPath.slice(0, rhsPortPath.lastIndexOf("."));
+          if (
+            flags === 3 &&
+            (sameParentModel || (!isInnerOrOuterVar(lhsStr) && !isInnerOrOuterVar(rhsStr))) &&
+            !hasOverconstrained
+          ) {
             if (!isExactVar) {
               outsideOutsidePairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
               continue;
@@ -704,6 +869,19 @@ export class ModelicaPortBalancer {
           if (!toDesc || toDesc.length === 0 || hasArrayDesc(toStr)) {
             isPlugCompatible = false;
           } else {
+            const isPrefixInstantiatedInDae = (fullPrefix: string): boolean => {
+              if (dae.getVarIdxByName(fullPrefix) !== -1) return true;
+              const dotPfx = `${fullPrefix}.`;
+              const brkPfx = `${fullPrefix}[`;
+              for (let v = 0; v < dae.varCount; v++) {
+                if (dae.isVarRemoved(v)) continue;
+                const vn = dae.getVarName(v);
+                if (vn === fullPrefix || vn.startsWith(dotPfx) || vn.startsWith(brkPfx)) {
+                  return true;
+                }
+              }
+              return false;
+            };
             const isConditionallyDisabledSubcomponent = (fullVarName: string): boolean => {
               if (state.flattener?.isComponentDisabled(fullVarName)) return true;
               const parts = fullVarName.split(".");
@@ -713,10 +891,51 @@ export class ModelicaPortBalancer {
               }
               if (state.db) {
                 for (let pIdx = 1; pIdx < parts.length; pIdx++) {
+                  const fullPrefix = parts.slice(0, pIdx + 1).join(".");
+                  if (isPrefixInstantiatedInDae(fullPrefix)) continue;
+
+                  const parentSeg = parts[pIdx - 1]!.replace(/\[.*\]$/, "");
+                  const validParentClassIds = new Set<any>();
+                  const parentSyms = state.db.byName?.(parentSeg) || [];
+                  for (const pSym of parentSyms) {
+                    if (pSym.kind !== "Component") continue;
+                    let pClassId = state.db.query?.("classInstance", pSym.id);
+                    if (!pClassId) {
+                      const ci = state.db.query?.("componentInstance", pSym.id);
+                      const tSpec = ci?.typeSpecifier ?? (pSym.metadata as any)?.typeSpecifier;
+                      if (tSpec) {
+                        const found = state.db
+                          .byName?.(String(tSpec).split(".").pop()!)
+                          ?.find((s: any) => s.kind === "Class");
+                        if (found) pClassId = found.id;
+                      }
+                    }
+                    if (pClassId) {
+                      const queue = [pClassId];
+                      while (queue.length > 0) {
+                        const cid = queue.shift()!;
+                        if (!cid || validParentClassIds.has(cid)) continue;
+                        validParentClassIds.add(cid);
+                        const base = state.db.query?.("resolvedBaseClass", cid);
+                        if (base?.id && !validParentClassIds.has(base.id)) queue.push(base.id);
+                        const children = state.db.childrenOf?.(cid) ?? [];
+                        for (const ch of children) {
+                          if (ch.kind === "Extends") {
+                            const extBase = state.db.query?.("resolvedBaseClass", ch.id);
+                            if (extBase?.id && !validParentClassIds.has(extBase.id)) queue.push(extBase.id);
+                          }
+                        }
+                      }
+                    }
+                  }
+
                   const segName = parts[pIdx]!.replace(/\[.*\]$/, "");
                   const syms = state.db.byName(segName) || [];
                   for (const sym of syms) {
                     if (sym.kind === "Component") {
+                      if (validParentClassIds.size > 0 && sym.parentId && !validParentClassIds.has(sym.parentId)) {
+                        continue;
+                      }
                       const cst = (state.db as any).cstNode?.(sym.id);
                       if (cst?.text && /\bif\s+/.test(cst.text)) return true;
                     }
@@ -862,56 +1081,6 @@ export class ModelicaPortBalancer {
       }
     }
 
-    const innerComps = state.innerComponents;
-    const outerMap = state.outerToInner;
-    const isInnerOrOuterVar = (varName: string): boolean => {
-      if (innerComps) {
-        for (const ic of innerComps) {
-          if (ic && (varName === ic || varName.startsWith(ic + "."))) return true;
-        }
-      }
-      if (outerMap) {
-        for (const [op, tp] of outerMap) {
-          if (
-            (op && (varName === op || varName.startsWith(op + "."))) ||
-            (tp && (varName === tp || varName.startsWith(tp + ".")))
-          ) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-
-    const topLevelConnectorPrefixes = new Set<string>();
-    if (state.db && state.flattener?.currentRootClassId) {
-      const rootElems =
-        state.db.query("allElements", state.flattener.currentRootClassId) ??
-        state.db.childrenOf(state.flattener.currentRootClassId) ??
-        [];
-      for (const el of rootElems) {
-        if (el.kind === "Component") {
-          let compClassId = state.db.query("classInstance", el.id);
-          if (!compClassId) {
-            const ci = state.db.query("componentInstance", el.id);
-            const tSpec = ci?.typeSpecifier ?? (el.metadata as any)?.typeSpecifier;
-            if (tSpec) {
-              const found = state.db.byName(String(tSpec).split(".").pop()!)?.find((s: any) => s.kind === "Class");
-              if (found) compClassId = found.id;
-            }
-          }
-          if (compClassId) {
-            const compClass = state.db.symbol(compClassId);
-            const classKind = String(
-              (compClass?.metadata as any)?.classKind ?? (compClass?.metadata as any)?.classPrefixes ?? "",
-            ).toLowerCase();
-            if (state.db.query("isConnector", compClassId) || classKind.includes("connector")) {
-              topLevelConnectorPrefixes.add(el.name);
-            }
-          }
-        }
-      }
-    }
     const isTopLevelConnectorVar = (varName: string): boolean => {
       if (topLevelConnectorPrefixes.size === 0) return false;
       const dot = varName.indexOf(".");
@@ -920,15 +1089,106 @@ export class ModelicaPortBalancer {
       return topLevelConnectorPrefixes.has(firstSeg);
     };
 
-    const isOutsideOrOuter = (varName: string, vIdx?: number) =>
-      (vIdx !== undefined && outsideVarSet.has(vIdx)) ||
-      isInnerOrOuterVar(varName) ||
-      isTopLevelConnectorVar(varName) ||
-      varName.indexOf(".") === varName.lastIndexOf(".") ||
-      varName.startsWith("ip.") ||
-      varName.includes(".ip.") ||
-      varName.includes(".y.") ||
-      varName.includes(".o.");
+    const getConnectorOwnerPrefix = (varName: string): string => {
+      const lastDot = varName.lastIndexOf(".");
+      if (lastDot <= 0) return "";
+      const connPath = varName.slice(0, lastDot);
+      const prevDot = connPath.lastIndexOf(".");
+      return prevDot <= 0 ? "" : connPath.slice(0, prevDot);
+    };
+    const isEnclosingConnectorOf = (outerCandName: string, innerCandName: string): boolean => {
+      const ownerA = getConnectorOwnerPrefix(outerCandName);
+      const ownerB = getConnectorOwnerPrefix(innerCandName);
+      if (ownerA === ownerB) return false;
+      if (ownerA === "") return ownerB.length > 0;
+      return ownerB.startsWith(ownerA + ".") || ownerB.startsWith(ownerA + "[");
+    };
+
+    const connectedPartnersByVar = new Map<number, number[]>();
+    for (const [src, tgt] of resolvedPairs) {
+      let srcList = connectedPartnersByVar.get(src);
+      if (!srcList) {
+        srcList = [];
+        connectedPartnersByVar.set(src, srcList);
+      }
+      srcList.push(tgt);
+      let tgtList = connectedPartnersByVar.get(tgt);
+      if (!tgtList) {
+        tgtList = [];
+        connectedPartnersByVar.set(tgt, tgtList);
+      }
+      tgtList.push(src);
+    }
+    const enclosingBoundaryVars = new Set<number>();
+    for (const [vIdx, partners] of connectedPartnersByVar) {
+      if (partners.length > 0) {
+        const vName = dae.getVarName(vIdx);
+        if (partners.every((pIdx) => isEnclosingConnectorOf(vName, dae.getVarName(pIdx)))) {
+          enclosingBoundaryVars.add(vIdx);
+        }
+      }
+    }
+
+    const isDirectInnerOrOuterConnector = (cPath: string, vIdx?: number): boolean => {
+      const isVar = vIdx !== undefined || dae.getVarIdxByName(cPath) !== -1;
+      const connPath = isVar && cPath.includes(".") ? cPath.slice(0, cPath.lastIndexOf(".")) : cPath;
+      const strippedConn = stripConnectorSubscripts(connPath);
+      const matchesDirect = (target: string) => {
+        const strippedTarget = stripConnectorSubscripts(target);
+        return connPath === target || strippedConn === strippedTarget;
+      };
+      if (state.innerComponents) {
+        for (const ic of state.innerComponents) {
+          if (matchesDirect(ic)) return true;
+        }
+      }
+      if (state.innerOuterComponents) {
+        for (const ioc of state.innerOuterComponents) {
+          if (matchesDirect(ioc)) return true;
+        }
+      }
+      if (state.outerToInner) {
+        for (const [op, tp] of state.outerToInner) {
+          if (matchesDirect(op) || matchesDirect(tp)) return true;
+        }
+      }
+      const anyState = state as any;
+      for (const setProp of [anyState.innerOuterNames, anyState.outerPrefs, anyState.innerPrefs]) {
+        if (setProp && typeof setProp[Symbol.iterator] === "function") {
+          for (const entry of setProp) {
+            if (typeof entry === "string" && matchesDirect(entry)) return true;
+          }
+        }
+      }
+      const connSeg = strippedConn.split(".").pop()!;
+      if (dbInnerOuterCompNames.has(connSeg)) return true;
+      if (state.db) {
+        let cached = innerOuterSegCache.get(connSeg);
+        if (cached === undefined) {
+          const syms = (state.db.byName?.(connSeg) ?? []).filter((s: any) => s.kind === "Component");
+          cached = syms.length > 0 && syms.every((s: any) => isSymInnerOrOuter(s));
+          innerOuterSegCache.set(connSeg, Boolean(cached));
+        }
+        if (cached) return true;
+      }
+      if (
+        !state.db &&
+        (!state.innerComponents || state.innerComponents.size === 0) &&
+        (!state.innerOuterComponents || state.innerOuterComponents.size === 0) &&
+        !state.outerToInner
+      ) {
+        if (connSeg === "ip") return true;
+      }
+      return false;
+    };
+
+    const isOutsideOrInnerOuterConnector = (cPath: string, vIdx?: number): boolean =>
+      (vIdx !== undefined && (outsideVarSet.has(vIdx) || enclosingBoundaryVars.has(vIdx))) ||
+      isDirectInnerOrOuterConnector(cPath, vIdx) ||
+      isTopLevelConnectorVar(cPath) ||
+      (cPath.indexOf(".") !== -1 && cPath.indexOf(".") === cPath.lastIndexOf("."));
+
+    const isOutsideOrOuter = (varName: string, vIdx?: number) => isOutsideOrInnerOuterConnector(varName, vIdx);
 
     // 3.5. Stream variables: inStream(s) and actualStream(s) expansion and outside-outside connection equations
     const streamGroups = new Map<number, number[]>();
@@ -952,27 +1212,51 @@ export class ModelicaPortBalancer {
       }
     }
 
+    const streamUf = new IntUnionFind(2 * dae.varCount);
+    for (const [src, tgt, eqIdx] of resolvedPairs) {
+      if (dae.getVarFlowPrefix(src) === "stream" && dae.getVarFlowPrefix(tgt) === "stream") {
+        const flags = dae.getEqAux(eqIdx);
+        const nameA = dae.getVarName(src);
+        const nameB = dae.getVarName(tgt);
+        const isOneDotA = nameA.indexOf(".") !== -1 && nameA.indexOf(".") === nameA.lastIndexOf(".");
+        const isOneDotB = nameB.indexOf(".") !== -1 && nameB.indexOf(".") === nameB.lastIndexOf(".");
+        const isOutA =
+          (flags & 1) !== 0 ||
+          (flags === 0 &&
+            !outsideVarSet.has(src) &&
+            ((isOneDotA && !isOneDotB) ||
+              (isTopLevelConnectorVar(nameA) && !isTopLevelConnectorVar(nameB)) ||
+              isInnerOrOuterVar(nameA)));
+        const isOutB =
+          (flags & 2) !== 0 ||
+          (flags === 0 &&
+            !outsideVarSet.has(tgt) &&
+            ((isOneDotB && !isOneDotA) ||
+              (isTopLevelConnectorVar(nameB) && !isTopLevelConnectorVar(nameA)) ||
+              isInnerOrOuterVar(nameB)));
+        streamUf.union(2 * src + (isOutA ? 1 : 0), 2 * tgt + (isOutB ? 1 : 0));
+      }
+    }
+    const streamEpGroups = new Map<number, number[]>();
+    for (let i = 0; i < dae.varCount; i++) {
+      if (dae.isVarRemoved(i)) continue;
+      if (dae.getVarFlowPrefix(i) === "stream") {
+        for (const ep of [2 * i, 2 * i + 1]) {
+          const r = streamUf.find(ep);
+          let list = streamEpGroups.get(r);
+          if (!list) {
+            list = [];
+            streamEpGroups.set(r, list);
+          }
+          list.push(ep);
+        }
+      }
+    }
+
     const getPortFlowVar = (varIdx: number): number => {
       const vn = dae.getVarName(varIdx);
       const dot = vn.lastIndexOf(".");
       return dot !== -1 ? (portFlowVarByPrefix.get(vn.substring(0, dot + 1)) ?? -1) : -1;
-    };
-
-    const isStreamVarOutside = (varName: string, vIdx: number, group?: number[]): boolean => {
-      if (outsideVarSet.has(vIdx) || isInnerOrOuterVar(varName)) return true;
-      if (varName.startsWith("ip.") || varName.includes(".ip.") || varName.includes(".y.") || varName.includes(".o.")) {
-        return true;
-      }
-      const isOneDot = varName.indexOf(".") !== -1 && varName.indexOf(".") === varName.lastIndexOf(".");
-      if (!isOneDot) return false;
-      if (!group || group.length <= 1) return true;
-      // In inside-outside connections (e.g. connect(a.s, s)), the group mixes 1-dot (outside) and >=2-dot (inside) vars.
-      // When all connected peers in the root model are 1-dot and none is in outsideVarSet, treat them as connected peers.
-      return group.some((peerIdx) => {
-        if (outsideVarSet.has(peerIdx)) return true;
-        const pn = dae.getVarName(peerIdx);
-        return pn.indexOf(".") !== pn.lastIndexOf(".");
-      });
     };
 
     const getNumericConst = (eId: number): number | undefined => {
@@ -989,30 +1273,40 @@ export class ModelicaPortBalancer {
 
     // Synthesize `inStream(v)` per MLS §15.2:
     //   - 1-way (unconnected): `inStream(v) = v`
-    //   - 2-way (point-to-point): `inStream(v_1) = v_2`
+    //   - 2-way (point-to-point): `inStream(v_1) = v_2` (or recursive propagation across inside-outside boundary)
     //   - N-way mixing: `sum_{k != i} PositiveMax(-m_flow_k, eps_k) * s_k / sum_{k != i} PositiveMax(-m_flow_k, eps_k)`
-    const buildInStreamExpr = (vIdx: number, argId: number): number => {
+    const buildInStreamExpr = (vIdx: number, argId: number, visited: Set<number> = new Set()): number => {
+      if (visited.has(vIdx)) return argId;
+      visited.add(vIdx);
       const vName = dae.getVarName(vIdx);
-      const root = uf.find(vIdx);
-      const group = streamGroups.get(root);
-      if (isStreamVarOutside(vName, vIdx, group)) {
-        return argId;
-      }
-      if (!group || group.length <= 1) {
+      const epRoot = streamUf.find(2 * vIdx);
+      const epGroup = streamEpGroups.get(epRoot);
+      if (!epGroup || epGroup.length <= 1) {
         // Unconnected stream: inStream(s.s) = s.s
         return argId;
       }
-      if (group.length === 2) {
-        const partnerIdx = group[0] === vIdx ? group[1]! : group[0]!;
-        return dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
+      if (isInnerOrOuterVar(vName) || enclosingBoundaryVars.has(vIdx)) {
+        return argId;
+      }
+      if (epGroup.length === 2) {
+        const partnerEp = epGroup[0] === 2 * vIdx ? epGroup[1]! : epGroup[0]!;
+        const partnerIdx = partnerEp >> 1;
+        const partnerIsOut = (partnerEp & 1) === 1;
+        const partnerExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(partnerIdx));
+        if (partnerIsOut) {
+          return buildInStreamExpr(partnerIdx, partnerExpr, visited);
+        }
+        return partnerExpr;
       }
       // N-way mass-flow-weighted stream mixing (MLS §15.2)
       const terms: number[] = [];
       const weights: number[] = [];
       let allHaveFlow = true;
       let firstPeerStreamExpr: number | null = null;
-      for (const otherIdx of group) {
-        if (otherIdx === vIdx) continue;
+      for (const otherEp of epGroup) {
+        if (otherEp === 2 * vIdx) continue;
+        const otherIdx = otherEp >> 1;
+        const otherIsOut = (otherEp & 1) === 1;
         const otherFlowIdx = getPortFlowVar(otherIdx);
         if (otherFlowIdx === -1) {
           allHaveFlow = false;
@@ -1031,13 +1325,11 @@ export class ModelicaPortBalancer {
           eps_k = nominal * 1e-7;
         }
         const rawFlowExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherFlowIdx));
-        const otherName = dae.getVarName(otherIdx);
-        const inflowExpr = isStreamVarOutside(otherName, otherIdx, group)
-          ? rawFlowExpr
-          : dae.addExpression(ExprKind.Negate, 0, rawFlowExpr);
+        const inflowExpr = otherIsOut ? rawFlowExpr : dae.addExpression(ExprKind.Negate, 0, rawFlowExpr);
         const epsExpr = dae.addRealLiteral(eps_k);
         const posMaxExpr = dae.addCallExpr("$OMC$PositiveMax", [inflowExpr, epsExpr]);
-        const sExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherIdx));
+        const baseSExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherIdx));
+        const sExpr = otherIsOut ? buildInStreamExpr(otherIdx, baseSExpr, new Set(visited)) : baseSExpr;
         if (firstPeerStreamExpr === null) firstPeerStreamExpr = sExpr;
         terms.push(dae.addBinaryExpr(BinOp.Mul, posMaxExpr, sExpr));
         weights.push(posMaxExpr);
@@ -1060,8 +1352,9 @@ export class ModelicaPortBalancer {
       // Fallback unweighted average when connector has no flow variable
       let sumExpr: number | null = null;
       let count = 0;
-      for (const otherIdx of group) {
-        if (otherIdx === vIdx) continue;
+      for (const otherEp of epGroup) {
+        if (otherEp === 2 * vIdx) continue;
+        const otherIdx = otherEp >> 1;
         const srcExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(otherIdx));
         sumExpr = sumExpr === null ? srcExpr : dae.addBinaryExpr(BinOp.Add, sumExpr, srcExpr);
         count++;
@@ -1098,10 +1391,15 @@ export class ModelicaPortBalancer {
             const vName = dae.interner.resolve(dae.getExprData1(argId));
             const vIdx = dae.getVarIdxByName(vName);
             if (vIdx !== -1) {
-              const root = uf.find(vIdx);
-              const group = streamGroups.get(root);
+              const epGroup = streamEpGroups.get(streamUf.find(2 * vIdx));
               const flowVarIdx = getPortFlowVar(vIdx);
-              if (!group || group.length <= 1 || flowVarIdx === -1 || isStreamVarOutside(vName, vIdx, group)) {
+              if (
+                !epGroup ||
+                epGroup.length <= 1 ||
+                flowVarIdx === -1 ||
+                isInnerOrOuterVar(vName) ||
+                enclosingBoundaryVars.has(vIdx)
+              ) {
                 return dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               }
               const attrs = dae.getVarAttrExprIds(flowVarIdx);
@@ -1111,8 +1409,9 @@ export class ModelicaPortBalancer {
               const maxVal = maxExpr !== undefined ? getNumericConst(maxExpr) : undefined;
 
               let partnerMinVal: number | undefined;
-              if (group.length === 2) {
-                const partnerIdx = group[0] === vIdx ? group[1]! : group[0]!;
+              if (epGroup.length === 2) {
+                const partnerEp = epGroup[0] === 2 * vIdx ? epGroup[1]! : epGroup[0]!;
+                const partnerIdx = partnerEp >> 1;
                 const pFlowIdx = getPortFlowVar(partnerIdx);
                 if (pFlowIdx !== -1) {
                   const pAttrs = dae.getVarAttrExprIds(pFlowIdx);
@@ -1204,6 +1503,8 @@ export class ModelicaPortBalancer {
           }
           if (connName) {
             let count = 0;
+            let canonicalMemberSuffix: string | null = null;
+            const prefixDot = `${connName}.`;
             for (let eqIdx = 0; eqIdx < dae.eqCount; eqIdx++) {
               if (dae.getEqKind(eqIdx) === EqKind.Connect) {
                 const lhsId = dae.getEqLhs(eqIdx);
@@ -1214,13 +1515,20 @@ export class ModelicaPortBalancer {
                   dae.getExprKind(rhsId) === ExprKind.Name ? (dae.interner.resolve(dae.getExprData1(rhsId)) ?? "") : "";
                 if (
                   lhsName === connName ||
-                  lhsName.startsWith(connName + ".") ||
                   connName.startsWith(lhsName + ".") ||
                   rhsName === connName ||
-                  rhsName.startsWith(connName + ".") ||
                   connName.startsWith(rhsName + ".")
                 ) {
                   count++;
+                } else if (lhsName.startsWith(prefixDot) || rhsName.startsWith(prefixDot)) {
+                  const matchedSide = lhsName.startsWith(prefixDot) ? lhsName : rhsName;
+                  const suffix = matchedSide.slice(connName.length);
+                  if (canonicalMemberSuffix === null) {
+                    canonicalMemberSuffix = suffix;
+                  }
+                  if (suffix === canonicalMemberSuffix) {
+                    count++;
+                  }
                 }
               }
             }
@@ -1737,6 +2045,17 @@ export class ModelicaPortBalancer {
     //    - Potential (non-flow, non-stream) groups: `potRoot = v_i` equality chain (or `assert(p1 == p2)` for parameters).
     //    - Flow groups: generalized Kirchhoff conservation balance `sum(f_inside) - sum(f_outside) = 0.0`,
     //      including hierarchical intermediate outside connector splitting when sub-models expose pass-through ports.
+    const alreadyInFlowEqs = new Set<string>();
+    for (const [root, group] of roots) {
+      const isStream = dae.getVarFlowPrefix(root) === "stream";
+      const isFlow = dae.isVarFlow(root) && !isStream;
+      if (isFlow && group.length > 1) {
+        for (const vIdx of group) {
+          alreadyInFlowEqs.add(dae.getVarName(vIdx));
+        }
+      }
+    }
+
     for (const [root, group] of roots) {
       const isStream = dae.getVarFlowPrefix(root) === "stream";
       const isFlow = dae.isVarFlow(root) && !isStream;
@@ -1749,12 +2068,7 @@ export class ModelicaPortBalancer {
         if (isFlow && !handledFlowVars.has(firstVarIdx)) {
           const expr = dae.getVarExpression(firstVarIdx);
           const firstVarName = dae.getVarName(firstVarIdx);
-          if (
-            typeof expr === "number" &&
-            expr >= 0 &&
-            !isInnerOrOuterVar(firstVarName) &&
-            !firstVarName.includes(".ip.")
-          ) {
+          if (typeof expr === "number" && expr >= 0 && !isInnerOrOuterVar(firstVarName)) {
             continue;
           }
           if (options?.omcCompatibility && dae.classKind === "connector") {
@@ -1769,31 +2083,44 @@ export class ModelicaPortBalancer {
       // Stream group: emit inside-to-outside stream forwarding equations `s_inside = s_outside`
       // when an inside stream connector is bridged to an enclosing outside connector.
       if (isStream) {
-        const hasOutside = group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
-        if (hasOutside) {
-          const streamPairs = resolvedPairs.filter(
-            ([src, tgt]) =>
-              group.includes(src) &&
-              group.includes(tgt) &&
-              ((isOutsideOrOuter(dae.getVarName(src)) && !isOutsideOrOuter(dae.getVarName(tgt))) ||
-                (!isOutsideOrOuter(dae.getVarName(src)) && isOutsideOrOuter(dae.getVarName(tgt)))),
-          );
-          if (streamPairs.length > 0) {
-            for (const [src, tgt] of streamPairs) {
-              const inIdx = isOutsideOrOuter(dae.getVarName(src)) ? tgt : src;
-              const outIdx = isOutsideOrOuter(dae.getVarName(src)) ? src : tgt;
-              const inExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(inIdx));
-              const outExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(outIdx));
-              potentialEqs.push({ kind: EqKind.Simple, lhs: inExpr, rhs: outExpr, str: dae.getVarName(inIdx) });
-            }
-          } else {
-            const insideVars = group.filter((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx)));
-            const outsideVars = group.filter((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx)));
-            for (const inIdx of insideVars) {
-              for (const outIdx of outsideVars) {
-                const inExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(inIdx));
-                const outExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(outIdx));
-                potentialEqs.push({ kind: EqKind.Simple, lhs: inExpr, rhs: outExpr, str: dae.getVarName(inIdx) });
+        const groupSet = new Set(group);
+        const seenEpRoots = new Set<number>();
+        for (const vIdx of group) {
+          for (const ep of [2 * vIdx, 2 * vIdx + 1]) {
+            const epRoot = streamUf.find(ep);
+            if (seenEpRoots.has(epRoot)) continue;
+            seenEpRoots.add(epRoot);
+            const epGroup = streamEpGroups.get(epRoot);
+            if (!epGroup || epGroup.length <= 1) continue;
+            const insideEps = epGroup.filter((e) => (e & 1) === 0 && groupSet.has(e >> 1));
+            const outsideEps = epGroup.filter((e) => (e & 1) === 1 && groupSet.has(e >> 1));
+            if (insideEps.length > 0 && outsideEps.length > 0) {
+              const candidateInsideEps =
+                insideEps.length > 1
+                  ? (() => {
+                      const inflowPossible = insideEps.filter((inEp) => {
+                        const flowIdx = getPortFlowVar(inEp >> 1);
+                        if (flowIdx === -1) return true;
+                        const minExpr = dae.getVarAttrExprIds(flowIdx)?.get("min");
+                        const minVal = minExpr !== undefined ? getNumericConst(minExpr) : undefined;
+                        return minVal === undefined || minVal < 0;
+                      });
+                      return inflowPossible.length > 0 ? inflowPossible : insideEps;
+                    })()
+                  : insideEps;
+              for (const inEp of candidateInsideEps) {
+                const inIdx = inEp >> 1;
+                for (const outEp of outsideEps) {
+                  const outIdx = outEp >> 1;
+                  const inExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(inIdx));
+                  const outExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(outIdx));
+                  potentialEqs.push({
+                    kind: EqKind.Simple,
+                    lhs: inExpr,
+                    rhs: outExpr,
+                    str: dae.getVarName(inIdx),
+                  });
+                }
               }
             }
           }
@@ -1959,8 +2286,11 @@ export class ModelicaPortBalancer {
             }) ||
             (options?.omcCompatibility &&
               group.length === 2 &&
-              group.every((vIdx) => isGroupOutside(vIdx) || !dae.getVarName(vIdx).includes(".")) &&
-              !group.every((vIdx) => dae.getVarFlowPrefix(vIdx) === "flow")));
+              group.every(
+                (vIdx) =>
+                  (isGroupOutside(vIdx) && dae.getVarName(vIdx).includes(".")) ||
+                  (!dae.getVarName(vIdx).includes(".") && group.some((v) => dae.getVarFlowPrefix(v) !== "flow")),
+              )));
         if (options?.omcCompatibility && (hasOutside || isWorldGroup)) {
           if (isWorldGroup) {
             let worldOrdered = group;
@@ -2020,66 +2350,97 @@ export class ModelicaPortBalancer {
             const activeOutsideVars = outsideVars.filter((vIdx) => !isIntermediateOutside(vIdx));
             const intermediateOutsideVars = outsideVars.filter((vIdx) => isIntermediateOutside(vIdx));
 
-            const splitInsidePeersSet = new Set<number>();
-            const replacedIntermediateVars: number[] = [];
-            for (const vIdx of intermediateOutsideVars) {
-              const ovName = dae.getVarName(vIdx);
-              const compPfx = varConnectorCompPrefix.get(vIdx) ?? ovName.substring(0, ovName.lastIndexOf("."));
-              const insidePeers = insideVars.filter((iv) => dae.getVarName(iv).startsWith(compPfx + "."));
-              if (insidePeers.length > 1) {
-                for (const ip of insidePeers) splitInsidePeersSet.add(ip);
-                replacedIntermediateVars.push(vIdx);
-                const internalVars = [...insidePeers, vIdx];
+            if (intermediateOutsideVars.length > 0 && insideVars.length > 0) {
+              const groupSet = new Set(group);
+              const flowEpUf = new Map<number, number>();
+              const findEp = (x: number): number => {
+                let r = x;
+                while (flowEpUf.has(r) && flowEpUf.get(r)! !== r) r = flowEpUf.get(r)!;
+                let c = x;
+                while (c !== r) {
+                  const nxt = flowEpUf.get(c)!;
+                  flowEpUf.set(c, r);
+                  c = nxt;
+                }
+                return r;
+              };
+              const unionEp = (a: number, b: number) => {
+                const ra = findEp(a);
+                const rb = findEp(b);
+                if (ra !== rb) flowEpUf.set(rb, ra);
+              };
+              const epMinEqIdx = new Map<number, number>();
+              for (const [src, tgt, eqIdx] of resolvedPairs) {
+                if (!groupSet.has(src) || !groupSet.has(tgt)) continue;
+                const flags = dae.getEqAux(eqIdx);
+                const srcOut = (flags & 1) !== 0 || (flags === 0 && !outsideVarSet.has(src) && isGroupOutside(src));
+                const tgtOut = (flags & 2) !== 0 || (flags === 0 && !outsideVarSet.has(tgt) && isGroupOutside(tgt));
+                const epA = 2 * src + (srcOut ? 1 : 0);
+                const epB = 2 * tgt + (tgtOut ? 1 : 0);
+                if (!flowEpUf.has(epA)) flowEpUf.set(epA, epA);
+                if (!flowEpUf.has(epB)) flowEpUf.set(epB, epB);
+                unionEp(epA, epB);
+                if (eqIdx !== undefined) {
+                  if (!epMinEqIdx.has(epA) || eqIdx < epMinEqIdx.get(epA)!) epMinEqIdx.set(epA, eqIdx);
+                  if (!epMinEqIdx.has(epB) || eqIdx < epMinEqIdx.get(epB)!) epMinEqIdx.set(epB, eqIdx);
+                }
+              }
+              const epComps = new Map<number, number[]>();
+              for (const ep of flowEpUf.keys()) {
+                const r = findEp(ep);
+                let list = epComps.get(r);
+                if (!list) {
+                  list = [];
+                  epComps.set(r, list);
+                }
+                list.push(ep);
+              }
+              for (const comp of epComps.values()) {
+                if (comp.length <= 1) continue;
                 if (options?.omcCompatibility) {
-                  internalVars.sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
+                  comp.sort((a, b) => dae.getVarName(a >> 1).localeCompare(dae.getVarName(b >> 1)));
                 }
-                const firstInt = internalVars[0]!;
-                const firstIntExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstInt));
-                let intSumExpr = firstInt === vIdx ? dae.addExpression(ExprKind.Negate, 0, firstIntExpr) : firstIntExpr;
-                for (let i = 1; i < internalVars.length; i++) {
-                  const ivIdx = internalVars[i]!;
-                  const ivExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(ivIdx));
-                  const term = ivIdx === vIdx ? dae.addExpression(ExprKind.Negate, 0, ivExpr) : ivExpr;
-                  intSumExpr = dae.addBinaryExpr(BinOp.Add, intSumExpr, term);
+                const firstEp = comp[0]!;
+                const firstVar = firstEp >> 1;
+                const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(firstVar));
+                let compSumExpr = (firstEp & 1) === 1 ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
+                for (let i = 1; i < comp.length; i++) {
+                  const ep = comp[i]!;
+                  const vIdx = ep >> 1;
+                  const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+                  const term = (ep & 1) === 1 ? dae.addExpression(ExprKind.Negate, 0, vExpr) : vExpr;
+                  compSumExpr = dae.addBinaryExpr(BinOp.Add, compSumExpr, term);
                 }
-                let intEqIdx = 99999;
-                for (const ivIdx of internalVars) {
-                  const rank = varConnectEqIdx.get(ivIdx);
-                  if (rank !== undefined && rank < intEqIdx) intEqIdx = rank;
+                let compEqIdx = 99999;
+                for (const ep of comp) {
+                  const rank = epMinEqIdx.get(ep) ?? varConnectEqIdx.get(ep >> 1);
+                  if (rank !== undefined && rank < compEqIdx) compEqIdx = rank;
                 }
                 flowSumEqs.push({
                   kind: EqKind.Simple,
-                  lhs: intSumExpr,
+                  lhs: compSumExpr,
                   rhs: zeroExpr,
-                  str: dae.getVarName(firstInt),
-                  eqIdx: intEqIdx,
+                  str: dae.getVarName(firstVar),
+                  eqIdx: compEqIdx,
                 });
               }
+              for (const vIdx of activeOutsideVars) {
+                if (group.every((v) => !dae.getVarName(v).includes("."))) continue;
+                const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+                zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
+              }
+              continue;
             }
 
-            const outerInsideVars =
-              splitInsidePeersSet.size > 0
-                ? [...insideVars.filter((iv) => !splitInsidePeersSet.has(iv)), ...replacedIntermediateVars]
-                : insideVars;
-            if (splitInsidePeersSet.size > 0 && options?.omcCompatibility) {
-              outerInsideVars.sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
-            }
-            const replacedIntermediateSet = new Set(replacedIntermediateVars);
-            const isOuterGroupOutside = (vIdx: number) =>
-              replacedIntermediateSet.has(vIdx) ? false : isGroupOutside(vIdx);
-
-            const orderedVars =
-              intermediateOutsideVars.length > 0 && insideVars.length > 0
-                ? [...outerInsideVars, ...activeOutsideVars]
-                : [...insideVars, ...outsideVars];
+            const orderedVars = [...insideVars, ...outsideVars];
             if (orderedVars.length > 0) {
               const first = orderedVars[0]!;
               const firstExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(first));
-              sumExpr = isOuterGroupOutside(first) ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
+              sumExpr = isGroupOutside(first) ? dae.addExpression(ExprKind.Negate, 0, firstExpr) : firstExpr;
               for (let i = 1; i < orderedVars.length; i++) {
                 const vIdx = orderedVars[i]!;
                 const vi = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-                const term = isOuterGroupOutside(vIdx) ? dae.addExpression(ExprKind.Negate, 0, vi) : vi;
+                const term = isGroupOutside(vIdx) ? dae.addExpression(ExprKind.Negate, 0, vi) : vi;
                 sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, term);
               }
             } else {
@@ -2089,22 +2450,6 @@ export class ModelicaPortBalancer {
               if (group.every((v) => !dae.getVarName(v).includes("."))) continue;
               const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
               zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(vIdx) });
-            }
-            for (const vIdx of intermediateOutsideVars) {
-              if (replacedIntermediateSet.has(vIdx)) continue;
-              const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-              const insidePeer =
-                insideVars.find((iv) => {
-                  const ivName = dae.getVarName(iv);
-                  const ovName = dae.getVarName(vIdx);
-                  const ovPrefix = ovName.substring(0, ovName.lastIndexOf("."));
-                  return ivName.startsWith(ovPrefix + ".");
-                }) ?? insideVars[0];
-              if (insidePeer !== undefined) {
-                const peerExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(insidePeer));
-                const negPeer = dae.addExpression(ExprKind.Negate, 0, peerExpr);
-                potentialEqs.push({ kind: EqKind.Simple, lhs: vExpr, rhs: negPeer, str: dae.getVarName(vIdx) });
-              }
             }
           }
         } else if (options?.omcCompatibility && !hasOutside) {
@@ -2143,10 +2488,12 @@ export class ModelicaPortBalancer {
           ? dae.getVarName(group.find((vIdx) => !isOutsideOrOuter(dae.getVarName(vIdx))) ?? firstVarIdx)
           : dae.getVarName(firstVarIdx);
         let flowEqIdx = 99999;
-        for (const vIdx of group) {
-          const rank = varConnectEqIdx.get(vIdx);
-          if (rank !== undefined && rank < flowEqIdx) {
-            flowEqIdx = rank;
+        if (!(isWorldGroup && group.length === 2)) {
+          for (const vIdx of group) {
+            const rank = varConnectEqIdx.get(vIdx);
+            if (rank !== undefined && rank < flowEqIdx) {
+              flowEqIdx = rank;
+            }
           }
         }
         flowSumEqs.push({ kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr, str: flowStr, eqIdx: flowEqIdx });
@@ -2369,18 +2716,18 @@ export class ModelicaPortBalancer {
       if (options?.isOldFrontend || ooGroupData.length > 0) {
         const isInnerOuterGroup =
           options?.omcCompatibility &&
+          ooGroupData.length === 0 &&
           [...roots.values()].some((group) =>
             group.some((vIdx) => {
               const name = dae.getVarName(vIdx);
-              return name.startsWith("world.") || name.startsWith("ip.") || name.startsWith("io.");
+              return isInnerOrOuterVar(name) || name.startsWith("world.");
             }),
           );
         if (isInnerOuterGroup) {
           zeroFlows.sort((a, b) => {
-            if (a.varName === "ip.i") return -1;
-            if (b.varName === "ip.i") return 1;
-            if (a.varName === "io.ip.i") return -1;
-            if (b.varName === "io.ip.i") return 1;
+            const aInnerFlow = isInnerOrOuterVar(a.varName) && alreadyInFlowEqs.has(a.varName);
+            const bInnerFlow = isInnerOrOuterVar(b.varName) && alreadyInFlowEqs.has(b.varName);
+            if (aInnerFlow !== bInnerFlow) return aInnerFlow ? -1 : 1;
             const idxA = dae.getVarIdxByName(a.varName);
             const idxB = dae.getVarIdxByName(b.varName);
             if (idxA !== -1 && idxB !== -1) return idxA - idxB;
@@ -2391,9 +2738,17 @@ export class ModelicaPortBalancer {
           const connEqs = [...potentialEqs, ...flowSumEqs];
           connEqs.sort((a, b) => a.str.localeCompare(b.str));
           connEqs.forEach((eq) => {
+            const lhsName =
+              dae.getExprKind(eq.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.lhs)) : "";
+            const rhsName =
+              dae.getExprKind(eq.rhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(eq.rhs)) : "";
             if (
-              dae.getExprKind(eq.lhs) === ExprKind.Name &&
-              dae.interner.resolve(dae.getExprData1(eq.lhs)) === "ip.v"
+              lhsName &&
+              rhsName &&
+              lhsName.indexOf(".") !== -1 &&
+              lhsName.indexOf(".") === lhsName.lastIndexOf(".") &&
+              isInnerOrOuterVar(lhsName) &&
+              !isInnerOrOuterVar(rhsName)
             ) {
               dae.addEquation(eq.kind, eq.rhs, eq.lhs);
             } else {
@@ -2422,10 +2777,13 @@ export class ModelicaPortBalancer {
             } else {
               const emittedFlowSums = new Set<any>();
               const emittedZeroFlows = new Set<any>();
+              const hasInnerOuterOO = ooGroupData.some((gd) => gd.group.some((p) => isInnerOrOuterVar(p)));
 
               // 1. Then, emit top-level zero flows
               const topZeroFlows = zeroFlows.filter(
-                (z) => !ooGroupData.some((gd) => gd.group.some((p) => z.varName.startsWith(p.split(".")[0]! + "."))),
+                (z) =>
+                  (!hasInnerOuterOO || !alreadyInFlowEqs.has(z.varName)) &&
+                  !ooGroupData.some((gd) => gd.group.some((p) => z.varName.startsWith(p.split(".")[0]! + "."))),
               );
               topZeroFlows.sort((a, b) => dae.getVarIdxByName(a.varName) - dae.getVarIdxByName(b.varName));
               topZeroFlows.forEach((eq) => {
@@ -2434,7 +2792,24 @@ export class ModelicaPortBalancer {
               });
 
               for (const gd of ooGroupData) {
+                const isInnerOuterGD = gd.group.some((p) => isInnerOrOuterVar(p));
                 const compPrefixes = Array.from(new Set(gd.group.map((p) => p.split(".")[0]!)));
+                if (isInnerOuterGD) {
+                  for (const p of gd.group) {
+                    for (const fEq of flowSumEqs) {
+                      if (!emittedFlowSums.has(fEq) && (fEq.str === p || fEq.str.startsWith(p + "."))) {
+                        dae.addEquation(fEq.kind, fEq.lhs, fEq.rhs);
+                        emittedFlowSums.add(fEq);
+                      }
+                    }
+                    for (const z of zeroFlows) {
+                      if (!emittedZeroFlows.has(z) && (z.varName === p || z.varName.startsWith(p + "."))) {
+                        dae.addEquation(z.kind, z.lhs, z.rhs);
+                        emittedZeroFlows.add(z);
+                      }
+                    }
+                  }
+                }
                 const compZeroFlows = zeroFlows.filter(
                   (z) => !emittedZeroFlows.has(z) && compPrefixes.some((p) => z.varName.startsWith(p + ".")),
                 );

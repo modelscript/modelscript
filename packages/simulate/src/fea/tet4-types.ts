@@ -37,6 +37,10 @@ export interface MaterialProperties {
 export interface FeaBoundaryConditions {
   /** Set of fixed node indices (Dirichlet: ux = uy = uz = 0). */
   fixedNodes: Set<number>;
+  /** Optional set of individual fixed global DOF indices (3 * nodeIndex + d, where d in {0, 1, 2}). */
+  fixedDofs?: Set<number> | undefined;
+  /** Optional prescribed non-zero Dirichlet displacements mapped by global DOF index -> displacement in meters. */
+  prescribedDisplacements?: Map<number, number> | undefined;
   /** Applied point loads: nodeIndex -> [Fx, Fy, Fz] in Newtons. */
   nodalLoads: Map<number, [number, number, number]>;
   /** Enable geometrically non-linear corotational kinematics to eliminate artificial stress under rigid rotations. */

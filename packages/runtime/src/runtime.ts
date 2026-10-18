@@ -287,6 +287,9 @@ export interface QueryDB {
   /** Ensure all packages and symbols along the specified FQN path are indexed. */
   ensureFQNIndexed?(fqn: string): void;
 
+  /** Get current global query engine revision. */
+  getRevision?(): Revision;
+
   // -------------------------------------------------------------------------
   // Specialization — language-agnostic parameterized instances
   // -------------------------------------------------------------------------

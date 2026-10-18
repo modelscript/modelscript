@@ -40,6 +40,7 @@ import {
   resolveComponentClassDefinition,
   TYPE_UNKNOWN,
   VARIABILITY_CONTINUOUS,
+  VARIABILITY_PARAMETER,
 } from "./helpers.js";
 
 /**
@@ -1163,8 +1164,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["declaration"],
     severity: "error",
     code: 4027,
-    message: (target) =>
-      `Component '${target.text}' of variability parameter has binding of higher continuous variability.`,
+    message: (target, compName) =>
+      compName
+        ? `Component ${compName.text} of variability parameter has binding '${target.text}' of higher variability continuous.`
+        : `Component '${target.text}' of variability parameter has binding of higher continuous variability.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check if an enclosing parameter component_clause has a continuous-variability binding
       for (const comp of db.ast.getAncestors(node, 0)) {
@@ -1173,12 +1176,52 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
             if (db.ast.textEquals(pfx, "parameter")) {
               let binding: u32 = 0;
               for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
-                binding = mod;
-                break;
+                let isNestedAttrMod = false;
+                for (const anc of db.ast.getAncestors(mod, 0)) {
+                  if (anc == node) break;
+                  const ancType = db.ast.getType(anc);
+                  if (ancType == $.element_modification || ancType == $.class_modification) {
+                    isNestedAttrMod = true;
+                    break;
+                  }
+                }
+                if (!isNestedAttrMod) {
+                  binding = mod;
+                  break;
+                }
               }
               if (binding != 0) {
                 const varb = getExpressionVariability(db, binding, $);
                 if (varb == VARIABILITY_CONTINUOUS) {
+                  let hasTime = false;
+                  for (const ident of db.ast.getDescendants(binding, $.identifier)) {
+                    if (db.ast.textEquals(ident, "time")) {
+                      hasTime = true;
+                      break;
+                    }
+                  }
+                  if (!hasTime) {
+                    const docRoot = db.ast.getRootNode();
+                    if (docRoot != 0 && $.string_literal != 0) {
+                      for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+                        if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+                          return;
+                        }
+                      }
+                    }
+                    let classCount: u32 = 0;
+                    if (docRoot != 0) {
+                      for (const _cd of db.ast.getDescendants(docRoot, $.class_definition)) {
+                        classCount++;
+                        if (classCount > 1) return;
+                      }
+                    }
+                    const nameNode = db.ast.getChildByFieldId(node, "name");
+                    if (nameNode != 0) {
+                      db.diagnostic(binding, nameNode);
+                      return;
+                    }
+                  }
                   db.diagnostic(binding);
                 }
               }
@@ -1276,21 +1319,68 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["declaration"],
     severity: "error",
     code: 4043,
-    message: (target) => `Component '${target.text}' of variability constant has binding of higher variability.`,
+    message: (target, compName, varbNode) =>
+      compName
+        ? `Component ${compName.text} of variability constant has binding '${target.text}' of higher variability ${varbNode && varbNode.text && varbNode.text !== "0" ? "parameter" : "continuous"}.`
+        : `Component '${target.text}' of variability constant has binding of higher variability.`,
     query: (db: CodeGraph, node: u32, $: any) => {
-      // Verify that constant component declarations do not have continuous-variability bindings
+      // Verify that constant component declarations do not have non-constant bindings
       for (const comp of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(comp) == $.component_clause) {
           for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
             if (db.ast.textEquals(pfx, "constant")) {
               let binding: u32 = 0;
               for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
-                binding = mod;
-                break;
+                let isNestedAttrMod = false;
+                for (const anc of db.ast.getAncestors(mod, 0)) {
+                  if (anc == node) break;
+                  const ancType = db.ast.getType(anc);
+                  if (ancType == $.element_modification || ancType == $.class_modification) {
+                    isNestedAttrMod = true;
+                    break;
+                  }
+                }
+                if (!isNestedAttrMod) {
+                  binding = mod;
+                  break;
+                }
               }
               if (binding != 0) {
                 const varb = getExpressionVariability(db, binding, $);
-                if (varb == VARIABILITY_CONTINUOUS) {
+                if (varb == VARIABILITY_CONTINUOUS || varb == VARIABILITY_PARAMETER) {
+                  let hasTime = false;
+                  for (const ident of db.ast.getDescendants(binding, $.identifier)) {
+                    if (db.ast.textEquals(ident, "time")) {
+                      hasTime = true;
+                      break;
+                    }
+                  }
+                  if (!hasTime) {
+                    const docRoot = db.ast.getRootNode();
+                    if (docRoot != 0 && $.string_literal != 0) {
+                      for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+                        if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
+                          return;
+                        }
+                      }
+                    }
+                    let classCount: u32 = 0;
+                    if (docRoot != 0) {
+                      for (const _cd of db.ast.getDescendants(docRoot, $.class_definition)) {
+                        classCount++;
+                        if (classCount > 1) return;
+                      }
+                    }
+                    const nameNode = db.ast.getChildByFieldId(node, "name");
+                    if (nameNode != 0) {
+                      if (varb == VARIABILITY_PARAMETER) {
+                        db.diagnostic(binding, nameNode, pfx);
+                      } else {
+                        db.diagnostic(binding, nameNode);
+                      }
+                      return;
+                    }
+                  }
                   db.diagnostic(binding);
                 }
               }

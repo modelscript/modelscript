@@ -122,7 +122,7 @@ export class VectorAitkenRelaxation {
 
       if (deltaR_normSq > 1e-18) {
         const newOmega = -this.omega * (deltaR_dot_prevR / deltaR_normSq);
-        this.omega = Math.min(this.config.maxOmega, Math.max(this.config.minOmega, Math.abs(newOmega)));
+        this.omega = Math.min(this.config.maxOmega, Math.max(this.config.minOmega, newOmega));
       }
     } else {
       this.omega = this.config.initialOmega;

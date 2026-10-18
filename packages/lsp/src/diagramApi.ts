@@ -93,6 +93,7 @@ export interface ModelicaBackendDeps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolveClassInstance: (uri: string, className?: string) => any | null;
   flushValidation: (uri: string) => Promise<void>;
+  isDocumentStale?: (uri: string) => boolean;
 }
 
 export class ModelicaDiagramBackend implements DiagramBackend {
@@ -128,8 +129,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     let instances = this.deps.getDocumentInstances(params.uri);
     let docText = this.deps.getDocumentText(params.uri);
 
-    // Only flush validation synchronously if instances are not yet available
-    if (!instances?.[0] || !docText) {
+    // Flush validation synchronously if instances are not yet available or if the indexed CST is stale
+    if (!instances?.[0] || !docText || this.deps.isDocumentStale?.(params.uri)) {
       await this.deps.flushValidation(params.uri);
       instances = this.deps.getDocumentInstances(params.uri);
       docText = this.deps.getDocumentText(params.uri);
@@ -146,7 +147,15 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     if (
       result.edits.length === 0 &&
       params.actions.some(
-        (a) => a.type === "move" || a.type === "resize" || a.type === "rotate" || a.type === "moveEdge",
+        (a) =>
+          a.type === "move" ||
+          a.type === "resize" ||
+          a.type === "rotate" ||
+          a.type === "moveEdge" ||
+          a.type === "updateParameter" ||
+          a.type === "updateProperty" ||
+          a.type === "updateName" ||
+          a.type === "updateDescription",
       )
     ) {
       await this.deps.flushValidation(params.uri);

@@ -168,13 +168,19 @@ function initDiagramBridge() {
     onAction: enqueueDiagramAction,
     onSelect: (id: unknown) => {
       if (!id) {
+        currentRenderedNodeId = null;
         document.getElementById("properties-panel")?.classList.remove("open");
       }
     },
     onShowProperties: (nodeId: unknown, cachedProps: unknown, isLoading?: boolean) => {
+      if (typeof nodeId === "string" && (nodeId === "__diagram_background__" || nodeId === "__diagram_axes__")) {
+        currentRenderedNodeId = null;
+        document.getElementById("properties-panel")?.classList.remove("open");
+        return;
+      }
       showProperties({ id: nodeId, properties: cachedProps, isLoading });
-      // Only request full properties if not already loaded or if currently in loading state
-      if (!cachedProps || isLoading) {
+      // Only request full properties if not already loaded or if explicitly in loading state
+      if (!cachedProps || isLoading === true) {
         vscode.postMessage({ type: "getProperties", componentName: nodeId });
       }
     },
@@ -196,6 +202,7 @@ if (document.readyState === "loading") {
 // by @modelscript/diagram's canonical message handler in index.ts.
 
 const nodeActiveTabMap = new Map<string, string>();
+let currentRenderedNodeId: string | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function showProperties(nodeData: any) {
@@ -204,6 +211,7 @@ function showProperties(nodeData: any) {
   const title = document.getElementById("properties-title");
   if (!panel || !content || !title) return;
 
+  const nodeIdStr = String(nodeData.id ?? "");
   const props = nodeData.properties;
   const isLoading = nodeData.isLoading === true;
   const expectedTitle = props?.className ? props.className.split(".").pop()?.toUpperCase() : "PROPERTIES";
@@ -214,12 +222,12 @@ function showProperties(nodeData: any) {
     (document.activeElement?.tagName === "INPUT" ||
       document.activeElement?.tagName === "TEXTAREA" ||
       document.activeElement?.tagName === "SELECT") &&
-    title.textContent === expectedTitle &&
-    !isLoading
+    (currentRenderedNodeId === nodeIdStr || title.textContent === expectedTitle)
   ) {
     return;
   }
 
+  currentRenderedNodeId = nodeIdStr;
   title.textContent = expectedTitle as string;
 
   const loadingSpinner = `<div style="display: flex; align-items: center; gap: 8px; padding: 12px 0; color: var(--vscode-descriptionForeground, #888); font-size: 12px;">

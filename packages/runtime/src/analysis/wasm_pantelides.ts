@@ -42,14 +42,23 @@ export function containsDerivative(arena: DAEBuilder, exprId: number): boolean {
   switch (kind) {
     case ExprKind.Binary:
     case ExprKind.IfElse:
-    case ExprKind.Subscript:
     case ExprKind.Range:
       if (containsDerivative(arena, arena.getExprLeft(exprId))) return true;
       if (containsDerivative(arena, arena.getExprRight(exprId))) return true;
-      if (kind === ExprKind.IfElse || kind === ExprKind.Subscript || kind === ExprKind.Range) {
+      if (kind === ExprKind.IfElse || kind === ExprKind.Range) {
         if (containsDerivative(arena, arena.getExprData1(exprId))) return true;
       }
       return false;
+    case ExprKind.Subscript: {
+      if (containsDerivative(arena, arena.getExprData1(exprId))) return true;
+      const subCount = Math.max(1, arena.getExprRight(exprId));
+      const firstSub = arena.getExprLeft(exprId);
+      for (let i = 0; i < subCount; i++) {
+        const subExpr = i === 0 ? firstSub : arena.getExprLeft(exprId + i);
+        if (subExpr >= 0 && subExpr !== 0xffffffff && containsDerivative(arena, subExpr)) return true;
+      }
+      return false;
+    }
     case ExprKind.Unary:
     case ExprKind.Negate:
       return containsDerivative(arena, arena.getExprLeft(exprId));
@@ -157,11 +166,24 @@ function substituteStateDerAliases(arena: DAEBuilder, exprId: number, derToState
     }
     case ExprKind.Subscript: {
       const baseExpr = arena.getExprData1(exprId);
-      const idxExpr = arena.getExprLeft(exprId);
+      const subCount = Math.max(1, arena.getExprRight(exprId));
       const nBase = substituteStateDerAliases(arena, baseExpr, derToStateNameId);
-      const nIdx = substituteStateDerAliases(arena, idxExpr, derToStateNameId);
-      if (nBase !== baseExpr || nIdx !== idxExpr) {
-        return arena.addSubscriptExpr(nBase, [nIdx]);
+      let changed = nBase !== baseExpr;
+      const newSubs: number[] = [];
+      for (let j = 0; j < subCount; j++) {
+        const slotIdx = exprId + j;
+        const origSub =
+          j === 0
+            ? arena.getExprLeft(exprId)
+            : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+              ? arena.getExprLeft(slotIdx)
+              : arena.getExprLeft(exprId + j);
+        const nSub = substituteStateDerAliases(arena, origSub, derToStateNameId);
+        if (nSub !== origSub) changed = true;
+        newSubs.push(nSub);
+      }
+      if (changed) {
+        return arena.addSubscriptExpr(nBase, newSubs);
       }
       return exprId;
     }
@@ -247,6 +269,16 @@ function substituteAlgebraicDefinitions(
       const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth);
       return nl !== l ? arena.addUnaryExpr(arena.getExprData1(exprId), nl) : exprId;
     }
+    case ExprKind.Der: {
+      const inner = arena.getExprData1(exprId);
+      const nInner = substituteAlgebraicDefinitions(arena, inner, algVarDefs, depth);
+      return nInner !== inner ? arena.addDerExpr(nInner) : exprId;
+    }
+    case ExprKind.Pre: {
+      const inner = arena.getExprData1(exprId);
+      const nInner = substituteAlgebraicDefinitions(arena, inner, algVarDefs, depth);
+      return nInner !== inner ? arena.addPreExpr(nInner) : exprId;
+    }
     case ExprKind.IfElse: {
       const c = arena.getExprData1(exprId);
       const l = arena.getExprLeft(exprId);
@@ -282,6 +314,65 @@ function substituteAlgebraicDefinitions(
       }
       return callId;
     }
+    case ExprKind.Subscript: {
+      const baseExpr = arena.getExprData1(exprId);
+      const subCount = Math.max(1, arena.getExprRight(exprId));
+      const nBase = substituteAlgebraicDefinitions(arena, baseExpr, algVarDefs, depth);
+      let changed = nBase !== baseExpr;
+      const newSubs: number[] = [];
+      for (let j = 0; j < subCount; j++) {
+        const slotIdx = exprId + j;
+        const origSub =
+          j === 0
+            ? arena.getExprLeft(exprId)
+            : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+              ? arena.getExprLeft(slotIdx)
+              : arena.getExprLeft(exprId + j);
+        const nSub = substituteAlgebraicDefinitions(arena, origSub, algVarDefs, depth);
+        if (nSub !== origSub) changed = true;
+        newSubs.push(nSub);
+      }
+      return changed ? arena.addSubscriptExpr(nBase, newSubs) : exprId;
+    }
+    case ExprKind.ArrayCtor:
+    case ExprKind.Tuple: {
+      const rightVal = arena.getExprRight(exprId);
+      const data1Val = arena.getExprData1(exprId);
+      const count = rightVal > 0 ? rightVal : data1Val;
+      const first = arena.getExprLeft(exprId);
+      if (count <= 0 || first < 0) return exprId;
+      let changed = false;
+      const newElems: number[] = [];
+      for (let j = 0; j < count; j++) {
+        const slotIdx = exprId + j;
+        const origElem =
+          j === 0
+            ? first
+            : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+              ? arena.getExprLeft(slotIdx)
+              : first + j;
+        const substElem = substituteAlgebraicDefinitions(arena, origElem, algVarDefs, depth);
+        if (substElem !== origElem) changed = true;
+        newElems.push(substElem);
+      }
+      if (!changed) return exprId;
+      const headId = arena.addExpression(kind, count, newElems[0]!, count);
+      for (let j = 1; j < count; j++) {
+        arena.addExpression(ExprKind.Tuple, 0, newElems[j]!, 0);
+      }
+      return headId;
+    }
+    case ExprKind.Range: {
+      const startExpr = arena.getExprData1(exprId);
+      const stepExpr = arena.getExprLeft(exprId);
+      const stopExpr = arena.getExprRight(exprId);
+      const nStart = substituteAlgebraicDefinitions(arena, startExpr, algVarDefs, depth);
+      const nStep = stepExpr >= 0 ? substituteAlgebraicDefinitions(arena, stepExpr, algVarDefs, depth) : stepExpr;
+      const nStop = substituteAlgebraicDefinitions(arena, stopExpr, algVarDefs, depth);
+      return nStart !== startExpr || nStep !== stepExpr || nStop !== stopExpr
+        ? arena.addExpression(ExprKind.Range, nStart, nStep, nStop)
+        : exprId;
+    }
     default:
       return exprId;
   }
@@ -309,10 +400,17 @@ export function pantelidesIndexReductionArena(
     stateVarStringIds.add(arena.getVarNameId(sv));
   }
 
+  const isSkipEq = (eqIdx: number): boolean => {
+    if (arena.isEqRemoved?.(eqIdx) || arena.isEqInitial?.(eqIdx)) return true;
+    const eqFlags = arena.getEqFlags?.(eqIdx) ?? 0;
+    return eqFlags !== -1 && eqFlags >>> 0 !== 0xffffffff && (eqFlags & 1) /* FLAG_EQ_INITIAL */ !== 0;
+  };
+
   // Identify explicit kinematic state-derivative definitions `der(q) = v` where both q, v ∈ stateVars
   const derToStateNameId = new Map<number, number>();
   const velocityStates = new Set<number>();
   for (let i = 0; i < arena.eqCount; i++) {
+    if (isSkipEq(i)) continue;
     if (arena.getEqKind(i) !== EqKind.Simple) continue;
     const lhs = arena.getEqLhs(i);
     const rhs = arena.getEqRhs(i);
@@ -355,6 +453,7 @@ export function pantelidesIndexReductionArena(
     const algVarDefs = new Map<number, number>();
     const algDefEqIndices = new Set<number>();
     for (let i = 0; i < eqCountSnapshot; i++) {
+      if (isSkipEq(i)) continue;
       if (arena.getEqKind(i) !== EqKind.Simple) continue;
       const lhs = arena.getEqLhs(i);
       const rhs = arena.getEqRhs(i);
@@ -398,6 +497,7 @@ export function pantelidesIndexReductionArena(
     }
 
     for (let i = 0; i < eqCountSnapshot; i++) {
+      if (isSkipEq(i)) continue;
       if (arena.getEqKind(i) !== EqKind.Simple) continue;
       if (algDefEqIndices.has(i)) continue;
 

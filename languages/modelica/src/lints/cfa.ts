@@ -1210,7 +1210,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
     for (const [outName, outInfo] of outputs) {
       const isAssigned =
         currentAssigned.has(outName) ||
-        ((outInfo.isArray || hasWhile || (outputs.size > 1 && currentAssigned.size > 0)) &&
+        ((outInfo.isArray || hasWhile || (outputs.size > 1 && currentAssigned.size > inputs.size)) &&
           allAssignedEver.has(outName));
       if (!isAssigned) {
         results.push(

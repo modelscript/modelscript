@@ -103,22 +103,49 @@ export function quaternionFromEuler(x: number, y: number, z: number, order = "XY
     qz = 0,
     qw = 1;
 
-  if (order === "XYZ") {
-    qx = s1 * c2 * c3 + c1 * s2 * s3;
-    qy = c1 * s2 * c3 - s1 * c2 * s3;
-    qz = c1 * c2 * s3 + s1 * s2 * c3;
-    qw = c1 * c2 * c3 - s1 * s2 * s3;
-  } else if (order === "ZYX") {
-    qx = s1 * c2 * c3 - c1 * s2 * s3;
-    qy = c1 * s2 * c3 + s1 * c2 * s3;
-    qz = c1 * c2 * s3 - s1 * s2 * c3;
-    qw = c1 * c2 * c3 + s1 * s2 * s3;
-  } else {
-    // Default fallback to XYZ
-    qx = s1 * c2 * c3 + c1 * s2 * s3;
-    qy = c1 * s2 * c3 - s1 * c2 * s3;
-    qz = c1 * c2 * s3 + s1 * s2 * c3;
-    qw = c1 * c2 * c3 - s1 * s2 * s3;
+  switch (order) {
+    case "XYZ":
+      qx = s1 * c2 * c3 + c1 * s2 * s3;
+      qy = c1 * s2 * c3 - s1 * c2 * s3;
+      qz = c1 * c2 * s3 + s1 * s2 * c3;
+      qw = c1 * c2 * c3 - s1 * s2 * s3;
+      break;
+    case "YXZ":
+      qx = s1 * c2 * c3 + c1 * s2 * s3;
+      qy = c1 * s2 * c3 - s1 * c2 * s3;
+      qz = c1 * c2 * s3 - s1 * s2 * c3;
+      qw = c1 * c2 * c3 + s1 * s2 * s3;
+      break;
+    case "ZXY":
+      qx = s1 * c2 * c3 - c1 * s2 * s3;
+      qy = c1 * s2 * c3 + s1 * c2 * s3;
+      qz = c1 * c2 * s3 + s1 * s2 * c3;
+      qw = c1 * c2 * c3 - s1 * s2 * s3;
+      break;
+    case "ZYX":
+      qx = s1 * c2 * c3 - c1 * s2 * s3;
+      qy = c1 * s2 * c3 + s1 * c2 * s3;
+      qz = c1 * c2 * s3 - s1 * s2 * c3;
+      qw = c1 * c2 * c3 + s1 * s2 * s3;
+      break;
+    case "YZX":
+      qx = s1 * c2 * c3 + c1 * s2 * s3;
+      qy = c1 * s2 * c3 + s1 * c2 * s3;
+      qz = c1 * c2 * s3 - s1 * s2 * c3;
+      qw = c1 * c2 * c3 - s1 * s2 * s3;
+      break;
+    case "XZY":
+      qx = s1 * c2 * c3 - c1 * s2 * s3;
+      qy = c1 * s2 * c3 - s1 * c2 * s3;
+      qz = c1 * c2 * s3 + s1 * s2 * c3;
+      qw = c1 * c2 * c3 + s1 * s2 * s3;
+      break;
+    default:
+      qx = s1 * c2 * c3 + c1 * s2 * s3;
+      qy = c1 * s2 * c3 - s1 * c2 * s3;
+      qz = c1 * c2 * s3 + s1 * s2 * c3;
+      qw = c1 * c2 * c3 - s1 * s2 * s3;
+      break;
   }
 
   const len = Math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw) || 1.0;
@@ -176,7 +203,12 @@ export function quaternionSlerp(qa: Quat, qb: Quat, t: number): Quat {
   const sinHalfTheta = Math.sqrt(1.0 - cosHalfTheta * cosHalfTheta);
 
   if (Math.abs(sinHalfTheta) < 0.001) {
-    return [qa[0] * 0.5 + bx * 0.5, qa[1] * 0.5 + by * 0.5, qa[2] * 0.5 + bz * 0.5, qa[3] * 0.5 + bw * 0.5];
+    const rx = qa[0] * (1 - t) + bx * t;
+    const ry = qa[1] * (1 - t) + by * t;
+    const rz = qa[2] * (1 - t) + bz * t;
+    const rw = qa[3] * (1 - t) + bw * t;
+    const len = Math.hypot(rx, ry, rz, rw) || 1.0;
+    return [rx / len, ry / len, rz / len, rw / len];
   }
 
   const ratioA = Math.sin((1 - t) * halfTheta) / sinHalfTheta;
@@ -195,23 +227,92 @@ export function quaternionSlerp(qa: Quat, qb: Quat, t: number): Quat {
  */
 export function quaternionToEuler(q: Quat, order = "XYZ", inDegrees = true): [number, number, number] {
   const [x, y, z, w] = q;
-  const sqw = w * w;
   const sqx = x * x;
   const sqy = y * y;
   const sqz = z * z;
+
+  const m00 = 1 - 2 * (sqy + sqz);
+  const m01 = 2 * (x * y - w * z);
+  const m02 = 2 * (x * z + w * y);
+  const m10 = 2 * (x * y + w * z);
+  const m11 = 1 - 2 * (sqx + sqz);
+  const m12 = 2 * (y * z - w * x);
+  const m20 = 2 * (x * z - w * y);
+  const m21 = 2 * (y * z + w * x);
+  const m22 = 1 - 2 * (sqx + sqy);
+
+  const clamp = (v: number) => Math.max(-1, Math.min(1, v));
 
   let ex = 0,
     ey = 0,
     ez = 0;
 
-  if (order === "XYZ") {
-    ex = Math.atan2(2 * (w * x - y * z), sqw - sqx - sqy + sqz);
-    ey = Math.asin(Math.max(-1, Math.min(1, 2 * (w * y + x * z))));
-    ez = Math.atan2(2 * (w * z - x * y), sqw + sqx - sqy - sqz);
-  } else {
-    ex = Math.atan2(2 * (w * x + y * z), 1 - 2 * (sqx + sqy));
-    ey = Math.asin(Math.max(-1, Math.min(1, 2 * (w * y - z * x))));
-    ez = Math.atan2(2 * (w * z + x * y), 1 - 2 * (sqy + sqz));
+  switch (order) {
+    case "XYZ":
+      ey = Math.asin(clamp(m02));
+      if (Math.abs(m02) < 0.9999999) {
+        ex = Math.atan2(-m12, m22);
+        ez = Math.atan2(-m01, m00);
+      } else {
+        ex = Math.atan2(m21, m11);
+        ez = 0;
+      }
+      break;
+    case "YXZ":
+      ex = Math.asin(-clamp(m12));
+      if (Math.abs(m12) < 0.9999999) {
+        ey = Math.atan2(m02, m22);
+        ez = Math.atan2(m10, m11);
+      } else {
+        ey = Math.atan2(-m20, m00);
+        ez = 0;
+      }
+      break;
+    case "ZXY":
+      ex = Math.asin(clamp(m21));
+      if (Math.abs(m21) < 0.9999999) {
+        ey = Math.atan2(-m20, m22);
+        ez = Math.atan2(-m01, m11);
+      } else {
+        ey = 0;
+        ez = Math.atan2(m10, m00);
+      }
+      break;
+    case "ZYX":
+      ey = Math.asin(-clamp(m20));
+      if (Math.abs(m20) < 0.9999999) {
+        ex = Math.atan2(m21, m22);
+        ez = Math.atan2(m10, m00);
+      } else {
+        ex = 0;
+        ez = Math.atan2(-m01, m11);
+      }
+      break;
+    case "YZX":
+      ez = Math.asin(clamp(m10));
+      if (Math.abs(m10) < 0.9999999) {
+        ex = Math.atan2(-m12, m11);
+        ey = Math.atan2(-m20, m00);
+      } else {
+        ex = 0;
+        ey = Math.atan2(m02, m22);
+      }
+      break;
+    case "XZY":
+      ez = Math.asin(-clamp(m01));
+      if (Math.abs(m01) < 0.9999999) {
+        ex = Math.atan2(m21, m11);
+        ey = Math.atan2(m02, m00);
+      } else {
+        ex = Math.atan2(-m12, m22);
+        ey = 0;
+      }
+      break;
+    default:
+      ey = Math.asin(clamp(m02));
+      ex = Math.atan2(-m12, m22);
+      ez = Math.atan2(-m01, m00);
+      break;
   }
 
   const factor = inDegrees ? 180 / Math.PI : 1;

@@ -305,8 +305,8 @@ export function startNodeServer(input?: any, output?: any) {
   const require = createRequire(import.meta.url);
   const builtInPkgs = [
     { id: "modelica", pkg: "@modelscript/modelica", name: "Modelica", ext: [".mo", ".mos", ".msim"] },
-    { id: "sysml2", pkg: "@modelscript/sysml2", name: "SysML v2", ext: [".sysml", ".sysml2"] },
     { id: "sysml", pkg: "@modelscript/sysml2", name: "SysML v2", ext: [".sysml", ".sysml2"] },
+    { id: "sysml2", pkg: "@modelscript/sysml2", name: "SysML v2", ext: [".sysml", ".sysml2"] },
     { id: "step", pkg: "@modelscript/step", name: "STEP", ext: [".step", ".stp", ".p21"] },
     { id: "owl2", pkg: "@modelscript/owl2", name: "OWL2", ext: [".owl", ".owl2", ".ofn", ".ttl"] },
     { id: "csv", pkg: "@modelscript/csv", name: "CSV", ext: [".csv"] },
@@ -383,7 +383,7 @@ export function startNodeServer(input?: any, output?: any) {
               createQueryEngine:
                 item.id === "modelica"
                   ? (idx: any, tree?: any) => createModelicaQueryEngine(idx, tree)
-                  : item.id === "sysml2"
+                  : item.id === "sysml2" || item.id === "sysml"
                     ? (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree)
                     : item.id === "owl2"
                       ? (idx: any, tree?: any) => createOWL2QueryEngine(idx, tree)
@@ -792,11 +792,16 @@ export function startNodeServer(input?: any, output?: any) {
             const prevIndexedText = validationService.lastIndexedText.get(effectiveUri);
             if (prevIndexedText !== cached.text) {
               validationService.lastIndexedText.set(effectiveUri, cached.text);
-              let actualEditRanges: { oldStartByte: number; oldEndByte: number }[] | undefined;
+              let actualEditRanges: { startOffset: number; endOffset: number }[] | undefined;
               let totalDelta: number | undefined;
               if (prevIndexedText !== undefined) {
                 const edit = computeTreeEdit(prevIndexedText, cached.text);
-                actualEditRanges = [{ oldStartByte: edit.startIndex, oldEndByte: edit.oldEndIndex }];
+                actualEditRanges = [
+                  {
+                    startOffset: edit.startIndex,
+                    endOffset: Math.max(edit.oldEndIndex, edit.newEndIndex),
+                  },
+                ];
                 totalDelta = edit.newEndIndex - edit.oldEndIndex;
               }
               if (wsIndex.has(effectiveUri)) {

@@ -187,7 +187,7 @@ export class CaeSolverRunner {
       const vtuPath = path.join(spec.resultDir, "result.vtu");
       const scalarsPath = path.join(spec.resultDir, "scalars.json");
 
-      await this.processResults(spec, tmpDir, vtuPath, scalarsPath);
+      await this.processResults(spec, tmpDir, vtuPath, scalarsPath, simulatedFallback);
 
       telemetryStreamer.emit("telemetry", {
         type: "phase",
@@ -296,7 +296,13 @@ export class CaeSolverRunner {
     };
   }
 
-  private async processResults(spec: CaeJobSpec, tmpDir: string, vtuPath: string, scalarsPath: string): Promise<void> {
+  private async processResults(
+    spec: CaeJobSpec,
+    tmpDir: string,
+    vtuPath: string,
+    scalarsPath: string,
+    simulatedFallback?: boolean,
+  ): Promise<void> {
     if (spec.solver === "calculix") {
       const frdPath = path.join(tmpDir, "job.frd");
       if (fs.existsSync(frdPath)) {
@@ -305,7 +311,10 @@ export class CaeSolverRunner {
         const vtuXml = CaeResultProcessor.convertFrdToVtu(parsedFrd);
         fs.writeFileSync(vtuPath, vtuXml, "utf8");
 
-        const scalars = CaeResultProcessor.extractScalarSummary(vtuXml, "CalculiX");
+        const scalars = {
+          ...CaeResultProcessor.extractScalarSummary(vtuXml, "CalculiX"),
+          ...(simulatedFallback ? { simulatedFallback: true } : {}),
+        };
         fs.writeFileSync(scalarsPath, JSON.stringify(scalars, null, 2), "utf8");
 
         const meshPayload = CaeResultProcessor.extractFeaMeshPayload(parsedFrd);
@@ -321,7 +330,10 @@ export class CaeSolverRunner {
       const firstVtk = vtkFiles[0];
       if (firstVtk) {
         fs.copyFileSync(path.join(tmpDir, firstVtk), vtuPath);
-        const scalars = CaeResultProcessor.extractScalarSummary(vtuPath, "SU2");
+        const scalars = {
+          ...CaeResultProcessor.extractScalarSummary(vtuPath, "SU2"),
+          ...(simulatedFallback ? { simulatedFallback: true } : {}),
+        };
         fs.writeFileSync(scalarsPath, JSON.stringify(scalars, null, 2), "utf8");
 
         const vtuXml = fs.readFileSync(vtuPath, "utf8");
@@ -337,7 +349,10 @@ export class CaeSolverRunner {
     const firstVtu = vtuCandidates[0];
     if (firstVtu) {
       fs.copyFileSync(path.join(tmpDir, firstVtu), vtuPath);
-      const scalars = CaeResultProcessor.extractScalarSummary(vtuPath, spec.solver);
+      const scalars = {
+        ...CaeResultProcessor.extractScalarSummary(vtuPath, spec.solver),
+        ...(simulatedFallback ? { simulatedFallback: true } : {}),
+      };
       fs.writeFileSync(scalarsPath, JSON.stringify(scalars, null, 2), "utf8");
 
       const vtuXml = fs.readFileSync(vtuPath, "utf8");
@@ -373,17 +388,91 @@ export class CaeSolverRunner {
       const num = parseFloat(match[1]);
       if (!isNaN(num) && num > 0) scale = num / 100.0;
     } else {
-      const hashByte = Buffer.from(spec.jobId).reduce((a, b) => a + b, 0);
-      scale = 0.8 + (hashByte % 10) * 0.1;
+      const cloadMatch = spec.deckContent.match(/\*CLOAD[\s\S]*?\n\s*\d+\s*,\s*\d+\s*,\s*([-+\d.eE]+)/i);
+      if (cloadMatch && cloadMatch[1]) {
+        const loadVal = Math.abs(parseFloat(cloadMatch[1]));
+        if (!isNaN(loadVal) && loadVal > 0) scale = loadVal / 100.0;
+      } else {
+        const hashByte = Buffer.from(spec.jobId).reduce((a, b) => a + b, 0);
+        scale = 0.8 + (hashByte % 10) * 0.1;
+      }
     }
 
-    const s1 = (1e7 * scale).toExponential(3);
-    const s2 = (2e7 * scale).toExponential(3);
-    const s3 = (1.5e7 * scale).toExponential(3);
-    const s4 = (5e7 * scale).toExponential(3);
-    const d2 = (-0.002 * scale).toFixed(5);
-    const d3 = (-0.002 * scale).toFixed(5);
-    const d4 = (-0.005 * scale).toFixed(5);
+    // Parse *NODE and *ELEMENT from job.inp if present
+    const parsedNodes: { id: number; x: number; y: number; z: number }[] = [];
+    const parsedElems: { id: number; nodes: number[] }[] = [];
+    let section: "none" | "node" | "element" = "none";
+    for (const rawLine of spec.deckContent.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("**")) continue;
+      if (line.startsWith("*")) {
+        const upper = line.toUpperCase();
+        if (upper.startsWith("*NODE")) section = "node";
+        else if (upper.startsWith("*ELEMENT")) section = "element";
+        else section = "none";
+        continue;
+      }
+      const cols = line
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (section === "node" && cols.length >= 4) {
+        const id = parseInt(cols[0]!, 10);
+        const x = parseFloat(cols[1]!);
+        const y = parseFloat(cols[2]!);
+        const z = parseFloat(cols[3]!);
+        if (!isNaN(id) && !isNaN(x) && !isNaN(y) && !isNaN(z)) {
+          parsedNodes.push({ id, x, y, z });
+        }
+      } else if (section === "element" && cols.length >= 5) {
+        const id = parseInt(cols[0]!, 10);
+        const nodes = cols
+          .slice(1)
+          .map((c) => parseInt(c, 10))
+          .filter((n) => !isNaN(n));
+        if (!isNaN(id) && nodes.length >= 4) {
+          parsedElems.push({ id, nodes });
+        }
+      }
+    }
+
+    let frdContent: string;
+    if (parsedNodes.length > 4 && parsedElems.length > 0) {
+      let minX = Infinity,
+        maxX = -Infinity;
+      for (const n of parsedNodes) {
+        if (n.x < minX) minX = n.x;
+        if (n.x > maxX) maxX = n.x;
+      }
+      const spanX = Math.max(1e-6, maxX - minX);
+      const nodeLines = parsedNodes.map((n) => ` -1 ${n.id} ${n.x} ${n.y} ${n.z}`).join("\\n");
+      const elemLines = parsedElems.map((e) => ` -1 ${e.id} 1 1 ${e.nodes.join(" ")}`).join("\\n");
+      const dispLines = parsedNodes
+        .map((n) => {
+          const xi = (n.x - minX) / spanX;
+          const dz = (-0.005 * scale * xi * xi).toFixed(6);
+          const dx = (0.001 * scale * xi).toFixed(6);
+          return ` -1 ${n.id} ${dx} 0.0 ${dz}`;
+        })
+        .join("\\n");
+      const stressLines = parsedNodes
+        .map((n) => {
+          const xi = (n.x - minX) / spanX;
+          const sxx = ((1e7 + 4e7 * (1 - xi)) * scale).toExponential(3);
+          return ` -1 ${n.id} ${sxx} 0 0 0 0 0`;
+        })
+        .join("\\n");
+      frdContent = `    1C\\n${nodeLines}\\n    -3\\n    3C\\n${elemLines}\\n    -3\\n -4 DISP\\n${dispLines}\\n    -3\\n -4 STRESS\\n${stressLines}\\n    -3\\n`;
+    } else {
+      const s1 = (1e7 * scale).toExponential(3);
+      const s2 = (2e7 * scale).toExponential(3);
+      const s3 = (1.5e7 * scale).toExponential(3);
+      const s4 = (5e7 * scale).toExponential(3);
+      const d2 = (-0.002 * scale).toFixed(5);
+      const d3 = (-0.002 * scale).toFixed(5);
+      const d4 = (-0.005 * scale).toFixed(5);
+      frdContent = `    1C\\n -1 1 0.0 0.0 0.0\\n -1 2 1.0 0.0 0.0\\n -1 3 0.0 1.0 0.0\\n -1 4 0.0 0.0 1.0\\n    -3\\n    3C\\n -1 1 1 1 1 2 3 4\\n    -3\\n -4 DISP\\n -1 1 0.0 0.0 0.0\\n -1 2 0.001 0.0 ${d2}\\n -1 3 0.0 0.001 ${d3}\\n -1 4 0.0 0.0 ${d4}\\n    -3\\n -4 STRESS\\n -1 1 ${s1} 0 0 0 0 0\\n -1 2 ${s2} 0 0 0 0 0\\n -1 3 ${s3} 0 0 0 0 0\\n -1 4 ${s4} 0 0 0 0 0\\n    -3\\n`;
+    }
 
     return `
 const fs = require('fs');
@@ -394,7 +483,7 @@ if ('${spec.solver}' === 'calculix') {
   console.log('iteration 2 max. residual force = 3.210E-04');
   console.log('iteration 3 max. residual force = 1.150E-06');
   console.log('Convergence reached');
-  fs.writeFileSync('job.frd', '    1C\\n -1 1 0.0 0.0 0.0\\n -1 2 1.0 0.0 0.0\\n -1 3 0.0 1.0 0.0\\n -1 4 0.0 0.0 1.0\\n    -3\\n    3C\\n -1 1 1 1 1 2 3 4\\n    -3\\n -4 DISP\\n -1 1 0.0 0.0 0.0\\n -1 2 0.001 0.0 ${d2}\\n -1 3 0.0 0.001 ${d3}\\n -1 4 0.0 0.0 ${d4}\\n    -3\\n -4 STRESS\\n -1 1 ${s1} 0 0 0 0 0\\n -1 2 ${s2} 0 0 0 0 0\\n -1 3 ${s3} 0 0 0 0 0\\n -1 4 ${s4} 0 0 0 0 0\\n    -3\\n');
+  fs.writeFileSync('job.frd', '${frdContent}');
 } else {
   console.log('|   Iter|  Time(s)|  Res_Flow[0]|     CLift|     CDrag|');
   console.log('|      1|    0.010|    -1.200000|   0.12000|   0.05000|');

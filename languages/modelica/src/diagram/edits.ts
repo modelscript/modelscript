@@ -67,6 +67,16 @@ function getNodeRange(node: any): { startLine: number; startCol: number; endLine
   return null;
 }
 
+function getConnectEquationStatementNode(connectEq: any): any {
+  const rawNode = connectEq?.cstNode ?? connectEq?.ast;
+  if (!rawNode) return null;
+  const parent = rawNode.parent;
+  if (parent && (Cst.SomeEquation.is(parent) || parent.type === "some_equation" || parent.type === "SomeEquation")) {
+    return parent;
+  }
+  return rawNode;
+}
+
 function getAnnotationClauseNode(node: any): any {
   if (!node) return null;
   if (node.annotationClause) return node.annotationClause;
@@ -569,7 +579,7 @@ export function computeConnectRemove(
     return (c1 === source && c2 === target) || (c1 === target && c2 === source);
   });
 
-  const eqNode = connectEq?.cstNode ?? connectEq?.ast;
+  const eqNode = getConnectEquationStatementNode(connectEq);
   const eqRange = getNodeRange(eqNode);
   if (!eqRange) return [];
 
@@ -594,7 +604,7 @@ export function computeComponentsDelete(
     const involvesComponent = [...nameSet].some(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
     );
-    const eqNode = ce.cstNode ?? ce.ast;
+    const eqNode = getConnectEquationStatementNode(ce);
     const eqRange = getNodeRange(eqNode);
     if (involvesComponent && eqRange) {
       edits.push(makeDeleteRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol));
@@ -633,7 +643,7 @@ export function computeEdgePointEdits(
       return (c1 === edge.source && c2 === edge.target) || (c1 === edge.target && c2 === edge.source);
     });
 
-    const eqNode = connectEq?.cstNode ?? connectEq?.ast;
+    const eqNode = getConnectEquationStatementNode(connectEq);
     const eqRange = getNodeRange(eqNode);
     if (!eqRange) continue;
 
@@ -763,11 +773,13 @@ export function computeEdgePointEdits(
         }
       }
     } else {
-      // No annotation: insert before semicolon
+      // No annotation: insert before semicolon (or append if semicolon is outside the CST node)
       const semiIndex = text.lastIndexOf(";");
       const insert = ` annotation(${newLineAnnotation})`;
       if (semiIndex !== -1) {
         newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
+      } else {
+        newText = text + insert;
       }
     }
 
@@ -813,11 +825,13 @@ function makeDeleteRange(
   endLine: number,
   endCol: number,
 ): TextEdit {
-  // If the node is the only content on its line(s), delete the entire line(s)
+  // If the node is the only content on its line(s) (optionally followed by a statement semicolon),
+  // delete the entire line(s)
   const prefix = (lines[startLine]?.substring(0, startCol) ?? "").trim();
-  const suffix = (lines[endLine]?.substring(endCol) ?? "").trim();
+  const rawSuffix = lines[endLine]?.substring(endCol) ?? "";
+  const suffix = rawSuffix.trim();
 
-  if (prefix === "" && suffix === "") {
+  if (prefix === "" && (suffix === "" || suffix === ";")) {
     if (endLine + 1 < lines.length) {
       return TextEdit.del(Range.create(startLine, 0, endLine + 1, 0));
     } else {
@@ -825,7 +839,11 @@ function makeDeleteRange(
     }
   }
 
-  return TextEdit.del(Range.create(startLine, startCol, endLine, endCol));
+  // If followed immediately by a statement semicolon on the same line, include the semicolon in the deletion
+  const semiMatch = rawSuffix.match(/^\s*;/);
+  const adjustedEndCol = semiMatch ? endCol + semiMatch[0].length : endCol;
+
+  return TextEdit.del(Range.create(startLine, startCol, endLine, adjustedEndCol));
 }
 
 export function applyEditsToText(text: string, edits: TextEdit[]): string {

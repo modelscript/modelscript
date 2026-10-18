@@ -188,6 +188,36 @@ export function checkCyclicConstantsAndParameters(
     varToDeps.set(simpleName, scopeDeps);
   }
 
+  const rootVars = scopeToVars.get(rootClassName);
+  const rootVarToDeps = scopeVarToDeps.get(rootClassName);
+  if (rootVars && rootVarToDeps) {
+    const children = db.childrenOf(rootClassId);
+    for (const ch of children) {
+      if (ch.kind === "Component" && rootVars.includes(ch.name)) {
+        const ci = db.query<any>("componentInstance", ch.id);
+        if (ci?.variability !== "constant") continue;
+        let rawBind =
+          ci?.modification?.bindingExpression?.text ?? ci?.modification?.value?.text ?? ci?.bindingExpression?.text;
+        if (!rawBind) {
+          const cstText = (db.cstNode(ch.id) as any)?.text ?? "";
+          const eqIdx = cstText.indexOf("=");
+          if (eqIdx >= 0) rawBind = cstText.slice(eqIdx + 1);
+        }
+        if (rawBind) {
+          const cleanedBind = rawBind.replace(/\.\s*[a-zA-Z_]\w*/g, "").replace(/\bsize\s*\([^)]*\)/g, "");
+          const ids = cleanedBind.match(/[a-zA-Z_]\w*/g) || [];
+          const scopeDeps = rootVarToDeps.get(ch.name) ?? [];
+          for (const id of ids) {
+            if (rootVars.includes(id) && !scopeDeps.includes(id)) {
+              scopeDeps.push(id);
+            }
+          }
+          rootVarToDeps.set(ch.name, scopeDeps);
+        }
+      }
+    }
+  }
+
   for (const [scope, vars] of scopeToVars) {
     const varToDeps = scopeVarToDeps.get(scope);
     if (!varToDeps) continue;

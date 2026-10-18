@@ -146,33 +146,60 @@ export class PCBRenderer {
   private ratsnest: RatsnestLine[] = [];
   private drcMarkers: DRCMarker[] = [];
   private boardOutline: Point2D[] = [];
+  private netlistGraph: NetlistGraph | null = null;
 
   // Interaction state
   private isDragging = false;
   private lastMouse: Point2D = { x: 0, y: 0 };
   private selectedNetId: string | null = null;
+  private boundHandlers: {
+    wheel: (e: WheelEvent) => void;
+    mousedown: (e: MouseEvent) => void;
+    mousemove: (e: MouseEvent) => void;
+    mouseup: () => void;
+    click: (e: MouseEvent) => void;
+  } | null = null;
 
   /**
    * Attach the renderer to a canvas element.
    */
   attach(canvas: HTMLCanvasElement): void {
+    if (this.canvas) {
+      this.detach();
+    }
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.camera.viewportWidth = canvas.width;
     this.camera.viewportHeight = canvas.height;
 
+    this.boundHandlers = {
+      wheel: this.onWheel.bind(this),
+      mousedown: this.onMouseDown.bind(this),
+      mousemove: this.onMouseMove.bind(this),
+      mouseup: this.onMouseUp.bind(this),
+      click: this.onClick.bind(this),
+    };
+
     // Set up event listeners
-    canvas.addEventListener("wheel", this.onWheel.bind(this));
-    canvas.addEventListener("mousedown", this.onMouseDown.bind(this));
-    canvas.addEventListener("mousemove", this.onMouseMove.bind(this));
-    canvas.addEventListener("mouseup", this.onMouseUp.bind(this));
-    canvas.addEventListener("click", this.onClick.bind(this));
+    canvas.addEventListener("wheel", this.boundHandlers.wheel);
+    canvas.addEventListener("mousedown", this.boundHandlers.mousedown);
+    canvas.addEventListener("mousemove", this.boundHandlers.mousemove);
+    canvas.addEventListener("mouseup", this.boundHandlers.mouseup);
+    canvas.addEventListener("click", this.boundHandlers.click);
   }
 
   /**
    * Detach renderer from canvas and clean up event listeners.
    */
   detach(): void {
+    if (this.canvas && this.boundHandlers) {
+      this.canvas.removeEventListener("wheel", this.boundHandlers.wheel);
+      this.canvas.removeEventListener("mousedown", this.boundHandlers.mousedown);
+      this.canvas.removeEventListener("mousemove", this.boundHandlers.mousemove);
+      this.canvas.removeEventListener("mouseup", this.boundHandlers.mouseup);
+      this.canvas.removeEventListener("click", this.boundHandlers.click);
+    }
+    this.boundHandlers = null;
     this.canvas = null;
     this.ctx = null;
   }
@@ -181,7 +208,8 @@ export class PCBRenderer {
    * Load a netlist graph for ratsnest computation.
    */
   loadNetlist(graph: NetlistGraph): void {
-    this.ratsnest = computeRatsnest(graph);
+    this.netlistGraph = graph;
+    this.ratsnest = computeRatsnest(graph, this.pads);
   }
 
   /**
@@ -203,6 +231,9 @@ export class PCBRenderer {
    */
   setPads(pads: RenderPad[]): void {
     this.pads = pads;
+    if (this.netlistGraph) {
+      this.ratsnest = computeRatsnest(this.netlistGraph, this.pads);
+    }
   }
 
   /**
@@ -491,7 +522,7 @@ export class PCBRenderer {
  * Compute ratsnest lines (shortest unrouted connections) from a netlist.
  * Uses a simple Prim's MST approach per net.
  */
-function computeRatsnest(graph: NetlistGraph): RatsnestLine[] {
+function computeRatsnest(graph: NetlistGraph, pads: RenderPad[] = []): RatsnestLine[] {
   const lines: RatsnestLine[] = [];
 
   // Build component position map
@@ -509,9 +540,14 @@ function computeRatsnest(graph: NetlistGraph): RatsnestLine[] {
     // Get positions for all pins in this net
     const pinPositions: { pin: string; pos: Point2D }[] = [];
     for (const pin of net.pins) {
-      const compPos = compPositions.get(pin.component);
-      if (compPos) {
-        pinPositions.push({ pin: pin.name, pos: compPos });
+      const matchedPad = pads.find(
+        (p) =>
+          p.component === pin.component &&
+          (p.pinName === pin.localName || p.pinName === pin.name || `${p.component}.${p.pinName}` === pin.name),
+      );
+      const pos = matchedPad ? matchedPad.center : compPositions.get(pin.component);
+      if (pos) {
+        pinPositions.push({ pin: pin.name, pos });
       }
     }
 

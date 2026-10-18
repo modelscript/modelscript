@@ -214,4 +214,99 @@ REF_AREA= 0.2
     assert.ok(props.dragForce !== undefined && props.dragForce > 0);
     assert.ok(props.liftForce !== undefined && props.liftForce > props.dragForce!);
   });
+
+  it("parses both 6-tuple and 5-tuple MARKER_INLET directives in SU2", () => {
+    const dialect = getCfdDialect("su2");
+
+    // 6-tuple: ( name, T0, V_or_P0, nx, ny, nz )
+    const parsed6 = dialect.parse(`
+MARKER_INLET= ( inlet_patch, 288.15, 10.0, 0.0, 0.0, -1.0 )
+`);
+    assert.strictEqual(parsed6.inletMarker, "inlet_patch");
+    assert.strictEqual(parsed6.freestreamVelocity, 10.0);
+    assert.deepStrictEqual(parsed6.inletVelocity, [0.0, 0.0, -10.0]);
+
+    // 5-tuple: ( name, velMag, nx, ny, nz )
+    const parsed5 = dialect.parse(`
+MARKER_INLET= ( inlet_patch, 15.0, 1.0, 0.0, 0.0 )
+`);
+    assert.strictEqual(parsed5.inletMarker, "inlet_patch");
+    assert.strictEqual(parsed5.freestreamVelocity, 15.0);
+    assert.deepStrictEqual(parsed5.inletVelocity, [15.0, 0.0, 0.0]);
+  });
+
+  it("classifies OpenFOAM boundary patches by both patch name and type instead of BC value directive alone", () => {
+    const dialect = getCfdDialect("openfoam");
+    const foamContent = `
+application     pimpleFoam;
+boundaryField
+{
+    inlet
+    {
+        type            freestreamVelocity;
+        freestreamValue uniform (20 0 0);
+    }
+    outlet
+    {
+        type            fixedValue;
+        value           uniform 0;
+    }
+    fuselage_wall
+    {
+        type            zeroGradient;
+    }
+    symmetry_side
+    {
+        type            symmetryPlane;
+    }
+}
+`;
+    const parsed = dialect.parse(foamContent);
+    assert.strictEqual(parsed.inletMarker, "inlet");
+    assert.deepStrictEqual(parsed.inletVelocity, [20, 0, 0]);
+    assert.strictEqual(parsed.outletMarker, "outlet");
+    assert.ok(parsed.wallMarkers.includes("fuselage_wall"));
+    assert.strictEqual(parsed.markers.get("outlet")?.type, "OUTLET");
+    assert.strictEqual(parsed.markers.get("fuselage_wall")?.type, "WALL");
+    assert.strictEqual(parsed.markers.get("symmetry_side")?.type, "SYMMETRY");
+  });
+
+  it("evaluates multi-regime aerodynamic and crossflow drag with proper wing aspect ratio S/c^2", async () => {
+    const { extractCfdSlicingProperties } = await import("../src/index.js");
+
+    // Vertical climb / crossflow (90 deg AOA via 6-tuple MARKER_INLET along -z)
+    const verticalClimbDeck = `
+SOLVER= INC_RANS
+FREESTREAM_VELOCITY= ( 0.0, 0.0, -10.0 )
+FREESTREAM_DENSITY= 1.225
+REF_AREA= 0.12
+REF_LENGTH= 0.45
+REYNOLDS_NUMBER= 3.0e5
+MARKER_INLET= ( inlet_patch, 288.15, 10.0, 0.0, 0.0, -1.0 )
+`;
+    const climbProps = extractCfdSlicingProperties(verticalClimbDeck);
+    assert.strictEqual(climbProps.freeStreamVelocity, 10.0);
+    assert.strictEqual(climbProps.cd, 0.8);
+    assert.strictEqual(climbProps.cl, 0);
+
+    // High-aspect-ratio wing (c = 0.2 m, S = 1.6 m^2 -> AR = S/c^2 = 40) vs low-AR wing (c = 0.5 m, S = 1.0 m^2 -> AR = 4)
+    const highArWing = extractCfdSlicingProperties(`
+SOLVER= RANS
+MACH_NUMBER= 0.3
+AOA= 5.0
+REYNOLDS_NUMBER= 2.0e6
+REF_LENGTH= 0.2
+REF_AREA= 1.6
+`);
+    const lowArWing = extractCfdSlicingProperties(`
+SOLVER= RANS
+MACH_NUMBER= 0.3
+AOA= 5.0
+REYNOLDS_NUMBER= 2.0e6
+REF_LENGTH= 0.5
+REF_AREA= 1.0
+`);
+    // High-AR wing has higher lift slope and lower induced drag share at same AOA
+    assert.ok(highArWing.cl! > lowArWing.cl!);
+  });
 });

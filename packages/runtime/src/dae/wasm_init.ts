@@ -110,7 +110,66 @@ export interface HomotopyStrategy {
 // Initialization BLT Algorithm
 // ─────────────────────────────────────────────────────────────────────────
 
-/** Unroll nested array constructor / tuple expressions into a flat list of scalar expression IDs. */
+/** Expand a multi-dimensional shape (e.g. [2, 3]) into 1-based index strings ("1,1", "1,2", ...). */
+function expandMultiDimIndices(shape: number[]): string[] {
+  if (shape.length === 0) return [];
+  let acc: string[] = [""];
+  for (let d = 0; d < shape.length; d++) {
+    const dim = shape[d] ?? 0;
+    if (dim <= 0) return [];
+    const next: string[] = [];
+    for (const prefix of acc) {
+      for (let k = 1; k <= dim; k++) {
+        next.push(prefix ? `${prefix},${k}` : `${k}`);
+      }
+    }
+    acc = next;
+  }
+  return acc;
+}
+
+/** Resolve a constant-index subscript expression (1D or multi-dimensional) to a scalarized name like "x[1]" or "A[1,2]". */
+function resolveConstSubscriptName(exprId: number, arena: DAEBuilder): string | null {
+  if (exprId < 0 || arena.getExprKind(exprId) !== ExprKind.Subscript) return null;
+  let currentExprId = exprId;
+  const indexVals: number[] = [];
+  while (currentExprId >= 0 && arena.getExprKind(currentExprId) === ExprKind.Subscript) {
+    const firstSubId = arena.getExprLeft(currentExprId);
+    const subCount = arena.getExprRight(currentExprId);
+    if (subCount <= 0 || firstSubId < 0) return null;
+    const chunk: number[] = [];
+    for (let i = 0; i < subCount; i++) {
+      const slotIdx = currentExprId + i;
+      const subExprId =
+        i === 0
+          ? firstSubId
+          : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+            ? arena.getExprLeft(slotIdx)
+            : firstSubId + i;
+      const val = evalRangeBoundArena(arena, subExprId);
+      if (val === null || !Number.isFinite(val)) return null;
+      chunk.push(Math.round(val));
+    }
+    indexVals.unshift(...chunk);
+    currentExprId = arena.getExprData1(currentExprId);
+  }
+  if (currentExprId >= 0 && arena.getExprKind(currentExprId) === ExprKind.Name) {
+    const baseName = arena.interner.resolve(arena.getExprData1(currentExprId));
+    if (baseName && indexVals.length > 0) {
+      return `${baseName}[${indexVals.join(",")}]`;
+    }
+  }
+  return null;
+}
+
+function isEqInitialFlag(dae: DAEBuilder, eqIdx: number): boolean {
+  if (typeof (dae as any).isEqInitial === "function") {
+    return Boolean((dae as any).isEqInitial(eqIdx));
+  }
+  return (dae.getEqFlags(eqIdx) & 1) !== 0;
+}
+
+/** Unroll nested array constructor / tuple / bare array variable expressions into a flat list of scalar expression IDs. */
 function flatElements(exprId: number, arena: DAEBuilder): number[] {
   if (exprId < 0) return [];
   const kind = arena.getExprKind(exprId);
@@ -123,6 +182,26 @@ function flatElements(exprId: number, arena: DAEBuilder): number[] {
       elements.push(...flatElements(elemExprId, arena));
     }
     return elements;
+  }
+  if (kind === ExprKind.Name) {
+    const varName = arena.interner.resolve(arena.getExprData1(exprId));
+    if (varName) {
+      const varIdx = arena.getVarIdxByName(varName);
+      const shape = varIdx !== -1 ? arena.getVarShape(varIdx) : (arena.getNamedArrayShape?.(varName) ?? []);
+      if (shape.length > 0) {
+        const idxStrings = expandMultiDimIndices(shape);
+        if (idxStrings.length > 0) {
+          return idxStrings.map((idxStr) => {
+            const candidateName = `${varName}[${idxStr}]`;
+            if (arena.getVarIdxByName(candidateName) !== -1) {
+              return arena.addNameExpr(candidateName);
+            }
+            const idxExprs = idxStr.split(",").map((s) => arena.addIntLiteral(Number.parseInt(s, 10)));
+            return arena.addSubscriptExpr(exprId, idxExprs);
+          });
+        }
+      }
+    }
   }
   return [exprId];
 }
@@ -151,9 +230,13 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       const operand =
         kind === ExprKind.Der || kind === ExprKind.Pre ? arena.getExprData1(exprId) : arena.getExprLeft(exprId);
       if (kind === ExprKind.Der && operand >= 0) {
-        if (arena.getExprKind(operand) === ExprKind.Name) {
+        const opKind = arena.getExprKind(operand);
+        if (opKind === ExprKind.Name) {
           const varName = arena.interner.resolve(arena.getExprData1(operand));
           names.add(`der(${varName})`);
+        } else if (opKind === ExprKind.Subscript) {
+          const subName = resolveConstSubscriptName(operand, arena);
+          if (subName) names.add(`der(${subName})`);
         }
       }
       collectExprVarNames(operand, arena, names);
@@ -172,9 +255,13 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
 
       if (funcName === "der" && argCount === 1 && firstArgId >= 0) {
         const argExprId = firstArgId;
-        if (arena.getExprKind(argExprId) === ExprKind.Name) {
+        const argKind = arena.getExprKind(argExprId);
+        if (argKind === ExprKind.Name) {
           const varName = arena.interner.resolve(arena.getExprData1(argExprId));
           names.add(`der(${varName})`);
+        } else if (argKind === ExprKind.Subscript) {
+          const subName = resolveConstSubscriptName(argExprId, arena);
+          if (subName) names.add(`der(${subName})`);
         }
       }
 
@@ -189,15 +276,9 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       const firstSubId = arena.getExprLeft(exprId);
       const subCount = arena.getExprRight(exprId);
 
-      if (subCount === 1 && firstSubId >= 0) {
-        const indexExprId = firstSubId;
-        if (arena.getExprKind(indexExprId) === ExprKind.IntLiteral) {
-          const val = arena.getExprData1(indexExprId);
-          if (arena.getExprKind(baseExprId) === ExprKind.Name) {
-            const baseName = arena.interner.resolve(arena.getExprData1(baseExprId));
-            names.add(`${baseName}[${val}]`);
-          }
-        }
+      const subName = resolveConstSubscriptName(exprId, arena);
+      if (subName) {
+        names.add(subName);
       }
 
       collectExprVarNames(baseExprId, arena, names);
@@ -262,27 +343,49 @@ function canonicalizeScalarizedSubscripts(dae: DAEBuilder, exprId: number): numb
   if (exprId < 0) return exprId;
   const kind = dae.getExprKind(exprId);
   if (kind === ExprKind.Subscript) {
+    const directSubName = resolveConstSubscriptName(exprId, dae);
+    if (directSubName && dae.getVarIdxByName(directSubName) !== -1) {
+      return dae.addNameExpr(directSubName);
+    }
     const baseExpr = dae.getExprData1(exprId);
-    const idxExpr = dae.getExprLeft(exprId);
+    const firstSub = dae.getExprLeft(exprId);
+    const subCount = dae.getExprRight(exprId);
     const cBase = canonicalizeScalarizedSubscripts(dae, baseExpr);
-    const cIdx = canonicalizeScalarizedSubscripts(dae, idxExpr);
+    let changed = cBase !== baseExpr;
+    const cSubs: number[] = [];
+    for (let j = 0; j < subCount; j++) {
+      const slotIdx = exprId + j;
+      const origSub =
+        j === 0
+          ? firstSub
+          : slotIdx < dae.exprCount && dae.getExprKind(slotIdx) === ExprKind.Tuple
+            ? dae.getExprLeft(slotIdx)
+            : firstSub + j;
+      const cSub = canonicalizeScalarizedSubscripts(dae, origSub);
+      if (cSub !== origSub) changed = true;
+      cSubs.push(cSub);
+    }
     if (dae.getExprKind(cBase) === ExprKind.Name) {
       const baseName = dae.interner.resolve(dae.getExprData1(cBase));
-      const idxKind = dae.getExprKind(cIdx);
-      let idxVal: number | null = null;
-      if (idxKind === ExprKind.IntLiteral) {
-        idxVal = dae.getExprData1(cIdx);
-      } else if (idxKind === ExprKind.RealLiteral) {
-        idxVal = Math.round(dae.getExprRealValue(cIdx));
+      const idxVals: number[] = [];
+      let allConst = true;
+      for (const cSub of cSubs) {
+        const v = evalRangeBoundArena(dae, cSub);
+        if (v !== null && Number.isFinite(v)) {
+          idxVals.push(Math.round(v));
+        } else {
+          allConst = false;
+          break;
+        }
       }
-      if (baseName && idxVal !== null) {
-        const candidateName = `${baseName}[${idxVal}]`;
+      if (baseName && allConst && idxVals.length > 0) {
+        const candidateName = `${baseName}[${idxVals.join(",")}]`;
         if (dae.getVarIdxByName(candidateName) !== -1) {
           return dae.addNameExpr(candidateName);
         }
       }
     }
-    return cBase !== baseExpr || cIdx !== idxExpr ? dae.addSubscriptExpr(cBase, [cIdx]) : exprId;
+    return changed ? dae.addSubscriptExpr(cBase, cSubs) : exprId;
   }
   if (kind === ExprKind.Der) {
     const arg = dae.getExprData1(exprId);
@@ -445,27 +548,30 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     const kind = dae.getEqKind(i);
     const lhs = dae.getEqLhs(i);
     const rhs = dae.getEqRhs(i);
+    const isInit = kind === EqKind.InitialSimple || kind === EqKind.InitialFor || isEqInitialFlag(dae, i);
 
-    if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor) {
-      if (kind === EqKind.InitialSimple) {
-        const lhsElems = flatElements(lhs, dae);
-        const rhsElems = flatElements(rhs, dae);
-        const n = Math.max(lhsElems.length, rhsElems.length);
-        for (let j = 0; j < n; j++) {
-          const l = lhsElems[j] ?? lhsElems[0];
-          const r = rhsElems[j] ?? rhsElems[0];
-          if (l !== undefined && r !== undefined) {
-            initEquations.push({ lhs: l, rhs: r, source: "initial" });
-          }
-        }
-      } else if (kind === EqKind.InitialFor) {
-        const expanded = expandForEquationArena(dae, i);
-        for (const eq of expanded) {
-          initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "initial" });
+    if (kind === EqKind.InitialSimple || (isInit && (kind === EqKind.Simple || kind === EqKind.Array))) {
+      const lhsElems = flatElements(lhs, dae);
+      const rhsElems = flatElements(rhs, dae);
+      const n = Math.max(lhsElems.length, rhsElems.length);
+      for (let j = 0; j < n; j++) {
+        const l = lhsElems[j] ?? lhsElems[0];
+        const r = rhsElems[j] ?? rhsElems[0];
+        if (l !== undefined && r !== undefined) {
+          initEquations.push({
+            lhs: canonicalizeScalarizedSubscripts(dae, l),
+            rhs: canonicalizeScalarizedSubscripts(dae, r),
+            source: "initial",
+          });
         }
       }
+    } else if (kind === EqKind.InitialFor || (isInit && kind === EqKind.For)) {
+      const expanded = expandForEquationArena(dae, i);
+      for (const eq of expanded) {
+        initEquations.push({ lhs: eq.lhs, rhs: eq.rhs, source: "initial" });
+      }
     } else if (kind !== EqKind.When) {
-      if (kind === EqKind.Array) {
+      if (kind === EqKind.Array || kind === EqKind.Simple) {
         const lhsElems = flatElements(lhs, dae);
         const rhsElems = flatElements(rhs, dae);
         const n = Math.max(lhsElems.length, rhsElems.length);
@@ -473,11 +579,13 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
           const l = lhsElems[j] ?? lhsElems[0];
           const r = rhsElems[j] ?? rhsElems[0];
           if (l !== undefined && r !== undefined) {
-            initEquations.push({ lhs: l, rhs: r, source: "continuous" });
+            initEquations.push({
+              lhs: canonicalizeScalarizedSubscripts(dae, l),
+              rhs: canonicalizeScalarizedSubscripts(dae, r),
+              source: "continuous",
+            });
           }
         }
-      } else if (kind === EqKind.Simple) {
-        initEquations.push({ lhs, rhs, source: "continuous" });
       } else if (kind === EqKind.For) {
         const expanded = expandForEquationArena(dae, i);
         for (const eq of expanded) {
@@ -503,14 +611,17 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     if (!knowns.has(name)) unknowns.add(name);
   }
 
-  // Expand array unknowns
+  // Expand array unknowns (including multi-dimensional arrays)
   for (let i = 0; i < dae.varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
     const varName = dae.getVarName(i);
     const shape = dae.getVarShape(i);
     if (shape.length > 0 && unknowns.has(varName)) {
-      const size = shape.reduce((a: number, b: number) => a * b, 1);
-      for (let j = 0; j < size; j++) unknowns.add(`${varName}[${j + 1}]`);
+      const idxStrings = expandMultiDimIndices(shape);
+      for (const idxStr of idxStrings) {
+        const elemName = `${varName}[${idxStr}]`;
+        if (!knowns.has(elemName)) unknowns.add(elemName);
+      }
     }
   }
 
@@ -636,16 +747,21 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
       const derLhs = extractDerName(eq.lhs, dae);
       const derRhs = extractDerName(eq.rhs, dae);
 
-      if (lhsName === varName && !hasUnsolvedDeps(deps, varName)) {
+      const lhsRefs = new Set<string>();
+      collectExprVarNames(eq.lhs, dae, lhsRefs);
+      const rhsRefs = new Set<string>();
+      collectExprVarNames(eq.rhs, dae, rhsRefs);
+
+      if (lhsName === varName && !rhsRefs.has(varName) && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.rhs });
         solvedVars.add(varName);
-      } else if (rhsName === varName && !hasUnsolvedDeps(deps, varName)) {
+      } else if (rhsName === varName && !lhsRefs.has(varName) && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.lhs });
         solvedVars.add(varName);
-      } else if (derLhs && `der(${derLhs})` === varName && !hasUnsolvedDeps(deps, varName)) {
+      } else if (derLhs && `der(${derLhs})` === varName && !rhsRefs.has(varName) && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.rhs });
         solvedVars.add(varName);
-      } else if (derRhs && `der(${derRhs})` === varName && !hasUnsolvedDeps(deps, varName)) {
+      } else if (derRhs && `der(${derRhs})` === varName && !lhsRefs.has(varName) && !hasUnsolvedDeps(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.lhs });
         solvedVars.add(varName);
       } else {
@@ -707,8 +823,12 @@ function augmentInit(
 
 function extractSimpleName(exprId: number, arena: DAEBuilder): string | null {
   if (exprId < 0) return null;
-  if (arena.getExprKind(exprId) === ExprKind.Name) {
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.Name) {
     return arena.interner.resolve(arena.getExprData1(exprId));
+  }
+  if (kind === ExprKind.Subscript) {
+    return resolveConstSubscriptName(exprId, arena);
   }
   return null;
 }
@@ -718,8 +838,13 @@ function extractDerName(exprId: number, arena: DAEBuilder): string | null {
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Der) {
     const operand = arena.getExprData1(exprId);
-    if (operand >= 0 && arena.getExprKind(operand) === ExprKind.Name) {
-      return arena.interner.resolve(arena.getExprData1(operand));
+    if (operand >= 0) {
+      if (arena.getExprKind(operand) === ExprKind.Name) {
+        return arena.interner.resolve(arena.getExprData1(operand));
+      }
+      if (arena.getExprKind(operand) === ExprKind.Subscript) {
+        return resolveConstSubscriptName(operand, arena);
+      }
     }
   } else if (kind === ExprKind.Call) {
     const nameId = arena.getExprData1(exprId);
@@ -730,6 +855,9 @@ function extractDerName(exprId: number, arena: DAEBuilder): string | null {
       const argExprId = firstArgId;
       if (arena.getExprKind(argExprId) === ExprKind.Name) {
         return arena.interner.resolve(arena.getExprData1(argExprId));
+      }
+      if (arena.getExprKind(argExprId) === ExprKind.Subscript) {
+        return resolveConstSubscriptName(argExprId, arena);
       }
     }
   }
@@ -815,6 +943,12 @@ function collectExprNameIds(arena: DAEBuilder, exprId: number, nameIds: Set<numb
         const derNameId = arena.interner.intern(`der(${name})`);
         nameIds.add(derNameId);
       }
+    } else if (arena.getExprKind(data1) === ExprKind.Subscript) {
+      const subName = resolveConstSubscriptName(data1, arena);
+      if (subName) {
+        nameIds.add(arena.interner.intern(`der(${subName})`));
+      }
+      collectExprNameIds(arena, data1, nameIds);
     } else {
       collectExprNameIds(arena, data1, nameIds);
     }
@@ -846,13 +980,18 @@ function collectExprNameIds(arena: DAEBuilder, exprId: number, nameIds: Set<numb
       }
       break;
     }
-    case ExprKind.Subscript:
+    case ExprKind.Subscript: {
+      const subName = resolveConstSubscriptName(exprId, arena);
+      if (subName) {
+        nameIds.add(arena.interner.intern(subName));
+      }
       collectExprNameIds(arena, data1, nameIds);
       if (right > 0) collectExprNameIds(arena, left, nameIds);
       for (let i = 1; i < right; i++) {
         collectExprNameIds(arena, arena.getExprLeft(exprId + i), nameIds);
       }
       break;
+    }
     case ExprKind.ArrayCtor: {
       const count = data1;
       if (count > 0) collectExprNameIds(arena, left, nameIds);
@@ -1021,10 +1160,10 @@ function runSbbFallback(
     let min = -1e4;
     let max = 1e4;
     if (varIdx >= 0) {
-      const minAttr = arena.getVarAttr(varIdx, "min");
-      const maxAttr = arena.getVarAttr(varIdx, "max");
-      if (typeof minAttr === "number" && isFinite(minAttr)) min = minAttr;
-      if (typeof maxAttr === "number" && isFinite(maxAttr)) max = maxAttr;
+      const minAttr = getAttrValue(arena, varIdx, "min", result.valuesByStringId);
+      const maxAttr = getAttrValue(arena, varIdx, "max", result.valuesByStringId);
+      if (minAttr !== undefined && Number.isFinite(minAttr)) min = minAttr;
+      if (maxAttr !== undefined && Number.isFinite(maxAttr)) max = maxAttr;
     }
     if (min === -1e4 && max === 1e4) {
       min = currentVal - 1000;
@@ -1322,14 +1461,27 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
   let explicitInitialCount = 0;
   for (let i = 0; i < arena.eqCount; i++) {
     const kind = arena.getEqKind(i);
-    if (kind === EqKind.InitialSimple || kind === EqKind.Simple) {
-      initialEqPairs.push({ lhs: arena.getEqLhs(i), rhs: arena.getEqRhs(i) });
-      if (kind === EqKind.InitialSimple) explicitInitialCount++;
+    const isInit = kind === EqKind.InitialSimple || kind === EqKind.InitialFor || isEqInitialFlag(arena, i);
+    if (kind === EqKind.InitialSimple || kind === EqKind.Simple || kind === EqKind.Array) {
+      const lhsElems = flatElements(arena.getEqLhs(i), arena);
+      const rhsElems = flatElements(arena.getEqRhs(i), arena);
+      const n = Math.max(lhsElems.length, rhsElems.length);
+      for (let j = 0; j < n; j++) {
+        const l = lhsElems[j] ?? lhsElems[0];
+        const r = rhsElems[j] ?? rhsElems[0];
+        if (l !== undefined && r !== undefined) {
+          initialEqPairs.push({
+            lhs: canonicalizeScalarizedSubscripts(arena, l),
+            rhs: canonicalizeScalarizedSubscripts(arena, r),
+          });
+          if (isInit) explicitInitialCount++;
+        }
+      }
     } else if (kind === EqKind.InitialFor || kind === EqKind.For) {
       const expanded = expandForEquationArena(arena, i);
       for (const eq of expanded) {
         initialEqPairs.push(eq);
-        if (kind === EqKind.InitialFor) explicitInitialCount++;
+        if (isInit) explicitInitialCount++;
       }
     }
   }
@@ -1345,6 +1497,14 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
         const name = arena.interner.resolve(nameId);
         if (name) {
           const varIdx = arena.getVarIdxByName(name);
+          if (varIdx !== -1) {
+            stateVars.add(varIdx);
+          }
+        }
+      } else if (arena.getExprKind(argId) === ExprKind.Subscript) {
+        const subName = resolveConstSubscriptName(argId, arena);
+        if (subName) {
+          const varIdx = arena.getVarIdxByName(subName);
           if (varIdx !== -1) {
             stateVars.add(varIdx);
           }
@@ -1583,8 +1743,17 @@ function getAttrValue(
   attrName: string,
   valuesByStringId: Float64Array,
 ): number | undefined {
-  const raw = arena.getVarAttr(varIdx, attrName);
+  const rawNumeric = (arena as any).rawVarAttrs?.get(varIdx)?.get(attrName);
+  if (typeof rawNumeric === "number" && Number.isFinite(rawNumeric)) {
+    return rawNumeric;
+  }
+
+  const raw =
+    typeof arena.getVarAttrExprId === "function"
+      ? arena.getVarAttrExprId(varIdx, attrName)
+      : arena.getVarAttr(varIdx, attrName);
   if (raw === undefined || typeof raw !== "number") return undefined;
+  if (!Number.isInteger(raw)) return Number.isFinite(raw) ? raw : undefined;
 
   if (raw >= 0 && raw < arena.exprCount) {
     const kind = arena.getExprKind(raw);
@@ -1596,14 +1765,14 @@ function getAttrValue(
     }
     try {
       const val = evaluateArenaRuntime(arena, raw, valuesByStringId);
-      if (typeof val === "number" && isFinite(val)) return val;
+      if (typeof val === "number" && Number.isFinite(val)) return val;
     } catch {
       // ignore
     }
+    return undefined;
   }
 
-  if (isFinite(raw)) return raw;
-  return undefined;
+  return Number.isFinite(raw) ? raw : undefined;
 }
 
 export function extractVariableBoundsAndNominal(
@@ -1624,14 +1793,16 @@ export function extractVariableBoundsAndNominal(
       const baseName = isDer ? name.slice(4, -1) : name;
       const varIdx = arena.getVarIdxByName(baseName);
       if (varIdx >= 0) {
-        const rawMin = getAttrValue(arena, varIdx, "min", valuesByStringId);
-        if (rawMin !== undefined && isFinite(rawMin)) min = rawMin;
+        if (!isDer) {
+          const rawMin = getAttrValue(arena, varIdx, "min", valuesByStringId);
+          if (rawMin !== undefined && Number.isFinite(rawMin)) min = rawMin;
 
-        const rawMax = getAttrValue(arena, varIdx, "max", valuesByStringId);
-        if (rawMax !== undefined && isFinite(rawMax)) max = rawMax;
+          const rawMax = getAttrValue(arena, varIdx, "max", valuesByStringId);
+          if (rawMax !== undefined && Number.isFinite(rawMax)) max = rawMax;
+        }
 
         const rawNom = getAttrValue(arena, varIdx, "nominal", valuesByStringId);
-        if (rawNom !== undefined && isFinite(rawNom) && Math.abs(rawNom) > 1e-12) {
+        if (rawNom !== undefined && Number.isFinite(rawNom) && Math.abs(rawNom) > 1e-12) {
           nominal = Math.abs(rawNom);
         } else {
           const startVal = arena.getVarStartValue(varIdx);

@@ -51,13 +51,15 @@ export function fea_compute_tet4_stiffness(
     y21 * (x31 * z41 - x41 * z31) +
     z21 * (x31 * y41 - x41 * y31);
 
-  const volume = Math.abs(detJ) / 6.0;
+  if (detJ <= 1e-18) {
+    return 0.0;
+  }
+  const volume = detJ / 6.0;
   if (volume <= 1e-18) {
     return 0.0;
   }
 
-  const sign: f64 = detJ >= 0.0 ? 1.0 : -1.0;
-  const inv6V = sign / (6.0 * volume);
+  const inv6V = 1.0 / detJ;
 
   const b1 = inv6V * (y31 * z41 - y41 * z31);
   const c1 = inv6V * (z31 * x41 - z41 * x31);
@@ -188,7 +190,9 @@ export function fea_solve_csr_pcg(
 
   let rzOld = dotProductWasm(rPtr, zPtr, n);
   const initialResidual = Math.sqrt(Math.max(0.0, rzOld));
-  if (initialResidual < 1e-18) {
+  const rhsNorm = Math.sqrt(Math.max(0.0, dotProductWasm(bPtr, bPtr, n)));
+  const refNorm = Math.max(rhsNorm, Math.max(initialResidual, 1e-30));
+  if (initialResidual < 1e-18 || initialResidual / refNorm < tol) {
     return 0;
   }
 
@@ -213,7 +217,7 @@ export function fea_solve_csr_pcg(
     }
 
     const rzNew = dotProductWasm(rPtr, zPtr, n);
-    if (Math.sqrt(Math.max(0.0, rzNew)) / initialResidual < tol) {
+    if (Math.sqrt(Math.max(0.0, rzNew)) / refNorm < tol) {
       break;
     }
 
@@ -453,12 +457,11 @@ export function fea_compute_tet10_stiffness(
       j01 * (j10 * j22 - j12 * j20) +
       j02 * (j10 * j21 - j11 * j20);
 
-    const absDetJ = Math.abs(detJ);
-    if (absDetJ <= 1e-18) {
+    if (detJ <= 1e-18) {
       return 0.0;
     }
 
-    const dV = absDetJ * WEIGHT;
+    const dV = detJ * WEIGHT;
     totalVolume += dV;
 
     const invDet = 1.0 / detJ;
@@ -936,8 +939,17 @@ export function fea_analyze_tet_mesh_quality(
     if (l23 < lMin) lMin = l23;
     if (lMin < 1e-12) lMin = 1e-12;
 
-    const denom = l01 * l02 * l03;
-    const scaledJ = denom > 1e-15 ? (sqrt2 * detJ) / denom : 0.0;
+    const d0 = l01 * l02 * l03;
+    const d1 = l01 * l12 * l13;
+    const d2 = l02 * l12 * l23;
+    const d3 = l03 * l13 * l23;
+    let denom = d0;
+    if (d1 > denom) denom = d1;
+    if (d2 > denom) denom = d2;
+    if (d3 > denom) denom = d3;
+    let scaledJ = denom > 1e-15 ? (sqrt2 * detJ) / denom : 0.0;
+    if (scaledJ > 1.0) scaledJ = 1.0;
+    if (scaledJ < -1.0) scaledJ = -1.0;
     if (scaledJ <= 0.0) numInverted++;
 
     const ar = lMax / lMin;

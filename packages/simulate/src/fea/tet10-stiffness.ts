@@ -181,9 +181,12 @@ export class Tet10Element {
 
       // det(J)
       const detJ = J11 * (J22 * J33 - J23 * J32) - J12 * (J21 * J33 - J23 * J31) + J13 * (J21 * J32 - J22 * J31);
+      if (detJ <= 1e-18) {
+        B_gauss.push(new Float64Array(180));
+        continue;
+      }
 
-      const absDetJ = Math.abs(detJ);
-      totalVolume += absDetJ * GAUSS_WEIGHT;
+      totalVolume += detJ * GAUSS_WEIGHT;
 
       const invDetJ = 1.0 / detJ;
       // Inverse Jacobian J^-1
@@ -250,7 +253,7 @@ export class Tet10Element {
       }
 
       // Integrate Ke += w_g * detJ * B^T (30x6) * DB (6x30)
-      const dV = GAUSS_WEIGHT * absDetJ;
+      const dV = GAUSS_WEIGHT * detJ;
       for (let r = 0; r < 30; r++) {
         for (let c = 0; c < 30; c++) {
           let sum = 0.0;
@@ -376,8 +379,10 @@ export class Tet10Element {
       }
 
       const detJ = J11 * (J22 * J33 - J23 * J32) - J12 * (J21 * J33 - J23 * J31) + J13 * (J21 * J32 - J22 * J31);
-      const absDetJ = Math.abs(detJ);
-      const dV = GAUSS_WEIGHT * absDetJ;
+      if (detJ <= 1e-18) {
+        continue;
+      }
+      const dV = GAUSS_WEIGHT * detJ;
       totalVolume += dV;
 
       // Me += rho * dV * (N^T * N) tensor I_3

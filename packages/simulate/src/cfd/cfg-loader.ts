@@ -47,7 +47,18 @@ export function loadCfgToLbm(cfgContent: string, options: LoadCfgOptions = {}): 
   // Lattice kinematic viscosity nu_lb = nu * (dt / (dx * dx))
   const nu_lb = nu * (dt / (dx * dx));
   // BGK relaxation time tau = 3 * nu_lb + 0.5
-  const tau = Math.max(0.505, Math.min(1.5, 3.0 * nu_lb + 0.5));
+  const tauRaw = 3.0 * nu_lb + 0.5;
+  const tau = Math.max(0.505, Math.min(1.5, tauRaw));
+
+  const solverOrTurb =
+    `${parsed.mathProblem ?? ""} ${(parsed as any).solver ?? ""} ${(parsed as any).kindTurbModel ?? ""} ${text}`.toUpperCase();
+  const isTurbulent =
+    tauRaw < 0.505 ||
+    solverOrTurb.includes("RANS") ||
+    solverOrTurb.includes("SST") ||
+    solverOrTurb.includes("SA") ||
+    solverOrTurb.includes("LES") ||
+    solverOrTurb.includes("SMAGORINSKY");
 
   const config: LbmGridConfig = {
     nx,
@@ -58,8 +69,8 @@ export function loadCfgToLbm(cfgContent: string, options: LoadCfgOptions = {}): 
     tau,
     density,
     inletVelocity,
-    turbulenceModel:
-      parsed.mathProblem?.includes("RANS") || parsed.mathProblem?.includes("SST") ? "smagorinsky_les" : "laminar",
+    turbulenceModel: isTurbulent ? "smagorinsky_les" : "laminar",
+    smagorinskyConstant: isTurbulent ? 0.15 : undefined,
     curvedBoundary: true,
   };
 

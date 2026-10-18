@@ -181,6 +181,48 @@ export class PolyglotMcpHost {
           }
         }
 
+        // 3. Domain-specific execution for FEA (.inp) and CFD (.cfg / .su2) manifest tools
+        let domainAnalysis: Record<string, unknown> | undefined;
+        const rawSource =
+          typeof args["source"] === "string"
+            ? args["source"]
+            : typeof args["content"] === "string"
+              ? args["content"]
+              : typeof args["deckContent"] === "string"
+                ? args["deckContent"]
+                : (this.context.current as any)?.sourceText;
+        if (typeof rawSource === "string" && rawSource.length > 0) {
+          if (tool.name.startsWith("fea_")) {
+            try {
+              const feaMod = await import("@modelscript/fea");
+              const props = feaMod.extractFeaSlicingProperties?.(rawSource);
+              const deck = feaMod.parseInpDeck?.(rawSource);
+              domainAnalysis = {
+                domain: "fea",
+                ...(props ? { slicingProperties: props } : {}),
+                ...(deck ? { sectionCount: (deck as any).sections?.length ?? deck.elementSets?.size ?? 0 } : {}),
+              };
+            } catch {
+              // Optional FEA package not loaded
+            }
+          } else if (tool.name.startsWith("cfd_")) {
+            try {
+              const cfdMod = await import("@modelscript/cfd");
+              const props = cfdMod.extractCfdSlicingProperties?.(rawSource);
+              const cfg = cfdMod.parseSu2Config?.(rawSource);
+              domainAnalysis = {
+                domain: "cfd",
+                ...(props ? { slicingProperties: props } : {}),
+                ...(cfg
+                  ? { optionCount: cfg.directives?.size ?? (cfg as any).options?.size ?? Object.keys(cfg).length }
+                  : {}),
+              };
+            } catch {
+              // Optional CFD package not loaded
+            }
+          }
+        }
+
         return {
           content: [
             {
@@ -191,6 +233,7 @@ export class PolyglotMcpHost {
                   tool: tool.name,
                   args,
                   ...(matchedSymbols.length > 0 ? { matchedSymbols: matchedSymbols.slice(0, 20) } : {}),
+                  ...(domainAnalysis ? { analysis: domainAnalysis } : {}),
                 },
                 null,
                 2,

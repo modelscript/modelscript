@@ -313,6 +313,7 @@ export class LibraryDatabase {
       "post_topics",
       "packages",
       "package_versions",
+      "library_releases",
       "classes",
       "dist_tags",
       "artifacts",
@@ -2175,6 +2176,41 @@ export class LibraryDatabase {
 
   updatePostArtifactViewId(postId: number, artifactViewId: number) {
     this.#db.prepare(`UPDATE posts SET artifact_view_id = ? WHERE id = ?`).run(artifactViewId, postId);
+  }
+
+  updatePost(
+    postId: number,
+    updates: {
+      content?: string | null | undefined;
+      artifactViewId?: number | null | undefined;
+      metadata?: any;
+      replyVisibility?: string | undefined;
+    },
+  ): void {
+    const existing = this.#db
+      .prepare(`SELECT content, artifact_view_id, metadata, reply_visibility FROM posts WHERE id = ?`)
+      .get(postId) as any;
+    if (!existing) return;
+
+    const nextContent = updates.content !== undefined ? updates.content : existing.content;
+    const nextArtifactViewId =
+      updates.artifactViewId !== undefined ? updates.artifactViewId : existing.artifact_view_id;
+    const nextMetadata =
+      updates.metadata !== undefined
+        ? typeof updates.metadata === "string"
+          ? updates.metadata
+          : JSON.stringify(updates.metadata)
+        : existing.metadata;
+    const nextReplyVisibility =
+      updates.replyVisibility !== undefined ? updates.replyVisibility : existing.reply_visibility;
+
+    this.#db
+      .prepare(
+        `UPDATE posts
+         SET content = ?, artifact_view_id = ?, metadata = ?, reply_visibility = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(nextContent ?? null, nextArtifactViewId ?? null, nextMetadata ?? null, nextReplyVisibility, postId);
   }
 
   incrementPostView(postId: number, countryCode?: string, regionCode?: string) {

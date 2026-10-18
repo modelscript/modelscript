@@ -17,9 +17,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 0,
+    "startByte": 555,
     "endByte": 943,
-    "startOffset": 0,
+    "startOffset": 555,
     "endOffset": 943,
     "fieldRanges": {
       "name": {
@@ -36,7 +36,7 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       }
     },
     "exports": [
-      "/**\n * SysML v2 / KerML standard library foundation.\n * Expanded comprehensive standard library snapshot:\n * - ScalarValues, Collections, Links, Occurrences\n * - Base, CoreTypes, Control, Transfers, Performances\n * - ISO/IEC 80000 International System of Quantities (ISQ)\n * - SI Base Units, SI Derived Units, SI Prefixes and Unit Symbols\n * - US Customary & Imperial Units\n * - CauseAndEffect (Safety, Hazards, Faults, Mitigations)\n * - SpatialFrames (Coordinate Frames, Points, Transforms)\n * - StateMachines (States, Transitions, Guards, Actions)\n */\n\npackage ScalarValues {\n    abstract attribute def Real;\n    abstract attribute def Integer;\n    abstract attribute def Boolean;\n    abstract attribute def String;\n    abstract attribute def Natural :> Integer;\n    abstract attribute def Positive :> Integer;\n    abstract attribute def UnlimitedNatural :> Natural;\n    abstract attribute def Complex;\n    abstract attribute def Rational;\n}"
+      "package ScalarValues {\n    abstract attribute def Real;\n    abstract attribute def Integer;\n    abstract attribute def Boolean;\n    abstract attribute def String;\n    abstract attribute def Natural :> Integer;\n    abstract attribute def Positive :> Integer;\n    abstract attribute def UnlimitedNatural :> Natural;\n    abstract attribute def Complex;\n    abstract attribute def Rational;\n}"
     ],
     "inherits": [],
     "metadata": {}
@@ -235,21 +235,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 6,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 755,
+    "startByte": 756,
     "endByte": 763,
-    "startOffset": 755,
+    "startOffset": 756,
     "endOffset": 763,
     "fieldRanges": {
       "name": {
-        "startByte": 755,
+        "startByte": 756,
         "endByte": 763,
-        "startOffset": 755,
+        "startOffset": 756,
         "endOffset": 763
       },
       "superclassifier": {
-        "startByte": 755,
+        "startByte": 756,
         "endByte": 763,
-        "startOffset": 755,
+        "startOffset": 756,
         "endOffset": 763
       }
     },
@@ -303,21 +303,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 8,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 803,
+    "startByte": 804,
     "endByte": 811,
-    "startOffset": 803,
+    "startOffset": 804,
     "endOffset": 811,
     "fieldRanges": {
       "name": {
-        "startByte": 803,
+        "startByte": 804,
         "endByte": 811,
-        "startOffset": 803,
+        "startOffset": 804,
         "endOffset": 811
       },
       "superclassifier": {
-        "startByte": 803,
+        "startByte": 804,
         "endByte": 811,
-        "startOffset": 803,
+        "startOffset": 804,
         "endOffset": 811
       }
     },
@@ -371,21 +371,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 10,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 859,
+    "startByte": 860,
     "endByte": 867,
-    "startOffset": 859,
+    "startOffset": 860,
     "endOffset": 867,
     "fieldRanges": {
       "name": {
-        "startByte": 859,
+        "startByte": 860,
         "endByte": 867,
-        "startOffset": 859,
+        "startOffset": 860,
         "endOffset": 867
       },
       "superclassifier": {
-        "startByte": 859,
+        "startByte": 860,
         "endByte": 867,
-        "startOffset": 859,
+        "startOffset": 860,
         "endOffset": 867
       }
     },
@@ -476,9 +476,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 943,
+    "startByte": 945,
     "endByte": 1733,
-    "startOffset": 943,
+    "startOffset": 945,
     "endOffset": 1733,
     "fieldRanges": {
       "name": {
@@ -583,21 +583,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 16,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1024,
+    "startByte": 1025,
     "endByte": 1033,
-    "startOffset": 1024,
+    "startOffset": 1025,
     "endOffset": 1033,
     "fieldRanges": {
       "name": {
-        "startByte": 1024,
+        "startByte": 1025,
         "endByte": 1033,
-        "startOffset": 1024,
+        "startOffset": 1025,
         "endOffset": 1033
       },
       "superclassifier": {
-        "startByte": 1024,
+        "startByte": 1025,
         "endByte": 1033,
-        "startOffset": 1024,
+        "startOffset": 1025,
         "endOffset": 1033
       }
     },
@@ -651,21 +651,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 18,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1067,
+    "startByte": 1068,
     "endByte": 1075,
-    "startOffset": 1067,
+    "startOffset": 1068,
     "endOffset": 1075,
     "fieldRanges": {
       "name": {
-        "startByte": 1067,
+        "startByte": 1068,
         "endByte": 1075,
-        "startOffset": 1067,
+        "startOffset": 1068,
         "endOffset": 1075
       },
       "superclassifier": {
-        "startByte": 1067,
+        "startByte": 1068,
         "endByte": 1075,
-        "startOffset": 1067,
+        "startOffset": 1068,
         "endOffset": 1075
       }
     },
@@ -719,21 +719,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 20,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1106,
+    "startByte": 1107,
     "endByte": 1114,
-    "startOffset": 1106,
+    "startOffset": 1107,
     "endOffset": 1114,
     "fieldRanges": {
       "name": {
-        "startByte": 1106,
+        "startByte": 1107,
         "endByte": 1114,
-        "startOffset": 1106,
+        "startOffset": 1107,
         "endOffset": 1114
       },
       "superclassifier": {
-        "startByte": 1106,
+        "startByte": 1107,
         "endByte": 1114,
-        "startOffset": 1106,
+        "startOffset": 1107,
         "endOffset": 1114
       }
     },
@@ -787,21 +787,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 22,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1151,
+    "startByte": 1152,
     "endByte": 1156,
-    "startOffset": 1151,
+    "startOffset": 1152,
     "endOffset": 1156,
     "fieldRanges": {
       "name": {
-        "startByte": 1151,
+        "startByte": 1152,
         "endByte": 1156,
-        "startOffset": 1151,
+        "startOffset": 1152,
         "endOffset": 1156
       },
       "superclassifier": {
-        "startByte": 1151,
+        "startByte": 1152,
         "endByte": 1156,
-        "startOffset": 1151,
+        "startOffset": 1152,
         "endOffset": 1156
       }
     },
@@ -855,21 +855,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 24,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1191,
+    "startByte": 1192,
     "endByte": 1202,
-    "startOffset": 1191,
+    "startOffset": 1192,
     "endOffset": 1202,
     "fieldRanges": {
       "name": {
-        "startByte": 1191,
+        "startByte": 1192,
         "endByte": 1202,
-        "startOffset": 1191,
+        "startOffset": 1192,
         "endOffset": 1202
       },
       "superclassifier": {
-        "startByte": 1191,
+        "startByte": 1192,
         "endByte": 1202,
-        "startOffset": 1191,
+        "startOffset": 1192,
         "endOffset": 1202
       }
     },
@@ -923,21 +923,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 26,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1234,
+    "startByte": 1235,
     "endByte": 1245,
-    "startOffset": 1234,
+    "startOffset": 1235,
     "endOffset": 1245,
     "fieldRanges": {
       "name": {
-        "startByte": 1234,
+        "startByte": 1235,
         "endByte": 1245,
-        "startOffset": 1234,
+        "startOffset": 1235,
         "endOffset": 1245
       },
       "superclassifier": {
-        "startByte": 1234,
+        "startByte": 1235,
         "endByte": 1245,
-        "startOffset": 1234,
+        "startOffset": 1235,
         "endOffset": 1245
       }
     },
@@ -991,21 +991,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 28,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1281,
+    "startByte": 1282,
     "endByte": 1287,
-    "startOffset": 1281,
+    "startOffset": 1282,
     "endOffset": 1287,
     "fieldRanges": {
       "name": {
-        "startByte": 1281,
+        "startByte": 1282,
         "endByte": 1287,
-        "startOffset": 1281,
+        "startOffset": 1282,
         "endOffset": 1287
       },
       "superclassifier": {
-        "startByte": 1281,
+        "startByte": 1282,
         "endByte": 1287,
-        "startOffset": 1281,
+        "startOffset": 1282,
         "endOffset": 1287
       }
     },
@@ -1059,21 +1059,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 30,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1322,
+    "startByte": 1323,
     "endByte": 1328,
-    "startOffset": 1322,
+    "startOffset": 1323,
     "endOffset": 1328,
     "fieldRanges": {
       "name": {
-        "startByte": 1322,
+        "startByte": 1323,
         "endByte": 1328,
-        "startOffset": 1322,
+        "startOffset": 1323,
         "endOffset": 1328
       },
       "superclassifier": {
-        "startByte": 1322,
+        "startByte": 1323,
         "endByte": 1328,
-        "startOffset": 1322,
+        "startOffset": 1323,
         "endOffset": 1328
       }
     },
@@ -1127,21 +1127,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 32,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1365,
+    "startByte": 1366,
     "endByte": 1371,
-    "startOffset": 1365,
+    "startOffset": 1366,
     "endOffset": 1371,
     "fieldRanges": {
       "name": {
-        "startByte": 1365,
+        "startByte": 1366,
         "endByte": 1371,
-        "startOffset": 1365,
+        "startOffset": 1366,
         "endOffset": 1371
       },
       "superclassifier": {
-        "startByte": 1365,
+        "startByte": 1366,
         "endByte": 1371,
-        "startOffset": 1365,
+        "startOffset": 1366,
         "endOffset": 1371
       }
     },
@@ -1195,21 +1195,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 34,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1402,
+    "startByte": 1403,
     "endByte": 1413,
-    "startOffset": 1402,
+    "startOffset": 1403,
     "endOffset": 1413,
     "fieldRanges": {
       "name": {
-        "startByte": 1402,
+        "startByte": 1403,
         "endByte": 1413,
-        "startOffset": 1402,
+        "startOffset": 1403,
         "endOffset": 1413
       },
       "superclassifier": {
-        "startByte": 1402,
+        "startByte": 1403,
         "endByte": 1413,
-        "startOffset": 1402,
+        "startOffset": 1403,
         "endOffset": 1413
       }
     },
@@ -1263,21 +1263,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 36,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1448,
+    "startByte": 1449,
     "endByte": 1459,
-    "startOffset": 1448,
+    "startOffset": 1449,
     "endOffset": 1459,
     "fieldRanges": {
       "name": {
-        "startByte": 1448,
+        "startByte": 1449,
         "endByte": 1459,
-        "startOffset": 1448,
+        "startOffset": 1449,
         "endOffset": 1459
       },
       "superclassifier": {
-        "startByte": 1448,
+        "startByte": 1449,
         "endByte": 1459,
-        "startOffset": 1448,
+        "startOffset": 1449,
         "endOffset": 1459
       }
     },
@@ -1331,21 +1331,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 38,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1490,
+    "startByte": 1491,
     "endByte": 1503,
-    "startOffset": 1490,
+    "startOffset": 1491,
     "endOffset": 1503,
     "fieldRanges": {
       "name": {
-        "startByte": 1490,
+        "startByte": 1491,
         "endByte": 1503,
-        "startOffset": 1490,
+        "startOffset": 1491,
         "endOffset": 1503
       },
       "superclassifier": {
-        "startByte": 1490,
+        "startByte": 1491,
         "endByte": 1503,
-        "startOffset": 1490,
+        "startOffset": 1491,
         "endOffset": 1503
       }
     },
@@ -1399,21 +1399,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 40,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1542,
+    "startByte": 1543,
     "endByte": 1550,
-    "startOffset": 1542,
+    "startOffset": 1543,
     "endOffset": 1550,
     "fieldRanges": {
       "name": {
-        "startByte": 1542,
+        "startByte": 1543,
         "endByte": 1550,
-        "startOffset": 1542,
+        "startOffset": 1543,
         "endOffset": 1550
       },
       "superclassifier": {
-        "startByte": 1542,
+        "startByte": 1543,
         "endByte": 1550,
-        "startOffset": 1542,
+        "startOffset": 1543,
         "endOffset": 1550
       }
     },
@@ -1467,21 +1467,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 42,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1588,
+    "startByte": 1589,
     "endByte": 1599,
-    "startOffset": 1588,
+    "startOffset": 1589,
     "endOffset": 1599,
     "fieldRanges": {
       "name": {
-        "startByte": 1588,
+        "startByte": 1589,
         "endByte": 1599,
-        "startOffset": 1588,
+        "startOffset": 1589,
         "endOffset": 1599
       },
       "superclassifier": {
-        "startByte": 1588,
+        "startByte": 1589,
         "endByte": 1599,
-        "startOffset": 1588,
+        "startOffset": 1589,
         "endOffset": 1599
       }
     },
@@ -1535,21 +1535,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 44,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1635,
+    "startByte": 1636,
     "endByte": 1643,
-    "startOffset": 1635,
+    "startOffset": 1636,
     "endOffset": 1643,
     "fieldRanges": {
       "name": {
-        "startByte": 1635,
+        "startByte": 1636,
         "endByte": 1643,
-        "startOffset": 1635,
+        "startOffset": 1636,
         "endOffset": 1643
       },
       "superclassifier": {
-        "startByte": 1635,
+        "startByte": 1636,
         "endByte": 1643,
-        "startOffset": 1635,
+        "startOffset": 1636,
         "endOffset": 1643
       }
     },
@@ -1603,21 +1603,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 46,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1679,
+    "startByte": 1680,
     "endByte": 1687,
-    "startOffset": 1679,
+    "startOffset": 1680,
     "endOffset": 1687,
     "fieldRanges": {
       "name": {
-        "startByte": 1679,
+        "startByte": 1680,
         "endByte": 1687,
-        "startOffset": 1679,
+        "startOffset": 1680,
         "endOffset": 1687
       },
       "superclassifier": {
-        "startByte": 1679,
+        "startByte": 1680,
         "endByte": 1687,
-        "startOffset": 1679,
+        "startOffset": 1680,
         "endOffset": 1687
       }
     },
@@ -1671,21 +1671,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 48,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1722,
+    "startByte": 1723,
     "endByte": 1730,
-    "startOffset": 1722,
+    "startOffset": 1723,
     "endOffset": 1730,
     "fieldRanges": {
       "name": {
-        "startByte": 1722,
+        "startByte": 1723,
         "endByte": 1730,
-        "startOffset": 1722,
+        "startOffset": 1723,
         "endOffset": 1730
       },
       "superclassifier": {
-        "startByte": 1722,
+        "startByte": 1723,
         "endByte": 1730,
-        "startOffset": 1722,
+        "startOffset": 1723,
         "endOffset": 1730
       }
     },
@@ -1702,9 +1702,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1733,
+    "startByte": 1735,
     "endByte": 2139,
-    "startOffset": 1733,
+    "startOffset": 1735,
     "endOffset": 2139,
     "fieldRanges": {
       "name": {
@@ -1735,21 +1735,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 50,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1754,
+    "startByte": 1759,
     "endByte": 1773,
-    "startOffset": 1754,
+    "startOffset": 1759,
     "endOffset": 1773,
     "fieldRanges": {
       "name": {
-        "startByte": 1765,
+        "startByte": 1766,
         "endByte": 1770,
-        "startOffset": 1765,
+        "startOffset": 1766,
         "endOffset": 1770
       },
       "importedNamespace": {
-        "startByte": 1765,
+        "startByte": 1766,
         "endByte": 1770,
-        "startOffset": 1765,
+        "startOffset": 1766,
         "endOffset": 1770
       }
     },
@@ -1806,21 +1806,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 52,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1805,
+    "startByte": 1806,
     "endByte": 1815,
-    "startOffset": 1805,
+    "startOffset": 1806,
     "endOffset": 1815,
     "fieldRanges": {
       "name": {
-        "startByte": 1805,
+        "startByte": 1806,
         "endByte": 1815,
-        "startOffset": 1805,
+        "startOffset": 1806,
         "endOffset": 1815
       },
       "superclassifier": {
-        "startByte": 1805,
+        "startByte": 1806,
         "endByte": 1815,
-        "startOffset": 1805,
+        "startOffset": 1806,
         "endOffset": 1815
       }
     },
@@ -1874,21 +1874,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 54,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1846,
+    "startByte": 1847,
     "endByte": 1856,
-    "startOffset": 1846,
+    "startOffset": 1847,
     "endOffset": 1856,
     "fieldRanges": {
       "name": {
-        "startByte": 1846,
+        "startByte": 1847,
         "endByte": 1856,
-        "startOffset": 1846,
+        "startOffset": 1847,
         "endOffset": 1856
       },
       "superclassifier": {
-        "startByte": 1846,
+        "startByte": 1847,
         "endByte": 1856,
-        "startOffset": 1846,
+        "startOffset": 1847,
         "endOffset": 1856
       }
     },
@@ -1942,21 +1942,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 56,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1887,
+    "startByte": 1888,
     "endByte": 1895,
-    "startOffset": 1887,
+    "startOffset": 1888,
     "endOffset": 1895,
     "fieldRanges": {
       "name": {
-        "startByte": 1887,
+        "startByte": 1888,
         "endByte": 1895,
-        "startOffset": 1887,
+        "startOffset": 1888,
         "endOffset": 1895
       },
       "superclassifier": {
-        "startByte": 1887,
+        "startByte": 1888,
         "endByte": 1895,
-        "startOffset": 1887,
+        "startOffset": 1888,
         "endOffset": 1895
       }
     },
@@ -2010,21 +2010,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 58,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1930,
+    "startByte": 1931,
     "endByte": 1939,
-    "startOffset": 1930,
+    "startOffset": 1931,
     "endOffset": 1939,
     "fieldRanges": {
       "name": {
-        "startByte": 1930,
+        "startByte": 1931,
         "endByte": 1939,
-        "startOffset": 1930,
+        "startOffset": 1931,
         "endOffset": 1939
       },
       "superclassifier": {
-        "startByte": 1930,
+        "startByte": 1931,
         "endByte": 1939,
-        "startOffset": 1930,
+        "startOffset": 1931,
         "endOffset": 1939
       }
     },
@@ -2076,21 +2076,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 60,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 1972,
+    "startByte": 1973,
     "endByte": 1981,
-    "startOffset": 1972,
+    "startOffset": 1973,
     "endOffset": 1981,
     "fieldRanges": {
       "name": {
-        "startByte": 1972,
+        "startByte": 1973,
         "endByte": 1981,
-        "startOffset": 1972,
+        "startOffset": 1973,
         "endOffset": 1981
       },
       "superclassifier": {
-        "startByte": 1972,
+        "startByte": 1973,
         "endByte": 1981,
-        "startOffset": 1972,
+        "startOffset": 1973,
         "endOffset": 1981
       }
     },
@@ -2144,21 +2144,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 62,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2024,
+    "startByte": 2025,
     "endByte": 2033,
-    "startOffset": 2024,
+    "startOffset": 2025,
     "endOffset": 2033,
     "fieldRanges": {
       "name": {
-        "startByte": 2024,
+        "startByte": 2025,
         "endByte": 2033,
-        "startOffset": 2024,
+        "startOffset": 2025,
         "endOffset": 2033
       },
       "superclassifier": {
-        "startByte": 2024,
+        "startByte": 2025,
         "endByte": 2033,
-        "startOffset": 2024,
+        "startOffset": 2025,
         "endOffset": 2033
       }
     },
@@ -2212,21 +2212,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 64,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2071,
+    "startByte": 2072,
     "endByte": 2080,
-    "startOffset": 2071,
+    "startOffset": 2072,
     "endOffset": 2080,
     "fieldRanges": {
       "name": {
-        "startByte": 2071,
+        "startByte": 2072,
         "endByte": 2080,
-        "startOffset": 2071,
+        "startOffset": 2072,
         "endOffset": 2080
       },
       "superclassifier": {
-        "startByte": 2071,
+        "startByte": 2072,
         "endByte": 2080,
-        "startOffset": 2071,
+        "startOffset": 2072,
         "endOffset": 2080
       }
     },
@@ -2280,21 +2280,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 66,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2125,
+    "startByte": 2126,
     "endByte": 2136,
-    "startOffset": 2125,
+    "startOffset": 2126,
     "endOffset": 2136,
     "fieldRanges": {
       "name": {
-        "startByte": 2125,
+        "startByte": 2126,
         "endByte": 2136,
-        "startOffset": 2125,
+        "startOffset": 2126,
         "endOffset": 2136
       },
       "superclassifier": {
-        "startByte": 2125,
+        "startByte": 2126,
         "endByte": 2136,
-        "startOffset": 2125,
+        "startOffset": 2126,
         "endOffset": 2136
       }
     },
@@ -2311,9 +2311,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2139,
+    "startByte": 2141,
     "endByte": 2427,
-    "startOffset": 2139,
+    "startOffset": 2141,
     "endOffset": 2427,
     "fieldRanges": {
       "name": {
@@ -2344,21 +2344,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 68,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2162,
+    "startByte": 2167,
     "endByte": 2181,
-    "startOffset": 2162,
+    "startOffset": 2167,
     "endOffset": 2181,
     "fieldRanges": {
       "name": {
-        "startByte": 2173,
+        "startByte": 2174,
         "endByte": 2178,
-        "startOffset": 2173,
+        "startOffset": 2174,
         "endOffset": 2178
       },
       "importedNamespace": {
-        "startByte": 2173,
+        "startByte": 2174,
         "endByte": 2178,
-        "startOffset": 2173,
+        "startOffset": 2174,
         "endOffset": 2178
       }
     },
@@ -2452,21 +2452,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 71,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2247,
+    "startByte": 2248,
     "endByte": 2258,
-    "startOffset": 2247,
+    "startOffset": 2248,
     "endOffset": 2258,
     "fieldRanges": {
       "name": {
-        "startByte": 2247,
+        "startByte": 2248,
         "endByte": 2258,
-        "startOffset": 2247,
+        "startOffset": 2248,
         "endOffset": 2258
       },
       "superclassifier": {
-        "startByte": 2247,
+        "startByte": 2248,
         "endByte": 2258,
-        "startOffset": 2247,
+        "startOffset": 2248,
         "endOffset": 2258
       }
     },
@@ -2520,21 +2520,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 73,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2288,
+    "startByte": 2289,
     "endByte": 2299,
-    "startOffset": 2288,
+    "startOffset": 2289,
     "endOffset": 2299,
     "fieldRanges": {
       "name": {
-        "startByte": 2288,
+        "startByte": 2289,
         "endByte": 2299,
-        "startOffset": 2288,
+        "startOffset": 2289,
         "endOffset": 2299
       },
       "superclassifier": {
-        "startByte": 2288,
+        "startByte": 2289,
         "endByte": 2299,
-        "startOffset": 2288,
+        "startOffset": 2289,
         "endOffset": 2299
       }
     },
@@ -2588,21 +2588,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 75,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2329,
+    "startByte": 2330,
     "endByte": 2340,
-    "startOffset": 2329,
+    "startOffset": 2330,
     "endOffset": 2340,
     "fieldRanges": {
       "name": {
-        "startByte": 2329,
+        "startByte": 2330,
         "endByte": 2340,
-        "startOffset": 2329,
+        "startOffset": 2330,
         "endOffset": 2340
       },
       "superclassifier": {
-        "startByte": 2329,
+        "startByte": 2330,
         "endByte": 2340,
-        "startOffset": 2329,
+        "startOffset": 2330,
         "endOffset": 2340
       }
     },
@@ -2656,21 +2656,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 77,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2372,
+    "startByte": 2373,
     "endByte": 2383,
-    "startOffset": 2372,
+    "startOffset": 2373,
     "endOffset": 2383,
     "fieldRanges": {
       "name": {
-        "startByte": 2372,
+        "startByte": 2373,
         "endByte": 2383,
-        "startOffset": 2372,
+        "startOffset": 2373,
         "endOffset": 2383
       },
       "superclassifier": {
-        "startByte": 2372,
+        "startByte": 2373,
         "endByte": 2383,
-        "startOffset": 2372,
+        "startOffset": 2373,
         "endOffset": 2383
       }
     },
@@ -2724,21 +2724,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 79,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2413,
+    "startByte": 2414,
     "endByte": 2424,
-    "startOffset": 2413,
+    "startOffset": 2414,
     "endOffset": 2424,
     "fieldRanges": {
       "name": {
-        "startByte": 2413,
+        "startByte": 2414,
         "endByte": 2424,
-        "startOffset": 2413,
+        "startOffset": 2414,
         "endOffset": 2424
       },
       "superclassifier": {
-        "startByte": 2413,
+        "startByte": 2414,
         "endByte": 2424,
-        "startOffset": 2413,
+        "startOffset": 2414,
         "endOffset": 2424
       }
     },
@@ -2755,9 +2755,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2427,
+    "startByte": 2429,
     "endByte": 2686,
-    "startOffset": 2427,
+    "startOffset": 2429,
     "endOffset": 2686,
     "fieldRanges": {
       "name": {
@@ -2862,21 +2862,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 83,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2520,
+    "startByte": 2521,
     "endByte": 2532,
-    "startOffset": 2520,
+    "startOffset": 2521,
     "endOffset": 2532,
     "fieldRanges": {
       "name": {
-        "startByte": 2520,
+        "startByte": 2521,
         "endByte": 2532,
-        "startOffset": 2520,
+        "startOffset": 2521,
         "endOffset": 2532
       },
       "superclassifier": {
-        "startByte": 2520,
+        "startByte": 2521,
         "endByte": 2532,
-        "startOffset": 2520,
+        "startOffset": 2521,
         "endOffset": 2532
       }
     },
@@ -2930,21 +2930,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 85,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2573,
+    "startByte": 2574,
     "endByte": 2585,
-    "startOffset": 2573,
+    "startOffset": 2574,
     "endOffset": 2585,
     "fieldRanges": {
       "name": {
-        "startByte": 2573,
+        "startByte": 2574,
         "endByte": 2585,
-        "startOffset": 2573,
+        "startOffset": 2574,
         "endOffset": 2585
       },
       "superclassifier": {
-        "startByte": 2573,
+        "startByte": 2574,
         "endByte": 2585,
-        "startOffset": 2573,
+        "startOffset": 2574,
         "endOffset": 2585
       }
     },
@@ -2998,21 +2998,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 87,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2622,
+    "startByte": 2623,
     "endByte": 2634,
-    "startOffset": 2622,
+    "startOffset": 2623,
     "endOffset": 2634,
     "fieldRanges": {
       "name": {
-        "startByte": 2622,
+        "startByte": 2623,
         "endByte": 2634,
-        "startOffset": 2622,
+        "startOffset": 2623,
         "endOffset": 2634
       },
       "superclassifier": {
-        "startByte": 2622,
+        "startByte": 2623,
         "endByte": 2634,
-        "startOffset": 2622,
+        "startOffset": 2623,
         "endOffset": 2634
       }
     },
@@ -3066,21 +3066,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 89,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2671,
+    "startByte": 2672,
     "endByte": 2683,
-    "startOffset": 2671,
+    "startOffset": 2672,
     "endOffset": 2683,
     "fieldRanges": {
       "name": {
-        "startByte": 2671,
+        "startByte": 2672,
         "endByte": 2683,
-        "startOffset": 2671,
+        "startOffset": 2672,
         "endOffset": 2683
       },
       "superclassifier": {
-        "startByte": 2671,
+        "startByte": 2672,
         "endByte": 2683,
-        "startOffset": 2671,
+        "startOffset": 2672,
         "endOffset": 2683
       }
     },
@@ -3097,9 +3097,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2686,
+    "startByte": 2688,
     "endByte": 2845,
-    "startOffset": 2686,
+    "startOffset": 2688,
     "endOffset": 2845,
     "fieldRanges": {
       "name": {
@@ -3130,21 +3130,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 91,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2707,
+    "startByte": 2712,
     "endByte": 2726,
-    "startOffset": 2707,
+    "startOffset": 2712,
     "endOffset": 2726,
     "fieldRanges": {
       "name": {
-        "startByte": 2718,
+        "startByte": 2719,
         "endByte": 2723,
-        "startOffset": 2718,
+        "startOffset": 2719,
         "endOffset": 2723
       },
       "importedNamespace": {
-        "startByte": 2718,
+        "startByte": 2719,
         "endByte": 2723,
-        "startOffset": 2718,
+        "startOffset": 2719,
         "endOffset": 2723
       }
     },
@@ -3238,21 +3238,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 94,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2790,
+    "startByte": 2791,
     "endByte": 2799,
-    "startOffset": 2790,
+    "startOffset": 2791,
     "endOffset": 2799,
     "fieldRanges": {
       "name": {
-        "startByte": 2790,
+        "startByte": 2791,
         "endByte": 2799,
-        "startOffset": 2790,
+        "startOffset": 2791,
         "endOffset": 2799
       },
       "superclassifier": {
-        "startByte": 2790,
+        "startByte": 2791,
         "endByte": 2799,
-        "startOffset": 2790,
+        "startOffset": 2791,
         "endOffset": 2799
       }
     },
@@ -3306,21 +3306,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 96,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2833,
+    "startByte": 2834,
     "endByte": 2842,
-    "startOffset": 2833,
+    "startOffset": 2834,
     "endOffset": 2842,
     "fieldRanges": {
       "name": {
-        "startByte": 2833,
+        "startByte": 2834,
         "endByte": 2842,
-        "startOffset": 2833,
+        "startOffset": 2834,
         "endOffset": 2842
       },
       "superclassifier": {
-        "startByte": 2833,
+        "startByte": 2834,
         "endByte": 2842,
-        "startOffset": 2833,
+        "startOffset": 2834,
         "endOffset": 2842
       }
     },
@@ -3337,9 +3337,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2845,
+    "startByte": 2847,
     "endByte": 3009,
-    "startOffset": 2845,
+    "startOffset": 2847,
     "endOffset": 3009,
     "fieldRanges": {
       "name": {
@@ -3444,21 +3444,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 100,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2944,
+    "startByte": 2945,
     "endByte": 2956,
-    "startOffset": 2944,
+    "startOffset": 2945,
     "endOffset": 2956,
     "fieldRanges": {
       "name": {
-        "startByte": 2944,
+        "startByte": 2945,
         "endByte": 2956,
-        "startOffset": 2944,
+        "startOffset": 2945,
         "endOffset": 2956
       },
       "superclassifier": {
-        "startByte": 2944,
+        "startByte": 2945,
         "endByte": 2956,
-        "startOffset": 2944,
+        "startOffset": 2945,
         "endOffset": 2956
       }
     },
@@ -3512,21 +3512,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 102,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 2994,
+    "startByte": 2995,
     "endByte": 3006,
-    "startOffset": 2994,
+    "startOffset": 2995,
     "endOffset": 3006,
     "fieldRanges": {
       "name": {
-        "startByte": 2994,
+        "startByte": 2995,
         "endByte": 3006,
-        "startOffset": 2994,
+        "startOffset": 2995,
         "endOffset": 3006
       },
       "superclassifier": {
-        "startByte": 2994,
+        "startByte": 2995,
         "endByte": 3006,
-        "startOffset": 2994,
+        "startOffset": 2995,
         "endOffset": 3006
       }
     },
@@ -3543,9 +3543,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3009,
+    "startByte": 3011,
     "endByte": 7763,
-    "startOffset": 3009,
+    "startOffset": 3011,
     "endOffset": 7763,
     "fieldRanges": {
       "name": {
@@ -3576,21 +3576,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 104,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3024,
+    "startByte": 3029,
     "endByte": 3051,
-    "startOffset": 3024,
+    "startOffset": 3029,
     "endOffset": 3051,
     "fieldRanges": {
       "name": {
-        "startByte": 3035,
+        "startByte": 3036,
         "endByte": 3048,
-        "startOffset": 3035,
+        "startOffset": 3036,
         "endOffset": 3048
       },
       "importedNamespace": {
-        "startByte": 3035,
+        "startByte": 3036,
         "endByte": 3048,
-        "startOffset": 3035,
+        "startOffset": 3036,
         "endOffset": 3048
       }
     },
@@ -3647,21 +3647,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 106,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3135,
+    "startByte": 3136,
     "endByte": 3140,
-    "startOffset": 3135,
+    "startOffset": 3136,
     "endOffset": 3140,
     "fieldRanges": {
       "name": {
-        "startByte": 3135,
+        "startByte": 3136,
         "endByte": 3140,
-        "startOffset": 3135,
+        "startOffset": 3136,
         "endOffset": 3140
       },
       "superclassifier": {
-        "startByte": 3135,
+        "startByte": 3136,
         "endByte": 3140,
-        "startOffset": 3135,
+        "startOffset": 3136,
         "endOffset": 3140
       }
     },
@@ -3715,21 +3715,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 108,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3180,
+    "startByte": 3181,
     "endByte": 3185,
-    "startOffset": 3180,
+    "startOffset": 3181,
     "endOffset": 3185,
     "fieldRanges": {
       "name": {
-        "startByte": 3180,
+        "startByte": 3181,
         "endByte": 3185,
-        "startOffset": 3180,
+        "startOffset": 3181,
         "endOffset": 3185
       },
       "superclassifier": {
-        "startByte": 3180,
+        "startByte": 3181,
         "endByte": 3185,
-        "startOffset": 3180,
+        "startOffset": 3181,
         "endOffset": 3185
       }
     },
@@ -3783,21 +3783,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 110,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3223,
+    "startByte": 3224,
     "endByte": 3228,
-    "startOffset": 3223,
+    "startOffset": 3224,
     "endOffset": 3228,
     "fieldRanges": {
       "name": {
-        "startByte": 3223,
+        "startByte": 3224,
         "endByte": 3228,
-        "startOffset": 3223,
+        "startOffset": 3224,
         "endOffset": 3228
       },
       "superclassifier": {
-        "startByte": 3223,
+        "startByte": 3224,
         "endByte": 3228,
-        "startOffset": 3223,
+        "startOffset": 3224,
         "endOffset": 3228
       }
     },
@@ -3851,21 +3851,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 112,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3266,
+    "startByte": 3267,
     "endByte": 3271,
-    "startOffset": 3266,
+    "startOffset": 3267,
     "endOffset": 3271,
     "fieldRanges": {
       "name": {
-        "startByte": 3266,
+        "startByte": 3267,
         "endByte": 3271,
-        "startOffset": 3266,
+        "startOffset": 3267,
         "endOffset": 3271
       },
       "superclassifier": {
-        "startByte": 3266,
+        "startByte": 3267,
         "endByte": 3271,
-        "startOffset": 3266,
+        "startOffset": 3267,
         "endOffset": 3271
       }
     },
@@ -3919,21 +3919,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 114,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3308,
+    "startByte": 3309,
     "endByte": 3315,
-    "startOffset": 3308,
+    "startOffset": 3309,
     "endOffset": 3315,
     "fieldRanges": {
       "name": {
-        "startByte": 3308,
+        "startByte": 3309,
         "endByte": 3315,
-        "startOffset": 3308,
+        "startOffset": 3309,
         "endOffset": 3315
       },
       "superclassifier": {
-        "startByte": 3308,
+        "startByte": 3309,
         "endByte": 3315,
-        "startOffset": 3308,
+        "startOffset": 3309,
         "endOffset": 3315
       }
     },
@@ -3987,21 +3987,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 116,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3353,
+    "startByte": 3354,
     "endByte": 3360,
-    "startOffset": 3353,
+    "startOffset": 3354,
     "endOffset": 3360,
     "fieldRanges": {
       "name": {
-        "startByte": 3353,
+        "startByte": 3354,
         "endByte": 3360,
-        "startOffset": 3353,
+        "startOffset": 3354,
         "endOffset": 3360
       },
       "superclassifier": {
-        "startByte": 3353,
+        "startByte": 3354,
         "endByte": 3360,
-        "startOffset": 3353,
+        "startOffset": 3354,
         "endOffset": 3360
       }
     },
@@ -4055,21 +4055,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 118,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3400,
+    "startByte": 3401,
     "endByte": 3407,
-    "startOffset": 3400,
+    "startOffset": 3401,
     "endOffset": 3407,
     "fieldRanges": {
       "name": {
-        "startByte": 3400,
+        "startByte": 3401,
         "endByte": 3407,
-        "startOffset": 3400,
+        "startOffset": 3401,
         "endOffset": 3407
       },
       "superclassifier": {
-        "startByte": 3400,
+        "startByte": 3401,
         "endByte": 3407,
-        "startOffset": 3400,
+        "startOffset": 3401,
         "endOffset": 3407
       }
     },
@@ -4123,21 +4123,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 120,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3447,
+    "startByte": 3448,
     "endByte": 3454,
-    "startOffset": 3447,
+    "startOffset": 3448,
     "endOffset": 3454,
     "fieldRanges": {
       "name": {
-        "startByte": 3447,
+        "startByte": 3448,
         "endByte": 3454,
-        "startOffset": 3447,
+        "startOffset": 3448,
         "endOffset": 3454
       },
       "superclassifier": {
-        "startByte": 3447,
+        "startByte": 3448,
         "endByte": 3454,
-        "startOffset": 3447,
+        "startOffset": 3448,
         "endOffset": 3454
       }
     },
@@ -4191,21 +4191,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 122,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3498,
+    "startByte": 3499,
     "endByte": 3505,
-    "startOffset": 3498,
+    "startOffset": 3499,
     "endOffset": 3505,
     "fieldRanges": {
       "name": {
-        "startByte": 3498,
+        "startByte": 3499,
         "endByte": 3505,
-        "startOffset": 3498,
+        "startOffset": 3499,
         "endOffset": 3505
       },
       "superclassifier": {
-        "startByte": 3498,
+        "startByte": 3499,
         "endByte": 3505,
-        "startOffset": 3498,
+        "startOffset": 3499,
         "endOffset": 3505
       }
     },
@@ -4259,21 +4259,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 124,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3543,
+    "startByte": 3544,
     "endByte": 3550,
-    "startOffset": 3543,
+    "startOffset": 3544,
     "endOffset": 3550,
     "fieldRanges": {
       "name": {
-        "startByte": 3543,
+        "startByte": 3544,
         "endByte": 3550,
-        "startOffset": 3543,
+        "startOffset": 3544,
         "endOffset": 3550
       },
       "superclassifier": {
-        "startByte": 3543,
+        "startByte": 3544,
         "endByte": 3550,
-        "startOffset": 3543,
+        "startOffset": 3544,
         "endOffset": 3550
       }
     },
@@ -4327,21 +4327,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 126,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3590,
+    "startByte": 3591,
     "endByte": 3597,
-    "startOffset": 3590,
+    "startOffset": 3591,
     "endOffset": 3597,
     "fieldRanges": {
       "name": {
-        "startByte": 3590,
+        "startByte": 3591,
         "endByte": 3597,
-        "startOffset": 3590,
+        "startOffset": 3591,
         "endOffset": 3597
       },
       "superclassifier": {
-        "startByte": 3590,
+        "startByte": 3591,
         "endByte": 3597,
-        "startOffset": 3590,
+        "startOffset": 3591,
         "endOffset": 3597
       }
     },
@@ -4395,21 +4395,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 128,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3638,
+    "startByte": 3639,
     "endByte": 3645,
-    "startOffset": 3638,
+    "startOffset": 3639,
     "endOffset": 3645,
     "fieldRanges": {
       "name": {
-        "startByte": 3638,
+        "startByte": 3639,
         "endByte": 3645,
-        "startOffset": 3638,
+        "startOffset": 3639,
         "endOffset": 3645
       },
       "superclassifier": {
-        "startByte": 3638,
+        "startByte": 3639,
         "endByte": 3645,
-        "startOffset": 3638,
+        "startOffset": 3639,
         "endOffset": 3645
       }
     },
@@ -4463,21 +4463,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 130,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3681,
+    "startByte": 3682,
     "endByte": 3686,
-    "startOffset": 3681,
+    "startOffset": 3682,
     "endOffset": 3686,
     "fieldRanges": {
       "name": {
-        "startByte": 3681,
+        "startByte": 3682,
         "endByte": 3686,
-        "startOffset": 3681,
+        "startOffset": 3682,
         "endOffset": 3686
       },
       "superclassifier": {
-        "startByte": 3681,
+        "startByte": 3682,
         "endByte": 3686,
-        "startOffset": 3681,
+        "startOffset": 3682,
         "endOffset": 3686
       }
     },
@@ -4531,21 +4531,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 132,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3724,
+    "startByte": 3725,
     "endByte": 3729,
-    "startOffset": 3724,
+    "startOffset": 3725,
     "endOffset": 3729,
     "fieldRanges": {
       "name": {
-        "startByte": 3724,
+        "startByte": 3725,
         "endByte": 3729,
-        "startOffset": 3724,
+        "startOffset": 3725,
         "endOffset": 3729
       },
       "superclassifier": {
-        "startByte": 3724,
+        "startByte": 3725,
         "endByte": 3729,
-        "startOffset": 3724,
+        "startOffset": 3725,
         "endOffset": 3729
       }
     },
@@ -4599,21 +4599,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 134,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3766,
+    "startByte": 3767,
     "endByte": 3771,
-    "startOffset": 3766,
+    "startOffset": 3767,
     "endOffset": 3771,
     "fieldRanges": {
       "name": {
-        "startByte": 3766,
+        "startByte": 3767,
         "endByte": 3771,
-        "startOffset": 3766,
+        "startOffset": 3767,
         "endOffset": 3771
       },
       "superclassifier": {
-        "startByte": 3766,
+        "startByte": 3767,
         "endByte": 3771,
-        "startOffset": 3766,
+        "startOffset": 3767,
         "endOffset": 3771
       }
     },
@@ -4667,21 +4667,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 136,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3813,
+    "startByte": 3814,
     "endByte": 3818,
-    "startOffset": 3813,
+    "startOffset": 3814,
     "endOffset": 3818,
     "fieldRanges": {
       "name": {
-        "startByte": 3813,
+        "startByte": 3814,
         "endByte": 3818,
-        "startOffset": 3813,
+        "startOffset": 3814,
         "endOffset": 3818
       },
       "superclassifier": {
-        "startByte": 3813,
+        "startByte": 3814,
         "endByte": 3818,
-        "startOffset": 3813,
+        "startOffset": 3814,
         "endOffset": 3818
       }
     },
@@ -4735,21 +4735,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 138,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3858,
+    "startByte": 3859,
     "endByte": 3863,
-    "startOffset": 3858,
+    "startOffset": 3859,
     "endOffset": 3863,
     "fieldRanges": {
       "name": {
-        "startByte": 3858,
+        "startByte": 3859,
         "endByte": 3863,
-        "startOffset": 3858,
+        "startOffset": 3859,
         "endOffset": 3863
       },
       "superclassifier": {
-        "startByte": 3858,
+        "startByte": 3859,
         "endByte": 3863,
-        "startOffset": 3858,
+        "startOffset": 3859,
         "endOffset": 3863
       }
     },
@@ -4803,21 +4803,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 140,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3909,
+    "startByte": 3910,
     "endByte": 3918,
-    "startOffset": 3909,
+    "startOffset": 3910,
     "endOffset": 3918,
     "fieldRanges": {
       "name": {
-        "startByte": 3909,
+        "startByte": 3910,
         "endByte": 3918,
-        "startOffset": 3909,
+        "startOffset": 3910,
         "endOffset": 3918
       },
       "superclassifier": {
-        "startByte": 3909,
+        "startByte": 3910,
         "endByte": 3918,
-        "startOffset": 3909,
+        "startOffset": 3910,
         "endOffset": 3918
       }
     },
@@ -4871,21 +4871,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 142,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 3955,
+    "startByte": 3956,
     "endByte": 3964,
-    "startOffset": 3955,
+    "startOffset": 3956,
     "endOffset": 3964,
     "fieldRanges": {
       "name": {
-        "startByte": 3955,
+        "startByte": 3956,
         "endByte": 3964,
-        "startOffset": 3955,
+        "startOffset": 3956,
         "endOffset": 3964
       },
       "superclassifier": {
-        "startByte": 3955,
+        "startByte": 3956,
         "endByte": 3964,
-        "startOffset": 3955,
+        "startOffset": 3956,
         "endOffset": 3964
       }
     },
@@ -4939,21 +4939,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 144,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4011,
+    "startByte": 4012,
     "endByte": 4016,
-    "startOffset": 4011,
+    "startOffset": 4012,
     "endOffset": 4016,
     "fieldRanges": {
       "name": {
-        "startByte": 4011,
+        "startByte": 4012,
         "endByte": 4016,
-        "startOffset": 4011,
+        "startOffset": 4012,
         "endOffset": 4016
       },
       "superclassifier": {
-        "startByte": 4011,
+        "startByte": 4012,
         "endByte": 4016,
-        "startOffset": 4011,
+        "startOffset": 4012,
         "endOffset": 4016
       }
     },
@@ -5007,21 +5007,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 146,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4060,
+    "startByte": 4061,
     "endByte": 4065,
-    "startOffset": 4060,
+    "startOffset": 4061,
     "endOffset": 4065,
     "fieldRanges": {
       "name": {
-        "startByte": 4060,
+        "startByte": 4061,
         "endByte": 4065,
-        "startOffset": 4060,
+        "startOffset": 4061,
         "endOffset": 4065
       },
       "superclassifier": {
-        "startByte": 4060,
+        "startByte": 4061,
         "endByte": 4065,
-        "startOffset": 4060,
+        "startOffset": 4061,
         "endOffset": 4065
       }
     },
@@ -5075,21 +5075,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 148,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4115,
+    "startByte": 4116,
     "endByte": 4128,
-    "startOffset": 4115,
+    "startOffset": 4116,
     "endOffset": 4128,
     "fieldRanges": {
       "name": {
-        "startByte": 4115,
+        "startByte": 4116,
         "endByte": 4128,
-        "startOffset": 4115,
+        "startOffset": 4116,
         "endOffset": 4128
       },
       "superclassifier": {
-        "startByte": 4115,
+        "startByte": 4116,
         "endByte": 4128,
-        "startOffset": 4115,
+        "startOffset": 4116,
         "endOffset": 4128
       }
     },
@@ -5143,21 +5143,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 150,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4179,
+    "startByte": 4180,
     "endByte": 4184,
-    "startOffset": 4179,
+    "startOffset": 4180,
     "endOffset": 4184,
     "fieldRanges": {
       "name": {
-        "startByte": 4179,
+        "startByte": 4180,
         "endByte": 4184,
-        "startOffset": 4179,
+        "startOffset": 4180,
         "endOffset": 4184
       },
       "superclassifier": {
-        "startByte": 4179,
+        "startByte": 4180,
         "endByte": 4184,
-        "startOffset": 4179,
+        "startOffset": 4180,
         "endOffset": 4184
       }
     },
@@ -5211,21 +5211,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 152,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4241,
+    "startByte": 4242,
     "endByte": 4254,
-    "startOffset": 4241,
+    "startOffset": 4242,
     "endOffset": 4254,
     "fieldRanges": {
       "name": {
-        "startByte": 4241,
+        "startByte": 4242,
         "endByte": 4254,
-        "startOffset": 4241,
+        "startOffset": 4242,
         "endOffset": 4254
       },
       "superclassifier": {
-        "startByte": 4241,
+        "startByte": 4242,
         "endByte": 4254,
-        "startOffset": 4241,
+        "startOffset": 4242,
         "endOffset": 4254
       }
     },
@@ -5279,21 +5279,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 154,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4295,
+    "startByte": 4296,
     "endByte": 4300,
-    "startOffset": 4295,
+    "startOffset": 4296,
     "endOffset": 4300,
     "fieldRanges": {
       "name": {
-        "startByte": 4295,
+        "startByte": 4296,
         "endByte": 4300,
-        "startOffset": 4295,
+        "startOffset": 4296,
         "endOffset": 4300
       },
       "superclassifier": {
-        "startByte": 4295,
+        "startByte": 4296,
         "endByte": 4300,
-        "startOffset": 4295,
+        "startOffset": 4296,
         "endOffset": 4300
       }
     },
@@ -5347,21 +5347,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 156,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4351,
+    "startByte": 4352,
     "endByte": 4361,
-    "startOffset": 4351,
+    "startOffset": 4352,
     "endOffset": 4361,
     "fieldRanges": {
       "name": {
-        "startByte": 4351,
+        "startByte": 4352,
         "endByte": 4361,
-        "startOffset": 4351,
+        "startOffset": 4352,
         "endOffset": 4361
       },
       "superclassifier": {
-        "startByte": 4351,
+        "startByte": 4352,
         "endByte": 4361,
-        "startOffset": 4351,
+        "startOffset": 4352,
         "endOffset": 4361
       }
     },
@@ -5415,21 +5415,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 158,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4440,
+    "startByte": 4441,
     "endByte": 4445,
-    "startOffset": 4440,
+    "startOffset": 4441,
     "endOffset": 4445,
     "fieldRanges": {
       "name": {
-        "startByte": 4440,
+        "startByte": 4441,
         "endByte": 4445,
-        "startOffset": 4440,
+        "startOffset": 4441,
         "endOffset": 4445
       },
       "superclassifier": {
-        "startByte": 4440,
+        "startByte": 4441,
         "endByte": 4445,
-        "startOffset": 4440,
+        "startOffset": 4441,
         "endOffset": 4445
       }
     },
@@ -5483,21 +5483,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 160,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4488,
+    "startByte": 4489,
     "endByte": 4493,
-    "startOffset": 4488,
+    "startOffset": 4489,
     "endOffset": 4493,
     "fieldRanges": {
       "name": {
-        "startByte": 4488,
+        "startByte": 4489,
         "endByte": 4493,
-        "startOffset": 4488,
+        "startOffset": 4489,
         "endOffset": 4493
       },
       "superclassifier": {
-        "startByte": 4488,
+        "startByte": 4489,
         "endByte": 4493,
-        "startOffset": 4488,
+        "startOffset": 4489,
         "endOffset": 4493
       }
     },
@@ -5551,21 +5551,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 162,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4539,
+    "startByte": 4540,
     "endByte": 4544,
-    "startOffset": 4539,
+    "startOffset": 4540,
     "endOffset": 4544,
     "fieldRanges": {
       "name": {
-        "startByte": 4539,
+        "startByte": 4540,
         "endByte": 4544,
-        "startOffset": 4539,
+        "startOffset": 4540,
         "endOffset": 4544
       },
       "superclassifier": {
-        "startByte": 4539,
+        "startByte": 4540,
         "endByte": 4544,
-        "startOffset": 4539,
+        "startOffset": 4540,
         "endOffset": 4544
       }
     },
@@ -5619,21 +5619,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 164,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4584,
+    "startByte": 4585,
     "endByte": 4589,
-    "startOffset": 4584,
+    "startOffset": 4585,
     "endOffset": 4589,
     "fieldRanges": {
       "name": {
-        "startByte": 4584,
+        "startByte": 4585,
         "endByte": 4589,
-        "startOffset": 4584,
+        "startOffset": 4585,
         "endOffset": 4589
       },
       "superclassifier": {
-        "startByte": 4584,
+        "startByte": 4585,
         "endByte": 4589,
-        "startOffset": 4584,
+        "startOffset": 4585,
         "endOffset": 4589
       }
     },
@@ -5687,21 +5687,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 166,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4636,
+    "startByte": 4637,
     "endByte": 4641,
-    "startOffset": 4636,
+    "startOffset": 4637,
     "endOffset": 4641,
     "fieldRanges": {
       "name": {
-        "startByte": 4636,
+        "startByte": 4637,
         "endByte": 4641,
-        "startOffset": 4636,
+        "startOffset": 4637,
         "endOffset": 4641
       },
       "superclassifier": {
-        "startByte": 4636,
+        "startByte": 4637,
         "endByte": 4641,
-        "startOffset": 4636,
+        "startOffset": 4637,
         "endOffset": 4641
       }
     },
@@ -5755,21 +5755,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 168,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4688,
+    "startByte": 4689,
     "endByte": 4693,
-    "startOffset": 4688,
+    "startOffset": 4689,
     "endOffset": 4693,
     "fieldRanges": {
       "name": {
-        "startByte": 4688,
+        "startByte": 4689,
         "endByte": 4693,
-        "startOffset": 4688,
+        "startOffset": 4689,
         "endOffset": 4693
       },
       "superclassifier": {
-        "startByte": 4688,
+        "startByte": 4689,
         "endByte": 4693,
-        "startOffset": 4688,
+        "startOffset": 4689,
         "endOffset": 4693
       }
     },
@@ -5823,21 +5823,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 170,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4730,
+    "startByte": 4731,
     "endByte": 4735,
-    "startOffset": 4730,
+    "startOffset": 4731,
     "endOffset": 4735,
     "fieldRanges": {
       "name": {
-        "startByte": 4730,
+        "startByte": 4731,
         "endByte": 4735,
-        "startOffset": 4730,
+        "startOffset": 4731,
         "endOffset": 4735
       },
       "superclassifier": {
-        "startByte": 4730,
+        "startByte": 4731,
         "endByte": 4735,
-        "startOffset": 4730,
+        "startOffset": 4731,
         "endOffset": 4735
       }
     },
@@ -5891,21 +5891,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 172,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4773,
+    "startByte": 4774,
     "endByte": 4779,
-    "startOffset": 4773,
+    "startOffset": 4774,
     "endOffset": 4779,
     "fieldRanges": {
       "name": {
-        "startByte": 4773,
+        "startByte": 4774,
         "endByte": 4779,
-        "startOffset": 4773,
+        "startOffset": 4774,
         "endOffset": 4779
       },
       "superclassifier": {
-        "startByte": 4773,
+        "startByte": 4774,
         "endByte": 4779,
-        "startOffset": 4773,
+        "startOffset": 4774,
         "endOffset": 4779
       }
     },
@@ -5959,21 +5959,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 174,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4817,
+    "startByte": 4818,
     "endByte": 4822,
-    "startOffset": 4817,
+    "startOffset": 4818,
     "endOffset": 4822,
     "fieldRanges": {
       "name": {
-        "startByte": 4817,
+        "startByte": 4818,
         "endByte": 4822,
-        "startOffset": 4817,
+        "startOffset": 4818,
         "endOffset": 4822
       },
       "superclassifier": {
-        "startByte": 4817,
+        "startByte": 4818,
         "endByte": 4822,
-        "startOffset": 4817,
+        "startOffset": 4818,
         "endOffset": 4822
       }
     },
@@ -6027,21 +6027,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 176,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4867,
+    "startByte": 4868,
     "endByte": 4874,
-    "startOffset": 4867,
+    "startOffset": 4868,
     "endOffset": 4874,
     "fieldRanges": {
       "name": {
-        "startByte": 4867,
+        "startByte": 4868,
         "endByte": 4874,
-        "startOffset": 4867,
+        "startOffset": 4868,
         "endOffset": 4874
       },
       "superclassifier": {
-        "startByte": 4867,
+        "startByte": 4868,
         "endByte": 4874,
-        "startOffset": 4867,
+        "startOffset": 4868,
         "endOffset": 4874
       }
     },
@@ -6095,21 +6095,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 178,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4914,
+    "startByte": 4915,
     "endByte": 4919,
-    "startOffset": 4914,
+    "startOffset": 4915,
     "endOffset": 4919,
     "fieldRanges": {
       "name": {
-        "startByte": 4914,
+        "startByte": 4915,
         "endByte": 4919,
-        "startOffset": 4914,
+        "startOffset": 4915,
         "endOffset": 4919
       },
       "superclassifier": {
-        "startByte": 4914,
+        "startByte": 4915,
         "endByte": 4919,
-        "startOffset": 4914,
+        "startOffset": 4915,
         "endOffset": 4919
       }
     },
@@ -6163,21 +6163,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 180,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 4957,
+    "startByte": 4958,
     "endByte": 4966,
-    "startOffset": 4957,
+    "startOffset": 4958,
     "endOffset": 4966,
     "fieldRanges": {
       "name": {
-        "startByte": 4957,
+        "startByte": 4958,
         "endByte": 4966,
-        "startOffset": 4957,
+        "startOffset": 4958,
         "endOffset": 4966
       },
       "superclassifier": {
-        "startByte": 4957,
+        "startByte": 4958,
         "endByte": 4966,
-        "startOffset": 4957,
+        "startOffset": 4958,
         "endOffset": 4966
       }
     },
@@ -6231,21 +6231,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 182,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5010,
+    "startByte": 5011,
     "endByte": 5017,
-    "startOffset": 5010,
+    "startOffset": 5011,
     "endOffset": 5017,
     "fieldRanges": {
       "name": {
-        "startByte": 5010,
+        "startByte": 5011,
         "endByte": 5017,
-        "startOffset": 5010,
+        "startOffset": 5011,
         "endOffset": 5017
       },
       "superclassifier": {
-        "startByte": 5010,
+        "startByte": 5011,
         "endByte": 5017,
-        "startOffset": 5010,
+        "startOffset": 5011,
         "endOffset": 5017
       }
     },
@@ -6299,21 +6299,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 184,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5060,
+    "startByte": 5061,
     "endByte": 5067,
-    "startOffset": 5060,
+    "startOffset": 5061,
     "endOffset": 5067,
     "fieldRanges": {
       "name": {
-        "startByte": 5060,
+        "startByte": 5061,
         "endByte": 5067,
-        "startOffset": 5060,
+        "startOffset": 5061,
         "endOffset": 5067
       },
       "superclassifier": {
-        "startByte": 5060,
+        "startByte": 5061,
         "endByte": 5067,
-        "startOffset": 5060,
+        "startOffset": 5061,
         "endOffset": 5067
       }
     },
@@ -6367,21 +6367,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 186,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5105,
+    "startByte": 5106,
     "endByte": 5110,
-    "startOffset": 5105,
+    "startOffset": 5106,
     "endOffset": 5110,
     "fieldRanges": {
       "name": {
-        "startByte": 5105,
+        "startByte": 5106,
         "endByte": 5110,
-        "startOffset": 5105,
+        "startOffset": 5106,
         "endOffset": 5110
       },
       "superclassifier": {
-        "startByte": 5105,
+        "startByte": 5106,
         "endByte": 5110,
-        "startOffset": 5105,
+        "startOffset": 5106,
         "endOffset": 5110
       }
     },
@@ -6435,21 +6435,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 188,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5146,
+    "startByte": 5147,
     "endByte": 5151,
-    "startOffset": 5146,
+    "startOffset": 5147,
     "endOffset": 5151,
     "fieldRanges": {
       "name": {
-        "startByte": 5146,
+        "startByte": 5147,
         "endByte": 5151,
-        "startOffset": 5146,
+        "startOffset": 5147,
         "endOffset": 5151
       },
       "superclassifier": {
-        "startByte": 5146,
+        "startByte": 5147,
         "endByte": 5151,
-        "startOffset": 5146,
+        "startOffset": 5147,
         "endOffset": 5151
       }
     },
@@ -6503,21 +6503,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 190,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5189,
+    "startByte": 5190,
     "endByte": 5194,
-    "startOffset": 5189,
+    "startOffset": 5190,
     "endOffset": 5194,
     "fieldRanges": {
       "name": {
-        "startByte": 5189,
+        "startByte": 5190,
         "endByte": 5194,
-        "startOffset": 5189,
+        "startOffset": 5190,
         "endOffset": 5194
       },
       "superclassifier": {
-        "startByte": 5189,
+        "startByte": 5190,
         "endByte": 5194,
-        "startOffset": 5189,
+        "startOffset": 5190,
         "endOffset": 5194
       }
     },
@@ -6571,21 +6571,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 192,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5239,
+    "startByte": 5240,
     "endByte": 5246,
-    "startOffset": 5239,
+    "startOffset": 5240,
     "endOffset": 5246,
     "fieldRanges": {
       "name": {
-        "startByte": 5239,
+        "startByte": 5240,
         "endByte": 5246,
-        "startOffset": 5239,
+        "startOffset": 5240,
         "endOffset": 5246
       },
       "superclassifier": {
-        "startByte": 5239,
+        "startByte": 5240,
         "endByte": 5246,
-        "startOffset": 5239,
+        "startOffset": 5240,
         "endOffset": 5246
       }
     },
@@ -6639,21 +6639,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 194,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5293,
+    "startByte": 5294,
     "endByte": 5300,
-    "startOffset": 5293,
+    "startOffset": 5294,
     "endOffset": 5300,
     "fieldRanges": {
       "name": {
-        "startByte": 5293,
+        "startByte": 5294,
         "endByte": 5300,
-        "startOffset": 5293,
+        "startOffset": 5294,
         "endOffset": 5300
       },
       "superclassifier": {
-        "startByte": 5293,
+        "startByte": 5294,
         "endByte": 5300,
-        "startOffset": 5293,
+        "startOffset": 5294,
         "endOffset": 5300
       }
     },
@@ -6707,21 +6707,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 196,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5337,
+    "startByte": 5338,
     "endByte": 5342,
-    "startOffset": 5337,
+    "startOffset": 5338,
     "endOffset": 5342,
     "fieldRanges": {
       "name": {
-        "startByte": 5337,
+        "startByte": 5338,
         "endByte": 5342,
-        "startOffset": 5337,
+        "startOffset": 5338,
         "endOffset": 5342
       },
       "superclassifier": {
-        "startByte": 5337,
+        "startByte": 5338,
         "endByte": 5342,
-        "startOffset": 5337,
+        "startOffset": 5338,
         "endOffset": 5342
       }
     },
@@ -6775,21 +6775,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 198,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5384,
+    "startByte": 5385,
     "endByte": 5389,
-    "startOffset": 5384,
+    "startOffset": 5385,
     "endOffset": 5389,
     "fieldRanges": {
       "name": {
-        "startByte": 5384,
+        "startByte": 5385,
         "endByte": 5389,
-        "startOffset": 5384,
+        "startOffset": 5385,
         "endOffset": 5389
       },
       "superclassifier": {
-        "startByte": 5384,
+        "startByte": 5385,
         "endByte": 5389,
-        "startOffset": 5384,
+        "startOffset": 5385,
         "endOffset": 5389
       }
     },
@@ -6843,21 +6843,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 200,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5469,
+    "startByte": 5470,
     "endByte": 5474,
-    "startOffset": 5469,
+    "startOffset": 5470,
     "endOffset": 5474,
     "fieldRanges": {
       "name": {
-        "startByte": 5469,
+        "startByte": 5470,
         "endByte": 5474,
-        "startOffset": 5469,
+        "startOffset": 5470,
         "endOffset": 5474
       },
       "superclassifier": {
-        "startByte": 5469,
+        "startByte": 5470,
         "endByte": 5474,
-        "startOffset": 5469,
+        "startOffset": 5470,
         "endOffset": 5474
       }
     },
@@ -6911,21 +6911,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 202,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5524,
+    "startByte": 5525,
     "endByte": 5529,
-    "startOffset": 5524,
+    "startOffset": 5525,
     "endOffset": 5529,
     "fieldRanges": {
       "name": {
-        "startByte": 5524,
+        "startByte": 5525,
         "endByte": 5529,
-        "startOffset": 5524,
+        "startOffset": 5525,
         "endOffset": 5529
       },
       "superclassifier": {
-        "startByte": 5524,
+        "startByte": 5525,
         "endByte": 5529,
-        "startOffset": 5524,
+        "startOffset": 5525,
         "endOffset": 5529
       }
     },
@@ -6979,21 +6979,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 204,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5575,
+    "startByte": 5576,
     "endByte": 5580,
-    "startOffset": 5575,
+    "startOffset": 5576,
     "endOffset": 5580,
     "fieldRanges": {
       "name": {
-        "startByte": 5575,
+        "startByte": 5576,
         "endByte": 5580,
-        "startOffset": 5575,
+        "startOffset": 5576,
         "endOffset": 5580
       },
       "superclassifier": {
-        "startByte": 5575,
+        "startByte": 5576,
         "endByte": 5580,
-        "startOffset": 5575,
+        "startOffset": 5576,
         "endOffset": 5580
       }
     },
@@ -7047,21 +7047,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 206,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5626,
+    "startByte": 5627,
     "endByte": 5631,
-    "startOffset": 5626,
+    "startOffset": 5627,
     "endOffset": 5631,
     "fieldRanges": {
       "name": {
-        "startByte": 5626,
+        "startByte": 5627,
         "endByte": 5631,
-        "startOffset": 5626,
+        "startOffset": 5627,
         "endOffset": 5631
       },
       "superclassifier": {
-        "startByte": 5626,
+        "startByte": 5627,
         "endByte": 5631,
-        "startOffset": 5626,
+        "startOffset": 5627,
         "endOffset": 5631
       }
     },
@@ -7115,21 +7115,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 208,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5675,
+    "startByte": 5676,
     "endByte": 5680,
-    "startOffset": 5675,
+    "startOffset": 5676,
     "endOffset": 5680,
     "fieldRanges": {
       "name": {
-        "startByte": 5675,
+        "startByte": 5676,
         "endByte": 5680,
-        "startOffset": 5675,
+        "startOffset": 5676,
         "endOffset": 5680
       },
       "superclassifier": {
-        "startByte": 5675,
+        "startByte": 5676,
         "endByte": 5680,
-        "startOffset": 5675,
+        "startOffset": 5676,
         "endOffset": 5680
       }
     },
@@ -7183,21 +7183,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 210,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5726,
+    "startByte": 5727,
     "endByte": 5731,
-    "startOffset": 5726,
+    "startOffset": 5727,
     "endOffset": 5731,
     "fieldRanges": {
       "name": {
-        "startByte": 5726,
+        "startByte": 5727,
         "endByte": 5731,
-        "startOffset": 5726,
+        "startOffset": 5727,
         "endOffset": 5731
       },
       "superclassifier": {
-        "startByte": 5726,
+        "startByte": 5727,
         "endByte": 5731,
-        "startOffset": 5726,
+        "startOffset": 5727,
         "endOffset": 5731
       }
     },
@@ -7251,21 +7251,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 212,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5773,
+    "startByte": 5774,
     "endByte": 5778,
-    "startOffset": 5773,
+    "startOffset": 5774,
     "endOffset": 5778,
     "fieldRanges": {
       "name": {
-        "startByte": 5773,
+        "startByte": 5774,
         "endByte": 5778,
-        "startOffset": 5773,
+        "startOffset": 5774,
         "endOffset": 5778
       },
       "superclassifier": {
-        "startByte": 5773,
+        "startByte": 5774,
         "endByte": 5778,
-        "startOffset": 5773,
+        "startOffset": 5774,
         "endOffset": 5778
       }
     },
@@ -7319,21 +7319,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 214,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5882,
+    "startByte": 5883,
     "endByte": 5887,
-    "startOffset": 5882,
+    "startOffset": 5883,
     "endOffset": 5887,
     "fieldRanges": {
       "name": {
-        "startByte": 5882,
+        "startByte": 5883,
         "endByte": 5887,
-        "startOffset": 5882,
+        "startOffset": 5883,
         "endOffset": 5887
       },
       "superclassifier": {
-        "startByte": 5882,
+        "startByte": 5883,
         "endByte": 5887,
-        "startOffset": 5882,
+        "startOffset": 5883,
         "endOffset": 5887
       }
     },
@@ -7387,21 +7387,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 216,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5937,
+    "startByte": 5938,
     "endByte": 5942,
-    "startOffset": 5937,
+    "startOffset": 5938,
     "endOffset": 5942,
     "fieldRanges": {
       "name": {
-        "startByte": 5937,
+        "startByte": 5938,
         "endByte": 5942,
-        "startOffset": 5937,
+        "startOffset": 5938,
         "endOffset": 5942
       },
       "superclassifier": {
-        "startByte": 5937,
+        "startByte": 5938,
         "endByte": 5942,
-        "startOffset": 5937,
+        "startOffset": 5938,
         "endOffset": 5942
       }
     },
@@ -7455,21 +7455,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 218,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 5978,
+    "startByte": 5979,
     "endByte": 5985,
-    "startOffset": 5978,
+    "startOffset": 5979,
     "endOffset": 5985,
     "fieldRanges": {
       "name": {
-        "startByte": 5978,
+        "startByte": 5979,
         "endByte": 5985,
-        "startOffset": 5978,
+        "startOffset": 5979,
         "endOffset": 5985
       },
       "superclassifier": {
-        "startByte": 5978,
+        "startByte": 5979,
         "endByte": 5985,
-        "startOffset": 5978,
+        "startOffset": 5979,
         "endOffset": 5985
       }
     },
@@ -7523,21 +7523,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 220,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6029,
+    "startByte": 6030,
     "endByte": 6035,
-    "startOffset": 6029,
+    "startOffset": 6030,
     "endOffset": 6035,
     "fieldRanges": {
       "name": {
-        "startByte": 6029,
+        "startByte": 6030,
         "endByte": 6035,
-        "startOffset": 6029,
+        "startOffset": 6030,
         "endOffset": 6035
       },
       "superclassifier": {
-        "startByte": 6029,
+        "startByte": 6030,
         "endByte": 6035,
-        "startOffset": 6029,
+        "startOffset": 6030,
         "endOffset": 6035
       }
     },
@@ -7591,21 +7591,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 222,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6086,
+    "startByte": 6087,
     "endByte": 6091,
-    "startOffset": 6086,
+    "startOffset": 6087,
     "endOffset": 6091,
     "fieldRanges": {
       "name": {
-        "startByte": 6086,
+        "startByte": 6087,
         "endByte": 6091,
-        "startOffset": 6086,
+        "startOffset": 6087,
         "endOffset": 6091
       },
       "superclassifier": {
-        "startByte": 6086,
+        "startByte": 6087,
         "endByte": 6091,
-        "startOffset": 6086,
+        "startOffset": 6087,
         "endOffset": 6091
       }
     },
@@ -7659,21 +7659,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 224,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6135,
+    "startByte": 6136,
     "endByte": 6140,
-    "startOffset": 6135,
+    "startOffset": 6136,
     "endOffset": 6140,
     "fieldRanges": {
       "name": {
-        "startByte": 6135,
+        "startByte": 6136,
         "endByte": 6140,
-        "startOffset": 6135,
+        "startOffset": 6136,
         "endOffset": 6140
       },
       "superclassifier": {
-        "startByte": 6135,
+        "startByte": 6136,
         "endByte": 6140,
-        "startOffset": 6135,
+        "startOffset": 6136,
         "endOffset": 6140
       }
     },
@@ -7727,21 +7727,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 226,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6192,
+    "startByte": 6193,
     "endByte": 6197,
-    "startOffset": 6192,
+    "startOffset": 6193,
     "endOffset": 6197,
     "fieldRanges": {
       "name": {
-        "startByte": 6192,
+        "startByte": 6193,
         "endByte": 6197,
-        "startOffset": 6192,
+        "startOffset": 6193,
         "endOffset": 6197
       },
       "superclassifier": {
-        "startByte": 6192,
+        "startByte": 6193,
         "endByte": 6197,
-        "startOffset": 6192,
+        "startOffset": 6193,
         "endOffset": 6197
       }
     },
@@ -7795,21 +7795,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 228,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6236,
+    "startByte": 6237,
     "endByte": 6241,
-    "startOffset": 6236,
+    "startOffset": 6237,
     "endOffset": 6241,
     "fieldRanges": {
       "name": {
-        "startByte": 6236,
+        "startByte": 6237,
         "endByte": 6241,
-        "startOffset": 6236,
+        "startOffset": 6237,
         "endOffset": 6241
       },
       "superclassifier": {
-        "startByte": 6236,
+        "startByte": 6237,
         "endByte": 6241,
-        "startOffset": 6236,
+        "startOffset": 6237,
         "endOffset": 6241
       }
     },
@@ -7863,21 +7863,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 230,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6281,
+    "startByte": 6282,
     "endByte": 6288,
-    "startOffset": 6281,
+    "startOffset": 6282,
     "endOffset": 6288,
     "fieldRanges": {
       "name": {
-        "startByte": 6281,
+        "startByte": 6282,
         "endByte": 6288,
-        "startOffset": 6281,
+        "startOffset": 6282,
         "endOffset": 6288
       },
       "superclassifier": {
-        "startByte": 6281,
+        "startByte": 6282,
         "endByte": 6288,
-        "startOffset": 6281,
+        "startOffset": 6282,
         "endOffset": 6288
       }
     },
@@ -7931,21 +7931,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 232,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6334,
+    "startByte": 6335,
     "endByte": 6341,
-    "startOffset": 6334,
+    "startOffset": 6335,
     "endOffset": 6341,
     "fieldRanges": {
       "name": {
-        "startByte": 6334,
+        "startByte": 6335,
         "endByte": 6341,
-        "startOffset": 6334,
+        "startOffset": 6335,
         "endOffset": 6341
       },
       "superclassifier": {
-        "startByte": 6334,
+        "startByte": 6335,
         "endByte": 6341,
-        "startOffset": 6334,
+        "startOffset": 6335,
         "endOffset": 6341
       }
     },
@@ -7999,21 +7999,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 234,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6438,
+    "startByte": 6439,
     "endByte": 6443,
-    "startOffset": 6438,
+    "startOffset": 6439,
     "endOffset": 6443,
     "fieldRanges": {
       "name": {
-        "startByte": 6438,
+        "startByte": 6439,
         "endByte": 6443,
-        "startOffset": 6438,
+        "startOffset": 6439,
         "endOffset": 6443
       },
       "superclassifier": {
-        "startByte": 6438,
+        "startByte": 6439,
         "endByte": 6443,
-        "startOffset": 6438,
+        "startOffset": 6439,
         "endOffset": 6443
       }
     },
@@ -8067,21 +8067,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 236,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6489,
+    "startByte": 6490,
     "endByte": 6494,
-    "startOffset": 6489,
+    "startOffset": 6490,
     "endOffset": 6494,
     "fieldRanges": {
       "name": {
-        "startByte": 6489,
+        "startByte": 6490,
         "endByte": 6494,
-        "startOffset": 6489,
+        "startOffset": 6490,
         "endOffset": 6494
       },
       "superclassifier": {
-        "startByte": 6489,
+        "startByte": 6490,
         "endByte": 6494,
-        "startOffset": 6489,
+        "startOffset": 6490,
         "endOffset": 6494
       }
     },
@@ -8135,21 +8135,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 238,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6533,
+    "startByte": 6534,
     "endByte": 6538,
-    "startOffset": 6533,
+    "startOffset": 6534,
     "endOffset": 6538,
     "fieldRanges": {
       "name": {
-        "startByte": 6533,
+        "startByte": 6534,
         "endByte": 6538,
-        "startOffset": 6533,
+        "startOffset": 6534,
         "endOffset": 6538
       },
       "superclassifier": {
-        "startByte": 6533,
+        "startByte": 6534,
         "endByte": 6538,
-        "startOffset": 6533,
+        "startOffset": 6534,
         "endOffset": 6538
       }
     },
@@ -8203,21 +8203,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 240,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6587,
+    "startByte": 6588,
     "endByte": 6595,
-    "startOffset": 6587,
+    "startOffset": 6588,
     "endOffset": 6595,
     "fieldRanges": {
       "name": {
-        "startByte": 6587,
+        "startByte": 6588,
         "endByte": 6595,
-        "startOffset": 6587,
+        "startOffset": 6588,
         "endOffset": 6595
       },
       "superclassifier": {
-        "startByte": 6587,
+        "startByte": 6588,
         "endByte": 6595,
-        "startOffset": 6587,
+        "startOffset": 6588,
         "endOffset": 6595
       }
     },
@@ -8271,21 +8271,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 242,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6645,
+    "startByte": 6646,
     "endByte": 6653,
-    "startOffset": 6645,
+    "startOffset": 6646,
     "endOffset": 6653,
     "fieldRanges": {
       "name": {
-        "startByte": 6645,
+        "startByte": 6646,
         "endByte": 6653,
-        "startOffset": 6645,
+        "startOffset": 6646,
         "endOffset": 6653
       },
       "superclassifier": {
-        "startByte": 6645,
+        "startByte": 6646,
         "endByte": 6653,
-        "startOffset": 6645,
+        "startOffset": 6646,
         "endOffset": 6653
       }
     },
@@ -8339,21 +8339,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 244,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6706,
+    "startByte": 6707,
     "endByte": 6711,
-    "startOffset": 6706,
+    "startOffset": 6707,
     "endOffset": 6711,
     "fieldRanges": {
       "name": {
-        "startByte": 6706,
+        "startByte": 6707,
         "endByte": 6711,
-        "startOffset": 6706,
+        "startOffset": 6707,
         "endOffset": 6711
       },
       "superclassifier": {
-        "startByte": 6706,
+        "startByte": 6707,
         "endByte": 6711,
-        "startOffset": 6706,
+        "startOffset": 6707,
         "endOffset": 6711
       }
     },
@@ -8407,21 +8407,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 246,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6755,
+    "startByte": 6756,
     "endByte": 6760,
-    "startOffset": 6755,
+    "startOffset": 6756,
     "endOffset": 6760,
     "fieldRanges": {
       "name": {
-        "startByte": 6755,
+        "startByte": 6756,
         "endByte": 6760,
-        "startOffset": 6755,
+        "startOffset": 6756,
         "endOffset": 6760
       },
       "superclassifier": {
-        "startByte": 6755,
+        "startByte": 6756,
         "endByte": 6760,
-        "startOffset": 6755,
+        "startOffset": 6756,
         "endOffset": 6760
       }
     },
@@ -8475,21 +8475,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 248,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6810,
+    "startByte": 6811,
     "endByte": 6815,
-    "startOffset": 6810,
+    "startOffset": 6811,
     "endOffset": 6815,
     "fieldRanges": {
       "name": {
-        "startByte": 6810,
+        "startByte": 6811,
         "endByte": 6815,
-        "startOffset": 6810,
+        "startOffset": 6811,
         "endOffset": 6815
       },
       "superclassifier": {
-        "startByte": 6810,
+        "startByte": 6811,
         "endByte": 6815,
-        "startOffset": 6810,
+        "startOffset": 6811,
         "endOffset": 6815
       }
     },
@@ -8543,21 +8543,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 250,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6858,
+    "startByte": 6859,
     "endByte": 6863,
-    "startOffset": 6858,
+    "startOffset": 6859,
     "endOffset": 6863,
     "fieldRanges": {
       "name": {
-        "startByte": 6858,
+        "startByte": 6859,
         "endByte": 6863,
-        "startOffset": 6858,
+        "startOffset": 6859,
         "endOffset": 6863
       },
       "superclassifier": {
-        "startByte": 6858,
+        "startByte": 6859,
         "endByte": 6863,
-        "startOffset": 6858,
+        "startOffset": 6859,
         "endOffset": 6863
       }
     },
@@ -8611,21 +8611,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 252,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6906,
+    "startByte": 6907,
     "endByte": 6911,
-    "startOffset": 6906,
+    "startOffset": 6907,
     "endOffset": 6911,
     "fieldRanges": {
       "name": {
-        "startByte": 6906,
+        "startByte": 6907,
         "endByte": 6911,
-        "startOffset": 6906,
+        "startOffset": 6907,
         "endOffset": 6911
       },
       "superclassifier": {
-        "startByte": 6906,
+        "startByte": 6907,
         "endByte": 6911,
-        "startOffset": 6906,
+        "startOffset": 6907,
         "endOffset": 6911
       }
     },
@@ -8679,21 +8679,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 254,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 6955,
+    "startByte": 6956,
     "endByte": 6960,
-    "startOffset": 6955,
+    "startOffset": 6956,
     "endOffset": 6960,
     "fieldRanges": {
       "name": {
-        "startByte": 6955,
+        "startByte": 6956,
         "endByte": 6960,
-        "startOffset": 6955,
+        "startOffset": 6956,
         "endOffset": 6960
       },
       "superclassifier": {
-        "startByte": 6955,
+        "startByte": 6956,
         "endByte": 6960,
-        "startOffset": 6955,
+        "startOffset": 6956,
         "endOffset": 6960
       }
     },
@@ -8747,21 +8747,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 256,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7003,
+    "startByte": 7004,
     "endByte": 7008,
-    "startOffset": 7003,
+    "startOffset": 7004,
     "endOffset": 7008,
     "fieldRanges": {
       "name": {
-        "startByte": 7003,
+        "startByte": 7004,
         "endByte": 7008,
-        "startOffset": 7003,
+        "startOffset": 7004,
         "endOffset": 7008
       },
       "superclassifier": {
-        "startByte": 7003,
+        "startByte": 7004,
         "endByte": 7008,
-        "startOffset": 7003,
+        "startOffset": 7004,
         "endOffset": 7008
       }
     },
@@ -8815,21 +8815,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 258,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7052,
+    "startByte": 7053,
     "endByte": 7057,
-    "startOffset": 7052,
+    "startOffset": 7053,
     "endOffset": 7057,
     "fieldRanges": {
       "name": {
-        "startByte": 7052,
+        "startByte": 7053,
         "endByte": 7057,
-        "startOffset": 7052,
+        "startOffset": 7053,
         "endOffset": 7057
       },
       "superclassifier": {
-        "startByte": 7052,
+        "startByte": 7053,
         "endByte": 7057,
-        "startOffset": 7052,
+        "startOffset": 7053,
         "endOffset": 7057
       }
     },
@@ -8883,21 +8883,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 260,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7101,
+    "startByte": 7102,
     "endByte": 7106,
-    "startOffset": 7101,
+    "startOffset": 7102,
     "endOffset": 7106,
     "fieldRanges": {
       "name": {
-        "startByte": 7101,
+        "startByte": 7102,
         "endByte": 7106,
-        "startOffset": 7101,
+        "startOffset": 7102,
         "endOffset": 7106
       },
       "superclassifier": {
-        "startByte": 7101,
+        "startByte": 7102,
         "endByte": 7106,
-        "startOffset": 7101,
+        "startOffset": 7102,
         "endOffset": 7106
       }
     },
@@ -8951,21 +8951,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 262,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7157,
+    "startByte": 7158,
     "endByte": 7162,
-    "startOffset": 7157,
+    "startOffset": 7158,
     "endOffset": 7162,
     "fieldRanges": {
       "name": {
-        "startByte": 7157,
+        "startByte": 7158,
         "endByte": 7162,
-        "startOffset": 7157,
+        "startOffset": 7158,
         "endOffset": 7162
       },
       "superclassifier": {
-        "startByte": 7157,
+        "startByte": 7158,
         "endByte": 7162,
-        "startOffset": 7157,
+        "startOffset": 7158,
         "endOffset": 7162
       }
     },
@@ -9019,21 +9019,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 264,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7215,
+    "startByte": 7216,
     "endByte": 7220,
-    "startOffset": 7215,
+    "startOffset": 7216,
     "endOffset": 7220,
     "fieldRanges": {
       "name": {
-        "startByte": 7215,
+        "startByte": 7216,
         "endByte": 7220,
-        "startOffset": 7215,
+        "startOffset": 7216,
         "endOffset": 7220
       },
       "superclassifier": {
-        "startByte": 7215,
+        "startByte": 7216,
         "endByte": 7220,
-        "startOffset": 7215,
+        "startOffset": 7216,
         "endOffset": 7220
       }
     },
@@ -9087,21 +9087,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 266,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7264,
+    "startByte": 7265,
     "endByte": 7269,
-    "startOffset": 7264,
+    "startOffset": 7265,
     "endOffset": 7269,
     "fieldRanges": {
       "name": {
-        "startByte": 7264,
+        "startByte": 7265,
         "endByte": 7269,
-        "startOffset": 7264,
+        "startOffset": 7265,
         "endOffset": 7269
       },
       "superclassifier": {
-        "startByte": 7264,
+        "startByte": 7265,
         "endByte": 7269,
-        "startOffset": 7264,
+        "startOffset": 7265,
         "endOffset": 7269
       }
     },
@@ -9155,21 +9155,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 268,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7311,
+    "startByte": 7312,
     "endByte": 7316,
-    "startOffset": 7311,
+    "startOffset": 7312,
     "endOffset": 7316,
     "fieldRanges": {
       "name": {
-        "startByte": 7311,
+        "startByte": 7312,
         "endByte": 7316,
-        "startOffset": 7311,
+        "startOffset": 7312,
         "endOffset": 7316
       },
       "superclassifier": {
-        "startByte": 7311,
+        "startByte": 7312,
         "endByte": 7316,
-        "startOffset": 7311,
+        "startOffset": 7312,
         "endOffset": 7316
       }
     },
@@ -9223,21 +9223,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 270,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7357,
+    "startByte": 7358,
     "endByte": 7362,
-    "startOffset": 7357,
+    "startOffset": 7358,
     "endOffset": 7362,
     "fieldRanges": {
       "name": {
-        "startByte": 7357,
+        "startByte": 7358,
         "endByte": 7362,
-        "startOffset": 7357,
+        "startOffset": 7358,
         "endOffset": 7362
       },
       "superclassifier": {
-        "startByte": 7357,
+        "startByte": 7358,
         "endByte": 7362,
-        "startOffset": 7357,
+        "startOffset": 7358,
         "endOffset": 7362
       }
     },
@@ -9291,21 +9291,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 272,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7403,
+    "startByte": 7404,
     "endByte": 7408,
-    "startOffset": 7403,
+    "startOffset": 7404,
     "endOffset": 7408,
     "fieldRanges": {
       "name": {
-        "startByte": 7403,
+        "startByte": 7404,
         "endByte": 7408,
-        "startOffset": 7403,
+        "startOffset": 7404,
         "endOffset": 7408
       },
       "superclassifier": {
-        "startByte": 7403,
+        "startByte": 7404,
         "endByte": 7408,
-        "startOffset": 7403,
+        "startOffset": 7404,
         "endOffset": 7408
       }
     },
@@ -9359,21 +9359,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 274,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7512,
+    "startByte": 7513,
     "endByte": 7517,
-    "startOffset": 7512,
+    "startOffset": 7513,
     "endOffset": 7517,
     "fieldRanges": {
       "name": {
-        "startByte": 7512,
+        "startByte": 7513,
         "endByte": 7517,
-        "startOffset": 7512,
+        "startOffset": 7513,
         "endOffset": 7517
       },
       "superclassifier": {
-        "startByte": 7512,
+        "startByte": 7513,
         "endByte": 7517,
-        "startOffset": 7512,
+        "startOffset": 7513,
         "endOffset": 7517
       }
     },
@@ -9427,21 +9427,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 276,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7558,
+    "startByte": 7559,
     "endByte": 7563,
-    "startOffset": 7558,
+    "startOffset": 7559,
     "endOffset": 7563,
     "fieldRanges": {
       "name": {
-        "startByte": 7558,
+        "startByte": 7559,
         "endByte": 7563,
-        "startOffset": 7558,
+        "startOffset": 7559,
         "endOffset": 7563
       },
       "superclassifier": {
-        "startByte": 7558,
+        "startByte": 7559,
         "endByte": 7563,
-        "startOffset": 7558,
+        "startOffset": 7559,
         "endOffset": 7563
       }
     },
@@ -9495,21 +9495,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 278,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7612,
+    "startByte": 7613,
     "endByte": 7617,
-    "startOffset": 7612,
+    "startOffset": 7613,
     "endOffset": 7617,
     "fieldRanges": {
       "name": {
-        "startByte": 7612,
+        "startByte": 7613,
         "endByte": 7617,
-        "startOffset": 7612,
+        "startOffset": 7613,
         "endOffset": 7617
       },
       "superclassifier": {
-        "startByte": 7612,
+        "startByte": 7613,
         "endByte": 7617,
-        "startOffset": 7612,
+        "startOffset": 7613,
         "endOffset": 7617
       }
     },
@@ -9563,21 +9563,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 280,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7661,
+    "startByte": 7662,
     "endByte": 7666,
-    "startOffset": 7661,
+    "startOffset": 7662,
     "endOffset": 7666,
     "fieldRanges": {
       "name": {
-        "startByte": 7661,
+        "startByte": 7662,
         "endByte": 7666,
-        "startOffset": 7661,
+        "startOffset": 7662,
         "endOffset": 7666
       },
       "superclassifier": {
-        "startByte": 7661,
+        "startByte": 7662,
         "endByte": 7666,
-        "startOffset": 7661,
+        "startOffset": 7662,
         "endOffset": 7666
       }
     },
@@ -9631,21 +9631,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 282,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7709,
+    "startByte": 7710,
     "endByte": 7714,
-    "startOffset": 7709,
+    "startOffset": 7710,
     "endOffset": 7714,
     "fieldRanges": {
       "name": {
-        "startByte": 7709,
+        "startByte": 7710,
         "endByte": 7714,
-        "startOffset": 7709,
+        "startOffset": 7710,
         "endOffset": 7714
       },
       "superclassifier": {
-        "startByte": 7709,
+        "startByte": 7710,
         "endByte": 7714,
-        "startOffset": 7709,
+        "startOffset": 7710,
         "endOffset": 7714
       }
     },
@@ -9699,21 +9699,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 284,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7755,
+    "startByte": 7756,
     "endByte": 7760,
-    "startOffset": 7755,
+    "startOffset": 7756,
     "endOffset": 7760,
     "fieldRanges": {
       "name": {
-        "startByte": 7755,
+        "startByte": 7756,
         "endByte": 7760,
-        "startOffset": 7755,
+        "startOffset": 7756,
         "endOffset": 7760
       },
       "superclassifier": {
-        "startByte": 7755,
+        "startByte": 7756,
         "endByte": 7760,
-        "startOffset": 7755,
+        "startOffset": 7756,
         "endOffset": 7760
       }
     },
@@ -9730,9 +9730,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7763,
+    "startByte": 7765,
     "endByte": 8118,
-    "startOffset": 7763,
+    "startOffset": 7765,
     "endOffset": 8118,
     "fieldRanges": {
       "name": {
@@ -9763,21 +9763,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 286,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7786,
+    "startByte": 7791,
     "endByte": 7813,
-    "startOffset": 7786,
+    "startOffset": 7791,
     "endOffset": 7813,
     "fieldRanges": {
       "name": {
-        "startByte": 7797,
+        "startByte": 7798,
         "endByte": 7810,
-        "startOffset": 7797,
+        "startOffset": 7798,
         "endOffset": 7810
       },
       "importedNamespace": {
-        "startByte": 7797,
+        "startByte": 7798,
         "endByte": 7810,
-        "startOffset": 7797,
+        "startOffset": 7798,
         "endOffset": 7810
       }
     },
@@ -9834,21 +9834,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 288,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7852,
+    "startByte": 7853,
     "endByte": 7857,
-    "startOffset": 7852,
+    "startOffset": 7853,
     "endOffset": 7857,
     "fieldRanges": {
       "name": {
-        "startByte": 7852,
+        "startByte": 7853,
         "endByte": 7857,
-        "startOffset": 7852,
+        "startOffset": 7853,
         "endOffset": 7857
       },
       "superclassifier": {
-        "startByte": 7852,
+        "startByte": 7853,
         "endByte": 7857,
-        "startOffset": 7852,
+        "startOffset": 7853,
         "endOffset": 7857
       }
     },
@@ -9902,21 +9902,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 290,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7897,
+    "startByte": 7898,
     "endByte": 7902,
-    "startOffset": 7897,
+    "startOffset": 7898,
     "endOffset": 7902,
     "fieldRanges": {
       "name": {
-        "startByte": 7897,
+        "startByte": 7898,
         "endByte": 7902,
-        "startOffset": 7897,
+        "startOffset": 7898,
         "endOffset": 7902
       },
       "superclassifier": {
-        "startByte": 7897,
+        "startByte": 7898,
         "endByte": 7902,
-        "startOffset": 7897,
+        "startOffset": 7898,
         "endOffset": 7902
       }
     },
@@ -9970,21 +9970,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 292,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7939,
+    "startByte": 7940,
     "endByte": 7944,
-    "startOffset": 7939,
+    "startOffset": 7940,
     "endOffset": 7944,
     "fieldRanges": {
       "name": {
-        "startByte": 7939,
+        "startByte": 7940,
         "endByte": 7944,
-        "startOffset": 7939,
+        "startOffset": 7940,
         "endOffset": 7944
       },
       "superclassifier": {
-        "startByte": 7939,
+        "startByte": 7940,
         "endByte": 7944,
-        "startOffset": 7939,
+        "startOffset": 7940,
         "endOffset": 7944
       }
     },
@@ -10038,21 +10038,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 294,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 7982,
+    "startByte": 7983,
     "endByte": 7987,
-    "startOffset": 7982,
+    "startOffset": 7983,
     "endOffset": 7987,
     "fieldRanges": {
       "name": {
-        "startByte": 7982,
+        "startByte": 7983,
         "endByte": 7987,
-        "startOffset": 7982,
+        "startOffset": 7983,
         "endOffset": 7987
       },
       "superclassifier": {
-        "startByte": 7982,
+        "startByte": 7983,
         "endByte": 7987,
-        "startOffset": 7982,
+        "startOffset": 7983,
         "endOffset": 7987
       }
     },
@@ -10106,21 +10106,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 296,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8025,
+    "startByte": 8026,
     "endByte": 8030,
-    "startOffset": 8025,
+    "startOffset": 8026,
     "endOffset": 8030,
     "fieldRanges": {
       "name": {
-        "startByte": 8025,
+        "startByte": 8026,
         "endByte": 8030,
-        "startOffset": 8025,
+        "startOffset": 8026,
         "endOffset": 8030
       },
       "superclassifier": {
-        "startByte": 8025,
+        "startByte": 8026,
         "endByte": 8030,
-        "startOffset": 8025,
+        "startOffset": 8026,
         "endOffset": 8030
       }
     },
@@ -10174,21 +10174,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 298,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8066,
+    "startByte": 8067,
     "endByte": 8071,
-    "startOffset": 8066,
+    "startOffset": 8067,
     "endOffset": 8071,
     "fieldRanges": {
       "name": {
-        "startByte": 8066,
+        "startByte": 8067,
         "endByte": 8071,
-        "startOffset": 8066,
+        "startOffset": 8067,
         "endOffset": 8071
       },
       "superclassifier": {
-        "startByte": 8066,
+        "startByte": 8067,
         "endByte": 8071,
-        "startOffset": 8066,
+        "startOffset": 8067,
         "endOffset": 8071
       }
     },
@@ -10242,21 +10242,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 300,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8110,
+    "startByte": 8111,
     "endByte": 8115,
-    "startOffset": 8110,
+    "startOffset": 8111,
     "endOffset": 8115,
     "fieldRanges": {
       "name": {
-        "startByte": 8110,
+        "startByte": 8111,
         "endByte": 8115,
-        "startOffset": 8110,
+        "startOffset": 8111,
         "endOffset": 8115
       },
       "superclassifier": {
-        "startByte": 8110,
+        "startByte": 8111,
         "endByte": 8115,
-        "startOffset": 8110,
+        "startOffset": 8111,
         "endOffset": 8115
       }
     },
@@ -10273,9 +10273,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8118,
+    "startByte": 8120,
     "endByte": 9117,
-    "startOffset": 8118,
+    "startOffset": 8120,
     "endOffset": 9117,
     "fieldRanges": {
       "name": {
@@ -10306,21 +10306,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 302,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8144,
+    "startByte": 8149,
     "endByte": 8171,
-    "startOffset": 8144,
+    "startOffset": 8149,
     "endOffset": 8171,
     "fieldRanges": {
       "name": {
-        "startByte": 8155,
+        "startByte": 8156,
         "endByte": 8168,
-        "startOffset": 8155,
+        "startOffset": 8156,
         "endOffset": 8168
       },
       "importedNamespace": {
-        "startByte": 8155,
+        "startByte": 8156,
         "endByte": 8168,
-        "startOffset": 8155,
+        "startOffset": 8156,
         "endOffset": 8168
       }
     },
@@ -10377,21 +10377,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 304,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8210,
+    "startByte": 8211,
     "endByte": 8215,
-    "startOffset": 8210,
+    "startOffset": 8211,
     "endOffset": 8215,
     "fieldRanges": {
       "name": {
-        "startByte": 8210,
+        "startByte": 8211,
         "endByte": 8215,
-        "startOffset": 8210,
+        "startOffset": 8211,
         "endOffset": 8215
       },
       "superclassifier": {
-        "startByte": 8210,
+        "startByte": 8211,
         "endByte": 8215,
-        "startOffset": 8210,
+        "startOffset": 8211,
         "endOffset": 8215
       }
     },
@@ -10445,21 +10445,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 306,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8253,
+    "startByte": 8254,
     "endByte": 8258,
-    "startOffset": 8253,
+    "startOffset": 8254,
     "endOffset": 8258,
     "fieldRanges": {
       "name": {
-        "startByte": 8253,
+        "startByte": 8254,
         "endByte": 8258,
-        "startOffset": 8253,
+        "startOffset": 8254,
         "endOffset": 8258
       },
       "superclassifier": {
-        "startByte": 8253,
+        "startByte": 8254,
         "endByte": 8258,
-        "startOffset": 8253,
+        "startOffset": 8254,
         "endOffset": 8258
       }
     },
@@ -10513,21 +10513,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 308,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8295,
+    "startByte": 8296,
     "endByte": 8300,
-    "startOffset": 8295,
+    "startOffset": 8296,
     "endOffset": 8300,
     "fieldRanges": {
       "name": {
-        "startByte": 8295,
+        "startByte": 8296,
         "endByte": 8300,
-        "startOffset": 8295,
+        "startOffset": 8296,
         "endOffset": 8300
       },
       "superclassifier": {
-        "startByte": 8295,
+        "startByte": 8296,
         "endByte": 8300,
-        "startOffset": 8295,
+        "startOffset": 8296,
         "endOffset": 8300
       }
     },
@@ -10581,21 +10581,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 310,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8336,
+    "startByte": 8337,
     "endByte": 8341,
-    "startOffset": 8336,
+    "startOffset": 8337,
     "endOffset": 8341,
     "fieldRanges": {
       "name": {
-        "startByte": 8336,
+        "startByte": 8337,
         "endByte": 8341,
-        "startOffset": 8336,
+        "startOffset": 8337,
         "endOffset": 8341
       },
       "superclassifier": {
-        "startByte": 8336,
+        "startByte": 8337,
         "endByte": 8341,
-        "startOffset": 8336,
+        "startOffset": 8337,
         "endOffset": 8341
       }
     },
@@ -10649,21 +10649,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 312,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8377,
+    "startByte": 8378,
     "endByte": 8382,
-    "startOffset": 8377,
+    "startOffset": 8378,
     "endOffset": 8382,
     "fieldRanges": {
       "name": {
-        "startByte": 8377,
+        "startByte": 8378,
         "endByte": 8382,
-        "startOffset": 8377,
+        "startOffset": 8378,
         "endOffset": 8382
       },
       "superclassifier": {
-        "startByte": 8377,
+        "startByte": 8378,
         "endByte": 8382,
-        "startOffset": 8377,
+        "startOffset": 8378,
         "endOffset": 8382
       }
     },
@@ -10717,21 +10717,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 314,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8421,
+    "startByte": 8422,
     "endByte": 8426,
-    "startOffset": 8421,
+    "startOffset": 8422,
     "endOffset": 8426,
     "fieldRanges": {
       "name": {
-        "startByte": 8421,
+        "startByte": 8422,
         "endByte": 8426,
-        "startOffset": 8421,
+        "startOffset": 8422,
         "endOffset": 8426
       },
       "superclassifier": {
-        "startByte": 8421,
+        "startByte": 8422,
         "endByte": 8426,
-        "startOffset": 8421,
+        "startOffset": 8422,
         "endOffset": 8426
       }
     },
@@ -10785,21 +10785,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 316,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8461,
+    "startByte": 8462,
     "endByte": 8466,
-    "startOffset": 8461,
+    "startOffset": 8462,
     "endOffset": 8466,
     "fieldRanges": {
       "name": {
-        "startByte": 8461,
+        "startByte": 8462,
         "endByte": 8466,
-        "startOffset": 8461,
+        "startOffset": 8462,
         "endOffset": 8466
       },
       "superclassifier": {
-        "startByte": 8461,
+        "startByte": 8462,
         "endByte": 8466,
-        "startOffset": 8461,
+        "startOffset": 8462,
         "endOffset": 8466
       }
     },
@@ -10853,21 +10853,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 318,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8505,
+    "startByte": 8506,
     "endByte": 8510,
-    "startOffset": 8505,
+    "startOffset": 8506,
     "endOffset": 8510,
     "fieldRanges": {
       "name": {
-        "startByte": 8505,
+        "startByte": 8506,
         "endByte": 8510,
-        "startOffset": 8505,
+        "startOffset": 8506,
         "endOffset": 8510
       },
       "superclassifier": {
-        "startByte": 8505,
+        "startByte": 8506,
         "endByte": 8510,
-        "startOffset": 8505,
+        "startOffset": 8506,
         "endOffset": 8510
       }
     },
@@ -10921,21 +10921,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 320,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8547,
+    "startByte": 8548,
     "endByte": 8552,
-    "startOffset": 8547,
+    "startOffset": 8548,
     "endOffset": 8552,
     "fieldRanges": {
       "name": {
-        "startByte": 8547,
+        "startByte": 8548,
         "endByte": 8552,
-        "startOffset": 8547,
+        "startOffset": 8548,
         "endOffset": 8552
       },
       "superclassifier": {
-        "startByte": 8547,
+        "startByte": 8548,
         "endByte": 8552,
-        "startOffset": 8547,
+        "startOffset": 8548,
         "endOffset": 8552
       }
     },
@@ -10989,21 +10989,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 322,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8589,
+    "startByte": 8590,
     "endByte": 8594,
-    "startOffset": 8589,
+    "startOffset": 8590,
     "endOffset": 8594,
     "fieldRanges": {
       "name": {
-        "startByte": 8589,
+        "startByte": 8590,
         "endByte": 8594,
-        "startOffset": 8589,
+        "startOffset": 8590,
         "endOffset": 8594
       },
       "superclassifier": {
-        "startByte": 8589,
+        "startByte": 8590,
         "endByte": 8594,
-        "startOffset": 8589,
+        "startOffset": 8590,
         "endOffset": 8594
       }
     },
@@ -11057,21 +11057,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 324,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8631,
+    "startByte": 8632,
     "endByte": 8636,
-    "startOffset": 8631,
+    "startOffset": 8632,
     "endOffset": 8636,
     "fieldRanges": {
       "name": {
-        "startByte": 8631,
+        "startByte": 8632,
         "endByte": 8636,
-        "startOffset": 8631,
+        "startOffset": 8632,
         "endOffset": 8636
       },
       "superclassifier": {
-        "startByte": 8631,
+        "startByte": 8632,
         "endByte": 8636,
-        "startOffset": 8631,
+        "startOffset": 8632,
         "endOffset": 8636
       }
     },
@@ -11125,21 +11125,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 326,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8673,
+    "startByte": 8674,
     "endByte": 8678,
-    "startOffset": 8673,
+    "startOffset": 8674,
     "endOffset": 8678,
     "fieldRanges": {
       "name": {
-        "startByte": 8673,
+        "startByte": 8674,
         "endByte": 8678,
-        "startOffset": 8673,
+        "startOffset": 8674,
         "endOffset": 8678
       },
       "superclassifier": {
-        "startByte": 8673,
+        "startByte": 8674,
         "endByte": 8678,
-        "startOffset": 8673,
+        "startOffset": 8674,
         "endOffset": 8678
       }
     },
@@ -11193,21 +11193,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 328,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8715,
+    "startByte": 8716,
     "endByte": 8720,
-    "startOffset": 8715,
+    "startOffset": 8716,
     "endOffset": 8720,
     "fieldRanges": {
       "name": {
-        "startByte": 8715,
+        "startByte": 8716,
         "endByte": 8720,
-        "startOffset": 8715,
+        "startOffset": 8716,
         "endOffset": 8720
       },
       "superclassifier": {
-        "startByte": 8715,
+        "startByte": 8716,
         "endByte": 8720,
-        "startOffset": 8715,
+        "startOffset": 8716,
         "endOffset": 8720
       }
     },
@@ -11261,21 +11261,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 330,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8758,
+    "startByte": 8759,
     "endByte": 8763,
-    "startOffset": 8758,
+    "startOffset": 8759,
     "endOffset": 8763,
     "fieldRanges": {
       "name": {
-        "startByte": 8758,
+        "startByte": 8759,
         "endByte": 8763,
-        "startOffset": 8758,
+        "startOffset": 8759,
         "endOffset": 8763
       },
       "superclassifier": {
-        "startByte": 8758,
+        "startByte": 8759,
         "endByte": 8763,
-        "startOffset": 8758,
+        "startOffset": 8759,
         "endOffset": 8763
       }
     },
@@ -11329,21 +11329,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 332,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8804,
+    "startByte": 8805,
     "endByte": 8809,
-    "startOffset": 8804,
+    "startOffset": 8805,
     "endOffset": 8809,
     "fieldRanges": {
       "name": {
-        "startByte": 8804,
+        "startByte": 8805,
         "endByte": 8809,
-        "startOffset": 8804,
+        "startOffset": 8805,
         "endOffset": 8809
       },
       "superclassifier": {
-        "startByte": 8804,
+        "startByte": 8805,
         "endByte": 8809,
-        "startOffset": 8804,
+        "startOffset": 8805,
         "endOffset": 8809
       }
     },
@@ -11397,21 +11397,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 334,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8846,
+    "startByte": 8847,
     "endByte": 8851,
-    "startOffset": 8846,
+    "startOffset": 8847,
     "endOffset": 8851,
     "fieldRanges": {
       "name": {
-        "startByte": 8846,
+        "startByte": 8847,
         "endByte": 8851,
-        "startOffset": 8846,
+        "startOffset": 8847,
         "endOffset": 8851
       },
       "superclassifier": {
-        "startByte": 8846,
+        "startByte": 8847,
         "endByte": 8851,
-        "startOffset": 8846,
+        "startOffset": 8847,
         "endOffset": 8851
       }
     },
@@ -11465,21 +11465,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 336,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8886,
+    "startByte": 8887,
     "endByte": 8891,
-    "startOffset": 8886,
+    "startOffset": 8887,
     "endOffset": 8891,
     "fieldRanges": {
       "name": {
-        "startByte": 8886,
+        "startByte": 8887,
         "endByte": 8891,
-        "startOffset": 8886,
+        "startOffset": 8887,
         "endOffset": 8891
       },
       "superclassifier": {
-        "startByte": 8886,
+        "startByte": 8887,
         "endByte": 8891,
-        "startOffset": 8886,
+        "startOffset": 8887,
         "endOffset": 8891
       }
     },
@@ -11533,21 +11533,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 338,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8932,
+    "startByte": 8933,
     "endByte": 8937,
-    "startOffset": 8932,
+    "startOffset": 8933,
     "endOffset": 8937,
     "fieldRanges": {
       "name": {
-        "startByte": 8932,
+        "startByte": 8933,
         "endByte": 8937,
-        "startOffset": 8932,
+        "startOffset": 8933,
         "endOffset": 8937
       },
       "superclassifier": {
-        "startByte": 8932,
+        "startByte": 8933,
         "endByte": 8937,
-        "startOffset": 8932,
+        "startOffset": 8933,
         "endOffset": 8937
       }
     },
@@ -11601,21 +11601,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 340,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 8973,
+    "startByte": 8974,
     "endByte": 8978,
-    "startOffset": 8973,
+    "startOffset": 8974,
     "endOffset": 8978,
     "fieldRanges": {
       "name": {
-        "startByte": 8973,
+        "startByte": 8974,
         "endByte": 8978,
-        "startOffset": 8973,
+        "startOffset": 8974,
         "endOffset": 8978
       },
       "superclassifier": {
-        "startByte": 8973,
+        "startByte": 8974,
         "endByte": 8978,
-        "startOffset": 8973,
+        "startOffset": 8974,
         "endOffset": 8978
       }
     },
@@ -11669,21 +11669,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 342,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9017,
+    "startByte": 9018,
     "endByte": 9022,
-    "startOffset": 9017,
+    "startOffset": 9018,
     "endOffset": 9022,
     "fieldRanges": {
       "name": {
-        "startByte": 9017,
+        "startByte": 9018,
         "endByte": 9022,
-        "startOffset": 9017,
+        "startOffset": 9018,
         "endOffset": 9022
       },
       "superclassifier": {
-        "startByte": 9017,
+        "startByte": 9018,
         "endByte": 9022,
-        "startOffset": 9017,
+        "startOffset": 9018,
         "endOffset": 9022
       }
     },
@@ -11737,21 +11737,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 344,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9059,
+    "startByte": 9060,
     "endByte": 9064,
-    "startOffset": 9059,
+    "startOffset": 9060,
     "endOffset": 9064,
     "fieldRanges": {
       "name": {
-        "startByte": 9059,
+        "startByte": 9060,
         "endByte": 9064,
-        "startOffset": 9059,
+        "startOffset": 9060,
         "endOffset": 9064
       },
       "superclassifier": {
-        "startByte": 9059,
+        "startByte": 9060,
         "endByte": 9064,
-        "startOffset": 9059,
+        "startOffset": 9060,
         "endOffset": 9064
       }
     },
@@ -11805,21 +11805,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 346,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9109,
+    "startByte": 9110,
     "endByte": 9114,
-    "startOffset": 9109,
+    "startOffset": 9110,
     "endOffset": 9114,
     "fieldRanges": {
       "name": {
-        "startByte": 9109,
+        "startByte": 9110,
         "endByte": 9114,
-        "startOffset": 9109,
+        "startOffset": 9110,
         "endOffset": 9114
       },
       "superclassifier": {
-        "startByte": 9109,
+        "startByte": 9110,
         "endByte": 9114,
-        "startOffset": 9109,
+        "startOffset": 9110,
         "endOffset": 9114
       }
     },
@@ -11836,9 +11836,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9117,
+    "startByte": 9119,
     "endByte": 13074,
-    "startOffset": 9117,
+    "startOffset": 9119,
     "endOffset": 13074,
     "fieldRanges": {
       "name": {
@@ -11869,21 +11869,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 348,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9131,
+    "startByte": 9136,
     "endByte": 9158,
-    "startOffset": 9131,
+    "startOffset": 9136,
     "endOffset": 9158,
     "fieldRanges": {
       "name": {
-        "startByte": 9142,
+        "startByte": 9143,
         "endByte": 9155,
-        "startOffset": 9142,
+        "startOffset": 9143,
         "endOffset": 9155
       },
       "importedNamespace": {
-        "startByte": 9142,
+        "startByte": 9143,
         "endByte": 9155,
-        "startOffset": 9142,
+        "startOffset": 9143,
         "endOffset": 9155
       }
     },
@@ -11903,21 +11903,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 348,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9159,
+    "startByte": 9164,
     "endByte": 9185,
-    "startOffset": 9159,
+    "startOffset": 9164,
     "endOffset": 9185,
     "fieldRanges": {
       "name": {
-        "startByte": 9170,
+        "startByte": 9171,
         "endByte": 9182,
-        "startOffset": 9170,
+        "startOffset": 9171,
         "endOffset": 9182
       },
       "importedNamespace": {
-        "startByte": 9170,
+        "startByte": 9171,
         "endByte": 9182,
-        "startOffset": 9170,
+        "startOffset": 9171,
         "endOffset": 9182
       }
     },
@@ -11937,21 +11937,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 348,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9186,
+    "startByte": 9191,
     "endByte": 9215,
-    "startOffset": 9186,
+    "startOffset": 9191,
     "endOffset": 9215,
     "fieldRanges": {
       "name": {
-        "startByte": 9197,
+        "startByte": 9198,
         "endByte": 9212,
-        "startOffset": 9197,
+        "startOffset": 9198,
         "endOffset": 9212
       },
       "importedNamespace": {
-        "startByte": 9197,
+        "startByte": 9198,
         "endByte": 9212,
-        "startOffset": 9197,
+        "startOffset": 9198,
         "endOffset": 9212
       }
     },
@@ -12008,21 +12008,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 352,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9277,
+    "startByte": 9278,
     "endByte": 9284,
-    "startOffset": 9277,
+    "startOffset": 9278,
     "endOffset": 9284,
     "fieldRanges": {
       "name": {
-        "startByte": 9277,
+        "startByte": 9278,
         "endByte": 9284,
-        "startOffset": 9277,
+        "startOffset": 9278,
         "endOffset": 9284
       },
       "superclassifier": {
-        "startByte": 9277,
+        "startByte": 9278,
         "endByte": 9284,
-        "startOffset": 9277,
+        "startOffset": 9278,
         "endOffset": 9284
       }
     },
@@ -12076,21 +12076,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 354,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9318,
+    "startByte": 9319,
     "endByte": 9327,
-    "startOffset": 9318,
+    "startOffset": 9319,
     "endOffset": 9327,
     "fieldRanges": {
       "name": {
-        "startByte": 9318,
+        "startByte": 9319,
         "endByte": 9327,
-        "startOffset": 9318,
+        "startOffset": 9319,
         "endOffset": 9327
       },
       "superclassifier": {
-        "startByte": 9318,
+        "startByte": 9319,
         "endByte": 9327,
-        "startOffset": 9318,
+        "startOffset": 9319,
         "endOffset": 9327
       }
     },
@@ -12144,21 +12144,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 356,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9360,
+    "startByte": 9361,
     "endByte": 9366,
-    "startOffset": 9360,
+    "startOffset": 9361,
     "endOffset": 9366,
     "fieldRanges": {
       "name": {
-        "startByte": 9360,
+        "startByte": 9361,
         "endByte": 9366,
-        "startOffset": 9360,
+        "startOffset": 9361,
         "endOffset": 9366
       },
       "superclassifier": {
-        "startByte": 9360,
+        "startByte": 9361,
         "endByte": 9366,
-        "startOffset": 9360,
+        "startOffset": 9361,
         "endOffset": 9366
       }
     },
@@ -12212,21 +12212,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 358,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9399,
+    "startByte": 9400,
     "endByte": 9406,
-    "startOffset": 9399,
+    "startOffset": 9400,
     "endOffset": 9406,
     "fieldRanges": {
       "name": {
-        "startByte": 9399,
+        "startByte": 9400,
         "endByte": 9406,
-        "startOffset": 9399,
+        "startOffset": 9400,
         "endOffset": 9406
       },
       "superclassifier": {
-        "startByte": 9399,
+        "startByte": 9400,
         "endByte": 9406,
-        "startOffset": 9399,
+        "startOffset": 9400,
         "endOffset": 9406
       }
     },
@@ -12280,21 +12280,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 360,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9439,
+    "startByte": 9440,
     "endByte": 9446,
-    "startOffset": 9439,
+    "startOffset": 9440,
     "endOffset": 9446,
     "fieldRanges": {
       "name": {
-        "startByte": 9439,
+        "startByte": 9440,
         "endByte": 9446,
-        "startOffset": 9439,
+        "startOffset": 9440,
         "endOffset": 9446
       },
       "superclassifier": {
-        "startByte": 9439,
+        "startByte": 9440,
         "endByte": 9446,
-        "startOffset": 9439,
+        "startOffset": 9440,
         "endOffset": 9446
       }
     },
@@ -12348,21 +12348,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 362,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9481,
+    "startByte": 9482,
     "endByte": 9486,
-    "startOffset": 9481,
+    "startOffset": 9482,
     "endOffset": 9486,
     "fieldRanges": {
       "name": {
-        "startByte": 9481,
+        "startByte": 9482,
         "endByte": 9486,
-        "startOffset": 9481,
+        "startOffset": 9482,
         "endOffset": 9486
       },
       "superclassifier": {
-        "startByte": 9481,
+        "startByte": 9482,
         "endByte": 9486,
-        "startOffset": 9481,
+        "startOffset": 9482,
         "endOffset": 9486
       }
     },
@@ -12416,21 +12416,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 364,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9520,
+    "startByte": 9521,
     "endByte": 9528,
-    "startOffset": 9520,
+    "startOffset": 9521,
     "endOffset": 9528,
     "fieldRanges": {
       "name": {
-        "startByte": 9520,
+        "startByte": 9521,
         "endByte": 9528,
-        "startOffset": 9520,
+        "startOffset": 9521,
         "endOffset": 9528
       },
       "superclassifier": {
-        "startByte": 9520,
+        "startByte": 9521,
         "endByte": 9528,
-        "startOffset": 9520,
+        "startOffset": 9521,
         "endOffset": 9528
       }
     },
@@ -12484,21 +12484,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 366,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9604,
+    "startByte": 9605,
     "endByte": 9609,
-    "startOffset": 9604,
+    "startOffset": 9605,
     "endOffset": 9609,
     "fieldRanges": {
       "name": {
-        "startByte": 9604,
+        "startByte": 9605,
         "endByte": 9609,
-        "startOffset": 9604,
+        "startOffset": 9605,
         "endOffset": 9609
       },
       "superclassifier": {
-        "startByte": 9604,
+        "startByte": 9605,
         "endByte": 9609,
-        "startOffset": 9604,
+        "startOffset": 9605,
         "endOffset": 9609
       }
     },
@@ -12552,21 +12552,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 368,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9643,
+    "startByte": 9644,
     "endByte": 9648,
-    "startOffset": 9643,
+    "startOffset": 9644,
     "endOffset": 9648,
     "fieldRanges": {
       "name": {
-        "startByte": 9643,
+        "startByte": 9644,
         "endByte": 9648,
-        "startOffset": 9643,
+        "startOffset": 9644,
         "endOffset": 9648
       },
       "superclassifier": {
-        "startByte": 9643,
+        "startByte": 9644,
         "endByte": 9648,
-        "startOffset": 9643,
+        "startOffset": 9644,
         "endOffset": 9648
       }
     },
@@ -12620,21 +12620,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 370,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9682,
+    "startByte": 9683,
     "endByte": 9687,
-    "startOffset": 9682,
+    "startOffset": 9683,
     "endOffset": 9687,
     "fieldRanges": {
       "name": {
-        "startByte": 9682,
+        "startByte": 9683,
         "endByte": 9687,
-        "startOffset": 9682,
+        "startOffset": 9683,
         "endOffset": 9687
       },
       "superclassifier": {
-        "startByte": 9682,
+        "startByte": 9683,
         "endByte": 9687,
-        "startOffset": 9682,
+        "startOffset": 9683,
         "endOffset": 9687
       }
     },
@@ -12688,21 +12688,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 372,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9721,
+    "startByte": 9722,
     "endByte": 9726,
-    "startOffset": 9721,
+    "startOffset": 9722,
     "endOffset": 9726,
     "fieldRanges": {
       "name": {
-        "startByte": 9721,
+        "startByte": 9722,
         "endByte": 9726,
-        "startOffset": 9721,
+        "startOffset": 9722,
         "endOffset": 9726
       },
       "superclassifier": {
-        "startByte": 9721,
+        "startByte": 9722,
         "endByte": 9726,
-        "startOffset": 9721,
+        "startOffset": 9722,
         "endOffset": 9726
       }
     },
@@ -12756,21 +12756,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 374,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9760,
+    "startByte": 9761,
     "endByte": 9765,
-    "startOffset": 9760,
+    "startOffset": 9761,
     "endOffset": 9765,
     "fieldRanges": {
       "name": {
-        "startByte": 9760,
+        "startByte": 9761,
         "endByte": 9765,
-        "startOffset": 9760,
+        "startOffset": 9761,
         "endOffset": 9765
       },
       "superclassifier": {
-        "startByte": 9760,
+        "startByte": 9761,
         "endByte": 9765,
-        "startOffset": 9760,
+        "startOffset": 9761,
         "endOffset": 9765
       }
     },
@@ -12824,21 +12824,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 376,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9798,
+    "startByte": 9799,
     "endByte": 9805,
-    "startOffset": 9798,
+    "startOffset": 9799,
     "endOffset": 9805,
     "fieldRanges": {
       "name": {
-        "startByte": 9798,
+        "startByte": 9799,
         "endByte": 9805,
-        "startOffset": 9798,
+        "startOffset": 9799,
         "endOffset": 9805
       },
       "superclassifier": {
-        "startByte": 9798,
+        "startByte": 9799,
         "endByte": 9805,
-        "startOffset": 9798,
+        "startOffset": 9799,
         "endOffset": 9805
       }
     },
@@ -12892,21 +12892,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 378,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9839,
+    "startByte": 9840,
     "endByte": 9844,
-    "startOffset": 9839,
+    "startOffset": 9840,
     "endOffset": 9844,
     "fieldRanges": {
       "name": {
-        "startByte": 9839,
+        "startByte": 9840,
         "endByte": 9844,
-        "startOffset": 9839,
+        "startOffset": 9840,
         "endOffset": 9844
       },
       "superclassifier": {
-        "startByte": 9839,
+        "startByte": 9840,
         "endByte": 9844,
-        "startOffset": 9839,
+        "startOffset": 9840,
         "endOffset": 9844
       }
     },
@@ -12960,21 +12960,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 380,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9878,
+    "startByte": 9879,
     "endByte": 9885,
-    "startOffset": 9878,
+    "startOffset": 9879,
     "endOffset": 9885,
     "fieldRanges": {
       "name": {
-        "startByte": 9878,
+        "startByte": 9879,
         "endByte": 9885,
-        "startOffset": 9878,
+        "startOffset": 9879,
         "endOffset": 9885
       },
       "superclassifier": {
-        "startByte": 9878,
+        "startByte": 9879,
         "endByte": 9885,
-        "startOffset": 9878,
+        "startOffset": 9879,
         "endOffset": 9885
       }
     },
@@ -13028,21 +13028,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 382,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9920,
+    "startByte": 9921,
     "endByte": 9925,
-    "startOffset": 9920,
+    "startOffset": 9921,
     "endOffset": 9925,
     "fieldRanges": {
       "name": {
-        "startByte": 9920,
+        "startByte": 9921,
         "endByte": 9925,
-        "startOffset": 9920,
+        "startOffset": 9921,
         "endOffset": 9925
       },
       "superclassifier": {
-        "startByte": 9920,
+        "startByte": 9921,
         "endByte": 9925,
-        "startOffset": 9920,
+        "startOffset": 9921,
         "endOffset": 9925
       }
     },
@@ -13096,21 +13096,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 384,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 9960,
+    "startByte": 9961,
     "endByte": 9965,
-    "startOffset": 9960,
+    "startOffset": 9961,
     "endOffset": 9965,
     "fieldRanges": {
       "name": {
-        "startByte": 9960,
+        "startByte": 9961,
         "endByte": 9965,
-        "startOffset": 9960,
+        "startOffset": 9961,
         "endOffset": 9965
       },
       "superclassifier": {
-        "startByte": 9960,
+        "startByte": 9961,
         "endByte": 9965,
-        "startOffset": 9960,
+        "startOffset": 9961,
         "endOffset": 9965
       }
     },
@@ -13164,21 +13164,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 386,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10000,
+    "startByte": 10001,
     "endByte": 10005,
-    "startOffset": 10000,
+    "startOffset": 10001,
     "endOffset": 10005,
     "fieldRanges": {
       "name": {
-        "startByte": 10000,
+        "startByte": 10001,
         "endByte": 10005,
-        "startOffset": 10000,
+        "startOffset": 10001,
         "endOffset": 10005
       },
       "superclassifier": {
-        "startByte": 10000,
+        "startByte": 10001,
         "endByte": 10005,
-        "startOffset": 10000,
+        "startOffset": 10001,
         "endOffset": 10005
       }
     },
@@ -13232,21 +13232,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 388,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10038,
+    "startByte": 10039,
     "endByte": 10044,
-    "startOffset": 10038,
+    "startOffset": 10039,
     "endOffset": 10044,
     "fieldRanges": {
       "name": {
-        "startByte": 10038,
+        "startByte": 10039,
         "endByte": 10044,
-        "startOffset": 10038,
+        "startOffset": 10039,
         "endOffset": 10044
       },
       "superclassifier": {
-        "startByte": 10038,
+        "startByte": 10039,
         "endByte": 10044,
-        "startOffset": 10038,
+        "startOffset": 10039,
         "endOffset": 10044
       }
     },
@@ -13300,21 +13300,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 390,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10078,
+    "startByte": 10079,
     "endByte": 10083,
-    "startOffset": 10078,
+    "startOffset": 10079,
     "endOffset": 10083,
     "fieldRanges": {
       "name": {
-        "startByte": 10078,
+        "startByte": 10079,
         "endByte": 10083,
-        "startOffset": 10078,
+        "startOffset": 10079,
         "endOffset": 10083
       },
       "superclassifier": {
-        "startByte": 10078,
+        "startByte": 10079,
         "endByte": 10083,
-        "startOffset": 10078,
+        "startOffset": 10079,
         "endOffset": 10083
       }
     },
@@ -13368,21 +13368,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 392,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10117,
+    "startByte": 10118,
     "endByte": 10122,
-    "startOffset": 10117,
+    "startOffset": 10118,
     "endOffset": 10122,
     "fieldRanges": {
       "name": {
-        "startByte": 10117,
+        "startByte": 10118,
         "endByte": 10122,
-        "startOffset": 10117,
+        "startOffset": 10118,
         "endOffset": 10122
       },
       "superclassifier": {
-        "startByte": 10117,
+        "startByte": 10118,
         "endByte": 10122,
-        "startOffset": 10117,
+        "startOffset": 10118,
         "endOffset": 10122
       }
     },
@@ -13436,21 +13436,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 394,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10155,
+    "startByte": 10156,
     "endByte": 10160,
-    "startOffset": 10155,
+    "startOffset": 10156,
     "endOffset": 10160,
     "fieldRanges": {
       "name": {
-        "startByte": 10155,
+        "startByte": 10156,
         "endByte": 10160,
-        "startOffset": 10155,
+        "startOffset": 10156,
         "endOffset": 10160
       },
       "superclassifier": {
-        "startByte": 10155,
+        "startByte": 10156,
         "endByte": 10160,
-        "startOffset": 10155,
+        "startOffset": 10156,
         "endOffset": 10160
       }
     },
@@ -13504,21 +13504,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 396,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10194,
+    "startByte": 10195,
     "endByte": 10199,
-    "startOffset": 10194,
+    "startOffset": 10195,
     "endOffset": 10199,
     "fieldRanges": {
       "name": {
-        "startByte": 10194,
+        "startByte": 10195,
         "endByte": 10199,
-        "startOffset": 10194,
+        "startOffset": 10195,
         "endOffset": 10199
       },
       "superclassifier": {
-        "startByte": 10194,
+        "startByte": 10195,
         "endByte": 10199,
-        "startOffset": 10194,
+        "startOffset": 10195,
         "endOffset": 10199
       }
     },
@@ -13572,21 +13572,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 398,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10233,
+    "startByte": 10234,
     "endByte": 10238,
-    "startOffset": 10233,
+    "startOffset": 10234,
     "endOffset": 10238,
     "fieldRanges": {
       "name": {
-        "startByte": 10233,
+        "startByte": 10234,
         "endByte": 10238,
-        "startOffset": 10233,
+        "startOffset": 10234,
         "endOffset": 10238
       },
       "superclassifier": {
-        "startByte": 10233,
+        "startByte": 10234,
         "endByte": 10238,
-        "startOffset": 10233,
+        "startOffset": 10234,
         "endOffset": 10238
       }
     },
@@ -13640,21 +13640,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 400,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10271,
+    "startByte": 10272,
     "endByte": 10276,
-    "startOffset": 10271,
+    "startOffset": 10272,
     "endOffset": 10276,
     "fieldRanges": {
       "name": {
-        "startByte": 10271,
+        "startByte": 10272,
         "endByte": 10276,
-        "startOffset": 10271,
+        "startOffset": 10272,
         "endOffset": 10276
       },
       "superclassifier": {
-        "startByte": 10271,
+        "startByte": 10272,
         "endByte": 10276,
-        "startOffset": 10271,
+        "startOffset": 10272,
         "endOffset": 10276
       }
     },
@@ -13708,21 +13708,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 402,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10310,
+    "startByte": 10311,
     "endByte": 10315,
-    "startOffset": 10310,
+    "startOffset": 10311,
     "endOffset": 10315,
     "fieldRanges": {
       "name": {
-        "startByte": 10310,
+        "startByte": 10311,
         "endByte": 10315,
-        "startOffset": 10310,
+        "startOffset": 10311,
         "endOffset": 10315
       },
       "superclassifier": {
-        "startByte": 10310,
+        "startByte": 10311,
         "endByte": 10315,
-        "startOffset": 10310,
+        "startOffset": 10311,
         "endOffset": 10315
       }
     },
@@ -13776,21 +13776,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 404,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10349,
+    "startByte": 10350,
     "endByte": 10354,
-    "startOffset": 10349,
+    "startOffset": 10350,
     "endOffset": 10354,
     "fieldRanges": {
       "name": {
-        "startByte": 10349,
+        "startByte": 10350,
         "endByte": 10354,
-        "startOffset": 10349,
+        "startOffset": 10350,
         "endOffset": 10354
       },
       "superclassifier": {
-        "startByte": 10349,
+        "startByte": 10350,
         "endByte": 10354,
-        "startOffset": 10349,
+        "startOffset": 10350,
         "endOffset": 10354
       }
     },
@@ -13844,21 +13844,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 406,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10387,
+    "startByte": 10388,
     "endByte": 10395,
-    "startOffset": 10387,
+    "startOffset": 10388,
     "endOffset": 10395,
     "fieldRanges": {
       "name": {
-        "startByte": 10387,
+        "startByte": 10388,
         "endByte": 10395,
-        "startOffset": 10387,
+        "startOffset": 10388,
         "endOffset": 10395
       },
       "superclassifier": {
-        "startByte": 10387,
+        "startByte": 10388,
         "endByte": 10395,
-        "startOffset": 10387,
+        "startOffset": 10388,
         "endOffset": 10395
       }
     },
@@ -13912,21 +13912,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 408,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10430,
+    "startByte": 10431,
     "endByte": 10434,
-    "startOffset": 10430,
+    "startOffset": 10431,
     "endOffset": 10434,
     "fieldRanges": {
       "name": {
-        "startByte": 10430,
+        "startByte": 10431,
         "endByte": 10434,
-        "startOffset": 10430,
+        "startOffset": 10431,
         "endOffset": 10434
       },
       "superclassifier": {
-        "startByte": 10430,
+        "startByte": 10431,
         "endByte": 10434,
-        "startOffset": 10430,
+        "startOffset": 10431,
         "endOffset": 10434
       }
     },
@@ -13980,21 +13980,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 410,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10470,
+    "startByte": 10471,
     "endByte": 10475,
-    "startOffset": 10470,
+    "startOffset": 10471,
     "endOffset": 10475,
     "fieldRanges": {
       "name": {
-        "startByte": 10470,
+        "startByte": 10471,
         "endByte": 10475,
-        "startOffset": 10470,
+        "startOffset": 10471,
         "endOffset": 10475
       },
       "superclassifier": {
-        "startByte": 10470,
+        "startByte": 10471,
         "endByte": 10475,
-        "startOffset": 10470,
+        "startOffset": 10471,
         "endOffset": 10475
       }
     },
@@ -14048,21 +14048,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 412,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10511,
+    "startByte": 10512,
     "endByte": 10516,
-    "startOffset": 10511,
+    "startOffset": 10512,
     "endOffset": 10516,
     "fieldRanges": {
       "name": {
-        "startByte": 10511,
+        "startByte": 10512,
         "endByte": 10516,
-        "startOffset": 10511,
+        "startOffset": 10512,
         "endOffset": 10516
       },
       "superclassifier": {
-        "startByte": 10511,
+        "startByte": 10512,
         "endByte": 10516,
-        "startOffset": 10511,
+        "startOffset": 10512,
         "endOffset": 10516
       }
     },
@@ -14116,21 +14116,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 414,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10549,
+    "startByte": 10550,
     "endByte": 10555,
-    "startOffset": 10549,
+    "startOffset": 10550,
     "endOffset": 10555,
     "fieldRanges": {
       "name": {
-        "startByte": 10549,
+        "startByte": 10550,
         "endByte": 10555,
-        "startOffset": 10549,
+        "startOffset": 10550,
         "endOffset": 10555
       },
       "superclassifier": {
-        "startByte": 10549,
+        "startByte": 10550,
         "endByte": 10555,
-        "startOffset": 10549,
+        "startOffset": 10550,
         "endOffset": 10555
       }
     },
@@ -14184,21 +14184,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 416,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10589,
+    "startByte": 10590,
     "endByte": 10594,
-    "startOffset": 10589,
+    "startOffset": 10590,
     "endOffset": 10594,
     "fieldRanges": {
       "name": {
-        "startByte": 10589,
+        "startByte": 10590,
         "endByte": 10594,
-        "startOffset": 10589,
+        "startOffset": 10590,
         "endOffset": 10594
       },
       "superclassifier": {
-        "startByte": 10589,
+        "startByte": 10590,
         "endByte": 10594,
-        "startOffset": 10589,
+        "startOffset": 10590,
         "endOffset": 10594
       }
     },
@@ -14252,21 +14252,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 418,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10628,
+    "startByte": 10629,
     "endByte": 10633,
-    "startOffset": 10628,
+    "startOffset": 10629,
     "endOffset": 10633,
     "fieldRanges": {
       "name": {
-        "startByte": 10628,
+        "startByte": 10629,
         "endByte": 10633,
-        "startOffset": 10628,
+        "startOffset": 10629,
         "endOffset": 10633
       },
       "superclassifier": {
-        "startByte": 10628,
+        "startByte": 10629,
         "endByte": 10633,
-        "startOffset": 10628,
+        "startOffset": 10629,
         "endOffset": 10633
       }
     },
@@ -14320,21 +14320,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 420,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10667,
+    "startByte": 10668,
     "endByte": 10672,
-    "startOffset": 10667,
+    "startOffset": 10668,
     "endOffset": 10672,
     "fieldRanges": {
       "name": {
-        "startByte": 10667,
+        "startByte": 10668,
         "endByte": 10672,
-        "startOffset": 10667,
+        "startOffset": 10668,
         "endOffset": 10672
       },
       "superclassifier": {
-        "startByte": 10667,
+        "startByte": 10668,
         "endByte": 10672,
-        "startOffset": 10667,
+        "startOffset": 10668,
         "endOffset": 10672
       }
     },
@@ -14388,21 +14388,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 422,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10705,
+    "startByte": 10706,
     "endByte": 10711,
-    "startOffset": 10705,
+    "startOffset": 10706,
     "endOffset": 10711,
     "fieldRanges": {
       "name": {
-        "startByte": 10705,
+        "startByte": 10706,
         "endByte": 10711,
-        "startOffset": 10705,
+        "startOffset": 10706,
         "endOffset": 10711
       },
       "superclassifier": {
-        "startByte": 10705,
+        "startByte": 10706,
         "endByte": 10711,
-        "startOffset": 10705,
+        "startOffset": 10706,
         "endOffset": 10711
       }
     },
@@ -14456,21 +14456,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 424,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10745,
+    "startByte": 10746,
     "endByte": 10750,
-    "startOffset": 10745,
+    "startOffset": 10746,
     "endOffset": 10750,
     "fieldRanges": {
       "name": {
-        "startByte": 10745,
+        "startByte": 10746,
         "endByte": 10750,
-        "startOffset": 10745,
+        "startOffset": 10746,
         "endOffset": 10750
       },
       "superclassifier": {
-        "startByte": 10745,
+        "startByte": 10746,
         "endByte": 10750,
-        "startOffset": 10745,
+        "startOffset": 10746,
         "endOffset": 10750
       }
     },
@@ -14524,21 +14524,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 426,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10784,
+    "startByte": 10785,
     "endByte": 10789,
-    "startOffset": 10784,
+    "startOffset": 10785,
     "endOffset": 10789,
     "fieldRanges": {
       "name": {
-        "startByte": 10784,
+        "startByte": 10785,
         "endByte": 10789,
-        "startOffset": 10784,
+        "startOffset": 10785,
         "endOffset": 10789
       },
       "superclassifier": {
-        "startByte": 10784,
+        "startByte": 10785,
         "endByte": 10789,
-        "startOffset": 10784,
+        "startOffset": 10785,
         "endOffset": 10789
       }
     },
@@ -14592,21 +14592,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 428,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10823,
+    "startByte": 10824,
     "endByte": 10829,
-    "startOffset": 10823,
+    "startOffset": 10824,
     "endOffset": 10829,
     "fieldRanges": {
       "name": {
-        "startByte": 10823,
+        "startByte": 10824,
         "endByte": 10829,
-        "startOffset": 10823,
+        "startOffset": 10824,
         "endOffset": 10829
       },
       "superclassifier": {
-        "startByte": 10823,
+        "startByte": 10824,
         "endByte": 10829,
-        "startOffset": 10823,
+        "startOffset": 10824,
         "endOffset": 10829
       }
     },
@@ -14660,21 +14660,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 430,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10864,
+    "startByte": 10865,
     "endByte": 10869,
-    "startOffset": 10864,
+    "startOffset": 10865,
     "endOffset": 10869,
     "fieldRanges": {
       "name": {
-        "startByte": 10864,
+        "startByte": 10865,
         "endByte": 10869,
-        "startOffset": 10864,
+        "startOffset": 10865,
         "endOffset": 10869
       },
       "superclassifier": {
-        "startByte": 10864,
+        "startByte": 10865,
         "endByte": 10869,
-        "startOffset": 10864,
+        "startOffset": 10865,
         "endOffset": 10869
       }
     },
@@ -14728,21 +14728,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 432,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10904,
+    "startByte": 10905,
     "endByte": 10909,
-    "startOffset": 10904,
+    "startOffset": 10905,
     "endOffset": 10909,
     "fieldRanges": {
       "name": {
-        "startByte": 10904,
+        "startByte": 10905,
         "endByte": 10909,
-        "startOffset": 10904,
+        "startOffset": 10905,
         "endOffset": 10909
       },
       "superclassifier": {
-        "startByte": 10904,
+        "startByte": 10905,
         "endByte": 10909,
-        "startOffset": 10904,
+        "startOffset": 10905,
         "endOffset": 10909
       }
     },
@@ -14796,21 +14796,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 434,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10944,
+    "startByte": 10945,
     "endByte": 10949,
-    "startOffset": 10944,
+    "startOffset": 10945,
     "endOffset": 10949,
     "fieldRanges": {
       "name": {
-        "startByte": 10944,
+        "startByte": 10945,
         "endByte": 10949,
-        "startOffset": 10944,
+        "startOffset": 10945,
         "endOffset": 10949
       },
       "superclassifier": {
-        "startByte": 10944,
+        "startByte": 10945,
         "endByte": 10949,
-        "startOffset": 10944,
+        "startOffset": 10945,
         "endOffset": 10949
       }
     },
@@ -14864,21 +14864,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 436,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 10984,
+    "startByte": 10985,
     "endByte": 10991,
-    "startOffset": 10984,
+    "startOffset": 10985,
     "endOffset": 10991,
     "fieldRanges": {
       "name": {
-        "startByte": 10984,
+        "startByte": 10985,
         "endByte": 10991,
-        "startOffset": 10984,
+        "startOffset": 10985,
         "endOffset": 10991
       },
       "superclassifier": {
-        "startByte": 10984,
+        "startByte": 10985,
         "endByte": 10991,
-        "startOffset": 10984,
+        "startOffset": 10985,
         "endOffset": 10991
       }
     },
@@ -14932,21 +14932,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 438,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11025,
+    "startByte": 11026,
     "endByte": 11035,
-    "startOffset": 11025,
+    "startOffset": 11026,
     "endOffset": 11035,
     "fieldRanges": {
       "name": {
-        "startByte": 11025,
+        "startByte": 11026,
         "endByte": 11035,
-        "startOffset": 11025,
+        "startOffset": 11026,
         "endOffset": 11035
       },
       "superclassifier": {
-        "startByte": 11025,
+        "startByte": 11026,
         "endByte": 11035,
-        "startOffset": 11025,
+        "startOffset": 11026,
         "endOffset": 11035
       }
     },
@@ -15000,21 +15000,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 440,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11070,
+    "startByte": 11071,
     "endByte": 11076,
-    "startOffset": 11070,
+    "startOffset": 11071,
     "endOffset": 11076,
     "fieldRanges": {
       "name": {
-        "startByte": 11070,
+        "startByte": 11071,
         "endByte": 11076,
-        "startOffset": 11070,
+        "startOffset": 11071,
         "endOffset": 11076
       },
       "superclassifier": {
-        "startByte": 11070,
+        "startByte": 11071,
         "endByte": 11076,
-        "startOffset": 11070,
+        "startOffset": 11071,
         "endOffset": 11076
       }
     },
@@ -15068,21 +15068,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 442,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11111,
+    "startByte": 11112,
     "endByte": 11116,
-    "startOffset": 11111,
+    "startOffset": 11112,
     "endOffset": 11116,
     "fieldRanges": {
       "name": {
-        "startByte": 11111,
+        "startByte": 11112,
         "endByte": 11116,
-        "startOffset": 11111,
+        "startOffset": 11112,
         "endOffset": 11116
       },
       "superclassifier": {
-        "startByte": 11111,
+        "startByte": 11112,
         "endByte": 11116,
-        "startOffset": 11111,
+        "startOffset": 11112,
         "endOffset": 11116
       }
     },
@@ -15136,21 +15136,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 444,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11152,
+    "startByte": 11153,
     "endByte": 11166,
-    "startOffset": 11152,
+    "startOffset": 11153,
     "endOffset": 11166,
     "fieldRanges": {
       "name": {
-        "startByte": 11152,
+        "startByte": 11153,
         "endByte": 11166,
-        "startOffset": 11152,
+        "startOffset": 11153,
         "endOffset": 11166
       },
       "superclassifier": {
-        "startByte": 11152,
+        "startByte": 11153,
         "endByte": 11166,
-        "startOffset": 11152,
+        "startOffset": 11153,
         "endOffset": 11166
       }
     },
@@ -15204,21 +15204,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 446,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11242,
+    "startByte": 11243,
     "endByte": 11248,
-    "startOffset": 11242,
+    "startOffset": 11243,
     "endOffset": 11248,
     "fieldRanges": {
       "name": {
-        "startByte": 11242,
+        "startByte": 11243,
         "endByte": 11248,
-        "startOffset": 11242,
+        "startOffset": 11243,
         "endOffset": 11248
       },
       "superclassifier": {
-        "startByte": 11242,
+        "startByte": 11243,
         "endByte": 11248,
-        "startOffset": 11242,
+        "startOffset": 11243,
         "endOffset": 11248
       }
     },
@@ -15272,21 +15272,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 448,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11290,
+    "startByte": 11291,
     "endByte": 11296,
-    "startOffset": 11290,
+    "startOffset": 11291,
     "endOffset": 11296,
     "fieldRanges": {
       "name": {
-        "startByte": 11290,
+        "startByte": 11291,
         "endByte": 11296,
-        "startOffset": 11290,
+        "startOffset": 11291,
         "endOffset": 11296
       },
       "superclassifier": {
-        "startByte": 11290,
+        "startByte": 11291,
         "endByte": 11296,
-        "startOffset": 11290,
+        "startOffset": 11291,
         "endOffset": 11296
       }
     },
@@ -15340,21 +15340,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 450,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11337,
+    "startByte": 11338,
     "endByte": 11343,
-    "startOffset": 11337,
+    "startOffset": 11338,
     "endOffset": 11343,
     "fieldRanges": {
       "name": {
-        "startByte": 11337,
+        "startByte": 11338,
         "endByte": 11343,
-        "startOffset": 11337,
+        "startOffset": 11338,
         "endOffset": 11343
       },
       "superclassifier": {
-        "startByte": 11337,
+        "startByte": 11338,
         "endByte": 11343,
-        "startOffset": 11337,
+        "startOffset": 11338,
         "endOffset": 11343
       }
     },
@@ -15408,21 +15408,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 452,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11379,
+    "startByte": 11380,
     "endByte": 11384,
-    "startOffset": 11379,
+    "startOffset": 11380,
     "endOffset": 11384,
     "fieldRanges": {
       "name": {
-        "startByte": 11379,
+        "startByte": 11380,
         "endByte": 11384,
-        "startOffset": 11379,
+        "startOffset": 11380,
         "endOffset": 11384
       },
       "superclassifier": {
-        "startByte": 11379,
+        "startByte": 11380,
         "endByte": 11384,
-        "startOffset": 11379,
+        "startOffset": 11380,
         "endOffset": 11384
       }
     },
@@ -15476,21 +15476,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 454,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11425,
+    "startByte": 11426,
     "endByte": 11430,
-    "startOffset": 11425,
+    "startOffset": 11426,
     "endOffset": 11430,
     "fieldRanges": {
       "name": {
-        "startByte": 11425,
+        "startByte": 11426,
         "endByte": 11430,
-        "startOffset": 11425,
+        "startOffset": 11426,
         "endOffset": 11430
       },
       "superclassifier": {
-        "startByte": 11425,
+        "startByte": 11426,
         "endByte": 11430,
-        "startOffset": 11425,
+        "startOffset": 11426,
         "endOffset": 11430
       }
     },
@@ -15544,21 +15544,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 456,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11473,
+    "startByte": 11474,
     "endByte": 11480,
-    "startOffset": 11473,
+    "startOffset": 11474,
     "endOffset": 11480,
     "fieldRanges": {
       "name": {
-        "startByte": 11473,
+        "startByte": 11474,
         "endByte": 11480,
-        "startOffset": 11473,
+        "startOffset": 11474,
         "endOffset": 11480
       },
       "superclassifier": {
-        "startByte": 11473,
+        "startByte": 11474,
         "endByte": 11480,
-        "startOffset": 11473,
+        "startOffset": 11474,
         "endOffset": 11480
       }
     },
@@ -15612,21 +15612,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 458,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11518,
+    "startByte": 11519,
     "endByte": 11523,
-    "startOffset": 11518,
+    "startOffset": 11519,
     "endOffset": 11523,
     "fieldRanges": {
       "name": {
-        "startByte": 11518,
+        "startByte": 11519,
         "endByte": 11523,
-        "startOffset": 11518,
+        "startOffset": 11519,
         "endOffset": 11523
       },
       "superclassifier": {
-        "startByte": 11518,
+        "startByte": 11519,
         "endByte": 11523,
-        "startOffset": 11518,
+        "startOffset": 11519,
         "endOffset": 11523
       }
     },
@@ -15680,21 +15680,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 460,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11559,
+    "startByte": 11560,
     "endByte": 11564,
-    "startOffset": 11559,
+    "startOffset": 11560,
     "endOffset": 11564,
     "fieldRanges": {
       "name": {
-        "startByte": 11559,
+        "startByte": 11560,
         "endByte": 11564,
-        "startOffset": 11559,
+        "startOffset": 11560,
         "endOffset": 11564
       },
       "superclassifier": {
-        "startByte": 11559,
+        "startByte": 11560,
         "endByte": 11564,
-        "startOffset": 11559,
+        "startOffset": 11560,
         "endOffset": 11564
       }
     },
@@ -15748,21 +15748,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 462,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11599,
+    "startByte": 11600,
     "endByte": 11604,
-    "startOffset": 11599,
+    "startOffset": 11600,
     "endOffset": 11604,
     "fieldRanges": {
       "name": {
-        "startByte": 11599,
+        "startByte": 11600,
         "endByte": 11604,
-        "startOffset": 11599,
+        "startOffset": 11600,
         "endOffset": 11604
       },
       "superclassifier": {
-        "startByte": 11599,
+        "startByte": 11600,
         "endByte": 11604,
-        "startOffset": 11599,
+        "startOffset": 11600,
         "endOffset": 11604
       }
     },
@@ -15816,21 +15816,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 464,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11644,
+    "startByte": 11645,
     "endByte": 11649,
-    "startOffset": 11644,
+    "startOffset": 11645,
     "endOffset": 11649,
     "fieldRanges": {
       "name": {
-        "startByte": 11644,
+        "startByte": 11645,
         "endByte": 11649,
-        "startOffset": 11644,
+        "startOffset": 11645,
         "endOffset": 11649
       },
       "superclassifier": {
-        "startByte": 11644,
+        "startByte": 11645,
         "endByte": 11649,
-        "startOffset": 11644,
+        "startOffset": 11645,
         "endOffset": 11649
       }
     },
@@ -15884,21 +15884,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 466,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11689,
+    "startByte": 11690,
     "endByte": 11694,
-    "startOffset": 11689,
+    "startOffset": 11690,
     "endOffset": 11694,
     "fieldRanges": {
       "name": {
-        "startByte": 11689,
+        "startByte": 11690,
         "endByte": 11694,
-        "startOffset": 11689,
+        "startOffset": 11690,
         "endOffset": 11694
       },
       "superclassifier": {
-        "startByte": 11689,
+        "startByte": 11690,
         "endByte": 11694,
-        "startOffset": 11689,
+        "startOffset": 11690,
         "endOffset": 11694
       }
     },
@@ -15952,21 +15952,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 468,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11735,
+    "startByte": 11736,
     "endByte": 11741,
-    "startOffset": 11735,
+    "startOffset": 11736,
     "endOffset": 11741,
     "fieldRanges": {
       "name": {
-        "startByte": 11735,
+        "startByte": 11736,
         "endByte": 11741,
-        "startOffset": 11735,
+        "startOffset": 11736,
         "endOffset": 11741
       },
       "superclassifier": {
-        "startByte": 11735,
+        "startByte": 11736,
         "endByte": 11741,
-        "startOffset": 11735,
+        "startOffset": 11736,
         "endOffset": 11741
       }
     },
@@ -16020,21 +16020,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 470,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11782,
+    "startByte": 11783,
     "endByte": 11788,
-    "startOffset": 11782,
+    "startOffset": 11783,
     "endOffset": 11788,
     "fieldRanges": {
       "name": {
-        "startByte": 11782,
+        "startByte": 11783,
         "endByte": 11788,
-        "startOffset": 11782,
+        "startOffset": 11783,
         "endOffset": 11788
       },
       "superclassifier": {
-        "startByte": 11782,
+        "startByte": 11783,
         "endByte": 11788,
-        "startOffset": 11782,
+        "startOffset": 11783,
         "endOffset": 11788
       }
     },
@@ -16088,21 +16088,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 472,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11830,
+    "startByte": 11831,
     "endByte": 11837,
-    "startOffset": 11830,
+    "startOffset": 11831,
     "endOffset": 11837,
     "fieldRanges": {
       "name": {
-        "startByte": 11830,
+        "startByte": 11831,
         "endByte": 11837,
-        "startOffset": 11830,
+        "startOffset": 11831,
         "endOffset": 11837
       },
       "superclassifier": {
-        "startByte": 11830,
+        "startByte": 11831,
         "endByte": 11837,
-        "startOffset": 11830,
+        "startOffset": 11831,
         "endOffset": 11837
       }
     },
@@ -16156,21 +16156,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 474,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11879,
+    "startByte": 11880,
     "endByte": 11886,
-    "startOffset": 11879,
+    "startOffset": 11880,
     "endOffset": 11886,
     "fieldRanges": {
       "name": {
-        "startByte": 11879,
+        "startByte": 11880,
         "endByte": 11886,
-        "startOffset": 11879,
+        "startOffset": 11880,
         "endOffset": 11886
       },
       "superclassifier": {
-        "startByte": 11879,
+        "startByte": 11880,
         "endByte": 11886,
-        "startOffset": 11879,
+        "startOffset": 11880,
         "endOffset": 11886
       }
     },
@@ -16224,21 +16224,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 476,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11921,
+    "startByte": 11922,
     "endByte": 11926,
-    "startOffset": 11921,
+    "startOffset": 11922,
     "endOffset": 11926,
     "fieldRanges": {
       "name": {
-        "startByte": 11921,
+        "startByte": 11922,
         "endByte": 11926,
-        "startOffset": 11921,
+        "startOffset": 11922,
         "endOffset": 11926
       },
       "superclassifier": {
-        "startByte": 11921,
+        "startByte": 11922,
         "endByte": 11926,
-        "startOffset": 11921,
+        "startOffset": 11922,
         "endOffset": 11926
       }
     },
@@ -16292,21 +16292,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 478,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 11963,
+    "startByte": 11964,
     "endByte": 11968,
-    "startOffset": 11963,
+    "startOffset": 11964,
     "endOffset": 11968,
     "fieldRanges": {
       "name": {
-        "startByte": 11963,
+        "startByte": 11964,
         "endByte": 11968,
-        "startOffset": 11963,
+        "startOffset": 11964,
         "endOffset": 11968
       },
       "superclassifier": {
-        "startByte": 11963,
+        "startByte": 11964,
         "endByte": 11968,
-        "startOffset": 11963,
+        "startOffset": 11964,
         "endOffset": 11968
       }
     },
@@ -16360,21 +16360,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 480,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12010,
+    "startByte": 12011,
     "endByte": 12015,
-    "startOffset": 12010,
+    "startOffset": 12011,
     "endOffset": 12015,
     "fieldRanges": {
       "name": {
-        "startByte": 12010,
+        "startByte": 12011,
         "endByte": 12015,
-        "startOffset": 12010,
+        "startOffset": 12011,
         "endOffset": 12015
       },
       "superclassifier": {
-        "startByte": 12010,
+        "startByte": 12011,
         "endByte": 12015,
-        "startOffset": 12010,
+        "startOffset": 12011,
         "endOffset": 12015
       }
     },
@@ -16428,21 +16428,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 482,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12072,
+    "startByte": 12073,
     "endByte": 12077,
-    "startOffset": 12072,
+    "startOffset": 12073,
     "endOffset": 12077,
     "fieldRanges": {
       "name": {
-        "startByte": 12072,
+        "startByte": 12073,
         "endByte": 12077,
-        "startOffset": 12072,
+        "startOffset": 12073,
         "endOffset": 12077
       },
       "superclassifier": {
-        "startByte": 12072,
+        "startByte": 12073,
         "endByte": 12077,
-        "startOffset": 12072,
+        "startOffset": 12073,
         "endOffset": 12077
       }
     },
@@ -16496,21 +16496,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 484,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12114,
+    "startByte": 12115,
     "endByte": 12119,
-    "startOffset": 12114,
+    "startOffset": 12115,
     "endOffset": 12119,
     "fieldRanges": {
       "name": {
-        "startByte": 12114,
+        "startByte": 12115,
         "endByte": 12119,
-        "startOffset": 12114,
+        "startOffset": 12115,
         "endOffset": 12119
       },
       "superclassifier": {
-        "startByte": 12114,
+        "startByte": 12115,
         "endByte": 12119,
-        "startOffset": 12114,
+        "startOffset": 12115,
         "endOffset": 12119
       }
     },
@@ -16564,21 +16564,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 486,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12154,
+    "startByte": 12155,
     "endByte": 12159,
-    "startOffset": 12154,
+    "startOffset": 12155,
     "endOffset": 12159,
     "fieldRanges": {
       "name": {
-        "startByte": 12154,
+        "startByte": 12155,
         "endByte": 12159,
-        "startOffset": 12154,
+        "startOffset": 12155,
         "endOffset": 12159
       },
       "superclassifier": {
-        "startByte": 12154,
+        "startByte": 12155,
         "endByte": 12159,
-        "startOffset": 12154,
+        "startOffset": 12155,
         "endOffset": 12159
       }
     },
@@ -16632,21 +16632,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 488,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12195,
+    "startByte": 12196,
     "endByte": 12200,
-    "startOffset": 12195,
+    "startOffset": 12196,
     "endOffset": 12200,
     "fieldRanges": {
       "name": {
-        "startByte": 12195,
+        "startByte": 12196,
         "endByte": 12200,
-        "startOffset": 12195,
+        "startOffset": 12196,
         "endOffset": 12200
       },
       "superclassifier": {
-        "startByte": 12195,
+        "startByte": 12196,
         "endByte": 12200,
-        "startOffset": 12195,
+        "startOffset": 12196,
         "endOffset": 12200
       }
     },
@@ -16700,21 +16700,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 490,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12236,
+    "startByte": 12237,
     "endByte": 12241,
-    "startOffset": 12236,
+    "startOffset": 12237,
     "endOffset": 12241,
     "fieldRanges": {
       "name": {
-        "startByte": 12236,
+        "startByte": 12237,
         "endByte": 12241,
-        "startOffset": 12236,
+        "startOffset": 12237,
         "endOffset": 12241
       },
       "superclassifier": {
-        "startByte": 12236,
+        "startByte": 12237,
         "endByte": 12241,
-        "startOffset": 12236,
+        "startOffset": 12237,
         "endOffset": 12241
       }
     },
@@ -16768,21 +16768,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 492,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12277,
+    "startByte": 12278,
     "endByte": 12282,
-    "startOffset": 12277,
+    "startOffset": 12278,
     "endOffset": 12282,
     "fieldRanges": {
       "name": {
-        "startByte": 12277,
+        "startByte": 12278,
         "endByte": 12282,
-        "startOffset": 12277,
+        "startOffset": 12278,
         "endOffset": 12282
       },
       "superclassifier": {
-        "startByte": 12277,
+        "startByte": 12278,
         "endByte": 12282,
-        "startOffset": 12277,
+        "startOffset": 12278,
         "endOffset": 12282
       }
     },
@@ -16836,21 +16836,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 494,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12318,
+    "startByte": 12319,
     "endByte": 12323,
-    "startOffset": 12318,
+    "startOffset": 12319,
     "endOffset": 12323,
     "fieldRanges": {
       "name": {
-        "startByte": 12318,
+        "startByte": 12319,
         "endByte": 12323,
-        "startOffset": 12318,
+        "startOffset": 12319,
         "endOffset": 12323
       },
       "superclassifier": {
-        "startByte": 12318,
+        "startByte": 12319,
         "endByte": 12323,
-        "startOffset": 12318,
+        "startOffset": 12319,
         "endOffset": 12323
       }
     },
@@ -16904,21 +16904,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 496,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12359,
+    "startByte": 12360,
     "endByte": 12364,
-    "startOffset": 12359,
+    "startOffset": 12360,
     "endOffset": 12364,
     "fieldRanges": {
       "name": {
-        "startByte": 12359,
+        "startByte": 12360,
         "endByte": 12364,
-        "startOffset": 12359,
+        "startOffset": 12360,
         "endOffset": 12364
       },
       "superclassifier": {
-        "startByte": 12359,
+        "startByte": 12360,
         "endByte": 12364,
-        "startOffset": 12359,
+        "startOffset": 12360,
         "endOffset": 12364
       }
     },
@@ -16972,21 +16972,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 498,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12401,
+    "startByte": 12402,
     "endByte": 12406,
-    "startOffset": 12401,
+    "startOffset": 12402,
     "endOffset": 12406,
     "fieldRanges": {
       "name": {
-        "startByte": 12401,
+        "startByte": 12402,
         "endByte": 12406,
-        "startOffset": 12401,
+        "startOffset": 12402,
         "endOffset": 12406
       },
       "superclassifier": {
-        "startByte": 12401,
+        "startByte": 12402,
         "endByte": 12406,
-        "startOffset": 12401,
+        "startOffset": 12402,
         "endOffset": 12406
       }
     },
@@ -17040,21 +17040,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 500,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12442,
+    "startByte": 12443,
     "endByte": 12447,
-    "startOffset": 12442,
+    "startOffset": 12443,
     "endOffset": 12447,
     "fieldRanges": {
       "name": {
-        "startByte": 12442,
+        "startByte": 12443,
         "endByte": 12447,
-        "startOffset": 12442,
+        "startOffset": 12443,
         "endOffset": 12447
       },
       "superclassifier": {
-        "startByte": 12442,
+        "startByte": 12443,
         "endByte": 12447,
-        "startOffset": 12442,
+        "startOffset": 12443,
         "endOffset": 12447
       }
     },
@@ -17108,21 +17108,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 502,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12483,
+    "startByte": 12484,
     "endByte": 12488,
-    "startOffset": 12483,
+    "startOffset": 12484,
     "endOffset": 12488,
     "fieldRanges": {
       "name": {
-        "startByte": 12483,
+        "startByte": 12484,
         "endByte": 12488,
-        "startOffset": 12483,
+        "startOffset": 12484,
         "endOffset": 12488
       },
       "superclassifier": {
-        "startByte": 12483,
+        "startByte": 12484,
         "endByte": 12488,
-        "startOffset": 12483,
+        "startOffset": 12484,
         "endOffset": 12488
       }
     },
@@ -17176,21 +17176,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 504,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12525,
+    "startByte": 12526,
     "endByte": 12530,
-    "startOffset": 12525,
+    "startOffset": 12526,
     "endOffset": 12530,
     "fieldRanges": {
       "name": {
-        "startByte": 12525,
+        "startByte": 12526,
         "endByte": 12530,
-        "startOffset": 12525,
+        "startOffset": 12526,
         "endOffset": 12530
       },
       "superclassifier": {
-        "startByte": 12525,
+        "startByte": 12526,
         "endByte": 12530,
-        "startOffset": 12525,
+        "startOffset": 12526,
         "endOffset": 12530
       }
     },
@@ -17244,21 +17244,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 506,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12567,
+    "startByte": 12568,
     "endByte": 12572,
-    "startOffset": 12567,
+    "startOffset": 12568,
     "endOffset": 12572,
     "fieldRanges": {
       "name": {
-        "startByte": 12567,
+        "startByte": 12568,
         "endByte": 12572,
-        "startOffset": 12567,
+        "startOffset": 12568,
         "endOffset": 12572
       },
       "superclassifier": {
-        "startByte": 12567,
+        "startByte": 12568,
         "endByte": 12572,
-        "startOffset": 12567,
+        "startOffset": 12568,
         "endOffset": 12572
       }
     },
@@ -17312,21 +17312,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 508,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12609,
+    "startByte": 12610,
     "endByte": 12614,
-    "startOffset": 12609,
+    "startOffset": 12610,
     "endOffset": 12614,
     "fieldRanges": {
       "name": {
-        "startByte": 12609,
+        "startByte": 12610,
         "endByte": 12614,
-        "startOffset": 12609,
+        "startOffset": 12610,
         "endOffset": 12614
       },
       "superclassifier": {
-        "startByte": 12609,
+        "startByte": 12610,
         "endByte": 12614,
-        "startOffset": 12609,
+        "startOffset": 12610,
         "endOffset": 12614
       }
     },
@@ -17380,21 +17380,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 510,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12650,
+    "startByte": 12651,
     "endByte": 12655,
-    "startOffset": 12650,
+    "startOffset": 12651,
     "endOffset": 12655,
     "fieldRanges": {
       "name": {
-        "startByte": 12650,
+        "startByte": 12651,
         "endByte": 12655,
-        "startOffset": 12650,
+        "startOffset": 12651,
         "endOffset": 12655
       },
       "superclassifier": {
-        "startByte": 12650,
+        "startByte": 12651,
         "endByte": 12655,
-        "startOffset": 12650,
+        "startOffset": 12651,
         "endOffset": 12655
       }
     },
@@ -17448,21 +17448,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 512,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12691,
+    "startByte": 12692,
     "endByte": 12696,
-    "startOffset": 12691,
+    "startOffset": 12692,
     "endOffset": 12696,
     "fieldRanges": {
       "name": {
-        "startByte": 12691,
+        "startByte": 12692,
         "endByte": 12696,
-        "startOffset": 12691,
+        "startOffset": 12692,
         "endOffset": 12696
       },
       "superclassifier": {
-        "startByte": 12691,
+        "startByte": 12692,
         "endByte": 12696,
-        "startOffset": 12691,
+        "startOffset": 12692,
         "endOffset": 12696
       }
     },
@@ -17516,21 +17516,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 514,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12733,
+    "startByte": 12734,
     "endByte": 12738,
-    "startOffset": 12733,
+    "startOffset": 12734,
     "endOffset": 12738,
     "fieldRanges": {
       "name": {
-        "startByte": 12733,
+        "startByte": 12734,
         "endByte": 12738,
-        "startOffset": 12733,
+        "startOffset": 12734,
         "endOffset": 12738
       },
       "superclassifier": {
-        "startByte": 12733,
+        "startByte": 12734,
         "endByte": 12738,
-        "startOffset": 12733,
+        "startOffset": 12734,
         "endOffset": 12738
       }
     },
@@ -17584,21 +17584,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 516,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12774,
+    "startByte": 12775,
     "endByte": 12779,
-    "startOffset": 12774,
+    "startOffset": 12775,
     "endOffset": 12779,
     "fieldRanges": {
       "name": {
-        "startByte": 12774,
+        "startByte": 12775,
         "endByte": 12779,
-        "startOffset": 12774,
+        "startOffset": 12775,
         "endOffset": 12779
       },
       "superclassifier": {
-        "startByte": 12774,
+        "startByte": 12775,
         "endByte": 12779,
-        "startOffset": 12774,
+        "startOffset": 12775,
         "endOffset": 12779
       }
     },
@@ -17652,21 +17652,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 518,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12816,
+    "startByte": 12817,
     "endByte": 12821,
-    "startOffset": 12816,
+    "startOffset": 12817,
     "endOffset": 12821,
     "fieldRanges": {
       "name": {
-        "startByte": 12816,
+        "startByte": 12817,
         "endByte": 12821,
-        "startOffset": 12816,
+        "startOffset": 12817,
         "endOffset": 12821
       },
       "superclassifier": {
-        "startByte": 12816,
+        "startByte": 12817,
         "endByte": 12821,
-        "startOffset": 12816,
+        "startOffset": 12817,
         "endOffset": 12821
       }
     },
@@ -17720,21 +17720,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 520,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12857,
+    "startByte": 12858,
     "endByte": 12862,
-    "startOffset": 12857,
+    "startOffset": 12858,
     "endOffset": 12862,
     "fieldRanges": {
       "name": {
-        "startByte": 12857,
+        "startByte": 12858,
         "endByte": 12862,
-        "startOffset": 12857,
+        "startOffset": 12858,
         "endOffset": 12862
       },
       "superclassifier": {
-        "startByte": 12857,
+        "startByte": 12858,
         "endByte": 12862,
-        "startOffset": 12857,
+        "startOffset": 12858,
         "endOffset": 12862
       }
     },
@@ -17788,21 +17788,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 522,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12898,
+    "startByte": 12899,
     "endByte": 12903,
-    "startOffset": 12898,
+    "startOffset": 12899,
     "endOffset": 12903,
     "fieldRanges": {
       "name": {
-        "startByte": 12898,
+        "startByte": 12899,
         "endByte": 12903,
-        "startOffset": 12898,
+        "startOffset": 12899,
         "endOffset": 12903
       },
       "superclassifier": {
-        "startByte": 12898,
+        "startByte": 12899,
         "endByte": 12903,
-        "startOffset": 12898,
+        "startOffset": 12899,
         "endOffset": 12903
       }
     },
@@ -17856,21 +17856,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 524,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12940,
+    "startByte": 12941,
     "endByte": 12946,
-    "startOffset": 12940,
+    "startOffset": 12941,
     "endOffset": 12946,
     "fieldRanges": {
       "name": {
-        "startByte": 12940,
+        "startByte": 12941,
         "endByte": 12946,
-        "startOffset": 12940,
+        "startOffset": 12941,
         "endOffset": 12946
       },
       "superclassifier": {
-        "startByte": 12940,
+        "startByte": 12941,
         "endByte": 12946,
-        "startOffset": 12940,
+        "startOffset": 12941,
         "endOffset": 12946
       }
     },
@@ -17924,21 +17924,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 526,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 12983,
+    "startByte": 12984,
     "endByte": 12989,
-    "startOffset": 12983,
+    "startOffset": 12984,
     "endOffset": 12989,
     "fieldRanges": {
       "name": {
-        "startByte": 12983,
+        "startByte": 12984,
         "endByte": 12989,
-        "startOffset": 12983,
+        "startOffset": 12984,
         "endOffset": 12989
       },
       "superclassifier": {
-        "startByte": 12983,
+        "startByte": 12984,
         "endByte": 12989,
-        "startOffset": 12983,
+        "startOffset": 12984,
         "endOffset": 12989
       }
     },
@@ -17992,21 +17992,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 528,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13025,
+    "startByte": 13026,
     "endByte": 13030,
-    "startOffset": 13025,
+    "startOffset": 13026,
     "endOffset": 13030,
     "fieldRanges": {
       "name": {
-        "startByte": 13025,
+        "startByte": 13026,
         "endByte": 13030,
-        "startOffset": 13025,
+        "startOffset": 13026,
         "endOffset": 13030
       },
       "superclassifier": {
-        "startByte": 13025,
+        "startByte": 13026,
         "endByte": 13030,
-        "startOffset": 13025,
+        "startOffset": 13026,
         "endOffset": 13030
       }
     },
@@ -18060,21 +18060,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 530,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13066,
+    "startByte": 13067,
     "endByte": 13071,
-    "startOffset": 13066,
+    "startOffset": 13067,
     "endOffset": 13071,
     "fieldRanges": {
       "name": {
-        "startByte": 13066,
+        "startByte": 13067,
         "endByte": 13071,
-        "startOffset": 13066,
+        "startOffset": 13067,
         "endOffset": 13071
       },
       "superclassifier": {
-        "startByte": 13066,
+        "startByte": 13067,
         "endByte": 13071,
-        "startOffset": 13066,
+        "startOffset": 13067,
         "endOffset": 13071
       }
     },
@@ -18091,9 +18091,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13074,
+    "startByte": 13076,
     "endByte": 15019,
-    "startOffset": 13074,
+    "startOffset": 13076,
     "endOffset": 15019,
     "fieldRanges": {
       "name": {
@@ -18124,21 +18124,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 532,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13102,
+    "startByte": 13107,
     "endByte": 13129,
-    "startOffset": 13102,
+    "startOffset": 13107,
     "endOffset": 13129,
     "fieldRanges": {
       "name": {
-        "startByte": 13113,
+        "startByte": 13114,
         "endByte": 13126,
-        "startOffset": 13113,
+        "startOffset": 13114,
         "endOffset": 13126
       },
       "importedNamespace": {
-        "startByte": 13113,
+        "startByte": 13114,
         "endByte": 13126,
-        "startOffset": 13113,
+        "startOffset": 13114,
         "endOffset": 13126
       }
     },
@@ -18195,21 +18195,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 534,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13190,
+    "startByte": 13191,
     "endByte": 13195,
-    "startOffset": 13190,
+    "startOffset": 13191,
     "endOffset": 13195,
     "fieldRanges": {
       "name": {
-        "startByte": 13190,
+        "startByte": 13191,
         "endByte": 13195,
-        "startOffset": 13190,
+        "startOffset": 13191,
         "endOffset": 13195
       },
       "superclassifier": {
-        "startByte": 13190,
+        "startByte": 13191,
         "endByte": 13195,
-        "startOffset": 13190,
+        "startOffset": 13191,
         "endOffset": 13195
       }
     },
@@ -18263,21 +18263,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 536,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13231,
+    "startByte": 13232,
     "endByte": 13236,
-    "startOffset": 13231,
+    "startOffset": 13232,
     "endOffset": 13236,
     "fieldRanges": {
       "name": {
-        "startByte": 13231,
+        "startByte": 13232,
         "endByte": 13236,
-        "startOffset": 13231,
+        "startOffset": 13232,
         "endOffset": 13236
       },
       "superclassifier": {
-        "startByte": 13231,
+        "startByte": 13232,
         "endByte": 13236,
-        "startOffset": 13231,
+        "startOffset": 13232,
         "endOffset": 13236
       }
     },
@@ -18331,21 +18331,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 538,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13272,
+    "startByte": 13273,
     "endByte": 13277,
-    "startOffset": 13272,
+    "startOffset": 13273,
     "endOffset": 13277,
     "fieldRanges": {
       "name": {
-        "startByte": 13272,
+        "startByte": 13273,
         "endByte": 13277,
-        "startOffset": 13272,
+        "startOffset": 13273,
         "endOffset": 13277
       },
       "superclassifier": {
-        "startByte": 13272,
+        "startByte": 13273,
         "endByte": 13277,
-        "startOffset": 13272,
+        "startOffset": 13273,
         "endOffset": 13277
       }
     },
@@ -18399,21 +18399,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 540,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13313,
+    "startByte": 13314,
     "endByte": 13318,
-    "startOffset": 13313,
+    "startOffset": 13314,
     "endOffset": 13318,
     "fieldRanges": {
       "name": {
-        "startByte": 13313,
+        "startByte": 13314,
         "endByte": 13318,
-        "startOffset": 13313,
+        "startOffset": 13314,
         "endOffset": 13318
       },
       "superclassifier": {
-        "startByte": 13313,
+        "startByte": 13314,
         "endByte": 13318,
-        "startOffset": 13313,
+        "startOffset": 13314,
         "endOffset": 13318
       }
     },
@@ -18467,21 +18467,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 542,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13362,
+    "startByte": 13363,
     "endByte": 13367,
-    "startOffset": 13362,
+    "startOffset": 13363,
     "endOffset": 13367,
     "fieldRanges": {
       "name": {
-        "startByte": 13362,
+        "startByte": 13363,
         "endByte": 13367,
-        "startOffset": 13362,
+        "startOffset": 13363,
         "endOffset": 13367
       },
       "superclassifier": {
-        "startByte": 13362,
+        "startByte": 13363,
         "endByte": 13367,
-        "startOffset": 13362,
+        "startOffset": 13363,
         "endOffset": 13367
       }
     },
@@ -18535,21 +18535,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 544,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13409,
+    "startByte": 13410,
     "endByte": 13414,
-    "startOffset": 13409,
+    "startOffset": 13410,
     "endOffset": 13414,
     "fieldRanges": {
       "name": {
-        "startByte": 13409,
+        "startByte": 13410,
         "endByte": 13414,
-        "startOffset": 13409,
+        "startOffset": 13410,
         "endOffset": 13414
       },
       "superclassifier": {
-        "startByte": 13409,
+        "startByte": 13410,
         "endByte": 13414,
-        "startOffset": 13409,
+        "startOffset": 13410,
         "endOffset": 13414
       }
     },
@@ -18603,21 +18603,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 546,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13450,
+    "startByte": 13451,
     "endByte": 13455,
-    "startOffset": 13450,
+    "startOffset": 13451,
     "endOffset": 13455,
     "fieldRanges": {
       "name": {
-        "startByte": 13450,
+        "startByte": 13451,
         "endByte": 13455,
-        "startOffset": 13450,
+        "startOffset": 13451,
         "endOffset": 13455
       },
       "superclassifier": {
-        "startByte": 13450,
+        "startByte": 13451,
         "endByte": 13455,
-        "startOffset": 13450,
+        "startOffset": 13451,
         "endOffset": 13455
       }
     },
@@ -18671,21 +18671,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 548,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13492,
+    "startByte": 13493,
     "endByte": 13497,
-    "startOffset": 13492,
+    "startOffset": 13493,
     "endOffset": 13497,
     "fieldRanges": {
       "name": {
-        "startByte": 13492,
+        "startByte": 13493,
         "endByte": 13497,
-        "startOffset": 13492,
+        "startOffset": 13493,
         "endOffset": 13497
       },
       "superclassifier": {
-        "startByte": 13492,
+        "startByte": 13493,
         "endByte": 13497,
-        "startOffset": 13492,
+        "startOffset": 13493,
         "endOffset": 13497
       }
     },
@@ -18739,21 +18739,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 550,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13531,
+    "startByte": 13532,
     "endByte": 13536,
-    "startOffset": 13531,
+    "startOffset": 13532,
     "endOffset": 13536,
     "fieldRanges": {
       "name": {
-        "startByte": 13531,
+        "startByte": 13532,
         "endByte": 13536,
-        "startOffset": 13531,
+        "startOffset": 13532,
         "endOffset": 13536
       },
       "superclassifier": {
-        "startByte": 13531,
+        "startByte": 13532,
         "endByte": 13536,
-        "startOffset": 13531,
+        "startOffset": 13532,
         "endOffset": 13536
       }
     },
@@ -18807,21 +18807,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 552,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13570,
+    "startByte": 13571,
     "endByte": 13575,
-    "startOffset": 13570,
+    "startOffset": 13571,
     "endOffset": 13575,
     "fieldRanges": {
       "name": {
-        "startByte": 13570,
+        "startByte": 13571,
         "endByte": 13575,
-        "startOffset": 13570,
+        "startOffset": 13571,
         "endOffset": 13575
       },
       "superclassifier": {
-        "startByte": 13570,
+        "startByte": 13571,
         "endByte": 13575,
-        "startOffset": 13570,
+        "startOffset": 13571,
         "endOffset": 13575
       }
     },
@@ -18875,21 +18875,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 554,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13609,
+    "startByte": 13610,
     "endByte": 13614,
-    "startOffset": 13609,
+    "startOffset": 13610,
     "endOffset": 13614,
     "fieldRanges": {
       "name": {
-        "startByte": 13609,
+        "startByte": 13610,
         "endByte": 13614,
-        "startOffset": 13609,
+        "startOffset": 13610,
         "endOffset": 13614
       },
       "superclassifier": {
-        "startByte": 13609,
+        "startByte": 13610,
         "endByte": 13614,
-        "startOffset": 13609,
+        "startOffset": 13610,
         "endOffset": 13614
       }
     },
@@ -18943,21 +18943,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 556,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13677,
+    "startByte": 13678,
     "endByte": 13682,
-    "startOffset": 13677,
+    "startOffset": 13678,
     "endOffset": 13682,
     "fieldRanges": {
       "name": {
-        "startByte": 13677,
+        "startByte": 13678,
         "endByte": 13682,
-        "startOffset": 13677,
+        "startOffset": 13678,
         "endOffset": 13682
       },
       "superclassifier": {
-        "startByte": 13677,
+        "startByte": 13678,
         "endByte": 13682,
-        "startOffset": 13677,
+        "startOffset": 13678,
         "endOffset": 13682
       }
     },
@@ -19011,21 +19011,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 558,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13719,
+    "startByte": 13720,
     "endByte": 13724,
-    "startOffset": 13719,
+    "startOffset": 13720,
     "endOffset": 13724,
     "fieldRanges": {
       "name": {
-        "startByte": 13719,
+        "startByte": 13720,
         "endByte": 13724,
-        "startOffset": 13719,
+        "startOffset": 13720,
         "endOffset": 13724
       },
       "superclassifier": {
-        "startByte": 13719,
+        "startByte": 13720,
         "endByte": 13724,
-        "startOffset": 13719,
+        "startOffset": 13720,
         "endOffset": 13724
       }
     },
@@ -19079,21 +19079,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 560,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13765,
+    "startByte": 13766,
     "endByte": 13771,
-    "startOffset": 13765,
+    "startOffset": 13766,
     "endOffset": 13771,
     "fieldRanges": {
       "name": {
-        "startByte": 13765,
+        "startByte": 13766,
         "endByte": 13771,
-        "startOffset": 13765,
+        "startOffset": 13766,
         "endOffset": 13771
       },
       "superclassifier": {
-        "startByte": 13765,
+        "startByte": 13766,
         "endByte": 13771,
-        "startOffset": 13765,
+        "startOffset": 13766,
         "endOffset": 13771
       }
     },
@@ -19147,21 +19147,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 562,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13813,
+    "startByte": 13814,
     "endByte": 13818,
-    "startOffset": 13813,
+    "startOffset": 13814,
     "endOffset": 13818,
     "fieldRanges": {
       "name": {
-        "startByte": 13813,
+        "startByte": 13814,
         "endByte": 13818,
-        "startOffset": 13813,
+        "startOffset": 13814,
         "endOffset": 13818
       },
       "superclassifier": {
-        "startByte": 13813,
+        "startByte": 13814,
         "endByte": 13818,
-        "startOffset": 13813,
+        "startOffset": 13814,
         "endOffset": 13818
       }
     },
@@ -19215,21 +19215,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 564,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13854,
+    "startByte": 13855,
     "endByte": 13859,
-    "startOffset": 13854,
+    "startOffset": 13855,
     "endOffset": 13859,
     "fieldRanges": {
       "name": {
-        "startByte": 13854,
+        "startByte": 13855,
         "endByte": 13859,
-        "startOffset": 13854,
+        "startOffset": 13855,
         "endOffset": 13859
       },
       "superclassifier": {
-        "startByte": 13854,
+        "startByte": 13855,
         "endByte": 13859,
-        "startOffset": 13854,
+        "startOffset": 13855,
         "endOffset": 13859
       }
     },
@@ -19283,21 +19283,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 566,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13894,
+    "startByte": 13895,
     "endByte": 13899,
-    "startOffset": 13894,
+    "startOffset": 13895,
     "endOffset": 13899,
     "fieldRanges": {
       "name": {
-        "startByte": 13894,
+        "startByte": 13895,
         "endByte": 13899,
-        "startOffset": 13894,
+        "startOffset": 13895,
         "endOffset": 13899
       },
       "superclassifier": {
-        "startByte": 13894,
+        "startByte": 13895,
         "endByte": 13899,
-        "startOffset": 13894,
+        "startOffset": 13895,
         "endOffset": 13899
       }
     },
@@ -19351,21 +19351,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 568,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13934,
+    "startByte": 13935,
     "endByte": 13940,
-    "startOffset": 13934,
+    "startOffset": 13935,
     "endOffset": 13940,
     "fieldRanges": {
       "name": {
-        "startByte": 13934,
+        "startByte": 13935,
         "endByte": 13940,
-        "startOffset": 13934,
+        "startOffset": 13935,
         "endOffset": 13940
       },
       "superclassifier": {
-        "startByte": 13934,
+        "startByte": 13935,
         "endByte": 13940,
-        "startOffset": 13934,
+        "startOffset": 13935,
         "endOffset": 13940
       }
     },
@@ -19419,21 +19419,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 570,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 13974,
+    "startByte": 13975,
     "endByte": 13980,
-    "startOffset": 13974,
+    "startOffset": 13975,
     "endOffset": 13980,
     "fieldRanges": {
       "name": {
-        "startByte": 13974,
+        "startByte": 13975,
         "endByte": 13980,
-        "startOffset": 13974,
+        "startOffset": 13975,
         "endOffset": 13980
       },
       "superclassifier": {
-        "startByte": 13974,
+        "startByte": 13975,
         "endByte": 13980,
-        "startOffset": 13974,
+        "startOffset": 13975,
         "endOffset": 13980
       }
     },
@@ -19487,21 +19487,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 572,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14015,
+    "startByte": 14016,
     "endByte": 14026,
-    "startOffset": 14015,
+    "startOffset": 14016,
     "endOffset": 14026,
     "fieldRanges": {
       "name": {
-        "startByte": 14015,
+        "startByte": 14016,
         "endByte": 14026,
-        "startOffset": 14015,
+        "startOffset": 14016,
         "endOffset": 14026
       },
       "superclassifier": {
-        "startByte": 14015,
+        "startByte": 14016,
         "endByte": 14026,
-        "startOffset": 14015,
+        "startOffset": 14016,
         "endOffset": 14026
       }
     },
@@ -19555,21 +19555,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 574,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14082,
+    "startByte": 14083,
     "endByte": 14087,
-    "startOffset": 14082,
+    "startOffset": 14083,
     "endOffset": 14087,
     "fieldRanges": {
       "name": {
-        "startByte": 14082,
+        "startByte": 14083,
         "endByte": 14087,
-        "startOffset": 14082,
+        "startOffset": 14083,
         "endOffset": 14087
       },
       "superclassifier": {
-        "startByte": 14082,
+        "startByte": 14083,
         "endByte": 14087,
-        "startOffset": 14082,
+        "startOffset": 14083,
         "endOffset": 14087
       }
     },
@@ -19623,21 +19623,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 576,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14124,
+    "startByte": 14125,
     "endByte": 14129,
-    "startOffset": 14124,
+    "startOffset": 14125,
     "endOffset": 14129,
     "fieldRanges": {
       "name": {
-        "startByte": 14124,
+        "startByte": 14125,
         "endByte": 14129,
-        "startOffset": 14124,
+        "startOffset": 14125,
         "endOffset": 14129
       },
       "superclassifier": {
-        "startByte": 14124,
+        "startByte": 14125,
         "endByte": 14129,
-        "startOffset": 14124,
+        "startOffset": 14125,
         "endOffset": 14129
       }
     },
@@ -19691,21 +19691,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 578,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14165,
+    "startByte": 14166,
     "endByte": 14170,
-    "startOffset": 14165,
+    "startOffset": 14166,
     "endOffset": 14170,
     "fieldRanges": {
       "name": {
-        "startByte": 14165,
+        "startByte": 14166,
         "endByte": 14170,
-        "startOffset": 14165,
+        "startOffset": 14166,
         "endOffset": 14170
       },
       "superclassifier": {
-        "startByte": 14165,
+        "startByte": 14166,
         "endByte": 14170,
-        "startOffset": 14165,
+        "startOffset": 14166,
         "endOffset": 14170
       }
     },
@@ -19759,21 +19759,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 580,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14205,
+    "startByte": 14206,
     "endByte": 14210,
-    "startOffset": 14205,
+    "startOffset": 14206,
     "endOffset": 14210,
     "fieldRanges": {
       "name": {
-        "startByte": 14205,
+        "startByte": 14206,
         "endByte": 14210,
-        "startOffset": 14205,
+        "startOffset": 14206,
         "endOffset": 14210
       },
       "superclassifier": {
-        "startByte": 14205,
+        "startByte": 14206,
         "endByte": 14210,
-        "startOffset": 14205,
+        "startOffset": 14206,
         "endOffset": 14210
       }
     },
@@ -19827,21 +19827,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 582,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14252,
+    "startByte": 14253,
     "endByte": 14257,
-    "startOffset": 14252,
+    "startOffset": 14253,
     "endOffset": 14257,
     "fieldRanges": {
       "name": {
-        "startByte": 14252,
+        "startByte": 14253,
         "endByte": 14257,
-        "startOffset": 14252,
+        "startOffset": 14253,
         "endOffset": 14257
       },
       "superclassifier": {
-        "startByte": 14252,
+        "startByte": 14253,
         "endByte": 14257,
-        "startOffset": 14252,
+        "startOffset": 14253,
         "endOffset": 14257
       }
     },
@@ -19895,21 +19895,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 584,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14292,
+    "startByte": 14293,
     "endByte": 14299,
-    "startOffset": 14292,
+    "startOffset": 14293,
     "endOffset": 14299,
     "fieldRanges": {
       "name": {
-        "startByte": 14292,
+        "startByte": 14293,
         "endByte": 14299,
-        "startOffset": 14292,
+        "startOffset": 14293,
         "endOffset": 14299
       },
       "superclassifier": {
-        "startByte": 14292,
+        "startByte": 14293,
         "endByte": 14299,
-        "startOffset": 14292,
+        "startOffset": 14293,
         "endOffset": 14299
       }
     },
@@ -19963,21 +19963,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 586,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14369,
+    "startByte": 14370,
     "endByte": 14374,
-    "startOffset": 14369,
+    "startOffset": 14370,
     "endOffset": 14374,
     "fieldRanges": {
       "name": {
-        "startByte": 14369,
+        "startByte": 14370,
         "endByte": 14374,
-        "startOffset": 14369,
+        "startOffset": 14370,
         "endOffset": 14374
       },
       "superclassifier": {
-        "startByte": 14369,
+        "startByte": 14370,
         "endByte": 14374,
-        "startOffset": 14369,
+        "startOffset": 14370,
         "endOffset": 14374
       }
     },
@@ -20031,21 +20031,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 588,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14409,
+    "startByte": 14410,
     "endByte": 14428,
-    "startOffset": 14409,
+    "startOffset": 14410,
     "endOffset": 14428,
     "fieldRanges": {
       "name": {
-        "startByte": 14409,
+        "startByte": 14410,
         "endByte": 14428,
-        "startOffset": 14409,
+        "startOffset": 14410,
         "endOffset": 14428
       },
       "superclassifier": {
-        "startByte": 14409,
+        "startByte": 14410,
         "endByte": 14428,
-        "startOffset": 14409,
+        "startOffset": 14410,
         "endOffset": 14428
       }
     },
@@ -20099,21 +20099,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 590,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14463,
+    "startByte": 14464,
     "endByte": 14468,
-    "startOffset": 14463,
+    "startOffset": 14464,
     "endOffset": 14468,
     "fieldRanges": {
       "name": {
-        "startByte": 14463,
+        "startByte": 14464,
         "endByte": 14468,
-        "startOffset": 14463,
+        "startOffset": 14464,
         "endOffset": 14468
       },
       "superclassifier": {
-        "startByte": 14463,
+        "startByte": 14464,
         "endByte": 14468,
-        "startOffset": 14463,
+        "startOffset": 14464,
         "endOffset": 14468
       }
     },
@@ -20167,21 +20167,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 592,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14551,
+    "startByte": 14552,
     "endByte": 14556,
-    "startOffset": 14551,
+    "startOffset": 14552,
     "endOffset": 14556,
     "fieldRanges": {
       "name": {
-        "startByte": 14551,
+        "startByte": 14552,
         "endByte": 14556,
-        "startOffset": 14551,
+        "startOffset": 14552,
         "endOffset": 14556
       },
       "superclassifier": {
-        "startByte": 14551,
+        "startByte": 14552,
         "endByte": 14556,
-        "startOffset": 14551,
+        "startOffset": 14552,
         "endOffset": 14556
       }
     },
@@ -20235,21 +20235,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 594,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14591,
+    "startByte": 14592,
     "endByte": 14610,
-    "startOffset": 14591,
+    "startOffset": 14592,
     "endOffset": 14610,
     "fieldRanges": {
       "name": {
-        "startByte": 14591,
+        "startByte": 14592,
         "endByte": 14610,
-        "startOffset": 14591,
+        "startOffset": 14592,
         "endOffset": 14610
       },
       "superclassifier": {
-        "startByte": 14591,
+        "startByte": 14592,
         "endByte": 14610,
-        "startOffset": 14591,
+        "startOffset": 14592,
         "endOffset": 14610
       }
     },
@@ -20303,21 +20303,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 596,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14651,
+    "startByte": 14652,
     "endByte": 14656,
-    "startOffset": 14651,
+    "startOffset": 14652,
     "endOffset": 14656,
     "fieldRanges": {
       "name": {
-        "startByte": 14651,
+        "startByte": 14652,
         "endByte": 14656,
-        "startOffset": 14651,
+        "startOffset": 14652,
         "endOffset": 14656
       },
       "superclassifier": {
-        "startByte": 14651,
+        "startByte": 14652,
         "endByte": 14656,
-        "startOffset": 14651,
+        "startOffset": 14652,
         "endOffset": 14656
       }
     },
@@ -20371,21 +20371,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 598,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14698,
+    "startByte": 14699,
     "endByte": 14703,
-    "startOffset": 14698,
+    "startOffset": 14699,
     "endOffset": 14703,
     "fieldRanges": {
       "name": {
-        "startByte": 14698,
+        "startByte": 14699,
         "endByte": 14703,
-        "startOffset": 14698,
+        "startOffset": 14699,
         "endOffset": 14703
       },
       "superclassifier": {
-        "startByte": 14698,
+        "startByte": 14699,
         "endByte": 14703,
-        "startOffset": 14698,
+        "startOffset": 14699,
         "endOffset": 14703
       }
     },
@@ -20439,21 +20439,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 600,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14737,
+    "startByte": 14738,
     "endByte": 14748,
-    "startOffset": 14737,
+    "startOffset": 14738,
     "endOffset": 14748,
     "fieldRanges": {
       "name": {
-        "startByte": 14737,
+        "startByte": 14738,
         "endByte": 14748,
-        "startOffset": 14737,
+        "startOffset": 14738,
         "endOffset": 14748
       },
       "superclassifier": {
-        "startByte": 14737,
+        "startByte": 14738,
         "endByte": 14748,
-        "startOffset": 14737,
+        "startOffset": 14738,
         "endOffset": 14748
       }
     },
@@ -20507,21 +20507,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 602,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14791,
+    "startByte": 14792,
     "endByte": 14796,
-    "startOffset": 14791,
+    "startOffset": 14792,
     "endOffset": 14796,
     "fieldRanges": {
       "name": {
-        "startByte": 14791,
+        "startByte": 14792,
         "endByte": 14796,
-        "startOffset": 14791,
+        "startOffset": 14792,
         "endOffset": 14796
       },
       "superclassifier": {
-        "startByte": 14791,
+        "startByte": 14792,
         "endByte": 14796,
-        "startOffset": 14791,
+        "startOffset": 14792,
         "endOffset": 14796
       }
     },
@@ -20575,21 +20575,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 604,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14831,
+    "startByte": 14832,
     "endByte": 14843,
-    "startOffset": 14831,
+    "startOffset": 14832,
     "endOffset": 14843,
     "fieldRanges": {
       "name": {
-        "startByte": 14831,
+        "startByte": 14832,
         "endByte": 14843,
-        "startOffset": 14831,
+        "startOffset": 14832,
         "endOffset": 14843
       },
       "superclassifier": {
-        "startByte": 14831,
+        "startByte": 14832,
         "endByte": 14843,
-        "startOffset": 14831,
+        "startOffset": 14832,
         "endOffset": 14843
       }
     },
@@ -20643,21 +20643,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 606,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14914,
+    "startByte": 14915,
     "endByte": 14919,
-    "startOffset": 14914,
+    "startOffset": 14915,
     "endOffset": 14919,
     "fieldRanges": {
       "name": {
-        "startByte": 14914,
+        "startByte": 14915,
         "endByte": 14919,
-        "startOffset": 14914,
+        "startOffset": 14915,
         "endOffset": 14919
       },
       "superclassifier": {
-        "startByte": 14914,
+        "startByte": 14915,
         "endByte": 14919,
-        "startOffset": 14914,
+        "startOffset": 14915,
         "endOffset": 14919
       }
     },
@@ -20711,21 +20711,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 608,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 14955,
+    "startByte": 14956,
     "endByte": 14972,
-    "startOffset": 14955,
+    "startOffset": 14956,
     "endOffset": 14972,
     "fieldRanges": {
       "name": {
-        "startByte": 14955,
+        "startByte": 14956,
         "endByte": 14972,
-        "startOffset": 14955,
+        "startOffset": 14956,
         "endOffset": 14972
       },
       "superclassifier": {
-        "startByte": 14955,
+        "startByte": 14956,
         "endByte": 14972,
-        "startOffset": 14955,
+        "startOffset": 14956,
         "endOffset": 14972
       }
     },
@@ -20779,21 +20779,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 610,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15011,
+    "startByte": 15012,
     "endByte": 15016,
-    "startOffset": 15011,
+    "startOffset": 15012,
     "endOffset": 15016,
     "fieldRanges": {
       "name": {
-        "startByte": 15011,
+        "startByte": 15012,
         "endByte": 15016,
-        "startOffset": 15011,
+        "startOffset": 15012,
         "endOffset": 15016
       },
       "superclassifier": {
-        "startByte": 15011,
+        "startByte": 15012,
         "endByte": 15016,
-        "startOffset": 15011,
+        "startOffset": 15012,
         "endOffset": 15016
       }
     },
@@ -20810,9 +20810,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15019,
+    "startByte": 15021,
     "endByte": 15621,
-    "startOffset": 15019,
+    "startOffset": 15021,
     "endOffset": 15621,
     "fieldRanges": {
       "name": {
@@ -20843,21 +20843,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 612,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15045,
+    "startByte": 15050,
     "endByte": 15064,
-    "startOffset": 15045,
+    "startOffset": 15050,
     "endOffset": 15064,
     "fieldRanges": {
       "name": {
-        "startByte": 15056,
+        "startByte": 15057,
         "endByte": 15061,
-        "startOffset": 15056,
+        "startOffset": 15057,
         "endOffset": 15061
       },
       "importedNamespace": {
-        "startByte": 15056,
+        "startByte": 15057,
         "endByte": 15061,
-        "startOffset": 15056,
+        "startOffset": 15057,
         "endOffset": 15061
       }
     },
@@ -20877,21 +20877,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 612,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15065,
+    "startByte": 15070,
     "endByte": 15089,
-    "startOffset": 15065,
+    "startOffset": 15070,
     "endOffset": 15089,
     "fieldRanges": {
       "name": {
-        "startByte": 15076,
+        "startByte": 15077,
         "endByte": 15086,
-        "startOffset": 15076,
+        "startOffset": 15077,
         "endOffset": 15086
       },
       "importedNamespace": {
-        "startByte": 15076,
+        "startByte": 15077,
         "endByte": 15086,
-        "startOffset": 15076,
+        "startOffset": 15077,
         "endOffset": 15086
       }
     },
@@ -21022,21 +21022,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 617,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15185,
+    "startByte": 15186,
     "endByte": 15198,
-    "startOffset": 15185,
+    "startOffset": 15186,
     "endOffset": 15198,
     "fieldRanges": {
       "name": {
-        "startByte": 15185,
+        "startByte": 15186,
         "endByte": 15198,
-        "startOffset": 15185,
+        "startOffset": 15186,
         "endOffset": 15198
       },
       "superclassifier": {
-        "startByte": 15185,
+        "startByte": 15186,
         "endByte": 15198,
-        "startOffset": 15185,
+        "startOffset": 15186,
         "endOffset": 15198
       }
     },
@@ -21090,21 +21090,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 619,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15241,
+    "startByte": 15242,
     "endByte": 15254,
-    "startOffset": 15241,
+    "startOffset": 15242,
     "endOffset": 15254,
     "fieldRanges": {
       "name": {
-        "startByte": 15241,
+        "startByte": 15242,
         "endByte": 15254,
-        "startOffset": 15241,
+        "startOffset": 15242,
         "endOffset": 15254
       },
       "superclassifier": {
-        "startByte": 15241,
+        "startByte": 15242,
         "endByte": 15254,
-        "startOffset": 15241,
+        "startOffset": 15242,
         "endOffset": 15254
       }
     },
@@ -21158,21 +21158,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 621,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15287,
+    "startByte": 15288,
     "endByte": 15298,
-    "startOffset": 15287,
+    "startOffset": 15288,
     "endOffset": 15298,
     "fieldRanges": {
       "name": {
-        "startByte": 15287,
+        "startByte": 15288,
         "endByte": 15298,
-        "startOffset": 15287,
+        "startOffset": 15288,
         "endOffset": 15298
       },
       "superclassifier": {
-        "startByte": 15287,
+        "startByte": 15288,
         "endByte": 15298,
-        "startOffset": 15287,
+        "startOffset": 15288,
         "endOffset": 15298
       }
     },
@@ -21226,21 +21226,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 623,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15336,
+    "startByte": 15337,
     "endByte": 15347,
-    "startOffset": 15336,
+    "startOffset": 15337,
     "endOffset": 15347,
     "fieldRanges": {
       "name": {
-        "startByte": 15336,
+        "startByte": 15337,
         "endByte": 15347,
-        "startOffset": 15336,
+        "startOffset": 15337,
         "endOffset": 15347
       },
       "superclassifier": {
-        "startByte": 15336,
+        "startByte": 15337,
         "endByte": 15347,
-        "startOffset": 15336,
+        "startOffset": 15337,
         "endOffset": 15347
       }
     },
@@ -21294,21 +21294,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 625,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15379,
+    "startByte": 15380,
     "endByte": 15390,
-    "startOffset": 15379,
+    "startOffset": 15380,
     "endOffset": 15390,
     "fieldRanges": {
       "name": {
-        "startByte": 15379,
+        "startByte": 15380,
         "endByte": 15390,
-        "startOffset": 15379,
+        "startOffset": 15380,
         "endOffset": 15390
       },
       "superclassifier": {
-        "startByte": 15379,
+        "startByte": 15380,
         "endByte": 15390,
-        "startOffset": 15379,
+        "startOffset": 15380,
         "endOffset": 15390
       }
     },
@@ -21547,21 +21547,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 632,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15606,
+    "startByte": 15607,
     "endByte": 15618,
-    "startOffset": 15606,
+    "startOffset": 15607,
     "endOffset": 15618,
     "fieldRanges": {
       "name": {
-        "startByte": 15606,
+        "startByte": 15607,
         "endByte": 15618,
-        "startOffset": 15606,
+        "startOffset": 15607,
         "endOffset": 15618
       },
       "superclassifier": {
-        "startByte": 15606,
+        "startByte": 15607,
         "endByte": 15618,
-        "startOffset": 15606,
+        "startOffset": 15607,
         "endOffset": 15618
       }
     },
@@ -21578,9 +21578,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15621,
+    "startByte": 15623,
     "endByte": 16513,
-    "startOffset": 15621,
+    "startOffset": 15623,
     "endOffset": 16513,
     "fieldRanges": {
       "name": {
@@ -21611,21 +21611,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 634,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15646,
+    "startByte": 15651,
     "endByte": 15665,
-    "startOffset": 15646,
+    "startOffset": 15651,
     "endOffset": 15665,
     "fieldRanges": {
       "name": {
-        "startByte": 15657,
+        "startByte": 15658,
         "endByte": 15662,
-        "startOffset": 15657,
+        "startOffset": 15658,
         "endOffset": 15662
       },
       "importedNamespace": {
-        "startByte": 15657,
+        "startByte": 15658,
         "endByte": 15662,
-        "startOffset": 15657,
+        "startOffset": 15658,
         "endOffset": 15662
       }
     },
@@ -21645,21 +21645,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 634,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15666,
+    "startByte": 15671,
     "endByte": 15693,
-    "startOffset": 15666,
+    "startOffset": 15671,
     "endOffset": 15693,
     "fieldRanges": {
       "name": {
-        "startByte": 15677,
+        "startByte": 15678,
         "endByte": 15690,
-        "startOffset": 15677,
+        "startOffset": 15678,
         "endOffset": 15690
       },
       "importedNamespace": {
-        "startByte": 15677,
+        "startByte": 15678,
         "endByte": 15690,
-        "startOffset": 15677,
+        "startOffset": 15678,
         "endOffset": 15690
       }
     },
@@ -21753,21 +21753,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 638,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15767,
+    "startByte": 15768,
     "endByte": 15780,
-    "startOffset": 15767,
+    "startOffset": 15768,
     "endOffset": 15780,
     "fieldRanges": {
       "name": {
-        "startByte": 15767,
+        "startByte": 15768,
         "endByte": 15780,
-        "startOffset": 15767,
+        "startOffset": 15768,
         "endOffset": 15780
       },
       "superclassifier": {
-        "startByte": 15767,
+        "startByte": 15768,
         "endByte": 15780,
-        "startOffset": 15767,
+        "startOffset": 15768,
         "endOffset": 15780
       }
     },
@@ -21821,21 +21821,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 640,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15822,
+    "startByte": 15823,
     "endByte": 15835,
-    "startOffset": 15822,
+    "startOffset": 15823,
     "endOffset": 15835,
     "fieldRanges": {
       "name": {
-        "startByte": 15822,
+        "startByte": 15823,
         "endByte": 15835,
-        "startOffset": 15822,
+        "startOffset": 15823,
         "endOffset": 15835
       },
       "superclassifier": {
-        "startByte": 15822,
+        "startByte": 15823,
         "endByte": 15835,
-        "startOffset": 15822,
+        "startOffset": 15823,
         "endOffset": 15835
       }
     },
@@ -21889,21 +21889,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 642,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15876,
+    "startByte": 15877,
     "endByte": 15892,
-    "startOffset": 15876,
+    "startOffset": 15877,
     "endOffset": 15892,
     "fieldRanges": {
       "name": {
-        "startByte": 15876,
+        "startByte": 15877,
         "endByte": 15892,
-        "startOffset": 15876,
+        "startOffset": 15877,
         "endOffset": 15892
       },
       "superclassifier": {
-        "startByte": 15876,
+        "startByte": 15877,
         "endByte": 15892,
-        "startOffset": 15876,
+        "startOffset": 15877,
         "endOffset": 15892
       }
     },
@@ -21957,21 +21957,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 644,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15935,
+    "startByte": 15936,
     "endByte": 15950,
-    "startOffset": 15935,
+    "startOffset": 15936,
     "endOffset": 15950,
     "fieldRanges": {
       "name": {
-        "startByte": 15935,
+        "startByte": 15936,
         "endByte": 15950,
-        "startOffset": 15935,
+        "startOffset": 15936,
         "endOffset": 15950
       },
       "superclassifier": {
-        "startByte": 15935,
+        "startByte": 15936,
         "endByte": 15950,
-        "startOffset": 15935,
+        "startOffset": 15936,
         "endOffset": 15950
       }
     },
@@ -22025,21 +22025,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 646,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 15993,
+    "startByte": 15994,
     "endByte": 16008,
-    "startOffset": 15993,
+    "startOffset": 15994,
     "endOffset": 16008,
     "fieldRanges": {
       "name": {
-        "startByte": 15993,
+        "startByte": 15994,
         "endByte": 16008,
-        "startOffset": 15993,
+        "startOffset": 15994,
         "endOffset": 16008
       },
       "superclassifier": {
-        "startByte": 15993,
+        "startByte": 15994,
         "endByte": 16008,
-        "startOffset": 15993,
+        "startOffset": 15994,
         "endOffset": 16008
       }
     },
@@ -22093,21 +22093,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 648,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16051,
+    "startByte": 16052,
     "endByte": 16067,
-    "startOffset": 16051,
+    "startOffset": 16052,
     "endOffset": 16067,
     "fieldRanges": {
       "name": {
-        "startByte": 16051,
+        "startByte": 16052,
         "endByte": 16067,
-        "startOffset": 16051,
+        "startOffset": 16052,
         "endOffset": 16067
       },
       "superclassifier": {
-        "startByte": 16051,
+        "startByte": 16052,
         "endByte": 16067,
-        "startOffset": 16051,
+        "startOffset": 16052,
         "endOffset": 16067
       }
     },
@@ -22161,21 +22161,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 650,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16108,
+    "startByte": 16109,
     "endByte": 16124,
-    "startOffset": 16108,
+    "startOffset": 16109,
     "endOffset": 16124,
     "fieldRanges": {
       "name": {
-        "startByte": 16108,
+        "startByte": 16109,
         "endByte": 16124,
-        "startOffset": 16108,
+        "startOffset": 16109,
         "endOffset": 16124
       },
       "superclassifier": {
-        "startByte": 16108,
+        "startByte": 16109,
         "endByte": 16124,
-        "startOffset": 16108,
+        "startOffset": 16109,
         "endOffset": 16124
       }
     },
@@ -22488,21 +22488,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 659,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16464,
+    "startByte": 16465,
     "endByte": 16474,
-    "startOffset": 16464,
+    "startOffset": 16465,
     "endOffset": 16474,
     "fieldRanges": {
       "name": {
-        "startByte": 16464,
+        "startByte": 16465,
         "endByte": 16474,
-        "startOffset": 16464,
+        "startOffset": 16465,
         "endOffset": 16474
       },
       "superclassifier": {
-        "startByte": 16464,
+        "startByte": 16465,
         "endByte": 16474,
-        "startOffset": 16464,
+        "startOffset": 16465,
         "endOffset": 16474
       }
     },
@@ -22556,9 +22556,9 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": null,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16513,
+    "startByte": 16515,
     "endByte": 16866,
-    "startOffset": 16513,
+    "startOffset": 16515,
     "endOffset": 16866,
     "fieldRanges": {
       "name": {
@@ -22589,21 +22589,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 662,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16538,
+    "startByte": 16543,
     "endByte": 16557,
-    "startOffset": 16538,
+    "startOffset": 16543,
     "endOffset": 16557,
     "fieldRanges": {
       "name": {
-        "startByte": 16549,
+        "startByte": 16550,
         "endByte": 16554,
-        "startOffset": 16549,
+        "startOffset": 16550,
         "endOffset": 16554
       },
       "importedNamespace": {
-        "startByte": 16549,
+        "startByte": 16550,
         "endByte": 16554,
-        "startOffset": 16549,
+        "startOffset": 16550,
         "endOffset": 16554
       }
     },
@@ -22623,21 +22623,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 662,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16558,
+    "startByte": 16563,
     "endByte": 16582,
-    "startOffset": 16558,
+    "startOffset": 16563,
     "endOffset": 16582,
     "fieldRanges": {
       "name": {
-        "startByte": 16569,
+        "startByte": 16570,
         "endByte": 16579,
-        "startOffset": 16569,
+        "startOffset": 16570,
         "endOffset": 16579
       },
       "importedNamespace": {
-        "startByte": 16569,
+        "startByte": 16570,
         "endByte": 16579,
-        "startOffset": 16569,
+        "startOffset": 16570,
         "endOffset": 16579
       }
     },
@@ -22692,21 +22692,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 665,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16626,
+    "startByte": 16627,
     "endByte": 16632,
-    "startOffset": 16626,
+    "startOffset": 16627,
     "endOffset": 16632,
     "fieldRanges": {
       "name": {
-        "startByte": 16626,
+        "startByte": 16627,
         "endByte": 16632,
-        "startOffset": 16626,
+        "startOffset": 16627,
         "endOffset": 16632
       },
       "superclassifier": {
-        "startByte": 16626,
+        "startByte": 16627,
         "endByte": 16632,
-        "startOffset": 16626,
+        "startOffset": 16627,
         "endOffset": 16632
       }
     },
@@ -22871,21 +22871,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 670,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16766,
+    "startByte": 16767,
     "endByte": 16773,
-    "startOffset": 16766,
+    "startOffset": 16767,
     "endOffset": 16773,
     "fieldRanges": {
       "name": {
-        "startByte": 16766,
+        "startByte": 16767,
         "endByte": 16773,
-        "startOffset": 16766,
+        "startOffset": 16767,
         "endOffset": 16773
       },
       "superclassifier": {
-        "startByte": 16766,
+        "startByte": 16767,
         "endByte": 16773,
-        "startOffset": 16766,
+        "startOffset": 16767,
         "endOffset": 16773
       }
     },
@@ -22939,21 +22939,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 672,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16812,
+    "startByte": 16813,
     "endByte": 16819,
-    "startOffset": 16812,
+    "startOffset": 16813,
     "endOffset": 16819,
     "fieldRanges": {
       "name": {
-        "startByte": 16812,
+        "startByte": 16813,
         "endByte": 16819,
-        "startOffset": 16812,
+        "startOffset": 16813,
         "endOffset": 16819
       },
       "superclassifier": {
-        "startByte": 16812,
+        "startByte": 16813,
         "endByte": 16819,
-        "startOffset": 16812,
+        "startOffset": 16813,
         "endOffset": 16819
       }
     },
@@ -23007,21 +23007,21 @@ export const kermlStdlibEntries: SymbolEntry[] = [
     "fieldName": null,
     "parentId": 674,
     "resourceId": "sysml2://stdlib/KerML.sysml",
-    "startByte": 16856,
+    "startByte": 16857,
     "endByte": 16863,
-    "startOffset": 16856,
+    "startOffset": 16857,
     "endOffset": 16863,
     "fieldRanges": {
       "name": {
-        "startByte": 16856,
+        "startByte": 16857,
         "endByte": 16863,
-        "startOffset": 16856,
+        "startOffset": 16857,
         "endOffset": 16863
       },
       "superclassifier": {
-        "startByte": 16856,
+        "startByte": 16857,
         "endByte": 16863,
-        "startOffset": 16856,
+        "startOffset": 16857,
         "endOffset": 16863
       }
     },

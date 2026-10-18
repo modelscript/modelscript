@@ -1237,17 +1237,104 @@ export function isTypeCompatible(actualType: u16, expectedType: u16): boolean {
 /**
  * Determines the variability of an expression.
  */
-export function getExpressionVariability(db: CodeGraph, exprNode: u32, _$: any): u8 {
+export function getExpressionVariability(db: CodeGraph, exprNode: u32, $: any): u8 {
   if (exprNode == 0) return VARIABILITY_CONSTANT;
 
-  // Check if expression directly references `time` -> Continuous
-  for (const ident of db.ast.getDescendants(exprNode, 0xffff)) {
-    if (db.ast.textEquals(ident, "time")) {
+  let result: u8 = VARIABILITY_CONSTANT;
+  const enclosingClass = getEnclosingClass(db, exprNode, $);
+  const inFunctionOrRecord =
+    enclosingClass != 0 &&
+    (isClassKind(db, enclosingClass, "function") ||
+      isClassKind(db, enclosingClass, "record") ||
+      isClassKind(db, enclosingClass, "package") ||
+      isClassKind(db, enclosingClass, "type"));
+
+  for (const ident of db.ast.getDescendants(exprNode, $.identifier)) {
+    if (db.ast.textEquals(ident, "time") || db.ast.textEquals(ident, "der") || db.ast.textEquals(ident, "sample")) {
       return VARIABILITY_CONTINUOUS;
+    }
+
+    if (inFunctionOrRecord || enclosingClass == 0) continue;
+
+    // Skip identifiers inside size(...) or ndims(...) calls (which have parameter/constant variability)
+    let insideSizeOrNdims = false;
+    let isCalleeOrNamedArg = false;
+    for (const anc of db.ast.getAncestors(ident, 0)) {
+      if (anc == exprNode) break;
+      const ancType = db.ast.getType(anc);
+      if (ancType == $.function_call || ancType == $.primary) {
+        const fnField = getCallCalleeNode(db, anc, $);
+        if (fnField != 0) {
+          if (fnField == ident) {
+            isCalleeOrNamedArg = true;
+            break;
+          }
+          for (const d of db.ast.getDescendants(fnField, $.identifier)) {
+            if (d == ident) {
+              isCalleeOrNamedArg = true;
+              break;
+            }
+          }
+          if (isCalleeOrNamedArg) break;
+          if (db.ast.textEquals(fnField, "size") || db.ast.textEquals(fnField, "ndims")) {
+            insideSizeOrNdims = true;
+            break;
+          }
+        }
+      } else if (ancType == $.named_argument || ancType == $.element_modification) {
+        const firstId = db.ast.getFirstChild(anc);
+        if (firstId == ident) {
+          isCalleeOrNamedArg = true;
+          break;
+        }
+      } else if (ancType == $.for_index) {
+        isCalleeOrNamedArg = true;
+        break;
+      } else if (ancType == $.component_reference) {
+        // Only resolve simple (single-identifier) component references locally
+        let idCount = 0;
+        for (const _d of db.ast.getDescendants(anc, $.identifier)) {
+          idCount++;
+          if (idCount > 1) break;
+        }
+        if (idCount > 1) {
+          isCalleeOrNamedArg = true;
+          break;
+        }
+      }
+    }
+    if (insideSizeOrNdims || isCalleeOrNamedArg) continue;
+
+    const decl = findDeclInClass(db, enclosingClass, ident, $);
+    if (decl != 0 && db.ast.getType(decl) == $.declaration) {
+      for (const comp of db.ast.getAncestors(decl, 0)) {
+        if (comp == enclosingClass) break;
+        if (db.ast.getType(comp) == $.component_clause) {
+          let varb: u8 = VARIABILITY_CONTINUOUS;
+          for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
+            if (db.ast.textEquals(pfx, "constant")) {
+              varb = VARIABILITY_CONSTANT;
+              break;
+            }
+            if (db.ast.textEquals(pfx, "parameter")) {
+              varb = VARIABILITY_PARAMETER;
+              break;
+            }
+            if (db.ast.textEquals(pfx, "discrete")) {
+              varb = VARIABILITY_DISCRETE;
+              break;
+            }
+          }
+          if (varb < result) {
+            result = varb;
+          }
+          break;
+        }
+      }
     }
   }
 
-  return VARIABILITY_CONSTANT;
+  return result;
 }
 
 /**
@@ -2668,6 +2755,37 @@ export function getComponentUnit(db: CodeGraph, compNode: u32, $: any): SIUnit |
         if (db.ast.textEquals(str, '"1"') || db.ast.textEquals(str, "'1'") || db.ast.textEquals(str, "1")) {
           matchedUnit = parseUnit("1");
           break;
+        }
+        // Fallback: parse arbitrary unit string when inside an element_modification for `unit`
+        let inUnitMod = false;
+        for (const anc of db.ast.getAncestors(str, 0)) {
+          if (anc == compNode) break;
+          if (db.ast.getType(anc) == $.element_modification) {
+            if (db.ast.startsWith(anc, "unit")) {
+              inUnitMod = true;
+            }
+            break;
+          }
+        }
+        if (inUnitMod) {
+          const strId = db.scope.internNode(str);
+          const pool = db.scope.pool;
+          let off = pool.stringOffsets.get(strId);
+          let len = pool.stringLengths.get(strId);
+          if (len >= 2) {
+            const firstCh = pool.charBuffer.get(off);
+            const lastCh = pool.charBuffer.get(off + len - 1);
+            if ((firstCh == 34 && lastCh == 34) || (firstCh == 39 && lastCh == 39)) {
+              off += 1;
+              len -= 2;
+            }
+          }
+          let unitStr = "";
+          for (let i: u32 = 0; i < len; i++) {
+            unitStr += String.fromCharCode(pool.charBuffer.get(off + i));
+          }
+          matchedUnit = parseUnit(unitStr);
+          if (matchedUnit != null) break;
         }
       }
     }

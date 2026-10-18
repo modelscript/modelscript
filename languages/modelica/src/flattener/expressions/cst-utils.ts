@@ -1190,6 +1190,8 @@ export function getDaeArrayDimSize(dae: DAEBuilder, arrName: string, resolvedNam
   return maxDim > 0 ? maxDim : null;
 }
 
+const _evaluatingCSTNumbers = new Set<string>();
+
 export function evaluateCSTNumber(
   node: SyntaxNode | string | null | undefined,
   subs?: Map<string, number>,
@@ -1226,6 +1228,25 @@ export function evaluateCSTNumber(
   const floatNum = parseFloat(text);
   if (!isNaN(floatNum) && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
 
+  const evalCycleKey = `${scopeId ?? 0}:${prefix}:${text}`;
+  if (_evaluatingCSTNumbers.has(evalCycleKey)) return null;
+  _evaluatingCSTNumbers.add(evalCycleKey);
+  try {
+    return evaluateCSTNumberInner(node, text, subs, scopeId, db, dae, prefix);
+  } finally {
+    _evaluatingCSTNumbers.delete(evalCycleKey);
+  }
+}
+
+function evaluateCSTNumberInner(
+  node: SyntaxNode | string,
+  text: string,
+  subs?: Map<string, number>,
+  scopeId?: SymbolId,
+  db?: any,
+  dae?: DAEBuilder,
+  prefix = "",
+): number | null {
   if (text.startsWith("if ")) {
     const normalizedIf = text.replace(/\belseif\b/g, "else if");
     const ifMatch = normalizedIf.match(/^if\s+(.+?)\s+then\s+(.+?)\s+else\s+([\s\S]+)$/);
@@ -1394,92 +1415,102 @@ export function evaluateCSTNumber(
         }
       }
     }
-    if (scopeId !== undefined && db) {
+    if (db) {
       const state = dae ? getFlatteningState(dae) : null;
       const flat = state?.flattener ?? (dae as any)?.flattener;
-      let resolvedIdent = ident;
-      if (ident.includes(".") && flat?.currentParentMods?.args) {
-        const parts = ident.split(".");
-        const firstSeg = parts[0]!;
-        const parentRedecl = [...flat.currentParentMods.args]
-          .reverse()
-          .find((a: any) => a && !a.isBreak && a.name === firstSeg && a.redeclaredTypeSpecifier);
-        if (parentRedecl?.redeclaredTypeSpecifier) {
-          resolvedIdent = [parentRedecl.redeclaredTypeSpecifier, ...parts.slice(1)].join(".");
-        }
-      }
-      if (resolvedIdent === ident) {
-        let curScopeId: SymbolId | null | undefined = scopeId;
-        while (curScopeId !== undefined && curScopeId !== null) {
-          const modHit = findInheritedModExpr(curScopeId, ident);
-          if (modHit) {
-            const bStr = modHit.exprText;
-            if (bStr === "true") return 1;
-            if (bStr === "false") return 0;
-            const bVal = parseInt(bStr, 10);
-            if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
-            if (bStr && bStr !== ident && bStr !== text) {
-              const evalVal = evaluateCSTNumber(bStr, subs, curScopeId, db, dae, prefix);
-              if (evalVal !== null) return evalVal;
-            }
-          }
-          curScopeId = db.symbol?.(curScopeId)?.parentId;
-        }
-        const resolved = db.query("resolveName", scopeId)?.(ident) ?? db.query("resolveSimpleName", scopeId)?.(ident);
-        if (resolved) {
-          const mod = db.query("effectiveModification", resolved.id);
-          if (mod?.bindingExpression?.text) {
-            const bStr = mod.bindingExpression.text.replace(/\s*\bannotation\b[\s\S]*$/, "").trim();
-            if (bStr === "true") return 1;
-            if (bStr === "false") return 0;
-            const bVal = parseInt(bStr, 10);
-            if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
-            if (bStr && bStr !== ident && bStr !== text) {
-              const evalVal = evaluateCSTNumber(bStr, subs, scopeId, db, dae, prefix);
-              if (evalVal !== null) return evalVal;
-            }
+      const rawEffScopeId = scopeId ?? flat?.currentClassId ?? flat?.currentRootClassId;
+      const effScopeSym = rawEffScopeId !== undefined && db?.symbol ? db.symbol(rawEffScopeId) : undefined;
+      const effScopeId =
+        effScopeSym?.kind === "Component" && effScopeSym.parentId != null ? effScopeSym.parentId : rawEffScopeId;
+      if (effScopeId !== undefined) {
+        let resolvedIdent = ident;
+        let redeclScopeId: SymbolId | undefined = undefined;
+        if (ident.includes(".") && flat?.currentParentMods?.args) {
+          const parts = ident.split(".");
+          const firstSeg = parts[0]!;
+          const parentRedecl = [...flat.currentParentMods.args]
+            .reverse()
+            .find((a: any) => a && !a.isBreak && a.name === firstSeg && a.redeclaredTypeSpecifier);
+          if (parentRedecl?.redeclaredTypeSpecifier) {
+            resolvedIdent = [parentRedecl.redeclaredTypeSpecifier, ...parts.slice(1)].join(".");
+            const rawRedeclScope = parentRedecl.ownerClassId ?? parentRedecl.evaluationScopeId;
+            const redeclSym = rawRedeclScope !== undefined && db?.symbol ? db.symbol(rawRedeclScope) : undefined;
+            redeclScopeId =
+              redeclSym?.kind === "Component" && redeclSym.parentId != null ? redeclSym.parentId : rawRedeclScope;
           }
         }
-      }
-      const candidateScopes = [scopeId, flat?.currentClassId, flat?.currentRootClassId].filter(
-        (id, idx, arr): id is SymbolId => id != null && arr.indexOf(id) === idx,
-      );
-      for (const sId of candidateScopes) {
-        const dbConst =
-          (resolvedIdent !== ident ? lookupDbConstant(resolvedIdent, db, sId) : null) ??
-          (resolvedIdent === ident ? lookupDbConstant(ident, db, sId) : null);
-        if (dbConst && typeof dbConst.value === "number") {
-          return dbConst.value;
+        if (resolvedIdent === ident && !ident.includes(".")) {
+          let curScopeId: SymbolId | null | undefined = effScopeId;
+          while (curScopeId !== undefined && curScopeId !== null) {
+            const modHit = findInheritedModExpr(curScopeId, ident);
+            if (modHit) {
+              const bStr = modHit.exprText;
+              if (bStr === "true") return 1;
+              if (bStr === "false") return 0;
+              const bVal = parseInt(bStr, 10);
+              if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
+              if (bStr && bStr !== ident && bStr !== text) {
+                const evalVal = evaluateCSTNumber(bStr, subs, curScopeId, db, dae, prefix);
+                if (evalVal !== null) return evalVal;
+              }
+            }
+            curScopeId = db.symbol?.(curScopeId)?.parentId;
+          }
+          const resolved =
+            db.query("resolveName", effScopeId)?.(ident) ?? db.query("resolveSimpleName", effScopeId)?.(ident);
+          if (resolved) {
+            const mod = db.query("effectiveModification", resolved.id);
+            if (mod?.bindingExpression?.text) {
+              const bStr = mod.bindingExpression.text.replace(/\s*\bannotation\b[\s\S]*$/, "").trim();
+              if (bStr === "true") return 1;
+              if (bStr === "false") return 0;
+              const bVal = parseInt(bStr, 10);
+              if (!isNaN(bVal) && String(bVal) === bStr) return bVal;
+              if (bStr && bStr !== ident && bStr !== text) {
+                const evalVal = evaluateCSTNumber(bStr, subs, effScopeId, db, dae, prefix);
+                if (evalVal !== null) return evalVal;
+              }
+            }
+          }
         }
-      }
-      if (ident.includes(".")) {
-        const idParts = resolvedIdent.split(".");
-        const memberIdent = idParts.pop()!;
-        const pkgPath = idParts.join(".");
-        let pkgSym: SymbolEntry | null = null;
+        const candidateScopes = [redeclScopeId, effScopeId, flat?.currentClassId, flat?.currentRootClassId].filter(
+          (id, idx, arr): id is SymbolId => id != null && arr.indexOf(id) === idx,
+        );
         for (const sId of candidateScopes) {
-          const res = db.query("resolveName", sId)?.(pkgPath) ?? db.query("resolveSimpleName", sId)?.(pkgPath);
-          if (res && (res.kind === "Class" || res.kind === "Package")) {
-            pkgSym = res;
-            break;
+          const dbConst = lookupDbConstant(resolvedIdent, db, sId);
+          if (dbConst && typeof dbConst.value === "number") {
+            return dbConst.value;
           }
         }
-        if (!pkgSym) {
-          pkgSym =
-            db.byName(pkgPath.split(".").pop()!).find((e: any) => e.kind === "Class" || e.kind === "Package") ?? null;
-        }
-        if (pkgSym) {
-          const visitedAliases = new Set<SymbolId>();
-          while (pkgSym && !visitedAliases.has(pkgSym.id)) {
-            visitedAliases.add(pkgSym.id);
-            if (!getShortClassSpecifierNode(db.cstNode(pkgSym.id) as any)) break;
-            const nextBase: SymbolEntry | null = db.query("resolvedBaseClass", pkgSym.id);
-            if (nextBase) pkgSym = nextBase;
-            else break;
+        if (ident.includes(".")) {
+          const idParts = resolvedIdent.split(".");
+          const memberIdent = idParts.pop()!;
+          const pkgPath = idParts.join(".");
+          let pkgSym: SymbolEntry | null = null;
+          for (const sId of candidateScopes) {
+            const res = db.query("resolveName", sId)?.(pkgPath) ?? db.query("resolveSimpleName", sId)?.(pkgPath);
+            if (res && (res.kind === "Class" || res.kind === "Package")) {
+              pkgSym = res;
+              break;
+            }
           }
-          if (pkgSym && memberIdent !== text) {
-            const evalVal = evaluateCSTNumber(memberIdent, subs, pkgSym.id, db, dae, prefix);
-            if (evalVal !== null) return evalVal;
+          if (!pkgSym) {
+            pkgSym =
+              db.byName(pkgPath.split(".").pop()!).find((e: any) => e.kind === "Class" || e.kind === "Package") ?? null;
+          }
+          if (pkgSym) {
+            const visitedAliases = new Set<SymbolId>();
+            while (pkgSym && !visitedAliases.has(pkgSym.id)) {
+              visitedAliases.add(pkgSym.id);
+              if (!getShortClassSpecifierNode(db.cstNode(pkgSym.id) as any)) break;
+              const nextBase: SymbolEntry | null = db.query("resolvedBaseClass", pkgSym.id);
+              if (nextBase) pkgSym = nextBase;
+              else break;
+            }
+            if (pkgSym && memberIdent !== text) {
+              const evalVal = evaluateCSTNumber(memberIdent, subs, pkgSym.id, db, dae, prefix);
+              if (evalVal !== null) return evalVal;
+            }
           }
         }
       }
@@ -1796,43 +1827,127 @@ const KNOWN_MODELICA_CONSTANTS: Record<string, number> = {
   e: Math.E,
   "Modelica.Constants.e": Math.E,
   "Constants.e": Math.E,
-  c: 299792458,
   "Modelica.Constants.c": 299792458,
+  "Constants.c": 299792458,
   g_n: 9.80665,
   "Modelica.Constants.g_n": 9.80665,
-  G: 6.6743e-11,
+  "Constants.g_n": 9.80665,
   "Modelica.Constants.G": 6.6743e-11,
-  q: 1.602176634e-19,
+  "Constants.G": 6.6743e-11,
   "Modelica.Constants.q": 1.602176634e-19,
-  h: 6.62607015e-34,
+  "Constants.q": 1.602176634e-19,
   "Modelica.Constants.h": 6.62607015e-34,
-  k: 1.380649e-23,
+  "Constants.h": 6.62607015e-34,
   "Modelica.Constants.k": 1.380649e-23,
+  "Constants.k": 1.380649e-23,
   N_A: 6.02214076e23,
   "Modelica.Constants.N_A": 6.02214076e23,
-  F: 1.602176634e-19 * 6.02214076e23,
+  "Constants.N_A": 6.02214076e23,
   "Modelica.Constants.F": 1.602176634e-19 * 6.02214076e23,
-  R: 1.380649e-23 * 6.02214076e23,
+  "Constants.F": 1.602176634e-19 * 6.02214076e23,
   "Modelica.Constants.R": 1.380649e-23 * 6.02214076e23,
+  "Constants.R": 1.380649e-23 * 6.02214076e23,
   mu_0: 4 * Math.PI * 1.00000000055e-7,
   "Modelica.Constants.mu_0": 4 * Math.PI * 1.00000000055e-7,
+  "Constants.mu_0": 4 * Math.PI * 1.00000000055e-7,
+  epsilon_0: 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458),
+  "Modelica.Constants.epsilon_0": 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458),
+  "Constants.epsilon_0": 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458),
   sigma: 5.670374419e-8,
   "Modelica.Constants.sigma": 5.670374419e-8,
+  "Constants.sigma": 5.670374419e-8,
+  R_inf: 10973731.56816,
+  "Modelica.Constants.R_inf": 10973731.56816,
+  "Constants.R_inf": 10973731.56816,
   T_zero: -273.15,
   "Modelica.Constants.T_zero": -273.15,
+  "Constants.T_zero": -273.15,
   eps: Number.EPSILON,
   "Modelica.Constants.eps": Number.EPSILON,
+  "Constants.eps": Number.EPSILON,
   "ModelicaServices.Machine.eps": Number.EPSILON,
   small: Number.MIN_VALUE,
   "Modelica.Constants.small": Number.MIN_VALUE,
+  "Constants.small": Number.MIN_VALUE,
   "ModelicaServices.Machine.small": Number.MIN_VALUE,
   inf: 1e60,
   "Modelica.Constants.inf": 1e60,
+  "Constants.inf": 1e60,
   "ModelicaServices.Machine.inf": 1e60,
   Integer_inf: 2147483647,
   "Modelica.Constants.Integer_inf": 2147483647,
+  "Constants.Integer_inf": 2147483647,
   "ModelicaServices.Machine.Integer_inf": 2147483647,
 };
+
+const BARE_SINGLE_LETTER_MODELICA_CONSTANTS: Record<string, number> = {
+  c: 299792458,
+  G: 6.6743e-11,
+  q: 1.602176634e-19,
+  h: 6.62607015e-34,
+  k: 1.380649e-23,
+  F: 1.602176634e-19 * 6.02214076e23,
+  R: 1.380649e-23 * 6.02214076e23,
+};
+
+function canSubstituteBareSingleLetterConstant(
+  ident: string,
+  exprText: string,
+  db?: QueryDB,
+  scopeId?: SymbolId,
+): boolean {
+  if (!Object.prototype.hasOwnProperty.call(BARE_SINGLE_LETTER_MODELICA_CONSTANTS, ident)) {
+    return false;
+  }
+  if (exprText.includes("Modelica.Constants.")) {
+    return true;
+  }
+  if (!db || scopeId === undefined) {
+    return false;
+  }
+  const scopeSym = db.symbol(scopeId);
+  if (scopeSym?.name === "Constants" || getSymbolQualifiedName(db, scopeId).endsWith("Constants")) {
+    return true;
+  }
+  let hasConstantsImport = false;
+  let curId: SymbolId | null | undefined = scopeId;
+  const visited = new Set<SymbolId>();
+  while (curId !== undefined && curId !== null && !visited.has(curId)) {
+    visited.add(curId);
+    const children = db.childrenOf(curId) || [];
+    for (const ch of children) {
+      if (ch.kind === "Component" && ch.name === ident) {
+        return false;
+      }
+      if (ch.kind === "Import") {
+        const impText = (db.cstNode(ch.id) as any)?.text ?? ch.name ?? "";
+        if (/\b(?:Modelica\.)?Constants\b/.test(impText)) {
+          hasConstantsImport = true;
+        }
+      }
+    }
+    const baseSym = db.query<SymbolEntry | null>("resolvedBaseClass", curId);
+    if (baseSym && !visited.has(baseSym.id)) {
+      const baseChildren = db.childrenOf(baseSym.id) || [];
+      if (baseChildren.some((ch) => ch.kind === "Component" && ch.name === ident)) {
+        return false;
+      }
+    }
+    curId = db.symbol(curId)?.parentId;
+  }
+  if (!hasConstantsImport) {
+    return false;
+  }
+  const resolved =
+    db.query<any>("resolveSimpleName", scopeId)?.(ident) ?? db.query<any>("resolveName", scopeId)?.(ident);
+  if (resolved && resolved.kind === "Component") {
+    const parentSym = resolved.parentId != null ? db.symbol(resolved.parentId) : null;
+    if (parentSym?.name !== "Constants") {
+      return false;
+    }
+  }
+  return true;
+}
 
 const KNOWN_MATH_UNARY_FUNCS: Record<string, (x: number) => number> = {
   sin: Math.sin,
@@ -1849,13 +1964,20 @@ const KNOWN_MATH_UNARY_FUNCS: Record<string, (x: number) => number> = {
   log10: Math.log10,
   sqrt: Math.sqrt,
   abs: Math.abs,
+  from_degC: (x: number) => x + 273.15,
+  to_degC: (x: number) => x - 273.15,
+  from_bar: (x: number) => x * 1e5,
+  to_bar: (x: number) => x * 1e-5,
 };
 
-function evalKnownConstantExprText(exprText: string): number | null {
+function evalKnownConstantExprText(exprText: string, db?: QueryDB, scopeId?: SymbolId): number | null {
   const s = exprText.trim();
   if (!s) return null;
   if (Object.prototype.hasOwnProperty.call(KNOWN_MODELICA_CONSTANTS, s)) {
     return KNOWN_MODELICA_CONSTANTS[s]!;
+  }
+  if (canSubstituteBareSingleLetterConstant(s, s, db, scopeId)) {
+    return BARE_SINGLE_LETTER_MODELICA_CONSTANTS[s]!;
   }
   let pos = 0;
   const skipWs = () => {
@@ -1947,7 +2069,7 @@ function evalKnownConstantExprText(exprText: string): number | null {
         const arg1 = parseExpr();
         if (arg1 === null) return null;
         skipWs();
-        const shortFn = ident.replace(/^(?:Modelica\.)?Math\./, "");
+        const shortFn = ident.replace(/^(?:Modelica\.)?(?:Math|SIunits\.Conversions)\./, "");
         if (s[pos] === "," && shortFn === "atan2") {
           pos++;
           const arg2 = parseExpr();
@@ -1966,6 +2088,9 @@ function evalKnownConstantExprText(exprText: string): number | null {
       if (Object.prototype.hasOwnProperty.call(KNOWN_MODELICA_CONSTANTS, ident)) {
         return KNOWN_MODELICA_CONSTANTS[ident]!;
       }
+      if (canSubstituteBareSingleLetterConstant(ident, s, db, scopeId)) {
+        return BARE_SINGLE_LETTER_MODELICA_CONSTANTS[ident]!;
+      }
       return null;
     }
     return null;
@@ -1982,19 +2107,23 @@ export function extractDbConstantValue(
   c: SymbolEntry,
   db: QueryDB,
   ownerScopeId?: SymbolId,
-): { value: number | number[]; isInteger: boolean } | null {
+): { value: any; isInteger: boolean; isBoolean?: boolean } | null {
   const variability = db.query<string | null>("variability", c.id);
   if (variability !== "constant") {
     return null;
   }
   const evalScope = ownerScopeId ?? c.parentId ?? undefined;
   const typeSpec = db.query<string | null>("typeSpecifier", c.id);
+  const isBoolean = typeSpec === "Boolean";
   const isInteger = isIntegerTypeSpec(typeSpec, db, undefined, evalScope);
-  const evalExprStr = (rawStr: string): { value: number | number[]; isInteger: boolean } | null => {
+  const evalExprStr = (rawStr: string): { value: any; isInteger: boolean; isBoolean?: boolean } | null => {
     const str = rawStr.replace(/\s*\bannotation\b[\s\S]*$/, "").trim();
     if (!str) return null;
-    if (str === "true") return { value: 1, isInteger: true };
-    if (str === "false") return { value: 0, isInteger: true };
+    if (str === "true") return { value: 1, isInteger: true, isBoolean: true };
+    if (str === "false") return { value: 0, isInteger: true, isBoolean: true };
+    if (str.startsWith('"') && str.endsWith('"') && !str.slice(1, -1).includes('"')) {
+      return { value: str.slice(1, -1), isInteger: false };
+    }
     const ifMatch = str.match(/^if\s+(.+?)\s+then\s+(.+?)\s+else\s+(.+)$/);
     if (ifMatch) {
       const condStr = ifMatch[1]!.trim();
@@ -2010,8 +2139,40 @@ export function extractDbConstantValue(
         return evalExprStr(condVal !== 0 ? thenStr : elseStr);
       }
     }
+    const sizeMatch = str.match(/^size\s*\(\s*([^,)]+)(?:\s*,\s*([^,)]+))?\s*\)$/);
+    if (sizeMatch) {
+      const arrRes = lookupDbConstant(sizeMatch[1]!.trim(), db, evalScope) ?? evalExprStr(sizeMatch[1]!.trim());
+      if (arrRes && Array.isArray(arrRes.value)) {
+        const dimRes = sizeMatch[2] ? evalExprStr(sizeMatch[2]!.trim()) : { value: 1 };
+        const dimIdx = dimRes && typeof dimRes.value === "number" ? Math.round(dimRes.value) : 1;
+        if (dimIdx === 1) {
+          return { value: arrRes.value.length, isInteger: true };
+        }
+      }
+    }
+    const fillMatch = str.match(/^fill\s*\(\s*([^,]+)\s*,\s*([^,)]+)\s*\)$/);
+    if (fillMatch) {
+      const elemRes = evalExprStr(fillMatch[1]!.trim());
+      const countRes = evalExprStr(fillMatch[2]!.trim());
+      if (
+        elemRes &&
+        (typeof elemRes.value === "number" || typeof elemRes.value === "string") &&
+        countRes &&
+        typeof countRes.value === "number"
+      ) {
+        const cnt = Math.round(countRes.value);
+        if (cnt >= 0 && cnt <= 1000) {
+          return {
+            value: Array(cnt).fill(elemRes.value),
+            isInteger,
+            ...(elemRes.isBoolean ? { isBoolean: true } : {}),
+          };
+        }
+      }
+    }
     if (str.startsWith("{") && str.endsWith("}")) {
       const inner = str.slice(1, -1).trim();
+      if (!inner) return { value: [], isInteger };
       const elemStrs = inner.split(",").map((s: string) => s.trim());
       const nums: number[] = [];
       let allNums = true;
@@ -2026,6 +2187,19 @@ export function extractDbConstantValue(
       if (allNums && nums.length > 0) {
         return { value: nums, isInteger };
       }
+      const evaledElems: any[] = [];
+      let allEvaled = true;
+      for (const es of elemStrs) {
+        const ev = evalExprStr(es);
+        if (!ev || (typeof ev.value !== "number" && typeof ev.value !== "string")) {
+          allEvaled = false;
+          break;
+        }
+        evaledElems.push(ev.value);
+      }
+      if (allEvaled && evaledElems.length > 0) {
+        return { value: evaledElems, isInteger };
+      }
     }
     const num = parseFloat(str);
     if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(str)) {
@@ -2034,12 +2208,113 @@ export function extractDbConstantValue(
     if (/^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(str)) {
       const chained = lookupDbConstant(str, db, evalScope);
       if (chained) {
-        return { value: chained.value, isInteger: isInteger && chained.isInteger };
+        return {
+          value: chained.value,
+          isInteger: isInteger && chained.isInteger,
+          ...(isBoolean || chained.isBoolean ? { isBoolean: true } : {}),
+        };
       }
     }
-    const knownVal = evalKnownConstantExprText(str);
+    const knownVal = evalKnownConstantExprText(str, db, evalScope);
     if (knownVal !== null) {
       return { value: knownVal, isInteger: isInteger && Number.isInteger(knownVal) };
+    }
+    const specEnthMatch = str.match(
+      /^(?:([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\.)?specificEnthalpy_pTX\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)$/,
+    );
+    if (specEnthMatch && evalScope) {
+      const callPkgPrefix = specEnthMatch[1]?.trim();
+      const stripNamed = (s: string) => s.replace(/^[a-zA-Z_]\w*\s*=\s*/, "").trim();
+      const tArg = stripNamed(specEnthMatch[3]!);
+      let mediumScopeId: SymbolId | undefined = evalScope;
+      if (callPkgPrefix) {
+        const resolvedPkg =
+          db.query<any>("resolveName", evalScope)?.(callPkgPrefix) ??
+          db.query<any>("resolveSimpleName", evalScope)?.(callPkgPrefix) ??
+          db
+            .byName(callPkgPrefix.split(".").pop()!)
+            .find(
+              (s) =>
+                (s.kind === "Class" || s.kind === "Package") &&
+                (s.name === callPkgPrefix || getSymbolQualifiedName(db, s.id).endsWith(callPkgPrefix)),
+            );
+        if (resolvedPkg) {
+          let pkgSym: SymbolEntry = resolvedPkg;
+          const seenAliases = new Set<SymbolId>();
+          while (pkgSym && !seenAliases.has(pkgSym.id)) {
+            seenAliases.add(pkgSym.id);
+            if (!getShortClassSpecifierNode(db.cstNode(pkgSym.id) as any)) break;
+            const nextBase = db.query<SymbolEntry | null>("resolvedBaseClass", pkgSym.id);
+            if (nextBase) pkgSym = nextBase;
+            else break;
+          }
+          mediumScopeId = pkgSym.id;
+        }
+      } else {
+        const fnSym =
+          db.query<any>("resolveSimpleName", evalScope)?.("specificEnthalpy_pTX") ??
+          db.query<any>("resolveName", evalScope)?.("specificEnthalpy_pTX");
+        if (fnSym?.parentId != null) {
+          mediumScopeId = fnSym.parentId;
+        }
+      }
+      const lookupScopedMediumConst = (constName: string) => {
+        if (callPkgPrefix) {
+          const qualRes = lookupDbConstant(`${callPkgPrefix}.${constName}`, db, evalScope);
+          if (qualRes && typeof qualRes.value === "number") return qualRes;
+        }
+        const rawScopes = callPkgPrefix ? [mediumScopeId, evalScope] : [evalScope, mediumScopeId];
+        const startScopes = rawScopes.filter(
+          (id, idx, arr): id is SymbolId => id !== undefined && arr.indexOf(id) === idx,
+        );
+        for (const sId of startScopes) {
+          const queue: SymbolId[] = [sId];
+          const visited = new Set<SymbolId>();
+          while (queue.length > 0) {
+            const curId = queue.shift()!;
+            if (visited.has(curId)) continue;
+            visited.add(curId);
+            const direct = db.childrenOf(curId).find((ch) => ch.kind === "Component" && ch.name === constName);
+            if (direct) {
+              const val = extractDbConstantValue(direct, db, sId);
+              if (val && typeof val.value === "number") return val;
+            }
+            const base = db.query<SymbolEntry | null>("resolvedBaseClass", curId);
+            if (base && !visited.has(base.id)) queue.push(base.id);
+            for (const ch of db.childrenOf(curId)) {
+              if (ch.kind === "Extends") {
+                const extBase = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
+                if (extBase && !visited.has(extBase.id)) queue.push(extBase.id);
+              }
+            }
+          }
+        }
+        const primaryScope = callPkgPrefix ? mediumScopeId : (evalScope ?? mediumScopeId);
+        return (
+          (primaryScope ? lookupDbConstant(constName, db, primaryScope) : null) ??
+          (mediumScopeId ? lookupDbConstant(constName, db, mediumScopeId) : null) ??
+          lookupDbConstant(constName, db, evalScope)
+        );
+      };
+      const cpRes = lookupScopedMediumConst("cp_const");
+      const t0Res = lookupScopedMediumConst("T0");
+      const tRes =
+        evalExprStr(tArg) ??
+        (callPkgPrefix && tArg.startsWith(`${callPkgPrefix}.`) && mediumScopeId
+          ? lookupDbConstant(tArg.slice(callPkgPrefix.length + 1), db, mediumScopeId)
+          : null) ??
+        lookupDbConstant(tArg, db, (callPkgPrefix ? mediumScopeId : evalScope) ?? mediumScopeId ?? evalScope);
+      if (
+        cpRes &&
+        typeof cpRes.value === "number" &&
+        t0Res &&
+        typeof t0Res.value === "number" &&
+        tRes &&
+        typeof tRes.value === "number"
+      ) {
+        const val = cpRes.value * (tRes.value - t0Res.value);
+        return { value: val, isInteger: isInteger && Number.isInteger(val) };
+      }
     }
     let guardSet = (db as any)._inExtractDbConst as Set<SymbolId> | undefined;
     if (!guardSet) {
@@ -2060,29 +2335,92 @@ export function extractDbConstantValue(
     return null;
   };
   if (ownerScopeId && ownerScopeId !== c.parentId) {
-    const ownerMod = db.query<any>("effectiveModification", ownerScopeId);
-    const matchingOwnerArg = ownerMod?.args
-      ? [...ownerMod.args].reverse().find((a: any) => a && !a.isBreak && a.name === c.name)
-      : null;
-    const ownerBText = (matchingOwnerArg?.value?.text ?? matchingOwnerArg?.bindingExpression?.text)?.trim();
-    if (ownerBText) {
-      const res = evalExprStr(ownerBText);
-      if (res) return res;
-    } else if (matchingOwnerArg?.value?.kind === "literal" && typeof matchingOwnerArg.value.value === "number") {
-      return {
-        value: matchingOwnerArg.value.value,
-        isInteger: isInteger && Number.isInteger(matchingOwnerArg.value.value),
-      };
-    }
-    const ownerCst = db.cstNode(ownerScopeId) as any;
-    const ownerCstText = (ownerCst?.text ?? "").replace(/\s*\bannotation\b[\s\S]*$/, "");
-    const parenIdx = ownerCstText.indexOf("(");
-    if (parenIdx >= 0) {
-      const modSlice = ownerCstText.slice(parenIdx);
-      const argMatch = modSlice.match(new RegExp(`\\b${c.name}\\s*=\\s*([^,)]+)`));
-      if (argMatch) {
-        const res = evalExprStr(argMatch[1]!.trim());
+    const ownerQueue: SymbolId[] = [ownerScopeId];
+    const seenOwners = new Set<SymbolId>();
+    while (ownerQueue.length > 0) {
+      const curOwnerId = ownerQueue.shift()!;
+      if (curOwnerId === c.parentId || seenOwners.has(curOwnerId)) continue;
+      seenOwners.add(curOwnerId);
+      const ownerMod = db.query<any>("effectiveModification", curOwnerId);
+      const matchingOwnerArg = ownerMod?.args
+        ? [...ownerMod.args].reverse().find((a: any) => a && !a.isBreak && a.name === c.name)
+        : null;
+      const ownerBText = (matchingOwnerArg?.value?.text ?? matchingOwnerArg?.bindingExpression?.text)?.trim();
+      if (ownerBText) {
+        const res = evalExprStr(ownerBText);
         if (res) return res;
+      } else if (matchingOwnerArg?.value?.kind === "literal" && typeof matchingOwnerArg.value.value === "number") {
+        return {
+          value: matchingOwnerArg.value.value,
+          isInteger: isInteger && Number.isInteger(matchingOwnerArg.value.value),
+        };
+      } else if (matchingOwnerArg?.value?.kind === "literal" && typeof matchingOwnerArg.value.value === "boolean") {
+        return {
+          value: matchingOwnerArg.value.value ? 1 : 0,
+          isInteger: true,
+          isBoolean: true,
+        };
+      } else if (matchingOwnerArg?.value?.kind === "literal" && typeof matchingOwnerArg.value.value === "string") {
+        return {
+          value: matchingOwnerArg.value.value,
+          isInteger: false,
+        };
+      }
+      for (const extChild of db.childrenOf(curOwnerId) || []) {
+        if (extChild.kind !== "Extends") continue;
+        const extModRaw = db.query<any>("extendsModificationParsed", extChild.id);
+        const extArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
+        const matchingExtArg = [...extArgs].reverse().find((a: any) => a && !a.isBreak && a.name === c.name);
+        const extBText = (matchingExtArg?.value?.text ?? matchingExtArg?.bindingExpression?.text)?.trim();
+        if (extBText) {
+          const res = evalExprStr(extBText) ?? lookupDbConstant(extBText, db, curOwnerId);
+          if (res) return res;
+        } else if (matchingExtArg?.value?.kind === "literal" && typeof matchingExtArg.value.value === "number") {
+          return {
+            value: matchingExtArg.value.value,
+            isInteger: isInteger && Number.isInteger(matchingExtArg.value.value),
+          };
+        } else if (matchingExtArg?.value?.kind === "literal" && typeof matchingExtArg.value.value === "boolean") {
+          return {
+            value: matchingExtArg.value.value ? 1 : 0,
+            isInteger: true,
+            isBoolean: true,
+          };
+        } else if (matchingExtArg?.value?.kind === "literal" && typeof matchingExtArg.value.value === "string") {
+          return {
+            value: matchingExtArg.value.value,
+            isInteger: false,
+          };
+        }
+        const extBase = db.query<SymbolEntry | null>("resolvedBaseClass", extChild.id);
+        if (extBase && extBase.id !== c.parentId && !seenOwners.has(extBase.id)) {
+          ownerQueue.push(extBase.id);
+        }
+      }
+      const ownerCst = db.cstNode(curOwnerId) as any;
+      const shortSpec = getShortClassSpecifierNode(ownerCst);
+      const ownerCstText = (shortSpec?.text ?? "").replace(/\s*\bannotation\b[\s\S]*$/, "");
+      const parenIdx = ownerCstText.indexOf("(");
+      if (parenIdx >= 0) {
+        const modSlice = ownerCstText.slice(parenIdx);
+        const argMatch = modSlice.match(new RegExp(`\\b${c.name}\\s*=\\s*([^,)]+)`));
+        if (argMatch) {
+          const res = evalExprStr(argMatch[1]!.trim());
+          if (res) return res;
+        }
+      }
+      const nextBase = db.query<SymbolEntry | null>("resolvedBaseClass", curOwnerId);
+      if (nextBase && nextBase.id === c.parentId) {
+        break;
+      }
+      if (nextBase && nextBase.id !== curOwnerId && !seenOwners.has(nextBase.id)) {
+        ownerQueue.push(nextBase.id);
+      }
+      if (ownerQueue.length === 0) {
+        const encParentId = db.symbol(curOwnerId)?.parentId;
+        if (encParentId && encParentId !== c.parentId && !seenOwners.has(encParentId)) {
+          ownerQueue.push(encParentId);
+        }
       }
     }
   }
@@ -2107,11 +2445,16 @@ export function extractDbConstantValue(
 export function lookupDbConstant(
   fullName: string,
   db: QueryDB,
-  scopeId?: SymbolId,
-): { value: number | number[]; isInteger: boolean } | null {
+  rawScopeId?: SymbolId,
+): { value: any; isInteger: boolean; isBoolean?: boolean } | null {
+  const scopeSym = rawScopeId !== undefined ? db.symbol(rawScopeId) : undefined;
+  const scopeId =
+    scopeSym?.kind === "Component" && scopeSym.parentId !== null && scopeSym.parentId !== undefined
+      ? scopeSym.parentId
+      : rawScopeId;
   const rawFullName = fullName.trim();
   let cache = (db as any)._dbConstantCache as
-    | Map<string, { value: number | number[]; isInteger: boolean } | null>
+    | Map<string, { value: any; isInteger: boolean; isBoolean?: boolean } | null>
     | undefined;
   if (!cache) {
     cache = new Map();
@@ -2121,17 +2464,35 @@ export function lookupDbConstant(
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey)!;
   }
+  cache.set(cacheKey, null);
 
-  const compute = (): { value: number | number[]; isInteger: boolean } | null => {
+  const compute = (): { value: any; isInteger: boolean; isBoolean?: boolean } | null => {
+    const subMatch = rawFullName.match(/^(.+)\[(\d+)\]$/);
+    if (subMatch) {
+      const arrRes = lookupDbConstant(subMatch[1]!, db, scopeId);
+      if (arrRes && Array.isArray(arrRes.value)) {
+        const idx = parseInt(subMatch[2]!, 10);
+        if (idx >= 1 && idx <= arrRes.value.length) {
+          return {
+            value: arrRes.value[idx - 1],
+            isInteger: arrRes.isInteger,
+            ...(arrRes.isBoolean ? { isBoolean: true } : {}),
+          };
+        }
+      }
+    }
     const hasLeadingDot = rawFullName.startsWith(".");
     const cleanFullName = hasLeadingDot ? rawFullName.slice(1) : rawFullName;
     const parseModValText = (
       valTextRaw: string,
       forceIsInt?: boolean,
-    ): { value: number | number[]; isInteger: boolean } | null => {
+    ): { value: any; isInteger: boolean; isBoolean?: boolean } | null => {
       const valText = valTextRaw.trim();
-      if (valText === "true") return { value: 1, isInteger: true };
-      if (valText === "false") return { value: 0, isInteger: true };
+      if (valText === "true") return { value: 1, isInteger: true, isBoolean: true };
+      if (valText === "false") return { value: 0, isInteger: true, isBoolean: true };
+      if (valText.startsWith('"') && valText.endsWith('"') && !valText.slice(1, -1).includes('"')) {
+        return { value: valText.slice(1, -1), isInteger: false };
+      }
       const num = parseFloat(valText);
       if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(valText)) {
         return {
@@ -2153,12 +2514,14 @@ export function lookupDbConstant(
           if (i < parts.length - 1) {
             if (matchedArg.redeclaredTypeSpecifier) {
               const nextName = [matchedArg.redeclaredTypeSpecifier, ...parts.slice(i + 1)].join(".");
-              const res =
-                lookupDbConstant(nextName, db, scopeId) ??
-                (matchedArg.evaluationScopeId && matchedArg.evaluationScopeId !== scopeId
-                  ? lookupDbConstant(nextName, db, matchedArg.evaluationScopeId)
-                  : null);
-              if (res) return res;
+              if (nextName !== cleanFullName) {
+                const res =
+                  lookupDbConstant(nextName, db, scopeId) ??
+                  (matchedArg.evaluationScopeId && matchedArg.evaluationScopeId !== scopeId
+                    ? lookupDbConstant(nextName, db, matchedArg.evaluationScopeId)
+                    : null);
+                if (res) return res;
+              }
             }
             currArgs = matchedArg.nestedArgs ?? matchedArg.args ?? [];
           }
@@ -2188,21 +2551,39 @@ export function lookupDbConstant(
     const parts = cleanFullName.split(".");
     if (parts.length === 0) return null;
     if (scopeId && parts.length === 1) {
+      const targetName = hasLeadingDot ? rawFullName : cleanFullName;
       const resolver = db.query<any>("resolveName", scopeId) ?? db.query<any>("resolveSimpleName", scopeId);
       if (resolver) {
-        const resolved = resolver(hasLeadingDot ? rawFullName : cleanFullName);
+        const resolved = resolver(targetName);
         if (resolved && resolved.kind === "Component") {
           return extractDbConstantValue(resolved, db, scopeId);
         }
       }
-      const children = db.childrenOf(scopeId) || [];
-      for (const child of children) {
-        if (child.kind === "Extends") {
-          const base = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
-          if (base && base.id !== scopeId) {
-            const baseRes = db.query<any>("resolveName", base.id)?.(hasLeadingDot ? rawFullName : cleanFullName);
-            if (baseRes && baseRes.kind === "Component") {
-              return extractDbConstantValue(baseRes, db, scopeId);
+      const extQueue: SymbolId[] = [scopeId];
+      const seenExtBases = new Set<SymbolId>();
+      while (extQueue.length > 0) {
+        const curClsId = extQueue.shift()!;
+        if (seenExtBases.has(curClsId)) continue;
+        seenExtBases.add(curClsId);
+        const directComp = db.childrenOf(curClsId).find((c) => c.kind === "Component" && c.name === targetName);
+        if (directComp) {
+          const res = extractDbConstantValue(directComp, db, scopeId);
+          if (res) return res;
+        }
+        const baseRes = db.query<any>("resolveName", curClsId)?.(targetName);
+        if (baseRes && baseRes.kind === "Component") {
+          const res = extractDbConstantValue(baseRes, db, scopeId);
+          if (res) return res;
+        }
+        const nextBase = db.query<SymbolEntry | null>("resolvedBaseClass", curClsId);
+        if (nextBase && !seenExtBases.has(nextBase.id)) {
+          extQueue.push(nextBase.id);
+        }
+        for (const ch of db.childrenOf(curClsId) || []) {
+          if (ch.kind === "Extends") {
+            const b = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
+            if (b && !seenExtBases.has(b.id)) {
+              extQueue.push(b.id);
             }
           }
         }
@@ -2327,13 +2708,16 @@ export function lookupDbConstant(
               }
             }
             if (nextList.length === 0) {
-              const base = db.query<SymbolEntry | null>("resolvedBaseClass", p.id);
-              if (base && base.id !== p.id) {
+              let base = db.query<SymbolEntry | null>("resolvedBaseClass", p.id);
+              const seenBases = new Set<SymbolId>([p.id]);
+              while (base && !seenBases.has(base.id) && nextList.length === 0) {
+                seenBases.add(base.id);
                 for (const ch of db.childrenOf(base.id)) {
                   if (ch.name === seg) {
                     nextList.push(ch);
                   }
                 }
+                base = db.query<SymbolEntry | null>("resolvedBaseClass", base.id);
               }
             }
           }
@@ -2701,7 +3085,20 @@ export function expandVarToArrayCtor(baseName: string, dae: DAEBuilder): number 
     for (let d = 0; d < rank; d++) {
       if (idxs[d]! > maxDims[d]!) maxDims[d] = idxs[d]!;
     }
-    const varExpr = dae.addExpression(ExprKind.Name, dae.interner.intern(dae.getVarName(matchingIndices[i]!)));
+    const mIdx = matchingIndices[i]!;
+    let varExpr = -1;
+    if (dae.getVarVariability(mIdx) === Variability.Constant) {
+      const cExprId = dae.getVarExpression(mIdx);
+      if (cExprId !== undefined && cExprId >= 0) {
+        const ck = dae.getExprKind(cExprId);
+        if (ck === ExprKind.RealLiteral) varExpr = dae.addRealLiteral(dae.getExprRealValue(cExprId));
+        else if (ck === ExprKind.IntLiteral) varExpr = dae.addIntLiteral(dae.getExprData1(cExprId));
+        else if (ck === ExprKind.BoolLiteral) varExpr = dae.addBoolLiteral(dae.getExprData1(cExprId) !== 0);
+      }
+    }
+    if (varExpr < 0) {
+      varExpr = dae.addExpression(ExprKind.Name, dae.interner.intern(dae.getVarName(mIdx)));
+    }
     table.set(idxs.join(","), varExpr);
   }
 

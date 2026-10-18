@@ -341,7 +341,12 @@ export class StaticTapeBuilder {
       const firstName = this.interner.resolve(arena.getExprData1(flatElems[0]!)) || "";
       const bracketPos = firstName.indexOf("[");
       const baseName = bracketPos >= 0 ? firstName.substring(0, bracketPos) : firstName;
-      return { startIdx: this.pushVecOp(TapeOpKind.VecVar, count, this.interner.intern(baseName)), size: count };
+      const isContiguousSlice =
+        bracketPos > 0 &&
+        flatElems.every((e, idx) => (this.interner.resolve(arena.getExprData1(e)) || "") === `${baseName}[${idx + 1}]`);
+      if (isContiguousSlice) {
+        return { startIdx: this.pushVecOp(TapeOpKind.VecVar, count, this.interner.intern(baseName)), size: count };
+      }
     }
 
     const startIdx = this.length;

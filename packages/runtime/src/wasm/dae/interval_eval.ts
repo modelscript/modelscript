@@ -155,19 +155,12 @@ export function evalExprInterval(
 
   // ── Variable Reference ──
   if (kind == ExprKind.Name) {
-    let varId = data1u;
-    if (varId == 0xffffffff) {
+    let resolved = dae.resolveExprVarId(data1u);
+    if (resolved < 0) {
       out.setPoint(0.0);
       return;
     }
-    if (varId >= dae.varCount) {
-      let lookedUp = dae.lookupVariableByName(varId);
-      if (lookedUp < 0) {
-        out.setPoint(0.0);
-        return;
-      }
-      varId = lookedUp as u32;
-    }
+    let varId = resolved as u32;
     let lo: f64 = NEG_INF;
     let hi: f64 = INF;
     if (varBoundsLoPtr != 0) {
@@ -310,6 +303,7 @@ export function evalExprInterval(
 
   // ── Math & Transcendental Function Calls ──
   if (kind == ExprKind.Call) {
+    funcId = dae.resolveBuiltinMathFunc(funcId);
     let mark = markScratchInterval();
     let lRes = getScratchInterval();
     let rRes = getScratchInterval();
@@ -322,16 +316,7 @@ export function evalExprInterval(
       funcId == BuiltinMathFunc.Fmod ||
       funcId == BuiltinMathFunc.Pow
     ) {
-      let secondArgId = right;
-      if (exprId + 1 < dae.exprCount) {
-        let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
-        if (nextAcc.kind == ExprKind.Tuple) {
-          secondArgId = nextAcc.left;
-        }
-      }
-      if (secondArgId >= dae.exprCount && left + 1 < dae.exprCount) {
-        secondArgId = left + 1;
-      }
+      let secondArgId = dae.getCallArgExprId(exprId, 1);
       if (secondArgId != 0xffffffff && secondArgId < dae.exprCount) {
         evalExprInterval(secondArgId, dae, varBoundsLoPtr, varBoundsHiPtr, rRes);
       }
@@ -415,8 +400,7 @@ export function evalExprInterval(
 
   // ── Der Operator ──
   if (kind == ExprKind.Der) {
-    let inner = data1u;
-    evalExprInterval(inner, dae, varBoundsLoPtr, varBoundsHiPtr, out);
+    out.setEntire();
     return;
   }
 

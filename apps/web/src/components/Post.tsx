@@ -49,7 +49,13 @@ import {
 } from "../api";
 import { useAuth } from "../AuthContext";
 import { parseFederatedHandle } from "../util/federation";
-import { isNotebookPost, parseNotebookFromContent } from "../util/notebook";
+import {
+  estimateReadingTimeMinutes,
+  extractNotebookHeadings,
+  isNotebookPost,
+  parseNotebookFromContent,
+  slugifyHeading,
+} from "../util/notebook";
 import AnimatedCount from "./AnimatedCount";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import type { SpatialPin } from "./artifacts/spatial-pin";
@@ -443,34 +449,359 @@ interface PostProps {
   isThread?: boolean | undefined;
 }
 
-const MarkdownContainer = styled.div`
+const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
   margin: 0;
+  color: var(--color-text-primary);
+
   p {
     margin-top: 0;
-    margin-bottom: 0;
+    margin-bottom: ${(props) => (props.$isLongForm ? "12px" : "0")};
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--color-text-heading, var(--color-fg-default));
+    font-weight: 800;
+    line-height: 1.3;
+    scroll-margin-top: 84px;
+    position: relative;
+  }
+
+  h1 {
+    font-size: 1.45em;
+    margin: 18px 0 10px 0;
+  }
+
+  h2 {
+    font-size: 1.25em;
+    margin: ${(props) => (props.$isLongForm ? "22px 0 10px 0" : "12px 0 6px 0")};
+    padding-bottom: ${(props) => (props.$isLongForm ? "6px" : "0")};
+    border-bottom: ${(props) => (props.$isLongForm ? "1px solid var(--color-border-default)" : "none")};
+  }
+
+  h3 {
+    font-size: 1.08em;
+    margin: ${(props) => (props.$isLongForm ? "16px 0 8px 0" : "10px 0 4px 0")};
+  }
+
+  .msx-heading-anchor {
+    opacity: 0;
+    margin-left: 8px;
+    color: var(--color-accent-cyan);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.85em;
+    transition: opacity 0.15s ease;
+  }
+
+  h1:hover .msx-heading-anchor,
+  h2:hover .msx-heading-anchor,
+  h3:hover .msx-heading-anchor {
+    opacity: 0.85;
+  }
+
+  ul,
+  ol {
+    margin: ${(props) => (props.$isLongForm ? "8px 0 14px 0" : "4px 0")};
+    padding-left: 22px;
+  }
+
+  li {
+    margin-bottom: 4px;
+  }
+
+  code:not(pre code) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.88em;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: var(--color-code-bg, rgba(255, 255, 255, 0.07));
+    border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+    color: var(--color-accent-cyan, #38bdf8);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 16px 0;
+    font-size: 13.5px;
+    border: 1px solid var(--color-table-border, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  th,
+  td {
+    padding: 8px 12px;
+    border: 1px solid var(--color-table-border, rgba(255, 255, 255, 0.08));
+    text-align: left;
+  }
+
+  th {
+    background: var(--color-table-header-bg, rgba(255, 255, 255, 0.05));
+    font-weight: 700;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    color: var(--color-text-heading);
+  }
+
+  tr:nth-child(even) td {
+    background: rgba(255, 255, 255, 0.015);
+  }
+
+  blockquote {
+    margin: 10px 0;
+    padding: 8px 14px;
+    border-left: 3px solid var(--color-accent-purple, #8b5cf6);
+    background: rgba(139, 92, 246, 0.05);
+    border-radius: 0 8px 8px 0;
+    color: var(--color-text-secondary);
+  }
+
+  .msx-callout {
+    margin: 12px 0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(6, 182, 212, 0.28);
+    border-left: 4px solid var(--color-accent-cyan, #06b6d4);
+    background: rgba(6, 182, 212, 0.06);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .msx-callout-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+    color: var(--color-accent-cyan, #06b6d4);
+  }
+
+  .msx-callout-tip {
+    border-color: rgba(16, 185, 129, 0.28);
+    border-left-color: var(--color-status-verified, #10b981);
+    background: rgba(16, 185, 129, 0.06);
+    .msx-callout-header {
+      color: var(--color-status-verified, #10b981);
+    }
+  }
+
+  .msx-callout-important {
+    border-color: rgba(139, 92, 246, 0.3);
+    border-left-color: var(--color-accent-purple, #8b5cf6);
+    background: rgba(139, 92, 246, 0.07);
+    .msx-callout-header {
+      color: var(--color-accent-purple, #8b5cf6);
+    }
+  }
+
+  .msx-callout-warning {
+    border-color: rgba(245, 158, 11, 0.3);
+    border-left-color: var(--color-accent-amber, #f59e0b);
+    background: rgba(245, 158, 11, 0.07);
+    .msx-callout-header {
+      color: var(--color-accent-amber, #f59e0b);
+    }
+  }
+
+  .msx-callout-caution {
+    border-color: rgba(244, 63, 94, 0.3);
+    border-left-color: var(--color-error, #f43f5e);
+    background: rgba(244, 63, 94, 0.07);
+    .msx-callout-header {
+      color: var(--color-error, #f43f5e);
+    }
+  }
+
+  .msx-math-block {
+    margin: 12px 0;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+    font-family: "Times New Roman", "Cambria Math", Georgia, serif;
+    font-size: 1.12em;
+    font-style: italic;
+    text-align: center;
+    color: var(--color-text-heading, #fff);
+    overflow-x: auto;
+  }
+
+  .msx-math-inline {
+    font-family: "Times New Roman", "Cambria Math", Georgia, serif;
+    font-size: 1.05em;
+    font-style: italic;
+    padding: 0 2px;
+    color: var(--color-text-heading, #fff);
+  }
+
+  .msx-frac {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 3px;
+    font-size: 0.9em;
+  }
+
+  .msx-frac-num {
+    border-bottom: 1px solid currentColor;
+    padding: 0 3px 1px 3px;
+    line-height: 1.1;
+  }
+
+  .msx-frac-den {
+    padding: 1px 3px 0 3px;
+    line-height: 1.1;
+  }
+
+  pre.msx-code-pre {
+    margin: 12px 0;
+    padding: 0;
+    border-radius: 10px;
+    background: var(--color-pre-bg, #030712);
+    border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.12));
+    overflow: hidden;
+    font-family: var(--font-mono, monospace);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .msx-code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+    font-family: var(--font-mono, monospace);
+    font-size: 11.5px;
+    color: var(--color-text-muted);
+  }
+
+  .msx-code-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .msx-code-lang-pill {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--color-accent-purple, #a78bfa);
+    border: 1px solid rgba(139, 92, 246, 0.28);
+  }
+
+  .msx-code-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .msx-code-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.12));
+    color: var(--color-text-secondary);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: rgba(6, 182, 212, 0.14);
+      border-color: var(--color-accent-cyan, #06b6d4);
+      color: var(--color-text-heading);
+    }
+  }
+
+  .msx-code-btn-ide {
+    background: rgba(139, 92, 246, 0.14);
+    border-color: rgba(139, 92, 246, 0.35);
+    color: var(--color-text-heading);
+  }
+
+  .msx-code-body {
+    padding: 10px 0;
+    overflow-x: auto;
+    display: block;
+  }
+
+  .msx-code-line {
+    display: flex;
+    padding: 0 14px 0 0;
+    min-width: fit-content;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.025);
+    }
+  }
+
+  .msx-line-num {
+    user-select: none;
+    width: 36px;
+    min-width: 36px;
+    padding-right: 12px;
+    text-align: right;
+    color: var(--color-text-tertiary, #64748b);
+    font-size: 11.5px;
+    opacity: 0.65;
+  }
+
+  .msx-line-content {
+    white-space: pre;
+    flex: 1;
+  }
+
+  .tok-kw {
+    color: #c084fc;
+    font-weight: 600;
+  }
+  .tok-type {
+    color: #38bdf8;
+    font-weight: 600;
+  }
+  .tok-fn {
+    color: #60a5fa;
+  }
+  .tok-num {
+    color: #fbbf24;
+  }
+  .tok-str {
+    color: #34d399;
+  }
+  .tok-comment {
+    color: #64748b;
+    font-style: italic;
   }
 `;
 
 const GitLabIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path
-      d="M15.82 7.42L14.07 2.05C13.98 1.77 13.58 1.77 13.49 2.05L11.83 7.15H4.17L2.51 2.05C2.42 1.77 2.02 1.77 1.93 2.05L0.18 7.42C0.09 7.69 0.19 8.01 0.43 8.18L8 13.68L15.57 8.18C15.81 8.01 15.91 7.69 15.82 7.42Z"
-      fill="#FC6D26"
-    />
-    <path d="M8 13.68L4.17 7.15H11.83L8 13.68Z" fill="#E24329" />
-    <path
-      d="M8 13.68L11.83 7.15H15.57C15.81 8.01 15.91 7.69 15.82 7.42L14.07 2.05C13.98 1.77 13.58 1.77 13.49 2.05L11.83 7.15Z"
-      fill="#FCA326"
-    />
-    <path
-      d="M8 13.68L4.17 7.15H0.43C0.19 8.01 0.09 7.69 0.18 7.42L1.93 2.05C2.02 1.77 2.42 1.77 2.51 2.05L4.17 7.15Z"
-      fill="#FCA326"
-    />
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" />
   </svg>
 );
 
 const TwitterXIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
   </svg>
 );
@@ -479,174 +810,202 @@ const ProviderButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  height: 40px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-fg-default);
-  border: 1px solid var(--color-border);
-  border-radius: 9999px;
-  font-size: 15px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s;
+  gap: 12px;
   width: 100%;
+  padding: 12px 16px;
+  border-radius: 9999px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  background-color: var(--color-bg-primary);
+  color: var(--color-fg-default);
+  border: 1px solid var(--color-border-default);
+  transition: background-color 0.2s;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background-color: var(--color-bg-hover);
   }
 `;
 
 const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
-  const navigate = useNavigate();
+  const API_BASE =
+    typeof window !== "undefined" && (window as any).API_BASE ? (window as any).API_BASE : "http://localhost:4000";
+
+  const handleOAuthLogin = (provider: string) => {
+    window.location.href = `${API_BASE}/api/v1/auth/${provider}`;
+  };
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.7)",
-        backdropFilter: "blur(6px)",
-        zIndex: 10000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+    <AnalyticsModalOverlay
       onClick={(e) => {
         e.stopPropagation();
         onClose();
       }}
     >
-      <div
-        style={{
-          position: "relative",
-          backgroundColor: "var(--surface-overlay)",
-          border: "1px solid var(--color-border-glass)",
-          backdropFilter: "blur(16px)",
-          borderRadius: "16px",
-          padding: "32px",
-          width: "90%",
-          maxWidth: "400px",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            background: "transparent",
-            border: "none",
-            color: "var(--color-fg-default)",
-            cursor: "pointer",
-            padding: "8px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: "50%",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.08)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-        >
-          <XIcon size={16} />
-        </button>
-
-        <Heading as="h2" style={{ fontSize: "24px", marginBottom: "8px", fontWeight: 800 }}>
-          New to ModelScript?
-        </Heading>
-        <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "14px", marginBottom: "24px", lineHeight: 1.4 }}>
-          Sign up now to get your own personalized timeline!
-        </Text>
-        <Box display="flex" flexDirection="column" gap={2}>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
-            <MarkGithubIcon size={16} />
-            Sign up with GitHub
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
-            <GitLabIcon />
-            Sign up with GitLab
-          </ProviderButton>
-          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
-            <TwitterXIcon />
-            Sign up with X
-          </ProviderButton>
-          <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "var(--color-text-muted)" }}>
-            <div style={{ flex: 1, borderBottom: "1px solid var(--color-border)" }}></div>
-            <span style={{ margin: "0 8px", fontSize: "13px", color: "var(--color-text-muted)" }}>or</span>
-            <div style={{ flex: 1, borderBottom: "1px solid var(--color-border)" }}></div>
-          </div>
-          <button
-            onClick={() => navigate("/signup")}
-            style={{
-              height: 40,
-              background: "var(--gradient-cta)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 9999,
-              fontSize: 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-              width: "100%",
-              boxShadow: "0 0 16px rgba(139, 92, 246, 0.35)",
-            }}
-          >
-            Create account
-          </button>
+      <AnalyticsModalContainer onClick={(e) => e.stopPropagation()} style={{ maxWidth: "400px", padding: "32px" }}>
+        <Box display="flex" justifyContent="flex-end" mb={2}>
+          <IconButton icon={XIcon} variant="invisible" onClick={onClose} aria-label="Close" />
         </Box>
-        <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "12px", marginTop: "24px", lineHeight: 1.4 }}>
-          By signing up, you agree to the{" "}
-          <a href="#" style={{ color: "var(--color-accent-cyan)", textDecoration: "none" }}>
-            Terms of Service
-          </a>{" "}
-          and{" "}
-          <a href="#" style={{ color: "var(--color-accent-cyan)", textDecoration: "none" }}>
-            Privacy Policy
-          </a>
-          , including{" "}
-          <a href="#" style={{ color: "var(--color-accent-cyan)", textDecoration: "none" }}>
-            Cookie Use
-          </a>
-          .
-        </Text>
-
-        <Box mt={4} pt={3} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "16px" }}>
-          <Text style={{ fontSize: "15px", fontWeight: "bold", color: "var(--color-fg-default)" }}>
-            Already have an account?
+        <Box display="flex" flexDirection="column" alignItems="center" textAlign="center" mb={4}>
+          <Heading as="h2" style={{ fontSize: "24px", marginBottom: "8px" }}>
+            Sign in to ModelScript
+          </Heading>
+          <Text style={{ color: "var(--color-fg-muted)" }}>
+            Join the conversation to like, repost, reply, and bookmark posts.
           </Text>
-          <button
-            onClick={() => navigate("/login")}
-            style={{
-              height: 40,
-              backgroundColor: "transparent",
-              color: "var(--color-accent-cyan)",
-              border: "1px solid rgba(6, 182, 212, 0.4)",
-              borderRadius: 9999,
-              fontSize: 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-              width: "100%",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(6, 182, 212, 0.12)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-          >
-            Sign in
-          </button>
         </Box>
-      </div>
-    </div>
+        <Box display="flex" flexDirection="column" gap={3}>
+          <ProviderButton onClick={() => handleOAuthLogin("github")}>
+            <MarkGithubIcon size={20} />
+            Continue with GitHub
+          </ProviderButton>
+          <ProviderButton onClick={() => handleOAuthLogin("gitlab")}>
+            <GitLabIcon />
+            Continue with GitLab
+          </ProviderButton>
+          <ProviderButton onClick={() => handleOAuthLogin("twitter")}>
+            <TwitterXIcon />
+            Continue with X
+          </ProviderButton>
+        </Box>
+      </AnalyticsModalContainer>
+    </AnalyticsModalOverlay>
   );
 };
 
-const RenderContent = ({ text }: { text: string | null }) => {
+function escapeHtmlText(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const LATEX_SYMBOLS: Record<string, string> = {
+  alpha: "α",
+  beta: "β",
+  gamma: "γ",
+  delta: "δ",
+  epsilon: "ε",
+  varepsilon: "ε",
+  zeta: "ζ",
+  eta: "η",
+  theta: "θ",
+  iota: "ι",
+  kappa: "κ",
+  lambda: "λ",
+  mu: "μ",
+  nu: "ν",
+  xi: "ξ",
+  pi: "π",
+  rho: "ρ",
+  sigma: "σ",
+  tau: "τ",
+  upsilon: "υ",
+  phi: "φ",
+  varphi: "φ",
+  chi: "χ",
+  psi: "ψ",
+  omega: "ω",
+  Gamma: "Γ",
+  Delta: "Δ",
+  Theta: "Θ",
+  Lambda: "Λ",
+  Xi: "Ξ",
+  Pi: "Π",
+  Sigma: "Σ",
+  Phi: "Φ",
+  Psi: "Ψ",
+  Omega: "Ω",
+  cdot: "·",
+  times: "×",
+  div: "÷",
+  pm: "±",
+  mp: "∓",
+  leq: "≤",
+  le: "≤",
+  geq: "≥",
+  ge: "≥",
+  neq: "≠",
+  ne: "≠",
+  approx: "≈",
+  equiv: "≡",
+  infty: "∞",
+  partial: "∂",
+  nabla: "∇",
+  int: "∫",
+  sum: "∑",
+  prod: "∏",
+  sqrt: "√",
+  rightarrow: "→",
+  to: "→",
+  leftarrow: "←",
+  Rightarrow: "⇒",
+  Leftarrow: "⇐",
+  iff: "⇔",
+  in: "∈",
+  notin: "∉",
+  subset: "⊂",
+  subseteq: "⊆",
+  cup: "∪",
+  cap: "∩",
+  forall: "∀",
+  exists: "∃",
+  quad: "  ",
+  qquad: "    ",
+};
+
+function formatLatexExpression(rawLatex: string): string {
+  let out = escapeHtmlText(rawLatex.trim());
+  // \dot{x} and \ddot{x}
+  out = out.replace(/\\ddot\{([^{}]+)\}/g, "$1&#776;");
+  out = out.replace(/\\dot\{([^{}]+)\}/g, "$1&#775;");
+  out = out.replace(/\\hat\{([^{}]+)\}/g, "$1&#770;");
+  out = out.replace(/\\vec\{([^{}]+)\}/g, "$1&#8407;");
+  out = out.replace(/\\text\{([^{}]+)\}/g, '<span style="font-style:normal">$1</span>');
+  out = out.replace(/\\mathrm\{([^{}]+)\}/g, '<span style="font-style:normal">$1</span>');
+  out = out.replace(/\\mathbf\{([^{}]+)\}/g, "<strong>$1</strong>");
+  // \frac{a}{b}
+  out = out.replace(
+    /\\frac\{([^{}]+)\}\{([^{}]+)\}/g,
+    '<span class="msx-frac"><span class="msx-frac-num">$1</span><span class="msx-frac-den">$2</span></span>',
+  );
+  // \sqrt{x}
+  out = out.replace(/\\sqrt\{([^{}]+)\}/g, "√($1)");
+  // Greek letters and operators
+  out = out.replace(/\\([a-zA-Z]+)/g, (_m, cmd: string) => LATEX_SYMBOLS[cmd] ?? cmd);
+  // Superscripts and subscripts
+  out = out.replace(/\^\{([^{}]+)\}/g, "<sup>$1</sup>");
+  out = out.replace(/\^([a-zA-Z0-9+-])/g, "<sup>$1</sup>");
+  out = out.replace(/_\{([^{}]+)\}/g, "<sub>$1</sub>");
+  out = out.replace(/_([a-zA-Z0-9+-])/g, "<sub>$1</sub>");
+  return out;
+}
+
+function highlightCodeLine(line: string): string {
+  const commentIdx = line.indexOf("//");
+  const codePart = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
+  const commentPart = commentIdx >= 0 ? line.slice(commentIdx) : "";
+
+  let html = escapeHtmlText(codePart);
+  // Strings
+  html = html.replace(/(&quot;.*?&quot;)/g, '<span class="tok-str">$1</span>');
+  // Keywords
+  html = html.replace(
+    /\b(model|block|connector|record|package|function|type|extends|equation|initial|algorithm|parameter|constant|discrete|input|output|flow|stream|if|then|else|elseif|when|elsewhen|for|loop|while|in|end|within|import|encapsulated|partial|replaceable|redeclare|final|inner|outer|public|protected|connect|der|pre|reinit|time|annotation|part|def|port|attribute|item|action|state|calc|constraint|requirement)\b/g,
+    '<span class="tok-kw">$1</span>',
+  );
+  // Built-in types
+  html = html.replace(
+    /\b(Real|Integer|Boolean|String|StateSelect|SI\.Voltage|SI\.Current|SI\.Resistance|SI\.Capacitance|SI\.Inductance|SI\.Position|SI\.Velocity|SI\.Acceleration|SI\.Force|SI\.Torque|SI\.Temperature)\b/g,
+    '<span class="tok-type">$1</span>',
+  );
+  // Numbers
+  html = html.replace(/\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, '<span class="tok-num">$1</span>');
+
+  if (commentPart) {
+    html += `<span class="tok-comment">${escapeHtmlText(commentPart)}</span>`;
+  }
+  return html;
+}
+
+export const RenderContent = ({ text, isLongForm }: { text: string | null; isLongForm?: boolean | undefined }) => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const [portals, setPortals] = useState<React.ReactPortal[]>([]);
@@ -654,15 +1013,200 @@ const RenderContent = ({ text }: { text: string | null }) => {
   useEffect(() => {
     if (!text || !containerRef.current) return;
 
-    let processedText = text.replace(/(^|\s)#([a-zA-Z0-9_-]+)/g, "$1[#$2](/explore?q=$2)");
-    processedText = processedText.replace(/(^|\s)@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g, "$1[@$2](/@$2)");
+    // 1. Protect fenced code blocks and inline code spans before transforming math, hashtags, and mentions
+    const codePlaceholders: string[] = [];
+    let safeText = text.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
+      const idx = codePlaceholders.length;
+      codePlaceholders.push(match);
+      return `@@MSX_CODE_${idx}@@`;
+    });
 
-    const rawHtml = marked.parse(processedText, { breaks: true, gfm: true }) as string;
-    const sanitizedHtml = DOMPurify.sanitize(rawHtml);
+    // 2. Transform display math $$...$$ and inline math $...$ into HTML placeholders
+    const mathPlaceholders: string[] = [];
+    safeText = safeText.replace(/\$\$([\s\S]+?)\$\$/g, (_m, expr: string) => {
+      const idx = mathPlaceholders.length;
+      mathPlaceholders.push(`<div class="msx-math-block">${formatLatexExpression(expr)}</div>`);
+      return `\n\n@@MSX_MATH_${idx}@@\n\n`;
+    });
+    safeText = safeText.replace(/(^|[^$\\])\$([^\n$]+?)\$/g, (_m, prefix: string, expr: string) => {
+      // Avoid matching currency like $100 followed by another $100
+      if (/^\d/.test(expr.trim()) && !/[\\^_=+\-*/a-zA-Z]/.test(expr)) {
+        return `${prefix}$${expr}$`;
+      }
+      const idx = mathPlaceholders.length;
+      mathPlaceholders.push(`<span class="msx-math-inline">${formatLatexExpression(expr)}</span>`);
+      return `${prefix}@@MSX_MATH_${idx}@@`;
+    });
+
+    // 3. Transform hashtags and @mentions outside code/math
+    safeText = safeText.replace(/(^|\s)#([a-zA-Z0-9_-]+)/g, "$1[#$2](/explore?q=$2)");
+    safeText = safeText.replace(/(^|\s)@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g, "$1[@$2](/@$2)");
+
+    // 4. Restore fenced code and inline code before marked parsing
+    safeText = safeText.replace(/@@MSX_CODE_(\d+)@@/g, (_m, idxStr: string) => {
+      return codePlaceholders[Number(idxStr)] ?? "";
+    });
+
+    let rawHtml = marked.parse(safeText, { breaks: true, gfm: true }) as string;
+
+    // 5. Restore rendered math blocks
+    rawHtml = rawHtml.replace(/@@MSX_MATH_(\d+)@@/g, (_m, idxStr: string) => {
+      return mathPlaceholders[Number(idxStr)] ?? "";
+    });
+
+    const sanitizedHtml = DOMPurify.sanitize(rawHtml, {
+      ADD_TAGS: ["sup", "sub"],
+      ADD_ATTR: ["class", "id"],
+    });
 
     containerRef.current.innerHTML = sanitizedHtml;
 
-    const links = containerRef.current.querySelectorAll("a");
+    // 6. Assign deterministic IDs and anchor links to H1/H2/H3 headings
+    const seenSlugs = new Map<string, number>();
+    const headings = containerRef.current.querySelectorAll("h1, h2, h3");
+    headings.forEach((heading) => {
+      const rawHeadingText = heading.textContent || "";
+      const baseSlug = slugifyHeading(rawHeadingText);
+      const count = seenSlugs.get(baseSlug) || 0;
+      seenSlugs.set(baseSlug, count + 1);
+      const slug = count === 0 ? baseSlug : `${baseSlug}-${count + 1}`;
+      heading.id = slug;
+
+      if (isLongForm) {
+        const anchor = document.createElement("a");
+        anchor.href = `#${slug}`;
+        anchor.className = "msx-heading-anchor";
+        anchor.textContent = "#";
+        anchor.title = "Copy link to section";
+        anchor.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          heading.scrollIntoView({ behavior: "smooth", block: "start" });
+          window.history.replaceState(null, "", `#${slug}`);
+        };
+        heading.appendChild(anchor);
+      }
+    });
+
+    // 7. Upgrade GitHub-style admonition blockquotes (> [!TIP], > [!NOTE], > [!IMPORTANT], > [!WARNING], > [!CAUTION])
+    const blockquotes = containerRef.current.querySelectorAll("blockquote");
+    blockquotes.forEach((bq) => {
+      const firstP = bq.querySelector("p");
+      if (!firstP) return;
+      const htmlContent = firstP.innerHTML.trim();
+      const match = htmlContent.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(?:<br\s*\/?>|\n)?([\s\S]*)$/i);
+      if (!match) return;
+      const kind = match[1]!.toUpperCase();
+      const remainder = match[2] || "";
+
+      const metaMap: Record<string, { label: string; icon: string; cls: string }> = {
+        TIP: { label: "Pro Tip", icon: "💡", cls: "msx-callout-tip" },
+        NOTE: { label: "Engineering Note", icon: "ℹ️", cls: "msx-callout-note" },
+        IMPORTANT: { label: "Important", icon: "⚡", cls: "msx-callout-important" },
+        WARNING: { label: "Warning", icon: "⚠️", cls: "msx-callout-warning" },
+        CAUTION: { label: "Caution", icon: "🚨", cls: "msx-callout-caution" },
+      };
+      const meta = metaMap[kind] || metaMap["NOTE"]!;
+
+      const calloutDiv = document.createElement("div");
+      calloutDiv.className = `msx-callout ${meta.cls}`;
+      const headerDiv = document.createElement("div");
+      headerDiv.className = "msx-callout-header";
+      headerDiv.textContent = `${meta.icon} ${meta.label}`;
+      calloutDiv.appendChild(headerDiv);
+
+      firstP.innerHTML = remainder;
+      while (bq.firstChild) {
+        calloutDiv.appendChild(bq.firstChild);
+      }
+      bq.parentNode?.replaceChild(calloutDiv, bq);
+    });
+
+    // 8. Upgrade fenced code blocks (<pre><code>) with Baeldung-style header, syntax highlighting, line numbers, Copy & Open in IDE
+    const preBlocks = containerRef.current.querySelectorAll("pre");
+    preBlocks.forEach((pre) => {
+      const codeEl = pre.querySelector("code");
+      if (!codeEl) return;
+      const rawCode = (codeEl.textContent || "").replace(/\n$/, "");
+      const langClass = Array.from(codeEl.classList).find((c) => c.startsWith("language-"));
+      const lang = (langClass ? langClass.replace("language-", "") : "modelica").toLowerCase();
+
+      // Detect optional "// File: ..." or "# File: ..." header line
+      const lines = rawCode.split("\n");
+      let fileTitle = "";
+      if (lines.length > 0) {
+        const fileMatch = lines[0]!.match(/^(?:\/\/|#)\s*(?:File|Filename):\s*(.+)$/i);
+        if (fileMatch && fileMatch[1]) {
+          fileTitle = fileMatch[1].trim();
+        }
+      }
+      if (!fileTitle) {
+        const modelMatch = rawCode.match(
+          /\b(?:model|block|package|function|record|connector|part\s+def)\s+([A-Za-z_]\w*)/,
+        );
+        if (modelMatch && modelMatch[1]) {
+          const ext = lang === "sysml" || lang === "sysml2" ? ".sysml" : lang === "msx" ? ".msx" : ".mo";
+          fileTitle = `${modelMatch[1]}${ext}`;
+        } else {
+          fileTitle = lang.toUpperCase();
+        }
+      }
+
+      pre.classList.add("msx-code-pre");
+      pre.innerHTML = "";
+
+      const header = document.createElement("div");
+      header.className = "msx-code-header";
+
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "msx-code-title";
+      titleSpan.innerHTML = `<span>📄 ${escapeHtmlText(fileTitle)}</span><span class="msx-code-lang-pill">${escapeHtmlText(lang)}</span>`;
+      header.appendChild(titleSpan);
+
+      const actions = document.createElement("div");
+      actions.className = "msx-code-actions";
+
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "msx-code-btn";
+      copyBtn.textContent = "Copy";
+      copyBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigator.clipboard.writeText(rawCode);
+        copyBtn.textContent = "✓ Copied";
+        setTimeout(() => {
+          copyBtn.textContent = "Copy";
+        }, 1800);
+      };
+      actions.appendChild(copyBtn);
+
+      const ideBtn = document.createElement("button");
+      ideBtn.type = "button";
+      ideBtn.className = "msx-code-btn msx-code-btn-ide";
+      ideBtn.textContent = "▶ Open in IDE";
+      ideBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate(`/ide?source=${encodeURIComponent(rawCode)}&title=${encodeURIComponent(fileTitle)}`);
+      };
+      actions.appendChild(ideBtn);
+
+      header.appendChild(actions);
+      pre.appendChild(header);
+
+      const codeBody = document.createElement("code");
+      codeBody.className = "msx-code-body";
+      codeBody.innerHTML = lines
+        .map(
+          (lineText, idx) =>
+            `<div class="msx-code-line"><span class="msx-line-num">${idx + 1}</span><span class="msx-line-content">${highlightCodeLine(lineText)}</span></div>`,
+        )
+        .join("");
+      pre.appendChild(codeBody);
+    });
+
+    const links = containerRef.current.querySelectorAll("a:not(.msx-heading-anchor)");
     const newPortals: React.ReactPortal[] = [];
     links.forEach((link) => {
       const href = link.getAttribute("href");
@@ -697,6 +1241,16 @@ const RenderContent = ({ text }: { text: string | null }) => {
           e.stopPropagation();
           navigate(href);
         };
+      } else if (href && href.startsWith("#")) {
+        link.style.color = "var(--color-accent-cyan)";
+        link.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const targetEl = document.getElementById(href.slice(1));
+          if (targetEl) {
+            targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        };
       } else {
         link.onclick = (e) => {
           e.preventDefault();
@@ -712,11 +1266,11 @@ const RenderContent = ({ text }: { text: string | null }) => {
 
     setPortals(newPortals);
     return () => setPortals([]);
-  }, [text, navigate]);
+  }, [text, navigate, isLongForm]);
 
   return (
     <>
-      <MarkdownContainer className="markdown-body" ref={containerRef} />
+      <MarkdownContainer className="markdown-body" $isLongForm={isLongForm} ref={containerRef} />
       {portals}
     </>
   );
@@ -727,9 +1281,12 @@ const viewedPostIds = new Set<number>();
 
 const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const toast = useToast();
   const displayPost = post.repost_post || post;
+  const canEditPost = Boolean(
+    token && user && (user.username === displayPost.username || (user as any)?.role === "admin"),
+  );
 
   const [liked, setLiked] = useState(Boolean(displayPost.liked));
   const [likeCount, setLikeCount] = useState(displayPost.like_count);
@@ -758,6 +1315,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [showPostMenu, setShowPostMenu] = useState(false);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [showReplyModal, setShowReplyModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -935,6 +1493,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   };
 
   const [isNotebookExpanded, setIsNotebookExpanded] = useState(false);
+  const [showInlineToc, setShowInlineToc] = useState(false);
   const isNotebook = isNotebookPost(displayPost);
   const notebookData = React.useMemo(
     () =>
@@ -942,6 +1501,14 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
         ? parseNotebookFromContent(displayPost.content, displayPost.artifact_view_id, displayPost.metadata?.notebook)
         : null,
     [isNotebook, displayPost.content, displayPost.artifact_view_id, displayPost.metadata?.notebook],
+  );
+  const notebookHeadings = React.useMemo(
+    () => (notebookData ? extractNotebookHeadings(notebookData.cells) : []),
+    [notebookData],
+  );
+  const readTimeMinutes = React.useMemo(
+    () => (notebookData ? notebookData.estimatedReadMinutes || estimateReadingTimeMinutes(notebookData.cells) : 1),
+    [notebookData],
   );
 
   const renderNotebookOrStandardBody = (isDetailView: boolean) => {
@@ -960,23 +1527,258 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
       const hiddenCount = notebookData.cells.length - visibleCells.length;
       let figureIndex = 0;
 
+      const difficultyColorMap: Record<string, { bg: string; border: string; fg: string }> = {
+        Beginner: {
+          bg: "rgba(16, 185, 129, 0.12)",
+          border: "rgba(16, 185, 129, 0.35)",
+          fg: "var(--color-status-verified, #34d399)",
+        },
+        Intermediate: {
+          bg: "rgba(6, 182, 212, 0.12)",
+          border: "rgba(6, 182, 212, 0.35)",
+          fg: "var(--color-accent-cyan, #22d3ee)",
+        },
+        Advanced: {
+          bg: "rgba(139, 92, 246, 0.15)",
+          border: "rgba(139, 92, 246, 0.4)",
+          fg: "var(--color-accent-purple, #c084fc)",
+        },
+      };
+      const diffStyle =
+        notebookData.difficulty && difficultyColorMap[notebookData.difficulty]
+          ? difficultyColorMap[notebookData.difficulty]
+          : null;
+
+      const wasUpdated =
+        displayPost.updated_at &&
+        displayPost.created_at &&
+        new Date(displayPost.updated_at).getTime() - new Date(displayPost.created_at).getTime() > 5000;
+
       return (
         <Box display="flex" flexDirection="column" gap={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-          {notebookData.title && (
+          {/* Baeldung-style Tutorial Hero Banner */}
+          <div
+            style={{
+              marginTop: "6px",
+              padding: isDetailView ? "16px 18px" : "12px 14px",
+              borderRadius: "12px",
+              background: "linear-gradient(135deg, rgba(6, 182, 212, 0.07), rgba(139, 92, 246, 0.06))",
+              border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
             <div
               style={{
-                fontSize: isDetailView ? "21px" : "17.5px",
-                fontWeight: 800,
-                color: "var(--color-text-heading, var(--color-fg-default))",
-                lineHeight: 1.3,
-                marginTop: "4px",
-                marginBottom: "2px",
-                letterSpacing: "-0.01em",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "6px",
               }}
             >
-              {notebookData.title}
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+                {notebookData.series && (
+                  <span
+                    style={{
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      fontFamily: "var(--font-mono, monospace)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      padding: "2px 8px",
+                      borderRadius: "9999px",
+                      background: "rgba(6, 182, 212, 0.15)",
+                      color: "var(--color-accent-cyan)",
+                      border: "1px solid rgba(6, 182, 212, 0.32)",
+                    }}
+                  >
+                    📚 {notebookData.series}
+                    {notebookData.seriesPart ? ` · Part ${notebookData.seriesPart}` : ""}
+                  </span>
+                )}
+                {notebookData.difficulty && diffStyle && (
+                  <span
+                    style={{
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      fontFamily: "var(--font-mono, monospace)",
+                      padding: "2px 8px",
+                      borderRadius: "9999px",
+                      background: diffStyle.bg,
+                      color: diffStyle.fg,
+                      border: `1px solid ${diffStyle.border}`,
+                    }}
+                  >
+                    ● {notebookData.difficulty}
+                  </span>
+                )}
+                {notebookData.dialect && (
+                  <span
+                    style={{
+                      fontSize: "10.5px",
+                      fontWeight: 600,
+                      fontFamily: "var(--font-mono, monospace)",
+                      padding: "2px 8px",
+                      borderRadius: "9999px",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      color: "var(--color-text-secondary)",
+                      border: "1px solid var(--color-border-subtle)",
+                    }}
+                  >
+                    ⚙️ {notebookData.dialect}
+                  </span>
+                )}
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: "var(--color-text-muted)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  ⏱ {readTimeMinutes} min read
+                </span>
+                {wasUpdated && (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontFamily: "var(--font-mono, monospace)",
+                      color: "var(--color-accent-cyan)",
+                    }}
+                  >
+                    · Updated {formatRelativeTime(displayPost.updated_at)}
+                  </span>
+                )}
+              </div>
+
+              {canEditPost && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setShowEditModal(true);
+                  }}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.06)",
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "6px",
+                    padding: "2px 8px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "var(--color-text-secondary)",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✏️ Edit Tutorial
+                </button>
+              )}
             </div>
-          )}
+
+            {notebookData.title && (
+              <div
+                style={{
+                  fontSize: isDetailView ? "23px" : "18.5px",
+                  fontWeight: 800,
+                  color: "var(--color-text-heading, var(--color-fg-default))",
+                  lineHeight: 1.28,
+                  letterSpacing: "-0.015em",
+                }}
+              >
+                {notebookData.title}
+              </div>
+            )}
+
+            {notebookData.summary && (
+              <div
+                style={{
+                  fontSize: isDetailView ? "14.5px" : "13.5px",
+                  color: "var(--color-text-secondary)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {notebookData.summary}
+              </div>
+            )}
+
+            {/* Collapsible In-Article Table of Contents */}
+            {notebookHeadings.length > 0 && (
+              <div style={{ marginTop: "2px" }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    setShowInlineToc(!showInlineToc);
+                  }}
+                  style={{
+                    background: "rgba(0, 0, 0, 0.2)",
+                    border: "1px solid var(--color-border-subtle)",
+                    borderRadius: "8px",
+                    padding: "5px 10px",
+                    fontSize: "11.5px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontWeight: 600,
+                    color: "var(--color-accent-cyan)",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>📑 Table of Contents ({notebookHeadings.length} sections)</span>
+                  <span>{showInlineToc ? "▲" : "▼"}</span>
+                </button>
+                {showInlineToc && (
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      background: "rgba(0, 0, 0, 0.25)",
+                      border: "1px solid var(--color-border-subtle)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                    }}
+                  >
+                    {notebookHeadings.map((h, i) => (
+                      <a
+                        key={`${h.slug}-${i}`}
+                        href={`#${h.slug}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isDetailView) {
+                            e.preventDefault();
+                            setIsNotebookExpanded(true);
+                            setTimeout(() => {
+                              document.getElementById(h.slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }, 60);
+                          } else {
+                            e.preventDefault();
+                            document.getElementById(h.slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }
+                        }}
+                        style={{
+                          paddingLeft: h.level === 3 ? "14px" : "0px",
+                          fontSize: h.level === 3 ? "12px" : "12.5px",
+                          fontWeight: h.level === 3 ? 500 : 600,
+                          color: h.level === 3 ? "var(--color-text-muted)" : "var(--color-text-primary)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        {h.text}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {visibleCells.map((cell) => {
             if (cell.type === "markdown") {
@@ -988,11 +1790,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   key={cell.id}
                   style={{
                     fontSize: isDetailView ? "16.5px" : "15px",
-                    lineHeight: isDetailView ? 1.6 : 1.5,
+                    lineHeight: isDetailView ? 1.65 : 1.55,
                     wordBreak: "break-word",
                   }}
                 >
-                  <RenderContent text={mdText} />
+                  <RenderContent text={mdText} isLongForm={true} />
                 </Box>
               );
             }
@@ -1006,6 +1808,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             return (
               <Box
                 key={cell.id}
+                id={`fig-${currentFigNum}`}
                 my={1}
                 style={{
                   width: "100%",
@@ -1056,36 +1859,63 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
           })}
 
           {!isDetailView && hiddenCount > 0 && !isNotebookExpanded && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setIsNotebookExpanded(true);
-              }}
-              style={{
-                width: "100%",
-                padding: "9px 14px",
-                marginTop: "4px",
-                borderRadius: "10px",
-                border: "1px solid rgba(6, 182, 212, 0.32)",
-                background: "linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.1))",
-                color: "var(--color-accent-cyan)",
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span>
-                📓 Expand full notebook ({notebookData.cells.length} sections · {notebookData.artifactIds.length}{" "}
-                {notebookData.artifactIds.length === 1 ? "artifact" : "interactive artifacts"})
-              </span>
-              <span>+{hiddenCount} more ▼</span>
-            </button>
+            <Box display="flex" gap={2} flexWrap="wrap" mt={1}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setIsNotebookExpanded(true);
+                }}
+                style={{
+                  flex: 1,
+                  minWidth: "220px",
+                  padding: "9px 14px",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(6, 182, 212, 0.32)",
+                  background: "linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.1))",
+                  color: "var(--color-accent-cyan)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>
+                  📓 Expand inline ({notebookData.cells.length} sections
+                  {notebookData.artifactIds.length > 0
+                    ? ` · ${notebookData.artifactIds.length} ${notebookData.artifactIds.length === 1 ? "artifact" : "artifacts"}`
+                    : ""}
+                  )
+                </span>
+                <span>+{hiddenCount} more ▼</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  navigate(`/${displayPost.username}/status/${displayPost.id}`);
+                }}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(139, 92, 246, 0.38)",
+                  background: "rgba(139, 92, 246, 0.14)",
+                  color: "var(--color-text-heading)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                📖 Read Tutorial View →
+              </button>
+            </Box>
           )}
 
           {!isDetailView && isNotebookExpanded && notebookData.cells.length > 1 && (
@@ -1111,6 +1941,94 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             >
               ▲ Collapse notebook
             </button>
+          )}
+
+          {/* Baeldung-style Companion Code & Web IDE Footer on Detail View */}
+          {isDetailView && (
+            <div
+              style={{
+                marginTop: "8px",
+                padding: "14px 16px",
+                borderRadius: "12px",
+                background: "rgba(6, 182, 212, 0.06)",
+                border: "1px solid rgba(6, 182, 212, 0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-heading)" }}>
+                  💻 Companion Code & Interactive Sandbox
+                </span>
+                <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                  {notebookData.companionRepo
+                    ? `Full source available in ${notebookData.companionRepo} — or launch directly in the WebAssembly IDE.`
+                    : "All code snippets and equations in this tutorial can be compiled and simulated directly in the ModelScript Web IDE."}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {notebookData.companionRepo && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      const repo = notebookData.companionRepo!;
+                      if (repo.startsWith("http://") || repo.startsWith("https://")) {
+                        window.open(repo, "_blank", "noopener,noreferrer");
+                      } else {
+                        navigate(`/explore?q=${encodeURIComponent(repo)}`);
+                      }
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--color-border-default)",
+                      background: "rgba(255, 255, 255, 0.06)",
+                      color: "var(--color-text-primary)",
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📦 {notebookData.companionRepo}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const codeBlocks = Array.from(
+                      (displayPost.content || "").matchAll(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g),
+                    )
+                      .map((m) => m[1]?.trim())
+                      .filter(Boolean);
+                    const combinedSource = codeBlocks.join("\n\n");
+                    navigate(
+                      `/ide?source=${encodeURIComponent(combinedSource || displayPost.content || "")}&title=${encodeURIComponent(notebookData.title || `Tutorial-${displayPost.id}`)}`,
+                    );
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid rgba(139, 92, 246, 0.45)",
+                    background: "rgba(139, 92, 246, 0.18)",
+                    color: "var(--color-text-heading)",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "11.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  ▶ Open Tutorial in Web IDE
+                </button>
+              </div>
+            </div>
           )}
 
           {notebookData.artifactIds.length > 0 && (
@@ -1396,6 +2314,18 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     display="flex"
                     flexDirection="column"
                   >
+                    {canEditPost && (
+                      <MenuButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setShowPostMenu(false);
+                          setShowEditModal(true);
+                        }}
+                      >
+                        <span>✏️</span> {isNotebook ? "Edit tutorial / notebook" : "Edit post"}
+                      </MenuButton>
+                    )}
                     <MenuButton
                       onClick={async (e) => {
                         e.stopPropagation();
@@ -2019,6 +2949,18 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                           display="flex"
                           flexDirection="column"
                         >
+                          {canEditPost && (
+                            <MenuButton
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setShowPostMenu(false);
+                                setShowEditModal(true);
+                              }}
+                            >
+                              <span>✏️</span> {isNotebook ? "Edit tutorial / notebook" : "Edit post"}
+                            </MenuButton>
+                          )}
                           <MenuButton
                             onClick={async (e) => {
                               e.stopPropagation();
@@ -2522,6 +3464,28 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             setPendingPin(undefined);
           }}
           onPostCreated={(reply) => navigate(`/${reply.author?.username || reply.username}/status/${reply.id}`)}
+        />
+      )}
+      {showEditModal && (
+        <ComposeModal
+          initialState={{
+            editPostId: displayPost.id,
+            content: displayPost.content,
+            artifactViewId: displayPost.artifact_view_id,
+            isNotebookMode: isNotebook,
+            notebookTitle: notebookData?.title || "",
+            notebookSummary: notebookData?.summary || "",
+            notebookDifficulty: notebookData?.difficulty,
+            notebookSeries: notebookData?.series || "",
+            notebookDialect: notebookData?.dialect || "",
+            notebookCompanionRepo: notebookData?.companionRepo || "",
+            notebookCells: notebookData?.cells,
+          }}
+          onClose={() => setShowEditModal(false)}
+          onPostCreated={() => {
+            setShowEditModal(false);
+            window.location.reload();
+          }}
         />
       )}
       {showAnalyticsModal && (

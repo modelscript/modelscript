@@ -369,7 +369,8 @@ export class AnimationController {
         const val = this.getVariableValue(b.variable);
         if (val === null) continue;
 
-        const scaleFactor = b.scaleFactor ?? (b.unit ? getUnitScaleFactor(b.unit, "m") : 1.0);
+        const targetUnit = b.property === "rotation" ? "deg" : "m";
+        const scaleFactor = b.scaleFactor ?? (b.unit ? getUnitScaleFactor(b.unit, targetUnit) : 1.0);
         const scaledVal = val * scaleFactor;
 
         if (b.property === "position") {

@@ -390,7 +390,7 @@ export class Context {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
     if (!tree) return null;
-    return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+    return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
   }
 
   /** Registry of file-extension-to-WASM-parser mappings shared across `Context` instances. */

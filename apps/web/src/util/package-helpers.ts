@@ -91,7 +91,7 @@ export function inspectPackageZip(zipData: Uint8Array): ExtractedZipMetadata {
     const isRootOrTopDir = parts.length === 1 || parts.length === 2;
     const baseName = parts[parts.length - 1];
 
-    if (isRootOrTopDir && baseName === "package.json" && !packageJsonText) {
+    if (isRootOrTopDir && (baseName === "package.json" || baseName === "modelscript.json") && !packageJsonText) {
       packageJsonText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
     } else if (isRootOrTopDir && baseName === "package.mo" && !packageMoText) {
       packageMoText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
@@ -147,6 +147,9 @@ export function filterAndSortLibraries(
   },
 ): LibraryListItem[] {
   const filtered = libraries.filter((lib) => {
+    if (Array.isArray(lib.versions) && lib.versions.length === 0 && !lib.latestVersion) {
+      return false;
+    }
     if (options.activeTab === "my") {
       if (!options.username) return false;
       const matchesUser =

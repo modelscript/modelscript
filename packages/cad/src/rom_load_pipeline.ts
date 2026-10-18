@@ -49,23 +49,40 @@ export class RomLoadPipeline {
       }
     });
 
+    const isStepMajor =
+      trajectory.y.length === trajectory.t.length &&
+      trajectory.t.length !== trajectory.states.length &&
+      (trajectory.y[0]?.length ?? 0) === trajectory.states.length;
+
     for (const item of forceIndices) {
       let maxVal = -Infinity;
       let maxTime = 0;
 
       for (let step = 0; step < trajectory.t.length; step++) {
-        const val = Math.abs(trajectory.y[item.idx]?.[step] ?? 0);
+        const raw = isStepMajor ? trajectory.y[step]?.[item.idx] : trajectory.y[item.idx]?.[step];
+        const val = Math.abs(raw ?? 0);
         if (val > maxVal) {
           maxVal = val;
           maxTime = trajectory.t[step]!;
         }
       }
 
+      const peak = maxVal === -Infinity ? 0 : maxVal;
+      const lower = item.name.toLowerCase();
+      let vec: [number, number, number] = [0, 0, peak];
+      if (lower.endsWith("[1]") || lower.endsWith("_x") || lower.endsWith(".x") || lower.endsWith(".fx")) {
+        vec = [peak, 0, 0];
+      } else if (lower.endsWith("[2]") || lower.endsWith("_y") || lower.endsWith(".y") || lower.endsWith(".fy")) {
+        vec = [0, peak, 0];
+      }
+
+      const isTorque = lower.includes("torque") || lower.includes(".tau");
       loads.push({
         connectorName: item.name,
-        peakMagnitude: maxVal === -Infinity ? 0 : maxVal,
+        peakMagnitude: peak,
         timeOfPeak: maxTime,
-        forceVector: [0, 0, maxVal === -Infinity ? 0 : maxVal],
+        forceVector: vec,
+        ...(isTorque ? { torqueVector: [...vec] as [number, number, number] } : {}),
       });
     }
 
@@ -117,11 +134,30 @@ export class RomLoadPipeline {
 
     for (const c of conditions) {
       lines.push(`*CLOAD`);
-      lines.push(` ${c.surfacePatchId}, 2, ${c.appliedForce[1].toFixed(2)}`);
+      let emitted = false;
+      for (let axis = 0; axis < 3; axis++) {
+        const compForce = c.appliedForce[axis]!;
+        if (Math.abs(compForce) > 1e-12) {
+          lines.push(` ${c.surfacePatchId}, ${axis + 1}, ${compForce.toFixed(2)}`);
+          emitted = true;
+        }
+      }
+      if (!emitted) {
+        lines.push(` ${c.surfacePatchId}, 2, ${c.appliedForce[1].toFixed(2)}`);
+      }
     }
 
     lines.push(`*BOUNDARY`);
-    for (const fix of conditions[0]?.fixedFaces || ["hub_base"]) {
+    const allFixedFaces = new Set<string>();
+    for (const c of conditions) {
+      for (const f of c.fixedFaces) {
+        allFixedFaces.add(f);
+      }
+    }
+    if (allFixedFaces.size === 0) {
+      allFixedFaces.add("hub_base");
+    }
+    for (const fix of allFixedFaces) {
       lines.push(` ${fix}, 1, 3`);
     }
 

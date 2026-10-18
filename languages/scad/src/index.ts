@@ -141,13 +141,18 @@ export async function extractScadCadComponents(
       shiftedVerts[v + 2] = mesh.vertices[v + 2]! - userPos[2];
     }
 
-    const ports = mesh.tags.map((t) => ({
-      name: t.portName,
-      port: {
-        feature: t.portType,
-        offsetPosition: (t.normal ? [t.normal[0], t.normal[1], t.normal[2]] : [0, 0, 0]) as [number, number, number],
-      },
-    }));
+    const ports = mesh.tags.map((t) => {
+      const rawOrigin = (t as any).origin;
+      return {
+        name: t.portName,
+        port: {
+          feature: t.portType,
+          offsetPosition: (Array.isArray(rawOrigin) && rawOrigin.length >= 3
+            ? [Number(rawOrigin[0]), Number(rawOrigin[1]), Number(rawOrigin[2])]
+            : [0, 0, 0]) as [number, number, number],
+        },
+      };
+    });
 
     const compName = `${part.name || "part"}_${i + 1}`;
     components.push({
@@ -155,8 +160,8 @@ export async function extractScadCadComponents(
       cad: {
         uri: uri ? `${uri}#${compName}` : `scad://${compName}`,
         position: userPos,
-        rotation: [0, 0, 0],
-        scale: [1, 1, 1],
+        rotation: meta?.rotation ? [meta.rotation[0], meta.rotation[1], meta.rotation[2]] : [0, 0, 0],
+        scale: meta?.scale ? [meta.scale[0], meta.scale[1], meta.scale[2]] : [1, 1, 1],
       },
       proceduralMesh: {
         vertices: shiftedVerts,

@@ -94,6 +94,9 @@ export class LanguageRegistry {
       if (!plugin.queryEngine && existing.queryEngine) {
         plugin.queryEngine = existing.queryEngine;
       }
+      if (!plugin.createQueryEngine && existing.createQueryEngine) {
+        plugin.createQueryEngine = existing.createQueryEngine;
+      }
       if (!plugin.customHandlers && existing.customHandlers) {
         plugin.customHandlers = existing.customHandlers;
       }

@@ -13,6 +13,12 @@ import Post from "../components/Post";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 import type { ArtifactViewDTO, PostItem } from "../types/api";
 import { downloadParquetFile } from "../util/binary-export";
+import {
+  estimateReadingTimeMinutes,
+  extractNotebookHeadings,
+  isNotebookPost,
+  parseNotebookFromContent,
+} from "../util/notebook";
 import { usePageTitle } from "../util/title";
 
 const ReplyInputContainer = styled.div`
@@ -413,10 +419,55 @@ const PostDetailPage: React.FC = () => {
   const { token, user } = useAuth();
   const [post, setPost] = useState<PostItem | null>(null);
   const [artifactView, setArtifactView] = useState<ArtifactViewDTO | null>(null);
-  usePageTitle(post?.username ? `Post by @${post.username}` : "Post");
+  const isNotebook = useMemo(() => (post ? isNotebookPost(post) : false), [post]);
+  const notebookData = useMemo(
+    () =>
+      post && isNotebook
+        ? parseNotebookFromContent(post.content, post.artifact_view_id, post.metadata?.notebook)
+        : null,
+    [post, isNotebook],
+  );
+  const notebookHeadings = useMemo(
+    () => (notebookData ? extractNotebookHeadings(notebookData.cells) : []),
+    [notebookData],
+  );
+  const readTimeMinutes = useMemo(
+    () => (notebookData ? notebookData.estimatedReadMinutes || estimateReadingTimeMinutes(notebookData.cells) : 1),
+    [notebookData],
+  );
+  const [activeHeadingSlug, setActiveHeadingSlug] = useState<string>("");
+  const [rightDockTab, setRightDockTab] = useState<"guide" | "solver">("guide");
+
+  usePageTitle(
+    notebookData?.title
+      ? `${notebookData.title} — ModelScript Tutorial`
+      : post?.username
+        ? `Post by @${post.username}`
+        : "Post",
+  );
   const [parents, setParents] = useState<PostItem[]>([]);
   const [replies, setReplies] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (notebookHeadings.length === 0) return;
+    setActiveHeadingSlug(notebookHeadings[0]?.slug || "");
+    const handleScroll = () => {
+      let current = notebookHeadings[0]?.slug || "";
+      for (const h of notebookHeadings) {
+        const el = document.getElementById(h.slug);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 140) {
+            current = h.slug;
+          }
+        }
+      }
+      setActiveHeadingSlug(current);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [notebookHeadings]);
 
   // General Oscillator parameters
   const [dampingVal, setDampingVal] = useState("0.18");
@@ -689,585 +740,840 @@ end SnesMoldCavity;
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         <Heading as="h2" style={{ fontSize: "18px", margin: 0, fontWeight: 700, color: "var(--color-text-heading)" }}>
-          {post.artifact_view_id ? "Engineering Inspector" : "Thread"}
+          {isNotebook ? "Engineering Tutorial" : post.artifact_view_id ? "Engineering Inspector" : "Thread"}
         </Heading>
       </StickyHeader>
 
-      {post.artifact_view_id ? (
+      {isNotebook || post.artifact_view_id ? (
         <SplitContainer>
           <Box display="flex" flexDirection="column">
             {threadContent}
           </Box>
 
-          {isInjectionMoldingOrCfd ? (
-            <SimulationDockPane>
-              <DockTitle>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <ZapIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
-                  <span>LIVE INJECTION MOLDING CO-SIMULATION</span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
-                    background: isSimulating ? "var(--status-warning-bg)" : "var(--status-verified-bg)",
-                    border: isSimulating
-                      ? "1px solid var(--status-warning-border)"
-                      : "1px solid var(--status-verified-border)",
-                    padding: "2px 8px",
-                    borderRadius: "12px",
-                    fontWeight: 600,
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  {isSimulating ? "COMPUTING..." : "JIT READY"}
-                </span>
-              </DockTitle>
-              <Text style={{ fontSize: "11px", color: "var(--color-text-muted)", marginTop: "-8px" }}>
-                ABS Polymer Cavity Fill & Solidification Dynamics (OpenFOAM / WASM DAE)
-              </Text>
-
-              <ParamSliderRow>
-                <div className="label-val">
-                  <span>Melt Temp (T_melt):</span>
-                  <span style={{ color: "var(--color-accent-cyan)", fontFamily: "var(--font-mono)" }}>
-                    {meltTempVal} °C
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="200"
-                  max="270"
-                  step="1"
-                  value={meltTempVal}
-                  onChange={(e) => setMeltTempVal(e.target.value)}
-                />
-              </ParamSliderRow>
-
-              <ParamSliderRow>
-                <div className="label-val">
-                  <span>Injection Pressure (P_inj):</span>
-                  <span style={{ color: "var(--color-accent-purple)", fontFamily: "var(--font-mono)" }}>
-                    {injPressureVal} MPa
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="40"
-                  max="140"
-                  step="2"
-                  value={injPressureVal}
-                  onChange={(e) => setInjPressureVal(e.target.value)}
-                />
-              </ParamSliderRow>
-
-              <ParamSliderRow>
-                <div className="label-val">
-                  <span>Gate Inlet Speed (v_inlet):</span>
-                  <span style={{ color: "var(--color-status-verified)", fontFamily: "var(--font-mono)" }}>
-                    {gateVelVal} m/s
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.20"
-                  max="1.50"
-                  step="0.05"
-                  value={gateVelVal}
-                  onChange={(e) => setGateVelVal(e.target.value)}
-                />
-              </ParamSliderRow>
-
-              <TelemetryGrid>
-                <TelemetryCard>
-                  <span className="label">CAVITY FILL TIME</span>
-                  <span className="val">
-                    {moldSimResult.stats.fillTimeMs} <small>ms</small>
-                  </span>
-                  <span className="sub">Target &lt; 250ms (Cavity 100%)</span>
-                </TelemetryCard>
-                <TelemetryCard>
-                  <span className="label">MELT VISCOSITY (η)</span>
-                  <span className="val">
-                    {moldSimResult.stats.apparentViscosity} <small>Pa·s</small>
-                  </span>
-                  <span className="sub">Cross-WLF Non-Newtonian</span>
-                </TelemetryCard>
-                <TelemetryCard>
-                  <span className="label">PEAK CLAMP FORCE</span>
-                  <span className="val">
-                    {moldSimResult.stats.clampForceKn} <small>kN</small>
-                  </span>
-                  <span className="sub">150×100mm cavity area</span>
-                </TelemetryCard>
-                <TelemetryCard>
-                  <span className="label">COOLING RATE</span>
-                  <span className="val">
-                    {moldSimResult.stats.coolingRate} <small>°C/s</small>
-                  </span>
-                  <span className="sub">Melt front heat flux</span>
-                </TelemetryCard>
-              </TelemetryGrid>
-
-              <ConvergencePlotBox
-                onPointerMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const mouseX = e.clientX - rect.left - 16;
-                  const width = rect.width - 32;
-                  if (width <= 0) return;
-                  const ratio = Math.max(0, Math.min(1, mouseX / width));
-                  const t = ratio * 0.6;
-                  const closest = moldSimResult.points.reduce((prev, curr) =>
-                    Math.abs(curr.t - t) < Math.abs(prev.t - t) ? curr : prev,
-                  );
-                  setHoveredMoldPoint(closest);
+          <Box
+            display="flex"
+            flexDirection="column"
+            gap={2}
+            style={{ position: "sticky", top: "70px", height: "fit-content" }}
+          >
+            {isNotebook && post.artifact_view_id && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  padding: "4px",
+                  borderRadius: "12px",
+                  background: "var(--color-bg-card, rgba(15, 23, 42, 0.65))",
+                  border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
                 }}
-                onPointerLeave={() => setHoveredMoldPoint(null)}
               >
-                <div
+                <button
+                  type="button"
+                  onClick={() => setRightDockTab("guide")}
                   style={{
-                    width: "100%",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "10px",
-                    color: hoveredMoldPoint ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.45)",
-                    marginBottom: "4px",
-                    background: "rgba(255, 255, 255, 0.05)",
-                    padding: "4px 8px",
-                    borderRadius: "6px",
-                    minHeight: "24px",
-                    boxSizing: "border-box",
+                    flex: 1,
+                    padding: "7px 12px",
+                    borderRadius: "8px",
+                    border: rightDockTab === "guide" ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+                    background:
+                      rightDockTab === "guide"
+                        ? "linear-gradient(135deg, rgba(6, 182, 212, 0.16), rgba(139, 92, 246, 0.14))"
+                        : "transparent",
+                    color: rightDockTab === "guide" ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "11.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
                   }}
                 >
-                  {hoveredMoldPoint ? (
-                    <>
-                      <span>t: {(hoveredMoldPoint.t * 1000).toFixed(0)}ms</span>
-                      <span style={{ color: "#10b981" }}>Fill α: {(hoveredMoldPoint.alpha * 100).toFixed(1)}%</span>
-                      <span style={{ color: "var(--color-accent-cyan)" }}>
-                        P: {hoveredMoldPoint.pressure.toFixed(1)} MPa
-                      </span>
-                      <span>x: {hoveredMoldPoint.frontX.toFixed(1)}mm</span>
-                      <span>T: {hoveredMoldPoint.temp.toFixed(1)}°C</span>
-                    </>
-                  ) : (
-                    <span>Move cursor over plot to scrub melt front (α, Pressure, Front x, Temp)</span>
-                  )}
-                </div>
+                  📚 Tutorial Guide & TOC
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRightDockTab("solver")}
+                  style={{
+                    flex: 1,
+                    padding: "7px 12px",
+                    borderRadius: "8px",
+                    border: rightDockTab === "solver" ? "1px solid rgba(139, 92, 246, 0.45)" : "1px solid transparent",
+                    background: rightDockTab === "solver" ? "rgba(139, 92, 246, 0.18)" : "transparent",
+                    color: rightDockTab === "solver" ? "var(--color-text-heading)" : "var(--color-text-muted)",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "11.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  ⚡ Live Solver
+                </button>
+              </div>
+            )}
 
-                <svg width="100%" height="140" viewBox="0 0 280 140" style={{ maxWidth: "340px", overflow: "visible" }}>
-                  <line x1="15" y1="22" x2="265" y2="22" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
-                  <line x1="15" y1="71" x2="265" y2="71" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
-                  <line x1="15" y1="120" x2="265" y2="120" stroke="rgba(255,255,255,0.22)" strokeDasharray="3 3" />
+            {isNotebook && notebookData && (!post.artifact_view_id || rightDockTab === "guide") ? (
+              <SimulationDockPane style={{ position: "static" }}>
+                <DockTitle>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>📑</span>
+                    <span>ON THIS PAGE</span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "10.5px",
+                      color: "var(--color-accent-cyan)",
+                      background: "rgba(6, 182, 212, 0.12)",
+                      border: "1px solid rgba(6, 182, 212, 0.28)",
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    ⏱ {readTimeMinutes} MIN READ
+                  </span>
+                </DockTitle>
 
-                  <text x="3" y="25" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
-                    100%
-                  </text>
-                  <text x="3" y="74" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
-                    50%
-                  </text>
-                  <text x="3" y="123" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="var(--font-mono)">
-                    0%
-                  </text>
+                {notebookHeadings.length > 0 ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                      borderLeft: "2px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
+                      paddingLeft: "10px",
+                      maxHeight: "300px",
+                      overflowY: "auto",
+                    }}
+                  >
+                    {notebookHeadings.map((h, i) => {
+                      const isActive = activeHeadingSlug === h.slug;
+                      return (
+                        <a
+                          key={`${h.slug}-${i}`}
+                          href={`#${h.slug}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setActiveHeadingSlug(h.slug);
+                            document.getElementById(h.slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }}
+                          style={{
+                            padding: "4px 8px",
+                            marginLeft: h.level === 3 ? "10px" : "0px",
+                            borderRadius: "6px",
+                            fontSize: h.level === 3 ? "12px" : "12.5px",
+                            fontWeight: isActive ? 700 : h.level === 3 ? 500 : 600,
+                            color: isActive
+                              ? "var(--color-accent-cyan)"
+                              : h.level === 3
+                                ? "var(--color-text-muted)"
+                                : "var(--color-text-secondary)",
+                            background: isActive ? "rgba(6, 182, 212, 0.12)" : "transparent",
+                            textDecoration: "none",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {h.text}
+                        </a>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                    Add <code>## Section</code> headings in Markdown to populate the interactive Table of Contents.
+                  </Text>
+                )}
 
-                  <text x="268" y="25" fill="#06b6d4" fontSize="8" fontFamily="var(--font-mono)">
-                    {injPressureVal}M
-                  </text>
-                  <text x="268" y="74" fill="rgba(6,182,212,0.6)" fontSize="8" fontFamily="var(--font-mono)">
-                    {(parseFloat(injPressureVal) / 2).toFixed(0)}M
-                  </text>
+                {notebookData.cells.some((c) => c.type === "artifact") && (
+                  <div
+                    style={{
+                      borderTop: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08))",
+                      paddingTop: "12px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "var(--color-text-muted)",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Interactive Figures
+                    </span>
+                    {notebookData.cells
+                      .filter((c): c is Extract<typeof c, { type: "artifact" }> => c.type === "artifact")
+                      .map((artCell, idx) => (
+                        <button
+                          key={artCell.id}
+                          type="button"
+                          onClick={() => {
+                            document
+                              .getElementById(`fig-${idx + 1}`)
+                              ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }}
+                          style={{
+                            textAlign: "left",
+                            padding: "6px 10px",
+                            borderRadius: "8px",
+                            border: "1px solid rgba(139, 92, 246, 0.25)",
+                            background: "rgba(139, 92, 246, 0.08)",
+                            color: "var(--color-text-primary)",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontFamily: "var(--font-mono, monospace)",
+                              fontWeight: 700,
+                              color: "var(--color-accent-cyan)",
+                            }}
+                          >
+                            Fig. {idx + 1}:
+                          </span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {artCell.caption || artCell.title || `Artifact #${artCell.artifactId}`}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                )}
 
-                  <text x="15" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    0ms
-                  </text>
-                  <text x="75" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    150ms
-                  </text>
-                  <text x="135" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    300ms
-                  </text>
-                  <text x="195" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    450ms
-                  </text>
-                  <text x="245" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    600ms
-                  </text>
+                <TelemetryGrid>
+                  <TelemetryCard>
+                    <span className="label">DIFFICULTY</span>
+                    <span className="val">{notebookData.difficulty || "Intermediate"}</span>
+                    <span className="sub">{notebookData.series || "Engineering Guide"}</span>
+                  </TelemetryCard>
+                  <TelemetryCard>
+                    <span className="label">DIALECT / ENGINE</span>
+                    <span className="val">{notebookData.dialect || "Modelica 3.4"}</span>
+                    <span className="sub">WASM Linear DAE Arena</span>
+                  </TelemetryCard>
+                </TelemetryGrid>
 
-                  {moldSimResult.fillTimeSec <= 0.6 && (
-                    <>
-                      <line
-                        x1={15 + (moldSimResult.fillTimeSec / 0.6) * 250}
-                        y1="16"
-                        x2={15 + (moldSimResult.fillTimeSec / 0.6) * 250}
-                        y2="120"
-                        stroke="#10b981"
-                        strokeWidth="1"
-                        strokeDasharray="2 2"
-                        opacity="0.8"
-                      />
-                      <text
-                        x={Math.min(185, 15 + (moldSimResult.fillTimeSec / 0.6) * 250 + 4)}
-                        y="32"
-                        fill="#10b981"
-                        fontSize="8"
-                        fontFamily="var(--font-mono)"
-                        fontWeight="bold"
-                      >
-                        t_fill: {moldSimResult.stats.fillTimeMs}ms
+                <Box display="flex" gap={2} flexWrap="wrap">
+                  <ActionDockBtn
+                    $primary
+                    style={{ flex: 1.3 }}
+                    onClick={() => {
+                      const codeBlocks = Array.from((post.content || "").matchAll(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g))
+                        .map((m) => m[1]?.trim())
+                        .filter(Boolean);
+                      const combinedSource = codeBlocks.join("\n\n");
+                      navigate(
+                        `/ide?source=${encodeURIComponent(combinedSource || post.content || "")}&title=${encodeURIComponent(notebookData.title || `Tutorial-${post.id}`)}`,
+                      );
+                    }}
+                  >
+                    <ZapIcon />
+                    Open in Web IDE
+                  </ActionDockBtn>
+                  <ActionDockBtn
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      const blob = new Blob([post.content || ""], { type: "text/markdown;charset=utf-8" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `${(notebookData.title || `tutorial-${post.id}`).toLowerCase().replace(/[^a-z0-9]+/g, "-")}.md`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    }}
+                    title="Download tutorial as Markdown"
+                  >
+                    <DownloadIcon />
+                    .md
+                  </ActionDockBtn>
+                </Box>
+              </SimulationDockPane>
+            ) : isInjectionMoldingOrCfd ? (
+              <SimulationDockPane style={{ position: "static" }}>
+                <DockTitle>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <ZapIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
+                    <span>LIVE INJECTION MOLDING CO-SIMULATION</span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
+                      background: isSimulating ? "var(--status-warning-bg)" : "var(--status-verified-bg)",
+                      border: isSimulating
+                        ? "1px solid var(--status-warning-border)"
+                        : "1px solid var(--status-verified-border)",
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      fontWeight: 600,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {isSimulating ? "COMPUTING..." : "JIT READY"}
+                  </span>
+                </DockTitle>
+                <Text style={{ fontSize: "11px", color: "var(--color-text-muted)", marginTop: "-8px" }}>
+                  ABS Polymer Cavity Fill & Solidification Dynamics (OpenFOAM / WASM DAE)
+                </Text>
+
+                <ParamSliderRow>
+                  <div className="label-val">
+                    <span>Melt Temp (T_melt):</span>
+                    <span style={{ color: "var(--color-accent-cyan)", fontFamily: "var(--font-mono)" }}>
+                      {meltTempVal} °C
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="200"
+                    max="270"
+                    step="1"
+                    value={meltTempVal}
+                    onChange={(e) => setMeltTempVal(e.target.value)}
+                  />
+                </ParamSliderRow>
+
+                <ParamSliderRow>
+                  <div className="label-val">
+                    <span>Injection Pressure (P_inj):</span>
+                    <span style={{ color: "var(--color-accent-purple)", fontFamily: "var(--font-mono)" }}>
+                      {injPressureVal} MPa
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="40"
+                    max="140"
+                    step="2"
+                    value={injPressureVal}
+                    onChange={(e) => setInjPressureVal(e.target.value)}
+                  />
+                </ParamSliderRow>
+
+                <ParamSliderRow>
+                  <div className="label-val">
+                    <span>Gate Inlet Speed (v_inlet):</span>
+                    <span style={{ color: "var(--color-status-verified)", fontFamily: "var(--font-mono)" }}>
+                      {gateVelVal} m/s
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.20"
+                    max="1.50"
+                    step="0.05"
+                    value={gateVelVal}
+                    onChange={(e) => setGateVelVal(e.target.value)}
+                  />
+                </ParamSliderRow>
+
+                <TelemetryGrid>
+                  <TelemetryCard>
+                    <span className="label">CAVITY FILL TIME</span>
+                    <span className="val">
+                      {moldSimResult.stats.fillTimeMs} <small>ms</small>
+                    </span>
+                    <span className="sub">Target &lt; 250ms (Cavity 100%)</span>
+                  </TelemetryCard>
+                  <TelemetryCard>
+                    <span className="label">MELT VISCOSITY (η)</span>
+                    <span className="val">
+                      {moldSimResult.stats.apparentViscosity} <small>Pa·s</small>
+                    </span>
+                    <span className="sub">Cross-WLF Non-Newtonian</span>
+                  </TelemetryCard>
+                  <TelemetryCard>
+                    <span className="label">PEAK CLAMP FORCE</span>
+                    <span className="val">
+                      {moldSimResult.stats.clampForceKn} <small>kN</small>
+                    </span>
+                    <span className="sub">150×100mm cavity area</span>
+                  </TelemetryCard>
+                  <TelemetryCard>
+                    <span className="label">COOLING RATE</span>
+                    <span className="val">
+                      {moldSimResult.stats.coolingRate} <small>°C/s</small>
+                    </span>
+                    <span className="sub">Melt front heat flux</span>
+                  </TelemetryCard>
+                </TelemetryGrid>
+
+                <ConvergencePlotBox
+                  onPointerMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left - 16;
+                    const width = rect.width - 32;
+                    if (width <= 0) return;
+                    const ratio = Math.max(0, Math.min(1, mouseX / width));
+                    const t = ratio * 0.6;
+                    const closest = moldSimResult.points.reduce((prev, curr) =>
+                      Math.abs(curr.t - t) < Math.abs(prev.t - t) ? curr : prev,
+                    );
+                    setHoveredMoldPoint(closest);
+                  }}
+                  onPointerLeave={() => setHoveredMoldPoint(null)}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "10px",
+                      color: hoveredMoldPoint ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.45)",
+                      marginBottom: "4px",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      minHeight: "24px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {hoveredMoldPoint ? (
+                      <>
+                        <span>t: {(hoveredMoldPoint.t * 1000).toFixed(0)}ms</span>
+                        <span style={{ color: "#10b981" }}>Fill α: {(hoveredMoldPoint.alpha * 100).toFixed(1)}%</span>
+                        <span style={{ color: "var(--color-accent-cyan)" }}>
+                          P: {hoveredMoldPoint.pressure.toFixed(1)} MPa
+                        </span>
+                        <span>x: {hoveredMoldPoint.frontX.toFixed(1)}mm</span>
+                        <span>T: {hoveredMoldPoint.temp.toFixed(1)}°C</span>
+                      </>
+                    ) : (
+                      <span>Move cursor over plot to scrub melt front (α, Pressure, Front x, Temp)</span>
+                    )}
+                  </div>
+
+                  <svg
+                    width="100%"
+                    height="140"
+                    viewBox="0 0 280 140"
+                    style={{ maxWidth: "340px", overflow: "visible" }}
+                  >
+                    <line x1="15" y1="22" x2="265" y2="22" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
+                    <line x1="15" y1="71" x2="265" y2="71" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
+                    <line x1="15" y1="120" x2="265" y2="120" stroke="rgba(255,255,255,0.22)" strokeDasharray="3 3" />
+
+                    <text x="3" y="25" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
+                      100%
+                    </text>
+                    <text x="3" y="74" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
+                      50%
+                    </text>
+                    <text x="3" y="123" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="var(--font-mono)">
+                      0%
+                    </text>
+
+                    <text x="268" y="25" fill="#06b6d4" fontSize="8" fontFamily="var(--font-mono)">
+                      {injPressureVal}M
+                    </text>
+                    <text x="268" y="74" fill="rgba(6,182,212,0.6)" fontSize="8" fontFamily="var(--font-mono)">
+                      {(parseFloat(injPressureVal) / 2).toFixed(0)}M
+                    </text>
+
+                    <text x="15" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      0ms
+                    </text>
+                    <text x="75" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      150ms
+                    </text>
+                    <text x="135" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      300ms
+                    </text>
+                    <text x="195" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      450ms
+                    </text>
+                    <text x="245" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      600ms
+                    </text>
+
+                    {moldSimResult.fillTimeSec <= 0.6 && (
+                      <>
+                        <line
+                          x1={15 + (moldSimResult.fillTimeSec / 0.6) * 250}
+                          y1="16"
+                          x2={15 + (moldSimResult.fillTimeSec / 0.6) * 250}
+                          y2="120"
+                          stroke="#10b981"
+                          strokeWidth="1"
+                          strokeDasharray="2 2"
+                          opacity="0.8"
+                        />
+                        <text
+                          x={Math.min(185, 15 + (moldSimResult.fillTimeSec / 0.6) * 250 + 4)}
+                          y="32"
+                          fill="#10b981"
+                          fontSize="8"
+                          fontFamily="var(--font-mono)"
+                          fontWeight="bold"
+                        >
+                          t_fill: {moldSimResult.stats.fillTimeMs}ms
+                        </text>
+                      </>
+                    )}
+
+                    <path
+                      d={moldSimResult.svgPathPressure}
+                      stroke="#06b6d4"
+                      strokeWidth="1.8"
+                      strokeDasharray="4 2"
+                      fill="none"
+                      opacity="0.85"
+                    />
+
+                    <path
+                      d={moldSimResult.svgPathAlpha}
+                      stroke={isSimulating ? "#f59e0b" : "#10b981"}
+                      strokeWidth="2.5"
+                      fill="none"
+                      style={{
+                        filter: "drop-shadow(0 0 6px rgba(16, 185, 129, 0.7))",
+                        transition: "stroke 0.2s, stroke-width 0.2s",
+                      }}
+                    />
+
+                    <g transform="translate(14, 8)">
+                      <line x1="0" y1="3" x2="12" y2="3" stroke="#10b981" strokeWidth="2" />
+                      <text x="16" y="6" fill="#10b981" fontSize="8" fontFamily="var(--font-mono)">
+                        Fill α(t)
                       </text>
-                    </>
-                  )}
+                      <line x1="68" y1="3" x2="80" y2="3" stroke="#06b6d4" strokeWidth="1.5" strokeDasharray="3 2" />
+                      <text x="84" y="6" fill="#06b6d4" fontSize="8" fontFamily="var(--font-mono)">
+                        Pressure P(t)
+                      </text>
+                    </g>
 
-                  <path
-                    d={moldSimResult.svgPathPressure}
-                    stroke="#06b6d4"
-                    strokeWidth="1.8"
-                    strokeDasharray="4 2"
-                    fill="none"
-                    opacity="0.85"
-                  />
+                    {hoveredMoldPoint && (
+                      <>
+                        <line
+                          x1={15 + (hoveredMoldPoint.t / 0.6) * 250}
+                          y1="15"
+                          x2={15 + (hoveredMoldPoint.t / 0.6) * 250}
+                          y2="120"
+                          stroke="var(--color-accent-cyan)"
+                          strokeWidth="1.2"
+                          strokeDasharray="3 2"
+                        />
+                        <circle
+                          cx={15 + (hoveredMoldPoint.t / 0.6) * 250}
+                          cy={120 - hoveredMoldPoint.alpha * 98}
+                          r="4"
+                          fill="#10b981"
+                          stroke="#ffffff"
+                          strokeWidth="1.5"
+                          style={{ filter: "drop-shadow(0 0 6px #10b981)" }}
+                        />
+                      </>
+                    )}
+                  </svg>
 
-                  <path
-                    d={moldSimResult.svgPathAlpha}
-                    stroke={isSimulating ? "#f59e0b" : "#10b981"}
-                    strokeWidth="2.5"
-                    fill="none"
+                  <span
                     style={{
-                      filter: "drop-shadow(0 0 6px rgba(16, 185, 129, 0.7))",
-                      transition: "stroke 0.2s, stroke-width 0.2s",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "11px",
+                      color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
+                      marginTop: "8px",
                     }}
-                  />
-
-                  <g transform="translate(14, 8)">
-                    <line x1="0" y1="3" x2="12" y2="3" stroke="#10b981" strokeWidth="2" />
-                    <text x="16" y="6" fill="#10b981" fontSize="8" fontFamily="var(--font-mono)">
-                      Fill α(t)
-                    </text>
-                    <line x1="68" y1="3" x2="80" y2="3" stroke="#06b6d4" strokeWidth="1.5" strokeDasharray="3 2" />
-                    <text x="84" y="6" fill="#06b6d4" fontSize="8" fontFamily="var(--font-mono)">
-                      Pressure P(t)
-                    </text>
-                  </g>
-
-                  {hoveredMoldPoint && (
-                    <>
-                      <line
-                        x1={15 + (hoveredMoldPoint.t / 0.6) * 250}
-                        y1="15"
-                        x2={15 + (hoveredMoldPoint.t / 0.6) * 250}
-                        y2="120"
-                        stroke="var(--color-accent-cyan)"
-                        strokeWidth="1.2"
-                        strokeDasharray="3 2"
-                      />
-                      <circle
-                        cx={15 + (hoveredMoldPoint.t / 0.6) * 250}
-                        cy={120 - hoveredMoldPoint.alpha * 98}
-                        r="4"
-                        fill="#10b981"
-                        stroke="#ffffff"
-                        strokeWidth="1.5"
-                        style={{ filter: "drop-shadow(0 0 6px #10b981)" }}
-                      />
-                    </>
-                  )}
-                </svg>
-
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
-                    marginTop: "8px",
-                  }}
-                >
-                  {isSimulating
-                    ? "⏳ Computing cavity melt front in WASM arena..."
-                    : `● CONVERGED in ${moldSimResult.stats.timeMs}ms (OpenFOAM VOF / WASM DAE, 0 singularities, 120 steps)`}
-                </span>
-              </ConvergencePlotBox>
-
-              <Box display="flex" gap={2}>
-                <ActionDockBtn $primary style={{ flex: 1.2 }} onClick={handleReSimulate} disabled={isSimulating}>
-                  <SyncIcon className={isSimulating ? "anim-rotate" : ""} />
-                  Re-simulate
-                </ActionDockBtn>
-                <ActionDockBtn
-                  style={{ flex: 1 }}
-                  onClick={handleExportMoldParquet}
-                  title="Download trajectory as Apache Parquet dataset"
-                >
-                  <DownloadIcon />
-                  Parquet
-                </ActionDockBtn>
-                <ActionDockBtn
-                  style={{ flex: 1 }}
-                  onClick={handleExportMoldModelica}
-                  title="Download Modelica physical model source"
-                >
-                  <DownloadIcon />
-                  Modelica
-                </ActionDockBtn>
-              </Box>
-            </SimulationDockPane>
-          ) : (
-            <SimulationDockPane>
-              <DockTitle>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <ZapIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
-                  <span>LIVE WASM SIMULATION SANDBOX</span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
-                    background: isSimulating ? "var(--status-warning-bg)" : "var(--status-verified-bg)",
-                    border: isSimulating
-                      ? "1px solid var(--status-warning-border)"
-                      : "1px solid var(--status-verified-border)",
-                    padding: "2px 8px",
-                    borderRadius: "12px",
-                    fontWeight: 600,
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  {isSimulating ? "COMPUTING..." : "JIT READY"}
-                </span>
-              </DockTitle>
-              <Text style={{ fontSize: "11px", color: "var(--color-text-muted)", marginTop: "-8px" }}>
-                Second-Order Continuous Mass-Spring-Damper ODE Solver (CVODE WASM)
-              </Text>
-
-              <ParamSliderRow>
-                <div className="label-val">
-                  <span>Damping (damping_c):</span>
-                  <span style={{ color: "var(--color-accent-cyan)", fontFamily: "var(--font-mono)" }}>
-                    {dampingVal} N·s/m
+                  >
+                    {isSimulating
+                      ? "⏳ Computing cavity melt front in WASM arena..."
+                      : `● CONVERGED in ${moldSimResult.stats.timeMs}ms (OpenFOAM VOF / WASM DAE, 0 singularities, 120 steps)`}
                   </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.02"
-                  max="0.80"
-                  step="0.01"
-                  value={dampingVal}
-                  onChange={(e) => setDampingVal(e.target.value)}
-                />
-              </ParamSliderRow>
+                </ConvergencePlotBox>
 
-              <ParamSliderRow>
-                <div className="label-val">
-                  <span>Spring Stiffness (k):</span>
-                  <span style={{ color: "var(--color-accent-purple)", fontFamily: "var(--font-mono)" }}>
-                    {stiffnessVal} N/m
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="16"
-                  max="144"
-                  step="4"
-                  value={stiffnessVal}
-                  onChange={(e) => setStiffnessVal(e.target.value)}
-                />
-              </ParamSliderRow>
-
-              <ParamSliderRow>
-                <div className="label-val">
-                  <span>Solver RelTol:</span>
-                  <span style={{ color: "var(--color-status-verified)", fontFamily: "var(--font-mono)" }}>
-                    1e-{tolVal}
-                  </span>
-                </div>
-                <input type="range" min="3" max="9" value={tolVal} onChange={(e) => setTolVal(e.target.value)} />
-              </ParamSliderRow>
-
-              <TelemetryGrid>
-                <TelemetryCard>
-                  <span className="label">RATIO (ζ)</span>
-                  <span className="val">{simResult.stats.zeta.toFixed(3)}</span>
-                  <span className="sub">{simResult.stats.regime}</span>
-                </TelemetryCard>
-                <TelemetryCard>
-                  <span className="label">NATURAL FREQ</span>
-                  <span className="val">
-                    {simResult.stats.wn.toFixed(1)} <small>rad/s</small>
-                  </span>
-                  <span className="sub">fd = {(simResult.stats.wd / (2 * Math.PI)).toFixed(2)} Hz</span>
-                </TelemetryCard>
-                <TelemetryCard>
-                  <span className="label">PEAK OVERSHOOT</span>
-                  <span className="val">{simResult.stats.overshootPct.toFixed(1)}%</span>
-                  <span className="sub">Mp max peak</span>
-                </TelemetryCard>
-                <TelemetryCard>
-                  <span className="label">SETTLING TIME</span>
-                  <span className="val">{simResult.stats.settlingTimeSec.toFixed(2)}s</span>
-                  <span className="sub">±2% envelope</span>
-                </TelemetryCard>
-              </TelemetryGrid>
-
-              <ConvergencePlotBox
-                onPointerMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const mouseX = e.clientX - rect.left - 16;
-                  const width = rect.width - 32;
-                  if (width <= 0) return;
-                  const ratio = Math.max(0, Math.min(1, mouseX / width));
-                  const t = ratio * 2.4;
-                  const closest = simResult.points.reduce((prev, curr) =>
-                    Math.abs(curr.t - t) < Math.abs(prev.t - t) ? curr : prev,
-                  );
-                  setHoveredPoint(closest);
-                }}
-                onPointerLeave={() => setHoveredPoint(null)}
-              >
-                {/* Tooltip HUD banner */}
-                <div
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "10px",
-                    color: hoveredPoint ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.45)",
-                    marginBottom: "4px",
-                    background: "rgba(255, 255, 255, 0.05)",
-                    padding: "4px 8px",
-                    borderRadius: "6px",
-                    minHeight: "24px",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {hoveredPoint ? (
-                    <>
-                      <span>t: {hoveredPoint.t.toFixed(2)}s</span>
-                      <span>
-                        x: {hoveredPoint.x >= 0 ? "+" : ""}
-                        {hoveredPoint.x.toFixed(3)}m
-                      </span>
-                      <span>
-                        v: {hoveredPoint.v >= 0 ? "+" : ""}
-                        {hoveredPoint.v.toFixed(2)}m/s
-                      </span>
-                      <span>E: {hoveredPoint.energy.toFixed(1)}J</span>
-                    </>
-                  ) : (
-                    <span>Move cursor over plot to scrub state trajectory (x, v, E)</span>
-                  )}
-                </div>
-
-                <svg width="100%" height="140" viewBox="0 0 280 140" style={{ maxWidth: "340px", overflow: "visible" }}>
-                  {/* Horizontal reference lines */}
-                  <line x1="15" y1="18" x2="265" y2="18" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
-                  <line x1="15" y1="70" x2="265" y2="70" stroke="rgba(255,255,255,0.22)" strokeDasharray="3 3" />
-                  <line x1="15" y1="122" x2="265" y2="122" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
-
-                  {/* Y-axis labels */}
-                  <text x="3" y="21" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
-                    +1m
-                  </text>
-                  <text x="3" y="73" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="var(--font-mono)">
-                    0
-                  </text>
-                  <text x="3" y="125" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
-                    -1m
-                  </text>
-
-                  {/* Time tick labels */}
-                  <text x="15" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    0.0s
-                  </text>
-                  <text x="75" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    0.6s
-                  </text>
-                  <text x="135" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    1.2s
-                  </text>
-                  <text x="195" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    1.8s
-                  </text>
-                  <text x="250" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
-                    2.4s
-                  </text>
-
-                  {/* Trajectory waveform */}
-                  <path
-                    d={simResult.svgPath}
-                    stroke={isSimulating ? "#f59e0b" : "#10b981"}
-                    strokeWidth="2.5"
-                    fill="none"
+                <Box display="flex" gap={2}>
+                  <ActionDockBtn $primary style={{ flex: 1.2 }} onClick={handleReSimulate} disabled={isSimulating}>
+                    <SyncIcon className={isSimulating ? "anim-rotate" : ""} />
+                    Re-simulate
+                  </ActionDockBtn>
+                  <ActionDockBtn
+                    style={{ flex: 1 }}
+                    onClick={handleExportMoldParquet}
+                    title="Download trajectory as Apache Parquet dataset"
+                  >
+                    <DownloadIcon />
+                    Parquet
+                  </ActionDockBtn>
+                  <ActionDockBtn
+                    style={{ flex: 1 }}
+                    onClick={handleExportMoldModelica}
+                    title="Download Modelica physical model source"
+                  >
+                    <DownloadIcon />
+                    Modelica
+                  </ActionDockBtn>
+                </Box>
+              </SimulationDockPane>
+            ) : (
+              <SimulationDockPane style={{ position: "static" }}>
+                <DockTitle>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <ZapIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
+                    <span>LIVE WASM SIMULATION SANDBOX</span>
+                  </div>
+                  <span
                     style={{
-                      filter: "drop-shadow(0 0 8px rgba(16, 185, 129, 0.6))",
-                      transition: "stroke 0.2s, stroke-width 0.2s",
+                      fontSize: "11px",
+                      color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
+                      background: isSimulating ? "var(--status-warning-bg)" : "var(--status-verified-bg)",
+                      border: isSimulating
+                        ? "1px solid var(--status-warning-border)"
+                        : "1px solid var(--status-verified-border)",
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      fontWeight: 600,
+                      transition: "all 0.2s ease",
                     }}
+                  >
+                    {isSimulating ? "COMPUTING..." : "JIT READY"}
+                  </span>
+                </DockTitle>
+                <Text style={{ fontSize: "11px", color: "var(--color-text-muted)", marginTop: "-8px" }}>
+                  Second-Order Continuous Mass-Spring-Damper ODE Solver (CVODE WASM)
+                </Text>
+
+                <ParamSliderRow>
+                  <div className="label-val">
+                    <span>Damping (damping_c):</span>
+                    <span style={{ color: "var(--color-accent-cyan)", fontFamily: "var(--font-mono)" }}>
+                      {dampingVal} N·s/m
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.02"
+                    max="0.80"
+                    step="0.01"
+                    value={dampingVal}
+                    onChange={(e) => setDampingVal(e.target.value)}
                   />
+                </ParamSliderRow>
 
-                  {/* Interactive cursor line and indicator */}
-                  {hoveredPoint && (
-                    <>
-                      <line
-                        x1={15 + (hoveredPoint.t / 2.4) * 250}
-                        y1="10"
-                        x2={15 + (hoveredPoint.t / 2.4) * 250}
-                        y2="130"
-                        stroke="var(--color-accent-cyan)"
-                        strokeWidth="1.2"
-                        strokeDasharray="3 2"
-                      />
-                      <circle
-                        cx={15 + (hoveredPoint.t / 2.4) * 250}
-                        cy={70 - Math.max(-1.1, Math.min(1.1, hoveredPoint.x)) * 52}
-                        r="4"
-                        fill="var(--color-accent-cyan)"
-                        stroke="#ffffff"
-                        strokeWidth="1.5"
-                        style={{ filter: "drop-shadow(0 0 6px var(--color-accent-cyan))" }}
-                      />
-                    </>
-                  )}
-                </svg>
+                <ParamSliderRow>
+                  <div className="label-val">
+                    <span>Spring Stiffness (k):</span>
+                    <span style={{ color: "var(--color-accent-purple)", fontFamily: "var(--font-mono)" }}>
+                      {stiffnessVal} N/m
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="16"
+                    max="144"
+                    step="4"
+                    value={stiffnessVal}
+                    onChange={(e) => setStiffnessVal(e.target.value)}
+                  />
+                </ParamSliderRow>
 
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
-                    marginTop: "8px",
+                <ParamSliderRow>
+                  <div className="label-val">
+                    <span>Solver RelTol:</span>
+                    <span style={{ color: "var(--color-status-verified)", fontFamily: "var(--font-mono)" }}>
+                      1e-{tolVal}
+                    </span>
+                  </div>
+                  <input type="range" min="3" max="9" value={tolVal} onChange={(e) => setTolVal(e.target.value)} />
+                </ParamSliderRow>
+
+                <TelemetryGrid>
+                  <TelemetryCard>
+                    <span className="label">RATIO (ζ)</span>
+                    <span className="val">{simResult.stats.zeta.toFixed(3)}</span>
+                    <span className="sub">{simResult.stats.regime}</span>
+                  </TelemetryCard>
+                  <TelemetryCard>
+                    <span className="label">NATURAL FREQ</span>
+                    <span className="val">
+                      {simResult.stats.wn.toFixed(1)} <small>rad/s</small>
+                    </span>
+                    <span className="sub">fd = {(simResult.stats.wd / (2 * Math.PI)).toFixed(2)} Hz</span>
+                  </TelemetryCard>
+                  <TelemetryCard>
+                    <span className="label">PEAK OVERSHOOT</span>
+                    <span className="val">{simResult.stats.overshootPct.toFixed(1)}%</span>
+                    <span className="sub">Mp max peak</span>
+                  </TelemetryCard>
+                  <TelemetryCard>
+                    <span className="label">SETTLING TIME</span>
+                    <span className="val">{simResult.stats.settlingTimeSec.toFixed(2)}s</span>
+                    <span className="sub">±2% envelope</span>
+                  </TelemetryCard>
+                </TelemetryGrid>
+
+                <ConvergencePlotBox
+                  onPointerMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left - 16;
+                    const width = rect.width - 32;
+                    if (width <= 0) return;
+                    const ratio = Math.max(0, Math.min(1, mouseX / width));
+                    const t = ratio * 2.4;
+                    const closest = simResult.points.reduce((prev, curr) =>
+                      Math.abs(curr.t - t) < Math.abs(prev.t - t) ? curr : prev,
+                    );
+                    setHoveredPoint(closest);
                   }}
+                  onPointerLeave={() => setHoveredPoint(null)}
                 >
-                  {isSimulating
-                    ? "⏳ Computing state trajectory in WASM arena..."
-                    : `● CONVERGED in ${simResult.stats.timeMs}ms (${simResult.stats.iterations} iters, ${simResult.stats.singularities} singularities)`}
-                </span>
-              </ConvergencePlotBox>
+                  {/* Tooltip HUD banner */}
+                  <div
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "10px",
+                      color: hoveredPoint ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.45)",
+                      marginBottom: "4px",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      minHeight: "24px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {hoveredPoint ? (
+                      <>
+                        <span>t: {hoveredPoint.t.toFixed(2)}s</span>
+                        <span>
+                          x: {hoveredPoint.x >= 0 ? "+" : ""}
+                          {hoveredPoint.x.toFixed(3)}m
+                        </span>
+                        <span>
+                          v: {hoveredPoint.v >= 0 ? "+" : ""}
+                          {hoveredPoint.v.toFixed(2)}m/s
+                        </span>
+                        <span>E: {hoveredPoint.energy.toFixed(1)}J</span>
+                      </>
+                    ) : (
+                      <span>Move cursor over plot to scrub state trajectory (x, v, E)</span>
+                    )}
+                  </div>
 
-              <Box display="flex" gap={2}>
-                <ActionDockBtn $primary style={{ flex: 1.2 }} onClick={handleReSimulate} disabled={isSimulating}>
-                  <SyncIcon className={isSimulating ? "anim-rotate" : ""} />
-                  Re-simulate
-                </ActionDockBtn>
-                <ActionDockBtn
-                  style={{ flex: 1 }}
-                  onClick={handleExportParquet}
-                  title="Download trajectory as Apache Parquet dataset"
-                >
-                  <DownloadIcon />
-                  Parquet
-                </ActionDockBtn>
-                <ActionDockBtn
-                  style={{ flex: 1 }}
-                  onClick={handleExportModelica}
-                  title="Download Modelica physical model source"
-                >
-                  <DownloadIcon />
-                  Modelica
-                </ActionDockBtn>
-              </Box>
-            </SimulationDockPane>
-          )}
+                  <svg
+                    width="100%"
+                    height="140"
+                    viewBox="0 0 280 140"
+                    style={{ maxWidth: "340px", overflow: "visible" }}
+                  >
+                    {/* Horizontal reference lines */}
+                    <line x1="15" y1="18" x2="265" y2="18" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
+                    <line x1="15" y1="70" x2="265" y2="70" stroke="rgba(255,255,255,0.22)" strokeDasharray="3 3" />
+                    <line x1="15" y1="122" x2="265" y2="122" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
+
+                    {/* Y-axis labels */}
+                    <text x="3" y="21" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
+                      +1m
+                    </text>
+                    <text x="3" y="73" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="var(--font-mono)">
+                      0
+                    </text>
+                    <text x="3" y="125" fill="rgba(255,255,255,0.4)" fontSize="8" fontFamily="var(--font-mono)">
+                      -1m
+                    </text>
+
+                    {/* Time tick labels */}
+                    <text x="15" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      0.0s
+                    </text>
+                    <text x="75" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      0.6s
+                    </text>
+                    <text x="135" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      1.2s
+                    </text>
+                    <text x="195" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      1.8s
+                    </text>
+                    <text x="250" y="137" fill="rgba(255,255,255,0.35)" fontSize="8" fontFamily="var(--font-mono)">
+                      2.4s
+                    </text>
+
+                    {/* Trajectory waveform */}
+                    <path
+                      d={simResult.svgPath}
+                      stroke={isSimulating ? "#f59e0b" : "#10b981"}
+                      strokeWidth="2.5"
+                      fill="none"
+                      style={{
+                        filter: "drop-shadow(0 0 8px rgba(16, 185, 129, 0.6))",
+                        transition: "stroke 0.2s, stroke-width 0.2s",
+                      }}
+                    />
+
+                    {/* Interactive cursor line and indicator */}
+                    {hoveredPoint && (
+                      <>
+                        <line
+                          x1={15 + (hoveredPoint.t / 2.4) * 250}
+                          y1="10"
+                          x2={15 + (hoveredPoint.t / 2.4) * 250}
+                          y2="130"
+                          stroke="var(--color-accent-cyan)"
+                          strokeWidth="1.2"
+                          strokeDasharray="3 2"
+                        />
+                        <circle
+                          cx={15 + (hoveredPoint.t / 2.4) * 250}
+                          cy={70 - Math.max(-1.1, Math.min(1.1, hoveredPoint.x)) * 52}
+                          r="4"
+                          fill="var(--color-accent-cyan)"
+                          stroke="#ffffff"
+                          strokeWidth="1.5"
+                          style={{ filter: "drop-shadow(0 0 6px var(--color-accent-cyan))" }}
+                        />
+                      </>
+                    )}
+                  </svg>
+
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "11px",
+                      color: isSimulating ? "var(--color-accent-amber)" : "var(--color-status-verified)",
+                      marginTop: "8px",
+                    }}
+                  >
+                    {isSimulating
+                      ? "⏳ Computing state trajectory in WASM arena..."
+                      : `● CONVERGED in ${simResult.stats.timeMs}ms (${simResult.stats.iterations} iters, ${simResult.stats.singularities} singularities)`}
+                  </span>
+                </ConvergencePlotBox>
+
+                <Box display="flex" gap={2}>
+                  <ActionDockBtn $primary style={{ flex: 1.2 }} onClick={handleReSimulate} disabled={isSimulating}>
+                    <SyncIcon className={isSimulating ? "anim-rotate" : ""} />
+                    Re-simulate
+                  </ActionDockBtn>
+                  <ActionDockBtn
+                    style={{ flex: 1 }}
+                    onClick={handleExportParquet}
+                    title="Download trajectory as Apache Parquet dataset"
+                  >
+                    <DownloadIcon />
+                    Parquet
+                  </ActionDockBtn>
+                  <ActionDockBtn
+                    style={{ flex: 1 }}
+                    onClick={handleExportModelica}
+                    title="Download Modelica physical model source"
+                  >
+                    <DownloadIcon />
+                    Modelica
+                  </ActionDockBtn>
+                </Box>
+              </SimulationDockPane>
+            )}
+          </Box>
         </SplitContainer>
       ) : (
         threadContent

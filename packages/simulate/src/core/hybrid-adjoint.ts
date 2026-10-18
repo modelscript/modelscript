@@ -409,31 +409,53 @@ export class HybridAdjointSolver {
             hDot += gh * (occ.dxMinus.get(sName) ?? 0);
           }
 
+          // Compute saltation residual inner product: lambda(tE^+)^T * (dxPlus - D_x Delta * dxMinus)
+          const lambdaOld = new Map(lambda);
+          let lambdaDotDeltaF = 0;
+          for (const targetName of this.stateNames) {
+            const row = jacResetX.get(targetName);
+            let dDeltaDt = 0;
+            if (row) {
+              for (const [srcName, dval] of row) {
+                dDeltaDt += dval * (occ.dxMinus.get(srcName) ?? 0);
+              }
+            } else {
+              dDeltaDt = occ.dxMinus.get(targetName) ?? 0;
+            }
+            const dxPlusVal = occ.dxPlus.get(targetName) ?? 0;
+            const lambdaTarget = lambdaOld.get(targetName) ?? 0;
+            lambdaDotDeltaF += lambdaTarget * (dxPlusVal - dDeltaDt);
+          }
+
           // Parameter sensitivity discrete jump:
-          // Delta(dL/dp) = [dDelta/dp]^T lambda(tE^+) + jump_correction
+          // Delta(dL/dp) = [dDelta/dp]^T lambda(tE^+) + (lambda(tE^+)^T (dxPlus - D_x Delta * dxMinus) / hDot) * grad_p h(tE^-)
           for (const pName of paramsToDiff) {
             let jumpP = 0;
             for (const [sName, row] of jacResetP) {
-              const lambda_s = lambda.get(sName) ?? 0;
+              const lambda_s = lambdaOld.get(sName) ?? 0;
               jumpP += (row.get(pName) ?? 0) * lambda_s;
             }
 
             const ghP = gradH_p.get(pName) ?? 0;
             if (ghP !== 0 && Math.abs(hDot) > 1e-12) {
-              jumpP += ghP / hDot;
+              jumpP += (lambdaDotDeltaF / hDot) * ghP;
             }
 
             gradParams.set(pName, (gradParams.get(pName) ?? 0) + jumpP);
           }
 
-          // State adjoint jump: lambda(tE^-) = [dDelta/dx]^T lambda(tE^+)
-          const lambdaOld = new Map(lambda);
+          // State adjoint jump:
+          // lambda(tE^-) = [dDelta/dx]^T lambda(tE^+) + (lambda(tE^+)^T (dxPlus - D_x Delta * dxMinus) / hDot) * grad_x h(tE^-)
           for (const sName of this.stateNames) {
             let jumpedLambda = 0;
             for (const [targetName, row] of jacResetX) {
               if (row.has(sName)) {
                 jumpedLambda += (row.get(sName) ?? 0) * (lambdaOld.get(targetName) ?? 0);
               }
+            }
+            const ghX = gradH_x.get(sName) ?? 0;
+            if (ghX !== 0 && Math.abs(hDot) > 1e-12) {
+              jumpedLambda += (lambdaDotDeltaF / hDot) * ghX;
             }
             lambda.set(sName, jumpedLambda);
           }

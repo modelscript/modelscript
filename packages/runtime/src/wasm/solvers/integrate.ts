@@ -31,7 +31,7 @@ export function symbolicSubstituteVal(dae: DaeBuilder, exprId: u32, targetVar: u
   let kind = exprData.get(offset + EXPR_KIND);
 
   if (kind == ExprKind.Name) {
-    let varId = exprData.get(offset + EXPR_DATA1);
+    let varId = dae.resolveExprVarId(exprId);
     if (varId == targetVar) {
       return dae.addRealLiteral(val);
     }
@@ -87,11 +87,7 @@ export function symbolicSubstituteVal(dae: DaeBuilder, exprId: u32, targetVar: u
     let subArgs = new Uint32Array(argCount);
     subArgs[0] = symbolicSubstituteVal(dae, u, targetVar, val);
     for (let a: u32 = 1; a < argCount; a++) {
-      let slotIdx = exprId + a;
-      let argExpr: u32 = u + a;
-      if (slotIdx < dae.exprCount && exprData.get(slotIdx * EXPR_STRIDE + EXPR_KIND) == ExprKind.Tuple) {
-        argExpr = exprData.get(slotIdx * EXPR_STRIDE + EXPR_LEFT) as u32;
-      }
+      let argExpr = dae.getCallArgExprId(exprId, a);
       subArgs[a] = symbolicSubstituteVal(dae, argExpr, targetVar, val);
     }
     let call = dae.addExpression(ExprKind.Call, funcId, subArgs[0], argCount as i32);
@@ -141,7 +137,7 @@ export function symbolicIntegrate(dae: DaeBuilder, exprId: u32, targetVar: u32):
 
   // 2. Variable reference
   if (kind == ExprKind.Name) {
-    let varId = exprData.get(offset + EXPR_DATA1);
+    let varId = dae.resolveExprVarId(exprId);
     if (varId == targetVar) {
       // ∫ x dx = x^2 / 2
       let xSq = dae.addExpression(ExprKind.Binary, BinOp.Mul, varExpr, varExpr);
@@ -155,6 +151,12 @@ export function symbolicIntegrate(dae: DaeBuilder, exprId: u32, targetVar: u32):
 
   // 3. Unary negation: ∫ -f dx = -∫ f dx
   if (kind == ExprKind.Negate || kind == ExprKind.Unary) {
+    let op = exprData.get(offset + EXPR_DATA1);
+    if (kind == ExprKind.Unary && op == UnaryOp.Not) return 0xffffffff;
+    if (kind == ExprKind.Unary && op != UnaryOp.Negate) {
+      let operand = exprData.get(offset + EXPR_LEFT);
+      return symbolicIntegrate(dae, operand, targetVar);
+    }
     let operand = exprData.get(offset + EXPR_LEFT);
     let intOp = symbolicIntegrate(dae, operand, targetVar);
     if (intOp == 0xffffffff) return 0xffffffff;

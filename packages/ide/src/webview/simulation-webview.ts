@@ -67,6 +67,18 @@ interface FlowpipeEnvelope {
   isViolation?: boolean;
 }
 
+interface VariableReachabilityProfile {
+  variable: string;
+  nominalTrajectory: number[];
+  envelopes: FlowpipeEnvelope[];
+  requirementLimit?: number;
+  requirementDirection?: "max" | "min";
+  requirementLabel?: string;
+  isCertifiedSafe: boolean;
+  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[];
+  yRange?: [number, number];
+}
+
 interface ReachabilityData {
   t: number[];
   variable: string;
@@ -77,9 +89,51 @@ interface ReachabilityData {
   isCertifiedSafe: boolean;
   statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[];
   yRange?: [number, number];
+  variables?: Record<string, VariableReachabilityProfile>;
+  states?: string[];
+  y?: number[][];
+  parameters?: {
+    name: string;
+    description?: string;
+    defaultValue: number;
+    type: string;
+    unit?: string;
+    min?: number;
+    max?: number;
+  }[];
+  experiment?: {
+    startTime?: number;
+    stopTime?: number;
+    interval?: number;
+    tolerance?: number;
+  };
+  telemetry?: { executionTimeMs: number; stepCount: number };
+  modelName?: string;
+  summary?: string;
 }
 
 let currentReachabilityData: ReachabilityData | null = null;
+
+function getReachabilityProfileForVar(varName: string): VariableReachabilityProfile | undefined {
+  if (!currentReachabilityData) return undefined;
+  if (currentReachabilityData.variables && currentReachabilityData.variables[varName]) {
+    return currentReachabilityData.variables[varName];
+  }
+  if (currentReachabilityData.variable === varName) {
+    return {
+      variable: currentReachabilityData.variable,
+      nominalTrajectory: currentReachabilityData.nominalTrajectory,
+      envelopes: currentReachabilityData.envelopes,
+      requirementLimit: currentReachabilityData.requirementLimit,
+      requirementDirection: "max",
+      requirementLabel: currentReachabilityData.requirementLabel,
+      isCertifiedSafe: currentReachabilityData.isCertifiedSafe,
+      statusBadges: currentReachabilityData.statusBadges,
+      yRange: currentReachabilityData.yRange,
+    };
+  }
+  return undefined;
+}
 
 let isDark = true;
 const hiddenVars = new Set<string>();
@@ -95,6 +149,8 @@ interface VerificationLimit {
   label: string;
   /** Whether the constraint was violated */
   violated: boolean;
+  /** Direction of the limit ("max" or "min") */
+  direction?: "max" | "min";
 }
 let currentLimits: VerificationLimit[] = [];
 
@@ -321,6 +377,37 @@ function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; y
             if (v < yMin) yMin = v;
             if (v > yMax) yMax = v;
           }
+        }
+      }
+    }
+    // Include Reachability flowpipe extents and limits in bounds
+    if (currentReachabilityData) {
+      const visibleStates = states.filter((s) => !hiddenVars.has(s));
+      if (visibleStates.length === 1) {
+        const singleProfile = getReachabilityProfileForVar(visibleStates[0]);
+        if (singleProfile?.yRange && selectedXVar === "__time__") {
+          return {
+            tMin,
+            tMax,
+            yMin: singleProfile.yRange[0],
+            yMax: singleProfile.yRange[1],
+          };
+        }
+      }
+      for (const state of visibleStates) {
+        const profile = getReachabilityProfileForVar(state);
+        if (!profile) continue;
+        for (const env of profile.envelopes) {
+          for (const v of env.lo) {
+            if (isFinite(v) && v < yMin) yMin = v;
+          }
+          for (const v of env.hi) {
+            if (isFinite(v) && v > yMax) yMax = v;
+          }
+        }
+        if (profile.requirementLimit !== undefined && isFinite(profile.requirementLimit)) {
+          if (profile.requirementLimit < yMin) yMin = profile.requirementLimit;
+          if (profile.requirementLimit > yMax) yMax = profile.requirementLimit;
         }
       }
     }
@@ -789,8 +876,8 @@ window.addEventListener("message", (event) => {
     settingsSection.style.display = "flex";
     const exp = msg.data.experiment || {};
     tStartInput.value = (exp.startTime ?? 0).toString();
-    tStopInput.value = (exp.stopTime ?? 10).toString();
-    intervalInput.value = (exp.interval ?? ((exp.stopTime ?? 10) - (exp.startTime ?? 0)) / 500).toString();
+    tStopInput.value = (exp.stopTime ?? 1).toString();
+    intervalInput.value = (exp.interval ?? ((exp.stopTime ?? 1) - (exp.startTime ?? 0)) / 500).toString();
     toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
     if (stRtol && !stRtol.value) stRtol.value = (exp.tolerance ?? 1e-4).toString();
     if (stAtol && !stAtol.value) stAtol.value = "1e-6";
@@ -805,7 +892,9 @@ window.addEventListener("message", (event) => {
     updateVarCountBadge();
 
     currentMCData = null; // Clear old MC data on new simulation
+    currentReachabilityData = null; // Clear old reachability data on normal simulation
     currentLimits = []; // Clear old verification limits
+    customBounds = null;
 
     draw();
     requestAnimationFrame(() => draw());
@@ -847,57 +936,218 @@ window.addEventListener("message", (event) => {
     isLiveMode = false;
     isDark = msg.isDark;
     const reach = msg.data as ReachabilityData;
+    const wasReachability = currentReachabilityData !== null;
+    const prevStatesKey = currentData ? currentData.states.join(",") : "";
     currentReachabilityData = reach;
+    currentMCData = null;
 
     const varName = reach.variable || "v";
     const nT = reach.t.length;
-    const yMatrix: number[][] = new Array(nT);
-    for (let i = 0; i < nT; i++) {
-      yMatrix[i] = [reach.nominalTrajectory[i] ?? 0];
+    let states: string[];
+    let yMatrix: number[][];
+
+    if (reach.states && reach.states.length > 0 && reach.y && reach.y.length === nT) {
+      states = reach.states;
+      yMatrix = reach.y;
+    } else if (reach.variables && Object.keys(reach.variables).length > 0) {
+      states = Object.keys(reach.variables);
+      yMatrix = new Array(nT);
+      for (let i = 0; i < nT; i++) {
+        yMatrix[i] = states.map((s) => reach.variables?.[s]?.nominalTrajectory[i] ?? 0);
+      }
+    } else {
+      states = [varName];
+      yMatrix = new Array(nT);
+      for (let i = 0; i < nT; i++) {
+        yMatrix[i] = [reach.nominalTrajectory[i] ?? 0];
+      }
     }
 
     currentData = {
       t: reach.t,
       y: yMatrix,
-      states: [varName],
+      states,
     };
 
-    hiddenVars.clear();
-    seenVars.add(varName);
+    const sameModelInReachMode =
+      wasReachability && prevStatesKey === states.join(",") && states.some((s) => !hiddenVars.has(s));
 
-    if (reach.yRange) {
-      customBounds = {
-        tMin: reach.t[0] ?? 0,
-        tMax: reach.t[reach.t.length - 1] ?? 5,
-        yMin: reach.yRange[0],
-        yMax: reach.yRange[1],
-      };
-    } else {
-      customBounds = {
-        tMin: reach.t[0] ?? 0,
-        tMax: reach.t[reach.t.length - 1] ?? 5,
-        yMin: -6.0,
-        yMax: 15.5,
-      };
+    if (!sameModelInReachMode) {
+      hiddenVars.clear();
+      for (const s of states) {
+        seenVars.add(s);
+        if (s !== varName) {
+          hiddenVars.add(s);
+        }
+      }
+      if (hiddenVars.size === states.length && states.length > 0) {
+        hiddenVars.delete(states[0]);
+      }
     }
 
-    currentLimits = [
-      {
-        variable: varName,
-        value: reach.requirementLimit,
-        label: reach.requirementLabel || `SysML v2 Limit: ${reach.requirementLimit} m/s`,
-        violated: !reach.isCertifiedSafe,
-      },
-    ];
+    customBounds = null;
+
+    // Populate X-Axis selector for Phase Portrait
+    if (selectXAxis) {
+      const currentVal = selectXAxis.value;
+      selectXAxis.innerHTML = '<option value="__time__">Time (s)</option>';
+      states.forEach((s: string) => {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = s;
+        selectXAxis.appendChild(opt);
+      });
+      if (states.includes(currentVal)) {
+        selectXAxis.value = currentVal;
+      } else {
+        selectXAxis.value = "__time__";
+      }
+      selectedXVar = selectXAxis.value;
+    }
+
+    // Populate Parameters if included in reachability payload
+    if (reach.parameters) {
+      if (reach.parameters.length > 0) {
+        paramsSection.style.display = "flex";
+        parametersView.innerHTML = "";
+        currentParameters = {};
+        defaultParameters.clear();
+
+        reach.parameters.forEach((p) => {
+          defaultParameters.set(p.name, p.defaultValue);
+          const item = document.createElement("div");
+          item.className = "param-item";
+          item.setAttribute("data-param-name", p.name);
+
+          const header = document.createElement("div");
+          header.className = "param-item-header";
+
+          const label = document.createElement("div");
+          label.className = "param-label";
+          label.title = p.description || `${p.name} (default: ${p.defaultValue}${p.unit ? " " + p.unit : ""})`;
+
+          const dot = document.createElement("span");
+          dot.className = "param-dot";
+          dot.style.display = "none";
+
+          const nameSpan = document.createElement("span");
+          nameSpan.textContent = p.name + (p.unit ? ` [${p.unit}]` : "");
+
+          label.appendChild(dot);
+          label.appendChild(nameSpan);
+
+          const actions = document.createElement("div");
+          actions.className = "param-actions";
+
+          const resetBtn = document.createElement("button");
+          resetBtn.className = "param-action-btn";
+          resetBtn.textContent = "↺";
+          resetBtn.title = `Reset ${p.name} to default (${p.defaultValue})`;
+
+          actions.appendChild(resetBtn);
+          header.appendChild(label);
+          header.appendChild(actions);
+
+          const controls = document.createElement("div");
+          controls.className = "param-controls";
+
+          const input = document.createElement("input");
+          input.type = "number";
+          input.step = "any";
+          input.className = "param-input";
+          input.value = typeof p.defaultValue === "number" ? p.defaultValue.toString() : "";
+
+          let sMin = p.min !== undefined ? p.min : p.defaultValue !== 0 ? Math.min(0, p.defaultValue * 0.5) : -10;
+          let sMax =
+            p.max !== undefined
+              ? p.max
+              : p.defaultValue !== 0
+                ? Math.max(p.defaultValue * 2, Math.abs(p.defaultValue) * 2)
+                : 10;
+          if (sMin === sMax) {
+            sMin -= 1;
+            sMax += 1;
+          }
+
+          const slider = document.createElement("input");
+          slider.type = "range";
+          slider.className = "param-slider";
+          slider.min = sMin.toString();
+          slider.max = sMax.toString();
+          slider.step = ((sMax - sMin) / 100).toString();
+          slider.value = p.defaultValue.toString();
+
+          controls.appendChild(slider);
+          controls.appendChild(input);
+
+          const updateModifiedState = () => {
+            const currentVal = parseFloat(input.value);
+            const isMod = !isNaN(currentVal) && currentVal !== p.defaultValue;
+            dot.style.display = isMod ? "inline-block" : "none";
+            updateParamModifiedBadge();
+          };
+
+          slider.addEventListener("input", () => {
+            input.value = slider.value;
+            updateModifiedState();
+          });
+
+          input.addEventListener("input", () => {
+            const val = parseFloat(input.value);
+            if (!isNaN(val)) {
+              if (val < parseFloat(slider.min)) slider.min = (val * 0.8).toString();
+              if (val > parseFloat(slider.max)) slider.max = (val * 1.2).toString();
+              slider.value = input.value;
+            }
+            updateModifiedState();
+          });
+
+          resetBtn.addEventListener("click", () => {
+            input.value = p.defaultValue.toString();
+            slider.value = p.defaultValue.toString();
+            updateModifiedState();
+          });
+
+          item.appendChild(header);
+          item.appendChild(controls);
+          parametersView.appendChild(item);
+          currentParameters[p.name] = input;
+        });
+        updateParamModifiedBadge();
+      } else {
+        paramsSection.style.display = "none";
+      }
+    }
+
+    // Populate Experiment Settings if included
+    if (reach.experiment) {
+      settingsSection.style.display = "flex";
+      const exp = reach.experiment;
+      tStartInput.value = (exp.startTime ?? 0).toString();
+      tStopInput.value = (exp.stopTime ?? reach.t[reach.t.length - 1] ?? 10).toString();
+      intervalInput.value = (exp.interval ?? ((exp.stopTime ?? 10) - (exp.startTime ?? 0)) / 500).toString();
+      toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
+      if (stRtol && !stRtol.value) stRtol.value = (exp.tolerance ?? 1e-4).toString();
+      if (stAtol && !stAtol.value) stAtol.value = "1e-6";
+    }
+
+    btnSimulate?.classList.remove("loading");
+    if (reach.telemetry && simTelemetryEl) {
+      simTelemetryEl.style.display = "block";
+      simTelemetryEl.textContent = `✓ ${reach.telemetry.executionTimeMs}ms • ${reach.telemetry.stepCount} steps (Reachability)`;
+    }
 
     placeholderEl.style.display = "none";
     containerEl.style.display = "flex";
     toolbarEl.classList.add("visible");
     toolbarEl.classList.remove("live-mode");
     stopLiveLoop();
-    buildTreeView([varName]);
+    buildTreeView(states);
+    updateVarCountBadge();
 
     draw();
+    requestAnimationFrame(() => draw());
+    setTimeout(() => draw(), 50);
   } else if (msg.type === "monteCarloData") {
     // Monte Carlo uncertainty results → fan chart
     isLiveMode = false;
@@ -1263,6 +1513,7 @@ function triggerSimulation(sweepConfig?: { parameterName: string; start: number;
       steadyStateOnly: steadyStateVal,
       parameterOverrides,
       sweepConfig,
+      reachabilityMode: currentReachabilityData !== null,
     },
   });
 }
@@ -1838,6 +2089,7 @@ function buildTreeView(variables: string[]): void {
         } else {
           hiddenVars.add(node.fullName);
         }
+        updateVarCountBadge();
         customBounds = null;
         if (isLiveMode) drawLive();
         else draw();
@@ -1853,8 +2105,11 @@ function buildTreeView(variables: string[]): void {
 
     const label = document.createElement("span");
     label.className = "tree-label";
-    label.textContent = node.name;
-    label.title = node.fullName;
+    const varMeta = node.isVariable ? (currentData as any)?.variableMetadata?.[node.fullName] : undefined;
+    label.textContent = varMeta?.unit ? `${node.name} [${varMeta.unit}]` : node.name;
+    label.title = varMeta?.description
+      ? `${node.fullName}${varMeta.unit ? ` [${varMeta.unit}]` : ""} — ${varMeta.description}`
+      : node.fullName;
     item.appendChild(label);
 
     if (node.isVariable && currentData) {
@@ -2388,77 +2643,84 @@ function draw() {
   ctx.clip();
 
   // ── Multi-Domain Reachability Flowpipe Bands ──
-  if (currentReachabilityData && currentReachabilityData.t.length > 0) {
+  if (currentReachabilityData && currentReachabilityData.t.length > 0 && selectedXVar === "__time__") {
     const reachT = currentReachabilityData.t;
+    const reachVarsToDraw = activeVars.length > 0 ? activeVars : [currentReachabilityData.variable];
 
-    const sortedEnvelopes = [...currentReachabilityData.envelopes].sort((a, b) => {
-      const order: Record<string, number> = { interval: 0, octagon: 1, affine: 2, zonotope: 3 };
-      return (order[a.kind] ?? 0) - (order[b.kind] ?? 0);
-    });
+    for (const vName of reachVarsToDraw) {
+      const profile = getReachabilityProfileForVar(vName);
+      if (!profile || profile.envelopes.length === 0) continue;
+      const vi = Math.max(0, states.indexOf(vName));
 
-    for (const env of sortedEnvelopes) {
-      const fill = env.fillColor || (isDark ? "rgba(34, 197, 94, 0.2)" : "rgba(34, 197, 94, 0.15)");
-      ctx.fillStyle = fill;
-      ctx.beginPath();
+      const sortedEnvelopes = [...profile.envelopes].sort((a, b) => {
+        const order: Record<string, number> = { interval: 0, octagon: 1, affine: 2, zonotope: 3 };
+        return (order[a.kind] ?? 0) - (order[b.kind] ?? 0);
+      });
 
-      let started = false;
-      for (let i = 0; i < reachT.length; i++) {
-        const hi = env.hi[i];
-        if (hi === undefined || !isFinite(hi)) continue;
-        const x = xScale(reachT[i]);
-        const y = yScaleLeft(hi);
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
+      for (const env of sortedEnvelopes) {
+        const fill = env.fillColor || (isDark ? "rgba(34, 197, 94, 0.2)" : "rgba(34, 197, 94, 0.15)");
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+
+        let started = false;
+        for (let i = 0; i < reachT.length; i++) {
+          const hi = env.hi[i];
+          if (hi === undefined || !isFinite(hi)) continue;
+          const x = xScale(reachT[i]);
+          const y = getPtY(vi, hi);
+          if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            ctx.lineTo(x, y);
+          }
         }
-      }
-      for (let i = reachT.length - 1; i >= 0; i--) {
-        const lo = env.lo[i];
-        if (lo === undefined || !isFinite(lo)) continue;
-        ctx.lineTo(xScale(reachT[i]), yScaleLeft(lo));
-      }
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = env.color;
-      ctx.lineWidth = env.lineWidth ?? 1.2;
-      if (env.borderDash) ctx.setLineDash(env.borderDash);
-      else ctx.setLineDash([]);
-
-      ctx.beginPath();
-      started = false;
-      for (let i = 0; i < reachT.length; i++) {
-        const hi = env.hi[i];
-        if (hi === undefined || !isFinite(hi)) continue;
-        const x = xScale(reachT[i]);
-        const y = yScaleLeft(hi);
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
+        for (let i = reachT.length - 1; i >= 0; i--) {
+          const lo = env.lo[i];
+          if (lo === undefined || !isFinite(lo)) continue;
+          ctx.lineTo(xScale(reachT[i]), getPtY(vi, lo));
         }
-      }
-      ctx.stroke();
+        ctx.closePath();
+        ctx.fill();
 
-      ctx.beginPath();
-      started = false;
-      for (let i = 0; i < reachT.length; i++) {
-        const lo = env.lo[i];
-        if (lo === undefined || !isFinite(lo)) continue;
-        const x = xScale(reachT[i]);
-        const y = yScaleLeft(lo);
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
+        ctx.strokeStyle = env.color;
+        ctx.lineWidth = env.lineWidth ?? 1.2;
+        if (env.borderDash) ctx.setLineDash(env.borderDash);
+        else ctx.setLineDash([]);
+
+        ctx.beginPath();
+        started = false;
+        for (let i = 0; i < reachT.length; i++) {
+          const hi = env.hi[i];
+          if (hi === undefined || !isFinite(hi)) continue;
+          const x = xScale(reachT[i]);
+          const y = getPtY(vi, hi);
+          if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            ctx.lineTo(x, y);
+          }
         }
+        ctx.stroke();
+
+        ctx.beginPath();
+        started = false;
+        for (let i = 0; i < reachT.length; i++) {
+          const lo = env.lo[i];
+          if (lo === undefined || !isFinite(lo)) continue;
+          const x = xScale(reachT[i]);
+          const y = getPtY(vi, lo);
+          if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
-      ctx.stroke();
-      ctx.setLineDash([]);
     }
 
     const zeroY = yScaleLeft(0.0);
@@ -2629,18 +2891,41 @@ function draw() {
   ctx.restore();
 
   // ── Verification limit lines ──
-  if (currentLimits.length > 0) {
+  const effectiveLimits: VerificationLimit[] = [...currentLimits];
+  if (currentReachabilityData) {
+    const reachVarsForLimits = activeVars.length > 0 ? activeVars : [currentReachabilityData.variable];
+    for (const vName of reachVarsForLimits) {
+      const profile = getReachabilityProfileForVar(vName);
+      if (profile && profile.requirementLimit !== undefined && isFinite(profile.requirementLimit)) {
+        const exists = effectiveLimits.some(
+          (l) => l.variable === vName && Math.abs(l.value - profile.requirementLimit!) < 1e-9,
+        );
+        if (!exists) {
+          effectiveLimits.push({
+            variable: vName,
+            value: profile.requirementLimit,
+            label: profile.requirementLabel || `Limit (${vName}): ${profile.requirementLimit}`,
+            violated: !profile.isCertifiedSafe,
+            direction: profile.requirementDirection ?? "max",
+          });
+        }
+      }
+    }
+  }
+
+  if (effectiveLimits.length > 0) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(margin.left, margin.top, plotW, plotH);
     ctx.clip();
 
-    for (const limit of currentLimits) {
+    for (const limit of effectiveLimits) {
       const limitVi = states.indexOf(limit.variable);
+      if (limitVi >= 0 && hiddenVars.has(limit.variable)) continue;
       const ly = limitVi >= 0 ? getPtY(limitVi, limit.value) : yScaleLeft(limit.value);
       // Only draw if the line is within the visible plot area
       if (ly >= margin.top && ly <= margin.top + plotH) {
-        // Dashed red line
+        // Dashed red/green line
         ctx.strokeStyle = limit.violated ? "#f14c4c" : "#3fb950";
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
@@ -2650,18 +2935,22 @@ function draw() {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Shaded violation region (above the limit line for max constraints)
+        // Shaded violation region (above for max constraints, below for min constraints)
         if (limit.violated) {
           ctx.fillStyle = isDark ? "rgba(241, 76, 76, 0.06)" : "rgba(241, 76, 76, 0.08)";
-          ctx.fillRect(margin.left, margin.top, plotW, ly - margin.top);
+          if (limit.direction === "min") {
+            ctx.fillRect(margin.left, ly, plotW, margin.top + plotH - ly);
+          } else {
+            ctx.fillRect(margin.left, margin.top, plotW, ly - margin.top);
+          }
         }
 
         // Label at the right edge
         ctx.font = "bold 11px var(--vscode-editor-font-family, monospace)";
         ctx.fillStyle = limit.violated ? "#f14c4c" : "#3fb950";
         ctx.textAlign = "right";
-        ctx.textBaseline = "bottom";
-        ctx.fillText(limit.label, margin.left + plotW - 4, ly - 3);
+        ctx.textBaseline = limit.direction === "min" ? "top" : "bottom";
+        ctx.fillText(limit.label, margin.left + plotW - 4, limit.direction === "min" ? ly + 3 : ly - 3);
       }
     }
 
@@ -2669,9 +2958,23 @@ function draw() {
   }
 
   // Draw Reachability Status Callouts
-  if (currentReachabilityData && currentReachabilityData.statusBadges) {
+  if (currentReachabilityData) {
+    const badgesToDraw: { text: string; kind: "pass" | "warn" | "fail" }[] = [];
+    const reachVarsForBadges = activeVars.length > 0 ? activeVars : [currentReachabilityData.variable];
+    for (const vName of reachVarsForBadges) {
+      const profile = getReachabilityProfileForVar(vName);
+      if (profile?.statusBadges) {
+        for (const b of profile.statusBadges) {
+          badgesToDraw.push(b);
+        }
+      }
+    }
+    if (badgesToDraw.length === 0 && currentReachabilityData.statusBadges) {
+      badgesToDraw.push(...currentReachabilityData.statusBadges);
+    }
+
     let badgeY = margin.top + 16;
-    for (const badge of currentReachabilityData.statusBadges) {
+    for (const badge of badgesToDraw.slice(0, 6)) {
       ctx.save();
       ctx.font = "bold 11px var(--vscode-editor-font-family, monospace)";
       const textWidth = ctx.measureText(badge.text).width;

@@ -372,7 +372,21 @@ export class CvodeDaeDirectSolver {
     this.algebraicBlocks = options.algebraicBlocks ?? [];
 
     const nStates = stateVarIds.length;
-    const scratchBytes = 4096 * 8;
+    let maxVarId = Math.max(
+      typeof wasmExports?.dae_getVarCount === "function"
+        ? Number(wasmExports.dae_getVarCount(daePtr)) || 0
+        : Number(wasmExports?.varCount) || 0,
+      this.timeVarId,
+    );
+    for (let i = 0; i < stateVarIds.length; i++) {
+      if ((stateVarIds[i] ?? 0) > maxVarId) maxVarId = stateVarIds[i]!;
+    }
+    for (const blk of this.algebraicBlocks) {
+      if (blk.varId > maxVarId) {
+        maxVarId = blk.varId;
+      }
+    }
+    const scratchBytes = Math.max(4096, maxVarId + 64) * 8;
     if (typeof wasmExports.atomicChunkAlloc === "function") {
       this.varValuesPtr = wasmExports.atomicChunkAlloc(scratchBytes);
       if (typeof wasmExports.atomicChunkFree === "function") {
@@ -391,7 +405,8 @@ export class CvodeDaeDirectSolver {
     } else if (typeof wasmExports.__new === "function") {
       this.varValuesPtr = wasmExports.__new(scratchBytes, 0);
     } else if (wasmExports.memory instanceof WebAssembly.Memory) {
-      const prevPages = wasmExports.memory.grow(1);
+      const pagesNeeded = Math.max(1, Math.ceil(scratchBytes / 65536));
+      const prevPages = wasmExports.memory.grow(pagesNeeded);
       this.varValuesPtr = prevPages * 65536;
     } else {
       throw new Error("WASM exports must provide an allocator or growable WebAssembly.Memory for DAE scratch values.");

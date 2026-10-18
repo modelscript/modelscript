@@ -182,12 +182,13 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleSelectComponent = useCallback(
     (name: string | null) => {
-      setSelectedComponent(name);
-      if (!name) {
+      if (!name || name === "__diagram_background__" || name === "__diagram_axes__") {
+        setSelectedComponent(null);
         setSelectedComponentProperties(null);
         setIsPropertiesLoading(false);
         return;
       }
+      setSelectedComponent(name);
 
       // Show lightweight properties immediately while full schema loads
       const initialProps = diagramData?.nodes?.find((n: any) => n.id === name)?.properties ?? null;

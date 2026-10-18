@@ -96,6 +96,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let currentDiagramType = "All";
     let diagramEditQueue = Promise.resolve();
     let isSpatialEditPending = false;
+    let lastOptimisticEditTime = 0;
     // True when a text-change-triggered update has been scheduled (debounced or immediate).
     // Prevents projectTreeChanged from scheduling a redundant second rebuild.
     let textChangeUpdatePending = false;
@@ -369,6 +370,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   if (response?.edits?.length > 0) {
                     // Mark as optimistic so onDidChangeTextDocument skips re-render
                     pendingRenderHint = "none";
+                    lastOptimisticEditTime = Date.now();
                     await applyTextEdits(uriString, response.edits);
                     // Wait for the document change event to fire and consume the hint
                     await waitForDocumentChange();
@@ -376,6 +378,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     if (pendingRenderHint !== null) {
                       pendingRenderHint = null;
                       isSpatialEditPending = true;
+                      lastOptimisticEditTime = Date.now();
                     }
                   }
                 })
@@ -466,10 +469,12 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         // We set this flag to skip the subsequent projectTreeChanged event
         // and hide the spinner once the semantic pipeline has completed validating the edit.
         isSpatialEditPending = true;
+        lastOptimisticEditTime = Date.now();
         return;
       }
 
       isSpatialEditPending = false;
+      lastOptimisticEditTime = 0;
 
       if (hint === "immediate") {
         // Semantic edit — immediate refresh
@@ -490,7 +495,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
     // React to semantic pipeline completions from the language server
     const projectTreeListener = this.client.onNotification("modelscript/projectTreeChanged", () => {
-      if (isSpatialEditPending) {
+      if (isSpatialEditPending || Date.now() - lastOptimisticEditTime < 800) {
         isSpatialEditPending = false;
         webviewPanel.webview.postMessage({ type: "stopLoading" }); // Hide spinner when edit finishes
         return;

@@ -164,16 +164,8 @@ export function containsDerivative(exprId: u32, dae: DaeBuilder): boolean {
  * Resolves the AST expression ID for the `idx`-th argument of a multi-argument function call in the DAE arena.
  */
 @inline
-function getCallSubArgPantelides(dae: DaeBuilder, callExprId: u32, firstArg: u32, idx: u32): u32 {
-  if (idx == 0) return firstArg;
-  let slotIdx = callExprId + idx;
-  if (slotIdx < dae.exprCount) {
-    let slotOffset = slotIdx * EXPR_STRIDE;
-    if (dae.getExprData().get(slotOffset + EXPR_KIND) == ExprKind.Tuple) {
-      return dae.getExprData().get(slotOffset + EXPR_LEFT) as u32;
-    }
-  }
-  return firstArg + idx;
+function getCallSubArgPantelides(dae: DaeBuilder, callExprId: u32, _firstArg: u32, idx: u32): u32 {
+  return dae.getCallArgExprId(callExprId, idx);
 }
 
 /**
@@ -203,7 +195,7 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
     if (dae.getStringPool().isTime(rawId as i32)) {
       return dae.addRealLiteral(1.0);
     }
-    let resolvedVarId: i32 = rawId < dae.varCount ? (rawId as i32) : dae.lookupVariableByName(rawId);
+    let resolvedVarId: i32 = dae.resolveExprVarId(rawId);
     if (resolvedVarId >= 0 && (resolvedVarId as u32) < dae.varCount) {
       let varId = resolvedVarId as u32;
       let varNameId = dae.getVarData().get(varId * VAR_STRIDE + VAR_NAME) as i32;
@@ -255,7 +247,7 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
       let bOff = baseExpr * EXPR_STRIDE;
       if (dae.getExprData().get(bOff + EXPR_KIND) == ExprKind.Name) {
         let rawId = dae.getExprData().get(bOff + EXPR_DATA1) as u32;
-        let resolvedVarId: i32 = rawId < dae.varCount ? (rawId as i32) : dae.lookupVariableByName(rawId);
+        let resolvedVarId: i32 = dae.resolveExprVarId(rawId);
         if (resolvedVarId >= 0 && (resolvedVarId as u32) < dae.varCount) {
           let variability = dae.getVarData().get((resolvedVarId as u32) * VAR_STRIDE + VAR_VARIABILITY);
           if (
@@ -630,7 +622,7 @@ export class PantelidesEngine {
     if (blt != null) {
       this.blt = blt;
     } else {
-      let bltPtr = atomicChunkAlloc(offsetof<BltEngine>());
+      let bltPtr = atomicChunkAlloc(max<u32>(offsetof<BltEngine>() as u32, 256));
       this.blt = changetype<BltEngine>(bltPtr);
       this.blt.init(dae);
     }
@@ -677,6 +669,7 @@ export class PantelidesEngine {
 
     let exprStack = createChunkedInt32Array(256);
     for (let i: u32 = 0; i < eqCount; i++) {
+      if (this.dae.isEqInitial(i) || this.dae.isEqRemoved(i)) continue;
       let offset = i * EQ_STRIDE;
       if (this.dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
       let lhsId = this.dae.getEqData().get(offset + EQ_LHS) as u32;
@@ -701,7 +694,7 @@ export class PantelidesEngine {
               curr = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
             } else if (cKind == ExprKind.Name) {
               let rawId = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
-              let resolvedId = rawId < varCount ? (rawId as i32) : this.dae.lookupVariableByName(rawId);
+              let resolvedId = this.dae.resolveExprVarId(rawId);
               if (resolvedId >= 0 && (resolvedId as u32) < varCount) {
                 let vId = resolvedId as u32;
                 if (depth > maxVarOrder.get(vId)) {
@@ -758,15 +751,8 @@ export class PantelidesEngine {
           if (count > 0 && count != 0xffffffff && left != 0xffffffff) {
             exprStack.push(left as i32);
             for (let a: u32 = 1; a < count; a++) {
-              let slotIdx = exprId + a;
-              if (slotIdx < this.dae.exprCount) {
-                let slotOffset = slotIdx * EXPR_STRIDE;
-                let slotKind = this.dae.getExprData().get(slotOffset + EXPR_KIND);
-                let argExpr = slotKind == ExprKind.Tuple
-                  ? (this.dae.getExprData().get(slotOffset + EXPR_LEFT) as u32)
-                  : left + a;
-                if (argExpr != 0xffffffff) exprStack.push(argExpr as i32);
-              }
+              let argExpr = this.dae.getCallArgExprId(exprId, a);
+              if (argExpr != 0xffffffff) exprStack.push(argExpr as i32);
             }
           }
         }
@@ -778,6 +764,7 @@ export class PantelidesEngine {
 
     for (let i: u32 = 0; i < eqCount; i++) {
       this.eqDepPtrs.set(i, this.eqDepVars.length as i32);
+      if (this.dae.isEqInitial(i) || this.dae.isEqRemoved(i)) continue;
 
       let offset = i * EQ_STRIDE;
       if (this.dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
@@ -807,7 +794,7 @@ export class PantelidesEngine {
               curr = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
             } else if (cKind == ExprKind.Name) {
               let rawId = this.dae.getExprData().get(cOff + EXPR_DATA1) as u32;
-              let resolvedId = rawId < varCount ? (rawId as i32) : this.dae.lookupVariableByName(rawId);
+              let resolvedId = this.dae.resolveExprVarId(rawId);
               if (resolvedId >= 0 && (resolvedId as u32) < varCount) {
                 let varId = resolvedId as u32;
                 if (depth == maxVarOrder.get(varId) && seenVars.get(varId) == 0) {
@@ -823,7 +810,7 @@ export class PantelidesEngine {
           }
         } else if (kind == ExprKind.Name) {
           let rawId: u32 = u32(this.dae.getExprData().get(exprOffset + EXPR_DATA1));
-          let resolvedId = rawId < varCount ? (rawId as i32) : this.dae.lookupVariableByName(rawId);
+          let resolvedId = this.dae.resolveExprVarId(rawId);
           if (resolvedId >= 0 && (resolvedId as u32) < varCount) {
             let varId = resolvedId as u32;
             let variability = this.dae.getVarData().get(varId * VAR_STRIDE + VAR_VARIABILITY);
@@ -875,15 +862,8 @@ export class PantelidesEngine {
           if (count > 0 && count != 0xffffffff && left != 0xffffffff) {
             exprStack.push(left as i32);
             for (let a: u32 = 1; a < count; a++) {
-              let slotIdx = exprId + a;
-              if (slotIdx < this.dae.exprCount) {
-                let slotOffset = slotIdx * EXPR_STRIDE;
-                let slotKind = this.dae.getExprData().get(slotOffset + EXPR_KIND);
-                let argExpr = slotKind == ExprKind.Tuple
-                  ? (this.dae.getExprData().get(slotOffset + EXPR_LEFT) as u32)
-                  : left + a;
-                if (argExpr != 0xffffffff) exprStack.push(argExpr as i32);
-              }
+              let argExpr = this.dae.getCallArgExprId(exprId, a);
+              if (argExpr != 0xffffffff) exprStack.push(argExpr as i32);
             }
           }
         }
@@ -1199,7 +1179,7 @@ export class PantelidesEngine {
  * Allocates and initializes a new `PantelidesEngine` in WebAssembly linear memory.
  */
 export function dae_createPantelides(daePtr: u32, bltPtr: u32): u32 {
-  let pantPtr = atomicChunkAlloc(offsetof<PantelidesEngine>());
+  let pantPtr = atomicChunkAlloc(max<u32>(offsetof<PantelidesEngine>() as u32, 256));
   let pant = changetype<PantelidesEngine>(pantPtr);
   let dae = changetype<DaeBuilder>(daePtr);
   let blt: BltEngine | null = null;

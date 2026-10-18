@@ -35,6 +35,8 @@ function normalizeReciprocalAndProducts(s: string): string {
   return (
     collapseArrayCtors(s)
       .replace(/\.0+(\b|\D)/g, "$1")
+      // + (-num) * X -> - num * X
+      .replace(/\+\s*\(-([0-9.]+)\)\s*\*\s*/g, "- $1 * ")
       // General decimal reciprocal multiplier: c * 1 / (expr) or c * 1 / expr or c * expr where 1/c is an integer >= 2
       .replace(/\b(0\.\d+)\s*\*\s*1\s*\/\s*(\([^()]+\)|[a-zA-Z0-9_.[\]]+)/g, (match, decStr: string, denom: string) => {
         const val = Number(decStr);
@@ -44,7 +46,20 @@ function normalizeReciprocalAndProducts(s: string): string {
         }
         return match;
       })
-      .replace(/\b(0\.\d+)\s*\*\s*([a-zA-Z0-9_.[\]]+)/g, (match, decStr: string, factor: string) => {
+      .replace(
+        /\b(0\.\d+|\d+(?:\.\d+)?[eE][+-]?\d+)\s*\*\s*(0\.\d+|\d+(?:\.\d+)?[eE][+-]?\d+)\s*\/\s*([a-zA-Z_][a-zA-Z0-9_.[\]]*)/g,
+        (match, dec1: string, dec2: string, denom: string) => {
+          const val1 = Number(dec1);
+          const val2 = Number(dec2);
+          const inv1 = val1 > 0 ? Math.round(1 / val1) : 0;
+          const inv2 = val2 > 0 ? Math.round(1 / val2) : 0;
+          if (inv1 >= 2 && Math.abs(1 / val1 - inv1) < 1e-12 && inv2 >= 2 && Math.abs(1 / val2 - inv2) < 1e-12) {
+            return `1 / (${denom} * ${inv2}) / ${inv1}`;
+          }
+          return match;
+        },
+      )
+      .replace(/\b(0\.\d+)\s*\*\s*([a-zA-Z_][a-zA-Z0-9_.[\]]*)/g, (match, decStr: string, factor: string) => {
         const val = Number(decStr);
         const inv = val > 0 ? Math.round(1 / val) : 0;
         if (inv >= 2 && Math.abs(1 / val - inv) < 1e-12) {
@@ -52,8 +67,6 @@ function normalizeReciprocalAndProducts(s: string): string {
         }
         return match;
       })
-      // + (-num) * X -> - num * X
-      .replace(/\+\s*\(-([0-9.]+)\)\s*\*\s*/g, "- $1 * ")
       // elseif noEvent(a < (-b)) -> elseif noEvent(a < -b)
       .replace(/<\s*\(-([a-zA-Z_][a-zA-Z0-9_.[\]]*)\)/g, "< -$1")
   );
@@ -122,6 +135,12 @@ function canonicalizeMultiplicativeChain(s: string): string {
         return `(${inner})`;
       }
       return inner;
+    }
+    const callMatch = trimmed.match(/^([a-zA-Z_$][a-zA-Z0-9_.$]*)\(([\s\S]*)\)$/);
+    if (callMatch) {
+      const fnName = callMatch[1]!;
+      const innerArgs = splitTopLevelComma(callMatch[2]!).map((a) => canonicalizeExpression(a));
+      return `${fnName}(${innerArgs.join(", ")})`;
     }
     return trimmed;
   };
@@ -411,7 +430,9 @@ export function parseFlatModelica(text: string, options?: DaeComparisonOptions):
   let currentSection: "vars" | "equations" | "initialEquations" | "algorithms" | "initialAlgorithms" = "vars";
 
   for (const line of lines) {
-    const classMatch = line.match(/^(class|model|record|function|package|type|block|connector)\s+([^\s";]+)/);
+    const classMatch = line.match(
+      /^(?:(?:pure|impure)\s+)?(class|model|record|function|package|type|block|connector)\s+([^\s";]+)/,
+    );
     const beforeQuote = line.split('"')[0] ?? line;
     if (classMatch && !beforeQuote.includes("=")) {
       currentClass = {
@@ -478,9 +499,20 @@ export function parseFlatModelica(text: string, options?: DaeComparisonOptions):
       const canonEq = canonicalizeEquation(line);
       currentClass.initialEquations.push(canonEq);
     } else if (currentSection === "algorithms") {
-      currentClass.algorithms.push(line.replace(/\s+/g, " "));
+      const normLine = line.replace(/\s+/g, " ");
+      if (normLine === "end if;" && currentClass.algorithms[currentClass.algorithms.length - 1] === "else") {
+        currentClass.algorithms.pop();
+      }
+      currentClass.algorithms.push(normLine);
     } else if (currentSection === "initialAlgorithms") {
-      currentClass.initialAlgorithms.push(line.replace(/\s+/g, " "));
+      const normLine = line.replace(/\s+/g, " ");
+      if (
+        normLine === "end if;" &&
+        currentClass.initialAlgorithms[currentClass.initialAlgorithms.length - 1] === "else"
+      ) {
+        currentClass.initialAlgorithms.pop();
+      }
+      currentClass.initialAlgorithms.push(normLine);
     }
   }
 
@@ -671,11 +703,60 @@ function splitTopLevelComma(str: string): string[] {
   return parts;
 }
 
+function stripOuterParens(str: string): string {
+  let s = str.trim();
+  while (s.startsWith("(") && s.endsWith(")")) {
+    let depth = 0;
+    let ok = true;
+    for (let i = 0; i < s.length - 1; i++) {
+      if (s[i] === "(") depth++;
+      else if (s[i] === ")") {
+        depth--;
+        if (depth === 0) {
+          ok = false;
+          break;
+        }
+      }
+    }
+    if (ok) {
+      s = s.slice(1, -1).trim();
+    } else {
+      break;
+    }
+  }
+  return s;
+}
+
 function canonicalizeAdditiveSignExpression(expr: string): string {
   let s = canonicalizeExpression(expr.trim());
   s = stripOuterParens(s);
   // Rewrite -(a - b) -> b - a and (-a) * b + c * d into canonical signed additive terms
   s = s.replace(/^-\s*\(\s*([^()]+?)\s*-\s*([^()]+?)\s*\)$/, "$2 - $1");
+  // Distribute + ((-a) * b - c * d - e * f) * S -> - a * b * S - c * d * S - e * f * S
+  s = s.replace(
+    /\+\s*\(\(\s*-\s*([^()]+?)\s*\)\s*\*\s*([^()+-]+?)\s*-\s*([^()+-]+?)\s*-\s*([^()+-]+?)\)\s*\*\s*(\([^()]+\))/g,
+    "- $1 * $2 * $5 - $3 * $5 - $4 * $5",
+  );
+  // Distribute - (A + B + C) -> - A - B - C when A, B, C have balanced parens
+  s = s.replace(/-\s*\(((?:[^()]|\([^()]*\))+)\)\s*$/, (_m, inner: string) => {
+    const parts: string[] = [];
+    let d = 0;
+    let st = 0;
+    for (let i = 0; i < inner.length; i++) {
+      const c = inner[i];
+      if (c === "(" || c === "[" || c === "{") d++;
+      else if (c === ")" || c === "]" || c === "}") d--;
+      else if (c === "+" && d === 0) {
+        parts.push(inner.slice(st, i).trim());
+        st = i + 1;
+      }
+    }
+    parts.push(inner.slice(st).trim());
+    if (parts.length > 1) {
+      return parts.map((p) => `- ${p}`).join(" ");
+    }
+    return _m;
+  });
   // Split top-level + and - into signed terms
   const terms: { sign: "+" | "-"; term: string }[] = [];
   let depth = 0;
@@ -724,6 +805,13 @@ function canonicalizeAdditiveSignExpression(expr: string): string {
       effectiveSign = effectiveSign === "+" ? "-" : "+";
       t = stripOuterParens(negPrefix[1].trim());
     }
+    if (effectiveSign === "-") {
+      const subMul = t.match(/^\(([^()]+?)\s*-\s*([^()]+?)\)\s*\*\s*(.+)$/);
+      if (subMul && subMul[1] && subMul[2] && subMul[3]) {
+        effectiveSign = "+";
+        t = `(${subMul[2].trim()} - ${subMul[1].trim()}) * ${subMul[3].trim()}`;
+      }
+    }
     t = canonicalizeExpression(t);
     return `${effectiveSign}${t}`;
   });
@@ -739,7 +827,8 @@ export function areAlgorithmsEquivalent(expAlgo: string, actAlgo: string): boole
       .replace(/\s+/g, " ")
       .replace(/sqrt\(sqrt\(([^()]+)\)\)/g, "($1) ^ 0.25")
       .replace(/(\b[a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\^\s*2\b/g, "$1 * $1")
-      .replace(/(\b[a-zA-Z_][a-zA-Z0-9_.[\],]*|\(-[a-zA-Z_][a-zA-Z0-9_.[\],]*\))\s*\*\s*2\b/g, "2 * $1")
+      .replace(/\(-([a-zA-Z_][a-zA-Z0-9_.[\],]*)\)\s*\*\s*2\b/g, "(-2) * $1")
+      .replace(/(\b[a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\*\s*2\b/g, "2 * $1")
       .replace(/\bnoEvent\(\s*if\s+(.+?)\s+then\s+(.+)\)(?=\s*\)\s*;$)/g, "if noEvent($1) then $2")
       .replace(/\+\s*\(-([^()]+)\)/g, "- $1")
       .replace(/-\s*\(-([^()]+)\)/g, "+ $1")
@@ -759,21 +848,40 @@ export function areAlgorithmsEquivalent(expAlgo: string, actAlgo: string): boole
   const actCollapsed = norm(collapseArrayCtors(actAlgo));
   if (expCollapsed === actCollapsed) return true;
 
+  const areAtan2CallsEquivalent = (eCall: string, aCall: string): boolean => {
+    const mE = eCall.trim().match(/^atan2\(([\s\S]+)\)$/);
+    const mA = aCall.trim().match(/^atan2\(([\s\S]+)\)$/);
+    if (!mE || !mA) return false;
+    const expArgs = splitTopLevelComma(mE[1]!);
+    const actArgs = splitTopLevelComma(mA[1]!);
+    if (expArgs.length !== 2 || actArgs.length !== 2) return false;
+    return (
+      canonicalizeAdditiveSignExpression(expArgs[0]!) === canonicalizeAdditiveSignExpression(actArgs[0]!) &&
+      canonicalizeAdditiveSignExpression(expArgs[1]!) === canonicalizeAdditiveSignExpression(actArgs[1]!)
+    );
+  };
+
   // Compare atan2(y, x) expressions structurally by canonicalizing each argument's signed additive & multiplicative terms
-  const atan2Re = /^(.+?)\s*:=\s*atan2\((.+)\)\s*;?$/;
+  const atan2Re = /^(.+?)\s*:=\s*(atan2\(.+\))\s*;?$/;
   const expAtan = expCollapsed.match(atan2Re);
   const actAtan = actCollapsed.match(atan2Re);
   if (expAtan && actAtan && expAtan[1]!.trim() === actAtan[1]!.trim()) {
-    const expArgs = splitTopLevelComma(expAtan[2]!);
-    const actArgs = splitTopLevelComma(actAtan[2]!);
-    if (expArgs.length === 2 && actArgs.length === 2) {
-      const expY = canonicalizeAdditiveSignExpression(expArgs[0]!);
-      const actY = canonicalizeAdditiveSignExpression(actArgs[0]!);
-      const expX = canonicalizeAdditiveSignExpression(expArgs[1]!);
-      const actX = canonicalizeAdditiveSignExpression(actArgs[1]!);
-      if (expY === actY && expX === actX) {
-        return true;
-      }
+    if (areAtan2CallsEquivalent(expAtan[2]!, actAtan[2]!)) {
+      return true;
+    }
+  }
+
+  const ctorAssignRe = /^(.+?)\s*:=\s*\{([\s\S]+)\}\s*;?$/;
+  const expCtor = expCollapsed.match(ctorAssignRe);
+  const actCtor = actCollapsed.match(ctorAssignRe);
+  if (expCtor && actCtor && expCtor[1]!.trim() === actCtor[1]!.trim()) {
+    const expElems = splitTopLevelComma(expCtor[2]!);
+    const actElems = splitTopLevelComma(actCtor[2]!);
+    if (
+      expElems.length === actElems.length &&
+      expElems.every((el, idx) => el === actElems[idx] || areAtan2CallsEquivalent(el, actElems[idx]!))
+    ) {
+      return true;
     }
   }
 

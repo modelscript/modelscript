@@ -260,7 +260,10 @@ export function recordExpr(tape: AdTape, exprId: u32, dae: DaeBuilder, varValues
   }
 
   if (kind == ExprKind.Name) {
-    let varId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let resolved = dae.resolveExprVarId(rawId);
+    if (resolved < 0) return tape.pushOp(TAPE_OP_CONST, 0, 0, 0.0);
+    let varId = resolved as u32;
     let val = varValues[varId];
     return tape.pushOp(TAPE_OP_VAR, varId, 0, val);
   }
@@ -268,9 +271,13 @@ export function recordExpr(tape: AdTape, exprId: u32, dae: DaeBuilder, varValues
   if (kind == ExprKind.Der) {
     let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
-      let varId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
-      let val = varValues[varId];
-      return tape.pushOp(TAPE_OP_VAR, varId, 0, val);
+      let rawId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+      let resolved = dae.resolveExprVarId(rawId);
+      if (resolved >= 0) {
+        let varId = resolved as u32;
+        let val = varValues[varId];
+        return tape.pushOp(TAPE_OP_VAR, varId, 0, val);
+      }
     }
   }
 

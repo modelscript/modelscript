@@ -42,6 +42,7 @@ test("Package Content-Addressed Storage (CAS) & Supply Chain Integrity", async (
 
   t.after(() => {
     try {
+      app.locals["jobQueue"]?.clear();
       db.db.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {

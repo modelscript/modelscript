@@ -209,7 +209,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       path: z.string().optional().describe("Optional: restrict linting to a specific library path"),
     },
     async ({ path: filterPath }) => {
-      if (!ctx.current) {
+      if (!ctx.current?.queryEngine) {
         return {
           content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
           isError: true,

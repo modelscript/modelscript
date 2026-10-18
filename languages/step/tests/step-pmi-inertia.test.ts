@@ -163,7 +163,34 @@ END-ISO-10303-21;
     const mbRes = await mbAction!.execute({ uri: "robot_arm.stp" }, { documentText: multiPartStep });
     assert.ok(mbRes.source.includes("BaseLink"));
     assert.ok(mbRes.source.includes("UpperArm"));
+    assert.ok(mbRes.source.includes("inner Modelica.Mechanics.MultiBody.World world;"));
+    assert.ok(mbRes.source.includes("connect(world.frame_b,"));
     assert.ok(!mbRes.source.includes("rotor1"));
+
+    // Verify NAUO referencing PRODUCT_DEFINITION (#12 -> #10, #22 -> #20) and right-handed identity basis
+    const nauoStep = `${multiPartStep.replace("ENDSEC;\nEND-ISO-10303-21;", "")}
+#30 = CARTESIAN_POINT('', (0.0, 0.0, 0.0));
+#31 = DIRECTION('', (0.0, 0.0, 1.0));
+#32 = DIRECTION('', (1.0, 0.0, 0.0));
+#33 = AXIS2_PLACEMENT_3D('', #30, #31, #32);
+#34 = CARTESIAN_POINT('', (0.5, 0.0, 0.0));
+#35 = AXIS2_PLACEMENT_3D('', #34, #31, #32);
+#36 = ITEM_DEFINED_TRANSFORMATION('', '', #33, #35);
+#37 = NEXT_ASSEMBLY_USAGE_OCCURRENCE('1', 'NAUO1', '', #12, #22, $);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const nauoModel = extractStepAssembly(nauoStep);
+    assert.strictEqual(nauoModel.edges.length, 1);
+    assert.strictEqual(nauoModel.edges[0]!.parentPartId, "#10");
+    assert.strictEqual(nauoModel.edges[0]!.childPartId, "#20");
+    const mappedNauo = mapStepToMultiBody("RobotArm", nauoModel);
+    assert.strictEqual(mappedNauo.fixedTranslations.length, 1);
+    assert.deepStrictEqual(mappedNauo.fixedTranslations[0]!.rotationMatrix, [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]);
 
     const feaAction = stepLanguage.actions?.find((a) => a.id === "generate_fea_mesh");
     const feaRes = await feaAction!.execute({ uri: "robot_arm.stp" }, { documentText: multiPartStep });

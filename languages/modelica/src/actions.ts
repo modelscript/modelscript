@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { ActionExecutionContext } from "@modelscript/dsl";
-import { initBltWasm, printArenaDAE, Variability, VarType } from "@modelscript/runtime";
+import { ExprKind, initBltWasm, printArenaDAE, Variability, VarType } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
 import { ModelicaFlattener } from "./flattener.js";
 
@@ -136,7 +136,7 @@ function ensureClassIndexed(
             const rNode = dt ? dt.tree?.rootNode : resUri === effectiveUri ? tree.rootNode : null;
             if (rNode) {
               return typeof rNode.descendantForIndex === "function"
-                ? rNode.descendantForIndex(s, Math.max(s, e - 1))
+                ? rNode.descendantForIndex(s, Math.max(s, e))
                 : typeof rNode.getNode === "function"
                   ? rNode.getNode(s, e)
                   : null;
@@ -347,8 +347,77 @@ export const modelicaActionHandlers: Record<
     const arena = flattener.flatten(firstId);
 
     context.notifyProgress?.(`Simulating ${className}...`, 60);
+    const tier0Ids: number[] = [];
+    const tier1Ids: number[] = [];
+    const tier2Ids: number[] = [];
+    const derIds: number[] = [];
+    const seenIds = new Set<number>();
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      if (arena.hiddenVarIndices?.has(i)) continue;
+      const v = arena.getVarVariability(i);
+      if (v === Variability.Parameter || v === Variability.Constant) continue;
+      if (arena.getVarShape(i).length > 0) continue;
+      const name = arena.getVarName(i);
+      const nameId = arena.getVarNameId(i);
+      seenIds.add(nameId);
+      if (arena.isVarFixed(i)) {
+        tier0Ids.push(nameId);
+      } else if (
+        name.split(".").length <= 2 &&
+        !name.startsWith("ground.") &&
+        !name.endsWith(".T_heatPort") &&
+        !name.endsWith(".R_actual")
+      ) {
+        tier1Ids.push(nameId);
+      } else {
+        tier2Ids.push(nameId);
+      }
+    }
+    for (let e = 0; e < arena.exprCount; e++) {
+      if (arena.getExprKind(e) === ExprKind.Der) {
+        const argId = arena.getExprData1(e);
+        if (argId >= 0 && arena.getExprKind(argId) === ExprKind.Name) {
+          const baseName = arena.interner.resolve(arena.getExprData1(argId));
+          if (baseName) {
+            const baseIdx = arena.getVarIdxByName(baseName);
+            if (baseIdx >= 0 && !arena.isVarRemoved(baseIdx) && !arena.hiddenVarIndices?.has(baseIdx)) {
+              const derId = arena.interner.intern(`der(${baseName})`);
+              if (!seenIds.has(derId)) {
+                seenIds.add(derId);
+                derIds.push(derId);
+              }
+            }
+          }
+        }
+      }
+    }
+    const outputStringIds = [...tier0Ids, ...tier1Ids, ...tier2Ids, ...derIds];
+
+    if (arena.experiment.stopTime === undefined && inputs?.stopTime === undefined) {
+      let maxFreq = 0;
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        if (arena.getVarVariability(i) !== Variability.Parameter) continue;
+        const name = arena.getVarName(i);
+        if (name === "f" || name === "freqHz" || name.endsWith(".f") || name.endsWith(".freqHz")) {
+          const val = arena.getVarStartValue(i);
+          if (Number.isFinite(val) && val > maxFreq) maxFreq = val;
+        }
+      }
+      // Per Modelica Spec Section 18.4 & OMEdit, default StopTime is 1.0 s (500 intervals -> dt=0.002s).
+      // Only shorten StopTime automatically when frequency >= 100 Hz where dt=0.002s would alias.
+      arena.experiment.stopTime = maxFreq >= 100 ? Number((10 / maxFreq).toPrecision(4)) : 1.0;
+      if (arena.experiment.interval === undefined) {
+        arena.experiment.interval = Number(
+          ((arena.experiment.stopTime - (arena.experiment.startTime ?? 0)) / 500).toPrecision(4),
+        );
+      }
+    }
+
     const simOpts: any = {
       solver: inputs?.solver || "dopri5",
+      ...(outputStringIds.length > 0 ? { outputStringIds } : {}),
     };
     if (inputs?.startTime !== undefined) simOpts.startTime = inputs.startTime;
     if (inputs?.stopTime !== undefined) simOpts.stopTime = inputs.stopTime;
@@ -375,6 +444,24 @@ export const modelicaActionHandlers: Record<
     const tArr = Array.from(result.t);
     const yArr = (result.y || []).map((row: any) => (Array.isArray(row) ? row : Array.from(row)));
 
+    function resolveAttrString(ar: any, varIdx: number, attrName: string): string | undefined {
+      const exprId = ar.getVarAttrExprId?.(varIdx, attrName);
+      if (exprId === undefined || exprId < 0) return undefined;
+      if (ar.getExprKind(exprId) === ExprKind.StringLiteral) {
+        return ar.interner.resolve(ar.getExprData1(exprId));
+      }
+      return undefined;
+    }
+
+    function evalAttrNum(ar: any, varIdx: number, attrName: string): number | undefined {
+      const exprId = ar.getVarAttrExprId?.(varIdx, attrName);
+      if (exprId === undefined || exprId < 0) return undefined;
+      const kind = ar.getExprKind(exprId);
+      if (kind === ExprKind.RealLiteral) return ar.getExprRealValue(exprId);
+      if (kind === ExprKind.IntLiteral) return ar.getExprData1(exprId);
+      return undefined;
+    }
+
     function extractArenaParameters(ar: any): any[] {
       const infos: any[] = [];
       for (let i = 0; i < ar.varCount; i++) {
@@ -392,13 +479,54 @@ export const modelicaActionHandlers: Record<
           type = "integer";
           step = 1;
         }
-        infos.push({ name, type, defaultValue: startVal, step });
+        const unit = resolveAttrString(ar, i, "displayUnit") ?? resolveAttrString(ar, i, "unit");
+        const description = ar.getVarDescription?.(i);
+        const min = evalAttrNum(ar, i, "min");
+        const max = evalAttrNum(ar, i, "max");
+        infos.push({
+          name,
+          type,
+          defaultValue: startVal,
+          step,
+          ...(unit ? { unit } : {}),
+          ...(description ? { description } : {}),
+          ...(min !== undefined ? { min } : {}),
+          ...(max !== undefined ? { max } : {}),
+        });
       }
       return infos;
     }
 
+    function extractVariableMetadata(
+      ar: any,
+      stateNames: string[],
+    ): Record<string, { unit?: string; description?: string }> {
+      const meta: Record<string, { unit?: string; description?: string }> = {};
+      for (const state of stateNames) {
+        const isDer = state.startsWith("der(") && state.endsWith(")");
+        const lookupName = isDer ? state.slice(4, -1) : state;
+        const varIdx = ar.getVarIdxByName(lookupName);
+        if (varIdx >= 0) {
+          const baseUnit = resolveAttrString(ar, varIdx, "displayUnit") ?? resolveAttrString(ar, varIdx, "unit");
+          const baseDesc = ar.getVarDescription?.(varIdx);
+          const unit = isDer ? (baseUnit ? `${baseUnit}/s` : "1/s") : baseUnit;
+          const description = isDer ? (baseDesc ? `der(${baseDesc})` : `Time derivative of ${lookupName}`) : baseDesc;
+          if (unit || description) {
+            meta[state] = {
+              ...(unit ? { unit } : {}),
+              ...(description ? { description } : {}),
+            };
+          }
+        }
+      }
+      return meta;
+    }
+
+    const statesList = result.states || [];
+    const variableMetadata = extractVariableMetadata(arena, statesList);
+
     if ((inputs?.format ?? "json") === "csv") {
-      const states = result.states || [];
+      const states = statesList;
       const lines = [`time,${states.join(",")}`];
       for (let i = 0; i < tArr.length; i++) {
         const values = [tArr[i], ...states.map((_: string, vi: number) => yArr[i]?.[vi] ?? 0)];
@@ -410,6 +538,7 @@ export const modelicaActionHandlers: Record<
         t: tArr,
         states,
         parameters: extractArenaParameters(arena),
+        variableMetadata,
         experiment: (arena as any).experiment,
       };
     }
@@ -418,10 +547,11 @@ export const modelicaActionHandlers: Record<
       name: className,
       t: tArr,
       y: yArr,
-      states: result.states || [],
+      states: statesList,
       parameters: extractArenaParameters(arena),
+      variableMetadata,
       experiment: (arena as any).experiment,
-      text: `Simulation of ${className} completed: ${tArr.length} steps, states: [${(result.states || []).join(", ")}]`,
+      text: `Simulation of ${className} completed: ${tArr.length} steps, states: [${statesList.join(", ")}]`,
     };
   },
 

@@ -48,7 +48,7 @@ end TrigDistinct;
     assert(text.includes("sin(") && text.includes("cos("), "must retain sin and cos for distinct arguments");
   });
 
-  it("should simplify identical complex args in trigonometric ratio to tan", async () => {
+  it("should preserve sin(x) / cos(x) without unsoundly rewriting to tan(x)", async () => {
     const sameArgsModel = `
 model TrigSame
   Real x;
@@ -61,7 +61,8 @@ end TrigSame;
     const arena = ctx.flattenArena("TrigSame", undefined, uri);
     assert(arena !== null);
     const text = printArena(arena);
-    assert(text.includes("tan("), "sin(x + 1.0) / cos(x + 1.0) MUST simplify to tan");
+    assert(!text.includes("tan("), "sin(x + 1.0) / cos(x + 1.0) must NOT rewrite to tan");
+    assert(text.includes("sin(") && text.includes("cos("), "must preserve sin and cos");
   });
 
   it("should distribute negation according to OpenModelica canonical form", async () => {

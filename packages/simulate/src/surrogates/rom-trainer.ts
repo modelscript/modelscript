@@ -61,7 +61,13 @@ export interface ScalingParams {
 
 export type ROMWeights =
   | { type: "polynomial"; coefficients: number[][]; degree: number; nInputs: number }
-  | { type: "rbf"; centers: number[][]; weights: number[][]; epsilon: number }
+  | {
+      type: "rbf";
+      centers: number[][];
+      weights: number[][];
+      epsilon: number;
+      rbfKernel?: "gaussian" | "multiquadric" | undefined;
+    }
   | {
       type: "mlp";
       layers: { W: number[][]; b: number[] }[];
@@ -302,7 +308,7 @@ function trainRBF(
       if (kernel === "gaussian") {
         row.push(Math.exp(-r2 / (2 * epsilon * epsilon)));
       } else {
-        row.push(Math.sqrt(1 + r2 / (epsilon * epsilon)));
+        row.push(Math.sqrt(r2 + epsilon * epsilon));
       }
     }
     K.push(row);
@@ -463,8 +469,8 @@ function trainMLP(
             const mHat = (mWRow[j] ?? 0) / (1 - Math.pow(beta1, t));
             const vHat = (vWRow[j] ?? 0) / (1 - Math.pow(beta2, t));
             const Wrow = W[i]!;
-            Wrow[j] = (Wrow[j] ?? 0) - (lr * mHat) / (Math.sqrt(vHat) + eps);
             nextDelta[j] += localDelta[i]! * Wrow[j]!;
+            Wrow[j] = (Wrow[j] ?? 0) - (lr * mHat) / (Math.sqrt(vHat) + eps);
           }
           // Adam update for b
           const gB = localDelta[i]!;
@@ -573,7 +579,7 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
     case "rbf": {
       const kernel = config.rbfKernel ?? "gaussian";
       const result = trainRBF(trainIn, trainOut, kernel);
-      weights = { type: "rbf", ...result };
+      weights = { type: "rbf", rbfKernel: kernel, ...result };
       break;
     }
     case "mlp": {
@@ -669,6 +675,7 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
     }
     case "rbf": {
       const w = rom.weights;
+      const isMultiquadric = w.rbfKernel === "multiquadric";
       normOutput = w.weights.map((wVec) => {
         let sum = 0;
         for (let j = 0; j < w.centers.length; j++) {
@@ -676,7 +683,9 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
           for (let k = 0; k < normInput.length; k++) {
             r2 += (normInput[k]! - w.centers[j]![k]!) ** 2;
           }
-          const phi = Math.exp(-r2 / (2 * w.epsilon * w.epsilon));
+          const phi = isMultiquadric
+            ? Math.sqrt(r2 + w.epsilon * w.epsilon)
+            : Math.exp(-r2 / (2 * w.epsilon * w.epsilon));
           sum += wVec[j]! * phi;
         }
         return sum;
@@ -1191,7 +1200,11 @@ export function exportROMToC(rom: TrainedROM, functionName = "rom_evaluate"): Ro
     sourceLines.push(`      double d = normIn[j] - rbf_centers[c][j];`);
     sourceLines.push(`      r2 += d * d;`);
     sourceLines.push(`    }`);
-    sourceLines.push(`    phi[c] = exp(-r2 / denom);`);
+    if (rbf.rbfKernel === "multiquadric") {
+      sourceLines.push(`    phi[c] = sqrt(r2 + rbf_epsilon * rbf_epsilon);`);
+    } else {
+      sourceLines.push(`    phi[c] = exp(-r2 / denom);`);
+    }
     sourceLines.push(`  }`);
     sourceLines.push(``);
     sourceLines.push(`  for (int k = 0; k < ${nOut}; k++) {`);

@@ -318,6 +318,7 @@ export class WebGPULbmRunner {
       dragLatY = 0.0;
       dragLatZ = 0.0;
 
+      // Pass 1: Local macroscopic moment recovery & BGK / Smagorinsky LES collision (in-place in src)
       for (let z = 0; z < nz; z++) {
         for (let y = 0; y < ny; y++) {
           for (let x = 0; x < nx; x++) {
@@ -325,7 +326,7 @@ export class WebGPULbmRunner {
             const cType = this.cellTypes[cellIdx];
 
             if (cType === LbmCellType.ObstacleSolid || cType === LbmCellType.ChannelWall) {
-              continue; // solid cells do not stream
+              continue;
             }
 
             // 1. Macroscopic variables: rho and u
@@ -398,13 +399,37 @@ export class WebGPULbmRunner {
               omegaLoc = 1.0 / (tau0 + deltaTau);
             }
 
-            // Compute post-collision distributions for this cell
+            // Store post-collision distributions in src so all neighbors have post-collision state during Pass 2
             for (let i = 0; i < 19; i++) {
-              const fi = src[i * totalCells + cellIdx]!;
-              fPost[i] = fi - omegaLoc * (fi - feqs[i]!);
+              const idx = i * totalCells + cellIdx;
+              const fi = src[idx]!;
+              src[idx] = fi - omegaLoc * (fi - feqs[i]!);
+            }
+          }
+        }
+      }
+
+      // Pass 2: Streaming, Bouzidi curved wall interpolation (using genuine post-collision src), and momentum exchange
+      for (let z = 0; z < nz; z++) {
+        for (let y = 0; y < ny; y++) {
+          for (let x = 0; x < nx; x++) {
+            const cellIdx = x + y * nx + z * nx * ny;
+            const cType = this.cellTypes[cellIdx];
+
+            if (cType === LbmCellType.ObstacleSolid || cType === LbmCellType.ChannelWall) {
+              continue;
             }
 
-            // 3. Streaming & Boundary conditions
+            const rho = this.rho[cellIdx]!;
+            const ux = this.vx[cellIdx]! * (dt / dx);
+            const uy = this.vy[cellIdx]! * (dt / dx);
+            const uz = this.vz[cellIdx]! * (dt / dx);
+            const uSq = ux * ux + uy * uy + uz * uz;
+
+            for (let i = 0; i < 19; i++) {
+              fPost[i] = src[i * totalCells + cellIdx]!;
+            }
+
             for (let i = 0; i < 19; i++) {
               const nxCoord = x + CX[i]!;
               const nyCoord = y + CY[i]!;
@@ -412,10 +437,13 @@ export class WebGPULbmRunner {
 
               // Handle domain boundary wrap or bounce (or open outlet equilibrium)
               if (nxCoord < 0 || nxCoord >= nx || nyCoord < 0 || nyCoord >= ny || nzCoord < 0 || nzCoord >= nz) {
+                const oppI = OPP[i]!;
                 if (nxCoord >= nx && cType === LbmCellType.PressureOutlet) {
-                  dst[OPP[i]! * totalCells + cellIdx] = feqs[OPP[i]!]!;
+                  const cuOpp = CX[oppI]! * ux + CY[oppI]! * uy + CZ[oppI]! * uz;
+                  dst[oppI * totalCells + cellIdx] =
+                    W[oppI]! * rho * (1.0 + 3.0 * cuOpp + 4.5 * cuOpp * cuOpp - 1.5 * uSq);
                 } else {
-                  dst[OPP[i]! * totalCells + cellIdx] = fPost[i]!;
+                  dst[oppI * totalCells + cellIdx] = fPost[i]!;
                 }
                 continue;
               }
@@ -426,7 +454,7 @@ export class WebGPULbmRunner {
               if (targetType === LbmCellType.ObstacleSolid || targetType === LbmCellType.ChannelWall) {
                 let fRefl = fPost[i]!;
 
-                // Bouzidi curved boundary interpolation
+                // Bouzidi curved boundary interpolation using post-collision distributions from Pass 1
                 if (useCurved && targetType === LbmCellType.ObstacleSolid && deltaWall) {
                   const delta = deltaWall[i * totalCells + cellIdx]!;
                   if (delta < 0.5) {
@@ -489,8 +517,9 @@ export class WebGPULbmRunner {
       this.currentPing = !this.currentPing;
     }
 
-    // If numSteps === 0 (e.g. called after stepGpu macro readback), estimate obstacle force from macroscopic fields
+    // If numSteps === 0 (e.g. called after stepGpu macro readback), evaluate momentum exchange across obstacle links
     if (numSteps === 0) {
+      const src = this.currentPing ? f0 : f1;
       for (let z = 0; z < nz; z++) {
         for (let y = 0; y < ny; y++) {
           for (let x = 0; x < nx; x++) {
@@ -511,9 +540,23 @@ export class WebGPULbmRunner {
               }
               const targetIdx = nxCoord + nyCoord * nx + nzCoord * nx * ny;
               if (this.cellTypes[targetIdx] === LbmCellType.ObstacleSolid) {
+                const fi = src[i * totalCells + cellIdx]!;
                 const cu = CX[i]! * ux + CY[i]! * uy + CZ[i]! * uz;
                 const feq = W[i]! * rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * uSq);
-                const dP = 2.0 * feq;
+                const fOut = fi > 0 ? fi - omega0 * (fi - feq) : feq;
+                let fRefl = fOut;
+                if (
+                  this.movingWallVelocity[0] !== 0 ||
+                  this.movingWallVelocity[1] !== 0 ||
+                  this.movingWallVelocity[2] !== 0
+                ) {
+                  const uwx = this.movingWallVelocity[0] * (dt / dx);
+                  const uwy = this.movingWallVelocity[1] * (dt / dx);
+                  const uwz = this.movingWallVelocity[2] * (dt / dx);
+                  const cuW = CX[i]! * uwx + CY[i]! * uwy + CZ[i]! * uwz;
+                  fRefl -= 6.0 * W[i]! * rho * cuW;
+                }
+                const dP = fOut + fRefl;
                 dragLatX += dP * CX[i]!;
                 dragLatY += dP * CY[i]!;
                 dragLatZ += dP * CZ[i]!;
@@ -537,7 +580,7 @@ export class WebGPULbmRunner {
       if (vMag > maxVel) maxVel = vMag;
     }
 
-    // Cross-sectional inlet-to-outlet pressure drop: deltaP = (rho_inlet_avg - rho_outlet_avg) * c_s^2 * rho_phys * (dx/dt)^2
+    // Cross-sectional inlet-to-outlet pressure drop
     let inletRhoSum = 0.0;
     let inletCount = 0;
     let outletRhoSum = 0.0;
@@ -564,7 +607,13 @@ export class WebGPULbmRunner {
 
     const csSq = 1.0 / 3.0;
     const pressScale = csSq * density * Math.pow(dx / dt, 2);
-    const pDrop = Math.max(0, avgInletRho - avgOutletRho) * pressScale;
+    const channelArea = Math.max(1e-12, ny * dx * (nz * dx));
+    const inVxPhys = inletV[0];
+    const inMagPhys = Math.hypot(inletV[0], inletV[1], inletV[2]);
+    const pDrop =
+      inMagPhys > 0
+        ? fx / channelArea + 0.5 * density * inVxPhys * inMagPhys
+        : (avgInletRho - avgOutletRho) * pressScale;
 
     return {
       aerodynamicForceN: [fx, fy, fz],

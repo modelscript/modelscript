@@ -122,6 +122,7 @@ function evalBdfEquations(solver: BdfSolver, dae: DaeBuilder, varValuesPtr: u32)
   let derivIndices = solver.derivIndices;
 
   for (let eqIdx: u32 = 0; eqIdx < eqCount; eqIdx++) {
+    if (dae.isEqInitial(eqIdx) || dae.isEqRemoved(eqIdx)) continue;
     let eqOffset = eqIdx * EQ_STRIDE;
     let eqKind = dae.getEqData().get(eqOffset + EQ_KIND);
     if (eqKind != EqKind.Simple) continue;
@@ -137,7 +138,7 @@ function evalBdfEquations(solver: BdfSolver, dae: DaeBuilder, varValuesPtr: u32)
       let inner = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
       let targetStateVar: u32 = inner;
       if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
-        targetStateVar = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+        targetStateVar = dae.resolveExprVarId(inner) as u32;
       }
       let rhsVal = evalExpr(rhs, dae, varValuesPtr);
       for (let i: u32 = 0; i < n; i++) {
@@ -147,7 +148,7 @@ function evalBdfEquations(solver: BdfSolver, dae: DaeBuilder, varValuesPtr: u32)
         }
       }
     } else if (lhsKind == ExprKind.Name) {
-      let targetVar = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
+      let targetVar = dae.resolveExprVarId(lhs) as u32;
       if (targetVar < dae.varCount) {
         let isState = false;
         for (let i: u32 = 0; i < n; i++) {

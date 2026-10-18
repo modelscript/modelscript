@@ -105,10 +105,47 @@ function evaluateModValue(value: ModificationValue, scope: SymbolEntry | null, d
 
 const evaluatingComponentIds = new Set<number>();
 
-function getComponentEvaluatedValue(resolved: SymbolEntry, db: QueryDB): unknown {
+function findInheritedExtendsMod(
+  db: QueryDB,
+  clsId: number,
+  targetName: string,
+  visited = new Set<number>(),
+): { modVal: ModificationValue; evalScopeId: number } | null {
+  if (visited.has(clsId)) return null;
+  visited.add(clsId);
+  const children = db.childrenOf(clsId);
+  for (const child of children) {
+    if (child.kind === "Extends") {
+      const extModRaw = db.query<any>("extendsModificationParsed", child.id);
+      const extArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
+      const found = extArgs.find((a: any) => !a.isBreak && a.name === targetName && a.value);
+      if (found?.value) {
+        return { modVal: found.value, evalScopeId: clsId };
+      }
+      const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+      if (baseClass) {
+        const sub = findInheritedExtendsMod(db, baseClass.id, targetName, visited);
+        if (sub) return sub;
+      }
+    }
+  }
+  return null;
+}
+
+function getComponentEvaluatedValue(resolved: SymbolEntry, db: QueryDB, scope?: SymbolEntry | null): unknown {
   if (resolved.kind === "Component" && !evaluatingComponentIds.has(resolved.id)) {
     evaluatingComponentIds.add(resolved.id);
     try {
+      if (scope && (scope.kind === "Class" || scope.kind === "Package") && scope.id !== resolved.parentId) {
+        const inhMod = findInheritedExtendsMod(db, scope.id, resolved.name);
+        if (inhMod) {
+          const scopeEntry = db.symbol(inhMod.evalScopeId) ?? scope;
+          const val = evaluateModValue(inhMod.modVal, scopeEntry, db);
+          if (val !== null && val !== undefined) {
+            return val;
+          }
+        }
+      }
       const compMod = db.query<any>("effectiveModification", resolved.id);
       if (compMod?.bindingExpression) {
         const scopeId = compMod.evaluationScopeId ?? resolved.parentId;
@@ -175,25 +212,31 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     return num;
   }
 
-  // If-then-else expressions: if <cond> then <thenExpr> else <elseExpr>
-  if (trimmed.startsWith("if ") || trimmed.startsWith("if(")) {
-    const ifMatch = trimmed.match(/^if\s+(.+?)\s+then\s+(.+?)(?:\s+else\s+(.+))?$/s);
-    if (ifMatch) {
-      const condVal = evaluateExprText(ifMatch[1]!.trim(), scope, db);
-      const isTrue = condVal === true || condVal === 1 || (typeof condVal === "number" && condVal !== 0);
-      if (isTrue) {
-        return evaluateExprText(ifMatch[2]!.trim(), scope, db);
-      } else if (ifMatch[3]) {
-        return evaluateExprText(ifMatch[3].trim(), scope, db);
+  // If-then-else expressions: if <cond> then <thenExpr> [elseif <cond> then <thenExpr> ...] else <elseExpr>
+  if (/^if(?:\s|\()/.test(trimmed)) {
+    const parsedIf = parseTopLevelIfExpression(trimmed);
+    if (parsedIf) {
+      for (const branch of parsedIf.branches) {
+        const condVal = evaluateExprText(branch.cond, scope, db);
+        if (typeof condVal !== "boolean" && typeof condVal !== "number") {
+          return null;
+        }
+        const isTrue = condVal === true || condVal === 1 || (typeof condVal === "number" && condVal !== 0);
+        if (isTrue) {
+          return evaluateExprText(branch.thenExpr, scope, db);
+        }
+      }
+      if (parsedIf.elseExpr !== null) {
+        return evaluateExprText(parsedIf.elseExpr, scope, db);
       }
     }
   }
 
-  // Array subscript indexing: arr[index] or arr[start:stop]
-  const subscriptMatch = trimmed.match(/^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\[([^\]]+)\]$/);
-  if (subscriptMatch) {
-    const baseName = subscriptMatch[1]!;
-    const subText = subscriptMatch[2]!.trim();
+  // Array subscript indexing: arr[index], arr[i, j], arr[b[1]], or arr[start:stop]
+  const trailingSub = extractTrailingSubscript(trimmed);
+  if (trailingSub) {
+    const baseName = trailingSub.baseExpr;
+    const subText = trailingSub.subText;
     let baseVal = evaluateExprText(baseName, scope, db);
     if (!Array.isArray(baseVal) && baseVal && typeof baseVal === "object" && "id" in baseVal) {
       const sym = baseVal as SymbolEntry;
@@ -203,57 +246,62 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
       }
     }
     if (Array.isArray(baseVal)) {
-      if (subText.includes(":")) {
-        const parts = subText.split(":").map((p) => {
-          let pt = p.trim();
-          pt = pt.replace(/\bend\b/g, String(baseVal.length));
-          if (pt === "false") return 1;
-          if (pt === "true") return 2;
-          const ev = evaluateExprText(pt, scope, db);
-          if (typeof ev === "number") return ev;
-          const arithVal = evalArithmeticString(pt);
-          if (arithVal !== null) return arithVal;
-          if (db) {
-            const enumIdx = getEnumLiteralIndex(pt, db);
-            if (enumIdx !== null) return enumIdx;
+      const applySingleSub = (arrVal: unknown[], singleSub: string): unknown => {
+        const sTrim = singleSub.trim();
+        if (sTrim === ":") return arrVal;
+        const colonParts = splitTopLevel(sTrim, ":");
+        if (colonParts.length >= 2) {
+          const parts = colonParts.map((p) => {
+            let pt = p.trim();
+            pt = pt.replace(/\bend\b/g, String(arrVal.length));
+            if (pt === "false") return 1;
+            if (pt === "true") return 2;
+            const ev = evaluateExprText(pt, scope, db);
+            if (typeof ev === "number") return ev;
+            const arithVal = evalArithmeticString(pt);
+            if (arithVal !== null) return arithVal;
+            if (db) {
+              const enumIdx = getEnumLiteralIndex(pt, db);
+              if (enumIdx !== null) return enumIdx;
+            }
+            return null;
+          });
+          let start: number | null = null;
+          let step = 1;
+          let stop: number | null = null;
+          if (parts.length === 2 && typeof parts[0] === "number" && typeof parts[1] === "number") {
+            start = parts[0];
+            stop = parts[1];
+          } else if (
+            parts.length === 3 &&
+            typeof parts[0] === "number" &&
+            typeof parts[1] === "number" &&
+            typeof parts[2] === "number"
+          ) {
+            start = parts[0];
+            step = parts[1];
+            stop = parts[2];
           }
-          return null;
-        });
-        let start: number | null = null;
-        let step = 1;
-        let stop: number | null = null;
-        if (parts.length === 2 && typeof parts[0] === "number" && typeof parts[1] === "number") {
-          start = parts[0];
-          stop = parts[1];
-        } else if (
-          parts.length === 3 &&
-          typeof parts[0] === "number" &&
-          typeof parts[1] === "number" &&
-          typeof parts[2] === "number"
-        ) {
-          start = parts[0];
-          step = parts[1];
-          stop = parts[2];
-        }
-        if (start !== null && stop !== null && step !== 0) {
-          const sliced: unknown[] = [];
-          if (step > 0) {
-            for (let idx = start; idx <= stop; idx += step) {
-              if (idx >= 1 && idx <= baseVal.length) {
-                sliced.push(baseVal[idx - 1]);
+          if (start !== null && stop !== null && step !== 0) {
+            const sliced: unknown[] = [];
+            if (step > 0) {
+              for (let idx = start; idx <= stop; idx += step) {
+                if (idx >= 1 && idx <= arrVal.length) {
+                  sliced.push(arrVal[idx - 1]);
+                }
+              }
+            } else {
+              for (let idx = start; idx >= stop; idx += step) {
+                if (idx >= 1 && idx <= arrVal.length) {
+                  sliced.push(arrVal[idx - 1]);
+                }
               }
             }
-          } else {
-            for (let idx = start; idx >= stop; idx += step) {
-              if (idx >= 1 && idx <= baseVal.length) {
-                sliced.push(baseVal[idx - 1]);
-              }
-            }
+            return sliced;
           }
-          return sliced;
+          return undefined;
         }
-      } else {
-        let cleanSub = subText.replace(/\bend\b/g, String(baseVal.length));
+        const cleanSub = sTrim.replace(/\bend\b/g, String(arrVal.length));
         let idx: unknown = evaluateExprText(cleanSub, scope, db);
         if (cleanSub === "false") idx = 1;
         if (cleanSub === "true") idx = 2;
@@ -266,8 +314,21 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
           if (enumIdx !== null) idx = enumIdx;
         }
         if (typeof idx === "number") {
-          return baseVal[idx - 1]; // 1-based indexing
+          return arrVal[idx - 1]; // 1-based indexing
         }
+        return undefined;
+      };
+      const dimSubs = splitTopLevel(subText, ",");
+      let curr: unknown = baseVal;
+      for (const dSub of dimSubs) {
+        if (!Array.isArray(curr)) {
+          curr = undefined;
+          break;
+        }
+        curr = applySingleSub(curr, dSub);
+      }
+      if (curr !== undefined) {
+        return curr;
       }
     } else if (baseVal && typeof baseVal === "object" && "id" in baseVal && (baseVal as any).kind === "Component") {
       return baseVal;
@@ -296,7 +357,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
                 const typeChildren = db.childrenOf(typeSym.id);
                 const fieldSym = typeChildren.find((c) => c.name === rhs && c.kind === "Component");
                 if (fieldSym) {
-                  return getComponentEvaluatedValue(fieldSym, db);
+                  return getComponentEvaluatedValue(fieldSym, db, scope);
                 }
               }
             }
@@ -326,7 +387,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
           }
           return resolved.name;
         }
-        return getComponentEvaluatedValue(resolved, db);
+        return getComponentEvaluatedValue(resolved, db, scope);
       }
     }
 
@@ -343,15 +404,9 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
           }
           return resolved.name;
         }
-        return getComponentEvaluatedValue(resolved, db);
+        return getComponentEvaluatedValue(resolved, db, scope);
       }
     }
-  }
-
-  // Negation: -expr
-  if (trimmed.startsWith("-")) {
-    const inner = evaluateExprText(trimmed.slice(1), scope, db);
-    if (typeof inner === "number") return -inner;
   }
 
   // Stand-alone range expression: start:stop or start:step:stop
@@ -460,9 +515,54 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     return elements.map((e) => evaluateExprText(e.trim(), scope, db));
   }
 
-  // Parenthesized: (expr)
-  if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+  // Parenthesized: (expr) — only unwrap when '(' at 0 matches ')' at end
+  if (trimmed.startsWith("(") && trimmed.endsWith(")") && isBalancedOuterParens(trimmed)) {
     return evaluateExprText(trimmed.slice(1, -1), scope, db);
+  }
+
+  // Logical 'or' / 'and' / 'not' and relational operators (lowest precedence first)
+  const orIdx = findTopLevelKeywordOperator(trimmed, "or");
+  if (orIdx > 0) {
+    const lhs = evaluateExprText(trimmed.slice(0, orIdx), scope, db);
+    const rhs = evaluateExprText(trimmed.slice(orIdx + 2), scope, db);
+    if (typeof lhs === "boolean" && typeof rhs === "boolean") return lhs || rhs;
+  }
+  const andIdx = findTopLevelKeywordOperator(trimmed, "and");
+  if (andIdx > 0) {
+    const lhs = evaluateExprText(trimmed.slice(0, andIdx), scope, db);
+    const rhs = evaluateExprText(trimmed.slice(andIdx + 3), scope, db);
+    if (typeof lhs === "boolean" && typeof rhs === "boolean") return lhs && rhs;
+  }
+  if (/^not(?:\s|\()/.test(trimmed)) {
+    const inner = evaluateExprText(trimmed.slice(3), scope, db);
+    if (typeof inner === "boolean") return !inner;
+  }
+  const relMatch = findTopLevelRelationalOperator(trimmed);
+  if (relMatch) {
+    const lhs = evaluateExprText(trimmed.slice(0, relMatch.idx), scope, db);
+    const rhs = evaluateExprText(trimmed.slice(relMatch.idx + relMatch.op.length), scope, db);
+    if (
+      lhs !== null &&
+      lhs !== undefined &&
+      rhs !== null &&
+      rhs !== undefined &&
+      (typeof lhs === "number" || typeof lhs === "string" || typeof lhs === "boolean")
+    ) {
+      switch (relMatch.op) {
+        case "==":
+          return lhs === rhs;
+        case "<>":
+          return lhs !== rhs;
+        case "<=":
+          return (lhs as any) <= (rhs as any);
+        case ">=":
+          return (lhs as any) >= (rhs as any);
+        case "<":
+          return (lhs as any) < (rhs as any);
+        case ">":
+          return (lhs as any) > (rhs as any);
+      }
+    }
   }
 
   // Binary operations (lowest precedence first: +, -, *, /)
@@ -474,6 +574,15 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     if (typeof lhs === "number" && typeof rhs === "number") {
       return op === "+" ? lhs + rhs : lhs - rhs;
     }
+    if (op === "+" && typeof lhs === "string" && typeof rhs === "string") {
+      return lhs + rhs;
+    }
+  }
+
+  // Unary negation / plus (checked after binary +/- so '-a + b' parses as '(-a) + b' rather than '-(a + b)')
+  if (trimmed.startsWith("-") || trimmed.startsWith("+")) {
+    const inner = evaluateExprText(trimmed.slice(1), scope, db);
+    if (typeof inner === "number") return trimmed.startsWith("-") ? -inner : inner;
   }
 
   // Multiplication and division: a * b, a / b
@@ -567,10 +676,11 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
     return x >= 0 ? posSlope * x : negSlope * x;
   }
 
-  // Math functions (single numeric argument)
+  // Math & SIunits.Conversions functions (single numeric argument)
   if (args.length === 1 && typeof args[0] === "number") {
     const v = args[0];
-    switch (name) {
+    const shortName = name.replace(/^(?:Modelica\.)?(?:Math|SIunits\.Conversions)\./, "");
+    switch (shortName) {
       case "abs":
         return Math.abs(v);
       case "sqrt":
@@ -609,6 +719,14 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
         return Math.sign(v);
       case "not":
         return !v;
+      case "from_degC":
+        return v + 273.15;
+      case "to_degC":
+        return v - 273.15;
+      case "from_bar":
+        return v * 1e5;
+      case "to_bar":
+        return v * 1e-5;
     }
   }
 
@@ -749,19 +867,293 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
 // String Utilities
 // ---------------------------------------------------------------------------
 
-/** Find the rightmost top-level occurrence of any operator (for left-associativity). */
-function findTopLevelOperator(text: string, ops: string[]): number {
+/** Check whether outer '(' at index 0 matches ')' at text.length - 1. */
+function isBalancedOuterParens(text: string): boolean {
+  if (!text.startsWith("(") || !text.endsWith(")")) return false;
   let depth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteChar) inQuotes = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "{" || ch === "[") depth++;
+    else if (ch === ")" || ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0 && i < text.length - 1) return false;
+    }
+  }
+  return depth === 0;
+}
+
+/**
+ * Parse a top-level `if <cond> then <thenExpr> [elseif <cond> then <thenExpr> ...] [else <elseExpr>]`
+ * expression while respecting parentheses/brackets/braces, string literals, and nested `if` expressions.
+ */
+function parseTopLevelIfExpression(
+  text: string,
+): { branches: { cond: string; thenExpr: string }[]; elseExpr: string | null } | null {
+  if (!/^if(?:\s|\()/.test(text)) return null;
+  const isWordChar = (c: string | undefined) => Boolean(c && /[a-zA-Z0-9_]/.test(c));
+  const matchKeywordAt = (pos: number, kw: string): boolean => {
+    if (text.slice(pos, pos + kw.length) !== kw) return false;
+    const prev = pos > 0 ? text[pos - 1] : undefined;
+    const next = pos + kw.length < text.length ? text[pos + kw.length] : undefined;
+    return !isWordChar(prev) && !isWordChar(next);
+  };
+
+  const branches: { cond: string; thenExpr: string }[] = [];
+  let elseExpr: string | null = null;
+  let depth = 0;
+  let ifDepth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
+  let state: "cond" | "then" | "else" = "cond";
+  let segStart = 2; // after leading "if"
+  let currentCond = "";
+
+  for (let i = 2; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteChar) inQuotes = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "{" || ch === "[") {
+      depth++;
+      continue;
+    }
+    if (ch === ")" || ch === "}" || ch === "]") {
+      depth--;
+      continue;
+    }
+    if (depth !== 0) continue;
+
+    if (matchKeywordAt(i, "if")) {
+      ifDepth++;
+      i += 1;
+      continue;
+    }
+    if (ifDepth > 0) {
+      if (matchKeywordAt(i, "else")) {
+        ifDepth--;
+        i += 3;
+      }
+      continue;
+    }
+
+    if (state === "cond" && matchKeywordAt(i, "then")) {
+      currentCond = text.slice(segStart, i).trim();
+      state = "then";
+      segStart = i + 4;
+      i += 3;
+      continue;
+    }
+    if (state === "then" && matchKeywordAt(i, "elseif")) {
+      const thenBranch = text.slice(segStart, i).trim();
+      branches.push({ cond: currentCond, thenExpr: thenBranch });
+      state = "cond";
+      segStart = i + 6;
+      i += 5;
+      continue;
+    }
+    if (state === "then" && matchKeywordAt(i, "else")) {
+      const thenBranch = text.slice(segStart, i).trim();
+      branches.push({ cond: currentCond, thenExpr: thenBranch });
+      state = "else";
+      segStart = i + 4;
+      i += 3;
+      continue;
+    }
+  }
+
+  if (depth !== 0 || ifDepth !== 0) return null;
+  if (state === "then") {
+    branches.push({ cond: currentCond, thenExpr: text.slice(segStart).trim() });
+  } else if (state === "else") {
+    elseExpr = text.slice(segStart).trim();
+  } else {
+    return null;
+  }
+  return branches.length > 0 ? { branches, elseExpr } : null;
+}
+
+/**
+ * Extract trailing top-level subscript `baseExpr[subText]` from a postfix expression,
+ * supporting nested brackets (`a[b[1]]`), multi-dimensional indices (`a[1, 2]`), and chained subscripts (`a[1][2]`).
+ */
+function extractTrailingSubscript(text: string): { baseExpr: string; subText: string } | null {
+  if (!text.endsWith("]")) return null;
+  let depth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
+  let lastOpenBracket = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteChar) inQuotes = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "{" || ch === "[") {
+      if (depth === 0 && ch === "[") {
+        lastOpenBracket = i;
+      }
+      depth++;
+    } else if (ch === ")" || ch === "}" || ch === "]") {
+      depth--;
+      if (depth < 0) return null;
+    } else if (depth === 0) {
+      // Disallow top-level binary operators or whitespace outside brackets in the base expression
+      if (/\s|[+\-*/^<>=:]/.test(ch)) {
+        return null;
+      }
+    }
+  }
+  if (depth !== 0 || lastOpenBracket <= 0) return null;
+  const baseExpr = text.slice(0, lastOpenBracket).trim();
+  const subText = text.slice(lastOpenBracket + 1, -1).trim();
+  if (!baseExpr || !subText) return null;
+  return { baseExpr, subText };
+}
+
+/** Find the rightmost top-level word-bounded keyword operator ('or' or 'and'). */
+function findTopLevelKeywordOperator(text: string, keyword: "or" | "and"): number {
+  const isWordChar = (c: string | undefined) => Boolean(c && /[a-zA-Z0-9_]/.test(c));
+  let depth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
   let lastIdx = -1;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteChar) inQuotes = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "{" || ch === "[") depth++;
+    else if (ch === ")" || ch === "}" || ch === "]") depth--;
+    else if (depth === 0 && text.slice(i, i + keyword.length) === keyword) {
+      const prev = i > 0 ? text[i - 1] : undefined;
+      const next = i + keyword.length < text.length ? text[i + keyword.length] : undefined;
+      if (!isWordChar(prev) && !isWordChar(next) && prev !== ".") {
+        lastIdx = i;
+      }
+    }
+  }
+  return lastIdx;
+}
+
+/** Find the rightmost top-level relational operator ('==', '<>', '<=', '>=', '<', '>'). */
+function findTopLevelRelationalOperator(text: string): { idx: number; op: string } | null {
+  let depth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
+  let lastMatch: { idx: number; op: string } | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteChar) inQuotes = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "{" || ch === "[") depth++;
+    else if (ch === ")" || ch === "}" || ch === "]") depth--;
+    else if (depth === 0) {
+      const twoChar = text.slice(i, i + 2);
+      if (twoChar === "==" || twoChar === "<>" || twoChar === "<=" || twoChar === ">=") {
+        lastMatch = { idx: i, op: twoChar };
+        i++;
+        continue;
+      }
+      if (ch === "<" || ch === ">") {
+        lastMatch = { idx: i, op: ch };
+      }
+    }
+  }
+  return lastMatch;
+}
+
+/** Find the rightmost top-level occurrence of any operator (for left-associativity). */
+function findTopLevelOperator(text: string, ops: string[]): number {
+  let depth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
+  let lastIdx = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteChar) inQuotes = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+      continue;
+    }
     if (ch === "(" || ch === "{" || ch === "[") depth++;
     else if (ch === ")" || ch === "}" || ch === "]") depth--;
     if (depth === 0 && ops.includes(ch)) {
-      // Don't match unary minus at position 0
-      if (ch === "-" && i === 0) continue;
-      // Don't match minus after another operator
-      if (ch === "-" && i > 0 && "+-*/^".includes(text[i - 1]!)) continue;
+      // Don't match unary minus/plus at position 0
+      if ((ch === "-" || ch === "+") && i === 0) continue;
+      // Don't match sign in scientific notation (e.g. 1e-5, 1E+3)
+      if (
+        (ch === "-" || ch === "+") &&
+        i >= 2 &&
+        (text[i - 1] === "e" || text[i - 1] === "E") &&
+        /[\d.]/.test(text[i - 2]!)
+      ) {
+        continue;
+      }
+      // Don't match unary minus/plus after another operator
+      if ((ch === "-" || ch === "+") && i > 0 && "+-*/^:<>=,".includes(text[i - 1]!.trim() || text[i - 1]!)) continue;
       lastIdx = i;
     }
   }

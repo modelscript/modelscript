@@ -76,11 +76,23 @@ test("test-class-icon", async () => {
   assert.strictEqual(icon["@type"], "Icon", "Icon type must be Icon");
   assert(Array.isArray(icon.graphics) && icon.graphics.length > 0, "Icon must have graphics");
 
+  const heatPortLine = icon.graphics.find(
+    (g: any) =>
+      g["@type"] === "Line" &&
+      Array.isArray(g.points) &&
+      g.points.length === 2 &&
+      g.points[0]?.[0] === 0 &&
+      g.points[0]?.[1] === -100,
+  );
+  assert(heatPortLine, "Resistor Icon must include the conditional heatPort Line");
+  assert.strictEqual(heatPortLine.visible, false, "Resistor heatPort Line must have visible === false by default");
+
   const svg = getClassIconSvg(cls, 20, false);
   console.log("Generated SVG length:", svg?.length);
   assert(svg, "getClassIconSvg must return non-null SVG string");
   assert(svg.startsWith("<svg"), "SVG must start with <svg");
   assert(svg.includes("<path"), "SVG must contain graphic elements like <path");
+  assert(svg.includes('visibility="hidden"'), 'SVG must mark conditional heatPort line as visibility="hidden"');
   console.log("test-class-icon passed successfully!");
 });
 

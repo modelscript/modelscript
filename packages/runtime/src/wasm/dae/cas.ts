@@ -166,11 +166,9 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
 
   // d(x)/dx = 1, d(y)/dx = 0
   if (kind == ExprKind.Name) {
+    let resolved = dae.resolveExprVarId(varId);
+    if (resolved >= 0 && (resolved as u32) == targetVarId) return dae.addRealLiteral(1.0);
     if (varId == targetVarId) return dae.addRealLiteral(1.0);
-    if (varId >= dae.varCount) {
-      let resolved = dae.lookupVariableByName(varId);
-      if (resolved >= 0 && (resolved as u32) == targetVarId) return dae.addRealLiteral(1.0);
-    }
     return dae.addRealLiteral(0.0);
   }
 
@@ -251,28 +249,13 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
       funcId == BuiltinMathFunc.Pow ||
       funcId == BuiltinMathFunc.SemiLinear
     ) {
-      let v = right;
-      if (exprId + 1 < dae.exprCount) {
-        let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
-        if (nextAcc.kind == ExprKind.Tuple) {
-          v = nextAcc.left;
-        }
-      }
-      if (v >= dae.exprCount && u + 1 < dae.exprCount) {
-        v = u + 1;
-      }
+      let v = dae.getCallArgExprId(exprId, 1);
       if (funcId == BuiltinMathFunc.Smooth) {
         return cas_differentiate(dae, v, targetVarId);
       }
       if (funcId == BuiltinMathFunc.SemiLinear) {
         if (cas_isZero(dae, du)) return dae.addRealLiteral(0.0);
-        let kNeg: u32 = 0xffffffff;
-        if (exprId + 2 < dae.exprCount) {
-          let next2Acc = ExprAccessor.at(dae.getExprData(), exprId + 2);
-          if (next2Acc.kind == ExprKind.Tuple) {
-            kNeg = next2Acc.left;
-          }
-        }
+        let kNeg = dae.getCallArgExprId(exprId, 2);
         let cond = dae.addExpression(ExprKind.Binary, BinOp.Gte, u, dae.addRealLiteral(0.0));
         let posBranch = cas_simplify(dae, dae.addExpression(ExprKind.Binary, BinOp.Mul, v, du));
         let negBranch = kNeg < dae.exprCount

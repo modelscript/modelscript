@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
+  BookIcon,
   CheckIcon,
   ChevronDownIcon,
   CpuIcon,
@@ -164,6 +165,14 @@ export interface FilterChip {
 
 const FILTER_CHIPS: FilterChip[] = [
   { id: "all", label: "All", icon: GlobeIcon, emoji: "🌐", description: "All engineering updates" },
+  {
+    id: "notebook",
+    label: "Tutorials",
+    icon: BookIcon,
+    emoji: "📓",
+    artifactType: "notebook",
+    description: "Interactive Baeldung-style tutorials & engineering notebooks",
+  },
   { id: "cad", label: "CAD 3D", icon: PackageIcon, emoji: "📐", artifactType: "cad", description: "STEP & CAD models" },
   {
     id: "simulation",

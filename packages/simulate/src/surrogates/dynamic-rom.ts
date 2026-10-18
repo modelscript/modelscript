@@ -436,11 +436,52 @@ export class DmdcSurrogate {
       chat[row] = weights[(r + m) * r + row]!;
     }
 
-    // Optional dissipative Hurwitz stabilization: ensure symmetric part 0.5*(A + A^T) has non-positive diagonal
-    if (config?.enforceStability ?? true) {
+    // Optional dissipative Hurwitz stabilization: ensure symmetric part S = 0.5*(A + A^T) is negative semi-definite
+    // by applying a uniform diagonal shift only when the maximum eigenvalue of S exceeds 0 (preserving eigenvectors and oscillatory frequencies)
+    if ((config?.enforceStability ?? true) && r > 0) {
+      const S = new Float64Array(r * r);
       for (let i = 0; i < r; i++) {
-        if (Ahat[i * r + i]! > -1e-6) {
-          Ahat[i * r + i] = -1e-3;
+        for (let j = 0; j < r; j++) {
+          S[i * r + j] = 0.5 * (Ahat[i * r + j]! + Ahat[j * r + i]!);
+        }
+      }
+      // Jacobi eigenvalue iteration on small r x r symmetric matrix S
+      for (let sweep = 0; sweep < 15; sweep++) {
+        for (let p = 0; p < r - 1; p++) {
+          for (let qIdx = p + 1; qIdx < r; qIdx++) {
+            const apq = S[p * r + qIdx]!;
+            if (Math.abs(apq) < 1e-14) continue;
+            const app = S[p * r + p]!;
+            const aqq = S[qIdx * r + qIdx]!;
+            const tau = (aqq - app) / (2.0 * apq);
+            const t = tau >= 0 ? 1.0 / (tau + Math.sqrt(1.0 + tau * tau)) : -1.0 / (-tau + Math.sqrt(1.0 + tau * tau));
+            const c = 1.0 / Math.sqrt(1.0 + t * t);
+            const s = t * c;
+            S[p * r + p] = app - t * apq;
+            S[qIdx * r + qIdx] = aqq + t * apq;
+            S[p * r + qIdx] = 0.0;
+            S[qIdx * r + p] = 0.0;
+            for (let k = 0; k < r; k++) {
+              if (k !== p && k !== qIdx) {
+                const skp = S[k * r + p]!;
+                const skq = S[k * r + qIdx]!;
+                S[k * r + p] = c * skp - s * skq;
+                S[p * r + k] = S[k * r + p]!;
+                S[k * r + qIdx] = s * skp + c * skq;
+                S[qIdx * r + k] = S[k * r + qIdx]!;
+              }
+            }
+          }
+        }
+      }
+      let maxSymEig = -Infinity;
+      for (let i = 0; i < r; i++) {
+        if (S[i * r + i]! > maxSymEig) maxSymEig = S[i * r + i]!;
+      }
+      if (maxSymEig > 0) {
+        const shift = maxSymEig + 1e-6;
+        for (let i = 0; i < r; i++) {
+          Ahat[i * r + i] = Ahat[i * r + i]! - shift;
         }
       }
     }

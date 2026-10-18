@@ -84,8 +84,11 @@ export function loadInpToFea(deckContent: string, options: LoadInpOptions = {}):
     const family = elem.family as string | undefined;
     if (ns.length === 10 && (family === "tet" || elem.type.includes("C3D10") || elem.type === "CTETRA")) {
       tet10Elements.push(...ns);
-    } else if (ns.length === 8 && (family === "hex" || elem.type.startsWith("C3D8") || elem.type === "CHEXA")) {
-      // Subdivide 8-node hexahedron into 6 linear tetrahedra (Kuhn subdivision)
+    } else if (
+      (ns.length === 8 || ns.length === 20) &&
+      (family === "hex" || elem.type.startsWith("C3D8") || elem.type.startsWith("C3D20") || elem.type === "CHEXA")
+    ) {
+      // Subdivide 8-node or 20-node hexahedron into 6 linear tetrahedra (Kuhn subdivision)
       const [v0, v1, v2, v3, v4, v5, v6, v7] = ns;
       tet4Elements.push(...orientTet(v0!, v1!, v2!, v6!));
       tet4Elements.push(...orientTet(v0!, v2!, v3!, v6!));
@@ -93,12 +96,78 @@ export function loadInpToFea(deckContent: string, options: LoadInpOptions = {}):
       tet4Elements.push(...orientTet(v0!, v7!, v4!, v6!));
       tet4Elements.push(...orientTet(v0!, v4!, v5!, v6!));
       tet4Elements.push(...orientTet(v0!, v5!, v1!, v6!));
+    } else if (
+      (ns.length === 6 || ns.length === 15) &&
+      (family === "wedge" || elem.type.startsWith("C3D6") || elem.type.startsWith("C3D15") || elem.type === "CPENTA")
+    ) {
+      // Subdivide 6-node or 15-node wedge/pentahedron into 3 linear tetrahedra
+      const [v0, v1, v2, v3, v4, v5] = ns;
+      tet4Elements.push(...orientTet(v0!, v1!, v2!, v3!));
+      tet4Elements.push(...orientTet(v1!, v2!, v3!, v4!));
+      tet4Elements.push(...orientTet(v2!, v3!, v4!, v5!));
+    } else if (
+      (ns.length === 5 || ns.length === 13) &&
+      (family === "pyramid" || elem.type.startsWith("C3D5") || elem.type.startsWith("C3D13") || elem.type === "CPYRAM")
+    ) {
+      // Subdivide 5-node or 13-node pyramid into 2 linear tetrahedra
+      const [v0, v1, v2, v3, v4] = ns;
+      tet4Elements.push(...orientTet(v0!, v1!, v2!, v4!));
+      tet4Elements.push(...orientTet(v0!, v2!, v3!, v4!));
     } else if (ns.length >= 4) {
       tet4Elements.push(...orientTet(ns[0]!, ns[1]!, ns[2]!, ns[3]!));
     }
   }
 
-  const useQuadratic = tet10Elements.length > 0 && tet4Elements.length === 0;
+  let finalNodeCoords = nodeCoords;
+  let finalNumNodes = numNodes;
+
+  // If mesh mixes Tet10 and Tet4 elements, promote Tet4 elements to Tet10 by inserting mid-edge nodes
+  if (tet10Elements.length > 0 && tet4Elements.length > 0) {
+    const extraCoords: number[] = [];
+    const edgeMidpoint = new Map<string, number>();
+    const getCoord = (n: number, c: number): number => {
+      if (n < numNodes) return nodeCoords[n * 3 + c]!;
+      return extraCoords[(n - numNodes) * 3 + c]!;
+    };
+    const getMidNode = (a: number, b: number): number => {
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      const key = `${lo}_${hi}`;
+      const existing = edgeMidpoint.get(key);
+      if (existing !== undefined) return existing;
+      const newIdx = finalNumNodes++;
+      extraCoords.push(
+        0.5 * (getCoord(a, 0) + getCoord(b, 0)),
+        0.5 * (getCoord(a, 1) + getCoord(b, 1)),
+        0.5 * (getCoord(a, 2) + getCoord(b, 2)),
+      );
+      edgeMidpoint.set(key, newIdx);
+      return newIdx;
+    };
+
+    for (let i = 0; i < tet4Elements.length; i += 4) {
+      const n0 = tet4Elements[i]!;
+      const n1 = tet4Elements[i + 1]!;
+      const n2 = tet4Elements[i + 2]!;
+      const n3 = tet4Elements[i + 3]!;
+      const n4 = getMidNode(n0, n1);
+      const n5 = getMidNode(n1, n2);
+      const n6 = getMidNode(n2, n0);
+      const n7 = getMidNode(n0, n3);
+      const n8 = getMidNode(n1, n3);
+      const n9 = getMidNode(n2, n3);
+      tet10Elements.push(n0, n1, n2, n3, n4, n5, n6, n7, n8, n9);
+    }
+    tet4Elements.length = 0;
+
+    if (extraCoords.length > 0) {
+      finalNodeCoords = new Float32Array(finalNumNodes * 3);
+      finalNodeCoords.set(nodeCoords, 0);
+      finalNodeCoords.set(extraCoords, numNodes * 3);
+    }
+  }
+
+  const useQuadratic = tet10Elements.length > 0;
   const nodesPerElement = useQuadratic ? 10 : 4;
   const flatElements = useQuadratic ? tet10Elements : tet4Elements;
   const numElements = Math.floor(flatElements.length / nodesPerElement);
@@ -116,9 +185,9 @@ export function loadInpToFea(deckContent: string, options: LoadInpOptions = {}):
   }
 
   const mesh: Tet4Mesh = {
-    nodeCoords,
+    nodeCoords: finalNodeCoords,
     elements,
-    numNodes,
+    numNodes: finalNumNodes,
     numElements,
     elementOrder: useQuadratic ? "quadratic" : "linear",
     nodesPerElement,

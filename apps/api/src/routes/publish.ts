@@ -204,6 +204,61 @@ export function publishRouter(
         const tag = String(req.body?.tag || req.query?.["tag"] || "latest");
         database.setDistTag(packageId, tag, version);
 
+        // Record package version and metadata synchronously so packuments resolve immediately
+        let initialManifestStr = JSON.stringify({ name, version });
+        let initialDescription: string | null =
+          typeof req.body?.description === "string" && req.body.description.trim() ? req.body.description.trim() : null;
+        let initialLicense: string | null =
+          typeof req.body?.license === "string" && req.body.license.trim() ? req.body.license.trim() : null;
+
+        if (manifestResult.type === "json") {
+          initialManifestStr = manifestResult.content;
+          try {
+            const pkgJson = JSON.parse(manifestResult.content) as Record<string, unknown>;
+            if (!initialDescription && typeof pkgJson["description"] === "string") {
+              initialDescription = pkgJson["description"];
+            }
+            if (!initialLicense && typeof pkgJson["license"] === "string") {
+              initialLicense = pkgJson["license"];
+            }
+          } catch {
+            // ignore
+          }
+        } else {
+          const parsed = parsePackageMo(manifestResult.content);
+          if (!initialDescription && parsed.description) {
+            initialDescription = parsed.description;
+          }
+          initialManifestStr = JSON.stringify({
+            name,
+            version,
+            description: initialDescription ?? undefined,
+            license: initialLicense ?? undefined,
+          });
+        }
+
+        if (initialDescription || initialLicense) {
+          database.updatePackageMeta(packageId, {
+            description: initialDescription,
+            license: initialLicense,
+          });
+        }
+
+        if (!database.getPackageVersion(packageId, version)) {
+          const shasum = crypto.createHash("sha1").update(req.file.buffer).digest("hex");
+          database.storePackageVersion(
+            packageId,
+            version,
+            filePath,
+            shasum,
+            null,
+            req.file.buffer.length,
+            initialManifestStr,
+            null,
+            req.user?.id ?? null,
+          );
+        }
+
         // 8. Extract the zip to disk (I/O-bound, fine in main thread)
         const libraryPath = await storage.extractLibrary(name, version);
 

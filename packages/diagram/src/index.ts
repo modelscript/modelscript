@@ -21,26 +21,40 @@ type Selection = any;
 type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-import { dropComponentGhost, ensureDiagramStyles, type DropPlaceholderOptions } from "./drop-placeholder.js";
+import {
+  dropComponentGhost,
+  ensureDiagramStyles,
+  isEphemeralDiagramNode,
+  type DropPlaceholderOptions,
+} from "./drop-placeholder.js";
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
 import {
   computeFilletedOrthogonalPath,
   computeJumpoverPath,
   computeOrthogonalRoute,
   computeSmoothBezierPath,
+  getNodeBBox,
+  getPortOutwardNormal,
   portOrthogonalRouter,
   regularizeOrthogonalPolyline,
+  resolveNodePortWorldPoint,
   simplifyCollinearPoints,
   translateConnectedEdgeStubs,
   type RectLike,
 } from "./port-router.js";
 import { applySequenceLayout } from "./sequence-layout.js";
-import { computeSolderDots, solderDotToDiagramNode, type EdgePath } from "./solder-dots.js";
+import { computeEdgeNetIds, computeSolderDots, solderDotToDiagramNode, type EdgePath } from "./solder-dots.js";
 import * as Spinner from "./spinner.js";
 import { applySwimlaneLayout } from "./swimlane-layout.js";
 import { animateCells } from "./telemetry.js";
 import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
-export { dropComponentGhost, ensureDiagramStyles, type DropPlaceholderOptions };
+export {
+  computeEdgeNetIds,
+  dropComponentGhost,
+  ensureDiagramStyles,
+  isEphemeralDiagramNode,
+  type DropPlaceholderOptions,
+};
 
 if (typeof Graph.registerRouter === "function") {
   try {
@@ -159,9 +173,15 @@ function postMessageToHost(msg: /* eslint-disable-line @typescript-eslint/no-exp
     currentOptions.onRedo();
     return;
   }
-  if (msg.type === "getProperties" && currentOptions?.onShowProperties) {
-    currentOptions.onShowProperties(msg.componentName, undefined, true);
-    return;
+  if (msg.type === "getProperties") {
+    if (currentOptions?.onMessage) {
+      currentOptions.onMessage(msg);
+      return;
+    }
+    if (currentOptions?.onShowProperties) {
+      currentOptions.onShowProperties(msg.componentName, undefined, true);
+      return;
+    }
   }
   // Forward all other messages (revealSource, navigateTo, changeDiagramType, etc.)
   if (currentOptions?.onMessage) currentOptions.onMessage(msg);
@@ -171,6 +191,8 @@ function postMessageToHost(msg: /* eslint-disable-line @typescript-eslint/no-exp
 let graph: Graph | null = null;
 /** ID of the currently selected component node, if any. */
 let selectedNodeId: string | null = null;
+/** True while renderDiagram is programmatically mutating the X6 graph. */
+let isRenderingDiagram = false;
 
 /** Cache for on-demand component properties (cleared on diagram re-render) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,32 +201,40 @@ const propertyCache = new Map<string, any>();
 export { translateConnectedEdgeStubs };
 
 /**
- * Automatically re-routes an edge with clean, obstacle-avoiding Manhattan A* paths.
+ * Automatically re-routes an edge with clean, obstacle-avoiding Manhattan A* paths
+ * that respect port outward normals and avoid component self-impalement.
  */
 export function rerouteEdgeOrthogonal(edge: any, g: Graph): void {
   if (!edge || !edge.isEdge()) return;
   const source = edge.getSource() as any;
   const target = edge.getTarget() as any;
-  const sourcePoint = edge.getSourcePoint();
-  const targetPoint = edge.getTargetPoint();
+  const sourceCell = edge.getSourceCell?.() ?? (source?.cell ? g.getCellById?.(source.cell) : null);
+  const targetCell = edge.getTargetCell?.() ?? (target?.cell ? g.getCellById?.(target.cell) : null);
+  const sourcePoint = resolveNodePortWorldPoint(sourceCell, source?.port, edge.getSourcePoint());
+  const targetPoint = resolveNodePortWorldPoint(targetCell, target?.port, edge.getTargetPoint());
   if (!sourcePoint || !targetPoint) return;
+
+  const sourceSide = getPortOutwardNormal(sourceCell, source?.port, sourcePoint)?.side;
+  const targetSide = getPortOutwardNormal(targetCell, target?.port, targetPoint)?.side;
+  const sourceBox = getNodeBBox(sourceCell) ?? undefined;
+  const targetBox = getNodeBBox(targetCell) ?? undefined;
 
   const obstacles: RectLike[] = [];
   for (const node of g.getNodes()) {
     if (node.id === source?.cell || node.id === target?.cell) continue;
-    if (node.id.startsWith("solder_dot_") || node.id === "__diagram_background__") continue;
-    const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
+    if (isEphemeralDiagramNode(node.id)) continue;
+    const bbox = getNodeBBox(node);
     if (bbox) {
-      obstacles.push({
-        x: bbox.x,
-        y: bbox.y,
-        width: bbox.width,
-        height: bbox.height,
-      });
+      obstacles.push(bbox);
     }
   }
 
-  const rawRoute = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles);
+  const rawRoute = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
+    sourceSide,
+    targetSide,
+    sourceBox,
+    targetBox,
+  });
   const intermediateVertices = simplifyCollinearPoints(rawRoute);
   edge.setVertices(intermediateVertices, { ignoreSnap: true });
 
@@ -239,10 +269,22 @@ function getConnectedEdges(
     const source = edge.getSource() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const target = edge.getTarget() as any;
-    const vertices = edge.getVertices() || [];
-    const sourcePoint = edge.getSourcePoint();
-    const targetPoint = edge.getTargetPoint();
-    const points = [sourcePoint, ...vertices, targetPoint].map((p: any) => ({
+    const sourceCell = edge.getSourceCell?.() ?? (source?.cell ? g.getCellById?.(source.cell) : null);
+    const targetCell = edge.getTargetCell?.() ?? (target?.cell ? g.getCellById?.(target.cell) : null);
+    const explicitVertices = edge.getVertices() || [];
+    const edgeView = typeof edge.findView === "function" ? edge.findView(g) : null;
+    const routePoints = edgeView?.routePoints;
+    const vertices =
+      explicitVertices.length > 0
+        ? explicitVertices
+        : routePoints && routePoints.length > 0
+          ? routePoints.map((p: any) => ({ x: p.x, y: p.y }))
+          : [];
+    const sourcePoint = resolveNodePortWorldPoint(sourceCell, source?.port, edge.getSourcePoint());
+    const targetPoint = resolveNodePortWorldPoint(targetCell, target?.port, edge.getTargetPoint());
+    const rawPts = [sourcePoint, ...vertices, targetPoint].filter(Boolean);
+    const regularized = regularizeOrthogonalPolyline(rawPts, 2, 1.0);
+    const points = regularized.map((p: any) => ({
       x: Math.round(p.x),
       y: Math.round(-p.y),
     }));
@@ -330,11 +372,7 @@ export function initGraph(isDark: boolean): Graph | null {
     // Parent-child relationships are strictly defined by semantic children via addChild().
     embedding: { enabled: false },
     interacting: (cellView: any) => {
-      if (
-        cellView.cell.id === "__diagram_background__" ||
-        cellView.cell.id.startsWith("__seq_stem_") ||
-        cellView.cell.id.startsWith("solder_dot_")
-      ) {
+      if (isEphemeralDiagramNode(cellView.cell.id)) {
         return false;
       }
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
@@ -371,7 +409,11 @@ export function initGraph(isDark: boolean): Graph | null {
         },
       },
       validateMagnet: () => true,
-      validateConnection: () => true,
+      validateConnection: ({ sourceCell, targetCell }: any) => {
+        if (sourceCell && isEphemeralDiagramNode(sourceCell.id)) return false;
+        if (targetCell && isEphemeralDiagramNode(targetCell.id)) return false;
+        return true;
+      },
       validateEdge: () => true,
       createEdge: (): ReturnType<Graph["createEdge"]> => {
         return g.createEdge({
@@ -401,14 +443,16 @@ export function initGraph(isDark: boolean): Graph | null {
       modifiers: ["ctrl", "meta", "shift"],
       multipleSelectionModifiers: ["ctrl", "meta", "shift"],
       pointerEvents: "none",
-      filter: (cell: Cell) =>
-        cell.id !== "__diagram_background__" &&
-        !cell.id.startsWith("__seq_stem_") &&
-        !cell.id.startsWith("solder_dot_"),
+      filter: (cell: Cell) => !isEphemeralDiagramNode(cell.id),
     }),
   );
 
-  g.use(new Transform({ resizing: true, rotating: true }));
+  g.use(
+    new Transform({
+      resizing: { enabled: (node: Node) => !isEphemeralDiagramNode(node.id) },
+      rotating: { enabled: (node: Node) => !isEphemeralDiagramNode(node.id) },
+    }),
+  );
 
   // ── Selection change events — add/remove edge tools ──
   g.on("selection:changed", ({ added, removed }: { added: Cell[]; removed: Cell[] }) => {
@@ -596,7 +640,8 @@ export function initGraph(isDark: boolean): Graph | null {
   let justResized = false;
 
   g.on("node:moved", ({ node }: { node: Node }) => {
-    if (node.id === "__diagram_background__") return;
+    if (isRenderingDiagram) return;
+    if (isEphemeralDiagramNode(node.id)) return;
 
     // Deselect edges when moving a node to avoid stale rubberbands
     const selected = g.getSelectedCells();
@@ -672,6 +717,8 @@ export function initGraph(isDark: boolean): Graph | null {
   // Node rotated
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   g.on("node:rotated", ({ node }: any) => {
+    if (isRenderingDiagram) return;
+    if (isEphemeralDiagramNode(node.id)) return;
     const p = node.getPosition();
     const s = node.getSize();
     const r = node.getAngle();
@@ -687,6 +734,8 @@ export function initGraph(isDark: boolean): Graph | null {
   // Node resized
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   g.on("node:resized", ({ node }: any) => {
+    if (isRenderingDiagram) return;
+    if (isEphemeralDiagramNode(node.id)) return;
     if (moveTimeout) {
       clearTimeout(moveTimeout);
       moveTimeout = null;
@@ -726,6 +775,7 @@ export function initGraph(isDark: boolean): Graph | null {
   // Edge connected (handles both new edge creation and terminal dragging reconnection)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   g.on("edge:connected", ({ isNew, edge }: any) => {
+    if (isRenderingDiagram) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const source = edge.getSource() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -782,7 +832,7 @@ export function initGraph(isDark: boolean): Graph | null {
         const obstacles: RectLike[] = [];
         for (const node of g.getNodes()) {
           if (node.id === source.cell || node.id === target.cell) continue;
-          if (node.id.startsWith("solder_dot_") || node.id === "__diagram_background__") continue;
+          if (isEphemeralDiagramNode(node.id)) continue;
           const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
           if (bbox) {
             obstacles.push({
@@ -837,7 +887,7 @@ export function initGraph(isDark: boolean): Graph | null {
   // Edge vertices changed: debounced with orthogonal regularization and collinear pruning
   let edgeUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   g.on("edge:change:vertices", ({ edge, options }: any) => {
-    if (options?.ignoreSnap) return;
+    if (isRenderingDiagram || options?.ignoreSnap) return;
 
     const vertices = edge.getVertices() || [];
     const sourcePoint = edge.getSourcePoint();
@@ -898,16 +948,117 @@ export function initGraph(isDark: boolean): Graph | null {
     }, 500);
   });
 
+  let isSnappingPortAlignment = false;
+  let isAltPressed = false;
+
+  const clearAlignmentGuides = () => {
+    const gx = g.getCellById?.("__alignment_guide_x__");
+    if (gx) g.removeCell?.(gx);
+    const gy = g.getCellById?.("__alignment_guide_y__");
+    if (gy) g.removeCell?.(gy);
+  };
+
+  const renderAlignmentGuide = (
+    id: "__alignment_guide_x__" | "__alignment_guide_y__",
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+  ) => {
+    const existing = g.getCellById?.(id);
+    if (existing) g.removeCell?.(existing);
+    const minX = Math.min(x1, x2);
+    const minY = Math.min(y1, y2);
+    const w = Math.max(1, Math.abs(x2 - x1));
+    const h = Math.max(1, Math.abs(y2 - y1));
+    g.addNode?.({
+      id,
+      shape: "rect",
+      x: minX,
+      y: minY,
+      width: w,
+      height: h,
+      zIndex: 999,
+      attrs: {
+        body: {
+          fill: "none",
+          stroke: "#00b4d8",
+          strokeWidth: 1,
+          strokeDasharray: "3 3",
+          pointerEvents: "none",
+        },
+      },
+    });
+  };
+
   // Synchronize topological solder dots across graph lifecycle and interactive edits
   g.on("node:change:position", ({ cell, current, previous }: any) => {
-    if (cell && cell.isNode() && current && previous) {
-      const dx = current.x - previous.x;
-      const dy = current.y - previous.y;
-      translateConnectedEdgeStubs(g, cell, dx, dy);
+    if (!isRenderingDiagram && !isSnappingPortAlignment && cell && cell.isNode() && current && previous) {
+      if (!isEphemeralDiagramNode(cell.id)) {
+        let snapDx = 0;
+        let snapDy = 0;
+        let guideX: { x: number; y1: number; y2: number } | null = null;
+        let guideY: { y: number; x1: number; x2: number } | null = null;
+        const snapThreshold = 4;
+
+        const connected = g.getConnectedEdges?.(cell) || [];
+        for (const edge of connected) {
+          const src = edge.getSource?.() as any;
+          const tgt = edge.getTarget?.() as any;
+          const isSrc = src?.cell === cell.id;
+          const myPortId = isSrc ? src?.port : tgt?.port;
+          const peerCellId = isSrc ? tgt?.cell : src?.cell;
+          const peerPortId = isSrc ? tgt?.port : src?.port;
+          const peerNode = peerCellId ? g.getCellById?.(peerCellId) : null;
+          if (!myPortId || !peerNode || !peerPortId) continue;
+
+          const myPt = resolveNodePortWorldPoint(cell, myPortId);
+          const peerPt = resolveNodePortWorldPoint(peerNode, peerPortId);
+          if (!myPt || !peerPt) continue;
+
+          const diffX = peerPt.x - myPt.x;
+          if (Math.abs(diffX) <= snapThreshold && (guideX === null || Math.abs(diffX) < Math.abs(snapDx))) {
+            snapDx = diffX;
+            guideX = { x: peerPt.x, y1: myPt.y, y2: peerPt.y };
+          }
+          const diffY = peerPt.y - myPt.y;
+          if (Math.abs(diffY) <= snapThreshold && (guideY === null || Math.abs(diffY) < Math.abs(snapDy))) {
+            snapDy = diffY;
+            guideY = { y: peerPt.y, x1: myPt.x, x2: peerPt.x };
+          }
+        }
+
+        if (Math.abs(snapDx) > 0.01 || Math.abs(snapDy) > 0.01) {
+          isSnappingPortAlignment = true;
+          cell.setPosition?.(current.x + snapDx, current.y + snapDy);
+          isSnappingPortAlignment = false;
+        }
+
+        if (guideX) {
+          renderAlignmentGuide("__alignment_guide_x__", guideX.x, guideX.y1, guideX.x, guideX.y2);
+        } else {
+          const gx = g.getCellById?.("__alignment_guide_x__");
+          if (gx) g.removeCell?.(gx);
+        }
+        if (guideY) {
+          renderAlignmentGuide("__alignment_guide_y__", guideY.x1, guideY.y, guideY.x2, guideY.y);
+        } else {
+          const gy = g.getCellById?.("__alignment_guide_y__");
+          if (gy) g.removeCell?.(gy);
+        }
+
+        const effectiveDx = current.x + snapDx - previous.x;
+        const effectiveDy = current.y + snapDy - previous.y;
+        translateConnectedEdgeStubs(g, cell, effectiveDx, effectiveDy, { forceReroute: isAltPressed });
+      }
     }
     scheduleUpdateSolderDots(g);
   });
-  g.on("node:moved", () => scheduleUpdateSolderDots(g));
+  g.on("node:moved", () => {
+    clearAlignmentGuides();
+    scheduleUpdateSolderDots(g);
+  });
+  g.on("node:mouseup", () => clearAlignmentGuides());
   g.on("node:resized", () => scheduleUpdateSolderDots(g));
   g.on("edge:change:vertices", () => scheduleUpdateSolderDots(g));
   g.on("edge:change:source", () => scheduleUpdateSolderDots(g));
@@ -932,6 +1083,15 @@ export function initGraph(isDark: boolean): Graph | null {
       rerouteEdgeOrthogonal(edge, g);
     }
   });
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Alt" || e.altKey) isAltPressed = true;
+    });
+    document.addEventListener("keyup", (e) => {
+      if (e.key === "Alt" || !e.altKey) isAltPressed = false;
+    });
+  }
 
   // Delete key: delete selected edges/components
   document.addEventListener("keydown", (e) => {
@@ -968,7 +1128,7 @@ export function initGraph(isDark: boolean): Graph | null {
               target: idStr,
             });
           }
-        } else if (cell.isNode() && cell.id !== "__diagram_background__") {
+        } else if (cell.isNode() && !isEphemeralDiagramNode(cell.id)) {
           componentNames.push(cell.id);
         }
       });
@@ -1010,6 +1170,7 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   g.on("node:mousedown", ({ node }: any) => {
+    if (isEphemeralDiagramNode(node.id)) return;
     const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
     if (Array.isArray(interactiveBindings)) {
       for (const binding of interactiveBindings) {
@@ -1022,6 +1183,7 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   g.on("node:mouseup", ({ node }: any) => {
+    if (isEphemeralDiagramNode(node.id)) return;
     const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
     if (Array.isArray(interactiveBindings)) {
       for (const binding of interactiveBindings) {
@@ -1035,6 +1197,11 @@ export function initGraph(isDark: boolean): Graph | null {
 
   g.on("node:click", ({ node }: any) => {
     if (!graph) return;
+    if (isEphemeralDiagramNode(node.id)) {
+      selectedNodeId = null;
+      if (currentOptions?.onSelect) currentOptions.onSelect(null);
+      return;
+    }
     selectedNodeId = node.id;
     const data = node.getData();
 
@@ -1119,6 +1286,7 @@ export function initGraph(isDark: boolean): Graph | null {
   // ── Double-click navigation: drill into child diagram views ──
   // E.g., double-click a StateDefinition in BDD → open StateMachine view for it.
   g.on("node:dblclick", ({ node }: { node: Node }) => {
+    if (isEphemeralDiagramNode(node.id)) return;
     const data = node.getData();
     const props = data?.properties;
     if (!props?.ruleName) return;
@@ -1169,6 +1337,19 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   const g = initGraph(isDark);
   if (!g) return;
 
+  isRenderingDiagram = true;
+  try {
+    renderDiagramInternal(g, data, isDark);
+  } finally {
+    isRenderingDiagram = false;
+  }
+}
+
+function renderDiagramInternal(
+  g: Graph,
+  data: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any,
+  isDark: boolean,
+) {
   // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives
   const placeholder = g.getCellById("__drop_placeholder__");
   if (placeholder) g.removeCell(placeholder);
@@ -1242,7 +1423,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       {
         tagName: "rect",
         attrs: {
-          style: "fill: transparent; stroke: #999; stroke-width: 1px; vector-effect: non-scaling-stroke;",
+          style:
+            "fill: transparent; stroke: #999; stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none;",
           width: cs.width,
           height: cs.height,
         },
@@ -1265,7 +1447,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
           preserveAspectRatio: "none",
           width: cs.width,
           height: cs.height,
-          style: "overflow: visible",
+          pointerEvents: "none",
+          style: "overflow: visible; pointer-events: none;",
         },
       },
     });
@@ -1282,6 +1465,10 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       zIndex: -2,
       markup: {
         tagName: "g",
+        attrs: {
+          pointerEvents: "none",
+          style: "pointer-events: none;",
+        },
         children: [
           {
             tagName: "line",
@@ -1293,6 +1480,7 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
               stroke: "#999",
               "stroke-width": "1",
               "vector-effect": "non-scaling-stroke",
+              "pointer-events": "none",
             },
           },
           {
@@ -1305,6 +1493,7 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
               stroke: "#999",
               "stroke-width": "1",
               "vector-effect": "non-scaling-stroke",
+              "pointer-events": "none",
             },
           },
         ],
@@ -1554,26 +1743,19 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   const isFirstRender = existingCells.length === 0;
 
   if (!isFirstRender) {
-    const isEphemeral = (id: string) =>
-      id === "__diagram_background__" ||
-      id.startsWith("solder_dot_") ||
-      id.startsWith("__seq_stem_") ||
-      id === "placement-ghost" ||
-      id === "__drop_placeholder__";
-
     const existingNodeIds = new Set<string>();
     const existingEdgeIds = new Set<string>();
     for (const cell of existingCells) {
-      if (isEphemeral(cell.id)) continue;
+      if (isEphemeralDiagramNode(cell.id)) continue;
       if (cell.isNode()) existingNodeIds.add(cell.id);
       else if (cell.isEdge()) existingEdgeIds.add(cell.id);
     }
 
     const newNodeIds = new Set(
-      nodes.filter((n: { id: string }) => !isEphemeral(n.id)).map((n: { id: string }) => n.id),
+      nodes.filter((n: { id: string }) => !isEphemeralDiagramNode(n.id)).map((n: { id: string }) => n.id),
     );
     const newEdgeIds = new Set(
-      edges.filter((e: { id: string }) => !isEphemeral(e.id)).map((e: { id: string }) => e.id),
+      edges.filter((e: { id: string }) => !isEphemeralDiagramNode(e.id)).map((e: { id: string }) => e.id),
     );
 
     // Check if topology changed (different node/edge sets)
@@ -1629,13 +1811,28 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
           if (!cell || !cell.isEdge()) continue;
 
           if (edgeData.vertices) {
-            cell.setVertices(edgeData.vertices);
+            const curVerts = cell.getVertices() || [];
+            const vertsChanged =
+              curVerts.length !== edgeData.vertices.length ||
+              curVerts.some(
+                (v: any, idx: number) =>
+                  Math.abs(v.x - edgeData.vertices[idx].x) > 0.5 || Math.abs(v.y - edgeData.vertices[idx].y) > 0.5,
+              );
+            if (vertsChanged) {
+              cell.setVertices(edgeData.vertices, { ignoreSnap: true });
+            }
           }
           if (edgeData.source && typeof edgeData.source === "object") {
-            cell.setSource(edgeData.source as any);
+            const curSrc = cell.getSource() as any;
+            if (curSrc?.cell !== (edgeData.source as any).cell || curSrc?.port !== (edgeData.source as any).port) {
+              cell.setSource(edgeData.source as any);
+            }
           }
           if (edgeData.target && typeof edgeData.target === "object") {
-            cell.setTarget(edgeData.target as any);
+            const curTgt = cell.getTarget() as any;
+            if (curTgt?.cell !== (edgeData.target as any).cell || curTgt?.port !== (edgeData.target as any).port) {
+              cell.setTarget(edgeData.target as any);
+            }
           }
           if (edgeData.attrs) {
             cell.setAttrs(edgeData.attrs);
@@ -1646,15 +1843,21 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
         }
       });
 
+      const prevCachedProps = selectedNodeId ? propertyCache.get(selectedNodeId) : undefined;
       // Clear property cache on re-render (model state may have changed)
       propertyCache.clear();
 
       // Restore property panel for previously selected node after re-render
-      if (selectedNodeId) {
+      if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
         const restoredNode = g.getCellById(selectedNodeId);
         if (restoredNode && restoredNode.isNode()) {
-          const data = restoredNode.getData();
-          showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+          if (prevCachedProps) {
+            propertyCache.set(selectedNodeId, prevCachedProps);
+            showProperties({ id: restoredNode.id, properties: prevCachedProps, isLoading: false });
+          } else {
+            const data = restoredNode.getData();
+            showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+          }
           postMessageToHost({ type: "getProperties", componentName: restoredNode.id });
         }
       }
@@ -1713,16 +1916,22 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     }
   }
 
+  const prevCachedProps = selectedNodeId ? propertyCache.get(selectedNodeId) : undefined;
   // Clear property cache on re-render (model state may have changed)
   propertyCache.clear();
 
   // Restore property panel for previously selected node after re-render
-  if (selectedNodeId) {
+  if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
     const restoredNode = g.getCellById(selectedNodeId);
     if (restoredNode && restoredNode.isNode()) {
-      const data = restoredNode.getData();
-      // Show panel with lightweight data and re-request full properties
-      showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+      if (prevCachedProps) {
+        propertyCache.set(selectedNodeId, prevCachedProps);
+        showProperties({ id: restoredNode.id, properties: prevCachedProps, isLoading: false });
+      } else {
+        const data = restoredNode.getData();
+        // Show panel with lightweight data and re-request full properties
+        showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+      }
       postMessageToHost({ type: "getProperties", componentName: restoredNode.id });
     }
   }
@@ -1741,99 +1950,102 @@ let isMouseDown = false;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pendingDiagramData: any = null;
 
-document.addEventListener(
-  "mousedown",
-  () => {
-    isMouseDown = true;
-  },
-  true,
-);
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "mousedown",
+    () => {
+      isMouseDown = true;
+    },
+    true,
+  );
 
-document.addEventListener(
-  "mouseup",
-  () => {
-    isMouseDown = false;
-    setTimeout(() => {
-      if (!isMouseDown && pendingDiagramData) {
-        const pd = pendingDiagramData;
-        pendingDiagramData = null;
-        if (pd.data?.isLoading) {
-          Spinner.show();
-        }
-        requestAnimationFrame(() => {
+  document.addEventListener(
+    "mouseup",
+    () => {
+      isMouseDown = false;
+      setTimeout(() => {
+        if (!isMouseDown && pendingDiagramData) {
+          const pd = pendingDiagramData;
+          pendingDiagramData = null;
+          if (pd.data?.isLoading) {
+            Spinner.show();
+          }
           requestAnimationFrame(() => {
-            renderDiagram(pd.data, pd.isDark);
-            if (!pd.data?.isLoading) {
-              Spinner.hide();
-            }
+            requestAnimationFrame(() => {
+              renderDiagram(pd.data, pd.isDark);
+              if (!pd.data?.isLoading) {
+                Spinner.hide();
+              }
+            });
           });
-        });
-      }
-    }, 0);
-  },
-  true,
-);
+        }
+      }, 0);
+    },
+    true,
+  );
 
-// Initialize Diagram Type Select
-const diagramSelect = document.getElementById("diagramTypeSelect") as HTMLSelectElement;
-if (diagramSelect) {
-  diagramSelect.addEventListener("change", (e) => {
-    Spinner.show();
-    postMessageToHost({ type: "changeDiagramType", diagramType: (e.target as HTMLSelectElement).value });
-  });
+  // Initialize Diagram Type Select
+  const diagramSelect = document.getElementById("diagramTypeSelect") as HTMLSelectElement;
+  if (diagramSelect) {
+    diagramSelect.addEventListener("change", (e) => {
+      Spinner.show();
+      postMessageToHost({ type: "changeDiagramType", diagramType: (e.target as HTMLSelectElement).value });
+    });
+  }
 }
 
 // Listen for messages from the extension host
-window.addEventListener("message", (event: MessageEvent) => {
-  const message = event.data;
-  switch (message.type) {
-    case "loading": {
-      Spinner.show();
-      break;
-    }
-    case "stopLoading": {
-      Spinner.hide();
-      break;
-    }
-    case "diagramData": {
-      if (isMouseDown) {
-        pendingDiagramData = { data: message.data, isDark: message.isDark ?? true };
-      } else {
-        if (message.data?.isLoading) {
-          Spinner.show();
-        }
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            renderDiagram(message.data, message.isDark ?? true);
-            if (!message.data?.isLoading) {
-              Spinner.hide();
-            }
-          });
-        });
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (event: MessageEvent) => {
+    const message = event.data;
+    switch (message.type) {
+      case "loading": {
+        Spinner.show();
+        break;
       }
-      break;
-    }
-    case "startPlacement": {
-      if (!graph) return;
-      const { className, classKind, iconSvg } = message;
-      if (!className) break;
-      // Calls the startPlacement function defined inside initGraph
-      // which creates the ghost cursor and enters placement mode
-      (
-        window as {
-          __startPlacement?:
-            | ((d: { className: string; classKind: string; iconSvg?: string | undefined }) => void)
-            | undefined;
+      case "stopLoading": {
+        Spinner.hide();
+        break;
+      }
+      case "diagramData": {
+        if (isMouseDown) {
+          pendingDiagramData = { data: message.data, isDark: message.isDark ?? true };
+        } else {
+          if (message.data?.isLoading) {
+            Spinner.show();
+          }
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              renderDiagram(message.data, message.isDark ?? true);
+              if (!message.data?.isLoading) {
+                Spinner.hide();
+              }
+            });
+          });
         }
-      ).__startPlacement?.({ className, classKind, iconSvg });
-      break;
-    }
-    case "empty": {
-      Spinner.hide();
-      const placeholder = document.getElementById("placeholder");
-      if (placeholder) {
-        placeholder.style.display = "flex";
-        placeholder.innerHTML = `
+        break;
+      }
+      case "startPlacement": {
+        if (!graph) return;
+        const { className, classKind, iconSvg } = message;
+        if (!className) break;
+        // Calls the startPlacement function defined inside initGraph
+        // which creates the ghost cursor and enters placement mode
+        (
+          window as {
+            __startPlacement?:
+              | ((d: { className: string; classKind: string; iconSvg?: string | undefined }) => void)
+              | undefined;
+          }
+        ).__startPlacement?.({ className, classKind, iconSvg });
+        break;
+      }
+      case "empty": {
+        Spinner.hide();
+        const placeholder = document.getElementById("placeholder");
+        if (placeholder) {
+          placeholder.style.display = "flex";
+          placeholder.innerHTML = `
           <div style="text-align: center; max-width: 400px; padding: 20px;">
             <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.4;">📐</div>
             <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">No diagram data available</div>
@@ -1842,118 +2054,119 @@ window.addEventListener("message", (event: MessageEvent) => {
               Try adding <code style="background: rgba(128,128,128,0.2); padding: 2px 4px; border-radius: 2px;">annotation(Diagram(...))</code> to your model.
             </div>
           </div>`;
-      }
-      if (graph) {
-        graph.clearCells();
-      }
-      break;
-    }
-
-    case "autoLayout": {
-      if (!graph) return;
-      const nodes = graph.getNodes();
-      const edges = graph.getEdges();
-
-      const dagreLayout = new DagreLayout({
-        type: "dagre",
-        rankdir: "LR",
-        align: "UL",
-        ranksep: 100,
-        nodesep: 100,
-        begin: [-10, -10],
-        controlPoints: true,
-      });
-
-      const model = {
-        nodes: nodes.map((n: Node) => ({
-          id: n.id,
-          width: n.getSize().width,
-          height: n.getSize().height,
-        })),
-        edges: edges.map((e: Edge) => ({
-          source: e.getSourceCellId(),
-          target: e.getTargetCellId(),
-        })),
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const newModel = dagreLayout.layout(model as any);
-      const g = graph;
-
-      g.batchUpdate("layout", () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        newModel.nodes?.forEach((n: any) => {
-          const node = g.getCellById(n.id);
-          if (node && node.isNode()) {
-            node.setPosition(n.x, n.y);
-          }
-        });
-      });
-
-      // Let X6 handle bounds rescaling securely over position callbacks
-      setTimeout(() => {
-        if (graph) {
-          const containerW =
-            graph.container.clientWidth > 0 ? graph.container.clientWidth : (graph as any).options?.width || 800;
-          const containerH =
-            graph.container.clientHeight > 0 ? graph.container.clientHeight : (graph as any).options?.height || 600;
-          graph.zoomToFit({ padding: 20, viewportArea: { x: 0, y: 0, width: containerW, height: containerH } });
-          graph.centerContent();
         }
-      }, 100);
-      break;
-    }
+        if (graph) {
+          graph.clearCells();
+        }
+        break;
+      }
 
-    case "error": {
-      Spinner.hide();
-      const placeholder2 = document.getElementById("placeholder");
-      if (placeholder2) {
-        placeholder2.style.display = "flex";
-        const errorMsg = String(message.message || "Unknown error")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-        placeholder2.innerHTML = `
+      case "autoLayout": {
+        if (!graph) return;
+        const nodes = graph.getNodes();
+        const edges = graph.getEdges();
+
+        const dagreLayout = new DagreLayout({
+          type: "dagre",
+          rankdir: "LR",
+          align: "UL",
+          ranksep: 100,
+          nodesep: 100,
+          begin: [-10, -10],
+          controlPoints: true,
+        });
+
+        const model = {
+          nodes: nodes.map((n: Node) => ({
+            id: n.id,
+            width: n.getSize().width,
+            height: n.getSize().height,
+          })),
+          edges: edges.map((e: Edge) => ({
+            source: e.getSourceCellId(),
+            target: e.getTargetCellId(),
+          })),
+        };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const newModel = dagreLayout.layout(model as any);
+        const g = graph;
+
+        g.batchUpdate("layout", () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          newModel.nodes?.forEach((n: any) => {
+            const node = g.getCellById(n.id);
+            if (node && node.isNode()) {
+              node.setPosition(n.x, n.y);
+            }
+          });
+        });
+
+        // Let X6 handle bounds rescaling securely over position callbacks
+        setTimeout(() => {
+          if (graph) {
+            const containerW =
+              graph.container.clientWidth > 0 ? graph.container.clientWidth : (graph as any).options?.width || 800;
+            const containerH =
+              graph.container.clientHeight > 0 ? graph.container.clientHeight : (graph as any).options?.height || 600;
+            graph.zoomToFit({ padding: 20, viewportArea: { x: 0, y: 0, width: containerW, height: containerH } });
+            graph.centerContent();
+          }
+        }, 100);
+        break;
+      }
+
+      case "error": {
+        Spinner.hide();
+        const placeholder2 = document.getElementById("placeholder");
+        if (placeholder2) {
+          placeholder2.style.display = "flex";
+          const errorMsg = String(message.message || "Unknown error")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+          placeholder2.innerHTML = `
           <div style="text-align: center; max-width: 500px; padding: 20px;">
             <div style="font-size: 32px; margin-bottom: 12px;">⚠️</div>
             <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--vscode-errorForeground, #f48771);">Diagram Error</div>
             <div style="font-size: 12px; opacity: 0.8; line-height: 1.5; text-align: left; background: rgba(128,128,128,0.1); padding: 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; font-family: var(--vscode-editor-font-family, monospace); white-space: pre-wrap; word-break: break-word;">${errorMsg}</div>
           </div>`;
-      }
-      break;
-    }
-
-    case "componentProperties": {
-      // On-demand property response: update the properties panel with full data
-      const { componentName, properties: fullProps } = message;
-      if (fullProps) {
-        propertyCache.set(componentName, fullProps);
-        // Only update if this component is still selected
-        if (selectedNodeId === componentName) {
-          showProperties({ id: componentName, properties: fullProps });
         }
+        break;
       }
-      break;
-    }
 
-    case "setLanguage": {
-      // Show the diagram type selector only for SysML2 files
-      const toolbar = document.getElementById("toolbar");
-      if (toolbar) {
-        toolbar.style.display = message.language === "sysml" ? "flex" : "none";
+      case "componentProperties": {
+        // On-demand property response: update the properties panel with full data
+        const { componentName, properties: fullProps } = message;
+        if (fullProps) {
+          propertyCache.set(componentName, fullProps);
+          // Only update if this component is still selected
+          if (selectedNodeId === componentName) {
+            showProperties({ id: componentName, properties: fullProps });
+          }
+        }
+        break;
       }
-      break;
-    }
 
-    case "setDiagramType": {
-      // Update the diagram type dropdown to match the host's navigation
-      const diagramTypeSelect = document.getElementById("diagramTypeSelect") as HTMLSelectElement | null;
-      if (diagramTypeSelect && message.diagramType) {
-        diagramTypeSelect.value = message.diagramType;
+      case "setLanguage": {
+        // Show the diagram type selector only for SysML2 files
+        const toolbar = document.getElementById("toolbar");
+        if (toolbar) {
+          toolbar.style.display = message.language === "sysml" ? "flex" : "none";
+        }
+        break;
       }
-      break;
+
+      case "setDiagramType": {
+        // Update the diagram type dropdown to match the host's navigation
+        const diagramTypeSelect = document.getElementById("diagramTypeSelect") as HTMLSelectElement | null;
+        if (diagramTypeSelect && message.diagramType) {
+          diagramTypeSelect.value = message.diagramType;
+        }
+        break;
+      }
     }
-  }
-});
+  });
+}
 
 // ── Property Panel Rendering ──
 
@@ -2031,18 +2244,36 @@ export function updateSolderDots(g: Graph) {
 
     const stroke = edge.attr("line/stroke") as string | undefined;
     const color = stroke && stroke !== "none" ? stroke : "#1890ff";
-    allPaths.push({ id: edge.id, points, color });
+    const sourceKey = src?.cell && src?.port ? `${src.cell}.${src.port}` : src?.cell ? String(src.cell) : undefined;
+    const targetKey = tgt?.cell && tgt?.port ? `${tgt.cell}.${tgt.port}` : tgt?.cell ? String(tgt.cell) : undefined;
+    allPaths.push({ id: edge.id, points, color, sourceKey, targetKey });
   }
 
   // Also collect port coordinates from all component nodes in graph
   for (const node of g.getNodes()) {
-    if (node.id.startsWith("solder_dot_") || node.id === "__diagram_background__") continue;
+    if (isEphemeralDiagramNode(node.id)) continue;
     const ports = (node as any).getPorts?.() || [];
+    const nodePos = node.getPosition();
+    const nodeSize = node.getSize();
+    const angleDeg = (node as any).getAngle?.() ?? 0;
+    const rad = (angleDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const cx = (nodeSize?.width ?? 0) / 2;
+    const cy = (nodeSize?.height ?? 0) / 2;
     for (const p of ports) {
       const pos = (node as any).getPortProp?.(p.id, "args");
       if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
-        const nodePos = node.getPosition();
-        portPoints.push({ x: nodePos.x + pos.x, y: nodePos.y + pos.y });
+        if (!angleDeg) {
+          portPoints.push({ x: nodePos.x + pos.x, y: nodePos.y + pos.y });
+        } else {
+          const dx = pos.x - cx;
+          const dy = pos.y - cy;
+          portPoints.push({
+            x: nodePos.x + cx + dx * cos - dy * sin,
+            y: nodePos.y + cy + dx * sin + dy * cos,
+          });
+        }
       }
     }
   }
@@ -2106,7 +2337,7 @@ export function disposeDiagram() {
  * The function walks all `<text>` elements inside the node's SVG and replaces
  * text content that matches the old parameter value pattern with the new one.
  */
-export function updateParameterText(nodeId: string, _paramName: string, oldValue: string, newValue: string): void {
+export function updateParameterText(nodeId: string, paramName: string, oldValue: string, newValue: string): void {
   if (!graph) return;
   const cell = graph.getCellById(nodeId);
   if (!cell || !cell.isNode()) return;
@@ -2121,6 +2352,12 @@ export function updateParameterText(nodeId: string, _paramName: string, oldValue
   for (const textEl of texts) {
     const content = textEl.textContent ?? "";
     if (!content) continue;
+
+    // Match patterns like "L=1" or "R=100" by parameter name prefix first
+    if (paramName && content.startsWith(`${paramName}=`)) {
+      textEl.textContent = `${paramName}=${newValue}`;
+      continue;
+    }
 
     // Match patterns like "R=100", "100 Ω", or just "100"
     // Be specific: only replace if the text contains the exact old value

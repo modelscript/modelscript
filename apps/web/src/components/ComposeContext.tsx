@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React from "react";
-import type { NotebookCell } from "../util/notebook";
+import type { NotebookCell, TutorialDifficulty } from "../util/notebook";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 
 export interface ComposeInitialState {
+  editPostId?: number | null | undefined;
   content?: string | undefined;
   defaultText?: string | undefined;
   artifactId?: number | null | undefined;
@@ -14,6 +15,11 @@ export interface ComposeInitialState {
   forkedFromArtifactId?: number | null | undefined;
   notebookMode?: boolean | undefined;
   notebookTitle?: string | undefined;
+  notebookSummary?: string | undefined;
+  notebookDifficulty?: TutorialDifficulty | undefined;
+  notebookSeries?: string | undefined;
+  notebookDialect?: string | undefined;
+  notebookCompanionRepo?: string | undefined;
   notebookCells?: NotebookCell[] | undefined;
   morselPayload?:
     | {

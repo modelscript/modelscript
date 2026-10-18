@@ -93,6 +93,38 @@ tag_port("motor_mount", "mechanical_flange", [0, 1, 0])
     throw new Error("Invalid STEP header produced from SCAD solid tree");
   }
 
+  // Verify module/function hoisting, axis-angle rotate, named v= transforms, and composite 2D linear_extrude
+  const hoistedScad = `
+hoisted_box(double_val(10));
+rotate(a = 45, v = [0, 1, 0])
+  translate(v = [5, 0, 0])
+    scale(v = [1, 2, 1])
+      mirror(v = [1, 0, 0])
+        linear_extrude(height = 15, twist = 30, scale = 0.8) {
+          difference() {
+            square([20, 20], center = true);
+            circle(r = 4);
+          }
+        }
+module hoisted_box(s = default_size) {
+  cube([s, s, s]);
+}
+function double_val(x) = x * 2;
+default_size = 12;
+`;
+  const hoistedTree = parser.parse(hoistedScad);
+  const hoistedSolid = evaluator.evaluate(hoistedTree.rootNode);
+  if (!hoistedSolid) {
+    throw new Error("Expected hoisted SCAD program to evaluate to a valid Solid");
+  }
+
+  // Verify degenerate polygon (< 3 points) returns null instead of fabricating a triangle
+  const degenTree = parser.parse(`polygon([[0, 0], [1, 1]]);`);
+  const degenSolid = evaluator.evaluate(degenTree.rootNode);
+  if (degenSolid !== null) {
+    throw new Error("Expected degenerate 2-point polygon to return null");
+  }
+
   console.log("✔ ScadEvaluator successfully lowered Hybrid SCAD into watertight Solid tree and STEP geometry!");
 }
 

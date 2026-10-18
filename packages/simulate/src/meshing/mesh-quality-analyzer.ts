@@ -8,6 +8,20 @@ import type { MeshQualityMetrics, Tet4Mesh } from "../fea/tet4-types.js";
  * Computes scaled Jacobian determinants, aspect ratios, and flags inverted or degenerate cells.
  */
 export class MeshQualityAnalyzer {
+  private static wasmBuffers?:
+    | {
+        wasm: any;
+        capCoords: number;
+        capElems: number;
+        capNumElements: number;
+        nodeCoordsPtr: number;
+        elementsPtr: number;
+        jacobiansPtr: number;
+        aspectRatiosPtr: number;
+        statsPtr: number;
+      }
+    | undefined;
+
   /**
    * Computes comprehensive mesh quality metrics for a Tet4 or Tet10 mesh.
    */
@@ -21,31 +35,61 @@ export class MeshQualityAnalyzer {
       typeof wasm.__new === "function" &&
       numElements > 0
     ) {
-      const alloc = (bytes: number): number => wasm.__new(bytes, 0);
-      const nodeCoordsPtr = alloc(nodeCoords.length * 8);
-      const elementsPtr = alloc(elements.length * 4);
-      const jacobiansPtr = alloc(numElements * 8);
-      const aspectRatiosPtr = alloc(numElements * 8);
-      const statsPtr = alloc(6 * 8);
+      const prev = MeshQualityAnalyzer.wasmBuffers;
+      if (
+        !prev ||
+        prev.wasm !== wasm ||
+        prev.capCoords < nodeCoords.length ||
+        prev.capElems < elements.length ||
+        prev.capNumElements < numElements
+      ) {
+        if (prev && prev.wasm === wasm && typeof wasm.__unpin === "function") {
+          wasm.__unpin(prev.nodeCoordsPtr);
+          wasm.__unpin(prev.elementsPtr);
+          wasm.__unpin(prev.jacobiansPtr);
+          wasm.__unpin(prev.aspectRatiosPtr);
+          wasm.__unpin(prev.statsPtr);
+        }
+        const capCoords = prev && prev.wasm === wasm ? Math.max(prev.capCoords, nodeCoords.length) : nodeCoords.length;
+        const capElems = prev && prev.wasm === wasm ? Math.max(prev.capElems, elements.length) : elements.length;
+        const capNumElements = prev && prev.wasm === wasm ? Math.max(prev.capNumElements, numElements) : numElements;
+        const alloc = (bytes: number): number => {
+          const ptr = wasm.__new(bytes, 0);
+          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          return ptr;
+        };
+        MeshQualityAnalyzer.wasmBuffers = {
+          wasm,
+          capCoords,
+          capElems,
+          capNumElements,
+          nodeCoordsPtr: alloc(capCoords * 8),
+          elementsPtr: alloc(capElems * 4),
+          jacobiansPtr: alloc(capNumElements * 8),
+          aspectRatiosPtr: alloc(capNumElements * 8),
+          statsPtr: alloc(6 * 8),
+        };
+      }
 
-      const coordsF64 = new Float64Array(wasm.memory.buffer, nodeCoordsPtr, nodeCoords.length);
+      const bufs = MeshQualityAnalyzer.wasmBuffers!;
+      const coordsF64 = new Float64Array(wasm.memory.buffer, bufs.nodeCoordsPtr, nodeCoords.length);
       for (let i = 0; i < nodeCoords.length; i++) coordsF64[i] = nodeCoords[i]!;
-      const elemsI32 = new Int32Array(wasm.memory.buffer, elementsPtr, elements.length);
+      const elemsI32 = new Int32Array(wasm.memory.buffer, bufs.elementsPtr, elements.length);
       for (let i = 0; i < elements.length; i++) elemsI32[i] = elements[i]!;
 
       const numInverted: number = wasm.fea_analyze_tet_mesh_quality(
         numElements,
         nodesPerElement,
-        nodeCoordsPtr,
-        elementsPtr,
-        jacobiansPtr,
-        aspectRatiosPtr,
-        statsPtr,
+        bufs.nodeCoordsPtr,
+        bufs.elementsPtr,
+        bufs.jacobiansPtr,
+        bufs.aspectRatiosPtr,
+        bufs.statsPtr,
       );
 
-      const jView = new Float64Array(wasm.memory.buffer, jacobiansPtr, numElements);
-      const arView = new Float64Array(wasm.memory.buffer, aspectRatiosPtr, numElements);
-      const stats = new Float64Array(wasm.memory.buffer, statsPtr, 6);
+      const jView = new Float64Array(wasm.memory.buffer, bufs.jacobiansPtr, numElements);
+      const arView = new Float64Array(wasm.memory.buffer, bufs.aspectRatiosPtr, numElements);
+      const stats = new Float64Array(wasm.memory.buffer, bufs.statsPtr, 6);
 
       const elementJacobians = new Float32Array(numElements);
       const elementAspectRatios = new Float32Array(numElements);
@@ -120,26 +164,11 @@ export class MeshQualityAnalyzer {
       // Determinant (e1 x e2) . e3
       const detJ = cx * e3x + cy * e3y + cz * e3z;
 
-      const len1 = Math.hypot(e1x, e1y, e1z);
-      const len2 = Math.hypot(e2x, e2y, e2z);
-      const len3 = Math.hypot(e3x, e3y, e3z);
+      const len1 = Math.hypot(e1x, e1y, e1z); // l01
+      const len2 = Math.hypot(e2x, e2y, e2z); // l02
+      const len3 = Math.hypot(e3x, e3y, e3z); // l03
 
-      const denom = len1 * len2 * len3;
-      let scaledJ = 0;
-      if (denom > 1e-15) {
-        scaledJ = (SQRT2 * detJ) / denom;
-      }
-
-      if (scaledJ <= 0) {
-        numInverted++;
-      }
-
-      elementJacobians[e] = scaledJ;
-      minJ = Math.min(minJ, scaledJ);
-      maxJ = Math.max(maxJ, scaledJ);
-      sumJ += scaledJ;
-
-      // 6 edge lengths for aspect ratio
+      // Remaining 3 edge lengths for all 4 corners and aspect ratio
       const e4x = x2 - x1,
         e4y = y2 - y1,
         e4z = z2 - z1;
@@ -150,9 +179,28 @@ export class MeshQualityAnalyzer {
         e6y = y3 - y2,
         e6z = z3 - z2;
 
-      const len4 = Math.hypot(e4x, e4y, e4z);
-      const len5 = Math.hypot(e5x, e5y, e5z);
-      const len6 = Math.hypot(e6x, e6y, e6z);
+      const len4 = Math.hypot(e4x, e4y, e4z); // l12
+      const len5 = Math.hypot(e5x, e5y, e5z); // l13
+      const len6 = Math.hypot(e6x, e6y, e6z); // l23
+
+      const d0 = len1 * len2 * len3;
+      const d1 = len1 * len4 * len5;
+      const d2 = len2 * len4 * len6;
+      const d3 = len3 * len5 * len6;
+      const denom = Math.max(d0, d1, d2, d3);
+      let scaledJ = 0;
+      if (denom > 1e-15) {
+        scaledJ = Math.max(-1.0, Math.min(1.0, (SQRT2 * detJ) / denom));
+      }
+
+      if (scaledJ <= 0) {
+        numInverted++;
+      }
+
+      elementJacobians[e] = scaledJ;
+      minJ = Math.min(minJ, scaledJ);
+      maxJ = Math.max(maxJ, scaledJ);
+      sumJ += scaledJ;
 
       const maxLen = Math.max(len1, len2, len3, len4, len5, len6);
       const minLen = Math.max(1e-12, Math.min(len1, len2, len3, len4, len5, len6));

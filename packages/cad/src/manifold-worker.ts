@@ -153,25 +153,36 @@ class SurfaceMeshBuilder {
       }
 
       case SolidKind.Fillet: {
-        if (solid.child.kind === SolidKind.Box) {
-          this.emitFilletedBox(
-            solid.child.width,
-            solid.child.height,
-            solid.child.depth,
-            solid.radius,
-            parentMat,
-            activeTag,
-          );
-        } else if (solid.child.kind === SolidKind.Cylinder) {
+        let inner = solid.child;
+        let innerMat = parentMat;
+        let innerTag = activeTag;
+        while (inner.kind === SolidKind.Transform || inner.kind === SolidKind.TaggedPatch) {
+          if (inner.sourceMetadata && !this.sourceMetadata) {
+            this.sourceMetadata = inner.sourceMetadata;
+          }
+          if (inner.kind === SolidKind.Transform) {
+            innerMat = mat4Multiply(innerMat, inner.matrix);
+            inner = inner.child;
+          } else {
+            innerTag = inner.tag;
+            inner = inner.child;
+          }
+        }
+        if (inner.sourceMetadata && !this.sourceMetadata) {
+          this.sourceMetadata = inner.sourceMetadata;
+        }
+        if (inner.kind === SolidKind.Box) {
+          this.emitFilletedBox(inner.width, inner.height, inner.depth, solid.radius, innerMat, innerTag);
+        } else if (inner.kind === SolidKind.Cylinder) {
           this.emitFilletedCylinder(
-            solid.child.radiusBottom ?? solid.child.radius,
-            solid.child.radiusTop ?? solid.child.radius,
-            solid.child.height,
-            solid.child.segments,
+            inner.radiusBottom ?? inner.radius,
+            inner.radiusTop ?? inner.radius,
+            inner.height,
+            inner.segments,
             solid.radius,
             false,
-            parentMat,
-            activeTag,
+            innerMat,
+            innerTag,
           );
         } else {
           this.processSolid(solid.child, parentMat, activeTag);
@@ -180,25 +191,36 @@ class SurfaceMeshBuilder {
       }
 
       case SolidKind.Chamfer: {
-        if (solid.child.kind === SolidKind.Box) {
-          this.emitChamferedBox(
-            solid.child.width,
-            solid.child.height,
-            solid.child.depth,
-            solid.distance,
-            parentMat,
-            activeTag,
-          );
-        } else if (solid.child.kind === SolidKind.Cylinder) {
+        let inner = solid.child;
+        let innerMat = parentMat;
+        let innerTag = activeTag;
+        while (inner.kind === SolidKind.Transform || inner.kind === SolidKind.TaggedPatch) {
+          if (inner.sourceMetadata && !this.sourceMetadata) {
+            this.sourceMetadata = inner.sourceMetadata;
+          }
+          if (inner.kind === SolidKind.Transform) {
+            innerMat = mat4Multiply(innerMat, inner.matrix);
+            inner = inner.child;
+          } else {
+            innerTag = inner.tag;
+            inner = inner.child;
+          }
+        }
+        if (inner.sourceMetadata && !this.sourceMetadata) {
+          this.sourceMetadata = inner.sourceMetadata;
+        }
+        if (inner.kind === SolidKind.Box) {
+          this.emitChamferedBox(inner.width, inner.height, inner.depth, solid.distance, innerMat, innerTag);
+        } else if (inner.kind === SolidKind.Cylinder) {
           this.emitFilletedCylinder(
-            solid.child.radiusBottom ?? solid.child.radius,
-            solid.child.radiusTop ?? solid.child.radius,
-            solid.child.height,
-            solid.child.segments,
+            inner.radiusBottom ?? inner.radius,
+            inner.radiusTop ?? inner.radius,
+            inner.height,
+            inner.segments,
             solid.distance,
             true,
-            parentMat,
-            activeTag,
+            innerMat,
+            innerTag,
           );
         } else {
           this.processSolid(solid.child, parentMat, activeTag);
@@ -265,11 +287,41 @@ class SurfaceMeshBuilder {
     return [tx, ty, tz];
   }
 
-  /** Transforms and normalizes a 3D normal vector `(nx, ny, nz)` by the 3x3 linear part of `mat`. */
+  /** Transforms and normalizes a 3D normal vector `(nx, ny, nz)` by the inverse-transpose of the 3x3 linear part of `mat`. */
   private transformNormal(mat: Mat4, nx: number, ny: number, nz: number): [number, number, number] {
-    const tx = mat[0] * nx + mat[4] * ny + mat[8] * nz;
-    const ty = mat[1] * nx + mat[5] * ny + mat[9] * nz;
-    const tz = mat[2] * nx + mat[6] * ny + mat[10] * nz;
+    const m0 = mat[0],
+      m1 = mat[1],
+      m2 = mat[2];
+    const m4 = mat[4],
+      m5 = mat[5],
+      m6 = mat[6];
+    const m8 = mat[8],
+      m9 = mat[9],
+      m10 = mat[10];
+
+    const c0 = m5 * m10 - m6 * m9;
+    const c1 = m6 * m8 - m4 * m10;
+    const c2 = m4 * m9 - m5 * m8;
+    const c4 = m2 * m9 - m1 * m10;
+    const c5 = m0 * m10 - m2 * m8;
+    const c6 = m1 * m8 - m0 * m9;
+    const c8 = m1 * m6 - m2 * m5;
+    const c9 = m2 * m4 - m0 * m6;
+    const c10 = m0 * m5 - m1 * m4;
+
+    const det = m0 * c0 + m4 * c4 + m8 * c8;
+    if (Math.abs(det) > 1e-12) {
+      const s = det < 0 ? -1.0 : 1.0;
+      const tx = s * (c0 * nx + c4 * ny + c8 * nz);
+      const ty = s * (c1 * nx + c5 * ny + c9 * nz);
+      const tz = s * (c2 * nx + c6 * ny + c10 * nz);
+      const len = Math.hypot(tx, ty, tz) || 1.0;
+      return [tx / len, ty / len, tz / len];
+    }
+
+    const tx = m0 * nx + m4 * ny + m8 * nz;
+    const ty = m1 * nx + m5 * ny + m9 * nz;
+    const tz = m2 * nx + m6 * ny + m10 * nz;
     const len = Math.hypot(tx, ty, tz) || 1.0;
     return [tx / len, ty / len, tz / len];
   }
@@ -408,10 +460,10 @@ class SurfaceMeshBuilder {
     // 1. 6 Center planar faces (quads)
     addQuad([-x1, -y1, hd], [x1, -y1, hd], [x1, y1, hd], [-x1, y1, hd], [0, 0, 1]);
     addQuad([x1, -y1, -hd], [-x1, -y1, -hd], [-x1, y1, -hd], [x1, y1, -hd], [0, 0, -1]);
-    addQuad([hw, -y1, hd], [hw, -y1, -hd], [hw, y1, -hd], [hw, y1, hd], [1, 0, 0]);
-    addQuad([-hw, -y1, -hd], [-hw, -y1, hd], [-hw, y1, hd], [-hw, y1, -hd], [-1, 0, 0]);
-    addQuad([-x1, hh, hd], [x1, hh, hd], [x1, hh, -hd], [-x1, hh, -hd], [0, 1, 0]);
-    addQuad([-x1, -hh, -hd], [x1, -hh, -hd], [x1, -hh, hd], [-x1, -hh, hd], [0, -1, 0]);
+    addQuad([hw, -y1, z1], [hw, -y1, -z1], [hw, y1, -z1], [hw, y1, z1], [1, 0, 0]);
+    addQuad([-hw, -y1, -z1], [-hw, -y1, z1], [-hw, y1, z1], [-hw, y1, -z1], [-1, 0, 0]);
+    addQuad([-x1, hh, z1], [x1, hh, z1], [x1, hh, -z1], [-x1, hh, -z1], [0, 1, 0]);
+    addQuad([-x1, -hh, -z1], [x1, -hh, -z1], [x1, -hh, z1], [-x1, -hh, z1], [0, -1, 0]);
 
     // 2. 12 Beveled Edge Quads
     const invSqrt2 = 1.0 / Math.SQRT2;
@@ -491,10 +543,10 @@ class SurfaceMeshBuilder {
     // 1. 6 Center planar faces
     addQuad([-x1, -y1, hd], [x1, -y1, hd], [x1, y1, hd], [-x1, y1, hd], [0, 0, 1]);
     addQuad([x1, -y1, -hd], [-x1, -y1, -hd], [-x1, y1, -hd], [x1, y1, -hd], [0, 0, -1]);
-    addQuad([hw, -y1, hd], [hw, -y1, -hd], [hw, y1, -hd], [hw, y1, hd], [1, 0, 0]);
-    addQuad([-hw, -y1, -hd], [-hw, -y1, hd], [-hw, y1, hd], [-hw, y1, -hd], [-1, 0, 0]);
-    addQuad([-x1, hh, hd], [x1, hh, hd], [x1, hh, -hd], [-x1, hh, -hd], [0, 1, 0]);
-    addQuad([-x1, -hh, -hd], [x1, -hh, -hd], [x1, -hh, hd], [-x1, -hh, hd], [0, -1, 0]);
+    addQuad([hw, -y1, z1], [hw, -y1, -z1], [hw, y1, -z1], [hw, y1, z1], [1, 0, 0]);
+    addQuad([-hw, -y1, -z1], [-hw, -y1, z1], [-hw, y1, z1], [-hw, y1, -z1], [-1, 0, 0]);
+    addQuad([-x1, hh, z1], [x1, hh, z1], [x1, hh, -z1], [-x1, hh, -z1], [0, 1, 0]);
+    addQuad([-x1, -hh, -z1], [x1, -hh, -z1], [x1, -hh, z1], [-x1, -hh, z1], [0, -1, 0]);
 
     // 2. 12 Quarter-cylinder rounded edges
     const signPairs: readonly (readonly [number, number])[] = [
@@ -1008,8 +1060,10 @@ class SurfaceMeshBuilder {
       topPts.push([tx, ty, height]);
     }
 
-    // 4. Emit bottom cap (normal [0, 0, -1], clockwise when viewed from +Z)
-    const botNorm = this.transformNormal(mat, 0, 0, -1);
+    const zSign = height < 0 ? -1 : 1;
+
+    // 4. Emit bottom cap
+    const botNorm = this.transformNormal(mat, 0, 0, -zSign);
     for (const [i0, i1, i2] of triangles) {
       const p0 = this.transformPoint(mat, botPts[i0]![0], botPts[i0]![1], botPts[i0]![2]);
       const p1 = this.transformPoint(mat, botPts[i1]![0], botPts[i1]![1], botPts[i1]![2]);
@@ -1017,8 +1071,8 @@ class SurfaceMeshBuilder {
       this.addTriangle(p0, p2, p1, botNorm, tag);
     }
 
-    // 5. Emit top cap (normal [0, 0, 1], counter-clockwise when viewed from +Z)
-    const topNorm = this.transformNormal(mat, 0, 0, 1);
+    // 5. Emit top cap
+    const topNorm = this.transformNormal(mat, 0, 0, zSign);
     for (const [i0, i1, i2] of triangles) {
       const p0 = this.transformPoint(mat, topPts[i0]![0], topPts[i0]![1], topPts[i0]![2]);
       const p1 = this.transformPoint(mat, topPts[i1]![0], topPts[i1]![1], topPts[i1]![2]);
@@ -1029,18 +1083,53 @@ class SurfaceMeshBuilder {
     // 6. Emit side quad walls
     for (let i = 0; i < N; i++) {
       const j = (i + 1) % N;
-      const b0 = this.transformPoint(mat, botPts[i]![0], botPts[i]![1], botPts[i]![2]);
-      const b1 = this.transformPoint(mat, botPts[j]![0], botPts[j]![1], botPts[j]![2]);
-      const t1 = this.transformPoint(mat, topPts[j]![0], topPts[j]![1], topPts[j]![2]);
-      const t0 = this.transformPoint(mat, topPts[i]![0], topPts[i]![1], topPts[i]![2]);
+      const lb0 = botPts[i]!;
+      const lb1 = botPts[j]!;
+      const lt1 = topPts[j]!;
+      const lt0 = topPts[i]!;
+
+      const b0 = this.transformPoint(mat, lb0[0], lb0[1], lb0[2]);
+      const b1 = this.transformPoint(mat, lb1[0], lb1[1], lb1[2]);
+      const t1 = this.transformPoint(mat, lt1[0], lt1[1], lt1[2]);
+      const t0 = this.transformPoint(mat, lt0[0], lt0[1], lt0[2]);
+
+      // First triangle (lb0, lb1, lt1) local normal: zSign * (lb1 - lb0) x (lt1 - lb0)
+      const u1x = lb1[0] - lb0[0],
+        u1y = lb1[1] - lb0[1],
+        u1z = lb1[2] - lb0[2];
+      const v1x = lt1[0] - lb0[0],
+        v1y = lt1[1] - lb0[1],
+        v1z = lt1[2] - lb0[2];
+      const n1x = zSign * (u1y * v1z - u1z * v1y);
+      const n1y = zSign * (u1z * v1x - u1x * v1z);
+      const n1z = zSign * (u1x * v1y - u1y * v1x);
+      const len1 = Math.hypot(n1x, n1y, n1z);
+
+      // Second triangle (lb0, lt1, lt0) local normal: zSign * (lt1 - lb0) x (lt0 - lb0)
+      const v2x = lt0[0] - lb0[0],
+        v2y = lt0[1] - lb0[1],
+        v2z = lt0[2] - lb0[2];
+      const n2x = zSign * (v1y * v2z - v1z * v2y);
+      const n2y = zSign * (v1z * v2x - v1x * v2z);
+      const n2z = zSign * (v1x * v2y - v1y * v2x);
+      const len2 = Math.hypot(n2x, n2y, n2z);
 
       const dx = pts[j]![0] - pts[i]![0];
       const dy = pts[j]![1] - pts[i]![1];
-      const len = Math.hypot(dx, dy) || 1.0;
-      const sideNorm = this.transformNormal(mat, dy / len, -dx / len, 0);
+      const lenFallback = Math.hypot(dx, dy) || 1.0;
 
-      this.addTriangle(b0, b1, t1, sideNorm, tag);
-      this.addTriangle(b0, t1, t0, sideNorm, tag);
+      const norm1 =
+        len1 > 1e-12
+          ? this.transformNormal(mat, n1x / len1, n1y / len1, n1z / len1)
+          : this.transformNormal(mat, dy / lenFallback, -dx / lenFallback, 0);
+      const norm2 = len2 > 1e-12 ? this.transformNormal(mat, n2x / len2, n2y / len2, n2z / len2) : norm1;
+
+      if (len1 > 1e-12) {
+        this.addTriangle(b0, b1, t1, norm1, tag);
+      }
+      if (len2 > 1e-12) {
+        this.addTriangle(b0, t1, t0, norm2, tag);
+      }
     }
   }
 

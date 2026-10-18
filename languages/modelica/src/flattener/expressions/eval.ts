@@ -209,25 +209,40 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
                 if (typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String" || typeSpec === "Clock")
                   return false;
                 if (typeSpec) {
-                  const typeMatches = activeDb.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
+                  const resolvedT = activeDb.query<SymbolEntry | null>("resolvedType", comp.id);
+                  const typeMatches = resolvedT
+                    ? [resolvedT]
+                    : activeDb.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
                   for (const tm of typeMatches) {
                     if (tm.kind === "Class") {
-                      const baseClass = activeDb.query<SymbolEntry | null>("resolvedBaseClass", tm.id);
-                      if (baseClass?.name === "Real") return true;
-                      const meta = tm.metadata as Record<string, unknown> | undefined;
-                      if (meta?.["baseType"] === "Real" || meta?.["primitiveType"] === "Real") return true;
+                      let cur: SymbolEntry | null = tm;
+                      const seen = new Set<SymbolId>();
+                      while (cur && !seen.has(cur.id)) {
+                        seen.add(cur.id);
+                        if (cur.name === "Real") return true;
+                        const meta = cur.metadata as Record<string, unknown> | undefined;
+                        if (meta?.["baseType"] === "Real" || meta?.["primitiveType"] === "Real") return true;
+                        const curTs = activeDb.query<string | null>("typeSpecifier", cur.id);
+                        if (curTs === "Real") return true;
+                        cur = activeDb.query<SymbolEntry | null>("resolvedBaseClass", cur.id);
+                      }
                     }
                   }
                 }
                 currClass = null;
                 break;
               } else {
-                const typeSpec = activeDb.query<string | null>("typeSpecifier", comp.id);
-                if (typeSpec) {
-                  const typeMatches = activeDb.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
-                  currClass = typeMatches.find((s) => s.kind === "Class" || s.kind === "Record") ?? null;
+                const resolvedT = activeDb.query<SymbolEntry | null>("resolvedType", comp.id);
+                if (resolvedT) {
+                  currClass = resolvedT;
                 } else {
-                  currClass = null;
+                  const typeSpec = activeDb.query<string | null>("typeSpecifier", comp.id);
+                  if (typeSpec) {
+                    const typeMatches = activeDb.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
+                    currClass = typeMatches.find((s) => s.kind === "Class" || s.kind === "Record") ?? null;
+                  } else {
+                    currClass = null;
+                  }
                 }
               }
             }
@@ -241,7 +256,7 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
     const lastPart = name.includes(".") ? name.split(".").pop()! : name;
     const cleanLastPart = lastPart.includes("[") ? lastPart.split("[")[0]! : lastPart;
     let syms: SymbolEntry[] = [];
-    if (currentClassId) {
+    if (currentClassId && !name.includes(".")) {
       const resolver =
         activeDb.query<any>("resolveSimpleName", currentClassId) ?? activeDb.query<any>("resolveName", currentClassId);
       const res = resolver?.(cleanLastPart);
@@ -252,7 +267,31 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
         syms = scopeSyms.filter((s) => s.name === cleanLastPart);
       }
     }
-    if (syms.length === 0) {
+    if (syms.length === 0 && name.includes(".")) {
+      const parts = name.split(".");
+      const parentRaw = parts[parts.length - 2] ?? "";
+      const parentSeg = parentRaw.includes("[") ? parentRaw.split("[")[0]! : parentRaw;
+      const allByLast = activeDb.byName(cleanLastPart);
+      const directParentMatches = allByLast.filter((s) => {
+        const pSym = s.parentId ? activeDb.symbol(s.parentId) : null;
+        return pSym?.name === parentSeg;
+      });
+      if (directParentMatches.length > 0) {
+        syms = directParentMatches;
+      } else if (parentSeg) {
+        const parentComps = activeDb.byName(parentSeg).filter((s) => s.kind === "Component");
+        for (const pc of parentComps) {
+          const pcType = activeDb.query<SymbolEntry | null>("resolvedType", pc.id);
+          if (pcType) {
+            const resolver =
+              activeDb.query<any>("resolveSimpleName", pcType.id) ?? activeDb.query<any>("resolveName", pcType.id);
+            const res = resolver?.(cleanLastPart);
+            if (res) syms.push(res);
+          }
+        }
+      }
+    }
+    if (syms.length === 0 && !name.includes(".")) {
       syms = activeDb.byName(cleanLastPart);
     }
     for (const s of syms) {
@@ -262,13 +301,23 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
         if (typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String" || typeSpec === "Clock")
           return false;
         if (typeSpec) {
-          const typeMatches = activeDb.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
+          const resolvedT = activeDb.query<SymbolEntry | null>("resolvedType", s.id);
+          const typeMatches = resolvedT
+            ? [resolvedT]
+            : activeDb.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
           for (const tm of typeMatches) {
             if (tm.kind === "Class") {
-              const baseClass = activeDb.query<SymbolEntry | null>("resolvedBaseClass", tm.id);
-              if (baseClass?.name === "Real") return true;
-              const meta = tm.metadata as Record<string, unknown> | undefined;
-              if (meta?.["baseType"] === "Real" || meta?.["primitiveType"] === "Real") return true;
+              let cur: SymbolEntry | null = tm;
+              const seen = new Set<SymbolId>();
+              while (cur && !seen.has(cur.id)) {
+                seen.add(cur.id);
+                if (cur.name === "Real") return true;
+                const meta = cur.metadata as Record<string, unknown> | undefined;
+                if (meta?.["baseType"] === "Real" || meta?.["primitiveType"] === "Real") return true;
+                const curTs = activeDb.query<string | null>("typeSpecifier", cur.id);
+                if (curTs === "Real") return true;
+                cur = activeDb.query<SymbolEntry | null>("resolvedBaseClass", cur.id);
+              }
             }
           }
         }
@@ -432,9 +481,13 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
     if (fnName === "delay" || fnName === "cross") {
       return true;
     }
-    if (fnName === "floor" || fnName === "ceil") return true;
+    if (fnName === "floor" || fnName === "ceil" || fnName === "trunc") return true;
     if (fnName === "integer") return false;
-    const fnDae = dae.functions.get(fnName);
+    const fnDae =
+      dae.functions.get(fnName) ??
+      (dae as any).builtinFunctions?.get(fnName) ??
+      (dae as any).parentDae?.functions?.get(fnName) ??
+      (dae as any).parentDae?.builtinFunctions?.get(fnName);
     if (fnDae) {
       for (let i = 0; i < fnDae.varCount; i++) {
         if (fnDae.getVarCausality(i) === Causality.Output) {
@@ -1132,6 +1185,8 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       fnName === "hold" ||
       fnName === "semiLinear" ||
       fnName === "noEvent" ||
+      fnName === "inStream" ||
+      fnName === "actualStream" ||
       SCALAR_VECTORIZABLE_FUNCTIONS.has(fnName)
     ) {
       const aId = dae.getExprLeft(exprId);
@@ -1203,7 +1258,17 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
     // (e.g. `output Real y[size(u, 1), n]` evaluated by substituting actual call-site argument shapes/values)
     if (db) {
       const cleanFnName = fnName.includes(".") ? fnName.split(".").pop()! : fnName;
-      const fnSyms = db.byName(cleanFnName).filter((s: any) => s.kind === "Function" || s.kind === "Class");
+      let fnSyms = db.byName(cleanFnName).filter((s: any) => s.kind === "Function" || s.kind === "Class");
+      if (fnName.includes(".") && fnSyms.length > 1) {
+        const normTarget = fnName.replace(/^\./, "");
+        const qualifiedMatches = fnSyms.filter((s: any) => {
+          const fqn = String((db as QueryDB).query("symbolFullName", s.id) ?? s.name);
+          return fqn === normTarget || fqn.endsWith(`.${normTarget}`) || normTarget.endsWith(`.${fqn}`);
+        });
+        if (qualifiedMatches.length > 0) {
+          fnSyms = qualifiedMatches;
+        }
+      }
       for (const fnSym of fnSyms) {
         const children = db.childrenOf(fnSym.id) || [];
         for (const c of children) {
@@ -1528,6 +1593,8 @@ export function evalDaeExpr(
           const db = state.db ?? flat?.db;
           const scopeIds = [
             (dae as any).enclosingScopeId,
+            (flat as any)?.currentParentMods?.currentClassId,
+            (flat as any)?.currentParentMods?.ownerClassId,
             flat?.currentClassId,
             state.currentClassId,
             (dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null,
@@ -1560,7 +1627,10 @@ export function evalDaeExpr(
                 const compInst: any = db.query("componentInstance", cand.id);
                 const compMod: any = db.query("effectiveModification", cand.id);
                 const bExpr =
-                  compInst?.bindingExpression ?? compInst?.modification?.value ?? compMod?.bindingExpression;
+                  compInst?.modification?.bindingExpression ??
+                  compInst?.bindingExpression ??
+                  compInst?.modification?.value ??
+                  compMod?.bindingExpression;
                 if (bExpr?.text) {
                   const bText = bExpr.text.trim();
                   if (isArrayLiteral(bText) && !/\bfor\b/.test(bText)) {
@@ -1622,13 +1692,21 @@ export function evalDaeExpr(
       case ExprKind.Binary: {
         const op = dae.getExprData1(exprId);
         const left = evalDaeExpr(dae.getExprLeft(exprId), dae, visitedExprs, visitedVars);
+        if (op === BinOp.And && left === false) return false;
+        if (op === BinOp.Or && left === true) return true;
         const right = evalDaeExpr(dae.getExprRight(exprId), dae, visitedExprs, visitedVars);
+        if (op === BinOp.And && right === false) return false;
+        if (op === BinOp.Or && right === true) return true;
         if (left === null || right === null) {
           // Special case: equality/inequality comparison between two qualified enumeration literals
           // (e.g. `State.Off == State.On`) which do not evaluate to numeric values via `evalDaeExpr`
           if (op === BinOp.Eq || op === BinOp.Neq) {
             const resolveEnumName = (id: number, depth = 0): string | null => {
-              if (id < 0 || depth > 8 || dae.getExprKind(id) !== ExprKind.Name) return null;
+              if (id < 0 || depth > 8) return null;
+              if (dae.getExprKind(id) === ExprKind.EnumLiteral) {
+                return dae.interner.resolve(dae.getExprLeft(id)) || null;
+              }
+              if (dae.getExprKind(id) !== ExprKind.Name) return null;
               const n = dae.interner.resolve(dae.getExprData1(id));
               if (!n) return null;
               const vIdx = dae.lookupVariable(n);
@@ -1943,6 +2021,10 @@ export function evalDaeExpr(
         const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
         if (scalarBuiltin?.fold && args.every((a) => typeof a === "number")) {
           return scalarBuiltin.fold(...args);
+        }
+        const fnObj = dae.getFunction(fnName) ?? dae.getFunction(cleanFn);
+        if (fnObj?.description?.includes("record constructor")) {
+          return args;
         }
         return null;
       }

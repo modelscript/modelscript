@@ -11,6 +11,7 @@ import {
   computeSmoothBezierPath,
   computeStemLines,
   findInternalChannelRoute,
+  getPortOutwardNormal,
   regularizeOrthogonalPolyline,
   segmentIntersectsRect,
   simplifyCollinearPoints,
@@ -355,5 +356,289 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     assert.strictEqual(currentVertices[0].y, 130);
     assert.strictEqual(currentVertices[1].x, 150);
     assert.strictEqual(currentVertices[1].y, 200);
+  });
+
+  it("should not flip vertical stub orientation when a dragged port crosses v0", () => {
+    // Models RLC C.n at (20, 10) connected via v0=(20, 30), v1=(-70, 30) to V.n at (-70, 10)
+    let srcPt = { x: 20, y: 10 };
+    let currentVertices = [
+      { x: 20, y: 30 },
+      { x: -70, y: 30 },
+    ];
+
+    const mockEdge = {
+      isEdge: () => true,
+      getSourceCellId: () => "C",
+      getTargetCellId: () => "V",
+      getSourcePoint: () => srcPt,
+      getTargetPoint: () => ({ x: -70, y: 10 }),
+      getVertices: () => currentVertices,
+      setVertices: (verts: PointLike[]) => {
+        currentVertices = verts;
+      },
+    };
+
+    const mockGraph = {
+      getConnectedEdges: () => [mockEdge],
+    };
+    const mockNode = { id: "C", isNode: () => true };
+
+    // Step 1: drag C down by dy=20 so C.n lands exactly on v0=(20, 30)
+    srcPt = { x: 20, y: 30 };
+    translateConnectedEdgeStubs(mockGraph as any, mockNode as any, 0, 20);
+    assert.deepStrictEqual(currentVertices, [
+      { x: 20, y: 30 },
+      { x: -70, y: 30 },
+    ]);
+
+    // Step 2: drag C right by dx=15 and down by dy=10 while passing through y=30
+    srcPt = { x: 35, y: 40 };
+    translateConnectedEdgeStubs(mockGraph as any, mockNode as any, 15, 10);
+    // Vertical stub must remain vertical (v0.x translates to 35, v0.y stays on the y=30 horizontal trunk)
+    assert.deepStrictEqual(currentVertices, [
+      { x: 35, y: 30 },
+      { x: -70, y: 30 },
+    ]);
+  });
+
+  it("should preserve 1-vertex L-bend orientation when port crosses vertex coordinate", () => {
+    // HV L-bend: source (20, 40) -> v0 (60, 40) -> target (60, 100)
+    let srcPt = { x: 20, y: 40 };
+    let currentVertices = [{ x: 60, y: 40 }];
+
+    const mockEdge = {
+      isEdge: () => true,
+      getSourceCellId: () => "L",
+      getTargetCellId: () => "C",
+      getSourcePoint: () => srcPt,
+      getTargetPoint: () => ({ x: 60, y: 100 }),
+      getVertices: () => currentVertices,
+      setVertices: (verts: PointLike[]) => {
+        currentVertices = verts;
+      },
+    };
+
+    const mockGraph = {
+      getConnectedEdges: () => [mockEdge],
+    };
+    const mockNode = { id: "L", isNode: () => true };
+
+    // Move L to x=60 (so prevSrcX reaches v0.x) and up by dy=-10
+    srcPt = { x: 60, y: 30 };
+    translateConnectedEdgeStubs(mockGraph as any, mockNode as any, 40, -10);
+    // Move L further right by dx=10 and up by dy=-5 from x=60 (where prevSrcX === v0.x)
+    srcPt = { x: 70, y: 25 };
+    translateConnectedEdgeStubs(mockGraph as any, mockNode as any, 10, -5);
+
+    // Since target leg is vertical at x=60, source leg is horizontal and v0 must stay at x=60, y=25
+    assert.deepStrictEqual(currentVertices, [{ x: 60, y: 25 }]);
+  });
+
+  it("should compute accurate outward port normals for rotated and unrotated Modelica components", () => {
+    // Resistor R in RLC.mo: 20x20 node rotated by -270 deg (equivalent to +90 deg in X6)
+    // p is at local (0, 10), n is at local (20, 10)
+    const mockR = {
+      id: "R",
+      getPosition: () => ({ x: 50, y: -10 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => -270,
+      getPortProp: (portId: string) => (portId === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+
+    const normP = getPortOutwardNormal(mockR, "p");
+    const normN = getPortOutwardNormal(mockR, "n");
+    assert.deepStrictEqual(normP, { nx: 0, ny: -1, side: "top" });
+    assert.deepStrictEqual(normN, { nx: 0, ny: 1, side: "bottom" });
+
+    // Inductor L in RLC.mo: 20x20 node unrotated (0 deg)
+    const mockL = {
+      id: "L",
+      getPosition: () => ({ x: -10, y: -50 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => 0,
+      getPortProp: (portId: string) => (portId === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+    assert.deepStrictEqual(getPortOutwardNormal(mockL, "p"), { nx: -1, ny: 0, side: "left" });
+    assert.deepStrictEqual(getPortOutwardNormal(mockL, "n"), { nx: 1, ny: 0, side: "right" });
+  });
+
+  it("should inject an orthogonal Z-dogleg when a 0-vertex straight edge (ground.p) is dragged off-axis", () => {
+    // Models connect(Vb.n, ground.p) in RLC.mo where Vb.n is at (-70, 50) (bottom) and ground.p moves to (-10, 70) (top)
+    let currentVertices: PointLike[] = [];
+    const nodeVb = {
+      id: "Vb",
+      isNode: () => true,
+      getPosition: () => ({ x: -80, y: 30 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => -270,
+      getPortProp: (p: string) => (p === "n" ? { args: { x: 20, y: 10 } } : { args: { x: 0, y: 10 } }),
+    };
+    const nodeGround = {
+      id: "ground",
+      isNode: () => true,
+      getPosition: () => ({ x: -20, y: 70 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => 0,
+      getPortProp: () => ({ args: { x: 10, y: 0 } }),
+    };
+
+    const mockEdge = {
+      id: "e_ground",
+      isEdge: () => true,
+      getSourceCellId: () => "Vb",
+      getTargetCellId: () => "ground",
+      getSourcePortId: () => "n",
+      getTargetPortId: () => "p",
+      getSourcePoint: () => ({ x: -70, y: 50 }),
+      getTargetPoint: () => ({ x: -10, y: 70 }),
+      getVertices: () => currentVertices,
+      setVertices: (verts: PointLike[]) => {
+        currentVertices = verts;
+      },
+    };
+
+    const mockGraph = {
+      getConnectedEdges: () => [mockEdge],
+      getCellById: (id: string) => (id === "Vb" ? nodeVb : nodeGround),
+      getNodes: () => [nodeVb, nodeGround],
+    };
+
+    translateConnectedEdgeStubs(mockGraph as any, nodeGround as any, 60, 40);
+
+    assert.ok(currentVertices.length >= 2, "0-vertex off-axis wire must receive orthogonal bend vertices");
+    const fullPath = [{ x: -70, y: 50 }, ...currentVertices, { x: -10, y: 70 }];
+    for (let i = 0; i < fullPath.length - 1; i++) {
+      const a = fullPath[i]!;
+      const b = fullPath[i + 1]!;
+      assert.ok(
+        Math.abs(a.x - b.x) < 1 || Math.abs(a.y - b.y) < 1,
+        `Segment ${i} (${a.x},${a.y})->(${b.x},${b.y}) must be strictly orthogonal, never diagonal`,
+      );
+    }
+  });
+
+  it("should push the shared bottom trunk downward when C is dragged past the ground rail in RLC.mo", () => {
+    // C is dragged down so C.p=(20,30) and C.n=(20,50), crossing the y=30 rail connected to Vb.n=(-70,10) and R.n=(60,10)
+    let cToVbVerts: PointLike[] = [
+      { x: 20, y: 30 },
+      { x: -70, y: 30 },
+    ];
+    let rToVbVerts: PointLike[] = [
+      { x: 60, y: 30 },
+      { x: -70, y: 30 },
+    ];
+
+    const makeRotatedPassivesNode = (id: string, x: number, y: number) => ({
+      id,
+      isNode: () => true,
+      getPosition: () => ({ x, y }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => -270,
+      getPortProp: (portId: string) => (portId === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    });
+
+    const nodeC = makeRotatedPassivesNode("C", 10, 30); // C.p=(20,30), C.n=(20,50)
+    const nodeR = makeRotatedPassivesNode("R", 50, -10); // R.p=(60,-10), R.n=(60,10)
+    const nodeVb = makeRotatedPassivesNode("Vb", -80, -10); // Vb.p=(-70,-10), Vb.n=(-70,10)
+
+    const edgeCToVb = {
+      id: "e_c_vb",
+      isEdge: () => true,
+      getSourceCellId: () => "C",
+      getTargetCellId: () => "Vb",
+      getSourcePortId: () => "n",
+      getTargetPortId: () => "n",
+      getSourcePoint: () => ({ x: 20, y: 50 }),
+      getTargetPoint: () => ({ x: -70, y: 10 }),
+      getVertices: () => cToVbVerts,
+      setVertices: (verts: PointLike[]) => {
+        cToVbVerts = verts;
+      },
+    };
+
+    const edgeRToVb = {
+      id: "e_r_vb",
+      isEdge: () => true,
+      getSourceCellId: () => "R",
+      getTargetCellId: () => "Vb",
+      getSourcePortId: () => "n",
+      getTargetPortId: () => "n",
+      getSourcePoint: () => ({ x: 60, y: 10 }),
+      getTargetPoint: () => ({ x: -70, y: 10 }),
+      getVertices: () => rToVbVerts,
+      setVertices: (verts: PointLike[]) => {
+        rToVbVerts = verts;
+      },
+    };
+
+    const nodesMap: Record<string, any> = { C: nodeC, R: nodeR, Vb: nodeVb };
+    const mockGraph = {
+      getConnectedEdges: () => [edgeCToVb],
+      getEdges: () => [edgeCToVb, edgeRToVb],
+      getCellById: (id: string) => nodesMap[id],
+      getNodes: () => [nodeC, nodeR, nodeVb],
+    };
+
+    translateConnectedEdgeStubs(mockGraph as any, nodeC as any, 0, 40);
+
+    // Trunk must be pushed down below C.n (y=50) to y=60 so the wire exits downward from C.n
+    assert.strictEqual(cToVbVerts[0]!.y, 60);
+    assert.strictEqual(cToVbVerts[1]!.y, 60);
+    // Coincident net trunk on R.n -> Vb.n must also slide down to y=60
+    assert.strictEqual(rToVbVerts[0]!.y, 60);
+    assert.strictEqual(rToVbVerts[1]!.y, 60);
+  });
+
+  it("should re-route around L when C is dragged left of L to prevent backward port exit and self-impalement", () => {
+    // L is at (-10,-50) (L.p=(-10,-40) left, L.n=(10,-40) right)
+    // C is dragged left of L to (-80,-10) (C.p=(-70,-10) top, C.n=(-70,10) bottom)
+    let lToCVerts: PointLike[] = [{ x: 20, y: -40 }];
+
+    const nodeL = {
+      id: "L",
+      isNode: () => true,
+      getPosition: () => ({ x: -10, y: -50 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => 0,
+      getPortProp: (p: string) => (p === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+    const nodeC = {
+      id: "C",
+      isNode: () => true,
+      getPosition: () => ({ x: -80, y: -10 }),
+      getSize: () => ({ width: 20, height: 20 }),
+      getAngle: () => -270,
+      getPortProp: (p: string) => (p === "p" ? { args: { x: 0, y: 10 } } : { args: { x: 20, y: 10 } }),
+    };
+
+    const edgeLToC = {
+      id: "e_l_c",
+      isEdge: () => true,
+      getSourceCellId: () => "L",
+      getTargetCellId: () => "C",
+      getSourcePortId: () => "n",
+      getTargetPortId: () => "p",
+      getSourcePoint: () => ({ x: 10, y: -40 }),
+      getTargetPoint: () => ({ x: -70, y: -10 }),
+      getVertices: () => lToCVerts,
+      setVertices: (verts: PointLike[]) => {
+        lToCVerts = verts;
+      },
+    };
+
+    const mockGraph = {
+      getConnectedEdges: () => [edgeLToC],
+      getCellById: (id: string) => (id === "L" ? nodeL : nodeC),
+      getNodes: () => [nodeL, nodeC],
+    };
+
+    translateConnectedEdgeStubs(mockGraph as any, nodeC as any, -90, 0);
+
+    // First vertex must exit L.n (10, -40) to the RIGHT (x > 10), never leftward through L's body!
+    assert.ok(lToCVerts.length >= 2, "Must re-route with a multi-bend detour around L");
+    assert.ok(lToCVerts[0]!.x > 10, `Expected first vertex x > 10 (exiting right from L.n), got ${lToCVerts[0]!.x}`);
+    // Last vertex must enter C.p (-70, -10) from the TOP (y < -10)
+    const lastV = lToCVerts[lToCVerts.length - 1]!;
+    assert.ok(lastV.y < -10, `Expected last vertex y < -10 (entering top of C.p), got ${lastV.y}`);
   });
 });

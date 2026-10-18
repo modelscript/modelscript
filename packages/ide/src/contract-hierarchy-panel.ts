@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { extractSysML2ContractHierarchy } from "@modelscript/sysml2";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 
 export interface ContractNode {
   name: string;
+  symbolName?: string | undefined;
+  role?: string | undefined;
+  doc?: string | undefined;
+  isFocused?: boolean | undefined;
   assumptions: string[];
   guarantees: string[];
   isRefined?: boolean | undefined;
@@ -18,6 +23,7 @@ export interface EventTraceStep {
   event: string;
   targetActor?: string | undefined;
   message?: string | undefined;
+  sourceSymbol?: string | undefined;
   isDeadlock?: boolean | undefined;
 }
 
@@ -30,13 +36,40 @@ export class ContractHierarchyPanel {
   private readonly _client?: LanguageClient | undefined;
   private _disposables: vscode.Disposable[] = [];
   private _currentHierarchy: any = undefined;
+  private _targetUri?: string | undefined;
+  private _targetContractName?: string | undefined;
+  private _refreshTimer?: ReturnType<typeof setTimeout> | undefined;
 
-  public static createOrShow(extensionUri: vscode.Uri, client?: LanguageClient, targetContractName?: string) {
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    client?: LanguageClient,
+    uriOrContractName?: string,
+    targetContractName?: string,
+  ) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
 
+    let resolvedUri: string | undefined;
+    let resolvedTargetName: string | undefined;
+    if (
+      uriOrContractName &&
+      (uriOrContractName.includes("://") ||
+        uriOrContractName.startsWith("/") ||
+        /\.(?:sysml|sysml2|kerml|mo)$/i.test(uriOrContractName))
+    ) {
+      resolvedUri = uriOrContractName;
+      resolvedTargetName = targetContractName;
+    } else {
+      resolvedUri = vscode.window.activeTextEditor?.document.uri.toString();
+      resolvedTargetName = uriOrContractName ?? targetContractName;
+    }
+
     if (ContractHierarchyPanel.currentPanel) {
+      if (resolvedUri) {
+        ContractHierarchyPanel.currentPanel._targetUri = resolvedUri;
+      }
+      ContractHierarchyPanel.currentPanel._targetContractName = resolvedTargetName;
       ContractHierarchyPanel.currentPanel._panel.reveal(column);
-      ContractHierarchyPanel.currentPanel.refresh();
+      void ContractHierarchyPanel.currentPanel.refresh();
       return;
     }
 
@@ -51,21 +84,60 @@ export class ContractHierarchyPanel {
       },
     );
 
-    ContractHierarchyPanel.currentPanel = new ContractHierarchyPanel(panel, extensionUri, client, targetContractName);
+    ContractHierarchyPanel.currentPanel = new ContractHierarchyPanel(
+      panel,
+      extensionUri,
+      client,
+      resolvedUri,
+      resolvedTargetName,
+    );
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     client?: LanguageClient,
-    private readonly _targetContractName?: string,
+    targetUri?: string,
+    targetContractName?: string,
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._client = client;
+    this._targetUri = targetUri;
+    this._targetContractName = targetContractName;
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.html = this._getHtmlForWebview();
+
+    vscode.window.onDidChangeActiveTextEditor(
+      (editor) => {
+        const uriStr = editor?.document.uri.toString();
+        if (uriStr && /\.(?:sysml|sysml2|kerml)$/i.test(uriStr)) {
+          if (this._targetUri !== uriStr) {
+            this._targetUri = uriStr;
+            this._targetContractName = undefined;
+            void this.refresh();
+          }
+        }
+      },
+      null,
+      this._disposables,
+    );
+
+    vscode.workspace.onDidChangeTextDocument(
+      (e) => {
+        const uriStr = e.document.uri.toString();
+        if (uriStr === this._targetUri || /\.(?:sysml|sysml2|kerml)$/i.test(uriStr)) {
+          if (!this._targetUri) this._targetUri = uriStr;
+          if (this._refreshTimer) clearTimeout(this._refreshTimer);
+          this._refreshTimer = setTimeout(() => {
+            void this.refresh();
+          }, 250);
+        }
+      },
+      null,
+      this._disposables,
+    );
 
     this._panel.webview.onDidReceiveMessage(
       async (msg) => {
@@ -88,18 +160,21 @@ export class ContractHierarchyPanel {
 
           case "goToSource": {
             if (msg.name) {
-              const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
-                "vscode.executeWorkspaceSymbolProvider",
-                msg.name,
-              );
-              const match = symbols?.find((s) => s.name === msg.name) ?? symbols?.[0];
-              if (match?.location) {
-                const doc = await vscode.workspace.openTextDocument(match.location.uri);
-                const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
-                editor.selection = new vscode.Selection(match.location.range.start, match.location.range.end);
-                editor.revealRange(match.location.range, vscode.TextEditorRevealType.InCenter);
-              } else {
-                vscode.window.showInformationMessage(`Navigating to contract: ${msg.name}`);
+              const navigated = await this._navigateToSymbolInDocument(String(msg.name));
+              if (!navigated) {
+                const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+                  "vscode.executeWorkspaceSymbolProvider",
+                  msg.name,
+                );
+                const match = symbols?.find((s) => s.name === msg.name) ?? symbols?.[0];
+                if (match?.location) {
+                  const doc = await vscode.workspace.openTextDocument(match.location.uri);
+                  const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+                  editor.selection = new vscode.Selection(match.location.range.start, match.location.range.end);
+                  editor.revealRange(match.location.range, vscode.TextEditorRevealType.InCenter);
+                } else {
+                  vscode.window.showInformationMessage(`Navigating to contract: ${msg.name}`);
+                }
               }
             }
             break;
@@ -111,14 +186,73 @@ export class ContractHierarchyPanel {
     );
   }
 
+  private _resolveTargetDocument(): vscode.TextDocument | undefined {
+    const docs = vscode.workspace.textDocuments ?? [];
+    if (this._targetUri) {
+      const exact = docs.find((d) => d.uri.toString() === this._targetUri);
+      if (exact) return exact;
+      const targetBase = this._targetUri.split("/").pop();
+      if (targetBase) {
+        const byBase = docs.find((d) => d.uri.path.endsWith("/" + targetBase) || d.uri.path === targetBase);
+        if (byBase) return byBase;
+      }
+    }
+    const activeDoc = vscode.window.activeTextEditor?.document;
+    if (activeDoc && /\.(?:sysml|sysml2|kerml)$/i.test(activeDoc.uri.path)) {
+      return activeDoc;
+    }
+    return docs.find((d) => /\.(?:sysml|sysml2|kerml)$/i.test(d.uri.path));
+  }
+
+  private async _navigateToSymbolInDocument(rawName: string): Promise<boolean> {
+    const doc = this._resolveTargetDocument();
+    if (!doc) return false;
+
+    const cleanName = rawName.includes(".") ? rawName.split(".").pop()! : rawName.replace(/\s*\(.*\)$/, "").trim();
+    const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const text = doc.getText();
+    const lines = text.split(/\r?\n/);
+
+    const patterns = [
+      new RegExp(
+        `\\b(?:part|requirement|action|state|use\\s+case|port|constraint|analysis|verification|calc|package)\\s+def\\s+(${escaped})\\b`,
+      ),
+      new RegExp(`\\b(?:transition|part|port|action|state|constraint|satisfy|verify)\\s+(${escaped})\\b`),
+      new RegExp(`\\b(${escaped})\\b`),
+    ];
+
+    for (const pat of patterns) {
+      for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const line = lines[lineIdx]!;
+        const m = pat.exec(line);
+        if (m) {
+          const symText = m[1] ?? m[0];
+          const col = line.indexOf(symText, m.index);
+          const range = new vscode.Range(lineIdx, Math.max(0, col), lineIdx, Math.max(0, col) + symText.length);
+          const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+          editor.selection = new vscode.Selection(range.start, range.end);
+          editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   public async refresh(): Promise<void> {
+    const doc = this._resolveTargetDocument();
+    const resolvedUri = doc?.uri.toString() ?? this._targetUri;
+    const sourceText = doc?.getText();
+
     if (this._client) {
       try {
         const result = await this._client.sendRequest<any>("modelscript/getContractHierarchy", {
+          uri: resolvedUri,
+          sourceText,
           systemContractName: this._targetContractName,
         });
 
-        if (result?.success) {
+        if (result?.success && result.hierarchy) {
           this._currentHierarchy = result.hierarchy;
           this._panel.webview.postMessage({
             type: "loadHierarchy",
@@ -127,7 +261,21 @@ export class ContractHierarchyPanel {
           return;
         }
       } catch {
-        // Fallback to sample
+        // Fall through to local SysML v2 extraction
+      }
+    }
+
+    if (sourceText) {
+      const localExtracted = extractSysML2ContractHierarchy(sourceText, {
+        targetName: this._targetContractName,
+      });
+      if (localExtracted) {
+        this._currentHierarchy = localExtracted;
+        this._panel.webview.postMessage({
+          type: "loadHierarchy",
+          hierarchy: this._currentHierarchy,
+        });
+        return;
       }
     }
 
@@ -211,30 +359,48 @@ export class ContractHierarchyPanel {
       )
       .join("\n");
 
+    const modelStates: string[] =
+      Array.isArray(h.states) && h.states.length > 0 ? h.states : ["START", "DRIVE", "BRAKE", "TRIP"];
+    const initState = modelStates[0]!;
+    const activeState = modelStates[1] ?? modelStates[0]!;
+    const modelTransitions: { name: string; from: string; to: string; guard?: string }[] = Array.isArray(h.transitions)
+      ? h.transitions
+      : [];
+
+    const transCases =
+      modelTransitions.length > 0
+        ? modelTransitions
+            .map((t) => {
+              const g = t.guard ? ` & (${toSmvExpr([t.guard])})` : ` & ${initAssumptions}`;
+              return `    state = ${t.from}${g} : next(state) = ${t.to};`;
+            })
+            .join("\n")
+        : `    state = ${initState} & ${initAssumptions} : next(state) = ${activeState};\n    state = ${activeState} & ${sysGuarantees} : next(state) = ${activeState};`;
+
     return `-- nuXmv Formal Transition Module (${sys.name})
 -- Automatically generated by ModelScript Contract Explorer
 MODULE main
 VAR
 ${varDecls}
-  state : { START, DRIVE, BRAKE, TRIP };
+  state : { ${modelStates.join(", ")} };
 
 INIT
-  state = START & ${initAssumptions};
+  state = ${initState} & ${initAssumptions};
 
 TRANS
   case
-    state = START & ${initAssumptions} : next(state) = DRIVE;
-    state = DRIVE & ${sysGuarantees} : next(state) = DRIVE;
+${transCases}
     TRUE : next(state) = state;
   esac;
 
 -- System Assume-Guarantee Safety Invariant (${sys.name})
 INVARSPEC ${initAssumptions} -> ${sysGuarantees};
-${compSpecs ? compSpecs + "\n" : ""}LTLSPEC G (state = TRIP -> F state = START);
+${compSpecs ? compSpecs + "\n" : ""}LTLSPEC G (state = ${initState} -> F state = ${activeState});
 `;
   }
 
   public dispose() {
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
     ContractHierarchyPanel.currentPanel = undefined;
     this._panel.dispose();
     while (this._disposables.length) {
@@ -364,17 +530,34 @@ ${compSpecs ? compSpecs + "\n" : ""}LTLSPEC G (state = TRIP -> F state = START);
       border-color: var(--accent);
       background: rgba(14, 99, 156, 0.08);
     }
+    .tree-node.focused {
+      border-color: var(--active-step);
+      box-shadow: 0 0 0 1px rgba(0, 188, 212, 0.35);
+    }
     .node-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 8px;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .node-title {
       font-weight: 600;
       font-size: 0.95rem;
       cursor: pointer;
       color: var(--vscode-textLink-foreground, #3794ff);
+    }
+    .node-role {
+      font-size: 0.78rem;
+      opacity: 0.75;
+      font-family: monospace;
+      margin-left: 6px;
+    }
+    .badge-focused {
+      background: rgba(0, 188, 212, 0.15);
+      color: var(--active-step);
+      border: 1px solid var(--active-step);
     }
     .contract-clause {
       margin: 4px 0;
@@ -385,6 +568,15 @@ ${compSpecs ? compSpecs + "\n" : ""}LTLSPEC G (state = TRIP -> F state = START);
     }
     .clause-a { background: rgba(255, 152, 0, 0.1); border-left: 3px solid #ff9800; }
     .clause-g { background: rgba(76, 175, 80, 0.1); border-left: 3px solid #4caf50; }
+    .clause-v { background: rgba(244, 67, 54, 0.12); border-left: 3px solid #f44336; color: #ff8a80; }
+    .summary-banner {
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+    }
 
     /* Sequence Diagram / Swimlane view */
     .stepper-controls {
@@ -499,6 +691,7 @@ ${compSpecs ? compSpecs + "\n" : ""}LTLSPEC G (state = TRIP -> F state = START);
       const msg = event.data;
       if (msg.type === 'loadHierarchy') {
         currentHierarchy = msg.hierarchy;
+        currentStepIdx = 0;
         renderHierarchy();
         renderTraces();
       }
@@ -507,55 +700,95 @@ ${compSpecs ? compSpecs + "\n" : ""}LTLSPEC G (state = TRIP -> F state = START);
     function renderHierarchy() {
       if (!currentHierarchy) return;
 
+      const headerBadge = document.getElementById('refinement-badge');
+      const allCertified = Boolean(currentHierarchy.isRefined && currentHierarchy.isCompatible !== false);
+      if (headerBadge) {
+        headerBadge.className = 'badge ' + (allCertified ? 'badge-refined' : 'badge-violation');
+        headerBadge.textContent = allCertified ? '✓ CERTIFIED REFINED' : '⚠ CONTRACT VIOLATION';
+      }
+
       const container = document.getElementById('tree-container');
       container.innerHTML = '';
+
+      if (currentHierarchy.summary) {
+        const summaryEl = document.createElement('div');
+        summaryEl.className = 'summary-banner';
+        summaryEl.textContent = currentHierarchy.summary;
+        container.appendChild(summaryEl);
+      }
+
+      const compViolations = currentHierarchy.compatibilityViolations || [];
+      const refViolations = currentHierarchy.refinementViolations || [];
 
       // 1. Render Top-Level System Contract
       const sys = currentHierarchy.system;
       if (sys) {
+        const sysSym = sys.symbolName || sys.name;
+        const sysRole = sys.role || 'Top-Level System';
         const sysNode = document.createElement('div');
         sysNode.className = 'tree-node system';
         sysNode.innerHTML = \`
           <div class="node-header">
-            <span class="node-title" onclick="goToContract('\${sys.name}')">🏛️ \${sys.name} (Top-Level System)</span>
+            <span class="node-title" onclick="goToContract('\${sysSym}')">🏛️ \${sys.name} <span class="node-role">(\${sysRole})</span></span>
             <span class="badge \${currentHierarchy.isRefined ? 'badge-refined' : 'badge-violation'}">
               \${currentHierarchy.isRefined ? '✓ Refined' : '⚠ Violation'}
             </span>
           </div>
+          \${sys.doc ? '<div style="font-size: 0.8rem; opacity: 0.75; margin-bottom: 6px;">' + sys.doc + '</div>' : ''}
           <div><strong>Assumptions (A):</strong></div>
-          \${sys.assumptions.map(a => '<div class="contract-clause clause-a">A: ' + a + '</div>').join('')}
+          \${(sys.assumptions || []).map(a => '<div class="contract-clause clause-a">A: ' + a + '</div>').join('')}
           <div style="margin-top: 6px;"><strong>Guarantees (G):</strong></div>
-          \${sys.guarantees.map(g => '<div class="contract-clause clause-g">G: ' + g + '</div>').join('')}
+          \${(sys.guarantees || []).map(g => '<div class="contract-clause clause-g">G: ' + g + '</div>').join('')}
+          \${refViolations.map(v => '<div class="contract-clause clause-v">⚠ ' + v.reason + '</div>').join('')}
         \`;
         container.appendChild(sysNode);
       }
 
       // 2. Render Subcomponent Contracts
       const comps = currentHierarchy.components || [];
-      comps.forEach((comp, idx) => {
+      comps.forEach((comp) => {
+        const compSym = comp.symbolName || comp.name;
+        const cViolations = compViolations.filter(v => v.component === comp.name);
+        const isCompOk = cViolations.length === 0;
         const compNode = document.createElement('div');
-        compNode.className = 'tree-node';
+        compNode.className = 'tree-node' + (comp.isFocused ? ' focused' : '');
         compNode.style.marginLeft = '20px';
         compNode.innerHTML = \`
           <div class="node-header">
-            <span class="node-title" onclick="goToContract('\${comp.name}')">🧩 \${comp.name}</span>
-            <span class="badge badge-refined">✓ Compatible</span>
+            <span class="node-title" onclick="goToContract('\${compSym}')">
+              🧩 \${comp.name}
+              \${comp.role ? '<span class="node-role">(' + comp.role + ')</span>' : ''}
+            </span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              \${comp.isFocused ? '<span class="badge badge-focused">🎯 Focused</span>' : ''}
+              <span class="badge \${isCompOk ? 'badge-refined' : 'badge-violation'}">
+                \${isCompOk ? '✓ Compatible' : '⚠ Incompatible'}
+              </span>
+            </div>
           </div>
+          \${comp.doc ? '<div style="font-size: 0.8rem; opacity: 0.75; margin-bottom: 6px;">' + comp.doc + '</div>' : ''}
           <div><strong>Assumptions (A):</strong></div>
-          \${comp.assumptions.map(a => '<div class="contract-clause clause-a">A: ' + a + '</div>').join('')}
+          \${(comp.assumptions || []).map(a => '<div class="contract-clause clause-a">A: ' + a + '</div>').join('')}
           <div style="margin-top: 6px;"><strong>Guarantees (G):</strong></div>
-          \${comp.guarantees.map(g => '<div class="contract-clause clause-g">G: ' + g + '</div>').join('')}
+          \${(comp.guarantees || []).map(g => '<div class="contract-clause clause-g">G: ' + g + '</div>').join('')}
+          \${cViolations.map(v => '<div class="contract-clause clause-v">⚠ ' + v.reason + '</div>').join('')}
         \`;
         container.appendChild(compNode);
       });
     }
 
     function renderTraces() {
-      if (!currentHierarchy || !currentHierarchy.traces) return;
-      const traces = currentHierarchy.traces;
       const container = document.getElementById('swimlane-container');
       container.innerHTML = '';
+      const traces = (currentHierarchy && Array.isArray(currentHierarchy.traces)) ? currentHierarchy.traces : [];
 
+      if (traces.length === 0) {
+        document.getElementById('total-steps').textContent = '0';
+        document.getElementById('step-indicator').textContent = '0';
+        return;
+      }
+
+      if (currentStepIdx >= traces.length) currentStepIdx = 0;
       document.getElementById('total-steps').textContent = traces.length.toString();
       document.getElementById('step-indicator').textContent = (currentStepIdx + 1).toString();
 
@@ -576,11 +809,11 @@ ${compSpecs ? compSpecs + "\n" : ""}LTLSPEC G (state = TRIP -> F state = START);
     function selectStep(idx) {
       currentStepIdx = idx;
       renderTraces();
-      const tr = currentHierarchy.traces[idx];
+      const tr = currentHierarchy && currentHierarchy.traces ? currentHierarchy.traces[idx] : null;
       if (tr) {
         vscode.postMessage({
           type: 'goToSource',
-          name: tr.actor + '.' + tr.event,
+          name: tr.sourceSymbol || tr.event || tr.actor,
         });
       }
     }

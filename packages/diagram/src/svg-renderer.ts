@@ -171,6 +171,26 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     const srcNode = srcId ? nodeMap.get(srcId) : undefined;
     const tgtNode = tgtId ? nodeMap.get(tgtId) : undefined;
 
+    const resolvePortWorldPoint = (node: DiagramNode, px: number, py: number, nw: number, nh: number): PointLike => {
+      const nx = node.x ?? 0;
+      const ny = node.y ?? 0;
+      const angleDeg = (node as any).angle ?? 0;
+      if (!angleDeg) {
+        return { x: nx + px, y: ny + py };
+      }
+      const cx = nw / 2;
+      const cy = nh / 2;
+      const rad = (angleDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const dx = px - cx;
+      const dy = py - cy;
+      return {
+        x: nx + cx + dx * cos - dy * sin,
+        y: ny + cy + dx * sin + dy * cos,
+      };
+    };
+
     // Calculate source point
     let pSrc: PointLike = { x: 0, y: 0 };
     if (srcNode) {
@@ -181,7 +201,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       if (typeof edge.source === "object" && edge.source?.port && srcNode.ports?.items) {
         const pt = srcNode.ports.items.find((p) => p.id === edge.source?.port);
         if (pt?.args) {
-          pSrc = { x: (srcNode.x ?? 0) + (pt.args.x ?? sw / 2), y: (srcNode.y ?? 0) + (pt.args.y ?? sh / 2) };
+          pSrc = resolvePortWorldPoint(srcNode, pt.args.x ?? sw / 2, pt.args.y ?? sh / 2, sw, sh);
         }
       }
     }
@@ -195,7 +215,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       if (typeof edge.target === "object" && edge.target?.port && tgtNode.ports?.items) {
         const pt = tgtNode.ports.items.find((p) => p.id === edge.target?.port);
         if (pt?.args) {
-          pTgt = { x: (tgtNode.x ?? 0) + (pt.args.x ?? tw / 2), y: (tgtNode.y ?? 0) + (pt.args.y ?? th / 2) };
+          pTgt = resolvePortWorldPoint(tgtNode, pt.args.x ?? tw / 2, pt.args.y ?? th / 2, tw, th);
         }
       }
     }

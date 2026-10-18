@@ -219,7 +219,11 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     const registeredUris: string[] = [];
     const registerDirLazy = (dir: string) => {
       try {
-        const entries = ctx.sharedFs.readdir(dir);
+        const entries = [...ctx.sharedFs.readdir(dir)].sort((a, b) => {
+          if (a.name === "package.mo") return -1;
+          if (b.name === "package.mo") return 1;
+          return a.name.localeCompare(b.name);
+        });
         for (const entry of entries) {
           const fullPath = ctx.sharedFs.join(dir, entry.name);
           if (entry.isDirectory()) {
@@ -372,8 +376,14 @@ export async function loadDependencyFromRegistry(
           // but loadRegistryPackage expects paths that include the root package name (e.g., "Modelica/Blocks/Continuous.mo")
           // so the parentFQN computation can correctly determine the Modelica class hierarchy.
           const prefixedFiles: Record<string, string> = {};
+          const fileKeys = Object.keys(filesData.files);
+          const alreadyPrefixed = fileKeys.some((k) => k.startsWith(`${dep.name}/`) || k.startsWith(`${dep.name} `));
           for (const [relPath, content] of Object.entries(filesData.files)) {
-            prefixedFiles[`${dep.name}/${relPath}`] = content;
+            if (alreadyPrefixed || relPath.startsWith(`${dep.name}/`)) {
+              prefixedFiles[relPath] = content;
+            } else {
+              prefixedFiles[`${dep.name}/${relPath}`] = content;
+            }
           }
 
           const pkg: RegistryPackageInfo = {
@@ -641,6 +651,13 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
         }
       }
     }
+
+    moFiles.sort((a, b) => {
+      const aIsPkg = a.uri.endsWith("/package.mo") ? 0 : 1;
+      const bIsPkg = b.uri.endsWith("/package.mo") ? 0 : 1;
+      if (aIsPkg !== bIsPkg) return aIsPkg - bIsPkg;
+      return a.parentFQN.length - b.parentFQN.length;
+    });
 
     for (const file of moFiles) {
       ctx.globalWorkspaceIndex.register(

@@ -91,12 +91,46 @@ export class WebGpuLbmAdapter implements ICfdContinuumParticipant {
     const raw: LbmStepResult = this.runner.step(subSteps);
     const force = raw.aerodynamicForceN;
 
+    const { nx, ny, nz, dx, density } = this.config;
+    const cellArea = dx * dx;
+    let inletMassFlow = 0.0;
+    let outletMassFlow = 0.0;
+    for (let z = 0; z < nz; z++) {
+      for (let y = 0; y < ny; y++) {
+        const inIdx = 0 + y * nx + z * nx * ny;
+        const inType = this.runner.cellTypes[inIdx];
+        if (inType !== 1 && inType !== 2) {
+          inletMassFlow += (this.runner.rho[inIdx] ?? 1.0) * density * (this.runner.vx[inIdx] ?? 0.0) * cellArea;
+        }
+        const outIdx = nx - 1 + y * nx + z * nx * ny;
+        const outType = this.runner.cellTypes[outIdx];
+        if (outType !== 1 && outType !== 2) {
+          outletMassFlow += -(this.runner.rho[outIdx] ?? 1.0) * density * (this.runner.vx[outIdx] ?? 0.0) * cellArea;
+        }
+      }
+    }
+
     const obstacleMetrics: ContinuumPatchMetrics = {
       patchName: "obstacle",
       integratedForce: force,
       meanPressure: 101325.0 + raw.pressureDropPa * 0.5,
+      integratedMassFlow: 0.0,
     };
     this.patchMetricsCache.set("obstacle", obstacleMetrics);
+
+    this.patchMetricsCache.set("inlet", {
+      patchName: "inlet",
+      integratedForce: [0, 0, 0],
+      meanPressure: 101325.0 + raw.pressureDropPa,
+      integratedMassFlow: inletMassFlow,
+    });
+
+    this.patchMetricsCache.set("outlet", {
+      patchName: "outlet",
+      integratedForce: [0, 0, 0],
+      meanPressure: 101325.0,
+      integratedMassFlow: outletMassFlow,
+    });
 
     return {
       aerodynamicForceN: force,
@@ -108,8 +142,14 @@ export class WebGpuLbmAdapter implements ICfdContinuumParticipant {
   }
 
   public setBoundaryCondition(patchName: string, bc: ContinuumBoundaryCondition): void {
-    if (patchName === "inlet" && bc.velocity) {
-      this.config.inletVelocity = bc.velocity;
+    if (patchName === "inlet") {
+      if (bc.velocity) {
+        this.config.inletVelocity = bc.velocity;
+      } else if (bc.massFlow !== undefined) {
+        const area = Math.max(1e-12, this.config.ny * this.config.nz * this.config.dx * this.config.dx);
+        const vx = bc.massFlow / (this.config.density * area);
+        this.config.inletVelocity = [vx, 0, 0];
+      }
     }
   }
 
@@ -120,6 +160,7 @@ export class WebGpuLbmAdapter implements ICfdContinuumParticipant {
       patchName,
       integratedForce: [0, 0, 0],
       meanPressure: 101325.0,
+      integratedMassFlow: 0.0,
     };
   }
 

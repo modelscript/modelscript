@@ -62,10 +62,17 @@ export class DelayRingBuffer {
       return values[newestIdx];
     }
 
-    // Binary / linear search backward from head
     let c = this.count;
+    if (c == 1) {
+      return values[newestIdx];
+    }
     let cap = this.capacity;
+    let oldestIdx = (newestIdx + cap - (c - 1)) % cap;
+    if (targetT <= times[oldestIdx]) {
+      return values[oldestIdx];
+    }
 
+    // Binary / linear search backward from head
     let idx1: u32 = newestIdx;
     let t1: f64 = newestT;
     let idx0: u32 = (newestIdx + cap - 1) % cap;

@@ -128,14 +128,14 @@ export class Tet4Mesher {
           const v6 = nodeIndex(ix + 1, iy + 1, iz + 1);
           const v7 = nodeIndex(ix, iy + 1, iz + 1);
 
-          // Exact 6-permutation Kuhn subdivision of a cube [0, 1]^3:
+          // Exact 6-permutation Kuhn subdivision of a cube [0, 1]^3 (all positively oriented, det > 0):
           const tets: [number, number, number, number][] = [
             [v0, v1, v2, v6],
-            [v0, v1, v5, v6],
-            [v0, v3, v2, v6],
+            [v0, v5, v1, v6],
+            [v0, v2, v3, v6],
             [v0, v3, v7, v6],
             [v0, v4, v5, v6],
-            [v0, v4, v7, v6],
+            [v0, v7, v4, v6],
           ];
 
           for (const [n0, n1, n2, n3] of tets) {
@@ -391,40 +391,40 @@ export class Tet4Mesher {
 
           // Tag boundary nodes on exposed faces
           if (!isSolid(ix - 1, iy, iz)) {
-            isNodeBoundary[cornerIndex(ix, iy, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix, iy + 1, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix, iy + 1, iz + 1)] = 1;
-            isNodeBoundary[cornerIndex(ix, iy, iz + 1)] = 1;
+            isNodeBoundary[v0] = 1;
+            isNodeBoundary[v3] = 1;
+            isNodeBoundary[v7] = 1;
+            isNodeBoundary[v4] = 1;
           }
           if (!isSolid(ix + 1, iy, iz)) {
-            isNodeBoundary[cornerIndex(ix + 1, iy, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy + 1, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy + 1, iz + 1)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy, iz + 1)] = 1;
+            isNodeBoundary[v1] = 1;
+            isNodeBoundary[v2] = 1;
+            isNodeBoundary[v6] = 1;
+            isNodeBoundary[v5] = 1;
           }
           if (!isSolid(ix, iy - 1, iz)) {
-            isNodeBoundary[cornerIndex(ix, iy, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy, iz + 1)] = 1;
-            isNodeBoundary[cornerIndex(ix, iy, iz + 1)] = 1;
+            isNodeBoundary[v0] = 1;
+            isNodeBoundary[v1] = 1;
+            isNodeBoundary[v5] = 1;
+            isNodeBoundary[v4] = 1;
           }
           if (!isSolid(ix, iy + 1, iz)) {
-            isNodeBoundary[cornerIndex(ix, iy + 1, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy + 1, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy + 1, iz + 1)] = 1;
-            isNodeBoundary[cornerIndex(ix, iy + 1, iz + 1)] = 1;
+            isNodeBoundary[v3] = 1;
+            isNodeBoundary[v2] = 1;
+            isNodeBoundary[v6] = 1;
+            isNodeBoundary[v7] = 1;
           }
           if (!isSolid(ix, iy, iz - 1)) {
-            isNodeBoundary[cornerIndex(ix, iy, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy + 1, iz)] = 1;
-            isNodeBoundary[cornerIndex(ix, iy + 1, iz)] = 1;
+            isNodeBoundary[v0] = 1;
+            isNodeBoundary[v1] = 1;
+            isNodeBoundary[v2] = 1;
+            isNodeBoundary[v3] = 1;
           }
           if (!isSolid(ix, iy, iz + 1)) {
-            isNodeBoundary[cornerIndex(ix, iy, iz + 1)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy, iz + 1)] = 1;
-            isNodeBoundary[cornerIndex(ix + 1, iy + 1, iz + 1)] = 1;
-            isNodeBoundary[cornerIndex(ix, iy + 1, iz + 1)] = 1;
+            isNodeBoundary[v4] = 1;
+            isNodeBoundary[v5] = 1;
+            isNodeBoundary[v6] = 1;
+            isNodeBoundary[v7] = 1;
           }
 
           // Alternating parity 5-tet subdivision
@@ -454,8 +454,9 @@ export class Tet4Mesher {
         const x = activeCoords[n * 3 + 0]!;
         const y = activeCoords[n * 3 + 1]!;
         const z = activeCoords[n * 3 + 2]!;
+        const isBoundary = isNodeBoundary[n] === 1;
         for (const rule of opts.tagRules) {
-          if (rule.predicate(x, y, z, true)) {
+          if (rule.predicate(x, y, z, isBoundary)) {
             let list = boundaryNodes.get(rule.name);
             if (!list) {
               list = [];

@@ -441,23 +441,23 @@ export class CfdPodSurrogate {
       paramExprs.push(builder.addName(varId));
     }
 
-    // 2. Build polynomial basis expressions in DAE graph
+    // 2. Build polynomial basis expressions in DAE graph (up to this.polyDegree)
     const basisExprs: number[] = [];
     basisExprs.push(builder.addRealLiteral(1.0)); // constant 1.0
 
-    // Linear terms
-    for (let i = 0; i < P; i++) {
-      basisExprs.push(paramExprs[i]!);
-    }
-
-    // Quadratic terms
-    if (this.polyDegree >= 2) {
-      for (let i = 0; i < P; i++) {
-        for (let j = i; j < P; j++) {
-          const quadExpr = builder.addBinaryExpr(BinOp.Mul, paramExprs[i]!, paramExprs[j]!);
-          basisExprs.push(quadExpr);
-        }
+    const buildHomogeneousBasisExprs = (remDeg: number, startIdx: number, accExpr: number | null) => {
+      if (remDeg === 0) {
+        basisExprs.push(accExpr ?? builder.addRealLiteral(1.0));
+        return;
       }
+      for (let i = startIdx; i < P; i++) {
+        const nextExpr = accExpr === null ? paramExprs[i]! : builder.addBinaryExpr(BinOp.Mul, accExpr, paramExprs[i]!);
+        buildHomogeneousBasisExprs(remDeg - 1, i, nextExpr);
+      }
+    };
+
+    for (let d = 1; d <= this.polyDegree; d++) {
+      buildHomogeneousBasisExprs(d, 0, null);
     }
 
     // Helper to synthesize linear combination: sum(coeff[c] * basis[c])
@@ -524,8 +524,15 @@ export class CfdPodSurrogate {
   // ───────────────────────────────────────────────────────────────────────────
 
   private static getPolyBasisDim(P: number, degree: number): number {
-    if (degree === 1) return 1 + P;
-    return 1 + P + (P * (P + 1)) / 2; // up to quadratic
+    // Binomial coefficient C(P + degree, degree)
+    let num = 1;
+    let den = 1;
+    const d = Math.max(0, Math.floor(degree));
+    for (let k = 1; k <= d; k++) {
+      num *= P + k;
+      den *= k;
+    }
+    return Math.round(num / den);
   }
 
   private static evalPolyBasis(p: number[], degree: number): Float64Array {
@@ -533,19 +540,20 @@ export class CfdPodSurrogate {
     const out = new Float64Array(dim);
     out[0] = 1.0;
     let idx = 1;
+    const P = p.length;
 
-    // Linear terms
-    for (let i = 0; i < p.length; i++) {
-      out[idx++] = p[i]!;
-    }
-
-    // Quadratic terms
-    if (degree >= 2) {
-      for (let i = 0; i < p.length; i++) {
-        for (let j = i; j < p.length; j++) {
-          out[idx++] = p[i]! * p[j]!;
-        }
+    const evalHomogeneous = (remDeg: number, startIdx: number, prod: number) => {
+      if (remDeg === 0) {
+        out[idx++] = prod;
+        return;
       }
+      for (let i = startIdx; i < P; i++) {
+        evalHomogeneous(remDeg - 1, i, prod * p[i]!);
+      }
+    };
+
+    for (let d = 1; d <= degree; d++) {
+      evalHomogeneous(d, 0, 1.0);
     }
     return out;
   }

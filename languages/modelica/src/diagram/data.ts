@@ -600,8 +600,31 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
           group: "absolute",
           args: { x: desiredCenterX, y: desiredCenterY, angle: connectorTransform.rotate },
           markup: {
-            tagName: "svg",
-            children: [connectorMarkup],
+            tagName: "g",
+            children: [
+              {
+                tagName: "rect",
+                attrs: {
+                  x: -portWidth / 2,
+                  y: -portHeight / 2,
+                  width: portWidth,
+                  height: portHeight,
+                  fill: "none",
+                  stroke: "none",
+                },
+              },
+              {
+                tagName: "svg",
+                children: [connectorMarkup],
+                attrs: {
+                  x: -portWidth / 2,
+                  y: -portHeight / 2,
+                  width: portWidth,
+                  height: portHeight,
+                  style: "overflow: visible",
+                },
+              },
+            ],
             attrs: {
               magnet: "true",
               x: -portWidth / 2,
@@ -774,6 +797,25 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   }
 
   // Pre-compute solder dots for edges with known vertices/connections
+  const resolveWorldPortPoint = (node: DiagramNode, px: number, py: number): { x: number; y: number } => {
+    const nx = node.x ?? 0;
+    const ny = node.y ?? 0;
+    const angleDeg = node.angle ?? 0;
+    if (!angleDeg) {
+      return { x: nx + px, y: ny + py };
+    }
+    const cx = (node.width ?? 0) / 2;
+    const cy = (node.height ?? 0) / 2;
+    const rad = (angleDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dx = px - cx;
+    const dy = py - cy;
+    return {
+      x: nx + cx + dx * cos - dy * sin,
+      y: ny + cy + dx * sin + dy * cos,
+    };
+  };
   const validEdgePaths: EdgePath[] = [];
   const knownPortPoints: { x: number; y: number }[] = [];
   for (const node of nodes) {
@@ -781,7 +823,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     if (portItems) {
       for (const p of portItems) {
         if (p.args && typeof p.args.x === "number" && typeof p.args.y === "number") {
-          knownPortPoints.push({ x: (node.x ?? 0) + p.args.x, y: (node.y ?? 0) + p.args.y });
+          knownPortPoints.push(resolveWorldPortPoint(node, p.args.x, p.args.y));
         }
       }
     }
@@ -791,13 +833,17 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const srcPortItems = Array.isArray(srcNode?.ports) ? srcNode.ports : (srcNode?.ports as any)?.items;
     const srcPort = srcPortItems?.find((p: any) => p.id === edge.source.port);
     const srcPt =
-      srcNode && srcPort?.args ? { x: (srcNode.x ?? 0) + srcPort.args.x, y: (srcNode.y ?? 0) + srcPort.args.y } : null;
+      srcNode && srcPort?.args && typeof srcPort.args.x === "number" && typeof srcPort.args.y === "number"
+        ? resolveWorldPortPoint(srcNode, srcPort.args.x, srcPort.args.y)
+        : null;
 
     const tgtNode = nodes.find((n) => n.id === edge.target.cell);
     const tgtPortItems = Array.isArray(tgtNode?.ports) ? tgtNode.ports : (tgtNode?.ports as any)?.items;
     const tgtPort = tgtPortItems?.find((p: any) => p.id === edge.target.port);
     const tgtPt =
-      tgtNode && tgtPort?.args ? { x: (tgtNode.x ?? 0) + tgtPort.args.x, y: (tgtNode.y ?? 0) + tgtPort.args.y } : null;
+      tgtNode && tgtPort?.args && typeof tgtPort.args.x === "number" && typeof tgtPort.args.y === "number"
+        ? resolveWorldPortPoint(tgtNode, tgtPort.args.x, tgtPort.args.y)
+        : null;
 
     const intermediate = edge.vertices ?? [];
     let pathPoints: { x: number; y: number }[] | null = null;
@@ -808,10 +854,24 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     }
 
     if (pathPoints && pathPoints.length >= 2) {
+      const sourceKey =
+        edge.source?.cell && edge.source?.port
+          ? `${edge.source.cell}.${edge.source.port}`
+          : edge.source?.cell
+            ? String(edge.source.cell)
+            : undefined;
+      const targetKey =
+        edge.target?.cell && edge.target?.port
+          ? `${edge.target.cell}.${edge.target.port}`
+          : edge.target?.cell
+            ? String(edge.target.cell)
+            : undefined;
       validEdgePaths.push({
         id: edge.id,
         points: pathPoints,
         color: (edge.attrs?.line?.stroke as string) || "#1890ff",
+        sourceKey,
+        targetKey,
       });
     }
   }
@@ -957,6 +1017,10 @@ export function renderIconX6(
         modKey += `|${String(componentInstance["modification"])}`;
       }
     }
+    const cstText = (componentInstance as any).cstNode?.text ?? (componentInstance as any).abstractSyntaxNode?.text;
+    if (typeof cstText === "string" && cstText) {
+      modKey += `|cst:${cstText}`;
+    }
   }
   const identityKey =
     classInstance.id !== undefined
@@ -1049,7 +1113,10 @@ export function renderIconX6(
 
   if (ports && group.children) {
     for (const component of classInstance?.components ?? []) {
-      const condition = evaluateCondition(component, componentInstance);
+      const condition = evaluateCondition(
+        component,
+        componentInstance ? { componentInstance, classInstance } : classInstance,
+      );
       if (condition === false) continue;
 
       const connectorClassInstance = component.classInstance;
@@ -1161,7 +1228,7 @@ function renderGraphicItemX6(
       return { tagName: "g", children: [] };
   }
   const [ox, oy] = convertPoint(graphicItem.origin, [0, 0]);
-  const visibility = (graphicItem.visible ?? true) ? "visible" : "hidden";
+  const visibility = graphicItem.visible === undefined || graphicItem.visible === true ? "visible" : "hidden";
 
   return {
     tagName: "g",

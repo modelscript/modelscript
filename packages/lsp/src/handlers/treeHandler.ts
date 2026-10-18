@@ -24,7 +24,6 @@ export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getLibraryTree",
     async (params: { uri: string; parentId?: string | undefined }): Promise<TreeNodeInfo[]> => {
-      console.log(`[LSP treeHandler] getLibraryTree parentId=${params.parentId}`);
       // Use the unified workspace — merges all language indices
       const uw = context.workspaceManager.unifiedWorkspace;
 
@@ -64,15 +63,7 @@ export function registerTreeHandlers(context: LspContext) {
         fqnCacheState.index = unifiedIndex;
       }
 
-      context.connection.console.info(
-        `[LSP treeHandler] getLibraryTree parentId=${params.parentId} symbols=${unifiedIndex?.symbols?.size} childrenOfKeys=${Array.from(unifiedIndex?.childrenOf?.keys() ?? []).join(",")}`,
-      );
-
-      const res = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
-      context.connection.console.info(
-        `[LSP treeHandler] getLibraryTree parentId=${params.parentId} returning ${res.length} nodes: ${res.map((n) => n.name).join(", ")}`,
-      );
-      return res;
+      return await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
     },
   );
 

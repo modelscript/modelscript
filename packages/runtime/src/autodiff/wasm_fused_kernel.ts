@@ -133,6 +133,26 @@ export function compileFusedArenaKernel(
           case BinOp.ElemDiv:
             opStr = "/";
             break;
+          case BinOp.Pow:
+          case BinOp.ElemPow: {
+            const powExpr = `Math.pow(${leftCode}, ${rightCode})`;
+            if (enableCse) {
+              const existing = cseCache.get(powExpr);
+              if (existing) {
+                eliminatedSubexprs++;
+                return existing;
+              }
+              const tName = `_t${tempCounter++}`;
+              lines.push(`  const ${tName} = ${powExpr};`);
+              cseCache.set(powExpr, tName);
+              return tName;
+            }
+            return powExpr;
+          }
+          case BinOp.And:
+            return `(((${leftCode}) !== 0 && (${rightCode}) !== 0) ? 1 : 0)`;
+          case BinOp.Or:
+            return `(((${leftCode}) !== 0 || (${rightCode}) !== 0) ? 1 : 0)`;
           case BinOp.Lt:
             return `((${leftCode}) < (${rightCode}) ? 1 : 0)`;
           case BinOp.Lte:
@@ -172,13 +192,37 @@ export function compileFusedArenaKernel(
       }
 
       case ExprKind.Call: {
-        const fnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+        const rawFnName = arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
+        const fnName = rawFnName.startsWith("Modelica.Math.") ? rawFnName.slice(14) : rawFnName;
+        const argCount = arena.getExprRight(exprId);
         const arg = exprToCode(arena.getExprLeft(exprId));
         if (fnName === "sin") return `Math.sin(${arg})`;
         if (fnName === "cos") return `Math.cos(${arg})`;
+        if (fnName === "tan") return `Math.tan(${arg})`;
+        if (fnName === "asin") return `Math.asin(${arg})`;
+        if (fnName === "acos") return `Math.acos(${arg})`;
+        if (fnName === "atan") return `Math.atan(${arg})`;
+        if (fnName === "sinh") return `Math.sinh(${arg})`;
+        if (fnName === "cosh") return `Math.cosh(${arg})`;
+        if (fnName === "tanh") return `Math.tanh(${arg})`;
         if (fnName === "exp") return `Math.exp(${arg})`;
+        if (fnName === "log") return `Math.log(${arg})`;
+        if (fnName === "log10") return `Math.log10(${arg})`;
         if (fnName === "sqrt") return `Math.sqrt(${arg})`;
         if (fnName === "abs") return `Math.abs(${arg})`;
+        if (fnName === "sign") return `Math.sign(${arg})`;
+        if ((fnName === "atan2" || fnName === "min" || fnName === "max" || fnName === "mod") && argCount >= 2) {
+          const slotIdx = exprId + 1;
+          const arg2Id =
+            slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+              ? arena.getExprLeft(slotIdx)
+              : arena.getExprLeft(exprId) + 1;
+          const arg2 = exprToCode(arg2Id);
+          if (fnName === "atan2") return `Math.atan2(${arg}, ${arg2})`;
+          if (fnName === "min") return `Math.min(${arg}, ${arg2})`;
+          if (fnName === "max") return `Math.max(${arg}, ${arg2})`;
+          if (fnName === "mod") return `(((${arg}) % (${arg2}) + (${arg2})) % (${arg2}))`;
+        }
         return "0";
       }
 

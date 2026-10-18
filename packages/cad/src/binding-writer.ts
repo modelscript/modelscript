@@ -34,7 +34,7 @@ export interface CadAnnotationConfig {
 export function serializeCadBinding(binding: DynamicBindingConfig): string {
   const parts: string[] = [`property = "${binding.property}"`];
   if (binding.index !== undefined) {
-    const idx = binding.index < 1 ? binding.index + 1 : binding.index;
+    const idx = binding.index + 1;
     parts.push(`index = ${idx}`);
   }
   parts.push(`variable = "${binding.variable}"`);
@@ -155,6 +155,42 @@ export function serializeCadAnnotation(config: CadAnnotationConfig): string {
   return `CAD(\n    ${parts.join(",\n    ")}\n  )`;
 }
 
+function findBalancedCall(
+  text: string,
+  keyword: string,
+): { callStart: number; innerStart: number; innerEnd: number; callEnd: number; inner: string } | null {
+  const kwRegex = new RegExp(`\\b${keyword}\\s*\\(`, "g");
+  const match = kwRegex.exec(text);
+  if (!match) return null;
+  const callStart = match.index;
+  const openParenIdx = callStart + match[0].length - 1;
+  const innerStart = openParenIdx + 1;
+  let depth = 1;
+  let inString = false;
+  for (let i = innerStart; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' && text[i - 1] !== "\\") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        return {
+          callStart,
+          innerStart,
+          innerEnd: i,
+          callEnd: i + 1,
+          inner: text.slice(innerStart, i),
+        };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Patch a Modelica source document to add or update CAD annotations and dynamic bindings
  * for a specific component declaration.
@@ -183,61 +219,67 @@ export function patchModelicaCadAnnotation(
   const compStart = compMatch.index;
   const compEnd = compStart + compMatch[0].length;
 
-  // Case 1: Already has annotation(... CAD(...) ...)
-  const cadRegex = /annotation\s*\([\s\S]*?CAD\s*\(([\s\S]*?)\)[\s\S]*?\)/;
-  const cadMatch = cadRegex.exec(compBody);
+  const annotCall = findBalancedCall(compBody, "annotation");
+  if (annotCall) {
+    const cadCall = findBalancedCall(annotCall.inner, "CAD");
+    if (cadCall) {
+      // Case 1: Already has annotation(... CAD(...) ...)
+      const existingCadInner = cadCall.inner;
+      const uriMatch = existingCadInner.match(/uri\s*=\s*"([^"]+)"/);
+      const existingUri = config.uri ?? (uriMatch ? uriMatch[1] : undefined);
 
-  if (cadMatch) {
-    const existingCadInner = cadMatch[1]!;
-    // Extract existing uri, position, rotation, scale if not provided
-    const uriMatch = existingCadInner.match(/uri\s*=\s*"([^"]+)"/);
-    const existingUri = config.uri ?? (uriMatch ? uriMatch[1] : undefined);
+      const posMatch = existingCadInner.match(/position\s*=\s*\{([^}]+)\}/);
+      const existingPos =
+        config.position ??
+        (posMatch ? (posMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
 
-    const posMatch = existingCadInner.match(/position\s*=\s*\{([^}]+)\}/);
-    const existingPos =
-      config.position ??
-      (posMatch ? (posMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
+      const rotMatch = existingCadInner.match(/rotation\s*=\s*\{([^}]+)\}/);
+      const existingRot =
+        config.rotation ??
+        (rotMatch ? (rotMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
 
-    const rotMatch = existingCadInner.match(/rotation\s*=\s*\{([^}]+)\}/);
-    const existingRot =
-      config.rotation ??
-      (rotMatch ? (rotMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number]) : undefined);
+      const scaleMatch = existingCadInner.match(/scale\s*=\s*\{([^}]+)\}/);
+      const existingScale =
+        config.scale ??
+        (scaleMatch
+          ? (scaleMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number])
+          : undefined);
 
-    const scaleMatch = existingCadInner.match(/scale\s*=\s*\{([^}]+)\}/);
-    const existingScale =
-      config.scale ??
-      (scaleMatch
-        ? (scaleMatch[1]!.split(",").map((s) => parseFloat(s.trim())) as [number, number, number])
-        : undefined);
+      const dynPosMatch = existingCadInner.match(/dynamicPosition\s*=\s*"([^"]+)"/);
+      const dynRotMatch = existingCadInner.match(/dynamicRotation\s*=\s*"([^"]+)"/);
+      const dynScaleMatch = existingCadInner.match(/dynamicScale\s*=\s*"([^"]+)"/);
+      const dynDefMatch = existingCadInner.match(/dynamicDeformation\s*=\s*"([^"]+)"/);
 
-    const newCadStr = serializeCadAnnotation({
-      uri: existingUri,
-      position: existingPos,
-      rotation: existingRot,
-      scale: existingScale,
-      dynamicBindings: config.bindings,
-    });
+      const newCadStr = serializeCadAnnotation({
+        uri: existingUri,
+        position: existingPos,
+        rotation: existingRot,
+        scale: existingScale,
+        dynamicBindings: config.bindings,
+        dynamicPosition: dynPosMatch ? dynPosMatch[1] : undefined,
+        dynamicRotation: dynRotMatch ? dynRotMatch[1] : undefined,
+        dynamicScale: dynScaleMatch ? dynScaleMatch[1] : undefined,
+        dynamicDeformation: dynDefMatch ? dynDefMatch[1] : undefined,
+      });
 
-    const newAnnotationStr = `annotation(${newCadStr})`;
-    const updatedCompBody = compBody.replace(cadRegex, newAnnotationStr);
-    const updatedSource =
-      source.slice(0, compStart + compMatch[0].indexOf(compBody)) + updatedCompBody + source.slice(compEnd - 1);
+      const updatedAnnotInner =
+        annotCall.inner.slice(0, cadCall.callStart) + newCadStr + annotCall.inner.slice(cadCall.callEnd);
+      const updatedCompBody =
+        compBody.slice(0, annotCall.innerStart) + updatedAnnotInner + compBody.slice(annotCall.innerEnd);
+      const updatedSource =
+        source.slice(0, compStart + compMatch[0].indexOf(compBody)) + updatedCompBody + source.slice(compEnd - 1);
 
-    return {
-      updatedSource,
-      replacedRange: { start: compStart, end: compEnd },
-      newText: updatedSource.slice(
-        compStart,
-        compStart + compMatch[0].length - compBody.length + updatedCompBody.length,
-      ),
-    };
-  }
+      return {
+        updatedSource,
+        replacedRange: { start: compStart, end: compEnd },
+        newText: updatedSource.slice(
+          compStart,
+          compStart + compMatch[0].length - compBody.length + updatedCompBody.length,
+        ),
+      };
+    }
 
-  // Case 2: Has annotation(...) without CAD(...)
-  const annotRegex = /annotation\s*\(([\s\S]*?)\)/;
-  const annotMatch = annotRegex.exec(compBody);
-
-  if (annotMatch) {
+    // Case 2: Has annotation(...) without CAD(...)
     const newCadStr = serializeCadAnnotation({
       uri: config.uri ?? "modelica://Model/Resources/CAD/part.step",
       position: config.position ?? [0, 0, 0],
@@ -246,9 +288,9 @@ export function patchModelicaCadAnnotation(
       dynamicBindings: config.bindings,
     });
 
-    const existingContent = annotMatch[1]!.trim();
+    const existingContent = annotCall.inner.trim();
     const updatedAnnot = `annotation(${existingContent ? existingContent + ",\n  " : ""}${newCadStr})`;
-    const updatedCompBody = compBody.replace(annotRegex, updatedAnnot);
+    const updatedCompBody = compBody.slice(0, annotCall.callStart) + updatedAnnot + compBody.slice(annotCall.callEnd);
     const bodyStart = compStart + compMatch[0].indexOf(compBody);
     const bodyEnd = compEnd - 1;
     const updatedSource = source.slice(0, bodyStart) + updatedCompBody + source.slice(bodyEnd);

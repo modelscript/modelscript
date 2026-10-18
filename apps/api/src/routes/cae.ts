@@ -196,21 +196,27 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
             if (result.status === "completed") {
               database.updateJobStatus(dbJobId, "SUCCESS");
               if (result.usage) {
+                const effectiveCost = result.simulatedFallback ? 0 : (result.usage.costCredits ?? 0);
                 database.updateJobAccounting(dbJobId, {
                   computeProfile: result.profile || profile,
                   cpuSeconds: result.usage.cpuCoreSeconds,
                   peakMemoryMb: result.usage.peakMemoryMb,
                   gpuSeconds: result.usage.gpuSeconds,
-                  costCredits: result.usage.costCredits,
+                  costCredits: effectiveCost,
                 });
 
                 if (userId) {
                   database.settleUserEscrow(
                     userId,
                     dbJobId,
-                    result.usage.costCredits ?? 0,
-                    `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
-                    { profile: result.profile || profile, ...result.usage },
+                    effectiveCost,
+                    `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}${result.simulatedFallback ? " (Synthetic Fallback)" : ""}`,
+                    {
+                      profile: result.profile || profile,
+                      ...result.usage,
+                      costCredits: effectiveCost,
+                      simulatedFallback: Boolean(result.simulatedFallback),
+                    },
                   );
                 }
               }
@@ -272,6 +278,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       profile: dbJob.compute_profile,
       usage: {
         cpuSeconds: dbJob.cpu_seconds,
+        cpuCoreSeconds: dbJob.cpu_seconds,
         peakMemoryMb: dbJob.peak_memory_mb,
         gpuSeconds: dbJob.gpu_seconds,
         costCredits: dbJob.cost_credits,

@@ -176,10 +176,16 @@ export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Se
       }
       break;
     }
-    case ExprKind.Subscript:
+    case ExprKind.Subscript: {
       collectArenaExprDeps(arena, arena.getExprData1(exprId), deps, excludeDer);
-      collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
+      const subCount = Math.max(1, arena.getExprRight(exprId));
+      const firstSub = arena.getExprLeft(exprId);
+      for (let i = 0; i < subCount; i++) {
+        const subExpr = i === 0 ? firstSub : arena.getExprLeft(exprId + i);
+        if (subExpr >= 0 && subExpr !== 0xffffffff) collectArenaExprDeps(arena, subExpr, deps, excludeDer);
+      }
       break;
+    }
     case ExprKind.ArrayCtor: {
       const count = arena.getExprData1(exprId);
       for (let i = 0; i < count; i++) {
@@ -275,6 +281,9 @@ export function performBltTransformationArena(
 
   const activeEqIndices: number[] = [];
   for (let i = 0; i < arena.eqCount; i++) {
+    if (arena.isEqRemoved?.(i) || arena.isEqInitial?.(i)) continue;
+    const eqFlags = arena.getEqFlags?.(i) ?? 0;
+    if (eqFlags !== -1 && eqFlags >>> 0 !== 0xffffffff && (eqFlags & 1) /* FLAG_EQ_INITIAL */ !== 0) continue;
     const kind = arena.getEqKind(i);
     // Include only dynamic Simple and For equations (exclude InitialSimple and InitialFor)
     if (kind === EqKind.Simple) {

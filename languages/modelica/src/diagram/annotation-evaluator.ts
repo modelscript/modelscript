@@ -143,6 +143,178 @@ export function evalSafeArithmetic(exprStr: string): number | null {
 
 // ── Value & Scope Extraction Helpers ────────────────────────────────────────
 
+const activeNameResolutions = new Set<string>();
+
+function findNamedModExprInClassMod(classMod: any, targetName: string): any {
+  if (!classMod || !targetName) return null;
+  if (Array.isArray(classMod.modificationArguments)) {
+    for (const arg of classMod.modificationArguments) {
+      const argName =
+        typeof arg?.name === "string"
+          ? arg.name
+          : (arg?.name?.parts?.[0]?.identifier?.text ?? arg?.name?.parts?.[0]?.text ?? arg?.name?.text);
+      if (argName?.trim() === targetName) {
+        const direct = extractModExprNode(arg);
+        if (direct) return direct;
+        const subClassMod = extractClassModNode(arg);
+        if (subClassMod) return findNamedModExprInClassMod(subClassMod, "start");
+      }
+    }
+  }
+  const walk = (node: any): any => {
+    if (!node) return null;
+    if (
+      Cst.ElementModification.is(node) ||
+      node.type === "element_modification" ||
+      node.type === "ElementModification"
+    ) {
+      let modName: string | null = null;
+      if (Cst.ElementModification.is(node)) {
+        const n = Cst.ElementModification.name(node);
+        if (n?.text) modName = n.text.trim();
+      }
+      if (!modName) {
+        const children = node.children || node.namedChildren;
+        if (Array.isArray(children)) {
+          const nameNode = children.find(
+            (c: any) => Cst.Identifier.is(c) || Cst.Name.is(c) || c.type === "identifier" || c.type === "name",
+          );
+          if (nameNode?.text) modName = nameNode.text.trim();
+        }
+      }
+      if (modName === targetName) {
+        const direct = extractModExprNode(node);
+        if (direct) return direct;
+        const subClassMod = extractClassModNode(node);
+        if (subClassMod) return findNamedModExprInClassMod(subClassMod, "start");
+      }
+      return null;
+    }
+    const children = node.namedChildren || node.children || [];
+    for (const child of children) {
+      if (child.text === "(" || child.text === ")" || child.text === ",") continue;
+      const found = walk(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(classMod);
+}
+
+function extractModExprFromCstNode(node: any, targetArgName?: string): any {
+  if (!node) return null;
+  let curr = node;
+  while (
+    curr &&
+    (Cst.Identifier.is(curr) ||
+      Cst.Name.is(curr) ||
+      curr.type === "identifier" ||
+      curr.type === "Identifier" ||
+      curr.type === "name" ||
+      curr.type === "Name") &&
+    curr.parent
+  ) {
+    curr = curr.parent;
+  }
+  if (
+    curr &&
+    (Cst.Declaration.is(curr) || curr.type === "declaration" || curr.type === "Declaration") &&
+    curr.parent &&
+    (Cst.ComponentDeclaration.is(curr.parent) ||
+      curr.parent.type === "component_declaration" ||
+      curr.parent.type === "ComponentDeclaration")
+  ) {
+    curr = curr.parent;
+  }
+
+  const decl =
+    (Cst.ComponentDeclaration.is(curr) ? Cst.ComponentDeclaration.declaration(curr) : null) ??
+    curr.children?.find((c: any) => Cst.Declaration.is(c) || c.type === "declaration" || c.type === "Declaration") ??
+    curr;
+
+  const modNode =
+    decl?.modification ??
+    curr?.modification ??
+    (Cst.Declaration.is(decl) ? Cst.Declaration.modification(decl) : null) ??
+    decl?.children?.find(
+      (c: any) => Cst.Modification.is(c) || c.type === "modification" || c.type === "Modification",
+    ) ??
+    curr?.children?.find((c: any) => Cst.Modification.is(c) || c.type === "modification" || c.type === "Modification");
+
+  if (targetArgName) {
+    const classMod = extractClassModNode(modNode ?? decl ?? curr);
+    if (classMod) {
+      return findNamedModExprInClassMod(classMod, targetArgName);
+    }
+    return null;
+  }
+
+  const directExpr = extractModExprNode(modNode ?? decl ?? curr);
+  if (directExpr) return directExpr;
+
+  const classMod = extractClassModNode(modNode ?? decl ?? curr);
+  if (classMod) {
+    return findNamedModExprInClassMod(classMod, "start");
+  }
+  return null;
+}
+
+function findExtendsModExprInClassCst(classCstNode: any, targetArgName: string): any {
+  if (!classCstNode || !targetArgName) return null;
+  const walk = (node: any, depth: number): any => {
+    if (!node || depth > 6) return null;
+    if (Cst.ExtendsClause.is(node) || node.type === "extends_clause" || node.type === "ExtendsClause") {
+      const classMod = extractClassModNode(node);
+      if (classMod) {
+        const found = findNamedModExprInClassMod(classMod, targetArgName);
+        if (found) return found;
+      }
+      return null;
+    }
+    // Do not descend into nested class definitions
+    if (
+      depth > 0 &&
+      (Cst.ClassDefinition.is(node) || node.type === "class_definition" || node.type === "ClassDefinition")
+    ) {
+      return null;
+    }
+    const children = node.children || node.namedChildren || [];
+    for (const child of children) {
+      const found = walk(child, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(classCstNode, 0);
+}
+
+function evaluateRawOrCstExpr(expr: any, evalScope?: any): any {
+  if (expr == null) return undefined;
+  if (typeof expr === "number" || typeof expr === "boolean") return expr;
+  if (typeof expr === "string") {
+    const t = expr.trim();
+    if (t === "true") return true;
+    if (t === "false") return false;
+    if (/^[+-]?\d+$/.test(t)) return parseInt(t, 10);
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t) && !isNaN(Number(t))) return parseFloat(t);
+    return t;
+  }
+  if (typeof expr.value === "number" || typeof expr.value === "boolean" || typeof expr.value === "string") {
+    return evaluateRawOrCstExpr(expr.value, evalScope);
+  }
+  if (typeof expr.text === "string" && !Array.isArray(expr.children)) {
+    const t = expr.text.trim();
+    if (t === "true") return true;
+    if (t === "false") return false;
+    if (/^[+-]?\d+$/.test(t)) return parseInt(t, 10);
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t) && !isNaN(Number(t))) return parseFloat(t);
+    const resolved = resolveAnnotationName(t, evalScope);
+    if (resolved !== undefined) return resolved;
+  }
+  const val = evaluateCSTExpression(expr, evalScope);
+  return val !== null ? val : undefined;
+}
+
 function extractEvaluatedValue(resolved: any, evalScope?: any): any {
   if (resolved == null) return undefined;
   if (typeof resolved === "number" || typeof resolved === "boolean" || typeof resolved === "string") {
@@ -153,20 +325,56 @@ function extractEvaluatedValue(resolved: any, evalScope?: any): any {
   }
   const mod = resolved.modification;
   if (mod) {
-    const expr = mod.evaluatedExpression ?? mod.expression ?? mod.modificationExpression?.expression;
+    let expr =
+      mod.evaluatedExpression ?? mod.expression ?? mod.modificationExpression?.expression ?? mod.bindingExpression;
+    if (expr == null && typeof mod.getModificationArgument === "function") {
+      const startArg = mod.getModificationArgument("start");
+      expr = startArg?.expression ?? startArg?.value;
+    }
     if (expr != null) {
-      if (typeof expr === "number" || typeof expr === "boolean" || typeof expr === "string") return expr;
-      if (typeof expr.value !== "undefined") return expr.value;
-      if (typeof expr.text === "string") {
-        const t = expr.text.trim();
-        if (/^[+-]?\d+$/.test(t)) return parseInt(t, 10);
-        if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t) && !isNaN(Number(t))) return parseFloat(t);
-        if (t === "true") return true;
-        if (t === "false") return false;
-      }
-      return evaluateCSTExpression(expr, evalScope);
+      const val = evaluateRawOrCstExpr(expr, resolved.parent ?? evalScope);
+      if (val !== undefined) return val;
     }
   }
+
+  const symId = resolved.id ?? resolved.declaration?.id ?? resolved.entry?.id;
+  const db =
+    resolved.db ??
+    resolved.parent?.db ??
+    evalScope?.db ??
+    evalScope?.classInstance?.db ??
+    (typeof evalScope?.query === "function" ? evalScope : null);
+
+  const cstNode =
+    resolved.cstNode ??
+    resolved.abstractSyntaxNode ??
+    resolved.declaration?.cstNode ??
+    (symId !== undefined && typeof db?.cstNode === "function" ? db.cstNode(symId) : null);
+  if (cstNode) {
+    const exprNode = extractModExprFromCstNode(cstNode);
+    if (exprNode) {
+      const val = evaluateRawOrCstExpr(exprNode, resolved.parent ?? evalScope);
+      if (val !== undefined && val !== resolved.name) return val;
+    }
+  }
+
+  if (symId !== undefined && typeof db?.query === "function") {
+    try {
+      const effMod = db.query("effectiveModification", symId);
+      if (effMod) {
+        let bindExpr = effMod.bindingExpression;
+        if (bindExpr == null && Array.isArray(effMod.args)) {
+          const startArg = effMod.args.find((a: any) => a?.name === "start");
+          bindExpr = startArg?.value ?? startArg?.expression;
+        }
+        if (bindExpr != null) {
+          const val = evaluateRawOrCstExpr(bindExpr, resolved.parent ?? evalScope);
+          if (val !== undefined && val !== resolved.name) return val;
+        }
+      }
+    } catch {}
+  }
+
   return undefined;
 }
 
@@ -230,65 +438,197 @@ function resolveAnnotationName(name: string, evalScope: any): any {
   }
 
   if (!evalScope) return undefined;
+  if (activeNameResolutions.has(trimmed)) return undefined;
+  activeNameResolutions.add(trimmed);
 
-  // 4. Resolve via Scope (QueryDB / ModelicaClassInstance / symbol table)
-  // Direct method resolveSimpleName (mock objects or legacy classes)
-  if (typeof evalScope.resolveSimpleName === "function") {
-    const resolved = evalScope.resolveSimpleName(trimmed);
-    if (resolved != null) {
-      const val = extractEvaluatedValue(resolved, evalScope);
-      if (val !== undefined) return val;
-    }
-  }
-
-  // Salsa QueryDB (has .query and .byName)
-  if (typeof evalScope.query === "function") {
-    if (typeof evalScope.byName === "function") {
-      const syms = evalScope.byName(trimmed);
-      if (syms && syms.length > 0) {
-        const val = extractEvaluatedValue(syms[0], evalScope);
-        if (val !== undefined) return val;
+  try {
+    // 4. Component instance modification overrides (e.g. `Resistor R(R=100, useHeatPort=true)`)
+    const compInst =
+      evalScope.componentInstance ??
+      (!evalScope.isClassInstance && (evalScope.classInstance || evalScope.declaration || evalScope.modification)
+        ? evalScope
+        : null);
+    if (compInst) {
+      const mod = compInst.modification;
+      if (mod) {
+        if (typeof mod.getModificationArgument === "function") {
+          const modArg = mod.getModificationArgument(trimmed);
+          if (modArg !== undefined) {
+            const val = extractEvaluatedValue(modArg, compInst.parent ?? evalScope);
+            if (val !== undefined && val !== trimmed) return val;
+          }
+        }
+        const argsList = mod.arguments ?? mod.args;
+        if (Array.isArray(argsList)) {
+          const foundArg = argsList.find((a: any) => a?.name === trimmed);
+          if (foundArg !== undefined) {
+            const val = evaluateRawOrCstExpr(
+              foundArg.value ?? foundArg.expression ?? foundArg,
+              compInst.parent ?? evalScope,
+            );
+            if (val !== undefined && val !== trimmed) return val;
+          }
+        }
+        if (mod.classModification) {
+          const modExpr = findNamedModExprInClassMod(mod.classModification, trimmed);
+          if (modExpr) {
+            const val = evaluateRawOrCstExpr(modExpr, compInst.parent ?? evalScope);
+            if (val !== undefined && val !== trimmed) return val;
+          }
+        }
+      }
+      const compCst = compInst.cstNode ?? compInst.abstractSyntaxNode ?? compInst.declaration?.cstNode;
+      if (compCst) {
+        const modExpr = extractModExprFromCstNode(compCst, trimmed);
+        if (modExpr) {
+          const val = evaluateRawOrCstExpr(modExpr, compInst.parent ?? evalScope);
+          if (val !== undefined && val !== trimmed) return val;
+        }
+      }
+      const compSymId = compInst.id ?? compInst.declaration?.id ?? compInst.entry?.id;
+      const compDb =
+        compInst.db ?? compInst.parent?.db ?? evalScope.db ?? evalScope.classInstance?.db ?? compInst.classInstance?.db;
+      if (compSymId !== undefined && typeof compDb?.query === "function") {
+        try {
+          const effMod = compDb.query("effectiveModification", compSymId);
+          if (effMod?.args) {
+            const foundArg = Array.isArray(effMod.args)
+              ? effMod.args.find((a: any) => a?.name === trimmed)
+              : effMod.args.get?.(trimmed);
+            if (foundArg) {
+              const val = evaluateRawOrCstExpr(
+                foundArg.value ?? foundArg.expression ?? foundArg,
+                compInst.parent ?? evalScope,
+              );
+              if (val !== undefined && val !== trimmed) return val;
+            }
+          }
+        } catch {}
       }
     }
-    const scopeId = evalScope.currentClassId ?? evalScope.id;
-    if (scopeId !== undefined) {
-      try {
-        const resolver = evalScope.query("resolveSimpleName", scopeId);
-        if (typeof resolver === "function") {
-          const sym = resolver(trimmed);
-          if (sym != null) {
-            const val = extractEvaluatedValue(sym, evalScope);
+
+    // 5. Resolve via Scope Hierarchy (QueryDB / ModelicaClassInstance / parent class)
+    const candidateScopes: any[] = [];
+    for (const s of [
+      evalScope,
+      evalScope.classInstance,
+      evalScope.componentInstance?.classInstance,
+      evalScope.parent,
+    ]) {
+      if (s && !candidateScopes.includes(s)) candidateScopes.push(s);
+    }
+
+    // 5a. Check extends_clause modifications in the class hierarchy (e.g. `extends ConditionalHeatPort(useHeatPort=true)`)
+    const visitedClasses = new Set<any>();
+    const checkExtendsMods = (cls: any): any => {
+      if (!cls || visitedClasses.has(cls)) return undefined;
+      visitedClasses.add(cls);
+      const clsCst = cls.cstNode ?? cls.abstractSyntaxNode;
+      if (clsCst) {
+        const extModExpr = findExtendsModExprInClassCst(clsCst, trimmed);
+        if (extModExpr) {
+          const val = evaluateRawOrCstExpr(extModExpr, cls);
+          if (val !== undefined && val !== trimmed) return val;
+        }
+      }
+      if (Array.isArray(cls.extendsClassInstances)) {
+        for (const ext of cls.extendsClassInstances) {
+          if (ext?.cstNode) {
+            const extModExpr = extractModExprFromCstNode(ext.cstNode, trimmed);
+            if (extModExpr) {
+              const val = evaluateRawOrCstExpr(extModExpr, cls);
+              if (val !== undefined && val !== trimmed) return val;
+            }
+          }
+          const subVal = checkExtendsMods(ext?.classInstance ?? ext);
+          if (subVal !== undefined) return subVal;
+        }
+      }
+      return undefined;
+    };
+
+    for (const scope of candidateScopes) {
+      const extVal = checkExtendsMods(scope);
+      if (extVal !== undefined) return extVal;
+    }
+
+    for (const scope of candidateScopes) {
+      // Direct method resolveSimpleName (mock objects or legacy classes)
+      if (typeof scope.resolveSimpleName === "function") {
+        const resolved = scope.resolveSimpleName(trimmed);
+        if (resolved != null) {
+          const val = extractEvaluatedValue(resolved, scope);
+          if (val !== undefined) return val;
+        }
+      }
+
+      // Salsa QueryDB (has .query and .byName)
+      if (typeof scope.query === "function") {
+        const scopeId = scope.currentClassId ?? scope.id;
+        if (scopeId !== undefined) {
+          try {
+            const resolver = scope.query("resolveSimpleName", scopeId);
+            if (typeof resolver === "function") {
+              const sym = resolver(trimmed);
+              if (sym != null) {
+                const val = extractEvaluatedValue(sym, scope);
+                if (val !== undefined) return val;
+              }
+            }
+          } catch {}
+        }
+        if (typeof scope.byName === "function") {
+          const syms = scope.byName(trimmed);
+          if (syms && syms.length > 0) {
+            const val = extractEvaluatedValue(syms[0], scope);
             if (val !== undefined) return val;
           }
         }
-      } catch {}
-    }
-  }
+      }
 
-  // ModelicaClassInstance (with resolveName or components / elements list)
-  if (typeof evalScope.resolveName === "function") {
-    const resolved = evalScope.resolveName(trimmed.split("."));
-    if (resolved != null) {
-      const val = extractEvaluatedValue(resolved, evalScope);
-      if (val !== undefined) return val;
-    }
-  }
-  if (Array.isArray(evalScope.components)) {
-    const comp = evalScope.components.find((c: any) => c.name === trimmed);
-    if (comp != null) {
-      const val = extractEvaluatedValue(comp, evalScope);
-      if (val !== undefined) return val;
-    }
-  }
-  if (Array.isArray(evalScope.elements)) {
-    const elem = evalScope.elements.find((e: any) => e.name === trimmed);
-    if (elem != null) {
-      const val = extractEvaluatedValue(elem, evalScope);
-      if (val !== undefined) return val;
-    }
-  }
+      // ModelicaClassInstance (with resolveName or components / elements list)
+      if (typeof scope.resolveName === "function") {
+        const resolved = scope.resolveName(parts);
+        if (resolved != null) {
+          const val = extractEvaluatedValue(resolved, scope);
+          if (val !== undefined) return val;
+        }
+      }
 
-  return undefined;
+      const findInClassHierarchy = (cls: any, seen = new Set<any>()): any => {
+        if (!cls || seen.has(cls)) return undefined;
+        seen.add(cls);
+        if (Array.isArray(cls.components)) {
+          const comp = cls.components.find((c: any) => c.name === trimmed);
+          if (comp != null) {
+            const val = extractEvaluatedValue(comp, cls);
+            if (val !== undefined) return val;
+          }
+        }
+        if (Array.isArray(cls.elements)) {
+          const elem = cls.elements.find((e: any) => e.name === trimmed);
+          if (elem != null) {
+            const val = extractEvaluatedValue(elem, cls);
+            if (val !== undefined) return val;
+          }
+        }
+        if (Array.isArray(cls.extendsClassInstances)) {
+          for (const ext of cls.extendsClassInstances) {
+            const v = findInClassHierarchy(ext?.classInstance ?? ext, seen);
+            if (v !== undefined) return v;
+          }
+        }
+        return undefined;
+      };
+
+      const hierarchyVal = findInClassHierarchy(scope);
+      if (hierarchyVal !== undefined) return hierarchyVal;
+    }
+
+    return undefined;
+  } finally {
+    activeNameResolutions.delete(trimmed);
+  }
 }
 
 // ── Array & Matrix Literal Parser ───────────────────────────────────────────
@@ -896,11 +1236,34 @@ export function evaluateCSTExpression(node: any, evalScope?: any): any {
 
 // ── Condition Attribute Evaluator ───────────────────────────────────────────
 
-const conditionCache = new WeakMap<any, boolean | undefined>();
-
 export function evaluateCondition(component: any, parentContext?: any): boolean | undefined {
-  const node = component.cstNode ?? component.abstractSyntaxNode;
+  let node = component?.cstNode ?? component?.abstractSyntaxNode ?? component?.declaration?.cstNode;
+  if (!node && component?.id != null) {
+    const db = component.db ?? component.parent?.db ?? parentContext?.db ?? parentContext?.classInstance?.db;
+    if (typeof db?.cstNode === "function") {
+      try {
+        node = db.cstNode(component.id);
+      } catch {}
+    }
+  }
   if (!node) return true;
+
+  while (
+    node &&
+    !Cst.ComponentDeclaration.is(node) &&
+    !Cst.ComponentClause.is(node) &&
+    !("conditionAttribute" in node) &&
+    node.parent &&
+    (Cst.Declaration.is(node) ||
+      Cst.Identifier.is(node) ||
+      node.type === "declaration" ||
+      node.type === "Declaration" ||
+      node.type === "identifier" ||
+      node.type === "Identifier" ||
+      Cst.ComponentDeclaration.is(node.parent))
+  ) {
+    node = node.parent;
+  }
 
   let condition: any = null;
   if ("conditionAttribute" in node) {
@@ -912,16 +1275,29 @@ export function evaluateCondition(component: any, parentContext?: any): boolean 
     const condAttr = node.children?.find((c: any) => Cst.ConditionAttribute.is(c));
     condition = condAttr?.children?.find((c: any) => Cst.Expression.is(c)) ?? condAttr?.children?.[1];
   }
+  if (!condition && node.parent && (Cst.ComponentDeclaration.is(node.parent) || Cst.ComponentClause.is(node.parent))) {
+    const condAttr = node.parent.children?.find((c: any) => Cst.ConditionAttribute.is(c));
+    condition = condAttr?.children?.find((c: any) => Cst.Expression.is(c)) ?? condAttr?.children?.[1];
+  }
   if (!condition) return true;
 
-  const cached = conditionCache.get(component);
-  if (cached !== undefined) return cached;
-
-  const scope = parentContext ?? component.parent ?? component;
+  const scope =
+    parentContext && component.parent && parentContext !== component.parent
+      ? {
+          componentInstance:
+            parentContext.componentInstance ??
+            (!parentContext.isClassInstance &&
+            (parentContext.classInstance || parentContext.declaration || parentContext.modification)
+              ? parentContext
+              : undefined),
+          classInstance:
+            parentContext.classInstance ?? (parentContext.isClassInstance ? parentContext : component.parent),
+          parent: component.parent,
+        }
+      : (parentContext ?? component.parent ?? component);
   try {
     const result = evaluateCSTExpression(condition, scope);
     if (typeof result === "boolean") {
-      conditionCache.set(component, result);
       return result;
     }
   } catch (e) {
@@ -1344,7 +1720,11 @@ export class AnnotationEvaluator {
       return this.parseFunctionCall(expr, argName);
     }
 
-    return this.toJSON(evaluateCSTExpression(expr, this.scope));
+    const evaluated = this.toJSON(evaluateCSTExpression(expr, this.scope));
+    if (argName === "visible" && typeof evaluated !== "boolean") {
+      return false;
+    }
+    return evaluated;
   }
 
   private extractCstFunctionArgs(node: any): { named: [string, any][]; positional: any[] } {
@@ -1506,7 +1886,11 @@ export class AnnotationEvaluator {
       const callArgs = unwrapped.children?.find((c: any) => Cst.FunctionCallArgs.is(c));
       if (compRef && callArgs) return this.parseFunctionCall(unwrapped, propName);
     }
-    return this.toJSON(evaluateCSTExpression(unwrapped, this.scope));
+    const evaluated = this.toJSON(evaluateCSTExpression(unwrapped, this.scope));
+    if (propName === "visible" && typeof evaluated !== "boolean") {
+      return false;
+    }
+    return evaluated;
   }
 
   private parseGraphicsArray(expr: any): any[] {

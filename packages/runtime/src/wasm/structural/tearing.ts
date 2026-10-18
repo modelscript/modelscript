@@ -172,11 +172,8 @@ export function createTornBlock(
           let lhs = dae.getEqData().get(eqIdx * EQ_STRIDE + EQ_LHS) as u32;
           if (lhs < dae.exprCount && dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
             let rawV = dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_DATA1) as u32;
-            if (rawV >= dae.varCount) {
-              let res = dae.lookupVariableByName(rawV);
-              if (res >= 0) rawV = res as u32;
-            }
-            if (rawV == varIndices[lastV]) score += 4;
+            let res = dae.resolveExprVarId(rawV);
+            if (res >= 0 && (res as u32) == varIndices[lastV]) score += 4;
           }
           if (score > bestScore) {
             bestScore = score;
@@ -248,12 +245,9 @@ function exprContainsVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): bool {
 
   if (kind == ExprKind.Name) {
     let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
-    if (rawId == targetVarId) return true;
-    if (rawId >= dae.varCount) {
-      let resolved = dae.lookupVariableByName(rawId);
-      return resolved >= 0 && (resolved as u32) == targetVarId;
-    }
-    return false;
+    let resolved = dae.resolveExprVarId(rawId);
+    if (resolved >= 0 && (resolved as u32) == targetVarId) return true;
+    return rawId == targetVarId;
   }
 
   if (
@@ -315,15 +309,8 @@ function exprContainsVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): bool {
     if (count > 0 && count != 0xffffffff && left != 0xffffffff) {
       if (exprContainsVar(dae, left, targetVarId)) return true;
       for (let a: u32 = 1; a < count; a++) {
-        let slotIdx = exprId + a;
-        if (slotIdx < dae.exprCount) {
-          let slotOffset = slotIdx * EXPR_STRIDE;
-          let slotKind = dae.getExprData().get(slotOffset + EXPR_KIND);
-          let argExpr = slotKind == ExprKind.Tuple
-            ? (dae.getExprData().get(slotOffset + EXPR_LEFT) as u32)
-            : left + a;
-          if (argExpr != 0xffffffff && exprContainsVar(dae, argExpr, targetVarId)) return true;
-        }
+        let argExpr = dae.getCallArgExprId(exprId, a);
+        if (argExpr != 0xffffffff && exprContainsVar(dae, argExpr, targetVarId)) return true;
       }
     }
     return false;
@@ -347,11 +334,9 @@ export function evalInnerChain(dae: DaeBuilder, torn: TornBlock, varValuesPtr: u
     let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
 
     if (lhs < dae.exprCount && dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
-      let targetV = dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_DATA1) as u32;
-      if (targetV >= dae.varCount) {
-        let resolved = dae.lookupVariableByName(targetV);
-        if (resolved >= 0) targetV = resolved as u32;
-      }
+      let rawV = dae.getExprData().get(lhs * EXPR_STRIDE + EXPR_DATA1) as u32;
+      let resolved = dae.resolveExprVarId(rawV);
+      let targetV = resolved >= 0 ? (resolved as u32) : rawV;
       if (targetV == varIdx && !exprContainsVar(dae, rhs, varIdx)) {
         // Direct assignment: x_inner = RHS
         let rhsVal = evalExpr(rhs, dae, varValuesPtr);
@@ -361,11 +346,9 @@ export function evalInnerChain(dae: DaeBuilder, torn: TornBlock, varValuesPtr: u
     }
 
     if (rhs < dae.exprCount && dae.getExprData().get(rhs * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
-      let targetV = dae.getExprData().get(rhs * EXPR_STRIDE + EXPR_DATA1) as u32;
-      if (targetV >= dae.varCount) {
-        let resolved = dae.lookupVariableByName(targetV);
-        if (resolved >= 0) targetV = resolved as u32;
-      }
+      let rawV = dae.getExprData().get(rhs * EXPR_STRIDE + EXPR_DATA1) as u32;
+      let resolved = dae.resolveExprVarId(rawV);
+      let targetV = resolved >= 0 ? (resolved as u32) : rawV;
       if (targetV == varIdx && !exprContainsVar(dae, lhs, varIdx)) {
         // Direct assignment: LHS = x_inner
         let lhsVal = evalExpr(lhs, dae, varValuesPtr);
@@ -571,7 +554,7 @@ export class TearingCache {
  * Allocates and initializes a new incremental `TearingCache` in WebAssembly linear memory.
  */
 export function dae_createTearingCache(capacity: u32 = 256): u32 {
-  let ptr = atomicChunkAlloc(offsetof<TearingCache>());
+  let ptr = atomicChunkAlloc(max<u32>(offsetof<TearingCache>() as u32, 16));
   let cache = changetype<TearingCache>(ptr);
   cache.init(capacity);
   return ptr as u32;

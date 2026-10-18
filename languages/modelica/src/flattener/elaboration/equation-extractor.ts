@@ -41,6 +41,7 @@ import {
   getArrayCtorElements,
   getArrayLiteralItems,
   getExprDims,
+  getSymbolQualifiedName,
   getVarPrefixSet,
   isDefinitelyScalarExpr,
   isEquationExpr,
@@ -274,8 +275,8 @@ export function emitFunctionCallEquation(
     }
   }
 
-  const callId = flattener.lowerExpr(node, dae, prefix, substitutions);
-  if (isStaticTrueAssert(callId, dae)) {
+  let callId = flattener.lowerExpr(node, dae, prefix, substitutions);
+  if (!isInitial && isStaticTrueAssert(callId, dae)) {
     return;
   }
 
@@ -396,21 +397,38 @@ export function emitFunctionCallEquation(
         const len0 = dae.getExprData1(arg0);
         const len1 = dae.getExprData1(arg1);
         if (len0 === len1) {
-          for (let i = 0; i < len0; i++) {
-            const el0 = i === 0 ? dae.getExprLeft(arg0) : dae.getExprLeft(arg0 + i);
-            const el1 = i === 0 ? dae.getExprLeft(arg1) : dae.getExprLeft(arg1 + i);
-            const scalarCall = dae.addCallExpr("reinit", [el0, el1]);
-            if (elseWhenClause) {
-              elseWhenClause.equations.push({ kind: EqKind.FunctionCall, lhs: scalarCall, rhs: -1 });
-              elseWhenClause.bodyEquations.push({ kind: EqKind.FunctionCall, lhsExprId: scalarCall, rhsExprId: -1 });
-            } else if (whenIdx >= 0) {
-              dae.addWhenBodyEquation(whenIdx, EqKind.FunctionCall, scalarCall, -1);
-            } else {
-              const eqKind = isInitial ? EqKind.InitialFunctionCall : EqKind.FunctionCall;
-              dae.addEquation(eqKind, scalarCall, -1);
+          if (!dae.extensionMetadata?.["isOldFrontend"] && len0 > 0) {
+            const firstEl0 = dae.getExprLeft(arg0);
+            const firstEl0Name =
+              dae.getExprKind(firstEl0) === ExprKind.Name
+                ? (dae.interner.resolve(dae.getExprData1(firstEl0)) ?? "")
+                : "";
+            const baseArrName = firstEl0Name.replace(/\[[^\]]+\]$/, "");
+            if (baseArrName) {
+              const realElems: number[] = [];
+              for (let i = 0; i < len1; i++) {
+                const el1 = i === 0 ? dae.getExprLeft(arg1) : dae.getExprLeft(arg1 + i);
+                realElems.push(isRealExpr(el1, dae) ? el1 : castToRealExpr(el1, dae));
+              }
+              callId = dae.addCallExpr("reinit", [dae.addNameExpr(baseArrName), dae.addArrayCtorExpr(realElems)]);
             }
+          } else {
+            for (let i = 0; i < len0; i++) {
+              const el0 = i === 0 ? dae.getExprLeft(arg0) : dae.getExprLeft(arg0 + i);
+              const el1 = i === 0 ? dae.getExprLeft(arg1) : dae.getExprLeft(arg1 + i);
+              const scalarCall = dae.addCallExpr("reinit", [el0, el1]);
+              if (elseWhenClause) {
+                elseWhenClause.equations.push({ kind: EqKind.FunctionCall, lhs: scalarCall, rhs: -1 });
+                elseWhenClause.bodyEquations.push({ kind: EqKind.FunctionCall, lhsExprId: scalarCall, rhsExprId: -1 });
+              } else if (whenIdx >= 0) {
+                dae.addWhenBodyEquation(whenIdx, EqKind.FunctionCall, scalarCall, -1);
+              } else {
+                const eqKind = isInitial ? EqKind.InitialFunctionCall : EqKind.FunctionCall;
+                dae.addEquation(eqKind, scalarCall, -1);
+              }
+            }
+            return;
           }
-          return;
         }
       }
     }
@@ -513,7 +531,43 @@ export function extractClassEquations(
         continue;
       }
       let compClassId = db.query<SymbolId | null>("classInstance", child.id);
-      if (classId && typeSpec && child.parentId !== classId) {
+      let redeclPkgId: SymbolId | null = null;
+      let redeclPkgPrefix: string | null = null;
+      if (typeSpec?.includes(".")) {
+        const typeParts = typeSpec.split(".");
+        const pkgPrefix = typeParts[0]!;
+        const pkgRedeclArg = parentMods?.args
+          ?.slice()
+          .reverse()
+          .find((a: any) => !a.isBreak && a.name === pkgPrefix && (a.isRedeclaration || a.redeclaredTypeSpecifier));
+        if (pkgRedeclArg?.redeclaredTypeSpecifier) {
+          let targetPkgId = flattener.resolveRedeclarationType(
+            pkgRedeclArg.ownerClassId ?? pkgRedeclArg.evaluationScopeId ?? parentMods?.ownerClassId ?? classId,
+            pkgRedeclArg.redeclaredTypeSpecifier,
+          );
+          if (targetPkgId) {
+            const visitedAliases = new Set<SymbolId>();
+            while (targetPkgId && !visitedAliases.has(targetPkgId)) {
+              visitedAliases.add(targetPkgId);
+              if (!getShortClassSpecifierNode(db.cstNode(targetPkgId) as any)) break;
+              const basePkg = db.query<SymbolEntry | null>("resolvedBaseClass", targetPkgId);
+              if (basePkg) targetPkgId = basePkg.id;
+              else break;
+            }
+            redeclPkgId = targetPkgId;
+            redeclPkgPrefix = pkgPrefix;
+            const memberName = typeParts.slice(1).join(".");
+            const memberTarget = db.query<(n: string) => SymbolEntry | null>("resolveName", targetPkgId)?.(memberName);
+            if (
+              memberTarget &&
+              (memberTarget.kind === "Class" || (memberTarget.metadata as any)?.classKind === "type")
+            ) {
+              compClassId = memberTarget.id;
+            }
+          }
+        }
+      }
+      if (!redeclPkgId && classId && typeSpec && child.parentId !== classId) {
         const origClassSym = compClassId ? db.symbol(compClassId) : null;
         if (origClassSym && origClassSym.parentId !== null) {
           const scopeTarget = typeSpec.includes(".")
@@ -537,7 +591,10 @@ export function extractClassEquations(
           (a.name === typeSpec || a.name === child.name),
       );
       if (matchingClassArg?.redeclaredTypeSpecifier) {
-        const redeclId = flattener.resolveRedeclarationType(classId, matchingClassArg.redeclaredTypeSpecifier);
+        const redeclId = flattener.resolveRedeclarationType(
+          matchingClassArg.ownerClassId ?? matchingClassArg.evaluationScopeId ?? parentMods?.ownerClassId ?? classId,
+          matchingClassArg.redeclaredTypeSpecifier,
+        );
         if (redeclId !== null) {
           compClassId = redeclId;
         }
@@ -581,17 +638,130 @@ export function extractClassEquations(
         ) {
           const childPrefix = prefix ? `${prefix}.${child.name}` : child.name;
           if (flattener.isComponentDisabled(childPrefix)) continue;
-          const matchingArg = parentMods?.args?.find((a: any) => !a.isBreak && a.name === child.name);
-          const compMods = compInst?.modification?.args || [];
-          const classExtendsMods = resolvedCompClassId ? collectExtendsMods(flattener, resolvedCompClassId) : [];
+          const resolveChainedEqRedecl = (arg: any, fallbackScopeId: number | undefined, extraMods?: any[]): any => {
+            let effRedeclSpec = arg.redeclaredTypeSpecifier;
+            let effOwnerScopeId = arg.ownerClassId ?? arg.evaluationScopeId ?? fallbackScopeId;
+            if ((arg.isRedeclaration || effRedeclSpec) && effRedeclSpec) {
+              const visitedRedecl = new Set<string>();
+              while (effRedeclSpec && !effRedeclSpec.includes(".") && !visitedRedecl.has(effRedeclSpec)) {
+                visitedRedecl.add(effRedeclSpec);
+                const outerRedecl =
+                  extraMods
+                    ?.slice()
+                    .reverse()
+                    .find(
+                      (pa: any) =>
+                        pa !== arg &&
+                        !pa.isBreak &&
+                        (pa.isRedeclaration || pa.redeclaredTypeSpecifier) &&
+                        pa.name === effRedeclSpec &&
+                        pa.redeclaredTypeSpecifier &&
+                        pa.redeclaredTypeSpecifier !== pa.name,
+                    ) ??
+                  parentMods?.args
+                    ?.slice()
+                    .reverse()
+                    .find(
+                      (pa: any) =>
+                        !pa.isBreak &&
+                        (pa.isRedeclaration || pa.redeclaredTypeSpecifier) &&
+                        pa.name === effRedeclSpec &&
+                        pa.redeclaredTypeSpecifier &&
+                        pa.redeclaredTypeSpecifier !== pa.name,
+                    );
+                if (outerRedecl?.redeclaredTypeSpecifier) {
+                  effRedeclSpec = outerRedecl.redeclaredTypeSpecifier;
+                  effOwnerScopeId = outerRedecl.ownerClassId ?? outerRedecl.evaluationScopeId ?? effOwnerScopeId;
+                } else {
+                  break;
+                }
+              }
+              if (!effRedeclSpec.includes(".") && (effOwnerScopeId || classId)) {
+                const lookupScopeId = effOwnerScopeId ?? classId;
+                const localSym: SymbolEntry | null | undefined =
+                  db.query<(n: string) => SymbolEntry | null>("resolveName", lookupScopeId)?.(effRedeclSpec) ??
+                  db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", lookupScopeId)?.(effRedeclSpec);
+                if (localSym && (localSym.kind === "Class" || localSym.kind === "Package")) {
+                  let curSym: SymbolEntry | null = localSym;
+                  const visitedAliases = new Set<SymbolId>();
+                  while (curSym && !visitedAliases.has(curSym.id)) {
+                    visitedAliases.add(curSym.id);
+                    const curCst = db.cstNode(curSym.id) as any;
+                    if (!getShortClassSpecifierNode(curCst)) break;
+                    if (
+                      db.query<boolean>("isReplaceable", curSym.id) ||
+                      curCst?.parent?.type === "element_replaceable"
+                    ) {
+                      break;
+                    }
+                    if (db.query<any>("effectiveModification", curSym.id)) break;
+                    if (
+                      String((curSym.metadata as any)?.classKind ?? (curSym.metadata as any)?.classPrefixes ?? "")
+                        .toLowerCase()
+                        .includes("type")
+                    ) {
+                      break;
+                    }
+                    const nextBase: SymbolEntry | null = db.query<SymbolEntry | null>("resolvedBaseClass", curSym.id);
+                    if (nextBase && !(nextBase.metadata as any)?.isPredefined) curSym = nextBase;
+                    else break;
+                  }
+                  if (curSym && curSym.id !== localSym.id) {
+                    effRedeclSpec = getSymbolQualifiedName(db, curSym.id) || curSym.name;
+                  }
+                }
+              }
+            }
+            return {
+              ...arg,
+              redeclaredTypeSpecifier: effRedeclSpec,
+              ownerClassId: effOwnerScopeId,
+              evaluationScopeId: effOwnerScopeId,
+            };
+          };
+          const compMods = (compInst?.modification?.args || []).map((a: any) =>
+            resolveChainedEqRedecl(a, child.parentId ?? classId),
+          );
+          const classExtendsMods = (resolvedCompClassId ? collectExtendsMods(flattener, resolvedCompClassId) : []).map(
+            (a: any) => ({ ...a, ownerClassId: a.ownerClassId ?? resolvedCompClassId }),
+          );
+          const matchingParentNestedArgs =
+            parentMods?.args
+              ?.filter((a: any) => !a.isBreak && a.name === child.name)
+              .flatMap((a: any) =>
+                (a.nestedArgs || a.args || []).map((na: any) => ({
+                  ...na,
+                  ownerClassId: na.ownerClassId ?? a.ownerClassId ?? parentMods?.ownerClassId ?? classId,
+                })),
+              ) || [];
+          const rawChildSubModArgs = [
+            ...classExtendsMods,
+            ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
+            ...compMods,
+            ...matchingParentNestedArgs,
+          ];
+          const resolvedChildSubModArgs = rawChildSubModArgs.map((a: any) =>
+            (a.isRedeclaration || a.redeclaredTypeSpecifier) && a.redeclaredTypeSpecifier
+              ? resolveChainedEqRedecl(a, a.ownerClassId ?? classId, rawChildSubModArgs)
+              : a,
+          );
+          const childSpecPkgPrefix =
+            redeclPkgId && redeclPkgPrefix
+              ? (() => {
+                  const ownerClsId = parentMods?.ownerClassId ?? classId;
+                  const ownerQual = ownerClsId ? getSymbolQualifiedName(db, ownerClsId) : "";
+                  if (!ownerQual) return undefined;
+                  return prefix
+                    ? `${ownerQual}$${prefix.replace(/\./g, "$")}.${redeclPkgPrefix}`
+                    : `${ownerQual}.${redeclPkgPrefix}`;
+                })()
+              : parentMods?.specializedPkgPrefix;
           const childSubMod = {
-            args: [
-              ...classExtendsMods,
-              ...compMods,
-              ...(matchingClassArg?.nestedArgs || matchingClassArg?.args || []),
-              ...(matchingArg?.nestedArgs || matchingArg?.args || []),
-            ],
+            args: resolvedChildSubModArgs,
             ownerClassId: resolvedCompClassId,
+            packageScopeId: redeclPkgId ?? parentMods?.packageScopeId,
+            specializedPkgPrefix: childSpecPkgPrefix,
+            specializedPkgInstPrefix: redeclPkgId ? prefix : parentMods?.specializedPkgInstPrefix,
           };
           const arrayDims = db.query<number[] | null>("resolvedArrayDimensions", child.id);
           if (curVisited.has(resolvedCompClassId)) {
@@ -1271,6 +1441,22 @@ export function extractClassEquations(
                   }
                 }
                 const evaluated = evalDaeExpr(condExprId, dae);
+                if (
+                  evaluated !== null &&
+                  !dae.extensionMetadata?.["isOldFrontend"] &&
+                  branches.some((br) =>
+                    br.equationNodes.some((eq) => eq.type === "connect_equation" || eq.text?.includes("connect(")),
+                  )
+                ) {
+                  const condVars = new Set<string>();
+                  dae.collectExprVarNames(condExprId, condVars);
+                  for (const vName of condVars) {
+                    const vIdx = dae.getVarIdxByName(vName);
+                    if (vIdx >= 0 && dae.getVarVariability(vIdx) === Variability.Parameter) {
+                      dae.setVarFinal(vIdx, true);
+                    }
+                  }
+                }
                 if (evaluated === null) {
                   isDynamic = true;
                   break;
@@ -1962,7 +2148,7 @@ export function extractClassEquations(
               }
               const lhsDims = getExprDims(lhsExprId, dae, flattener.db);
               const rhsDims = getExprDims(rhsExprId, dae, flattener.db);
-              if ((lhsDims && lhsDims[0] === 0) || (rhsDims && rhsDims[0] === 0)) {
+              if ((lhsDims && lhsDims.some((d) => d === 0)) || (rhsDims && rhsDims.some((d) => d === 0))) {
                 return;
               }
               const lhsKind = dae.getExprKind(lhsExprId);
@@ -2330,12 +2516,22 @@ export function extractClassEquations(
                   if (isRealExpr(finalLhs, dae) && !isRealExpr(finalRhs, dae)) {
                     finalRhs = castToRealExpr(finalRhs, dae);
                   } else if (
-                    dae.extensionMetadata?.["isOldFrontend"] &&
+                    (flattener.isOldFrontend || dae.extensionMetadata?.["isOldFrontend"]) &&
                     !isRealExpr(finalLhs, dae) &&
-                    inferArenaExprVarType(dae, finalLhs) === VarType.Integer &&
                     isRealExpr(finalRhs, dae)
                   ) {
-                    finalLhs = castToRealExpr(finalLhs, dae);
+                    let lhsType = inferArenaExprVarType(dae, finalLhs);
+                    if (lhsType === null && dae.getExprKind(finalLhs) === ExprKind.Subscript) {
+                      const baseId = dae.getExprData1(finalLhs);
+                      if (dae.getExprKind(baseId) === ExprKind.Name) {
+                        const baseName = dae.interner.resolve(dae.getExprData1(baseId));
+                        const vIdx = dae.getVarIdxByName(`${baseName}[1]`);
+                        if (vIdx >= 0) lhsType = dae.getVarType(vIdx);
+                      }
+                    }
+                    if (lhsType === VarType.Integer) {
+                      finalLhs = castToRealExpr(finalLhs, dae);
+                    }
                   }
                 }
                 const eqIdx = dae.addEquation(isInitial ? EqKind.InitialSimple : EqKind.Simple, finalLhs, finalRhs);
@@ -2950,69 +3146,9 @@ export function extractClassEquations(
               }
             }
 
-            // Check elsewhen variable consistency
-            const whenBranches: string[][] = [[]];
-            let currentWhenBranch = whenBranches[0]!;
-            for (const child of node.children || []) {
-              const text = child.text?.trim() ?? "";
-              const norm = Cst.kind(child);
-              if (norm === "elsewhen" || child.type === "elsewhen" || text === "elsewhen") {
-                currentWhenBranch = [];
-                whenBranches.push(currentWhenBranch);
-              } else {
-                const collectLhs = (n: any) => {
-                  if (n.type === "simple_equation") {
-                    const lhs = (n.children || []).find(
-                      (k: any) => k.type === "lhs_expression" || k.type === "component_reference",
-                    );
-                    if (lhs) {
-                      const v = lhs.text.trim().replace(/\s+/g, "");
-                      if (!currentWhenBranch.includes(v)) currentWhenBranch.push(v);
-                    }
-                    return;
-                  }
-                  for (const c of n.children || []) {
-                    collectLhs(c);
-                  }
-                };
-                collectLhs(child);
-              }
-            }
-
-            if (whenBranches.length > 1) {
-              const hasNestedWhen = (node.children || []).some(
-                (c: any) => c.type === "when_equation" || c.type === "when_statement",
-              );
-              if (hasNestedWhen) return;
-              const baseVars = whenBranches[0]!.slice().sort();
-              let hasMismatch = false;
-              for (let b = 1; b < whenBranches.length; b++) {
-                const compVars = whenBranches[b]!.slice().sort();
-                if (baseVars.length !== compVars.length) {
-                  hasMismatch = true;
-                  break;
-                }
-                for (let i = 0; i < baseVars.length; i++) {
-                  if (baseVars[i] !== compVars[i]) {
-                    hasMismatch = true;
-                    break;
-                  }
-                }
-                if (hasMismatch) break;
-              }
-              if (hasMismatch) {
-                dae.diagnostics.push({
-                  severity: "error",
-                  code: ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH.code,
-                  message: ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH.message(),
-                  range: {
-                    startPosition: node.startPosition,
-                    endPosition: node.endPosition,
-                  },
-                });
-                return;
-              }
-            }
+            const hasNestedWhen = (node.children || []).some(
+              (c: any) => c.type === "when_equation" || c.type === "when_statement",
+            );
 
             const condId = cond ? flattener.lowerExpr(cond, dae, prefix, substitutions) : -1;
             const whenIdx = dae.addWhenEquation(condId);
@@ -3024,6 +3160,64 @@ export function extractClassEquations(
             } | null = null;
 
             let hasWhenLhsError = false;
+            const expandWhenSide = (exprId: number): number => {
+              if (exprId < 0 || flattener.options.arrayMode === "preserve") return exprId;
+              const k = dae.getExprKind(exprId);
+              if (k === ExprKind.Name) {
+                const name = dae.interner.resolve(dae.getExprData1(exprId));
+                if (name) {
+                  const exp = expandVarToArrayCtor(name, dae);
+                  if (exp !== null) return exp;
+                }
+              } else if (k === ExprKind.Subscript) {
+                const baseId = dae.getExprData1(exprId);
+                const subCount = dae.getExprRight(exprId);
+                if (dae.getExprKind(baseId) === ExprKind.Name && subCount === 1) {
+                  const sub0 = dae.getExprLeft(exprId);
+                  if (dae.getExprKind(sub0) === ExprKind.ArrayCtor) {
+                    const baseName = dae.interner.resolve(dae.getExprData1(baseId));
+                    const subElems = getArrayCtorElements(sub0, dae);
+                    const expandedItems = subElems.map((se) => {
+                      const v = evalDaeExpr(se, dae);
+                      if (typeof v === "number" && Number.isInteger(v)) {
+                        return dae.addNameExpr(`${baseName}[${v}]`);
+                      }
+                      return dae.addSubscriptExpr(baseId, [se]);
+                    });
+                    return dae.addArrayCtorExpr(expandedItems);
+                  }
+                }
+              }
+              return exprId;
+            };
+            const emitWhenEqPair = (lId: number, rId: number) => {
+              const lK = dae.getExprKind(lId);
+              const rK = dae.getExprKind(rId);
+              if (lK === ExprKind.ArrayCtor && rK === ExprKind.ArrayCtor) {
+                const lElems = getArrayCtorElements(lId, dae);
+                const rElems = getArrayCtorElements(rId, dae);
+                if (lElems.length === rElems.length && lElems.length > 0) {
+                  for (let i = 0; i < lElems.length; i++) {
+                    emitWhenEqPair(lElems[i]!, rElems[i]!);
+                  }
+                  return;
+                }
+              }
+              let finalRhs = rId;
+              if (isRealExpr(lId, dae) && !isRealExpr(finalRhs, dae)) {
+                finalRhs = castToRealExpr(finalRhs, dae);
+              }
+              if (currentElseWhenClause) {
+                currentElseWhenClause.equations.push({ kind: EqKind.Simple, lhs: lId, rhs: finalRhs });
+                currentElseWhenClause.bodyEquations.push({
+                  kind: EqKind.Simple,
+                  lhsExprId: lId,
+                  rhsExprId: finalRhs,
+                });
+              } else {
+                dae.addWhenBodyEquation(whenIdx, EqKind.Simple, lId, finalRhs);
+              }
+            };
             const collectWhenBody = (n: any) => {
               if (!n || hasWhenLhsError) return;
               if (n.type === "simple_equation") {
@@ -3070,16 +3264,9 @@ export function extractClassEquations(
                     hasWhenLhsError = true;
                     return;
                   }
-                  if (currentElseWhenClause) {
-                    currentElseWhenClause.equations.push({ kind: EqKind.Simple, lhs: lhsId, rhs: rhsId });
-                    currentElseWhenClause.bodyEquations.push({
-                      kind: EqKind.Simple,
-                      lhsExprId: lhsId,
-                      rhsExprId: rhsId,
-                    });
-                  } else {
-                    dae.addWhenBodyEquation(whenIdx, EqKind.Simple, lhsId, rhsId);
-                  }
+                  const expLhs = expandWhenSide(lhsId);
+                  const expRhs = expandWhenSide(rhsId);
+                  emitWhenEqPair(expLhs, expRhs);
                 }
                 return;
               }
@@ -3140,6 +3327,42 @@ export function extractClassEquations(
               }
               if (kid !== cond && kid.type !== "when" && kid.type !== "then" && kid.type !== "end when") {
                 collectWhenBody(kid);
+              }
+            }
+
+            if (!hasWhenLhsError && !hasNestedWhen && whenMeta && whenMeta.elseWhenClauses.length > 0) {
+              const extractLhsSet = (eqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[]): string[] => {
+                const vars = new Set<string>();
+                for (const eq of eqs) {
+                  if (eq.kind === EqKind.Simple) {
+                    const out = new StringWriter();
+                    const printer = new ArenaDAEPrinter(out, dae, true);
+                    printer.printExpr(eq.lhsExprId);
+                    vars.add(out.toString().trim().replace(/\s+/g, ""));
+                  }
+                }
+                return Array.from(vars).sort();
+              };
+              const baseVars = extractLhsSet(whenMeta.bodyEquations);
+              let hasMismatch = false;
+              for (const ew of whenMeta.elseWhenClauses) {
+                const compVars = extractLhsSet(ew.bodyEquations);
+                if (baseVars.length !== compVars.length || baseVars.some((v, i) => v !== compVars[i])) {
+                  hasMismatch = true;
+                  break;
+                }
+              }
+              if (hasMismatch) {
+                dae.diagnostics.push({
+                  severity: "error",
+                  code: ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH.code,
+                  message: ModelicaErrorCode.ELSEWHEN_VARIABLE_MISMATCH.message(),
+                  range: {
+                    startPosition: node.startPosition,
+                    endPosition: node.endPosition,
+                  },
+                });
+                return;
               }
             }
             return;
@@ -3962,18 +4185,26 @@ export function extractClassEquations(
                         return;
                       }
                       if (variability === Variability.Parameter) {
-                        dae.diagnostics.push({
-                          severity: "error",
-                          code: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.code,
-                          message: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.message(displayTarget, valStr),
-                          range: {
-                            startByte: sNode.startIndex ?? sNode.startByte,
-                            endByte: sNode.endIndex ?? sNode.endByte,
-                            startPosition: sNode.startPosition,
-                            endPosition: sNode.endPosition,
-                          },
-                        });
-                        return;
+                        const isFixed = dae.getVarAttr(vIdx, "fixed");
+                        const isExplicitFalse =
+                          isFixed !== undefined &&
+                          isFixed >= 0 &&
+                          dae.getExprKind(isFixed) === ExprKind.BoolLiteral &&
+                          dae.getExprData1(isFixed) === 0;
+                        if (!(isInitial || isInitAlg) || !isExplicitFalse) {
+                          dae.diagnostics.push({
+                            severity: "error",
+                            code: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.code,
+                            message: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.message(displayTarget, valStr),
+                            range: {
+                              startByte: sNode.startIndex ?? sNode.startByte,
+                              endByte: sNode.endIndex ?? sNode.endByte,
+                              startPosition: sNode.startPosition,
+                              endPosition: sNode.endPosition,
+                            },
+                          });
+                          return;
+                        }
                       }
                     }
                   }
@@ -4362,6 +4593,9 @@ export function extractClassEquations(
         const combinedMods = {
           args: [...shortArgs, ...(parentMods?.args ?? [])],
           ownerClassId: parentMods?.ownerClassId ?? classId,
+          packageScopeId: parentMods?.packageScopeId,
+          specializedPkgPrefix: parentMods?.specializedPkgPrefix,
+          specializedPkgInstPrefix: parentMods?.specializedPkgInstPrefix,
         };
         if (!curVisited.has(matches[0]!.id)) {
           extractClassEquations(flattener, matches[0]!.id, prefix, dae, curBreakContext, combinedMods, curVisited);
@@ -4399,6 +4633,9 @@ export function extractClassEquations(
           ...(parentMods?.args || []),
         ],
         ownerClassId: parentMods?.ownerClassId ?? classId,
+        packageScopeId: parentMods?.packageScopeId,
+        specializedPkgPrefix: parentMods?.specializedPkgPrefix,
+        specializedPkgInstPrefix: parentMods?.specializedPkgInstPrefix,
       };
       const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
       const baseTargets = baseClass

@@ -94,6 +94,14 @@ void _D35;
 
 export const ROSENBROCK_D = 1.0 - 1.0 / Math.SQRT2; // ≈ 0.2928932188134524
 
+export type Rodas4PEventFunction = (t: number, y: number[]) => number;
+export type Rodas4PEventCallback = (
+  tEvent: number,
+  yEvent: number[],
+  eventIndex: number,
+  direction: 1 | -1,
+) => number[];
+
 export interface Rodas4POptions {
   atol?: number | undefined;
   rtol?: number | undefined;
@@ -101,6 +109,10 @@ export interface Rodas4POptions {
   maxStep?: number | undefined;
   minStep?: number | undefined;
   maxSteps?: number | undefined;
+  equidistantOutput?: boolean | undefined;
+  eventFunctions?: Rodas4PEventFunction[] | undefined;
+  eventCallback?: Rodas4PEventCallback | undefined;
+  eventDirections?: number[] | undefined;
 }
 
 export interface Rodas4PResult extends CommonSolverResult {
@@ -167,6 +179,28 @@ function applyMass(out: Float64Array, v: Float64Array, massMatrix: number[][] | 
   }
 }
 
+function hermiteInterpRodas(
+  y0: number[],
+  y1: number[],
+  f0: number[],
+  f1: number[],
+  h: number,
+  theta: number,
+  n: number,
+): number[] {
+  const theta2 = theta * theta;
+  const theta3 = theta2 * theta;
+  const h00 = 2 * theta3 - 3 * theta2 + 1;
+  const h10 = theta3 - 2 * theta2 + theta;
+  const h01 = -2 * theta3 + 3 * theta2;
+  const h11 = theta3 - theta2;
+  const out = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    out[i] = h00 * (y0[i] ?? 0) + h10 * h * (f0[i] ?? 0) + h01 * (y1[i] ?? 0) + h11 * h * (f1[i] ?? 0);
+  }
+  return out;
+}
+
 /**
  * Integrate a stiff DAE/ODE using the true 6-stage 4th-order RODAS4P method.
  */
@@ -178,6 +212,9 @@ export function rodas4p(
   outputTimes?: number[],
   options: Rodas4POptions = {},
   massMatrix?: number[][],
+  eventFunctions?: Rodas4PEventFunction[],
+  eventCallback?: Rodas4PEventCallback,
+  eventDirections?: number[],
 ): Rodas4PResult {
   const atol = options.atol ?? 1e-6;
   const rtol = options.rtol ?? 1e-6;
@@ -212,6 +249,35 @@ export function rodas4p(
   resultStates.push([...y]);
   if (denseOutputs && outputTimes[0] !== undefined && Math.abs(outputTimes[0] - t) < 1e-12) {
     outIdx++;
+  }
+
+  const effEventFunctions = eventFunctions ?? options.eventFunctions;
+  const effEventCallback = eventCallback ?? options.eventCallback;
+  const effEventDirections = eventDirections ?? options.eventDirections;
+
+  const computeEventValuesWithProbe = (currentTime: number, currentState: number[]) => {
+    if (!effEventFunctions) return [];
+    return effEventFunctions.map((g, gIdx) => {
+      const gVal = g(currentTime, currentState);
+      if (Math.abs(gVal) < 1e-10) {
+        const dydt = f(currentTime, currentState);
+        const probe = currentState.map((yi, si) => yi + 1e-8 * (dydt[si] ?? 0));
+        const gProbe = g(currentTime + 1e-8, probe);
+        if (Math.abs(gProbe) > 1e-14) {
+          return gProbe > 0 ? 1e-10 : -1e-10;
+        }
+        const reqDir = effEventDirections?.[gIdx] ?? 0;
+        if (reqDir < 0) return -1e-10;
+        if (reqDir > 0) return 1e-10;
+        return 0;
+      }
+      return gVal;
+    });
+  };
+
+  let prevEventVals: number[] = [];
+  if (effEventFunctions && effEventFunctions.length > 0) {
+    prevEventVals = computeEventValuesWithProbe(t, y);
   }
 
   const gamma = RODAS4P_GAMMA;
@@ -369,26 +435,118 @@ export function rodas4p(
       maxErrorRatio = Math.max(maxErrorRatio, err_i / tol);
     }
 
-    if (maxErrorRatio <= 1.0 || Math.abs(h) <= minStep * 2) {
+    if (
+      Number.isFinite(maxErrorRatio) &&
+      (maxErrorRatio <= 1.0 || (Math.abs(h) <= minStep * 2 && maxErrorRatio <= 100.0))
+    ) {
       // Step accepted
       stats.acceptedSteps++;
+      const fNew = f(t + h, yNew);
+      stats.fEvals++;
+
+      if (effEventFunctions && effEventFunctions.length > 0) {
+        const currEventVals = effEventFunctions.map((ef) => ef(t + h, yNew));
+        let eventTriggered = -1;
+        let eventDir: 1 | -1 = 1;
+        let bestTEvent = tEnd >= t0 ? Infinity : -Infinity;
+        let bestYEvent: number[] = [...yNew];
+
+        for (let ei = 0; ei < effEventFunctions.length; ei++) {
+          const vPrev = prevEventVals[ei] ?? 0;
+          const vCurr = currEventVals[ei] ?? 0;
+          const expectedDir = effEventDirections?.[ei] ?? 0;
+
+          if (vPrev * vCurr < 0) {
+            const evDir: 1 | -1 = vCurr > vPrev ? 1 : -1;
+            if (expectedDir === 0 || expectedDir === evDir) {
+              let tLeft = t;
+              let tRight = t + h;
+              let yCand = [...yNew];
+              let valLeft = vPrev;
+
+              for (let iter = 0; iter < 30; iter++) {
+                const tMid = 0.5 * (tLeft + tRight);
+                const thetaMid = (tMid - t) / h;
+                const yMid = hermiteInterpRodas(y, yNew, f0, fNew, h, thetaMid, n);
+                const valMid = effEventFunctions[ei]!(tMid, yMid);
+
+                if (Math.abs(valMid) < 1e-12 || Math.abs(tRight - tLeft) < 1e-14) {
+                  yCand = yMid;
+                  tRight = tMid;
+                  break;
+                }
+                if (valLeft * valMid <= 0) {
+                  tRight = tMid;
+                } else {
+                  tLeft = tMid;
+                  valLeft = valMid;
+                }
+                yCand = yMid;
+              }
+
+              const isEarlier = tEnd >= t0 ? tRight < bestTEvent : tRight > bestTEvent;
+              if (isEarlier) {
+                bestTEvent = tRight;
+                bestYEvent = yCand;
+                eventTriggered = ei;
+                eventDir = evDir;
+              }
+            }
+          }
+        }
+
+        if (eventTriggered >= 0) {
+          const tEvent = bestTEvent;
+          const yEvent = bestYEvent;
+          const hasOutputGrid = denseOutputs && options.equidistantOutput !== false;
+
+          if (hasOutputGrid && outputTimes) {
+            while (outIdx < outputTimes.length) {
+              const tTarget = outputTimes[outIdx]!;
+              const beforeEvent = tEnd >= t0 ? tTarget < tEvent - 1e-14 : tTarget > tEvent + 1e-14;
+              if (beforeEvent) {
+                const theta = (tTarget - t) / h;
+                const yTarget = hermiteInterpRodas(y, yNew, f0, fNew, h, theta, n);
+                resultTimes.push(tTarget);
+                resultStates.push(yTarget);
+                outIdx++;
+              } else {
+                break;
+              }
+            }
+          }
+
+          if (effEventCallback) {
+            y = effEventCallback(tEvent, yEvent, eventTriggered, eventDir);
+          } else {
+            y = yEvent;
+          }
+
+          if (hasOutputGrid && outputTimes) {
+            if (outIdx < outputTimes.length && Math.abs(outputTimes[outIdx]! - tEvent) <= 1e-14) {
+              resultTimes.push(outputTimes[outIdx]!);
+              resultStates.push([...y]);
+              outIdx++;
+            }
+          } else {
+            resultTimes.push(tEvent);
+            resultStates.push([...y]);
+          }
+
+          t = tEvent;
+          prevEventVals = computeEventValuesWithProbe(t, y);
+          h = dir * Math.max(minStep, Math.min(Math.abs(h) * 0.5, maxStep));
+          continue;
+        }
+        prevEventVals = currEventVals;
+      }
 
       if (denseOutputs && outputTimes) {
         while (outIdx < outputTimes.length) {
           const tTarget = outputTimes[outIdx]!;
           if ((tEnd > t0 && tTarget <= t + h) || (tEnd < t0 && tTarget >= t + h)) {
             const theta = (tTarget - t) / h;
-            const theta2 = theta * theta;
-            const theta3 = theta2 * theta;
-            const h00 = 2 * theta3 - 3 * theta2 + 1;
-            const h10 = theta3 - 2 * theta2 + theta;
-            const h01 = -2 * theta3 + 3 * theta2;
-            const h11 = theta3 - theta2;
-            const yTarget = new Array<number>(n);
-            for (let i = 0; i < n; i++) {
-              yTarget[i] =
-                h00 * (y[i] ?? 0) + h10 * h * (k1[i] ?? 0) + h01 * (yNew[i] ?? 0) + h11 * h * (fEmbedded[i] ?? 0);
-            }
+            const yTarget = hermiteInterpRodas(y, yNew, f0, fNew, h, theta, n);
             resultTimes.push(tTarget);
             resultStates.push(yTarget);
             outIdx++;
@@ -410,8 +568,12 @@ export function rodas4p(
     } else {
       // Step rejected
       stats.rejectedSteps++;
-      const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.25)));
-      h = dir * Math.max(minStep, Math.abs(h) * factor);
+      if (!Number.isFinite(maxErrorRatio) || Math.abs(h) <= minStep * 1.01) {
+        h = dir * (Math.abs(h) * 0.5);
+      } else {
+        const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.25)));
+        h = dir * Math.max(minStep, Math.abs(h) * factor);
+      }
     }
   }
 
@@ -544,7 +706,10 @@ export function rosenbrock23(
     }
 
     // 7. Accept or reject step based on normalized error ratio
-    if (maxErrorRatio <= 1.0 || h <= minStep * 2) {
+    if (
+      Number.isFinite(maxErrorRatio) &&
+      (maxErrorRatio <= 1.0 || (Math.abs(h) <= minStep * 2 && maxErrorRatio <= 100.0))
+    ) {
       stats.acceptedSteps++;
       if (denseOutputs && outputTimes) {
         // Emit linearly interpolated dense output points falling within [t, t + h]
@@ -575,8 +740,12 @@ export function rosenbrock23(
     } else {
       stats.rejectedSteps++;
       // Step rejected: shrink h using 2nd-root safety factor clamped to [0.1, 1.0]
-      const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.5)));
-      h = Math.max(minStep, h * factor);
+      if (!Number.isFinite(maxErrorRatio) || Math.abs(h) <= minStep * 1.01) {
+        h = h * 0.5;
+      } else {
+        const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.5)));
+        h = Math.max(minStep, h * factor);
+      }
     }
   }
 

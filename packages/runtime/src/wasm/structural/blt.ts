@@ -146,6 +146,7 @@ export class BltEngine {
 
     for (let i: u32 = 0; i < eqCount; i++) {
       this.eqDepPtrs.set(i, this.eqDepVars.length);
+      if (this.dae.isEqInitial(i) || this.dae.isEqRemoved(i)) continue;
       
       let offset = i * EQ_STRIDE;
       let lhsId = this.dae.getEqData().get(offset + EQ_LHS);
@@ -175,7 +176,7 @@ export class BltEngine {
 
         if (kind == ExprKind.Name) {
           let rawId = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
-          let varId: i32 = rawId < this.dae.varCount ? (rawId as i32) : this.dae.lookupVariableByName(rawId);
+          let varId: i32 = this.dae.resolveExprVarId(rawId);
           if (varId >= 0 && (varId as u32) < this.dae.varCount && seenVars.get(varId) == 0) {
             seenVars.set(varId, 1);
             this.eqDepVars.push(varId);
@@ -285,17 +286,10 @@ export class BltEngine {
             exprStack.push(left as i32);
             sideStack.push(side);
             for (let a: u32 = 1; a < count; a++) {
-              let slotIdx = exprId + a;
-              if (slotIdx < this.dae.exprCount) {
-                let slotOffset = slotIdx * EXPR_STRIDE;
-                let slotKind = this.dae.getExprData().get(slotOffset + EXPR_KIND);
-                let argExpr = slotKind == ExprKind.Tuple
-                  ? (this.dae.getExprData().get(slotOffset + EXPR_LEFT) as u32)
-                  : left + a;
-                if (argExpr != 0xffffffff && argExpr < this.dae.exprCount) {
-                  exprStack.push(argExpr as i32);
-                  sideStack.push(side);
-                }
+              let argExpr = this.dae.getCallArgExprId(exprId, a);
+              if (argExpr != 0xffffffff && argExpr < this.dae.exprCount) {
+                exprStack.push(argExpr as i32);
+                sideStack.push(side);
               }
             }
           }

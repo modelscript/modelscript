@@ -511,22 +511,46 @@ export interface CfdSlicingProperties {
  * lift coefficient, and drag polar parameters.
  */
 export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperties {
-  const numOpt = (pattern: RegExp): number | undefined => {
+  // Strip line comments (%, //, #) for active directive extraction
+  const activeText = cfgText
+    .split(/\r?\n/)
+    .map((line) => {
+      const idx = line.search(/(%|\/\/|#)/);
+      return idx !== -1 ? line.slice(0, idx) : line;
+    })
+    .join("\n");
+
+  const numOptActive = (pattern: RegExp): number | undefined => {
+    const m = activeText.match(pattern);
+    if (!m || m[1] === undefined) return undefined;
+    const val = parseFloat(m[1]);
+    return Number.isFinite(val) ? val : undefined;
+  };
+
+  const numOptAny = (pattern: RegExp): number | undefined => {
     const m = cfgText.match(pattern);
     if (!m || m[1] === undefined) return undefined;
     const val = parseFloat(m[1]);
     return Number.isFinite(val) ? val : undefined;
   };
 
-  const cdExplicit =
-    numOpt(/\bCd_total\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ?? numOpt(/\bCD\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
-  const clExplicit =
-    numOpt(/\bCl_total\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ?? numOpt(/\bCL\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const hasFlowDirectives =
+    /\b(?:SOLVER|MACH_NUMBER|REYNOLDS_NUMBER|INC_VELOCITY_INIT|FREESTREAM_VELOCITY|MARKER_INLET|AOA)\s*=/i.test(
+      activeText,
+    ) || /\buniform\s*\(/i.test(activeText);
 
-  const refAreaOpt = numOpt(/\bREF_AREA\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const cdExplicit =
+    numOptActive(/\b(?:Cd_total|CD)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ??
+    (!hasFlowDirectives ? numOptAny(/\b(?:Cd_total|CD)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) : undefined);
+  const clExplicit =
+    numOptActive(/\b(?:Cl_total|CL)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ??
+    (!hasFlowDirectives ? numOptAny(/\b(?:Cl_total|CL)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) : undefined);
+
+  const refAreaOpt = numOptActive(/\bREF_AREA\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
   const refLengthOpt =
-    numOpt(/\bREF_LENGTH\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ??
-    numOpt(/\bREYNOLDS_LENGTH\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+    numOptActive(/\bREF_LENGTH\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ??
+    numOptActive(/\bREYNOLDS_LENGTH\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const refSpanOpt = numOptActive(/\bREF_SPAN\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
 
   const refArea =
     refAreaOpt !== undefined && refAreaOpt > 0
@@ -543,11 +567,11 @@ export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperti
   const R_AIR = 287.058;
   const GAMMA = 1.4;
   const tempK =
-    numOpt(/\b(?:FREESTREAM_TEMPERATURE|INC_TEMPERATURE_INIT)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ?? 288.15;
-  const pressurePa = numOpt(/\bFREESTREAM_PRESSURE\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ?? 101325.0;
+    numOptActive(/\b(?:FREESTREAM_TEMPERATURE|INC_TEMPERATURE_INIT)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ?? 288.15;
+  const pressurePa = numOptActive(/\bFREESTREAM_PRESSURE\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ?? 101325.0;
 
-  const rhoExplicit = numOpt(/\b(?:INC_DENSITY_INIT|FREESTREAM_DENSITY)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
-  const hasThermoDirective = /\b(?:FREESTREAM_PRESSURE|FREESTREAM_TEMPERATURE)\s*=/i.test(cfgText);
+  const rhoExplicit = numOptActive(/\b(?:INC_DENSITY_INIT|FREESTREAM_DENSITY)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const hasThermoDirective = /\b(?:FREESTREAM_PRESSURE|FREESTREAM_TEMPERATURE)\s*=/i.test(activeText);
   const density =
     rhoExplicit !== undefined && rhoExplicit > 0
       ? rhoExplicit
@@ -556,46 +580,64 @@ export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperti
         : 1.225;
 
   // Dynamic viscosity via MU_CONSTANT / FREESTREAM_VISCOSITY or Sutherland's Law
-  const muExplicit = numOpt(/\b(?:MU_CONSTANT|FREESTREAM_VISCOSITY)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const muExplicit = numOptActive(/\b(?:MU_CONSTANT|FREESTREAM_VISCOSITY)\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
   const sutherlandMu = 1.716e-5 * Math.pow(tempK / 273.15, 1.5) * ((273.15 + 110.4) / (tempK + 110.4));
   const mu = muExplicit !== undefined && muExplicit > 0 ? muExplicit : sutherlandMu;
 
   // Speed of sound
   const soundSpeed = Math.sqrt(GAMMA * R_AIR * Math.max(tempK, 1.0));
 
-  const machOpt = numOpt(/\bMACH_NUMBER\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
-  const reynoldsOpt = numOpt(/\bREYNOLDS_NUMBER\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
-  const aoaOpt = numOpt(/\bAOA\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const machOpt = numOptActive(/\bMACH_NUMBER\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const reynoldsOpt = numOptActive(/\bREYNOLDS_NUMBER\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
+  const aoaOpt = numOptActive(/\bAOA\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i);
 
-  const velTupleMatch = cfgText.match(
-    /\b(?:INC_VELOCITY_INIT|FREESTREAM_VELOCITY)\s*=\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/i,
+  const velTupleMatch = activeText.match(
+    /\b(?:INC_VELOCITY_INIT|FREESTREAM_VELOCITY)\s*=\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)(?:\s*,\s*([-+\d.eE]+))?\s*\)/i,
   );
-  const openFoamVelMatch = cfgText.match(/\buniform\s*\(\s*([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s*\)/i);
-  const inletMatch = cfgText.match(/\bMARKER_INLET\s*=\s*\(\s*[^,)]+\s*,\s*([-+\d.eE]+)(?:\s*,\s*([-+\d.eE]+))?/i);
+  const openFoamVelMatch = activeText.match(/\buniform\s*\(\s*([-+\d.eE]+)\s+([-+\d.eE]+)(?:\s+([-+\d.eE]+))?\s*\)/i);
+  const inletParenMatch = activeText.match(/\bMARKER_INLET\s*=\s*\(([^)]+)\)/i);
 
   let vx = 0.0,
     vy = 0.0,
     vz = 0.0;
+  let hasVelocityVector = false;
   let freeStreamVelocity: number;
+
   if (velTupleMatch) {
     vx = parseFloat(velTupleMatch[1]!);
     vy = parseFloat(velTupleMatch[2]!);
-    vz = parseFloat(velTupleMatch[3]!);
+    vz = velTupleMatch[3] !== undefined ? parseFloat(velTupleMatch[3]) : 0.0;
+    hasVelocityVector = true;
     freeStreamVelocity = parseFloat(Math.hypot(vx, vy, vz).toFixed(4));
   } else if (openFoamVelMatch) {
     vx = parseFloat(openFoamVelMatch[1]!);
     vy = parseFloat(openFoamVelMatch[2]!);
-    vz = parseFloat(openFoamVelMatch[3]!);
+    vz = openFoamVelMatch[3] !== undefined ? parseFloat(openFoamVelMatch[3]) : 0.0;
+    hasVelocityVector = true;
     freeStreamVelocity = parseFloat(Math.hypot(vx, vy, vz).toFixed(4));
   } else if (machOpt !== undefined && machOpt > 0) {
     freeStreamVelocity = parseFloat((machOpt * soundSpeed).toFixed(4));
   } else if (reynoldsOpt !== undefined && reynoldsOpt > 0) {
     freeStreamVelocity = parseFloat(((reynoldsOpt * mu) / (density * Math.max(refLength, 1e-6))).toFixed(4));
-  } else if (inletMatch) {
-    const v1 = parseFloat(inletMatch[1]!);
-    const v2 = inletMatch[2] !== undefined ? parseFloat(inletMatch[2]!) : undefined;
-    // In SU2 incompressible MARKER_INLET = (name, T, V, nx, ny, nz) or (name, V, nx, ny, nz)
-    freeStreamVelocity = parseFloat((v2 !== undefined && v1 > 150 ? Math.abs(v2) : Math.abs(v1)).toFixed(4));
+  } else if (inletParenMatch && inletParenMatch[1]) {
+    const parts = inletParenMatch[1]
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    // 6-tuple: ( name, T0, velMag, nx, ny, nz ); 5-tuple: ( name, velMag, nx, ny, nz )
+    const isSixTuple = parts.length >= 6;
+    const rawVel = isSixTuple ? parseFloat(parts[2]!) : parts.length >= 2 ? parseFloat(parts[1]!) : 10.0;
+    freeStreamVelocity = parseFloat((Number.isFinite(rawVel) ? Math.abs(rawVel) : 10.0).toFixed(4));
+    const dirIdx = isSixTuple ? 3 : 2;
+    if (parts.length >= dirIdx + 3) {
+      const nx = parseFloat(parts[dirIdx]!) || 0.0;
+      const ny = parseFloat(parts[dirIdx + 1]!) || 0.0;
+      const nz = parseFloat(parts[dirIdx + 2]!) || 0.0;
+      vx = freeStreamVelocity * nx;
+      vy = freeStreamVelocity * ny;
+      vz = freeStreamVelocity * nz;
+      hasVelocityVector = Math.hypot(vx, vy, vz) > 1e-6;
+    }
   } else {
     freeStreamVelocity = 10.0;
   }
@@ -609,35 +651,50 @@ export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperti
       : Math.max((density * Math.max(freeStreamVelocity, 0.01) * refLength) / Math.max(mu, 1e-9), 100.0);
 
   const aoaDeg =
-    aoaOpt !== undefined ? aoaOpt : velTupleMatch && Math.abs(vx) > 1e-6 ? (Math.atan2(vz, vx) * 180.0) / Math.PI : 0.0;
+    aoaOpt !== undefined
+      ? aoaOpt
+      : hasVelocityVector && Math.hypot(vx, vy, vz) > 1e-6
+        ? (Math.atan2(vz, Math.hypot(vx, vy)) * 180.0) / Math.PI
+        : 0.0;
   const aoaRad = (aoaDeg * Math.PI) / 180.0;
 
-  // Aspect ratio & Prandtl-Glauert compressible 3D finite-wing lift
-  const aspectRatio = Math.min(Math.max((refLength * refLength) / Math.max(refArea, 1e-6), 1.0), 20.0);
+  // Aspect ratio: handle both chord-based (AR = S / c^2) and span-based (AR = b^2 / S) reference length conventions
+  const rawAr =
+    refSpanOpt !== undefined && refSpanOpt > 0
+      ? (refSpanOpt * refSpanOpt) / Math.max(refArea, 1e-6)
+      : Math.max(refArea / Math.max(refLength * refLength, 1e-9), (refLength * refLength) / Math.max(refArea, 1e-6));
+  const aspectRatio = Math.min(Math.max(rawAr, 1.0), 25.0);
+
+  // Compressible Prandtl-Glauert 3D finite-wing lift with high-AoA post-stall crossflow attenuation
   const pgBeta = Math.sqrt(Math.max(Math.abs(1.0 - machNumber * machNumber), 0.09));
-  const computedCl = (2.0 * Math.PI * Math.sin(aoaRad)) / (pgBeta + 2.0 / aspectRatio);
-  const cl = clExplicit !== undefined ? clExplicit : parseFloat(computedCl.toFixed(5));
+  const computedCl = (2.0 * Math.PI * Math.sin(aoaRad) * Math.cos(aoaRad)) / (pgBeta + 2.0 / aspectRatio);
+  const cl = clExplicit !== undefined ? clExplicit : parseFloat(computedCl.toFixed(5)) || 0;
 
-  // Boundary-layer skin friction coefficient Cf (Blasius laminar / Prandtl-Schlichting turbulent)
+  // Boundary-layer skin friction coefficient Cf (Blasius laminar / compressible Prandtl-Schlichting turbulent)
+  const compFactor = Math.pow(1.0 + 0.144 * machNumber * machNumber, 0.65);
   const cf =
-    reynoldsNumber < 5.0e5 ? 1.328 / Math.sqrt(reynoldsNumber) : 0.455 / Math.pow(Math.log10(reynoldsNumber), 2.58);
+    reynoldsNumber < 5.0e5
+      ? 1.328 / Math.sqrt(reynoldsNumber)
+      : 0.455 / (Math.pow(Math.log10(reynoldsNumber), 2.58) * compFactor);
 
-  const solverMatch = cfgText.match(/\bSOLVER\s*=\s*([A-Z0-9_]+)/i);
-  const solverType = solverMatch ? solverMatch[1]!.toUpperCase() : "INC_RANS";
-  const isIncompressibleBluff = solverType.startsWith("INC_") && Math.abs(vz) > Math.abs(vx) && machOpt === undefined;
+  // Hoerner streamlined form factor + crossflow separation pressure drag + induced drag + wave drag
+  const thicknessRatio = numOptActive(/\bTHICKNESS_RATIO\s*=\s*([+-]?[\d.]+(?:[eE][+-]?\d+)?)/i) ?? 0.12;
+  const formFactor = 1.0 + 2.0 * thicknessRatio + 60.0 * Math.pow(thicknessRatio, 4);
+  const wettedAreaRatio = 2.05;
+  const cosAoa = Math.cos(aoaRad);
+  const sinAoa = Math.sin(aoaRad);
 
-  // Parasitic form factor + pressure drag + induced drag + transonic wave drag
-  const formFactor = isIncompressibleBluff ? 0.78 / Math.max(cf, 1e-4) : 2.2;
-  const cd0 = cf * formFactor + (isIncompressibleBluff ? 0.0 : 0.012);
+  const cdViscous = (cf * formFactor * wettedAreaRatio + 0.004) * (cosAoa * cosAoa);
+  const cdCrossflow = 0.8 * (sinAoa * sinAoa);
   const oswaldEfficiency = 0.82;
   const cdi = (cl * cl) / (Math.PI * aspectRatio * oswaldEfficiency);
   const cdWave = machNumber > 0.72 ? 20.0 * Math.pow(machNumber - 0.72, 4) : 0.0;
-  const computedCd = Math.max(cd0 + cdi + cdWave, 0.005);
+  const computedCd = Math.max(cdViscous + cdCrossflow + cdi + cdWave, 0.005);
 
-  const cd = cdExplicit !== undefined ? cdExplicit : parseFloat(computedCd.toFixed(4));
+  const cd = cdExplicit !== undefined ? cdExplicit : parseFloat(computedCd.toFixed(4)) || 0;
   const qInf = 0.5 * density * freeStreamVelocity * freeStreamVelocity;
-  const dragForce = parseFloat((qInf * refArea * cd).toFixed(4));
-  const liftForce = parseFloat((qInf * refArea * cl).toFixed(4));
+  const dragForce = parseFloat((qInf * refArea * cd).toFixed(4)) || 0;
+  const liftForce = parseFloat((qInf * refArea * cl).toFixed(4)) || 0;
 
   return {
     cd,
@@ -646,9 +703,9 @@ export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperti
     refLength,
     density,
     freeStreamVelocity,
-    machNumber: parseFloat(machNumber.toFixed(5)),
-    reynoldsNumber: parseFloat(reynoldsNumber.toFixed(1)),
-    aoaDeg: parseFloat(aoaDeg.toFixed(3)),
+    machNumber: parseFloat(machNumber.toFixed(5)) || 0,
+    reynoldsNumber: parseFloat(reynoldsNumber.toFixed(1)) || 0,
+    aoaDeg: parseFloat(aoaDeg.toFixed(3)) || 0,
     dragForce,
     liftForce,
   };

@@ -95,6 +95,20 @@ function cylindricalSurface(ctx: StepContext, origin: Vec3, radius: number, axis
   return emit(ctx, sid, `CYLINDRICAL_SURFACE('',${place},${fmt(radius)})`);
 }
 
+/** Emits a `CONICAL_SURFACE` entity at `origin` with base `radius`, `semiAngle` (radians), and axis frame `(axis, refDir)`. */
+function conicalSurface(
+  ctx: StepContext,
+  origin: Vec3,
+  radius: number,
+  semiAngle: number,
+  axis: Vec3,
+  refDir: Vec3,
+): string {
+  const place = axis2Placement3d(ctx, origin, axis, refDir);
+  const sid = allocId(ctx);
+  return emit(ctx, sid, `CONICAL_SURFACE('',${place},${fmt(radius)},${fmt(semiAngle)})`);
+}
+
 /** Emits a `SPHERICAL_SURFACE` entity centered at `center` with `radius` and frame `(axis, refDir)`. */
 function sphericalSurface(ctx: StepContext, center: Vec3, radius: number, axis: Vec3, refDir: Vec3): string {
   const place = axis2Placement3d(ctx, center, axis, refDir);
@@ -125,6 +139,13 @@ function transformPoint(m: Mat4, p: Vec3): Vec3 {
     (m[1] as number) * p[0] + (m[5] as number) * p[1] + (m[9] as number) * p[2] + (m[13] as number),
     (m[2] as number) * p[0] + (m[6] as number) * p[1] + (m[10] as number) * p[2] + (m[14] as number),
   ];
+}
+
+/** Extracts the radial scale factor from the X column of `m`. */
+function matrixScale(m?: Mat4): number {
+  if (!m) return 1.0;
+  const s = Math.hypot(m[0] as number, m[1] as number, m[2] as number);
+  return s > 1e-12 ? s : 1.0;
 }
 
 /** Applies the linear 3x3 upper-left block of `m` to direction `d` and normalizes the result. */
@@ -277,15 +298,27 @@ function buildBoxBrep(
  * Emits an analytical `MANIFOLD_SOLID_BREP` for a cylinder of `radius` and `height`
  * composed of two planar circular end-cap faces and two semi-cylindrical lateral faces.
  */
-function buildCylinderBrep(ctx: StepContext, name: string, radius: number, height: number, worldMatrix?: Mat4): string {
+function buildCylinderBrep(
+  ctx: StepContext,
+  name: string,
+  radiusBottom: number,
+  radiusTop: number,
+  height: number,
+  worldMatrix?: Mat4,
+): string {
   const hh = height / 2;
+  const rBot = Math.max(1e-6, radiusBottom);
+  const rTop = Math.max(1e-6, radiusTop);
+  const s = matrixScale(worldMatrix);
+  const effRBot = rBot * s;
+  const effRTop = rTop * s;
 
   // Local key vertices: 2 on bottom rim, 2 on top rim
   const localV: Vec3[] = [
-    [-radius, 0, -hh], // 0: bottom -x
-    [radius, 0, -hh], // 1: bottom +x
-    [-radius, 0, hh], // 2: top -x
-    [radius, 0, hh], // 3: top +x
+    [-rBot, 0, -hh], // 0: bottom -x
+    [rBot, 0, -hh], // 1: bottom +x
+    [-rTop, 0, hh], // 2: top -x
+    [rTop, 0, hh], // 3: top +x
   ];
 
   const corners = worldMatrix ? localV.map((c) => transformPoint(worldMatrix, c)) : localV;
@@ -303,8 +336,8 @@ function buildCylinderBrep(ctx: StepContext, name: string, radius: number, heigh
   const effOppZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, -1]) : [0, 0, -1];
 
   // Circles for bottom and top
-  const botCircle = circle(ctx, effBottomCenter, radius, effZAxis, effXAxis);
-  const topCircle = circle(ctx, effTopCenter, radius, effZAxis, effXAxis);
+  const botCircle = circle(ctx, effBottomCenter, effRBot, effZAxis, effXAxis);
+  const topCircle = circle(ctx, effTopCenter, effRTop, effZAxis, effXAxis);
 
   // Bottom circular arc edges
   const ec_b0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${botCircle},.T.)`);
@@ -361,8 +394,17 @@ function buildCylinderBrep(ctx: StepContext, name: string, radius: number, heigh
   const topBound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${topLoop},.T.)`);
   const topFace = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${topBound}),${topPlane},.T.)`);
 
-  // 3. Lateral Cylindrical Surface
-  const cylSurf = cylindricalSurface(ctx, effBottomCenter, radius, effZAxis, effXAxis);
+  // 3. Lateral Cylindrical or Conical Surface
+  const effHeight =
+    Math.hypot(
+      effTopCenter[0] - effBottomCenter[0],
+      effTopCenter[1] - effBottomCenter[1],
+      effTopCenter[2] - effBottomCenter[2],
+    ) || Math.max(1e-6, Math.abs(height) * s);
+  const cylSurf =
+    Math.abs(effRBot - effRTop) > 1e-9
+      ? conicalSurface(ctx, effBottomCenter, effRBot, Math.atan2(effRTop - effRBot, effHeight), effZAxis, effXAxis)
+      : cylindricalSurface(ctx, effBottomCenter, effRBot, effZAxis, effXAxis);
 
   // Lateral Face 1 (semi-cylinder 1, y >= 0)
   const latLoop1 = emit(
@@ -403,6 +445,7 @@ function buildCylinderBrep(ctx: StepContext, name: string, radius: number, heigh
  * north/south pole vertices, two meridian semicircle edges, and two hemispherical faces.
  */
 function buildSphereBrep(ctx: StepContext, name: string, radius: number, worldMatrix?: Mat4): string {
+  const effRadius = radius * matrixScale(worldMatrix);
   const localV: Vec3[] = [
     [0, 0, -radius], // south pole
     [0, 0, radius], // north pole
@@ -420,7 +463,7 @@ function buildSphereBrep(ctx: StepContext, name: string, radius: number, worldMa
   const effYAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 1, 0]) : [0, 1, 0];
 
   // Meridian circle in XZ plane
-  const meridianCircle = circle(ctx, effCenter, radius, effYAxis, effXAxis);
+  const meridianCircle = circle(ctx, effCenter, effRadius, effYAxis, effXAxis);
 
   // Two semicircle meridian edges from south to north pole and back
   const ec_m0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${meridianCircle},.T.)`);
@@ -430,7 +473,7 @@ function buildSphereBrep(ctx: StepContext, name: string, radius: number, worldMa
     return emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
   }
 
-  const sphSurf = sphericalSurface(ctx, effCenter, radius, effZAxis, effXAxis);
+  const sphSurf = sphericalSurface(ctx, effCenter, effRadius, effZAxis, effXAxis);
 
   // Hemisphere 1 (y >= 0)
   const loop1 = emit(
@@ -461,6 +504,10 @@ function buildSphereBrep(ctx: StepContext, name: string, radius: number, worldMa
  * partitioned into two hemispherical `ADVANCED_FACE` patches over a shared `TOROIDAL_SURFACE`.
  */
 function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: number, worldMatrix?: Mat4): string {
+  const s = matrixScale(worldMatrix);
+  const effMajor = major * s;
+  const effMinor = minor * s;
+
   // 1. Transform local origin and orthonormal frame axes into world space
   const effCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, 0]) : [0, 0, 0];
   const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
@@ -486,19 +533,19 @@ function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: nu
   });
 
   // 2. Emit minor cross-section circles and half-circle edge curves at +X and -X
-  const circlePos = circle(ctx, p_pos, minor, effYAxis, effZAxis);
+  const circlePos = circle(ctx, p_pos, effMinor, effYAxis, effZAxis);
   const ec_pos0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${circlePos},.T.)`);
   const ec_pos1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[0]},${circlePos},.T.)`);
 
-  const circleNeg = circle(ctx, p_neg, minor, effYAxis, effZAxis);
+  const circleNeg = circle(ctx, p_neg, effMinor, effYAxis, effZAxis);
   const ec_neg0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[3]},${circleNeg},.T.)`);
   const ec_neg1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[3]},${vp[2]},${circleNeg},.T.)`);
 
   // 3. Emit top (+minor Z) and bottom (-minor Z) major longitudinal circles and half-circle edges
   const p_topCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, minor]) : [0, 0, minor];
   const p_botCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, -minor]) : [0, 0, -minor];
-  const topCircle = circle(ctx, p_topCenter, major, effZAxis, effXAxis);
-  const botCircle = circle(ctx, p_botCenter, major, effZAxis, effXAxis);
+  const topCircle = circle(ctx, p_topCenter, effMajor, effZAxis, effXAxis);
+  const botCircle = circle(ctx, p_botCenter, effMajor, effZAxis, effXAxis);
 
   const ec_top0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[2]},${topCircle},.T.)`);
   const ec_top1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[0]},${topCircle},.T.)`);
@@ -510,7 +557,7 @@ function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: nu
   }
 
   // 4. Bind the two 4-edge toroidal patches into a closed manifold shell
-  const torSurf = toroidalSurface(ctx, effCenter, major, minor, effZAxis, effXAxis);
+  const torSurf = toroidalSurface(ctx, effCenter, effMajor, effMinor, effZAxis, effXAxis);
 
   const loop1 = emit(
     ctx,
@@ -584,7 +631,9 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     }
 
     case SolidKind.Cylinder: {
-      const brepRef = buildCylinderBrep(ctx, solid.name, solid.radius, solid.height, parentMatrix);
+      const rBot = solid.radiusBottom ?? solid.radius;
+      const rTop = solid.radiusTop ?? solid.radius;
+      const brepRef = buildCylinderBrep(ctx, solid.name, rBot, rTop, solid.height, parentMatrix);
       return [brepRef];
     }
 

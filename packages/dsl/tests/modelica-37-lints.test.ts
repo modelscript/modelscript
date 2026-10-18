@@ -38,7 +38,7 @@ describe("Modelica 3.7 Modular Lints Extraction & Direct Source AST", () => {
     expect(ast?.lints.has("notAStreamVariable")).toBe(true);
 
     // Verify Category 3 (Hierarchy & Variability)
-    expect(ast?.lints.has("unresolvedReference")).toBe(true);
+    expect(ast?.lints.has("variableNotFound")).toBe(true);
     expect(ast?.lints.has("extendsCycle")).toBe(true);
     expect(ast?.lints.has("duplicateModification")).toBe(true);
     expect(ast?.lints.has("unbalancedModel")).toBe(true);
@@ -61,6 +61,6 @@ describe("Modelica 3.7 Modular Lints Extraction & Direct Source AST", () => {
     expect(ast?.lints.has("duplicateInitialState")).toBe(true);
     expect(ast?.lints.has("impureCalledInPure")).toBe(true);
     expect(ast?.lints.has("impureInEquationSection")).toBe(true);
-    expect(ast?.lints.has("breakConnectionNotFound")).toBe(true);
+    expect(ast?.lints.has("breakConnectNotFound")).toBe(true);
   });
 });

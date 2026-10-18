@@ -317,9 +317,10 @@ export class ArenaScriptInterpreter {
             positional[0]?.text?.trim()?.replace(/^"|"$/g, "") || evaluateCSTExpression(positional[0], scope);
           if (typeof rawName === "string" && rawName.length > 0) {
             const exists = (this.queryEngine.index.byName.get(rawName)?.length ?? 0) > 0;
-            this.print(exists || rawName === "Modelica" ? "true" : "true");
+            const isBuiltinPackage = rawName === "Modelica" || rawName === "ModelicaServices" || rawName === "Complex";
+            this.print(exists || isBuiltinPackage ? "true" : "false");
           } else {
-            this.print("true");
+            this.print("false");
           }
         } else {
           this.print("false");
@@ -727,6 +728,9 @@ export class ArenaScriptInterpreter {
         // Fallback to synthetic measurements if disk read fails
       }
       if (!loadedFromDisk) {
+        if (measurementFile && measurementFile !== "synthetic") {
+          this.print(`Warning: Could not load measurement data from '${measurementFile}'; using synthetic fallback.`);
+        }
         const measData = this.generateSyntheticMeasurements(paramNames, stopTime);
         for (const [varName, data] of measData) {
           measurements.set(varName, data);

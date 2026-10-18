@@ -35,6 +35,7 @@ import {
   getTrending,
   getUserFollowers,
   resolveFederatedActor,
+  updatePost,
   uploadStorageFile,
 } from "../api";
 import { useAuth } from "../AuthContext";
@@ -42,12 +43,15 @@ import { useFeatureFlag } from "../FeatureFlagContext";
 import { getAvatarUrl } from "../util/avatar";
 import { getAllPrivateKeyIds, getPrivateKey, migrateLegacyKeys } from "../util/keystore";
 import {
+  createBaeldungStarterCells,
   createCellId,
+  estimateReadingTimeMinutes,
   extractArtifactIdsFromCells,
   hasArtifactDirectives,
   type NotebookCell,
   parseNotebookFromContent,
   serializeCellsToMarkdown,
+  type TutorialDifficulty,
 } from "../util/notebook";
 import ArtifactViewCard from "./artifacts/ArtifactViewCard";
 import Box from "./Box";
@@ -353,6 +357,7 @@ function formatRelativeTime(dateString: string): string {
 
 interface ComposeBoxProps {
   onPostCreated?: ((post: any) => void) | undefined;
+  editPostId?: string | number | null | undefined;
   quotePost?: any;
   replyToPost?: any;
   placeholder?: string | undefined;
@@ -368,12 +373,23 @@ interface ComposeBoxProps {
   setNotebookMode?: ((val: boolean) => void) | undefined;
   notebookTitle?: string | undefined;
   setNotebookTitle?: ((val: string) => void) | undefined;
+  notebookSummary?: string | undefined;
+  setNotebookSummary?: ((val: string) => void) | undefined;
+  notebookDifficulty?: TutorialDifficulty | undefined;
+  setNotebookDifficulty?: ((val: TutorialDifficulty | undefined) => void) | undefined;
+  notebookSeries?: string | undefined;
+  setNotebookSeries?: ((val: string) => void) | undefined;
+  notebookDialect?: string | undefined;
+  setNotebookDialect?: ((val: string) => void) | undefined;
+  notebookCompanionRepo?: string | undefined;
+  setNotebookCompanionRepo?: ((val: string) => void) | undefined;
   notebookCells?: NotebookCell[] | undefined;
   setNotebookCells?: ((cells: NotebookCell[]) => void) | undefined;
 }
 
 export default function ComposeBox({
   onPostCreated,
+  editPostId,
   quotePost,
   replyToPost,
   placeholder,
@@ -389,6 +405,16 @@ export default function ComposeBox({
   setNotebookMode: setControlledNotebookMode,
   notebookTitle: controlledNotebookTitle,
   setNotebookTitle: setControlledNotebookTitle,
+  notebookSummary: controlledNotebookSummary,
+  setNotebookSummary: setControlledNotebookSummary,
+  notebookDifficulty: controlledNotebookDifficulty,
+  setNotebookDifficulty: setControlledNotebookDifficulty,
+  notebookSeries: controlledNotebookSeries,
+  setNotebookSeries: setControlledNotebookSeries,
+  notebookDialect: controlledNotebookDialect,
+  setNotebookDialect: setControlledNotebookDialect,
+  notebookCompanionRepo: controlledNotebookCompanionRepo,
+  setNotebookCompanionRepo: setControlledNotebookCompanionRepo,
   notebookCells: controlledNotebookCells,
   setNotebookCells: setControlledNotebookCells,
 }: ComposeBoxProps) {
@@ -410,6 +436,30 @@ export default function ComposeBox({
   const notebookTitle = controlledNotebookTitle !== undefined ? controlledNotebookTitle : internalNotebookTitle;
   const setNotebookTitle = setControlledNotebookTitle || setInternalNotebookTitle;
 
+  const [internalNotebookSummary, setInternalNotebookSummary] = useState("");
+  const notebookSummary = controlledNotebookSummary !== undefined ? controlledNotebookSummary : internalNotebookSummary;
+  const setNotebookSummary = setControlledNotebookSummary || setInternalNotebookSummary;
+
+  const [internalNotebookDifficulty, setInternalNotebookDifficulty] = useState<TutorialDifficulty | undefined>(
+    "Intermediate",
+  );
+  const notebookDifficulty =
+    controlledNotebookDifficulty !== undefined ? controlledNotebookDifficulty : internalNotebookDifficulty;
+  const setNotebookDifficulty = setControlledNotebookDifficulty || setInternalNotebookDifficulty;
+
+  const [internalNotebookSeries, setInternalNotebookSeries] = useState("");
+  const notebookSeries = controlledNotebookSeries !== undefined ? controlledNotebookSeries : internalNotebookSeries;
+  const setNotebookSeries = setControlledNotebookSeries || setInternalNotebookSeries;
+
+  const [internalNotebookDialect, setInternalNotebookDialect] = useState("Modelica 3.4");
+  const notebookDialect = controlledNotebookDialect !== undefined ? controlledNotebookDialect : internalNotebookDialect;
+  const setNotebookDialect = setControlledNotebookDialect || setInternalNotebookDialect;
+
+  const [internalNotebookCompanionRepo, setInternalNotebookCompanionRepo] = useState("");
+  const notebookCompanionRepo =
+    controlledNotebookCompanionRepo !== undefined ? controlledNotebookCompanionRepo : internalNotebookCompanionRepo;
+  const setNotebookCompanionRepo = setControlledNotebookCompanionRepo || setInternalNotebookCompanionRepo;
+
   const [internalNotebookCells, setInternalNotebookCells] = useState<NotebookCell[]>([
     { id: createCellId("md"), type: "markdown", content: "" },
   ]);
@@ -418,6 +468,13 @@ export default function ComposeBox({
 
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [pendingInsertAfterCellId, setPendingInsertAfterCellId] = useState<string | null>(null);
+  const [showTutorialMetaEditor, setShowTutorialMetaEditor] = useState(true);
+  const [showCodeSnippetModal, setShowCodeSnippetModal] = useState(false);
+  const [snippetFilename, setSnippetFilename] = useState("DampedOscillator.mo");
+  const [snippetLang, setSnippetLang] = useState("modelica");
+  const [snippetCode, setSnippetCode] = useState(
+    `model DampedOscillator "Second-order damped harmonic oscillator"\n  parameter Real m = 1.0 "Mass (kg)";\n  parameter Real c = 0.4 "Damping coefficient (N.s/m)";\n  parameter Real k = 25.0 "Spring stiffness (N/m)";\n  Real x(start = 1.0, fixed = true) "Position (m)";\n  Real v(start = 0.0, fixed = true) "Velocity (m/s)";\nequation\n  der(x) = v;\n  m * der(v) + c * v + k * x = 0;\nend DampedOscillator;`,
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -440,6 +497,30 @@ export default function ComposeBox({
     setContent(serialized);
     const artIds = extractArtifactIdsFromCells(cells);
     setArtifactId(artIds[0] ?? null);
+  };
+
+  const handleLoadBaeldungTemplate = () => {
+    const starter = createBaeldungStarterCells();
+    if (!notebookTitle.trim()) {
+      setNotebookTitle(starter.title);
+    }
+    if (!notebookSummary.trim()) {
+      setNotebookSummary(starter.summary);
+    }
+    if (!notebookSeries.trim()) {
+      setNotebookSeries(starter.series);
+    }
+    setNotebookDifficulty(starter.difficulty);
+    setNotebookDialect(starter.dialect);
+    syncNotebookToContentAndArtifact(starter.cells, notebookTitle.trim() || starter.title);
+    setActiveCellId(starter.cells[0]?.id || null);
+  };
+
+  const insertMarkdownSnippet = (cellId: string, snippet: string) => {
+    const target = notebookCells.find((c) => c.id === cellId);
+    if (!target || target.type !== "markdown") return;
+    const prefix = target.content.trim().length > 0 && !target.content.endsWith("\n") ? "\n\n" : "";
+    updateMarkdownCell(cellId, `${target.content}${prefix}${snippet}`);
   };
 
   const handleToggleNotebookMode = () => {
@@ -856,6 +937,12 @@ export default function ComposeBox({
           ? {
               isNotebook: true,
               ...(notebookTitle.trim() ? { title: notebookTitle.trim() } : {}),
+              ...(notebookSummary.trim() ? { summary: notebookSummary.trim() } : {}),
+              ...(notebookDifficulty ? { difficulty: notebookDifficulty } : {}),
+              ...(notebookSeries.trim() ? { series: notebookSeries.trim() } : {}),
+              ...(notebookDialect.trim() ? { dialect: notebookDialect.trim() } : {}),
+              ...(notebookCompanionRepo.trim() ? { companionRepo: notebookCompanionRepo.trim() } : {}),
+              estimatedReadMinutes: estimateReadingTimeMinutes(effectiveCells),
               cells: effectiveCells,
               artifactIds: effectiveArtIds,
             }
@@ -881,12 +968,15 @@ export default function ComposeBox({
         payload.key_id_string = signatureObj.keyIdString;
       }
 
-      const data = await createPost(payload);
+      const data = editPostId ? await updatePost(editPostId, payload) : await createPost(payload);
       setContent("");
       setContentWarning("");
       setShowContentWarning(false);
       setArtifactId(null);
       setNotebookTitle("");
+      setNotebookSummary("");
+      setNotebookSeries("");
+      setNotebookCompanionRepo("");
       setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
       setIsNotebookMode(false);
       onPostCreated?.(data.post);
@@ -1100,6 +1190,8 @@ export default function ComposeBox({
                   display="flex"
                   alignItems="center"
                   justifyContent="space-between"
+                  flexWrap="wrap"
+                  gap={1}
                   px={2}
                   py={1}
                   borderRadius="8px"
@@ -1120,16 +1212,38 @@ export default function ComposeBox({
                     }}
                   >
                     <BookIcon size={13} />
-                    <span>Engineering Notebook Mode · Interleaved Prose & Artifacts</span>
+                    <span>Baeldung-Style Tutorial & Engineering Notebook</span>
                   </span>
-                  <CellActionBtn type="button" onClick={handleToggleNotebookMode} title="Switch to raw Markdown view">
-                    Raw Markdown (`::artifact`)
-                  </CellActionBtn>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                    <CellActionBtn
+                      type="button"
+                      onClick={handleLoadBaeldungTemplate}
+                      title="Populate a structured 5-section Baeldung tutorial scaffold"
+                      style={{
+                        color: "var(--color-accent-cyan)",
+                        background: "rgba(6, 182, 212, 0.12)",
+                        borderColor: "rgba(6, 182, 212, 0.3)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      ⚡ Load Baeldung Template
+                    </CellActionBtn>
+                    <CellActionBtn
+                      type="button"
+                      onClick={() => setShowTutorialMetaEditor(!showTutorialMetaEditor)}
+                      title="Toggle tutorial metadata fields (Series, Difficulty, Dialect, Summary)"
+                    >
+                      ⚙️ Metadata {showTutorialMetaEditor ? "▲" : "▼"}
+                    </CellActionBtn>
+                    <CellActionBtn type="button" onClick={handleToggleNotebookMode} title="Switch to raw Markdown view">
+                      Raw Markdown (`::artifact`)
+                    </CellActionBtn>
+                  </div>
                 </Box>
 
                 <NotebookTitleInput
                   type="text"
-                  placeholder="Notebook / Article Title (optional)..."
+                  placeholder="Tutorial / Article Title (e.g., Guide to Damped Oscillators in ModelScript)..."
                   value={notebookTitle}
                   onChange={(e) => {
                     const nextTitle = e.target.value;
@@ -1137,6 +1251,112 @@ export default function ComposeBox({
                     syncNotebookToContentAndArtifact(notebookCells, nextTitle);
                   }}
                 />
+
+                {showTutorialMetaEditor && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                      padding: "10px 12px",
+                      borderRadius: "10px",
+                      background: "rgba(255, 255, 255, 0.025)",
+                      border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
+                    }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="Tutorial Subtitle / TL;DR Summary (shown in tutorial hero header)..."
+                      value={notebookSummary}
+                      onChange={(e) => setNotebookSummary(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "7px 10px",
+                        fontSize: "13px",
+                        borderRadius: "8px",
+                        border: "1px solid var(--color-border-default)",
+                        background: "rgba(0, 0, 0, 0.25)",
+                        color: "var(--color-fg-default)",
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                        gap: "8px",
+                      }}
+                    >
+                      <select
+                        value={notebookDifficulty || "Intermediate"}
+                        onChange={(e) => setNotebookDifficulty(e.target.value as TutorialDifficulty)}
+                        style={{
+                          padding: "6px 10px",
+                          fontSize: "12px",
+                          fontFamily: "var(--font-mono, monospace)",
+                          borderRadius: "8px",
+                          border: "1px solid var(--color-border-default)",
+                          background: "var(--color-bg-primary, #0b1120)",
+                          color: "var(--color-fg-default)",
+                          outline: "none",
+                        }}
+                      >
+                        <option value="Beginner">● Beginner</option>
+                        <option value="Intermediate">● Intermediate</option>
+                        <option value="Advanced">● Advanced</option>
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="Series (e.g., ModelScript Core)"
+                        value={notebookSeries}
+                        onChange={(e) => setNotebookSeries(e.target.value)}
+                        style={{
+                          padding: "6px 10px",
+                          fontSize: "12px",
+                          fontFamily: "var(--font-mono, monospace)",
+                          borderRadius: "8px",
+                          border: "1px solid var(--color-border-default)",
+                          background: "rgba(0, 0, 0, 0.25)",
+                          color: "var(--color-fg-default)",
+                          outline: "none",
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Dialect (e.g., Modelica 3.4)"
+                        value={notebookDialect}
+                        onChange={(e) => setNotebookDialect(e.target.value)}
+                        style={{
+                          padding: "6px 10px",
+                          fontSize: "12px",
+                          fontFamily: "var(--font-mono, monospace)",
+                          borderRadius: "8px",
+                          border: "1px solid var(--color-border-default)",
+                          background: "rgba(0, 0, 0, 0.25)",
+                          color: "var(--color-fg-default)",
+                          outline: "none",
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Companion Repo (e.g., modelscript/tutorials)"
+                        value={notebookCompanionRepo}
+                        onChange={(e) => setNotebookCompanionRepo(e.target.value)}
+                        style={{
+                          padding: "6px 10px",
+                          fontSize: "12px",
+                          fontFamily: "var(--font-mono, monospace)",
+                          borderRadius: "8px",
+                          border: "1px solid var(--color-border-default)",
+                          background: "rgba(0, 0, 0, 0.25)",
+                          color: "var(--color-fg-default)",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {notebookCells.map((cell, idx) => {
                   const isFirst = idx === 0;
@@ -1164,7 +1384,94 @@ export default function ComposeBox({
                             <span style={{ opacity: 0.75 }}>({cell.title || `id=${cell.artifactId}`})</span>
                           )}
                         </span>
-                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap" }}>
+                          {cell.type === "markdown" && (
+                            <>
+                              <CellActionBtn
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  insertMarkdownSnippet(cell.id, `## ${idx + 1}. Section Title\n\n`);
+                                }}
+                                title="Insert H2 section heading (indexed in Table of Contents)"
+                              >
+                                H2
+                              </CellActionBtn>
+                              <CellActionBtn
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  insertMarkdownSnippet(cell.id, `### Subsection\n\n`);
+                                }}
+                                title="Insert H3 subsection heading"
+                              >
+                                H3
+                              </CellActionBtn>
+                              <CellActionBtn
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveCellId(cell.id);
+                                  setShowCodeSnippetModal(true);
+                                }}
+                                title="Insert syntax-highlighted code block with filename & IDE launcher"
+                              >
+                                {"</>"} Code
+                              </CellActionBtn>
+                              <CellActionBtn
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  insertMarkdownSnippet(
+                                    cell.id,
+                                    `$$\nm \\cdot \\ddot{x} + c \\cdot \\dot{x} + k \\cdot x = 0\n$$`,
+                                  );
+                                }}
+                                title="Insert LaTeX display math block ($$...$$)"
+                              >
+                                ∑ Math
+                              </CellActionBtn>
+                              <CellActionBtn
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  insertMarkdownSnippet(
+                                    cell.id,
+                                    `> [!TIP]\n> **Pro Tip:** Describe a practical engineering best practice or solver tip here.`,
+                                  );
+                                }}
+                                title="Insert Baeldung/GitHub-style Pro Tip callout box"
+                              >
+                                💡 Tip
+                              </CellActionBtn>
+                              <CellActionBtn
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  insertMarkdownSnippet(
+                                    cell.id,
+                                    `> [!NOTE]\n> **Engineering Note:** Highlight an important assumption or DAE formulation detail.`,
+                                  );
+                                }}
+                                title="Insert Engineering Note callout box"
+                              >
+                                ℹ️ Note
+                              </CellActionBtn>
+                              <CellActionBtn
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  insertMarkdownSnippet(
+                                    cell.id,
+                                    `| Parameter | Symbol | Value | Unit |\n| :--- | :--- | :--- | :--- |\n| Mass | $m$ | \`1.0\` | kg |\n| Damping | $c$ | \`0.4\` | N·s/m |\n| Stiffness | $k$ | \`25.0\` | N/m |`,
+                                  );
+                                }}
+                                title="Insert Markdown parameter table"
+                              >
+                                ⊞ Table
+                              </CellActionBtn>
+                            </>
+                          )}
                           <CellActionBtn
                             type="button"
                             disabled={isFirst}
@@ -1227,10 +1534,11 @@ export default function ComposeBox({
                       {cell.type === "markdown" ? (
                         <NotebookCellTextarea
                           value={cell.content}
+                          rows={Math.max(3, Math.min(18, cell.content.split("\n").length + 1))}
                           placeholder={
                             idx === 0
-                              ? "Write introduction, equations, or # section headings... (@mention, #hashtag)"
-                              : "Continue your engineering narrative, analysis, or observations..."
+                              ? "Write ## 1. Overview, equations ($...$), callouts (> [!TIP]), or code blocks..."
+                              : "Continue your tutorial section, code explanation, or simulation analysis..."
                           }
                           onFocus={() => setActiveCellId(cell.id)}
                           onChange={(e) => {
@@ -1278,6 +1586,17 @@ export default function ComposeBox({
                       <PlusIcon size={11} />
                     </span>
                     <span>Add Text Section</span>
+                  </CommandPill>
+                  <CommandPill
+                    type="button"
+                    onClick={() => {
+                      setShowCodeSnippetModal(true);
+                    }}
+                  >
+                    <span className="pill-icon">
+                      <CodeIcon size={11} />
+                    </span>
+                    <span>Insert Code Block</span>
                   </CommandPill>
                   <CommandPill
                     type="button"
@@ -1787,9 +2106,9 @@ export default function ComposeBox({
                     <PackageIcon size={20} />
                   </ActionIconButton>
                   <ActionIconButton
-                    onClick={() => createDummyArtifact("modelica-code")}
+                    onClick={() => setShowCodeSnippetModal(true)}
                     aria-label="Add Code"
-                    title="Add Code Cell"
+                    title="Insert Code Snippet or Executable Code Cell"
                   >
                     <CodeIcon size={20} />
                   </ActionIconButton>
@@ -1886,13 +2205,191 @@ export default function ComposeBox({
                   onClick={handleSubmit}
                   disabled={(!content.trim() && !artifactId && !hasNotebookContent) || submitting}
                 >
-                  {replyToPost ? "Reply" : isNotebookMode ? "📓 Publish Notebook" : "⚡ Publish & Run"}
+                  {editPostId
+                    ? isNotebookMode
+                      ? "💾 Update Tutorial"
+                      : "💾 Save Changes"
+                    : replyToPost
+                      ? "Reply"
+                      : isNotebookMode
+                        ? "📓 Publish Tutorial"
+                        : "⚡ Publish & Run"}
                 </TweetButton>
               </Box>
             </Box>
           </Box>
         </Box>
       </Box>
+
+      {showCodeSnippetModal && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 99998,
+              backgroundColor: "rgba(0, 0, 0, 0.72)",
+              backdropFilter: "blur(6px)",
+            }}
+            onClick={() => setShowCodeSnippetModal(false)}
+          />
+          <Box
+            position="fixed"
+            top="50%"
+            left="50%"
+            style={{
+              transform: "translate(-50%, -50%)",
+              width: "640px",
+              maxWidth: "94vw",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              backdropFilter: "blur(16px)",
+            }}
+            bg="var(--surface-overlay)"
+            border="1px solid var(--color-border-glass)"
+            borderRadius="16px"
+            zIndex={99999}
+            boxShadow="0 20px 50px rgba(0,0,0,0.65)"
+            display="flex"
+            flexDirection="column"
+          >
+            <Box
+              display="flex"
+              alignItems="center"
+              justifyContent="space-between"
+              px={3}
+              py={2}
+              borderBottom="1px solid var(--color-border)"
+            >
+              <Box display="flex" alignItems="center" gap={2}>
+                <CodeIcon size={18} style={{ color: "var(--color-accent-cyan)" }} />
+                <Heading as="h3" style={{ fontSize: "16px", margin: 0 }}>
+                  Insert Code Snippet / Executable Model
+                </Heading>
+              </Box>
+              <IconButton
+                icon={XIcon}
+                variant="invisible"
+                onClick={() => setShowCodeSnippetModal(false)}
+                aria-label="Close"
+              />
+            </Box>
+            <Box p={3} display="flex" flexDirection="column" gap={2}>
+              <Box display="flex" gap={2}>
+                <input
+                  type="text"
+                  placeholder="Filename (e.g., DampedOscillator.mo)"
+                  value={snippetFilename}
+                  onChange={(e) => setSnippetFilename(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    fontSize: "13px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    borderRadius: "8px",
+                    border: "1px solid var(--color-border-default)",
+                    background: "rgba(0, 0, 0, 0.3)",
+                    color: "var(--color-fg-default)",
+                    outline: "none",
+                  }}
+                />
+                <select
+                  value={snippetLang}
+                  onChange={(e) => setSnippetLang(e.target.value)}
+                  style={{
+                    padding: "8px 12px",
+                    fontSize: "13px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    borderRadius: "8px",
+                    border: "1px solid var(--color-border-default)",
+                    background: "var(--color-bg-primary, #0b1120)",
+                    color: "var(--color-fg-default)",
+                    outline: "none",
+                  }}
+                >
+                  <option value="modelica">Modelica (.mo)</option>
+                  <option value="msx">ModelScript (.msx)</option>
+                  <option value="sysml2">SysML v2 (.sysml)</option>
+                  <option value="typescript">TypeScript (.ts)</option>
+                  <option value="python">Python (.py)</option>
+                </select>
+              </Box>
+              <textarea
+                rows={10}
+                value={snippetCode}
+                onChange={(e) => setSnippetCode(e.target.value)}
+                placeholder="Paste or write Modelica / ModelScript / SysML v2 code..."
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  fontSize: "13px",
+                  lineHeight: 1.5,
+                  fontFamily: "var(--font-mono, monospace)",
+                  borderRadius: "10px",
+                  border: "1px solid var(--color-border-default)",
+                  background: "var(--color-pre-bg, #030712)",
+                  color: "var(--color-fg-default)",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  resize: "vertical",
+                }}
+              />
+              <Box display="flex" justifyContent="space-between" alignItems="center" pt={1} flexWrap="wrap" gap={2}>
+                <Text style={{ fontSize: "11.5px", color: "var(--color-text-muted)" }}>
+                  Renders with Baeldung-style line numbers, syntax highlighting, Copy, and ▶ Open in IDE buttons.
+                </Text>
+                <Box display="flex" gap={2}>
+                  {token && (
+                    <CommandPill
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const data = await createArtifactView({
+                            artifact_type: "modelica-code",
+                            view_config: JSON.stringify({ code: snippetCode }),
+                            title: snippetFilename.trim() || "Modelica Code",
+                          });
+                          attachArtifactToComposer(data.id, snippetFilename.trim() || "Modelica Code");
+                          setShowCodeSnippetModal(false);
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                    >
+                      <span>⚡ Attach as Artifact Cell</span>
+                    </CommandPill>
+                  )}
+                  <TweetButton
+                    type="button"
+                    onClick={() => {
+                      const fileHeader = snippetFilename.trim() ? `// File: ${snippetFilename.trim()}\n` : "";
+                      const fenced = `\`\`\`${snippetLang}\n${fileHeader}${snippetCode.trim()}\n\`\`\``;
+                      if (isNotebookMode) {
+                        const targetId =
+                          activeCellId ||
+                          notebookCells.find((c) => c.type === "markdown")?.id ||
+                          notebookCells[notebookCells.length - 1]?.id;
+                        if (targetId) {
+                          insertMarkdownSnippet(targetId, fenced);
+                        }
+                      } else {
+                        const prefix = content.trim().length > 0 && !content.endsWith("\n") ? "\n\n" : "";
+                        setContent(`${content}${prefix}${fenced}`);
+                      }
+                      setShowCodeSnippetModal(false);
+                    }}
+                  >
+                    Insert Code Block
+                  </TweetButton>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </>
+      )}
 
       {hasHpc && (
         <HpcArtifactPickerModal

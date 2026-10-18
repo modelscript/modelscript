@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DAEBuilder, ExprKind } from "./wasm_dae.js";
+import { DAEBuilder, ExprKind, UnaryOp } from "./wasm_dae.js";
 
 export interface CachedTable1D {
   table: number[][];
@@ -8,6 +8,7 @@ export interface CachedTable1D {
   shiftTime: number;
   timeScale: number;
   startTime: number;
+  hasTimeScaled?: boolean;
 }
 
 export function extractTableArrayLiteral(arena: DAEBuilder, exprId: number): any {
@@ -15,6 +16,18 @@ export function extractTableArrayLiteral(arena: DAEBuilder, exprId: number): any
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.IntLiteral) return arena.getExprData1(exprId);
   if (kind === ExprKind.RealLiteral) return arena.getExprRealValue(exprId);
+  if (kind === ExprKind.Negate) {
+    const inner = extractTableArrayLiteral(arena, arena.getExprLeft(exprId));
+    return typeof inner === "number" ? -inner : null;
+  }
+  if (kind === ExprKind.Unary) {
+    const op = arena.getExprData1(exprId) as UnaryOp;
+    const inner = extractTableArrayLiteral(arena, arena.getExprLeft(exprId));
+    if (typeof inner !== "number") return null;
+    if (op === UnaryOp.Negate) return -inner;
+    if (op === UnaryOp.Not) return inner === 0 ? 1 : 0;
+    return inner;
+  }
   if (kind === ExprKind.ArrayCtor) {
     const count = arena.getExprData1(exprId);
     const elems: any[] = [];
@@ -90,12 +103,8 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
           const vIdx = arena.getVarIdxByName(`${prefix}.table[${r},${c}]`);
           if (vIdx < 0) break;
           const exprId = arena.getVarExpression(vIdx);
-          const val =
-            (exprId !== undefined && exprId >= 0
-              ? arena.getExprKind(exprId) === ExprKind.IntLiteral
-                ? arena.getExprData1(exprId)
-                : arena.getExprRealValue(exprId)
-              : arena.getVarStartValue(vIdx)) ?? 0;
+          const extracted = exprId !== undefined && exprId >= 0 ? extractTableArrayLiteral(arena, exprId) : null;
+          const val = (typeof extracted === "number" ? extracted : arena.getVarStartValue(vIdx)) ?? 0;
           row.push(val);
           c++;
         }
@@ -107,7 +116,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   }
   if (!tableData || tableData.length === 0) return null;
 
-  let columns: number[] = [1];
+  let columns: number[] = [];
   const colsIdx = arena.getVarIdxByName(`${prefix}.columns`);
   if (colsIdx >= 0) {
     const colsExpr = arena.getVarExpression(colsIdx);
@@ -122,12 +131,8 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
       const vIdx = arena.getVarIdxByName(`${prefix}.columns[${i}]`);
       if (vIdx < 0) break;
       const exprId = arena.getVarExpression(vIdx);
-      const val =
-        (exprId !== undefined && exprId >= 0
-          ? arena.getExprKind(exprId) === ExprKind.IntLiteral
-            ? arena.getExprData1(exprId)
-            : arena.getExprRealValue(exprId)
-          : arena.getVarStartValue(vIdx)) ?? i;
+      const extracted = exprId !== undefined && exprId >= 0 ? extractTableArrayLiteral(arena, exprId) : null;
+      const val = (typeof extracted === "number" ? extracted : arena.getVarStartValue(vIdx)) ?? i + 1;
       columns.push(Math.round(val));
       i++;
     }
@@ -138,7 +143,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   if (shiftIdx >= 0) {
     const shiftExpr = arena.getVarExpression(shiftIdx);
     const val = shiftExpr !== undefined ? extractTableArrayLiteral(arena, shiftExpr) : null;
-    if (typeof val === "number") shiftTime = val;
+    shiftTime = typeof val === "number" ? val : arena.getVarStartValue(shiftIdx);
   }
 
   const scaleIdx = arena.getVarIdxByName(`${prefix}.timeScale`);
@@ -146,7 +151,8 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   if (scaleIdx >= 0) {
     const scaleExpr = arena.getVarExpression(scaleIdx);
     const val = scaleExpr !== undefined ? extractTableArrayLiteral(arena, scaleExpr) : null;
-    if (typeof val === "number") timeScale = val;
+    const rawScale = typeof val === "number" ? val : arena.getVarStartValue(scaleIdx);
+    if (rawScale !== 0) timeScale = rawScale;
   }
 
   const startIdx = arena.getVarIdxByName(`${prefix}.startTime`);
@@ -154,8 +160,10 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   if (startIdx >= 0) {
     const startExpr = arena.getVarExpression(startIdx);
     const val = startExpr !== undefined ? extractTableArrayLiteral(arena, startExpr) : null;
-    if (typeof val === "number") startTime = val;
+    startTime = typeof val === "number" ? val : arena.getVarStartValue(startIdx);
   }
+
+  const hasTimeScaled = arena.getVarIdxByName(`${prefix}.timeScaled`) >= 0;
 
   const record: CachedTable1D = {
     table: tableData,
@@ -163,18 +171,48 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
     shiftTime,
     timeScale,
     startTime,
+    hasTimeScaled,
   };
   cachedMap.set(tableVarNameId, record);
   return record;
 }
 
-export function evalTimeTableValue(cached: CachedTable1D | null, icol: number, timeIn: number): number {
+export function evalTable1DValue(cached: CachedTable1D | null, icol: number, u: number): number {
   if (!cached || !cached.table || cached.table.length === 0) return 0.0;
   const table = cached.table;
-  const effTime = (timeIn - cached.shiftTime) / (cached.timeScale || 1.0);
-  const colInTable = cached.columns && cached.columns.length >= icol ? cached.columns[icol - 1]! - 1 : icol;
+  const colInTable =
+    cached.columns && cached.columns.length >= icol && cached.columns[icol - 1]! >= 2
+      ? cached.columns[icol - 1]! - 1
+      : icol;
+  return interpolate1DTable(table, colInTable, u);
+}
+
+export const evalSimTable1DValue = evalTable1DValue;
+
+export function evalTimeTableValue(
+  cached: CachedTable1D | null,
+  icol: number,
+  timeIn: number,
+  isAlreadyScaled = false,
+  isAlreadyShifted = false,
+): number {
+  if (!cached || !cached.table || cached.table.length === 0) return 0.0;
+  const table = cached.table;
+  const scale = cached.timeScale || 1.0;
+  const alreadyScaled = isAlreadyScaled || Boolean(cached.hasTimeScaled);
+  const effTime = alreadyScaled
+    ? isAlreadyShifted
+      ? timeIn
+      : timeIn - cached.shiftTime / scale
+    : (isAlreadyShifted ? timeIn : timeIn - cached.shiftTime) / scale;
+  const colInTable =
+    cached.columns && cached.columns.length >= icol && cached.columns[icol - 1]! >= 2
+      ? cached.columns[icol - 1]! - 1
+      : icol;
   return interpolate1DTable(table, colInTable, effTime);
 }
+
+export const evalSimTimeTableValue = evalTimeTableValue;
 
 export function evalTimeTableTmin(cached: CachedTable1D | null): number {
   return cached && cached.table.length > 0 ? (cached.table[0]![0]! + cached.shiftTime) * (cached.timeScale || 1.0) : 0;

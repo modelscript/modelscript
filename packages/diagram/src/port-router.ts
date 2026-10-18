@@ -50,6 +50,19 @@ export interface RectLike {
   height: number;
 }
 
+/** Cardinal boundary face of a component node in X6 screen coordinates (+y down). */
+export type PortSide = "top" | "bottom" | "left" | "right";
+
+/** Outward unit normal vector for a component port in X6 screen coordinates (+y down). */
+export interface PortNormal {
+  /** Horizontal unit normal component (-1 left, 0 vertical, +1 right). */
+  nx: -1 | 0 | 1;
+  /** Vertical unit normal component (-1 top, 0 horizontal, +1 bottom). */
+  ny: -1 | 0 | 1;
+  /** Cardinal side corresponding to `(nx, ny)`. */
+  side: PortSide;
+}
+
 /** Configuration options for the orthogonal A* port router. */
 export interface RouterOptions {
   /** Minimum clearance padding around obstacle rectangles (default: `12`). */
@@ -64,6 +77,284 @@ export interface RouterOptions {
   parallelCount?: number | undefined;
   /** Perpendicular spacing between adjacent parallel channels in diagram units (default: `10`). */
   channelSpacing?: number | undefined;
+  /** Outward cardinal side of the source port. */
+  sourceSide?: PortSide | undefined;
+  /** Outward cardinal side of the target port. */
+  targetSide?: PortSide | undefined;
+  /** Bounding box of the source component node (used to prevent self-impalement). */
+  sourceBox?: RectLike | undefined;
+  /** Bounding box of the target component node (used to prevent self-impalement). */
+  targetBox?: RectLike | undefined;
+  /** Minimum outward port lead-out stub length in diagram units (default: `10`). */
+  stubLength?: number | undefined;
+}
+
+/**
+ * Converts a cardinal `PortSide` into a `PortNormal` vector in X6 coordinates (`+y` down).
+ */
+export function sideToNormal(side: PortSide): PortNormal {
+  switch (side) {
+    case "top":
+      return { nx: 0, ny: -1, side: "top" };
+    case "bottom":
+      return { nx: 0, ny: 1, side: "bottom" };
+    case "left":
+      return { nx: -1, ny: 0, side: "left" };
+    case "right":
+      return { nx: 1, ny: 0, side: "right" };
+  }
+}
+
+/**
+ * Extracts the axis-aligned bounding box of an X6 node or node-like object, if available.
+ */
+export function getNodeBBox(node: any): RectLike | null {
+  if (!node) return null;
+  if (typeof node.getPosition === "function" && typeof node.getSize === "function") {
+    const pos = node.getPosition();
+    const size = node.getSize();
+    if (
+      pos &&
+      size &&
+      typeof pos.x === "number" &&
+      typeof pos.y === "number" &&
+      typeof size.width === "number" &&
+      typeof size.height === "number" &&
+      size.width > 0 &&
+      size.height > 0
+    ) {
+      return { x: pos.x, y: pos.y, width: size.width, height: size.height };
+    }
+  }
+  if (typeof node.getBBox === "function") {
+    const bbox = node.getBBox();
+    if (
+      bbox &&
+      typeof bbox.x === "number" &&
+      typeof bbox.y === "number" &&
+      typeof bbox.width === "number" &&
+      typeof bbox.height === "number" &&
+      bbox.width > 0 &&
+      bbox.height > 0
+    ) {
+      return { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height };
+    }
+  }
+  if (
+    typeof node.x === "number" &&
+    typeof node.y === "number" &&
+    typeof node.width === "number" &&
+    typeof node.height === "number" &&
+    node.width > 0 &&
+    node.height > 0
+  ) {
+    return { x: node.x, y: node.y, width: node.width, height: node.height };
+  }
+  return null;
+}
+
+/**
+ * Resolves the world-space coordinates of a port on a node, accounting for node position and rotation.
+ */
+export function resolveNodePortWorldPoint(
+  node: any,
+  portId?: string,
+  fallbackPoint?: PointLike | null,
+): PointLike | null {
+  if (node && portId) {
+    const bbox = getNodeBBox(node);
+    const portProp = typeof node.getPortProp === "function" ? node.getPortProp(portId) : null;
+    const portObj = !portProp && typeof node.getPort === "function" ? node.getPort(portId) : null;
+    const args =
+      portProp?.args ??
+      portObj?.args ??
+      (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
+    if (bbox && args && typeof args.x === "number" && typeof args.y === "number") {
+      const cx = bbox.width / 2;
+      const cy = bbox.height / 2;
+      const dx = args.x - cx;
+      const dy = args.y - cy;
+      const angleDeg = typeof node.getAngle === "function" ? node.getAngle() || 0 : node.angle || 0;
+      const rad = (angleDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const rx = dx * cos - dy * sin;
+      const ry = dx * sin + dy * cos;
+      return {
+        x: Math.round((bbox.x + cx + rx) * 100) / 100,
+        y: Math.round((bbox.y + cy + ry) * 100) / 100,
+      };
+    }
+  }
+  return fallbackPoint ? { x: fallbackPoint.x, y: fallbackPoint.y } : null;
+}
+
+/**
+ * Infers the cardinal outward normal of a port point relative to its parent node's bounding box.
+ */
+export function inferPortNormalFromBox(portPt: PointLike, box: RectLike): PortNormal {
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const halfW = Math.max(1, box.width / 2);
+  const halfH = Math.max(1, box.height / 2);
+  const nx = (portPt.x - cx) / halfW;
+  const ny = (portPt.y - cy) / halfH;
+  if (Math.abs(nx) >= Math.abs(ny)) {
+    return nx >= 0 ? sideToNormal("right") : sideToNormal("left");
+  }
+  return ny >= 0 ? sideToNormal("bottom") : sideToNormal("top");
+}
+
+/**
+ * Computes the outward cardinal normal vector for a node's port, accounting for node rotation
+ * and local port coordinates or world-space port position.
+ */
+export function getPortOutwardNormal(node: any, portId?: string, portWorldPoint?: PointLike | null): PortNormal | null {
+  if (!node) return null;
+  const bbox = getNodeBBox(node);
+  if (portId) {
+    const portProp = typeof node.getPortProp === "function" ? node.getPortProp(portId) : null;
+    const portObj = !portProp && typeof node.getPort === "function" ? node.getPort(portId) : null;
+    const explicitSide = portProp?.side ?? portObj?.side;
+    if (explicitSide === "top" || explicitSide === "bottom" || explicitSide === "left" || explicitSide === "right") {
+      return sideToNormal(explicitSide);
+    }
+    const args =
+      portProp?.args ??
+      portObj?.args ??
+      (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
+    if (bbox && args && typeof args.x === "number" && typeof args.y === "number") {
+      const halfW = Math.max(1, bbox.width / 2);
+      const halfH = Math.max(1, bbox.height / 2);
+      const localNx = (args.x - bbox.width / 2) / halfW;
+      const localNy = (args.y - bbox.height / 2) / halfH;
+      const angleDeg = typeof node.getAngle === "function" ? node.getAngle() || 0 : node.angle || 0;
+      const rad = (angleDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const rx = localNx * cos - localNy * sin;
+      const ry = localNx * sin + localNy * cos;
+      if (Math.abs(rx) >= Math.abs(ry)) {
+        return rx >= 0 ? sideToNormal("right") : sideToNormal("left");
+      }
+      return ry >= 0 ? sideToNormal("bottom") : sideToNormal("top");
+    }
+  }
+  if (bbox && portWorldPoint) {
+    return inferPortNormalFromBox(portWorldPoint, bbox);
+  }
+  return null;
+}
+
+/**
+ * Projects a port anchor outward along its cardinal normal by `stubLength`, ensuring the stub
+ * clears the exterior face of `box` when provided.
+ */
+export function projectPortNormalStub(
+  portWorldPoint: PointLike,
+  normal: PortNormal,
+  stubLength = 10,
+  box?: RectLike | null,
+): PointLike {
+  if (normal.side === "right") {
+    const base = box ? Math.max(portWorldPoint.x, box.x + box.width) : portWorldPoint.x;
+    return { x: base + stubLength, y: portWorldPoint.y };
+  }
+  if (normal.side === "left") {
+    const base = box ? Math.min(portWorldPoint.x, box.x) : portWorldPoint.x;
+    return { x: base - stubLength, y: portWorldPoint.y };
+  }
+  if (normal.side === "bottom") {
+    const base = box ? Math.max(portWorldPoint.y, box.y + box.height) : portWorldPoint.y;
+    return { x: portWorldPoint.x, y: base + stubLength };
+  }
+  const base = box ? Math.min(portWorldPoint.y, box.y) : portWorldPoint.y;
+  return { x: portWorldPoint.x, y: base - stubLength };
+}
+
+function shrinkRect(rect: RectLike, inset: number): RectLike {
+  const ix = Math.min(inset, Math.max(0, rect.width / 2 - 0.5));
+  const iy = Math.min(inset, Math.max(0, rect.height / 2 - 0.5));
+  return {
+    x: rect.x + ix,
+    y: rect.y + iy,
+    width: Math.max(1, rect.width - ix * 2),
+    height: Math.max(1, rect.height - iy * 2),
+  };
+}
+
+/**
+ * Checks whether an edge polyline violates port outward normals, contains diagonal segments,
+ * or impales its source/target component bounding boxes.
+ */
+function doesPolylineViolatePortOrBox(
+  srcPt: PointLike,
+  tgtPt: PointLike,
+  vertices: PointLike[],
+  srcNormal: PortNormal | null,
+  tgtNormal: PortNormal | null,
+  srcBox: RectLike | null,
+  tgtBox: RectLike | null,
+): boolean {
+  const pts: PointLike[] = [srcPt, ...vertices, tgtPt];
+
+  // 1. Check for diagonal segments or 180-degree reversals
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i]!;
+    const b = pts[i + 1]!;
+    if (Math.abs(a.x - b.x) > 1.5 && Math.abs(a.y - b.y) > 1.5) {
+      return true;
+    }
+  }
+
+  // 2. Check departure direction against srcNormal
+  if (srcNormal) {
+    for (let i = 1; i < pts.length; i++) {
+      const dx = pts[i]!.x - srcPt.x;
+      const dy = pts[i]!.y - srcPt.y;
+      if (Math.abs(dx) + Math.abs(dy) > 0.5) {
+        const dot = dx * srcNormal.nx + dy * srcNormal.ny;
+        const perp = srcNormal.nx !== 0 ? Math.abs(dy) : Math.abs(dx);
+        if (dot <= 0 || perp > Math.abs(dot) + 0.5) {
+          return true;
+        }
+        break;
+      }
+    }
+  }
+
+  // 3. Check arrival direction against tgtNormal (measured outward from tgtPt)
+  if (tgtNormal) {
+    for (let i = pts.length - 2; i >= 0; i--) {
+      const dx = pts[i]!.x - tgtPt.x;
+      const dy = pts[i]!.y - tgtPt.y;
+      if (Math.abs(dx) + Math.abs(dy) > 0.5) {
+        const dot = dx * tgtNormal.nx + dy * tgtNormal.ny;
+        const perp = tgtNormal.nx !== 0 ? Math.abs(dy) : Math.abs(dx);
+        if (dot <= 0 || perp > Math.abs(dot) + 0.5) {
+          return true;
+        }
+        break;
+      }
+    }
+  }
+
+  // 4. Check component body self-impalement
+  const shrunkSrc = srcBox ? shrinkRect(srcBox, 2) : null;
+  const shrunkTgt = tgtBox ? shrinkRect(tgtBox, 2) : null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i]!;
+    const b = pts[i + 1]!;
+    if (Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= 0.5) continue;
+    if (shrunkSrc && segmentIntersectsRect(a, b, shrunkSrc, 0)) {
+      return true;
+    }
+    if (shrunkTgt && segmentIntersectsRect(a, b, shrunkTgt, 0)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -162,20 +453,146 @@ export function regularizeOrthogonalPolyline(
 }
 
 /**
- * Translates terminal departure/entry stubs on connected edges when a node is moved,
- * preserving orthogonal highway corridors and preventing diagonal distortion.
+ * Pushes coincident trunk segments on peer edges sharing the same electrical net so shared
+ * schematic buses (such as ground rails) slide together as a unified corridor.
  */
-export function translateConnectedEdgeStubs(g: any, node: any, dx: number, dy: number): void {
-  if (dx === 0 && dy === 0) return;
+function pushCoincidentNetTrunks(g: any, primaryEdge: any, axis: "x" | "y", oldCoord: number, newCoord: number): void {
+  if (typeof g?.getEdges !== "function") return;
+  const allEdges: any[] = g.getEdges() || [];
+  if (allEdges.length <= 1) return;
+
+  const getPortKey = (e: any, end: "source" | "target"): string | undefined => {
+    const cellId =
+      end === "source"
+        ? typeof e.getSourceCellId === "function"
+          ? e.getSourceCellId()
+          : e.source?.cell
+        : typeof e.getTargetCellId === "function"
+          ? e.getTargetCellId()
+          : e.target?.cell;
+    const portId =
+      end === "source"
+        ? typeof e.getSourcePortId === "function"
+          ? e.getSourcePortId()
+          : e.source?.port
+        : typeof e.getTargetPortId === "function"
+          ? e.getTargetPortId()
+          : e.target?.port;
+    return cellId && portId ? `${cellId}.${portId}` : undefined;
+  };
+
+  // Union-Find over port keys to identify edges in the same electrical net
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let root = k;
+    while (parent.has(root) && parent.get(root) !== root) root = parent.get(root)!;
+    let curr = k;
+    while (curr !== root) {
+      const nxt = parent.get(curr)!;
+      parent.set(curr, root);
+      curr = nxt;
+    }
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  };
+
+  for (const e of allEdges) {
+    const sk = getPortKey(e, "source");
+    const tk = getPortKey(e, "target");
+    if (sk && !parent.has(sk)) parent.set(sk, sk);
+    if (tk && !parent.has(tk)) parent.set(tk, tk);
+    if (sk && tk) union(sk, tk);
+  }
+
+  const primaryKey = getPortKey(primaryEdge, "source") ?? getPortKey(primaryEdge, "target");
+  if (!primaryKey) return;
+  const netRoot = find(primaryKey);
+
+  for (const otherEdge of allEdges) {
+    if (otherEdge === primaryEdge || otherEdge.id === primaryEdge.id) continue;
+    const ok = getPortKey(otherEdge, "source") ?? getPortKey(otherEdge, "target");
+    if (!ok || find(ok) !== netRoot) continue;
+
+    const verts: PointLike[] = typeof otherEdge.getVertices === "function" ? otherEdge.getVertices() || [] : [];
+    if (verts.length < 2) continue;
+
+    const updated = verts.map((v: PointLike) => ({ ...v }));
+    let changed = false;
+    for (let i = 0; i < updated.length - 1; i++) {
+      const a = updated[i]!;
+      const b = updated[i + 1]!;
+      if (axis === "y" && Math.abs(a.y - b.y) <= 1.5 && Math.abs(a.y - oldCoord) <= 1.5) {
+        a.y = newCoord;
+        b.y = newCoord;
+        changed = true;
+      } else if (axis === "x" && Math.abs(a.x - b.x) <= 1.5 && Math.abs(a.x - oldCoord) <= 1.5) {
+        a.x = newCoord;
+        b.x = newCoord;
+        changed = true;
+      }
+    }
+
+    if (changed && typeof otherEdge.setVertices === "function") {
+      const sId =
+        typeof otherEdge.getSourceCellId === "function" ? otherEdge.getSourceCellId() : otherEdge.source?.cell;
+      const tId =
+        typeof otherEdge.getTargetCellId === "function" ? otherEdge.getTargetCellId() : otherEdge.target?.cell;
+      const sPort =
+        typeof otherEdge.getSourcePortId === "function" ? otherEdge.getSourcePortId() : otherEdge.source?.port;
+      const tPort =
+        typeof otherEdge.getTargetPortId === "function" ? otherEdge.getTargetPortId() : otherEdge.target?.port;
+      const sNode = typeof g?.getCellById === "function" ? g.getCellById(sId) : null;
+      const tNode = typeof g?.getCellById === "function" ? g.getCellById(tId) : null;
+      const sPt = resolveNodePortWorldPoint(
+        sNode,
+        sPort,
+        typeof otherEdge.getSourcePoint === "function" ? otherEdge.getSourcePoint() : null,
+      );
+      const tPt = resolveNodePortWorldPoint(
+        tNode,
+        tPort,
+        typeof otherEdge.getTargetPoint === "function" ? otherEdge.getTargetPoint() : null,
+      );
+      const sNorm = getPortOutwardNormal(sNode, sPort, sPt);
+      const tNorm = getPortOutwardNormal(tNode, tPort, tPt);
+      const sBox = getNodeBBox(sNode);
+      const tBox = getNodeBBox(tNode);
+      if (!sPt || !tPt || !doesPolylineViolatePortOrBox(sPt, tPt, updated, sNorm, tNorm, sBox, tBox)) {
+        otherEdge.setVertices(updated, { ignoreSnap: true });
+      }
+    }
+  }
+}
+
+/**
+ * Translates terminal departure/entry stubs on connected edges when a node is moved,
+ * preserving orthogonal highway corridors, pushing trunks ahead of outward port normals,
+ * injecting doglegs for 0/1-vertex collinear wires, and re-routing when self-impalement occurs.
+ */
+export function translateConnectedEdgeStubs(
+  g: any,
+  node: any,
+  dx: number,
+  dy: number,
+  options?: { forceReroute?: boolean; minStub?: number },
+): void {
+  if (dx === 0 && dy === 0 && !options?.forceReroute) return;
   const connectedEdges = typeof g?.getConnectedEdges === "function" ? g.getConnectedEdges(node) : [];
   if (!connectedEdges || connectedEdges.length === 0) return;
 
+  const minStub = options?.minStub ?? 10;
+
   for (const edge of connectedEdges) {
-    const vertices = typeof edge.getVertices === "function" ? edge.getVertices() || [] : [];
-    if (vertices.length === 0) continue;
+    const vertices: PointLike[] = typeof edge.getVertices === "function" ? edge.getVertices() || [] : [];
 
     const sourceId = typeof edge.getSourceCellId === "function" ? edge.getSourceCellId() : edge.source?.cell;
     const targetId = typeof edge.getTargetCellId === "function" ? edge.getTargetCellId() : edge.target?.cell;
+    const sourcePortId = typeof edge.getSourcePortId === "function" ? edge.getSourcePortId() : edge.source?.port;
+    const targetPortId = typeof edge.getTargetPortId === "function" ? edge.getTargetPortId() : edge.target?.port;
 
     const isSource = sourceId === node.id;
     const isTarget = targetId === node.id;
@@ -187,35 +604,338 @@ export function translateConnectedEdgeStubs(g: any, node: any, dx: number, dy: n
       continue;
     }
 
-    let modified = false;
-    const newVertices = vertices.map((v: any) => ({ ...v }));
+    const srcNode = isSource
+      ? node
+      : typeof g?.getCellById === "function"
+        ? g.getCellById(sourceId)
+        : typeof edge.getSourceCell === "function"
+          ? edge.getSourceCell()
+          : null;
+    const tgtNode = isTarget
+      ? node
+      : typeof g?.getCellById === "function"
+        ? g.getCellById(targetId)
+        : typeof edge.getTargetCell === "function"
+          ? edge.getTargetCell()
+          : null;
 
-    if (isSource) {
-      const v0 = newVertices[0];
-      const srcPt = typeof edge.getSourcePoint === "function" ? edge.getSourcePoint() : null;
-      const prevSrcX = (srcPt?.x ?? v0.x) - dx;
-      const prevSrcY = (srcPt?.y ?? v0.y) - dy;
-      const isHorizontal = Math.abs(prevSrcX - v0.x) >= Math.abs(prevSrcY - v0.y);
-      if (isHorizontal) {
-        v0.y += dy;
-      } else {
-        v0.x += dx;
+    const rawSrcPt = typeof edge.getSourcePoint === "function" ? edge.getSourcePoint() : null;
+    const rawTgtPt = typeof edge.getTargetPoint === "function" ? edge.getTargetPoint() : null;
+    const srcPt = resolveNodePortWorldPoint(srcNode, sourcePortId, rawSrcPt);
+    const tgtPt = resolveNodePortWorldPoint(tgtNode, targetPortId, rawTgtPt);
+
+    const srcNormal = getPortOutwardNormal(srcNode, sourcePortId, srcPt);
+    const tgtNormal = getPortOutwardNormal(tgtNode, targetPortId, tgtPt);
+    const srcBox = getNodeBBox(srcNode);
+    const tgtBox = getNodeBBox(tgtNode);
+
+    const getOtherObstacles = (): RectLike[] => {
+      const obs: RectLike[] = [];
+      if (typeof g?.getNodes === "function") {
+        for (const n of g.getNodes()) {
+          if (!n || n.id === sourceId || n.id === targetId) continue;
+          if (
+            typeof n.id === "string" &&
+            (n.id.startsWith("solder_dot_") ||
+              n.id.startsWith("__seq_stem_") ||
+              n.id.startsWith("__alignment_guide_") ||
+              n.id === "__diagram_background__" ||
+              n.id === "__diagram_axes__")
+          ) {
+            continue;
+          }
+          const b = getNodeBBox(n);
+          if (b) obs.push(b);
+        }
       }
-      modified = true;
+      return obs;
+    };
+
+    if (options?.forceReroute && srcPt && tgtPt && typeof edge.setVertices === "function") {
+      const rerouted = computeOrthogonalRoute(srcPt, tgtPt, getOtherObstacles(), {
+        sourceSide: srcNormal?.side,
+        targetSide: tgtNormal?.side,
+        sourceBox: srcBox ?? undefined,
+        targetBox: tgtBox ?? undefined,
+        stubLength: minStub,
+      });
+      edge.setVertices(rerouted, { ignoreSnap: true });
+      continue;
     }
 
-    if (isTarget) {
-      const lastIdx = newVertices.length - 1;
-      const vLast = newVertices[lastIdx];
-      const tgtPt = typeof edge.getTargetPoint === "function" ? edge.getTargetPoint() : null;
-      const prevTgtX = (tgtPt?.x ?? vLast.x) - dx;
-      const prevTgtY = (tgtPt?.y ?? vLast.y) - dy;
-      const isHorizontal = Math.abs(prevTgtX - vLast.x) >= Math.abs(prevTgtY - vLast.y);
-      if (isHorizontal) {
-        vLast.y += dy;
-      } else {
-        vLast.x += dx;
+    // Case 0: 0-vertex straight edge pulled off-axis
+    if (vertices.length === 0) {
+      if (!srcPt || !tgtPt) continue;
+      const offAxis = Math.abs(srcPt.x - tgtPt.x) > 0.5 && Math.abs(srcPt.y - tgtPt.y) > 0.5;
+      const violatesPortOrBox =
+        (srcNormal || tgtNormal || srcBox || tgtBox) &&
+        doesPolylineViolatePortOrBox(srcPt, tgtPt, [], srcNormal, tgtNormal, srcBox, tgtBox);
+      if (offAxis || violatesPortOrBox) {
+        let injected: PointLike[];
+        if (srcNormal || tgtNormal || srcBox || tgtBox) {
+          injected = computeOrthogonalRoute(srcPt, tgtPt, getOtherObstacles(), {
+            sourceSide: srcNormal?.side,
+            targetSide: tgtNormal?.side,
+            sourceBox: srcBox ?? undefined,
+            targetBox: tgtBox ?? undefined,
+            stubLength: minStub,
+          });
+        } else {
+          const prevSrcX = isSource ? srcPt.x - dx : srcPt.x;
+          const prevSrcY = isSource ? srcPt.y - dy : srcPt.y;
+          const prevTgtX = isTarget ? tgtPt.x - dx : tgtPt.x;
+          const prevTgtY = isTarget ? tgtPt.y - dy : tgtPt.y;
+          const wasVertical = Math.abs(prevSrcX - prevTgtX) <= Math.abs(prevSrcY - prevTgtY);
+          if (wasVertical) {
+            const midY = Math.round((srcPt.y + tgtPt.y) / 2);
+            injected = [
+              { x: srcPt.x, y: midY },
+              { x: tgtPt.x, y: midY },
+            ];
+          } else {
+            const midX = Math.round((srcPt.x + tgtPt.x) / 2);
+            injected = [
+              { x: midX, y: srcPt.y },
+              { x: midX, y: tgtPt.y },
+            ];
+          }
+        }
+        if (typeof edge.setVertices === "function") {
+          edge.setVertices(injected, { ignoreSnap: true });
+        }
       }
+      continue;
+    }
+
+    let modified = false;
+    let newVertices: PointLike[] = vertices.map((v: any) => ({ ...v }));
+
+    // Case 1: 1-vertex edge (either collinear 3-point wire or 90-degree L-bend)
+    if (newVertices.length === 1) {
+      const v0 = newVertices[0]!;
+      const prevSrcX = (srcPt?.x ?? v0.x) - (isSource ? dx : 0);
+      const prevSrcY = (srcPt?.y ?? v0.y) - (isSource ? dy : 0);
+      const prevTgtX = (tgtPt?.x ?? v0.x) - (isTarget ? dx : 0);
+      const prevTgtY = (tgtPt?.y ?? v0.y) - (isTarget ? dy : 0);
+
+      const wasCollinearV =
+        Boolean(srcPt && tgtPt) &&
+        Math.abs(prevSrcX - v0.x) <= 1.5 &&
+        Math.abs(prevTgtX - v0.x) <= 1.5 &&
+        Math.abs(prevSrcY - v0.y) > 1.5 &&
+        Math.abs(prevTgtY - v0.y) > 1.5;
+      const wasCollinearH =
+        Boolean(srcPt && tgtPt) &&
+        Math.abs(prevSrcY - v0.y) <= 1.5 &&
+        Math.abs(prevTgtY - v0.y) <= 1.5 &&
+        Math.abs(prevSrcX - v0.x) > 1.5 &&
+        Math.abs(prevTgtX - v0.x) > 1.5;
+
+      if (wasCollinearV && srcPt && tgtPt && Math.abs(srcPt.x - tgtPt.x) > 0.5) {
+        const midY = Math.round((srcPt.y + tgtPt.y) / 2);
+        newVertices = [
+          { x: srcPt.x, y: midY },
+          { x: tgtPt.x, y: midY },
+        ];
+        modified = true;
+      } else if (wasCollinearH && srcPt && tgtPt && Math.abs(srcPt.y - tgtPt.y) > 0.5) {
+        const midX = Math.round((srcPt.x + tgtPt.x) / 2);
+        newVertices = [
+          { x: midX, y: srcPt.y },
+          { x: midX, y: tgtPt.y },
+        ];
+        modified = true;
+      } else {
+        if (isSource) {
+          let isHorizontal: boolean;
+          if (tgtPt) {
+            const tgtLegDx = Math.abs(tgtPt.x - v0.x);
+            const tgtLegDy = Math.abs(tgtPt.y - v0.y);
+            if (tgtLegDx <= 1.5 && tgtLegDy > 1.5) {
+              isHorizontal = true;
+            } else if (tgtLegDy <= 1.5 && tgtLegDx > 1.5) {
+              isHorizontal = false;
+            } else {
+              const scoreHV = Math.abs(prevSrcX - v0.x) + Math.abs(tgtPt.y - v0.y);
+              const scoreVH = Math.abs(prevSrcY - v0.y) + Math.abs(tgtPt.x - v0.x);
+              isHorizontal = scoreHV >= scoreVH;
+            }
+          } else {
+            isHorizontal = Math.abs(prevSrcX - v0.x) >= Math.abs(prevSrcY - v0.y);
+          }
+          if (isHorizontal) {
+            v0.y += dy;
+          } else {
+            v0.x += dx;
+          }
+          modified = true;
+        }
+        if (isTarget) {
+          let isHorizontal: boolean;
+          if (srcPt) {
+            const srcLegDx = Math.abs(srcPt.x - v0.x);
+            const srcLegDy = Math.abs(srcPt.y - v0.y);
+            if (srcLegDy <= 1.5 && srcLegDx > 1.5) {
+              isHorizontal = false; // first leg is horizontal -> target leg is vertical
+            } else if (srcLegDx <= 1.5 && srcLegDy > 1.5) {
+              isHorizontal = true; // first leg is vertical -> target leg is horizontal
+            } else {
+              const scoreHV = Math.abs(srcPt.x - v0.x) + Math.abs(prevTgtY - v0.y);
+              const scoreVH = Math.abs(srcPt.y - v0.y) + Math.abs(prevTgtX - v0.x);
+              isHorizontal = scoreVH > scoreHV;
+            }
+          } else {
+            isHorizontal = Math.abs(prevTgtX - v0.x) >= Math.abs(prevTgtY - v0.y);
+          }
+          if (isHorizontal) {
+            v0.y += dy;
+          } else {
+            v0.x += dx;
+          }
+          modified = true;
+        }
+      }
+    } else {
+      // Case 2: 2+ vertices (stub + trunk + ...)
+      if (isSource) {
+        const v0 = newVertices[0]!;
+        const v1 = newVertices[1]!;
+        const prevSrcX = (srcPt?.x ?? v0.x) - dx;
+        const prevSrcY = (srcPt?.y ?? v0.y) - dy;
+        const nextDx = Math.abs(v1.x - v0.x);
+        const nextDy = Math.abs(v1.y - v0.y);
+        const isHorizontal =
+          nextDx + nextDy > 0.5 ? nextDy > nextDx : Math.abs(prevSrcX - v0.x) >= Math.abs(prevSrcY - v0.y);
+        if (isHorizontal) {
+          v0.y += dy;
+        } else {
+          v0.x += dx;
+        }
+        modified = true;
+      }
+
+      if (isTarget) {
+        const lastIdx = newVertices.length - 1;
+        const vLast = newVertices[lastIdx]!;
+        const vPrev = newVertices[lastIdx - 1]!;
+        const prevTgtX = (tgtPt?.x ?? vLast.x) - dx;
+        const prevTgtY = (tgtPt?.y ?? vLast.y) - dy;
+        const prevDx = Math.abs(vLast.x - vPrev.x);
+        const prevDy = Math.abs(vLast.y - vPrev.y);
+        const isHorizontal =
+          prevDx + prevDy > 0.5 ? prevDy > prevDx : Math.abs(prevTgtX - vLast.x) >= Math.abs(prevTgtY - vLast.y);
+        if (isHorizontal) {
+          vLast.y += dy;
+        } else {
+          vLast.x += dx;
+        }
+        modified = true;
+      }
+
+      // Trunk Pushing: when a port with a known outward normal moves past its perpendicular trunk,
+      // push the trunk segment ahead of the port by `minStub` (and slide coincident net trunks).
+      if (isSource && srcNormal && srcPt && newVertices.length >= 2) {
+        const v0 = newVertices[0]!;
+        const v1 = newVertices[1]!;
+        if (srcNormal.ny !== 0 && Math.abs(v0.y - v1.y) <= 1.5) {
+          const signedStub = (v0.y - srcPt.y) * srcNormal.ny;
+          if (signedStub < minStub) {
+            const oldTrunkY = v0.y;
+            const newTrunkY = srcPt.y + srcNormal.ny * minStub;
+            const tgtOk =
+              newVertices.length > 2 ||
+              !tgtNormal ||
+              !tgtPt ||
+              tgtNormal.ny === 0 ||
+              (newTrunkY - tgtPt.y) * tgtNormal.ny >= minStub - 0.5;
+            if (tgtOk) {
+              v0.x = srcPt.x;
+              v0.y = newTrunkY;
+              v1.y = newTrunkY;
+              pushCoincidentNetTrunks(g, edge, "y", oldTrunkY, newTrunkY);
+            }
+          }
+        } else if (srcNormal.nx !== 0 && Math.abs(v0.x - v1.x) <= 1.5) {
+          const signedStub = (v0.x - srcPt.x) * srcNormal.nx;
+          if (signedStub < minStub) {
+            const oldTrunkX = v0.x;
+            const newTrunkX = srcPt.x + srcNormal.nx * minStub;
+            const tgtOk =
+              newVertices.length > 2 ||
+              !tgtNormal ||
+              !tgtPt ||
+              tgtNormal.nx === 0 ||
+              (newTrunkX - tgtPt.x) * tgtNormal.nx >= minStub - 0.5;
+            if (tgtOk) {
+              v0.y = srcPt.y;
+              v0.x = newTrunkX;
+              v1.x = newTrunkX;
+              pushCoincidentNetTrunks(g, edge, "x", oldTrunkX, newTrunkX);
+            }
+          }
+        }
+      }
+
+      if (isTarget && tgtNormal && tgtPt && newVertices.length >= 2) {
+        const lastIdx = newVertices.length - 1;
+        const vLast = newVertices[lastIdx]!;
+        const vPrev = newVertices[lastIdx - 1]!;
+        if (tgtNormal.ny !== 0 && Math.abs(vLast.y - vPrev.y) <= 1.5) {
+          const signedStub = (vLast.y - tgtPt.y) * tgtNormal.ny;
+          if (signedStub < minStub) {
+            const oldTrunkY = vLast.y;
+            const newTrunkY = tgtPt.y + tgtNormal.ny * minStub;
+            const srcOk =
+              newVertices.length > 2 ||
+              !srcNormal ||
+              !srcPt ||
+              srcNormal.ny === 0 ||
+              (newTrunkY - srcPt.y) * srcNormal.ny >= minStub - 0.5;
+            if (srcOk) {
+              vLast.x = tgtPt.x;
+              vLast.y = newTrunkY;
+              vPrev.y = newTrunkY;
+              pushCoincidentNetTrunks(g, edge, "y", oldTrunkY, newTrunkY);
+            }
+          }
+        } else if (tgtNormal.nx !== 0 && Math.abs(vLast.x - vPrev.x) <= 1.5) {
+          const signedStub = (vLast.x - tgtPt.x) * tgtNormal.nx;
+          if (signedStub < minStub) {
+            const oldTrunkX = vLast.x;
+            const newTrunkX = tgtPt.x + tgtNormal.nx * minStub;
+            const srcOk =
+              newVertices.length > 2 ||
+              !srcNormal ||
+              !srcPt ||
+              srcNormal.nx === 0 ||
+              (newTrunkX - srcPt.x) * srcNormal.nx >= minStub - 0.5;
+            if (srcOk) {
+              vLast.y = tgtPt.y;
+              vLast.x = newTrunkX;
+              vPrev.x = newTrunkX;
+              pushCoincidentNetTrunks(g, edge, "x", oldTrunkX, newTrunkX);
+            }
+          }
+        }
+      }
+    }
+
+    // Self-Impalement & Port-Normal Violation Auto-Reroute:
+    // When node/port geometry is available and the translated route still exits backward through a port
+    // or crosses its own source/target component bounding box, compute a clean port-aware orthogonal route.
+    if (
+      srcPt &&
+      tgtPt &&
+      (srcNormal || tgtNormal || srcBox || tgtBox) &&
+      doesPolylineViolatePortOrBox(srcPt, tgtPt, newVertices, srcNormal, tgtNormal, srcBox, tgtBox)
+    ) {
+      newVertices = computeOrthogonalRoute(srcPt, tgtPt, getOtherObstacles(), {
+        sourceSide: srcNormal?.side,
+        targetSide: tgtNormal?.side,
+        sourceBox: srcBox ?? undefined,
+        targetBox: tgtBox ?? undefined,
+        stubLength: minStub,
+      });
       modified = true;
     }
 
@@ -430,11 +1150,7 @@ export function findInternalChannelRoute(
   return null;
 }
 
-/**
- * Computes an obstacle-free orthogonal route between source and target points,
- * supporting 4-way obstacle detours and parallel bus connection staggering.
- */
-export function computeOrthogonalRoute(
+function computeOrthogonalRouteCore(
   source: PointLike,
   target: PointLike,
   obstacles: RectLike[] = [],
@@ -599,7 +1315,154 @@ export function computeOrthogonalRoute(
 }
 
 /**
- * AntV X6 custom router adapter with obstacle avoidance and parallel edge staggering.
+ * Computes an obstacle-free orthogonal route between source and target points,
+ * supporting directional port outward normals, component self-impalement avoidance,
+ * 4-way obstacle detours, and parallel bus connection staggering.
+ */
+export function computeOrthogonalRoute(
+  source: PointLike,
+  target: PointLike,
+  obstacles: RectLike[] = [],
+  options: RouterOptions = {},
+): PointLike[] {
+  const hasPortConstraints = Boolean(
+    options.sourceSide || options.targetSide || options.sourceBox || options.targetBox,
+  );
+  if (!hasPortConstraints) {
+    return computeOrthogonalRouteCore(source, target, obstacles, options);
+  }
+
+  const padding = options.padding ?? 12;
+  const parallelOffset = (options.parallelIndex ?? 0) * (options.channelSpacing ?? 8);
+  const stubLength = options.stubLength ?? 10;
+
+  const srcNormal = options.sourceSide
+    ? sideToNormal(options.sourceSide)
+    : options.sourceBox
+      ? inferPortNormalFromBox(source, options.sourceBox)
+      : null;
+  const tgtNormal = options.targetSide
+    ? sideToNormal(options.targetSide)
+    : options.targetBox
+      ? inferPortNormalFromBox(target, options.targetBox)
+      : null;
+
+  const isCandidateValid = (waypoints: PointLike[]): boolean => {
+    if (
+      doesPolylineViolatePortOrBox(
+        source,
+        target,
+        waypoints,
+        srcNormal,
+        tgtNormal,
+        options.sourceBox ?? null,
+        options.targetBox ?? null,
+      )
+    ) {
+      return false;
+    }
+    const pts = [source, ...waypoints, target];
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (obstacles.some((r) => segmentIntersectsRect(pts[i]!, pts[i + 1]!, r, padding))) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const pathLength = (waypoints: PointLike[]): number => {
+    const pts = [source, ...waypoints, target];
+    let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      total += Math.abs(pts[i + 1]!.x - pts[i]!.x) + Math.abs(pts[i + 1]!.y - pts[i]!.y);
+    }
+    return total;
+  };
+
+  if (parallelOffset === 0) {
+    // 1. Direct straight line (0 bends)
+    if ((Math.abs(source.x - target.x) < 1 || Math.abs(source.y - target.y) < 1) && isCandidateValid([])) {
+      return [];
+    }
+
+    // 2. Single 90-degree L-bend (1 vertex) if compatible with both port normals
+    const lCandidates: PointLike[][] = [];
+    if (Math.abs(source.x - target.x) >= 1 && Math.abs(source.y - target.y) >= 1) {
+      const hv: PointLike[] = [{ x: target.x, y: source.y }];
+      const vh: PointLike[] = [{ x: source.x, y: target.y }];
+      if (isCandidateValid(hv)) lCandidates.push(hv);
+      if (isCandidateValid(vh)) lCandidates.push(vh);
+      if (lCandidates.length > 0) {
+        lCandidates.sort((a, b) => pathLength(a) - pathLength(b));
+        return lCandidates[0]!;
+      }
+    }
+  }
+
+  // 3. Project outward port stubs and evaluate clean stub-to-stub orthogonal routes
+  const sStub = srcNormal
+    ? projectPortNormalStub(source, srcNormal, stubLength + parallelOffset, options.sourceBox)
+    : source;
+  const tStub = tgtNormal
+    ? projectPortNormalStub(target, tgtNormal, stubLength + parallelOffset, options.targetBox)
+    : target;
+
+  const buildStubCandidate = (inner: PointLike[]): PointLike[] => {
+    const full = simplifyCollinearPoints([source, sStub, ...inner, tStub, target], 0.5);
+    return full.slice(1, -1);
+  };
+
+  const stubCandidates: PointLike[][] = [];
+
+  // 3a. Direct connection between sStub and tStub
+  if (Math.abs(sStub.x - tStub.x) < 1 || Math.abs(sStub.y - tStub.y) < 1) {
+    const directStub = buildStubCandidate([]);
+    if (isCandidateValid(directStub)) stubCandidates.push(directStub);
+  }
+
+  // 3b. 1-bend between sStub and tStub
+  const stubHV = buildStubCandidate([{ x: tStub.x, y: sStub.y }]);
+  const stubVH = buildStubCandidate([{ x: sStub.x, y: tStub.y }]);
+  if (isCandidateValid(stubHV)) stubCandidates.push(stubHV);
+  if (isCandidateValid(stubVH)) stubCandidates.push(stubVH);
+
+  // 3c. 2-bend Z-step between sStub and tStub (midpoint X or midpoint Y)
+  const step = options.step ?? 10;
+  const midX = Math.round(((sStub.x + tStub.x) / 2 + parallelOffset) / step) * step;
+  const midY = Math.round(((sStub.y + tStub.y) / 2 + parallelOffset) / step) * step;
+  const stubZ_H = buildStubCandidate([
+    { x: midX, y: sStub.y },
+    { x: midX, y: tStub.y },
+  ]);
+  const stubZ_V = buildStubCandidate([
+    { x: sStub.x, y: midY },
+    { x: tStub.x, y: midY },
+  ]);
+  if (isCandidateValid(stubZ_H)) stubCandidates.push(stubZ_H);
+  if (isCandidateValid(stubZ_V)) stubCandidates.push(stubZ_V);
+
+  if (stubCandidates.length > 0) {
+    stubCandidates.sort((a, b) => {
+      if (a.length !== b.length) return a.length - b.length;
+      return pathLength(a) - pathLength(b);
+    });
+    return stubCandidates[0]!;
+  }
+
+  // 4. Full obstacle-avoiding route between sStub and tStub including sourceBox and targetBox
+  const extendedObstacles: RectLike[] = [...obstacles];
+  if (options.sourceBox) extendedObstacles.push(shrinkRect(options.sourceBox, 2));
+  if (options.targetBox) extendedObstacles.push(shrinkRect(options.targetBox, 2));
+
+  const innerWaypoints = computeOrthogonalRouteCore(sStub, tStub, extendedObstacles, {
+    ...options,
+    padding: Math.min(padding, Math.max(4, stubLength - 2)),
+  });
+  return buildStubCandidate(innerWaypoints);
+}
+
+/**
+ * AntV X6 custom router adapter with obstacle avoidance, port outward normals, and parallel edge staggering.
  */
 export function portOrthogonalRouter(
   vertices: PointLike[],
@@ -617,28 +1480,46 @@ export function portOrthogonalRouter(
   const target = edgeView.targetPoint;
   if (!source || !target) return [];
 
-  // Extract obstacle rectangles and parallel edges from graph cells
+  // Extract obstacle rectangles, port normals, and parallel edges from graph cells
   const graph = edgeView.graph;
   const obstacles: RectLike[] = [];
   let parallelIndex = 0;
   let parallelCount = 1;
+  let sourceSide: PortSide | undefined;
+  let targetSide: PortSide | undefined;
+  let sourceBox: RectLike | undefined;
+  let targetBox: RectLike | undefined;
 
   if (graph && typeof graph.getNodes === "function") {
-    const sourceCell = edgeView.cell?.getSourceCell();
-    const targetCell = edgeView.cell?.getTargetCell();
+    const sourceCell = edgeView.cell?.getSourceCell?.();
+    const targetCell = edgeView.cell?.getTargetCell?.();
+    const sourcePortId = edgeView.cell?.getSourcePortId?.() ?? edgeView.cell?.source?.port;
+    const targetPortId = edgeView.cell?.getTargetPortId?.() ?? edgeView.cell?.target?.port;
+
+    if (sourceCell) {
+      sourceSide = getPortOutwardNormal(sourceCell, sourcePortId, source)?.side;
+      sourceBox = getNodeBBox(sourceCell) ?? undefined;
+    }
+    if (targetCell) {
+      targetSide = getPortOutwardNormal(targetCell, targetPortId, target)?.side;
+      targetBox = getNodeBBox(targetCell) ?? undefined;
+    }
 
     for (const node of graph.getNodes()) {
       if (node.id === sourceCell?.id || node.id === targetCell?.id) continue;
-      if (node.id.startsWith("solder_dot_") || node.id === "__diagram_background__") continue;
+      if (
+        node.id.startsWith("solder_dot_") ||
+        node.id.startsWith("__seq_stem_") ||
+        node.id.startsWith("__alignment_guide_") ||
+        node.id === "__diagram_background__" ||
+        node.id === "__diagram_axes__"
+      ) {
+        continue;
+      }
 
-      const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
+      const bbox = getNodeBBox(node);
       if (bbox) {
-        obstacles.push({
-          x: bbox.x,
-          y: bbox.y,
-          width: bbox.width,
-          height: bbox.height,
-        });
+        obstacles.push(bbox);
       }
     }
 
@@ -660,6 +1541,10 @@ export function portOrthogonalRouter(
   }
 
   const routerArgs: RouterOptions = {
+    sourceSide,
+    targetSide,
+    sourceBox,
+    targetBox,
     ...args,
     parallelIndex,
     parallelCount,
@@ -871,9 +1756,6 @@ export function computeSmoothBezierPath(points: PointLike[]): string {
 
   return d;
 }
-
-/** Cardinal boundary side of a diagram component node. */
-export type PortSide = "top" | "bottom" | "left" | "right";
 
 /** Perpendicular departure stub segment exiting from a component port. */
 export interface PortStubInfo {

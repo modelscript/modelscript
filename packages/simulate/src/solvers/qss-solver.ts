@@ -189,11 +189,8 @@ export function qssSolve(
   const isLiqss = method === "liqss2";
   const n = y0.length;
 
-  // Scale default quantum from standard ODE tolerances if very small tolerances (e.g. 1e-7) are passed
-  const rawRtol = options?.rtol ?? 1e-4;
-  const rawAtol = options?.atol ?? 1e-5;
-  const rtol = Math.max(rawRtol, order === 1 ? 5e-4 : 1e-5);
-  const atol = Math.max(rawAtol, order === 1 ? 5e-4 : 1e-6);
+  const rtol = options?.rtol !== undefined ? options.rtol : order === 1 ? 5e-4 : 1e-4;
+  const atol = options?.atol !== undefined ? options.atol : order === 1 ? 5e-4 : 1e-5;
   const maxEvents = options?.maxEvents ?? 250000;
 
   if (n === 0) {
@@ -345,7 +342,7 @@ export function qssSolve(
     const qCurv = order >= 3 ? q2[i]! : 0;
 
     const e0 = x0[i]! - qVal;
-    if (Math.abs(e0) >= quant * (1 - 1e-12)) {
+    if (!isSelfUpdate && Math.abs(e0) >= quant * (1 - 1e-12)) {
       nextEventTime[i] = t;
       return;
     }
@@ -523,19 +520,27 @@ export function qssSolve(
     tx[minIdx] = currentTime;
     updateQuantum(minIdx);
 
+    let lockedOnEquilibrium = false;
     if (isLiqss && diagJac[minIdx]! < -1e-6) {
       // Stiff LIQSS2 update: position q0 on the boundary in the direction of motion
-      // or stabilize around the equilibrium where a_ii * q + u_i = 0
+      // or lock onto the slow manifold equilibrium where a_ii * q + u_i = 0
       const aii = diagJac[minIdx]!;
       const dtPrev = currentTime - tq[minIdx]!;
       const qPrev = q0[minIdx]! + q1[minIdx]! * dtPrev;
-      const uEst = x1[minIdx]! - aii * qPrev;
-      const eqState = -uEst / aii;
+      const dxPrev = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX;
+      const ddxPrev = 2 * x2[minIdx]!;
+      const u0 = dxPrev - aii * qPrev;
+      const u1 = ddxPrev - aii * q1[minIdx]!;
+      const q1Eq = -u1 / aii;
+      const eqState = (q1Eq - u0) / aii;
       const quant = dq[minIdx]!;
       if (Math.abs(eqState - x0[minIdx]!) <= quant) {
         q0[minIdx] = eqState;
+        q1[minIdx] = q1Eq;
+        lockedOnEquilibrium = true;
       } else {
         q0[minIdx] = x0[minIdx]! + Math.sign(eqState - x0[minIdx]!) * quant;
+        q1[minIdx] = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX;
       }
       tq[minIdx] = currentTime;
     } else {
@@ -553,11 +558,11 @@ export function qssSolve(
     const affected = dependents[minIdx] && dependents[minIdx]!.length > 0 ? dependents[minIdx]! : [minIdx];
     computeDerivativesAt(currentTime, affected);
 
-    if (order >= 2) {
+    if (order >= 2 && !lockedOnEquilibrium) {
       q1[minIdx] = x1[minIdx]!;
       computeDerivativesAt(currentTime, affected);
     }
-    if (order >= 3) {
+    if (order >= 3 && !lockedOnEquilibrium) {
       q2[minIdx] = x2[minIdx]!;
       computeDerivativesAt(currentTime, affected);
       q1[minIdx] = x1[minIdx]!;

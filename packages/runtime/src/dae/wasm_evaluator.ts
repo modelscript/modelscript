@@ -7,8 +7,17 @@
  */
 
 import type { QueryDB, SymbolEntry, SymbolId } from "../runtime.js";
+import { evaluateMslCFunction, isMslCFunction } from "../util/msl_ffi.js";
 import { BinOp, DAEBuilder, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
-import { evalTimeTableTmax, evalTimeTableTmin, evalTimeTableValue, getOrCreateCachedTable } from "./wasm_table.js";
+import { evaluateArenaFunctionCall, executeArenaFunction } from "./wasm_statement_executor.js";
+import {
+  type CachedTable1D,
+  evalTable1DValue,
+  evalTimeTableTmax,
+  evalTimeTableTmin,
+  evalTimeTableValue,
+  getOrCreateCachedTable,
+} from "./wasm_table.js";
 
 /**
  * Dual numbers for forward-mode automatic differentiation.
@@ -161,6 +170,99 @@ function collectArgIds(arena: DAEBuilder, baseExprId: number, firstElem: number,
   return ids;
 }
 
+function inspectTimeTableArg(
+  arena: DAEBuilder,
+  timeArgId: number | undefined,
+  funcName: string,
+  cached: CachedTable1D | null,
+): { isAlreadyScaled: boolean; isAlreadyShifted: boolean } {
+  let isAlreadyScaled = false;
+  let isAlreadyShifted = false;
+  if (timeArgId !== undefined && timeArgId >= 0) {
+    const k = arena.getExprKind(timeArgId);
+    if (k === ExprKind.Name) {
+      const name = arena.interner.resolve(arena.getExprData1(timeArgId)) ?? "";
+      if (name === "time") {
+        return { isAlreadyScaled: false, isAlreadyShifted: false };
+      }
+      if (name === "timeScaled" || name.endsWith(".timeScaled")) {
+        isAlreadyScaled = true;
+      }
+    } else if (k === ExprKind.Binary) {
+      const op = arena.getExprData1(timeArgId) as BinOp;
+      if (op === BinOp.Div || op === BinOp.ElemDiv) {
+        isAlreadyScaled = true;
+        const leftId = arena.getExprLeft(timeArgId);
+        if (leftId >= 0 && arena.getExprKind(leftId) === ExprKind.Binary) {
+          const leftOp = arena.getExprData1(leftId) as BinOp;
+          if (leftOp === BinOp.Sub || leftOp === BinOp.ElemSub) {
+            isAlreadyShifted = true;
+          }
+        }
+      } else if (op === BinOp.Sub || op === BinOp.ElemSub) {
+        isAlreadyShifted = true;
+      }
+    }
+  }
+  if (!isAlreadyScaled && (funcName.includes("CombiTimeTable_getValue") || cached?.hasTimeScaled)) {
+    isAlreadyScaled = true;
+  }
+  return { isAlreadyScaled, isAlreadyShifted };
+}
+
+function resolveSubscriptNameDual(
+  arena: DAEBuilder,
+  exprId: number,
+  dualVarsByStringId: Map<number, Dual> | (Dual | undefined)[],
+  preValuesByStringId?: Float64Array | Map<number, number>,
+): string | null {
+  const baseId = arena.getExprData1(exprId);
+  const firstIndexId = arena.getExprLeft(exprId);
+  const rawCount = arena.getExprRight(exprId);
+  const indexCount =
+    rawCount > 0 && rawCount !== 0xffffffff ? rawCount : firstIndexId >= 0 && firstIndexId !== 0xffffffff ? 1 : 0;
+  if (arena.getExprKind(baseId) === ExprKind.Name && indexCount >= 1) {
+    const baseName = arena.interner.resolve(arena.getExprData1(baseId));
+    if (!baseName) return null;
+    const indices: number[] = [];
+    for (let i = 0; i < indexCount; i++) {
+      const idxExprId = i === 0 ? firstIndexId : arena.getExprLeft(exprId + i);
+      const idxDual = evaluateArenaDualExpression(arena, idxExprId, dualVarsByStringId, preValuesByStringId);
+      if (idxDual === null || !Number.isFinite(idxDual.val)) return null;
+      indices.push(Math.round(idxDual.val));
+    }
+    return `${baseName}[${indices.join(",")}]`;
+  }
+  return null;
+}
+
+function resolveSubscriptNameRuntime(
+  arena: DAEBuilder,
+  exprId: number,
+  valuesByStringId: Float64Array,
+  preValuesByStringId?: Float64Array,
+): string | null {
+  const baseId = arena.getExprData1(exprId);
+  const firstIndexId = arena.getExprLeft(exprId);
+  const rawCount = arena.getExprRight(exprId);
+  const indexCount =
+    rawCount > 0 && rawCount !== 0xffffffff ? rawCount : firstIndexId >= 0 && firstIndexId !== 0xffffffff ? 1 : 0;
+  if (arena.getExprKind(baseId) === ExprKind.Name && indexCount >= 1) {
+    const baseName = arena.interner.resolve(arena.getExprData1(baseId));
+    if (!baseName) return null;
+    if (indexCount === 1) {
+      const idx = Math.round(evaluateArenaRuntime(arena, firstIndexId, valuesByStringId, preValuesByStringId));
+      return `${baseName}[${idx}]`;
+    }
+    const indexIds = collectArgIds(arena, exprId, firstIndexId, indexCount);
+    const indices = indexIds.map((id) =>
+      Math.round(evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId)),
+    );
+    return `${baseName}[${indices.join(",")}]`;
+  }
+  return null;
+}
+
 /**
  * Expression evaluator using dual numbers for forward-mode automatic differentiation.
  */
@@ -168,6 +270,7 @@ export function evaluateArenaDualExpression(
   arena: DAEBuilder,
   exprId: number,
   dualVarsByStringId: Map<number, Dual> | (Dual | undefined)[],
+  preValuesByStringId?: Float64Array | Map<number, number>,
 ): Dual | null {
   if (exprId < 0) return null;
 
@@ -178,6 +281,7 @@ export function evaluateArenaDualExpression(
 
     case ExprKind.IntLiteral:
     case ExprKind.BoolLiteral:
+    case ExprKind.EnumLiteral:
       return Dual.constant(arena.getExprData1(exprId));
 
     case ExprKind.Name: {
@@ -189,18 +293,55 @@ export function evaluateArenaDualExpression(
       }
     }
 
+    case ExprKind.Subscript: {
+      const subName = resolveSubscriptNameDual(arena, exprId, dualVarsByStringId, preValuesByStringId);
+      if (subName) {
+        const subNameId = arena.interner.intern(subName);
+        if (Array.isArray(dualVarsByStringId)) {
+          return dualVarsByStringId[subNameId] ?? null;
+        } else {
+          return dualVarsByStringId.get(subNameId) ?? null;
+        }
+      }
+      return null;
+    }
+
+    case ExprKind.Pre: {
+      const argId = arena.getExprData1(exprId);
+      const preEnv = preValuesByStringId ?? (arena as any)._preValuesByStringId;
+      if (preEnv instanceof Float64Array) {
+        return Dual.constant(evaluateArenaRuntime(arena, argId, preEnv, preEnv));
+      }
+      if (preEnv && typeof (preEnv as any).get === "function") {
+        if (arena.getExprKind(argId) === ExprKind.Name) {
+          const v = (preEnv as Map<number, number>).get(arena.getExprData1(argId));
+          if (typeof v === "number") return Dual.constant(v);
+        } else if (arena.getExprKind(argId) === ExprKind.Subscript) {
+          const subName = resolveSubscriptNameDual(arena, argId, dualVarsByStringId, preValuesByStringId);
+          if (subName) {
+            const v = (preEnv as Map<number, number>).get(arena.interner.intern(subName));
+            if (typeof v === "number") return Dual.constant(v);
+          }
+        }
+      }
+      const cur = evaluateArenaDualExpression(arena, argId, dualVarsByStringId, preValuesByStringId);
+      return cur !== null ? Dual.constant(cur.val) : null;
+    }
+
     case ExprKind.Der: {
       const argId = arena.getExprData1(exprId);
+      let innerName: string | null = null;
       if (arena.getExprKind(argId) === ExprKind.Name) {
-        const innerNameId = arena.getExprData1(argId);
-        const innerName = arena.interner.resolve(innerNameId);
-        if (innerName) {
-          const derNameId = arena.interner.intern(`der(${innerName})`);
-          if (Array.isArray(dualVarsByStringId)) {
-            return dualVarsByStringId[derNameId] ?? null;
-          } else {
-            return dualVarsByStringId.get(derNameId) ?? null;
-          }
+        innerName = arena.interner.resolve(arena.getExprData1(argId)) ?? null;
+      } else if (arena.getExprKind(argId) === ExprKind.Subscript) {
+        innerName = resolveSubscriptNameDual(arena, argId, dualVarsByStringId, preValuesByStringId);
+      }
+      if (innerName) {
+        const derNameId = arena.interner.intern(`der(${innerName})`);
+        if (Array.isArray(dualVarsByStringId)) {
+          return dualVarsByStringId[derNameId] ?? null;
+        } else {
+          return dualVarsByStringId.get(derNameId) ?? null;
         }
       }
       return null;
@@ -208,7 +349,12 @@ export function evaluateArenaDualExpression(
 
     case ExprKind.Unary: {
       const op = arena.getExprData1(exprId) as UnaryOp;
-      const operand = evaluateArenaDualExpression(arena, arena.getExprLeft(exprId), dualVarsByStringId);
+      const operand = evaluateArenaDualExpression(
+        arena,
+        arena.getExprLeft(exprId),
+        dualVarsByStringId,
+        preValuesByStringId,
+      );
       if (operand === null) return null;
       switch (op) {
         case UnaryOp.Negate:
@@ -216,19 +362,34 @@ export function evaluateArenaDualExpression(
         case UnaryOp.Not:
           return Dual.constant(operand.val === 0 ? 1 : 0);
         default:
-          return null;
+          return operand;
       }
     }
 
     case ExprKind.Negate: {
-      const operand = evaluateArenaDualExpression(arena, arena.getExprLeft(exprId), dualVarsByStringId);
+      const operand = evaluateArenaDualExpression(
+        arena,
+        arena.getExprLeft(exprId),
+        dualVarsByStringId,
+        preValuesByStringId,
+      );
       return operand ? operand.neg() : null;
     }
 
     case ExprKind.Binary: {
       const op = arena.getExprData1(exprId) as BinOp;
-      const left = evaluateArenaDualExpression(arena, arena.getExprLeft(exprId), dualVarsByStringId);
-      const right = evaluateArenaDualExpression(arena, arena.getExprRight(exprId), dualVarsByStringId);
+      const left = evaluateArenaDualExpression(
+        arena,
+        arena.getExprLeft(exprId),
+        dualVarsByStringId,
+        preValuesByStringId,
+      );
+      const right = evaluateArenaDualExpression(
+        arena,
+        arena.getExprRight(exprId),
+        dualVarsByStringId,
+        preValuesByStringId,
+      );
 
       if (
         (op === BinOp.Mul || op === BinOp.ElemMul) &&
@@ -276,50 +437,119 @@ export function evaluateArenaDualExpression(
     }
 
     case ExprKind.IfElse: {
-      const cond = evaluateArenaDualExpression(arena, arena.getExprData1(exprId), dualVarsByStringId);
+      const cond = evaluateArenaDualExpression(
+        arena,
+        arena.getExprData1(exprId),
+        dualVarsByStringId,
+        preValuesByStringId,
+      );
       if (cond === null) return null;
       if (cond.val !== 0) {
-        return evaluateArenaDualExpression(arena, arena.getExprLeft(exprId), dualVarsByStringId);
+        return evaluateArenaDualExpression(arena, arena.getExprLeft(exprId), dualVarsByStringId, preValuesByStringId);
       } else {
-        return evaluateArenaDualExpression(arena, arena.getExprRight(exprId), dualVarsByStringId);
+        return evaluateArenaDualExpression(arena, arena.getExprRight(exprId), dualVarsByStringId, preValuesByStringId);
       }
     }
 
     case ExprKind.Call: {
       const funcNameId = arena.getExprData1(exprId);
-      const funcName = arena.interner.resolve(funcNameId);
+      const rawFuncName = arena.interner.resolve(funcNameId) ?? "";
+      const funcName = rawFuncName.replace(/^(Modelica\.)?Math\./, "");
       const argCount = arena.getExprRight(exprId);
       const firstArgId = arena.getExprLeft(exprId);
 
+      if (funcName === "initial") {
+        return Dual.constant((arena as any)._isInitialPhase ? 1 : 0);
+      }
+      if (funcName === "terminal") {
+        if ((arena as any)._isTerminalPhase) return Dual.constant(1);
+        const termId = arena.interner.intern("$terminal");
+        const termDual = Array.isArray(dualVarsByStringId)
+          ? dualVarsByStringId[termId]
+          : dualVarsByStringId.get(termId);
+        return Dual.constant(termDual?.val === 1 ? 1 : 0);
+      }
+      if (funcName === "pre") {
+        if (argCount <= 0) return Dual.constant(0);
+        const preEnv = preValuesByStringId ?? (arena as any)._preValuesByStringId;
+        if (preEnv instanceof Float64Array) {
+          return Dual.constant(evaluateArenaRuntime(arena, firstArgId, preEnv, preEnv));
+        }
+        const cur = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId);
+        return cur !== null ? Dual.constant(cur.val) : null;
+      }
       if (
         funcName === "noEvent" ||
         funcName === "/*Real*/" ||
         funcName === "/*Integer*/" ||
         funcName === "/*Boolean*/"
       ) {
-        return argCount > 0 ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId) : Dual.constant(0);
+        return argCount > 0
+          ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId)
+          : Dual.constant(0);
       }
       if (funcName === "homotopy") {
         if (argCount >= 2 && typeof arena.homotopyLambda === "number" && arena.homotopyLambda < 1.0) {
           const lambda = Math.max(0, Math.min(1, arena.homotopyLambda));
-          const actualDual = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId);
+          const actualDual = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId);
           const secondArgId = arena.getExprLeft(exprId + 1);
-          const simplifiedDual = evaluateArenaDualExpression(arena, secondArgId, dualVarsByStringId);
+          const simplifiedDual = evaluateArenaDualExpression(
+            arena,
+            secondArgId,
+            dualVarsByStringId,
+            preValuesByStringId,
+          );
           if (actualDual === null || simplifiedDual === null) return null;
           return actualDual.mul(Dual.constant(lambda)).add(simplifiedDual.mul(Dual.constant(1.0 - lambda)));
         }
-        return argCount > 0 ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId) : Dual.constant(0);
+        return argCount > 0
+          ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId)
+          : Dual.constant(0);
       }
       if (funcName === "smooth") {
         if (argCount > 1) {
           const secondArgId = arena.getExprLeft(exprId + 1);
-          return evaluateArenaDualExpression(arena, secondArgId, dualVarsByStringId);
+          return evaluateArenaDualExpression(arena, secondArgId, dualVarsByStringId, preValuesByStringId);
         }
-        return argCount > 0 ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId) : Dual.constant(0);
+        return argCount > 0
+          ? evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId)
+          : Dual.constant(0);
+      }
+      if (funcName === "semiLinear" && argCount >= 3) {
+        const x = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId);
+        const kPos = evaluateArenaDualExpression(
+          arena,
+          arena.getExprLeft(exprId + 1),
+          dualVarsByStringId,
+          preValuesByStringId,
+        );
+        const kNeg = evaluateArenaDualExpression(
+          arena,
+          arena.getExprLeft(exprId + 2),
+          dualVarsByStringId,
+          preValuesByStringId,
+        );
+        if (x === null || kPos === null || kNeg === null) return null;
+        return x.val >= 0 ? kPos.mul(x) : kNeg.mul(x);
       }
 
       if (argCount === 1) {
-        const arg = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId);
+        if (funcName === "der") {
+          let innerName: string | null = null;
+          if (arena.getExprKind(firstArgId) === ExprKind.Name) {
+            innerName = arena.interner.resolve(arena.getExprData1(firstArgId)) ?? null;
+          } else if (arena.getExprKind(firstArgId) === ExprKind.Subscript) {
+            innerName = resolveSubscriptNameDual(arena, firstArgId, dualVarsByStringId, preValuesByStringId);
+          }
+          if (innerName) {
+            const derNameId = arena.interner.intern(`der(${innerName})`);
+            return Array.isArray(dualVarsByStringId)
+              ? (dualVarsByStringId[derNameId] ?? null)
+              : (dualVarsByStringId.get(derNameId) ?? null);
+          }
+          return null;
+        }
+        const arg = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId);
         if (arg === null) return null;
         switch (funcName) {
           case "sin":
@@ -355,7 +585,10 @@ export function evaluateArenaDualExpression(
           case "ceil":
             return Dual.ceil(arg);
           case "floor":
+          case "integer":
             return Dual.floor(arg);
+          case "round":
+            return Dual.constant(Math.round(arg.val));
           case "Real":
           case "Integer":
           case "Boolean":
@@ -366,38 +599,85 @@ export function evaluateArenaDualExpression(
       }
 
       if (argCount === 2) {
-        const arg0 = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId);
+        const arg0 = evaluateArenaDualExpression(arena, firstArgId, dualVarsByStringId, preValuesByStringId);
         const secondArgId = arena.getExprLeft(exprId + 1);
-        const arg1 = evaluateArenaDualExpression(arena, secondArgId, dualVarsByStringId);
+        const arg1 = evaluateArenaDualExpression(arena, secondArgId, dualVarsByStringId, preValuesByStringId);
         if (arg0 === null || arg1 === null) return null;
         switch (funcName) {
           case "atan2":
             return Dual.atan2(arg0, arg1);
           case "max":
+          case "$OMC$PositiveMax":
             return Dual.max(arg0, arg1);
           case "min":
             return Dual.min(arg0, arg1);
           case "pow":
             return arg0.pow(arg1);
+          case "mod": {
+            if (arg1.val === 0) return null;
+            const q = Math.floor(arg0.val / arg1.val);
+            return new Dual(arg0.val - q * arg1.val, arg0.dot - q * arg1.dot);
+          }
+          case "rem": {
+            if (arg1.val === 0) return null;
+            const q = Math.trunc(arg0.val / arg1.val);
+            return new Dual(arg0.val - q * arg1.val, arg0.dot - q * arg1.dot);
+          }
+          case "div": {
+            if (arg1.val === 0) return null;
+            return Dual.constant(Math.trunc(arg0.val / arg1.val));
+          }
         }
       }
 
       if (
         funcName.includes("getTimeTableValue") ||
         funcName.includes("CombiTimeTable_getValue") ||
-        funcName.includes("getTable1DValue")
+        funcName.includes("getTable1DValue") ||
+        funcName.includes("CombiTable1D_getValue")
       ) {
         const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
         const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
-        const icolDual = argIds.length > 1 ? evaluateArenaDualExpression(arena, argIds[1]!, dualVarsByStringId) : null;
-        const timeDual = argIds.length > 2 ? evaluateArenaDualExpression(arena, argIds[2]!, dualVarsByStringId) : null;
+        const icolDual =
+          argIds.length > 1
+            ? evaluateArenaDualExpression(arena, argIds[1]!, dualVarsByStringId, preValuesByStringId)
+            : null;
+        const uDual =
+          argIds.length > 2
+            ? evaluateArenaDualExpression(arena, argIds[2]!, dualVarsByStringId, preValuesByStringId)
+            : null;
         const icol = icolDual ? icolDual.val : 1;
-        const timeIn = timeDual ? timeDual.val : 0;
+        const u = uDual ? uDual.val : 0;
+        const uDot = uDual ? uDual.dot : 0;
         const cached = getOrCreateCachedTable(arena, tableVarNameId);
-        return Dual.constant(evalTimeTableValue(cached, icol, timeIn));
+        const is1D = funcName.includes("getTable1DValue") || funcName.includes("CombiTable1D_getValue");
+        const { isAlreadyScaled, isAlreadyShifted } = inspectTimeTableArg(arena, argIds[2], funcName, cached);
+        const evalFn = (val: number) =>
+          is1D
+            ? evalTable1DValue(cached, icol, val)
+            : evalTimeTableValue(cached, icol, val, isAlreadyScaled, isAlreadyShifted);
+        const fVal = evalFn(u);
+        const fDot = uDot !== 0 ? ((evalFn(u + 1e-7) - evalFn(u - 1e-7)) / 2e-7) * uDot : 0;
+        return new Dual(fVal, fDot);
       }
 
-      return Dual.constant(0);
+      if (funcName.includes("getTimeTableTmin")) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        return Dual.constant(evalTimeTableTmin(cached));
+      }
+
+      if (funcName.includes("getTimeTableTmax")) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        return Dual.constant(evalTimeTableTmax(cached));
+      }
+
+      if (funcName.includes("getNextTimeEvent")) {
+        return Dual.constant(1e100);
+      }
+
+      return null;
     }
   }
 
@@ -416,6 +696,7 @@ export function evaluateArenaDualExpression(
  * @param seedStringId StringId of the variable with derivative 1.0 (all other variables have dot=0.0)
  * @param stack Reusable scratch Float64Array stack for evaluation
  * @param sp Current stack pointer offset (must have at least 16 slots available from sp)
+ * @param preValuesByStringId Optional discrete pre-event value snapshot indexed by `arena.interner` ID
  * @returns true on successful evaluation, false on division by zero or invalid expression
  */
 export function evaluateArenaDualFlat(
@@ -425,6 +706,7 @@ export function evaluateArenaDualFlat(
   seedStringId: number,
   stack: Float64Array,
   sp: number = 0,
+  preValuesByStringId?: Float64Array,
 ): boolean {
   if (exprId < 0) return false;
 
@@ -437,6 +719,7 @@ export function evaluateArenaDualFlat(
 
     case ExprKind.IntLiteral:
     case ExprKind.BoolLiteral:
+    case ExprKind.EnumLiteral:
       stack[sp] = arena.getExprData1(exprId);
       stack[sp + 1] = 0.0;
       return true;
@@ -448,24 +731,56 @@ export function evaluateArenaDualFlat(
       return true;
     }
 
+    case ExprKind.Subscript: {
+      const subName = resolveSubscriptNameRuntime(arena, exprId, valuesByStringId, preValuesByStringId);
+      if (subName) {
+        const subNameId = arena.interner.intern(subName);
+        stack[sp] = valuesByStringId[subNameId] ?? 0.0;
+        stack[sp + 1] = subNameId === seedStringId ? 1.0 : 0.0;
+        return true;
+      }
+      return false;
+    }
+
+    case ExprKind.Pre: {
+      const argId = arena.getExprData1(exprId);
+      const snapshotEnv =
+        preValuesByStringId ?? ((arena as any)._preValuesByStringId as Float64Array | undefined) ?? valuesByStringId;
+      stack[sp] = evaluateArenaRuntime(arena, argId, snapshotEnv, snapshotEnv);
+      stack[sp + 1] = 0.0;
+      return true;
+    }
+
     case ExprKind.Der: {
       const argId = arena.getExprData1(exprId);
+      let innerName: string | null = null;
       if (arena.getExprKind(argId) === ExprKind.Name) {
-        const innerNameId = arena.getExprData1(argId);
-        const innerName = arena.interner.resolve(innerNameId);
-        if (innerName) {
-          const derNameId = arena.interner.intern(`der(${innerName})`);
-          stack[sp] = valuesByStringId[derNameId] ?? 0.0;
-          stack[sp + 1] = derNameId === seedStringId ? 1.0 : 0.0;
-          return true;
-        }
+        innerName = arena.interner.resolve(arena.getExprData1(argId)) ?? null;
+      } else if (arena.getExprKind(argId) === ExprKind.Subscript) {
+        innerName = resolveSubscriptNameRuntime(arena, argId, valuesByStringId, preValuesByStringId);
+      }
+      if (innerName) {
+        const derNameId = arena.interner.intern(`der(${innerName})`);
+        stack[sp] = valuesByStringId[derNameId] ?? 0.0;
+        stack[sp + 1] = derNameId === seedStringId ? 1.0 : 0.0;
+        return true;
       }
       return false;
     }
 
     case ExprKind.Unary: {
       const op = arena.getExprData1(exprId) as UnaryOp;
-      if (!evaluateArenaDualFlat(arena, arena.getExprLeft(exprId), valuesByStringId, seedStringId, stack, sp)) {
+      if (
+        !evaluateArenaDualFlat(
+          arena,
+          arena.getExprLeft(exprId),
+          valuesByStringId,
+          seedStringId,
+          stack,
+          sp,
+          preValuesByStringId,
+        )
+      ) {
         return false;
       }
       switch (op) {
@@ -478,12 +793,22 @@ export function evaluateArenaDualFlat(
           stack[sp + 1] = 0.0;
           return true;
         default:
-          return false;
+          return true;
       }
     }
 
     case ExprKind.Negate: {
-      if (!evaluateArenaDualFlat(arena, arena.getExprLeft(exprId), valuesByStringId, seedStringId, stack, sp)) {
+      if (
+        !evaluateArenaDualFlat(
+          arena,
+          arena.getExprLeft(exprId),
+          valuesByStringId,
+          seedStringId,
+          stack,
+          sp,
+          preValuesByStringId,
+        )
+      ) {
         return false;
       }
       stack[sp] = -stack[sp]!;
@@ -493,10 +818,30 @@ export function evaluateArenaDualFlat(
 
     case ExprKind.Binary: {
       const op = arena.getExprData1(exprId) as BinOp;
-      if (!evaluateArenaDualFlat(arena, arena.getExprLeft(exprId), valuesByStringId, seedStringId, stack, sp)) {
+      if (
+        !evaluateArenaDualFlat(
+          arena,
+          arena.getExprLeft(exprId),
+          valuesByStringId,
+          seedStringId,
+          stack,
+          sp,
+          preValuesByStringId,
+        )
+      ) {
         return false;
       }
-      if (!evaluateArenaDualFlat(arena, arena.getExprRight(exprId), valuesByStringId, seedStringId, stack, sp + 2)) {
+      if (
+        !evaluateArenaDualFlat(
+          arena,
+          arena.getExprRight(exprId),
+          valuesByStringId,
+          seedStringId,
+          stack,
+          sp + 2,
+          preValuesByStringId,
+        )
+      ) {
         return false;
       }
 
@@ -583,19 +928,54 @@ export function evaluateArenaDualFlat(
     }
 
     case ExprKind.IfElse: {
-      if (!evaluateArenaDualFlat(arena, arena.getExprData1(exprId), valuesByStringId, seedStringId, stack, sp)) {
+      if (
+        !evaluateArenaDualFlat(
+          arena,
+          arena.getExprData1(exprId),
+          valuesByStringId,
+          seedStringId,
+          stack,
+          sp,
+          preValuesByStringId,
+        )
+      ) {
         return false;
       }
       const targetExprId = stack[sp] !== 0 ? arena.getExprLeft(exprId) : arena.getExprRight(exprId);
-      return evaluateArenaDualFlat(arena, targetExprId, valuesByStringId, seedStringId, stack, sp);
+      return evaluateArenaDualFlat(arena, targetExprId, valuesByStringId, seedStringId, stack, sp, preValuesByStringId);
     }
 
     case ExprKind.Call: {
       const funcNameId = arena.getExprData1(exprId);
-      const funcName = arena.interner.resolve(funcNameId);
+      const rawFuncName = arena.interner.resolve(funcNameId) ?? "";
+      const funcName = rawFuncName.replace(/^(Modelica\.)?Math\./, "");
       const argCount = arena.getExprRight(exprId);
       const firstArgId = arena.getExprLeft(exprId);
 
+      if (funcName === "initial") {
+        stack[sp] = (arena as any)._isInitialPhase ? 1.0 : 0.0;
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+      if (funcName === "terminal") {
+        const termId = arena.interner.intern("$terminal");
+        stack[sp] = (arena as any)._isTerminalPhase || valuesByStringId[termId] === 1 ? 1.0 : 0.0;
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+      if (funcName === "pre") {
+        if (argCount > 0) {
+          const snapshotEnv =
+            preValuesByStringId ??
+            ((arena as any)._preValuesByStringId as Float64Array | undefined) ??
+            valuesByStringId;
+          stack[sp] = evaluateArenaRuntime(arena, firstArgId, snapshotEnv, snapshotEnv);
+        } else {
+          stack[sp] = 0.0;
+        }
+        stack[sp + 1] = 0.0;
+        return true;
+      }
       if (
         funcName === "noEvent" ||
         funcName === "/*Real*/" ||
@@ -603,7 +983,15 @@ export function evaluateArenaDualFlat(
         funcName === "/*Boolean*/"
       ) {
         if (argCount > 0) {
-          return evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp);
+          return evaluateArenaDualFlat(
+            arena,
+            firstArgId,
+            valuesByStringId,
+            seedStringId,
+            stack,
+            sp,
+            preValuesByStringId,
+          );
         }
         stack[sp] = 0.0;
         stack[sp + 1] = 0.0;
@@ -612,11 +1000,23 @@ export function evaluateArenaDualFlat(
       if (funcName === "homotopy") {
         if (argCount >= 2 && typeof arena.homotopyLambda === "number" && arena.homotopyLambda < 1.0) {
           const lambda = Math.max(0, Math.min(1, arena.homotopyLambda));
-          if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp)) {
+          if (
+            !evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp, preValuesByStringId)
+          ) {
             return false;
           }
           const secondArgId = arena.getExprLeft(exprId + 1);
-          if (!evaluateArenaDualFlat(arena, secondArgId, valuesByStringId, seedStringId, stack, sp + 2)) {
+          if (
+            !evaluateArenaDualFlat(
+              arena,
+              secondArgId,
+              valuesByStringId,
+              seedStringId,
+              stack,
+              sp + 2,
+              preValuesByStringId,
+            )
+          ) {
             return false;
           }
           stack[sp] = lambda * stack[sp]! + (1.0 - lambda) * stack[sp + 2]!;
@@ -624,7 +1024,15 @@ export function evaluateArenaDualFlat(
           return true;
         }
         if (argCount > 0) {
-          return evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp);
+          return evaluateArenaDualFlat(
+            arena,
+            firstArgId,
+            valuesByStringId,
+            seedStringId,
+            stack,
+            sp,
+            preValuesByStringId,
+          );
         }
         stack[sp] = 0.0;
         stack[sp + 1] = 0.0;
@@ -633,18 +1041,88 @@ export function evaluateArenaDualFlat(
       if (funcName === "smooth") {
         if (argCount > 1) {
           const secondArgId = arena.getExprLeft(exprId + 1);
-          return evaluateArenaDualFlat(arena, secondArgId, valuesByStringId, seedStringId, stack, sp);
+          return evaluateArenaDualFlat(
+            arena,
+            secondArgId,
+            valuesByStringId,
+            seedStringId,
+            stack,
+            sp,
+            preValuesByStringId,
+          );
         }
         if (argCount > 0) {
-          return evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp);
+          return evaluateArenaDualFlat(
+            arena,
+            firstArgId,
+            valuesByStringId,
+            seedStringId,
+            stack,
+            sp,
+            preValuesByStringId,
+          );
         }
         stack[sp] = 0.0;
         stack[sp + 1] = 0.0;
         return true;
       }
+      if (funcName === "semiLinear" && argCount >= 3) {
+        if (
+          !evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp, preValuesByStringId) ||
+          !evaluateArenaDualFlat(
+            arena,
+            arena.getExprLeft(exprId + 1),
+            valuesByStringId,
+            seedStringId,
+            stack,
+            sp + 2,
+            preValuesByStringId,
+          ) ||
+          !evaluateArenaDualFlat(
+            arena,
+            arena.getExprLeft(exprId + 2),
+            valuesByStringId,
+            seedStringId,
+            stack,
+            sp + 4,
+            preValuesByStringId,
+          )
+        ) {
+          return false;
+        }
+        const xVal = stack[sp]!;
+        const xDot = stack[sp + 1]!;
+        if (xVal >= 0) {
+          const kPosVal = stack[sp + 2]!;
+          const kPosDot = stack[sp + 3]!;
+          stack[sp] = kPosVal * xVal;
+          stack[sp + 1] = kPosVal * xDot + kPosDot * xVal;
+        } else {
+          const kNegVal = stack[sp + 4]!;
+          const kNegDot = stack[sp + 5]!;
+          stack[sp] = kNegVal * xVal;
+          stack[sp + 1] = kNegVal * xDot + kNegDot * xVal;
+        }
+        return true;
+      }
 
       if (argCount === 1) {
-        if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp)) {
+        if (funcName === "der") {
+          let innerName: string | null = null;
+          if (arena.getExprKind(firstArgId) === ExprKind.Name) {
+            innerName = arena.interner.resolve(arena.getExprData1(firstArgId)) ?? null;
+          } else if (arena.getExprKind(firstArgId) === ExprKind.Subscript) {
+            innerName = resolveSubscriptNameRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+          }
+          if (innerName) {
+            const derNameId = arena.interner.intern(`der(${innerName})`);
+            stack[sp] = valuesByStringId[derNameId] ?? 0.0;
+            stack[sp + 1] = derNameId === seedStringId ? 1.0 : 0.0;
+            return true;
+          }
+          return false;
+        }
+        if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp, preValuesByStringId)) {
           return false;
         }
         const v = stack[sp]!;
@@ -686,7 +1164,7 @@ export function evaluateArenaDualFlat(
           }
           case "abs":
             stack[sp] = Math.abs(v);
-            stack[sp + 1] = v >= 0 ? d : -d;
+            stack[sp + 1] = v > 0 ? d : v < 0 ? -d : 0;
             return true;
           case "asin":
             stack[sp] = Math.asin(v);
@@ -723,7 +1201,12 @@ export function evaluateArenaDualFlat(
             stack[sp + 1] = 0.0;
             return true;
           case "floor":
+          case "integer":
             stack[sp] = Math.floor(v);
+            stack[sp + 1] = 0.0;
+            return true;
+          case "round":
+            stack[sp] = Math.round(v);
             stack[sp + 1] = 0.0;
             return true;
           case "Real":
@@ -736,11 +1219,13 @@ export function evaluateArenaDualFlat(
       }
 
       if (argCount === 2) {
-        if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp)) {
+        if (!evaluateArenaDualFlat(arena, firstArgId, valuesByStringId, seedStringId, stack, sp, preValuesByStringId)) {
           return false;
         }
         const secondArgId = arena.getExprLeft(exprId + 1);
-        if (!evaluateArenaDualFlat(arena, secondArgId, valuesByStringId, seedStringId, stack, sp + 2)) {
+        if (
+          !evaluateArenaDualFlat(arena, secondArgId, valuesByStringId, seedStringId, stack, sp + 2, preValuesByStringId)
+        ) {
           return false;
         }
         const aVal = stack[sp]!;
@@ -756,6 +1241,7 @@ export function evaluateArenaDualFlat(
             return true;
           }
           case "max":
+          case "$OMC$PositiveMax":
             stack[sp] = Math.max(aVal, bVal);
             stack[sp + 1] = aVal >= bVal ? aDot : bDot;
             return true;
@@ -775,27 +1261,86 @@ export function evaluateArenaDualFlat(
             }
             return true;
           }
+          case "mod": {
+            if (bVal === 0) return false;
+            const q = Math.floor(aVal / bVal);
+            stack[sp] = aVal - q * bVal;
+            stack[sp + 1] = aDot - q * bDot;
+            return true;
+          }
+          case "rem": {
+            if (bVal === 0) return false;
+            const q = Math.trunc(aVal / bVal);
+            stack[sp] = aVal - q * bVal;
+            stack[sp + 1] = aDot - q * bDot;
+            return true;
+          }
+          case "div": {
+            if (bVal === 0) return false;
+            stack[sp] = Math.trunc(aVal / bVal);
+            stack[sp + 1] = 0.0;
+            return true;
+          }
         }
       }
 
       if (
         funcName.includes("getTimeTableValue") ||
         funcName.includes("CombiTimeTable_getValue") ||
-        funcName.includes("getTable1DValue")
+        funcName.includes("getTable1DValue") ||
+        funcName.includes("CombiTable1D_getValue")
       ) {
         const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
         const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
-        const icol = argIds.length > 1 ? evaluateArenaRuntime(arena, argIds[1]!, valuesByStringId) : 1;
-        const timeIn = argIds.length > 2 ? evaluateArenaRuntime(arena, argIds[2]!, valuesByStringId) : 0;
+        const icol =
+          argIds.length > 1 ? evaluateArenaRuntime(arena, argIds[1]!, valuesByStringId, preValuesByStringId) : 1;
+        let u = 0;
+        let uDot = 0;
+        if (argIds.length > 2) {
+          if (
+            evaluateArenaDualFlat(arena, argIds[2]!, valuesByStringId, seedStringId, stack, sp, preValuesByStringId)
+          ) {
+            u = stack[sp]!;
+            uDot = stack[sp + 1]!;
+          } else {
+            u = evaluateArenaRuntime(arena, argIds[2]!, valuesByStringId, preValuesByStringId);
+          }
+        }
         const cached = getOrCreateCachedTable(arena, tableVarNameId);
-        stack[sp] = evalTimeTableValue(cached, icol, timeIn);
+        const is1D = funcName.includes("getTable1DValue") || funcName.includes("CombiTable1D_getValue");
+        const { isAlreadyScaled, isAlreadyShifted } = inspectTimeTableArg(arena, argIds[2], funcName, cached);
+        const evalFn = (val: number) =>
+          is1D
+            ? evalTable1DValue(cached, icol, val)
+            : evalTimeTableValue(cached, icol, val, isAlreadyScaled, isAlreadyShifted);
+        stack[sp] = evalFn(u);
+        stack[sp + 1] = uDot !== 0 ? ((evalFn(u + 1e-7) - evalFn(u - 1e-7)) / 2e-7) * uDot : 0.0;
+        return true;
+      }
+
+      if (funcName.includes("getTimeTableTmin")) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        stack[sp] = evalTimeTableTmin(cached);
         stack[sp + 1] = 0.0;
         return true;
       }
 
-      stack[sp] = 0.0;
-      stack[sp + 1] = 0.0;
-      return true;
+      if (funcName.includes("getTimeTableTmax")) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        stack[sp] = evalTimeTableTmax(cached);
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+
+      if (funcName.includes("getNextTimeEvent")) {
+        stack[sp] = 1e100;
+        stack[sp + 1] = 0.0;
+        return true;
+      }
+
+      return false;
     }
   }
 
@@ -853,9 +1398,13 @@ export function evaluateArenaRuntime(
 
     case ExprKind.Der: {
       const argId = arena.getExprData1(exprId);
+      let innerName: string | null = null;
       if (arena.getExprKind(argId) === ExprKind.Name) {
-        const innerNameId = arena.getExprData1(argId);
-        const innerName = arena.interner.resolve(innerNameId);
+        innerName = arena.interner.resolve(arena.getExprData1(argId)) ?? null;
+      } else if (arena.getExprKind(argId) === ExprKind.Subscript) {
+        innerName = resolveSubscriptNameRuntime(arena, argId, valuesByStringId, preValuesByStringId);
+      }
+      if (innerName) {
         const derNameId = arena.interner.intern(`der(${innerName})`);
         return valuesByStringId[derNameId] ?? 0;
       }
@@ -879,7 +1428,7 @@ export function evaluateArenaRuntime(
       const operand = evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId, preValuesByStringId);
       if (op === UnaryOp.Negate) return -operand;
       if (op === UnaryOp.Not) return operand === 0 ? 1 : 0;
-      return 0;
+      return operand;
     }
 
     case ExprKind.Binary: {
@@ -935,22 +1484,9 @@ export function evaluateArenaRuntime(
 
     // 6. Dynamic Subscript Resolution (`x[i]` / `x[i,j]` resolved via scalarized interned name)
     case ExprKind.Subscript: {
-      const baseId = arena.getExprData1(exprId);
-      const indexCount = arena.getExprRight(exprId);
-      const firstIndexId = arena.getExprLeft(exprId);
-
-      if (arena.getExprKind(baseId) === ExprKind.Name) {
-        const baseName = arena.interner.resolve(arena.getExprData1(baseId));
-        if (indexCount === 1) {
-          const idx = evaluateArenaRuntime(arena, firstIndexId, valuesByStringId, preValuesByStringId);
-          const subscriptedNameId = arena.interner.intern(`${baseName}[${Math.round(idx)}]`);
-          return valuesByStringId[subscriptedNameId] ?? 0;
-        }
-        const indexIds = collectArgIds(arena, exprId, firstIndexId, indexCount);
-        const indices = indexIds.map((id) =>
-          Math.round(evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId)),
-        );
-        const subscriptedNameId = arena.interner.intern(`${baseName}[${indices.join(",")}]`);
+      const subName = resolveSubscriptNameRuntime(arena, exprId, valuesByStringId, preValuesByStringId);
+      if (subName) {
+        const subscriptedNameId = arena.interner.intern(subName);
         return valuesByStringId[subscriptedNameId] ?? 0;
       }
       return 0;
@@ -972,8 +1508,9 @@ export function evaluateArenaRuntime(
     }
 
     case ExprKind.Tuple: {
-      const elem = arena.getExprData1(exprId);
-      return evaluateArenaRuntime(arena, elem, valuesByStringId, preValuesByStringId);
+      const firstElem = arena.getExprLeft(exprId);
+      if (firstElem < 0 || firstElem === 0xffffffff) return 0;
+      return evaluateArenaRuntime(arena, firstElem, valuesByStringId, preValuesByStringId);
     }
 
     case ExprKind.Colon:
@@ -1036,18 +1573,32 @@ export function evaluateArenaRuntime(
         }
         case "initial":
           return (arena as any)._isInitialPhase ? 1 : 0;
-        case "terminal":
-          return (arena as any)._isTerminalPhase ? 1 : 0;
+        case "terminal": {
+          if ((arena as any)._isTerminalPhase) return 1;
+          const termId =
+            typeof (arena as any).intern === "function"
+              ? (arena as any).intern("$terminal")
+              : arena.interner.intern("$terminal");
+          const termVal =
+            typeof (valuesByStringId as any).get === "function"
+              ? (valuesByStringId as any).get(termId)
+              : valuesByStringId[termId];
+          return termVal === 1 ? 1 : 0;
+        }
         case "delay": {
-          // Continuous transport delay `delay(expr, delayTime)`: records `(t, currVal)` samples per `exprId`
+          // Continuous transport delay `delay(expr, delayTime[, delayMax])`: records `(t, currVal)` samples per `exprId`
           // and performs binary search + linear interpolation at `queryTime = t - delayTime`.
           if (argCount >= 2) {
             const currVal = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
             const secondArgId = arena.getExprLeft(exprId + 1);
             const delayTime = evaluateArenaRuntime(arena, secondArgId, valuesByStringId, preValuesByStringId);
+            const delayMax =
+              argCount >= 3
+                ? evaluateArenaRuntime(arena, arena.getExprLeft(exprId + 2), valuesByStringId, preValuesByStringId)
+                : delayTime;
             if (delayTime <= 0) return currVal;
             const timeId = arena.interner.intern("time");
-            const t = valuesByStringId[timeId] ?? 0;
+            const currentTime = valuesByStringId[timeId] ?? 0;
             let delayMap = (arena as any)._delayHistory as Map<number, { t: number[]; v: number[] }> | undefined;
             if (!delayMap) {
               delayMap = new Map();
@@ -1055,18 +1606,36 @@ export function evaluateArenaRuntime(
             }
             let buf = delayMap.get(exprId);
             if (!buf) {
-              buf = { t: [t], v: [currVal] };
+              buf = { t: [currentTime], v: [currVal] };
               delayMap.set(exprId, buf);
               return currVal;
             }
             const lastIdx = buf.t.length - 1;
-            if (lastIdx < 0 || t > buf.t[lastIdx]! + 1e-12) {
-              buf.t.push(t);
-              buf.v.push(currVal);
-            } else if (Math.abs(t - buf.t[lastIdx]!) <= 1e-12) {
+            if (lastIdx >= 0 && Math.abs(currentTime - buf.t[lastIdx]!) <= 1e-12) {
               buf.v[lastIdx] = currVal;
+            } else if (lastIdx >= 0 && currentTime < buf.t[lastIdx]! - 1e-12) {
+              while (buf.t.length > 0 && buf.t[buf.t.length - 1]! >= currentTime - 1e-12) {
+                buf.t.pop();
+                buf.v.pop();
+              }
+              buf.t.push(currentTime);
+              buf.v.push(currVal);
+            } else {
+              buf.t.push(currentTime);
+              buf.v.push(currVal);
             }
-            const queryTime = t - delayTime;
+            if (buf.t.length > 4096) {
+              const cutoff = currentTime - Math.max(delayMax, delayTime) - 1.0;
+              let pruneIdx = 0;
+              while (pruneIdx < buf.t.length - 2 && buf.t[pruneIdx + 1]! < cutoff) {
+                pruneIdx++;
+              }
+              if (pruneIdx > 0) {
+                buf.t.splice(0, pruneIdx);
+                buf.v.splice(0, pruneIdx);
+              }
+            }
+            const queryTime = currentTime - delayTime;
             if (queryTime <= buf.t[0]!) {
               return buf.v[0]!;
             }
@@ -1110,6 +1679,45 @@ export function evaluateArenaRuntime(
             return lambda * actualVal + (1.0 - lambda) * simplifiedVal;
           }
           return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
+        }
+        case "semiLinear": {
+          if (argCount >= 3) {
+            const x = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+            const kPos = evaluateArenaRuntime(
+              arena,
+              arena.getExprLeft(exprId + 1),
+              valuesByStringId,
+              preValuesByStringId,
+            );
+            const kNeg = evaluateArenaRuntime(
+              arena,
+              arena.getExprLeft(exprId + 2),
+              valuesByStringId,
+              preValuesByStringId,
+            );
+            return x >= 0 ? kPos * x : kNeg * x;
+          }
+          return 0;
+        }
+        case "activeState":
+        case "ticksInState":
+        case "timeInState": {
+          const readVar = (id: number): number | undefined =>
+            typeof (valuesByStringId as any).get === "function"
+              ? (valuesByStringId as any).get(id)
+              : valuesByStringId[id];
+          if (argCount >= 1 && firstArgId >= 0) {
+            const argName = arena.interner.resolve(arena.getExprData1(firstArgId)) ?? "";
+            const key1 = arena.interner.intern(`$${funcName}(${argName})`);
+            const val1 = readVar(key1);
+            if (val1 !== undefined && val1 !== 0) return val1;
+            const key2 = arena.interner.intern(`${funcName}(${argName})`);
+            const val2 = readVar(key2);
+            if (val2 !== undefined && val2 !== 0) return val2;
+            return val1 ?? 0;
+          }
+          const bareKey = arena.interner.intern(`$${funcName}`);
+          return readVar(bareKey) ?? 0;
         }
       }
 
@@ -1161,16 +1769,18 @@ export function evaluateArenaRuntime(
           case "min":
             return arg;
           case "der": {
+            let varName: string | null = null;
             if (arena.getExprKind(firstArgId) === ExprKind.Name) {
-              const varNameId = arena.getExprData1(firstArgId);
-              const varName = arena.interner.resolve(varNameId);
-              const derNameId = arena.interner.intern(`der(${varName ?? ""})`);
+              varName = arena.interner.resolve(arena.getExprData1(firstArgId)) ?? null;
+            } else if (arena.getExprKind(firstArgId) === ExprKind.Subscript) {
+              varName = resolveSubscriptNameRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+            }
+            if (varName) {
+              const derNameId = arena.interner.intern(`der(${varName})`);
               return valuesByStringId[derNameId] ?? 0;
             }
             return 0;
           }
-          case "pre":
-            return arg;
         }
       }
 
@@ -1248,11 +1858,18 @@ export function evaluateArenaRuntime(
         return result;
       }
 
-      if (
-        funcName.includes("getTimeTableValue") ||
-        funcName.includes("CombiTimeTable_getValue") ||
-        funcName.includes("getTable1DValue")
-      ) {
+      if (funcName.includes("getTable1DValue") || funcName.includes("CombiTable1D_getValue")) {
+        const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        const icol =
+          argIds.length > 1 ? evaluateArenaRuntime(arena, argIds[1]!, valuesByStringId, preValuesByStringId) : 1;
+        const u =
+          argIds.length > 2 ? evaluateArenaRuntime(arena, argIds[2]!, valuesByStringId, preValuesByStringId) : 0;
+        const cached = getOrCreateCachedTable(arena, tableVarNameId);
+        return evalTable1DValue(cached, icol, u);
+      }
+
+      if (funcName.includes("getTimeTableValue") || funcName.includes("CombiTimeTable_getValue")) {
         const tableVarNameId = arena.getExprKind(firstArgId) === ExprKind.Name ? arena.getExprData1(firstArgId) : 0;
         const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
         const icol =
@@ -1260,7 +1877,8 @@ export function evaluateArenaRuntime(
         const timeIn =
           argIds.length > 2 ? evaluateArenaRuntime(arena, argIds[2]!, valuesByStringId, preValuesByStringId) : 0;
         const cached = getOrCreateCachedTable(arena, tableVarNameId);
-        return evalTimeTableValue(cached, icol, timeIn);
+        const { isAlreadyScaled, isAlreadyShifted } = inspectTimeTableArg(arena, argIds[2], funcName, cached);
+        return evalTimeTableValue(cached, icol, timeIn, isAlreadyScaled, isAlreadyShifted);
       }
 
       if (funcName.includes("getTimeTableTmin")) {
@@ -1277,6 +1895,61 @@ export function evaluateArenaRuntime(
 
       if (funcName.includes("getNextTimeEvent")) {
         return 1e100;
+      }
+
+      // 8e. Fallback to external MSL C FFI or user-defined functions in `arena.functions`
+      const cleanName = rawFuncName.replace(/^\.+/, "");
+      const shortName = cleanName.includes(".") ? cleanName.slice(cleanName.lastIndexOf(".") + 1) : cleanName;
+      if (isMslCFunction(cleanName) || isMslCFunction(shortName)) {
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        const argVals = argIds.map((id) => {
+          if (arena.getExprKind(id) === ExprKind.StringLiteral) {
+            return arena.interner.resolve(arena.getExprData1(id)) ?? "";
+          }
+          return evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId);
+        });
+        const cRes = evaluateMslCFunction(isMslCFunction(cleanName) ? cleanName : shortName, argVals);
+        if (typeof cRes === "number") return cRes;
+        if (typeof cRes === "boolean") return cRes ? 1 : 0;
+      }
+
+      const fnArena =
+        arena.functions?.get(funcNameId) ??
+        arena.getFunction?.(funcNameId) ??
+        arena.getFunction?.(rawFuncName) ??
+        arena.getFunction?.(cleanName) ??
+        arena.getFunction?.(funcName) ??
+        arena.getFunction?.(shortName);
+      if (fnArena) {
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        const argVals = argIds.map((id) => evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId));
+        const parentLookup = (calledId: number, calledArgs: number[]): number | null => {
+          const calledName = fnArena.interner.resolve(calledId) ?? arena.interner.resolve(calledId) ?? "";
+          const calledClean = calledName.replace(/^\.+/, "");
+          const calledShort = calledClean.includes(".")
+            ? calledClean.slice(calledClean.lastIndexOf(".") + 1)
+            : calledClean;
+          const subArena =
+            fnArena.functions?.get(calledId) ??
+            fnArena.getFunction?.(calledId) ??
+            fnArena.getFunction?.(calledName) ??
+            fnArena.getFunction?.(calledClean) ??
+            arena.functions?.get(calledId) ??
+            arena.getFunction?.(calledName) ??
+            arena.getFunction?.(calledClean) ??
+            arena.getFunction?.(calledShort);
+          if (subArena) {
+            return executeArenaFunction(subArena, calledArgs, parentLookup);
+          }
+          return null;
+        };
+        if (!fnArena.externalDecl) {
+          const res = executeArenaFunction(fnArena, argVals, parentLookup);
+          if (res !== null && Number.isFinite(res)) return res;
+        }
+        const cevalRes = evaluateArenaFunctionCall(arena, funcNameId, argVals);
+        if (typeof cevalRes === "number") return cevalRes;
+        if (typeof cevalRes === "boolean") return cevalRes ? 1 : 0;
       }
 
       return 0;

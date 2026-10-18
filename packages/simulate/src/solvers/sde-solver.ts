@@ -211,6 +211,30 @@ export function sriw1(problem: SDEProblem, options: SDEOptions = {}): SDESimulat
 
   const noiseType = problem.noiseType ?? "diagonal";
 
+  const normalizeDiffusion = (gRaw: unknown): number[] => {
+    if (typeof gRaw === "number") {
+      return new Array<number>(n).fill(gRaw);
+    }
+    if (Array.isArray(gRaw)) {
+      if (gRaw.length === 0) return new Array<number>(n).fill(0);
+      if (Array.isArray(gRaw[0])) {
+        const mat = gRaw as number[][];
+        const out = new Array<number>(n);
+        for (let i = 0; i < n; i++) {
+          out[i] = mat[i]?.[i] ?? mat[i]?.[0] ?? 0;
+        }
+        return out;
+      }
+      const vec = gRaw as number[];
+      if (noiseType === "scalar" || vec.length === 1) {
+        if (vec.length >= n) return vec;
+        return new Array<number>(n).fill(vec[0] ?? 0);
+      }
+      return vec;
+    }
+    return new Array<number>(n).fill(0);
+  };
+
   while (t < tEnd - 1e-14 && stats.acceptedSteps + stats.rejectedSteps < 100000) {
     if (t + h > tEnd) h = tEnd - t;
     const sqrtH = Math.sqrt(h);
@@ -218,17 +242,25 @@ export function sriw1(problem: SDEProblem, options: SDEOptions = {}): SDESimulat
     // Generate normal increment dW and second-order space variable dZ
     const dW = new Float64Array(n);
     const dZ = new Float64Array(n);
-    for (let i = 0; i < n; i++) {
+    if (noiseType === "scalar") {
       const xi = gaussian.sample();
-      dW[i] = sqrtH * xi;
-      // Truncated normal / space increment
-      dZ[i] = 0.5 * Math.pow(h, 1.5) * (xi + gaussian.sample() / Math.sqrt(3));
+      const dW0 = sqrtH * xi;
+      const dZ0 = 0.5 * Math.pow(h, 1.5) * (xi + gaussian.sample() / Math.sqrt(3));
+      dW.fill(dW0);
+      dZ.fill(dZ0);
+    } else {
+      for (let i = 0; i < n; i++) {
+        const xi = gaussian.sample();
+        dW[i] = sqrtH * xi;
+        // Truncated normal / space increment
+        dZ[i] = 0.5 * Math.pow(h, 1.5) * (xi + gaussian.sample() / Math.sqrt(3));
+      }
     }
 
     // Stage 1
     const f0 = problem.f(t, y, problem.p);
     const g0Raw = problem.g(t, y, problem.p);
-    const g0 = noiseType === "diagonal" ? (g0Raw as number[]) : [(g0Raw as number[])[0] ?? 0];
+    const g0 = normalizeDiffusion(g0Raw);
     stats.fEvals++;
 
     // Stage 2: Drift evaluation at y + h * f0 + g0 * dW
@@ -245,7 +277,7 @@ export function sriw1(problem: SDEProblem, options: SDEOptions = {}): SDESimulat
       yStage3[i] = (y[i] ?? 0) + (g0[i] ?? 0) * sqrtH;
     }
     const g1Raw = problem.g(t + h, yStage3, problem.p);
-    const g1 = noiseType === "diagonal" ? (g1Raw as number[]) : [(g1Raw as number[])[0] ?? 0];
+    const g1 = normalizeDiffusion(g1Raw);
 
     // High-order update (order 1.5 strong)
     const yHigh = new Array<number>(n);
@@ -274,10 +306,10 @@ export function sriw1(problem: SDEProblem, options: SDEOptions = {}): SDESimulat
       states.push([...y]);
 
       const factor = Math.min(2.0, Math.max(0.5, 0.9 * Math.pow(Math.max(maxErrorRatio, 1e-4), -0.5)));
-      h = Math.min(Math.abs(tEnd - t0) / 10, Math.max(1e-6, h * factor));
+      h = Math.min(Math.abs(tEnd - t0) / 10, Math.max(1e-12, h * factor));
     } else {
       stats.rejectedSteps++;
-      h = Math.max(1e-6, h * 0.5);
+      h = Math.max(1e-12, h * 0.5);
     }
   }
 
@@ -302,15 +334,45 @@ export function simulateSDEEnsemble(
 
   const baseSeed = options.seed ?? problem.seed ?? 42;
   const firstTraj = solverFn(problem, { ...options, seed: baseSeed });
-  const numSteps = firstTraj.times.length;
+  const refTimes = firstTraj.times;
+  const numSteps = refTimes.length;
   const n = problem.y0.length;
+
+  const interpolateOntoRef = (times: number[], states: number[][]): number[][] => {
+    if (times.length === numSteps && times.every((tVal, idx) => Math.abs(tVal - (refTimes[idx] ?? 0)) < 1e-14)) {
+      return states;
+    }
+    const aligned: number[][] = new Array(numSteps);
+    let j = 0;
+    for (let s = 0; s < numSteps; s++) {
+      const tTarget = refTimes[s]!;
+      while (j + 1 < times.length && (times[j + 1] ?? 0) < tTarget) {
+        j++;
+      }
+      if (j + 1 >= times.length || Math.abs((times[j] ?? 0) - tTarget) < 1e-14) {
+        aligned[s] = [...(states[j] ?? states[states.length - 1] ?? new Array<number>(n).fill(0))];
+      } else {
+        const t0Seg = times[j]!;
+        const t1Seg = times[j + 1]!;
+        const alpha = t1Seg > t0Seg ? (tTarget - t0Seg) / (t1Seg - t0Seg) : 0;
+        const s0 = states[j]!;
+        const s1 = states[j + 1]!;
+        const row = new Array<number>(n);
+        for (let i = 0; i < n; i++) {
+          row[i] = (1 - alpha) * (s0[i] ?? 0) + alpha * (s1[i] ?? 0);
+        }
+        aligned[s] = row;
+      }
+    }
+    return aligned;
+  };
 
   const allTrajectories: number[][][] = new Array(numTrajectories);
   allTrajectories[0] = firstTraj.states;
 
   for (let k = 1; k < numTrajectories; k++) {
     const res = solverFn(problem, { ...options, seed: baseSeed + k * 7919 });
-    allTrajectories[k] = res.states;
+    allTrajectories[k] = interpolateOntoRef(res.times, res.states);
   }
 
   // Compute Mean and Variance trajectories

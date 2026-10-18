@@ -419,6 +419,22 @@ export class ModelicaSurrogateEmitter {
         lines.push(`  parameter Real b_${l}[${fanOut}] = { ${layer.b.map(formatNumber).join(", ")} };`);
         lines.push(`  protected Real h_${l}[${fanOut}];`);
       }
+    } else if (rom.weights.type === "rbf") {
+      const rbf = rom.weights;
+      const nCenters = rbf.centers.length;
+      const nIn = inputs.length;
+      const centerRows = rbf.centers.map((row) => "{" + row.map(formatNumber).join(", ") + "}").join(", ");
+      const weightRows = rbf.weights.map((row) => "{" + row.map(formatNumber).join(", ") + "}").join(", ");
+      lines.push(
+        ``,
+        `  // --- Radial Basis Function (RBF) Parameters ---`,
+        `  parameter Real rbf_eps = ${formatNumber(rbf.epsilon)};`,
+        `  parameter Real rbf_centers[${nCenters}, ${nIn}] = { ${centerRows} };`,
+        `  parameter Real rbf_weights[${outputs.length}, ${nCenters}] = { ${weightRows} };`,
+        `  protected Real rbf_phi[${nCenters}];`,
+        `  protected Real rbf_r2;`,
+        `  protected Real rbf_sum;`,
+      );
     }
 
     const multiBounds = options.multivariateBounds ?? rom.multivariateBounds;
@@ -519,11 +535,35 @@ export class ModelicaSurrogateEmitter {
       for (let q = 0; q < outputs.length; q++) {
         lines.push(`  ${safeOutputs[q]} := h_${lastL}[${q + 1}] * out_std[${q + 1}] + out_mean[${q + 1}];`);
       }
+    } else if (rom.weights.type === "rbf") {
+      const rbf = rom.weights;
+      const nCenters = rbf.centers.length;
+      const isMultiquadric = rbf.rbfKernel === "multiquadric";
+      lines.push(``, `  // Radial Basis Function (RBF) Evaluation`);
+      lines.push(`  for c in 1:${nCenters} loop`);
+      lines.push(`    rbf_r2 := 0.0;`);
+      lines.push(`    for j in 1:${inputs.length} loop`);
+      lines.push(`      rbf_r2 := rbf_r2 + (u_norm[j] - rbf_centers[c, j]) ^ 2;`);
+      lines.push(`    end for;`);
+      if (isMultiquadric) {
+        lines.push(`    rbf_phi[c] := Modelica.Math.sqrt(rbf_r2 + rbf_eps * rbf_eps);`);
+      } else {
+        lines.push(`    rbf_phi[c] := Modelica.Math.exp(-rbf_r2 / (2.0 * rbf_eps * rbf_eps));`);
+      }
+      lines.push(`  end for;`);
+      for (let q = 0; q < outputs.length; q++) {
+        lines.push(`  rbf_sum := 0.0;`);
+        lines.push(`  for c in 1:${nCenters} loop`);
+        lines.push(`    rbf_sum := rbf_sum + rbf_weights[${q + 1}, c] * rbf_phi[c];`);
+        lines.push(`  end for;`);
+        lines.push(`  ${safeOutputs[q]} := rbf_sum * out_std[${q + 1}] + out_mean[${q + 1}];`);
+      }
     } else if (rom.weights.type === "polynomial") {
       const w = rom.weights;
-      lines.push(``, `  // Polynomial Regression`);
+      const normInputVars = inputs.map((_, idx) => `u_norm[${idx + 1}]`);
+      lines.push(``, `  // Polynomial Regression (evaluated on normalized inputs u_norm)`);
       for (let q = 0; q < outputs.length; q++) {
-        const eqRhs = buildTrainedPolynomialEquation(safeInputs, w.degree, w.coefficients[q]!);
+        const eqRhs = buildRomPolynomialEquation(normInputVars, w.degree, w.coefficients[q]!);
         lines.push(`  ${safeOutputs[q]} := (${eqRhs}) * out_std[${q + 1}] + out_mean[${q + 1}];`);
       }
     }
@@ -550,6 +590,37 @@ function formatNumber(val: number): string {
   return val.toString();
 }
 
+function buildRomPolynomialEquation(normInputs: string[], degree: number, coeffs: Float64Array | number[]): string {
+  const nInputs = normInputs.length;
+  const terms: string[] = [];
+  let idx = 0;
+
+  function enumerate(d: number, startIdx: number, current: number[]): void {
+    const c = coeffs[idx++] ?? 0;
+    if (Math.abs(c) > 1e-12 || (idx === 1 && coeffs.length === 1)) {
+      const factors: string[] = [formatNumber(c)];
+      for (let i = 0; i < nInputs; i++) {
+        const exp = current[i]!;
+        if (exp === 1) {
+          factors.push(normInputs[i]!);
+        } else if (exp > 1) {
+          factors.push(`${normInputs[i]!}^${exp}`);
+        }
+      }
+      terms.push(factors.join(" * "));
+    }
+    if (d >= degree) return;
+    for (let i = startIdx; i < nInputs; i++) {
+      const next = [...current];
+      next[i] = next[i]! + 1;
+      enumerate(d + 1, i, next);
+    }
+  }
+
+  enumerate(0, 0, new Array(nInputs).fill(0));
+  return terms.length > 0 ? terms.join(" + ") : "0.0";
+}
+
 export function buildTrainedPolynomialEquation(
   params: string[],
   degree: number,
@@ -562,28 +633,36 @@ export function buildTrainedPolynomialEquation(
   }
 
   let idx = 1;
-  // Linear terms
-  for (let i = 0; i < params.length; i++) {
-    const c = coeffs[idx++] ?? 0;
-    if (Math.abs(c) > 1e-12) {
-      terms.push(`${formatNumber(c)} * ${params[i]}`);
+  const P = params.length;
+
+  function enumerateHomogeneous(remDeg: number, startIdx: number, chosen: number[]): void {
+    if (remDeg === 0) {
+      const c = coeffs[idx++] ?? 0;
+      if (Math.abs(c) > 1e-12) {
+        const counts = new Int32Array(P);
+        for (const pIdx of chosen) counts[pIdx] = counts[pIdx]! + 1;
+        const factors: string[] = [formatNumber(c)];
+        for (let i = 0; i < P; i++) {
+          const exp = counts[i]!;
+          if (exp === 1) {
+            factors.push(params[i]!);
+          } else if (exp > 1) {
+            factors.push(`${params[i]!}^${exp}`);
+          }
+        }
+        terms.push(factors.join(" * "));
+      }
+      return;
+    }
+    for (let i = startIdx; i < P; i++) {
+      chosen.push(i);
+      enumerateHomogeneous(remDeg - 1, i, chosen);
+      chosen.pop();
     }
   }
 
-  // Quadratic terms
-  if (degree >= 2) {
-    for (let i = 0; i < params.length; i++) {
-      for (let j = i; j < params.length; j++) {
-        const c = coeffs[idx++] ?? 0;
-        if (Math.abs(c) > 1e-12) {
-          if (i === j) {
-            terms.push(`${formatNumber(c)} * ${params[i]}^2`);
-          } else {
-            terms.push(`${formatNumber(c)} * ${params[i]} * ${params[j]}`);
-          }
-        }
-      }
-    }
+  for (let d = 1; d <= degree; d++) {
+    enumerateHomogeneous(d, 0, []);
   }
 
   if (terms.length === 0) {

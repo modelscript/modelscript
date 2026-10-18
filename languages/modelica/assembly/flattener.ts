@@ -3580,25 +3580,6 @@ export class WasmExprVisitor {
       }
     }
 
-    // Simplify trigonometric ratios: sin(expr) / cos(expr) -> tan(expr)
-    if (baseOp == (BinOp.Div as u16)) {
-      if (kLeft == ExprKind.Call && kRight == ExprKind.Call) {
-        let leftFnId = this.dae.getExprData1(left);
-        let rightFnId = this.dae.getExprData1(right);
-        let pool = this.dae.getStringPool();
-        if (poolMatchesSimple(pool, leftFnId, "sin") && poolMatchesSimple(pool, rightFnId, "cos")) {
-          let leftArg = this.dae.getExprLeft(left);
-          let rightArg = this.dae.getExprLeft(right);
-          let leftArgCount = this.dae.getExprRight(left);
-          let rightArgCount = this.dae.getExprRight(right);
-          if (leftArgCount == 1 && rightArgCount == 1 && (leftArg == rightArg || this.areExprsEqual(leftArg, rightArg))) {
-            let tanId = internStaticString(pool, "tan");
-            return this.dae.addExpression(ExprKind.Call, tanId, leftArg, 1);
-          }
-        }
-      }
-    }
-
     // Constant folding
     if (kLeft == ExprKind.RealLiteral && kRight == ExprKind.RealLiteral) {
       let v1 = this.dae.getExprRealValue(left);
@@ -4770,20 +4751,26 @@ export class WasmExprVisitor {
 
     if (poolMatchesSimple(pool, fnNameId, "array")) {
       let hasReal = false;
+      let hasInt = false;
       let allNumeric = true;
       for (let i: u32 = 0; i < argCount; i++) {
         let aid = this.tempBuffer.get(argStart + i);
         let k = this.dae.getExprKind(aid);
-        if (k == ExprKind.RealLiteral) {
+        if (k == ExprKind.RealLiteral || (g_isOmcNewInst && this.isRealExpr(aid))) {
           hasReal = true;
-        } else if (k != ExprKind.IntLiteral) {
+        } else if (k == ExprKind.IntLiteral) {
+          hasInt = true;
+        } else {
           allNumeric = false;
         }
       }
-      if (hasReal && allNumeric && argCount > 0) {
-        let firstIsInt = this.dae.getExprKind(this.tempBuffer.get(argStart)) == ExprKind.IntLiteral;
-        let lastIsReal = this.dae.getExprKind(this.tempBuffer.get(argStart + argCount - 1)) == ExprKind.RealLiteral;
-        if (firstIsInt && lastIsReal) {
+      if (hasReal && hasInt && argCount > 0) {
+        let shouldPromote =
+          g_isOmcNewInst ||
+          (allNumeric &&
+            this.dae.getExprKind(this.tempBuffer.get(argStart)) == ExprKind.IntLiteral &&
+            this.dae.getExprKind(this.tempBuffer.get(argStart + argCount - 1)) == ExprKind.RealLiteral);
+        if (shouldPromote) {
           for (let i: u32 = 0; i < argCount; i++) {
             let aid = this.tempBuffer.get(argStart + i);
             if (this.dae.getExprKind(aid) == ExprKind.IntLiteral) {
@@ -7919,31 +7906,35 @@ export class ModelicaFlattener {
     this.streamPairs.set(offset + 2, h2VarId);
     this.streamPairs.set(offset + 3, mdot2VarId);
 
+    let pool = this.dae.getStringPool();
+    let inStreamId = internStaticString(pool, "inStream");
     let eh1 = this.dae.addExpression(ExprKind.Name, h1VarId);
     let eh2 = this.dae.addExpression(ExprKind.Name, h2VarId);
-    let emdot1 = this.dae.addExpression(ExprKind.Name, mdot1VarId);
-    let zeroReal = this.dae.addRealLiteral(0.0);
 
-    let cond1 = this.dae.addExpression(ExprKind.Binary, BinOp.Gt as u32, emdot1, zeroReal);
-    let ifExpr1 = this.dae.addExpression(ExprKind.IfElse, cond1, eh2, eh1);
-    this.dae.addEquation(EqKind.Simple, eh1, ifExpr1, FLAG_EQ_STREAM_CONNECT as u32);
+    // 1-to-1 inside-to-inside stream connection semantics (MLS §15.2):
+    // inStream(h1) = h2 and inStream(h2) = h1
+    let inStreamH1 = this.dae.addExpression(ExprKind.Call, inStreamId, eh1, 1);
+    let inStreamH2 = this.dae.addExpression(ExprKind.Call, inStreamId, eh2, 1);
+    this.dae.addEquation(EqKind.Simple, inStreamH1, eh2, FLAG_EQ_STREAM_CONNECT as u32);
+    this.dae.addEquation(EqKind.Simple, inStreamH2, eh1, FLAG_EQ_STREAM_CONNECT as u32);
 
     return idx;
   }
 
   flattenArrayComponent(baseNameHash: u32, dim1: u32, dim2: u32 = 0, varType: u16 = VarType.Real, variability: u16 = Variability.Continuous, causality: u16 = Causality.Local, startVal: f64 = 0.0): u32 {
     let count: u32 = 0;
+    let pool = this.dae.getStringPool();
     if (dim2 == 0) {
       for (let i: u32 = 1; i <= dim1; i++) {
-        let elemNameHash = (baseNameHash * 31 + i) as u32;
-        this.dae.addVariable(elemNameHash, varType, variability, causality, startVal);
+        let elemNameId = concatArrayIndex1D(pool, baseNameHash, i);
+        this.dae.addVariable(elemNameId, varType, variability, causality, startVal);
         count++;
       }
     } else {
       for (let i: u32 = 1; i <= dim1; i++) {
         for (let j: u32 = 1; j <= dim2; j++) {
-          let elemNameHash = ((baseNameHash * 31 + i) * 31 + j) as u32;
-          this.dae.addVariable(elemNameHash, varType, variability, causality, startVal);
+          let elemNameId = concatArrayIndex2D(pool, baseNameHash, i, j);
+          this.dae.addVariable(elemNameId, varType, variability, causality, startVal);
           count++;
         }
       }

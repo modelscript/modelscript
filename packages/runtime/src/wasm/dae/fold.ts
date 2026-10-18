@@ -262,13 +262,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
         let arg1_val: f64 = res1.valReal;
         let res2_val: f64 = 0.0;
         if (argCount >= 2) {
-          let secondArgId = firstArgId + 1;
-          if (exprId + 1 < dae.exprCount) {
-            let nextAcc = ExprAccessor.at(dae.getExprData(), exprId + 1);
-            if (nextAcc.kind == ExprKind.Tuple) {
-              secondArgId = nextAcc.left;
-            }
-          }
+          let secondArgId = dae.getCallArgExprId(exprId, 1);
           let res2 = evalConstantExpr(dae, secondArgId, visitedDepth + 1, useVarIds);
           if (!res2.isConstant) { staticResult.isConstant = false; return staticResult; }
           res2_val = res2.valReal;

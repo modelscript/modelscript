@@ -173,6 +173,18 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
   private fileIndices = new Map<string, SymbolIndex>();
   private fileMeshes = new Map<string, any[]>();
   private fileAssemblies = new Map<string, StepAssemblyModel>();
+  private uriBaseIds = new Map<string, number>();
+  private nextBaseId = 1000000;
+
+  private getBaseIdForUri(uri: string): number {
+    let base = this.uriBaseIds.get(uri);
+    if (base === undefined) {
+      base = this.nextBaseId;
+      this.nextBaseId += 100000;
+      this.uriBaseIds.set(uri, base);
+    }
+    return base;
+  }
 
   /** Monotonically increasing index revision counter. */
   get version(): number {
@@ -292,54 +304,64 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
       for (const [parentId, ids] of astIndex.childrenOf) childrenOf.set(parentId, [...ids]);
     }
 
-    let idCounter = 1000000;
+    let idCounter = this.getBaseIdForUri(uri);
 
-    const product = products[0];
-    const productName = product?.name || this.deriveProductNameFromUri(uri);
+    const productList: (StepNameMatch | undefined)[] = products.length > 0 ? products : [undefined];
+    let primaryProductId = idCounter;
+    let primaryProductName = productList[0]?.name || this.deriveProductNameFromUri(uri);
 
-    const productId = idCounter++;
-    const productStart = product?.startByte ?? 0;
-    const productEnd = product?.endByte ?? 0;
-    const productEntry: SymbolEntry = {
-      id: productId,
-      kind: "Package",
-      name: productName,
-      ruleName: "step_product",
-      namePath: productName,
-      startByte: productStart,
-      endByte: productEnd,
-      startOffset: productStart,
-      endOffset: productEnd,
-      fieldRanges: product
-        ? {
-            name: {
-              startByte: product.nameStartByte,
-              endByte: product.nameEndByte,
-              startOffset: product.nameStartByte,
-              endOffset: product.nameEndByte,
-            },
-            declaredName: {
-              startByte: product.nameStartByte,
-              endByte: product.nameEndByte,
-              startOffset: product.nameStartByte,
-              endOffset: product.nameEndByte,
-            },
-          }
-        : undefined,
-      parentId: null,
-      exports: [],
-      inherits: [],
-      metadata: { stepType: "Product", language: "step" },
-      fieldName: null,
-      resourceId: uri,
-    };
-    symbols.set(productId, productEntry);
-    const existingProductNames = byName.get(productName) || [];
-    existingProductNames.push(productId);
-    byName.set(productName, existingProductNames);
-    const rootChildren = childrenOf.get(null) || [];
-    rootChildren.push(productId);
-    childrenOf.set(null, rootChildren);
+    for (let pIdx = 0; pIdx < productList.length; pIdx++) {
+      const product = productList[pIdx];
+      const productName = product?.name || this.deriveProductNameFromUri(uri);
+      const productId = idCounter++;
+      if (pIdx === 0) {
+        primaryProductId = productId;
+        primaryProductName = productName;
+      }
+      const productStart = product?.startByte ?? 0;
+      const productEnd = product?.endByte ?? 0;
+      const productEntry: SymbolEntry = {
+        id: productId,
+        kind: "Package",
+        name: productName,
+        ruleName: "step_product",
+        namePath: productName,
+        startByte: productStart,
+        endByte: productEnd,
+        startOffset: productStart,
+        endOffset: productEnd,
+        fieldRanges: product
+          ? {
+              name: {
+                startByte: product.nameStartByte,
+                endByte: product.nameEndByte,
+                startOffset: product.nameStartByte,
+                endOffset: product.nameEndByte,
+              },
+              declaredName: {
+                startByte: product.nameStartByte,
+                endByte: product.nameEndByte,
+                startOffset: product.nameStartByte,
+                endOffset: product.nameEndByte,
+              },
+            }
+          : undefined,
+        parentId: null,
+        exports: [],
+        inherits: [],
+        metadata: { stepType: "Product", language: "step" },
+        fieldName: null,
+        resourceId: uri,
+      };
+      symbols.set(productId, productEntry);
+      const existingProductNames = byName.get(productName) || [];
+      existingProductNames.push(productId);
+      byName.set(productName, existingProductNames);
+      const rootChildren = childrenOf.get(null) || [];
+      rootChildren.push(productId);
+      childrenOf.set(null, rootChildren);
+      childrenOf.set(productId, []);
+    }
 
     const productChildren: number[] = [];
 
@@ -354,7 +376,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         kind: "Type",
         name: shape.name,
         ruleName: "step_shape",
-        namePath: `${productName}::${shape.name}`,
+        namePath: `${primaryProductName}::${shape.name}`,
         startByte: shape.startByte,
         endByte: shape.endByte,
         startOffset: shape.startByte,
@@ -373,7 +395,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
             endOffset: shape.nameEndByte,
           },
         },
-        parentId: productId,
+        parentId: primaryProductId,
         exports: [],
         inherits: [],
         metadata: { stepType: "NamedShape", language: "step" },
@@ -401,12 +423,12 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         kind: "Type",
         name: meshName,
         ruleName: "step_shape",
-        namePath: `${productName}::${meshName}`,
+        namePath: `${primaryProductName}::${meshName}`,
         startByte: 0,
         endByte: 0,
         startOffset: 0,
         endOffset: 0,
-        parentId: productId,
+        parentId: primaryProductId,
         exports: [],
         inherits: [],
         metadata: {
@@ -426,7 +448,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
       productChildren.push(id);
     }
 
-    childrenOf.set(productId, productChildren);
+    childrenOf.set(primaryProductId, productChildren);
 
     return { symbols, byName, childrenOf };
   }

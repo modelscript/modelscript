@@ -447,8 +447,10 @@ process.on(
         versionId = versionRow.id;
         manifestStr = versionRow.manifest;
       } else {
-        const manifestPath = path.join(libraryPath, "package.json");
-        manifestStr = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, "utf-8") : "{}";
+        const pkgJsonPath = path.join(libraryPath, "package.json");
+        const msJsonPath = path.join(libraryPath, "modelscript.json");
+        const manifestPath = fs.existsSync(pkgJsonPath) ? pkgJsonPath : fs.existsSync(msJsonPath) ? msJsonPath : null;
+        manifestStr = manifestPath ? fs.readFileSync(manifestPath, "utf-8") : "{}";
         versionId = database.storePackageVersion(packageId, version, "", "", null, 0, manifestStr, null, null);
       }
 

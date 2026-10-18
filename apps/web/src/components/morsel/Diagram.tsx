@@ -5,6 +5,7 @@ import {
   dropComponentGhost,
   getGraph,
   initGraph,
+  isEphemeralDiagramNode,
   renderDiagram,
   setDiagramOptions,
 } from "@modelscript/diagram";
@@ -164,7 +165,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     if (props.selectedName !== undefined) {
       const g = getGraph();
       if (!g) return;
-      if (!props.selectedName) {
+      if (!props.selectedName || isEphemeralDiagramNode(props.selectedName)) {
         g.cleanSelection();
       } else {
         const cell = g.getCellById(props.selectedName);

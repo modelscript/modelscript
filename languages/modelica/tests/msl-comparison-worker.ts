@@ -806,6 +806,8 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
         id: child.id,
         name: child.name,
         entry: child,
+        cstNode: childCst,
+        abstractSyntaxNode: childCst,
         classInstance: compCls,
         modification: {
           expression: exprText !== undefined ? { text: String(exprText) } : undefined,
@@ -871,6 +873,9 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
     id: symbolId,
     db: queryDB,
     context,
+    cstNode,
+    abstractSyntaxNode: cstNode,
+    isClassInstance: true,
     name: entry.name,
     classKind: entry.metadata?.classKind,
     entry,
@@ -896,11 +901,18 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
 
   const evaluator = new AnnotationEvaluator(adapter);
   for (const comp of components) {
-    const childCst = queryDB.cstNode(comp.id);
+    comp.parent = adapter;
+    const childCst = comp.cstNode ?? queryDB.cstNode(comp.id);
     comp.annotation = (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null);
   }
 
-  adapter.annotation = (name: string) => (cstNode ? evaluator.evaluate(cstNode, name) : null);
+  adapter.annotation = (name: string, _ctx?: any) => {
+    if (!cstNode) return null;
+    if (_ctx && (_ctx.classInstance || _ctx.modification || _ctx.cstNode)) {
+      return new AnnotationEvaluator({ componentInstance: _ctx, classInstance: adapter }).evaluate(cstNode, name);
+    }
+    return evaluator.evaluate(cstNode, name);
+  };
   return adapter;
 }
 

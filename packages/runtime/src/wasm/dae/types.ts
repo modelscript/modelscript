@@ -89,6 +89,8 @@ export const FLAG_EQ_OVERCONSTRAINED: i32 = 1 << 1;
 export const FLAG_EQ_STREAM_CONNECT: i32 = 1 << 2;
 /** Equation differentiated or constrained during Pantelides high-index reduction (`1 << 3`). */
 export const FLAG_HIGH_INDEX_EQ: i32 = 1 << 3;
+/** Equation eliminated during alias elimination or dead-equation pruning (`1 << 4`). */
+export const FLAG_EQ_REMOVED: i32 = 1 << 4;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Expression SoA Layout

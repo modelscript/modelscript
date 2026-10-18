@@ -474,7 +474,7 @@ export class LiveCoSimOrchestrator {
         if (this.currentStepIndex > 1 && Math.abs(residual - this.prevResidual) > 1e-12) {
           const deltaR = residual - this.prevResidual;
           const newOmega = -this.aitkenOmega * (this.prevResidual / deltaR);
-          this.aitkenOmega = Math.min(maxOmega, Math.max(minOmega, Math.abs(newOmega)));
+          this.aitkenOmega = Math.min(maxOmega, Math.max(minOmega, newOmega));
         } else {
           this.aitkenOmega = fsiConfig.initialOmega ?? 0.5;
         }
@@ -490,6 +490,7 @@ export class LiveCoSimOrchestrator {
     this.prevStructuralDisplacement = effectiveDisplacement;
 
     const forwardSpeed = Math.max(0.1, Math.abs(this.state.velocity));
+    const velSign = this.state.velocity < 0 ? -1.0 : 1.0;
 
     // Impart structural surface velocity into CFD moving wall boundary
     if (this.cfdRunner) {
@@ -509,10 +510,12 @@ export class LiveCoSimOrchestrator {
     }
     const cfdRes = rawCfdRes as LbmStepResult | CfdStepOutput;
     const aeroDrag = Math.abs(cfdRes.aerodynamicForceN[0]);
+    const signedAeroDrag = velSign * aeroDrag;
 
     // 2. 1D Dynamics Integration: Runge-Kutta / Symplectic Euler step
-    // Net force = Thrust - Spring Force - Damping - Aero Drag
-    const netForce = totalThrustN - stiffness * this.state.position - baseDamping * this.state.velocity - aeroDrag;
+    // Net force = Thrust - Spring Force - Damping - Signed Aero Drag
+    const netForce =
+      totalThrustN - stiffness * this.state.position - baseDamping * this.state.velocity - signedAeroDrag;
     const accel = netForce / mass;
     const newVel = this.state.velocity + accel * dt;
     const newPos = this.state.position + newVel * dt;
@@ -534,7 +537,7 @@ export class LiveCoSimOrchestrator {
         const numNodes = Math.max(1, loadNodes.length);
         const tagThrust = loadForces.get(tag) ?? 0.0;
         const forcePerNodeY = tagThrust / numNodes;
-        const dragPerNodeX = -aeroDrag / numNodes;
+        const dragPerNodeX = -signedAeroDrag / numNodes;
 
         for (const node of loadNodes) {
           nodalLoads.set(node, [dragPerNodeX, forcePerNodeY, 0]);
@@ -556,7 +559,7 @@ export class LiveCoSimOrchestrator {
       const boundaryLoads = new Map<string, Vector3D>();
       for (const tag of this.resolvedLoadTags) {
         const tagThrust = loadForces.get(tag) ?? 0.0;
-        boundaryLoads.set(tag, [-aeroDrag, tagThrust, 0]);
+        boundaryLoads.set(tag, [-signedAeroDrag, tagThrust, 0]);
       }
       feaRes = this.feaProvider.step(boundaryLoads, dt) as FeaStepOutput;
     }
@@ -579,6 +582,17 @@ export class LiveCoSimOrchestrator {
       surrogateConfidence = (this.cfdProvider as any).getLastConfidence();
     }
 
+    let dispSign = totalThrustN < 0 ? -1.0 : 1.0;
+    if ("displacements" in feaRes && feaRes.displacements && feaRes.displacements.length >= 3) {
+      let sumUy = 0.0;
+      for (let i = 1; i < feaRes.displacements.length; i += 3) {
+        sumUy += feaRes.displacements[i]!;
+      }
+      if (Math.abs(sumUy) > 1e-15) {
+        dispSign = sumUy < 0 ? -1.0 : 1.0;
+      }
+    }
+
     this.state = {
       time: this.state.time + dt,
       position: newPos,
@@ -586,7 +600,7 @@ export class LiveCoSimOrchestrator {
       acceleration: accel,
       appliedThrustN: totalThrustN,
       aerodynamicDragN: aeroDrag,
-      structuralComplianceM: feaRes.maxDisplacement,
+      structuralComplianceM: dispSign * feaRes.maxDisplacement,
       structuralVelocityM_s: structVel,
       activePortMappings: this.portMappings,
       feaResult: feaRes,
@@ -668,7 +682,7 @@ export class LiveCoSimOrchestrator {
         if (this.currentStepIndex > 1 && Math.abs(residual - this.prevResidual) > 1e-12) {
           const deltaR = residual - this.prevResidual;
           const newOmega = -this.aitkenOmega * (this.prevResidual / deltaR);
-          this.aitkenOmega = Math.min(maxOmega, Math.max(minOmega, Math.abs(newOmega)));
+          this.aitkenOmega = Math.min(maxOmega, Math.max(minOmega, newOmega));
         } else {
           this.aitkenOmega = fsiConfig.initialOmega ?? 0.5;
         }
@@ -683,6 +697,7 @@ export class LiveCoSimOrchestrator {
     this.prevStructuralDisplacement = effectiveDisplacement;
 
     const forwardSpeed = Math.max(0.1, Math.abs(this.state.velocity));
+    const velSign = this.state.velocity < 0 ? -1.0 : 1.0;
     if (this.cfdRunner) {
       this.cfdRunner.setMovingWallVelocity([0, structVel, 0]);
       if (this.config.cfd?.config) {
@@ -694,8 +709,10 @@ export class LiveCoSimOrchestrator {
 
     const cfdRes = (await this.cfdProvider.step(dt, lbmSubSteps)) as CfdStepOutput;
     const aeroDrag = Math.abs(cfdRes.aerodynamicForceN[0]);
+    const signedAeroDrag = velSign * aeroDrag;
 
-    const netForce = totalThrustN - stiffness * this.state.position - baseDamping * this.state.velocity - aeroDrag;
+    const netForce =
+      totalThrustN - stiffness * this.state.position - baseDamping * this.state.velocity - signedAeroDrag;
     const accel = netForce / mass;
     const newVel = this.state.velocity + accel * dt;
     const newPos = this.state.position + newVel * dt;
@@ -703,7 +720,7 @@ export class LiveCoSimOrchestrator {
     const boundaryLoads = new Map<string, Vector3D>();
     for (const tag of this.resolvedLoadTags) {
       const tagThrust = loadForces.get(tag) ?? 0.0;
-      boundaryLoads.set(tag, [-aeroDrag, tagThrust, 0]);
+      boundaryLoads.set(tag, [-signedAeroDrag, tagThrust, 0]);
     }
     const feaRes = (await this.feaProvider.step(boundaryLoads, dt)) as FeaStepOutput;
 
@@ -724,6 +741,17 @@ export class LiveCoSimOrchestrator {
       surrogateConfidence = (this.cfdProvider as any).getLastConfidence();
     }
 
+    let dispSign = totalThrustN < 0 ? -1.0 : 1.0;
+    if ("displacements" in feaRes && feaRes.displacements && feaRes.displacements.length >= 3) {
+      let sumUy = 0.0;
+      for (let i = 1; i < feaRes.displacements.length; i += 3) {
+        sumUy += feaRes.displacements[i]!;
+      }
+      if (Math.abs(sumUy) > 1e-15) {
+        dispSign = sumUy < 0 ? -1.0 : 1.0;
+      }
+    }
+
     this.state = {
       time: this.state.time + dt,
       position: newPos,
@@ -731,7 +759,7 @@ export class LiveCoSimOrchestrator {
       acceleration: accel,
       appliedThrustN: totalThrustN,
       aerodynamicDragN: aeroDrag,
-      structuralComplianceM: feaRes.maxDisplacement,
+      structuralComplianceM: dispSign * feaRes.maxDisplacement,
       structuralVelocityM_s: structVel,
       activePortMappings: this.portMappings,
       feaResult: feaRes,

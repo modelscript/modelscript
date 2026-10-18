@@ -83,13 +83,57 @@ function getArenaExprVariables(arena: DAEBuilder, exprId: number, vars: Set<numb
     kind === ExprKind.IntLiteral ||
     kind === ExprKind.BoolLiteral ||
     kind === ExprKind.StringLiteral ||
-    kind === ExprKind.EnumLiteral
+    kind === ExprKind.EnumLiteral ||
+    kind === ExprKind.Colon
   ) {
     return;
   }
   if (kind === ExprKind.Der || kind === ExprKind.Pre) {
     const inner = arena.getExprData1(exprId);
     if (inner >= 0 && inner !== 0xffffffff) getArenaExprVariables(arena, inner, vars);
+    return;
+  }
+  if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+    const left = arena.getExprLeft(exprId);
+    if (left >= 0 && left !== 0xffffffff && left !== exprId) getArenaExprVariables(arena, left, vars);
+    return;
+  }
+  if (kind === ExprKind.IfElse || kind === ExprKind.Range) {
+    const d1 = arena.getExprData1(exprId);
+    const left = arena.getExprLeft(exprId);
+    const right = arena.getExprRight(exprId);
+    if (d1 >= 0 && d1 !== 0xffffffff && d1 !== exprId) getArenaExprVariables(arena, d1, vars);
+    if (left >= 0 && left !== 0xffffffff && left !== exprId) getArenaExprVariables(arena, left, vars);
+    if (right >= 0 && right !== 0xffffffff && right !== exprId) getArenaExprVariables(arena, right, vars);
+    return;
+  }
+  if (kind === ExprKind.Subscript) {
+    const base = arena.getExprData1(exprId);
+    if (base >= 0 && base !== 0xffffffff && base !== exprId) getArenaExprVariables(arena, base, vars);
+    const subCount = Math.max(1, arena.getExprRight(exprId));
+    const firstSub = arena.getExprLeft(exprId);
+    for (let i = 0; i < subCount; i++) {
+      const subExpr = i === 0 ? firstSub : arena.getExprLeft(exprId + i);
+      if (subExpr >= 0 && subExpr !== 0xffffffff && subExpr !== exprId) getArenaExprVariables(arena, subExpr, vars);
+    }
+    return;
+  }
+  if (kind === ExprKind.Call) {
+    const argCount = arena.getExprRight(exprId);
+    const firstArg = arena.getExprLeft(exprId);
+    for (let i = 0; i < argCount; i++) {
+      const argExpr = i === 0 ? firstArg : arena.getExprLeft(exprId + i);
+      if (argExpr >= 0 && argExpr !== 0xffffffff && argExpr !== exprId) getArenaExprVariables(arena, argExpr, vars);
+    }
+    return;
+  }
+  if (kind === ExprKind.ArrayCtor || kind === ExprKind.Tuple) {
+    const count = arena.getExprData1(exprId);
+    const firstElem = arena.getExprLeft(exprId);
+    for (let i = 0; i < count; i++) {
+      const elemExpr = i === 0 ? firstElem : arena.getExprLeft(exprId + i);
+      if (elemExpr >= 0 && elemExpr !== 0xffffffff && elemExpr !== exprId) getArenaExprVariables(arena, elemExpr, vars);
+    }
     return;
   }
   const left = arena.getExprLeft(exprId);

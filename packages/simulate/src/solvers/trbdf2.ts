@@ -34,6 +34,9 @@ import { factorizeLinearMatrix } from "./sparse-solver-bridge.js";
 export const TRBDF2_GAMMA = 2.0 - Math.SQRT2; // ≈ 0.585786437626905
 export const TRBDF2_D = TRBDF2_GAMMA / 2.0; // = 1 - 1/√2 ≈ 0.2928932188134524
 
+export type TrBdf2EventFunction = (t: number, y: number[]) => number;
+export type TrBdf2EventCallback = (tEvent: number, yEvent: number[], eventIndex: number, direction: 1 | -1) => number[];
+
 export interface TrBdf2Options {
   atol?: number | undefined;
   rtol?: number | undefined;
@@ -43,6 +46,10 @@ export interface TrBdf2Options {
   maxSteps?: number | undefined;
   maxNewtonIters?: number | undefined;
   linearSolver?: "auto" | "dense" | "sparse" | undefined;
+  equidistantOutput?: boolean | undefined;
+  eventFunctions?: TrBdf2EventFunction[] | undefined;
+  eventCallback?: TrBdf2EventCallback | undefined;
+  eventDirections?: number[] | undefined;
 }
 
 export interface TrBdf2Result extends CommonSolverResult {
@@ -79,6 +86,24 @@ function computeJacobian(
   return J;
 }
 
+function lagrangeInterpTrBdf2(
+  y0: number[],
+  yGamma: number[],
+  y1: number[],
+  gamma: number,
+  theta: number,
+  n: number,
+): number[] {
+  const c0_interp = ((theta - gamma) * (theta - 1.0)) / gamma;
+  const cGamma_interp = (theta * (theta - 1.0)) / (gamma * (gamma - 1.0));
+  const c1_interp = (theta * (theta - gamma)) / (1.0 - gamma);
+  const out = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    out[i] = c0_interp * (y0[i] ?? 0) + cGamma_interp * (yGamma[i] ?? 0) + c1_interp * (y1[i] ?? 0);
+  }
+  return out;
+}
+
 /**
  * Integrate a stiff ODE/DAE using the TR-BDF2 method.
  */
@@ -90,6 +115,9 @@ export function trbdf2(
   outputTimes?: number[],
   options: TrBdf2Options = {},
   massMatrix?: number[][],
+  eventFunctions?: TrBdf2EventFunction[],
+  eventCallback?: TrBdf2EventCallback,
+  eventDirections?: number[],
 ): TrBdf2Result {
   const atol = options.atol ?? 1e-6;
   const rtol = options.rtol ?? 1e-6;
@@ -122,6 +150,35 @@ export function trbdf2(
   resultStates.push([...y]);
   if (denseOutputs && outputTimes[0] !== undefined && Math.abs(outputTimes[0] - t) < 1e-12) {
     outIdx++;
+  }
+
+  const effEventFunctions = eventFunctions ?? options.eventFunctions;
+  const effEventCallback = eventCallback ?? options.eventCallback;
+  const effEventDirections = eventDirections ?? options.eventDirections;
+
+  const computeEventValuesWithProbe = (currentTime: number, currentState: number[]) => {
+    if (!effEventFunctions) return [];
+    return effEventFunctions.map((g, gIdx) => {
+      const gVal = g(currentTime, currentState);
+      if (Math.abs(gVal) < 1e-10) {
+        const dydt = f(currentTime, currentState);
+        const probe = currentState.map((yi, si) => yi + 1e-8 * (dydt[si] ?? 0));
+        const gProbe = g(currentTime + 1e-8, probe);
+        if (Math.abs(gProbe) > 1e-14) {
+          return gProbe > 0 ? 1e-10 : -1e-10;
+        }
+        const reqDir = effEventDirections?.[gIdx] ?? 0;
+        if (reqDir < 0) return -1e-10;
+        if (reqDir > 0) return 1e-10;
+        return 0;
+      }
+      return gVal;
+    });
+  };
+
+  let prevEventVals: number[] = [];
+  if (effEventFunctions && effEventFunctions.length > 0) {
+    prevEventVals = computeEventValuesWithProbe(t, y);
   }
 
   const gamma = TRBDF2_GAMMA;
@@ -202,7 +259,7 @@ export function trbdf2(
     if (!stage1Converged) {
       // Newton failed, shrink step
       stats.rejectedSteps++;
-      h = Math.max(minStep, h * 0.5);
+      h = Math.abs(h) <= minStep * 1.01 ? h * 0.5 : Math.max(minStep, h * 0.5);
       continue;
     }
 
@@ -247,7 +304,7 @@ export function trbdf2(
 
     if (!stage2Converged) {
       stats.rejectedSteps++;
-      h = Math.max(minStep, h * 0.5);
+      h = Math.abs(h) <= minStep * 1.01 ? h * 0.5 : Math.max(minStep, h * 0.5);
       continue;
     }
 
@@ -270,9 +327,109 @@ export function trbdf2(
       maxErrorRatio = Math.max(maxErrorRatio, err_i / tol);
     }
 
-    if (maxErrorRatio <= 1.0 || h <= minStep * 2) {
+    if (
+      Number.isFinite(maxErrorRatio) &&
+      (maxErrorRatio <= 1.0 || (Math.abs(h) <= minStep * 2 && maxErrorRatio <= 100.0))
+    ) {
       // Step accepted
       stats.acceptedSteps++;
+
+      if (effEventFunctions && effEventFunctions.length > 0) {
+        const currEventVals = effEventFunctions.map((ef) => ef(tNew, yNew));
+        let eventTriggered = -1;
+        let eventDir: 1 | -1 = 1;
+        let bestTEvent = tEnd >= t0 ? Infinity : -Infinity;
+        let bestYEvent: number[] = [...yNew];
+
+        for (let ei = 0; ei < effEventFunctions.length; ei++) {
+          const vPrev = prevEventVals[ei] ?? 0;
+          const vCurr = currEventVals[ei] ?? 0;
+          const expectedDir = effEventDirections?.[ei] ?? 0;
+
+          if (vPrev * vCurr < 0) {
+            const evDir: 1 | -1 = vCurr > vPrev ? 1 : -1;
+            if (expectedDir === 0 || expectedDir === evDir) {
+              let tLeft = t;
+              let tRight = tNew;
+              let yCand = [...yNew];
+              let valLeft = vPrev;
+
+              for (let iter = 0; iter < 30; iter++) {
+                const tMid = 0.5 * (tLeft + tRight);
+                const thetaMid = (tMid - t) / h;
+                const yMid = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, thetaMid, n);
+                const valMid = effEventFunctions[ei]!(tMid, yMid);
+
+                if (Math.abs(valMid) < 1e-12 || Math.abs(tRight - tLeft) < 1e-14) {
+                  yCand = yMid;
+                  tRight = tMid;
+                  break;
+                }
+                if (valLeft * valMid <= 0) {
+                  tRight = tMid;
+                } else {
+                  tLeft = tMid;
+                  valLeft = valMid;
+                }
+                yCand = yMid;
+              }
+
+              const isEarlier = tEnd >= t0 ? tRight < bestTEvent : tRight > bestTEvent;
+              if (isEarlier) {
+                bestTEvent = tRight;
+                bestYEvent = yCand;
+                eventTriggered = ei;
+                eventDir = evDir;
+              }
+            }
+          }
+        }
+
+        if (eventTriggered >= 0) {
+          const tEvent = bestTEvent;
+          const yEvent = bestYEvent;
+          const hasOutputGrid = denseOutputs && options.equidistantOutput !== false;
+
+          if (hasOutputGrid && outputTimes) {
+            while (outIdx < outputTimes.length) {
+              const tTarget = outputTimes[outIdx]!;
+              const beforeEvent = tEnd >= t0 ? tTarget < tEvent - 1e-14 : tTarget > tEvent + 1e-14;
+              if (beforeEvent) {
+                const theta = (tTarget - t) / h;
+                const yTarget = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, theta, n);
+                resultTimes.push(tTarget);
+                resultStates.push(yTarget);
+                outIdx++;
+              } else {
+                break;
+              }
+            }
+          }
+
+          if (effEventCallback) {
+            y = effEventCallback(tEvent, yEvent, eventTriggered, eventDir);
+          } else {
+            y = yEvent;
+          }
+
+          if (hasOutputGrid && outputTimes) {
+            if (outIdx < outputTimes.length && Math.abs(outputTimes[outIdx]! - tEvent) <= 1e-14) {
+              resultTimes.push(outputTimes[outIdx]!);
+              resultStates.push([...y]);
+              outIdx++;
+            }
+          } else {
+            resultTimes.push(tEvent);
+            resultStates.push([...y]);
+          }
+
+          t = tEvent;
+          prevEventVals = computeEventValuesWithProbe(t, y);
+          h = Math.max(minStep, Math.min(h * 0.5, maxStep));
+          continue;
+        }
+        prevEventVals = currEventVals;
+      }
 
       // Output recording
       if (denseOutputs && outputTimes) {
@@ -281,13 +438,7 @@ export function trbdf2(
           if ((tEnd > t0 && tTarget <= tNew) || (tEnd < t0 && tTarget >= tNew)) {
             // 2nd-order quadratic Lagrange interpolation through (0, y), (gamma, yGamma), (1, yNew)
             const theta = (tTarget - t) / h;
-            const c0_interp = ((theta - gamma) * (theta - 1.0)) / gamma;
-            const cGamma_interp = (theta * (theta - 1.0)) / (gamma * (gamma - 1.0));
-            const c1_interp = (theta * (theta - gamma)) / (1.0 - gamma);
-            const yTarget = new Array<number>(n);
-            for (let i = 0; i < n; i++) {
-              yTarget[i] = c0_interp * (y[i] ?? 0) + cGamma_interp * (yGamma[i] ?? 0) + c1_interp * (yNew[i] ?? 0);
-            }
+            const yTarget = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, theta, n);
             resultTimes.push(tTarget);
             resultStates.push(yTarget);
             outIdx++;
@@ -309,8 +460,12 @@ export function trbdf2(
     } else {
       // Step rejected based on truncation error
       stats.rejectedSteps++;
-      const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.5)));
-      h = Math.max(minStep, h * factor);
+      if (!Number.isFinite(maxErrorRatio) || Math.abs(h) <= minStep * 1.01) {
+        h = h * 0.5;
+      } else {
+        const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.5)));
+        h = Math.max(minStep, h * factor);
+      }
     }
   }
 

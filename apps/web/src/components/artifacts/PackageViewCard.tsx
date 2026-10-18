@@ -5,6 +5,7 @@ import { Button, Text } from "@primer/react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { encodePackagePath } from "../../util/url";
 import Box from "../Box";
 
 interface PackageViewCardProps {
@@ -92,7 +93,10 @@ export const PackageViewCard: React.FC<PackageViewCardProps> = ({ viewConfig }) 
 
   const handleView = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/packages/${encodeURIComponent(name)}`);
+    const pkgPath = encodePackagePath(name);
+    navigate(
+      viewConfig.version ? `/packages/${pkgPath}/${encodeURIComponent(viewConfig.version)}` : `/packages/${pkgPath}`,
+    );
   };
 
   return (

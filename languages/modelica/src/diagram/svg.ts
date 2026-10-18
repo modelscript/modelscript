@@ -62,7 +62,7 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
     const componentClassInstance = component.classInstance;
     if (!componentClassInstance) continue;
 
-    const condition = evaluateCondition(component);
+    const condition = evaluateCondition(component, classInstance);
     if (condition === false) continue;
 
     const componentSvg = renderIcon(component["declaredType"] ?? componentClassInstance, component, true);
@@ -99,7 +99,7 @@ export function renderIcon(
     if (extendsClassInstance["classInstance"])
       renderIcon(extendsClassInstance["classInstance"], componentInstance, ports, svg, skipText);
   }
-  const icon: IIcon | null = classInstance.annotation?.("Icon") ?? null;
+  const icon: IIcon | null = classInstance.annotation?.("Icon", componentInstance) ?? null;
   applyCoordinateSystem(svg, icon?.coordinateSystem);
   const group = svg.group();
   for (const graphicItem of icon?.graphics ?? []) {
@@ -110,7 +110,10 @@ export function renderIcon(
     for (const component of classInstance.components ?? []) {
       if (component["classKind"] !== ModelicaClassKind.CONNECTOR) continue;
 
-      const condition = evaluateCondition(component);
+      const condition = evaluateCondition(
+        component,
+        componentInstance ? { componentInstance, classInstance } : classInstance,
+      );
       if (condition === false) continue;
 
       const componentClassInstance = component.classInstance;
@@ -540,7 +543,7 @@ export function applyTextStyle(shape: Text, graphicItem: IText): void {
 
 export function applyVisibility(shape: Shape, graphicItem: IGraphicItem): void {
   if (graphicItem?.visible == null) return;
-  shape.attr("visibility", graphicItem.visible ? "visible" : "hidden");
+  shape.attr("visibility", graphicItem.visible === true ? "visible" : "hidden");
 }
 
 export function computeHeight(extent?: IExtent, defaultValue = 200): number {

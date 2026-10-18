@@ -70,6 +70,8 @@ interface CachedTable1D {
   timeScale: number;
   /** Activation start time for the table block (`s`). */
   startTime: number;
+  /** Whether the block declares a `timeScaled` variable. */
+  hasTimeScaled?: boolean;
 }
 
 /**
@@ -84,6 +86,18 @@ function extractSimArrayLiteral(arena: any, exprId: number): any {
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.IntLiteral) return arena.getExprData1(exprId);
   if (kind === ExprKind.RealLiteral) return arena.getExprRealValue(exprId);
+  if (kind === ExprKind.Negate) {
+    const inner = extractSimArrayLiteral(arena, arena.getExprLeft(exprId));
+    return typeof inner === "number" ? -inner : null;
+  }
+  if (kind === ExprKind.Unary) {
+    const op = arena.getExprData1(exprId) as UnaryOp;
+    const inner = extractSimArrayLiteral(arena, arena.getExprLeft(exprId));
+    if (typeof inner !== "number") return null;
+    if (op === UnaryOp.Negate) return -inner;
+    if (op === UnaryOp.Not) return inner === 0 ? 1 : 0;
+    return inner;
+  }
   if (kind === ExprKind.ArrayCtor) {
     const count = arena.getExprData1(exprId);
     const elems: any[] = [];
@@ -136,7 +150,7 @@ function interpolate1DSim(table: number[][], colIdx: number, u: number): number 
 }
 
 /**
- * Retrieves or builds a cached 1D lookup table (`CachedTable1D`) for a `CombiTimeTable` block in the arena.
+ * Retrieves or builds a cached 1D lookup table (`CachedTable1D`) for a `CombiTimeTable` or `CombiTable1D` block in the arena.
  *
  * @param arena - DAE arena instance.
  * @param tableVarNameId - Interned string ID of the `.tableID` variable.
@@ -158,7 +172,7 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
   const tableIdx = arena.getVarIdxByName(`${prefix}.table`);
   if (tableIdx >= 0) {
     const tableExpr = arena.getVarExpression(tableIdx);
-    const data = extractSimArrayLiteral(arena, tableExpr);
+    const data = tableExpr !== undefined ? extractSimArrayLiteral(arena, tableExpr) : null;
     if (Array.isArray(data)) tableData = data;
   }
   if (!tableData) {
@@ -173,12 +187,8 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
           const vIdx = arena.getVarIdxByName(`${prefix}.table[${r},${c}]`);
           if (vIdx < 0) break;
           const exprId = arena.getVarExpression(vIdx);
-          const val =
-            (exprId >= 0
-              ? arena.getExprKind(exprId) === ExprKind.IntLiteral
-                ? arena.getExprData1(exprId)
-                : arena.getExprRealValue(exprId)
-              : arena.getVarStartValue(vIdx)) ?? 0;
+          const extracted = exprId !== undefined && exprId >= 0 ? extractSimArrayLiteral(arena, exprId) : null;
+          const val = (typeof extracted === "number" ? extracted : arena.getVarStartValue(vIdx)) ?? 0;
           row.push(val);
           c++;
         }
@@ -190,11 +200,11 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
   }
   if (!tableData || tableData.length === 0) return null;
 
-  let columns: number[] = [1];
+  let columns: number[] = [];
   const colsIdx = arena.getVarIdxByName(`${prefix}.columns`);
   if (colsIdx >= 0) {
     const colsExpr = arena.getVarExpression(colsIdx);
-    const colsData = extractSimArrayLiteral(arena, colsExpr);
+    const colsData = colsExpr !== undefined ? extractSimArrayLiteral(arena, colsExpr) : null;
     if (Array.isArray(colsData)) {
       columns = colsData.map(Number);
     }
@@ -205,12 +215,8 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
       const vIdx = arena.getVarIdxByName(`${prefix}.columns[${i}]`);
       if (vIdx < 0) break;
       const exprId = arena.getVarExpression(vIdx);
-      const val =
-        (exprId >= 0
-          ? arena.getExprKind(exprId) === ExprKind.IntLiteral
-            ? arena.getExprData1(exprId)
-            : arena.getExprRealValue(exprId)
-          : arena.getVarStartValue(vIdx)) ?? i;
+      const extracted = exprId !== undefined && exprId >= 0 ? extractSimArrayLiteral(arena, exprId) : null;
+      const val = (typeof extracted === "number" ? extracted : arena.getVarStartValue(vIdx)) ?? i + 1;
       columns.push(Math.round(val));
       i++;
     }
@@ -220,25 +226,28 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
   let shiftTime = 0.0;
   if (shiftIdx >= 0) {
     const shiftExpr = arena.getVarExpression(shiftIdx);
-    const val = extractSimArrayLiteral(arena, shiftExpr);
-    if (typeof val === "number") shiftTime = val;
+    const val = shiftExpr !== undefined ? extractSimArrayLiteral(arena, shiftExpr) : null;
+    shiftTime = typeof val === "number" ? val : arena.getVarStartValue(shiftIdx);
   }
 
   const scaleIdx = arena.getVarIdxByName(`${prefix}.timeScale`);
   let timeScale = 1.0;
   if (scaleIdx >= 0) {
     const scaleExpr = arena.getVarExpression(scaleIdx);
-    const val = extractSimArrayLiteral(arena, scaleExpr);
-    if (typeof val === "number") timeScale = val;
+    const val = scaleExpr !== undefined ? extractSimArrayLiteral(arena, scaleExpr) : null;
+    const rawScale = typeof val === "number" ? val : arena.getVarStartValue(scaleIdx);
+    if (rawScale !== 0) timeScale = rawScale;
   }
 
   const startIdx = arena.getVarIdxByName(`${prefix}.startTime`);
   let startTime = 0.0;
   if (startIdx >= 0) {
     const startExpr = arena.getVarExpression(startIdx);
-    const val = extractSimArrayLiteral(arena, startExpr);
-    if (typeof val === "number") startTime = val;
+    const val = startExpr !== undefined ? extractSimArrayLiteral(arena, startExpr) : null;
+    startTime = typeof val === "number" ? val : arena.getVarStartValue(startIdx);
   }
+
+  const hasTimeScaled = arena.getVarIdxByName(`${prefix}.timeScaled`) >= 0;
 
   const record: CachedTable1D = {
     table: tableData,
@@ -246,9 +255,23 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
     shiftTime,
     timeScale,
     startTime,
+    hasTimeScaled,
   };
   cachedMap.set(tableVarNameId, record);
   return record;
+}
+
+/**
+ * Evaluates a `Modelica.Blocks.Tables.CombiTable1D` output column at a given input `u` (without time scaling/shifting).
+ */
+function evalSimTable1DValue(cached: CachedTable1D | null, icol: number, u: number): number {
+  if (!cached || !cached.table || cached.table.length === 0) return 0.0;
+  const table = cached.table;
+  const colInTable =
+    cached.columns && cached.columns.length >= icol && cached.columns[icol - 1]! >= 2
+      ? cached.columns[icol - 1]! - 1
+      : icol;
+  return interpolate1DSim(table, colInTable, u);
 }
 
 /**
@@ -257,13 +280,30 @@ function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTa
  * @param cached - Cached table descriptor.
  * @param icol - 1-based output port index (`y[icol]`).
  * @param timeIn - Current simulation time (`s`).
+ * @param isAlreadyScaled - Whether `timeIn` is already divided by `timeScale`.
+ * @param isAlreadyShifted - Whether `timeIn` already has `shiftTime` subtracted.
  * @returns Interpolated table output value.
  */
-function evalSimTimeTableValue(cached: CachedTable1D | null, icol: number, timeIn: number): number {
+function evalSimTimeTableValue(
+  cached: CachedTable1D | null,
+  icol: number,
+  timeIn: number,
+  isAlreadyScaled = false,
+  isAlreadyShifted = false,
+): number {
   if (!cached || !cached.table || cached.table.length === 0) return 0.0;
   const table = cached.table;
-  const effTime = (timeIn - cached.shiftTime) / (cached.timeScale || 1.0);
-  const colInTable = cached.columns && cached.columns.length >= icol ? cached.columns[icol - 1]! - 1 : icol;
+  const scale = cached.timeScale || 1.0;
+  const alreadyScaled = isAlreadyScaled || Boolean(cached.hasTimeScaled);
+  const effTime = alreadyScaled
+    ? isAlreadyShifted
+      ? timeIn
+      : timeIn - cached.shiftTime / scale
+    : (isAlreadyShifted ? timeIn : timeIn - cached.shiftTime) / scale;
+  const colInTable =
+    cached.columns && cached.columns.length >= icol && cached.columns[icol - 1]! >= 2
+      ? cached.columns[icol - 1]! - 1
+      : icol;
   return interpolate1DSim(table, colInTable, effTime);
 }
 
@@ -298,6 +338,8 @@ export class ArenaSimulator {
   public stateVars = new Set<number>();
   /** Set of arena variable indices representing state derivatives ($\dot{x}$). */
   public derivativeVars = new Set<number>();
+  /** Set of arena variable indices whose derivatives were eliminated by kinematic/affine index reduction. */
+  private eliminatedDerVars = new Set<number>();
 
   /** Topologically sorted equation indices produced by BLT transformation. */
   public sortedEquations: number[] = [];
@@ -390,6 +432,9 @@ export class ArenaSimulator {
    * causalization, compiles execution blocks, and extracts hybrid events, assertions, and state machines.
    */
   prepare() {
+    this.eliminatedDerVars.clear();
+    const preOverrides = this.parameters.size > 0 ? new Map(this.parameters) : null;
+
     let hasPreservedArrays = hasArrayEquations(this.arena);
     if (!hasPreservedArrays) {
       for (let i = 0; i < this.arena.varCount; i++) {
@@ -407,12 +452,22 @@ export class ArenaSimulator {
     }
 
     const cachedPrep = (this.arena as any)._cachedSimPrep;
-    if (cachedPrep) {
+    const canUseCachedPrep =
+      cachedPrep &&
+      (!preOverrides || Array.from(preOverrides.entries()).every(([k, v]) => cachedPrep.parameters.get(k) === v));
+    if (canUseCachedPrep) {
       this.parameters = new Map(cachedPrep.parameters);
+      if (preOverrides) {
+        for (const [k, v] of preOverrides) this.parameters.set(k, v);
+      }
       this.parameterVars = new Set(cachedPrep.parameterVars);
       for (const i of this.parameterVars) {
         if (this.arena.isVarRemoved(i)) continue;
         const name = this.arena.getVarName(i);
+        if (preOverrides && preOverrides.has(name)) {
+          this.parameters.set(name, preOverrides.get(name)!);
+          continue;
+        }
         const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
         let val: number | null = null;
         if (typeof exprId === "number" && exprId !== -1) {
@@ -446,7 +501,7 @@ export class ArenaSimulator {
     (this.arena as any)._mutatedBySim = true;
     (this.arena as any)._delayHistory = new Map();
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
-    this.resolveParameters();
+    this.resolveParameters(preOverrides);
     this.resolveKinematicVelocities();
     this.reduceAffineStateConstraints();
     this.identifyDerivatives();
@@ -604,7 +659,7 @@ export class ArenaSimulator {
    * Identifies parameter and constant variables in the arena, evaluates their binding expressions
    * or start attributes, and populates `this.parameterVars` and `this.parameters`.
    */
-  private resolveParameters() {
+  private resolveParameters(preOverrides?: Map<string, number> | null) {
     const exprReferencesContinuous = (exprId: number): boolean => {
       if (exprId < 0) return false;
       const k = this.arena.getExprKind(exprId);
@@ -686,6 +741,10 @@ export class ArenaSimulator {
       this.parameterVars.add(i);
 
       const name = this.arena.getVarName(i);
+      if (preOverrides && preOverrides.has(name)) {
+        this.parameters.set(name, preOverrides.get(name)!);
+        continue;
+      }
       let val: number | null = null;
       if (typeof exprId === "number" && exprId !== -1) {
         const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
@@ -697,6 +756,20 @@ export class ArenaSimulator {
         val = this.arena.getVarStartValue(i);
       }
       this.parameters.set(name, val);
+    }
+
+    // Second pass to ensure dependent parameter expressions see parameters declared later or overridden
+    for (const i of this.parameterVars) {
+      if (this.arena.isVarRemoved(i)) continue;
+      const name = this.arena.getVarName(i);
+      if (preOverrides && preOverrides.has(name)) continue;
+      const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
+      if (typeof exprId === "number" && exprId !== -1) {
+        const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
+        if (typeof rawVal === "number" && isFinite(rawVal)) {
+          this.parameters.set(name, rawVal);
+        }
+      }
     }
   }
 
@@ -909,6 +982,7 @@ export class ArenaSimulator {
         const primaryV = coupledMasses.get(vIdx)!;
         const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryV));
         this.arena.setEqRhs(eqIdx, vExpr);
+        this.eliminatedDerVars.add(sIdx);
         const aIdx = derVarOf.get(vIdx) ?? -1;
         const primaryAIdx = derVarOf.get(primaryV) ?? -1;
         if (aIdx >= 0 && primaryAIdx >= 0) {
@@ -916,6 +990,7 @@ export class ArenaSimulator {
           if (aEqIdx !== undefined) {
             const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(primaryAIdx));
             this.arena.setEqRhs(aEqIdx, aExpr);
+            this.eliminatedDerVars.add(vIdx);
           }
         }
         continue;
@@ -944,30 +1019,254 @@ export class ArenaSimulator {
       if (resolvedV !== undefined && resolvedV !== vIdx) {
         const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(resolvedV));
         this.arena.setEqRhs(eqIdx, vExpr);
+        this.eliminatedDerVars.add(sIdx);
       }
     }
 
     // 4. Structural kinematic ratio resolution for zero-inertia chains coupled to positive-inertia chains
     //    via linear transformer/rolling-wheel constraints (e.g. `(phi_R - phi_0) * radius = s_T - s_0`)
+    const posChainOf = new Map<number, number>();
+    for (const [pIdx] of derVarOf) {
+      if (isDerTarget.has(pIdx)) continue;
+      posChainOf.set(pIdx, pIdx);
+      const pName = this.arena.getVarName(pIdx);
+      const dotIdx = pName.lastIndexOf(".");
+      if (dotIdx >= 0) {
+        const prefix = pName.substring(0, dotIdx);
+        const leaf = pName.substring(dotIdx + 1).replace(/_rel$/, "");
+        for (const port of ["flange_a", "flange_b", "flange"]) {
+          const portVarIdx = this.arena.getVarIdxByName(`${prefix}.${port}.${leaf}`);
+          if (portVarIdx >= 0 && !posChainOf.has(portVarIdx)) {
+            posChainOf.set(portVarIdx, pIdx);
+          }
+        }
+      }
+    }
+    let chainChanged = true;
+    while (chainChanged) {
+      chainChanged = false;
+      for (let i = 0; i < this.arena.eqCount; i++) {
+        if (this.arena.getEqKind(i) !== EqKind.Simple && this.arena.getEqKind(i) !== EqKind.Connect) continue;
+        const lhs = this.arena.getEqLhs(i);
+        const rhs = this.arena.getEqRhs(i);
+        if (this.arena.getExprKind(lhs) === ExprKind.Name && this.arena.getExprKind(rhs) === ExprKind.Name) {
+          const id1 = this.arena.lookupVariable(this.arena.getExprData1(lhs));
+          const id2 = this.arena.lookupVariable(this.arena.getExprData1(rhs));
+          if (id1 >= 0 && id2 >= 0 && !flowCoupledVars.has(id1) && !flowCoupledVars.has(id2)) {
+            const c1 = posChainOf.get(id1);
+            const c2 = posChainOf.get(id2);
+            if (c1 !== undefined && c2 === undefined) {
+              posChainOf.set(id2, c1);
+              chainChanged = true;
+            } else if (c2 !== undefined && c1 === undefined) {
+              posChainOf.set(id1, c2);
+              chainChanged = true;
+            }
+          }
+        }
+      }
+    }
+
     for (const [pZeroIdx, vZeroIdx] of derVarOf) {
       if (inertiaStatusOfPos.get(pZeroIdx) !== "zero") continue;
       const aZeroIdx = derVarOf.get(vZeroIdx) ?? -1;
       const zeroPrefix = this.arena.getVarName(pZeroIdx).split(".").slice(0, -2).join(".");
 
-      // Find a positive-inertia chain in the same subsystem coupled via a positive ratio parameter
+      // Find a positive-inertia chain coupled via a linear kinematic equation
       for (const [pPosIdx, vPosIdx] of derVarOf) {
         if (inertiaStatusOfPos.get(pPosIdx) !== "positive" || pPosIdx === pZeroIdx) continue;
         const posPrefix = this.arena.getVarName(pPosIdx).split(".").slice(0, -2).join(".");
         if (zeroPrefix !== posPrefix) continue;
 
-        // Locate positive kinematic conversion ratio parameter (e.g. rolling radius / gear ratio) in the subsystem
+        interface PairLinComb {
+          cZero: number;
+          cPos: number;
+          constVal: number;
+          unknowns: Map<number, number>;
+        }
+
+        const pairVarComb = new Map<number, { cZero: number; cPos: number; constVal: number }>();
+
+        const evalPairLin = (exprId: number): PairLinComb | null => {
+          if (exprId < 0) return null;
+          const k = this.arena.getExprKind(exprId);
+          if (k === ExprKind.RealLiteral) {
+            return { cZero: 0, cPos: 0, constVal: this.arena.getExprRealValue(exprId), unknowns: new Map() };
+          }
+          if (k === ExprKind.IntLiteral || k === ExprKind.BoolLiteral || k === ExprKind.EnumLiteral) {
+            return { cZero: 0, cPos: 0, constVal: this.arena.getExprData1(exprId), unknowns: new Map() };
+          }
+          if (k === ExprKind.Name) {
+            const nameId = this.arena.getExprData1(exprId);
+            const vIdx = this.arena.lookupVariable(nameId);
+            if (vIdx < 0) {
+              const name = this.arena.interner.resolve(nameId);
+              if (name && this.parameters.has(name)) {
+                return { cZero: 0, cPos: 0, constVal: this.parameters.get(name)!, unknowns: new Map() };
+              }
+              return null;
+            }
+            if (this.parameterVars.has(vIdx)) {
+              const name = this.arena.getVarName(vIdx);
+              const val = this.parameters.get(name) ?? this.arena.getVarStartValue(vIdx);
+              return { cZero: 0, cPos: 0, constVal: val, unknowns: new Map() };
+            }
+            if (flowCoupledVars.has(vIdx)) return null;
+            const chainRoot = posChainOf.get(vIdx);
+            if (vIdx === pZeroIdx || vIdx === vZeroIdx || chainRoot === pZeroIdx) {
+              return { cZero: 1, cPos: 0, constVal: 0, unknowns: new Map() };
+            }
+            if (vIdx === pPosIdx || vIdx === vPosIdx || chainRoot === pPosIdx) {
+              return { cZero: 0, cPos: 1, constVal: 0, unknowns: new Map() };
+            }
+            if (chainRoot !== undefined || derVarOf.has(vIdx) || isDerTarget.has(vIdx)) {
+              return null;
+            }
+            const known = pairVarComb.get(vIdx);
+            if (known) {
+              return { cZero: known.cZero, cPos: known.cPos, constVal: known.constVal, unknowns: new Map() };
+            }
+            return { cZero: 0, cPos: 0, constVal: 0, unknowns: new Map([[vIdx, 1.0]]) };
+          }
+          if (k === ExprKind.Negate || (k === ExprKind.Unary && this.arena.getExprData1(exprId) === UnaryOp.Negate)) {
+            const sub = evalPairLin(this.arena.getExprLeft(exprId));
+            if (!sub) return null;
+            const unknowns = new Map<number, number>();
+            for (const [uk, uv] of sub.unknowns) unknowns.set(uk, -uv);
+            return { cZero: -sub.cZero, cPos: -sub.cPos, constVal: -sub.constVal, unknowns };
+          }
+          if (k === ExprKind.Binary) {
+            const op = this.arena.getExprData1(exprId) as BinOp;
+            const l = evalPairLin(this.arena.getExprLeft(exprId));
+            if (!l) return null;
+            const r = evalPairLin(this.arena.getExprRight(exprId));
+            if (!r) return null;
+            if (op === BinOp.Add || op === BinOp.Sub) {
+              const s = op === BinOp.Add ? 1 : -1;
+              const unknowns = new Map(l.unknowns);
+              for (const [uk, uv] of r.unknowns) {
+                const next = (unknowns.get(uk) ?? 0) + s * uv;
+                if (Math.abs(next) < 1e-14) unknowns.delete(uk);
+                else unknowns.set(uk, next);
+              }
+              return {
+                cZero: l.cZero + s * r.cZero,
+                cPos: l.cPos + s * r.cPos,
+                constVal: l.constVal + s * r.constVal,
+                unknowns,
+              };
+            }
+            if (op === BinOp.Mul) {
+              const lPureConst = l.cZero === 0 && l.cPos === 0 && l.unknowns.size === 0;
+              const rPureConst = r.cZero === 0 && r.cPos === 0 && r.unknowns.size === 0;
+              if (lPureConst) {
+                const f = l.constVal;
+                const unknowns = new Map<number, number>();
+                for (const [uk, uv] of r.unknowns) if (Math.abs(uv * f) >= 1e-14) unknowns.set(uk, uv * f);
+                return { cZero: r.cZero * f, cPos: r.cPos * f, constVal: r.constVal * f, unknowns };
+              }
+              if (rPureConst) {
+                const f = r.constVal;
+                const unknowns = new Map<number, number>();
+                for (const [uk, uv] of l.unknowns) if (Math.abs(uv * f) >= 1e-14) unknowns.set(uk, uv * f);
+                return { cZero: l.cZero * f, cPos: l.cPos * f, constVal: l.constVal * f, unknowns };
+              }
+              return null;
+            }
+            if (op === BinOp.Div) {
+              const rPureConst = r.cZero === 0 && r.cPos === 0 && r.unknowns.size === 0 && Math.abs(r.constVal) > 1e-15;
+              if (rPureConst) {
+                const f = 1.0 / r.constVal;
+                const unknowns = new Map<number, number>();
+                for (const [uk, uv] of l.unknowns) if (Math.abs(uv * f) >= 1e-14) unknowns.set(uk, uv * f);
+                return { cZero: l.cZero * f, cPos: l.cPos * f, constVal: l.constVal * f, unknowns };
+              }
+              return null;
+            }
+          }
+          return null;
+        };
+
         let ratioVal = 0;
-        for (const pVarIdx of this.parameterVars) {
-          const pVarName = this.arena.getVarName(pVarIdx);
-          const matchesScope = zeroPrefix ? pVarName.startsWith(zeroPrefix + ".") : !pVarName.includes(".");
-          if (matchesScope && (pVarName.endsWith(".radius") || pVarName.endsWith(".R"))) {
+        const usedPairEqs = new Set<number>();
+        let pairProg = true;
+        while (pairProg && ratioVal === 0) {
+          pairProg = false;
+          for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+            if (usedPairEqs.has(eqIdx) || this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+            const lComb = evalPairLin(this.arena.getEqLhs(eqIdx));
+            if (!lComb) continue;
+            const rComb = evalPairLin(this.arena.getEqRhs(eqIdx));
+            if (!rComb) continue;
+            const unknowns = new Map(lComb.unknowns);
+            for (const [uk, uv] of rComb.unknowns) {
+              const next = (unknowns.get(uk) ?? 0) - uv;
+              if (Math.abs(next) < 1e-14) unknowns.delete(uk);
+              else unknowns.set(uk, next);
+            }
+            const cZero = lComb.cZero - rComb.cZero;
+            const cPos = lComb.cPos - rComb.cPos;
+            const constVal = lComb.constVal - rComb.constVal;
+
+            if (unknowns.size === 0) {
+              if (Math.abs(cZero) > 1e-12 && Math.abs(cPos) > 1e-12) {
+                ratioVal = Math.abs(cZero / cPos);
+                break;
+              }
+            } else if (unknowns.size === 1) {
+              const [uIdx, uCoeff] = unknowns.entries().next().value!;
+              if (Math.abs(uCoeff) > 1e-12) {
+                pairVarComb.set(uIdx, {
+                  cZero: -cZero / uCoeff,
+                  cPos: -cPos / uCoeff,
+                  constVal: -constVal / uCoeff,
+                });
+                usedPairEqs.add(eqIdx);
+                pairProg = true;
+              }
+            } else if (Math.abs(cZero) > 1e-12 && Math.abs(cPos) > 1e-12) {
+              // Equation couples cZero and cPos alongside fixed housing/support offsets
+              let allSupportOffsets = true;
+              for (const uIdx of unknowns.keys()) {
+                if (flowCoupledVars.has(uIdx) || derVarOf.has(uIdx) || isDerTarget.has(uIdx)) {
+                  allSupportOffsets = false;
+                  break;
+                }
+              }
+              if (allSupportOffsets) {
+                ratioVal = Math.abs(cZero / cPos);
+                break;
+              }
+            }
+          }
+        }
+
+        // Fallback: check parameter in scope ONLY if it is referenced in an equation alongside a position chain variable
+        if (ratioVal === 0) {
+          for (const pVarIdx of this.parameterVars) {
+            const pVarName = this.arena.getVarName(pVarIdx);
+            const matchesScope = zeroPrefix ? pVarName.startsWith(zeroPrefix + ".") : !pVarName.includes(".");
+            if (!matchesScope || !(pVarName.endsWith(".radius") || pVarName.endsWith(".R"))) continue;
             const val = this.parameters.get(pVarName) ?? this.arena.getVarStartValue(pVarIdx);
-            if (val > 0) {
+            if (val <= 0) continue;
+            let referencedWithChain = false;
+            for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+              if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+              const lhs = this.arena.getEqLhs(eqIdx);
+              const rhs = this.arena.getEqRhs(eqIdx);
+              if (exprRefsVar(lhs, pVarIdx) || exprRefsVar(rhs, pVarIdx)) {
+                for (const [chainVarIdx, rootIdx] of posChainOf) {
+                  if (rootIdx === pZeroIdx || rootIdx === pPosIdx) {
+                    if (exprRefsVar(lhs, chainVarIdx) || exprRefsVar(rhs, chainVarIdx)) {
+                      referencedWithChain = true;
+                      break;
+                    }
+                  }
+                }
+              }
+              if (referencedWithChain) break;
+            }
+            if (referencedWithChain) {
               ratioVal = val;
               break;
             }
@@ -980,6 +1279,7 @@ export class ArenaSimulator {
             const vExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(vPosIdx));
             const rExpr = this.arena.addRealLiteral(ratioVal);
             this.arena.setEqRhs(vZeroEq, this.arena.addBinaryExpr(BinOp.Div, vExpr, rExpr));
+            this.eliminatedDerVars.add(pZeroIdx);
           }
           const aPosIdx = derVarOf.get(vPosIdx) ?? -1;
           const aZeroEq = derEqOf.get(vZeroIdx);
@@ -987,6 +1287,7 @@ export class ArenaSimulator {
             const aExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(aPosIdx));
             const rExpr = this.arena.addRealLiteral(ratioVal);
             this.arena.setEqRhs(aZeroEq, this.arena.addBinaryExpr(BinOp.Div, aExpr, rExpr));
+            this.eliminatedDerVars.add(vZeroIdx);
           }
           break;
         }
@@ -1112,37 +1413,54 @@ export class ArenaSimulator {
     if (allDerVars.size === 0) return;
 
     // Identify flow-coupled generalized force/torque variables structurally from connector flow flags
+    // and multi-term non-state force/torque balances (e.g. tau = tau_c + tau_d)
     const flowCoupledVars = new Set<number>();
     for (let v = 0; v < this.arena.varCount; v++) {
       if (!this.arena.isVarRemoved(v) && this.arena.isVarFlow(v)) {
         flowCoupledVars.add(v);
       }
     }
+    const collectExprNonParamVars = (exprId: number, out: Set<number>): void => {
+      if (exprId < 0) return;
+      const k = this.arena.getExprKind(exprId);
+      if (k === ExprKind.Name) {
+        const vIdx = this.arena.lookupVariable(this.arena.getExprData1(exprId));
+        if (vIdx >= 0 && !this.parameterVars.has(vIdx)) {
+          out.add(vIdx);
+        }
+        return;
+      }
+      if (k === ExprKind.Binary) {
+        collectExprNonParamVars(this.arena.getExprLeft(exprId), out);
+        collectExprNonParamVars(this.arena.getExprRight(exprId), out);
+      } else if (k === ExprKind.Unary || k === ExprKind.Negate) {
+        collectExprNonParamVars(this.arena.getExprLeft(exprId), out);
+      } else if (k === ExprKind.IfElse) {
+        collectExprNonParamVars(this.arena.getExprData1(exprId), out);
+        collectExprNonParamVars(this.arena.getExprLeft(exprId), out);
+        collectExprNonParamVars(this.arena.getExprRight(exprId), out);
+      }
+    };
     let flowChanged = true;
     while (flowChanged) {
       flowChanged = false;
       for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
         if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
-        const lhs = this.arena.getEqLhs(eqIdx);
-        const rhs = this.arena.getEqRhs(eqIdx);
-        const unwrapSignedVar = (exprId: number): number => {
-          if (exprId < 0) return -1;
-          const k = this.arena.getExprKind(exprId);
-          if (k === ExprKind.Name) return this.arena.lookupVariable(this.arena.getExprData1(exprId));
-          if (k === ExprKind.Negate || (k === ExprKind.Unary && this.arena.getExprData1(exprId) === UnaryOp.Negate)) {
-            return unwrapSignedVar(this.arena.getExprLeft(exprId));
-          }
-          return -1;
-        };
-        const vL = unwrapSignedVar(lhs);
-        const vR = unwrapSignedVar(rhs);
-        if (vL >= 0 && vR >= 0 && !allDerVars.has(vL) && !allDerVars.has(vR)) {
-          if (flowCoupledVars.has(vL) && !flowCoupledVars.has(vR)) {
-            flowCoupledVars.add(vR);
-            flowChanged = true;
-          } else if (flowCoupledVars.has(vR) && !flowCoupledVars.has(vL)) {
-            flowCoupledVars.add(vL);
-            flowChanged = true;
+        const eqVars = new Set<number>();
+        collectExprNonParamVars(this.arena.getEqLhs(eqIdx), eqVars);
+        collectExprNonParamVars(this.arena.getEqRhs(eqIdx), eqVars);
+        let touchesState = false;
+        let touchesFlow = false;
+        for (const v of eqVars) {
+          if (allDerVars.has(v)) touchesState = true;
+          if (flowCoupledVars.has(v)) touchesFlow = true;
+        }
+        if (!touchesState && touchesFlow) {
+          for (const v of eqVars) {
+            if (!flowCoupledVars.has(v)) {
+              flowCoupledVars.add(v);
+              flowChanged = true;
+            }
           }
         }
       }
@@ -1226,10 +1544,6 @@ export class ArenaSimulator {
             return { constant: val, coeffs: new Map() };
           }
           if (isDerAliasTarget.has(vIdx) || flowCoupledVars.has(vIdx)) {
-            return null;
-          }
-          const vName = this.arena.getVarName(vIdx);
-          if (vName.endsWith(".tau") || vName.endsWith(".f") || vName.endsWith(".tau_c") || vName.endsWith(".tau_d")) {
             return null;
           }
           const existing = stateComb.get(vIdx);
@@ -1507,6 +1821,7 @@ export class ArenaSimulator {
     for (const sDep of eliminatedStates) {
       const finalComb = stateComb.get(sDep);
       if (!finalComb) continue;
+      this.eliminatedDerVars.add(sDep);
       const derExpr1 = buildLinearDerComboExpr(finalComb.coeffs, 1);
       for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
         if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
@@ -1520,6 +1835,7 @@ export class ArenaSimulator {
 
       const wDep = derAliasOf.get(sDep);
       if (wDep !== undefined && allDerVars.has(wDep)) {
+        this.eliminatedDerVars.add(wDep);
         const derExpr2 = buildLinearDerComboExpr(finalComb.coeffs, 2);
         for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
           if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
@@ -1536,8 +1852,8 @@ export class ArenaSimulator {
 
   /**
    * Scans all DAE arena equations for `ExprKind.Der` nodes, registers their inner variables
-   * in `stateVars` (filtering out zero-mass/zero-inertia mechanical bodies), and ensures a
-   * corresponding `der(x)` variable exists in `derivativeVars`.
+   * in `stateVars` (excluding derivatives already eliminated by kinematic/affine reduction),
+   * and ensures a corresponding `der(x)` variable exists in `derivativeVars`.
    */
   private identifyDerivatives() {
     const scanExpr = (exprId: number) => {
@@ -1552,23 +1868,7 @@ export class ArenaSimulator {
           if (name) {
             const varIdx = this.arena.getVarIdxByName(name);
             if (varIdx !== -1) {
-              // Filter out massless/zero-inertia bodies:
-              if (name.endsWith(".phi") || name.endsWith(".w")) {
-                const prefix = name.substring(0, name.lastIndexOf("."));
-                const jIdx = this.arena.getVarIdxByName(`${prefix}.J`);
-                if (jIdx >= 0) {
-                  const jVal = this.parameters.get(`${prefix}.J`) ?? this.arena.getVarStartValue(jIdx);
-                  if (jVal === 0) return;
-                }
-              }
-              if (name.endsWith(".s") || name.endsWith(".v")) {
-                const prefix = name.substring(0, name.lastIndexOf("."));
-                const mIdx = this.arena.getVarIdxByName(`${prefix}.m`);
-                if (mIdx >= 0) {
-                  const mVal = this.parameters.get(`${prefix}.m`) ?? this.arena.getVarStartValue(mIdx);
-                  if (mVal === 0) return;
-                }
-              }
+              if (this.eliminatedDerVars.has(varIdx)) return;
 
               this.stateVars.add(varIdx);
               // O(1): look up derivative variable, or create it if it doesn't exist
@@ -1675,14 +1975,24 @@ export class ArenaSimulator {
       // Main when-clause
       const actions = this.extractWhenActionsFromMeta(meta.bodyEquations);
       if (actions.length > 0) {
-        this.whenClauses.push({ conditionExprId: meta.conditionExprId, actions, wasActive: false });
+        this.whenClauses.push({
+          conditionExprId: meta.conditionExprId,
+          actions,
+          wasActive: false,
+          groupId: eqIdx,
+        } as ArenaWhenClause);
       }
 
       // Else-when clauses
       for (const ew of meta.elseWhenClauses) {
         const ewActions = this.extractWhenActionsFromMeta(ew.bodyEquations);
         if (ewActions.length > 0) {
-          this.whenClauses.push({ conditionExprId: ew.conditionExprId, actions: ewActions, wasActive: false });
+          this.whenClauses.push({
+            conditionExprId: ew.conditionExprId,
+            actions: ewActions,
+            wasActive: false,
+            groupId: eqIdx,
+          } as ArenaWhenClause);
         }
       }
     }
@@ -1698,7 +2008,7 @@ export class ArenaSimulator {
     const actions: ArenaWhenAction[] = [];
     for (const body of bodyEquations) {
       if (body.kind === EqKind.FunctionCall) {
-        // Function call — check for reinit(var, expr)
+        // Function call — check for reinit(var, expr), terminate(msg), or assert(cond, msg)
         const callExprId = body.lhsExprId;
         if (this.arena.getExprKind(callExprId) === ExprKind.Call) {
           const funcNameId = this.arena.getExprData1(callExprId);
@@ -1714,6 +2024,13 @@ export class ArenaSimulator {
                 actions.push({ type: "reinit", targetNameId, exprId: secondArgId });
               }
             }
+          } else if (funcName === "terminate" || funcName === "assert") {
+            actions.push({
+              type: "assign",
+              targetNameId: -1,
+              exprId: callExprId,
+              callType: funcName,
+            } as ArenaWhenAction);
           }
         }
       } else if (body.kind === EqKind.Simple) {
@@ -2105,6 +2422,17 @@ export class ArenaSimulator {
     // previousState(sm) → ordinal of previously active state
     const prevStateId = this.arena.interner.intern(`$previousState(${rt.def.name})`);
     valuesByStringId[prevStateId] = rt.stateOrdinals.get(rt.previousState) ?? 0;
+
+    // Per-state boolean activeState(stateName) and scoped counters
+    for (const state of rt.def.states) {
+      const isAct = state.name === rt.activeState ? 1 : 0;
+      valuesByStringId[this.arena.interner.intern(`$activeState(${state.name})`)] = isAct;
+      valuesByStringId[this.arena.interner.intern(`$ticksInState(${state.name})`)] = isAct ? rt.ticksInState : 0;
+      valuesByStringId[this.arena.interner.intern(`$timeInState(${state.name})`)] = isAct ? rt.timeInState : 0;
+      if (rt.def.name) {
+        valuesByStringId[this.arena.interner.intern(`$activeState(${rt.def.name}.${state.name})`)] = isAct;
+      }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -2173,12 +2501,17 @@ export class ArenaSimulator {
       blockAny._resExprIds = cachedResIds;
     }
 
+    const bestX = new Float64Array(m);
+    let bestMaxR = Infinity;
+
     // Collect variable name StringIds
     for (let i = 0; i < m; i++) {
       const nid = cachedVarIds[i] as number;
       varNameIds[i] = nid;
       // Initialize from warm-start cache or current environment
-      x[i] = this.algWarmStart.get(nid) ?? valuesByStringId[nid] ?? 0;
+      const initVal = this.algWarmStart.get(nid) ?? valuesByStringId[nid] ?? 0;
+      x[i] = Number.isFinite(initVal) ? initVal : 0;
+      bestX[i] = x[i]!;
     }
 
     const compiledRes: ((env: Float64Array, x: Float64Array, R: Float64Array) => number) | undefined =
@@ -2200,16 +2533,33 @@ export class ArenaSimulator {
       } else {
         for (let i = 0; i < m; i++) {
           const resId = cachedResIds[i] as number;
-          const exprVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId);
-          const rVal = isFinite(exprVal) ? exprVal : 0;
-          R[i] = rVal;
-          const absR = Math.abs(rVal);
-          if (absR > maxR) maxR = absR;
+          const exprVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId, this.preValuesByStringId);
+          if (Number.isFinite(exprVal)) {
+            R[i] = exprVal;
+            const absR = Math.abs(exprVal);
+            if (absR > maxR) maxR = absR;
+          } else {
+            R[i] = 1e10;
+            maxR = Infinity;
+          }
         }
+      }
+
+      if (Number.isFinite(maxR) && maxR < bestMaxR) {
+        bestMaxR = maxR;
+        for (let i = 0; i < m; i++) bestX[i] = x[i] as number;
       }
 
       if (maxR < NEWTON_TOL) {
         converged = true;
+        break;
+      }
+
+      if (!Number.isFinite(maxR)) {
+        for (let i = 0; i < m; i++) {
+          x[i] = bestX[i]!;
+          valuesByStringId[varNameIds[i] as number] = bestX[i]!;
+        }
         break;
       }
 
@@ -2223,7 +2573,7 @@ export class ArenaSimulator {
           for (let i = 0; i < m; i++) {
             const resId = cachedResIds[i] as number;
             const ok = evaluateArenaDualFlat(this.arena, resId, valuesByStringId, nid, dualStack, 0);
-            if (ok) {
+            if (ok && Number.isFinite(dualStack[1] as number)) {
               // J[i][j] = d(res_i)/dx_j
               J[i * m + j] = dualStack[1] as number;
             } else {
@@ -2231,8 +2581,8 @@ export class ArenaSimulator {
               const xj = x[j] as number;
               const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
               valuesByStringId[nid] = xj + eps;
-              const perturbedVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId);
-              const R_perturbed = isFinite(perturbedVal) ? perturbedVal : 0;
+              const perturbedVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId, this.preValuesByStringId);
+              const R_perturbed = Number.isFinite(perturbedVal) ? perturbedVal : (R[i] as number);
               J[i * m + j] = (R_perturbed - (R[i] as number)) / eps;
               valuesByStringId[nid] = xj;
             }
@@ -2245,6 +2595,20 @@ export class ArenaSimulator {
         const fact = luFactorFlat(J, m, piv, scale);
         for (let i = 0; i < m; i++) negR[i] = -(R[i] as number);
         luSolveFlat(fact, negR);
+        let stepFinite = true;
+        for (let i = 0; i < m; i++) {
+          if (!Number.isFinite(negR[i] as number)) {
+            stepFinite = false;
+            break;
+          }
+        }
+        if (!stepFinite) {
+          for (let i = 0; i < m; i++) {
+            x[i] = bestX[i]!;
+            valuesByStringId[varNameIds[i] as number] = bestX[i]!;
+          }
+          break;
+        }
         for (let i = 0; i < m; i++) {
           const nx = (x[i] as number) + (negR[i] as number);
           x[i] = nx;
@@ -2252,23 +2616,31 @@ export class ArenaSimulator {
         }
         if (isLinearSystem) {
           converged = true;
+          for (let i = 0; i < m; i++) bestX[i] = x[i] as number;
           break;
         }
       } catch {
-        // Singular Jacobian — skip this block
-        return;
+        // Singular Jacobian — restore best finite iterate
+        for (let i = 0; i < m; i++) {
+          x[i] = bestX[i]!;
+          valuesByStringId[varNameIds[i] as number] = bestX[i]!;
+        }
+        break;
       }
     }
 
     if (!converged) {
-      // Write best guess back anyway
+      for (let i = 0; i < m; i++) {
+        x[i] = bestX[i]!;
+      }
     }
 
-    // Write converged values and update warm-start cache
+    // Write converged/best finite values and update warm-start cache
     for (let i = 0; i < m; i++) {
       const nid = varNameIds[i] as number;
-      valuesByStringId[nid] = x[i] as number;
-      this.algWarmStart.set(nid, x[i] as number);
+      const finalVal = Number.isFinite(x[i] as number) ? (x[i] as number) : (bestX[i] ?? 0);
+      valuesByStringId[nid] = finalVal;
+      this.algWarmStart.set(nid, finalVal);
     }
   }
 
@@ -2297,6 +2669,10 @@ export class ArenaSimulator {
         getTimeTableValue: (tableIdStrId: number, icol: number, timeIn: number) => {
           const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
           return evalSimTimeTableValue(cached, icol, timeIn);
+        },
+        getTable1DValue: (tableIdStrId: number, icol: number, uIn: number) => {
+          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
+          return evalSimTable1DValue(cached, icol, uIn);
         },
         getTimeTableTmin: (tableIdStrId: number) => {
           const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
@@ -2328,14 +2704,14 @@ export class ArenaSimulator {
         ) => {
           const dualStack = this.newtonScratchDualStack;
           const ok = evaluateArenaDualFlat(arena, resId, env, nid, dualStack, 0);
-          if (ok) {
+          if (ok && Number.isFinite(dualStack[1] as number)) {
             return dualStack[1] as number;
           }
           const xj = x[j] as number;
           const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
           env[nid] = xj + eps;
-          const perturbedVal = evaluateArenaRuntime(arena, resId, env);
-          const R_perturbed = isFinite(perturbedVal) ? perturbedVal : 0;
+          const perturbedVal = evaluateArenaRuntime(arena, resId, env, this.preValuesByStringId);
+          const R_perturbed = Number.isFinite(perturbedVal) ? perturbedVal : (R[i] as number);
           env[nid] = xj;
           return (R_perturbed - (R[i] as number)) / eps;
         },
@@ -2447,6 +2823,21 @@ export class ArenaSimulator {
               return `helpers.evalExpr(${exprId}, env)`;
             }
 
+            if (
+              (cleanFn === "activeState" ||
+                cleanFn === "ticksInState" ||
+                cleanFn === "timeInState" ||
+                cleanFn === "previousState") &&
+              argCount >= 1 &&
+              arena.getExprKind(firstArg) === ExprKind.Name
+            ) {
+              const argName = arena.interner.resolve(arena.getExprData1(firstArg));
+              if (argName) {
+                const intrinsicId = arena.interner.intern(`$${cleanFn}(${argName})`);
+                return `env[${intrinsicId}]`;
+              }
+            }
+
             if (cleanFn === "der" && argCount === 1 && arena.getExprKind(firstArg) === ExprKind.Name) {
               const innerName = arena.interner.resolve(arena.getExprData1(firstArg));
               if (innerName) {
@@ -2497,11 +2888,14 @@ export class ArenaSimulator {
               if (cleanFn === "min") return `Math.min(${arg}, ${arg1})`;
             }
 
-            if (
-              fnName.includes("getTimeTableValue") ||
-              fnName.includes("CombiTimeTable_getValue") ||
-              fnName.includes("getTable1DValue")
-            ) {
+            if (fnName.includes("getTable1DValue") || fnName.includes("CombiTable1D_getValue")) {
+              const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
+              const icolJs = exprToJs(arena.getExprLeft(exprId + 1));
+              const uJs = exprToJs(arena.getExprLeft(exprId + 2));
+              return `helpers.getTable1DValue(${tableVarNameId}, ${icolJs}, ${uJs})`;
+            }
+
+            if (fnName.includes("getTimeTableValue") || fnName.includes("CombiTimeTable_getValue")) {
               const tableVarNameId = arena.getExprKind(firstArg) === ExprKind.Name ? arena.getExprData1(firstArg) : 0;
               const icolJs = exprToJs(arena.getExprLeft(exprId + 1));
               const timeJs = exprToJs(arena.getExprLeft(exprId + 2));
@@ -2767,7 +3161,7 @@ export class ArenaSimulator {
                 isLinearSystem = false;
               }
               resLines.push(
-                `{ const v = ${resJs}; const r = Number.isFinite(v) ? v : 0; R[${i}] = r; const ar = Math.abs(r); if (ar > maxR) maxR = ar; }`,
+                `{ const v = ${resJs}; if (Number.isFinite(v)) { R[${i}] = v; const ar = Math.abs(v); if (ar > maxR) maxR = ar; } else { R[${i}] = 1e10; maxR = Infinity; } }`,
               );
             }
             resLines.push("return maxR;");
@@ -2845,7 +3239,7 @@ export class ArenaSimulator {
     }
     for (const block of this.executionBlocks) {
       if (block.type === "single") {
-        const val = evaluateArenaRuntime(this.arena, block.exprId, valuesByStringId);
+        const val = evaluateArenaRuntime(this.arena, block.exprId, valuesByStringId, this.preValuesByStringId);
         const varNameId = this.arena.getVarNameId(block.varIdx);
         valuesByStringId[varNameId] = val;
       } else if (block.type === "system") {
@@ -2858,15 +3252,54 @@ export class ArenaSimulator {
   // When-Clause Event Handling
   // ─────────────────────────────────────────────────────────────────────────
 
+  /** Checks whether an expression tree contains a `sample(...)` call. */
+  private exprHasSampleCall(exprId: number): boolean {
+    if (exprId < 0) return false;
+    const k = this.arena.getExprKind(exprId);
+    if (k === ExprKind.Call) {
+      const fn = this.arena.interner.resolve(this.arena.getExprData1(exprId));
+      if (fn === "sample") return true;
+      const argc = this.arena.getExprRight(exprId);
+      const first = this.arena.getExprLeft(exprId);
+      for (let a = 0; a < argc; a++) {
+        if (this.exprHasSampleCall(a === 0 ? first : this.arena.getExprLeft(exprId + a))) return true;
+      }
+      return false;
+    }
+    if (k === ExprKind.Binary) {
+      return (
+        this.exprHasSampleCall(this.arena.getExprLeft(exprId)) ||
+        this.exprHasSampleCall(this.arena.getExprRight(exprId))
+      );
+    }
+    if (k === ExprKind.Unary || k === ExprKind.Negate) {
+      return this.exprHasSampleCall(this.arena.getExprLeft(exprId));
+    }
+    if (k === ExprKind.IfElse) {
+      return (
+        this.exprHasSampleCall(this.arena.getExprData1(exprId)) ||
+        this.exprHasSampleCall(this.arena.getExprLeft(exprId)) ||
+        this.exprHasSampleCall(this.arena.getExprRight(exprId))
+      );
+    }
+    return false;
+  }
+
   /**
    * Processes discrete `when` and `elsewhen` clauses using rising-edge detection
    * (`isActive && !clause.wasActive`) with bounded fixed-point event iteration.
    */
   private processWhenClauses(valuesByStringId: Float64Array): void {
     if (this.whenClauses.length === 0) return;
+    let totalFired = false;
+    const firedGroups = new Set<number>();
     for (let iter = 0; iter < 10; iter++) {
+      if (iter > 0 && this.preValuesByStringId && this.preValuesByStringId.length === valuesByStringId.length) {
+        this.preValuesByStringId.set(valuesByStringId);
+      }
       let anyFired = false;
       for (const clause of this.whenClauses) {
+        const groupId: number | undefined = (clause as any).groupId;
         const condVal = evaluateArenaRuntime(
           this.arena,
           clause.conditionExprId,
@@ -2875,26 +3308,41 @@ export class ArenaSimulator {
         );
         const isActive = condVal !== 0;
 
+        if (groupId !== undefined && firedGroups.has(groupId)) {
+          clause.wasActive = isActive;
+          continue;
+        }
+
         // Rising edge detection
         if (isActive && !clause.wasActive) {
           anyFired = true;
+          totalFired = true;
+          if (groupId !== undefined) firedGroups.add(groupId);
           for (const action of clause.actions) {
+            if (action.targetNameId < 0) continue;
             const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId, this.preValuesByStringId);
             valuesByStringId[action.targetNameId] = val;
           }
-          const postCondVal = evaluateArenaRuntime(
-            this.arena,
-            clause.conditionExprId,
-            valuesByStringId,
-            this.preValuesByStringId,
-          );
-          clause.wasActive = postCondVal !== 0;
+          if (this.exprHasSampleCall(clause.conditionExprId)) {
+            clause.wasActive = false;
+          } else {
+            const postCondVal = evaluateArenaRuntime(
+              this.arena,
+              clause.conditionExprId,
+              valuesByStringId,
+              this.preValuesByStringId,
+            );
+            clause.wasActive = postCondVal !== 0;
+          }
         } else {
           clause.wasActive = isActive;
         }
       }
       if (!anyFired) break;
       this.evaluateBlocks(valuesByStringId);
+    }
+    if (totalFired && this.preValuesByStringId && this.preValuesByStringId.length === valuesByStringId.length) {
+      this.preValuesByStringId.set(valuesByStringId);
     }
   }
 
@@ -2993,6 +3441,7 @@ export class ArenaSimulator {
     valuesByStringId: Float64Array,
     stateStringIds: number[],
     timeId: number,
+    onEventCompleted?: (t: number) => void,
   ): (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[] {
     const n = stateStringIds.length;
     return (t: number, y: number[], eventIdx: number): number[] => {
@@ -3063,16 +3512,11 @@ export class ArenaSimulator {
         }
       }
 
-      // Reset wasActive flags for clauses participating in the triggered zero-crossing
-      // (or all clauses if no clause indices array was attached to the event).
-      if (Array.isArray(triggeredClauseIndices)) {
+      // Reset wasActive flags ONLY for clauses participating in the triggered zero-crossing
+      if (Array.isArray(triggeredClauseIndices) && triggeredClauseIndices.length > 0) {
         for (const cIdx of triggeredClauseIndices) {
           const clause = this.whenClauses[cIdx];
           if (clause) clause.wasActive = false;
-        }
-      } else {
-        for (const clause of this.whenClauses) {
-          clause.wasActive = false;
         }
       }
 
@@ -3081,9 +3525,14 @@ export class ArenaSimulator {
       // and record any state variables modified by reinit/assign actions so post-event surface
       // projection does not clobber them.
       const modifiedByWhen = new Set<number>();
+      const firedGroups = new Set<number>();
       for (let iter = 0; iter < 10; iter++) {
+        if (iter > 0 && this.preValuesByStringId && this.preValuesByStringId.length === valuesByStringId.length) {
+          this.preValuesByStringId.set(valuesByStringId);
+        }
         let anyFired = false;
         for (const clause of this.whenClauses) {
+          const groupId: number | undefined = (clause as any).groupId;
           const condVal = evaluateArenaRuntime(
             this.arena,
             clause.conditionExprId,
@@ -3092,22 +3541,33 @@ export class ArenaSimulator {
           );
           const isActive = condVal !== 0;
 
+          if (groupId !== undefined && firedGroups.has(groupId)) {
+            clause.wasActive = isActive;
+            continue;
+          }
+
           if (isActive && !clause.wasActive) {
             anyFired = true;
+            if (groupId !== undefined) firedGroups.add(groupId);
             for (const action of clause.actions) {
+              if (action.targetNameId < 0) continue;
               const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId, this.preValuesByStringId);
               valuesByStringId[action.targetNameId] = val;
               modifiedByWhen.add(action.targetNameId);
             }
-            // Re-evaluate the condition after actions (e.g. reinit) to properly set the edge-detection
-            // state for the next step, preventing immediate spurious re-triggering.
-            const postCondVal = evaluateArenaRuntime(
-              this.arena,
-              clause.conditionExprId,
-              valuesByStringId,
-              this.preValuesByStringId,
-            );
-            clause.wasActive = postCondVal !== 0;
+            if (this.exprHasSampleCall(clause.conditionExprId)) {
+              clause.wasActive = false;
+            } else {
+              // Re-evaluate the condition after actions (e.g. reinit) to properly set the edge-detection
+              // state for the next step, preventing immediate spurious re-triggering.
+              const postCondVal = evaluateArenaRuntime(
+                this.arena,
+                clause.conditionExprId,
+                valuesByStringId,
+                this.preValuesByStringId,
+              );
+              clause.wasActive = postCondVal !== 0;
+            }
           } else {
             clause.wasActive = isActive;
           }
@@ -3118,43 +3578,26 @@ export class ArenaSimulator {
 
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
 
-      // Read back possibly-modified state
+      // Read back state: only overwrite continuous states that were explicitly modified by when-actions;
+      // restore unmodified states to their exact event-time values `y[i]`.
       const yAfter = new Array<number>(n);
       for (let i = 0; i < n; i++) {
-        yAfter[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
-      }
-
-      // Project state onto the zero-crossing surface to prevent chattering,
-      // unless the state variable was explicitly reinitialized by a when-action.
-      if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
-        const ei = this.eventIndicators[eventIdx];
-        if (ei) {
-          const eiKind = this.arena.getExprKind(ei.exprId);
-          if (eiKind === ExprKind.Binary) {
-            const op = this.arena.getExprData1(ei.exprId) as BinOp;
-            if (op === BinOp.Sub) {
-              const lhsId = this.arena.getExprLeft(ei.exprId);
-              if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
-                const nameId = this.arena.getExprData1(lhsId);
-                if (!modifiedByWhen.has(nameId)) {
-                  for (let i = 0; i < n; i++) {
-                    if (stateStringIds[i] === nameId) {
-                      const rhsVal = evaluateArenaRuntime(
-                        this.arena,
-                        this.arena.getExprRight(ei.exprId),
-                        valuesByStringId,
-                      );
-                      yAfter[i] = rhsVal;
-                      valuesByStringId[nameId] = rhsVal;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-          }
+        const sid = stateStringIds[i] ?? -1;
+        if (sid >= 0 && modifiedByWhen.has(sid)) {
+          yAfter[i] = valuesByStringId[sid] ?? 0;
+        } else {
+          yAfter[i] = y[i] ?? 0;
+          if (sid >= 0) valuesByStringId[sid] = yAfter[i]!;
         }
       }
+
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+      if (this.preValuesByStringId && this.preValuesByStringId.length === valuesByStringId.length) {
+        this.preValuesByStringId.set(valuesByStringId);
+      }
+
+      onEventCompleted?.(t);
 
       return yAfter;
     };
@@ -3282,9 +3725,11 @@ export class ArenaSimulator {
     this.preValuesByStringId = new Float64Array(valuesByStringId.length);
     this.preValuesByStringId.set(valuesByStringId);
 
-    // Execute initial algorithm sections
-    for (const sec of this.arena.initialAlgorithmSections) {
-      executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+    // Execute initial algorithm sections (unless already executed by solveInitialEquationsArena)
+    if (!(this.arena as any)._initialAlgorithmsExecuted) {
+      for (const sec of this.arena.initialAlgorithmSections) {
+        executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+      }
     }
 
     // Initialize when-clause wasActive flags
@@ -3530,15 +3975,49 @@ export class ArenaSimulator {
       y0[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
     }
 
+    const initEnvSnapshot = new Float64Array(valuesByStringId);
+    const initPreEnvSnapshot = new Float64Array(this.preValuesByStringId ?? valuesByStringId);
+    const initWhenWasActive = this.whenClauses.map((c) => c.wasActive);
+    const initEiPrevValue = this.eventIndicators.map((ei) => ei.prevValue);
+
+    const envSnapshots: { t: number; env: Float64Array; preEnv: Float64Array }[] = [
+      {
+        t: startTime,
+        env: new Float64Array(initEnvSnapshot),
+        preEnv: new Float64Array(initPreEnvSnapshot),
+      },
+    ];
+
+    const resetAdaptiveState = () => {
+      valuesByStringId.set(initEnvSnapshot);
+      if (this.preValuesByStringId) this.preValuesByStringId.set(initPreEnvSnapshot);
+      for (let i = 0; i < this.whenClauses.length; i++) {
+        this.whenClauses[i]!.wasActive = initWhenWasActive[i]!;
+      }
+      for (let i = 0; i < this.eventIndicators.length; i++) {
+        this.eventIndicators[i]!.prevValue = initEiPrevValue[i]!;
+      }
+      envSnapshots.length = 1;
+    };
+
     // Build RHS function
     const rhsFn = this.buildRhsFunction(valuesByStringId, stateStringIds, derivStringIds, timeId);
 
     // Build event functions, callback, and crossing directions
     const eventFns = this.buildEventFunctions(valuesByStringId, stateStringIds, timeId);
-    const eventCb = eventFns.length > 0 ? this.buildEventCallback(valuesByStringId, stateStringIds, timeId) : undefined;
+    const eventCb =
+      eventFns.length > 0
+        ? this.buildEventCallback(valuesByStringId, stateStringIds, timeId, (tEv) => {
+            envSnapshots.push({
+              t: tEv,
+              env: new Float64Array(valuesByStringId),
+              preEnv: new Float64Array(this.preValuesByStringId ?? valuesByStringId),
+            });
+          })
+        : undefined;
     const eventDirs = this.eventIndicators.map((ei) => ei.direction);
 
-    let rawResult: { times: number[]; states: number[][] };
+    let rawResult: { times: number[]; states: number[][]; converged?: boolean; rejectedSteps?: number };
 
     if (solver === "bdf") {
       // Build analytical Jacobian via reverse-mode AD (if available).
@@ -3570,6 +4049,9 @@ export class ArenaSimulator {
         rtol,
         initialStep: step,
         maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+        eventFunctions: eventFns.length > 0 ? eventFns : undefined,
+        eventCallback: eventCb,
+        eventDirections: eventDirs as any,
       });
     } else if (solver === "trbdf2") {
       rawResult = trbdf2(rhsFn, startTime, y0, stopTime, outputTimes, {
@@ -3577,6 +4059,9 @@ export class ArenaSimulator {
         rtol,
         initialStep: step,
         maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+        eventFunctions: eventFns.length > 0 ? eventFns : undefined,
+        eventCallback: eventCb,
+        eventDirections: eventDirs as any,
       });
     } else if (solver === "qss1" || solver === "qss2" || solver === "qss3" || solver === "liqss2") {
       rawResult = qssSolve(rhsFn, startTime, y0, stopTime, outputTimes, {
@@ -3587,8 +4072,68 @@ export class ArenaSimulator {
         eventCallback: eventCb,
         eventDirections: eventDirs as any,
       });
+    } else if (solver === "auto") {
+      rawResult = dopri5(
+        rhsFn,
+        startTime,
+        y0,
+        stopTime,
+        outputTimes,
+        {
+          atol,
+          rtol,
+          initialStep: step,
+          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+        },
+        eventFns.length > 0 ? eventFns : undefined,
+        eventCb,
+        eventDirs,
+      );
+      const isResultBad = (res: {
+        times: number[];
+        states: number[][];
+        converged?: boolean;
+        rejectedSteps?: number;
+      }) => {
+        if (res.converged === false) return true;
+        const lastT = res.times[res.times.length - 1] ?? startTime;
+        if (lastT < stopTime - 1e-6) return true;
+        if ((res.rejectedSteps ?? 0) > 50) return true;
+        for (const row of res.states) {
+          for (const v of row) {
+            if (!isFinite(v)) return true;
+          }
+        }
+        return false;
+      };
+      if (isResultBad(rawResult)) {
+        resetAdaptiveState();
+        rawResult = rodas4p(rhsFn, startTime, y0, stopTime, outputTimes, {
+          atol,
+          rtol,
+          initialStep: step,
+          maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
+          eventFunctions: eventFns.length > 0 ? eventFns : undefined,
+          eventCallback: eventCb,
+          eventDirections: eventDirs as any,
+        });
+        if (isResultBad(rawResult)) {
+          resetAdaptiveState();
+          const adJacobian = buildAdJacobian(this.arena);
+          rawResult = bdf(
+            rhsFn,
+            startTime,
+            y0,
+            stopTime,
+            outputTimes,
+            { atol, rtol, ...(adJacobian ? { jacobian: adJacobian } : {}) },
+            eventFns.length > 0 ? eventFns : undefined,
+            eventCb,
+          );
+        }
+      }
     } else {
-      // dopri5 or auto
+      // dopri5
       rawResult = dopri5(
         rhsFn,
         startTime,
@@ -3610,13 +4155,26 @@ export class ArenaSimulator {
     // Convert to Float64Array output format
     const outIds = options?.outputStringIds ?? stateStringIds;
     const t_out = rawResult.times;
+    let snapIdx = 0;
     const y_out: Float64Array[] = rawResult.states.map((row, rowIdx) => {
+      const tSample = t_out[rowIdx] ?? startTime;
+      while (snapIdx + 1 < envSnapshots.length && envSnapshots[snapIdx + 1]!.t <= tSample + 1e-12) {
+        snapIdx++;
+      }
+      const activeSnap = envSnapshots[snapIdx];
+      if (activeSnap) {
+        valuesByStringId.set(activeSnap.env);
+        if (this.preValuesByStringId && this.preValuesByStringId.length === activeSnap.preEnv.length) {
+          this.preValuesByStringId.set(activeSnap.preEnv);
+        }
+      }
+
       // First, load the states into the environment
       for (let i = 0; i < n; i++) {
         valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
       }
       // Set current sample time
-      valuesByStringId[timeId] = t_out[rowIdx] ?? startTime;
+      valuesByStringId[timeId] = tSample;
 
       // Re-evaluate algebraic variables for the recorded state
       this.evaluateBlocks(valuesByStringId);
@@ -3704,6 +4262,10 @@ export class ArenaSimulator {
       if (!name) continue;
       const dotIdx = name.lastIndexOf(".");
       if (dotIdx < 0) continue;
+      const leaf = name.substring(dotIdx + 1);
+      // Only apply to mechanical velocity states (.v, .w, .v_rel, .w_rel)
+      if (leaf !== "v" && leaf !== "w" && leaf !== "v_rel" && leaf !== "w_rel") continue;
+
       const v0 = (y0 as any)[i] ?? 0;
       const v1 = vals[sId] ?? 0;
       const crossedZero = (v0 > 1e-9 && v1 <= 0) || (v0 < -1e-9 && v1 >= 0);
@@ -3712,6 +4274,49 @@ export class ArenaSimulator {
       if (!crossedZero && !deceleratingIntoStiction) continue;
 
       const prefix = name.substring(0, dotIdx);
+      // Verify the component (or model) actually has dry/rolling friction variables or parameters
+      const frictionSuffixes = [
+        ".locked",
+        ".startForward",
+        ".startBackward",
+        ".sa",
+        ".f_c",
+        ".tau_c",
+        ".v_small",
+        ".w_small",
+        ".mode",
+        ".free",
+        ".mu_pos",
+        ".cgeo",
+        ".F_prop",
+        ".F_Coulomb",
+      ];
+      let hasFrictionIndicator = false;
+      for (const suf of frictionSuffixes) {
+        if (this.arena.getVarIdxByName(prefix + suf) >= 0 || this.parameters.has(prefix + suf)) {
+          hasFrictionIndicator = true;
+          break;
+        }
+      }
+      if (!hasFrictionIndicator) {
+        for (let vIdx = 0; vIdx < this.arena.varCount; vIdx++) {
+          if (this.arena.isVarRemoved(vIdx)) continue;
+          const vName = this.arena.getVarName(vIdx);
+          if (
+            vName.endsWith(".locked") ||
+            vName.endsWith(".startForward") ||
+            vName.endsWith(".sa") ||
+            vName.endsWith(".v_small") ||
+            vName.endsWith(".w_small") ||
+            vName.endsWith(".F_Coulomb")
+          ) {
+            hasFrictionIndicator = true;
+            break;
+          }
+        }
+      }
+      if (!hasFrictionIndicator) continue;
+
       // Verify the component has a connector flow variable with negligible net driving force/torque
       let flowVarNameId = -1;
       for (let vIdx = 0; vIdx < this.arena.varCount; vIdx++) {
@@ -4124,19 +4729,24 @@ export class ArenaSimulator {
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
 
-    // Execute initial algorithm sections
-    for (const sec of this.arena.initialAlgorithmSections) {
-      if (this.debuggerHook) {
-        await executeArenaStatementsAsync(
-          this.arena,
-          sec.start,
-          sec.count,
-          valuesByStringId,
-          undefined,
-          this.debuggerHook,
-        );
-      } else {
-        executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+    this.preValuesByStringId = new Float64Array(valuesByStringId.length);
+    this.preValuesByStringId.set(valuesByStringId);
+
+    // Execute initial algorithm sections (unless already executed by solveInitialEquationsArena)
+    if (!(this.arena as any)._initialAlgorithmsExecuted) {
+      for (const sec of this.arena.initialAlgorithmSections) {
+        if (this.debuggerHook) {
+          await executeArenaStatementsAsync(
+            this.arena,
+            sec.start,
+            sec.count,
+            valuesByStringId,
+            undefined,
+            this.debuggerHook,
+          );
+        } else {
+          executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+        }
       }
     }
 
@@ -4213,6 +4823,7 @@ export class ArenaSimulator {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
+      this.preValuesByStringId.set(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
@@ -4601,6 +5212,7 @@ export function initializeArenaEnvironment(
   // Solve initial equations
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
+  (arena as any)._initialAlgorithmsExecuted = true;
 
   // Apply initial state overrides (for MHE, Kalman filtering, or state re-initialization)
   if (options?.initialStateOverrides) {
@@ -4742,6 +5354,15 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   if (options?.debuggerHook) {
     sim.debuggerHook = options.debuggerHook;
   }
+  if (options?.parameterOverrides) {
+    for (const [name, val] of options.parameterOverrides) {
+      sim.parameters.set(name, val);
+      const varIdx = arena.getVarIdxByName(name);
+      if (varIdx >= 0) {
+        arena.setVarStartValue(varIdx, val);
+      }
+    }
+  }
   sim.prepare();
   arena = sim.arena;
 
@@ -4828,6 +5449,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   // Copy initial solution back
   valuesByStringId.set(initResult.valuesByStringId);
+  (arena as any)._initialAlgorithmsExecuted = true;
 
   // Apply initial state overrides
   if (options?.initialStateOverrides) {
@@ -4878,9 +5500,11 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const chosenSolver =
     options?.solver === "webgpu"
       ? "rk4"
-      : options?.solver && options.solver !== "auto"
-        ? options.solver
-        : defaultSolver;
+      : options?.solver === "auto"
+        ? ((exp.algorithm as any) ?? "auto")
+        : options?.solver
+          ? options.solver
+          : defaultSolver;
 
   const rawResult = sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
     solver: chosenSolver,
@@ -4957,6 +5581,15 @@ export async function simulateArenaAsync(
   }
   if (options?.debuggerHook) {
     sim.debuggerHook = options.debuggerHook;
+  }
+  if (options?.parameterOverrides) {
+    for (const [name, val] of options.parameterOverrides) {
+      sim.parameters.set(name, val);
+      const varIdx = arena.getVarIdxByName(name);
+      if (varIdx >= 0) {
+        arena.setVarStartValue(varIdx, val);
+      }
+    }
   }
   sim.prepare();
   arena = sim.arena;
@@ -5036,6 +5669,7 @@ export async function simulateArenaAsync(
 
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
+  (arena as any)._initialAlgorithmsExecuted = true;
 
   if (options?.initialStateOverrides) {
     for (const [name, val] of options.initialStateOverrides) {
@@ -5171,9 +5805,11 @@ export async function simulateArenaAsync(
   const chosenSolver =
     options?.solver === "webgpu"
       ? "rk4"
-      : options?.solver && options.solver !== "auto"
-        ? options.solver
-        : defaultSolver;
+      : options?.solver === "auto"
+        ? ((exp.algorithm as any) ?? "auto")
+        : options?.solver
+          ? options.solver
+          : defaultSolver;
 
   const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
     solver: chosenSolver,

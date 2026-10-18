@@ -135,8 +135,14 @@ function withSolidColor(solid: Solid, color?: [number, number, number, number]):
  */
 class Scope {
   public variables = new Map<string, any>();
-  public functions = new Map<string, { params: string[]; defaults: Map<string, any>; bodyNode: any; scope: Scope }>();
-  public modules = new Map<string, { params: string[]; defaults: Map<string, any>; bodyNode: any; scope: Scope }>();
+  public functions = new Map<
+    string,
+    { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
+  >();
+  public modules = new Map<
+    string,
+    { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
+  >();
 
   constructor(public parent: Scope | null = null) {
     if (!parent) {
@@ -174,7 +180,11 @@ class Scope {
   /**
    * Resolves a user-defined function signature by walking up the scope chain.
    */
-  getFunc(name: string): { params: string[]; defaults: Map<string, any>; bodyNode: any; scope: Scope } | undefined {
+  getFunc(
+    name: string,
+  ):
+    | { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
+    | undefined {
     if (this.functions.has(name)) return this.functions.get(name);
     if (this.parent) return this.parent.getFunc(name);
     return undefined;
@@ -183,7 +193,11 @@ class Scope {
   /**
    * Resolves a user-defined module signature by walking up the scope chain.
    */
-  getModule(name: string): { params: string[]; defaults: Map<string, any>; bodyNode: any; scope: Scope } | undefined {
+  getModule(
+    name: string,
+  ):
+    | { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
+    | undefined {
     if (this.modules.has(name)) return this.modules.get(name);
     if (this.parent) return this.parent.getModule(name);
     return undefined;
@@ -246,13 +260,55 @@ export class ScadEvaluator {
   }
 
   /**
-   * Evaluates all child statements of a block or root node in order, appending resulting solids to `outSolids`.
+   * Evaluates all child statements of a block or root node in order, pre-scanning and hoisting
+   * `function` and `module` declarations before evaluating variables and geometry statements.
    */
   private evaluateStatements(containerNode: any, scope: Scope, outSolids: Solid[]): void {
+    // Pass 1a: Hoist function declarations so functions and module defaults can call them regardless of order
+    for (let i = 0; i < containerNode.childCount; i++) {
+      let stmt = containerNode.child(i);
+      if (!stmt) continue;
+      if (stmt.type === "Statement") stmt = stmt.child(0);
+      if (stmt && stmt.type === "FunctionDeclaration") {
+        this.registerFunctionDeclaration(stmt, scope);
+      }
+    }
+
+    // Pass 1b: Hoist module declarations before evaluating geometry statements
+    for (let i = 0; i < containerNode.childCount; i++) {
+      let stmt = containerNode.child(i);
+      if (!stmt) continue;
+      if (stmt.type === "Statement") stmt = stmt.child(0);
+      if (stmt && stmt.type === "ModuleDeclaration") {
+        this.registerModuleDeclaration(stmt, scope);
+      }
+    }
+
+    // Pass 2: Evaluate variable assignments, control flow, and geometry statements in order
     for (let i = 0; i < containerNode.childCount; i++) {
       const stmt = containerNode.child(i);
       if (!stmt) continue;
       this.evaluateStatement(stmt, scope, outSolids);
+    }
+  }
+
+  private registerModuleDeclaration(stmtNode: any, scope: Scope): void {
+    const nameNode = this.findChildByType(stmtNode, "IDENTIFIER");
+    const paramListNode = this.findChildByType(stmtNode, "ParameterList");
+    const bodyNode = this.findChildByType(stmtNode, "Statement") ?? this.findChildByType(stmtNode, "BlockStatement");
+    if (nameNode && bodyNode) {
+      const { params, defaults, defaultExprs } = this.parseParameters(paramListNode, scope);
+      scope.modules.set(nameNode.text.trim(), { params, defaults, defaultExprs, bodyNode, scope });
+    }
+  }
+
+  private registerFunctionDeclaration(stmtNode: any, scope: Scope): void {
+    const nameNode = this.findChildByType(stmtNode, "IDENTIFIER");
+    const paramListNode = this.findChildByType(stmtNode, "ParameterList");
+    const exprNode = this.findChildByType(stmtNode, "Expression");
+    if (nameNode && exprNode) {
+      const { params, defaults, defaultExprs } = this.parseParameters(paramListNode, scope);
+      scope.functions.set(nameNode.text.trim(), { params, defaults, defaultExprs, bodyNode: exprNode, scope });
     }
   }
 
@@ -279,24 +335,12 @@ export class ScadEvaluator {
     }
 
     if (type === "ModuleDeclaration") {
-      const nameNode = this.findChildByType(stmtNode, "IDENTIFIER");
-      const paramListNode = this.findChildByType(stmtNode, "ParameterList");
-      const bodyNode = this.findChildByType(stmtNode, "Statement") ?? this.findChildByType(stmtNode, "BlockStatement");
-      if (nameNode && bodyNode) {
-        const { params, defaults } = this.parseParameters(paramListNode, scope);
-        scope.modules.set(nameNode.text.trim(), { params, defaults, bodyNode, scope });
-      }
+      this.registerModuleDeclaration(stmtNode, scope);
       return;
     }
 
     if (type === "FunctionDeclaration") {
-      const nameNode = this.findChildByType(stmtNode, "IDENTIFIER");
-      const paramListNode = this.findChildByType(stmtNode, "ParameterList");
-      const exprNode = this.findChildByType(stmtNode, "Expression");
-      if (nameNode && exprNode) {
-        const { params, defaults } = this.parseParameters(paramListNode, scope);
-        scope.functions.set(nameNode.text.trim(), { params, defaults, bodyNode: exprNode, scope });
-      }
+      this.registerFunctionDeclaration(stmtNode, scope);
       return;
     }
 
@@ -399,6 +443,74 @@ export class ScadEvaluator {
   }
 
   /**
+   * Evaluates OpenSCAD `rotate` arguments supporting both Euler vector syntax (`rotate([rx, ry, rz])`)
+   * and scalar/axis-angle syntax (`rotate(a)` or `rotate(a = 45, v = [0, 1, 0])`).
+   */
+  private applyScadRotation(
+    target: Solid,
+    args: { positional: any[]; named: Map<string, any> },
+    sourceMeta?: SolidSourceMetadata,
+  ): Solid {
+    const aArg = args.positional[0] ?? args.named.get("a");
+    const vArg = args.positional[1] ?? args.named.get("v");
+
+    if (typeof aArg === "number") {
+      const axis: Vec3 = Array.isArray(vArg)
+        ? [Number(vArg[0] ?? 0), Number(vArg[1] ?? 0), Number(vArg[2] ?? 0)]
+        : [0, 0, 1];
+      const len = Math.hypot(axis[0], axis[1], axis[2]) || 1;
+      const normAxis: Vec3 = [axis[0] / len, axis[1] / len, axis[2] / len];
+      const eulerApprox: Vec3 = [normAxis[0] * aArg, normAxis[1] * aArg, normAxis[2] * aArg];
+      const meta = sourceMeta ? { ...sourceMeta, rotation: eulerApprox } : { rotation: eulerApprox };
+      return rotate(target, normAxis, aArg, meta);
+    }
+
+    const vecSource = Array.isArray(aArg) ? aArg : Array.isArray(vArg) ? vArg : [0, 0, 0];
+    const vec: Vec3 = [Number(vecSource[0] ?? 0), Number(vecSource[1] ?? 0), Number(vecSource[2] ?? 0)];
+    return applyEulerRotation(target, vec, sourceMeta ? { ...sourceMeta, rotation: vec } : { rotation: vec });
+  }
+
+  /**
+   * Recursively updates 2D `ExtrusionSolid` leaf nodes inside boolean and transform CSG subtrees
+   * with the target `linear_extrude` height, twist, and scale parameters.
+   */
+  private applyLinearExtrudeToTree(solid: Solid, height: number, twist?: number, scaleVal?: number): Solid {
+    switch (solid.kind) {
+      case SolidKind.Extrusion:
+        return linearExtrude(solid.polygon, height, {
+          twist: twist ?? solid.twist,
+          scale: scaleVal ?? solid.scale,
+          name: solid.name,
+          sourceMetadata: solid.sourceMetadata,
+        });
+      case SolidKind.Union:
+        return union(
+          this.applyLinearExtrudeToTree(solid.left, height, twist, scaleVal),
+          this.applyLinearExtrudeToTree(solid.right, height, twist, scaleVal),
+        );
+      case SolidKind.Subtract:
+        return subtract(
+          this.applyLinearExtrudeToTree(solid.left, height, twist, scaleVal),
+          this.applyLinearExtrudeToTree(solid.right, height, twist, scaleVal),
+        );
+      case SolidKind.Intersect:
+        return intersect(
+          this.applyLinearExtrudeToTree(solid.left, height, twist, scaleVal),
+          this.applyLinearExtrudeToTree(solid.right, height, twist, scaleVal),
+        );
+      case SolidKind.Transform:
+        return Object.freeze({
+          ...solid,
+          child: this.applyLinearExtrudeToTree(solid.child, height, twist, scaleVal),
+        }) as Solid;
+      case SolidKind.TaggedPatch:
+        return tagPatch(this.applyLinearExtrudeToTree(solid.child, height, twist, scaleVal), solid.tag);
+      default:
+        return solid;
+    }
+  }
+
+  /**
    * Applies a single fluent CAD transformation or feature operation (`fillet`, `chamfer`, `translate`,
    * `rotate`, `scale`, `mirror`, `color`) to `target`.
    */
@@ -418,25 +530,27 @@ export class ScadEvaluator {
         return chamfer(target, d);
       }
       case "translate": {
-        const v = args.positional[0] ?? [0, 0, 0];
-        const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
+        const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 0];
+        const vec: Vec3 = Array.isArray(v)
+          ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)]
+          : [Number(v), 0, 0];
         return translate(target, vec, sourceMeta ? { ...sourceMeta, translation: vec } : { translation: vec });
       }
       case "rotate": {
-        const v = args.positional[0] ?? [0, 0, 0];
-        const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
-        return applyEulerRotation(target, vec, sourceMeta ? { ...sourceMeta, rotation: vec } : { rotation: vec });
+        return this.applyScadRotation(target, args, sourceMeta);
       }
       case "scale": {
-        const v = args.positional[0] ?? [1, 1, 1];
+        const v = args.positional[0] ?? args.named.get("v") ?? [1, 1, 1];
         const vec: Vec3 = Array.isArray(v)
           ? [Number(v[0] ?? 1), Number(v[1] ?? 1), Number(v[2] ?? 1)]
           : [Number(v), Number(v), Number(v)];
         return scale(target, vec, sourceMeta ? { ...sourceMeta, scale: vec } : { scale: vec });
       }
       case "mirror": {
-        const v = args.positional[0] ?? [0, 0, 1];
-        const vec: Vec3 = [v[0] ?? 0, v[1] ?? 0, v[2] ?? 1];
+        const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 1];
+        const vec: Vec3 = Array.isArray(v)
+          ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 1)]
+          : [Number(v), 0, 0];
         return mirror(target, vec, sourceMeta);
       }
       case "color": {
@@ -475,26 +589,24 @@ export class ScadEvaluator {
 
     const opText = opNode.text.trim();
 
-    // 0. LinearExtrudeOp: linear_extrude(height, twist, scale)
+    // 0. LinearExtrudeOp: linear_extrude(height, twist, scale, center)
     if (opNode.type === "LinearExtrudeOp" || opText.startsWith("linear_extrude")) {
       const argListNode = this.findChildByType(opNode, "ArgumentList");
       const args = this.evaluateArgumentList(argListNode, scope);
       const height = Number(args.positional[0] ?? args.named.get("height") ?? 10);
       const twist = args.named.has("twist") ? Number(args.named.get("twist")) : undefined;
       const scaleVal = args.named.has("scale") ? Number(args.named.get("scale")) : undefined;
+      const center = Boolean(args.named.get("center") ?? false);
 
       const childSolids: Solid[] = [];
       this.evaluateStatement(childNode, scope, childSolids);
       if (childSolids.length > 0) {
-        const first = childSolids[0]!;
-        if (first.kind === SolidKind.Extrusion) {
-          return linearExtrude(first.polygon, height, {
-            twist,
-            scale: scaleVal,
-            sourceMetadata: first.sourceMetadata,
-          });
+        let combined = childSolids[0]!;
+        for (let i = 1; i < childSolids.length; i++) {
+          combined = union(combined, childSolids[i]!);
         }
-        return first;
+        const extruded = this.applyLinearExtrudeToTree(combined, height, twist, scaleVal);
+        return center ? translate(extruded, [0, 0, -height / 2]) : extruded;
       }
       return null;
     }
@@ -585,25 +697,27 @@ export class ScadEvaluator {
     };
 
     if (opText.startsWith("translate")) {
-      const v = args.positional[0] ?? [0, 0, 0];
-      const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
+      const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 0];
+      const vec: Vec3 = Array.isArray(v)
+        ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)]
+        : [Number(v), 0, 0];
       return translate(combinedChild, vec, { ...sourceMeta, translation: vec });
     }
     if (opText.startsWith("rotate")) {
-      const v = args.positional[0] ?? [0, 0, 0];
-      const vec: Vec3 = [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)];
-      return applyEulerRotation(combinedChild, vec, { ...sourceMeta, rotation: vec });
+      return this.applyScadRotation(combinedChild, args, sourceMeta);
     }
     if (opText.startsWith("scale")) {
-      const v = args.positional[0] ?? [1, 1, 1];
+      const v = args.positional[0] ?? args.named.get("v") ?? [1, 1, 1];
       const vec: Vec3 = Array.isArray(v)
         ? [Number(v[0] ?? 1), Number(v[1] ?? 1), Number(v[2] ?? 1)]
         : [Number(v), Number(v), Number(v)];
       return scale(combinedChild, vec, { ...sourceMeta, scale: vec });
     }
     if (opText.startsWith("mirror")) {
-      const v = args.positional[0] ?? [0, 0, 1];
-      const vec: Vec3 = [v[0] ?? 0, v[1] ?? 0, v[2] ?? 1];
+      const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 1];
+      const vec: Vec3 = Array.isArray(v)
+        ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 1)]
+        : [Number(v), 0, 0];
       return mirror(combinedChild, vec, sourceMeta);
     }
 
@@ -860,21 +974,15 @@ export class ScadEvaluator {
       const poly: [number, number][] = [];
       if (Array.isArray(points)) {
         for (const pt of points) {
-          if (Array.isArray(pt)) {
+          if (Array.isArray(pt) && pt.length >= 2) {
             poly.push([Number(pt[0] ?? 0), Number(pt[1] ?? 0)]);
           }
         }
       }
-      return linearExtrude(
-        poly.length >= 3
-          ? poly
-          : [
-              [0, 0],
-              [1, 0],
-              [0, 1],
-            ],
-        1.0,
-      );
+      if (poly.length < 3) {
+        return null;
+      }
+      return linearExtrude(poly, 1.0);
     }
 
     if (type === "SquarePrimitive") {
@@ -929,6 +1037,9 @@ export class ScadEvaluator {
         let val = args.positional[i];
         if (val === undefined && args.named.has(pName)) val = args.named.get(pName);
         if (val === undefined && modDef.defaults.has(pName)) val = modDef.defaults.get(pName);
+        if (val === undefined && modDef.defaultExprs?.has(pName)) {
+          val = this.evaluateExpression(modDef.defaultExprs.get(pName), modScope);
+        }
         modScope.setVar(pName, val);
       }
 
@@ -1291,6 +1402,9 @@ export class ScadEvaluator {
             let v = args.positional[i];
             if (v === undefined && args.named.has(p)) v = args.named.get(p);
             if (v === undefined && userFunc.defaults.has(p)) v = userFunc.defaults.get(p);
+            if (v === undefined && userFunc.defaultExprs?.has(p)) {
+              v = this.evaluateExpression(userFunc.defaultExprs.get(p), fnScope);
+            }
             fnScope.setVar(p, v);
           }
           return this.evaluateExpression(userFunc.bodyNode, fnScope);
@@ -1335,10 +1449,14 @@ export class ScadEvaluator {
   /**
    * Parses a `ParameterList` CST node into ordered parameter names and evaluated default values.
    */
-  private parseParameters(paramListNode: any, scope: Scope): { params: string[]; defaults: Map<string, any> } {
+  private parseParameters(
+    paramListNode: any,
+    scope: Scope,
+  ): { params: string[]; defaults: Map<string, any>; defaultExprs: Map<string, any> } {
     const params: string[] = [];
     const defaults = new Map<string, any>();
-    if (!paramListNode) return { params, defaults };
+    const defaultExprs = new Map<string, any>();
+    if (!paramListNode) return { params, defaults, defaultExprs };
 
     for (let i = 0; i < paramListNode.childCount; i++) {
       const p = paramListNode.child(i);
@@ -1350,12 +1468,16 @@ export class ScadEvaluator {
         const name = nameNode.text.trim();
         params.push(name);
         if (defNode) {
-          defaults.set(name, this.evaluateExpression(defNode, scope));
+          defaultExprs.set(name, defNode);
+          const evaluated = this.evaluateExpression(defNode, scope);
+          if (evaluated !== undefined) {
+            defaults.set(name, evaluated);
+          }
         }
       }
     }
 
-    return { params, defaults };
+    return { params, defaults, defaultExprs };
   }
 
   /**

@@ -276,6 +276,20 @@ export class DiagramService {
         },
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
+        isDocumentStale: (uri: string) => {
+          if (!this.validationService) return false;
+          if (this.validationService.activeValidationTimers?.has(uri)) return true;
+          const doc = this.documentManager.documents.get(uri);
+          if (doc && this.validationService.lastIndexedText) {
+            const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+            const indexedText =
+              this.validationService.lastIndexedText.get(uri) ?? this.validationService.lastIndexedText.get(normUri);
+            if (indexedText !== undefined && indexedText !== doc.getText()) {
+              return true;
+            }
+          }
+          return false;
+        },
         flushValidation: async (uri: string) => {
           if (this.validationService?.flushValidation) {
             await this.validationService.flushValidation(uri);

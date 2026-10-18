@@ -747,7 +747,8 @@ export class WorkspaceManager {
     let tree =
       this.documentManager?.getDocumentTree?.(entry.resourceId) ??
       (this.unifiedWorkspace as any)?.getDocumentTree?.(entry.resourceId);
-    if (!tree || !tree.rootNode) {
+    const existingRoot = tree?.rootNode ?? (tree as any)?.tree?.rootNode;
+    if (!existingRoot) {
       const text = this.getSourceText(entry.resourceId);
       if (text) {
         const parser =
@@ -756,16 +757,26 @@ export class WorkspaceManager {
           (globalThis as any).sharedContext?.parsers?.get?.(".mo");
         if (parser) {
           try {
-            tree = parser.parse(text);
-            this.documentManager?.documentTrees?.set(entry.resourceId, tree);
+            const parsedTree = parser.parse(text);
+            tree = parsedTree;
+            this.documentManager?.documentTrees?.set(entry.resourceId, {
+              text,
+              tree: parsedTree,
+              classCache: new Map(),
+            });
           } catch {}
         } else {
           const sc = (globalThis as any).sharedContext ?? this.documentManager?.sharedContext;
           if (sc && typeof sc.parse === "function") {
             try {
               const ext = entry.resourceId?.endsWith(".sysml") ? ".sysml" : ".mo";
-              tree = sc.parse(ext, text);
-              this.documentManager?.documentTrees?.set(entry.resourceId, tree);
+              const parsedTree = sc.parse(ext, text);
+              tree = parsedTree;
+              this.documentManager?.documentTrees?.set(entry.resourceId, {
+                text,
+                tree: parsedTree,
+                classCache: new Map(),
+              });
             } catch {}
           }
         }
@@ -776,12 +787,30 @@ export class WorkspaceManager {
       const startOff = entry.startOffset ?? entry.startByte;
       const endOff = entry.endOffset ?? entry.endByte;
       if (startOff != null && endOff != null) {
+        let node: any = null;
         if (typeof root.descendantForIndex === "function") {
-          return root.descendantForIndex(startOff, endOff) || root;
+          node = root.descendantForIndex(startOff, endOff) || root;
         } else if (typeof root.descendantForByteRange === "function") {
-          return root.descendantForByteRange(startOff, endOff) || root;
+          node = root.descendantForByteRange(startOff, endOff) || root;
+        } else {
+          node = root;
         }
-        return root;
+        if (node && (entry.kind === "Component" || entry.kind === "Variable")) {
+          while (
+            node.parent &&
+            (node.type === "identifier" ||
+              node.type === "Identifier" ||
+              node.type === "declaration" ||
+              node.type === "Declaration") &&
+            (node.parent.type === "declaration" ||
+              node.parent.type === "Declaration" ||
+              node.parent.type === "component_declaration" ||
+              node.parent.type === "ComponentDeclaration")
+          ) {
+            node = node.parent;
+          }
+        }
+        return node;
       }
       return root;
     }
@@ -813,7 +842,9 @@ export class WorkspaceManager {
     const docInsts = this.documentInstances.get(uri);
     if (docInsts && docInsts.length > 0) {
       const richInsts = docInsts.filter(
-        (ci: any) => typeof ci.annotation === "function" || (Array.isArray(ci.components) && ci.components.length > 0),
+        (ci: any) =>
+          (options?.iconOnly || !ci._iconOnly) &&
+          (typeof ci.annotation === "function" || (Array.isArray(ci.components) && ci.components.length > 0)),
       );
       if (richInsts.length > 0) {
         if (className) {
@@ -1049,6 +1080,10 @@ export class WorkspaceManager {
             }
           }
           if (lhsStr && rhsStr) {
+            const targetEquationNode =
+              connCst?.parent && (connCst.parent.type === "some_equation" || connCst.parent.type === "SomeEquation")
+                ? connCst.parent
+                : connCst;
             connectEquations.push({
               lhs: lhsStr,
               rhs: rhsStr,
@@ -1058,8 +1093,8 @@ export class WorkspaceManager {
               componentReference2: {
                 parts: rhsStr.split(".").map((id: string) => ({ identifier: { text: id } })),
               },
-              cstNode: connCst,
-              ast: connCst,
+              cstNode: targetEquationNode,
+              ast: targetEquationNode,
               annotation: (annName: string): any => {
                 try {
                   let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
@@ -1068,14 +1103,9 @@ export class WorkspaceManager {
                       evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
                     } catch {}
                   }
-                  if (connCst && evaluatorClass) {
+                  if (targetEquationNode && evaluatorClass) {
                     const evaluator = new evaluatorClass(classInstance);
-                    const targetNode =
-                      connCst.parent &&
-                      (connCst.parent.type === "some_equation" || connCst.parent.type === "SomeEquation")
-                        ? connCst.parent
-                        : connCst;
-                    return evaluator.evaluate(targetNode, annName);
+                    return evaluator.evaluate(targetEquationNode, annName);
                   }
                 } catch {}
                 return null;
@@ -1098,6 +1128,7 @@ export class WorkspaceManager {
         compositeName,
         description: (entry.metadata as any)?.description ?? null,
         isClassInstance: true,
+        _iconOnly: Boolean(options?.iconOnly),
         components,
         connectEquations,
         extendsClassInstances,
@@ -1114,7 +1145,19 @@ export class WorkspaceManager {
           return null;
         },
         annotation: (name: string, _ctx?: any): any => {
-          const cacheKey = _ctx?.ownOnly ? `${name}:own` : name;
+          const ctxMod =
+            _ctx?.cstNode?.text ??
+            _ctx?.abstractSyntaxNode?.text ??
+            (_ctx?.modification
+              ? (() => {
+                  try {
+                    return JSON.stringify(_ctx.modification);
+                  } catch {
+                    return String(_ctx.modification);
+                  }
+                })()
+              : "");
+          const cacheKey = `${name}${_ctx?.ownOnly ? ":own" : ""}${ctxMod ? `:mod:${ctxMod}` : ""}`;
           if (!annotationCache.has(entry.id)) {
             annotationCache.set(entry.id, new Map());
           }
@@ -1139,7 +1182,11 @@ export class WorkspaceManager {
                 }
               }
               if (evaluatorClass) {
-                const evaluator = new evaluatorClass(classInstance);
+                const evalScope =
+                  _ctx && (_ctx.classInstance || _ctx.declaration || _ctx.modification || _ctx.cstNode)
+                    ? { componentInstance: _ctx, classInstance }
+                    : classInstance;
+                const evaluator = new evaluatorClass(evalScope);
                 const evaluated = evaluator.evaluate(cstNode, name);
                 if (evaluated) {
                   classAnnCache.set(cacheKey, evaluated);
@@ -1167,6 +1214,10 @@ export class WorkspaceManager {
           }
         },
       };
+
+      for (const comp of components) {
+        comp.parent = classInstance;
+      }
 
       return classInstance;
     };
@@ -1328,10 +1379,15 @@ export class WorkspaceManager {
         const inst = buildAdapter(entry, db, className);
         if (inst && entry.resourceId) {
           const existing = this.documentInstances.get(entry.resourceId) ?? [];
-          if (!existing.some((x: any) => x.id === inst.id)) {
+          const existingIdx = existing.findIndex((x: any) => x.id === inst.id);
+          if (existingIdx >= 0) {
+            if (!inst._iconOnly || existing[existingIdx]._iconOnly) {
+              existing[existingIdx] = inst;
+            }
+          } else {
             existing.push(inst);
-            this.documentInstances.set(entry.resourceId, existing);
           }
+          this.documentInstances.set(entry.resourceId, existing);
         }
         return inst;
       }
@@ -1375,10 +1431,15 @@ export class WorkspaceManager {
         const inst = buildAdapter(entry, db, entry.name ?? "");
         if (inst) {
           const existing = this.documentInstances.get(uri) ?? [];
-          if (!existing.some((x: any) => x.id === inst.id)) {
+          const existingIdx = existing.findIndex((x: any) => x.id === inst.id);
+          if (existingIdx >= 0) {
+            if (!inst._iconOnly || existing[existingIdx]._iconOnly) {
+              existing[existingIdx] = inst;
+            }
+          } else {
             existing.push(inst);
-            this.documentInstances.set(uri, existing);
           }
+          this.documentInstances.set(uri, existing);
         }
         return inst;
       }

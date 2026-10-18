@@ -3145,6 +3145,28 @@ export function expandSetBasedConnectionsArena(arena: DAEBuilder): {
     return null;
   };
 
+  interface ParsedEndpoint {
+    prefix: string;
+    isLoopIndexed: boolean;
+    coeff: number;
+    offset: number;
+  }
+
+  interface LoopConnectRecord {
+    eqIdx: number;
+    meta: ForEquationMeta;
+    iterName: string;
+    rangeIv: SBGInterval;
+    pairs: {
+      ep1: ParsedEndpoint;
+      ep2: ParsedEndpoint;
+      grp1: ConnectorPortGroup;
+      grp2: ConnectorPortGroup;
+    }[];
+  }
+
+  const loopRecords: LoopConnectRecord[] = [];
+
   for (let eqIdx = 0; eqIdx < arena.eqCount; eqIdx++) {
     if (arena.isEqRemoved(eqIdx)) continue;
     if (arena.getEqKind(eqIdx) !== EqKind.For) continue;
@@ -3156,6 +3178,7 @@ export function expandSetBasedConnectionsArena(arena: DAEBuilder): {
     const rangeIv = extractRangeInterval(arena, meta.rangeExprId);
     if (!rangeIv || rangeIv.isEmpty()) continue;
     const iterName = arena.interner.resolve(meta.indexNameId) ?? "i";
+    const pairs: LoopConnectRecord["pairs"] = [];
 
     for (const cBody of connectBodies) {
       const ep1 = parseConnectEndpoint(cBody.lhsExprId, iterName);
@@ -3190,47 +3213,11 @@ export function expandSetBasedConnectionsArena(arena: DAEBuilder): {
       map2Pieces.push({ dom: edgeDom, map: new LMap([g2], [o2]) });
       nextEdgeOffset += rangeIv.size() + 1;
 
-      // Emit array-preserving ForEq potential equalities and flow sum equations
-      const buildFieldRef = (
-        ep: { prefix: string; isLoopIndexed: boolean; coeff: number; offset: number },
-        field: string,
-      ): number => {
-        const fullVarName = `${ep.prefix}.${field}`;
-        const baseId = arena.addNameExpr(fullVarName);
-        if (!ep.isLoopIndexed && ep.offset === 1 && (portGroups.get(ep.prefix)?.size ?? 1) === 1) {
-          return baseId;
-        }
-        const subExpr = buildVectorUsageExpr(
-          arena,
-          {
-            varIdx: -1,
-            varName: fullVarName,
-            isDerivative: false,
-            isLoopIndexed: [ep.isLoopIndexed],
-            coeff: [ep.coeff],
-            offset: [ep.offset],
-            exprId: -1,
-          },
-          iterName,
-        );
-        return subExpr;
-      };
+      pairs.push({ ep1, ep2, grp1, grp2 });
+    }
 
-      const newForIdx = arena.addForEquation(meta.indexNameId, cloneArenaExpression(arena, meta.rangeExprId));
-      for (const potField of grp1.potentialFields) {
-        if (!grp2.potentialFields.includes(potField)) continue;
-        const lhsPot = buildFieldRef(ep1, potField);
-        const rhsPot = buildFieldRef(ep2, potField);
-        arena.addForBodyEquation(newForIdx, EqKind.Simple, lhsPot, rhsPot);
-      }
-      for (const flowField of grp1.flowFields) {
-        if (!grp2.flowFields.includes(flowField)) continue;
-        const f1 = buildFieldRef(ep1, flowField);
-        const f2 = buildFieldRef(ep2, flowField);
-        const sumExpr = arena.addBinaryExpr(BinOp.Add, f1, f2);
-        arena.addForBodyEquation(newForIdx, EqKind.Simple, sumExpr, arena.addRealLiteral(0));
-      }
-      generatedForEquations.push(newForIdx);
+    if (pairs.length > 0) {
+      loopRecords.push({ eqIdx, meta, iterName, rangeIv, pairs });
     }
 
     // Remove the `Connect` equations from the original `For` equation
@@ -3244,6 +3231,126 @@ export function expandSetBasedConnectionsArena(arena: DAEBuilder): {
   const E = new SBGSet(eAtoms);
   const sbg = new SBGraph(V, E, new PWLMap(map1Pieces), new PWLMap(map2Pieces));
   const componentsMap = connectedComponents(sbg);
+
+  const endpointKey = (ep: ParsedEndpoint): string =>
+    `${ep.prefix}:${ep.isLoopIndexed ? 1 : 0}:${ep.coeff}:${ep.offset}`;
+
+  const vertexAtIter = (ep: ParsedEndpoint, grp: ConnectorPortGroup, iterVal: number): number =>
+    grp.offsetStart - 1 + (ep.isLoopIndexed ? ep.coeff * iterVal + ep.offset : ep.offset);
+
+  for (const rec of loopRecords) {
+    const { meta, iterName, rangeIv, pairs } = rec;
+
+    const buildFieldRef = (ep: ParsedEndpoint, field: string): number => {
+      const fullVarName = `${ep.prefix}.${field}`;
+      const baseId = arena.addNameExpr(fullVarName);
+      if (!ep.isLoopIndexed && ep.offset === 1 && (portGroups.get(ep.prefix)?.size ?? 1) === 1) {
+        return baseId;
+      }
+      return buildVectorUsageExpr(
+        arena,
+        {
+          varIdx: -1,
+          varName: fullVarName,
+          isDerivative: false,
+          isLoopIndexed: [ep.isLoopIndexed],
+          coeff: [ep.coeff],
+          offset: [ep.offset],
+          exprId: -1,
+        },
+        iterName,
+      );
+    };
+
+    // Group connected endpoints within the loop using both direct connect pairs and SBGraph connectedComponents
+    const epByKey = new Map<string, { ep: ParsedEndpoint; grp: ConnectorPortGroup }>();
+    const parent = new Map<string, string>();
+    const find = (k: string): string => {
+      let curr = k;
+      while (parent.get(curr) !== undefined && parent.get(curr) !== curr) {
+        curr = parent.get(curr)!;
+      }
+      return curr;
+    };
+    const union = (a: string, b: string): void => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent.set(rb, ra);
+    };
+
+    const repToFirstKey = new Map<number, string>();
+    const registerEndpoint = (ep: ParsedEndpoint, grp: ConnectorPortGroup): string => {
+      const k = endpointKey(ep);
+      if (!epByKey.has(k)) {
+        epByKey.set(k, { ep, grp });
+        parent.set(k, k);
+        const v0 = vertexAtIter(ep, grp, rangeIv.lo);
+        const compRep = componentsMap.apply([v0])?.[0];
+        if (compRep !== undefined) {
+          const existingKey = repToFirstKey.get(compRep);
+          if (existingKey !== undefined) {
+            union(existingKey, k);
+          } else {
+            repToFirstKey.set(compRep, k);
+          }
+        }
+      }
+      return k;
+    };
+
+    for (const { ep1, ep2, grp1, grp2 } of pairs) {
+      const k1 = registerEndpoint(ep1, grp1);
+      const k2 = registerEndpoint(ep2, grp2);
+      union(k1, k2);
+    }
+
+    const componentGroups = new Map<string, { ep: ParsedEndpoint; grp: ConnectorPortGroup }[]>();
+    for (const [k, item] of epByKey.entries()) {
+      const root = find(k);
+      let list = componentGroups.get(root);
+      if (!list) {
+        list = [];
+        componentGroups.set(root, list);
+      }
+      list.push(item);
+    }
+
+    for (const compEndpoints of componentGroups.values()) {
+      if (compEndpoints.length < 2) continue;
+      const first = compEndpoints[0]!;
+      const newForIdx = arena.addForEquation(meta.indexNameId, cloneArenaExpression(arena, meta.rangeExprId));
+
+      // Emit (k - 1) potential equalities against the component representative endpoint
+      for (const potField of first.grp.potentialFields) {
+        for (let m = 1; m < compEndpoints.length; m++) {
+          const other = compEndpoints[m]!;
+          if (!other.grp.potentialFields.includes(potField)) continue;
+          const lhsPot = buildFieldRef(first.ep, potField);
+          const rhsPot = buildFieldRef(other.ep, potField);
+          arena.addForBodyEquation(newForIdx, EqKind.Simple, lhsPot, rhsPot);
+        }
+      }
+
+      // Emit one Kirchhoff zero-sum equation per flow field across all k endpoints in the component
+      for (const flowField of first.grp.flowFields) {
+        const flowTerms: number[] = [];
+        for (const item of compEndpoints) {
+          if (item.grp.flowFields.includes(flowField)) {
+            flowTerms.push(buildFieldRef(item.ep, flowField));
+          }
+        }
+        if (flowTerms.length >= 2) {
+          let sumExpr = flowTerms[0]!;
+          for (let m = 1; m < flowTerms.length; m++) {
+            sumExpr = arena.addBinaryExpr(BinOp.Add, sumExpr, flowTerms[m]!);
+          }
+          arena.addForBodyEquation(newForIdx, EqKind.Simple, sumExpr, arena.addRealLiteral(0));
+        }
+      }
+
+      generatedForEquations.push(newForIdx);
+    }
+  }
 
   return {
     sbg,

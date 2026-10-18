@@ -1286,7 +1286,9 @@ const ExplorePage: React.FC = () => {
                         borderBottom="1px solid var(--color-border)"
                       >
                         <Link
-                          to={`/packages/${pkg.name}`}
+                          to={
+                            pkg.latestVersion ? `/packages/${pkg.name}/${pkg.latestVersion}` : `/packages/${pkg.name}`
+                          }
                           style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "12px", flex: 1 }}
                         >
                           <Box
@@ -1336,7 +1338,9 @@ const ExplorePage: React.FC = () => {
                           </Box>
                         </Link>
                         <Link
-                          to={`/packages/${pkg.name}`}
+                          to={
+                            pkg.latestVersion ? `/packages/${pkg.name}/${pkg.latestVersion}` : `/packages/${pkg.name}`
+                          }
                           style={{
                             backgroundColor: "rgba(255, 255, 255, 0.06)",
                             color: "var(--color-text-primary)",

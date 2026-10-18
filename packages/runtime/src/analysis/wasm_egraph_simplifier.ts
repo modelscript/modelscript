@@ -7,7 +7,7 @@
  * constant folding, and common term cancellations) directly to linear-memory DAE expression trees.
  */
 
-import { BinOp, DAEBuilder, ExprKind, UnaryOp } from "../dae/wasm_dae.js";
+import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp } from "../dae/wasm_dae.js";
 
 export interface SimplificationStats {
   identitiesFolded: number;
@@ -247,6 +247,39 @@ export function simplifyArenaExpr(arena: DAEBuilder, exprId: number, stats?: Sim
           if (!hasConst) return arena.addRealLiteral(0.0);
           return isFloat ? arena.addRealLiteral(constVal) : arena.addIntLiteral(Math.trunc(constVal));
         }
+
+        if (didCancel && activeTerms.length > 0) {
+          if (stats) stats.identitiesFolded++;
+          let acc = -1;
+          for (const t of activeTerms) {
+            const absC = Math.abs(t.coeff);
+            const termExpr =
+              absC === 1
+                ? t.exprId
+                : arena.addBinaryExpr(
+                    BinOp.Mul,
+                    isFloat ? arena.addRealLiteral(absC) : arena.addIntLiteral(absC),
+                    t.exprId,
+                  );
+            if (acc === -1) {
+              acc = t.coeff < 0 ? arena.addUnaryExpr(UnaryOp.Negate, termExpr) : termExpr;
+            } else {
+              acc =
+                t.coeff < 0
+                  ? arena.addBinaryExpr(BinOp.Sub, acc, termExpr)
+                  : arena.addBinaryExpr(BinOp.Add, acc, termExpr);
+            }
+          }
+          if (hasConst && constVal !== 0) {
+            const absVal = Math.abs(constVal);
+            const constLit = isFloat ? arena.addRealLiteral(absVal) : arena.addIntLiteral(Math.trunc(absVal));
+            acc =
+              constVal < 0
+                ? arena.addBinaryExpr(BinOp.Sub, acc, constLit)
+                : arena.addBinaryExpr(BinOp.Add, acc, constLit);
+          }
+          return acc;
+        }
       }
 
       // Additive identities
@@ -345,18 +378,103 @@ export function saturateArenaEquations(arena: DAEBuilder): SimplificationStats {
     equationsSimplified: 0,
   };
 
+  const simplifyBodyList = (
+    bodyList?: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    legacyList?: { kind: EqKind; lhs: number; rhs: number }[],
+  ): boolean => {
+    let changed = false;
+    if (bodyList) {
+      for (let i = 0; i < bodyList.length; i++) {
+        const b = bodyList[i]!;
+        if (b.kind === EqKind.Simple || b.kind === EqKind.InitialSimple || b.kind === EqKind.Connect) {
+          const nLhs = simplifyArenaExpr(arena, b.lhsExprId, stats);
+          const nRhs = simplifyArenaExpr(arena, b.rhsExprId, stats);
+          if (nLhs !== b.lhsExprId || nRhs !== b.rhsExprId) {
+            b.lhsExprId = nLhs;
+            b.rhsExprId = nRhs;
+            if (legacyList && legacyList[i]) {
+              legacyList[i]!.lhs = nLhs;
+              legacyList[i]!.rhs = nRhs;
+            }
+            changed = true;
+          }
+        }
+      }
+    }
+    return changed;
+  };
+
   const eqCount = arena.eqCount;
   for (let eq = 0; eq < eqCount; eq++) {
-    const lhs = arena.getEqLhs(eq);
-    const rhs = arena.getEqRhs(eq);
+    if (arena.isEqRemoved?.(eq)) continue;
+    const kind = arena.getEqKind(eq);
 
-    const newLhs = simplifyArenaExpr(arena, lhs, stats);
-    const newRhs = simplifyArenaExpr(arena, rhs, stats);
+    if (kind === EqKind.Simple || kind === EqKind.InitialSimple || kind === EqKind.Connect) {
+      const lhs = arena.getEqLhs(eq);
+      const rhs = arena.getEqRhs(eq);
 
-    if (newLhs !== lhs || newRhs !== rhs) {
-      stats.equationsSimplified++;
-      arena.setEqLhs(eq, newLhs);
-      arena.setEqRhs(eq, newRhs);
+      const newLhs = simplifyArenaExpr(arena, lhs, stats);
+      const newRhs = simplifyArenaExpr(arena, rhs, stats);
+
+      if (newLhs !== lhs || newRhs !== rhs) {
+        stats.equationsSimplified++;
+        arena.setEqLhs(eq, newLhs);
+        arena.setEqRhs(eq, newRhs);
+      }
+    } else if (kind === EqKind.For || kind === EqKind.InitialFor) {
+      const meta = arena.getForEquationMeta?.(eq);
+      if (meta) {
+        let changed = false;
+        const nRange = simplifyArenaExpr(arena, meta.rangeExprId, stats);
+        if (nRange !== meta.rangeExprId) {
+          meta.rangeExprId = nRange;
+          changed = true;
+        }
+        if (simplifyBodyList(meta.bodyEquations, meta.equations)) changed = true;
+        if (changed) stats.equationsSimplified++;
+      }
+    } else if (kind === EqKind.If) {
+      const meta = arena.getIfEquationMeta?.(eq);
+      if (meta) {
+        let changed = false;
+        const nCond = simplifyArenaExpr(arena, meta.conditionExprId, stats);
+        if (nCond !== meta.conditionExprId) {
+          meta.conditionExprId = nCond;
+          changed = true;
+        }
+        if (simplifyBodyList(meta.thenEquations)) changed = true;
+        for (const clause of meta.elseIfClauses) {
+          const nClauseCond = simplifyArenaExpr(arena, clause.conditionExprId, stats);
+          if (nClauseCond !== clause.conditionExprId) {
+            clause.conditionExprId = nClauseCond;
+            changed = true;
+          }
+          if (simplifyBodyList(clause.bodyEquations, clause.equations)) changed = true;
+        }
+        if (simplifyBodyList(meta.elseEquations)) changed = true;
+        if (changed) stats.equationsSimplified++;
+      }
+    } else if (kind === EqKind.When) {
+      const meta = arena.getWhenEquationMeta?.(eq);
+      if (meta) {
+        let changed = false;
+        const nCond = simplifyArenaExpr(arena, meta.conditionExprId, stats);
+        if (nCond !== meta.conditionExprId) {
+          meta.conditionExprId = nCond;
+          changed = true;
+        }
+        if (simplifyBodyList(meta.bodyEquations, meta.equations)) changed = true;
+        for (const clause of meta.elseWhenClauses) {
+          const nClauseCond = simplifyArenaExpr(arena, clause.conditionExprId, stats);
+          if (nClauseCond !== clause.conditionExprId) {
+            clause.conditionExprId = nClauseCond;
+            changed = true;
+          }
+          if (simplifyBodyList(clause.bodyEquations, clause.equations)) changed = true;
+        }
+        if (simplifyBodyList(meta.elseEquations)) changed = true;
+        if (changed) stats.equationsSimplified++;
+      }
     }
   }
 

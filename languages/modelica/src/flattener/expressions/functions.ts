@@ -153,6 +153,21 @@ export function vectorizeFunctionCall(
       if (parts.length > 1 && flattener.currentImports?.has(parts[0]!)) {
         resolvedLookupName = [flattener.currentImports.get(parts[0]!)!, ...parts.slice(1)].join(".");
       }
+      if (
+        (dae as any)?.specializedPrefix ||
+        flattener.currentParentMods?.specializedPkgPrefix ||
+        (flattener as any)?.currentFunctionSpecializedPrefix
+      ) {
+        return null;
+      }
+      if (parts.length > 1) {
+        const hasPkgRedecl = flattener.currentParentMods?.args?.some(
+          (a: any) => !a.isBreak && a.name === parts[0] && (a.isRedeclaration || a.redeclaredTypeSpecifier),
+        );
+        if (hasPkgRedecl) {
+          return null;
+        }
+      }
       if (currentScopeId && parts.length > 1) {
         const prefixStr = parts.slice(0, -1).join(".");
         const prefixSym = (db.query as any)("resolveName", currentScopeId)?.(prefixStr);
@@ -199,7 +214,7 @@ export function vectorizeFunctionCall(
               !flattener.isRecordSym?.(e),
           );
       }
-      if (sym && flattener.failedFunctionIds?.has(sym.id)) {
+      if (sym && (flattener.failedFunctionIds?.has(sym.id) || flattener.isClassPartial?.(sym.id))) {
         return null;
       }
       if (sym && flattener.flattenFunction) {

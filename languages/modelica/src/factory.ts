@@ -114,6 +114,8 @@ const wasmModelicaIndexerHooks: any[] = [
     inheritPaths: [],
     metadataFieldPaths: {
       classPrefixes: "class_prefixes",
+      classKind: "class_prefixes",
+      description: "class_specifier.long_class_specifier.description_string",
     },
   },
   {
@@ -123,7 +125,9 @@ const wasmModelicaIndexerHooks: any[] = [
     exportPaths: [],
     inheritPaths: [],
     metadataFieldPaths: {
+      typePrefix: "parent.parent.type_prefix",
       typeSpecifier: "parent.parent.type_specifier",
+      description: "description.description_string",
     },
   },
   {

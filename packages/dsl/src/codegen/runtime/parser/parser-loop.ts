@@ -860,14 +860,19 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       
       let totalByteLength: u32 = 0;
       let firstChildPadding: u32 = 0;
+      let firstNonEmptyIdx: i32 = -1;
       if (popCount > 0) {
-        firstChildPadding = getNodeLeadingPad(t_lrNodeStack[childStartIdx]);
         for (let k = 0; k < popCount; k++) {
           let child = t_lrNodeStack[(childStartIdx + k)];
           let cPadding = getNodeLeadingPad(child);
           let cLen = getNodeByteLength(child);
-          if (k == 0) totalByteLength += cLen;
-          else totalByteLength += cPadding + cLen;
+          if (firstNonEmptyIdx == -1 && (cPadding > 0 || cLen > 0)) {
+            firstNonEmptyIdx = k;
+            firstChildPadding = cPadding;
+            totalByteLength += cLen;
+          } else {
+            totalByteLength += cPadding + cLen;
+          }
         }
       }
       
@@ -935,7 +940,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
             // reused from the old tree or is shared; only clone in those cases.
             let clone = isMutable(child) ? child : cloneNodeShallow(child);
             
-            if (k == 0) {
+            if (k == 0 || k == firstNonEmptyIdx) {
               setNodePadding(clone, 0);
             }
             
@@ -2458,14 +2463,15 @@ export function extractListSlice(
 
     let childIsList = (childFlags & FLAG_IS_LIST) != 0;
     let extractedChild: u32 = 0;
+    let childSliceStart = firstSlicedChild != 0 ? cStart : sliceStart;
 
-    if (cStart >= sliceStart && cEnd <= sliceEnd) {
+    if (cStart == childSliceStart && cEnd <= sliceEnd) {
       if (sliceEnd == g_editStart && g_editStart > 0) {
         let isTerm = getNodeType(child) <= (MAX_TERMINAL_ID as u16);
         if (cEnd == sliceEnd || (!isTerm && isWhitespaceBetween(cEnd, sliceEnd))) {
           if (childIsList) {
             let savedSlicedEnd = g_lastSlicedEnd;
-            extractedChild = extractListSlice(child, cStart, sliceStart, sliceEnd, listSym, envHash);
+            extractedChild = extractListSlice(child, cStart, childSliceStart, sliceEnd, listSym, envHash);
             if (extractedChild == 0) {
               g_lastSlicedEnd = savedSlicedEnd;
             }
@@ -2487,7 +2493,7 @@ export function extractListSlice(
       }
     } else if (childIsList) {
       let savedSlicedEnd = g_lastSlicedEnd;
-      extractedChild = extractListSlice(child, cStart, sliceStart, sliceEnd, listSym, envHash);
+      extractedChild = extractListSlice(child, cStart, childSliceStart, sliceEnd, listSym, envHash);
       if (extractedChild == 0) {
         g_lastSlicedEnd = savedSlicedEnd; // Don't let failed recursion advance the end pointer
       }
@@ -2502,6 +2508,15 @@ export function extractListSlice(
         setNextSibling(lastSlicedChild, extractedChild);
         lastSlicedChild = extractedChild;
       }
+      if (g_lastSlicedEnd < cEnd) {
+        if (sliceEnd == 0xffffffff) return 0;
+        break;
+      }
+    } else {
+      if (sliceEnd == 0xffffffff || firstSlicedChild == 0) {
+        return 0;
+      }
+      break;
     }
 
     curOffset = cEnd;
@@ -2651,18 +2666,23 @@ function constructReducedParentNode(
   balanceHash: u32,
   isFragile: bool
 ): u32 {
-  // Step 1: Compute the parent's leading padding (inherited from the first child)
-  // and total byte length (first child's byte length plus all subsequent children's
+  // Step 1: Compute the parent's leading padding (inherited from the first non-empty child)
+  // and total byte length (first non-empty child's byte length plus all subsequent children's
   // leading padding + byte length).
   let totalByteLength: u32 = 0;
   let firstChildPadding: u32 = 0;
+  let firstNonEmptyIdx: i32 = -1;
   if (actualCount > 0) {
-    firstChildPadding = getNodeLeadingPad(childNodes[childOffset]);
     for (let k = 0; k < actualCount; k++) {
       let cPadding = getNodeLeadingPad(childNodes[childOffset + k]);
       let cLen = getNodeByteLength(childNodes[childOffset + k]);
-      if (k == 0) totalByteLength += cLen;
-      else totalByteLength += cPadding + cLen;
+      if (firstNonEmptyIdx == -1 && (cPadding > 0 || cLen > 0)) {
+        firstNonEmptyIdx = k;
+        firstChildPadding = cPadding;
+        totalByteLength += cLen;
+      } else {
+        totalByteLength += cPadding + cLen;
+      }
     }
   }
   diag_count_reduce++;
@@ -2741,7 +2761,7 @@ function constructReducedParentNode(
       }
 
       let clone = cloneNodeShallow(child);
-      if (k == 0) {
+      if (k == 0 || k == firstNonEmptyIdx) {
         setNodePadding(clone, 0);
       }
 
@@ -3054,6 +3074,8 @@ function breakdownTopOfStack(head: ParseHead): ParseHead | null {
 
   let currHead: ParseHead = baseHead;
   let currPos: u32 = baseHead.pos;
+  let topPad: u32 = getNodePadding(topNode);
+  let restoredTopPad = false;
 
   for (let i = 0; i < childCount; i++) {
     let childPtr = t_breakdownChildren[i];
@@ -3061,9 +3083,15 @@ function breakdownTopOfStack(head: ParseHead): ParseHead | null {
     let childPad = getNodeLeadingPad(childPtr);
     let nextState = t_breakdownChildren[128 + i] as i32;
 
+    if (!restoredTopPad && (childPad > 0 || childByteLen > 0 || i == childCount - 1)) {
+      childPad += topPad;
+      restoredTopPad = true;
+    }
+
     currPos += childPad + childByteLen;
     // v5 fix: clone child to avoid stale sibling pointers from the reused subtree
     let clonedChild = cloneNodeShallow(childPtr);
+    setNodePadding(clonedChild, childPad);
     setNextSibling(clonedChild, 0); // Clear stale sibling link
     if (getNodeFirstChild(clonedChild) != 0) {
       setNodeFlags(clonedChild, getNodeFlags(clonedChild) | FLAG_EXTRACTED);

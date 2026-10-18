@@ -226,17 +226,32 @@ export class CfdSurrogateParticipant implements ICfdContinuumParticipant {
       patchName: "obstacle",
       integratedForce: aeroForce,
       meanPressure: 101325.0 + pDrop * 0.5,
+      integratedMassFlow: 0.0,
     };
     this.patchMetricsCache.set("obstacle", obstacleMetrics);
 
     const inletBc = this.boundaryConditions.get("inlet");
+    const inferredInletMassFlow =
+      inletBc?.massFlow ??
+      pred.scalarOutputs["massFlow"] ??
+      pred.scalarOutputs["m_flow"] ??
+      1.225 * (inletBc?.velocity?.[0] ?? params["inletVelocity"] ?? maxVel);
     const inletMetrics: ContinuumPatchMetrics = {
       patchName: "inlet",
       integratedForce: [0, 0, 0],
       meanPressure: inletBc?.pressure ?? 101325.0,
-      integratedMassFlow: inletBc?.massFlow,
+      integratedMassFlow: inferredInletMassFlow,
     };
     this.patchMetricsCache.set("inlet", inletMetrics);
+
+    const outletBc = this.boundaryConditions.get("outlet");
+    const outletMetrics: ContinuumPatchMetrics = {
+      patchName: "outlet",
+      integratedForce: [0, 0, 0],
+      meanPressure: outletBc?.pressure ?? Math.max(0, (inletMetrics.meanPressure ?? 101325.0) - pDrop),
+      integratedMassFlow: outletBc?.massFlow ?? -inferredInletMassFlow,
+    };
+    this.patchMetricsCache.set("outlet", outletMetrics);
 
     const output: CfdStepOutput = {
       aerodynamicForceN: aeroForce,
@@ -257,6 +272,7 @@ export class CfdSurrogateParticipant implements ICfdContinuumParticipant {
       patchName,
       integratedForce: [0, 0, 0],
       meanPressure: 101325.0,
+      integratedMassFlow: 0.0,
     };
   }
 

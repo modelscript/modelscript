@@ -706,15 +706,17 @@ graph TD
     omgRouter,
   );
   app.use(
-    "/",
+    "/projects",
     optionalAuth,
     requireFeatureFlag(() => featureFlagService, "sysml2_omg_api"),
-    omgRouter,
-  ); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
+  );
+  app.use("/", omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
 
-  // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
+  // ── npm-compatible registry (mounted at /api/v1/npm and root for `npm --registry=` compat) ──
+  app.use("/api/v1/npm", npmAuthRouter(database));
+  app.use("/api/v1/npm", npmRegistryRouter(database, libraryStorage));
   app.use("/", npmAuthRouter(database));
-  app.use("/", npmRegistryRouter(database));
+  app.use("/", npmRegistryRouter(database, libraryStorage));
 
   return app;
 }

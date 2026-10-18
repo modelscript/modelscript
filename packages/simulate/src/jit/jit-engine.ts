@@ -305,8 +305,17 @@ export class ArenaJitEngine {
       }
     }
 
-    // Compute topology signature for caching
-    const signature = `dae_${varCount}_${arena.eqCount}_${stateVarIndices.join("_")}`;
+    // Compute structural equation hash and topology signature for caching
+    let eqHash = 2166136261;
+    for (let eqIdx = 0; eqIdx < arena.eqCount; eqIdx++) {
+      const kind = arena.getEqKind(eqIdx);
+      eqHash = Math.imul(eqHash ^ kind, 16777619) >>> 0;
+      if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
+        eqHash = this.hashExpr(arena, arena.getEqLhs(eqIdx), varNameToIdx, eqHash);
+        eqHash = this.hashExpr(arena, arena.getEqRhs(eqIdx), varNameToIdx, eqHash);
+      }
+    }
+    const signature = `dae_${varCount}_${arena.eqCount}_${stateVarIndices.join("_")}_${eqHash.toString(36)}`;
     if (v8FunctionCache.has(signature)) {
       return {
         rhsFn: v8FunctionCache.get(signature)!,
@@ -362,6 +371,59 @@ export class ArenaJitEngine {
     };
   }
 
+  private hashExpr(dae: DAEBuilder, id: number, varMap: Map<string, number>, h: number): number {
+    if (id < 0) return Math.imul(h ^ 0xff, 16777619) >>> 0;
+    const kind = dae.getExprKind(id);
+    h = Math.imul(h ^ kind, 16777619) >>> 0;
+    switch (kind) {
+      case ExprKind.RealLiteral: {
+        const val = dae.getExprRealValue(id);
+        const bits = Math.round(val * 1e6) | 0;
+        return Math.imul(h ^ bits, 16777619) >>> 0;
+      }
+      case ExprKind.IntLiteral:
+      case ExprKind.BoolLiteral:
+        return Math.imul(h ^ dae.getExprData1(id), 16777619) >>> 0;
+      case ExprKind.Name: {
+        const name = dae.interner.resolve(dae.getExprData1(id));
+        const idx = name === "time" ? -2 : (varMap.get(name) ?? -1);
+        return Math.imul(h ^ (idx + 1024), 16777619) >>> 0;
+      }
+      case ExprKind.Der: {
+        const arg = dae.getExprData1(id);
+        const name = dae.interner.resolve(dae.getExprData1(arg));
+        const idx = varMap.get(`der(${name})`) ?? -1;
+        return Math.imul(h ^ (idx + 2048), 16777619) >>> 0;
+      }
+      case ExprKind.Unary:
+        h = Math.imul(h ^ dae.getExprData1(id), 16777619) >>> 0;
+        return this.hashExpr(dae, dae.getExprLeft(id), varMap, h);
+      case ExprKind.Negate:
+        return this.hashExpr(dae, dae.getExprLeft(id), varMap, h);
+      case ExprKind.Binary:
+        h = Math.imul(h ^ dae.getExprData1(id), 16777619) >>> 0;
+        h = this.hashExpr(dae, dae.getExprLeft(id), varMap, h);
+        return this.hashExpr(dae, dae.getExprRight(id), varMap, h);
+      case ExprKind.Call: {
+        const fname = dae.interner.resolve(dae.getExprData1(id));
+        for (let i = 0; i < fname.length; i++) {
+          h = Math.imul(h ^ fname.charCodeAt(i), 16777619) >>> 0;
+        }
+        const count = dae.getExprRight(id);
+        for (let i = 0; i < count; i++) {
+          h = this.hashExpr(dae, dae.getExprLeft(id + i), varMap, h);
+        }
+        return h;
+      }
+      case ExprKind.IfElse:
+        h = this.hashExpr(dae, dae.getExprData1(id), varMap, h);
+        h = this.hashExpr(dae, dae.getExprLeft(id), varMap, h);
+        return this.hashExpr(dae, dae.getExprRight(id), varMap, h);
+      default:
+        return h;
+    }
+  }
+
   private exprToJs(dae: DAEBuilder, id: number, varMap: Map<string, number>): string {
     if (id < 0) return "0.0";
     const kind = dae.getExprKind(id);
@@ -396,12 +458,41 @@ export class ArenaJitEngine {
         const op = dae.getExprData1(id) as BinOp;
         const lhs = this.exprToJs(dae, dae.getExprLeft(id), varMap);
         const rhs = this.exprToJs(dae, dae.getExprRight(id), varMap);
-        let opStr = "+";
-        if (op === BinOp.Sub) opStr = "-";
-        else if (op === BinOp.Mul) opStr = "*";
-        else if (op === BinOp.Div) opStr = "/";
-        else if (op === BinOp.Pow) return `Math.pow(${lhs}, ${rhs})`;
-        return `(${lhs} ${opStr} ${rhs})`;
+        switch (op) {
+          case BinOp.Add:
+          case BinOp.ElemAdd:
+            return `(${lhs} + ${rhs})`;
+          case BinOp.Sub:
+          case BinOp.ElemSub:
+            return `(${lhs} - ${rhs})`;
+          case BinOp.Mul:
+          case BinOp.ElemMul:
+            return `(${lhs} * ${rhs})`;
+          case BinOp.Div:
+          case BinOp.ElemDiv:
+            return `(${lhs} / ${rhs})`;
+          case BinOp.Pow:
+          case BinOp.ElemPow:
+            return `Math.pow(${lhs}, ${rhs})`;
+          case BinOp.Lt:
+            return `(${lhs} < ${rhs} ? 1 : 0)`;
+          case BinOp.Lte:
+            return `(${lhs} <= ${rhs} ? 1 : 0)`;
+          case BinOp.Gt:
+            return `(${lhs} > ${rhs} ? 1 : 0)`;
+          case BinOp.Gte:
+            return `(${lhs} >= ${rhs} ? 1 : 0)`;
+          case BinOp.Eq:
+            return `(${lhs} === ${rhs} ? 1 : 0)`;
+          case BinOp.Neq:
+            return `(${lhs} !== ${rhs} ? 1 : 0)`;
+          case BinOp.And:
+            return `((${lhs} && ${rhs}) ? 1 : 0)`;
+          case BinOp.Or:
+            return `((${lhs} || ${rhs}) ? 1 : 0)`;
+          default:
+            return `(${lhs} + ${rhs})`;
+        }
       }
       case ExprKind.Call: {
         const fname = dae.interner.resolve(dae.getExprData1(id));
@@ -414,9 +505,24 @@ export class ArenaJitEngine {
           fname === "sin" ||
           fname === "cos" ||
           fname === "tan" ||
+          fname === "asin" ||
+          fname === "acos" ||
+          fname === "atan" ||
+          fname === "atan2" ||
+          fname === "sinh" ||
+          fname === "cosh" ||
+          fname === "tanh" ||
           fname === "exp" ||
           fname === "log" ||
-          fname === "sqrt"
+          fname === "log10" ||
+          fname === "sqrt" ||
+          fname === "abs" ||
+          fname === "min" ||
+          fname === "max" ||
+          fname === "floor" ||
+          fname === "ceil" ||
+          fname === "sign" ||
+          fname === "hypot"
         ) {
           return `Math.${fname}(${args.join(", ")})`;
         }

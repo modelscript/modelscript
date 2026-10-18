@@ -140,6 +140,87 @@ export function countArenaStatementSlots(arena: DAEBuilder, startIdx: number, st
 }
 
 /**
+ * Assign a scalar numeric value to an arena target expression (`ExprKind.Name` or `ExprKind.Subscript`).
+ */
+function assignArenaTargetRuntime(
+  arena: DAEBuilder,
+  targetExprId: number,
+  value: number,
+  valuesByStringId: Float64Array,
+): string | null {
+  if (targetExprId < 0) return null;
+  const targetKind = arena.getExprKind(targetExprId);
+  if (targetKind === ExprKind.Name) {
+    const nameId = arena.getExprData1(targetExprId);
+    if (nameId >= 0 && nameId < valuesByStringId.length) {
+      valuesByStringId[nameId] = value;
+    }
+    return arena.interner.resolve(nameId) ?? null;
+  }
+  if (targetKind === ExprKind.Subscript) {
+    let currentExprId = targetExprId;
+    const indices: number[] = [];
+    let valid = true;
+    while (currentExprId >= 0 && arena.getExprKind(currentExprId) === ExprKind.Subscript) {
+      const firstIdx = arena.getExprLeft(currentExprId);
+      const idxCount = arena.getExprRight(currentExprId);
+      if (idxCount <= 0 || firstIdx < 0) {
+        valid = false;
+        break;
+      }
+      const chunk: number[] = [];
+      for (let k = 0; k < idxCount; k++) {
+        const slotIdx = currentExprId + k;
+        const subExprId =
+          k === 0
+            ? firstIdx
+            : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
+              ? arena.getExprLeft(slotIdx)
+              : firstIdx + k;
+        const idxVal = Math.round(evaluateArenaRuntime(arena, subExprId, valuesByStringId));
+        if (!Number.isFinite(idxVal)) {
+          valid = false;
+          break;
+        }
+        chunk.push(idxVal);
+      }
+      if (!valid) break;
+      indices.unshift(...chunk);
+      currentExprId = arena.getExprData1(currentExprId);
+    }
+    if (valid && currentExprId >= 0 && arena.getExprKind(currentExprId) === ExprKind.Name) {
+      const baseName = arena.interner.resolve(arena.getExprData1(currentExprId));
+      if (baseName && indices.length > 0) {
+        const elemName = `${baseName}[${indices.join(",")}]`;
+        const elemNameId = arena.interner.intern(elemName);
+        if (elemNameId >= 0 && elemNameId < valuesByStringId.length) {
+          valuesByStringId[elemNameId] = value;
+        }
+        const arrayEnv = (arena as any)._runtimeArrayEnv as Map<string, ArenaValue> | undefined;
+        if (arrayEnv) {
+          const currentArr = arrayEnv.get(baseName) ?? [];
+          arrayEnv.set(baseName, updateNestedArray(currentArr, indices, value));
+        }
+        return elemName;
+      }
+    }
+  }
+  return null;
+}
+
+function lookupFunctionArenaRuntime(arena: DAEBuilder, funcNameId: number, funcName: string): DAEBuilder | undefined {
+  const cleanName = funcName.replace(/^\.+/, "");
+  const shortName = cleanName.includes(".") ? cleanName.slice(cleanName.lastIndexOf(".") + 1) : cleanName;
+  return (
+    arena.functions?.get(funcNameId) ??
+    arena.getFunction?.(funcNameId) ??
+    arena.getFunction?.(funcName) ??
+    arena.getFunction?.(cleanName) ??
+    arena.getFunction?.(shortName)
+  );
+}
+
+/**
  * Execute a range of statements from the DAEBuilder.
  */
 export function executeArenaStatements(
@@ -165,10 +246,7 @@ export function executeArenaStatements(
         const targetExprId = data1;
         const sourceExprId = left;
         const value = evaluateArenaRuntime(arena, sourceExprId, valuesByStringId);
-        if (arena.getExprKind(targetExprId) === ExprKind.Name) {
-          const nameId = arena.getExprData1(targetExprId);
-          valuesByStringId[nameId] = value;
-        }
+        assignArenaTargetRuntime(arena, targetExprId, value, valuesByStringId);
         break;
       }
 
@@ -244,10 +322,20 @@ export function executeArenaStatements(
         const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
         nextIdx = blockStartIdx + bodySlots;
 
+        let whenActive: Map<number, boolean> | undefined = (arena as any)._stmtWhenActive;
+        if (!whenActive) {
+          whenActive = new Map<number, boolean>();
+          (arena as any)._stmtWhenActive = whenActive;
+        }
+        const isInit = Boolean((arena as any)._isInitialPhase);
+
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
+        const condNow = condVal !== 0;
+        const wasActive = whenActive.get(i) ?? false;
+        whenActive.set(i, condNow);
         let executed = false;
 
-        if (condVal !== 0) {
+        if (condNow && (!wasActive || isInit)) {
           executeArenaStatements(arena, blockStartIdx, bodySlots, valuesByStringId, functionLookup);
           executed = true;
         }
@@ -260,12 +348,14 @@ export function executeArenaStatements(
 
           nextIdx = branchStmtIdx + 1 + branchSlots;
 
-          if (!executed) {
-            const elseWhenCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
-            if (elseWhenCondVal !== 0) {
-              executeArenaStatements(arena, branchStmtIdx + 1, branchSlots, valuesByStringId, functionLookup);
-              executed = true;
-            }
+          const elseWhenCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
+          const branchCondNow = elseWhenCondVal !== 0;
+          const branchWasActive = whenActive.get(branchStmtIdx) ?? false;
+          whenActive.set(branchStmtIdx, branchCondNow);
+
+          if (!executed && branchCondNow && (!branchWasActive || isInit)) {
+            executeArenaStatements(arena, branchStmtIdx + 1, branchSlots, valuesByStringId, functionLookup);
+            executed = true;
           }
         }
         break;
@@ -285,9 +375,23 @@ export function executeArenaStatements(
           const numArgs = arena.getExprRight(callExprId);
           const funcName = arena.interner.resolve(funcNameId);
 
-          if (funcName === "assert" || funcName === "print" || funcName === "terminate") {
+          if (funcName === "reinit" && numArgs >= 2) {
+            const valExprId = arena.getExprLeft(callExprId + 1);
+            const newVal = evaluateArenaRuntime(arena, valExprId, valuesByStringId);
+            const assignedName = assignArenaTargetRuntime(arena, firstArg, newVal, valuesByStringId);
+            if (assignedName) {
+              let pending: Map<string, number> | undefined = (arena as any)._pendingReinits;
+              if (!pending) {
+                pending = new Map<string, number>();
+                (arena as any)._pendingReinits = pending;
+              }
+              pending.set(assignedName, newVal);
+            }
+          } else if (funcName === "terminate") {
+            (arena as any)._terminateRequested = true;
+          } else if (funcName === "assert" || funcName === "print") {
             // consume built-in
-          } else if (functionLookup) {
+          } else {
             const argValues: number[] = [];
             if (numArgs > 0) {
               argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
@@ -297,7 +401,14 @@ export function executeArenaStatements(
                 argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
               }
             }
-            functionLookup(funcNameId, argValues);
+            if (functionLookup) {
+              functionLookup(funcNameId, argValues);
+            } else {
+              const fnArena = lookupFunctionArenaRuntime(arena, funcNameId, funcName);
+              if (fnArena) {
+                executeArenaFunction(fnArena, argValues);
+              }
+            }
           }
         }
         break;
@@ -312,12 +423,10 @@ export function executeArenaStatements(
           const targetBlockIdx = i + 1;
           const targetExprId = arena.getStmtData1(targetBlockIdx);
           const value = evaluateArenaRuntime(arena, sourceExprId, valuesByStringId);
-          if (arena.getExprKind(targetExprId) === ExprKind.Name) {
-            const nameId = arena.getExprData1(targetExprId);
-            valuesByStringId[nameId] = value;
-          }
-        } else if (functionLookup && arena.getExprKind(sourceExprId) === ExprKind.Call) {
+          assignArenaTargetRuntime(arena, targetExprId, value, valuesByStringId);
+        } else if (arena.getExprKind(sourceExprId) === ExprKind.Call) {
           const funcNameId = arena.getExprData1(sourceExprId);
+          const funcName = arena.interner.resolve(funcNameId);
           const firstArg = arena.getExprLeft(sourceExprId);
           const numArgs = arena.getExprRight(sourceExprId);
 
@@ -331,14 +440,53 @@ export function executeArenaStatements(
             }
           }
 
-          const result = functionLookup(funcNameId, argValues);
-          if (result !== null && numTargets > 0) {
-            const firstTargetBlockIdx = i + 1;
-            const targetExprId = arena.getStmtData1(firstTargetBlockIdx);
-            if (arena.getExprKind(targetExprId) === ExprKind.Name) {
-              const nameId = arena.getExprData1(targetExprId);
-              valuesByStringId[nameId] = result;
+          let outputValues: number[] | null = null;
+          const fnArena = lookupFunctionArenaRuntime(arena, funcNameId, funcName);
+          if (fnArena && !fnArena.externalDecl) {
+            const firstRes = executeArenaFunction(fnArena, argValues, functionLookup);
+            const lastOuts = (fnArena as any)._lastOutputs as number[] | undefined;
+            if (Array.isArray(lastOuts) && lastOuts.length > 0) {
+              outputValues = lastOuts;
+            } else if (firstRes !== null) {
+              outputValues = [firstRes];
             }
+          } else if (functionLookup) {
+            const result = functionLookup(funcNameId, argValues);
+            const lastOuts =
+              ((fnArena as any)?._lastOutputs as number[] | undefined) ??
+              ((arena as any)._lastFunctionOutputs as number[] | undefined);
+            if (Array.isArray(lastOuts) && lastOuts.length > 0) {
+              outputValues = lastOuts;
+            } else if (result !== null) {
+              outputValues = [result];
+            }
+          }
+
+          if (outputValues && numTargets > 0) {
+            for (let k = 0; k < numTargets && k < outputValues.length; k++) {
+              const targetBlockIdx = i + 1 + k;
+              const targetExprId = arena.getStmtData1(targetBlockIdx);
+              const outVal = outputValues[k];
+              if (outVal !== undefined) {
+                assignArenaTargetRuntime(arena, targetExprId, outVal, valuesByStringId);
+              }
+            }
+          }
+        } else if (
+          arena.getExprKind(sourceExprId) === ExprKind.Tuple ||
+          arena.getExprKind(sourceExprId) === ExprKind.ArrayCtor
+        ) {
+          const count = arena.getExprData1(sourceExprId);
+          const firstElem = arena.getExprLeft(sourceExprId);
+          const elemVals: number[] = [];
+          for (let k = 0; k < count; k++) {
+            const elemExprId = k === 0 ? firstElem : arena.getExprLeft(sourceExprId + k);
+            elemVals.push(evaluateArenaRuntime(arena, elemExprId, valuesByStringId));
+          }
+          for (let k = 0; k < numTargets && k < elemVals.length; k++) {
+            const targetBlockIdx = i + 1 + k;
+            const targetExprId = arena.getStmtData1(targetBlockIdx);
+            assignArenaTargetRuntime(arena, targetExprId, elemVals[k]!, valuesByStringId);
           }
         }
         break;
@@ -457,9 +605,9 @@ export function executeArenaFunction(
   }
 
   try {
-    const valuesByStringId = new Float64Array(funcArena.interner.size);
+    const valuesByStringId = new Float64Array(Math.max(funcArena.interner.size + 64, 256));
 
-    let firstOutputId = -1;
+    const outputIds: number[] = [];
     let argIndex = 0;
 
     for (let i = 0; i < funcArena.varCount; i++) {
@@ -477,7 +625,7 @@ export function executeArenaFunction(
         }
         argIndex++;
       } else if (causality === 2 /* Output */) {
-        if (firstOutputId === -1) firstOutputId = nameId;
+        outputIds.push(nameId);
         if (typeof startExprId === "number" && startExprId !== -1) {
           valuesByStringId[nameId] = evaluateArenaRuntime(funcArena, startExprId, valuesByStringId);
         }
@@ -497,8 +645,11 @@ export function executeArenaFunction(
       }
     }
 
-    if (firstOutputId !== -1) {
-      return valuesByStringId[firstOutputId] ?? null;
+    const outputs = outputIds.map((id) => valuesByStringId[id] ?? 0);
+    (funcArena as any)._lastOutputs = outputs;
+
+    if (outputIds.length > 0) {
+      return outputs[0] ?? null;
     }
 
     return null;
@@ -535,10 +686,7 @@ export async function executeArenaStatementsAsync(
         const targetExprId = data1;
         const sourceExprId = left;
         const value = evaluateArenaRuntime(arena, sourceExprId, valuesByStringId);
-        if (arena.getExprKind(targetExprId) === ExprKind.Name) {
-          const nameId = arena.getExprData1(targetExprId);
-          valuesByStringId[nameId] = value;
-        }
+        assignArenaTargetRuntime(arena, targetExprId, value, valuesByStringId);
         break;
       }
 
@@ -652,10 +800,20 @@ export async function executeArenaStatementsAsync(
         const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
         nextIdx = blockStartIdx + bodySlots;
 
+        let whenActive: Map<number, boolean> | undefined = (arena as any)._stmtWhenActive;
+        if (!whenActive) {
+          whenActive = new Map<number, boolean>();
+          (arena as any)._stmtWhenActive = whenActive;
+        }
+        const isInit = Boolean((arena as any)._isInitialPhase);
+
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
+        const condNow = condVal !== 0;
+        const wasActive = whenActive.get(i) ?? false;
+        whenActive.set(i, condNow);
         let executed = false;
 
-        if (condVal !== 0) {
+        if (condNow && (!wasActive || isInit)) {
           await executeArenaStatementsAsync(
             arena,
             blockStartIdx,
@@ -675,19 +833,21 @@ export async function executeArenaStatementsAsync(
 
           nextIdx = branchStmtIdx + 1 + branchSlots;
 
-          if (!executed) {
-            const elseWhenCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
-            if (elseWhenCondVal !== 0) {
-              await executeArenaStatementsAsync(
-                arena,
-                branchStmtIdx + 1,
-                branchSlots,
-                valuesByStringId,
-                functionLookup,
-                debuggerHook,
-              );
-              executed = true;
-            }
+          const elseWhenCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
+          const branchCondNow = elseWhenCondVal !== 0;
+          const branchWasActive = whenActive.get(branchStmtIdx) ?? false;
+          whenActive.set(branchStmtIdx, branchCondNow);
+
+          if (!executed && branchCondNow && (!branchWasActive || isInit)) {
+            await executeArenaStatementsAsync(
+              arena,
+              branchStmtIdx + 1,
+              branchSlots,
+              valuesByStringId,
+              functionLookup,
+              debuggerHook,
+            );
+            executed = true;
           }
         }
         break;
@@ -707,9 +867,23 @@ export async function executeArenaStatementsAsync(
           const numArgs = arena.getExprRight(callExprId);
           const funcName = arena.interner.resolve(funcNameId);
 
-          if (funcName === "assert" || funcName === "print" || funcName === "terminate") {
+          if (funcName === "reinit" && numArgs >= 2) {
+            const valExprId = arena.getExprLeft(callExprId + 1);
+            const newVal = evaluateArenaRuntime(arena, valExprId, valuesByStringId);
+            const assignedName = assignArenaTargetRuntime(arena, firstArg, newVal, valuesByStringId);
+            if (assignedName) {
+              let pending: Map<string, number> | undefined = (arena as any)._pendingReinits;
+              if (!pending) {
+                pending = new Map<string, number>();
+                (arena as any)._pendingReinits = pending;
+              }
+              pending.set(assignedName, newVal);
+            }
+          } else if (funcName === "terminate") {
+            (arena as any)._terminateRequested = true;
+          } else if (funcName === "assert" || funcName === "print") {
             // consume built-in
-          } else if (functionLookup) {
+          } else {
             const argValues: number[] = [];
             if (numArgs > 0) {
               argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
@@ -719,7 +893,14 @@ export async function executeArenaStatementsAsync(
                 argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
               }
             }
-            functionLookup(funcNameId, argValues);
+            if (functionLookup) {
+              functionLookup(funcNameId, argValues);
+            } else {
+              const fnArena = lookupFunctionArenaRuntime(arena, funcNameId, funcName);
+              if (fnArena) {
+                await executeArenaFunctionAsync(fnArena, argValues, undefined, debuggerHook);
+              }
+            }
           }
         }
         break;
@@ -734,12 +915,10 @@ export async function executeArenaStatementsAsync(
           const targetBlockIdx = i + 1;
           const targetExprId = arena.getStmtData1(targetBlockIdx);
           const value = evaluateArenaRuntime(arena, sourceExprId, valuesByStringId);
-          if (arena.getExprKind(targetExprId) === ExprKind.Name) {
-            const nameId = arena.getExprData1(targetExprId);
-            valuesByStringId[nameId] = value;
-          }
-        } else if (functionLookup && arena.getExprKind(sourceExprId) === ExprKind.Call) {
+          assignArenaTargetRuntime(arena, targetExprId, value, valuesByStringId);
+        } else if (arena.getExprKind(sourceExprId) === ExprKind.Call) {
           const funcNameId = arena.getExprData1(sourceExprId);
+          const funcName = arena.interner.resolve(funcNameId);
           const firstArg = arena.getExprLeft(sourceExprId);
           const numArgs = arena.getExprRight(sourceExprId);
 
@@ -753,14 +932,53 @@ export async function executeArenaStatementsAsync(
             }
           }
 
-          const result = functionLookup(funcNameId, argValues);
-          if (result !== null && numTargets > 0) {
-            const firstTargetBlockIdx = i + 1;
-            const targetExprId = arena.getStmtData1(firstTargetBlockIdx);
-            if (arena.getExprKind(targetExprId) === ExprKind.Name) {
-              const nameId = arena.getExprData1(targetExprId);
-              valuesByStringId[nameId] = result;
+          let outputValues: number[] | null = null;
+          const fnArena = lookupFunctionArenaRuntime(arena, funcNameId, funcName);
+          if (fnArena && !fnArena.externalDecl) {
+            const firstRes = await executeArenaFunctionAsync(fnArena, argValues, functionLookup, debuggerHook);
+            const lastOuts = (fnArena as any)._lastOutputs as number[] | undefined;
+            if (Array.isArray(lastOuts) && lastOuts.length > 0) {
+              outputValues = lastOuts;
+            } else if (firstRes !== null) {
+              outputValues = [firstRes];
             }
+          } else if (functionLookup) {
+            const result = functionLookup(funcNameId, argValues);
+            const lastOuts =
+              ((fnArena as any)?._lastOutputs as number[] | undefined) ??
+              ((arena as any)._lastFunctionOutputs as number[] | undefined);
+            if (Array.isArray(lastOuts) && lastOuts.length > 0) {
+              outputValues = lastOuts;
+            } else if (result !== null) {
+              outputValues = [result];
+            }
+          }
+
+          if (outputValues && numTargets > 0) {
+            for (let k = 0; k < numTargets && k < outputValues.length; k++) {
+              const targetBlockIdx = i + 1 + k;
+              const targetExprId = arena.getStmtData1(targetBlockIdx);
+              const outVal = outputValues[k];
+              if (outVal !== undefined) {
+                assignArenaTargetRuntime(arena, targetExprId, outVal, valuesByStringId);
+              }
+            }
+          }
+        } else if (
+          arena.getExprKind(sourceExprId) === ExprKind.Tuple ||
+          arena.getExprKind(sourceExprId) === ExprKind.ArrayCtor
+        ) {
+          const count = arena.getExprData1(sourceExprId);
+          const firstElem = arena.getExprLeft(sourceExprId);
+          const elemVals: number[] = [];
+          for (let k = 0; k < count; k++) {
+            const elemExprId = k === 0 ? firstElem : arena.getExprLeft(sourceExprId + k);
+            elemVals.push(evaluateArenaRuntime(arena, elemExprId, valuesByStringId));
+          }
+          for (let k = 0; k < numTargets && k < elemVals.length; k++) {
+            const targetBlockIdx = i + 1 + k;
+            const targetExprId = arena.getStmtData1(targetBlockIdx);
+            assignArenaTargetRuntime(arena, targetExprId, elemVals[k]!, valuesByStringId);
           }
         }
         break;
@@ -900,9 +1118,9 @@ export async function executeArenaFunctionAsync(
   }
 
   try {
-    const valuesByStringId = new Float64Array(funcArena.interner.size);
+    const valuesByStringId = new Float64Array(Math.max(funcArena.interner.size + 64, 256));
 
-    let firstOutputId = -1;
+    const outputIds: number[] = [];
     let argIndex = 0;
 
     for (let i = 0; i < funcArena.varCount; i++) {
@@ -920,7 +1138,7 @@ export async function executeArenaFunctionAsync(
         }
         argIndex++;
       } else if (causality === 2 /* Output */) {
-        if (firstOutputId === -1) firstOutputId = nameId;
+        outputIds.push(nameId);
         if (typeof startExprId === "number" && startExprId !== -1) {
           valuesByStringId[nameId] = evaluateArenaRuntime(funcArena, startExprId, valuesByStringId);
         }
@@ -947,8 +1165,11 @@ export async function executeArenaFunctionAsync(
       }
     }
 
-    if (firstOutputId !== -1) {
-      return valuesByStringId[firstOutputId] ?? null;
+    const outputs = outputIds.map((id) => valuesByStringId[id] ?? 0);
+    (funcArena as any)._lastOutputs = outputs;
+
+    if (outputIds.length > 0) {
+      return outputs[0] ?? null;
     }
 
     return null;
@@ -1110,6 +1331,9 @@ export function executeArenaCEvalStatements(
                 const currentArr = env.get(baseName) ?? [];
                 const updatedArr = updateNestedArray(currentArr, subscripts, value);
                 env.set(baseName, updatedArr);
+                if (subscripts.every((s) => typeof s === "number")) {
+                  env.set(`${baseName}[${subscripts.join(",")}]`, value);
+                }
               }
             } else {
               env.set(name, value);
@@ -1167,6 +1391,9 @@ export function executeArenaCEvalStatements(
               const currentArr = env.get(baseName) ?? [];
               const updatedArr = updateNestedArray(currentArr, subscripts, value);
               env.set(baseName, updatedArr);
+              if (subscripts.every((s) => typeof s === "number")) {
+                env.set(`${baseName}[${subscripts.join(",")}]`, value);
+              }
             }
           }
         }
@@ -1316,10 +1543,20 @@ export function executeArenaCEvalStatements(
         const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
         nextIdx = blockStartIdx + bodySlots;
 
+        let whenActive: Map<number, boolean> | undefined = (arena as any)._stmtWhenActive;
+        if (!whenActive) {
+          whenActive = new Map<number, boolean>();
+          (arena as any)._stmtWhenActive = whenActive;
+        }
+        const isInit = Boolean((arena as any)._isInitialPhase);
+
         const condVal = evaluateArenaExpression(arena, condExprId, env, db, scopeId, undefined, false, functionLookup);
+        const condNow = condVal === true || (typeof condVal === "number" && condVal !== 0);
+        const wasActive = whenActive.get(i) ?? false;
+        whenActive.set(i, condNow);
         let executed = false;
 
-        if (condVal === true) {
+        if (condNow && (!wasActive || isInit)) {
           executeArenaCEvalStatements(arena, blockStartIdx, bodySlots, env, functionLookup, db, scopeId);
           executed = true;
         }
@@ -1332,21 +1569,24 @@ export function executeArenaCEvalStatements(
 
           nextIdx = branchStmtIdx + 1 + branchSlots;
 
-          if (!executed) {
-            const elseWhenCondVal = evaluateArenaExpression(
-              arena,
-              branchCondExprId,
-              env,
-              db,
-              scopeId,
-              undefined,
-              false,
-              functionLookup,
-            );
-            if (elseWhenCondVal === true) {
-              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchSlots, env, functionLookup, db, scopeId);
-              executed = true;
-            }
+          const elseWhenCondVal = evaluateArenaExpression(
+            arena,
+            branchCondExprId,
+            env,
+            db,
+            scopeId,
+            undefined,
+            false,
+            functionLookup,
+          );
+          const branchCondNow =
+            elseWhenCondVal === true || (typeof elseWhenCondVal === "number" && elseWhenCondVal !== 0);
+          const branchWasActive = whenActive.get(branchStmtIdx) ?? false;
+          whenActive.set(branchStmtIdx, branchCondNow);
+
+          if (!executed && branchCondNow && (!branchWasActive || isInit)) {
+            executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchSlots, env, functionLookup, db, scopeId);
+            executed = true;
           }
         }
         break;
@@ -1675,19 +1915,22 @@ export function evaluateArenaFunctionCall(
       for (let i = 0; i < funcArena.varCount; i++) {
         if (funcArena.isVarRemoved(i) || funcArena.getVarCausality(i) !== 1 /* Input */) continue;
         const expectedShape = funcArena.getVarShape(i);
-        const arg = argValues[inIdx];
-        const argShape: number[] = [];
-        let curr: any = arg;
-        while (Array.isArray(curr)) {
-          argShape.push(curr.length);
-          curr = curr[0];
-        }
-        if (argShape.length > expectedShape.length) {
-          const extraDims = argShape.slice(0, argShape.length - expectedShape.length);
-          if (!vectorizedShape || extraDims.length > vectorizedShape.length) {
-            vectorizedShape = extraDims;
+        const isScalarRecordInput = Boolean(funcArena.getVarCustomType(i)) && expectedShape.length === 0;
+        if (!isScalarRecordInput) {
+          const arg = argValues[inIdx];
+          const argShape: number[] = [];
+          let curr: any = arg;
+          while (Array.isArray(curr)) {
+            argShape.push(curr.length);
+            curr = curr[0];
           }
-          hasVectorizedArgs = true;
+          if (argShape.length > expectedShape.length) {
+            const extraDims = argShape.slice(0, argShape.length - expectedShape.length);
+            if (!vectorizedShape || extraDims.length > vectorizedShape.length) {
+              vectorizedShape = extraDims;
+            }
+            hasVectorizedArgs = true;
+          }
         }
         inIdx++;
       }
@@ -1700,19 +1943,22 @@ export function evaluateArenaFunctionCall(
         const expectedShape = funcArena.getVarShape(i);
         const expectedShapeExprs = funcArena.getVarShapeExprs(i);
         const expectedRank = Math.max(expectedShape.length, expectedShapeExprs?.length ?? 0);
-        const arg = argValues[inIdx];
-        const argShape: number[] = [];
-        let curr: any = arg;
-        while (Array.isArray(curr)) {
-          argShape.push(curr.length);
-          curr = curr[0];
-        }
-        if (expectedRank !== argShape.length) {
-          return null;
-        }
-        for (let d = 0; d < expectedShape.length; d++) {
-          if (expectedShape[d] !== -1 && expectedShape[d] !== argShape[d]) {
+        const isScalarRecordInput = Boolean(funcArena.getVarCustomType(i)) && expectedRank === 0;
+        if (!isScalarRecordInput) {
+          const arg = argValues[inIdx];
+          const argShape: number[] = [];
+          let curr: any = arg;
+          while (Array.isArray(curr)) {
+            argShape.push(curr.length);
+            curr = curr[0];
+          }
+          if (expectedRank !== argShape.length) {
             return null;
+          }
+          for (let d = 0; d < expectedShape.length; d++) {
+            if (expectedShape[d] !== -1 && expectedShape[d] !== argShape[d]) {
+              return null;
+            }
           }
         }
         inIdx++;
@@ -1820,6 +2066,28 @@ export function evaluateArenaFunctionCall(
 
         if (val !== undefined) {
           env.set(name, val);
+          const customType = funcArena.getVarCustomType(i);
+          if (Array.isArray(val) && customType && (!shape || shape.length === 0)) {
+            const leafCustom = customType.includes(".") ? customType.split(".").pop()! : customType;
+            const ctorArena =
+              funcArena.getFunction(customType) ??
+              dae.getFunction(customType) ??
+              (dae as any).parentDae?.getFunction(customType) ??
+              funcArena.getFunction(leafCustom) ??
+              dae.getFunction(leafCustom) ??
+              (dae as any).parentDae?.getFunction(leafCustom);
+            if (ctorArena && ctorArena.description?.includes("record constructor")) {
+              let fIdx = 0;
+              for (let vi = 0; vi < ctorArena.varCount; vi++) {
+                if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
+                  if (fIdx < val.length) {
+                    env.set(`${name}.${ctorArena.getVarName(vi)}`, val[fIdx]!);
+                  }
+                  fIdx++;
+                }
+              }
+            }
+          }
         } else if (typeof startExprId === "number" && startExprId !== -1) {
           const deps = new Set<string>();
           collectExprVarNames(funcArena, startExprId, deps);
@@ -1873,6 +2141,14 @@ export function evaluateArenaFunctionCall(
             env.set(name, defaultVal);
           }
         } else {
+          if (
+            causality === 2 /* Output */ &&
+            funcArena.stmtCount === 0 &&
+            !funcArena.externalDecl &&
+            !funcArena.description?.includes("record constructor")
+          ) {
+            return null;
+          }
           env.set(name, defaultVal);
         }
       }

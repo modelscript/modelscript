@@ -83,8 +83,42 @@ describe("MCP Tools Extensive Coverage Suite", () => {
   it("modelica_lint returns compiler query engine info", async () => {
     const tool = tools["modelica_lint"];
     assert.ok(tool);
-    const res = await tool.handler({});
-    assert.ok(res.content[0].text.includes("compiler query engine"));
+
+    ctx.current = null;
+    const resNull = await tool.handler({});
+    assert.strictEqual(resNull.isError, true);
+    assert.ok(resNull.content[0].text.includes("No libraries loaded"));
+
+    ctx.current = {
+      queryEngine: {
+        runAllLints: () => [],
+        index: { symbols: new Map() },
+      },
+    } as any;
+    const resClean = await tool.handler({});
+    assert.ok(!resClean.isError);
+    assert.strictEqual(resClean.content[0].text, "No lint issues found.");
+
+    ctx.current = {
+      queryEngine: {
+        runAllLints: () => [
+          {
+            symbolId: 1,
+            severity: "error",
+            code: 2002,
+            message: "Variable 'x' not found in scope.",
+          },
+        ],
+        index: {
+          symbols: new Map([[1, { resourceId: "/workspace/test.mo", startLine: 4, startColumn: 5 }]]),
+        },
+      },
+    } as any;
+    const resDiag = await tool.handler({});
+    assert.ok(!resDiag.isError);
+    const parsed = JSON.parse(resDiag.content[0].text);
+    assert.strictEqual(parsed.count, 1);
+    assert.strictEqual(parsed.diagnostics[0].code, "M2002");
   });
 
   it("hybrid_simulate handles missing class gracefully", async () => {

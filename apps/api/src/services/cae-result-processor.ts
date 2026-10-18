@@ -35,6 +35,8 @@ export interface FeaMeshPayload {
   fields: {
     vonMisesStress: number[];
     displacements: number[];
+    pressure?: number[] | undefined;
+    velocity?: number[] | undefined;
   };
   stats: {
     maxStress: number;
@@ -65,14 +67,42 @@ export const CaeResultProcessor = {
     let displacements: Float32Array | null = null;
     let vonMisesStress: Float32Array | null = null;
 
+    const splitFrdRecord = (rawLine: string): string[] =>
+      rawLine
+        .slice(3)
+        .replace(/([^\sEe])([+-])/g, "$1 $2")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    const pushElementNodes = (nodeIds: number[]) => {
+      const mapped = nodeIds.map((id) => nodeIdToIdx.get(id)).filter((idx): idx is number => idx !== undefined);
+      if (mapped.length >= 8) {
+        // Decompose C3D8 hexahedron into 5 tetrahedra so downstream 4-node tet consumers work seamlessly
+        const [n0, n1, n2, n3, n4, n5, n6, n7] = mapped as [
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+        ];
+        elementIndices.push(n0, n1, n3, n4, n1, n2, n3, n6, n1, n4, n5, n6, n3, n4, n6, n7, n1, n3, n4, n6);
+      } else if (mapped.length >= 4) {
+        elementIndices.push(mapped[0]!, mapped[1]!, mapped[2]!, mapped[3]!);
+      }
+    };
+
     for (const line of lines) {
-      // Node coordinates block: starts with 1C, ends with -3
-      if (line.startsWith("    1C")) {
+      // Node coordinates block: starts with 1C or 2C, ends with -3
+      if (/^ {0,4}[12]C/.test(line)) {
         inNodes = true;
         continue;
       }
       if (inNodes) {
-        if (line.startsWith("    -3")) {
+        if (line.startsWith("    -3") || line.trim() === "-3") {
           inNodes = false;
           const nodeCount = coords.length / 3;
           displacements = new Float32Array(nodeCount * 3);
@@ -80,18 +110,14 @@ export const CaeResultProcessor = {
           continue;
         }
         if (line.startsWith(" -1")) {
-          // Node line format:  -1<nodeId> <x> <y> <z>
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 5) {
-            const p1 = parts[1];
-            const p2 = parts[2];
-            const p3 = parts[3];
-            const p4 = parts[4];
-            if (p1 && p2 && p3 && p4) {
-              const nid = parseInt(p1, 10);
-              const x = parseFloat(p2);
-              const y = parseFloat(p3);
-              const z = parseFloat(p4);
+          // Node line format: -1 <nodeId> <x> <y> <z> (fixed-width or whitespace-delimited)
+          const parts = splitFrdRecord(line);
+          if (parts.length >= 4) {
+            const nid = parseInt(parts[0]!, 10);
+            const x = parseFloat(parts[1]!);
+            const y = parseFloat(parts[2]!);
+            const z = parseFloat(parts[3]!);
+            if (!Number.isNaN(nid) && !Number.isNaN(x) && !Number.isNaN(y) && !Number.isNaN(z)) {
               nodeIdToIdx.set(nid, coords.length / 3);
               coords.push(x, y, z);
             }
@@ -100,106 +126,89 @@ export const CaeResultProcessor = {
       }
 
       // Element connectivity block: starts with 3C, ends with -3
-      if (line.startsWith("    3C")) {
+      if (/^ {0,4}3C/.test(line)) {
         inElements = true;
         continue;
       }
       if (inElements) {
-        if (line.startsWith("    -3")) {
+        if (line.startsWith("    -3") || line.trim() === "-3") {
           inElements = false;
           continue;
         }
         if (line.startsWith(" -1")) {
-          // Element line: -1 <elemId> <type> <group> <n1> <n2> <n3> <n4>
-          const parts = line.trim().split(/\s+/);
-          // Standard linear tetrahedron: 4 nodes
-          if (parts.length >= 8) {
-            const p4 = parts[4];
-            const p5 = parts[5];
-            const p6 = parts[6];
-            const p7 = parts[7];
-            if (p4 && p5 && p6 && p7) {
-              const n1 = nodeIdToIdx.get(parseInt(p4, 10));
-              const n2 = nodeIdToIdx.get(parseInt(p5, 10));
-              const n3 = nodeIdToIdx.get(parseInt(p6, 10));
-              const n4 = nodeIdToIdx.get(parseInt(p7, 10));
-              if (n1 !== undefined && n2 !== undefined && n3 !== undefined && n4 !== undefined) {
-                elementIndices.push(n1, n2, n3, n4);
-              }
-            }
+          // Single-line element format: -1 <elemId> <type> <group> <n1> <n2> <n3> <n4> ...
+          // Or standard CalculiX header: -1 <elemId> <type> <group> <material> (followed by -2 line)
+          const parts = splitFrdRecord(line);
+          if (parts.length >= 7) {
+            const nodeIds = parts.slice(3).map((s) => parseInt(s, 10));
+            pushElementNodes(nodeIds);
+          }
+        } else if (line.startsWith(" -2")) {
+          // Standard CalculiX element node continuation line: -2 <n1> <n2> <n3> <n4> ...
+          const parts = splitFrdRecord(line);
+          if (parts.length >= 4) {
+            const nodeIds = parts.map((s) => parseInt(s, 10));
+            pushElementNodes(nodeIds);
           }
         }
       }
 
-      // Displacement field block (100CL DISP)
-      if (line.includes("DISP") && line.startsWith(" -4")) {
+      // Displacement field block (100CL -4 DISP)
+      if (line.includes("DISP") && line.trimStart().startsWith("-4")) {
         inDisp = true;
+        inStress = false;
         continue;
       }
       if (inDisp) {
-        if (line.startsWith("    -3")) {
+        if (line.startsWith("    -3") || line.trim() === "-3") {
           inDisp = false;
           continue;
         }
         if (line.startsWith(" -1") && displacements) {
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 5) {
-            const p1 = parts[1];
-            const p2 = parts[2];
-            const p3 = parts[3];
-            const p4 = parts[4];
-            if (p1 && p2 && p3 && p4) {
-              const nid = parseInt(p1, 10);
-              const idx = nodeIdToIdx.get(nid);
-              if (idx !== undefined) {
-                displacements[idx * 3 + 0] = parseFloat(p2);
-                displacements[idx * 3 + 1] = parseFloat(p3);
-                displacements[idx * 3 + 2] = parseFloat(p4);
-              }
+          const parts = splitFrdRecord(line);
+          if (parts.length >= 4) {
+            const nid = parseInt(parts[0]!, 10);
+            const idx = nodeIdToIdx.get(nid);
+            if (idx !== undefined) {
+              displacements[idx * 3 + 0] = parseFloat(parts[1]!) || 0;
+              displacements[idx * 3 + 1] = parseFloat(parts[2]!) || 0;
+              displacements[idx * 3 + 2] = parseFloat(parts[3]!) || 0;
             }
           }
         }
       }
 
-      // Stress field block (100CL STRESS)
-      if (line.includes("STRESS") && line.startsWith(" -4")) {
+      // Stress field block (100CL -4 STRESS)
+      if (line.includes("STRESS") && line.trimStart().startsWith("-4")) {
         inStress = true;
+        inDisp = false;
         continue;
       }
       if (inStress) {
-        if (line.startsWith("    -3")) {
+        if (line.startsWith("    -3") || line.trim() === "-3") {
           inStress = false;
           continue;
         }
         if (line.startsWith(" -1") && vonMisesStress) {
           // -1 <nid> SXX SYY SZZ SXY SYZ SZX
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 8) {
-            const p1 = parts[1];
-            const p2 = parts[2];
-            const p3 = parts[3];
-            const p4 = parts[4];
-            const p5 = parts[5];
-            const p6 = parts[6];
-            const p7 = parts[7];
-            if (p1 && p2 && p3 && p4 && p5 && p6 && p7) {
-              const nid = parseInt(p1, 10);
-              const idx = nodeIdToIdx.get(nid);
-              if (idx !== undefined) {
-                const sxx = parseFloat(p2);
-                const syy = parseFloat(p3);
-                const szz = parseFloat(p4);
-                const sxy = parseFloat(p5);
-                const syz = parseFloat(p6);
-                const szx = parseFloat(p7);
+          const parts = splitFrdRecord(line);
+          if (parts.length >= 7) {
+            const nid = parseInt(parts[0]!, 10);
+            const idx = nodeIdToIdx.get(nid);
+            if (idx !== undefined) {
+              const sxx = parseFloat(parts[1]!) || 0;
+              const syy = parseFloat(parts[2]!) || 0;
+              const szz = parseFloat(parts[3]!) || 0;
+              const sxy = parseFloat(parts[4]!) || 0;
+              const syz = parseFloat(parts[5]!) || 0;
+              const szx = parseFloat(parts[6]!) || 0;
 
-                // Von Mises stress formula for 3D tensor:
-                // sqrt(0.5 * ((sxx-syy)^2 + (syy-szz)^2 + (szz-sxx)^2 + 6*(sxy^2 + syz^2 + szx^2)))
-                const vm = Math.sqrt(
-                  0.5 * ((sxx - syy) ** 2 + (syy - szz) ** 2 + (szz - sxx) ** 2 + 6 * (sxy ** 2 + syz ** 2 + szx ** 2)),
-                );
-                vonMisesStress[idx] = vm;
-              }
+              // Von Mises stress formula for 3D tensor:
+              // sqrt(0.5 * ((sxx-syy)^2 + (syy-szz)^2 + (szz-sxx)^2 + 6*(sxy^2 + syz^2 + szx^2)))
+              const vm = Math.sqrt(
+                0.5 * ((sxx - syy) ** 2 + (syy - szz) ** 2 + (szz - sxx) ** 2 + 6 * (sxy ** 2 + syz ** 2 + szx ** 2)),
+              );
+              vonMisesStress[idx] = vm;
             }
           }
         }
@@ -503,9 +512,12 @@ export const CaeResultProcessor = {
       }
     }
 
-    // 3. Extract Stress_VonMises or Pressure
-    const stressMatch = vtuXml.match(/<DataArray[^>]*Name="(?:Stress_VonMises|Pressure)"[^>]*>([\s\S]*?)<\/DataArray>/);
+    // 3. Extract Stress_VonMises and/or Pressure
+    const stressOnlyMatch = vtuXml.match(/<DataArray[^>]*Name="Stress_VonMises"[^>]*>([\s\S]*?)<\/DataArray>/);
+    const pressureOnlyMatch = vtuXml.match(/<DataArray[^>]*Name="Pressure"[^>]*>([\s\S]*?)<\/DataArray>/);
+    const stressMatch = stressOnlyMatch ?? pressureOnlyMatch;
     const vonMisesStress: number[] = [];
+    const pressure: number[] = [];
     let maxStress = 0;
     if (stressMatch && stressMatch[1]) {
       const vals = stressMatch[1].trim().split(/\s+/).map(Number);
@@ -516,10 +528,19 @@ export const CaeResultProcessor = {
         }
       }
     }
+    if (pressureOnlyMatch && pressureOnlyMatch[1]) {
+      const vals = pressureOnlyMatch[1].trim().split(/\s+/).map(Number);
+      for (const v of vals) {
+        if (!Number.isNaN(v)) pressure.push(v);
+      }
+    }
 
-    // 4. Extract Displacement or Velocity
-    const dispMatch = vtuXml.match(/<DataArray[^>]*Name="(?:Displacement|Velocity)"[^>]*>([\s\S]*?)<\/DataArray>/);
+    // 4. Extract Displacement and/or Velocity
+    const dispOnlyMatch = vtuXml.match(/<DataArray[^>]*Name="Displacement"[^>]*>([\s\S]*?)<\/DataArray>/);
+    const velOnlyMatch = vtuXml.match(/<DataArray[^>]*Name="Velocity"[^>]*>([\s\S]*?)<\/DataArray>/);
+    const dispMatch = dispOnlyMatch ?? velOnlyMatch;
     const displacements: number[] = [];
+    const velocity: number[] = [];
     let maxDisp = 0;
     if (dispMatch && dispMatch[1]) {
       const vals = dispMatch[1].trim().split(/\s+/).map(Number);
@@ -530,6 +551,12 @@ export const CaeResultProcessor = {
         displacements.push(dx, dy, dz);
         const mag = Math.hypot(dx, dy, dz);
         if (mag > maxDisp) maxDisp = mag;
+      }
+    }
+    if (velOnlyMatch && velOnlyMatch[1]) {
+      const vals = velOnlyMatch[1].trim().split(/\s+/).map(Number);
+      for (let i = 0; i < vals.length; i += 3) {
+        velocity.push(vals[i] || 0, vals[i + 1] || 0, vals[i + 2] || 0);
       }
     }
 
@@ -590,6 +617,8 @@ export const CaeResultProcessor = {
       fields: {
         vonMisesStress,
         displacements,
+        ...(pressure.length > 0 ? { pressure } : {}),
+        ...(velocity.length > 0 ? { velocity } : {}),
       },
       stats: {
         maxStress,

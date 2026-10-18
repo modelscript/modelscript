@@ -39,6 +39,7 @@ export function translationMatrix(offset: Vec3): Mat4 {
 /** Build a rotation matrix around an arbitrary axis (angle in radians). */
 export function rotationMatrix(axis: Vec3, angle: number): Mat4 {
   const len = Math.sqrt(axis[0] ** 2 + axis[1] ** 2 + axis[2] ** 2);
+  if (len < 1e-12) return [...IDENTITY] as Mat4;
   const x = axis[0] / len,
     y = axis[1] / len,
     z = axis[2] / len;
@@ -74,6 +75,7 @@ export function scaleMatrix(factor: Vec3 | number): Mat4 {
 /** Build a mirror matrix across a plane defined by its normal. */
 export function mirrorMatrix(planeNormal: Vec3): Mat4 {
   const len = Math.sqrt(planeNormal[0] ** 2 + planeNormal[1] ** 2 + planeNormal[2] ** 2);
+  if (len < 1e-12) return [...IDENTITY] as Mat4;
   const nx = planeNormal[0] / len,
     ny = planeNormal[1] / len,
     nz = planeNormal[2] / len;
@@ -143,6 +145,20 @@ export function mergeSourceMetadata(
       ? { startByte: outer.startByte, endByte: outer.endByte }
       : inner.scaleRange);
 
+  const composedTranslation: Vec3 | undefined =
+    outer.translation && inner.translation
+      ? [
+          inner.translation[0] + outer.translation[0],
+          inner.translation[1] + outer.translation[1],
+          inner.translation[2] + outer.translation[2],
+        ]
+      : (outer.translation ?? inner.translation);
+
+  const composedScale: Vec3 | undefined =
+    outer.scale && inner.scale
+      ? [inner.scale[0] * outer.scale[0], inner.scale[1] * outer.scale[1], inner.scale[2] * outer.scale[2]]
+      : (outer.scale ?? inner.scale);
+
   return {
     parameterName: outer.parameterName ?? inner.parameterName,
     dimensionParams: outer.dimensionParams ?? inner.dimensionParams,
@@ -156,9 +172,9 @@ export function mergeSourceMetadata(
     translateRange,
     rotateRange,
     scaleRange,
-    translation: outer.translation ?? inner.translation,
+    translation: composedTranslation,
     rotation: outer.rotation ?? inner.rotation,
-    scale: outer.scale ?? inner.scale,
+    scale: composedScale,
     color: outer.color ?? inner.color,
   };
 }

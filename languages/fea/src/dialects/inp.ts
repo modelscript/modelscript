@@ -33,7 +33,11 @@ export class InpDialect implements FeaDialect {
       elementSets: new Map<string, Set<number>>(),
       materials: new Map<string, FeaMaterial>(),
       fixedNodes: new Set<number>(),
+      fixedDofs: new Map<number, Set<number>>(),
       nodalLoads: new Map<number, [number, number, number]>(),
+      elsetMaterials: new Map<string, string>(),
+      sectionThickness: new Map<string, number>(),
+      beamAreas: new Map<string, number>(),
     };
 
     let currentSection = "";
@@ -70,6 +74,17 @@ export class InpDialect implements FeaDialect {
       return "other";
     }
 
+    const SYMBOLIC_BOUNDARY_DOFS: Record<string, number[]> = {
+      ENCASTRE: [1, 2, 3, 4, 5, 6],
+      PINNED: [1, 2, 3],
+      XSYMM: [1, 5, 6],
+      YSYMM: [2, 4, 6],
+      ZSYMM: [3, 4, 5],
+      XASYMM: [2, 3, 4],
+      YASYMM: [1, 3, 5],
+      ZASYMM: [1, 2, 6],
+    };
+
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i]!.trim();
       if (!rawLine || rawLine.startsWith("**")) {
@@ -105,6 +120,12 @@ export class InpDialect implements FeaDialect {
           const matName = currentOptions["NAME"] || "DEFAULT_MATERIAL";
           activeMaterial = { name: matName };
           data.materials.set(matName, activeMaterial);
+        } else if (keyword === "SOLID SECTION" || keyword === "SHELL SECTION" || keyword === "BEAM SECTION") {
+          const elset = currentOptions["ELSET"];
+          const matName = currentOptions["MATERIAL"];
+          if (elset && matName) {
+            data.elsetMaterials!.set(elset.toUpperCase(), matName);
+          }
         }
 
         continue;
@@ -200,6 +221,20 @@ export class InpDialect implements FeaDialect {
             if (!isNaN(eid)) set.add(eid);
           }
         }
+      } else if (currentSection === "SHELL SECTION") {
+        if (tokens.length >= 1 && currentOptions["ELSET"]) {
+          const t = parseFloat(tokens[0]!);
+          if (!isNaN(t) && t > 0) {
+            data.sectionThickness!.set(currentOptions["ELSET"].toUpperCase(), t);
+          }
+        }
+      } else if (currentSection === "SOLID SECTION" || currentSection === "BEAM SECTION") {
+        if (tokens.length >= 1 && currentOptions["ELSET"]) {
+          const a = parseFloat(tokens[0]!);
+          if (!isNaN(a) && a > 0) {
+            data.beamAreas!.set(currentOptions["ELSET"].toUpperCase(), a);
+          }
+        }
       } else if (currentSection === "ELASTIC" && activeMaterial) {
         if (tokens.length >= 2) {
           activeMaterial.E = parseFloat(tokens[0]!);
@@ -219,22 +254,48 @@ export class InpDialect implements FeaDialect {
       } else if (currentSection === "BOUNDARY") {
         if (tokens.length >= 1) {
           const target = tokens[0]!;
-          const dofStart = tokens.length >= 2 ? parseInt(tokens[1]!, 10) : 1;
-          const dofEnd = tokens.length >= 3 && tokens[2] !== "" ? parseInt(tokens[2]!, 10) : dofStart;
-          const dispVal = tokens.length >= 4 && tokens[3] !== "" ? parseFloat(tokens[3]!) : 0.0;
+          const tok1Upper = tokens.length >= 2 ? tokens[1]!.toUpperCase() : "";
+          const symbolicDofs = SYMBOLIC_BOUNDARY_DOFS[tok1Upper];
+
+          let dofs: number[];
+          let dispVal = 0.0;
+
+          if (symbolicDofs) {
+            dofs = symbolicDofs;
+          } else {
+            const dofStart = tokens.length >= 2 && tokens[1] !== "" ? parseInt(tokens[1]!, 10) : 1;
+            const dofEnd =
+              tokens.length >= 3 && tokens[2] !== "" ? parseInt(tokens[2]!, 10) : tokens.length >= 2 ? dofStart : 3;
+            dispVal = tokens.length >= 4 && tokens[3] !== "" ? parseFloat(tokens[3]!) : 0.0;
+            const s = isNaN(dofStart) ? 1 : dofStart;
+            const e = isNaN(dofEnd) ? s : dofEnd;
+            dofs = [];
+            for (let d = s; d <= e; d++) {
+              dofs.push(d);
+            }
+          }
 
           const applyBoundary = (nid: number) => {
             if (!isNaN(dispVal) && Math.abs(dispVal) > 0) {
               if (!data.displacements) data.displacements = new Map();
               if (!data.displacements.has(nid)) data.displacements.set(nid, [0, 0, 0]);
+              if (!data.prescribedDisplacements) data.prescribedDisplacements = new Map();
+              if (!data.prescribedDisplacements.has(nid)) data.prescribedDisplacements.set(nid, new Map());
               const vec = data.displacements.get(nid)!;
-              const s = isNaN(dofStart) ? 1 : dofStart;
-              const e = isNaN(dofEnd) ? s : dofEnd;
-              for (let d = s; d <= e; d++) {
-                if (d >= 1 && d <= 3) vec[d - 1] = dispVal;
+              const dofMap = data.prescribedDisplacements.get(nid)!;
+              for (const d of dofs) {
+                if (d >= 1 && d <= 3) {
+                  vec[d - 1] = dispVal;
+                  dofMap.set(d, dispVal);
+                }
               }
             } else {
               data.fixedNodes.add(nid);
+              if (!data.fixedDofs!.has(nid)) data.fixedDofs!.set(nid, new Set());
+              const dofSet = data.fixedDofs!.get(nid)!;
+              for (const d of dofs) {
+                dofSet.add(d);
+              }
             }
           };
 
@@ -256,27 +317,24 @@ export class InpDialect implements FeaDialect {
           const dof = parseInt(tokens[1]!, 10);
           const mag = parseFloat(tokens[2]!);
 
-          const applyLoad = (nid: number) => {
+          const applyLoad = (nid: number, nodeMag: number) => {
             if (!data.nodalLoads.has(nid)) data.nodalLoads.set(nid, [0, 0, 0]);
             const loadVec = data.nodalLoads.get(nid)!;
-            if (dof === 1) loadVec[0] += mag;
-            else if (dof === 2) loadVec[1] += mag;
-            else if (dof === 3) loadVec[2] += mag;
+            if (dof === 1) loadVec[0] += nodeMag;
+            else if (dof === 2) loadVec[1] += nodeMag;
+            else if (dof === 3) loadVec[2] += nodeMag;
           };
 
           const numId = parseInt(target, 10);
           if (!isNaN(numId)) {
-            applyLoad(numId);
+            applyLoad(numId, mag);
           } else {
             const nset = data.nodeSets.get(target.toUpperCase());
             if (nset && nset.size > 0) {
-              const perNode = mag / nset.size;
+              const isTotal = "TOTAL" in currentOptions;
+              const nodeMag = isTotal ? mag / nset.size : mag;
               for (const nid of nset) {
-                if (!data.nodalLoads.has(nid)) data.nodalLoads.set(nid, [0, 0, 0]);
-                const vec = data.nodalLoads.get(nid)!;
-                if (dof === 1) vec[0] += perNode;
-                else if (dof === 2) vec[1] += perNode;
-                else if (dof === 3) vec[2] += perNode;
+                applyLoad(nid, nodeMag);
               }
             }
           }

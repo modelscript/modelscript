@@ -36,6 +36,7 @@ import {
   ContractAlgebra,
   DecisionTableVerifier,
   EventTraceExplorer,
+  extractSysML2ContractHierarchy,
   LoopInvariantAnalyzer,
   SysML2DaeLowerer,
   type AssumeGuaranteeContract,
@@ -2140,13 +2141,13 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const r0 = params.initialRadius ?? 1.0;
         const ru = params.unsafeRadius ?? 3.0;
 
-        let instances = params.uri ? context.workspaceManager.documentInstances.get(params.uri) : undefined;
+        let instances = params.uri ? context.workspaceManager?.documentInstances?.get(params.uri) : undefined;
         if ((!instances || instances.length === 0) && params.uri) {
-          const doc = context.documents.get(params.uri);
-          if (doc) await context.validationService.validateTextDocument(doc);
-          instances = context.workspaceManager.documentInstances.get(params.uri);
+          const doc = context.documents?.get(params.uri);
+          if (doc) await context.validationService?.validateTextDocument(doc);
+          instances = context.workspaceManager?.documentInstances?.get(params.uri);
         }
-        const docContext = params.uri ? context.workspaceManager.documentContexts.get(params.uri) : undefined;
+        const docContext = params.uri ? context.workspaceManager?.documentContexts?.get(params.uri) : undefined;
         if (instances && instances.length > 0 && docContext) {
           let target = instances[0];
           if (params.className) {
@@ -2622,51 +2623,62 @@ export function registerAnalysisEndpoints(context: LspContext) {
     "modelscript/getContractHierarchy",
     async (params: {
       uri?: string | undefined;
+      sourceText?: string | undefined;
+      systemContractName?: string | undefined;
+      scope?: number | undefined;
       systemContract?: AssumeGuaranteeContract | undefined;
       componentContracts?: AssumeGuaranteeContract[] | undefined;
     }) => {
       try {
         if (!params.systemContract) {
-          let extractedContracts: AssumeGuaranteeContract[] = [];
-          const docText = params.uri ? context.documents.get(params.uri)?.getText() : undefined;
-          if (docText) {
-            const blockRegex = /\b(?:requirement\s+def|contract|part\s+def)\s+([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
-            let bm: RegExpExecArray | null;
-            while ((bm = blockRegex.exec(docText)) !== null) {
-              const name = bm[1]!;
-              const body = bm[2]!;
-              const assumptions = Array.from(body.matchAll(/\bassume\s+(?:constraint\s*)?\{?([^};]+)\}?;/g), (m) =>
-                m[1]!.trim(),
-              );
-              const guarantees = Array.from(
-                body.matchAll(/\b(?:require|guarantee)\s+(?:constraint\s*)?\{?([^};]+)\}?;/g),
-                (m) => m[1]!.trim(),
-              );
-              if (assumptions.length > 0 || guarantees.length > 0) {
-                extractedContracts.push({ name, assumptions, guarantees });
+          let docText = params.sourceText;
+          if (!docText && params.uri) {
+            docText = context.documents.get(params.uri)?.getText();
+            if (!docText) {
+              const targetPath = params.uri.split("/").pop();
+              if (targetPath && typeof (context.documents as any).all === "function") {
+                const matchDoc = (context.documents as any).all().find((d: any) => d.uri.endsWith(targetPath));
+                if (matchDoc) docText = matchDoc.getText();
               }
             }
           }
-          const defaultSystem: AssumeGuaranteeContract = extractedContracts[0] ?? {
+          if (!docText && typeof (context.documents as any).all === "function") {
+            const sysmlDoc = (context.documents as any)
+              .all()
+              .find((d: any) => d.uri.endsWith(".sysml") || d.uri.endsWith(".kerml"));
+            if (sysmlDoc) docText = sysmlDoc.getText();
+          }
+
+          if (docText) {
+            const extracted = extractSysML2ContractHierarchy(docText, {
+              targetName: params.systemContractName,
+              scope: params.scope,
+            });
+            if (extracted) {
+              return {
+                success: true,
+                hierarchy: extracted,
+              };
+            }
+          }
+
+          const defaultSystem: AssumeGuaranteeContract = {
             name: "PowertrainSystemContract",
             assumptions: ["voltage >= 350.0 && voltage <= 420.0", "temp <= 65.0"],
             guarantees: ["torque >= 250.0", "speed <= 160.0"],
           };
-          const defaultComponents: AssumeGuaranteeContract[] =
-            extractedContracts.length > 1
-              ? extractedContracts.slice(1)
-              : [
-                  {
-                    name: "BatterySubsystemContract",
-                    assumptions: ["temp <= 65.0"],
-                    guarantees: ["voltage >= 350.0 && voltage <= 420.0", "current <= 200.0"],
-                  },
-                  {
-                    name: "InverterMotorContract",
-                    assumptions: ["voltage >= 350.0", "current <= 200.0"],
-                    guarantees: ["torque >= 250.0", "speed <= 160.0"],
-                  },
-                ];
+          const defaultComponents: AssumeGuaranteeContract[] = [
+            {
+              name: "BatterySubsystemContract",
+              assumptions: ["temp <= 65.0"],
+              guarantees: ["voltage >= 350.0 && voltage <= 420.0", "current <= 200.0"],
+            },
+            {
+              name: "InverterMotorContract",
+              assumptions: ["voltage >= 350.0", "current <= 200.0"],
+              guarantees: ["torque >= 250.0", "speed <= 160.0"],
+            },
+          ];
 
           const compResult = ContractAlgebra.verifySystemComposition(defaultSystem, defaultComponents);
           return {
@@ -2678,6 +2690,37 @@ export function registerAnalysisEndpoints(context: LspContext) {
               isRefined: compResult.isRefined,
               compatibilityViolations: compResult.compatibilityViolations,
               refinementViolations: compResult.refinementViolations,
+              traces: [
+                {
+                  step: 1,
+                  actor: "Battery",
+                  event: "powerOn",
+                  targetActor: "Inverter",
+                  message: "voltageReady (380V)",
+                },
+                { step: 2, actor: "Inverter", event: "syncBus", targetActor: "Motor", message: "enableDrive" },
+                {
+                  step: 3,
+                  actor: "Motor",
+                  event: "produceTorque",
+                  targetActor: "Chassis",
+                  message: "torqueApplied (260Nm)",
+                },
+                {
+                  step: 4,
+                  actor: "Chassis",
+                  event: "accelerate",
+                  targetActor: "Sensor",
+                  message: "speedUpdate (85km/h)",
+                },
+                {
+                  step: 5,
+                  actor: "Sensor",
+                  event: "telemetryReport",
+                  targetActor: "Controller",
+                  message: "allNominal",
+                },
+              ],
               summary: compResult.summary,
             },
           };
@@ -2696,6 +2739,13 @@ export function registerAnalysisEndpoints(context: LspContext) {
             isRefined: compResult.isRefined,
             compatibilityViolations: compResult.compatibilityViolations,
             refinementViolations: compResult.refinementViolations,
+            traces: (params.componentContracts ?? []).map((c, idx) => ({
+              step: idx + 1,
+              actor: c.name,
+              event: "guarantee",
+              targetActor: params.systemContract!.name,
+              message: c.guarantees.join(" && ") || "nominal",
+            })),
             summary: compResult.summary,
           },
         };

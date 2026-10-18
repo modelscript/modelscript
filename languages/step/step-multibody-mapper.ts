@@ -64,7 +64,7 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
   let offsetCount = 1;
 
   for (const part of model.parts.values()) {
-    const massProps = model.massProperties.get(part.id) || model.massProperties.values().next().value;
+    const massProps = model.massProperties.get(part.id);
     const bodyName = part.name.replace(/[^a-zA-Z0-9_]/g, "_") || `part_${part.id.replace("#", "")}`;
 
     let mass = massProps?.mass;
@@ -145,11 +145,14 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
     if (!hasJoint) {
       const zAxis = normalizeVec(edge.placement.axis || [0, 0, 1]);
       const refDir = normalizeVec(edge.placement.refDirection || [1, 0, 0]);
-      let xAxis = normalizeVec(crossVec(refDir, zAxis));
-      if (Math.hypot(xAxis[0], xAxis[1], xAxis[2]) < 1e-6) {
-        xAxis = [1, 0, 0];
+      let yAxis = crossVec(zAxis, refDir);
+      if (Math.hypot(yAxis[0], yAxis[1], yAxis[2]) < 1e-6) {
+        const fallbackRef: [number, number, number] = Math.abs(zAxis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+        yAxis = normalizeVec(crossVec(zAxis, fallbackRef));
+      } else {
+        yAxis = normalizeVec(yAxis);
       }
-      const yAxis = crossVec(zAxis, xAxis);
+      const xAxis = normalizeVec(crossVec(yAxis, zAxis));
 
       const rotMatrix: [[number, number, number], [number, number, number], [number, number, number]] = [
         [xAxis[0], yAxis[0], zAxis[0]],

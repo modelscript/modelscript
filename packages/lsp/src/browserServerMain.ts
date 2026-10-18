@@ -425,6 +425,9 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   let csvFacade: any = undefined;
   let scadParser: any = undefined;
   let scadFacade: any = undefined;
+  let modelscriptParser: any = undefined;
+  let modelscriptFacade: any = undefined;
+  let builtinLanguagesLogged = false;
 
   const registerBuiltinLanguages = () => {
     globalLanguageRegistry.register({
@@ -457,6 +460,33 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     });
 
     globalLanguageRegistry.register({
+      id: "sysml",
+      name: "SysML v2",
+      extensions: [".sysml", ".sysml2"],
+      get parser() {
+        return sysmlParser ?? parserService.getParser("sysml2");
+      },
+      set parser(val: any) {
+        sysmlParser = val;
+      },
+      get facade() {
+        return sysmlFacade ?? parserService.getFacade("sysml2");
+      },
+      set facade(val: any) {
+        sysmlFacade = val;
+      },
+      workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
+      get queryEngine() {
+        return workspaceManager.getQueryEngine("sysml2") ?? undefined;
+      },
+      set queryEngine(val) {
+        workspaceManager.setQueryEngine("sysml2", val ?? null);
+      },
+      createQueryEngine: (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree),
+      languageDef: sysml2LangFallback,
+    });
+
+    globalLanguageRegistry.register({
       id: "sysml2",
       name: "SysML v2",
       extensions: [".sysml", ".sysml2"],
@@ -480,32 +510,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
         workspaceManager.setQueryEngine("sysml2", val ?? null);
       },
       createQueryEngine: (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree),
-      languageDef: sysml2LangFallback,
-    });
-
-    globalLanguageRegistry.register({
-      id: "sysml",
-      name: "SysML v2",
-      extensions: [".sysml", ".sysml2"],
-      get parser() {
-        return sysmlParser ?? parserService.getParser("sysml2");
-      },
-      set parser(val: any) {
-        sysmlParser = val;
-      },
-      get facade() {
-        return sysmlFacade ?? parserService.getFacade("sysml2");
-      },
-      set facade(val: any) {
-        sysmlFacade = val;
-      },
-      workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
-      get queryEngine() {
-        return workspaceManager.getQueryEngine("sysml2") ?? undefined;
-      },
-      set queryEngine(val) {
-        workspaceManager.setQueryEngine("sysml2", val ?? null);
-      },
       languageDef: sysml2LangFallback,
     });
 
@@ -608,17 +612,16 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       name: "ModelScript",
       extensions: [".modelscript", ".msx"],
       get parser() {
-        return parserService.getParser("modelscript");
+        return modelscriptParser ?? parserService.getParser("modelscript");
       },
       set parser(val: any) {
-        if (val) parserService.registerParser("modelscript", val, parserService.getFacade("modelscript"));
+        modelscriptParser = val;
       },
       get facade() {
-        return parserService.getFacade("modelscript");
+        return modelscriptFacade ?? parserService.getFacade("modelscript");
       },
       set facade(val: any) {
-        const p = parserService.getParser("modelscript");
-        if (p) parserService.registerParser("modelscript", p, val);
+        modelscriptFacade = val;
       },
       workspaceIndex: workspaceManager.getWorkspaceIndex("modelscript"),
       get queryEngine() {
@@ -702,7 +705,10 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       },
       disposables: [],
     });
-    connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
+    if (!builtinLanguagesLogged) {
+      builtinLanguagesLogged = true;
+      connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");
+    }
   };
 
   if (extensionUri) {
@@ -1008,11 +1014,16 @@ documents.onDidChangeContent((change) => {
           const prevIndexedText = validationService.lastIndexedText.get(effectiveUri);
           if (prevIndexedText !== cached.text) {
             validationService.lastIndexedText.set(effectiveUri, cached.text);
-            let actualEditRanges: { oldStartByte: number; oldEndByte: number }[] | undefined;
+            let actualEditRanges: { startOffset: number; endOffset: number }[] | undefined;
             let totalDelta: number | undefined;
             if (prevIndexedText !== undefined) {
               const edit = computeTreeEdit(prevIndexedText, cached.text);
-              actualEditRanges = [{ oldStartByte: edit.startIndex, oldEndByte: edit.oldEndIndex }];
+              actualEditRanges = [
+                {
+                  startOffset: edit.startIndex,
+                  endOffset: Math.max(edit.oldEndIndex, edit.newEndIndex),
+                },
+              ];
               totalDelta = edit.newEndIndex - edit.oldEndIndex;
             }
             if (wsIndex.has(effectiveUri)) {

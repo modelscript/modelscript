@@ -232,4 +232,70 @@ test("Topological Solder Dot Junction Engine", async (t) => {
     assert.strictEqual((node.attrs as any)?.body?.fill, "#ff0000");
     assert.strictEqual((node.attrs as any)?.body?.pointerEvents, "none");
   });
+
+  await t.test(
+    "should not create false solder dots when a bend corner of one net touches a wire of an unrelated net",
+    () => {
+      // Top net: L.n -> R.p passing vertically down x = 60 from y = -40 to y = 30
+      // Bottom net: R.n -> Vb.n with a bend corner at (60, 30)
+      // Because they do not share any connected endpoint keys, they belong to separate nets.
+      const edges = [
+        {
+          id: "top_net",
+          sourceKey: "L.n",
+          targetKey: "R.p",
+          points: [
+            { x: 10, y: -40 },
+            { x: 60, y: -40 },
+            { x: 60, y: 40 },
+          ],
+        },
+        {
+          id: "bottom_net",
+          sourceKey: "R.n",
+          targetKey: "Vb.n",
+          points: [
+            { x: 60, y: 60 },
+            { x: 60, y: 30 },
+            { x: -70, y: 30 },
+          ],
+        },
+      ];
+
+      const dots = computeSolderDots(edges);
+      assert.strictEqual(dots.length, 0, "Unrelated nets touching at a bend corner must not spawn a solder dot");
+    },
+  );
+
+  await t.test("should create solder dot when two edges in the same electrical net meet at a T-junction", () => {
+    const edges = [
+      {
+        id: "c_to_vb",
+        sourceKey: "C.n",
+        targetKey: "Vb.n",
+        points: [
+          { x: 20, y: 10 },
+          { x: 20, y: 30 },
+          { x: -70, y: 30 },
+          { x: -70, y: 10 },
+        ],
+      },
+      {
+        id: "r_to_vb",
+        sourceKey: "R.n",
+        targetKey: "Vb.n",
+        points: [
+          { x: 60, y: 10 },
+          { x: 60, y: 30 },
+          { x: -70, y: 30 },
+          { x: -70, y: 10 },
+        ],
+      },
+    ];
+
+    const dots = computeSolderDots(edges, { portPoints: [{ x: -70, y: 10 }] });
+    assert.strictEqual(dots.length, 1);
+    assert.strictEqual(dots[0].x, 20);
+    assert.strictEqual(dots[0].y, 30);
+  });
 });

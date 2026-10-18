@@ -108,7 +108,7 @@ export function createPolygon(vertices: CsgVertex[], tagIndex: number, plane?: C
   if (vertices.length < 3) return null;
   if (plane) {
     return {
-      vertices,
+      vertices: vertices.slice(),
       plane: {
         normal: [plane.normal[0], plane.normal[1], plane.normal[2]],
         w: plane.w,
@@ -116,19 +116,20 @@ export function createPolygon(vertices: CsgVertex[], tagIndex: number, plane?: C
       tagIndex,
     };
   }
-  let computedPlane = planeFromPoints(vertices[0]!.pos, vertices[1]!.pos, vertices[2]!.pos);
+  const verts = vertices.slice();
+  let computedPlane = planeFromPoints(verts[0]!.pos, verts[1]!.pos, verts[2]!.pos);
   if (!computedPlane) return null;
 
   // Ensure geometric winding and plane normal match the vertex outward normal if provided
-  const vn = vertices[0]!.normal;
+  const vn = verts[0]!.normal;
   const dot = computedPlane.normal[0] * vn[0] + computedPlane.normal[1] * vn[1] + computedPlane.normal[2] * vn[2];
   if (dot < 0) {
-    vertices.reverse();
+    verts.reverse();
     computedPlane = flipPlane(computedPlane);
   }
 
   return {
-    vertices,
+    vertices: verts,
     plane: computedPlane,
     tagIndex,
   };
@@ -195,7 +196,7 @@ function ensureBspWasmScratch(wasm: any) {
  * Uses the WebAssembly `cad_bsp_split_polygon` kernel for polygons with `<= 32` vertices
  * and falls back to an exact Sutherland-Hodgman edge-clipping loop in TypeScript.
  */
-function splitPolygon(
+export function splitPolygon(
   plane: CsgPlane,
   polygon: CsgPolygon,
   coplanarFront: CsgPolygon[],
@@ -254,38 +255,52 @@ function splitPolygon(
       return;
     }
     if (polyType === SPANNING) {
-      // Reconstruct clipped front and back polygons from the WASM output buffers
-      const counts = new Int32Array(wasm.memory.buffer, sc.outCountsPtr, 2);
-      const fCount = counts[0]!;
-      const bCount = counts[1]!;
       const pNorm = polygon.plane.normal;
-      if (fCount >= 3) {
-        const fView = new Float64Array(wasm.memory.buffer, sc.outFrontPtr, fCount * 3);
-        const fVerts: CsgVertex[] = new Array(fCount);
-        for (let i = 0; i < fCount; i++) {
-          const off = i * 3;
-          fVerts[i] = {
-            pos: [fView[off]!, fView[off + 1]!, fView[off + 2]!],
-            normal: [pNorm[0], pNorm[1], pNorm[2]],
-          };
+      let isFlatShaded = true;
+      for (let i = 0; i < nVerts; i++) {
+        const vn = polygon.vertices[i]!.normal;
+        if (
+          Math.abs(vn[0] - pNorm[0]) > 1e-5 ||
+          Math.abs(vn[1] - pNorm[1]) > 1e-5 ||
+          Math.abs(vn[2] - pNorm[2]) > 1e-5
+        ) {
+          isFlatShaded = false;
+          break;
         }
-        const fp = createPolygon(fVerts, polygon.tagIndex, polygon.plane);
-        if (fp) front.push(fp);
       }
-      if (bCount >= 3) {
-        const bView = new Float64Array(wasm.memory.buffer, sc.outBackPtr, bCount * 3);
-        const bVerts: CsgVertex[] = new Array(bCount);
-        for (let i = 0; i < bCount; i++) {
-          const off = i * 3;
-          bVerts[i] = {
-            pos: [bView[off]!, bView[off + 1]!, bView[off + 2]!],
-            normal: [pNorm[0], pNorm[1], pNorm[2]],
-          };
+      if (isFlatShaded) {
+        // Reconstruct clipped front and back polygons from the WASM output buffers
+        const counts = new Int32Array(wasm.memory.buffer, sc.outCountsPtr, 2);
+        const fCount = counts[0]!;
+        const bCount = counts[1]!;
+        if (fCount >= 3) {
+          const fView = new Float64Array(wasm.memory.buffer, sc.outFrontPtr, fCount * 3);
+          const fVerts: CsgVertex[] = new Array(fCount);
+          for (let i = 0; i < fCount; i++) {
+            const off = i * 3;
+            fVerts[i] = {
+              pos: [fView[off]!, fView[off + 1]!, fView[off + 2]!],
+              normal: [pNorm[0], pNorm[1], pNorm[2]],
+            };
+          }
+          const fp = createPolygon(fVerts, polygon.tagIndex, polygon.plane);
+          if (fp) front.push(fp);
         }
-        const bp = createPolygon(bVerts, polygon.tagIndex, polygon.plane);
-        if (bp) back.push(bp);
+        if (bCount >= 3) {
+          const bView = new Float64Array(wasm.memory.buffer, sc.outBackPtr, bCount * 3);
+          const bVerts: CsgVertex[] = new Array(bCount);
+          for (let i = 0; i < bCount; i++) {
+            const off = i * 3;
+            bVerts[i] = {
+              pos: [bView[off]!, bView[off + 1]!, bView[off + 2]!],
+              normal: [pNorm[0], pNorm[1], pNorm[2]],
+            };
+          }
+          const bp = createPolygon(bVerts, polygon.tagIndex, polygon.plane);
+          if (bp) back.push(bp);
+        }
+        return;
       }
-      return;
     }
   }
 

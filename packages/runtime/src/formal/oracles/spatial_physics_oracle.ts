@@ -63,6 +63,15 @@ export interface SolidGeometrySpec {
     | undefined;
 }
 
+export interface ConnectionLengthSpec {
+  connectionName: string;
+  sourcePort: string;
+  targetPort: string;
+  maxLengthMeters: number;
+  minLengthMeters?: number | undefined;
+  requireRegisteredPorts?: boolean | undefined;
+}
+
 export class SpatialPhysicsOracle implements TheoryOracle {
   public readonly name = "SpatialPhysicsOracle";
   public readonly domain = "spatial_physics" as const;
@@ -71,6 +80,8 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   private deflectionSpecs = new Map<string, DeflectionMeasurementSpec>();
   private fsiSpecs = new Map<string, FsiEquilibriumSpec>();
   private solidSpecs = new Map<string, SolidGeometrySpec>();
+  private portPositions = new Map<string, { x: number; y: number; z: number }>();
+  private connectionLengthSpecs = new Map<string, ConnectionLengthSpec>();
   private droneProps?: DroneSlicingProperties | undefined;
   private externalBounds = new Map<string, [number, number]>();
 
@@ -82,6 +93,9 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     deflectionSpecs: Map<string, DeflectionMeasurementSpec>;
     fsiSpecs: Map<string, FsiEquilibriumSpec>;
     solidSpecs: Map<string, SolidGeometrySpec>;
+    portPositions: Map<string, { x: number; y: number; z: number }>;
+    connectionLengthSpecs: Map<string, ConnectionLengthSpec>;
+    droneProps?: DroneSlicingProperties | undefined;
     externalBounds: Map<string, [number, number]>;
     externalBoundJustifications: Map<string, Set<number>>;
     assertedLitIds: number[];
@@ -102,11 +116,31 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     });
   }
 
+  public assertPortPosition(portName: string, pos: { x: number; y: number; z: number }): void {
+    this.assertLiteral({
+      id: this.nextLiteralId++,
+      predicate: "portPosition",
+      args: [portName, pos],
+      domain: this.domain,
+    });
+  }
+
+  public assertConnectionLengthBound(spec: ConnectionLengthSpec): void {
+    this.assertLiteral({
+      id: this.nextLiteralId++,
+      predicate: "connectionLengthBound",
+      args: [spec],
+      domain: this.domain,
+    });
+  }
+
   public reset(): void {
     this.stressSpecs.clear();
     this.deflectionSpecs.clear();
     this.fsiSpecs.clear();
     this.solidSpecs.clear();
+    this.portPositions.clear();
+    this.connectionLengthSpecs.clear();
     this.droneProps = undefined;
     this.externalBounds.clear();
     this.externalBoundJustifications.clear();
@@ -124,6 +158,9 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       deflectionSpecs: new Map(this.deflectionSpecs),
       fsiSpecs: new Map(this.fsiSpecs),
       solidSpecs: new Map(this.solidSpecs),
+      portPositions: new Map(this.portPositions),
+      connectionLengthSpecs: new Map(this.connectionLengthSpecs),
+      droneProps: this.droneProps ? { ...this.droneProps } : undefined,
       externalBounds: new Map(this.externalBounds),
       externalBoundJustifications: extJustSnap,
       assertedLitIds: [],
@@ -137,6 +174,9 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     this.deflectionSpecs = top.deflectionSpecs;
     this.fsiSpecs = top.fsiSpecs;
     this.solidSpecs = top.solidSpecs;
+    this.portPositions = top.portPositions;
+    this.connectionLengthSpecs = top.connectionLengthSpecs;
+    this.droneProps = top.droneProps;
     this.externalBounds = top.externalBounds;
     this.externalBoundJustifications = top.externalBoundJustifications;
     for (const litId of top.assertedLitIds) {
@@ -278,6 +318,44 @@ export class SpatialPhysicsOracle implements TheoryOracle {
             isWatertight: Boolean(isWatertight),
             volumeM3: Number(volumeM3),
             surfaceAreaM2: surfaceAreaM2 !== undefined ? Number(surfaceAreaM2) : undefined,
+          });
+        }
+        break;
+      }
+
+      case "portPosition":
+      case "portCoordinate": {
+        const [portName, pos] = args as [string, { x: number; y: number; z: number } | [number, number, number]];
+        if (typeof portName === "string" && pos) {
+          if (Array.isArray(pos) && pos.length >= 3) {
+            this.portPositions.set(portName, { x: Number(pos[0]), y: Number(pos[1]), z: Number(pos[2]) });
+          } else if (typeof pos === "object" && "x" in pos && "y" in pos && "z" in pos) {
+            this.portPositions.set(portName, { x: Number(pos.x), y: Number(pos.y), z: Number(pos.z) });
+          }
+        }
+        break;
+      }
+
+      case "connectionLengthBound":
+      case "wireLengthBound":
+      case "pipeLengthBound": {
+        if (args[0] && typeof args[0] === "object" && "connectionName" in args[0]) {
+          const spec = args[0] as ConnectionLengthSpec;
+          this.connectionLengthSpecs.set(spec.connectionName, { ...spec });
+        } else if (args.length >= 4) {
+          const [connectionName, sourcePort, targetPort, maxLengthMeters, minLengthMeters] = args as [
+            string,
+            string,
+            string,
+            number,
+            number?,
+          ];
+          this.connectionLengthSpecs.set(connectionName, {
+            connectionName,
+            sourcePort,
+            targetPort,
+            maxLengthMeters: Number(maxLengthMeters),
+            minLengthMeters: minLengthMeters !== undefined ? Number(minLengthMeters) : undefined,
           });
         }
         break;
@@ -507,6 +585,54 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       }
     }
 
+    // 5. Physical Wire/Pipe Connection Length Bounds
+    for (const [connName, spec] of this.connectionLengthSpecs.entries()) {
+      const posA = this.portPositions.get(spec.sourcePort);
+      const posB = this.portPositions.get(spec.targetPort);
+      if (!posA || !posB) {
+        if (spec.requireRegisteredPorts) {
+          const missing = !posA ? spec.sourcePort : spec.targetPort;
+          return {
+            isSat: false,
+            conflict: {
+              literals: this.findLiteralsReferencing(connName),
+              explanation: `Unregistered Port Position Conflict: Connection '${connName}' references port '${missing}' which has no registered 3D spatial coordinates.`,
+              culpritEntities: [connName, missing],
+              theoryName: this.name,
+            },
+          };
+        }
+        // Skip unresolved ports rather than silently defaulting to { x: 0, y: 0, z: 0 }
+        continue;
+      }
+      const dx = posB.x - posA.x;
+      const dy = posB.y - posA.y;
+      const dz = posB.z - posA.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (dist > spec.maxLengthMeters) {
+        return {
+          isSat: false,
+          conflict: {
+            literals: this.findLiteralsReferencing(connName),
+            explanation: `Physical Connection Length Exceeded: Connection '${connName}' between '${spec.sourcePort}' and '${spec.targetPort}' requires Euclidean span ${dist.toFixed(3)} m, exceeding maximum allowable length ${spec.maxLengthMeters.toFixed(3)} m.`,
+            culpritEntities: [connName, spec.sourcePort, spec.targetPort],
+            theoryName: this.name,
+          },
+        };
+      }
+      if (spec.minLengthMeters !== undefined && dist < spec.minLengthMeters) {
+        return {
+          isSat: false,
+          conflict: {
+            literals: this.findLiteralsReferencing(connName),
+            explanation: `Physical Connection Minimum Bend/Span Violation: Connection '${connName}' between '${spec.sourcePort}' and '${spec.targetPort}' has span ${dist.toFixed(3)} m, below minimum allowable length ${spec.minLengthMeters.toFixed(3)} m.`,
+            culpritEntities: [connName, spec.sourcePort, spec.targetPort],
+            theoryName: this.name,
+          },
+        };
+      }
+    }
+
     return { isSat: true };
   }
 
@@ -702,7 +828,14 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       if (l.args.includes(entity)) return true;
       for (const a of l.args) {
         if (a && typeof a === "object") {
-          if (a.partName === entity || a.interfaceName === entity || a.solidName === entity) {
+          if (
+            a.partName === entity ||
+            a.interfaceName === entity ||
+            a.solidName === entity ||
+            a.connectionName === entity ||
+            a.sourcePort === entity ||
+            a.targetPort === entity
+          ) {
             return true;
           }
         }

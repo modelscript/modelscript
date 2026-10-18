@@ -14,6 +14,7 @@ import {
   computeAABBClosestPoints,
   computeAABBDistance,
   computeSolidAABB,
+  resolveClearanceRule,
   type AABB,
   type ClearanceConstraint,
 } from "./clearance.js";
@@ -253,6 +254,8 @@ export class DynamicClearanceVerifier {
         };
 
         let currentSolid = p.originalSolid;
+        let transDeltaMin: [number, number, number] = [0, 0, 0];
+        let transDeltaMax: [number, number, number] = [0, 0, 0];
 
         // Apply translation enclosure (Minkowski sum on AABB)
         if (binding.translation) {
@@ -269,13 +272,15 @@ export class DynamicClearanceVerifier {
           const nx = resolveNominal(step.nominal, step.states, binding.translation.x);
           const ny = resolveNominal(step.nominal, step.states, binding.translation.y);
           const nz = resolveNominal(step.nominal, step.states, binding.translation.z);
+          transDeltaMin = [dx.lo - nx, dy.lo - ny, dz.lo - nz];
+          transDeltaMax = [dx.hi - nx, dy.hi - ny, dz.hi - nz];
           currentSolid = translate(currentSolid, [nx, ny, nz]);
         }
 
         // Apply rotation enclosure if present
         if (binding.rotation) {
           const dAngle = resolveInterval(step.states, binding.rotation.angle);
-          const factor = binding.rotation.inDegrees ? Math.PI / 180 : 1.0;
+          const factor = binding.rotation.inDegrees ? 1.0 : 180 / Math.PI;
           const thetaLo = dAngle.lo * factor;
           const thetaHi = dAngle.hi * factor;
 
@@ -287,7 +292,14 @@ export class DynamicClearanceVerifier {
             rMaxY = -Infinity,
             rMaxZ = -Infinity;
 
+          const minDeg = Math.min(thetaLo, thetaHi);
+          const maxDeg = Math.max(thetaLo, thetaHi);
           const testAngles = [thetaLo, thetaHi, (thetaLo + thetaHi) / 2];
+          const firstQuad = Math.ceil(minDeg / 90) * 90;
+          for (let q = firstQuad; q <= maxDeg; q += 90) {
+            testAngles.push(q);
+          }
+
           for (const angle of testAngles) {
             const rotSolid = rotate(currentSolid, binding.rotation.axis, angle);
             const rotBox = computeSolidAABB(rotSolid);
@@ -300,8 +312,8 @@ export class DynamicClearanceVerifier {
           }
 
           currentBox = {
-            min: [rMinX, rMinY, rMinZ],
-            max: [rMaxX, rMaxY, rMaxZ],
+            min: [rMinX + transDeltaMin[0], rMinY + transDeltaMin[1], rMinZ + transDeltaMin[2]],
+            max: [rMaxX + transDeltaMax[0], rMaxY + transDeltaMax[1], rMaxZ + transDeltaMax[2]],
           };
 
           const nAngle = resolveNominal(step.nominal, step.states, binding.rotation.angle) * factor;
@@ -425,13 +437,7 @@ export class DynamicClearanceVerifier {
             stepClosestPoints = computeAABBClosestPoints(pA.box, pB.box);
           }
 
-          let requiredClearance = defaultMinClearance;
-          const rule = specificRules.find(
-            (r) =>
-              (!r.partA || r.partA === pA.name || r.partA === pB.name) &&
-              (!r.partB || r.partB === pA.name || r.partB === pB.name),
-          );
-          if (rule) requiredClearance = rule.minClearance;
+          const requiredClearance = resolveClearanceRule(pA.name, pB.name, defaultMinClearance, specificRules);
 
           const margin = distance - requiredClearance;
           if (margin < globalWorstMargin) {
@@ -477,7 +483,10 @@ export class DynamicClearanceVerifier {
     let counterexampleAssembly: Assembly | undefined = undefined;
     if (violations.length > 0 && worstStepEnclosure) {
       const cexParts: PartEntry[] = baseParts.map((p) => {
-        const binding = bindingMap.get(p.name);
+        const binding =
+          bindingMap.get(p.name) ||
+          bindingMap.get(p.fullName) ||
+          bindings.find((b) => p.fullName.endsWith(`_${b.partName}`));
         if (!binding) return part(p.originalSolid, { material: p.material, color: p.color });
 
         let solid = p.originalSolid;
@@ -488,7 +497,7 @@ export class DynamicClearanceVerifier {
           solid = translate(solid, [nx, ny, nz]);
         }
         if (binding.rotation) {
-          const factor = binding.rotation.inDegrees ? Math.PI / 180 : 1.0;
+          const factor = binding.rotation.inDegrees ? 1.0 : 180 / Math.PI;
           const nAngle =
             resolveNominal(worstStepEnclosure!.nominal, worstStepEnclosure!.states, binding.rotation.angle) * factor;
           solid = rotate(solid, binding.rotation.axis, nAngle);

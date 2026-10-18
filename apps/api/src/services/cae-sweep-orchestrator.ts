@@ -410,6 +410,16 @@ export class CaeSweepOrchestrator {
           if (meshPayload.fields.displacements) {
             fields["displacements"] = meshPayload.fields.displacements;
           }
+          if (meshPayload.fields.pressure && meshPayload.fields.pressure.length > 0) {
+            fields["pressure"] = meshPayload.fields.pressure;
+          } else if (state.solver === "su2" && meshPayload.fields.vonMisesStress?.length) {
+            fields["pressure"] = meshPayload.fields.vonMisesStress;
+          }
+          if (meshPayload.fields.velocity && meshPayload.fields.velocity.length > 0) {
+            fields["velocity"] = meshPayload.fields.velocity;
+          } else if (state.solver === "su2" && meshPayload.fields.displacements?.length) {
+            fields["velocity"] = meshPayload.fields.displacements;
+          }
         }
 
         results.push({

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { FeaDialect } from "../types.js";
+import type { FeaDialect, FeaModelData } from "../types.js";
 import { BdfDialect } from "./bdf.js";
 import { InpDialect } from "./inp.js";
 
@@ -31,6 +31,10 @@ export function getFeaDialect(idOrExt: string): FeaDialect {
   }
   // Default to INP dialect
   return defaultInp;
+}
+
+export function parseFeaDeck(text: string, idOrExt = "inp"): FeaModelData {
+  return getFeaDialect(idOrExt).parse(text);
 }
 
 export * from "./bdf.js";

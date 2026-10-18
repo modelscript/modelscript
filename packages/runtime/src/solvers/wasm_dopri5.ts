@@ -295,6 +295,10 @@ export function dopri5(
 
       if (eventFunctions && prevEventValues && eventCallback) {
         const newEventValues = eventFunctions.map((g) => g(tNew, yNew));
+        let bestEi = -1;
+        let bestTEvent = Infinity;
+        let bestCurr = 0;
+
         for (let ei = 0; ei < eventFunctions.length; ei++) {
           const prev = prevEventValues[ei] ?? 0;
           const curr = newEventValues[ei] ?? 0;
@@ -312,59 +316,76 @@ export function dopri5(
           }
 
           if (signChange) {
-            eventOccurred = true;
             const eventFn = eventFunctions[ei];
             if (!eventFn) continue;
-
-            const tEvent = bisectEvent(eventFn, t, tNew, y, yNew, k, h, n, prev);
-            const thetaEvent = (tEvent - t) / h;
-            const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
-
-            if (equidistant) {
-              while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
-                const tOut = outputTimes[outputIdx] ?? tEvent;
-                if (Math.abs(tOut - t) < 1e-14) {
-                  result.times.push(t);
-                  result.states.push([...y]);
-                } else {
-                  const theta = (tOut - t) / h;
-                  const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
-                  result.times.push(tOut);
-                  result.states.push(yInterp);
-                }
-                outputIdx++;
-              }
-              if (outputIdx < outputTimes.length && Math.abs((outputTimes[outputIdx] ?? tEnd) - tEvent) < 1e-14) {
-                outputIdx++;
-              }
+            const tCand = bisectEvent(eventFn, t, tNew, y, yNew, k, h, n, prev);
+            if (tCand < bestTEvent) {
+              bestTEvent = tCand;
+              bestEi = ei;
+              bestCurr = curr;
             }
+          }
+        }
 
+        if (bestEi >= 0) {
+          eventOccurred = true;
+          const ei = bestEi;
+          const tEvent = bestTEvent;
+          const curr = bestCurr;
+          const thetaEvent = (tEvent - t) / h;
+          const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
+          const hasOutputGrid = equidistant && outputTimes.length > 0;
+
+          if (hasOutputGrid) {
+            while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
+              const tOut = outputTimes[outputIdx] ?? tEvent;
+              if (Math.abs(tOut - t) < 1e-14) {
+                result.times.push(t);
+                result.states.push([...y]);
+              } else {
+                const theta = (tOut - t) / h;
+                const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+                result.times.push(tOut);
+                result.states.push(yInterp);
+              }
+              outputIdx++;
+            }
+          } else {
             result.times.push(tEvent);
             result.states.push([...yEvent]);
+          }
 
-            const dir = curr < 0 ? -1 : 1;
-            const yAfter = eventCallback(tEvent, yEvent, ei, dir);
+          const dir = curr < 0 ? -1 : 1;
+          const yAfter = eventCallback(tEvent, yEvent, ei, dir);
 
-            if (Math.abs(tEvent - lastEventTime) < 1e-6) {
-              consecutiveEvents++;
-            } else {
-              consecutiveEvents = 1;
-              lastEventTime = tEvent;
+          if (hasOutputGrid) {
+            if (outputIdx < outputTimes.length && Math.abs((outputTimes[outputIdx] ?? tEnd) - tEvent) <= 1e-14) {
+              result.times.push(outputTimes[outputIdx]!);
+              result.states.push([...yAfter]);
+              outputIdx++;
             }
+          }
 
-            if (consecutiveEvents >= 10) {
-              consecutiveEvents = 0;
-              t = tEvent + Math.max(1e-6, minStep);
-              y = [...yAfter];
-              k1 = f(t, y);
-              result.fEvals++;
-              k[0] = k1;
-              prevEventValues = computeEventValuesWithProbe(t, y);
-              break;
+          if (Math.abs(tEvent - lastEventTime) < 1e-6) {
+            consecutiveEvents++;
+          } else {
+            consecutiveEvents = 1;
+            lastEventTime = tEvent;
+          }
+
+          if (consecutiveEvents >= 10) {
+            consecutiveEvents = 0;
+            t = tEvent + Math.max(1e-6, minStep);
+            y = [...yAfter];
+            k1 = f(t, y);
+            result.fEvals++;
+            k[0] = k1;
+            prevEventValues = computeEventValuesWithProbe(t, y);
+          } else {
+            if (!hasOutputGrid) {
+              result.times.push(tEvent);
+              result.states.push([...yAfter]);
             }
-
-            result.times.push(tEvent);
-            result.states.push([...yAfter]);
 
             t = tEvent;
             y = yAfter;
@@ -378,7 +399,6 @@ export function dopri5(
             const t1Out = outputTimes[1] ?? 0;
             const dtOut = outputTimes.length > 1 ? t1Out - t0Out : maxStep;
             h = Math.max(minStep, Math.min(Math.max(h, dtOut * 0.1), maxStep));
-            break;
           }
         }
       }
@@ -580,6 +600,10 @@ export async function dopri5Async(
         const newEventValues = [];
         for (const g of eventFunctions) newEventValues.push(await g(tNew, yNew));
 
+        let bestEi = -1;
+        let bestTEvent = Infinity;
+        let bestCurr = 0;
+
         for (let ei = 0; ei < eventFunctions.length; ei++) {
           const prev = prevEventValues[ei] ?? 0;
           const curr = newEventValues[ei] ?? 0;
@@ -592,58 +616,76 @@ export async function dopri5Async(
           }
 
           if (signChange) {
-            eventOccurred = true;
             const eventFn = eventFunctions[ei];
             if (!eventFn) continue;
 
-            const tEvent = await bisectEventAsync(eventFn, t, tNew, y, yNew, k, h, n, prev);
-            const thetaEvent = (tEvent - t) / h;
-            const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
-
-            if (equidistant) {
-              while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
-                const tOut = outputTimes[outputIdx] ?? tEvent;
-                if (Math.abs(tOut - t) < 1e-14) {
-                  result.times.push(t);
-                  result.states.push([...y]);
-                } else {
-                  const theta = (tOut - t) / h;
-                  const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
-                  result.times.push(tOut);
-                  result.states.push(yInterp);
-                }
-                outputIdx++;
-              }
-              if (outputIdx < outputTimes.length && Math.abs((outputTimes[outputIdx] ?? tEnd) - tEvent) < 1e-14) {
-                outputIdx++;
-              }
+            const tCand = await bisectEventAsync(eventFn, t, tNew, y, yNew, k, h, n, prev);
+            if (tCand < bestTEvent) {
+              bestTEvent = tCand;
+              bestEi = ei;
+              bestCurr = curr;
             }
+          }
+        }
 
+        if (bestEi >= 0) {
+          eventOccurred = true;
+          const ei = bestEi;
+          const tEvent = bestTEvent;
+          const curr = bestCurr;
+          const thetaEvent = (tEvent - t) / h;
+          const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
+          const hasOutputGrid = equidistant && outputTimes.length > 0;
+
+          if (hasOutputGrid) {
+            while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
+              const tOut = outputTimes[outputIdx] ?? tEvent;
+              if (Math.abs(tOut - t) < 1e-14) {
+                result.times.push(t);
+                result.states.push([...y]);
+              } else {
+                const theta = (tOut - t) / h;
+                const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+                result.times.push(tOut);
+                result.states.push(yInterp);
+              }
+              outputIdx++;
+            }
+          } else {
             result.times.push(tEvent);
             result.states.push([...yEvent]);
+          }
 
-            const dir = curr < 0 ? -1 : 1;
-            const yAfter = eventCallback(tEvent, yEvent, ei, dir);
+          const dir = curr < 0 ? -1 : 1;
+          const yAfter = eventCallback(tEvent, yEvent, ei, dir);
 
-            if (Math.abs(tEvent - lastEventTime) < 1e-6) consecutiveEvents++;
-            else {
-              consecutiveEvents = 1;
-              lastEventTime = tEvent;
+          if (hasOutputGrid) {
+            if (outputIdx < outputTimes.length && Math.abs((outputTimes[outputIdx] ?? tEnd) - tEvent) <= 1e-14) {
+              result.times.push(outputTimes[outputIdx]!);
+              result.states.push([...yAfter]);
+              outputIdx++;
             }
+          }
 
-            if (consecutiveEvents >= 10) {
-              consecutiveEvents = 0;
-              t = tEvent + Math.max(1e-6, minStep);
-              y = [...yAfter];
-              k1 = await f(t, y);
-              result.fEvals++;
-              k[0] = k1;
-              prevEventValues = await computeEventValuesWithProbeAsync(t, y);
-              break;
+          if (Math.abs(tEvent - lastEventTime) < 1e-6) consecutiveEvents++;
+          else {
+            consecutiveEvents = 1;
+            lastEventTime = tEvent;
+          }
+
+          if (consecutiveEvents >= 10) {
+            consecutiveEvents = 0;
+            t = tEvent + Math.max(1e-6, minStep);
+            y = [...yAfter];
+            k1 = await f(t, y);
+            result.fEvals++;
+            k[0] = k1;
+            prevEventValues = await computeEventValuesWithProbeAsync(t, y);
+          } else {
+            if (!hasOutputGrid) {
+              result.times.push(tEvent);
+              result.states.push([...yAfter]);
             }
-
-            result.times.push(tEvent);
-            result.states.push([...yAfter]);
 
             t = tEvent;
             y = yAfter;
@@ -656,7 +698,6 @@ export async function dopri5Async(
             const t1Out = outputTimes[1] ?? 0;
             const dtOut = outputTimes.length > 1 ? t1Out - t0Out : maxStep;
             h = Math.max(minStep, Math.min(Math.max(h, dtOut * 0.1), maxStep));
-            break;
           }
         }
       }

@@ -79,6 +79,12 @@ export interface BdfOptions {
    * The sparse result is converted to dense for the LU factorization.
    */
   sparseJacobian?: ((t: number, y: number[]) => SparseJacobian) | undefined;
+  /** Optional event crossing directions per event (-1, +1, 0). */
+  eventDirections?: number[] | undefined;
+  /** Optional sorted array of desired output times. */
+  outputTimes?: number[] | undefined;
+  /** If true, output values only at `outputTimes`. If false, also output internal/event steps (default: true). */
+  equidistantOutput?: boolean | undefined;
 }
 
 /** Result of a BDF integration. */
@@ -164,6 +170,7 @@ export class WasmBdf {
  * @param options         Solver options
  * @param eventFunctions  Optional event functions for zero-crossing detection
  * @param eventCallback   Optional callback when an event fires
+ * @param eventDirections Optional crossing directions per event (-1, +1, 0)
  * @returns Solver result with output states and statistics
  */
 export function bdf(
@@ -171,10 +178,11 @@ export function bdf(
   t0: number,
   y0: number[],
   tEnd: number,
-  outputTimes: number[],
+  outputTimes: number[] = [],
   options: BdfOptions = {},
   eventFunctions?: ((t: number, y: number[]) => number)[],
   eventCallback?: (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[],
+  eventDirections?: number[],
 ): BdfResult {
   const atol = options.atol ?? 1e-6;
   const rtol = options.rtol ?? 1e-6;
@@ -182,6 +190,11 @@ export function bdf(
   const maxSteps = options.maxSteps ?? 100000;
   const maxOrder = Math.min(Math.max(options.maxOrder ?? 5, 1), 5);
   const n = y0.length;
+
+  const effectiveOutputTimes = options.outputTimes ?? outputTimes;
+  const equidistant = options.equidistantOutput !== false;
+  const hasOutputGrid = equidistant && effectiveOutputTimes.length > 0;
+  const effEventDirections = eventDirections ?? options.eventDirections;
 
   const result: BdfResult = {
     times: [],
@@ -195,10 +208,15 @@ export function bdf(
 
   // ── Output setup ──
   let outputIdx = 0;
-  while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? t0) <= t0 + 1e-14) {
+  if (hasOutputGrid) {
+    while (outputIdx < effectiveOutputTimes.length && (effectiveOutputTimes[outputIdx] ?? t0) <= t0 + 1e-14) {
+      result.times.push(t0);
+      result.states.push([...y0]);
+      outputIdx++;
+    }
+  } else {
     result.times.push(t0);
     result.states.push([...y0]);
-    outputIdx++;
   }
 
   // ── State history (most recent first) ──
@@ -218,8 +236,11 @@ export function bdf(
   let jacobianMatrix: number[][] | null = null;
   let luMatrix: { L: number[][]; U: number[][]; P: number[] } | null = null;
   let lastJacobianH = 0;
+  let lastJacEvalH = 0;
   let lastAlpha0 = 0;
   let newtonFailCount = 0;
+  let stepsSinceJac = 0;
+  let lastStepNewtonIters = 0;
 
   // Current BDF order
   let order = 1;
@@ -337,7 +358,13 @@ export function bdf(
     }
 
     // ── Compute/reuse Jacobian ──
-    const needNewJacobian = jacobianMatrix === null || newtonFailCount > 2;
+    const hChangeRatio = lastJacEvalH > 0 ? Math.abs(h - lastJacEvalH) / lastJacEvalH : 1.0;
+    const needNewJacobian =
+      jacobianMatrix === null ||
+      newtonFailCount > 2 ||
+      hChangeRatio > 0.3 ||
+      lastStepNewtonIters > 3 ||
+      stepsSinceJac >= 10;
 
     if (needNewJacobian) {
       if (options.sparseJacobian) {
@@ -350,6 +377,8 @@ export function bdf(
       }
       result.jEvals++;
       newtonFailCount = 0;
+      stepsSinceJac = 0;
+      lastJacEvalH = h;
     }
 
     // Form the iteration matrix: M = alpha_0*I - h*J and compute LU
@@ -379,6 +408,8 @@ export function bdf(
     const yNewton = [...yPred];
     let converged = false;
     const maxNewtonIter = 10;
+    let newtonStepsTaken = 0;
+    let finalResidualNorm = 0;
 
     for (let iter = 0; iter < maxNewtonIter; iter++) {
       result.newtonIters++;
@@ -417,8 +448,10 @@ export function bdf(
         break;
       }
 
-      if (residualNorm < 1.0) {
+      // Always perform at least 1 Newton correction step unless yPred is already an exact root (< 1e-6)
+      if ((iter > 0 && residualNorm < 1.0) || residualNorm < 1e-6) {
         converged = true;
+        finalResidualNorm = residualNorm;
         break;
       }
 
@@ -441,7 +474,10 @@ export function bdf(
         converged = false;
         break;
       }
+      newtonStepsTaken++;
     }
+
+    lastStepNewtonIters = newtonStepsTaken;
 
     if (!converged) {
       // Newton failed — reduce step size and retry
@@ -483,6 +519,9 @@ export function bdf(
         }
         err = Math.max(err, ratio);
       }
+      if (newtonStepsTaken === 0 && finalResidualNorm > 0) {
+        err = Math.max(err, finalResidualNorm);
+      }
     }
 
     if (!Number.isFinite(err) || err > 1.0) {
@@ -496,28 +535,50 @@ export function bdf(
 
     // ── Step accepted ──
     result.acceptedSteps++;
+    stepsSinceJac++;
 
     // ── Event Detection & Dense Output ──
     let eventOccurred = false;
     if (eventFunctions && prevEventValues && eventCallback) {
       const newEventValues = eventFunctions.map((g) => g(tNew, yNewton));
+      let earliestEi = -1;
+      let earliestTEvent = Infinity;
+      let earliestCurr = 0;
+
       for (let ei = 0; ei < eventFunctions.length; ei++) {
         const prev = prevEventValues[ei] ?? 0;
         const curr = newEventValues[ei] ?? 0;
-        if (prev * curr < 0) {
-          eventOccurred = true;
-          // Sign change — bisect to find event time
+        const reqDir = effEventDirections?.[ei] ?? 0;
+        const signChange =
+          prev * curr < 0 && (reqDir > 0 ? prev <= 0 && curr > 0 : reqDir < 0 ? prev >= 0 && curr < 0 : true);
+
+        if (signChange) {
           const eventFn = eventFunctions[ei];
           if (!eventFn) continue;
+          const tCandidate = bisectEvent(eventFn, t, tNew, y, yNewton, fCurrent, fNew, h, n, prev);
+          if (tCandidate < earliestTEvent) {
+            earliestTEvent = tCandidate;
+            earliestEi = ei;
+            earliestCurr = curr;
+          }
+        }
+      }
 
-          // ── Bisection to find exact event time ──
-          const tEvent = bisectEvent(eventFn, t, tNew, y, yNewton, fCurrent, fNew, h, n, prev);
-          const thetaEvent = (tEvent - t) / h;
-          const yEvent = cubicHermiteInterpolate(thetaEvent, y, yNewton, fCurrent, fNew, h, n);
+      if (earliestEi >= 0) {
+        eventOccurred = true;
+        const ei = earliestEi;
+        const tEvent = earliestTEvent;
+        const curr = earliestCurr;
+        const thetaEvent = (tEvent - t) / h;
+        const yEvent = cubicHermiteInterpolate(thetaEvent, y, yNewton, fCurrent, fNew, h, n);
 
-          // ── Output interpolation BEFORE the event ──
-          while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
-            const tOut = outputTimes[outputIdx] as number;
+        // ── Output interpolation BEFORE the event ──
+        if (hasOutputGrid) {
+          while (
+            outputIdx < effectiveOutputTimes.length &&
+            (effectiveOutputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14
+          ) {
+            const tOut = effectiveOutputTimes[outputIdx] as number;
             if (Math.abs(tOut - t) < 1e-14) {
               result.times.push(t);
               result.states.push([...y]);
@@ -528,59 +589,67 @@ export function bdf(
             }
             outputIdx++;
           }
-
-          // Advance outputIdx if an outputTime lands exactly on the event
-          if (outputIdx < outputTimes.length && Math.abs((outputTimes[outputIdx] ?? tEnd) - tEvent) < 1e-14) {
-            outputIdx++;
-          }
-
-          // Force output of the event point for exact precision
+        } else {
           result.times.push(tEvent);
           result.states.push([...yEvent]);
+        }
 
-          // ── Fire event callback ──
-          const dir = curr < 0 ? -1 : 1;
-          const yAfter = eventCallback(tEvent, yEvent, ei, dir);
+        // ── Fire event callback ──
+        const dir = curr < 0 ? -1 : 1;
+        const yAfter = eventCallback(tEvent, yEvent, ei, dir);
 
-          // Output explicit post-event state
+        if (hasOutputGrid) {
+          if (
+            outputIdx < effectiveOutputTimes.length &&
+            Math.abs((effectiveOutputTimes[outputIdx] ?? tEnd) - tEvent) <= 1e-14
+          ) {
+            result.times.push(effectiveOutputTimes[outputIdx] as number);
+            result.states.push([...yAfter]);
+            outputIdx++;
+          }
+        } else {
           result.times.push(tEvent);
           result.states.push([...yAfter]);
-
-          // Restart from event
-          t = tEvent;
-          y = yAfter;
-          fCurrent = f(t, y);
-          result.fEvals++;
-          history.length = 0;
-          history.push({ t, y: [...y], f: [...fCurrent] });
-          order = 1;
-          jacobianMatrix = null;
-          luMatrix = null;
-          prevEventValues = eventFunctions.map((g) => g(t, y));
-          break;
         }
-      }
-      if (!eventOccurred) {
+
+        // Restart from event
+        t = tEvent;
+        y = yAfter;
+        fCurrent = f(t, y);
+        result.fEvals++;
+        history.length = 0;
+        history.push({ t, y: [...y], f: [...fCurrent] });
+        order = 1;
+        jacobianMatrix = null;
+        luMatrix = null;
+        stepsSinceJac = 0;
+        prevEventValues = eventFunctions.map((g) => g(t, y));
+      } else {
         prevEventValues = newEventValues;
       }
     }
 
     // ── Dense output for intermediate output times if NO event interrupted this step ──
     if (!eventOccurred) {
-      while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
-        const tOut = outputTimes[outputIdx] ?? tNew;
-        if (Math.abs(tOut - tNew) < 1e-14) {
-          result.times.push(tNew);
-          result.states.push([...yNewton]);
-        } else if (Math.abs(tOut - t) < 1e-14) {
-          result.times.push(t);
-          result.states.push([...y]);
-        } else {
-          const theta = (tOut - t) / h;
-          result.times.push(tOut);
-          result.states.push(cubicHermiteInterpolate(theta, y, yNewton, fCurrent, fNew, h, n));
+      if (hasOutputGrid) {
+        while (outputIdx < effectiveOutputTimes.length && (effectiveOutputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
+          const tOut = effectiveOutputTimes[outputIdx] ?? tNew;
+          if (Math.abs(tOut - tNew) < 1e-14) {
+            result.times.push(tNew);
+            result.states.push([...yNewton]);
+          } else if (Math.abs(tOut - t) < 1e-14) {
+            result.times.push(t);
+            result.states.push([...y]);
+          } else {
+            const theta = (tOut - t) / h;
+            result.times.push(tOut);
+            result.states.push(cubicHermiteInterpolate(theta, y, yNewton, fCurrent, fNew, h, n));
+          }
+          outputIdx++;
         }
-        outputIdx++;
+      } else {
+        result.times.push(tNew);
+        result.states.push([...yNewton]);
       }
 
       // Advance normally
@@ -609,7 +678,12 @@ export function bdf(
   }
 
   // Ensure final state is output
-  if (result.times.length === 0 || (result.times[result.times.length - 1] ?? -1) < tEnd - 1e-14) {
+  if (hasOutputGrid) {
+    if (result.times.length === 0 || (result.times[result.times.length - 1] ?? -1) < tEnd - 1e-14) {
+      result.times.push(t);
+      result.states.push([...y]);
+    }
+  } else if (result.times.length === 0 || Math.abs((result.times[result.times.length - 1] ?? -1) - tEnd) > 1e-14) {
     result.times.push(t);
     result.states.push([...y]);
   }

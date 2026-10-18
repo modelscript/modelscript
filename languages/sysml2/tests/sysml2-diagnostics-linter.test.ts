@@ -675,4 +675,155 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
     const dtCodes = dtDiags.map((d: any) => d.code);
     assert.ok(dtCodes.includes(5013) || dtCodes.includes(5014), `Expected 5013 or 5014 in ${JSON.stringify(dtCodes)}`);
   });
+
+  it("preserves exact CST padding and emits/clears S2002 across incremental edits (Integer -> Integer2 -> Integer)", async () => {
+    const { parser, facade } = await createWasmParser(sysmlWasm);
+    const { parser: freshParser, facade: freshFacade } = await createWasmParser(sysmlWasm);
+    const { UnifiedWorkspace, LanguageWorkspaceIndex } = await import("@modelscript/runtime");
+
+    const text1 = [
+      "package VehicleSystem {",
+      "",
+      "  // ── Port Definitions ──",
+      "  port def TorquePort {",
+      "    attribute torqueValue : Real;",
+      "  }",
+      "",
+      "  port def ElectricalPort {",
+      "    attribute voltage : Real;",
+      "    attribute current : Real;",
+      "  }",
+      "",
+      "  port def FuelPort {",
+      "    attribute flowRate : Real;",
+      "  }",
+      "",
+      "  // ── Part Definitions ──",
+      "  part def Engine {",
+      "    attribute horsePower : Real;",
+      "    attribute displacement : Real;",
+      "",
+      "    port torqueOut : TorquePort;",
+      "    port fuelIn : FuelPort;",
+      "  }",
+      "",
+      "  part def Transmission {",
+      "    attribute gearRatio : Real;",
+      "    attribute numberOfGears : Integer;",
+      "",
+      "    port torqueIn : TorquePort;",
+      "    port torqueOut : TorquePort;",
+      "  }",
+      "",
+      "  part def Battery {",
+      "    attribute capacity : Real;",
+      "    attribute voltage : Real;",
+      "",
+      "    port electricalOut : ElectricalPort;",
+      "  }",
+      "}",
+      "",
+    ].join("\n");
+
+    const computeEdit = (oldText: string, newText: string) => {
+      const minLen = Math.min(oldText.length, newText.length);
+      let prefixLen = 0;
+      while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
+      let oldSuffix = oldText.length;
+      let newSuffix = newText.length;
+      while (oldSuffix > prefixLen && newSuffix > prefixLen && oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
+        oldSuffix--;
+        newSuffix--;
+      }
+      return { startIndex: prefixLen, oldEndIndex: oldSuffix, newEndIndex: newSuffix };
+    };
+
+    const uri = "file:///workspace/VehicleSystem.sysml";
+    const tree1 = parser.parse(text1)!;
+    const sexpr1 = facade.getAstSExpr(tree1.rootPtr, true);
+    assert.deepStrictEqual(facade.getDiagnostics(tree1.rootPtr), []);
+
+    // Edit 1: Integer -> Integer2
+    const text2 = text1.replace("attribute numberOfGears : Integer;", "attribute numberOfGears : Integer2;");
+    const edit1 = computeEdit(text1, text2);
+    const tree2 = parser.parse(text2, tree1, edit1.startIndex, edit1.oldEndIndex, edit1.newEndIndex, uri)!;
+    const freshTree2 = freshParser.parse(text2)!;
+    assert.strictEqual(facade.getAstSExpr(tree2.rootPtr, true), freshFacade.getAstSExpr(freshTree2.rootPtr, true));
+    assert.deepStrictEqual(facade.getDiagnostics(tree2.rootPtr), []);
+
+    // Edit 2: Integer2 -> Integer (must not produce false 'Syntax Error: Missing ;' on line 31)
+    const edit2 = computeEdit(text2, text1);
+    const tree3 = parser.parse(text1, tree2, edit2.startIndex, edit2.oldEndIndex, edit2.newEndIndex, uri)!;
+    assert.strictEqual(facade.getAstSExpr(tree3.rootPtr, true), sexpr1);
+    assert.deepStrictEqual(facade.getDiagnostics(tree3.rootPtr), []);
+
+    // Verify incremental S2002 diagnostics through a polyglot UnifiedWorkspace
+    const unifiedWs = new UnifiedWorkspace();
+    const modelicaWs = new LanguageWorkspaceIndex([]);
+    (modelicaWs as any).unifiedIndex.symbols.set(1, {
+      id: 1,
+      kind: "Class",
+      name: "DummyModel",
+      ruleName: "class_definition",
+      namePath: "name",
+      fieldName: null,
+      parentId: null,
+      resourceId: "file:///workspace/Dummy.mo",
+      startByte: 0,
+      endByte: 10,
+      startOffset: 0,
+      endOffset: 10,
+      exports: [],
+      inherits: [],
+      metadata: {},
+    });
+    const sysmlWs = createSysML2WorkspaceIndex();
+    loadEmbeddedKerMLStdlib(sysmlWs);
+    unifiedWs.registerWorkspace("modelica", modelicaWs);
+    unifiedWs.registerWorkspace("sysml2", sysmlWs);
+    unifiedWs.registerWorkspace("sysml", sysmlWs);
+
+    let currentText = text1;
+    let currentTree = tree1;
+    sysmlWs.indexDocument(uri, () => currentTree.rootNode);
+    sysmlWs.takeGlobalChangedIds();
+
+    const engine = createSysML2QueryEngine(unifiedWs.toUnifiedPartial(), {
+      getText: (s: number, e: number) => currentText.slice(s, e),
+      getNode: (s: number, e: number) => currentTree.rootNode.descendantForIndex(s, Math.max(s, e)),
+    });
+
+    const diags1 = (await engine.runAllLintsAsync(uri)).filter((d) => d.severity === "error");
+    assert.strictEqual(diags1.length, 0);
+
+    // Apply Edit 1 (Integer -> Integer2): must emit S2002
+    currentText = text2;
+    currentTree = tree2;
+    sysmlWs.reindexDocument(
+      uri,
+      () => currentTree.rootNode,
+      [{ startOffset: edit1.startIndex, endOffset: Math.max(edit1.oldEndIndex, edit1.newEndIndex) }],
+      edit1.newEndIndex - edit1.oldEndIndex,
+    );
+    const changed1 = sysmlWs.takeGlobalChangedIds()!;
+    engine.swapIndex(unifiedWs.toUnifiedPartial(), changed1.changedIds, changed1.structuralChangedIds);
+    const diags2 = (await engine.runAllLintsAsync(uri)).filter((d) => d.severity === "error");
+    assert.strictEqual(diags2.length, 1);
+    assert.strictEqual(diags2[0]!.code, 2002);
+    assert.strictEqual(diags2[0]!.message, "Symbol 'Integer2' not found in scope.");
+
+    // Apply Edit 2 (Integer2 -> Integer): must clear S2002
+    currentText = text1;
+    currentTree = tree3;
+    sysmlWs.reindexDocument(
+      uri,
+      () => currentTree.rootNode,
+      [{ startOffset: edit2.startIndex, endOffset: Math.max(edit2.oldEndIndex, edit2.newEndIndex) }],
+      edit2.newEndIndex - edit2.oldEndIndex,
+    );
+    const changed2 = sysmlWs.takeGlobalChangedIds()!;
+    engine.swapIndex(unifiedWs.toUnifiedPartial(), changed2.changedIds, changed2.structuralChangedIds);
+    const diags3 = (await engine.runAllLintsAsync(uri)).filter((d) => d.severity === "error");
+    assert.strictEqual(diags3.length, 0);
+  });
 });

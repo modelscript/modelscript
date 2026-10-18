@@ -32,22 +32,17 @@ export function isTargetVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): boo
 
   if (kind == ExprKind.Name) {
     let rawId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
-    if (rawId == targetVarId) return true;
-    if (rawId >= dae.varCount) {
-      let resolved = dae.lookupVariableByName(rawId);
-      return resolved >= 0 && (resolved as u32) == targetVarId;
-    }
-    return false;
+    let resolved = dae.resolveExprVarId(rawId);
+    if (resolved >= 0 && (resolved as u32) == targetVarId) return true;
+    return rawId == targetVarId;
   }
   if (kind == ExprKind.Der) {
     let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
     if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
       let rawId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
-      if (rawId == targetVarId) return true;
-      if (rawId >= dae.varCount) {
-        let resolved = dae.lookupVariableByName(rawId);
-        return resolved >= 0 && (resolved as u32) == targetVarId;
-      }
+      let resolved = dae.resolveExprVarId(rawId);
+      if (resolved >= 0 && (resolved as u32) == targetVarId) return true;
+      return rawId == targetVarId;
     }
   }
   return false;
@@ -89,19 +84,12 @@ export function countVarOccurrences(dae: DaeBuilder, exprId: u32, targetVarId: u
 
   if (kind == ExprKind.Call) {
     let count = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
-    let first = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     let sum: u32 = 0;
     for (let i: u32 = 0; i < count; i++) {
-      let argExpr: u32 = first + i;
-      if (i > 0 && exprId + i < dae.exprCount) {
-        let slotOffset = (exprId + i) * EXPR_STRIDE;
-        if (dae.getExprData().get(slotOffset + EXPR_KIND) == ExprKind.Tuple) {
-          argExpr = dae.getExprData().get(slotOffset + EXPR_LEFT) as u32;
-        }
-      } else if (i == 0) {
-        argExpr = first;
+      let argExpr = dae.getCallArgExprId(exprId, i);
+      if (argExpr != 0xffffffff) {
+        sum += countVarOccurrences(dae, argExpr, targetVarId);
       }
-      sum += countVarOccurrences(dae, argExpr, targetVarId);
     }
     return sum;
   }

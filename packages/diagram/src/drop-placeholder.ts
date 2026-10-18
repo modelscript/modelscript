@@ -6,6 +6,22 @@ export interface DropPlaceholderOptions {
   isDark?: boolean | undefined;
 }
 
+/**
+ * Returns `true` if a cell ID belongs to a non-interactive background, axis, stem,
+ * solder dot, or placement ghost node rather than a user-selectable diagram component.
+ */
+export function isEphemeralDiagramNode(id: string): boolean {
+  return (
+    id === "__diagram_background__" ||
+    id === "__diagram_axes__" ||
+    id.startsWith("solder_dot_") ||
+    id.startsWith("__seq_stem_") ||
+    id.startsWith("__alignment_guide_") ||
+    id === "placement-ghost" ||
+    id === "__drop_placeholder__"
+  );
+}
+
 export function ensureDiagramStyles(): void {
   if (typeof document === "undefined") return;
   if (document.getElementById("modelscript-diagram-animations")) return;
@@ -64,6 +80,13 @@ export function ensureDiagramStyles(): void {
         opacity: 1;
         transform: scale(1.05);
       }
+    }
+
+    [data-cell-id="__diagram_background__"],
+    [data-cell-id="__diagram_background__"] *,
+    [data-cell-id="__diagram_axes__"],
+    [data-cell-id="__diagram_axes__"] * {
+      pointer-events: none !important;
     }
   `;
   document.head.appendChild(style);

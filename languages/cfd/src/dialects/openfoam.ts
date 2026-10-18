@@ -122,22 +122,17 @@ export class OpenFoamDialect implements CfdDialect {
           const patchType = typeof pDict["type"] === "string" ? (pDict["type"] as string).replace(/;$/, "").trim() : "";
           const pNameLower = patchName.toLowerCase();
           const pTypeLower = patchType.toLowerCase();
+          const valStr =
+            typeof pDict["value"] === "string"
+              ? pDict["value"]
+              : typeof pDict["freestreamValue"] === "string"
+                ? pDict["freestreamValue"]
+                : typeof pDict["inletValue"] === "string"
+                  ? pDict["inletValue"]
+                  : "";
+          const vecMatch = /\(\s*([0-9.eE+-]+)\s+([0-9.eE+-]+)(?:\s+([0-9.eE+-]+))?\s*\)/.exec(valStr);
 
-          if (
-            pTypeLower === "noslip" ||
-            pTypeLower === "slip" ||
-            pTypeLower === "wall" ||
-            pNameLower.includes("wall") ||
-            pNameLower.includes("obstacle")
-          ) {
-            wallMarkers.push(patchName);
-            markers.set(patchName, { name: patchName, type: "WALL", options: [patchType] });
-          } else if (pTypeLower === "fixedvalue" || pNameLower.includes("inlet")) {
-            data.inletMarker = patchName;
-            if (!inletMarkers.includes(patchName)) inletMarkers.push(patchName);
-            markers.set(patchName, { name: patchName, type: "INLET", options: [patchType] });
-            const valStr = typeof pDict["value"] === "string" ? pDict["value"] : "";
-            const vecMatch = /\(\s*([0-9.eE+-]+)\s+([0-9.eE+-]+)(?:\s+([0-9.eE+-]+))?\s*\)/.exec(valStr);
+          const extractVelocityIfPresent = () => {
             if (vecMatch) {
               const vx = parseFloat(vecMatch[1]!);
               const vy = parseFloat(vecMatch[2]!);
@@ -145,20 +140,96 @@ export class OpenFoamDialect implements CfdDialect {
               data.inletVelocity = [vx, vy, vz];
               data.freestreamVelocity = Math.hypot(vx, vy, vz);
             }
-          } else if (pTypeLower === "zerogradient" || pTypeLower === "inletoutlet" || pNameLower.includes("outlet")) {
-            data.outletMarker = patchName;
-            if (!outletMarkers.includes(patchName)) outletMarkers.push(patchName);
-            markers.set(patchName, { name: patchName, type: "OUTLET", options: [patchType] });
-          } else if (
+          };
+
+          const isSymmetry =
             pTypeLower === "symmetry" ||
             pTypeLower === "symmetryplane" ||
             pTypeLower === "empty" ||
             pTypeLower === "wedge" ||
-            pTypeLower === "cyclic"
-          ) {
+            pTypeLower === "cyclic" ||
+            pTypeLower === "cyclicami" ||
+            pNameLower.includes("symm") ||
+            pNameLower.includes("frontandback");
+
+          const isWall =
+            pTypeLower === "noslip" ||
+            pTypeLower === "slip" ||
+            pTypeLower === "wall" ||
+            pTypeLower === "movingwallvelocity" ||
+            pTypeLower === "fixedfluxpressure" ||
+            pNameLower.includes("wall") ||
+            pNameLower.includes("obstacle") ||
+            pNameLower.includes("wing") ||
+            pNameLower.includes("airfoil") ||
+            pNameLower.includes("body") ||
+            pNameLower.includes("cylinder") ||
+            pNameLower.includes("chassis") ||
+            pNameLower.includes("hull") ||
+            pNameLower.includes("rotor") ||
+            pNameLower.includes("blade");
+
+          const isExplicitOutlet =
+            pNameLower.includes("outlet") ||
+            pNameLower.includes("exit") ||
+            pNameLower.includes("outflow") ||
+            pTypeLower === "inletoutlet" ||
+            pTypeLower === "pressureinletoutletvelocity" ||
+            pTypeLower === "totalpressure" ||
+            pTypeLower === "advective" ||
+            pTypeLower === "wavetransmissive";
+
+          const isExplicitInlet =
+            pNameLower.includes("inlet") ||
+            pNameLower.includes("inflow") ||
+            pTypeLower === "surfacenormalfixedvalue" ||
+            pTypeLower === "flowrateinletvelocity" ||
+            pTypeLower === "turbulentinlet";
+
+          const isFarfield =
+            pNameLower.includes("farfield") ||
+            pNameLower.includes("freestream") ||
+            pTypeLower === "freestream" ||
+            pTypeLower === "freestreamvelocity" ||
+            pTypeLower === "freestreampressure";
+
+          if (isSymmetry) {
             markers.set(patchName, { name: patchName, type: "SYMMETRY", options: [patchType] });
+          } else if (isWall) {
+            if (!wallMarkers.includes(patchName)) wallMarkers.push(patchName);
+            markers.set(patchName, { name: patchName, type: "WALL", options: [patchType] });
+          } else if (isExplicitOutlet) {
+            data.outletMarker = patchName;
+            if (!outletMarkers.includes(patchName)) outletMarkers.push(patchName);
+            markers.set(patchName, { name: patchName, type: "OUTLET", options: [patchType] });
+          } else if (isExplicitInlet) {
+            data.inletMarker = patchName;
+            if (!inletMarkers.includes(patchName)) inletMarkers.push(patchName);
+            markers.set(patchName, { name: patchName, type: "INLET", options: [patchType] });
+            extractVelocityIfPresent();
+          } else if (isFarfield) {
+            markers.set(patchName, { name: patchName, type: "FARFIELD", options: [patchType] });
+            if (data.freestreamVelocity === undefined) {
+              extractVelocityIfPresent();
+            }
+          } else if (pTypeLower === "fixedvalue" && vecMatch) {
+            // Vector fixedValue (velocity boundary) without an explicit outlet/wall/farfield name
+            data.inletMarker = patchName;
+            if (!inletMarkers.includes(patchName)) inletMarkers.push(patchName);
+            markers.set(patchName, { name: patchName, type: "INLET", options: [patchType] });
+            extractVelocityIfPresent();
+          } else if (pTypeLower === "zerogradient" && data.outletMarker === undefined) {
+            data.outletMarker = patchName;
+            if (!outletMarkers.includes(patchName)) outletMarkers.push(patchName);
+            markers.set(patchName, { name: patchName, type: "OUTLET", options: [patchType] });
+          } else if (pTypeLower === "patch") {
+            markers.set(patchName, { name: patchName, type: "PATCH", options: [patchType] });
           } else {
-            markers.set(patchName, { name: patchName, type: patchType.toUpperCase() || "GENERIC", options: [] });
+            markers.set(patchName, {
+              name: patchName,
+              type: patchType.toUpperCase() || "GENERIC",
+              options: [patchType],
+            });
           }
         }
       }
