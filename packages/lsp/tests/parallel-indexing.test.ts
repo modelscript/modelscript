@@ -82,7 +82,7 @@ describe("Gap 3: Multi-Threaded Parallel Indexing & Bulk Registration Tests", ()
             "--exportRuntime",
             "--enable",
             "threads",
-            "--optimize",
+            "-O0",
             "--runtime",
             "stub",
           ],

@@ -5,8 +5,13 @@ import { ModelicaErrorCode } from "../../errors.js";
 import { extractCompilerOptions } from "../support/compiler-options.js";
 
 function stripTrailingSubscript(s: string): string {
-  const idx = s.indexOf("[");
-  return idx >= 0 ? s.slice(0, idx) : s;
+  let res = s;
+  while (res.endsWith("]")) {
+    const open = res.lastIndexOf("[");
+    if (open === -1) break;
+    res = res.slice(0, open);
+  }
+  return res;
 }
 
 export function collectExprVarNames(

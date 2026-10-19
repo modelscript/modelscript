@@ -77,7 +77,7 @@ describe("LSP Endpoints Integration Tests", () => {
             "--exportRuntime",
             "--enable",
             "threads",
-            "--optimize",
+            "-O0",
             "--runtime",
             "stub",
           ],

@@ -83,7 +83,7 @@ describe("Rapid Typing Incremental Buffer & Diagnostics Suite", () => {
           "--exportRuntime",
           "--enable",
           "threads",
-          "--optimize",
+          "-O0",
           "--runtime",
           "stub",
         ],

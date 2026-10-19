@@ -98,7 +98,7 @@ describe("SOTA CST Completion Context", () => {
             "--exportRuntime",
             "--enable",
             "threads",
-            "--optimize",
+            "-O0",
             "--runtime",
             "stub",
           ],

@@ -73,7 +73,7 @@ describe("Multi-File LSP Connector Features", () => {
             "--exportRuntime",
             "--enable",
             "threads",
-            "--optimize",
+            "-O0",
             "--runtime",
             "stub",
           ],

@@ -83,7 +83,7 @@ describe("Squiggle Range Alignment & Line Clamping Suite", () => {
           "--exportRuntime",
           "--enable",
           "threads",
-          "--optimize",
+          "-O0",
           "--runtime",
           "stub",
         ],

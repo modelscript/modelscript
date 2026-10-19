@@ -107,7 +107,7 @@ describe("Incremental Linting & Sub-Millisecond Diagnostic Suite", () => {
           "--exportRuntime",
           "--enable",
           "threads",
-          "--optimize",
+          "-O0",
           "--runtime",
           "stub",
         ],
