@@ -598,7 +598,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           return nameChild.text.trim();
         }
         const t = n.text || "";
-        const m = t.match(/^within\s*([a-zA-Z0-9_.]*)\s*;/m);
+        const m = t.match(/^\s*within(?:\s+([a-zA-Z0-9_.]+))?\s*;/m);
         return m ? m[1]?.trim() || "" : "";
       }
       for (const child of n.children || []) {
@@ -610,7 +610,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             return nameChild.text.trim();
           }
           const t = child.text || "";
-          const m = t.match(/^within\s*([a-zA-Z0-9_.]*)\s*;/m);
+          const m = t.match(/^\s*within(?:\s+([a-zA-Z0-9_.]+))?\s*;/m);
           return m ? m[1]?.trim() || "" : "";
         }
         if (child.type === "stored_definition" || child.type === "program") {

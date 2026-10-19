@@ -127,7 +127,9 @@ export class TeamworkCloudClient {
   }
 
   private cleanBaseUrl(): string {
-    return this.config.baseUrl.replace(/\/+$/, "");
+    let url = this.config.baseUrl;
+    while (url.endsWith("/")) url = url.slice(0, -1);
+    return url;
   }
 
   /**
@@ -259,7 +261,9 @@ export class OpenMbeeMmsClient {
   }
 
   private cleanBaseUrl(): string {
-    return this.config.baseUrl.replace(/\/+$/, "");
+    let url = this.config.baseUrl;
+    while (url.endsWith("/")) url = url.slice(0, -1);
+    return url;
   }
 
   /**

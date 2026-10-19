@@ -44,15 +44,23 @@ export interface CompanionSystem {
  * Node -1 represents ground (GND / reference).
  */
 export function stampTwoTerminalConductance(dense: Float64Array[], n: number, i: number, j: number, g: number): void {
+  if (i === ("__proto__" as any) || j === ("__proto__" as any) || typeof i !== "number" || typeof j !== "number")
+    return;
   if (i >= 0 && i < n) {
-    dense[i]![i] = dense[i]![i]! + g;
+    const row = dense[i];
+    if (row) row[i] = row[i]! + g;
   }
   if (j >= 0 && j < n) {
-    dense[j]![j] = dense[j]![j]! + g;
+    const row = dense[j];
+    if (row) row[j] = row[j]! + g;
   }
   if (i >= 0 && j >= 0 && i < n && j < n) {
-    dense[i]![j] = dense[i]![j]! - g;
-    dense[j]![i] = dense[j]![i]! - g;
+    const rowI = dense[i];
+    const rowJ = dense[j];
+    if (rowI && rowJ) {
+      rowI[j] = rowI[j]! - g;
+      rowJ[i] = rowJ[i]! - g;
+    }
   }
 }
 
@@ -60,8 +68,10 @@ export function stampTwoTerminalConductance(dense: Float64Array[], n: number, i:
  * Stamps a shunt conductance g from node i to ground.
  */
 export function stampShuntConductance(dense: Float64Array[], n: number, i: number, g: number): void {
+  if (i === ("__proto__" as any) || typeof i !== "number") return;
   if (i >= 0 && i < n) {
-    dense[i]![i] = dense[i]![i]! + g;
+    const row = dense[i];
+    if (row) row[i] = row[i]! + g;
   }
 }
 
@@ -92,8 +102,11 @@ export function stampTransformerWinding(
   // Mutual coupling: -a * g between primary (pPos, pNeg) and secondary (sPos, sNeg)
   const ag = a * g;
   const addEntry = (r: number, c: number, val: number) => {
+    if (r === ("__proto__" as any) || c === ("__proto__" as any) || typeof r !== "number" || typeof c !== "number")
+      return;
     if (r >= 0 && r < n && c >= 0 && c < n) {
-      dense[r]![c] = dense[r]![c]! + val;
+      const row = dense[r];
+      if (row) row[c] = row[c]! + val;
     }
   };
 
@@ -132,8 +145,11 @@ export function buildCompanionSystem(
 
   // 1. Stamp RLC branches (including 3-phase zero-sequence mutual coupling when active)
   const addEntry = (r: number, c: number, val: number) => {
+    if (r === ("__proto__" as any) || c === ("__proto__" as any) || typeof r !== "number" || typeof c !== "number")
+      return;
     if (r >= 0 && r < nNodes && c >= 0 && c < nNodes) {
-      dense[r]![c] = dense[r]![c]! + val;
+      const row = dense[r];
+      if (row) row[c] = row[c]! + val;
     }
   };
   for (let i = 0; i < rlcBranches.length; i++) {

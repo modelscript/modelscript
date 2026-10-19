@@ -910,10 +910,14 @@ export const updateAccount = async (data: {
   return resData;
 };
 
-export const updatePassword = async (data: { oldPassword?: string | undefined; newPassword?: string | undefined }) => {
+export const changeAccountCredentials = async (data: {
+  oldPassword?: string | undefined;
+  newPassword?: string | undefined;
+}) => {
   const { data: resData } = await api.put("/auth/password", data);
   return resData;
 };
+export const updatePassword = changeAccountCredentials;
 
 export interface ArchiveJobInfo {
   id: string;

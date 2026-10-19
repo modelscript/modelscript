@@ -295,7 +295,7 @@ export async function verifyHybridSysml2Reachability(
 
   if (sourceText && customModes.length >= 2) {
     const transRegex =
-      /\btransition\s+(?:([A-Za-z_][A-Za-z0-9_]*)\s+)?first\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:if\s+([^{;\n]+?)\s+)?then\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+      /\btransition\s+(?:(?!first\b)([A-Za-z_][A-Za-z0-9_]*)\s+)?first\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:if\s+([^{;\n]+?)\s+)?then\s+([A-Za-z_][A-Za-z0-9_]*)/g;
     let tm: RegExpExecArray | null;
     while ((tm = transRegex.exec(sourceText)) !== null) {
       const transName = tm[1] || `${tm[2]}To${tm[4]}`;

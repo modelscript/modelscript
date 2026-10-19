@@ -359,7 +359,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       (node.properties?.description as string) ||
       node.id;
     const stereotype =
-      (node.attrs?.header?.text as string)?.replace(/^[«<]+|[»>]+$/g, "") ||
+      (node.attrs?.header?.text as string)?.replace(/^[«<]+/, "").replace(/[»>]+$/, "") ||
       (node.data?.ruleName as string) ||
       (node.properties?.className as string);
     const multiplicity = (node.data?.multiplicity as number) || 1;

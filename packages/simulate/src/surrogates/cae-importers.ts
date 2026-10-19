@@ -162,16 +162,42 @@ function parseLegacyVtk(content: string): VtkFieldSnapshot {
 }
 
 function parseXmlVtu(content: string): VtkFieldSnapshot {
-  const pieceMatch = content.match(/<Piece[^>]*NumberOfPoints="(\d+)"[^>]*NumberOfCells="(\d+)"/i);
-  const numPoints = pieceMatch ? parseInt(pieceMatch[1]!, 10) : 0;
-  const numCells = pieceMatch ? parseInt(pieceMatch[2]!, 10) : 0;
+  let numPoints = 0;
+  let numCells = 0;
+  const pieceStart = content.indexOf("<Piece");
+  if (pieceStart !== -1) {
+    const pieceEnd = content.indexOf(">", pieceStart);
+    if (pieceEnd !== -1) {
+      const pieceAttrs = content.slice(pieceStart, pieceEnd);
+      const ptsMatch = pieceAttrs.match(/NumberOfPoints="(\d+)"/i);
+      const cellsMatch = pieceAttrs.match(/NumberOfCells="(\d+)"/i);
+      if (ptsMatch) numPoints = parseInt(ptsMatch[1]!, 10);
+      if (cellsMatch) numCells = parseInt(cellsMatch[1]!, 10);
+    }
+  }
 
   let points: Float64Array = new Float64Array(0);
-  const pointsSection = content.match(/<Points>([\s\S]*?)<\/Points>/i);
+  const extractSection = (tag: string): string | null => {
+    const openTag = `<${tag}`;
+    const startIdx = content.indexOf(openTag);
+    if (startIdx === -1) return null;
+    const tagEnd = content.indexOf(">", startIdx);
+    if (tagEnd === -1) return null;
+    const closeTag = `</${tag}>`;
+    const endIdx = content.indexOf(closeTag, tagEnd);
+    if (endIdx === -1) return null;
+    return content.slice(tagEnd + 1, endIdx);
+  };
+
+  const pointsSection = extractSection("Points");
   if (pointsSection) {
-    const daMatch = pointsSection[1]!.match(/<DataArray[^>]*>([\s\S]*?)<\/DataArray>/i);
-    if (daMatch) {
-      points = parseWhitespaceFloats(daMatch[1]!);
+    const daStart = pointsSection.indexOf("<DataArray");
+    if (daStart !== -1) {
+      const daTagEnd = pointsSection.indexOf(">", daStart);
+      const daEnd = pointsSection.indexOf("</DataArray>", daTagEnd);
+      if (daTagEnd !== -1 && daEnd !== -1) {
+        points = parseWhitespaceFloats(pointsSection.slice(daTagEnd + 1, daEnd));
+      }
     }
   }
 
@@ -179,11 +205,18 @@ function parseXmlVtu(content: string): VtkFieldSnapshot {
   const vectors: Record<string, Float64Array> = {};
 
   const parseDataArrays = (sectionXml: string) => {
-    const regex = /<DataArray([^>]*)>([\s\S]*?)<\/DataArray>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(sectionXml)) !== null) {
-      const attrs = m[1]!;
-      const body = m[2]!;
+    let cur = 0;
+    while (cur < sectionXml.length) {
+      const openIdx = sectionXml.indexOf("<DataArray", cur);
+      if (openIdx === -1) break;
+      const tagEnd = sectionXml.indexOf(">", openIdx);
+      if (tagEnd === -1) break;
+      const closeIdx = sectionXml.indexOf("</DataArray>", tagEnd);
+      if (closeIdx === -1) break;
+      const attrs = sectionXml.slice(openIdx + "<DataArray".length, tagEnd);
+      const body = sectionXml.slice(tagEnd + 1, closeIdx);
+      cur = closeIdx + "</DataArray>".length;
+
       const nameMatch = attrs.match(/Name="([^"]+)"/i);
       const compMatch = attrs.match(/NumberOfComponents="(\d+)"/i);
       const name = nameMatch ? nameMatch[1]! : "field";
@@ -197,11 +230,11 @@ function parseXmlVtu(content: string): VtkFieldSnapshot {
     }
   };
 
-  const pointDataMatch = content.match(/<PointData[^>]*>([\s\S]*?)<\/PointData>/i);
-  if (pointDataMatch) parseDataArrays(pointDataMatch[1]!);
+  const pointDataSection = extractSection("PointData");
+  if (pointDataSection) parseDataArrays(pointDataSection);
 
-  const cellDataMatch = content.match(/<CellData[^>]*>([\s\S]*?)<\/CellData>/i);
-  if (cellDataMatch) parseDataArrays(cellDataMatch[1]!);
+  const cellDataSection = extractSection("CellData");
+  if (cellDataSection) parseDataArrays(cellDataSection);
 
   return {
     format: "vtu_xml",

@@ -33,6 +33,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import {
   addPublicKey,
+  changeAccountCredentials,
   createBot,
   DEFAULT_NOTIFICATION_PREFERENCES,
   deleteAccount,
@@ -53,7 +54,6 @@ import {
   unlinkConnectedAccount,
   updateAccount,
   updateNotificationSettings,
-  updatePassword,
   updateUserTopic,
   type ArchiveJobInfo,
   type ConnectedAccount,
@@ -833,7 +833,7 @@ const SettingsPage: React.FC = () => {
     setError(null);
     setSuccess(null);
     try {
-      const res = await updatePassword({
+      const res = await changeAccountCredentials({
         oldPassword: user?.has_password === false ? undefined : oldPassword,
         newPassword,
       });

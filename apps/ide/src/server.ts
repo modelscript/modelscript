@@ -6,7 +6,6 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import { existsSync, readFileSync, watch } from "fs";
-import { createProxyMiddleware } from "http-proxy-middleware";
 import path, { join, resolve } from "path";
 
 const __dirname = import.meta.dirname;
@@ -363,24 +362,39 @@ app.options("/api/github/*subpath", (_req, res) => {
   res.status(204).end();
 });
 
-app.use(
-  "/api/github",
-  createProxyMiddleware({
-    target: "https://api.github.com",
-    changeOrigin: true,
-    pathRewrite: { "^/api/github": "" },
-    on: {
-      proxyReq: (proxyReq) => {
-        proxyReq.setHeader("User-Agent", "ModelScript-IDE");
-        // Forward GitHub token if available
-        const token = process.env["GITHUB_TOKEN"];
-        if (token) {
-          proxyReq.setHeader("Authorization", `token ${token}`);
-        }
-      },
-    },
-  }),
-);
+app.use("/api/github", async (req, res) => {
+  try {
+    const upstreamUrl = new URL(req.url, "https://api.github.com");
+    const headers: Record<string, string> = {
+      "User-Agent": "ModelScript-IDE",
+      Accept: (req.headers["accept"] as string) || "application/vnd.github.v3+json",
+    };
+    const token = process.env["GITHUB_TOKEN"];
+    if (token) {
+      headers["Authorization"] = `token ${token}`;
+    } else if (req.headers["authorization"]) {
+      headers["Authorization"] = req.headers["authorization"] as string;
+    }
+
+    const response = await fetch(upstreamUrl.toString(), {
+      method: req.method,
+      headers,
+    });
+
+    res.status(response.status);
+    response.headers.forEach((val, key) => {
+      const lower = key.toLowerCase();
+      if (lower !== "content-encoding" && lower !== "transfer-encoding") {
+        res.setHeader(key, val);
+      }
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.send(buffer);
+  } catch (err) {
+    res.status(502).json({ error: "GitHub proxy failed", details: String(err) });
+  }
+});
 
 // ── User Language Registry API ──
 

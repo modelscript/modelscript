@@ -14,10 +14,19 @@ export interface InversionResult {
  */
 export function invertExpression(forwardExpr: string, targetVarName: string = "y"): InversionResult {
   let trimmed = forwardExpr.trim();
-  const eqAssignMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*=\s*(.+)$/);
-  if (eqAssignMatch) {
-    targetVarName = eqAssignMatch[1]!;
-    trimmed = eqAssignMatch[2]!.trim();
+  const firstEqIdx = trimmed.indexOf("=");
+  if (
+    firstEqIdx > 0 &&
+    trimmed[firstEqIdx + 1] !== "=" &&
+    trimmed[firstEqIdx - 1] !== "!" &&
+    trimmed[firstEqIdx - 1] !== "<" &&
+    trimmed[firstEqIdx - 1] !== ">"
+  ) {
+    const lhs = trimmed.slice(0, firstEqIdx).trim();
+    if (/^[a-zA-Z_]\w*$/.test(lhs)) {
+      targetVarName = lhs;
+      trimmed = trimmed.slice(firstEqIdx + 1).trim();
+    }
   }
 
   // 0. General 2-step affine: x * A + B or x / A - B

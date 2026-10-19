@@ -266,6 +266,11 @@ export function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+export function stripAnnotation(str: string): string {
+  const idx = str.search(/\bannotation\b/);
+  return idx >= 0 ? str.slice(0, idx) : str;
+}
+
 export function copyExprBetweenDaes(
   src: DAEBuilder,
   srcId: number,
@@ -511,7 +516,7 @@ export function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): stri
     if (lits.length > 0) return lits;
   }
   const cstText = cstNode?.text ?? "";
-  const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
+  const enumMatch = /enumeration\s*\(([^()]+)\)/.exec(cstText);
   if (enumMatch) {
     return enumMatch[1]!
       .split(",")
@@ -1211,7 +1216,8 @@ export function evaluateCSTNumber(
     }
   }
 
-  const text = (typeof node === "string" ? node : node.text)?.replace(/\s*\bannotation\b[\s\S]*$/, "")?.trim() ?? "";
+  const rawNodeText = typeof node === "string" ? node : node.text;
+  const text = (rawNodeText ? stripAnnotation(rawNodeText) : "").trim();
   if (text === "true") return 1;
   if (text === "false") return 0;
   if (subs && subs.has(text)) {
@@ -1226,7 +1232,7 @@ export function evaluateCSTNumber(
   const num = parseInt(text, 10);
   if (!isNaN(num) && String(num) === text) return num;
   const floatNum = parseFloat(text);
-  if (!isNaN(floatNum) && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
+  if (!isNaN(floatNum) && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
 
   const evalCycleKey = `${scopeId ?? 0}:${prefix}:${text}`;
   if (_evaluatingCSTNumbers.has(evalCycleKey)) return null;
@@ -1316,10 +1322,7 @@ function evaluateCSTNumberInner(
   };
 
   const evalArrayBindingDim = (rawBText: string, dim: number, evalSid: SymbolId | undefined): number | null => {
-    const cleanB = rawBText
-      .replace(/\s*\bannotation\b[\s\S]*$/, "")
-      .replace(/^=/, "")
-      .trim();
+    const cleanB = stripAnnotation(rawBText).replace(/^=/, "").trim();
     if (dim === 1 && cleanB.startsWith("{") && cleanB.endsWith("}")) {
       const inner = cleanB.slice(1, -1).trim();
       return inner === "" ? 0 : parseArrayLiteralElements(cleanB).length;
@@ -1461,7 +1464,7 @@ function evaluateCSTNumberInner(
           if (resolved) {
             const mod = db.query("effectiveModification", resolved.id);
             if (mod?.bindingExpression?.text) {
-              const bStr = mod.bindingExpression.text.replace(/\s*\bannotation\b[\s\S]*$/, "").trim();
+              const bStr = stripAnnotation(mod.bindingExpression.text).trim();
               if (bStr === "true") return 1;
               if (bStr === "false") return 0;
               const bVal = parseInt(bStr, 10);
@@ -1518,7 +1521,7 @@ function evaluateCSTNumberInner(
     return null;
   };
 
-  const sizeMatch = text.match(/^size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*(?:,\s*(\d+))?\s*\)$/);
+  const sizeMatch = text.match(/^size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)(?:\s*,\s*(\d+))?\s*\)$/);
   if (sizeMatch) {
     const arrName = sizeMatch[1]!;
     const dim = sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 1;
@@ -1526,10 +1529,19 @@ function evaluateCSTNumberInner(
     if (sizeVal !== null) return sizeVal;
   }
 
-  const minMaxMatch = text.match(/^(min|max)\s*\(\s*[[{]?\s*([^()[{}]+?)\s*[\]}]?\s*\)$/);
-  if (minMaxMatch) {
-    const fn = minMaxMatch[1]!;
-    const argsList = minMaxMatch[2]!.split(",").map((s) => s.trim());
+  let minMaxFn: string | null = null;
+  let minMaxInner: string | null = null;
+  if ((text.startsWith("min(") || text.startsWith("max(")) && text.endsWith(")")) {
+    minMaxFn = text.startsWith("min(") ? "min" : "max";
+    let inner = text.slice(4, -1).trim();
+    if ((inner.startsWith("[") && inner.endsWith("]")) || (inner.startsWith("{") && inner.endsWith("}"))) {
+      inner = inner.slice(1, -1).trim();
+    }
+    minMaxInner = inner;
+  }
+  if (minMaxFn && minMaxInner !== null) {
+    const fn = minMaxFn;
+    const argsList = minMaxInner.split(",").map((s) => s.trim());
     const argVals: number[] = [];
     for (const argStr of argsList) {
       const av = evaluateCSTNumber(argStr, subs, scopeId, db, dae, prefix);
@@ -1607,12 +1619,18 @@ export function resolveScopedName(
       const isStateOut = !state.isInsidePrevious && state.stateOutputVars?.has(candidate);
       if (!isStateOut) return state.outerToInner.get(candidate)!;
     }
-    const baseCand = candidate.replace(/\[[^\]]*\]/g, "");
+    const baseCand = candidate.replace(/\[[^\][]*\]/g, "");
     if (baseCand !== candidate && state.outerToInner.has(baseCand)) {
       const isStateOut = !state.isInsidePrevious && state.stateOutputVars?.has(baseCand);
       if (!isStateOut) {
         const mapped = state.outerToInner.get(baseCand)!;
-        const candTail = candidate.match(/(\[[^\]]*\])+$/)?.[0] ?? "";
+        let tailStart = candidate.length;
+        while (tailStart > 0 && candidate[tailStart - 1] === "]") {
+          const open = candidate.lastIndexOf("[", tailStart - 1);
+          if (open === -1) break;
+          tailStart = open;
+        }
+        const candTail = candidate.slice(tailStart);
         if (candTail && !mapped.endsWith("]")) return mapped + candTail;
         return mapped;
       }
@@ -1620,7 +1638,7 @@ export function resolveScopedName(
     let dot = candidate.lastIndexOf(".");
     while (dot > 0) {
       const sub = candidate.slice(0, dot);
-      const baseSub = sub.replace(/\[[^\]]*\]/g, "");
+      const baseSub = sub.replace(/\[[^\][]*\]/g, "");
       const exactMapped = state.outerToInner.get(sub);
       const baseMapped = exactMapped === undefined ? state.outerToInner.get(baseSub) : undefined;
       const mapped = exactMapped ?? baseMapped;
@@ -1749,7 +1767,7 @@ export function resolveScopedName(
             }
           }
         } else {
-          const baseP = p.replace(/\[[^\]]+\]/g, "");
+          const baseP = p.replace(/\[[^\][]+\]/g, "");
           if (scopeDeclaredNames?.get(p)?.has(rootComp) || scopeDeclaredNames?.get(baseP)?.has(rootComp)) {
             resolvedName = target;
             break;
@@ -2117,7 +2135,7 @@ export function extractDbConstantValue(
   const isBoolean = typeSpec === "Boolean";
   const isInteger = isIntegerTypeSpec(typeSpec, db, undefined, evalScope);
   const evalExprStr = (rawStr: string): { value: any; isInteger: boolean; isBoolean?: boolean } | null => {
-    const str = rawStr.replace(/\s*\bannotation\b[\s\S]*$/, "").trim();
+    const str = stripAnnotation(rawStr).trim();
     if (!str) return null;
     if (str === "true") return { value: 1, isInteger: true, isBoolean: true };
     if (str === "false") return { value: 0, isInteger: true, isBoolean: true };
@@ -2399,7 +2417,7 @@ export function extractDbConstantValue(
       }
       const ownerCst = db.cstNode(curOwnerId) as any;
       const shortSpec = getShortClassSpecifierNode(ownerCst);
-      const ownerCstText = (shortSpec?.text ?? "").replace(/\s*\bannotation\b[\s\S]*$/, "");
+      const ownerCstText = stripAnnotation(shortSpec?.text ?? "");
       const parenIdx = ownerCstText.indexOf("(");
       if (parenIdx >= 0) {
         const modSlice = ownerCstText.slice(parenIdx);
@@ -2433,10 +2451,10 @@ export function extractDbConstantValue(
   const cst = db.cstNode(c.id) as any;
   const cstText = cst?.text ?? "";
   // Strip attributes in parentheses so min=0 inside (min=0) doesn't match the binding '='
-  const strippedCstText = cstText.replace(/\s*\bannotation\b[\s\S]*$/, "").replace(/\([^)]*\)/g, " ");
+  const strippedCstText = stripAnnotation(cstText).replace(/\([^()]*\)/g, " ");
   const eqMatch = strippedCstText.match(/=\s*([^;,]+)/);
   if (eqMatch) {
-    const res = evalExprStr(eqMatch[1].trim());
+    const res = evalExprStr(eqMatch[1]!.trim());
     if (res) return res;
   }
   return null;
@@ -2508,7 +2526,8 @@ export function lookupDbConstant(
         let currArgs = currArgsInit;
         let matchedArg: any = null;
         for (let i = 0; i < parts.length; i++) {
-          const seg = parts[i]!.replace(/\[.*\]$/, "");
+          const bIdx = parts[i]!.indexOf("[");
+          const seg = bIdx >= 0 ? parts[i]!.slice(0, bIdx) : parts[i]!;
           matchedArg = [...currArgs].reverse().find((a: any) => a && !a.isBreak && a.name === seg);
           if (!matchedArg) break;
           if (i < parts.length - 1) {
@@ -2622,7 +2641,8 @@ export function lookupDbConstant(
         };
         currClassId = resolveCompClassId(compSym);
         for (let i = 1; i < parts.length; i++) {
-          const seg = parts[i]!.replace(/\[.*\]$/, "");
+          const bIdx = parts[i]!.indexOf("[");
+          const seg = bIdx >= 0 ? parts[i]!.slice(0, bIdx) : parts[i]!;
           const matchedArg = currArgs.find((a: any) => a && !a.isBreak && a.name === seg);
           let memberSym: SymbolEntry | null = null;
           if (currClassId) {

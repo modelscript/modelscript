@@ -252,9 +252,17 @@ export function emitFunctionCallEquation(
         }
 
         const fullText = (node.text ?? "").trim();
-        const arg2Match = fullText.match(/reinit\s*\([^,]+,\s*(.+)\)\s*;?$/s);
-        if (arg2Match) {
-          const arg2Text = arg2Match[1]!.trim();
+        let arg2Text = "";
+        const reinitIdx = fullText.indexOf("reinit");
+        if (reinitIdx >= 0) {
+          const openParen = fullText.indexOf("(", reinitIdx);
+          const commaIdx = fullText.indexOf(",", openParen);
+          const closeParen = fullText.lastIndexOf(")");
+          if (commaIdx > openParen && closeParen > commaIdx) {
+            arg2Text = fullText.slice(commaIdx + 1, closeParen).trim();
+          }
+        }
+        if (arg2Text) {
           if (arg2Text.startsWith("{") && arg2Text.endsWith("}")) {
             const elements = arg2Text
               .slice(1, -1)
@@ -307,7 +315,14 @@ export function emitFunctionCallEquation(
       const firstEl = dae.getExprLeft(argId);
       if (dae.getExprKind(firstEl) === ExprKind.Name) {
         const elName = dae.interner.resolve(dae.getExprData1(firstEl));
-        return elName ? elName.replace(/(?:\[\d+\])+$/, "") : null;
+        if (!elName) return null;
+        let s = elName;
+        while (s.endsWith("]")) {
+          const idx = s.lastIndexOf("[");
+          if (idx === -1) break;
+          s = s.slice(0, idx);
+        }
+        return s;
       }
     }
     return null;
@@ -403,7 +418,8 @@ export function emitFunctionCallEquation(
               dae.getExprKind(firstEl0) === ExprKind.Name
                 ? (dae.interner.resolve(dae.getExprData1(firstEl0)) ?? "")
                 : "";
-            const baseArrName = firstEl0Name.replace(/\[[^\]]+\]$/, "");
+            const bIdx = firstEl0Name.lastIndexOf("[");
+            const baseArrName = bIdx >= 0 && firstEl0Name.endsWith("]") ? firstEl0Name.slice(0, bIdx) : firstEl0Name;
             if (baseArrName) {
               const realElems: number[] = [];
               for (let i = 0; i < len1; i++) {
@@ -2779,7 +2795,7 @@ export function extractClassEquations(
               }
 
               for (const bConn of curBreakContext.brokenConnections) {
-                const m = bConn.match(/connect\(([^,]+),([^)]+)\)/);
+                const m = bConn.match(/connect\(([^,()]+),([^()]+)\)/);
                 if (m) {
                   const bFrom = m[1]!.trim().replace(/\s+/g, "");
                   const bTo = m[2]!.trim().replace(/\s+/g, "");

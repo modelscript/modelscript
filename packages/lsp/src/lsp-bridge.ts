@@ -2180,10 +2180,19 @@ export class LSPBridge {
         .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) => String.fromCodePoint(parseInt(hex, 16)))
         .replace(/&amp;/gi, "&");
 
+    const stripHtmlTags = (s: string): string => {
+      let prev: string;
+      do {
+        prev = s;
+        s = s.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+      } while (s !== prev);
+      return s;
+    };
+
     // 1. Preserve <pre>...</pre> blocks as fenced code blocks
     const preBlocks: string[] = [];
     html = html.replace(/<pre(?:\s[^>]*)?>([\s\S]*?)<\/pre>/gi, (_m, inner) => {
-      const cleanCode = decodeEntities(inner.replace(/<\/?[a-zA-Z][^>]*>/g, "")).trim();
+      const cleanCode = decodeEntities(stripHtmlTags(inner)).trim();
       const idx = preBlocks.length;
       preBlocks.push(`\n\n\`\`\`modelica\n${cleanCode}\n\`\`\`\n\n`);
       return `\x00PRE_${idx}\x00`;
@@ -2194,7 +2203,7 @@ export class LSPBridge {
 
     // 3. Convert <a href="...">text</a>
     html = html.replace(/<a\s+[^>]*href=(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi, (_m, _q, href, text) => {
-      const cleanText = text.replace(/<\/?[a-zA-Z][^>]*>/g, "").trim();
+      const cleanText = stripHtmlTags(text).trim();
       if (href.startsWith("http://") || href.startsWith("https://")) {
         return `[${cleanText || href}](${href})`;
       }
@@ -2212,15 +2221,16 @@ export class LSPBridge {
         let cMatch: RegExpExecArray | null;
         while ((cMatch = cellRegex.exec(rMatch[1]!)) !== null) {
           const cellText = decodeEntities(
-            cMatch[1]!
-              .replace(/<(?:b|strong)(?:\s[^>]*)?>([\s\S]*?)<\/(?:b|strong)>/gi, "**$1**")
-              .replace(/<(?:i|em|var)(?:\s[^>]*)?>([\s\S]*?)<\/(?:i|em|var)>/gi, "*$1*")
-              .replace(/<(?:code|tt)(?:\s[^>]*)?>([\s\S]*?)<\/(?:code|tt)>/gi, "`$1`")
-              .replace(/<\/?[a-zA-Z][^>]*>/g, " ")
+            stripHtmlTags(
+              cMatch[1]!
+                .replace(/<(?:b|strong)(?:\s[^>]*)?>([\s\S]*?)<\/(?:b|strong)>/gi, "**$1**")
+                .replace(/<(?:i|em|var)(?:\s[^>]*)?>([\s\S]*?)<\/(?:i|em|var)>/gi, "*$1*")
+                .replace(/<(?:code|tt)(?:\s[^>]*)?>([\s\S]*?)<\/(?:code|tt)>/gi, "`$1`"),
+            )
               .replace(/\s+/g, " ")
               .trim(),
           );
-          cells.push(cellText.replace(/\|/g, "\\|"));
+          cells.push(cellText.replace(/\\/g, "\\\\").replace(/\|/g, "\\|"));
         }
         if (cells.length > 0) rows.push(cells);
       }
@@ -2241,10 +2251,7 @@ export class LSPBridge {
     // 5. Headings, inline styles, lists, paragraphs, and breaks
     html = html
       .replace(/<h[1-6](?:\s[^>]*)?>([\s\S]*?)<\/h[1-6]>/gi, (_m, inner) => {
-        const hText = inner
-          .replace(/<\/?[a-zA-Z][^>]*>/g, "")
-          .replace(/\s+/g, " ")
-          .trim();
+        const hText = stripHtmlTags(inner).replace(/\s+/g, " ").trim();
         return hText ? `\n\n**${hText}**\n\n` : "";
       })
       .replace(/<(?:b|strong)(?:\s[^>]*)?>([\s\S]*?)<\/(?:b|strong)>/gi, "**$1**")
@@ -2374,7 +2381,7 @@ export class LSPBridge {
       const headerSlice = span.slice(0, 600);
       // 1. Long class header: `model SineVoltage "Sine voltage source"`
       const headerDescMatch = new RegExp(
-        `\\b${escapedName}\\s+("(?:[^"\\\\]+|\\\\.)*"(?:\\s*\\+\\s*"(?:[^"\\\\]+|\\\\.)*")*)`,
+        `\\b${escapedName}\\s+("(?:[^"\\r\\n\\\\]|\\\\.)*"(?:\\s*\\+\\s*"(?:[^"\\r\\n\\\\]|\\\\.)*")*)`,
       ).exec(headerSlice);
       if (headerDescMatch && headerDescMatch.index < 200) {
         return this.unescapeModelicaString(headerDescMatch[1]!);
@@ -2384,7 +2391,7 @@ export class LSPBridge {
         const strippedAnn = this.stripModelicaAnnotations(span)
           .replace(/\s*;\s*$/, "")
           .trim();
-        const trailMatch = strippedAnn.match(/("(?:[^"\\]+|\\.)*")\s*$/);
+        const trailMatch = strippedAnn.match(/("(?:[^"\\\r\n]|\\.)*")\s*$/);
         if (trailMatch) {
           return this.unescapeModelicaString(trailMatch[1]!);
         }
@@ -2396,7 +2403,7 @@ export class LSPBridge {
       const strippedAnn = this.stripModelicaAnnotations(span)
         .replace(/\s*;\s*$/, "")
         .trim();
-      const trailMatch = strippedAnn.match(/("(?:[^"\\]+|\\.)*"(?:\s*\+\s*"(?:[^"\\]+|\\.)*")*)\s*$/);
+      const trailMatch = strippedAnn.match(/("(?:[^"\\\r\n]|\\.)*"(?:\s*\+\s*"(?:[^"\\\r\n]|\\.)*")*)\s*$/);
       if (trailMatch) {
         return this.unescapeModelicaString(trailMatch[1]!);
       }

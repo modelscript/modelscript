@@ -2416,13 +2416,13 @@ export function evaluateArenaFunctionCall(
               const rawDecls = splitTopLevelCommas(voidMatch[1]!);
               const formalToActual = new Map<string, string>();
               for (let pIdx = 0; pIdx < rawDecls.length; pIdx++) {
-                const idMatch = rawDecls[pIdx]!.match(/([a-zA-Z_]\w*)\s*(?:\[[^\]]*\])?\s*$/);
+                const idMatch = rawDecls[pIdx]!.match(/([a-zA-Z_]\w*)\s*(?:\[[^\][]*\])?\s*$/);
                 if (idMatch && cArgNames[pIdx]) {
                   formalToActual.set(idMatch[1]!, cArgNames[pIdx]!);
                 }
               }
               const body = voidMatch[2]!;
-              const assignRe = /([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*=\s*([^;]+);/g;
+              const assignRe = /\b([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*=\s*([^;\r\n]+?)\s*;/g;
               let m: RegExpExecArray | null;
               let assignedAny = false;
               while ((m = assignRe.exec(body)) !== null) {

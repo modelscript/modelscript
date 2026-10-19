@@ -611,7 +611,7 @@ export async function verifyGate3Requirements(
     const boundVars = new Map<string, number>();
     const clean = stripComments(code);
     const paramRegex =
-      /\b(?:parameter\s+|constant\s+)?(?:Real|Integer|[A-Za-z_][A-Za-z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\([^)]*\))?\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*;/g;
+      /\b(?:(?:parameter|constant)\s+)?(?!parameter\b|constant\b)(?:Real|Integer|[A-Za-z_][A-Za-z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\([^()]*\))?\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*;/g;
     for (const pm of clean.matchAll(paramRegex)) {
       const val = Number(pm[2]);
       if (Number.isFinite(val)) {
@@ -870,7 +870,7 @@ export async function verifyGate4DAEBalance(
           const text = String(node.text ?? "");
           if (!/\b(?:parameter|constant|input)\b/.test(text)) {
             const m = text.match(
-              /(?:(?:public|protected)\s+)?(?:(?:output|discrete)\s+)?[A-Za-z_][a-zA-Z0-9_.]*\s+([^=;()]+)/,
+              /^\s*(?:(?:public|protected)\s+)?(?:(?:output|discrete)\s+)?(?!public\b|protected\b|output\b|discrete\b)[A-Za-z_][a-zA-Z0-9_.]*\s+([^=;()]+)/,
             );
             if (m?.[1]) {
               for (const rawId of m[1].split(",")) {

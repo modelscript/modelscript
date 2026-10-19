@@ -9,7 +9,7 @@
     "build": "npm run download-vscode && npm run build-extension && npm run build-github-fs && npm run build-server",
     "build-extension": "npx tsx scripts/build-extension.ts",
     "build-github-fs": "npm run build --workspace=modelscript-github-fs",
-    "build-server": "npx esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:express --external:http-proxy-middleware",
+    "build-server": "npx esbuild src/server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:express",
     "build-static": "npm run download-vscode && npm run build-extension && npm run build-github-fs && npx tsx src/build-static.ts",
     "clean": "rimraf dist",
     "dev": "npm run download-vscode && npm run build-extension && PORT=3003 npx tsx watch src/server.ts",
@@ -35,7 +35,6 @@
     "@modelscript/sysml2": "*",
     "express": "^5.1.0",
     "express-rate-limit": "^8.3.2",
-    "http-proxy-middleware": "^3.0.7",
     "path-to-regexp": "^8.4.2"
   },
   "devDependencies": {

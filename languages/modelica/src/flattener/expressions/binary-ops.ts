@@ -49,7 +49,9 @@ export function exprReferencesRuntimeParameter(
       const state = getFlatteningState(dae);
       const db: QueryDB | undefined = state.flattener?.db ?? state.db;
       if (db) {
-        const leaf = (name.includes(".") ? name.split(".").pop()! : name).replace(/\[.*\]$/, "");
+        const rawLeaf = name.includes(".") ? name.split(".").pop()! : name;
+        const bIdx = rawLeaf.indexOf("[");
+        const leaf = bIdx >= 0 ? rawLeaf.slice(0, bIdx) : rawLeaf;
         for (const s of db.byName(leaf)) {
           if (s.kind === "Component" && db.query("variability", s.id) === "parameter") {
             const ts = db.query<string | null>("typeSpecifier", s.id);

@@ -4,6 +4,11 @@ import { DAEBuilder, ExprKind, type QueryDB, type SymbolId, Variability } from "
 import { ModelicaErrorCode } from "../../errors.js";
 import { extractCompilerOptions } from "../support/compiler-options.js";
 
+function stripTrailingSubscript(s: string): string {
+  const idx = s.indexOf("[");
+  return idx >= 0 ? s.slice(0, idx) : s;
+}
+
 export function collectExprVarNames(
   exprId: number,
   dae: DAEBuilder,
@@ -140,7 +145,7 @@ export function checkCyclicConstantsAndParameters(
     if (variability !== Variability.Constant && variability !== Variability.Parameter) continue;
 
     const fullName = dae.getVarName(i);
-    const baseName = fullName.replace(/\[.*\]$/, "");
+    const baseName = stripTrailingSubscript(fullName);
     const dotIdx = baseName.lastIndexOf(".");
     const scope = dotIdx >= 0 ? `${rootClassName}.${baseName.slice(0, dotIdx)}` : rootClassName;
     const simpleName = dotIdx >= 0 ? baseName.slice(dotIdx + 1) : baseName;
@@ -171,7 +176,7 @@ export function checkCyclicConstantsAndParameters(
 
     const scopeDeps = varToDeps.get(simpleName) ?? [];
     for (const d of rawDeps) {
-      const cleanD = d.replace(/\[.*\]$/, "");
+      const cleanD = stripTrailingSubscript(d);
       if (prefix) {
         if (cleanD.startsWith(prefix + ".")) {
           const depSimple = cleanD.slice(prefix.length + 1);
@@ -267,7 +272,7 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
   for (let i = 0; i < fn.varCount; i++) {
     if (fn.isVarRemoved(i)) continue;
     const name = fn.getVarName(i);
-    const cleanName = name.replace(/\[.*\]$/, "");
+    const cleanName = stripTrailingSubscript(name);
     if (!compNames.includes(cleanName)) {
       compNames.push(cleanName);
     }
@@ -280,7 +285,7 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
 
     const deps: string[] = [];
     for (const d of rawDeps) {
-      const cleanD = d.replace(/\[.*\]$/, "");
+      const cleanD = stripTrailingSubscript(d);
       if (!deps.includes(cleanD)) {
         deps.push(cleanD);
       }

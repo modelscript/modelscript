@@ -876,7 +876,7 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     if (Number.isFinite(parsedRho) && parsedRho > 0) defaultDensity = parsedRho;
   }
 
-  const plasticCardMatch = deckText.match(/\*PLASTIC[^\r\n]*[\r\n\s]+([\d.e+-]+)/i);
+  const plasticCardMatch = deckText.match(/\*PLASTIC[^\r\n]*\r?\n\s*([\d.e+-]+)/i);
   if (plasticCardMatch && plasticCardMatch[1]) {
     const parsedYield = parseFloat(plasticCardMatch[1]);
     if (Number.isFinite(parsedYield) && parsedYield > 0) {
@@ -888,7 +888,7 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
   }
 
   // Extract optional shell thickness or beam cross-sectional area
-  const shellThicknessMatch = deckText.match(/\*SHELL\s+SECTION[^\r\n]*[\r\n\s]+([\d.e+-]+)/i);
+  const shellThicknessMatch = deckText.match(/\*SHELL\s+SECTION[^\r\n]*\r?\n\s*([\d.e+-]+)/i);
   const defaultThickness = shellThicknessMatch ? parseFloat(shellThicknessMatch[1]!) || 0.005 : 0.005;
   const defaultCrossArea = defaultThickness * defaultThickness;
 
@@ -1301,7 +1301,7 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     }
 
     // Parse *DLOAD distributed pressure/gravity loads if present
-    const dloadBlocks = [...deckText.matchAll(/\*DLOAD(?:,[^\r\n]*)?[\r\n]+([\s\S]*?)(?=\*[A-Z]|$)/gi)];
+    const dloadBlocks = [...deckText.matchAll(/\*DLOAD(?:,[^\r\n]*)?\r?\n((?:^[ \t]*[^*\r\n].*$\r?\n?)*)/gim)];
     for (const dloadMatch of dloadBlocks) {
       if (!dloadMatch[1] || numNodes === 0) continue;
       for (const rawLine of dloadMatch[1].split(/\r?\n/)) {
@@ -1694,7 +1694,7 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       maxVonMisesPa = parseFloat(misesMatch[1]) * 1e6;
     } else {
       maxVonMisesPa = 0.0;
-      const cloadBlock = deckText.match(/\*CLOAD[\r\n]+([\s\S]*?)(?=\*[A-Z]|$)/i);
+      const cloadBlock = deckText.match(/\*CLOAD[^\r\n]*\r?\n((?:^[ \t]*[^*\r\n].*$\r?\n?)*)/im);
       if (cloadBlock && cloadBlock[1]) {
         let maxLoad = 0;
         for (const line of cloadBlock[1].split(/\r?\n/)) {

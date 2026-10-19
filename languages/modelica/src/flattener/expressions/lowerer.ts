@@ -237,7 +237,7 @@ export function lowerCSTExpression(
     type === "number_literal" ||
     type === "NumberLiteral" ||
     ((type.startsWith("/") || node.childCount === 0) &&
-      /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(node.text?.trim() ?? ""))
+      /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(node.text?.trim() ?? ""))
   ) {
     const text = node.text.trim();
     if (text.includes(".") || text.toLowerCase().includes("e")) {
@@ -1600,7 +1600,7 @@ export function lowerCSTExpression(
     }
     const cleanFnName = typeof fnName === "string" ? fnName.replace(/^\.+/, "") : "";
 
-    if (/\[.*?\]/.test(node.child(0)?.text ?? "")) {
+    if (/\[[^\][]*\]/.test(node.child(0)?.text ?? "")) {
       const callText = node.child(0)?.text?.trim() ?? cleanFnName;
       let cur: any = node;
       while (
@@ -10970,7 +10970,7 @@ export function lowerCSTExpression(
             a.redeclaredTypeSpecifier.startsWith("enumeration("),
         );
         if (redeclArg) {
-          const enumMatch = redeclArg.redeclaredTypeSpecifier.match(/enumeration\s*\(([^)]+)\)/);
+          const enumMatch = redeclArg.redeclaredTypeSpecifier.match(/enumeration\s*\(([^()]+)\)/);
           if (enumMatch?.[1]) {
             const redeclLits = enumMatch[1]
               .split(",")

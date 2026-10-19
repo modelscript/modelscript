@@ -73,7 +73,7 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
     let idCounter = baseId;
 
     // 1. Extract project name and type
-    const projectMatch = /<project\s+([^>]*?)>/i.exec(text);
+    const projectMatch = /<project\b([^>]*?)>/i.exec(text);
     const projAttrs = projectMatch ? projectMatch[1]! : "";
     const nameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(projAttrs);
     const targetMatch =
@@ -115,7 +115,7 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
     childrenOf.set(rootId, rootChildren);
 
     // 2. Extract component definitions from <definitions>
-    const defRegex = /<Definition\s+([^>]*?)>([\s\S]*?)<\/Definition>/gi;
+    const defRegex = /<Definition\b([^>]*?)>([\s\S]*?)<\/Definition>/gi;
     let defMatch: RegExpExecArray | null;
 
     while ((defMatch = defRegex.exec(text)) !== null) {
@@ -233,7 +233,7 @@ function escapeXml(str: string): string {
 }
 
 export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string | undefined {
-  const graphicsMatch = /<graphics\s*[^>]*>([\s\S]*?)<\/graphics>/i.exec(dBody);
+  const graphicsMatch = /<graphics\b[^>]*>([\s\S]*?)<\/graphics>/i.exec(dBody);
   if (!graphicsMatch) return undefined;
   const gXml = graphicsMatch[1]!;
 
@@ -250,7 +250,7 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
   const items: SvgItem[] = [];
 
   // 1. Ports
-  const portRegex = /<Port\s+[^>]*?x\s*=\s*["']([^"']+)["'][^>]*?y\s*=\s*["']([^"']+)["'][^>]*?>/gi;
+  const portRegex = /<Port\b[^>]*?x\s*=\s*["']([^"']+)["'][^>]*?y\s*=\s*["']([^"']+)["'][^>]*?>/gi;
   let pMatch: RegExpExecArray | null;
   while ((pMatch = portRegex.exec(gXml)) !== null) {
     const px = parseFloat(pMatch[1]!);
@@ -267,7 +267,7 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
 
   // 2. Rectangles
   const rectRegex =
-    /<Gfx\s+classid=["']Graphics\.Rectangle["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?w=["']([^"']+)["'][^>]*?h=["']([^"']+)["']/gi;
+    /<Gfx\b[^>]*?\bclassid=["']Graphics\.Rectangle["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?w=["']([^"']+)["'][^>]*?h=["']([^"']+)["']/gi;
   let rMatch: RegExpExecArray | null;
   while ((rMatch = rectRegex.exec(gXml)) !== null) {
     const rx = parseFloat(rMatch[1]!);
@@ -296,7 +296,7 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
 
   // 3. Lines
   const lineRegex =
-    /<Gfx\s+classid=["']Graphics\.Line["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
+    /<Gfx\b[^>]*?\bclassid=["']Graphics\.Line["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
   let lMatch: RegExpExecArray | null;
   while ((lMatch = lineRegex.exec(gXml)) !== null) {
     const lx = parseFloat(lMatch[1]!);
@@ -330,7 +330,7 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
 
   // 4. Texts
   const textRegex =
-    /<Gfx\s+classid=["']Graphics\.Text["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
+    /<Gfx\b[^>]*?\bclassid=["']Graphics\.Text["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
   let tMatch: RegExpExecArray | null;
   while ((tMatch = textRegex.exec(gXml)) !== null) {
     const tx = parseFloat(tMatch[1]!);

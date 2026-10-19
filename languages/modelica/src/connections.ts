@@ -195,7 +195,7 @@ export class ModelicaPortBalancer {
     const outsideOutsidePairs: [number, number][] = [];
     const varConnectEqIdx = new Map<number, number>();
 
-    const stripConnectorSubscripts = (s: string): string => s.replace(/\[[^\]]*\]/g, "");
+    const stripConnectorSubscripts = (s: string): string => s.replace(/\[[^\][]*\]/g, "");
     const matchesConnectorPrefix = (varName: string, candidate: string): boolean => {
       if (!candidate) return false;
       if (varName === candidate || varName.startsWith(candidate + ".") || varName.startsWith(candidate + "[")) {
@@ -486,7 +486,20 @@ export class ModelicaPortBalancer {
       }
       for (const qr of ocGraphMeta.queriedRoots ?? []) ocNodes.add(qr);
 
-      const stripTrailingSubscripts = (s: string): string => s.replace(/(?:\[\d+(?:,\d+)*\])+$/, "");
+      const stripTrailingSubscripts = (s: string): string => {
+        let res = s;
+        while (res.endsWith("]")) {
+          const open = res.lastIndexOf("[");
+          if (open === -1) break;
+          const inner = res.slice(open + 1, -1);
+          if (inner.split(",").every((part) => /^\d+$/.test(part.trim()))) {
+            res = res.slice(0, open);
+          } else {
+            break;
+          }
+        }
+        return res;
+      };
 
       // Normalize scalarized record subfields (e.g. `.R.T[1,1]`) back to the overconstrained connector node
       const ocRecordSubfields: { leafAndSub: string; sub: string }[] = [];
@@ -814,7 +827,7 @@ export class ModelicaPortBalancer {
         const isBus = isExpBusVar(fromStr) || isExpBusVar(toStr);
         let isPlugCompatible = true;
 
-        const getBase = (s: string) => s.replace(/\[[^\]]*\]/g, "");
+        const getBase = (s: string) => s.replace(/\[[^\][]*\]/g, "");
         const fromHasSub = fromStr.includes("[");
         const toHasSub = toStr.includes("[");
 
@@ -894,7 +907,8 @@ export class ModelicaPortBalancer {
                   const fullPrefix = parts.slice(0, pIdx + 1).join(".");
                   if (isPrefixInstantiatedInDae(fullPrefix)) continue;
 
-                  const parentSeg = parts[pIdx - 1]!.replace(/\[.*\]$/, "");
+                  const bIdxParent = parts[pIdx - 1]!.indexOf("[");
+                  const parentSeg = bIdxParent >= 0 ? parts[pIdx - 1]!.slice(0, bIdxParent) : parts[pIdx - 1]!;
                   const validParentClassIds = new Set<any>();
                   const parentSyms = state.db.byName?.(parentSeg) || [];
                   for (const pSym of parentSyms) {
@@ -929,7 +943,8 @@ export class ModelicaPortBalancer {
                     }
                   }
 
-                  const segName = parts[pIdx]!.replace(/\[.*\]$/, "");
+                  const bIdxSeg = parts[pIdx]!.indexOf("[");
+                  const segName = bIdxSeg >= 0 ? parts[pIdx]!.slice(0, bIdxSeg) : parts[pIdx]!;
                   const syms = state.db.byName(segName) || [];
                   for (const sym of syms) {
                     if (sym.kind === "Component") {
@@ -1085,7 +1100,9 @@ export class ModelicaPortBalancer {
       if (topLevelConnectorPrefixes.size === 0) return false;
       const dot = varName.indexOf(".");
       if (dot <= 0) return false;
-      const firstSeg = varName.slice(0, dot).replace(/\[.*\]$/, "");
+      const rawFirstSeg = varName.slice(0, dot);
+      const bIdxFirst = rawFirstSeg.indexOf("[");
+      const firstSeg = bIdxFirst >= 0 ? rawFirstSeg.slice(0, bIdxFirst) : rawFirstSeg;
       return topLevelConnectorPrefixes.has(firstSeg);
     };
 
@@ -1452,7 +1469,22 @@ export class ModelicaPortBalancer {
               const firstEl = dae.getExprLeft(a0);
               if (dae.getExprKind(firstEl) === ExprKind.Name) {
                 const elName = dae.interner.resolve(dae.getExprData1(firstEl));
-                connName = elName ? elName.replace(/(?:\[\d+\])+$/, "") : null;
+                if (elName) {
+                  let r = elName;
+                  while (r.endsWith("]")) {
+                    const open = r.lastIndexOf("[");
+                    if (open === -1) break;
+                    const inner = r.slice(open + 1, -1);
+                    if (/^\d+$/.test(inner)) {
+                      r = r.slice(0, open);
+                    } else {
+                      break;
+                    }
+                  }
+                  connName = r;
+                } else {
+                  connName = null;
+                }
               }
             }
             if (connName) {
@@ -3075,10 +3107,9 @@ export class ModelicaPortBalancer {
         let eqSym = eqSyms[0];
         if (eqSyms.length > 1 && brokenOverconstrainedConnections.length > 0) {
           const sampleNode = brokenOverconstrainedConnections[0]!.u;
-          const leafName = sampleNode
-            .split(".")
-            .pop()
-            ?.replace(/\[.*\]$/, "");
+          const rawLeaf = sampleNode.split(".").pop();
+          const bIdxLeaf = rawLeaf ? rawLeaf.indexOf("[") : -1;
+          const leafName = rawLeaf ? (bIdxLeaf >= 0 ? rawLeaf.slice(0, bIdxLeaf) : rawLeaf) : undefined;
           if (leafName) {
             const compCandidates = (db.byName(leafName) ?? []).filter((s: any) => s.kind === "Component");
             for (const comp of compCandidates) {

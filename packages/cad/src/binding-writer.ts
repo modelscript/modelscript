@@ -61,7 +61,7 @@ export function parseCadBindings(cadStr: string): DynamicBindingConfig[] {
   if (!cadStr) return bindings;
 
   // 1. Match explicit CADBinding(...) calls
-  const bindingRegex = /CADBinding\s*\(([^)]+)\)/g;
+  const bindingRegex = /CADBinding\s*\(([^()]+)\)/g;
   let match;
   while ((match = bindingRegex.exec(cadStr)) !== null) {
     const args = match[1]!;
@@ -98,7 +98,7 @@ export function parseCadBindings(cadStr: string): DynamicBindingConfig[] {
 
   // 2. Fallback to shorthand dynamicPosition / dynamicRotation / dynamicScale
   if (bindings.length === 0) {
-    const posMatch = cadStr.match(/dynamicPosition\s*=\s*"\{([^,]+),\s*([^,]+),\s*([^}]+)\}"/);
+    const posMatch = cadStr.match(/dynamicPosition\s*=\s*"\{([^,{}"]+),\s*([^,{}"]+),\s*([^,{}"]+)\}"/);
     if (posMatch) {
       bindings.push({ property: "position", index: 0, variable: posMatch[1]!.trim() });
       bindings.push({ property: "position", index: 1, variable: posMatch[2]!.trim() });

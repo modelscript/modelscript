@@ -528,8 +528,9 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
       const startIdx = cmp.line - 1;
       const openLine = lines[startIdx]!;
       const indent = /^(\s*)/.exec(openLine)?.[1] ?? "      ";
-      if (/\/>\s*$/.test(openLine)) {
-        const expanded = openLine.replace(/\s*\/>\s*$/, ">") + `\n${indent}  ${geomTag}\n${indent}</ssd:Component>`;
+      if (openLine.trimEnd().endsWith("/>")) {
+        const trimmed = openLine.trimEnd();
+        const expanded = trimmed.slice(0, -2).trimEnd() + `>\n${indent}  ${geomTag}\n${indent}</ssd:Component>`;
         edits.push({
           range: {
             start: { line: startIdx, character: 0 },
@@ -782,9 +783,19 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
           const lIdx = cmp.line - 1;
           const lineText = lines[lIdx]!;
           const attrRe = new RegExp(`\\b${paramName}\\s*=\\s*(["'])[^"']*\\1`);
-          const updated = attrRe.test(lineText)
-            ? lineText.replace(attrRe, `${paramName}=$1${paramVal}$1`)
-            : lineText.replace(/(\s*\/?>)\s*$/, ` ${paramName}="${paramVal}"$1`);
+          let updated: string;
+          if (attrRe.test(lineText)) {
+            updated = lineText.replace(attrRe, `${paramName}=$1${paramVal}$1`);
+          } else {
+            const trimmed = lineText.trimEnd();
+            if (trimmed.endsWith("/>")) {
+              updated = `${trimmed.slice(0, -2)} ${paramName}="${paramVal}"/>`;
+            } else if (trimmed.endsWith(">")) {
+              updated = `${trimmed.slice(0, -1)} ${paramName}="${paramVal}">`;
+            } else {
+              updated = lineText;
+            }
+          }
           if (updated !== lineText) {
             edits.push({
               range: { start: { line: lIdx, character: 0 }, end: { line: lIdx, character: lineText.length } },

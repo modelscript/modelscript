@@ -301,7 +301,7 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
             for (const stmt of declPart.split(";")) {
               const s = stmt.trim();
               if (!s || /\b(?:parameter|constant|input|model|class|package|block|import|extends)\b/.test(s)) continue;
-              const m = s.match(/[A-Za-z_][a-zA-Z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+              const m = s.match(/^[A-Za-z_][a-zA-Z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
               if (m?.[1] && !new RegExp(`\\b${m[1]}\\b`).test(eqPart)) {
                 missingVars.push(m[1]);
               }
@@ -324,7 +324,7 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
             // Find uninitialized attributes in SysML v2
             const uninitVars: string[] = [];
             for (const m of repaired.matchAll(
-              /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*[a-zA-Z0-9_:]+(?:\s*=\s*[^;]+)?\s*;/g,
+              /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*[a-zA-Z0-9_:]+(?:\s*=\s*[^;\r\n]*?)?\s*;/g,
             )) {
               if (!m[0].includes("=")) uninitVars.push(m[1]!);
             }

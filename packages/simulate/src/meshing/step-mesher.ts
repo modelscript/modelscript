@@ -269,7 +269,8 @@ export class StepMesher {
       });
     }
 
-    const oeRegex = /#(\d+)\s*=\s*ORIENTED_EDGE\s*\(\s*'[^']*'\s*,\s*\*?\s*,\s*\*?\s*,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/g;
+    const oeRegex =
+      /#(\d+)\s*=\s*ORIENTED_EDGE\s*\(\s*'[^'\r\n]*'\s*,\s*(?:\*\s*)?,\s*(?:\*\s*)?,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/g;
     while ((m = oeRegex.exec(text)) !== null) {
       orientedEdges.set(parseInt(m[1]!, 10), {
         edge: parseInt(m[2]!, 10),
@@ -277,19 +278,19 @@ export class StepMesher {
       });
     }
 
-    const elRegex = /#(\d+)\s*=\s*(?:EDGE_LOOP|POLY_LOOP)\s*\(\s*'[^']*'\s*,\s*\(([^)]*)\)\s*\)/g;
+    const elRegex = /#(\d+)\s*=\s*(?:EDGE_LOOP|POLY_LOOP)\s*\(\s*'[^'\r\n]*'\s*,\s*\(([^()]*)\)\s*\)/g;
     while ((m = elRegex.exec(text)) !== null) {
       const loopId = parseInt(m[1]!, 10);
       const refs = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
       if (refs.length > 0) edgeLoops.set(loopId, refs);
     }
 
-    const fbRegex = /#(\d+)\s*=\s*(?:FACE_OUTER_BOUND|FACE_BOUND)\s*\(\s*'[^']*'\s*,\s*#(\d+)/g;
+    const fbRegex = /#(\d+)\s*=\s*(?:FACE_OUTER_BOUND|FACE_BOUND)\s*\(\s*'[^'\r\n]*'\s*,\s*#(\d+)/g;
     while ((m = fbRegex.exec(text)) !== null) {
       faceBounds.set(parseInt(m[1]!, 10), parseInt(m[2]!, 10));
     }
 
-    const afRegex = /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'[^']*'\s*,\s*\(([^)]*)\)/g;
+    const afRegex = /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'[^'\r\n]*'\s*,\s*\(([^()]*)\)/g;
     while ((m = afRegex.exec(text)) !== null) {
       const boundIds = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
       for (const bId of boundIds) {

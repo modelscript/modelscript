@@ -126,7 +126,8 @@ export function extractModelicaTwinAnnotations(moText: string): Map<string, stri
     const line = lines[i]!;
 
     // Find variable name in declaration: (Real|Integer|Boolean|parameter ...) <name>
-    const varDeclMatch = /(?:parameter\s+)?(?:Real|Integer|Boolean|[A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)\b/.exec(line);
+    const varDeclMatch =
+      /^\s*(?:parameter\s+)?(?!parameter\b)(?:Real|Integer|Boolean|[A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)\b/.exec(line);
     if (!varDeclMatch) continue;
 
     const varName = varDeclMatch[1]!;

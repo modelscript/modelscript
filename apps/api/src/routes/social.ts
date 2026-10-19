@@ -22,7 +22,7 @@ const optionalAuth = (req: Request, res: Response, next: any) => {
   next();
 };
 
-const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^\]]*)\])?\{([^}]*)\}/g;
+const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^[\]\r\n]*)\])?\{([^{}\r\n]*)\}/g;
 
 function parseNotebookPayload(
   rawContent: string | null | undefined,

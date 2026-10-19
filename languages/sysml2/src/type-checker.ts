@@ -133,10 +133,8 @@ for (const entry of kermlStdlibEntries) {
  */
 export function isStdlibOrBuiltinSymbol(name: string): boolean {
   if (!name) return true;
-  const clean = name
-    .trim()
-    .replace(/^~\s*/, "")
-    .replace(/::\*+(?:::\*+)*$/, "");
+  let clean = name.trim().replace(/^~\s*/, "");
+  while (clean.endsWith("::*")) clean = clean.slice(0, -3);
   if (!clean || clean === "<anonymous>" || clean === "*") return true;
   if (clean.includes("::")) {
     const parts = clean.split("::");
@@ -747,7 +745,9 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
   }
   if (!rawImport) return null;
 
-  const cleanTarget = rawImport.replace(/::\*+(?:::\*+)*$/, "").trim();
+  let cleanTarget = rawImport.trim();
+  while (cleanTarget.endsWith("::*")) cleanTarget = cleanTarget.slice(0, -3);
+  cleanTarget = cleanTarget.trim();
   if (!cleanTarget || isStdlibOrBuiltinSymbol(cleanTarget)) return null;
 
   const resolved =

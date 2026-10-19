@@ -212,7 +212,7 @@ function isValidLexicalValueForDatatype(value: string, datatypeIri: string): boo
     case "xsd:double":
     case "xsd:float":
     case "owl:real":
-      return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value);
+      return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value);
     case "xsd:boolean":
       return /^(?:true|false|1|0)$/.test(value);
     default:

@@ -275,18 +275,33 @@ function parseBinaryDat(config: ComtradeConfig, bytes: Uint8Array): ComtradeReco
  * Parses an IEEE C37.111-2013 Annex B Single-File Common Format (`.cff`) string into a ComtradeRecord.
  */
 export function readComtradeCff(cffContent: string): ComtradeRecord {
-  // Extract "--- file type: CFG ---", optional "--- file type: INF ---", and "--- file type: DAT ---" sections
-  const cfgMatch = /---\s*file type:\s*CFG\s*---\r?\n([\s\S]*?)(?=---\s*file type:|$)/i.exec(cffContent);
-  const infMatch = /---\s*file type:\s*INF\s*---\r?\n([\s\S]*?)(?=---\s*file type:|$)/i.exec(cffContent);
-  const datMatch = /---\s*file type:\s*DAT(?:\s+ASCII)?\s*---\r?\n([\s\S]*?)(?=---\s*file type:|$)/i.exec(cffContent);
+  const sectionLines: { CFG: string[]; INF: string[]; DAT: string[] } = { CFG: [], INF: [], DAT: [] };
+  let currentSection: "CFG" | "INF" | "DAT" | null = null;
 
-  if (!cfgMatch || !datMatch) {
+  for (const rawLine of cffContent.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    const headerMatch = /^---\s*file\s+type:\s*([A-Za-z0-9]+)(?:\s+ASCII)?\s*---$/i.exec(trimmed);
+    if (headerMatch) {
+      const type = headerMatch[1]!.toUpperCase();
+      currentSection = type === "CFG" || type === "INF" || type === "DAT" ? type : null;
+      continue;
+    }
+    if (currentSection) {
+      sectionLines[currentSection].push(rawLine);
+    }
+  }
+
+  const cfgText = sectionLines.CFG.join("\n");
+  const infText = sectionLines.INF.join("\n");
+  const datText = sectionLines.DAT.join("\n");
+
+  if (!cfgText.trim() || !datText.trim()) {
     throw new Error("Invalid COMTRADE .cff file: missing CFG or DAT section.");
   }
 
-  const record = readComtrade(cfgMatch[1]!, datMatch[1]!);
-  if (infMatch) {
-    record.infoText = infMatch[1]!.trim();
+  const record = readComtrade(cfgText, datText);
+  if (infText.trim()) {
+    record.infoText = infText.trim();
   }
   return record;
 }

@@ -10,7 +10,7 @@
  * - `simulateFmuArchive`: Runs Co-Simulation (`cs`) or Model Exchange (`me`) directly on any `.fmu` archive
  */
 
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -559,7 +559,7 @@ export function buildSourceFmuArchive(fmuBytes: Uint8Array | Buffer, options?: F
 
   if (buildDescBytes) {
     const buildDescXml = new TextDecoder().decode(buildDescBytes);
-    const matches = buildDescXml.matchAll(/<SourceFile\s+[^>]*name\s*=\s*"([^"]+)"/g);
+    const matches = buildDescXml.matchAll(/<SourceFile\s[^>]*?name\s*=\s*"([^"]+)"/g);
     for (const m of matches) {
       if (m[1]) {
         const candidate = m[1].startsWith("sources/") ? m[1] : `sources/${m[1]}`;
@@ -612,10 +612,20 @@ export function buildSourceFmuArchive(fmuBytes: Uint8Array | Buffer, options?: F
 
     const outBinPath = path.join(tmpDir, `${modelIdentifier}${ext}`);
     const cc = options?.compiler ?? process.env["CC"] ?? "gcc";
-    const absCFiles = cFiles.map((f) => `"${path.join(tmpDir, f)}"`).join(" ");
-    const ccCmd = `${cc} -shared -fPIC -O2 -I"${srcDir}" -I"${tmpDir}" ${absCFiles} -o "${outBinPath}" -lm -pthread`;
+    const ccArgs = [
+      "-shared",
+      "-fPIC",
+      "-O2",
+      `-I${srcDir}`,
+      `-I${tmpDir}`,
+      ...cFiles.map((f) => path.join(tmpDir, f)),
+      "-o",
+      outBinPath,
+      "-lm",
+      "-pthread",
+    ];
 
-    execSync(ccCmd, { stdio: "pipe", timeout: 60000 });
+    execFileSync(cc, ccArgs, { stdio: "pipe", timeout: 60000 });
 
     const binaryBytes = new Uint8Array(fs.readFileSync(outBinPath));
     const binaryPath = `binaries/${platform}/${modelIdentifier}${ext}`;

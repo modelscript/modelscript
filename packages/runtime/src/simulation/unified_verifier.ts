@@ -156,7 +156,7 @@ export function parseInitialSetString(str: string): Map<string, [number, number]
   const map = new Map<string, [number, number]>();
   if (!str) return map;
   const regex =
-    /([a-zA-Z0-9_.]+)\s*[:=]\s*\[?\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*[,:]\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*\]?/g;
+    /\b([a-zA-Z_][a-zA-Z0-9_.]*)\s*[:=]\s*(?:\[\s*)?([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?)\s*[,:]\s*([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?)(?:\s*\])?/g;
   let match;
   while ((match = regex.exec(str)) !== null) {
     const varName = match[1]!;

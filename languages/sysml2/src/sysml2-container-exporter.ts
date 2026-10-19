@@ -495,7 +495,7 @@ export class SysML2ContainerExporter {
     const parseSimpleExpr = (exprStr: string): number => {
       const s = exprStr.trim();
       if (!s) return dae.addRealLiteral(0);
-      if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(s)) {
+      if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(s)) {
         return dae.addRealLiteral(parseFloat(s));
       }
       const derMatch = s.match(/^der\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)$/);

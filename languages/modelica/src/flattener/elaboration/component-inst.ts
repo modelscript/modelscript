@@ -310,6 +310,69 @@ function extractReplaceablePackagePrefix(
     : null;
 }
 
+function parseBraceComprehension(text: string): { body: string; iter: string; range: string } | null {
+  if (!text.startsWith("{") || !text.endsWith("}")) return null;
+  const inner = text.slice(1, -1).trim();
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === "(" || ch === "{" || ch === "[") depth++;
+    else if (ch === ")" || ch === "}" || ch === "]") depth--;
+    else if (depth === 0) {
+      if (
+        (i === 0 || /\s/.test(inner[i - 1]!)) &&
+        inner.startsWith("for", i) &&
+        (i + 3 === inner.length || /\s/.test(inner[i + 3]!))
+      ) {
+        const body = inner.slice(0, i).trim();
+        const rest = inner.slice(i + 3).trim();
+        const inMatch = rest.match(/^([a-zA-Z_]\w*)\s+in\s+([\s\S]+)$/);
+        if (inMatch) {
+          return {
+            body,
+            iter: inMatch[1]!,
+            range: inMatch[2]!.trim(),
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function parseArrayComprehension(text: string): { body: string; iter: string; range: string } | null {
+  const openParen = text.indexOf("(");
+  const closeParen = text.lastIndexOf(")");
+  if (openParen === -1 || closeParen <= openParen) return null;
+  if (!/^array\s*\(/.test(text)) return null;
+  const inner = text.slice(openParen + 1, closeParen).trim();
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === "(" || ch === "{" || ch === "[") depth++;
+    else if (ch === ")" || ch === "}" || ch === "]") depth--;
+    else if (depth === 0) {
+      if (
+        (i === 0 || /\s/.test(inner[i - 1]!)) &&
+        inner.startsWith("for", i) &&
+        (i + 3 === inner.length || /\s/.test(inner[i + 3]!))
+      ) {
+        const body = inner.slice(0, i).trim();
+        const rest = inner.slice(i + 3).trim();
+        const inMatch = rest.match(/^([a-zA-Z_]\w*)\s+in\s+([\s\S]+)$/);
+        if (inMatch) {
+          return {
+            body,
+            iter: inMatch[1]!,
+            range: inMatch[2]!.trim(),
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function evaluateComprehensionRangeValues(
   rangeExpr: string,
   flattener: ComponentFlattener,
@@ -719,7 +782,7 @@ export function isClassType(flattener: ComponentFlattener, classId: SymbolId, vi
   if (!cst) return false;
 
   const prefixes = Cst.ClassDefinition.classPrefixes(cst);
-  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
+  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
   if (/\btype\b/.test(cleanPrefixes)) return true;
   if (/\b(model|record|block|package)\b/.test(cleanPrefixes)) return false;
 
@@ -774,7 +837,7 @@ export function checkTypeAliasSpecialization(
   if (!sym) return null;
   const cst = flattener.db.cstNode(typeSymId) as any;
   if (!cst) return null;
-  const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "").trim();
+  const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "").trim();
   const match = text.match(
     /^(?:(?:encapsulated|partial|replaceable|final|inner|outer|redeclare)\s+)*type\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_.]+)/,
   );
@@ -791,7 +854,7 @@ export function checkTypeAliasSpecialization(
 
   const targetCst = flattener.db.cstNode(targetClass.id) as any;
   const prefixes = Cst.ClassDefinition.classPrefixes(targetCst);
-  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
+  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
   let kindDesc = "a new def";
   if (/\bmodel\b/.test(cleanPrefixes)) kindDesc = "a model";
   else if (/\bblock\b/.test(cleanPrefixes)) kindDesc = "a block";
@@ -1151,7 +1214,7 @@ export function validateClassModifiers(
       // Enumeration subtyping in redeclaration (RedeclareEnum2, RedeclareEnum4, RedeclareEnum6)
       if (targetMember.kind === "Class") {
         const targetCst = flattener.db.cstNode(targetMember.id) as any;
-        const targetText = (targetCst?.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
+        const targetText = (targetCst?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
         const targetEnumMatch = /=\s*enumeration\s*\(([^)]*)\)/.exec(targetText);
         if (targetEnumMatch) {
           const rawTargetLits = targetEnumMatch[1]!.trim();
@@ -1163,7 +1226,7 @@ export function validateClassModifiers(
                 .map((s) => s.trim().split(/\s+/)[0])
                 .filter(Boolean);
 
-          const modText = (arg.modText ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
+          const modText = (arg.modText ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
           const rhsMatch = /=\s*([^\n;]+)/.exec(modText);
           const rhsVal = rhsMatch ? rhsMatch[1]!.trim() : (arg.redeclaredTypeSpecifier ?? "");
 
@@ -3648,7 +3711,7 @@ export function instantiateElements(
         if (dae.classKind === "function" && classTargetId) {
           const targetMeta = flattener.db.symbol(classTargetId)?.metadata as any;
           const rawKind = String(targetMeta?.classKind ?? targetMeta?.classPrefixes ?? "");
-          const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+          const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
           const words = cleanKind.split(/\s+/).filter(Boolean);
           const isModel = words.includes("model");
           const isConnector = words.includes("connector");
@@ -4618,7 +4681,9 @@ export function instantiateElements(
                       for (let vi = 0; vi < fn.varCount; vi++) {
                         if (fn.isVarRemoved(vi)) continue;
                         if (fn.getVarCausality(vi) === Causality.Input) {
-                          const vName = fn.getVarName(vi).replace(/\[.*\]$/, "");
+                          const rawVName = fn.getVarName(vi);
+                          const bIdx = rawVName.indexOf("[");
+                          const vName = bIdx >= 0 ? rawVName.slice(0, bIdx) : rawVName;
                           if (!inputNames.includes(vName)) {
                             inputNames.push(vName);
                             const vExpr = fn.getVarExpression(vi);
@@ -5304,7 +5369,7 @@ export function instantiateElements(
               ((state as any).packageRedeclares ??= new Set<string>()).add(a.name);
             }
             const targetClassQual = getSymbolQualifiedName(flattener.db, classTargetId);
-            const unsubscriptedComp = name.replace(/\[[^\]]*\]/g, "").replace(/\./g, "$");
+            const unsubscriptedComp = name.replace(/\[[^\][]*\]/g, "").replace(/\./g, "$");
             if (targetClassQual) {
               for (const [pkgName, pkgArg] of pkgRedeclByName) {
                 const origPkgSym =
@@ -5582,8 +5647,8 @@ export function instantiateElements(
                 const splitArgs = effectiveSubMod.args.map((arg: any) => {
                   const argText = arg?.value?.text?.trim();
                   if (argText && !arg.each && !arg.isEach && argText.startsWith("{") && argText.endsWith("}")) {
-                    const compMatch = argText.match(/^\{\s*([a-zA-Z_]\w*)\s+for\s+([a-zA-Z_]\w*)\s+in\s+(.+?)\s*\}$/);
-                    if (compMatch && compMatch[1] === compMatch[2] && userDimLabels[0]?.[idxNum]) {
+                    const compMatch = parseBraceComprehension(argText);
+                    if (compMatch && compMatch.body === compMatch.iter && userDimLabels[0]?.[idxNum]) {
                       const itemText = userDimLabels[0][idxNum]!;
                       return {
                         ...arg,
@@ -5610,13 +5675,11 @@ export function instantiateElements(
                       };
                     }
                   } else if (argText && !arg.each && !arg.isEach && /^array\s*\(/.test(argText)) {
-                    const arrCompMatch = argText.match(
-                      /^array\s*\(([\s\S]+)\s+for\s+([a-zA-Z_]\w*)\s+in\s+([\s\S]+)\)$/,
-                    );
+                    const arrCompMatch = parseArrayComprehension(argText);
                     if (arrCompMatch) {
-                      const bodyExpr = arrCompMatch[1]!.trim();
-                      const iterVar = arrCompMatch[2]!.trim();
-                      const rangeExpr = arrCompMatch[3]!.trim();
+                      const bodyExpr = arrCompMatch.body;
+                      const iterVar = arrCompMatch.iter;
+                      const rangeExpr = arrCompMatch.range;
                       const rangeVals = evaluateComprehensionRangeValues(
                         rangeExpr,
                         flattener,
@@ -6545,10 +6608,9 @@ export function instantiateElements(
                     bText = varType === VarType.Integer ? "0" : "0.0";
                     exprId = varType === VarType.Integer ? dae.addIntLiteral(0) : dae.addRealLiteral(0.0);
                   } else {
-                    const innerMatch = bText
-                      .replace(/^\s*diagonal\s*\(\s*/, "")
-                      .replace(/\s*\)\s*$/, "")
-                      .trim();
+                    let innerMatch = bText.slice(bText.indexOf("(") + 1);
+                    if (innerMatch.endsWith(")")) innerMatch = innerMatch.slice(0, -1);
+                    innerMatch = innerMatch.trim();
                     const elemText = getIndexedElementText(innerMatch, [idxTuple[0]!]);
                     const numVal = Number(elemText);
                     if (!Number.isNaN(numVal)) {
@@ -6635,11 +6697,11 @@ export function instantiateElements(
                     bText = firstArg;
                   }
                 } else if (bText.startsWith("array(") && bText.endsWith(")") && idxTuple.length > 0) {
-                  const compMatch = bText.match(/^array\(\s*(.+?)\s+for\s+([a-zA-Z_]\w*)\s+in\s+(.+)\)$/s);
+                  const compMatch = parseArrayComprehension(bText);
                   if (compMatch) {
-                    const bodyStr = compMatch[1]!.trim();
-                    const iterVar = compMatch[2]!;
-                    const rangeExpr = compMatch[3]!.trim();
+                    const bodyStr = compMatch.body;
+                    const iterVar = compMatch.iter;
+                    const rangeExpr = compMatch.range;
                     const rangeVals = evaluateComprehensionRangeValues(
                       rangeExpr,
                       flattener,

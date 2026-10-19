@@ -47,7 +47,7 @@ export class BdfDialect implements FeaDialect {
       if (!trimmed) return NaN;
       if (!isNaN(Number(trimmed))) return Number(trimmed);
       // NASTRAN short-field format without 'E': e.g. 2.1+11, 1.5-4, .5+3
-      const shortMatch = trimmed.match(/^([+-]?(?:\d+\.?\d*|\.\d+))([+-]\d+)$/);
+      const shortMatch = trimmed.match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+))([+-]\d+)$/);
       if (shortMatch) {
         return parseFloat(`${shortMatch[1]}e${shortMatch[2]}`);
       }

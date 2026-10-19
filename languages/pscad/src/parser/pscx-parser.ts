@@ -237,7 +237,7 @@ export function parsePscx(xmlContent: string): PscxProject {
   const linkedLibraries: string[] = [];
 
   // Match root <project> or <workspace> tag
-  const projectMatch = /<(?:project|workspace)\s+([^>]*?)>/i.exec(xmlContent);
+  const projectMatch = /<(?:project|workspace)\b([^>]*?)>/i.exec(xmlContent);
   if (projectMatch) {
     const attrText = projectMatch[1]!;
     const nameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(attrText);
@@ -261,10 +261,10 @@ export function parsePscx(xmlContent: string): PscxProject {
   // so component-level parameters (e.g. a source's "frequency") never overwrite project settings.
   const defsIdx = xmlContent.search(/<(?:definitions|hierarchy)\b/i);
   const settingsXml =
-    /<paramlist\s+name\s*=\s*["']Settings["'][^>]*>([\s\S]*?)<\/paramlist>/i.exec(xmlContent)?.[1] ??
+    /<paramlist\b[^>]*?\bname\s*=\s*["']Settings["'][^>]*>([\s\S]*?)<\/paramlist>/i.exec(xmlContent)?.[1] ??
     (defsIdx > 0 ? xmlContent.slice(0, defsIdx) : xmlContent.slice(0, 2000));
 
-  const paramRegex = /<param\s+([^>]*?)(?:\/>|>(.*?)<\/param>)/gi;
+  const paramRegex = /<param\b([^>]*?)(?:\/>|>(.*?)<\/param>)/gi;
   let pMatch: RegExpExecArray | null;
   while ((pMatch = paramRegex.exec(settingsXml)) !== null) {
     const attrs = pMatch[1]!;
@@ -296,7 +296,7 @@ export function parsePscx(xmlContent: string): PscxProject {
   const excludedRanges: { start: number; end: number }[] = [];
   const subModuleDefs: { name: string; xml: string; baseOffset: number }[] = [];
 
-  const defRegex = /<Definition\s+([^>]*?)>([\s\S]*?)<\/Definition>/gi;
+  const defRegex = /<Definition\b([^>]*?)>([\s\S]*?)<\/Definition>/gi;
   let defMatch: RegExpExecArray | null;
   while ((defMatch = defRegex.exec(xmlContent)) !== null) {
     const dAttrs = defMatch[1]!;
@@ -313,7 +313,7 @@ export function parsePscx(xmlContent: string): PscxProject {
 
     if (defName && classId === "UserCmpDefn") {
       const defPorts: PscxPort[] = [];
-      const portRegex = /<Port\s+([^>]*?)>([\s\S]*?)<\/Port>/gi;
+      const portRegex = /<Port\b([^>]*?)>([\s\S]*?)<\/Port>/gi;
       let portMatch: RegExpExecArray | null;
       const seenPortNames = new Set<string>();
       while ((portMatch = portRegex.exec(dBody)) !== null) {
@@ -357,7 +357,7 @@ export function parsePscx(xmlContent: string): PscxProject {
   }
 
   // Also exclude standalone <schematic classid="StationCanvas"> blocks
-  const stationCanvasRegex = /<schematic\s+[^>]*?classid=["']StationCanvas["'][\s\S]*?<\/schematic>/gi;
+  const stationCanvasRegex = /<schematic\b[^>]*?\bclassid=["']StationCanvas["'][\s\S]*?<\/schematic>/gi;
   let scMatch: RegExpExecArray | null;
   while ((scMatch = stationCanvasRegex.exec(xmlContent)) !== null) {
     excludedRanges.push({ start: scMatch.index, end: scMatch.index + scMatch[0].length });
@@ -381,7 +381,7 @@ export function parsePscx(xmlContent: string): PscxProject {
     let autoIdCounter = 1;
 
     // 1. Extract User / Component elements (including self-closing <User .../> tags)
-    const cmpRegex = /<(?:User|Component)\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:User|Component)>)/gi;
+    const cmpRegex = /<(?:User|Component)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:User|Component)>)/gi;
     let cMatch: RegExpExecArray | null;
 
     while ((cMatch = cmpRegex.exec(xmlSlice)) !== null) {
@@ -430,7 +430,7 @@ export function parsePscx(xmlContent: string): PscxProject {
 
       // Parse inner parameters
       let innerParamMatch: RegExpExecArray | null;
-      const innerParamRegex = /<param\s+([^>]*?)(?:\/>|>(.*?)<\/param>)/gi;
+      const innerParamRegex = /<param\b([^>]*?)(?:\/>|>(.*?)<\/param>)/gi;
       while ((innerParamMatch = innerParamRegex.exec(inner)) !== null) {
         const pAttrs = innerParamMatch[1]!;
         const pNameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(pAttrs);
@@ -452,7 +452,7 @@ export function parsePscx(xmlContent: string): PscxProject {
 
       // Parse inner ports
       let portMatch: RegExpExecArray | null;
-      const portRegex = /<port\s+([^>]*?)(?:\/>|>(.*?)<\/port>)/gi;
+      const portRegex = /<port\b([^>]*?)(?:\/>|>(.*?)<\/port>)/gi;
       while ((portMatch = portRegex.exec(inner)) !== null) {
         const portAttrs = portMatch[1]!;
         const portName = /name\s*=\s*["']([^"']+)["']/i.exec(portAttrs)?.[1] || "p";
@@ -530,7 +530,7 @@ export function parsePscx(xmlContent: string): PscxProject {
     }
 
     // 2. Extract <Bus .../> elements
-    const busRegex = /<Bus\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/Bus>)/gi;
+    const busRegex = /<Bus\b([^>]*?)(?:\/>|>([\s\S]*?)<\/Bus>)/gi;
     let bMatch: RegExpExecArray | null;
     while ((bMatch = busRegex.exec(xmlSlice)) !== null) {
       const absOffset = baseOffset + bMatch.index;
@@ -570,7 +570,7 @@ export function parsePscx(xmlContent: string): PscxProject {
     }
 
     // 3. Extract Wires (and <Wire classid="Bus"> busbars in PSCAD v4/v5)
-    const wireRegex = /<Wire\s*([^>]*?)>([\s\S]*?)<\/Wire>/gi;
+    const wireRegex = /<Wire\b([^>]*?)>([\s\S]*?)<\/Wire>/gi;
     let wMatch: RegExpExecArray | null;
     let wireId = 1;
     while ((wMatch = wireRegex.exec(xmlSlice)) !== null) {
@@ -588,7 +588,7 @@ export function parsePscx(xmlContent: string): PscxProject {
       const wireY = parseFloat(/\by\s*=\s*["']([^"']+)["']/i.exec(wAttrs)?.[1] || "0");
       const vertices: Point2D[] = [];
 
-      const vertexRegex = /<vertex\s+([^>]*?)\/>/gi;
+      const vertexRegex = /<vertex\b([^>]*?)\/>/gi;
       let vMatch: RegExpExecArray | null;
       while ((vMatch = vertexRegex.exec(inner)) !== null) {
         const vAttrs = vMatch[1]!;
@@ -652,7 +652,7 @@ export function parsePscx(xmlContent: string): PscxProject {
     }
 
     // 4. Extract Stickies (canvas banners & descriptive notes common in .pslx libraries)
-    const stickyRegex = /<Sticky\s+([^>]*?)>([\s\S]*?)<\/Sticky>/gi;
+    const stickyRegex = /<Sticky\b([^>]*?)>([\s\S]*?)<\/Sticky>/gi;
     let sMatch: RegExpExecArray | null;
     let stickyId = 1;
     const stickies: PscxSticky[] = [];
@@ -669,11 +669,20 @@ export function parsePscx(xmlContent: string): PscxProject {
       const sid = /\bid\s*=\s*["']([^"']+)["']/i.exec(sAttrs)?.[1] || `sticky_${stickyId++}`;
 
       let text = "";
-      const cdataMatch = /<!\[CDATA\[([\s\S]*?)\]\]>/i.exec(sInner);
-      if (cdataMatch) {
-        text = cdataMatch[1]!.trim();
+      const cdataStart = sInner.indexOf("<![CDATA[");
+      if (cdataStart !== -1) {
+        const cdataEnd = sInner.indexOf("]]>", cdataStart + 9);
+        if (cdataEnd !== -1) {
+          text = sInner.slice(cdataStart + 9, cdataEnd).trim();
+        }
       } else {
-        text = sInner.replace(/<[^>]+>/g, "").trim();
+        let prev: string;
+        let stripped = sInner;
+        do {
+          prev = stripped;
+          stripped = stripped.replace(/<[^><]+>/g, "");
+        } while (stripped !== prev);
+        text = stripped.trim();
       }
 
       if (text) {

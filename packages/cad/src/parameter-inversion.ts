@@ -49,12 +49,13 @@ export class ParameterInversionEngine {
    */
   static extractParameters(mcadSource: string): Record<string, number> {
     const params: Record<string, number> = {};
-    const assignRegex = /\b(?:const|let|var)?\s*([A-Za-z_]\w*)\s*=\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*;/g;
+    const assignRegex =
+      /\b(?:const|let|var\b)?\s*([A-Za-z_]\w*)\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*;/g;
     let m: RegExpExecArray | null;
     while ((m = assignRegex.exec(mcadSource)) !== null) {
       params[m[1]!] = parseFloat(m[2]!);
     }
-    const propRegex = /\b([A-Za-z_]\w*)\s*:\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*[,;}]/g;
+    const propRegex = /\b([A-Za-z_]\w*)\s*:\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*[,;}]/g;
     while ((m = propRegex.exec(mcadSource)) !== null) {
       const key = m[1]!;
       if (!(key in params)) {

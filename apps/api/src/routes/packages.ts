@@ -1565,7 +1565,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           return;
         }
       } catch (err) {
-        console.warn(`[cad-mesh] On-demand conversion failed for ${name}@${version}/${relPath}:`, err);
+        console.warn("[cad-mesh] On-demand conversion failed for %s@%s/%s:", name, version, relPath, err);
       }
 
       res.status(404).json({ error: "Pre-tessellated CAD mesh not found" });

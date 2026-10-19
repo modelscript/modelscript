@@ -1068,8 +1068,8 @@ interface ParsedReqDef {
 
 function stripCommentsPreserveStructure(src: string): string {
   return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length))
-    .replace(/\/\/[^\n]*/g, (m) => " ".repeat(m.length));
+    .replace(/\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, (m) => " ".repeat(m.length))
+    .replace(/\/\/[^\r\n]*/g, (m) => " ".repeat(m.length));
 }
 
 function extractDocComment(body: string): string | undefined {

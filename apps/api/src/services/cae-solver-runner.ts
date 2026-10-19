@@ -388,10 +388,28 @@ export class CaeSolverRunner {
       const num = parseFloat(match[1]);
       if (!isNaN(num) && num > 0) scale = num / 100.0;
     } else {
-      const cloadMatch = spec.deckContent.match(/\*CLOAD[\s\S]*?\n\s*\d+\s*,\s*\d+\s*,\s*([-+\d.eE]+)/i);
-      if (cloadMatch && cloadMatch[1]) {
-        const loadVal = Math.abs(parseFloat(cloadMatch[1]));
-        if (!isNaN(loadVal) && loadVal > 0) scale = loadVal / 100.0;
+      let foundVal: number | null = null;
+      let inCload = false;
+      for (const rawLine of spec.deckContent.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (line.toUpperCase().startsWith("*CLOAD")) {
+          inCload = true;
+          continue;
+        }
+        if (inCload) {
+          if (line.startsWith("*")) break;
+          const parts = line.split(",").map((s) => s.trim());
+          if (parts.length >= 3) {
+            const loadVal = Math.abs(parseFloat(parts[2]!));
+            if (!isNaN(loadVal) && loadVal > 0) {
+              foundVal = loadVal / 100.0;
+              break;
+            }
+          }
+        }
+      }
+      if (foundVal !== null) {
+        scale = foundVal;
       } else {
         const hashByte = Buffer.from(spec.jobId).reduce((a, b) => a + b, 0);
         scale = 0.8 + (hashByte % 10) * 0.1;

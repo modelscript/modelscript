@@ -1099,7 +1099,7 @@ export class ValidationService {
               const inputMatches = currentText.match(/\binput\s+(?:Real|Integer|Boolean|String)\b/g);
               const inputCount = inputMatches ? inputMatches.length : 0;
               const msgToCheck = message || d.message || "";
-              const m = msgToCheck.match(/(\d+)\s+equations\s+for\s+(\d+)\s+variables/);
+              const m = msgToCheck.match(/\b(\d+)\s+equations\s+for\s+(\d+)\s+variables\b/);
               if (m && inputCount > 0) {
                 const eqCount = Number(m[1]);
                 const rawVarCount = Number(m[2]);

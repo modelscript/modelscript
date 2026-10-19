@@ -65,11 +65,19 @@ export function initializePhasorSteadyState(
   const rhs = new Float64Array(dim);
 
   const addComplexEntry = (r: number, c: number, g: number, b: number) => {
+    if (r === ("__proto__" as any) || c === ("__proto__" as any) || typeof r !== "number" || typeof c !== "number")
+      return;
     if (r < 0 || r >= nNodes || c < 0 || c >= nNodes) return;
-    dense[r]![c] = dense[r]![c]! + g;
-    dense[r]![c + nNodes] = dense[r]![c + nNodes]! - b;
-    dense[r + nNodes]![c] = dense[r + nNodes]![c]! + b;
-    dense[r + nNodes]![c + nNodes] = dense[r + nNodes]![c + nNodes]! + g;
+    const rowR = dense[r];
+    const rowRN = dense[r + nNodes];
+    if (rowR) {
+      rowR[c] = rowR[c]! + g;
+      rowR[c + nNodes] = rowR[c + nNodes]! - b;
+    }
+    if (rowRN) {
+      rowRN[c] = rowRN[c]! + b;
+      rowRN[c + nNodes] = rowRN[c + nNodes]! + g;
+    }
   };
 
   const stampComplexTwoTerminal = (i: number, j: number, g: number, b: number) => {

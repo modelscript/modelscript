@@ -2896,7 +2896,7 @@ function getRecordFields(dae: DAEBuilder, exprId: number): string[] | null {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
     if (name && dae.getVarIdxByName(name) < 0) {
       const prefix = `${name}.`;
-      const baseName = name.replace(/\[[^\]]*\]/g, "");
+      const baseName = name.replace(/\[[^\][]*\]/g, "");
       const basePrefix = `${baseName}.`;
       const fields: string[] = [];
       for (let i = 0; i < dae.varCount; i++) {

@@ -34,7 +34,7 @@ export function isFunctionSym(db: QueryDB, sym: any): boolean {
   if ((sym as any)._isFunction !== undefined) return (sym as any)._isFunction;
   const meta = (sym.metadata as any) || {};
   const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-  const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+  const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
   const words = cleanKind.split(/\s+/).filter(Boolean);
   if (words.includes("function")) {
     (sym as any)._isFunction = true;

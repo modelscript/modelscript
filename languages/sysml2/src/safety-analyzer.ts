@@ -199,7 +199,7 @@ export function enumerateAllMinimalCutSets(
  */
 export function evaluateBooleanFaultLogic(expression: string, active: Set<string>): boolean {
   const tokens: string[] = [];
-  const regex = /\s*([a-zA-Z_][a-zA-Z0-9_.]*|&&|\|\||!|\(|\)|and|or|not)\s*/gi;
+  const regex = /\s*([a-zA-Z_][a-zA-Z0-9_.]*|&&|\|\||!|\(|\)|and\b|or\b|not\b)/gi;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(expression)) !== null) {
     tokens.push(match[1]!);
