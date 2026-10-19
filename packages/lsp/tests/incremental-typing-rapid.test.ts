@@ -2,6 +2,7 @@
 
 import { buildParser, choice, field, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
 import childProcess from "child_process";
+import crypto from "crypto";
 import expect from "expect";
 import fs from "fs";
 import { after as afterAll, before as beforeAll, describe, it } from "node:test";
@@ -55,23 +56,47 @@ describe("Rapid Typing Incremental Buffer & Diagnostics Suite", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-    childProcess.execFileSync(
-      ascBin,
-      [
-        ...ascPrefixArgs,
-        parserTs,
-        "-o",
-        outWasm,
-        "--exportRuntime",
-        "--enable",
-        "threads",
-        "--optimize",
-        "--runtime",
-        "stub",
-      ],
-      { stdio: "inherit" },
-    );
+    const cacheDir = path.resolve(__dirname, "../../../.cache/asc-tests");
+    try {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    } catch {}
+
+    const hash = crypto.createHash("sha256");
+    for (const file of result.assemblyScriptFiles) {
+      hash.update(file.filename);
+      hash.update(file.content);
+    }
+    const digest = hash.digest("hex");
+    const cachedWasm = path.join(cacheDir, `${digest}.wasm`);
+
+    if (fs.existsSync(cachedWasm) && fs.statSync(cachedWasm).size > 0) {
+      fs.copyFileSync(cachedWasm, outWasm);
+    } else if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+      const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+      childProcess.execFileSync(
+        ascBin,
+        [
+          ...ascPrefixArgs,
+          parserTs,
+          "-o",
+          outWasm,
+          "--exportRuntime",
+          "--enable",
+          "threads",
+          "--optimize",
+          "--runtime",
+          "stub",
+        ],
+        { stdio: "inherit" },
+      );
+      try {
+        fs.copyFileSync(outWasm, cachedWasm);
+      } catch {}
+    } else {
+      try {
+        fs.copyFileSync(outWasm, cachedWasm);
+      } catch {}
+    }
 
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);

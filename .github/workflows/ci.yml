@@ -114,6 +114,7 @@ jobs:
           path: |
             .cache/asc-tests
             languages/*/.cache
+            languages/*/dist/*.wasm
             packages/runtime/build/*.wasm
             packages/simulate/src/wasm/*.wasm
             packages/simulate/.cache/**

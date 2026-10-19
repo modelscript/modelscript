@@ -2,6 +2,7 @@
 
 import { buildParser, choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import * as crypto from "crypto";
 import expect from "expect";
 import * as fs from "fs";
 import { after as afterAll, before as beforeAll, describe, it } from "node:test";
@@ -69,28 +70,52 @@ describe("SOTA CST Completion Context", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+    const cacheDir = path.resolve(__dirname, "../../../.cache/asc-tests");
     try {
-      childProcess.execFileSync(
-        ascBin,
-        [
-          ...ascPrefixArgs,
-          parserTs,
-          "-o",
-          outWasm,
-          "--exportRuntime",
-          "--enable",
-          "threads",
-          "--optimize",
-          "--runtime",
-          "stub",
-        ],
-        { stdio: ["pipe", "pipe", "pipe"] },
-      );
-    } catch (e: any) {
-      if (e.stdout) console.log("ASC stdout:\n" + e.stdout.toString());
-      if (e.stderr) console.log("ASC stderr:\n" + e.stderr.toString());
-      throw e;
+      fs.mkdirSync(cacheDir, { recursive: true });
+    } catch {}
+
+    const hash = crypto.createHash("sha256");
+    for (const file of result.assemblyScriptFiles) {
+      hash.update(file.filename);
+      hash.update(file.content);
+    }
+    const digest = hash.digest("hex");
+    const cachedWasm = path.join(cacheDir, `${digest}.wasm`);
+
+    if (fs.existsSync(cachedWasm) && fs.statSync(cachedWasm).size > 0) {
+      fs.copyFileSync(cachedWasm, outWasm);
+    } else if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+      const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+      try {
+        childProcess.execFileSync(
+          ascBin,
+          [
+            ...ascPrefixArgs,
+            parserTs,
+            "-o",
+            outWasm,
+            "--exportRuntime",
+            "--enable",
+            "threads",
+            "--optimize",
+            "--runtime",
+            "stub",
+          ],
+          { stdio: ["pipe", "pipe", "pipe"] },
+        );
+      } catch (e: any) {
+        if (e.stdout) console.log("ASC stdout:\n" + e.stdout.toString());
+        if (e.stderr) console.log("ASC stderr:\n" + e.stderr.toString());
+        throw e;
+      }
+      try {
+        fs.copyFileSync(outWasm, cachedWasm);
+      } catch {}
+    } else {
+      try {
+        fs.copyFileSync(outWasm, cachedWasm);
+      } catch {}
     }
 
     const wasm = fs.readFileSync(outWasm);

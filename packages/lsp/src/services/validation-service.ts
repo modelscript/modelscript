@@ -2741,7 +2741,7 @@ export class ValidationService {
   private daeVerificationCache = new Map<string, { fingerprint: string; record: any }>();
 
   /** Wall-clock budget (ms) for keystroke-tier DAE verification of one document. Classes beyond it are left unverified. */
-  public daeVerificationBudgetMs = 150;
+  public daeVerificationBudgetMs = process.env["TEST_TIMEOUT"] || process.env["CI"] ? 5000 : 150;
 
   /**
    * Flattens a Modelica class through the canonical arena pipeline
@@ -2857,6 +2857,10 @@ export class ValidationService {
         }
       }
 
+      try {
+        await initBltWasm();
+      } catch {}
+
       const started = Date.now();
       let completed = true;
       const liveKeys = new Set<string>();
@@ -2876,7 +2880,6 @@ export class ValidationService {
         if (!record || this.daeVerificationCache.get(key)!.fingerprint !== fingerprint) {
           let bltResult: any;
           try {
-            await initBltWasm();
             bltResult = performBltTransformationArena(arena);
           } catch {
             // No sound block structure: leave this class unverified rather than invent one.

@@ -94,7 +94,7 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
     };
 
     await assert.rejects(async () => {
-      await runner.runPending([failingMigration], { skipBackup: true });
+      await runner.runPending([failingMigration], { skipBackup: true, silent: true });
     }, /syntax error/i);
 
     // Ensure partial_table was rolled back

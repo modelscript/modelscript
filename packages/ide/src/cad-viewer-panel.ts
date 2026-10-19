@@ -143,6 +143,9 @@ export class CadViewerPanel {
 
     const uri = editor.document.uri.toString();
     try {
+      if (!this._client || typeof this._client.sendRequest !== "function") {
+        return;
+      }
       // Send a custom request to the language server to get the cad components
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cadComponents = await this._client.sendRequest<any[]>("modelscript/getCadComponents", { uri });

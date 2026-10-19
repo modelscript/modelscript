@@ -110,7 +110,12 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     normalizedLangs.push(normalized!);
 
     // 3. Discover native GLR parser.wasm
-    const wasmCandidates = [path.join(langDir, "dist", "parser.wasm"), path.join(langDir, "parser.wasm")];
+    const wasmCandidates = [
+      path.join(langDir, "dist", "parser.wasm"),
+      path.join(langDir, "parser.wasm"),
+      path.join(langDir, ".cache", "parser.wasm"),
+      path.join(langDir, "build", "parser.wasm"),
+    ];
 
     let wasmFileName: string | undefined;
     const foundWasm = wasmCandidates.find(fs.existsSync);
@@ -120,6 +125,14 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
         src: foundWasm,
         dest: `server/dist/${wasmFileName}`,
       });
+      // Ensure dist/parser.wasm is synced if discovered from .cache
+      const distWasm = path.join(langDir, "dist", "parser.wasm");
+      if (!fs.existsSync(distWasm) && foundWasm !== distWasm) {
+        try {
+          fs.mkdirSync(path.dirname(distWasm), { recursive: true });
+          fs.copyFileSync(foundWasm, distWasm);
+        } catch {}
+      }
     }
 
     // 4. Discover native parser bindings.js & syntax names
@@ -128,6 +141,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       path.join(langDir, "dist", "src-gen", "bindings.js"),
       path.join(langDir, "dist", "bindings.js"),
       path.join(langDir, "bindings.js"),
+      path.join(langDir, ".cache", "bindings.js"),
     ];
 
     let syntaxNames: string[] | undefined;

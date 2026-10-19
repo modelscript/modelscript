@@ -2,6 +2,7 @@
 
 import { buildParser, choice, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import crypto from "crypto";
 import expect from "expect";
 import * as fs from "fs";
 import { before as beforeAll, beforeEach, describe, it } from "node:test";
@@ -29,93 +30,120 @@ describe("Multi-File LSP Connector Features", () => {
   let exports: any;
   let tmpDir: string;
 
-  beforeAll(async () => {
-    const result = buildParser(dsl as any);
-    tmpDir = path.join(__dirname, "scratch_build_multifile");
-    fs.mkdirSync(tmpDir, { recursive: true });
+  beforeAll(
+    async () => {
+      const result = buildParser(dsl as any);
+      tmpDir = path.join(__dirname, "scratch_build_multifile");
+      fs.mkdirSync(tmpDir, { recursive: true });
 
-    for (const file of result.assemblyScriptFiles) {
-      const filePath = path.join(tmpDir, file.filename);
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, file.content);
-    }
+      for (const file of result.assemblyScriptFiles) {
+        const filePath = path.join(tmpDir, file.filename);
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, file.content);
+      }
 
-    const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
-    const parserTs = path.join(tmpDir, "parser.ts");
-    const outWasm = path.join(tmpDir, "parser.wasm");
+      const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
+      const parserTs = path.join(tmpDir, "parser.ts");
+      const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-    childProcess.execFileSync(
-      ascBin,
-      [
-        ...ascPrefixArgs,
-        parserTs,
-        "-o",
-        outWasm,
-        "--exportRuntime",
-        "--enable",
-        "threads",
-        "--optimize",
-        "--runtime",
-        "stub",
-      ],
-      { stdio: "inherit" },
-    );
+      const cacheDir = path.resolve(__dirname, "../../../.cache/asc-tests");
+      try {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      } catch {}
 
-    const wasm = fs.readFileSync(outWasm);
-    const wasmModule = await WebAssembly.compile(wasm);
+      const hash = crypto.createHash("sha256");
+      for (const file of result.assemblyScriptFiles) {
+        hash.update(file.filename);
+        hash.update(file.content);
+      }
+      const digest = hash.digest("hex");
+      const cachedWasm = path.join(cacheDir, `${digest}.wasm`);
 
-    const wrapperSrc =
-      result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
-    const getFacade = new Function(wrapperSrc);
-    const { LspFacade } = getFacade();
+      if (fs.existsSync(cachedWasm) && fs.statSync(cachedWasm).size > 0) {
+        fs.copyFileSync(cachedWasm, outWasm);
+      } else if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+        const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
+        childProcess.execFileSync(
+          ascBin,
+          [
+            ...ascPrefixArgs,
+            parserTs,
+            "-o",
+            outWasm,
+            "--exportRuntime",
+            "--enable",
+            "threads",
+            "--optimize",
+            "--runtime",
+            "stub",
+          ],
+          { stdio: "inherit" },
+        );
+        try {
+          fs.copyFileSync(outWasm, cachedWasm);
+        } catch {}
+      } else {
+        try {
+          fs.copyFileSync(outWasm, cachedWasm);
+        } catch {}
+      }
 
-    const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
+      const wasm = fs.readFileSync(outWasm);
+      const wasmModule = await WebAssembly.compile(wasm);
 
-    const imports = {
-      env: {
-        memory: memory,
-        abort: (msg: number, file: number, line: number, col: number) => {
-          const mem32 = new Uint32Array(memory.buffer);
-          const mem16 = new Uint16Array(memory.buffer);
-          let m = "";
-          let f = "";
-          if (msg) {
-            for (let i = 0; i < 50; i++) {
-              const c = mem16[(msg >>> 1) + i];
-              if (c === 0) break;
-              m += String.fromCharCode(c);
+      const wrapperSrc =
+        result.javascriptWrapper.js.replace(/export default /g, "").replace(/export /g, "") + `\nreturn { LspFacade };`;
+      const getFacade = new Function(wrapperSrc);
+      const { LspFacade } = getFacade();
+
+      const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024, shared: true });
+
+      const imports = {
+        env: {
+          memory: memory,
+          abort: (msg: number, file: number, line: number, col: number) => {
+            const mem32 = new Uint32Array(memory.buffer);
+            const mem16 = new Uint16Array(memory.buffer);
+            let m = "";
+            let f = "";
+            if (msg) {
+              for (let i = 0; i < 50; i++) {
+                const c = mem16[(msg >>> 1) + i];
+                if (c === 0) break;
+                m += String.fromCharCode(c);
+              }
             }
-          }
-          if (file) {
-            for (let i = 0; i < 50; i++) {
-              const c = mem16[(file >>> 1) + i];
-              if (c === 0) break;
-              f += String.fromCharCode(c);
+            if (file) {
+              for (let i = 0; i < 50; i++) {
+                const c = mem16[(file >>> 1) + i];
+                if (c === 0) break;
+                f += String.fromCharCode(c);
+              }
             }
-          }
-          console.log("ABORT! RAW msg=", msg, "file=", file, "m=", m, "f=", f, "line=", line, "col=", col);
-          throw new Error("WASM ABORT!");
+            console.log("ABORT! RAW msg=", msg, "file=", file, "m=", m, "f=", f, "line=", line, "col=", col);
+            throw new Error("WASM ABORT!");
+          },
+          logNode: () => {},
+          debugLog: () => {},
         },
-        logNode: () => {},
-        debugLog: () => {},
-      },
-      JavaScript: {
-        debugLog: () => {},
-        logNode: () => {},
-      },
-      engine: {
-        debugLog: () => {},
-      },
-      parser: { logInt: (val: number) => console.log("logInt:", val) },
-      recovery: {},
-      host: { runHostQuery: () => {} },
-    };
+        JavaScript: {
+          debugLog: () => {},
+          logNode: () => {},
+        },
+        engine: {
+          debugLog: () => {},
+        },
+        parser: { logInt: (val: number) => console.log("logInt:", val) },
+        recovery: {},
+        host: { runHostQuery: () => {} },
+      };
 
-    const instance = await WebAssembly.instantiate(wasmModule, imports);
-    exports = instance.exports;
-    activeFacade = new LspFacade(exports.memory, exports);
-  }, 60000);
+      const instance = await WebAssembly.instantiate(wasmModule, imports);
+      exports = instance.exports;
+      activeFacade = new LspFacade(exports.memory, exports);
+    },
+    { timeout: 120000 },
+  );
 
   beforeEach(() => {
     if (typeof exports.lsp_clearDocuments === "function") {

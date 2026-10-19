@@ -62,7 +62,10 @@ export class SqliteMigrationRunner {
     }
   }
 
-  runPendingSync(allMigrations: Migration[], options?: { dryRun?: boolean | undefined }): { appliedCount: number } {
+  runPendingSync(
+    allMigrations: Migration[],
+    options?: { dryRun?: boolean | undefined; silent?: boolean | undefined },
+  ): { appliedCount: number } {
     const { pending } = this.getStatus(allMigrations);
 
     if (pending.length === 0) {
@@ -119,7 +122,9 @@ export class SqliteMigrationRunner {
       tx();
       if (applied) {
         actuallyAppliedCount++;
-        console.log(`[MigrationRunner] Applied migration: ${migration.name} (${Date.now() - startTime}ms)`);
+        if (!options?.silent) {
+          console.log(`[MigrationRunner] Applied migration: ${migration.name} (${Date.now() - startTime}ms)`);
+        }
       }
     }
 
@@ -129,7 +134,7 @@ export class SqliteMigrationRunner {
 
   async runPending(
     allMigrations: Migration[],
-    options?: { dryRun?: boolean | undefined; skipBackup?: boolean | undefined },
+    options?: { dryRun?: boolean | undefined; skipBackup?: boolean | undefined; silent?: boolean | undefined },
   ): Promise<{ appliedCount: number; backupPath: string | null }> {
     const { pending } = this.getStatus(allMigrations);
 
@@ -144,7 +149,7 @@ export class SqliteMigrationRunner {
     let backupPath: string | null = null;
     if (!options?.skipBackup) {
       backupPath = await this.createBackup();
-      if (backupPath) {
+      if (backupPath && !options?.silent) {
         console.log(`[MigrationRunner] Created pre-flight backup snapshot at: ${backupPath}`);
       }
     }
@@ -153,9 +158,11 @@ export class SqliteMigrationRunner {
       const result = this.runPendingSync(allMigrations, options);
       return { appliedCount: result.appliedCount, backupPath };
     } catch (err) {
-      console.error(`[MigrationRunner] Migration execution failed!`, err);
-      if (backupPath) {
-        console.error(`[MigrationRunner] Pre-flight backup is preserved at: ${backupPath}`);
+      if (!options?.silent) {
+        console.error(`[MigrationRunner] Migration execution failed!`, err);
+        if (backupPath) {
+          console.error(`[MigrationRunner] Pre-flight backup is preserved at: ${backupPath}`);
+        }
       }
       throw err;
     }

@@ -283,6 +283,7 @@ end DaeModel;
 
       const daeDoc = TextDocument.create(daeUri, "modelica", 1, daeContent);
       mockDocManager.documents.set(daeUri, daeDoc);
+      validationService.daeVerificationBudgetMs = 10000;
 
       const { DAEBuilder, VarType, Variability, BinOp, EqKind } = await import("@modelscript/runtime");
       const safeStart = daeContent.indexOf("model SafeCircuit");

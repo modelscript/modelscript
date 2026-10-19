@@ -53,6 +53,7 @@ cube([width, height, 10]);
 
     const mockClient: any = {
       onNotification: () => {},
+      sendRequest: async () => [],
     };
 
     const mockDoc: any = {
@@ -128,6 +129,7 @@ cube([width, height, 10]);
 
     const mockClient: any = {
       onNotification: () => {},
+      sendRequest: async () => [],
     };
 
     const mockDoc: any = {
@@ -204,6 +206,7 @@ end RobotArm;
 
     const mockClient: any = {
       onNotification: () => {},
+      sendRequest: async () => [],
     };
 
     const mockDoc: any = {
