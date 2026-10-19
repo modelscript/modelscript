@@ -657,9 +657,16 @@ export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscri
       join(currentDir, "..", "..", "..", "..", "wasm"),
     ];
 
-    let wasmDir = candidateDirs.find((d) => existsSync(join(d, "sundials.js"))) ?? candidateDirs[0]!;
+    let wasmDir =
+      candidateDirs.find((d) => existsSync(join(d, "sundials.wasm"))) ??
+      candidateDirs.find((d) => existsSync(join(d, "sundials.js"))) ??
+      candidateDirs[0]!;
     const jsGlue = join(wasmDir, "sundials.js");
     const wasmBinaryPath = join(wasmDir, "sundials.wasm");
+
+    if (!existsSync(wasmBinaryPath)) {
+      throw new Error(`SUNDIALS WebAssembly binary not found at ${wasmBinaryPath}`);
+    }
 
     const factoryModule = await import(pathToFileURL(jsGlue).href);
     const factory = factoryModule.default || factoryModule;

@@ -3,6 +3,7 @@
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { printArenaDAE } from "@modelscript/runtime";
 import assert from "node:assert";
+import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -130,12 +131,15 @@ end ChildSim;`;
   assert.ok(simRes.t.length > 0, "Simulation should produce time points");
   assert.ok(simRes.states.includes("x"), "Simulation should have state x");
 
-  // 4. Simulate with CVODE solver
-  const simResCvode = await modelicaActionHandlers.simulate(execContext, {
-    name: "ChildSim",
-    stopTime: 1.0,
-    solver: "cvode",
-  });
-  assert.ok(simResCvode.t.length > 0, "CVODE simulation should produce time points");
-  assert.ok(simResCvode.states.includes("x"), "CVODE simulation should have state x");
+  // 4. Simulate with CVODE solver (if SUNDIALS wasm binary is present)
+  const sundialsWasmCandidate = path.resolve(__dirname, "../../../packages/simulate/src/wasm/sundials.wasm");
+  if (fs.existsSync(sundialsWasmCandidate)) {
+    const simResCvode = await modelicaActionHandlers.simulate(execContext, {
+      name: "ChildSim",
+      stopTime: 1.0,
+      solver: "cvode",
+    });
+    assert.ok(simResCvode.t.length > 0, "CVODE simulation should produce time points");
+    assert.ok(simResCvode.states.includes("x"), "CVODE simulation should have state x");
+  }
 });

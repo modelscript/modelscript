@@ -1438,8 +1438,11 @@ export class LspFacade {
         const envHashPadding = memory[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 22;
         const isFat = ((envHashPadding >>> 23) & 1) === 1;
-        return isFat && this.exports.getFatPaddingPtr
-          ? memory[this.exports.getFatPaddingPtr(rawPad) / 4]
+        return isFat
+          ? memory[(ptr + 28) >>> 2] ||
+              (this.exports.getFatPaddingPtr
+                ? memory[this.exports.getFatPaddingPtr(rawPad) >>> 2]
+                : rawPad)
           : rawPad;
       };
       const getNodeLen = (ptr) => {
@@ -2015,14 +2018,8 @@ export class LspFacade {
             if (d.range.end.character > prev.range.end.character) {
               prev.range.end = d.range.end;
             }
-            if (
-              prev.endOffset !== undefined &&
-              d.endOffset !== undefined
-            ) {
-              prev.endOffset = Math.max(
-                prev.endOffset,
-                d.endOffset,
-              );
+            if (prev.endOffset !== undefined && d.endOffset !== undefined) {
+              prev.endOffset = Math.max(prev.endOffset, d.endOffset);
             }
             continue;
           }
@@ -3941,10 +3938,12 @@ export class LspFacade {
       const envHashPadding = mem32[(ptr + 4) / 4];
       const rawPad = typeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
-      const pad =
-        isFat && this.exports.getFatPaddingPtr
-          ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
-          : rawPad;
+      const pad = isFat
+        ? mem32[(ptr + 28) >>> 2] ||
+          (this.exports.getFatPaddingPtr
+            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
+            : rawPad)
+        : rawPad;
       const len = envHashPadding & 0x007fffff;
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -4042,10 +4041,12 @@ export class LspFacade {
       const envHashPadding = mem32[(ptr + 4) / 4];
       const rawPad = typeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
-      const pad =
-        isFat && this.exports.getFatPaddingPtr
-          ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
-          : rawPad;
+      const pad = isFat
+        ? mem32[(ptr + 28) >>> 2] ||
+          (this.exports.getFatPaddingPtr
+            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
+            : rawPad)
+        : rawPad;
       const len = envHashPadding & 0x007fffff;
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -4371,10 +4372,12 @@ export class LspFacade {
           const childEnvHashPadding = mem32[(childPtr + 4) / 4];
           const childRawPad = cTypeFlags >>> 22;
           const childIsFat = (childEnvHashPadding >>> 23) & 1;
-          const childPad =
-            childIsFat && this.exports.getFatPaddingPtr
-              ? mem32[this.exports.getFatPaddingPtr(childRawPad) / 4]
-              : childRawPad;
+          const childPad = childIsFat
+            ? mem32[(childPtr + 28) >>> 2] ||
+              (this.exports.getFatPaddingPtr
+                ? mem32[this.exports.getFatPaddingPtr(childRawPad) >>> 2]
+                : childRawPad)
+            : childRawPad;
           const childLen = childEnvHashPadding & 0x007fffff;
           const hasChildren = mem32[(childPtr + 12) / 4] !== 0;
           if (isInvisible) {
@@ -4442,10 +4445,12 @@ export class LspFacade {
         const envHashPadding = mem32[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        let pad =
-          isFat && this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
-            : rawPad;
+        let pad = isFat
+          ? mem32[(ptr + 28) >>> 2] ||
+            (this.exports.getFatPaddingPtr
+              ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
+              : rawPad)
+          : rawPad;
         const len = envHashPadding & 0x007fffff;
         const children = getFlattenedChildren(ptr);
         pad += item.invisiblePad;
@@ -4509,10 +4514,12 @@ export class LspFacade {
         const envHashPadding = mem32[(newPtr + 4) / 4];
         const rawPad = newTypeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        let pad =
-          isFat && this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
-            : rawPad;
+        let pad = isFat
+          ? mem32[(newPtr + 28) >>> 2] ||
+            (this.exports.getFatPaddingPtr
+              ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
+              : rawPad)
+          : rawPad;
         const len = envHashPadding & 0x007fffff;
         const flags = (newTypeFlags >> 10) & 0x0fff;
         const newCh = getFlattenedChildren(newPtr);
@@ -4554,10 +4561,12 @@ export class LspFacade {
       const envHashPadding = mem32[(newPtr + 4) / 4];
       const rawPad = newTypeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
-      let pad =
-        isFat && this.exports.getFatPaddingPtr
-          ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4]
-          : rawPad;
+      let pad = isFat
+        ? mem32[(newPtr + 28) >>> 2] ||
+          (this.exports.getFatPaddingPtr
+            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
+            : rawPad)
+        : rawPad;
       const len = envHashPadding & 0x007fffff;
       const oldCh = getFlattenedChildren(oldPtr);
       const newCh = getFlattenedChildren(newPtr);
@@ -4853,10 +4862,12 @@ export class SyntaxNode {
         const envHashPadding = mem32[(currentChildPtr + 4) / 4];
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        const pad =
-          isFat && exports?.getFatPaddingPtr
-            ? mem32[exports.getFatPaddingPtr(rawPad) / 4]
-            : rawPad;
+        const pad = isFat
+          ? mem32[(currentChildPtr + 28) >>> 2] ||
+            (exports?.getFatPaddingPtr
+              ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]
+              : rawPad)
+          : rawPad;
         const len = envHashPadding & 0x007fffff;
         const isInvisible = (typeFlags & (1 << 14)) !== 0;
         let directFieldId = -1;
@@ -5569,10 +5580,12 @@ export class Tree {
     const envHashPadding = mem32[(this.rootPtr + 4) / 4];
     const rawPad = typeFlags >>> 22;
     const isFat = (envHashPadding >>> 23) & 1;
-    const pad =
-      isFat && this.facade.exports.getFatPaddingPtr
-        ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
-        : rawPad;
+    const pad = isFat
+      ? mem32[(this.rootPtr + 28) >>> 2] ||
+        (this.facade.exports.getFatPaddingPtr
+          ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) >>> 2]
+          : rawPad)
+      : rawPad;
     const len = envHashPadding & 0x007fffff;
     return new SyntaxNode(
       this,
