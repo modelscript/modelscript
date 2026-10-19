@@ -356,19 +356,22 @@ const YELLOW = "\x1b[33m";
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
 
-function printResult(result: TestResult, showBackend = false): void {
+function printResult(result: TestResult, showBackend = false, allowWasmFailures = false): void {
   const isXFail = result.status === "failed" && Boolean(result.xfail);
   const isXPass = result.status === "passed" && Boolean(result.xfail);
+  const isToleratedWasm = allowWasmFailures && result.backend === "wasm" && result.status === "failed" && !result.xfail;
 
   const icon = isXPass
     ? `${YELLOW}★ [XPASS]${RESET}`
     : isXFail
       ? `${YELLOW}✗ [XFAIL]${RESET}`
-      : result.status === "passed"
-        ? `${GREEN}✓${RESET}`
-        : result.status === "skipped"
-          ? `${YELLOW}○${RESET}`
-          : `${RED}✗ [REGRESSION]${RESET}`;
+      : isToleratedWasm
+        ? `${YELLOW}✗ [WASM]${RESET}`
+        : result.status === "passed"
+          ? `${GREEN}✓${RESET}`
+          : result.status === "skipped"
+            ? `${YELLOW}○${RESET}`
+            : `${RED}✗ [REGRESSION]${RESET}`;
 
   const memStr =
     typeof result.memoryMb === "number" && result.memoryMb > 0 ? `, mem ${result.memoryMb.toFixed(1)}MB` : "";
@@ -387,11 +390,21 @@ function printResult(result: TestResult, showBackend = false): void {
   }
 }
 
-function printSummary(results: TestResult[], suiteLabel: string, showBailHistogram = false): void {
+function printSummary(
+  results: TestResult[],
+  suiteLabel: string,
+  showBailHistogram = false,
+  allowWasmFailures = false,
+): void {
   const passed = results.filter((r) => r.status === "passed" && !r.xfail).length;
   const xpass = results.filter((r) => r.status === "passed" && Boolean(r.xfail)).length;
   const xfail = results.filter((r) => r.status === "failed" && Boolean(r.xfail)).length;
-  const regressions = results.filter((r) => r.status === "failed" && !r.xfail).length;
+  const wasmTolerated = allowWasmFailures
+    ? results.filter((r) => r.status === "failed" && !r.xfail && r.backend === "wasm").length
+    : 0;
+  const regressions = results.filter(
+    (r) => r.status === "failed" && !r.xfail && (!allowWasmFailures || r.backend !== "wasm"),
+  ).length;
   const skipped = results.filter((r) => r.status === "skipped").length;
   const total = results.length;
 
@@ -399,6 +412,9 @@ function printSummary(results: TestResult[], suiteLabel: string, showBailHistogr
   console.log(`${BOLD}${suiteLabel}${RESET}`);
 
   let failedStr = `${RED}${regressions} failed (regressions)${RESET}`;
+  if (wasmTolerated > 0) {
+    failedStr += `, ${YELLOW}${wasmTolerated} tolerated (wasm)${RESET}`;
+  }
   if (xfail > 0) {
     failedStr += `, ${YELLOW}${xfail} expected failures (xfail)${RESET}`;
   }
@@ -464,6 +480,7 @@ function generateCtrfReport(
   stopTime: number,
   backendLabel?: string,
   isCombined = false,
+  allowWasmFailures = false,
 ): CtrfReport {
   const passed = results.filter((r) => r.status === "passed").length;
   const failed = results.filter((r) => r.status === "failed").length;
@@ -492,13 +509,14 @@ function generateCtrfReport(
       tests: results.map((r) => {
         const b = r.backend === "ts" ? "js" : r.backend;
         const testName = isCombined && b ? `${r.name} [${b}]` : r.name;
+        const isToleratedWasm = allowWasmFailures && b === "wasm" && r.status === "failed" && !r.xfail;
         return {
           name: testName,
           duration: Math.floor(r.duration),
           cpuTime: Math.floor(r.cpuTime),
           ...(r.memoryMb !== undefined ? { memoryMb: r.memoryMb } : {}),
           status: r.status === "skipped" ? "pending" : r.status,
-          rawStatus: r.xfail ? (r.status === "failed" ? "xfail" : "xpass") : r.status,
+          rawStatus: r.xfail ? (r.status === "failed" ? "xfail" : "xpass") : isToleratedWasm ? "tolerated" : r.status,
           type: "unit",
           filePath: r.file,
           retries: 0,
@@ -509,6 +527,7 @@ function generateCtrfReport(
             ...(b ? { backend: b } : {}),
             baseName: r.name,
             baseSuite: path.basename(path.dirname(r.file)),
+            ...(isToleratedWasm ? { tolerated: true } : {}),
             ...(r.xfail !== undefined ? { xfail: r.xfail } : {}),
             ...(r.memoryMb !== undefined ? { memoryMb: r.memoryMb } : {}),
             ...(r.extra ?? {}),
@@ -646,6 +665,7 @@ async function main(): Promise<void> {
   }
   const isMultiBackend = backendsToRun.length > 1;
   process.env.FLATTENER_BACKEND = isMultiBackend ? "both" : backendsToRun[0];
+  const allowWasmFailures = rawArgs.includes("--allow-wasm-failures");
 
   const args = rawArgs.filter(
     (a) =>
@@ -868,7 +888,12 @@ async function main(): Promise<void> {
         const suiteStr = q ? `${DIM}[${q.suiteName}]${RESET} ` : "";
         const backendStr =
           isMultiBackend && r.backend ? `${DIM}[${r.backend === "ts" ? "js" : r.backend}]${RESET} ` : "";
-        const tag = r.xfail ? `${YELLOW}✗ [XFAIL]${RESET}` : `${RED}✗ [REGRESSION]${RESET}`;
+        const isToleratedWasm = allowWasmFailures && r.backend === "wasm" && !r.xfail;
+        const tag = r.xfail
+          ? `${YELLOW}✗ [XFAIL]${RESET}`
+          : isToleratedWasm
+            ? `${YELLOW}✗ [WASM]${RESET}`
+            : `${RED}✗ [REGRESSION]${RESET}`;
         console.log(`  ${tag} ${suiteStr}${backendStr}${r.name}`);
         if (r.message) {
           console.log(
@@ -912,9 +937,9 @@ async function main(): Promise<void> {
     console.log();
     console.log(`${BOLD}Suite: ${suiteName}${RESET} (${results.length} files)`);
     for (const result of results) {
-      printResult(result, isMultiBackend);
+      printResult(result, isMultiBackend, allowWasmFailures);
     }
-    printSummary(results, `Summary: ${suiteName}`);
+    printSummary(results, `Summary: ${suiteName}`, false, allowWasmFailures);
     allResults.push(...results);
   }
 
@@ -922,7 +947,7 @@ async function main(): Promise<void> {
 
   // Print grand total
   if (suiteRuns.size > 1 || skippedResults.length > 0) {
-    printSummary(allResults, "Grand Total", !isMultiBackend);
+    printSummary(allResults, "Grand Total", !isMultiBackend, allowWasmFailures);
     const elapsed = ((globalStop - globalStart) / 1000).toFixed(1);
     console.log(`  ${DIM}Wall time: ${elapsed}s${RESET}`);
   }
@@ -938,7 +963,7 @@ async function main(): Promise<void> {
         const bLabel = b === "ts" ? "js" : b;
         const bResults = allResults.filter((r) => r.backend === b || (b === "ts" && r.backend === "hybrid"));
         const bCtrfPath = path.join(ctrfDir, `ctrf-testsuite-report-${bLabel}.json`);
-        const bReport = generateCtrfReport(bResults, globalStart, globalStop, bLabel);
+        const bReport = generateCtrfReport(bResults, globalStart, globalStop, bLabel, false, allowWasmFailures);
         fs.writeFileSync(bCtrfPath, JSON.stringify(bReport, null, 2) + "\n");
         const bHtmlPath = path.join(ctrfDir, `ctrf-testsuite-report-${bLabel}.html`);
         generateHtmlReport(bCtrfPath, bHtmlPath);
@@ -947,7 +972,14 @@ async function main(): Promise<void> {
 
       // Combined CTRF report
       const combinedCtrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
-      const combinedReport = generateCtrfReport(allResults, globalStart, globalStop, undefined, true);
+      const combinedReport = generateCtrfReport(
+        allResults,
+        globalStart,
+        globalStop,
+        undefined,
+        true,
+        allowWasmFailures,
+      );
       fs.writeFileSync(combinedCtrfPath, JSON.stringify(combinedReport, null, 2) + "\n");
       const combinedHtmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
       generateHtmlReport(combinedCtrfPath, combinedHtmlPath);
@@ -961,7 +993,7 @@ async function main(): Promise<void> {
       for (const b of backendsToRun) {
         const bLabel = b === "ts" ? "JS/TS" : b.toUpperCase();
         const bResults = allResults.filter((r) => r.backend === b || (b === "ts" && r.backend === "hybrid"));
-        printSummary(bResults, `${bLabel} Implementation`, true);
+        printSummary(bResults, `${bLabel} Implementation`, true, b === "wasm" ? allowWasmFailures : false);
       }
 
       console.log();
@@ -986,7 +1018,7 @@ async function main(): Promise<void> {
     } else {
       const activeBackend = backendsToRun[0] === "ts" ? "js" : (backendsToRun[0] ?? "js");
       const ctrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
-      const report = generateCtrfReport(allResults, globalStart, globalStop, activeBackend);
+      const report = generateCtrfReport(allResults, globalStart, globalStop, activeBackend, false, allowWasmFailures);
       fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
 
       // Also write dedicated backend report
@@ -1046,7 +1078,6 @@ async function main(): Promise<void> {
 
   // Exit with error code if any regressions occurred
   const allowFailures = rawArgs.includes("--allow-failures");
-  const allowWasmFailures = rawArgs.includes("--allow-wasm-failures");
 
   const regressions = allResults.filter((r) => {
     if (r.status !== "failed" || r.xfail) return false;

@@ -102,7 +102,7 @@ describe("SOTA CST Completion Context", () => {
             "--runtime",
             "stub",
           ],
-          { stdio: ["pipe", "pipe", "pipe"] },
+          { stdio: "inherit" },
         );
       } catch (e: any) {
         if (e.stdout) console.log("ASC stdout:\n" + e.stdout.toString());

@@ -203,9 +203,12 @@ function classifyTest(test: CtrfTest, toolName: string, filePath: string): Enric
   const testName = test.name || "";
   const extra = test.extra || {};
 
+  const isTolerated = Boolean(test.rawStatus === "tolerated" || extra.tolerated === true || extra.tolerated === "true");
+
   const isXfail = Boolean(
     test.rawStatus === "xfail" ||
     test.rawStatus === "xpass" ||
+    isTolerated ||
     extra.xfail === true ||
     extra.xfail === "true" ||
     (typeof extra.xfail === "string" && extra.xfail.length > 0),

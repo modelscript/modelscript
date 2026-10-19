@@ -2,6 +2,7 @@
 
 import { buildParser } from "@modelscript/dsl";
 import * as childProcess from "child_process";
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -51,8 +52,23 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
-    if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+    const cacheDir = path.resolve(__dirname, "../../../.cache/asc-tests");
+    try {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    } catch {}
+
+    const hash = crypto.createHash("sha256");
+    for (const file of result.assemblyScriptFiles) {
+      hash.update(file.filename);
+      hash.update(file.content);
+    }
+    const digest = hash.digest("hex");
+    const cachedWasm = path.join(cacheDir, `${digest}.wasm`);
+
+    if (fs.existsSync(cachedWasm) && fs.statSync(cachedWasm).size > 0) {
+      fs.copyFileSync(cachedWasm, outWasm);
+    } else if (!fs.existsSync(outWasm) || fs.statSync(outWasm).size === 0) {
+      const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
       try {
         childProcess.execFileSync(
           ascBin,
@@ -68,12 +84,19 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
             "--runtime",
             "stub",
           ],
-          { stdio: "pipe" },
+          { stdio: "inherit" },
         );
       } catch (e: any) {
         console.error("ASC ERROR:\n", e.stdout?.toString(), e.stderr?.toString());
         throw e;
       }
+      try {
+        fs.copyFileSync(outWasm, cachedWasm);
+      } catch {}
+    } else {
+      try {
+        fs.copyFileSync(outWasm, cachedWasm);
+      } catch {}
     }
 
     const wasm = fs.readFileSync(outWasm);
