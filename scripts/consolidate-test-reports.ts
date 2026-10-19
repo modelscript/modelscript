@@ -49,6 +49,7 @@ export interface CtrfTest {
         peakMemoryMB?: number | undefined;
         tolerance?: number | undefined;
         rmse?: number | undefined;
+        tolerated?: boolean | string | undefined;
         [key: string]: unknown;
       }
     | undefined;
@@ -203,7 +204,9 @@ function classifyTest(test: CtrfTest, toolName: string, filePath: string): Enric
   const testName = test.name || "";
   const extra = test.extra || {};
 
-  const isTolerated = Boolean(test.rawStatus === "tolerated" || extra.tolerated === true || extra.tolerated === "true");
+  const isTolerated = Boolean(
+    test.rawStatus === "tolerated" || extra["tolerated"] === true || extra["tolerated"] === "true",
+  );
 
   const isXfail = Boolean(
     test.rawStatus === "xfail" ||

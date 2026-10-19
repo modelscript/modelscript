@@ -1,1 +1,23 @@
+#!/usr/bin/env bash
+set -e
+
+# 1. Check Project Graph Cycles
+npm run lint:cycles
+
+# 2. Check License Headers
+npm run lint:headers
+
+# 3. Check Filename Conventions
+npm run lint:filenames
+
+# 4. Check Root TypeScript Config
+npx tsc --noEmit
+
+# 5. Lint Root Scripts
+npm run lint:scripts
+
+# 6. Run Lint & Prettier on staged files
 NODE_OPTIONS="--max-old-space-size=8192" npx lint-staged
+
+# 7. Run Typecheck on affected packages
+npx nx affected -t typecheck --uncommitted --parallel=4
