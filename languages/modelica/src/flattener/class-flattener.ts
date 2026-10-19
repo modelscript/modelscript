@@ -350,7 +350,7 @@ export class ModelicaFlattener {
     if ((sym as any)._isOperatorRecord !== undefined) return (sym as any)._isOperatorRecord;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-    const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
+    const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
     if (/\boperator\s+record\b/.test(cleanKind)) {
       (sym as any)._isOperatorRecord = true;
       return true;
@@ -361,7 +361,7 @@ export class ModelicaFlattener {
     }
     const cst = this.db.cstNode(sym.id) as any;
     if (cst) {
-      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
+      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
       if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) {
         (sym as any)._isOperatorRecord = true;
         return true;
@@ -378,14 +378,12 @@ export class ModelicaFlattener {
     if (!sym || (sym.kind !== "Class" && sym.kind !== "Package" && sym.kind !== "Function")) return false;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-    const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
+    const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
     if (/\bpartial\b/.test(cleanKind)) return true;
     const cst = this.db.cstNode(classId) as any;
     if (cst) {
       const pfxNode = Cst.ClassDefinition.classPrefixes(cst);
-      const text = (pfxNode?.text ?? cst.text ?? "")
-        .replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ")
-        .trim();
+      const text = (pfxNode?.text ?? cst.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
       if (/\bpartial\b/.test(text.slice(0, 100)) || /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test(text)) {
         return true;
       }
@@ -471,9 +469,9 @@ export class ModelicaFlattener {
 
         const recMeta = (rec.metadata as Record<string, unknown>) || {};
         const recPrefix = String(recMeta?.["classPrefixes"] ?? recMeta?.["classKind"] ?? "");
-        const cleanChildPrefix = childPrefix.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
-        const cleanChildText = childText.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
-        const cleanRecPrefix = recPrefix.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
+        const cleanChildPrefix = childPrefix.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+        const cleanChildText = childText.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+        const cleanRecPrefix = recPrefix.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
         const isEncapsulated =
           /(?<!non-)\bencapsulated\b/.test(cleanRecPrefix) ||
           /(?<!non-)\bencapsulated\b/.test(cleanChildPrefix) ||
@@ -482,7 +480,7 @@ export class ModelicaFlattener {
             if (c.kind !== "Class") return false;
             const meta = (c.metadata as any) || {};
             const pfx = String(meta.classPrefixes ?? meta.classKind ?? "").replace(
-              /\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g,
+              /\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
               "",
             );
             return /(?<!non-)\bencapsulated\b/.test(pfx);
@@ -569,7 +567,7 @@ export class ModelicaFlattener {
           return true;
         }
       }
-      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
+      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
       if (/^(?:(?:encapsulated|partial)\s+)*record\b/.test(text)) {
         (sym as any)._isRecord = true;
         return true;
@@ -607,7 +605,7 @@ export class ModelicaFlattener {
       const rawKind = String(clsSym?.metadata?.["classKind"] ?? clsSym?.metadata?.["classPrefixes"] ?? "");
       const cleanKind =
         rawKind
-          .replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ")
+          .replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ")
           .trim()
           .split(/\s+/)
           .pop() ?? "";
@@ -1563,7 +1561,7 @@ export class ModelicaFlattener {
     const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
     let specKind: string | null = null;
     if (typeof rawKind === "string") {
-      const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
+      const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
       const words = cleanKind.split(/\s+/).filter(Boolean);
       if (words.includes("package")) specKind = "package";
       else if (words.includes("function")) specKind = "function";
@@ -1929,7 +1927,7 @@ export class ModelicaFlattener {
           if (targetClass && !this.isClassType(targetClass.id)) {
             const targetCst = this.db.cstNode(targetClass.id) as any;
             const prefixes = Cst.ClassDefinition.classPrefixes(targetCst);
-            const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
+            const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
             let kindDesc = "a new def";
             if (/\bmodel\b/.test(cleanPrefixes)) kindDesc = "a model";
             else if (/\bblock\b/.test(cleanPrefixes)) kindDesc = "a block";

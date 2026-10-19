@@ -559,10 +559,11 @@ export function buildSourceFmuArchive(fmuBytes: Uint8Array | Buffer, options?: F
 
   if (buildDescBytes) {
     const buildDescXml = new TextDecoder().decode(buildDescBytes);
-    const matches = buildDescXml.matchAll(/<SourceFile\s[^>]*?name\s*=\s*"([^"]+)"/g);
+    const matches = buildDescXml.matchAll(/<SourceFile\b([^>]*)>/g);
     for (const m of matches) {
-      if (m[1]) {
-        const candidate = m[1].startsWith("sources/") ? m[1] : `sources/${m[1]}`;
+      const nameMatch = m[1]?.match(/\bname\s*=\s*"([^"]+)"/);
+      if (nameMatch?.[1]) {
+        const candidate = nameMatch[1].startsWith("sources/") ? nameMatch[1] : `sources/${nameMatch[1]}`;
         if (fileMap.has(candidate)) {
           cFiles.push(candidate);
         }

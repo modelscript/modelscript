@@ -98,11 +98,14 @@ export function parseCadBindings(cadStr: string): DynamicBindingConfig[] {
 
   // 2. Fallback to shorthand dynamicPosition / dynamicRotation / dynamicScale
   if (bindings.length === 0) {
-    const posMatch = cadStr.match(/dynamicPosition\s*=\s*"\{([^,{}"]+),\s*([^,{}"]+),\s*([^,{}"]+)\}"/);
+    const posMatch = cadStr.match(/dynamicPosition\s*=\s*"\{([^"]+)\}"/);
     if (posMatch) {
-      bindings.push({ property: "position", index: 0, variable: posMatch[1]!.trim() });
-      bindings.push({ property: "position", index: 1, variable: posMatch[2]!.trim() });
-      bindings.push({ property: "position", index: 2, variable: posMatch[3]!.trim() });
+      const parts = posMatch[1]!.split(",");
+      if (parts.length === 3) {
+        bindings.push({ property: "position", index: 0, variable: parts[0]!.trim() });
+        bindings.push({ property: "position", index: 1, variable: parts[1]!.trim() });
+        bindings.push({ property: "position", index: 2, variable: parts[2]!.trim() });
+      }
     }
 
     const rotMatch = cadStr.match(/dynamicRotation\s*=\s*"([^"]+)"/);

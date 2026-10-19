@@ -2066,7 +2066,7 @@ module.exports.default = module.exports;
       define: {
         "process.env": "{}",
         "process.browser": "true",
-        "import.meta.url": "''",
+        "import.meta.url": "self.location.href",
       },
       logOverride: {
         "duplicate-object-key": "silent",
@@ -2090,7 +2090,7 @@ module.exports.default = module.exports;
         define: {
           "process.env": "{}",
           "process.browser": "true",
-          "import.meta.url": "''",
+          "import.meta.url": "self.location.href",
         },
         logOverride: {
           "duplicate-object-key": "silent",

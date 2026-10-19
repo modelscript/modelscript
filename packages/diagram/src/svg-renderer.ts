@@ -22,6 +22,14 @@ function escapeXml(str: any): string {
     .replace(/'/g, "&apos;");
 }
 
+function stripGuillemets(s: string): string {
+  let start = 0;
+  while (start < s.length && (s[start] === "«" || s[start] === "<")) start++;
+  let end = s.length;
+  while (end > start && (s[end - 1] === "»" || s[end - 1] === ">")) end--;
+  return s.slice(start, end);
+}
+
 /**
  * Headless SVG Serializer for ModelScript Polyglot Diagrams.
  * Renders DiagramData into a standalone, pure SVG XML string with zero DOM dependencies.
@@ -358,8 +366,9 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       (node.properties?.name as string) ||
       (node.properties?.description as string) ||
       node.id;
+    const headerText = node.attrs?.header?.text as string | undefined;
     const stereotype =
-      (node.attrs?.header?.text as string)?.replace(/^[«<]+/, "").replace(/[»>]+$/, "") ||
+      (headerText ? stripGuillemets(headerText) : "") ||
       (node.data?.ruleName as string) ||
       (node.properties?.className as string);
     const multiplicity = (node.data?.multiplicity as number) || 1;

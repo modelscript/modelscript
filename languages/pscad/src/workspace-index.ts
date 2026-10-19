@@ -250,11 +250,15 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
   const items: SvgItem[] = [];
 
   // 1. Ports
-  const portRegex = /<Port\b[^>]*?x\s*=\s*["']([^"']+)["'][^>]*?y\s*=\s*["']([^"']+)["'][^>]*?>/gi;
+  const portRegex = /<Port\b([^>]*)>/gi;
   let pMatch: RegExpExecArray | null;
   while ((pMatch = portRegex.exec(gXml)) !== null) {
-    const px = parseFloat(pMatch[1]!);
-    const py = parseFloat(pMatch[2]!);
+    const pAttrs = pMatch[1]!;
+    const pxMatch = pAttrs.match(/\bx\s*=\s*["']([^"']+)["']/i);
+    const pyMatch = pAttrs.match(/\by\s*=\s*["']([^"']+)["']/i);
+    if (!pxMatch || !pyMatch) continue;
+    const px = parseFloat(pxMatch[1]!);
+    const py = parseFloat(pyMatch[1]!);
     minX = Math.min(minX, px);
     maxX = Math.max(maxX, px);
     minY = Math.min(minY, py);
@@ -265,92 +269,92 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16): string |
     });
   }
 
-  // 2. Rectangles
-  const rectRegex =
-    /<Gfx\b[^>]*?\bclassid=["']Graphics\.Rectangle["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?w=["']([^"']+)["'][^>]*?h=["']([^"']+)["']/gi;
-  let rMatch: RegExpExecArray | null;
-  while ((rMatch = rectRegex.exec(gXml)) !== null) {
-    const rx = parseFloat(rMatch[1]!);
-    const ry = parseFloat(rMatch[2]!);
-    const rw = parseFloat(rMatch[3]!);
-    const rh = parseFloat(rMatch[4]!);
-    minX = Math.min(minX, rx);
-    maxX = Math.max(maxX, rx + rw);
-    minY = Math.min(minY, ry);
-    maxY = Math.max(maxY, ry + rh);
-    items.push({
-      type: "rect",
-      attrs: {
-        x: rx,
-        y: ry,
-        width: rw,
-        height: rh,
-        rx: 3,
-        ry: 3,
-        fill: "#1e293b",
-        stroke: "#38bdf8",
-        "stroke-width": 1.5,
-      },
-    });
-  }
+  // 2. Gfx Primitives (Rectangles, Lines, Texts)
+  const gfxRegex = /<Gfx\b([^>]*?)(?:\/>|>([\s\S]*?)<\/Gfx>)/gi;
+  let gMatch: RegExpExecArray | null;
+  while ((gMatch = gfxRegex.exec(gXml)) !== null) {
+    const attrs = gMatch[1]!;
+    const body = gMatch[2] ?? "";
+    const classMatch = attrs.match(/\bclassid=["']Graphics\.([A-Za-z]+)["']/i);
+    if (!classMatch) continue;
+    const kind = classMatch[1]!;
 
-  // 3. Lines
-  const lineRegex =
-    /<Gfx\b[^>]*?\bclassid=["']Graphics\.Line["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
-  let lMatch: RegExpExecArray | null;
-  while ((lMatch = lineRegex.exec(gXml)) !== null) {
-    const lx = parseFloat(lMatch[1]!);
-    const ly = parseFloat(lMatch[2]!);
-    const lBody = lMatch[3]!;
-    const vertRegex = /<vertex\s+x=["']([^"']+)["']\s+y=["']([^"']+)["']/gi;
-    let vMatch: RegExpExecArray | null;
-    const pts: string[] = [];
-    while ((vMatch = vertRegex.exec(lBody)) !== null) {
-      const vx = lx + parseFloat(vMatch[1]!);
-      const vy = ly + parseFloat(vMatch[2]!);
-      minX = Math.min(minX, vx);
-      maxX = Math.max(maxX, vx);
-      minY = Math.min(minY, vy);
-      maxY = Math.max(maxY, vy);
-      pts.push(`${vx},${vy}`);
-    }
-    if (pts.length >= 2) {
+    if (kind === "Rectangle") {
+      const rx = parseFloat(attrs.match(/\bx=["']([^"']+)["']/i)?.[1] ?? "0");
+      const ry = parseFloat(attrs.match(/\by=["']([^"']+)["']/i)?.[1] ?? "0");
+      const rw = parseFloat(attrs.match(/\bw=["']([^"']+)["']/i)?.[1] ?? "0");
+      const rh = parseFloat(attrs.match(/\bh=["']([^"']+)["']/i)?.[1] ?? "0");
+      minX = Math.min(minX, rx);
+      maxX = Math.max(maxX, rx + rw);
+      minY = Math.min(minY, ry);
+      maxY = Math.max(maxY, ry + rh);
       items.push({
-        type: "line",
+        type: "rect",
         attrs: {
-          points: pts.join(" "),
-          fill: "none",
+          x: rx,
+          y: ry,
+          width: rw,
+          height: rh,
+          rx: 3,
+          ry: 3,
+          fill: "#1e293b",
           stroke: "#38bdf8",
           "stroke-width": 1.5,
-          "stroke-linecap": "round",
         },
       });
-    }
-  }
-
-  // 4. Texts
-  const textRegex =
-    /<Gfx\b[^>]*?\bclassid=["']Graphics\.Text["'][^>]*?x=["']([^"']+)["'][^>]*?y=["']([^"']+)["'][^>]*?>([\s\S]*?)<\/Gfx>/gi;
-  let tMatch: RegExpExecArray | null;
-  while ((tMatch = textRegex.exec(gXml)) !== null) {
-    const tx = parseFloat(tMatch[1]!);
-    const ty = parseFloat(tMatch[2]!);
-    const tBody = tMatch[3]!;
-    const valMatch = /<param\s+name=["']text["']\s+value=["']([^"']*)["']/i.exec(tBody);
-    const textVal = valMatch ? valMatch[1] : "";
-    if (textVal && textVal.length <= 4 && !textVal.startsWith("%")) {
-      items.push({
-        type: "text",
-        attrs: {
-          x: tx,
-          y: ty + 4,
-          fill: "#f8fafc",
-          "font-size": 11,
-          "font-family": "sans-serif",
-          "text-anchor": "middle",
-        },
-        content: textVal,
-      });
+    } else if (kind === "Line") {
+      const lx = parseFloat(attrs.match(/\bx=["']([^"']+)["']/i)?.[1] ?? "0");
+      const ly = parseFloat(attrs.match(/\by=["']([^"']+)["']/i)?.[1] ?? "0");
+      const vertRegex = /<vertex\b([^>]*)>/gi;
+      let vMatch: RegExpExecArray | null;
+      const pts: string[] = [];
+      while ((vMatch = vertRegex.exec(body)) !== null) {
+        const vAttrs = vMatch[1]!;
+        const vx = lx + parseFloat(vAttrs.match(/\bx=["']([^"']+)["']/i)?.[1] ?? "0");
+        const vy = ly + parseFloat(vAttrs.match(/\by=["']([^"']+)["']/i)?.[1] ?? "0");
+        minX = Math.min(minX, vx);
+        maxX = Math.max(maxX, vx);
+        minY = Math.min(minY, vy);
+        maxY = Math.max(maxY, vy);
+        pts.push(`${vx},${vy}`);
+      }
+      if (pts.length >= 2) {
+        items.push({
+          type: "line",
+          attrs: {
+            points: pts.join(" "),
+            fill: "none",
+            stroke: "#38bdf8",
+            "stroke-width": 1.5,
+            "stroke-linecap": "round",
+          },
+        });
+      }
+    } else if (kind === "Text") {
+      const tx = parseFloat(attrs.match(/\bx=["']([^"']+)["']/i)?.[1] ?? "0");
+      const ty = parseFloat(attrs.match(/\by=["']([^"']+)["']/i)?.[1] ?? "0");
+      const paramMatch = body.match(/<param\b([^>]*)>/i);
+      let textVal = "";
+      if (paramMatch) {
+        const pAttrs = paramMatch[1]!;
+        if (/\bname=["']text["']/i.test(pAttrs)) {
+          textVal = pAttrs.match(/\bvalue=["']([^"']*)["']/i)?.[1] ?? "";
+        }
+      }
+      if (textVal && textVal.length <= 4 && !textVal.startsWith("%")) {
+        items.push({
+          type: "text",
+          attrs: {
+            x: tx,
+            y: ty + 4,
+            fill: "#f8fafc",
+            "font-size": 11,
+            "font-family": "sans-serif",
+            "text-anchor": "middle",
+          },
+          content: textVal,
+        });
+      }
     }
   }
 

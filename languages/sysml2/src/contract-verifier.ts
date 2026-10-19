@@ -1068,7 +1068,7 @@ interface ParsedReqDef {
 
 function stripCommentsPreserveStructure(src: string): string {
   return src
-    .replace(/\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, (m) => " ".repeat(m.length))
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length))
     .replace(/\/\/[^\r\n]*/g, (m) => " ".repeat(m.length));
 }
 

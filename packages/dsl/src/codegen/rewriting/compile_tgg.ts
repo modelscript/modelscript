@@ -56,7 +56,7 @@ function compileAlgebraicExprToAS(exprStr: string, inputVarIdent: string): strin
       s = s.slice(assignIdx + 1).trim();
     }
   }
-  s = s.replace(/([a-zA-Z_]\w*|\d+(?:\.\d+)?)\s*(?:\*\*|\^)\s*(\d+(?:\.\d+)?)/g, "Math.pow($1, $2)");
+  s = s.replace(/\b([a-zA-Z_]\w*|\d+(?:\.\d+)?)\s*(?:\*\*|\^)\s*(\d+(?:\.\d+)?)\b/g, "Math.pow($1, $2)");
   const reserved = new Set(["Math", "sqrt", "pow", "exp", "log", "ln", "abs", "sin", "cos", "tan", "min", "max"]);
   s = s.replace(/\b([a-zA-Z_]\w*)\b/g, (match) => {
     if (reserved.has(match)) return match === "ln" ? "log" : match;

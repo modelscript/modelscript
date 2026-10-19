@@ -324,7 +324,7 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
             // Find uninitialized attributes in SysML v2
             const uninitVars: string[] = [];
             for (const m of repaired.matchAll(
-              /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*[a-zA-Z0-9_:]+(?:\s*=\s*[^;\r\n]*?)?\s*;/g,
+              /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*[a-zA-Z0-9_:]+(?:\s*=\s*[^;\r\n]*)?;/g,
             )) {
               if (!m[0].includes("=")) uninitVars.push(m[1]!);
             }

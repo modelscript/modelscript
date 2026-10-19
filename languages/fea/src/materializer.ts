@@ -837,6 +837,46 @@ function parseDeckModel(deckText: string): FeaModelData {
   return dialect.parse(deckText);
 }
 
+function extractCardLines(deckText: string, cardPrefix: string): string[] {
+  const lines = deckText.split(/\r?\n/);
+  const result: string[] = [];
+  let inCard = false;
+  const pfx = "*" + cardPrefix.toUpperCase();
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (trimmed.startsWith("*")) {
+      if (inCard) break;
+      if (trimmed.toUpperCase().startsWith(pfx)) inCard = true;
+    } else if (inCard && trimmed.length > 0 && !trimmed.startsWith("**")) {
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
+
+function extractAllCardBlocks(deckText: string, cardPrefix: string): string[][] {
+  const lines = deckText.split(/\r?\n/);
+  const blocks: string[][] = [];
+  let currentBlock: string[] | null = null;
+  const pfx = "*" + cardPrefix.toUpperCase();
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (trimmed.startsWith("*")) {
+      if (currentBlock) {
+        blocks.push(currentBlock);
+        currentBlock = null;
+      }
+      if (trimmed.toUpperCase().startsWith(pfx)) {
+        currentBlock = [];
+      }
+    } else if (currentBlock && trimmed.length > 0 && !trimmed.startsWith("**")) {
+      currentBlock.push(trimmed);
+    }
+  }
+  if (currentBlock) blocks.push(currentBlock);
+  return blocks;
+}
+
 /**
  * Evaluates an FEA input deck by parsing nodes, elements, materials, boundary conditions,
  * and loads, assembling the 3D linear elasticity stiffness matrix K * u = F, solving for
@@ -870,15 +910,15 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     }
   }
 
-  const densCardMatch = deckText.match(/\*DENSITY[\r\n\s]+([\d.e+-]+)/i);
-  if (densCardMatch && densCardMatch[1] && modelData.materials.size <= 1) {
-    const parsedRho = parseFloat(densCardMatch[1]);
+  const densityLines = extractCardLines(deckText, "DENSITY");
+  if (densityLines.length > 0 && modelData.materials.size <= 1) {
+    const parsedRho = parseFloat(densityLines[0]!);
     if (Number.isFinite(parsedRho) && parsedRho > 0) defaultDensity = parsedRho;
   }
 
-  const plasticCardMatch = deckText.match(/\*PLASTIC[^\r\n]*\r?\n\s*([\d.e+-]+)/i);
-  if (plasticCardMatch && plasticCardMatch[1]) {
-    const parsedYield = parseFloat(plasticCardMatch[1]);
+  const plasticLines = extractCardLines(deckText, "PLASTIC");
+  if (plasticLines.length > 0) {
+    const parsedYield = parseFloat(plasticLines[0]!);
     if (Number.isFinite(parsedYield) && parsedYield > 0) {
       yieldStrengthPa = parsedYield < 1e4 ? parsedYield * 1e6 : parsedYield;
     }
@@ -888,8 +928,8 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
   }
 
   // Extract optional shell thickness or beam cross-sectional area
-  const shellThicknessMatch = deckText.match(/\*SHELL\s+SECTION[^\r\n]*\r?\n\s*([\d.e+-]+)/i);
-  const defaultThickness = shellThicknessMatch ? parseFloat(shellThicknessMatch[1]!) || 0.005 : 0.005;
+  const shellLines = extractCardLines(deckText, "SHELL SECTION");
+  const defaultThickness = shellLines.length > 0 ? parseFloat(shellLines[0]!) || 0.005 : 0.005;
   const defaultCrossArea = defaultThickness * defaultThickness;
 
   // Map nodes to indices 0 .. N-1
@@ -1301,10 +1341,10 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     }
 
     // Parse *DLOAD distributed pressure/gravity loads if present
-    const dloadBlocks = [...deckText.matchAll(/\*DLOAD(?:,[^\r\n]*)?\r?\n((?:^[ \t]*[^*\r\n].*$\r?\n?)*)/gim)];
-    for (const dloadMatch of dloadBlocks) {
-      if (!dloadMatch[1] || numNodes === 0) continue;
-      for (const rawLine of dloadMatch[1].split(/\r?\n/)) {
+    const dloadBlocks = extractAllCardBlocks(deckText, "DLOAD");
+    for (const dloadLines of dloadBlocks) {
+      if (numNodes === 0) continue;
+      for (const rawLine of dloadLines) {
         const line = rawLine.trim();
         if (!line || line.startsWith("**")) continue;
         const parts = line.split(",").map((s) => s.trim());
@@ -1694,10 +1734,10 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       maxVonMisesPa = parseFloat(misesMatch[1]) * 1e6;
     } else {
       maxVonMisesPa = 0.0;
-      const cloadBlock = deckText.match(/\*CLOAD[^\r\n]*\r?\n((?:^[ \t]*[^*\r\n].*$\r?\n?)*)/im);
-      if (cloadBlock && cloadBlock[1]) {
+      const cloadLines = extractCardLines(deckText, "CLOAD");
+      if (cloadLines.length > 0) {
         let maxLoad = 0;
-        for (const line of cloadBlock[1].split(/\r?\n/)) {
+        for (const line of cloadLines) {
           const parts = line.split(",").map((s) => s.trim());
           if (parts.length >= 3) {
             const forceMag = Math.abs(parseFloat(parts[2]!));

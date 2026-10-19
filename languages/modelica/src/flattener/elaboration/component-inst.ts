@@ -782,7 +782,7 @@ export function isClassType(flattener: ComponentFlattener, classId: SymbolId, vi
   if (!cst) return false;
 
   const prefixes = Cst.ClassDefinition.classPrefixes(cst);
-  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
+  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
   if (/\btype\b/.test(cleanPrefixes)) return true;
   if (/\b(model|record|block|package)\b/.test(cleanPrefixes)) return false;
 
@@ -837,7 +837,7 @@ export function checkTypeAliasSpecialization(
   if (!sym) return null;
   const cst = flattener.db.cstNode(typeSymId) as any;
   if (!cst) return null;
-  const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "").trim();
+  const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "").trim();
   const match = text.match(
     /^(?:(?:encapsulated|partial|replaceable|final|inner|outer|redeclare)\s+)*type\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_.]+)/,
   );
@@ -854,7 +854,7 @@ export function checkTypeAliasSpecialization(
 
   const targetCst = flattener.db.cstNode(targetClass.id) as any;
   const prefixes = Cst.ClassDefinition.classPrefixes(targetCst);
-  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
+  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
   let kindDesc = "a new def";
   if (/\bmodel\b/.test(cleanPrefixes)) kindDesc = "a model";
   else if (/\bblock\b/.test(cleanPrefixes)) kindDesc = "a block";
@@ -1214,7 +1214,7 @@ export function validateClassModifiers(
       // Enumeration subtyping in redeclaration (RedeclareEnum2, RedeclareEnum4, RedeclareEnum6)
       if (targetMember.kind === "Class") {
         const targetCst = flattener.db.cstNode(targetMember.id) as any;
-        const targetText = (targetCst?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
+        const targetText = (targetCst?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
         const targetEnumMatch = /=\s*enumeration\s*\(([^)]*)\)/.exec(targetText);
         if (targetEnumMatch) {
           const rawTargetLits = targetEnumMatch[1]!.trim();
@@ -1226,7 +1226,7 @@ export function validateClassModifiers(
                 .map((s) => s.trim().split(/\s+/)[0])
                 .filter(Boolean);
 
-          const modText = (arg.modText ?? "").replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, "");
+          const modText = (arg.modText ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
           const rhsMatch = /=\s*([^\n;]+)/.exec(modText);
           const rhsVal = rhsMatch ? rhsMatch[1]!.trim() : (arg.redeclaredTypeSpecifier ?? "");
 
@@ -3711,7 +3711,7 @@ export function instantiateElements(
         if (dae.classKind === "function" && classTargetId) {
           const targetMeta = flattener.db.symbol(classTargetId)?.metadata as any;
           const rawKind = String(targetMeta?.classKind ?? targetMeta?.classPrefixes ?? "");
-          const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\//g, " ").trim();
+          const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
           const words = cleanKind.split(/\s+/).filter(Boolean);
           const isModel = words.includes("model");
           const isConnector = words.includes("connector");

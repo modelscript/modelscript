@@ -677,7 +677,20 @@ export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscri
   }
 
   // Browser
-  const url = wasmUrl ?? new URL(/* webpackIgnore: true */ "../../wasm/sundials.wasm", import.meta.url).href;
+  const base =
+    typeof import.meta !== "undefined" && import.meta.url
+      ? import.meta.url
+      : (typeof self !== "undefined" && self.location?.href) ||
+        (typeof document !== "undefined" && document.baseURI) ||
+        "http://localhost/";
+  let url = wasmUrl;
+  if (!url) {
+    try {
+      url = new URL(/* webpackIgnore: true */ "../../wasm/sundials.wasm", base).href;
+    } catch {
+      url = "/wasm/sundials.wasm";
+    }
+  }
   const jsUrl = url.replace(/\.wasm$/, ".js");
   const factory = await import(/* webpackIgnore: true */ jsUrl);
   cachedModule = await factory.default({

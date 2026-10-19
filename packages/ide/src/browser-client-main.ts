@@ -3505,10 +3505,14 @@ async function createWorkerLanguageClient(context: vscode.ExtensionContext, clie
   // In web environments, the extension host runs on a dynamically generated UUID subdomain
   // (e.g., http://<uuid>.localhost:3003) for security, while context.extensionUri points to the parent host.
   // We must rewrite the worker URL to use the same origin to avoid cross-origin importScripts failures.
-  if (typeof self !== "undefined" && self.location && self.location.origin) {
-    const url = new URL(serverMain.toString(true));
-    if (url.origin !== self.location.origin) {
-      serverMain = Uri.parse(self.location.origin + url.pathname + url.search + url.hash);
+  if (typeof self !== "undefined" && self.location && self.location.origin && self.location.origin !== "null") {
+    try {
+      const url = new URL(serverMain.toString(true));
+      if (url.origin !== self.location.origin) {
+        serverMain = Uri.parse(self.location.origin + url.pathname + url.search + url.hash);
+      }
+    } catch {
+      // ignore url parsing failures for custom schemes
     }
   }
 

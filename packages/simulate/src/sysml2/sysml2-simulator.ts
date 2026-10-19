@@ -29,8 +29,19 @@ export async function simulateSysml2(
     const sysml2Module = "@modelscript/sysml2";
     ({ SysML2DaeLowerer } = (await import(sysml2Module)) as any);
   } catch {
-    const fallbackUrl = new URL("../../../../languages/sysml2/src/sysml2-dae-lowerer.ts", import.meta.url).href;
-    ({ SysML2DaeLowerer } = (await import(fallbackUrl)) as any);
+    let fallbackUrl = "";
+    try {
+      const base =
+        typeof import.meta !== "undefined" && import.meta.url
+          ? import.meta.url
+          : (typeof self !== "undefined" && self.location?.href) || "http://localhost/";
+      fallbackUrl = new URL("../../../../languages/sysml2/src/sysml2-dae-lowerer.ts", base).href;
+    } catch {
+      fallbackUrl = "";
+    }
+    if (fallbackUrl) {
+      ({ SysML2DaeLowerer } = (await import(fallbackUrl)) as any);
+    }
   }
   const arena = await SysML2DaeLowerer.lowerSystem(sysmlSource);
 

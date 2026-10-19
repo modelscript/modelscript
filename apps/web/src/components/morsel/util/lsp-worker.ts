@@ -31,7 +31,14 @@ export async function startLsp(): Promise<ProtocolConnection> {
   initPromise = (async () => {
     // The LSP bundle is copied to /lsp/server/dist/browserServerMain.js
     // by viteStaticCopy. We create a plain Worker pointing at that URL.
-    worker = new Worker(new URL("/lsp/server/dist/browserServerMain.js", globalThis.location.origin), {
+    const origin =
+      (typeof globalThis.location !== "undefined" &&
+        globalThis.location.origin &&
+        globalThis.location.origin !== "null" &&
+        globalThis.location.origin) ||
+      (typeof globalThis.location !== "undefined" && globalThis.location.href) ||
+      "http://localhost";
+    worker = new Worker(new URL("/lsp/server/dist/browserServerMain.js", origin), {
       name: "modelscript-lsp",
     });
 
@@ -103,9 +110,13 @@ export async function startLsp(): Promise<ProtocolConnection> {
         },
       },
       initializationOptions: {
-        // This URI is used by the LSP to construct paths like
-        // ${extensionUri}/server/dist/modelica.wasm
-        extensionUri: globalThis.location.origin + "/lsp",
+        extensionUri:
+          ((typeof globalThis.location !== "undefined" &&
+            globalThis.location.origin &&
+            globalThis.location.origin !== "null" &&
+            globalThis.location.origin) ||
+            (typeof globalThis.location !== "undefined" && globalThis.location.href) ||
+            "http://localhost") + "/lsp",
         useLocalMsl: true,
       },
     });

@@ -396,7 +396,7 @@ async function run() {
     define: {
       "process.env": "{}",
       "process.browser": "true",
-      "import.meta.url": "''",
+      "import.meta.url": "self.location.href",
     },
     logOverride: {
       "duplicate-object-key": "silent",

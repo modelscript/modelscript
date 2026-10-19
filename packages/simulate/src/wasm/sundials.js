@@ -149,7 +149,15 @@ async function Module(moduleArg = {}) {
     if (Module["locateFile"]) {
       return locateFile("sundials.wasm");
     }
-    return new URL("sundials.wasm", import.meta.url).href;
+    try {
+      const base =
+        typeof import.meta !== "undefined" && import.meta.url
+          ? import.meta.url
+          : (typeof self !== "undefined" && self.location?.href) || "http://localhost/";
+      return new URL("sundials.wasm", base).href;
+    } catch {
+      return "sundials.wasm";
+    }
   }
   function getBinarySync(file) {
     if (file == wasmBinaryFile && wasmBinary) {

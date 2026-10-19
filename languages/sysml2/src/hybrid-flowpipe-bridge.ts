@@ -294,14 +294,24 @@ export async function verifyHybridSysml2Reachability(
     : [];
 
   if (sourceText && customModes.length >= 2) {
-    const transRegex =
-      /\btransition\s+(?:(?!first\b)([A-Za-z_][A-Za-z0-9_]*)\s+)?first\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:if\s+([^{;\n]+?)\s+)?then\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+    const transRegex = /\btransition\s+([^;{}]+)/g;
     let tm: RegExpExecArray | null;
     while ((tm = transRegex.exec(sourceText)) !== null) {
-      const transName = tm[1] || `${tm[2]}To${tm[4]}`;
-      const srcMode = tm[2]!;
-      const guardExpr = (tm[3] || "").trim();
-      const dstMode = tm[4]!;
+      const stmt = tm[1]!.trim();
+      const thenParts = stmt.split(/\bthen\s+/);
+      if (thenParts.length < 2) continue;
+      const leftPart = thenParts[0]!.trim();
+      const dstMode = thenParts[1]!.trim().split(/\s+/)[0]!;
+
+      const firstParts = leftPart.split(/\bfirst\s+/);
+      if (firstParts.length < 2) continue;
+      const rawTransName = firstParts[0]!.trim();
+      const afterFirst = firstParts[1]!.trim();
+
+      const ifParts = afterFirst.split(/\bif\s+/);
+      const srcMode = ifParts[0]!.trim();
+      const guardExpr = (ifParts[1] ?? "").trim();
+      const transName = rawTransName || `${srcMode}To${dstMode}`;
       if (!modeIdSet.has(srcMode) || !modeIdSet.has(dstMode)) continue;
       const numMatch = guardExpr.match(/([<>]=?)\s*([+-]?\d+(?:\.\d+)?)/);
       const op = numMatch?.[1] ?? ">=";

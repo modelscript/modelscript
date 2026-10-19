@@ -39,8 +39,23 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
       const candidate2 = join(import.meta.dirname, "..", "..", "build", "release.wasm");
       url = existsSync(candidate1) ? candidate1 : candidate2;
     } else {
-      // In browser context, use relative URL from the current module
-      url = new URL("../build/release.wasm", import.meta.url);
+      // In browser context, use relative URL from serverDistBase or current module
+      const serverDist = (globalThis as any).serverDistBase;
+      if (serverDist) {
+        url = `${serverDist}/release.wasm`;
+      } else {
+        const base =
+          typeof import.meta !== "undefined" && import.meta.url
+            ? import.meta.url
+            : (typeof self !== "undefined" && self.location?.href) ||
+              (typeof document !== "undefined" && document.baseURI) ||
+              "http://localhost/";
+        try {
+          url = new URL("../build/release.wasm", base);
+        } catch {
+          url = "/release.wasm";
+        }
+      }
     }
   }
 

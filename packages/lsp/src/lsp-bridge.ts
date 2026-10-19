@@ -2189,6 +2189,9 @@ export class LSPBridge {
       return s;
     };
 
+    // 0. Strip script and style blocks completely
+    html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+
     // 1. Preserve <pre>...</pre> blocks as fenced code blocks
     const preBlocks: string[] = [];
     html = html.replace(/<pre(?:\s[^>]*)?>([\s\S]*?)<\/pre>/gi, (_m, inner) => {
@@ -2268,8 +2271,8 @@ export class LSPBridge {
       .replace(/<\/?(?:ul|ol|dl)(?:\s[^>]*)?>/gi, "\n\n")
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<hr\s*\/?>/gi, "\n\n---\n\n")
-      .replace(/<\/?(?:p|div|blockquote)(?:\s[^>]*)?>/gi, "\n\n")
-      .replace(/<\/?[a-zA-Z][^>]*>/g, "");
+      .replace(/<\/?(?:p|div|blockquote)(?:\s[^>]*)?>/gi, "\n\n");
+    html = stripHtmlTags(html);
 
     html = decodeEntities(html);
 

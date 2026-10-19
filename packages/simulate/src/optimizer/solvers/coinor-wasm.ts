@@ -692,12 +692,25 @@ export async function loadCoinorWasm(wasmUrl?: string): Promise<CoinorWasmSolver
     return cachedSolver;
   }
 
-  const url = wasmUrl ?? new URL(/* webpackIgnore: true */ "../../wasm/coinor.wasm", import.meta.url).href;
+  const base =
+    typeof import.meta !== "undefined" && import.meta.url
+      ? import.meta.url
+      : (typeof self !== "undefined" && self.location?.href) ||
+        (typeof document !== "undefined" && document.baseURI) ||
+        "http://localhost/";
+  let url = wasmUrl;
+  if (!url) {
+    try {
+      url = new URL(/* webpackIgnore: true */ "../../wasm/coinor.wasm", base).href;
+    } catch {
+      url = "/wasm/coinor.wasm";
+    }
+  }
   const jsUrl = url.replace(/\.wasm$/, ".js");
   const factory = await import(/* webpackIgnore: true */ jsUrl);
   const module = await new Promise<CoinorEmscriptenModule>((resolve) => {
     const mod = factory.default({
-      locateFile: () => url,
+      locateFile: () => url!,
       onRuntimeInitialized: () => resolve(mod),
     });
   });
