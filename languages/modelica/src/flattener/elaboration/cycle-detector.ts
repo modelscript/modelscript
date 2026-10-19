@@ -4,14 +4,34 @@ import { DAEBuilder, ExprKind, type QueryDB, type SymbolId, Variability } from "
 import { ModelicaErrorCode } from "../../errors.js";
 import { extractCompilerOptions } from "../support/compiler-options.js";
 
-function stripTrailingSubscript(s: string): string {
-  let res = s;
-  while (res.endsWith("]")) {
-    const open = res.lastIndexOf("[");
-    if (open === -1) break;
-    res = res.slice(0, open);
+function stripLeafSubscript(name: string): string {
+  const lastDot = name.lastIndexOf(".");
+  if (lastDot === -1) {
+    const bIdx = name.indexOf("[");
+    return bIdx !== -1 ? name.slice(0, bIdx) : name;
   }
-  return res;
+  const prefix = name.slice(0, lastDot + 1);
+  const leaf = name.slice(lastDot + 1);
+  const bIdx = leaf.indexOf("[");
+  return bIdx !== -1 ? prefix + leaf.slice(0, bIdx) : name;
+}
+
+function extractVarScopeAndSimpleName(
+  fullName: string,
+  rootClassName: string,
+): { scope: string; simpleName: string; prefix: string } {
+  const lastDot = fullName.lastIndexOf(".");
+  if (lastDot === -1) {
+    const bIdx = fullName.indexOf("[");
+    const simpleName = bIdx !== -1 ? fullName.slice(0, bIdx) : fullName;
+    return { scope: rootClassName, simpleName, prefix: "" };
+  }
+  const prefix = fullName.slice(0, lastDot);
+  const scope = `${rootClassName}.${prefix}`;
+  const leaf = fullName.slice(lastDot + 1);
+  const bIdx = leaf.indexOf("[");
+  const simpleName = bIdx !== -1 ? leaf.slice(0, bIdx) : leaf;
+  return { scope, simpleName, prefix };
 }
 
 export function collectExprVarNames(
@@ -150,11 +170,8 @@ export function checkCyclicConstantsAndParameters(
     if (variability !== Variability.Constant && variability !== Variability.Parameter) continue;
 
     const fullName = dae.getVarName(i);
-    const baseName = stripTrailingSubscript(fullName);
-    const dotIdx = baseName.lastIndexOf(".");
-    const scope = dotIdx >= 0 ? `${rootClassName}.${baseName.slice(0, dotIdx)}` : rootClassName;
-    const simpleName = dotIdx >= 0 ? baseName.slice(dotIdx + 1) : baseName;
-    const prefix = dotIdx >= 0 ? baseName.slice(0, dotIdx) : "";
+    const { scope, simpleName, prefix } = extractVarScopeAndSimpleName(fullName, rootClassName);
+    const baseName = stripLeafSubscript(fullName);
 
     if (!scopeToVars.has(scope)) {
       scopeToVars.set(scope, []);
@@ -181,7 +198,7 @@ export function checkCyclicConstantsAndParameters(
 
     const scopeDeps = varToDeps.get(simpleName) ?? [];
     for (const d of rawDeps) {
-      const cleanD = stripTrailingSubscript(d);
+      const cleanD = stripLeafSubscript(d);
       if (prefix) {
         if (cleanD.startsWith(prefix + ".")) {
           const depSimple = cleanD.slice(prefix.length + 1);
@@ -231,17 +248,39 @@ export function checkCyclicConstantsAndParameters(
   for (const [scope, vars] of scopeToVars) {
     const varToDeps = scopeVarToDeps.get(scope);
     if (!varToDeps) continue;
-    for (let idx = vars.length - 1; idx >= 0; idx--) {
-      const startNode = vars[idx]!;
-      const visited = new Set<string>();
-      const path: string[] = [startNode];
 
-      const dfs = (curr: string): boolean => {
-        const neighbors = varToDeps.get(curr) || [];
-        for (const next of neighbors) {
+    const n = vars.length;
+    if (n === 0) continue;
+    const nameToId = new Map<string, number>();
+    for (let i = 0; i < n; i++) {
+      nameToId.set(vars[i]!, i);
+    }
+
+    const adj: number[][] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const deps = varToDeps.get(vars[i]!) ?? [];
+      const neighborIds: number[] = [];
+      for (const d of deps) {
+        const targetId = nameToId.get(d);
+        if (targetId !== undefined && !neighborIds.includes(targetId)) {
+          neighborIds.push(targetId);
+        }
+      }
+      adj[i] = neighborIds;
+    }
+
+    for (let idx = n - 1; idx >= 0; idx--) {
+      const startNode = idx;
+      const visited = new Uint8Array(n);
+      const path: number[] = [startNode];
+
+      const dfs = (curr: number): boolean => {
+        const neighbors = adj[curr]!;
+        for (let j = 0; j < neighbors.length; j++) {
+          const next = neighbors[j]!;
           if (next === startNode) return true;
-          if (!visited.has(next)) {
-            visited.add(next);
+          if (visited[next] === 0) {
+            visited[next] = 1;
             path.push(next);
             if (dfs(next)) return true;
             path.pop();
@@ -251,7 +290,7 @@ export function checkCyclicConstantsAndParameters(
       };
 
       if (dfs(startNode)) {
-        const cycleStr = path.join(",");
+        const cycleStr = path.map((id) => vars[id]!).join(",");
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.CYCLIC_CONSTANTS_OR_PARAMETERS.code,
@@ -277,7 +316,7 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
   for (let i = 0; i < fn.varCount; i++) {
     if (fn.isVarRemoved(i)) continue;
     const name = fn.getVarName(i);
-    const cleanName = stripTrailingSubscript(name);
+    const cleanName = stripLeafSubscript(name);
     if (!compNames.includes(cleanName)) {
       compNames.push(cleanName);
     }
@@ -290,7 +329,7 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
 
     const deps: string[] = [];
     for (const d of rawDeps) {
-      const cleanD = stripTrailingSubscript(d);
+      const cleanD = stripLeafSubscript(d);
       if (!deps.includes(cleanD)) {
         deps.push(cleanD);
       }
@@ -298,17 +337,38 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
     varToDeps.set(cleanName, deps);
   }
 
-  for (let idx = compNames.length - 1; idx >= 0; idx--) {
-    const startNode = compNames[idx]!;
-    const visited = new Set<string>();
-    const path: string[] = [startNode];
+  const n = compNames.length;
+  if (n === 0) return;
+  const nameToId = new Map<string, number>();
+  for (let i = 0; i < n; i++) {
+    nameToId.set(compNames[i]!, i);
+  }
 
-    const dfs = (curr: string): boolean => {
-      const neighbors = varToDeps.get(curr) || [];
-      for (const next of neighbors) {
+  const adj: number[][] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const deps = varToDeps.get(compNames[i]!) ?? [];
+    const neighborIds: number[] = [];
+    for (const d of deps) {
+      const targetId = nameToId.get(d);
+      if (targetId !== undefined && !neighborIds.includes(targetId)) {
+        neighborIds.push(targetId);
+      }
+    }
+    adj[i] = neighborIds;
+  }
+
+  for (let idx = n - 1; idx >= 0; idx--) {
+    const startNode = idx;
+    const visited = new Uint8Array(n);
+    const path: number[] = [startNode];
+
+    const dfs = (curr: number): boolean => {
+      const neighbors = adj[curr]!;
+      for (let j = 0; j < neighbors.length; j++) {
+        const next = neighbors[j]!;
         if (next === startNode) return true;
-        if (!visited.has(next)) {
-          visited.add(next);
+        if (visited[next] === 0) {
+          visited[next] = 1;
           path.push(next);
           if (dfs(next)) return true;
           path.pop();
@@ -318,7 +378,7 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
     };
 
     if (dfs(startNode)) {
-      const cycleStr = path.join(", ");
+      const cycleStr = path.map((id) => compNames[id]!).join(", ");
       const bCst = db.cstNode(fnSymId) as any;
       const rangeObj = bCst
         ? {
