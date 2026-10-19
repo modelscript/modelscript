@@ -1417,8 +1417,8 @@ export class UnifiedVerifier {
         matrixLines.push(result.formattedMatrix);
 
         for (const bug of result.definiteBugs) {
-          const loc = getLineCol(bug.startByte ?? algOffset);
-          const endLoc = getLineCol(bug.endByte ?? (bug.startByte ? bug.startByte + 10 : algOffset + 10));
+          const loc = getLineCol(bug.startOffset ?? algOffset);
+          const endLoc = getLineCol(bug.endOffset ?? (bug.startOffset ? bug.startOffset + 10 : algOffset + 10));
           violations.push({
             id: "MSC-VERIFY-ALGO-DEFECT",
             stage: "algorithms",
@@ -1436,9 +1436,9 @@ export class UnifiedVerifier {
         }
 
         for (const unproven of result.potentialBugs) {
-          const loc = getLineCol(unproven.startByte ?? algOffset);
+          const loc = getLineCol(unproven.startOffset ?? algOffset);
           const endLoc = getLineCol(
-            unproven.endByte ?? (unproven.startByte ? unproven.startByte + 10 : algOffset + 10),
+            unproven.endOffset ?? (unproven.startOffset ? unproven.startOffset + 10 : algOffset + 10),
           );
           violations.push({
             id: "MSC-VERIFY-ALGO-UNPROVEN",
@@ -1473,7 +1473,7 @@ export class UnifiedVerifier {
           matrixLines.push(result.formattedMatrix);
 
           for (const bug of result.definiteBugs) {
-            const loc = getLineCol(bug.startByte);
+            const loc = getLineCol(bug.startOffset);
             violations.push({
               id: "MSC-VERIFY-ALGO-DEFECT",
               stage: "algorithms",
@@ -1485,7 +1485,7 @@ export class UnifiedVerifier {
           }
 
           for (const unproven of result.potentialBugs) {
-            const loc = getLineCol(unproven.startByte);
+            const loc = getLineCol(unproven.startOffset);
             violations.push({
               id: "MSC-VERIFY-ALGO-UNPROVEN",
               stage: "algorithms",

@@ -287,11 +287,11 @@ export function checkModifierNotFound(
         while (curCst && curCst.type !== "component_clause" && curCst.parent) {
           curCst = curCst.parent;
         }
-        if (curCst && curCst.startByte !== undefined && curCst.endByte !== undefined) {
+        if (curCst && curCst.startOffset !== undefined && curCst.endOffset !== undefined) {
           results.push(
             error(msg, {
-              startByte: curCst.startByte,
-              endByte: curCst.endByte,
+              startOffset: curCst.startOffset,
+              endOffset: curCst.endOffset,
               code: diagCode,
             }),
           );
@@ -308,8 +308,8 @@ export function checkModifierNotFound(
       } else if (arg.nameRange) {
         results.push(
           error(msg, {
-            startByte: arg.nameRange[0],
-            endByte: arg.nameRange[1],
+            startOffset: arg.nameRange[0],
+            endOffset: arg.nameRange[1],
             code: diagCode,
           }),
         );
@@ -447,7 +447,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         (isParentModOrRepl ? parentNode.children?.find((c: any) => c.type === "each" || c.text === "each") : undefined);
 
       const name = nameNode ? nameNode.text : "";
-      const modRange = n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined;
+      const modRange = n ? ([n.startIndex ?? n.startOffset, n.endIndex ?? n.endOffset] as const) : undefined;
       const modPosition = n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined;
 
       const isOldInst = Boolean(
@@ -469,10 +469,10 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       const parts = name.split(".");
       const getPartNameRange = (partIndex: number): readonly [number, number] | undefined => {
         if (!nameNode) return undefined;
-        const baseStart = nameNode.startIndex ?? nameNode.startByte;
+        const baseStart = nameNode.startIndex ?? nameNode.startOffset;
         if (typeof baseStart !== "number") return undefined;
         if (parts.length <= 1) {
-          const baseEnd = nameNode.endIndex ?? nameNode.endByte ?? baseStart + name.length;
+          const baseEnd = nameNode.endIndex ?? nameNode.endOffset ?? baseStart + name.length;
           return [baseStart, baseEnd] as const;
         }
         let offset = 0;
@@ -549,8 +549,8 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               subs.push({
                 kind: "expression",
                 cstBytes: [
-                  exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startByte,
-                  exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endByte,
+                  exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startOffset,
+                  exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endOffset,
                 ],
                 text: exprChild.text,
               });
@@ -634,7 +634,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         args.push({
           name,
           nameRange,
-          modRange: n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined,
+          modRange: n ? ([n.startIndex ?? n.startOffset, n.endIndex ?? n.endOffset] as const) : undefined,
           modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
           modText: n.text?.trim() ?? "",
           each: false,
@@ -731,9 +731,9 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
             args.push({
               name,
               nameRange: ident
-                ? ([ident.startIndex ?? ident.startByte, ident.endIndex ?? ident.endByte] as const)
+                ? ([ident.startIndex ?? ident.startOffset, ident.endIndex ?? ident.endOffset] as const)
                 : undefined,
-              modRange: n ? ([n.startIndex ?? n.startByte, n.endIndex ?? n.endByte] as const) : undefined,
+              modRange: n ? ([n.startIndex ?? n.startOffset, n.endIndex ?? n.endOffset] as const) : undefined,
               modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
               modText: n.text?.trim() ?? "",
               each: false,
@@ -1135,8 +1135,8 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
     return true;
   }
   let text = "";
-  if (sym.startByte != null && sym.endByte != null && typeof (db as any).cstText === "function") {
-    text = (db as any).cstText(sym.startByte, Math.min(sym.endByte, sym.startByte + 120), sym) ?? "";
+  if (sym.startOffset != null && sym.endOffset != null && typeof (db as any).cstText === "function") {
+    text = (db as any).cstText(sym.startOffset, Math.min(sym.endOffset, sym.startOffset + 120), sym) ?? "";
   } else {
     const cst = db.cstNode(sym.id) as any;
     if (cst) {
@@ -1495,7 +1495,7 @@ function getQualifiedTypeFailRange(
   node: any,
   fallbackStart: number,
   fallbackEnd: number,
-): { startByte: number; endByte: number; startCharOffset: number; endCharOffset: number } {
+): { startOffset: number; endOffset: number } {
   let targetNode = node;
   if (targetNode && (targetNode.type === "extends_clause" || targetNode.type === "ExtendsClause")) {
     const typeSpecChild =
@@ -1506,10 +1506,8 @@ function getQualifiedTypeFailRange(
     if (typeSpecChild) targetNode = typeSpecChild;
   }
 
-  let startByte = targetNode?.startIndex ?? targetNode?.startByte ?? fallbackStart;
-  let endByte = targetNode?.endIndex ?? targetNode?.endByte ?? fallbackEnd;
-  let startOffset = targetNode?.startOffset ?? startByte;
-  let endOffset = targetNode?.endOffset ?? endByte;
+  let startOffset = targetNode?.startOffset ?? targetNode?.startIndex ?? fallbackStart;
+  let endOffset = targetNode?.endOffset ?? targetNode?.endIndex ?? fallbackEnd;
 
   const cleanType = typeName.replace(/\[.*\]$/, "").trim();
   const hasLeadingDot = cleanType.startsWith(".");
@@ -1544,12 +1542,10 @@ function getQualifiedTypeFailRange(
   if (parts.length <= 1) {
     if (idents.length === 1) {
       const idNode = idents[0];
-      startByte = idNode.startIndex ?? idNode.startByte ?? startByte;
-      endByte = idNode.endIndex ?? idNode.endByte ?? endByte;
-      startOffset = idNode.startOffset ?? startByte;
-      endOffset = idNode.endOffset ?? endByte;
+      startOffset = idNode.startOffset ?? idNode.startIndex ?? startOffset;
+      endOffset = idNode.endOffset ?? idNode.endIndex ?? endOffset;
     }
-    return { startByte, endByte, startCharOffset: startOffset, endCharOffset: endOffset };
+    return { startOffset, endOffset };
   }
 
   let failIdx = 0;
@@ -1596,11 +1592,9 @@ function getQualifiedTypeFailRange(
 
   if (failIdx < idents.length) {
     const idNode = idents[failIdx];
-    const sb = idNode.startIndex ?? idNode.startByte ?? startByte;
-    const eb = idNode.endIndex ?? idNode.endByte ?? endByte;
-    const so = idNode.startOffset ?? sb;
-    const eo = idNode.endOffset ?? eb;
-    return { startByte: sb, endByte: eb, startCharOffset: so, endCharOffset: eo };
+    const so = idNode.startOffset ?? idNode.startIndex ?? startOffset;
+    const eo = idNode.endOffset ?? idNode.endIndex ?? endOffset;
+    return { startOffset: so, endOffset: eo };
   }
 
   const nodeText: string = targetNode?.text ?? cleanType;
@@ -1611,16 +1605,14 @@ function getQualifiedTypeFailRange(
     if (idx === -1) break;
     if (i === failIdx) {
       return {
-        startByte: startByte + idx,
-        endByte: startByte + idx + seg.length,
-        startCharOffset: startOffset + idx,
-        endCharOffset: startOffset + idx + seg.length,
+        startOffset: startOffset + idx,
+        endOffset: startOffset + idx + seg.length,
       };
     }
     searchPos = idx + seg.length + 1;
   }
 
-  return { startByte, endByte, startCharOffset: startOffset, endCharOffset: endOffset };
+  return { startOffset, endOffset };
 }
 
 // Stacks for tracking dimension evaluation and queries to detect cycles
@@ -2119,8 +2111,8 @@ export function getShortClassSpecifierNode(cst: any): any {
 export interface EnumValidationResult {
   code: number;
   message: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
 }
 
 /**
@@ -2128,7 +2120,7 @@ export interface EnumValidationResult {
  * (`M4084` / `M2001`) and duplicate enumeration literal identifiers (`M4083`).
  *
  * @param cstNode - CST node of the enumeration class definition.
- * @param sym - Optional symbol entry for fallback metadata and byte range lookup.
+ * @param sym - Optional symbol entry for fallback metadata and character range lookup.
  * @returns First detected `EnumValidationResult` error, or `null` if valid.
  */
 export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): EnumValidationResult | null {
@@ -2142,13 +2134,13 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   if (!isEnum) return null;
 
   const literals: string[] = [];
-  const literalRanges: { name: string; startByte: number; endByte: number }[] = [];
+  const literalRanges: { name: string; startOffset: number; endOffset: number }[] = [];
   const enumListNode = shortSpec
     ? (shortSpec.children?.find((c: any) => c.type === "enum_list" || c.type === "EnumList") ??
       (Cst?.ShortClassSpecifier ? Cst.ShortClassSpecifier.enumList(shortSpec) : null))
     : null;
 
-  const baseNodeStart = sym?.startByte ?? cstNode?.startIndex ?? cstNode?.startByte ?? 0;
+  const baseNodeStart = sym?.startOffset ?? cstNode?.startIndex ?? cstNode?.startOffset ?? 0;
 
   if (enumListNode && enumListNode.children) {
     for (const c of enumListNode.children) {
@@ -2157,10 +2149,10 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
         const litName = idNode?.text?.trim() ?? c.text?.trim()?.split(/\s+/)[0];
         if (litName) {
           literals.push(litName);
-          const s = idNode?.startIndex ?? idNode?.startByte;
-          const e = idNode?.endIndex ?? idNode?.endByte;
+          const s = idNode?.startIndex ?? idNode?.startOffset;
+          const e = idNode?.endIndex ?? idNode?.endOffset;
           if (typeof s === "number" && typeof e === "number") {
-            literalRanges.push({ name: litName, startByte: s, endByte: e });
+            literalRanges.push({ name: litName, startOffset: s, endOffset: e });
           }
         }
       }
@@ -2177,7 +2169,7 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
           const relIdx = enumMatch[1].indexOf(litName, searchOffset);
           if (relIdx >= 0) {
             const s = baseNodeStart + innerStart + relIdx;
-            literalRanges.push({ name: litName, startByte: s, endByte: s + litName.length });
+            literalRanges.push({ name: litName, startOffset: s, endOffset: s + litName.length });
             searchOffset = relIdx + part.length;
           }
         }
@@ -2201,11 +2193,11 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
     "distribution",
   ]);
 
-  let startByte = sym?.startByte ?? cstNode?.startIndex ?? cstNode?.startByte;
-  let endByte = sym?.endByte ?? cstNode?.endIndex ?? cstNode?.endByte;
-  if (typeof startByte === "number" && cstText) {
+  let startOffset = sym?.startOffset ?? cstNode?.startIndex ?? cstNode?.startOffset ?? 0;
+  const endOffset = sym?.endOffset ?? cstNode?.endIndex ?? cstNode?.endOffset ?? 0;
+  if (typeof startOffset === "number" && cstText) {
     const leadingWs = cstText.length - cstText.trimStart().length;
-    startByte += leadingWs;
+    startOffset += leadingWs;
   }
 
   const getLitRange = (litName: string, occurrenceIndex = 0) => {
@@ -2214,10 +2206,8 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
       if (lr.name === litName) {
         if (seenCount === occurrenceIndex) {
           return {
-            startByte: lr.startByte,
-            endByte: lr.endByte,
-            startOffset: lr.startByte,
-            endOffset: lr.endByte,
+            startOffset: lr.startOffset,
+            endOffset: lr.endOffset,
           };
         }
         seenCount++;
@@ -2227,10 +2217,10 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
       const idx = cstText.indexOf(litName);
       if (idx >= 0) {
         const s = baseNodeStart + idx;
-        return { startByte: s, endByte: s + litName.length, startOffset: s, endOffset: s + litName.length };
+        return { startOffset: s, endOffset: s + litName.length };
       }
     }
-    return { startByte, endByte, startOffset: startByte, endOffset: endByte };
+    return { startOffset, endOffset };
   };
 
   const isNewInst =
@@ -2334,12 +2324,8 @@ export const classDefinitionQueries: Record<string, any> = {
     if (!nonlinear || nonlinear.length === 0) return null;
     return nonlinear.map((item) =>
       info(ModelicaErrorCode.HOMOTOPY_RECOMMENDED.message(item.termText), {
-        startOffset: item.startOffset ?? item.startByte,
-        endOffset: item.endOffset ?? item.endByte,
-        startCharOffset: item.startOffset ?? item.startByte,
-        endCharOffset: item.endOffset ?? item.endByte,
-        startByte: item.startByte,
-        endByte: item.endByte,
+        startOffset: item.startOffset,
+        endOffset: item.endOffset,
         code: ModelicaErrorCode.HOMOTOPY_RECOMMENDED.code,
       }),
     );
@@ -2360,8 +2346,8 @@ export const classDefinitionQueries: Record<string, any> = {
     if (!res) return null;
     return [
       error(res.message, {
-        startByte: res.startByte,
-        endByte: res.endByte,
+        startOffset: res.startOffset,
+        endOffset: res.endOffset,
         code: res.code,
       }),
     ];
@@ -2426,8 +2412,8 @@ export const classDefinitionQueries: Record<string, any> = {
       const rep = replaceableElements[0]!;
       return [
         error(ModelicaErrorCode.EXTERNAL_OBJECT_NOT_REPLACEABLE.message(rep.name), {
-          startByte: rep.startByte,
-          endByte: rep.endByte,
+          startOffset: rep.startOffset,
+          endOffset: rep.endOffset,
           code: ModelicaErrorCode.EXTERNAL_OBJECT_NOT_REPLACEABLE.code,
         }),
       ];
@@ -2440,8 +2426,8 @@ export const classDefinitionQueries: Record<string, any> = {
       const invNames = invalidElements.map((e) => e.name).join(", ");
       return [
         error(`Invalid external object ${self.name}, contains invalid elements: ${invNames}.`, {
-          startByte: self.startByte,
-          endByte: self.endByte,
+          startOffset: self.startOffset,
+          endOffset: self.endOffset,
           code: ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.code,
         }),
       ];
@@ -2450,8 +2436,8 @@ export const classDefinitionQueries: Record<string, any> = {
     for (const inv of invalidElements) {
       diags.push(
         error(ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.message(self.name, inv.name), {
-          startByte: inv.entry.startByte,
-          endByte: inv.entry.endByte,
+          startOffset: inv.entry.startOffset,
+          endOffset: inv.entry.endOffset,
           code: ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.code,
         }),
       );
@@ -2461,8 +2447,8 @@ export const classDefinitionQueries: Record<string, any> = {
     if (!hasDestructor) {
       return [
         error(ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_DESTRUCTOR.message(self.name), {
-          startByte: self.startByte,
-          endByte: self.endByte,
+          startOffset: self.startOffset,
+          endOffset: self.endOffset,
           code: ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_DESTRUCTOR.code,
         }),
       ];
@@ -2470,8 +2456,8 @@ export const classDefinitionQueries: Record<string, any> = {
     if (!hasConstructor) {
       return [
         error(ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_CONSTRUCTOR.message(self.name), {
-          startByte: self.startByte,
-          endByte: self.endByte,
+          startOffset: self.startOffset,
+          endOffset: self.endOffset,
           code: ModelicaErrorCode.EXTERNAL_OBJECT_MISSING_CONSTRUCTOR.code,
         }),
       ];
@@ -2515,10 +2501,8 @@ export const classDefinitionQueries: Record<string, any> = {
                     error(
                       `Function ${fnQName} returns an external object, but the only function allowed to return this object is ${extObjQName}.constructor.`,
                       {
-                        startByte: child.startByte,
-                        endByte: child.endByte,
-                        startOffset: child.startOffset ?? child.startByte,
-                        endOffset: child.endOffset ?? child.endByte,
+                        startOffset: child.startOffset,
+                        endOffset: child.endOffset,
                         code: ModelicaErrorCode.EXTERNAL_OBJECT_RETURN_RESTRICTION.code,
                       },
                     ),
@@ -2549,8 +2533,8 @@ export const classDefinitionQueries: Record<string, any> = {
       if (inheritedId !== undefined && !db.query<boolean>("isReplaceable", inheritedId)) {
         return [
           error(`Redeclaration with a new type requires '${self.name}' to be replaceable.`, {
-            startByte: self.startByte,
-            endByte: self.endByte,
+            startOffset: self.startOffset,
+            endOffset: self.endOffset,
             code: 4019,
           }),
         ];
@@ -2615,8 +2599,8 @@ export const classDefinitionQueries: Record<string, any> = {
       self.parentId,
       typeName,
       typeSpec,
-      self.startByte,
-      self.startByte + typeName.length,
+      self.startOffset,
+      self.startOffset + typeName.length,
     );
 
     const msg = `Class or type '${typeName}' not found in scope.`;
@@ -2692,8 +2676,8 @@ export const classDefinitionQueries: Record<string, any> = {
           subscripts.push({
             kind: "expression",
             cstBytes: [
-              exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startByte,
-              exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endByte,
+              exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startOffset,
+              exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endOffset,
             ],
             text: exprChild.text,
           });
@@ -3984,7 +3968,7 @@ export const extendsClauseQueries: Record<string, any> = {
     }
 
     const cstNode = db.cstNode(self.id) as any;
-    const failRange = getQualifiedTypeFailRange(db, self.parentId, baseName, cstNode, self.startByte, self.endByte);
+    const failRange = getQualifiedTypeFailRange(db, self.parentId, baseName, cstNode, self.startOffset, self.endOffset);
 
     const msg = `Class or type '${baseName}' not found in scope.`;
     return error(msg, {
@@ -4361,7 +4345,7 @@ export const componentDeclarationQueries: Record<string, any> = {
   isProtected: (db: QueryDB, self: SymbolEntry) => {
     const rawNode = db.cstNode(self.id) as any;
     let current = rawNode;
-    const nodeStart = rawNode?.startIndex ?? rawNode?.startByte ?? 0;
+    const nodeStart = rawNode?.startIndex ?? rawNode?.startOffset ?? 0;
     while (current) {
       if (current.type === "ElementSection" || current.type === "element_section") {
         const vis = current.children?.find((c: any) => c.text === "protected" || c.text === "public")?.text?.trim();
@@ -4377,8 +4361,8 @@ export const componentDeclarationQueries: Record<string, any> = {
           } else if (child.type === "public" || t === "public") {
             isProt = false;
           }
-          const start = child.startIndex ?? child.startByte;
-          const end = child.endIndex ?? child.endByte;
+          const start = child.startIndex ?? child.startOffset;
+          const end = child.endIndex ?? child.endOffset;
           if (start !== undefined && end !== undefined) {
             if (nodeStart >= start && nodeStart < end) {
               return isProt;
@@ -4576,8 +4560,8 @@ export const componentDeclarationQueries: Record<string, any> = {
             subs.push({
               kind: "expression",
               cstBytes: [
-                exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startByte,
-                exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endByte,
+                exprChild.startOffset ?? exprChild.startIndex ?? exprChild.startOffset,
+                exprChild.endOffset ?? exprChild.endIndex ?? exprChild.endOffset,
               ],
               text: exprChild.text,
             });
@@ -4910,7 +4894,7 @@ export const componentDeclarationQueries: Record<string, any> = {
       sec = sec.parent;
     }
     if (!isProtected && sec && (sec.type === "Composition" || sec.type === "composition")) {
-      const clauseStart = clause?.startIndex ?? clause?.startByte ?? 0;
+      const clauseStart = clause?.startIndex ?? clause?.startOffset ?? 0;
       let currProt = false;
       for (const child of sec.children || []) {
         const t = child.text?.trim();
@@ -4932,8 +4916,8 @@ export const componentDeclarationQueries: Record<string, any> = {
         ) {
           currProt = false;
         }
-        const start = child.startIndex ?? child.startByte;
-        const end = child.endIndex ?? child.endByte;
+        const start = child.startIndex ?? child.startOffset;
+        const end = child.endIndex ?? child.endOffset;
         if (start !== undefined && end !== undefined && clauseStart >= start && clauseStart < end) {
           isProtected = currProt;
           break;
@@ -5190,8 +5174,8 @@ export const componentDeclarationQueries: Record<string, any> = {
       self.parentId,
       baseType,
       typeSpecNode,
-      self.startByte,
-      self.startByte + typeName.length,
+      self.startOffset,
+      self.startOffset + typeName.length,
     );
 
     const msg = `Class or type '${typeName}' not found in scope.`;
@@ -5215,12 +5199,12 @@ export const componentDeclarationQueries: Record<string, any> = {
         clauseNode = clauseNode.parent;
       }
       const rangeNode = clauseNode ?? cst;
-      const startByte = rangeNode?.startIndex ?? rangeNode?.startByte ?? self.startByte;
-      const endByte = rangeNode?.endIndex ?? rangeNode?.endByte ?? self.endByte;
+      const startOffset = rangeNode?.startIndex ?? rangeNode?.startOffset ?? self.startOffset;
+      const endOffset = rangeNode?.endIndex ?? rangeNode?.endOffset ?? self.endOffset;
       const msg = ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY.message(String(d.dimIndex + 1), self.name, d.exprText);
       return error(msg, {
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
         code: ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY.code,
       });
     }
@@ -5353,17 +5337,13 @@ export const componentDeclarationQueries: Record<string, any> = {
       }
 
       if (specKind) {
-        const startByte = declNode?.startIndex ?? declNode?.startByte ?? self.startByte;
-        const endByte = declNode?.endIndex ?? declNode?.endByte ?? self.endByte;
-        const startOffset = declNode?.startOffset ?? startByte;
-        const endOffset = declNode?.endOffset ?? endByte;
+        const startOffset = declNode?.startOffset ?? declNode?.startIndex ?? self.startOffset;
+        const endOffset = declNode?.endOffset ?? declNode?.endIndex ?? self.endOffset;
 
         const msg = ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.message(self.name, specKind);
         return error(msg, {
-          startByte,
-          endByte,
-          startCharOffset: startOffset,
-          endCharOffset: endOffset,
+          startOffset,
+          endOffset,
           code: ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.code,
         });
       }
@@ -5667,11 +5647,9 @@ export const connectEquationQueries: Record<string, any> = {
     const diags: any[] = [];
 
     const getRange = (node: any) => {
-      const startByte = node?.startIndex ?? node?.startByte ?? self.startByte;
-      const endByte = node?.endIndex ?? node?.endByte ?? self.endByte;
-      const startOffset = node?.startOffset ?? startByte;
-      const endOffset = node?.endOffset ?? endByte;
-      return { startByte, endByte, startOffset, endOffset, startCharOffset: startOffset, endCharOffset: endOffset };
+      const startOffset = node?.startOffset ?? node?.startIndex ?? self.startOffset;
+      const endOffset = node?.endOffset ?? node?.endIndex ?? self.endOffset;
+      return { startOffset, endOffset };
     };
 
     const getSegmentRange = (node: any, refText: string, segIdx: number | undefined) => {
@@ -5711,12 +5689,8 @@ export const connectEquationQueries: Record<string, any> = {
           if (idx === -1) break;
           if (i === segIdx) {
             return {
-              startByte: base.startByte + idx,
-              endByte: base.startByte + idx + cleanSeg.length,
               startOffset: base.startOffset + idx,
               endOffset: base.startOffset + idx + cleanSeg.length,
-              startCharOffset: base.startOffset + idx,
-              endCharOffset: base.startOffset + idx + cleanSeg.length,
             };
           }
           searchPos = idx + rawSeg.length + 1;

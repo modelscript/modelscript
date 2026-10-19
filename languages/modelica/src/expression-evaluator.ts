@@ -58,7 +58,7 @@ export const modelicaEvaluator: ExpressionEvaluator = (
   }
   if (typeof expression === "boolean") return expression;
 
-  // Handle CST byte range tuples [startByte, endByte]
+  // Handle CST byte range tuples [startOffset, endOffset]
   if (
     Array.isArray(expression) &&
     expression.length === 2 &&

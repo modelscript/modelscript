@@ -2,34 +2,92 @@
 
 import { StepMesher } from "@modelscript/simulate";
 import * as vscode from "vscode";
+import type { LanguageClient } from "vscode-languageclient/browser";
 
 /**
  * Registers automated CAD-to-Mesh command palette and context menu actions in VS Code.
  */
 
-async function resolveStepBytes(targetUri: vscode.Uri, rawBytes: Uint8Array): Promise<Uint8Array | string> {
+async function resolveStepBytes(
+  context: vscode.ExtensionContext,
+  client: LanguageClient | undefined,
+  targetUri: vscode.Uri,
+  rawBytes: Uint8Array,
+): Promise<Uint8Array | string | { vertices: Float32Array | number[]; indices: Uint32Array | number[] }> {
   if (/\.scad$/i.test(targetUri.path)) {
     try {
       const text = new TextDecoder().decode(rawBytes);
       const { getScadParser } = await import("@modelscript/scad");
       const { ScadEvaluator } = await import("@modelscript/scad/evaluator");
-      const { compileToStep } = await import("@modelscript/cad");
-      const parser = await getScadParser();
+      const { ManifoldWorker } = await import("@modelscript/cad");
+
+      let wasmBytes: Uint8Array | undefined;
+      try {
+        const wasmUri = vscode.Uri.joinPath(context.extensionUri, "dist", "scad.wasm");
+        wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
+      } catch {
+        // Fallback to default resolution in Node environments
+      }
+
+      const parser = await getScadParser(wasmBytes);
       const tree = parser.parse(text);
-      if (!tree) return rawBytes;
-      const evaluator = new ScadEvaluator();
-      const solid = evaluator.evaluate(tree.rootNode);
-      if (solid) {
-        return compileToStep(solid);
+      if (tree) {
+        const evaluator = new ScadEvaluator();
+        const solid = evaluator.evaluate(tree.rootNode);
+        if (solid) {
+          const mesh = ManifoldWorker.evaluateSolid(solid);
+          if (mesh.vertices.length > 0 && mesh.indices.length > 0) {
+            return { vertices: mesh.vertices, indices: mesh.indices };
+          }
+        }
       }
     } catch (err) {
       console.warn("[cad-meshing] Direct SCAD evaluation fallback:", err);
+    }
+
+    if (client) {
+      try {
+        const comps = await client.sendRequest<any[]>("modelscript/getCadComponents", {
+          uri: targetUri.toString(),
+        });
+        if (Array.isArray(comps) && comps.length > 0) {
+          const vertices: number[] = [];
+          const indices: number[] = [];
+          for (const comp of comps) {
+            const pm = comp?.proceduralMesh;
+            if (!pm || !Array.isArray(pm.vertices) || !Array.isArray(pm.indices) || pm.indices.length === 0) continue;
+            const pos: [number, number, number] = Array.isArray(comp.cad?.position)
+              ? [
+                  Number(comp.cad.position[0]) || 0,
+                  Number(comp.cad.position[1]) || 0,
+                  Number(comp.cad.position[2]) || 0,
+                ]
+              : [0, 0, 0];
+            const baseVertex = vertices.length / 3;
+            for (let i = 0; i < pm.vertices.length; i += 3) {
+              vertices.push(
+                Number(pm.vertices[i]) + pos[0],
+                Number(pm.vertices[i + 1]) + pos[1],
+                Number(pm.vertices[i + 2]) + pos[2],
+              );
+            }
+            for (let i = 0; i < pm.indices.length; i++) {
+              indices.push(baseVertex + Number(pm.indices[i]));
+            }
+          }
+          if (vertices.length > 0 && indices.length > 0) {
+            return { vertices, indices };
+          }
+        }
+      } catch (lspErr) {
+        console.warn("[cad-meshing] LSP getCadComponents fallback failed:", lspErr);
+      }
     }
   }
   return rawBytes;
 }
 
-export function registerCadMeshingCommands(context: vscode.ExtensionContext): void {
+export function registerCadMeshingCommands(context: vscode.ExtensionContext, client?: LanguageClient): void {
   // Command: Generate FEA Mesh (.inp) from CAD
   const genFeaDisposable = vscode.commands.registerCommand(
     "modelscript.generateFeaMesh",
@@ -81,7 +139,7 @@ export function registerCadMeshingCommands(context: vscode.ExtensionContext): vo
         async () => {
           try {
             const rawBytes = await vscode.workspace.fs.readFile(targetUri!);
-            const stepBytes = await resolveStepBytes(targetUri!, rawBytes);
+            const stepBytes = await resolveStepBytes(context, client, targetUri!, rawBytes);
             const result = StepMesher.meshStepToTetrahedra(stepBytes, {
               resolution: resolution.res,
               order: orderChoice.order,
@@ -155,7 +213,7 @@ export function registerCadMeshingCommands(context: vscode.ExtensionContext): vo
         async () => {
           try {
             const rawBytes = await vscode.workspace.fs.readFile(targetUri!);
-            const stepBytes = await resolveStepBytes(targetUri!, rawBytes);
+            const stepBytes = await resolveStepBytes(context, client, targetUri!, rawBytes);
             const result = StepMesher.meshStepToTetrahedra(stepBytes, {
               resolution: 18,
               order: "linear",
@@ -183,13 +241,14 @@ export function registerCadMeshingCommands(context: vscode.ExtensionContext): vo
             // Also generate companion .cfg if not present
             const cfgPath = targetUri!.path.replace(/\.(step|stp|scad)$/i, "") + ".cfg";
             const cfgUri = targetUri!.with({ path: cfgPath });
+            const cadFileName = targetUri!.path.split("/").pop() || "model.scad";
+            const su2FileName = su2Path.split("/").pop();
             try {
               await vscode.workspace.fs.stat(cfgUri);
             } catch {
-              const su2FileName = su2Path.split("/").pop();
               const defaultCfg =
                 [
-                  `% SU2 CFD Configuration generated from CAD`,
+                  `% SU2 CFD Configuration generated from CAD: ${cadFileName}`,
                   `SOLVER= RANS`,
                   `KIND_TURB_MODEL= SA`,
                   `MATH_PROBLEM= DIRECT`,

@@ -59,8 +59,8 @@ function computeGenericWriteback(
   // Tier 1: Check precomputed CST fieldRanges from AST indexing
   if (entry.fieldRanges) {
     const valField = entry.fieldRanges.value ?? entry.fieldRanges.expression ?? entry.fieldRanges.val;
-    const valStart = valField?.startOffset ?? valField?.startByte;
-    const valEnd = valField?.endOffset ?? valField?.endByte;
+    const valStart = valField?.startOffset;
+    const valEnd = valField?.endOffset;
     if (valField && valStart != null && valEnd != null && valEnd > valStart) {
       const startPos = doc ? doc.positionAt(valStart) : offsetToPosition(fullText, valStart);
       const endPos = doc ? doc.positionAt(valEnd) : offsetToPosition(fullText, valEnd);
@@ -69,8 +69,8 @@ function computeGenericWriteback(
   }
 
   // Tier 2: Universal assignment locator within [startOffset, endOffset]
-  const entryStart = entry.startOffset ?? entry.startByte;
-  const entryEnd = entry.endOffset ?? entry.endByte;
+  const entryStart = entry.startOffset;
+  const entryEnd = entry.endOffset;
   if (entryStart != null && entryEnd != null && entryEnd > entryStart) {
     const declText = fullText.substring(entryStart, entryEnd);
     const opPattern = operators.map(escapeRegex).join("|");
@@ -194,8 +194,8 @@ export async function computeWritebackEdit(
     if (result) {
       const rawEdits: WritebackEdit[] = Array.isArray(result) ? result : [result];
       edits = rawEdits.map((e: any) => {
-        const sOff = e.startOffset ?? e.startByte;
-        const eOff = e.endOffset ?? e.endByte;
+        const sOff = e.startOffset;
+        const eOff = e.endOffset;
         const startPos = doc ? doc.positionAt(sOff) : offsetToPosition(fullText, sOff);
         const endPos = doc ? doc.positionAt(eOff) : offsetToPosition(fullText, eOff);
         return TextEdit.replace(Range.create(startPos, endPos), e.newText);

@@ -94,8 +94,8 @@ test("Phase 4: Real-Time Collaborative Co-Editing & Symbol Presence Service", as
     const motEnd = source.indexOf("end Motor;") + "end Motor;".length;
 
     session.setSymbolSpans([
-      { name: "Inverter", kind: "model", startByte: invStart, endByte: invEnd },
-      { name: "Motor", kind: "model", startByte: motStart, endByte: motEnd },
+      { name: "Inverter", kind: "model", startOffset: invStart, endOffset: invEnd },
+      { name: "Motor", kind: "model", startOffset: motStart, endOffset: motEnd },
     ]);
 
     // Alice places cursor in Inverter, Bob places cursor in Motor -> no collision

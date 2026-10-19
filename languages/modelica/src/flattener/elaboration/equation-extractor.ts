@@ -156,16 +156,16 @@ export function emitFunctionCallEquation(
     node.children?.[0]?.text?.trim() === "reinit" ||
     /^\s*reinit\s*\(/.test(node.text ?? "");
   if (isReinit) {
-    let startB = node.startIndex ?? node.startByte;
-    let endB = node.endIndex ?? node.endByte;
+    let startB = node.startIndex ?? node.startOffset;
+    let endB = node.endIndex ?? node.endOffset;
     if (endB != null && (node.text ?? "").endsWith(";")) {
       endB -= 1;
     }
     const range =
       startB != null && endB != null
         ? {
-            startByte: startB,
-            endByte: endB,
+            startOffset: startB,
+            endOffset: endB,
             startPosition: node.startPosition,
             endPosition: node.endPosition,
           }
@@ -383,8 +383,8 @@ export function emitFunctionCallEquation(
             code: ModelicaErrorCode.ASSIGNMENT_TO_ITERATOR.code,
             message: ModelicaErrorCode.ASSIGNMENT_TO_ITERATOR.message(varName),
             range: {
-              startByte: node.startIndex ?? node.startByte,
-              endByte: node.endIndex ?? node.endByte,
+              startOffset: node.startIndex ?? node.startOffset,
+              endOffset: node.endIndex ?? node.endOffset,
               startPosition: node.startPosition,
               endPosition: node.endPosition,
             },
@@ -442,8 +442,8 @@ export function emitFunctionCallEquation(
   } else {
     const eqKind = isInitial ? EqKind.InitialFunctionCall : EqKind.FunctionCall;
     const eqIdx = dae.addEquation(eqKind, callId, -1);
-    const startB = node.startIndex ?? node.startByte;
-    const endB = node.endIndex ?? node.endByte;
+    const startB = node.startIndex ?? node.startOffset;
+    const endB = node.endIndex ?? node.endOffset;
     if (startB != null && endB != null && eqIdx >= 0) {
       dae.setEqSourceRange(eqIdx, startB, endB);
     }
@@ -1774,16 +1774,16 @@ export function extractClassEquations(
 
               const brokenRef = checkNodeForBroken(node);
               if (brokenRef) {
-                const startB = node.startIndex ?? node.startByte;
-                const endB = node.endIndex ?? node.endByte;
+                const startB = node.startIndex ?? node.startOffset;
+                const endB = node.endIndex ?? node.endOffset;
                 const scopeName = classEntry?.name ?? "";
                 dae.diagnostics.push({
                   severity: "error",
                   code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
                   message: `Variable ${brokenRef} not found in scope ${scopeName}.`,
                   range: {
-                    startByte: startB,
-                    endByte: endB,
+                    startOffset: startB,
+                    endOffset: endB,
                     startPosition: node.startPosition,
                     endPosition: node.endPosition,
                   },
@@ -1909,15 +1909,15 @@ export function extractClassEquations(
                   ) {
                     const allElems = db.query<SymbolEntry[]>("allElements", classId) ?? db.childrenOf(classId) ?? [];
                     if (!allElems.some((e) => e.name === rawLhsText)) {
-                      const startB = node.startIndex ?? node.startByte;
-                      const endB = node.endIndex ?? node.endByte;
+                      const startB = node.startIndex ?? node.startOffset;
+                      const endB = node.endIndex ?? node.endOffset;
                       dae.diagnostics.push({
                         severity: "error",
                         code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
                         message: ModelicaErrorCode.VARIABLE_NOT_FOUND.message(rawLhsText, classEntry.name),
                         range: {
-                          startByte: startB,
-                          endByte: endB,
+                          startOffset: startB,
+                          endOffset: endB,
                           startPosition: node.startPosition,
                           endPosition: node.endPosition,
                         },
@@ -1959,8 +1959,8 @@ export function extractClassEquations(
                   }
                 }
                 if (!isAllCompRefs) {
-                  const startB = node.startIndex ?? node.startByte;
-                  const endB = node.endIndex ?? node.endByte;
+                  const startB = node.startIndex ?? node.startOffset;
+                  const endB = node.endIndex ?? node.endOffset;
                   const printer = new ArenaDAEPrinter(new StringWriter(), dae, false);
                   const lhsStr = printer.printExprToString(lhsExprId);
                   let formattedInStr = lhsStr;
@@ -1973,8 +1973,8 @@ export function extractClassEquations(
                     severity: "error",
                     message: `Tuple assignment only allowed for tuple of component references in lhs (in ${formattedInStr}).`,
                     range: {
-                      startByte: startB,
-                      endByte: endB,
+                      startOffset: startB,
+                      endOffset: endB,
                       startPosition: node.startPosition,
                       endPosition: node.endPosition,
                     },
@@ -2007,8 +2007,8 @@ export function extractClassEquations(
               };
 
               if (dae.getExprKind(rhsExprId) === ExprKind.Tuple && isCstTupleExpr(expressions[1])) {
-                const startB = node.startIndex ?? node.startByte;
-                const endB = node.endIndex ?? node.endByte;
+                const startB = node.startIndex ?? node.startOffset;
+                const endB = node.endIndex ?? node.endOffset;
                 const printer = new ArenaDAEPrinter(new StringWriter(), dae, true);
                 const rhsStr = printer.printExprToString(rhsExprId);
                 dae.diagnostics.push({
@@ -2016,8 +2016,8 @@ export function extractClassEquations(
                   code: ModelicaErrorCode.TUPLE_EXPRESSION_CONTEXT.code,
                   message: `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side. Got the following expression: ${rhsStr}.`,
                   range: {
-                    startByte: startB,
-                    endByte: endB,
+                    startOffset: startB,
+                    endOffset: endB,
                     startPosition: node.startPosition,
                     endPosition: node.endPosition,
                   },
@@ -2084,8 +2084,8 @@ export function extractClassEquations(
               }
 
               if (isTupleLhs && !isMultiOutputCall) {
-                const startB = node.startIndex ?? node.startByte;
-                const endB = node.endIndex ?? node.endByte;
+                const startB = node.startIndex ?? node.startOffset;
+                const endB = node.endIndex ?? node.endOffset;
                 const formatSingleTypeStr = (id: number): string => {
                   const dims = getExprDims(id, dae, flattener.db);
                   let t = inferArenaExprVarType(dae, id);
@@ -2129,8 +2129,8 @@ export function extractClassEquations(
                   code: ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
                   message: `Type mismatch in equation ${eqText} of type ${lhsTypeStr} = ${rhsTypeStr}.`,
                   range: {
-                    startByte: startB,
-                    endByte: endB,
+                    startOffset: startB,
+                    endOffset: endB,
                     startPosition: node.startPosition,
                     endPosition: node.endPosition,
                   },
@@ -2462,8 +2462,8 @@ export function extractClassEquations(
                 const rhsExpanded = printer.printExprToString(expandedRhs);
                 const lhsTypeStr = formatTypeStr(expandedLhs, effectiveLhsDims);
                 const rhsTypeStr = formatTypeStr(expandedRhs, effectiveRhsDims);
-                const startB = node.startIndex ?? node.startByte;
-                const endB = node.endIndex ?? node.endByte;
+                const startB = node.startIndex ?? node.startOffset;
+                const endB = node.endIndex ?? node.endOffset;
                 dae.diagnostics.push({
                   severity: ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
                   code: ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
@@ -2474,8 +2474,8 @@ export function extractClassEquations(
                     rhsTypeStr,
                   ),
                   range: {
-                    startByte: startB,
-                    endByte: endB,
+                    startOffset: startB,
+                    endOffset: endB,
                     startPosition: node.startPosition,
                     endPosition: node.endPosition,
                   },
@@ -2536,8 +2536,8 @@ export function extractClassEquations(
                 }
                 const eqIdx = dae.addEquation(isInitial ? EqKind.InitialSimple : EqKind.Simple, finalLhs, finalRhs);
                 if (eqIdx >= 0) emittedEqIndices.push(eqIdx);
-                const startB = node.startIndex ?? node.startByte;
-                const endB = node.endIndex ?? node.endByte;
+                const startB = node.startIndex ?? node.startOffset;
+                const endB = node.endIndex ?? node.endOffset;
                 if (startB != null && endB != null && eqIdx >= 0) {
                   dae.setEqSourceRange(eqIdx, startB, endB);
                 }
@@ -2616,8 +2616,8 @@ export function extractClassEquations(
                 }
                 const eqIdx = dae.addEquation(isInitial ? EqKind.InitialSimple : EqKind.Array, finalLhs, finalRhs);
                 if (eqIdx >= 0) emittedEqIndices.push(eqIdx);
-                const startB = node.startIndex ?? node.startByte;
-                const endB = node.endIndex ?? node.endByte;
+                const startB = node.startIndex ?? node.startOffset;
+                const endB = node.endIndex ?? node.endOffset;
                 if (startB != null && endB != null && eqIdx >= 0) {
                   dae.setEqSourceRange(eqIdx, startB, endB);
                 }
@@ -2881,9 +2881,10 @@ export function extractClassEquations(
                         }
                       }
                       if (connIncompat) {
-                        const sb = node?.startIndex ?? node?.startByte;
-                        const eb = node?.endIndex ?? node?.endByte;
-                        const range = sb !== undefined && eb !== undefined ? { startByte: sb, endByte: eb } : undefined;
+                        const sb = node?.startIndex ?? node?.startOffset;
+                        const eb = node?.endIndex ?? node?.endOffset;
+                        const range =
+                          sb !== undefined && eb !== undefined ? { startOffset: sb, endOffset: eb } : undefined;
                         if (flowMismatch && sym0 && sym1) {
                           const formatConnectorType = (sym: SymbolEntry): string => {
                             const comps = getPublicComps(sym);
@@ -2907,8 +2908,8 @@ export function extractClassEquations(
                                     ? ((flattener.db as any).source(resolved.resourceId) ?? "")
                                     : "";
                                   const snippet =
-                                    src && resolved.startByte !== undefined && resolved.endByte !== undefined
-                                      ? src.substring(resolved.startByte, resolved.endByte)
+                                    src && resolved.startOffset !== undefined && resolved.endOffset !== undefined
+                                      ? src.substring(resolved.startOffset, resolved.endOffset)
                                       : ((db.cstNode?.(resolved.id) as any)?.text ?? "");
                                   const match = snippet.match(/=\s*([A-Za-z0-9_]+(\([^)]+\))?)/);
                                   if (match) {
@@ -2973,8 +2974,8 @@ export function extractClassEquations(
                   const lId = dae.addName(dae.interner.intern(lhsExpanded[k]!));
                   const rId = dae.addName(dae.interner.intern(rhsExpanded[k]!));
                   const eqId = dae.addEquation(EqKind.Connect, lId, rId, connFlags);
-                  const sb = node?.startIndex ?? node?.startByte;
-                  const eb = node?.endIndex ?? node?.endByte;
+                  const sb = node?.startIndex ?? node?.startOffset;
+                  const eb = node?.endIndex ?? node?.endOffset;
                   if (sb !== undefined && eb !== undefined) {
                     dae.setEqSourceRange(eqId, sb, eb);
                   }
@@ -2982,8 +2983,8 @@ export function extractClassEquations(
                 return;
               }
               const eqId = dae.addEquation(EqKind.Connect, lhsExprId, rhsExprId, connFlags);
-              const sb = node?.startIndex ?? node?.startByte;
-              const eb = node?.endIndex ?? node?.endByte;
+              const sb = node?.startIndex ?? node?.startOffset;
+              const eb = node?.endIndex ?? node?.endOffset;
               if (sb !== undefined && eb !== undefined) {
                 dae.setEqSourceRange(eqId, sb, eb);
               }
@@ -3447,16 +3448,16 @@ export function extractClassEquations(
                 (/^\s*reinit\s*\(/.test(sText) || (sNode.type === "function_call" && sText.startsWith("reinit"))) &&
                 !allowsReinitInAlg
               ) {
-                let startB = sNode.startIndex ?? sNode.startByte;
-                let endB = sNode.endIndex ?? sNode.endByte;
+                let startB = sNode.startIndex ?? sNode.startOffset;
+                let endB = sNode.endIndex ?? sNode.endOffset;
                 if (endB != null && sText.endsWith(";")) endB -= 1;
                 dae.diagnostics.push({
                   severity: "error",
                   code: ModelicaErrorCode.REINIT_IN_ALGORITHM.code,
                   message: ModelicaErrorCode.REINIT_IN_ALGORITHM.message(),
                   range: {
-                    startByte: startB,
-                    endByte: endB,
+                    startOffset: startB,
+                    endOffset: endB,
                     startPosition: sNode.startPosition,
                     endPosition: sNode.endPosition,
                   },
@@ -3522,15 +3523,15 @@ export function extractClassEquations(
                             return `${qual}(${Number(arg).toFixed(1)})`;
                           },
                         );
-                        const startB = sNode.startIndex ?? sNode.startByte;
-                        const endB = sNode.endIndex ?? sNode.endByte;
+                        const startB = sNode.startIndex ?? sNode.startOffset;
+                        const endB = sNode.endIndex ?? sNode.endOffset;
                         dae.diagnostics.push({
                           severity: "error",
                           code: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.code,
                           message: `Trying to assign to parameter component ${rText}${fixedStr} in ${formattedCall}`,
                           range: {
-                            startByte: startB,
-                            endByte: endB,
+                            startOffset: startB,
+                            endOffset: endB,
                             startPosition: sNode.startPosition,
                             endPosition: sNode.endPosition,
                           },
@@ -3589,8 +3590,8 @@ export function extractClassEquations(
                       }
                       const targetSig = `(${targetTypes.join(", ")})`;
                       const fnSig = `(${fnOutputs.map((o) => o.type).join(", ")})`;
-                      const startB = sNode.startIndex ?? sNode.startByte;
-                      const endB = sNode.endIndex ?? sNode.endByte;
+                      const startB = sNode.startIndex ?? sNode.startOffset;
+                      const endB = sNode.endIndex ?? sNode.endOffset;
                       let stmtText = sNode.text?.trim() ?? "";
                       if (stmtText.endsWith(";")) stmtText = stmtText.slice(0, -1).trim();
                       dae.diagnostics.push({
@@ -3598,8 +3599,8 @@ export function extractClassEquations(
                         code: ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
                         message: `Type mismatch in assignment in ${stmtText} of ${targetSig} := ${fnSig}`,
                         range: {
-                          startByte: startB,
-                          endByte: endB,
+                          startOffset: startB,
+                          endOffset: endB,
                           startPosition: sNode.startPosition,
                           endPosition: sNode.endPosition,
                         },
@@ -3641,8 +3642,8 @@ export function extractClassEquations(
                   if (!isStaticTrueAssert(callId, dae)) {
                     const sId = dae.addStatement(StmtKind.ProcedureCall, callId);
                     state.stmtRanges.set(sId, {
-                      startByte: sNode.startIndex ?? sNode.startByte,
-                      endByte: sNode.endIndex ?? sNode.endByte,
+                      startOffset: sNode.startIndex ?? sNode.startOffset,
+                      endOffset: sNode.endIndex ?? sNode.endOffset,
                       startPosition: sNode.startPosition,
                       endPosition: sNode.endPosition,
                     });
@@ -3676,8 +3677,8 @@ export function extractClassEquations(
                 }
                 const sId = dae.addStatement(StmtKind.ProcedureCall, callId);
                 state.stmtRanges.set(sId, {
-                  startByte: sNode.startIndex ?? sNode.startByte,
-                  endByte: sNode.endIndex ?? sNode.endByte,
+                  startOffset: sNode.startIndex ?? sNode.startOffset,
+                  endOffset: sNode.endIndex ?? sNode.endOffset,
                   startPosition: sNode.startPosition,
                   endPosition: sNode.endPosition,
                 });
@@ -3892,8 +3893,8 @@ export function extractClassEquations(
                 }
                 const sId = dae.addStatement(StmtKind.While, condId, bodyStmts.length);
                 state.stmtRanges.set(sId, {
-                  startByte: sNode.startIndex ?? sNode.startByte,
-                  endByte: sNode.endIndex ?? sNode.endByte,
+                  startOffset: sNode.startIndex ?? sNode.startOffset,
+                  endOffset: sNode.endIndex ?? sNode.endOffset,
                   startPosition: sNode.startPosition,
                   endPosition: sNode.endPosition,
                 });
@@ -4055,8 +4056,8 @@ export function extractClassEquations(
                       code: ModelicaErrorCode.ASSIGNMENT_TO_ITERATOR.code,
                       message: ModelicaErrorCode.ASSIGNMENT_TO_ITERATOR.message(cleanTargetText),
                       range: {
-                        startByte: sNode.startIndex ?? sNode.startByte,
-                        endByte: sNode.endIndex ?? sNode.endByte,
+                        startOffset: sNode.startIndex ?? sNode.startOffset,
+                        endOffset: sNode.endIndex ?? sNode.endOffset,
                         startPosition: sNode.startPosition,
                         endPosition: sNode.endPosition,
                       },
@@ -4116,8 +4117,8 @@ export function extractClassEquations(
                             specialization,
                           ),
                           range: {
-                            startByte: sNode.startIndex ?? sNode.startByte,
-                            endByte: sNode.endIndex ?? sNode.endByte,
+                            startOffset: sNode.startIndex ?? sNode.startOffset,
+                            endOffset: sNode.endIndex ?? sNode.endOffset,
                             startPosition: sNode.startPosition,
                             endPosition: sNode.endPosition,
                           },
@@ -4176,8 +4177,8 @@ export function extractClassEquations(
                           code: ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.code,
                           message: msg,
                           range: {
-                            startByte: sNode.startIndex ?? sNode.startByte,
-                            endByte: sNode.endIndex ?? sNode.endByte,
+                            startOffset: sNode.startIndex ?? sNode.startOffset,
+                            endOffset: sNode.endIndex ?? sNode.endOffset,
                             startPosition: sNode.startPosition,
                             endPosition: sNode.endPosition,
                           },
@@ -4197,8 +4198,8 @@ export function extractClassEquations(
                             code: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.code,
                             message: ModelicaErrorCode.ASSIGNMENT_TO_PARAMETER.message(displayTarget, valStr),
                             range: {
-                              startByte: sNode.startIndex ?? sNode.startByte,
-                              endByte: sNode.endIndex ?? sNode.endByte,
+                              startOffset: sNode.startIndex ?? sNode.startOffset,
+                              endOffset: sNode.endIndex ?? sNode.endOffset,
                               startPosition: sNode.startPosition,
                               endPosition: sNode.endPosition,
                             },
@@ -4228,15 +4229,15 @@ export function extractClassEquations(
                     const vType = inferArenaExprVarType(dae, valId);
                     const tTypeName = varTypeName(tType ?? VarType.Real);
                     const vTypeName = varTypeName(vType ?? VarType.Real);
-                    const startB = sNode.startIndex ?? sNode.startByte;
-                    const endB = sNode.endIndex ?? sNode.endByte;
+                    const startB = sNode.startIndex ?? sNode.startOffset;
+                    const endB = sNode.endIndex ?? sNode.endOffset;
                     dae.diagnostics.push({
                       severity: "error",
                       code: ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
                       message: `Type mismatch in assignment in ${targetStr} := ${valStr} of ${tTypeName}[${targetDims.join(", ")}] := ${vTypeName}[${valDims.join(", ")}]`,
                       range: {
-                        startByte: startB,
-                        endByte: endB,
+                        startOffset: startB,
+                        endOffset: endB,
                         startPosition: sNode.startPosition,
                         endPosition: sNode.endPosition,
                       },
@@ -4281,15 +4282,15 @@ export function extractClassEquations(
                     const printer = new ArenaDAEPrinter({ write: () => {} }, dae, true);
                     const targetStr = printer.printExprToString(targetId);
                     const valStr = printer.printExprToString(valId);
-                    const startB = sNode.startIndex ?? sNode.startByte;
-                    const endB = sNode.endIndex ?? sNode.endByte;
+                    const startB = sNode.startIndex ?? sNode.startOffset;
+                    const endB = sNode.endIndex ?? sNode.endOffset;
                     dae.diagnostics.push({
                       severity: "error",
                       code: ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.code,
                       message: `Type mismatch in assignment in ${targetStr} := ${valStr} of Integer := Real`,
                       range: {
-                        startByte: startB,
-                        endByte: endB,
+                        startOffset: startB,
+                        endOffset: endB,
                         startPosition: sNode.startPosition,
                         endPosition: sNode.endPosition,
                       },
@@ -4655,15 +4656,15 @@ export function extractClassEquations(
       for (const target of baseTargets) {
         if (target.kind === "Class") {
           if (curVisited.has(target.id) || target.id === classId) {
-            const startB = child.startByte ?? 0;
-            const endB = child.endByte ?? 0;
+            const startB = child.startOffset ?? 0;
+            const endB = child.endOffset ?? 0;
             dae.diagnostics.push({
               severity: "error",
               code: ModelicaErrorCode.EXTENDS_CYCLE.code,
               message: ModelicaErrorCode.EXTENDS_CYCLE.message(child.name),
               range: {
-                startByte: startB,
-                endByte: endB,
+                startOffset: startB,
+                endOffset: endB,
               },
             });
             continue;

@@ -758,8 +758,8 @@ end TestModel;
     const diags = activeFacade.getDiagnostics(ast);
     console.log("[DIAG-DUMP]", JSON.stringify(diags, null, 2));
     expect(diags.length).toBeGreaterThan(0);
-    expect(diags[0].startCharOffset).toBe(0);
-    expect(diags[0].endCharOffset).toBeGreaterThan(0);
+    expect(diags[0].startOffset).toBe(0);
+    expect(diags[0].endOffset).toBeGreaterThan(0);
   });
 
   it("should target child node 'name' precisely in diagnostic without including type ('Real')", async () => {
@@ -1562,7 +1562,7 @@ end ThermalSystem;`;
     // Verify the diagnostic on myDeepIdentifier was successfully emitted through all 20 frames
     expect(diags).toHaveLength(1);
     expect(diags[0].message).toBe("Deep target resolved");
-    const targetSubstring = code.substring(diags[0].startCharOffset, diags[0].endCharOffset);
+    const targetSubstring = code.substring(diags[0].startOffset, diags[0].endOffset);
     expect(targetSubstring).toBe("myDeepIdentifier");
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });

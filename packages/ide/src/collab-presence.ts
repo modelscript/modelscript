@@ -22,8 +22,8 @@ export interface IdePeerPresence {
 export interface IdeSymbolCollision {
   symbolName: string;
   symbolKind: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
   peers: { peerId: string; displayName: string; color: string }[];
   message: string;
 }
@@ -112,8 +112,8 @@ export class CollaborationPresenceController implements vscode.Disposable {
     }
 
     const collisionRanges: vscode.DecorationOptions[] = collisions.map((col) => {
-      const startPos = editor.document.positionAt(col.startByte);
-      const endPos = editor.document.positionAt(col.endByte);
+      const startPos = editor.document.positionAt(col.startOffset);
+      const endPos = editor.document.positionAt(col.endOffset);
       return {
         range: new vscode.Range(startPos, endPos),
         hoverMessage: new vscode.MarkdownString(`⚠️ **Concurrent Edit Warning:** ${col.message}`),

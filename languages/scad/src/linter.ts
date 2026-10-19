@@ -18,9 +18,9 @@ export interface ScadDiagnostic {
   severity: "error" | "warning" | "info";
   message: string;
   /** 0-indexed character/byte start offset in source */
-  startByte: number;
+  startOffset: number;
   /** 0-indexed character/byte end offset in source */
-  endByte: number;
+  endOffset: number;
   /** 1-indexed start line */
   line: number;
   /** 1-indexed start column */
@@ -236,14 +236,14 @@ class LineLocator {
  * Returns the 0-indexed start byte offset of a CST node.
  */
 function getNodeStart(node: any): number {
-  return node?.startIndex ?? node?.startByte ?? 0;
+  return node?.startIndex ?? node?.startOffset ?? 0;
 }
 
 /**
  * Returns the 0-indexed end byte offset of a CST node.
  */
 function getNodeEnd(node: any): number {
-  return node?.endIndex ?? node?.endByte ?? 0;
+  return node?.endIndex ?? node?.endOffset ?? 0;
 }
 
 /**
@@ -354,16 +354,16 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
   const diagnostics: ScadDiagnostic[] = [];
 
   const emit = (node: any, code: string, severity: "error" | "warning" | "info", message: string) => {
-    const startByte = getNodeStart(node);
-    const endByte = Math.max(startByte + 1, getNodeEnd(node));
-    const startPos = locator.offsetToPos(startByte);
-    const endPos = locator.offsetToPos(endByte);
+    const startOffset = getNodeStart(node);
+    const endOffset = Math.max(startOffset + 1, getNodeEnd(node));
+    const startPos = locator.offsetToPos(startOffset);
+    const endPos = locator.offsetToPos(endOffset);
     diagnostics.push({
       code,
       severity,
       message,
-      startByte,
-      endByte,
+      startOffset,
+      endOffset,
       line: startPos.line,
       column: startPos.column,
       endLine: endPos.line,

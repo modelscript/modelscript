@@ -9,7 +9,7 @@ ModelScript 3D Mechanical CAD (MCAD) and Electronic CAD (ECAD) engine — parame
 ### 1. Parametric CSG Primitives, Transforms & Boolean Operations
 
 - **Primitives (`src/primitives.ts`)**: `box`, `cylinder`, `sphere`, `torus`, `polyhedron`, `linearExtrude`, `fillet`, `chamfer`, and boundary patch tagging (`tagPatch`) for downstream FEA/CFD boundary condition binding (`fixed_support`, `pressure_load`, `inlet`, `outlet`, `wall`).
-- **Affine Transforms (`src/transforms.ts`)**: `translate`, `rotate`, `scale`, `mirror`, 4×4 homogeneous matrix composition (`mat4Multiply`), and CST byte-range provenance tracking (`SolidSourceMetadata`, `TransformByteRange`) so interactive 3D viewport gizmos can patch source files directly.
+- **Affine Transforms (`src/transforms.ts`)**: `translate`, `rotate`, `scale`, `mirror`, 4×4 homogeneous matrix composition (`mat4Multiply`), and CST byte-range provenance tracking (`SolidSourceMetadata`, `TransformOffsetRange`) so interactive 3D viewport gizmos can patch source files directly.
 - **Boolean Operations (`src/booleans.ts`, `src/csg-bsp.ts`)**: High-level `union`, `subtract`, and `intersect` combinators backed by both exact B-Rep evaluation and an in-memory 3D Binary Space Partitioning (`CsgBspNode`) polygon clipping kernel with analytical volume, surface area, centroid, and inertia tensor computation (`computeMeshVolumeAndArea`).
 - **Assemblies (`src/assembly.ts`)**: Hierarchical multi-part assembly definitions (`assembly`, `part`) with physical material metadata and kinematic joint bindings.
 

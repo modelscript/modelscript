@@ -31,7 +31,7 @@ test("LSP classquery: modelscript/getClassLocation", async () => {
   symbols.set(1, {
     id: 1,
     name: "MyModel",
-    startByte: docContent.indexOf("model MyModel"),
+    startOffset: docContent.indexOf("model MyModel"),
     resourceId: docUri,
     parentId: null,
   });

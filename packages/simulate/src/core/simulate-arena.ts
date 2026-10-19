@@ -5496,7 +5496,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   // ── Step 5.5: Initialize FMU subsystems (if any) ──
   sim.initializeFmuSubsystems(startTime, stopTime, step);
 
-  const defaultSolver = (exp.algorithm as any) ?? "rk4";
+  const defaultSolver = (exp.algorithm as any)?.toLowerCase() === "cvode" ? "bdf" : ((exp.algorithm as any) ?? "rk4");
   const chosenSolver =
     options?.solver === "webgpu"
       ? "rk4"

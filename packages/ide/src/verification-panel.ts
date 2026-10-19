@@ -111,8 +111,8 @@ export class VerificationPanel {
           case "goToSource": {
             const docUri = vscode.Uri.parse(msg.uri);
             const doc = await vscode.workspace.openTextDocument(docUri);
-            const startPos = doc.positionAt(msg.startByte);
-            const endPos = doc.positionAt(msg.endByte);
+            const startPos = doc.positionAt(msg.startOffset);
+            const endPos = doc.positionAt(msg.endOffset);
             vscode.window.showTextDocument(doc, {
               selection: new vscode.Range(startPos, endPos),
               viewColumn: vscode.ViewColumn.One,
@@ -158,7 +158,7 @@ export class VerificationPanel {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;" />
   <title>V&amp;V Dashboard</title>
   <style nonce="${nonce}">
     :root {
@@ -427,7 +427,7 @@ export class VerificationPanel {
         const violTime = r.violationTime !== undefined ? ('t=' + r.violationTime.toFixed(2) + 's') : '—';
         const variable = r.lhsName || (r.constraintIds.length ? r.constraintIds.length + ' constraint(s)' : '—');
         html += '<tr' + (r.status === 'Failed' ? ' style="background: rgba(241,76,76,0.06);"' : '') + '>' +
-          '<td><span class="link" data-uri="' + esc(r.uri) + '" data-start="' + r.startByte + '" data-end="' + r.endByte + '">' + esc(r.name) + '</span></td>' +
+          '<td><span class="link" data-uri="' + esc(r.uri) + '" data-start="' + r.startOffset + '" data-end="' + r.endOffset + '">' + esc(r.name) + '</span></td>' +
           '<td style="font-family: monospace; font-size: 12px;">' + esc(variable) + '</td>' +
           '<td style="font-family: monospace; text-align: right;">' + esc(peak) + '</td>' +
           '<td style="font-family: monospace; text-align: right;">' + esc(limit) + '</td>' +
@@ -443,8 +443,8 @@ export class VerificationPanel {
           vscode.postMessage({
             type: 'goToSource',
             uri: el.dataset.uri,
-            startByte: parseInt(el.dataset.start, 10),
-            endByte: parseInt(el.dataset.end, 10),
+            startOffset: parseInt(el.dataset.start, 10),
+            endOffset: parseInt(el.dataset.end, 10),
           });
         });
       });

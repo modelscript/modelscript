@@ -129,4 +129,13 @@ end ChildSim;`;
   const simRes = await modelicaActionHandlers.simulate(execContext, { name: "ChildSim", stopTime: 1.0 });
   assert.ok(simRes.t.length > 0, "Simulation should produce time points");
   assert.ok(simRes.states.includes("x"), "Simulation should have state x");
+
+  // 4. Simulate with CVODE solver
+  const simResCvode = await modelicaActionHandlers.simulate(execContext, {
+    name: "ChildSim",
+    stopTime: 1.0,
+    solver: "cvode",
+  });
+  assert.ok(simResCvode.t.length > 0, "CVODE simulation should produce time points");
+  assert.ok(simResCvode.states.includes("x"), "CVODE simulation should have state x");
 });

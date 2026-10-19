@@ -211,18 +211,27 @@ export async function getOwlClassTreeNodes(store: any, parentIri: string | null)
     }
   }
 
+  const isValidClassLabel = (label: string): boolean => {
+    if (!label || label.startsWith("'") || label.startsWith('"') || /[\r\n]/.test(label) || /^\s/.test(label)) {
+      return false;
+    }
+    return true;
+  };
+
   if (!parentIri) {
     // Top-level root classes (no superclasses, or superclass is only owl:Thing)
     const roots: TreeNodeInfo[] = [];
     for (const node of taxonomy) {
       if (node.iri === "owl:Thing") continue;
+      const label = getShortLabel(node.iri);
+      if (!isValidClassLabel(label)) continue;
       const equivSet = new Set(node.equivalentClasses);
       const filteredSupers = node.directSuperClasses.filter((s) => s !== "owl:Thing" && !equivSet.has(s));
       if (filteredSupers.length === 0) {
         const isDefined = definedClasses.has(node.iri);
         roots.push({
           id: `__OWL_CLASS__:${node.iri}`,
-          name: getShortLabel(node.iri),
+          name: label,
           compositeName: node.iri,
           classKind: isDefined ? "owl2-defined-class" : "owl2-class",
           icon: "symbol-class",
@@ -242,11 +251,13 @@ export async function getOwlClassTreeNodes(store: any, parentIri: string | null)
 
   const children: TreeNodeInfo[] = [];
   for (const subIri of parentNode.directSubClasses) {
+    const label = getShortLabel(subIri);
+    if (!isValidClassLabel(label)) continue;
     const subNode = taxMap.get(subIri);
     const isDefined = definedClasses.has(subIri);
     children.push({
       id: `__OWL_CLASS__:${subIri}`,
-      name: getShortLabel(subIri),
+      name: label,
       compositeName: subIri,
       classKind: isDefined ? "owl2-defined-class" : "owl2-class",
       icon: "symbol-class",

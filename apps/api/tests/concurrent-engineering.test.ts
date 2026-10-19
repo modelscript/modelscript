@@ -318,7 +318,7 @@ part def PropulsionUnit {
         displayName: "Alice",
         initialContent: docText,
         cursorOffset: 10,
-        symbolSpans: [{ name: "Inverter", kind: "model", startByte: 0, endByte: docText.length }],
+        symbolSpans: [{ name: "Inverter", kind: "model", startOffset: 0, endOffset: docText.length }],
       }),
     );
 

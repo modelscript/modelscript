@@ -25,8 +25,8 @@ export interface CollabPeer {
 export interface CollabSymbolCollision {
   symbolName: string;
   symbolKind: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
   peers: { peerId: string; displayName: string; color: string }[];
   message: string;
 }
@@ -62,7 +62,7 @@ export interface CollabSessionState {
   collisions: CollabSymbolCollision[];
   updatePresence: (cursorOffset: number, selectionEndOffset?: number, line?: number, column?: number) => void;
   sendOperation: (startOffset: number, endOffset: number, insertText: string) => void;
-  updateSymbolSpans: (spans: { name: string; kind: string; startByte: number; endByte: number }[]) => void;
+  updateSymbolSpans: (spans: { name: string; kind: string; startOffset: number; endOffset: number }[]) => void;
 }
 
 export function useCollabSession(options: UseCollabSessionOptions): CollabSessionState {
@@ -199,7 +199,7 @@ export function useCollabSession(options: UseCollabSessionOptions): CollabSessio
   );
 
   const updateSymbolSpans = useCallback(
-    (spans: { name: string; kind: string; startByte: number; endByte: number }[]) => {
+    (spans: { name: string; kind: string; startOffset: number; endOffset: number }[]) => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(

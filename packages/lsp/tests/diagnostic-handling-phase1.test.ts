@@ -16,8 +16,8 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
     it("should correctly add changedSymbolIds to dirtyLintSymbols when structuralChangedIds are present", () => {
       const mockIndex = {
         symbols: new Map([
-          [1, { id: 1, name: "Var1", ruleName: "Component", startByte: 0, endByte: 10 }],
-          [2, { id: 2, name: "Var2", ruleName: "Component", startByte: 20, endByte: 30 }],
+          [1, { id: 1, name: "Var1", ruleName: "Component", startOffset: 0, endOffset: 10 }],
+          [2, { id: 2, name: "Var2", ruleName: "Component", startOffset: 20, endOffset: 30 }],
         ]),
         byName: new Map(),
         childrenOf: new Map(),
@@ -51,8 +51,8 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
               id: 1,
               name: "DeletedVar",
               ruleName: "Component",
-              startByte: 0,
-              endByte: 10,
+              startOffset: 0,
+              endOffset: 10,
               resourceId: "file:///test.mo",
             },
           ],
@@ -64,7 +64,9 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
       const engine = new WasmQueryEngine(mockIndex as any, new Map());
 
       const perSymbolCache = new Map<number, any[]>();
-      perSymbolCache.set(1, [{ symbolId: 1, startByte: 0, endByte: 10, message: "Ghost error", severity: "error" }]);
+      perSymbolCache.set(1, [
+        { symbolId: 1, startOffset: 0, endOffset: 10, message: "Ghost error", severity: "error" },
+      ]);
       const cacheDirtySet = new Set<number>([1]);
 
       (engine as any).lintCache.set("file:///test.mo", perSymbolCache);
@@ -247,7 +249,17 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
 
       const mockIndex = {
         symbols: new Map([
-          [1, { id: 1, name: "ALPHA", ruleName: "TestNode", startByte: 0, endByte: 10, resourceId: "file:///test.mo" }],
+          [
+            1,
+            {
+              id: 1,
+              name: "ALPHA",
+              ruleName: "TestNode",
+              startOffset: 0,
+              endOffset: 10,
+              resourceId: "file:///test.mo",
+            },
+          ],
         ]),
         byName: new Map(),
         childrenOf: new Map(),
@@ -313,7 +325,10 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
 
       const mockIndex = {
         symbols: new Map([
-          [1, { id: 1, name: "SAME", ruleName: "TestNode", startByte: 0, endByte: 10, resourceId: "file:///test.mo" }],
+          [
+            1,
+            { id: 1, name: "SAME", ruleName: "TestNode", startOffset: 0, endOffset: 10, resourceId: "file:///test.mo" },
+          ],
         ]),
         byName: new Map(),
         childrenOf: new Map(),
@@ -326,7 +341,7 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
             leaf: (db: any, entry: any) => {
               leafExecutions++;
               const sym = db.symbol(entry.id);
-              // Only depends on name, ignores startByte / endByte
+              // Only depends on name, ignores startOffset / endOffset
               return sym ? sym.name : "";
             },
             intermediate: (db: any, entry: any) => {
@@ -355,7 +370,7 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
 
       // Invalidate symbol 1 (e.g. byte position changed, but name stayed SAME)
       const sym = mockIndex.symbols.get(1)!;
-      sym.startByte = 5;
+      sym.startOffset = 5;
       engine.invalidate([1]);
 
       // Rev 1: root is fetched -> deepVerify runs leaf, leaf produces SAME
@@ -370,7 +385,17 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
     it("should handle circular query dependencies gracefully during deepVerify without stack overflow", () => {
       const mockIndex = {
         symbols: new Map([
-          [1, { id: 1, name: "Node", ruleName: "CycleNode", startByte: 0, endByte: 10, resourceId: "file:///test.mo" }],
+          [
+            1,
+            {
+              id: 1,
+              name: "Node",
+              ruleName: "CycleNode",
+              startOffset: 0,
+              endOffset: 10,
+              resourceId: "file:///test.mo",
+            },
+          ],
         ]),
         byName: new Map(),
         childrenOf: new Map(),
@@ -455,9 +480,7 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
           const isStartSameLine = prev.range.start.line === d.range.start.line;
           const isOverlapping =
             isStartSameLine &&
-            ((prev.endCharOffset !== undefined &&
-              d.startCharOffset !== undefined &&
-              d.startCharOffset <= prev.endCharOffset + 1) ||
+            ((prev.endOffset !== undefined && d.startOffset !== undefined && d.startOffset <= prev.endOffset + 1) ||
               prev.range.end.character + 1 >= d.range.start.character);
 
           if (isOverlapping && prev.code === undefined && d.code === undefined) {
@@ -475,8 +498,8 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
               if (d.range.end.character > prev.range.end.character) {
                 prev.range.end = d.range.end;
               }
-              if (prev.endCharOffset !== undefined && d.endCharOffset !== undefined) {
-                prev.endCharOffset = Math.max(prev.endCharOffset, d.endCharOffset);
+              if (prev.endOffset !== undefined && d.endOffset !== undefined) {
+                prev.endOffset = Math.max(prev.endOffset, d.endOffset);
               }
               continue;
             }
@@ -491,15 +514,15 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
       const multiLineDiag = {
         message: "Syntax Error: Unclosed class definition",
         range: { start: { line: 0, character: 0 }, end: { line: 50, character: 10 } },
-        startCharOffset: 0,
-        endCharOffset: 2500,
+        startOffset: 0,
+        endOffset: 2500,
       };
 
       const subsequentDiag = {
         message: "Syntax Error: Missing ';'",
         range: { start: { line: 12, character: 4 }, end: { line: 12, character: 5 } },
-        startCharOffset: 600,
-        endCharOffset: 601,
+        startOffset: 600,
+        endOffset: 601,
       };
 
       const result = mergeSyntaxDiagnostics([multiLineDiag, subsequentDiag]);
@@ -512,15 +535,15 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
       const genericDiag = {
         message: "Syntax Error",
         range: { start: { line: 5, character: 10 }, end: { line: 5, character: 15 } },
-        startCharOffset: 100,
-        endCharOffset: 105,
+        startOffset: 100,
+        endOffset: 105,
       };
 
       const specificDiag = {
         message: "Expected ';'",
         range: { start: { line: 5, character: 15 }, end: { line: 5, character: 16 } },
-        startCharOffset: 105,
-        endCharOffset: 106,
+        startOffset: 105,
+        endOffset: 106,
       };
 
       const result = mergeSyntaxDiagnostics([genericDiag, specificDiag]);
@@ -539,8 +562,8 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
               id: 1,
               name: "Var1",
               ruleName: "Component",
-              startByte: 10,
-              endByte: 20,
+              startOffset: 10,
+              endOffset: 20,
               startOffset: 10,
               endOffset: 20,
             },
@@ -595,18 +618,15 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
       assert.strictEqual(range.end.character, 6);
     });
 
-    it("should ensure rangeFromBytes delegates to rangeFromOffsets with character offsets", () => {
+    it("should compute rangeFromOffsets accurately with character offsets", () => {
       const text = "🚀 = 1;\nReal π = 3.14;\n";
       const posIndex = new PositionIndex(text);
       const piCharOffset = text.indexOf("π");
 
-      // Calling rangeFromBytes with character offsets must produce identical character coordinates
-      const rangeBytes = posIndex.rangeFromBytes(piCharOffset, piCharOffset + 1);
       const rangeOffsets = posIndex.rangeFromOffsets(piCharOffset, piCharOffset + 1);
 
-      assert.deepStrictEqual(rangeBytes, rangeOffsets);
-      assert.strictEqual(rangeBytes.start.line, 1);
-      assert.strictEqual(rangeBytes.start.character, 5);
+      assert.strictEqual(rangeOffsets.start.line, 1);
+      assert.strictEqual(rangeOffsets.start.character, 5);
     });
 
     it("should populate startOffset and endOffset on SymbolEntry during workspace indexing", () => {
@@ -623,8 +643,6 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
         type: "class_definition",
         startOffset: 15,
         endOffset: 85,
-        startByte: 15,
-        endByte: 85,
         children: [{ type: "name", text: "MyClass", startOffset: 21, endOffset: 28 }],
       };
 

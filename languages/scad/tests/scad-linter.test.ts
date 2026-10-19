@@ -54,19 +54,19 @@ cube([10, 10, 10]).bad_method(5);
     const diags = lint(src);
     const varDiag = diags.find((d) => d.code === "SCAD_UNDEFINED_VARIABLE");
     assert.ok(varDiag, "Expected SCAD_UNDEFINED_VARIABLE");
-    assert.strictEqual(src.slice(varDiag.startByte, varDiag.endByte), "missing_var");
+    assert.strictEqual(src.slice(varDiag.startOffset, varDiag.endOffset), "missing_var");
 
     const fnDiag = diags.find((d) => d.code === "SCAD_UNDEFINED_FUNCTION");
     assert.ok(fnDiag, "Expected SCAD_UNDEFINED_FUNCTION");
-    assert.strictEqual(src.slice(fnDiag.startByte, fnDiag.endByte), "unknown_fn");
+    assert.strictEqual(src.slice(fnDiag.startOffset, fnDiag.endOffset), "unknown_fn");
 
     const modDiag = diags.find((d) => d.code === "SCAD_UNDEFINED_MODULE");
     assert.ok(modDiag, "Expected SCAD_UNDEFINED_MODULE");
-    assert.strictEqual(src.slice(modDiag.startByte, modDiag.endByte), "unknown_mod");
+    assert.strictEqual(src.slice(modDiag.startOffset, modDiag.endOffset), "unknown_mod");
 
     const methodDiag = diags.find((d) => d.code === "SCAD_UNKNOWN_METHOD");
     assert.ok(methodDiag, "Expected SCAD_UNKNOWN_METHOD");
-    assert.strictEqual(src.slice(methodDiag.startByte, methodDiag.endByte), "bad_method");
+    assert.strictEqual(src.slice(methodDiag.startOffset, methodDiag.endOffset), "bad_method");
   });
 
   it("underlines only the duplicate declaration name or parameter name", () => {
@@ -82,10 +82,10 @@ module bracket(b) {
     const diags = lint(src);
     const dupDiags = diags.filter((d) => d.code === "SCAD_DUPLICATE_DECLARATION");
     assert.strictEqual(dupDiags.length, 3);
-    assert.strictEqual(src.slice(dupDiags[0]!.startByte, dupDiags[0]!.endByte), "width");
+    assert.strictEqual(src.slice(dupDiags[0]!.startOffset, dupDiags[0]!.endOffset), "width");
     assert.strictEqual(dupDiags[0]!.line, 2);
-    assert.strictEqual(src.slice(dupDiags[1]!.startByte, dupDiags[1]!.endByte), "a");
-    assert.strictEqual(src.slice(dupDiags[2]!.startByte, dupDiags[2]!.endByte), "bracket");
+    assert.strictEqual(src.slice(dupDiags[1]!.startOffset, dupDiags[1]!.endOffset), "a");
+    assert.strictEqual(src.slice(dupDiags[2]!.startOffset, dupDiags[2]!.endOffset), "bracket");
     assert.strictEqual(dupDiags[2]!.line, 6);
   });
 
@@ -97,10 +97,10 @@ sphere(r = -3).fillet(-1);
     const diags = lint(src);
     const dimDiags = diags.filter((d) => d.code === "SCAD_INVALID_DIMENSION");
     assert.strictEqual(dimDiags.length, 4);
-    assert.strictEqual(src.slice(dimDiags[0]!.startByte, dimDiags[0]!.endByte), "-5");
-    assert.strictEqual(src.slice(dimDiags[1]!.startByte, dimDiags[1]!.endByte), "0");
-    assert.strictEqual(src.slice(dimDiags[2]!.startByte, dimDiags[2]!.endByte), "-3");
-    assert.strictEqual(src.slice(dimDiags[3]!.startByte, dimDiags[3]!.endByte), "-1");
+    assert.strictEqual(src.slice(dimDiags[0]!.startOffset, dimDiags[0]!.endOffset), "-5");
+    assert.strictEqual(src.slice(dimDiags[1]!.startOffset, dimDiags[1]!.endOffset), "0");
+    assert.strictEqual(src.slice(dimDiags[2]!.startOffset, dimDiags[2]!.endOffset), "-3");
+    assert.strictEqual(src.slice(dimDiags[3]!.startOffset, dimDiags[3]!.endOffset), "-1");
   });
 
   it("detects user-defined call arity errors, unknown named parameters, and division by zero with narrow ranges", () => {
@@ -115,18 +115,18 @@ ratio = 100 / (5 - 5);
     const diags = lint(src);
     const excessDiag = diags.find((d) => d.code === "SCAD_ARGUMENT_COUNT" && d.severity === "error");
     assert.ok(excessDiag, "Expected excess argument error");
-    assert.strictEqual(src.slice(excessDiag.startByte, excessDiag.endByte), "99");
+    assert.strictEqual(src.slice(excessDiag.startOffset, excessDiag.endOffset), "99");
 
     const unknownParam = diags.find((d) => d.code === "SCAD_UNKNOWN_PARAMETER");
     assert.ok(unknownParam, "Expected unknown parameter error");
-    assert.strictEqual(src.slice(unknownParam.startByte, unknownParam.endByte), "bogus_param");
+    assert.strictEqual(src.slice(unknownParam.startOffset, unknownParam.endOffset), "bogus_param");
 
     const missingParam = diags.find((d) => d.code === "SCAD_ARGUMENT_COUNT" && d.severity === "warning");
     assert.ok(missingParam, "Expected missing required parameter warning");
-    assert.strictEqual(src.slice(missingParam.startByte, missingParam.endByte), "hole");
+    assert.strictEqual(src.slice(missingParam.startOffset, missingParam.endOffset), "hole");
 
     const divZero = diags.find((d) => d.code === "SCAD_DIVISION_BY_ZERO");
     assert.ok(divZero, "Expected division by zero error");
-    assert.strictEqual(src.slice(divZero.startByte, divZero.endByte), "(5 - 5)");
+    assert.strictEqual(src.slice(divZero.startOffset, divZero.endOffset), "(5 - 5)");
   });
 });

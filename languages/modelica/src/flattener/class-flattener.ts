@@ -447,9 +447,9 @@ export class ModelicaFlattener {
 
     for (const rec of candidates) {
       const recCst = this.db.cstNode(rec.id) as any;
-      const recStart = recCst?.startIndex ?? recCst?.startByte;
-      const recEnd = recCst?.endIndex ?? recCst?.endByte;
-      const recRange = recStart != null && recEnd != null ? { startByte: recStart, endByte: recEnd } : undefined;
+      const recStart = recCst?.startIndex ?? recCst?.startOffset;
+      const recEnd = recCst?.endIndex ?? recCst?.endOffset;
+      const recRange = recStart != null && recEnd != null ? { startOffset: recStart, endOffset: recEnd } : undefined;
 
       const children = this.db.childrenOf(rec.id);
       for (const child of children) {
@@ -484,9 +484,9 @@ export class ModelicaFlattener {
           });
 
         if (!isOldFrontend && !isEncapsulated) {
-          const cStart = childCst?.startIndex ?? childCst?.startByte;
-          const cEnd = childCst?.endIndex ?? childCst?.endByte;
-          const cRange = cStart != null && cEnd != null ? { startByte: cStart, endByte: cEnd } : undefined;
+          const cStart = childCst?.startIndex ?? childCst?.startOffset;
+          const cEnd = childCst?.endIndex ?? childCst?.endOffset;
+          const cRange = cStart != null && cEnd != null ? { startOffset: cStart, endOffset: cEnd } : undefined;
           dae.diagnostics.push({
             severity: "error",
             code: ModelicaErrorCode.NON_ENCAPSULATED_OPERATOR.code,
@@ -643,8 +643,8 @@ export class ModelicaFlattener {
               code: ModelicaErrorCode.RESTRICTION_VIOLATION.code,
               message: ModelicaErrorCode.RESTRICTION_VIOLATION.message("Equations", cleanKind),
               range: {
-                startByte: targetNode.startIndex ?? targetNode.startByte,
-                endByte: targetNode.endIndex ?? targetNode.endByte,
+                startOffset: targetNode.startIndex ?? targetNode.startOffset,
+                endOffset: targetNode.endIndex ?? targetNode.endOffset,
                 startPosition: targetNode.startPosition,
                 endPosition: targetNode.endPosition,
               },
@@ -662,8 +662,8 @@ export class ModelicaFlattener {
               code: ModelicaErrorCode.RESTRICTION_VIOLATION.code,
               message: ModelicaErrorCode.RESTRICTION_VIOLATION.message("Algorithm sections", cleanKind),
               range: {
-                startByte: targetNode.startIndex ?? targetNode.startByte,
-                endByte: targetNode.endIndex ?? targetNode.endByte,
+                startOffset: targetNode.startIndex ?? targetNode.startOffset,
+                endOffset: targetNode.endIndex ?? targetNode.endOffset,
                 startPosition: targetNode.startPosition,
                 endPosition: targetNode.endPosition,
               },
@@ -686,8 +686,8 @@ export class ModelicaFlattener {
                 targetNode = firstElem;
               } else if (cleanKind === "type") {
                 targetNode = {
-                  startByte: child.startIndex ?? child.startByte,
-                  endByte: firstElem.endIndex ?? firstElem.endByte,
+                  startOffset: child.startIndex ?? child.startOffset,
+                  endOffset: firstElem.endIndex ?? firstElem.endOffset,
                   startPosition: child.startPosition,
                   endPosition: firstElem.endPosition,
                 };
@@ -698,8 +698,8 @@ export class ModelicaFlattener {
               code: ModelicaErrorCode.PROTECTED_IN_CONNECTOR.code,
               message: `Protected sections are not allowed in ${cleanKind}.`,
               range: {
-                startByte: targetNode.startIndex ?? targetNode.startByte,
-                endByte: targetNode.endIndex ?? targetNode.endByte,
+                startOffset: targetNode.startIndex ?? targetNode.startOffset,
+                endOffset: targetNode.endIndex ?? targetNode.endOffset,
                 startPosition: targetNode.startPosition,
                 endPosition: targetNode.endPosition,
               },
@@ -728,8 +728,8 @@ export class ModelicaFlattener {
                 code: ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
                 message: ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.message(child.name, cls.name),
                 range: {
-                  startByte: targetNode.startIndex ?? targetNode.startByte,
-                  endByte: targetNode.endIndex ?? targetNode.endByte,
+                  startOffset: targetNode.startIndex ?? targetNode.startOffset,
+                  endOffset: targetNode.endIndex ?? targetNode.endOffset,
                   startPosition: targetNode.startPosition,
                   endPosition: targetNode.endPosition,
                 },
@@ -1120,14 +1120,14 @@ export class ModelicaFlattener {
       return true;
     }
     let rawText = "";
-    if (sym && sym.startByte != null && sym.endByte != null) {
+    if (sym && sym.startOffset != null && sym.endOffset != null) {
       if (typeof (this.db as any).cstText === "function") {
-        rawText = (this.db as any).cstText(sym.startByte, sym.endByte, sym) ?? "";
+        rawText = (this.db as any).cstText(sym.startOffset, sym.endOffset, sym) ?? "";
       }
       if (!rawText && sym.resourceId) {
         const s = (this.db as any).source?.(sym.resourceId);
         if (typeof s === "string") {
-          rawText = s.slice(sym.startByte, sym.endByte);
+          rawText = s.slice(sym.startOffset, sym.endOffset);
         }
       }
     }
@@ -1383,8 +1383,8 @@ export class ModelicaFlattener {
         topNames.add(s.name);
         if (s.kind === "Function" || s.kind === "Class" || s.kind === "Package") {
           let fnText = "";
-          if (s.startByte != null && s.endByte != null && typeof (this.db as any).cstText === "function") {
-            fnText = (this.db as any).cstText(s.startByte, s.endByte, s) ?? "";
+          if (s.startOffset != null && s.endOffset != null && typeof (this.db as any).cstText === "function") {
+            fnText = (this.db as any).cstText(s.startOffset, s.endOffset, s) ?? "";
           }
           if (!fnText) {
             fnText = (this.db.cstNode(s.id) as any)?.text ?? "";
@@ -1408,14 +1408,14 @@ export class ModelicaFlattener {
 
     const sym = this.db.symbol(classId);
     let rawText = "";
-    if (sym && sym.startByte != null && sym.endByte != null) {
+    if (sym && sym.startOffset != null && sym.endOffset != null) {
       if (typeof (this.db as any).cstText === "function") {
-        rawText = (this.db as any).cstText(sym.startByte, sym.endByte, sym) ?? "";
+        rawText = (this.db as any).cstText(sym.startOffset, sym.endOffset, sym) ?? "";
       }
       if (!rawText && sym.resourceId) {
         const s = (this.db as any).source?.(sym.resourceId);
         if (typeof s === "string") {
-          rawText = s.slice(sym.startByte, sym.endByte);
+          rawText = s.slice(sym.startOffset, sym.endOffset);
         }
       }
     }
@@ -1585,21 +1585,21 @@ export class ModelicaFlattener {
     const allowOldInstSpec = isOldInst && !(specKind === "package" && (optIsNested || hasExtendsInPkg));
     if (specKind && !((specKind === "function" || specKind === "package") && allowOldInstSpec)) {
       let startPos = classCstForCheck?.startPosition;
-      let startB = classCstForCheck?.startIndex ?? (classCstForCheck as any)?.startByte ?? 0;
+      let startB = classCstForCheck?.startIndex ?? (classCstForCheck as any)?.startOffset ?? 0;
       const pfxNode = classCstForCheck ? Cst.ClassDefinition.classPrefixes(classCstForCheck) : null;
       if (pfxNode?.children) {
         for (const child of pfxNode.children) {
           if (child.type !== "comment" && child.type !== "description") {
             startPos = child.startPosition ?? startPos;
-            startB = child.startIndex ?? (child as any).startByte ?? startB;
+            startB = child.startIndex ?? (child as any).startOffset ?? startB;
             break;
           }
         }
       }
       const range = classCstForCheck
         ? {
-            startByte: startB,
-            endByte: classCstForCheck.endIndex ?? (classCstForCheck as any).endByte ?? 0,
+            startOffset: startB,
+            endOffset: classCstForCheck.endIndex ?? (classCstForCheck as any).endOffset ?? 0,
             startPosition: startPos,
             endPosition: classCstForCheck.endPosition,
           }
@@ -1624,21 +1624,21 @@ export class ModelicaFlattener {
       );
     if (isPartialRoot) {
       let startPos = classCstForCheck?.startPosition;
-      let startB = classCstForCheck?.startIndex ?? (classCstForCheck as any)?.startByte ?? 0;
+      let startB = classCstForCheck?.startIndex ?? (classCstForCheck as any)?.startOffset ?? 0;
       const pfxNode = classCstForCheck ? Cst.ClassDefinition.classPrefixes(classCstForCheck) : null;
       if (pfxNode?.children) {
         for (const child of pfxNode.children) {
           if (child.type !== "comment" && child.type !== "description") {
             startPos = child.startPosition ?? startPos;
-            startB = child.startIndex ?? (child as any).startByte ?? startB;
+            startB = child.startIndex ?? (child as any).startOffset ?? startB;
             break;
           }
         }
       }
       const range = classCstForCheck
         ? {
-            startByte: startB,
-            endByte: classCstForCheck.endIndex ?? (classCstForCheck as any).endByte ?? 0,
+            startOffset: startB,
+            endOffset: classCstForCheck.endIndex ?? (classCstForCheck as any).endOffset ?? 0,
             startPosition: startPos,
             endPosition: classCstForCheck.endPosition,
           }
@@ -1702,7 +1702,7 @@ export class ModelicaFlattener {
       const ext = extendsClauses[extIdx]!;
       const extCst = this.db.cstNode(ext.id) as any;
       const extRange = extCst
-        ? { startByte: extCst.startIndex ?? extCst.startByte, endByte: extCst.endIndex ?? extCst.endByte }
+        ? { startOffset: extCst.startIndex ?? extCst.startOffset, endOffset: extCst.endIndex ?? extCst.endOffset }
         : undefined;
 
       const parts = ext.name.split(".");
@@ -1751,8 +1751,8 @@ export class ModelicaFlattener {
           const targetCst = clauseCst && clauseCst.type === "component_clause" ? clauseCst : compCst;
           const compRange = targetCst
             ? {
-                startByte: targetCst.startIndex ?? targetCst.startByte,
-                endByte: targetCst.endIndex ?? targetCst.endByte,
+                startOffset: targetCst.startIndex ?? targetCst.startOffset,
+                endOffset: targetCst.endIndex ?? targetCst.endOffset,
               }
             : undefined;
           dae.diagnostics.push({
@@ -1800,8 +1800,8 @@ export class ModelicaFlattener {
             const targetRepNode = repParent ?? repCst;
             const repRange = targetRepNode
               ? {
-                  startByte: targetRepNode.startIndex ?? targetRepNode.startByte,
-                  endByte: targetRepNode.endIndex ?? targetRepNode.endByte,
+                  startOffset: targetRepNode.startIndex ?? targetRepNode.startOffset,
+                  endOffset: targetRepNode.endIndex ?? targetRepNode.endOffset,
                 }
               : undefined;
 
@@ -1850,13 +1850,16 @@ export class ModelicaFlattener {
         for (const m of priorMatches) {
           const innerCst = this.db.cstNode(m.innerClass.id) as any;
           const innerRange = innerCst
-            ? { startByte: innerCst.startIndex ?? innerCst.startByte, endByte: innerCst.endIndex ?? innerCst.endByte }
+            ? {
+                startOffset: innerCst.startIndex ?? innerCst.startOffset,
+                endOffset: innerCst.endIndex ?? innerCst.endOffset,
+              }
             : undefined;
           const prevExtCst = this.db.cstNode(m.prevExt.id) as any;
           const prevExtRange = prevExtCst
             ? {
-                startByte: prevExtCst.startIndex ?? prevExtCst.startByte,
-                endByte: prevExtCst.endIndex ?? prevExtCst.endByte,
+                startOffset: prevExtCst.startIndex ?? prevExtCst.startOffset,
+                endOffset: prevExtCst.endIndex ?? prevExtCst.endOffset,
               }
             : undefined;
 
@@ -1937,7 +1940,8 @@ export class ModelicaFlattener {
             );
             if (redeclMatch) {
               const startIdx = rootCstText.indexOf(redeclMatch[0]);
-              const r = startIdx >= 0 ? { startByte: startIdx, endByte: startIdx + redeclMatch[0].length } : undefined;
+              const r =
+                startIdx >= 0 ? { startOffset: startIdx, endOffset: startIdx + redeclMatch[0].length } : undefined;
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.CLASS_SPECIALIZATION_VIOLATION.code,
@@ -2132,8 +2136,8 @@ export class ModelicaFlattener {
         const typeSpec = typeSpecNode?.text?.trim();
         if (typeSpec && !typeSpec.includes(".") && comp.name === typeSpec) {
           const rangeObj = {
-            startByte: clauseNode.startIndex ?? clauseNode.startByte,
-            endByte: clauseNode.endIndex ?? clauseNode.endByte,
+            startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+            endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
             startPosition: clauseNode.startPosition,
             endPosition: clauseNode.endPosition,
           };
@@ -2164,9 +2168,9 @@ export class ModelicaFlattener {
                 new RegExp(`redeclare\\s+${escapeRegExp(arg.name)}\\s+${escapeRegExp(arg.name)}`),
               );
               if (m && m.index != null) {
-                const sByte = (extCst.startIndex ?? extCst.startByte ?? 0) + m.index;
+                const sByte = (extCst.startIndex ?? extCst.startOffset ?? 0) + m.index;
                 const eByte = sByte + m[0].length;
-                redeclRange = { startByte: sByte, endByte: eByte };
+                redeclRange = { startOffset: sByte, endOffset: eByte };
               }
             }
             dae.diagnostics.push({
@@ -2190,7 +2194,7 @@ export class ModelicaFlattener {
       const isOldFE = Boolean(this.options.isOldFrontend || dae.extensionMetadata?.["isOldFrontend"]);
       const seenInheritedComps = new Map<
         string,
-        { elem: SymbolEntry; clause: any; range: { startByte: number; endByte: number }; modText: string | null }
+        { elem: SymbolEntry; clause: any; range: { startOffset: number; endOffset: number }; modText: string | null }
       >();
 
       const getClause = (node: any) => {
@@ -2208,12 +2212,12 @@ export class ModelicaFlattener {
       const toRange = (clause: any, fallbackCst: any) =>
         clause
           ? {
-              startByte: clause.startIndex ?? clause.startByte,
-              endByte: clause.endIndex ?? clause.endByte,
+              startOffset: clause.startIndex ?? clause.startOffset,
+              endOffset: clause.endIndex ?? clause.endOffset,
             }
           : {
-              startByte: fallbackCst?.startIndex ?? fallbackCst?.startByte ?? 0,
-              endByte: fallbackCst?.endIndex ?? fallbackCst?.endByte ?? 0,
+              startOffset: fallbackCst?.startIndex ?? fallbackCst?.startOffset ?? 0,
+              endOffset: fallbackCst?.endIndex ?? fallbackCst?.endOffset ?? 0,
             };
 
       const formatArrayDimBeforeName = (txt: string) =>
@@ -2241,8 +2245,8 @@ export class ModelicaFlattener {
               code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
               message: "From here:",
               range: {
-                startByte: extCst?.startIndex ?? extCst?.startByte,
-                endByte: extCst?.endIndex ?? extCst?.endByte,
+                startOffset: extCst?.startIndex ?? extCst?.startOffset,
+                endOffset: extCst?.endIndex ?? extCst?.endOffset,
                 startPosition: extCst?.startPosition,
                 endPosition: extCst?.endPosition,
               },
@@ -2252,8 +2256,8 @@ export class ModelicaFlattener {
               code: ModelicaErrorCode.EXTENDS_OTHER_BASE_CLASS.code,
               message: ModelicaErrorCode.EXTENDS_OTHER_BASE_CLASS.message(ext.name),
               range: {
-                startByte: conflictCst?.startIndex ?? conflictCst?.startByte,
-                endByte: conflictCst?.endIndex ?? conflictCst?.endByte,
+                startOffset: conflictCst?.startIndex ?? conflictCst?.startOffset,
+                endOffset: conflictCst?.endIndex ?? conflictCst?.endOffset,
                 startPosition: conflictCst?.startPosition,
                 endPosition: conflictCst?.endPosition,
               },
@@ -2283,7 +2287,7 @@ export class ModelicaFlattener {
                   const baseClause = getClause(baseCst);
                   const baseRange = toRange(baseClause, baseCst);
                   const notifRange = arg.nameRange
-                    ? { startByte: arg.nameRange[0], endByte: arg.nameRange[1] }
+                    ? { startOffset: arg.nameRange[0], endOffset: arg.nameRange[1] }
                     : toRange(null, extCst);
                   dae.diagnostics.push({
                     severity: "notification",
@@ -2367,7 +2371,7 @@ export class ModelicaFlattener {
               const localCst = this.db.cstNode(matchingLocal.id) as any;
               const localClause = getClause(localCst);
               const localRange = toRange(localClause, localCst);
-              const extStart = extCst?.startIndex ?? extCst?.startByte ?? 0;
+              const extStart = extCst?.startIndex ?? extCst?.startOffset ?? 0;
 
               const localText = (localClause?.text ?? localCst?.text ?? "").trim().replace(/;$/, "");
               const baseText = (baseClause?.text ?? baseCst?.text ?? "").trim().replace(/;$/, "");
@@ -2412,7 +2416,7 @@ export class ModelicaFlattener {
                 firstText = localDisp;
                 secondText = baseDisp;
               } else {
-                if (localRange.startByte > extStart) {
+                if (localRange.startOffset > extStart) {
                   firstRange = baseRange;
                   secondRange = localRange;
                   firstText = baseText;
@@ -2516,7 +2520,12 @@ export class ModelicaFlattener {
           !this.classHasRedeclare(rootClassId) &&
           !this.classHasUnsupportedWasmFeatures(rootClassId)));
 
-    let wasmDiffStats: { varCount: number; eqCount: number; error?: string | undefined } | null = null;
+    let wasmDiffStats: {
+      varCount: number;
+      eqCount: number;
+      bail?: WasmBailInfo | undefined;
+      error?: string | undefined;
+    } | null = null;
     if (isDiffMode && hasWasmFlattener && classNodePtr) {
       let testDae: DAEBuilder | null = null;
       let wf = 0;
@@ -2532,7 +2541,26 @@ export class ModelicaFlattener {
           }
           this.populateWasmScopeResolutions(wf, rootClassId, testDae);
           const vc = testDae.exports.flattener_flatten(wf, classNodePtr, rootProgramPtr);
-          wasmDiffStats = { varCount: vc, eqCount: testDae.eqCount };
+          const errCode =
+            typeof testDae.exports.flattener_getErrorCode === "function"
+              ? testDae.exports.flattener_getErrorCode(wf)
+              : 0;
+          const ex = testDae.exports as any;
+          const diffBail =
+            errCode !== 0
+              ? describeWasmBail(
+                  errCode,
+                  typeof ex.flattener_getErrorStartByte === "function" ? ex.flattener_getErrorStartByte(wf) : undefined,
+                  typeof ex.flattener_getErrorEndByte === "function" ? ex.flattener_getErrorEndByte(wf) : undefined,
+                  "ts-fallback",
+                  typeof ex.lsp_isCharOffsetKernel === "function" && ex.lsp_isCharOffsetKernel()
+                    ? 1
+                    : inputEncodingUnitSize(
+                        typeof ex.lsp_getInputEncoding === "function" ? ex.lsp_getInputEncoding() : undefined,
+                      ),
+                )
+              : undefined;
+          wasmDiffStats = { varCount: vc, eqCount: testDae.eqCount, bail: diffBail };
         }
       } catch (err: any) {
         wasmDiffStats = { varCount: 0, eqCount: 0, error: err?.message ?? String(err) };
@@ -2616,7 +2644,8 @@ export class ModelicaFlattener {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
             if (dae.functions.size > 0 && typeof (dae.exports as any).dae_setExprData1 === "function") {
-              for (let eIdx = 0; eIdx < dae.exprCount; eIdx++) {
+              const origExprCount = dae.exprCount;
+              for (let eIdx = 0; eIdx < origExprCount; eIdx++) {
                 if (dae.getExprKind(eIdx) === ExprKind.Call) {
                   const rawCallName = dae.interner.resolve(dae.getExprData1(eIdx));
                   const fnDae = rawCallName ? dae.functions.get(rawCallName) : undefined;
@@ -2633,6 +2662,48 @@ export class ModelicaFlattener {
                     if (targetFnCallName && targetFnCallName !== rawCallName) {
                       const newId = dae.interner.intern(targetFnCallName);
                       (dae.exports as any).dae_setExprData1(dae.ptr, eIdx, newId);
+                    }
+                    if (typeof (dae.exports as any).flattener_setExprLeft === "function") {
+                      const inputVarIndices: number[] = [];
+                      for (let v = 0; v < fnDae.varCount; v++) {
+                        if (fnDae.getVarCausality(v) === Causality.Input) {
+                          inputVarIndices.push(v);
+                        }
+                      }
+                      const argCount = dae.getExprRight(eIdx);
+                      const limit = Math.min(argCount, inputVarIndices.length);
+                      for (let argIdx = 0; argIdx < limit; argIdx++) {
+                        const slotId = argIdx === 0 ? eIdx : eIdx + argIdx;
+                        const argExprId = dae.getExprLeft(slotId);
+                        if (argExprId === 0xffffffff || argExprId >= dae.exprCount) continue;
+                        const formalVarIdx = inputVarIndices[argIdx]!;
+                        const formalType = fnDae.getVarType(formalVarIdx);
+                        const formalShape = fnDae.getVarShape(formalVarIdx);
+                        if (
+                          formalType === VarType.Real &&
+                          !fnDae.getVarCustomType(formalVarIdx) &&
+                          dae.getExprKind(argExprId) === ExprKind.IntLiteral
+                        ) {
+                          const realLitId = dae.addRealLiteral(dae.getExprData1(argExprId));
+                          (dae.exports as any).flattener_setExprLeft(dae.ptr, slotId, realLitId);
+                        } else if ((formalShape?.length ?? 0) === 1 && dae.getExprKind(argExprId) === ExprKind.Name) {
+                          const argName = dae.interner.resolve(dae.getExprData1(argExprId));
+                          if (
+                            argName &&
+                            dae.getVarIdxByName(argName) < 0 &&
+                            dae.getVarIdxByName(`${argName}[1]`) >= 0
+                          ) {
+                            const elemIds: number[] = [];
+                            for (let k = 1; dae.getVarIdxByName(`${argName}[${k}]`) >= 0; k++) {
+                              elemIds.push(dae.addNameExpr(`${argName}[${k}]`));
+                            }
+                            if (elemIds.length > 0) {
+                              const arrCtorId = dae.addArrayCtorExpr(elemIds);
+                              (dae.exports as any).flattener_setExprLeft(dae.ptr, slotId, arrCtorId);
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -2910,8 +2981,8 @@ export class ModelicaFlattener {
           code: rootEnumErr.code,
           message: rootEnumErr.message,
           range: {
-            startByte: rootEnumErr.startByte,
-            endByte: rootEnumErr.endByte,
+            startOffset: rootEnumErr.startOffset,
+            endOffset: rootEnumErr.endOffset,
           },
         });
         return dae;
@@ -2926,8 +2997,8 @@ export class ModelicaFlattener {
             code: ccEnumErr.code,
             message: ccEnumErr.message,
             range: {
-              startByte: ccEnumErr.startByte,
-              endByte: ccEnumErr.endByte,
+              startOffset: ccEnumErr.startOffset,
+              endOffset: ccEnumErr.endOffset,
             },
           });
           return dae;
@@ -3152,7 +3223,7 @@ export class ModelicaFlattener {
 
     const attachDiffReport = (targetDae: DAEBuilder) => {
       const wasmDiff = (this as any)._wasmDiffStats as
-        | { varCount: number; eqCount: number; error?: string | undefined }
+        | { varCount: number; eqCount: number; bail?: WasmBailInfo | undefined; error?: string | undefined }
         | undefined;
       if (wasmDiff) {
         delete (this as any)._wasmDiffStats;
@@ -3163,8 +3234,9 @@ export class ModelicaFlattener {
           } else {
             const varMatch = wasmDiff.varCount === targetDae.varCount;
             const eqMatch = wasmDiff.eqCount === targetDae.eqCount;
+            const bailSuffix = wasmDiff.bail ? ` [bail=${wasmDiff.bail.reason}(${wasmDiff.bail.code})]` : "";
             console.log(
-              `[DiffFlattener] ${varMatch && eqMatch ? "PARITY MATCH" : "PARITY MISMATCH"}: vars (WASM=${wasmDiff.varCount}, TS=${targetDae.varCount}), eqs (WASM=${wasmDiff.eqCount}, TS=${targetDae.eqCount})`,
+              `[DiffFlattener] ${varMatch && eqMatch && !wasmDiff.bail ? "PARITY MATCH" : "PARITY MISMATCH"}: vars (WASM=${wasmDiff.varCount}, TS=${targetDae.varCount}), eqs (WASM=${wasmDiff.eqCount}, TS=${targetDae.eqCount})${bailSuffix}`,
             );
           }
         }
@@ -3587,8 +3659,8 @@ export class ModelicaFlattener {
     walkEqs(cst, false);
 
     const applyEqNodeMeta = (eqIdx: number, node: any): void => {
-      const sB = node.startIndex ?? node.startByte;
-      const eB = node.endIndex ?? node.endByte;
+      const sB = node.startIndex ?? node.startOffset;
+      const eB = node.endIndex ?? node.endOffset;
       if (sB != null && eB != null && eqIdx >= 0 && eqIdx < dae.getEqCount()) {
         dae.setEqSourceRange(eqIdx, sB, eB);
         for (const c of node.children || []) {
@@ -3653,8 +3725,8 @@ export class ModelicaFlattener {
             if (varIdx < 0) {
               varIdx = dae.getVarIdxByName(`${name}[1]`);
             }
-            const sB = declNode.startIndex ?? declNode.startByte;
-            const eB = declNode.endIndex ?? declNode.endByte;
+            const sB = declNode.startIndex ?? declNode.startOffset;
+            const eB = declNode.endIndex ?? declNode.endOffset;
             if (varIdx >= 0 && sB != null && eB != null) {
               dae.setVarSourceRange(varIdx, sB, eB);
               const arrayIndices = dae.getArrayElementIndices(name);
@@ -3863,7 +3935,7 @@ export class ModelicaFlattener {
               const targetOffset =
                 targetCst._startOffset !== undefined
                   ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
-                  : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+                  : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startOffset ?? 0) * unitSize;
               register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
             }
             queue.push(resolved.id);
@@ -3885,7 +3957,7 @@ export class ModelicaFlattener {
             const targetOffset =
               targetCst._startOffset !== undefined
                 ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
-                : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+                : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startOffset ?? 0) * unitSize;
             register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
             register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
           }
@@ -3912,7 +3984,7 @@ export class ModelicaFlattener {
                 const targetOffset =
                   targetCst._startOffset !== undefined
                     ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
-                    : (targetCst.startIndex ?? targetCst.startOffset ?? resolved.startByte ?? 0) * unitSize;
+                    : (targetCst.startIndex ?? targetCst.startOffset ?? resolved.startOffset ?? 0) * unitSize;
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }
@@ -3945,7 +4017,7 @@ export class ModelicaFlattener {
                     ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
                     : (targetCst.startIndex ??
                         targetCst.startOffset ??
-                        (this.db.symbol(targetId) as any)?.startByte ??
+                        (this.db.symbol(targetId) as any)?.startOffset ??
                         0) * unitSize;
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
@@ -4005,7 +4077,7 @@ export class ModelicaFlattener {
                 const targetOffset =
                   targetCst._startOffset !== undefined
                     ? targetCst._startOffset + (targetCst._cachedPad ?? 0)
-                    : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startByte ?? 0) * unitSize;
+                    : (targetCst.startIndex ?? targetCst.startOffset ?? (resolved as any)?.startOffset ?? 0) * unitSize;
                 register(wasmFlattener, scopePtr, nameId, targetCst.ptr, targetOffset);
                 register(wasmFlattener, 0, nameId, targetCst.ptr, targetOffset);
               }
@@ -4020,7 +4092,7 @@ export class ModelicaFlattener {
   patch(
     rootClassId: SymbolId,
     dae: DAEBuilder,
-    dirtyRanges: { startByte: number; endByte: number }[],
+    dirtyRanges: { startOffset: number; endOffset: number }[],
     delta?: number,
   ): boolean {
     this.currentRootClassId = rootClassId;

@@ -469,8 +469,8 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string | 
     if (!sourceName || !targetName) {
       const refs = db.childrenOf(conn.id).filter((c) => c.kind === "Reference");
       if (refs.length >= 2) {
-        sourceName = (refs[0]?.name || db.cstText(refs[0]?.startByte || 0, refs[0]?.endByte || 0) || "").trim();
-        targetName = (refs[1]?.name || db.cstText(refs[1]?.startByte || 0, refs[1]?.endByte || 0) || "").trim();
+        sourceName = (refs[0]?.name || db.cstText(refs[0]?.startOffset || 0, refs[0]?.endOffset || 0) || "").trim();
+        targetName = (refs[1]?.name || db.cstText(refs[1]?.startOffset || 0, refs[1]?.endOffset || 0) || "").trim();
       }
     }
 
@@ -496,7 +496,7 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string | 
       if (!sym) return;
       const children = db.childrenOf(sym.id);
       for (const child of children) {
-        const text = db.cstText(child.startByte, child.endByte, child);
+        const text = db.cstText(child.startOffset, child.endOffset, child);
         if (!text) continue;
         const kind = (child.metadata as any)?.constraintKind || "";
         if (isSource && (kind === "require" || text.includes("require") || text.includes("constraint"))) {

@@ -137,8 +137,8 @@ describe("Two-Tier Storage Architecture & Stub Indexing", () => {
         1, // kind: model
         0, // flags
         `Motor_${f}`, // name
-        0, // startByte
-        50, // endByte
+        0, // startOffset
+        50, // endOffset
       );
 
       activeFacade.registerStub(

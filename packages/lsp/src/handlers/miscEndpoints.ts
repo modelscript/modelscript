@@ -104,8 +104,6 @@ export function registerMiscEndpoints(context: LspContext) {
           context.validationService.documentViewports.set(params.uri, {
             startOffset: minOffset,
             endOffset: maxOffset,
-            startByte: minOffset,
-            endByte: maxOffset,
           });
         }
       }
@@ -202,8 +200,8 @@ export function registerMiscEndpoints(context: LspContext) {
         if (entry.resourceId) {
           const doc = context.documents.get(entry.resourceId);
           const fullText = doc?.getText() ?? context.documentManager.documentTrees.get(entry.resourceId)?.text;
-          const startOff = entry.startOffset ?? entry.startByte;
-          const endOff = entry.endOffset ?? entry.endByte;
+          const startOff = entry.startOffset;
+          const endOff = entry.endOffset;
           if (fullText && startOff != null && endOff != null && endOff > startOff) {
             const sourceText = fullText.substring(startOff, endOff);
             if (!isValueCarryingEntry(entry, sourceText)) continue;
@@ -418,8 +416,8 @@ export function registerMiscEndpoints(context: LspContext) {
               };
 
               if (edit.oldEntry) {
-                const startPos = oldDoc.positionAt(edit.oldEntry.startOffset ?? edit.oldEntry.startByte);
-                const endPos = oldDoc.positionAt(edit.oldEntry.endOffset ?? edit.oldEntry.endByte);
+                const startPos = oldDoc.positionAt(edit.oldEntry.startOffset);
+                const endPos = oldDoc.positionAt(edit.oldEntry.endOffset);
                 flatEdit.oldRange = {
                   startLine: startPos.line,
                   startCharacter: startPos.character,
@@ -430,8 +428,8 @@ export function registerMiscEndpoints(context: LspContext) {
               }
 
               if (edit.newEntry) {
-                const startPos = newDoc.positionAt(edit.newEntry.startOffset ?? edit.newEntry.startByte);
-                const endPos = newDoc.positionAt(edit.newEntry.endOffset ?? edit.newEntry.endByte);
+                const startPos = newDoc.positionAt(edit.newEntry.startOffset);
+                const endPos = newDoc.positionAt(edit.newEntry.endOffset);
                 flatEdit.newRange = {
                   startLine: startPos.line,
                   startCharacter: startPos.character,

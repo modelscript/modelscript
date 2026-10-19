@@ -37,7 +37,7 @@ export interface PscxComponent {
   ports: PscxPort[];
   line?: number | undefined;
   column?: number | undefined;
-  sourceRange?: { startByte: number; endByte: number } | undefined;
+  sourceRange?: { startOffset: number; endOffset: number } | undefined;
 }
 
 export interface PscxWire {
@@ -47,7 +47,7 @@ export interface PscxWire {
   startPortId?: string | undefined;
   endPortId?: string | undefined;
   line?: number | undefined;
-  sourceRange?: { startByte: number; endByte: number } | undefined;
+  sourceRange?: { startOffset: number; endOffset: number } | undefined;
 }
 
 export interface PscxBus {
@@ -60,7 +60,7 @@ export interface PscxBus {
   phaseCount: number; // 1 or 3
   line?: number | undefined;
   column?: number | undefined;
-  sourceRange?: { startByte: number; endByte: number } | undefined;
+  sourceRange?: { startOffset: number; endOffset: number } | undefined;
 }
 
 export interface PscxSticky {

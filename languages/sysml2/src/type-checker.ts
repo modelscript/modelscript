@@ -159,8 +159,8 @@ export interface TypeInferenceResult {
   error?:
     | {
         message: string;
-        startByte?: number | undefined;
-        endByte?: number | undefined;
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
       }
     | undefined;
 }
@@ -318,8 +318,8 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
           return {
             error: {
               message: `Type error: arithmetic operators require numeric operands, got '${res.typeName}'.`,
-              startByte: opNode.startIndex ?? opNode.startOffset ?? opNode.startByte,
-              endByte: opNode.endIndex ?? opNode.endOffset ?? opNode.endByte,
+              startOffset: opNode.startIndex ?? opNode.startOffset,
+              endOffset: opNode.endIndex ?? opNode.endOffset,
             },
           };
         }
@@ -349,8 +349,8 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
         return {
           error: {
             message: `Type error: logical operators require Boolean operands, got '${res.typeName}'.`,
-            startByte: opNode.startIndex ?? opNode.startOffset ?? opNode.startByte,
-            endByte: opNode.endIndex ?? opNode.endOffset ?? opNode.endByte,
+            startOffset: opNode.startIndex ?? opNode.startOffset,
+            endOffset: opNode.endIndex ?? opNode.endOffset,
           },
         };
       }
@@ -372,8 +372,8 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
           return {
             error: {
               message: `Type error: operator 'not' requires Boolean operand, got '${res.typeName}'.`,
-              startByte: operandNode.startIndex ?? operandNode.startOffset ?? operandNode.startByte,
-              endByte: operandNode.endIndex ?? operandNode.endOffset ?? operandNode.endByte,
+              startOffset: operandNode.startIndex ?? operandNode.startOffset,
+              endOffset: operandNode.endIndex ?? operandNode.endOffset,
             },
           };
         }
@@ -597,22 +597,22 @@ export function checkFeatureAssignmentType(db: QueryDB, self: SymbolEntry): Lint
   if (inferRes.error) {
     return error(inferRes.error.message, {
       code: SysML2ErrorCode.TYPE_MISMATCH.code,
-      startByte: inferRes.error.startByte ?? self.startByte,
-      endByte: inferRes.error.endByte ?? self.endByte,
+      startOffset: inferRes.error.startOffset ?? self.startOffset,
+      endOffset: inferRes.error.endOffset ?? self.endOffset,
     });
   }
 
   if (inferRes.typeName) {
     if (!isTypeAssignable(db, inferRes.typeName, declaredTypeName)) {
-      const exprStart = exprNode.startIndex ?? exprNode.startOffset ?? exprNode.startByte;
-      const exprEnd = exprNode.endIndex ?? exprNode.endOffset ?? exprNode.endByte;
+      const exprStart = exprNode.startIndex ?? exprNode.startOffset;
+      const exprEnd = exprNode.endIndex ?? exprNode.endOffset;
       return error(
         SysML2ErrorCode.TYPE_MISMATCH.message(self.name || "<anonymous>", declaredTypeName, inferRes.typeName),
         {
           code: SysML2ErrorCode.TYPE_MISMATCH.code,
           field: "declaredName",
           ...(typeof exprStart === "number" && typeof exprEnd === "number" && exprEnd > exprStart
-            ? { startByte: exprStart, endByte: exprEnd }
+            ? { startOffset: exprStart, endOffset: exprEnd }
             : {}),
         },
       );
@@ -637,7 +637,7 @@ export function checkConnectionTypeCompatibility(db: QueryDB, self: SymbolEntry)
     if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
       return ref.name.trim();
     }
-    return (db.cstText(ref.startByte, ref.endByte) || "").trim();
+    return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
   };
 
   const getPortType = (entry: SymbolEntry) => {
@@ -667,8 +667,8 @@ export function checkConnectionTypeCompatibility(db: QueryDB, self: SymbolEntry)
             {
               code: SysML2ErrorCode.INCOMPATIBLE_PORT_CONNECTION.code,
               field: "declaredName",
-              startByte: self.startByte,
-              endByte: self.endByte,
+              startOffset: self.startOffset,
+              endOffset: self.endOffset,
             },
           );
         }
@@ -692,7 +692,7 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
       child.ruleName === "OwnedSubclassification" ||
       child.ruleName === "Subclassification"
     ) {
-      const rawName = (child.name || db.cstText(child.startByte, child.endByte, child) || "").trim();
+      const rawName = (child.name || db.cstText(child.startOffset, child.endOffset, child) || "").trim();
       const cleanName = rawName.replace(/^~\s*/, "").trim();
       if (!cleanName || cleanName === "<anonymous>" || isStdlibOrBuiltinSymbol(cleanName)) continue;
 
@@ -703,8 +703,8 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
       if (!resolved) {
         return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
           code: SysML2ErrorCode.SYMBOL_NOT_FOUND.code,
-          startByte: child.startByte ?? self.startByte,
-          endByte: child.endByte ?? self.endByte,
+          startOffset: child.startOffset ?? self.startOffset,
+          endOffset: child.endOffset ?? self.endOffset,
         });
       }
     }
@@ -719,8 +719,8 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
     if (!resolved) {
       return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
         code: SysML2ErrorCode.SYMBOL_NOT_FOUND.code,
-        startByte: self.startByte,
-        endByte: self.endByte,
+        startOffset: self.startOffset,
+        endOffset: self.endOffset,
       });
     }
   }
@@ -738,7 +738,7 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
     if (refChild?.name) {
       rawImport = refChild.name.trim();
     } else {
-      const text = db.cstText(self.startByte, self.endByte, self) || "";
+      const text = db.cstText(self.startOffset, self.endOffset, self) || "";
       const m = /\bimport\s+(?:all\s+)?([A-Za-z_][A-Za-z0-9_:]*)/.exec(text);
       if (m?.[1]) {
         rawImport = m[1].replace(/::\*+.*$/, "").trim();
@@ -759,8 +759,8 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
   if (!resolved) {
     return error(SysML2ErrorCode.UNRESOLVED_IMPORT.message(rawImport), {
       code: SysML2ErrorCode.UNRESOLVED_IMPORT.code,
-      startByte: self.startByte,
-      endByte: self.endByte,
+      startOffset: self.startOffset,
+      endOffset: self.endOffset,
     });
   }
   return null;

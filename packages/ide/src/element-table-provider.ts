@@ -73,11 +73,11 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
           break;
 
         case "goToSource": {
-          const { startByte, endByte } = msg;
+          const { startOffset, endOffset } = msg;
           try {
             const doc = await vscode.workspace.openTextDocument(document.uri);
-            const startPos = doc.positionAt(startByte ?? 0);
-            const endPos = doc.positionAt(endByte ?? startByte ?? 0);
+            const startPos = doc.positionAt(startOffset ?? 0);
+            const endPos = doc.positionAt(endOffset ?? startOffset ?? 0);
             vscode.window.showTextDocument(doc, {
               selection: new vscode.Range(startPos, endPos),
               viewColumn: vscode.ViewColumn.One,
@@ -177,7 +177,7 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' http: https: ws: wss: data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SysML v2 Element Table</title>
   <style>
@@ -493,7 +493,7 @@ export class ElementTableProvider implements vscode.CustomTextEditorProvider {
             td.title = "Click to jump to definition in source";
             td.style.cursor = "pointer";
             td.addEventListener("click", () => {
-              vscode.postMessage({ type: "goToSource", startByte: row.startByte, endByte: row.endByte });
+              vscode.postMessage({ type: "goToSource", startOffset: row.startOffset, endOffset: row.endOffset });
             });
           }
           tr.appendChild(td);

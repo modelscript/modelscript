@@ -19,8 +19,8 @@ export interface ModelicaStatement {
   whenBody?: ModelicaStatement[] | undefined;
   callFn?: string | undefined;
   callArgs?: string[] | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
   rawText?: string | undefined;
 }
 
@@ -96,8 +96,8 @@ export class ModelicaCFGLowerer {
         }
 
         const ifText = body.slice(ifStart, j);
-        const startByte = defaultStartByte + offset + ifStart;
-        const endByte = defaultStartByte + offset + j;
+        const startOffset = defaultStartByte + offset + ifStart;
+        const endOffset = defaultStartByte + offset + j;
 
         const branchTokens = ifText.split(/\b(elseif|else)\b/);
         const firstBranchMatch = /^if\b([\s\S]*?)\bthen\b([\s\S]*)$/.exec(branchTokens[0] || "");
@@ -107,7 +107,7 @@ export class ModelicaCFGLowerer {
           condExpr = firstBranchMatch[1]?.trim() || "";
           const thenBody = firstBranchMatch[2] || "";
           const thenRel = ifText.indexOf(thenBody);
-          thenStmts = ModelicaCFGLowerer.parseStatements(thenBody, startByte + (thenRel >= 0 ? thenRel : 0));
+          thenStmts = ModelicaCFGLowerer.parseStatements(thenBody, startOffset + (thenRel >= 0 ? thenRel : 0));
         }
 
         const elseIfs: { condExpr: string; stmts: ModelicaStatement[] }[] = [];
@@ -125,13 +125,13 @@ export class ModelicaCFGLowerer {
               const eRel = ifText.indexOf(eBody);
               elseIfs.push({
                 condExpr: eCond,
-                stmts: ModelicaCFGLowerer.parseStatements(eBody, startByte + (eRel >= 0 ? eRel : 0)),
+                stmts: ModelicaCFGLowerer.parseStatements(eBody, startOffset + (eRel >= 0 ? eRel : 0)),
               });
             }
           } else if (token === "else") {
             const elseBody = content.replace(/\bend\s+if[\s\S]*$/, "");
             const elseRel = ifText.indexOf(elseBody);
-            elseStmts = ModelicaCFGLowerer.parseStatements(elseBody, startByte + (elseRel >= 0 ? elseRel : 0));
+            elseStmts = ModelicaCFGLowerer.parseStatements(elseBody, startOffset + (elseRel >= 0 ? elseRel : 0));
           }
           k += 2;
         }
@@ -143,8 +143,8 @@ export class ModelicaCFGLowerer {
           elseIfs,
           elseStmts,
           rawText: ifText,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         });
 
         i = j;
@@ -179,8 +179,8 @@ export class ModelicaCFGLowerer {
         }
 
         const forText = body.slice(forStart, j);
-        const startByte = defaultStartByte + offset + forStart;
-        const endByte = defaultStartByte + offset + j;
+        const startOffset = defaultStartByte + offset + forStart;
+        const endOffset = defaultStartByte + offset + j;
 
         const forMatch = /^for\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+for/i.exec(forText);
         const header = forMatch ? forMatch[1] || "" : "";
@@ -208,7 +208,7 @@ export class ModelicaCFGLowerer {
         }
 
         const bodyRel = forMatch ? forText.indexOf(forBodyText) : 0;
-        const loopBodyStart = startByte + (bodyRel >= 0 ? bodyRel : 0);
+        const loopBodyStart = startOffset + (bodyRel >= 0 ? bodyRel : 0);
         statements.push({
           kind: "for",
           loopVar,
@@ -217,8 +217,8 @@ export class ModelicaCFGLowerer {
           rangeStep,
           loopBody: ModelicaCFGLowerer.parseStatements(forBodyText, loopBodyStart),
           rawText: forText,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         });
 
         i = j;
@@ -253,8 +253,8 @@ export class ModelicaCFGLowerer {
         }
 
         const whileText = body.slice(whileStart, j);
-        const startByte = defaultStartByte + offset + whileStart;
-        const endByte = defaultStartByte + offset + j;
+        const startOffset = defaultStartByte + offset + whileStart;
+        const endOffset = defaultStartByte + offset + j;
 
         const whileMatch = /^while\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+while/i.exec(whileText);
         const condExpr = whileMatch ? whileMatch[1]?.trim() || "" : "";
@@ -266,11 +266,11 @@ export class ModelicaCFGLowerer {
           condExpr,
           whileBody: ModelicaCFGLowerer.parseStatements(
             whileBodyText,
-            startByte + (whileBodyRel >= 0 ? whileBodyRel : 0),
+            startOffset + (whileBodyRel >= 0 ? whileBodyRel : 0),
           ),
           rawText: whileText,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         });
 
         i = j;
@@ -305,8 +305,8 @@ export class ModelicaCFGLowerer {
         }
 
         const whenText = body.slice(whenStart, j);
-        const startByte = defaultStartByte + offset + whenStart;
-        const endByte = defaultStartByte + offset + j;
+        const startOffset = defaultStartByte + offset + whenStart;
+        const endOffset = defaultStartByte + offset + j;
 
         const whenMatch = /^when\b([\s\S]*?)\bthen\b([\s\S]*?)\bend\s+when/i.exec(whenText);
         const condExpr = whenMatch ? whenMatch[1]?.trim() || "" : "";
@@ -316,10 +316,13 @@ export class ModelicaCFGLowerer {
         statements.push({
           kind: "when",
           condExpr,
-          whenBody: ModelicaCFGLowerer.parseStatements(whenBodyText, startByte + (whenBodyRel >= 0 ? whenBodyRel : 0)),
+          whenBody: ModelicaCFGLowerer.parseStatements(
+            whenBodyText,
+            startOffset + (whenBodyRel >= 0 ? whenBodyRel : 0),
+          ),
           rawText: whenText,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         });
 
         i = j;
@@ -333,8 +336,8 @@ export class ModelicaCFGLowerer {
       }
 
       const stmtText = body.slice(i, semiIdx).trim();
-      const startByte = defaultStartByte + offset + i;
-      const endByte = defaultStartByte + offset + semiIdx + 1;
+      const startOffset = defaultStartByte + offset + i;
+      const endOffset = defaultStartByte + offset + semiIdx + 1;
 
       if (stmtText === "return" || stmtText.startsWith("return ") || stmtText.startsWith("return(")) {
         const retVal = stmtText.slice(6).trim();
@@ -342,11 +345,11 @@ export class ModelicaCFGLowerer {
           kind: "return",
           valExpr: retVal || undefined,
           rawText: stmtText,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         });
       } else if (stmtText === "break") {
-        statements.push({ kind: "break", rawText: stmtText, startByte, endByte });
+        statements.push({ kind: "break", rawText: stmtText, startOffset, endOffset });
       } else if (stmtText.includes(":=")) {
         const parts = stmtText.split(":=");
         const targetVar = parts[0]?.trim() || "";
@@ -357,8 +360,8 @@ export class ModelicaCFGLowerer {
           targetVar,
           valExpr,
           rawText: stmtText,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         });
       } else if (/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)$/.test(stmtText)) {
         const callMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)$/.exec(stmtText)!;
@@ -369,8 +372,8 @@ export class ModelicaCFGLowerer {
           callFn,
           callArgs,
           rawText: stmtText,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         });
       }
 
@@ -411,8 +414,8 @@ export class ModelicaCFGLowerer {
   private static extractSingleStatementFromCst(stmtNode: any): ModelicaStatement | null {
     if (!stmtNode) return null;
     const rawText = stmtNode.text || "";
-    const startByte = stmtNode.startIndex ?? 0;
-    const endByte = stmtNode.endIndex ?? startByte + rawText.length;
+    const startOffset = stmtNode.startIndex ?? 0;
+    const endOffset = stmtNode.endIndex ?? startOffset + rawText.length;
 
     const findChild = (node: any, t: string) => node.children?.find((c: any) => normCstType(c.type) === t);
     const findDescendants = (node: any, t: string) => {
@@ -483,7 +486,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (thenStmts.length === 0 && elseStmts.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startByte);
+        const parsed = this.parseStatements(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -494,8 +497,8 @@ export class ModelicaCFGLowerer {
         elseStmts,
         elseIfs,
         rawText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
       };
     }
 
@@ -549,7 +552,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (loopBody.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startByte);
+        const parsed = this.parseStatements(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -561,8 +564,8 @@ export class ModelicaCFGLowerer {
         rangeStep,
         loopBody,
         rawText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
       };
     }
 
@@ -584,7 +587,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (whileBody.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startByte);
+        const parsed = this.parseStatements(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -593,8 +596,8 @@ export class ModelicaCFGLowerer {
         condExpr,
         whileBody,
         rawText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
       };
     }
 
@@ -616,7 +619,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (whenBody.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startByte);
+        const parsed = this.parseStatements(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -625,8 +628,8 @@ export class ModelicaCFGLowerer {
         condExpr,
         whenBody,
         rawText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
       };
     }
 
@@ -658,18 +661,18 @@ export class ModelicaCFGLowerer {
         targetVar,
         valExpr,
         rawText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
       };
     }
 
     // 6. Return / Break
     const trimmed = rawText.trim().replace(/;$/, "");
     if (trimmed === "return" || trimmed.startsWith("return ") || trimmed.startsWith("return(")) {
-      return { kind: "return", rawText, startByte, endByte };
+      return { kind: "return", rawText, startOffset, endOffset };
     }
     if (trimmed === "break") {
-      return { kind: "break", rawText, startByte, endByte };
+      return { kind: "break", rawText, startOffset, endOffset };
     }
 
     // 7. Function call
@@ -677,7 +680,7 @@ export class ModelicaCFGLowerer {
     if (callMatch) {
       const callFn = callMatch[1]!;
       const callArgs = callMatch[2] ? callMatch[2].split(",").map((s) => s.trim()) : [];
-      return { kind: "call", callFn, callArgs, rawText, startByte, endByte };
+      return { kind: "call", callFn, callArgs, rawText, startOffset, endOffset };
     }
 
     return null;
@@ -763,8 +766,8 @@ export class ModelicaCFGLowerer {
           const arrName = arrMatch[1]!;
           const idxExpr = arrMatch[2]!;
           const inst = this.cfg.createInstruction("ASSIGN_ARRAY", arrName, [idxExpr, stmt.valExpr ?? "0"], {
-            startByte: stmt.startByte,
-            endByte: stmt.endByte,
+            startOffset: stmt.startOffset,
+            endOffset: stmt.endOffset,
             rawText: stmt.rawText,
           });
           curr.addInstruction(inst);
@@ -772,8 +775,8 @@ export class ModelicaCFGLowerer {
         }
 
         const inst = this.cfg.createInstruction("ASSIGN", stmt.targetVar, stmt.valExpr ? [stmt.valExpr] : [], {
-          startByte: stmt.startByte,
-          endByte: stmt.endByte,
+          startOffset: stmt.startOffset,
+          endOffset: stmt.endOffset,
           rawText: stmt.rawText,
         });
         curr.addInstruction(inst);
@@ -782,8 +785,8 @@ export class ModelicaCFGLowerer {
 
       case "call": {
         const inst = this.cfg.createInstruction("CALL", stmt.callFn, stmt.callArgs ?? [], {
-          startByte: stmt.startByte,
-          endByte: stmt.endByte,
+          startOffset: stmt.startOffset,
+          endOffset: stmt.endOffset,
           rawText: stmt.rawText,
         });
         curr.addInstruction(inst);
@@ -792,8 +795,8 @@ export class ModelicaCFGLowerer {
 
       case "return": {
         const inst = this.cfg.createInstruction("RETURN", undefined, stmt.valExpr ? [stmt.valExpr] : [], {
-          startByte: stmt.startByte,
-          endByte: stmt.endByte,
+          startOffset: stmt.startOffset,
+          endOffset: stmt.endOffset,
         });
         curr.addInstruction(inst);
         this.cfg.addEdge(curr.id, this.exitBlock.id, CFGEdgeKind.Return);
@@ -802,8 +805,8 @@ export class ModelicaCFGLowerer {
 
       case "break": {
         const inst = this.cfg.createInstruction("BREAK", undefined, undefined, {
-          startByte: stmt.startByte,
-          endByte: stmt.endByte,
+          startOffset: stmt.startOffset,
+          endOffset: stmt.endOffset,
         });
         curr.addInstruction(inst);
         const exitId = this.loopExitStack[this.loopExitStack.length - 1];
@@ -899,11 +902,11 @@ export class ModelicaCFGLowerer {
         const bodyBlock = this.cfg.createBlock("for_body");
         const exitBlock = this.cfg.createBlock("for_exit");
 
-        const loopHeaderEnd = (stmt.startByte ?? 0) + (stmt.rawText ? stmt.rawText.indexOf("loop") + 4 : 20);
+        const loopHeaderEnd = (stmt.startOffset ?? 0) + (stmt.rawText ? stmt.rawText.indexOf("loop") + 4 : 20);
         headerBlock.addInstruction(
           this.cfg.createInstruction("ASSUME", loopVar, [`${loopVar} <= ${endVal}`], {
-            startByte: stmt.startByte,
-            endByte: loopHeaderEnd,
+            startOffset: stmt.startOffset,
+            endOffset: loopHeaderEnd,
           }),
         );
 

@@ -29,8 +29,8 @@ describe("ISO 14971 Risk Management & Hazard RTM Engine", () => {
       kind: "Definition",
       ruleName: "HazardDefinition",
       resourceId: "file:///insulin_pump.sysml",
-      startByte: 10,
-      endByte: 120,
+      startOffset: 10,
+      endOffset: 120,
       parentId: null,
       metadata: {
         hazardId: "HAZ-102",
@@ -85,8 +85,8 @@ describe("ISO 14971 Risk Management & Hazard RTM Engine", () => {
       kind: "Definition",
       ruleName: "HazardDefinition",
       resourceId: "file:///pump.sysml",
-      startByte: 0,
-      endByte: 50,
+      startOffset: 0,
+      endOffset: 50,
       parentId: null,
       metadata: {
         hazardId: "HAZ-001",
@@ -106,8 +106,8 @@ describe("ISO 14971 Risk Management & Hazard RTM Engine", () => {
       kind: "Definition",
       ruleName: "RequirementDefinition",
       resourceId: "file:///pump.sysml",
-      startByte: 60,
-      endByte: 120,
+      startOffset: 60,
+      endOffset: 120,
       parentId: null,
       metadata: {
         reqId: "SR-204",
@@ -124,8 +124,8 @@ describe("ISO 14971 Risk Management & Hazard RTM Engine", () => {
       kind: "Usage",
       ruleName: "MitigateRequirementUsage",
       resourceId: "file:///pump.sysml",
-      startByte: 130,
-      endByte: 160,
+      startOffset: 130,
+      endOffset: 160,
       parentId: 1, // owned by HAZ_Overdose
     };
     symbols.set(3, mitLink);

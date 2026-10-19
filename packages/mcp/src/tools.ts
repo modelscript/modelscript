@@ -24,7 +24,7 @@ import {
   ModelicaCalibrator,
   runArenaDoE,
   runSensitivityAnalysisArena,
-  simulateArena,
+  simulateArenaAsync,
   type ArenaSimulateOptions,
 } from "@modelscript/simulate";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
@@ -310,7 +310,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         if (startTime !== undefined) simOpts.startTime = startTime;
         if (stopTime !== undefined) simOpts.stopTime = stopTime;
         if (interval !== undefined) simOpts.step = interval;
-        const result = simulateArena(arena as any, simOpts);
+        const result = await simulateArenaAsync(arena as any, simOpts);
         const states = result.states;
 
         let costNotice = "";
@@ -429,7 +429,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
 
       // `daeObj` is now an DAEBuilder instance — use the arena simulation path directly.
-      const result = simulateArena(daeObj, {
+      const result = await simulateArenaAsync(daeObj, {
         startTime: startTime ?? 0,
         stopTime: stopTime ?? 10,
         solver: "dopri5",

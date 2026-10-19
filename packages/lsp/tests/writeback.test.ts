@@ -107,11 +107,11 @@ test("WritebackService: SysML v2 attribute with unit preservation", async () => 
   }
 }`;
 
-  const startByte = sourceText.indexOf("attribute mass");
-  const endByte = sourceText.indexOf(";", startByte) + 1;
+  const startOffset = sourceText.indexOf("attribute mass");
+  const endOffset = sourceText.indexOf(";", startOffset) + 1;
 
   const symbols = new Map<number, any>([
-    [1, { id: 1, name: "mass", ruleName: "AttributeUsage", parentId: 2, startByte, endByte, resourceId: uri }],
+    [1, { id: 1, name: "mass", ruleName: "AttributeUsage", parentId: 2, startOffset, endOffset, resourceId: uri }],
     [2, { id: 2, name: "Battery", parentId: 3 }],
     [3, { id: 3, name: "DronePkg", parentId: null }],
   ]);
@@ -142,11 +142,11 @@ equation
   v = R * 2.0;
 end ResistorCircuit;`;
 
-  const startByte = sourceText.indexOf("parameter Real R");
-  const endByte = sourceText.indexOf(";", startByte) + 1;
+  const startOffset = sourceText.indexOf("parameter Real R");
+  const endOffset = sourceText.indexOf(";", startOffset) + 1;
 
   const symbols = new Map<number, any>([
-    [1, { id: 1, name: "R", ruleName: "ComponentDeclaration", parentId: 2, startByte, endByte, resourceId: uri }],
+    [1, { id: 1, name: "R", ruleName: "ComponentDeclaration", parentId: 2, startOffset, endOffset, resourceId: uri }],
     [2, { id: 2, name: "ResistorCircuit", parentId: null }],
   ]);
 
@@ -175,11 +175,22 @@ thickness = 3.2;
 
 cube([width, height, thickness]);`;
 
-  const startByte = sourceText.indexOf("width =");
-  const endByte = sourceText.indexOf(";", startByte) + 1;
+  const startOffset = sourceText.indexOf("width =");
+  const endOffset = sourceText.indexOf(";", startOffset) + 1;
 
   const symbols = new Map<number, any>([
-    [1, { id: 1, name: "width", ruleName: "VariableDeclaration", parentId: null, startByte, endByte, resourceId: uri }],
+    [
+      1,
+      {
+        id: 1,
+        name: "width",
+        ruleName: "VariableDeclaration",
+        parentId: null,
+        startOffset,
+        endOffset,
+        resourceId: uri,
+      },
+    ],
   ]);
 
   const mockContext: any = createMockContext(uri, sourceText, symbols);
@@ -204,8 +215,8 @@ test("WritebackService: OWL2 DataPropertyAssertion value replacement", async () 
   DataPropertyAssertion(:maxPayload :Drone "2.5"^^xsd:double)
 )`;
 
-  const startByte = sourceText.indexOf("DataPropertyAssertion(:maxPayload");
-  const endByte = sourceText.indexOf(")", startByte) + 1;
+  const startOffset = sourceText.indexOf("DataPropertyAssertion(:maxPayload");
+  const endOffset = sourceText.indexOf(")", startOffset) + 1;
 
   const symbols = new Map<number, any>([
     [
@@ -215,8 +226,8 @@ test("WritebackService: OWL2 DataPropertyAssertion value replacement", async () 
         name: "maxPayload",
         ruleName: "DataPropertyAssertion",
         parentId: null,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
         resourceId: uri,
       },
     ],
@@ -248,11 +259,22 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
-  const startByte = sourceText.indexOf("#10 = PRODUCT");
-  const endByte = sourceText.indexOf(";", startByte) + 1;
+  const startOffset = sourceText.indexOf("#10 = PRODUCT");
+  const endOffset = sourceText.indexOf(";", startOffset) + 1;
 
   const symbols = new Map<number, any>([
-    [1, { id: 1, name: "DroneChassis", ruleName: "step_product", parentId: null, startByte, endByte, resourceId: uri }],
+    [
+      1,
+      {
+        id: 1,
+        name: "DroneChassis",
+        ruleName: "step_product",
+        parentId: null,
+        startOffset,
+        endOffset,
+        resourceId: uri,
+      },
+    ],
   ]);
 
   const mockContext: any = createMockContext(uri, sourceText, symbols);
@@ -279,11 +301,11 @@ test("WritebackService: Dynamic / Generic DSL assignment replacement", async () 
   }
 }`;
 
-  const startByte = sourceText.indexOf("speed_limit =");
-  const endByte = sourceText.indexOf(";", startByte) + 1;
+  const startOffset = sourceText.indexOf("speed_limit =");
+  const endOffset = sourceText.indexOf(";", startOffset) + 1;
 
   const symbols = new Map<number, any>([
-    [1, { id: 1, name: "speed_limit", ruleName: "Assignment", parentId: 2, startByte, endByte, resourceId: uri }],
+    [1, { id: 1, name: "speed_limit", ruleName: "Assignment", parentId: 2, startOffset, endOffset, resourceId: uri }],
     [2, { id: 2, name: "BaseJoint", parentId: 3 }],
     [3, { id: 3, name: "ArmRobot", parentId: null }],
   ]);

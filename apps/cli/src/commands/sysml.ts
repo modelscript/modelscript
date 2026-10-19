@@ -255,7 +255,7 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
             for (const cd of facade.getDiagnostics(rootPtr, 0, 0, text)) {
               const codeNum = typeof cd.code === "number" ? cd.code : 1001;
               const def = getSysML2ErrorCodeDef(codeNum);
-              const pos = byteToLineCol(text, cd.startByte ?? 0);
+              const pos = byteToLineCol(text, cd.startOffset ?? 0);
               pushUniqueDiagnostic({
                 file: relPath,
                 line: pos.line,
@@ -284,16 +284,16 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
 
     const unified = await ws.toUnifiedAsync();
     const cstProvider = {
-      getText: (startByte: number, endByte: number, entry?: any) => {
+      getText: (startOffset: number, endOffset: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
         const text = sourceTexts.get(entry.resourceId);
-        return text ? text.slice(startByte, endByte) : null;
+        return text ? text.slice(startOffset, endOffset) : null;
       },
-      getNode: (startByte: number, endByte: number, entry?: any) => {
+      getNode: (startOffset: number, endOffset: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
         const ast = astMap.get(entry.resourceId);
         if (!ast || typeof ast.descendantForIndex !== "function") return null;
-        return ast.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        return ast.descendantForIndex(startOffset, Math.max(startOffset, endOffset - 1));
       },
     };
     const qe = createSysML2QueryEngine(unified, cstProvider as any);
@@ -304,7 +304,7 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
       const entryLints = qe.runAllLints(uri);
       for (const l of entryLints) {
         if (!l) continue;
-        const pos = byteToLineCol(text, l.startByte ?? 0);
+        const pos = byteToLineCol(text, l.startOffset ?? 0);
         pushUniqueDiagnostic({
           file: relPath,
           line: pos.line,

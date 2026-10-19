@@ -131,20 +131,20 @@ describe("languages/csv: lintCsv semantic linter & narrow ranges", () => {
 
     const dupHeader = diags.find((d) => d.code === "CSV_DUPLICATE_HEADER");
     assert.ok(dupHeader, "Expected CSV_DUPLICATE_HEADER");
-    assert.strictEqual(csv.slice(dupHeader.startByte, dupHeader.endByte), "temp");
+    assert.strictEqual(csv.slice(dupHeader.startOffset, dupHeader.endOffset), "temp");
     assert.strictEqual(dupHeader.line, 1);
     assert.strictEqual(dupHeader.column, 11);
 
     const excessCol = diags.find((d) => d.code === "CSV_COLUMN_COUNT_MISMATCH");
     assert.ok(excessCol, "Expected CSV_COLUMN_COUNT_MISMATCH");
-    assert.strictEqual(csv.slice(excessCol.startByte, excessCol.endByte), "extra_col");
+    assert.strictEqual(csv.slice(excessCol.startOffset, excessCol.endOffset), "extra_col");
 
     const badNum = diags.find((d) => d.code === "CSV_INVALID_NUMERIC_CELL");
     assert.ok(badNum, "Expected CSV_INVALID_NUMERIC_CELL");
-    assert.strictEqual(csv.slice(badNum.startByte, badNum.endByte), "bad_num");
+    assert.strictEqual(csv.slice(badNum.startOffset, badNum.endOffset), "bad_num");
 
     const nonMonoTime = diags.find((d) => d.code === "CSV_NON_MONOTONIC_TIME");
     assert.ok(nonMonoTime, "Expected CSV_NON_MONOTONIC_TIME");
-    assert.strictEqual(csv.slice(nonMonoTime.startByte, nonMonoTime.endByte), "0.5");
+    assert.strictEqual(csv.slice(nonMonoTime.startOffset, nonMonoTime.endOffset), "0.5");
   });
 });

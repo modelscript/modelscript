@@ -105,11 +105,11 @@ async function runTests() {
       id: 1,
       name: "MyClass",
       resourceId: "file:///test.mo",
-      startByte: 6,
-      endByte: 13,
+      startOffset: 6,
+      endOffset: 13,
     };
 
-    const text = ws.cstTextProvider!(entry.startByte, entry.endByte, entry);
+    const text = ws.cstTextProvider!(entry.startOffset, entry.endOffset, entry);
     assert.strictEqual(text, "MyClass", "Default cstTextProvider returns correct slice");
 
     const mockSubWs: any = {

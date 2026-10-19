@@ -58,7 +58,7 @@ for (const relPath of wasmCandidates) {
     const diags = facade.getDiagnostics(rPtr);
     console.log(`  Diags count: ${diags.length}`);
     for (const d of diags) {
-      console.log(`    ${d.message} [code: ${d.code}, range: ${d.startCharOffset}-${d.endCharOffset}]`);
+      console.log(`    ${d.message} [code: ${d.code}, range: ${d.startOffset}-${d.endOffset}]`);
     }
   } catch (err: any) {
     console.log(`  Error: ${err.message}`);

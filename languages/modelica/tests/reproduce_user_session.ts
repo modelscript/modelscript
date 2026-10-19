@@ -95,6 +95,6 @@ for (let i = 0; i < typedString.length; i++) {
   diags = facade.getDiagnostics(rPtr, 0, currentText.length);
   console.log(`After typing '${typedString.slice(0, i + 1)}': diags = ${diags.length}`);
   for (const d of diags) {
-    console.log(`  Diag: ${d.message} [${d.startCharOffset}-${d.endCharOffset}]`);
+    console.log(`  Diag: ${d.message} [${d.startOffset}-${d.endOffset}]`);
   }
 }

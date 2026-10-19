@@ -244,7 +244,7 @@ export class VerificationRunner {
         candidates = this.db.allEntries().filter((e) => e.name === leafName);
       }
       for (const entry of candidates) {
-        const text = this.db.cstText(entry.startByte, entry.endByte, entry);
+        const text = this.db.cstText(entry.startOffset, entry.endOffset, entry);
         if (text) {
           const match = text.match(/=\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
           if (match && match[1]) return parseFloat(match[1]);
@@ -300,7 +300,7 @@ export class VerificationRunner {
 
     if (!currentEntry) return undefined;
 
-    const text = this.db.cstText(currentEntry.startByte, currentEntry.endByte, currentEntry);
+    const text = this.db.cstText(currentEntry.startOffset, currentEntry.endOffset, currentEntry);
     if (text) {
       const match = text.match(/=\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
       if (match && match[1]) return parseFloat(match[1]);

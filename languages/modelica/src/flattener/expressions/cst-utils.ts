@@ -132,14 +132,14 @@ export function checkIfExprTypeMismatch(
           }
           curr = curr.parent;
         }
-        const startB = targetNode?.startIndex ?? targetNode?.startByte ?? 0;
-        const endB = targetNode?.endIndex ?? targetNode?.endByte ?? 0;
+        const startB = targetNode?.startIndex ?? targetNode?.startOffset ?? 0;
+        const endB = targetNode?.endIndex ?? targetNode?.endOffset ?? 0;
         dae.diagnostics.push({
           severity: "error",
           message: `Array dimension mismatch, expression ${exprStr} has type ${typeStr}, expected array dimensions [${expectedDims.join(", ")}].`,
           range: {
-            startByte: startB,
-            endByte: endB,
+            startOffset: startB,
+            endOffset: endB,
             startPosition: targetNode?.startPosition,
             endPosition: targetNode?.endPosition,
           },
@@ -241,14 +241,14 @@ export function checkIfExprTypeMismatch(
         }
       }
 
-      const startB = targetNode?.startIndex ?? targetNode?.startByte ?? 0;
-      const endB = targetNode?.endIndex ?? targetNode?.endByte ?? 0;
+      const startB = targetNode?.startIndex ?? targetNode?.startOffset ?? 0;
+      const endB = targetNode?.endIndex ?? targetNode?.endOffset ?? 0;
       dae.diagnostics.push({
         severity: "error",
         message,
         range: {
-          startByte: startB,
-          endByte: endB,
+          startOffset: startB,
+          endOffset: endB,
           startPosition: targetNode?.startPosition,
           endPosition: targetNode?.endPosition,
         },

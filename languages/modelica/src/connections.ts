@@ -720,7 +720,7 @@ export class ModelicaPortBalancer {
           const flowComp = dae.isVarFlow(fromExact) ? fromStr : toStr;
           const nonFlowComp = dae.isVarFlow(fromExact) ? toStr : fromStr;
           const srcRange = dae.getEqSourceRange?.(eqIdx);
-          const range = srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined;
+          const range = srcRange ? { startOffset: srcRange.startOffset, endOffset: srcRange.endOffset } : undefined;
           dae.diagnostics.push({
             severity: "error",
             code: ModelicaErrorCode.CONNECT_FLOW_MISMATCH.code,
@@ -765,8 +765,8 @@ export class ModelicaPortBalancer {
                     if (resolved) {
                       const src = (state.db as any).source ? ((state.db as any).source(resolved.resourceId) ?? "") : "";
                       const snippet =
-                        src && resolved.startByte !== undefined && resolved.endByte !== undefined
-                          ? src.substring(resolved.startByte, resolved.endByte)
+                        src && resolved.startOffset !== undefined && resolved.endOffset !== undefined
+                          ? src.substring(resolved.startOffset, resolved.endOffset)
                           : ((state.db.cstNode?.(resolved.id) as any)?.text ?? "");
                       const match = snippet.match(/=\s*([A-Za-z0-9_]+(\([^)]+\))?)/);
                       if (match) {
@@ -1007,7 +1007,7 @@ export class ModelicaPortBalancer {
             severity: "error",
             code: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
             message: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(fromStr, toStr),
-            range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+            range: srcRange ? { startOffset: srcRange.startOffset, endOffset: srcRange.endOffset } : undefined,
           });
         }
       }

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export interface EditRange {
-  startByte: number;
-  endByte: number;
-  startOffset?: number | undefined;
-  endOffset?: number | undefined;
+  startOffset: number;
+  endOffset: number;
   delta: number;
 }
 
@@ -95,8 +93,6 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     const editEnd = newText.length - suffixLen;
     return [
       {
-        startByte: editStart,
-        endByte: Math.max(editStart, editEnd),
         startOffset: editStart,
         endOffset: Math.max(editStart, editEnd),
         delta: newText.length - prevText.length,
@@ -117,8 +113,6 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     const editEnd = newText.length - suffixLen;
     return [
       {
-        startByte: editStart,
-        endByte: Math.max(editStart, editEnd),
         startOffset: editStart,
         endOffset: Math.max(editStart, editEnd),
         delta: newText.length - prevText.length,
@@ -133,8 +127,6 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     const editEnd = newText.length - suffixLen;
     return [
       {
-        startByte: editStart,
-        endByte: Math.max(editStart, editEnd),
         startOffset: editStart,
         endOffset: Math.max(editStart, editEnd),
         delta: newText.length - prevText.length,
@@ -190,8 +182,6 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
         nLen += newLines[i]!.length + (i < newLines.length - 1 ? 1 : 0);
       }
       hunks.push({
-        startByte: hunkStartInNew,
-        endByte: hunkStartInNew + nLen,
         startOffset: hunkStartInNew,
         endOffset: hunkStartInNew + nLen,
         delta: nLen - pLen,
@@ -210,8 +200,6 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
         nLen += newLines[i]!.length + (i < newLines.length - 1 ? 1 : 0);
       }
       hunks.push({
-        startByte: hunkStartInNew,
-        endByte: hunkStartInNew + nLen,
         startOffset: hunkStartInNew,
         endOffset: hunkStartInNew + nLen,
         delta: nLen - pLen,
@@ -224,8 +212,6 @@ export function computeEditRanges(prevText: string, newText: string): EditRange[
     ? hunks
     : [
         {
-          startByte: prefixLen,
-          endByte: Math.max(prefixLen, newText.length - suffixLen),
           startOffset: prefixLen,
           endOffset: Math.max(prefixLen, newText.length - suffixLen),
           delta: newText.length - prevText.length,

@@ -189,8 +189,8 @@ export class RtmIndexEngine {
         domain,
         type: entry.ruleName ?? entry.kind,
         uri: entry.resourceId ?? "",
-        startByte: entry.startByte,
-        endByte: entry.endByte,
+        startOffset: entry.startOffset,
+        endOffset: entry.endOffset,
         metadata: {
           reqId,
           hazardId,
@@ -338,8 +338,8 @@ export class RtmIndexEngine {
         isSuspect: suspectInfo?.isSuspect ?? false,
         suspectReason: suspectInfo?.reason,
         declarationUri: entry.resourceId ?? "",
-        declarationStartByte: entry.startByte,
-        declarationEndByte: entry.endByte,
+        declarationStartOffset: entry.startOffset,
+        declarationEndOffset: entry.endOffset,
       };
 
       links.push(link);

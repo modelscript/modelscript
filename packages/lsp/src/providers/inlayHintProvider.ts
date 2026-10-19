@@ -26,11 +26,11 @@ export function registerInlayHintProvider(context: LspContext) {
 
         let symStart = sym.selectionRange?.start ?? sym.range?.start;
         let symEnd = sym.selectionRange?.end ?? sym.range?.end;
-        if (!symStart && (sym.startOffset !== undefined || sym.startByte !== undefined)) {
-          symStart = document.positionAt(sym.startOffset ?? sym.startByte);
+        if (!symStart && (sym.startOffset !== undefined || sym.startOffset !== undefined)) {
+          symStart = document.positionAt(sym.startOffset);
         }
-        if (!symEnd && (sym.endOffset !== undefined || sym.endByte !== undefined)) {
-          symEnd = document.positionAt(sym.endOffset ?? sym.endByte);
+        if (!symEnd && (sym.endOffset !== undefined || sym.endOffset !== undefined)) {
+          symEnd = document.positionAt(sym.endOffset);
         }
         if (!symStart || !symEnd) continue;
 

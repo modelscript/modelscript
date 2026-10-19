@@ -396,7 +396,7 @@ function extractUserFunctionsFromDb(db: QueryDB): SmtFunctionDef[] {
 
   for (const e of entries) {
     if (e.ruleName === "CalculationDefinition" || e.ruleName === "ActionDefinition") {
-      const text = db.cstText(e.startByte, e.endByte, e);
+      const text = db.cstText(e.startOffset, e.endOffset, e);
       if (!text) continue;
 
       // Match: calc def <name>(<params>): <returnType> { return <body>; }

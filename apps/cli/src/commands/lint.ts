@@ -138,7 +138,7 @@ function lintCfdText(text: string, resourceId: string): any[] {
 
     if (!cleanCode.includes("=")) {
       const col = Math.max(0, rawLine.indexOf(cleanCode));
-      const startByte = lineColToByte(text, i + 1, col + 1);
+      const startOffset = lineColToByte(text, i + 1, col + 1);
       diags.push({
         severity: "error",
         lintName: "cfd-missing-equals",
@@ -146,8 +146,8 @@ function lintCfdText(text: string, resourceId: string): any[] {
         message: "Syntax Error: Expected '=' in directive assignment (e.g. KEY = VALUE)",
         symbolId: null,
         resourceId,
-        startByte,
-        endByte: startByte + cleanCode.length,
+        startOffset,
+        endOffset: startOffset + cleanCode.length,
       });
       continue;
     }
@@ -157,7 +157,7 @@ function lintCfdText(text: string, resourceId: string): any[] {
     const val = codeLine.slice(eqIdx + 1).trim();
 
     if (!key) {
-      const startByte = lineColToByte(text, i + 1, 1);
+      const startOffset = lineColToByte(text, i + 1, 1);
       diags.push({
         severity: "error",
         lintName: "cfd-missing-key",
@@ -165,12 +165,12 @@ function lintCfdText(text: string, resourceId: string): any[] {
         message: "Syntax Error: Missing directive keyword before '='",
         symbolId: null,
         resourceId,
-        startByte,
-        endByte: startByte + eqIdx,
+        startOffset,
+        endOffset: startOffset + eqIdx,
       });
     } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
       const keyCol = Math.max(0, rawLine.indexOf(key));
-      const startByte = lineColToByte(text, i + 1, keyCol + 1);
+      const startOffset = lineColToByte(text, i + 1, keyCol + 1);
       diags.push({
         severity: "error",
         lintName: "cfd-invalid-key",
@@ -178,13 +178,13 @@ function lintCfdText(text: string, resourceId: string): any[] {
         message: `Syntax Error: Invalid directive keyword '${key}'`,
         symbolId: null,
         resourceId,
-        startByte,
-        endByte: startByte + key.length,
+        startOffset,
+        endOffset: startOffset + key.length,
       });
     }
 
     if (!val) {
-      const startByte = lineColToByte(text, i + 1, eqIdx + 1);
+      const startOffset = lineColToByte(text, i + 1, eqIdx + 1);
       diags.push({
         severity: "error",
         lintName: "cfd-missing-value",
@@ -192,15 +192,15 @@ function lintCfdText(text: string, resourceId: string): any[] {
         message: `Syntax Error: Expected value expression after '=' for directive '${key}'`,
         symbolId: null,
         resourceId,
-        startByte,
-        endByte: startByte + Math.max(1, rawLine.length - eqIdx),
+        startOffset,
+        endOffset: startOffset + Math.max(1, rawLine.length - eqIdx),
       });
     } else {
       const openParens = (val.match(/\(/g) || []).length;
       const closeParens = (val.match(/\)/g) || []).length;
       if (openParens !== closeParens) {
         const valCol = Math.max(0, rawLine.indexOf(val));
-        const startByte = lineColToByte(text, i + 1, valCol + 1);
+        const startOffset = lineColToByte(text, i + 1, valCol + 1);
         diags.push({
           severity: "error",
           lintName: "cfd-unbalanced-parens",
@@ -208,8 +208,8 @@ function lintCfdText(text: string, resourceId: string): any[] {
           message: `Syntax Error: Mismatched parentheses in directive value (${openParens} '(' vs ${closeParens} ')')`,
           symbolId: null,
           resourceId,
-          startByte,
-          endByte: startByte + val.length,
+          startOffset,
+          endOffset: startOffset + val.length,
         });
       }
 
@@ -217,7 +217,7 @@ function lintCfdText(text: string, resourceId: string): any[] {
       const closeBraces = (val.match(/\}\}/g) || []).length;
       if (openBraces !== closeBraces) {
         const valCol = Math.max(0, rawLine.indexOf(val));
-        const startByte = lineColToByte(text, i + 1, valCol + 1);
+        const startOffset = lineColToByte(text, i + 1, valCol + 1);
         diags.push({
           severity: "error",
           lintName: "cfd-unclosed-expression",
@@ -225,8 +225,8 @@ function lintCfdText(text: string, resourceId: string): any[] {
           message: "Syntax Error: Unclosed embedded parameter expression '{{'",
           symbolId: null,
           resourceId,
-          startByte,
-          endByte: startByte + val.length,
+          startOffset,
+          endOffset: startOffset + val.length,
         });
       }
     }
@@ -251,7 +251,7 @@ function lintFeaText(text: string, resourceId: string): any[] {
       const cardContent = trimmed.slice(1).trim();
       if (!cardContent) {
         const col = Math.max(0, rawLine.indexOf("*"));
-        const startByte = lineColToByte(text, i + 1, col + 1);
+        const startOffset = lineColToByte(text, i + 1, col + 1);
         diags.push({
           severity: "error",
           lintName: "fea-empty-card",
@@ -259,8 +259,8 @@ function lintFeaText(text: string, resourceId: string): any[] {
           message: "Syntax Error: Missing keyword card name after '*'",
           symbolId: null,
           resourceId,
-          startByte,
-          endByte: startByte + 1,
+          startOffset,
+          endOffset: startOffset + 1,
         });
         continue;
       }
@@ -270,7 +270,7 @@ function lintFeaText(text: string, resourceId: string): any[] {
 
       if (!VALID_FEA_CARDS.has(cardName)) {
         const cardCol = Math.max(0, rawLine.indexOf(cardTokens[0] ?? ""));
-        const startByte = lineColToByte(text, i + 1, cardCol + 1);
+        const startOffset = lineColToByte(text, i + 1, cardCol + 1);
         diags.push({
           severity: "error",
           lintName: "fea-unknown-card",
@@ -278,15 +278,15 @@ function lintFeaText(text: string, resourceId: string): any[] {
           message: `Syntax Error: Unknown keyword card '*${cardName}'`,
           symbolId: null,
           resourceId,
-          startByte,
-          endByte: startByte + (cardTokens[0]?.length ?? 1),
+          startOffset,
+          endOffset: startOffset + (cardTokens[0]?.length ?? 1),
         });
       }
 
       for (let pIdx = 1; pIdx < cardTokens.length; pIdx++) {
         const param = cardTokens[pIdx];
         if (!param) {
-          const startByte = lineColToByte(text, i + 1, 1);
+          const startOffset = lineColToByte(text, i + 1, 1);
           diags.push({
             severity: "error",
             lintName: "fea-empty-param",
@@ -294,8 +294,8 @@ function lintFeaText(text: string, resourceId: string): any[] {
             message: `Syntax Error: Empty parameter definition in card '*${cardName}'`,
             symbolId: null,
             resourceId,
-            startByte,
-            endByte: startByte + rawLine.length,
+            startOffset,
+            endOffset: startOffset + rawLine.length,
           });
           continue;
         }
@@ -304,7 +304,7 @@ function lintFeaText(text: string, resourceId: string): any[] {
           const pKey = param.slice(0, eq).trim();
           const pVal = param.slice(eq + 1).trim();
           if (!pKey || !pVal) {
-            const startByte = lineColToByte(text, i + 1, 1);
+            const startOffset = lineColToByte(text, i + 1, 1);
             diags.push({
               severity: "error",
               lintName: "fea-malformed-param",
@@ -312,8 +312,8 @@ function lintFeaText(text: string, resourceId: string): any[] {
               message: `Syntax Error: Malformed parameter '${param}' in card '*${cardName}'`,
               symbolId: null,
               resourceId,
-              startByte,
-              endByte: startByte + rawLine.length,
+              startOffset,
+              endOffset: startOffset + rawLine.length,
             });
           }
         }
@@ -325,7 +325,7 @@ function lintFeaText(text: string, resourceId: string): any[] {
     const closeBraces = (trimmed.match(/\}\}/g) || []).length;
     if (openBraces !== closeBraces) {
       const col = Math.max(0, rawLine.indexOf(trimmed));
-      const startByte = lineColToByte(text, i + 1, col + 1);
+      const startOffset = lineColToByte(text, i + 1, col + 1);
       diags.push({
         severity: "error",
         lintName: "fea-unclosed-expression",
@@ -333,8 +333,8 @@ function lintFeaText(text: string, resourceId: string): any[] {
         message: "Syntax Error: Unclosed embedded parameter expression '{{'",
         symbolId: null,
         resourceId,
-        startByte,
-        endByte: startByte + trimmed.length,
+        startOffset,
+        endOffset: startOffset + trimmed.length,
       });
     }
   }
@@ -358,8 +358,8 @@ async function lintStepText(text: string, resourceId: string): Promise<any[]> {
         message: `Reference to undefined entity '${ref.id}'`,
         symbolId: null,
         resourceId,
-        startByte: ref.startOffset,
-        endByte: ref.endOffset,
+        startOffset: ref.startOffset,
+        endOffset: ref.endOffset,
       });
     }
   }
@@ -413,8 +413,8 @@ async function lintStepText(text: string, resourceId: string): Promise<any[]> {
             message: `Schema violation for ${def.type}: expected ${schema.parameters.length} arguments, got ${argCount}.`,
             symbolId: null,
             resourceId,
-            startByte: typeStartOffset,
-            endByte: typeStartOffset + def.type.length,
+            startOffset: typeStartOffset,
+            endOffset: typeStartOffset + def.type.length,
           });
         }
       }
@@ -428,8 +428,8 @@ async function lintStepText(text: string, resourceId: string): Promise<any[]> {
         message: `Undefined STEP entity type '${def.type}'`,
         symbolId: null,
         resourceId,
-        startByte: typeStartOffset,
-        endByte: typeStartOffset + def.type.length,
+        startOffset: typeStartOffset,
+        endOffset: typeStartOffset + def.type.length,
       });
     }
   }
@@ -576,8 +576,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 message: cd.message || def?.message("Syntax error") || "Syntax error",
                 symbolId: null,
                 resourceId: item.uri,
-                startByte: cd.startByte ?? 0,
-                endByte: cd.endByte ?? 0,
+                startOffset: cd.startOffset ?? 0,
+                endOffset: cd.endOffset ?? 0,
               });
             }
           }
@@ -627,8 +627,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                   message: cd.message || def?.message("Syntax error") || "Syntax error",
                   symbolId: null,
                   resourceId: item.uri,
-                  startByte: cd.startByte ?? 0,
-                  endByte: cd.endByte ?? 0,
+                  startOffset: cd.startOffset ?? 0,
+                  endOffset: cd.endOffset ?? 0,
                 });
               }
             }
@@ -641,8 +641,8 @@ export const Lint: CommandModule<any, LintArgs> = {
               message: "Syntax error detected by native WASM GLR parser.",
               symbolId: null,
               resourceId: item.uri,
-              startByte: 0,
-              endByte: Math.min(item.text.length, 10),
+              startOffset: 0,
+              endOffset: Math.min(item.text.length, 10),
             });
           }
         }
@@ -658,20 +658,20 @@ export const Lint: CommandModule<any, LintArgs> = {
 
     // Implement WorkspaceCSTProvider to enable AST-dependent Salsa queries and formal verifiers
     const cstProvider = {
-      getText: (startByte: number, endByte: number, entry?: any) => {
+      getText: (startOffset: number, endOffset: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
         const modelicaItem = modelicaItems.find((i) => i.uri === uri);
-        if (modelicaItem) return modelicaItem.text.slice(startByte, endByte);
+        if (modelicaItem) return modelicaItem.text.slice(startOffset, endOffset);
         const sysmlItem = sysmlItems.find((i) => i.uri === uri);
-        if (sysmlItem) return sysmlItem.text.slice(startByte, endByte);
+        if (sysmlItem) return sysmlItem.text.slice(startOffset, endOffset);
         return null;
       },
-      getNode: (startByte: number, endByte: number, entry?: any) => {
+      getNode: (startOffset: number, endOffset: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
         const ast = astMap.get(entry.resourceId);
         if (!ast || typeof ast.descendantForIndex !== "function") return null;
-        return ast.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        return ast.descendantForIndex(startOffset, Math.max(startOffset, endOffset - 1));
       },
     };
 
@@ -691,7 +691,7 @@ export const Lint: CommandModule<any, LintArgs> = {
           const res = sd.resourceId ?? entry?.resourceId;
           return (
             res === cd.resourceId &&
-            (sd.message === cd.message || (sd.startByte === cd.startByte && sd.code === cd.code))
+            (sd.message === cd.message || (sd.startOffset === cd.startOffset && sd.code === cd.code))
           );
         });
         if (!isDup) {
@@ -747,8 +747,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 message: `[Formal Proof Defect] ${bug.description}`,
                 symbolId: null,
                 resourceId: item.uri,
-                startByte: (bug as any).startOffset ?? bug.startByte ?? algOffset,
-                endByte: (bug as any).endOffset ?? bug.endByte ?? algOffset + 10,
+                startOffset: bug.startOffset ?? algOffset,
+                endOffset: bug.endOffset ?? algOffset + 10,
               });
             }
             for (const warn of result.potentialBugs) {
@@ -760,8 +760,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 message: `[Formal Proof Unproven] ${warn.description}`,
                 symbolId: null,
                 resourceId: item.uri,
-                startByte: (warn as any).startOffset ?? warn.startByte ?? algOffset,
-                endByte: (warn as any).endOffset ?? warn.endByte ?? algOffset + 10,
+                startOffset: warn.startOffset ?? algOffset,
+                endOffset: warn.endOffset ?? algOffset + 10,
               });
             }
           }
@@ -785,7 +785,7 @@ export const Lint: CommandModule<any, LintArgs> = {
           const res = sd.resourceId ?? entry?.resourceId;
           return (
             res === cd.resourceId &&
-            (sd.message === cd.message || (sd.startByte === cd.startByte && sd.code === cd.code))
+            (sd.message === cd.message || (sd.startOffset === cd.startOffset && sd.code === cd.code))
           );
         });
         if (!isDup) {
@@ -818,8 +818,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 message: od.message,
                 symbolId: null,
                 resourceId: filePath,
-                startByte: od.startByte,
-                endByte: od.endByte,
+                startOffset: od.startOffset,
+                endOffset: od.endOffset,
               });
             }
             const axioms = lowerCstToAxioms(tree.rootNode as any, item.text);
@@ -844,8 +844,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 message: "Syntax error in OpenSCAD document",
                 symbolId: null,
                 resourceId: filePath,
-                startByte: 0,
-                endByte: Math.min(item.text.length, 10),
+                startOffset: 0,
+                endOffset: Math.min(item.text.length, 10),
               });
             }
             const { lintScadCst } = await import("@modelscript/scad");
@@ -859,8 +859,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 message: sd.message,
                 symbolId: null,
                 resourceId: filePath,
-                startByte: (sd as any).startOffset ?? sd.startByte ?? 0,
-                endByte: (sd as any).endOffset ?? sd.endByte ?? 0,
+                startOffset: sd.startOffset ?? 0,
+                endOffset: sd.endOffset ?? 0,
               });
             }
           }
@@ -872,8 +872,12 @@ export const Lint: CommandModule<any, LintArgs> = {
           const project = parsePscx(item.text);
           const pscadDiags = lintPscx(project);
           for (const pd of pscadDiags) {
-            const startByte = lineColToByte(item.text, pd.line ?? 1, pd.column ?? 1);
-            const endByte = lineColToByte(item.text, pd.endLine ?? pd.line ?? 1, pd.endColumn ?? (pd.column ?? 1) + 5);
+            const startOffset = lineColToByte(item.text, pd.line ?? 1, pd.column ?? 1);
+            const endOffset = lineColToByte(
+              item.text,
+              pd.endLine ?? pd.line ?? 1,
+              pd.endColumn ?? (pd.column ?? 1) + 5,
+            );
             diagnostics.push({
               severity: pd.severity,
               lintName: pd.code.toLowerCase(),
@@ -882,8 +886,8 @@ export const Lint: CommandModule<any, LintArgs> = {
               message: pd.message,
               symbolId: null,
               resourceId: filePath,
-              startByte,
-              endByte,
+              startOffset,
+              endOffset,
             });
           }
           continue;
@@ -902,8 +906,8 @@ export const Lint: CommandModule<any, LintArgs> = {
               message: sd.message,
               symbolId: null,
               resourceId: filePath,
-              startByte: (sd as any).startOffset ?? sd.startByte ?? 0,
-              endByte: (sd as any).endOffset ?? sd.endByte ?? 0,
+              startOffset: sd.startOffset ?? 0,
+              endOffset: sd.endOffset ?? 0,
             });
           }
           continue;
@@ -921,8 +925,8 @@ export const Lint: CommandModule<any, LintArgs> = {
               message: cd.message,
               symbolId: null,
               resourceId: filePath,
-              startByte: (cd as any).startOffset ?? cd.startByte ?? 0,
-              endByte: (cd as any).endOffset ?? cd.endByte ?? 0,
+              startOffset: cd.startOffset ?? 0,
+              endOffset: cd.endOffset ?? 0,
             });
           }
           continue;
@@ -952,8 +956,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 message: "Syntax errors detected in STEP document",
                 symbolId: null,
                 resourceId: filePath,
-                startByte: 0,
-                endByte: Math.min(item.text.length, 10),
+                startOffset: 0,
+                endOffset: Math.min(item.text.length, 10),
               });
             }
           } catch {}
@@ -973,8 +977,8 @@ export const Lint: CommandModule<any, LintArgs> = {
             message: `Syntax errors detected in ${lang.manifest.name} document`,
             symbolId: null,
             resourceId: filePath,
-            startByte: 0,
-            endByte: item.text.length,
+            startOffset: 0,
+            endOffset: item.text.length,
           });
         }
       } catch (e: any) {
@@ -984,8 +988,8 @@ export const Lint: CommandModule<any, LintArgs> = {
           message: e.message,
           symbolId: null,
           resourceId: filePath,
-          startByte: 0,
-          endByte: 0,
+          startOffset: 0,
+          endOffset: 0,
         });
       }
     }
@@ -1012,7 +1016,7 @@ export const Lint: CommandModule<any, LintArgs> = {
       const rawRes = d.resourceId ?? entry?.resourceId;
       const resource = rawRes ? rawRes.replace(/^file:\/\//, "") : "unknown";
       const docText = textMap.get(resource) ?? "";
-      const pos = byteToLineCol(docText, d.startByte ?? 0);
+      const pos = byteToLineCol(docText, d.startOffset ?? 0);
 
       let formattedCode: string | undefined;
       if (typeof d.code === "number") {
@@ -1026,8 +1030,8 @@ export const Lint: CommandModule<any, LintArgs> = {
         resource,
         line: pos.line,
         col: pos.col,
-        startByte: d.startByte ?? 0,
-        endByte: d.endByte ?? 0,
+        startOffset: d.startOffset ?? 0,
+        endOffset: d.endOffset ?? 0,
         severity: d.severity,
         code: formattedCode,
         lintName: d.lintName,

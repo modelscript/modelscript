@@ -141,6 +141,14 @@ function getLibraryName(resourceId?: string): string | null {
     const parts = resourceId.substring("library-bundle:/".length).split("/");
     return parts[0] || "External Library";
   }
+  if (resourceId.includes("/modelscript_registry/")) {
+    const after = resourceId.split("/modelscript_registry/")[1] || "";
+    const pkgName = after.split("/")[0];
+    if (pkgName === "Modelica" || pkgName === "Complex" || pkgName === "ModelicaServices") {
+      return "Modelica Standard Library";
+    }
+    return pkgName || "External Library";
+  }
   return null;
 }
 

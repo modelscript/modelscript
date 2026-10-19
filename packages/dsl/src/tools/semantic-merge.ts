@@ -682,9 +682,9 @@ export interface SourceMergeResult {
   appliedEditsCount: number;
 }
 
-interface ByteTextReplacement {
-  startByte: number;
-  endByte: number;
+interface OffsetTextReplacement {
+  startOffset: number;
+  endOffset: number;
   replacementText: string;
 }
 
@@ -695,14 +695,14 @@ function replaceNumericBindingInSnippet(snippet: string, newValue: number | stri
 
 function findInsertionOffsetBeforeEnd(
   parentSnippet: string,
-  parentStartByte: number,
+  parentStartOffset: number,
 ): { offset: number; indent: string } {
   // Match closing `end <Ident>;` (Modelica) or closing `}` (SysML v2) at the tail of the parent declaration
   const modelicaEndMatch = /\n([ \t]*)end\s+[A-Za-z0-9_']+\s*;\s*$/.exec(parentSnippet);
   if (modelicaEndMatch && modelicaEndMatch.index !== undefined) {
     const parentIndent = modelicaEndMatch[1] ?? "";
     return {
-      offset: parentStartByte + modelicaEndMatch.index,
+      offset: parentStartOffset + modelicaEndMatch.index,
       indent: parentIndent + "  ",
     };
   }
@@ -711,19 +711,19 @@ function findInsertionOffsetBeforeEnd(
   if (braceEndMatch && braceEndMatch.index !== undefined) {
     const parentIndent = braceEndMatch[1] ?? "";
     return {
-      offset: parentStartByte + braceEndMatch.index,
+      offset: parentStartOffset + braceEndMatch.index,
       indent: parentIndent + "  ",
     };
   }
 
   return {
-    offset: parentStartByte + parentSnippet.length,
+    offset: parentStartOffset + parentSnippet.length,
     indent: "  ",
   };
 }
 
 /**
- * Applies a `ThreeWayMergeResult` to source code using surgical byte-range splicing
+ * Applies a `ThreeWayMergeResult` to source code using surgical character-range splicing
  * across `oursText` and `theirsText`.
  */
 export function mergeModelSourceText(
@@ -732,17 +732,17 @@ export function mergeModelSourceText(
   theirsText: string,
   mergeResult: ThreeWayMergeResult,
 ): SourceMergeResult {
-  const replacements: ByteTextReplacement[] = [];
+  const replacements: OffsetTextReplacement[] = [];
   let appliedEditsCount = 0;
 
   function collectEdits(op: MergedSymbolOperation, parentOursEntry: SymbolEntry | null): void {
     if (op.action === "insert-theirs" && op.theirsEntry && parentOursEntry) {
-      const theirSlice = theirsText.slice(op.theirsEntry.startByte, op.theirsEntry.endByte).trim();
-      const parentSlice = oursText.slice(parentOursEntry.startByte, parentOursEntry.endByte);
-      const { offset, indent } = findInsertionOffsetBeforeEnd(parentSlice, parentOursEntry.startByte);
+      const theirSlice = theirsText.slice(op.theirsEntry.startOffset, op.theirsEntry.endOffset).trim();
+      const parentSlice = oursText.slice(parentOursEntry.startOffset, parentOursEntry.endOffset);
+      const { offset, indent } = findInsertionOffsetBeforeEnd(parentSlice, parentOursEntry.startOffset);
       replacements.push({
-        startByte: offset,
-        endByte: offset,
+        startOffset: offset,
+        endOffset: offset,
         replacementText: `\n${indent}${theirSlice}`,
       });
       appliedEditsCount++;
@@ -750,8 +750,8 @@ export function mergeModelSourceText(
     }
 
     if (op.action === "delete-ours" && op.oursEntry) {
-      let start = op.oursEntry.startByte;
-      let end = op.oursEntry.endByte;
+      let start = op.oursEntry.startOffset;
+      let end = op.oursEntry.endOffset;
       // Consume leading newline and indentation if on its own line
       while (start > 0 && (oursText[start - 1] === " " || oursText[start - 1] === "\t")) {
         start--;
@@ -760,8 +760,8 @@ export function mergeModelSourceText(
         start--;
       }
       replacements.push({
-        startByte: start,
-        endByte: end,
+        startOffset: start,
+        endOffset: end,
         replacementText: "",
       });
       appliedEditsCount++;
@@ -769,10 +769,10 @@ export function mergeModelSourceText(
     }
 
     if (op.action === "take-theirs" && op.oursEntry && op.theirsEntry && (!op.children || op.children.length === 0)) {
-      const theirSlice = theirsText.slice(op.theirsEntry.startByte, op.theirsEntry.endByte);
+      const theirSlice = theirsText.slice(op.theirsEntry.startOffset, op.theirsEntry.endOffset);
       replacements.push({
-        startByte: op.oursEntry.startByte,
-        endByte: op.oursEntry.endByte,
+        startOffset: op.oursEntry.startOffset,
+        endOffset: op.oursEntry.endOffset,
         replacementText: theirSlice,
       });
       appliedEditsCount++;
@@ -780,11 +780,11 @@ export function mergeModelSourceText(
     }
 
     if (op.action === "reconcile-binding" && op.oursEntry && op.reconciledValue !== undefined) {
-      const oursSlice = oursText.slice(op.oursEntry.startByte, op.oursEntry.endByte);
+      const oursSlice = oursText.slice(op.oursEntry.startOffset, op.oursEntry.endOffset);
       const updatedSlice = replaceNumericBindingInSnippet(oursSlice, op.reconciledValue);
       replacements.push({
-        startByte: op.oursEntry.startByte,
-        endByte: op.oursEntry.endByte,
+        startOffset: op.oursEntry.startOffset,
+        endOffset: op.oursEntry.endOffset,
         replacementText: updatedSlice,
       });
       appliedEditsCount++;
@@ -793,8 +793,8 @@ export function mergeModelSourceText(
 
     if (op.action === "conflict" && op.conflict) {
       if (op.oursEntry && op.theirsEntry) {
-        const oursSlice = oursText.slice(op.oursEntry.startByte, op.oursEntry.endByte);
-        const theirSlice = theirsText.slice(op.theirsEntry.startByte, op.theirsEntry.endByte);
+        const oursSlice = oursText.slice(op.oursEntry.startOffset, op.oursEntry.endOffset);
+        const theirSlice = theirsText.slice(op.theirsEntry.startOffset, op.theirsEntry.endOffset);
         const markerBlock = [
           `<<<<<<< OURS (${op.conflict.description})`,
           oursSlice,
@@ -803,17 +803,17 @@ export function mergeModelSourceText(
           `>>>>>>> THEIRS`,
         ].join("\n");
         replacements.push({
-          startByte: op.oursEntry.startByte,
-          endByte: op.oursEntry.endByte,
+          startOffset: op.oursEntry.startOffset,
+          endOffset: op.oursEntry.endOffset,
           replacementText: markerBlock,
         });
         appliedEditsCount++;
         return;
       } else if (!op.oursEntry && op.theirsEntry && parentOursEntry) {
         // Deleted in ours, modified in theirs
-        const theirSlice = theirsText.slice(op.theirsEntry.startByte, op.theirsEntry.endByte).trim();
-        const parentSlice = oursText.slice(parentOursEntry.startByte, parentOursEntry.endByte);
-        const { offset, indent } = findInsertionOffsetBeforeEnd(parentSlice, parentOursEntry.startByte);
+        const theirSlice = theirsText.slice(op.theirsEntry.startOffset, op.theirsEntry.endOffset).trim();
+        const parentSlice = oursText.slice(parentOursEntry.startOffset, parentOursEntry.endOffset);
+        const { offset, indent } = findInsertionOffsetBeforeEnd(parentSlice, parentOursEntry.startOffset);
         const markerBlock = [
           `\n${indent}<<<<<<< OURS (${op.conflict.description})`,
           `${indent}// [Deleted in ours]`,
@@ -822,15 +822,15 @@ export function mergeModelSourceText(
           `${indent}>>>>>>> THEIRS`,
         ].join("\n");
         replacements.push({
-          startByte: offset,
-          endByte: offset,
+          startOffset: offset,
+          endOffset: offset,
           replacementText: markerBlock,
         });
         appliedEditsCount++;
         return;
       } else if (op.oursEntry && !op.theirsEntry) {
         // Modified in ours, deleted in theirs
-        const oursSlice = oursText.slice(op.oursEntry.startByte, op.oursEntry.endByte);
+        const oursSlice = oursText.slice(op.oursEntry.startOffset, op.oursEntry.endOffset);
         const markerBlock = [
           `<<<<<<< OURS (${op.conflict.description})`,
           oursSlice,
@@ -839,8 +839,8 @@ export function mergeModelSourceText(
           `>>>>>>> THEIRS`,
         ].join("\n");
         replacements.push({
-          startByte: op.oursEntry.startByte,
-          endByte: op.oursEntry.endByte,
+          startOffset: op.oursEntry.startOffset,
+          endOffset: op.oursEntry.endOffset,
           replacementText: markerBlock,
         });
         appliedEditsCount++;
@@ -858,12 +858,12 @@ export function mergeModelSourceText(
 
   collectEdits(mergeResult.rootOperation, mergeResult.rootOperation.oursEntry ?? null);
 
-  // Sort replacements descending by startByte so earlier offsets remain valid
-  replacements.sort((a, b) => b.startByte - a.startByte);
+  // Sort replacements descending by startOffset so earlier offsets remain valid
+  replacements.sort((a, b) => b.startOffset - a.startOffset);
 
   let mergedText = oursText;
   for (const rep of replacements) {
-    mergedText = mergedText.slice(0, rep.startByte) + rep.replacementText + mergedText.slice(rep.endByte);
+    mergedText = mergedText.slice(0, rep.startOffset) + rep.replacementText + mergedText.slice(rep.endOffset);
   }
 
   return {

@@ -109,8 +109,8 @@ export function checkCyclicConstantsAndParameters(
               const rNode = clauseNode ?? (db.cstNode(ch.id) as any);
               const rangeObj = rNode
                 ? {
-                    startByte: rNode.startIndex ?? rNode.startByte,
-                    endByte: rNode.endIndex ?? rNode.endByte,
+                    startOffset: rNode.startIndex ?? rNode.startOffset,
+                    endOffset: rNode.endIndex ?? rNode.endOffset,
                     startPosition: rNode.startPosition,
                     endPosition: rNode.endPosition,
                   }
@@ -312,8 +312,8 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
       const bCst = db.cstNode(fnSymId) as any;
       const rangeObj = bCst
         ? {
-            startByte: bCst.startIndex ?? bCst.startByte,
-            endByte: bCst.endIndex ?? bCst.endByte,
+            startOffset: bCst.startIndex ?? bCst.startOffset,
+            endOffset: bCst.endIndex ?? bCst.endOffset,
             startPosition: bCst.startPosition,
             endPosition: bCst.endPosition,
           }

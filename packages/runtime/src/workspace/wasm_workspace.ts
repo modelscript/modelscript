@@ -55,14 +55,10 @@ export interface WasmStubSymbol {
   flags: number;
   /** 32-bit hash of the symbol's simple name for SIMD lookup acceleration. */
   nameHash: number;
-  /** Start byte offset of the declaration in its source file. */
-  startByte: number;
-  /** End byte offset of the declaration in its source file. */
-  endByte: number;
-  /** Optional start character offset in the source file. */
-  startOffset?: number | undefined;
-  /** Optional end character offset in the source file. */
-  endOffset?: number | undefined;
+  /** Start character offset of the declaration in its source file. */
+  startOffset: number;
+  /** End character offset of the declaration in its source file. */
+  endOffset: number;
   /** Optional low 32 bits of the declaration's structural Merkle hash. */
   merkleLow?: number | undefined;
   /** Optional high 32 bits of the declaration's structural Merkle hash. */
@@ -81,8 +77,8 @@ export interface WasmLanguageInstance {
     kind: number,
     flags: number,
     name: string,
-    startByte: number,
-    endByte: number,
+    startOffset: number,
+    endOffset: number,
     merkleLow?: number,
     merkleHigh?: number,
     parentFqn?: string,
@@ -552,18 +548,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return this.uriToId.has(uri) || this.fileSymbols.has(uri) || this.fileLoaders.has(uri);
   }
 
-  /** Per-document dirty byte/offset edit ranges used to narrow incremental symbol invalidation during `indexCst()`. */
-  private fileDirtyRanges = new Map<
-    string,
-    { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }[]
-  >();
+  /** Per-document dirty offset edit ranges used to narrow incremental symbol invalidation during `indexCst()`. */
+  private fileDirtyRanges = new Map<string, { startOffset: number; endOffset: number }[]>();
 
-  /** Returns the pending dirty byte/offset edit ranges recorded for `uri`, if any. */
-  getDirtyRanges(
-    uri: string,
-  ):
-    | { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }[]
-    | undefined {
+  /** Returns the pending dirty offset edit ranges recorded for `uri`, if any. */
+  getDirtyRanges(uri: string): { startOffset: number; endOffset: number }[] | undefined {
     return this.fileDirtyRanges.get(uri);
   }
 
@@ -823,13 +812,13 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       let symId: SymbolId;
       const existingEntry =
         oldEntriesByKey.get(matchKey) ?? oldEntriesByKey.get(`root:Class:${normalizedName}:SourceFile`);
-      const rootStart = rootNode.startOffset ?? rootNode.startByte ?? rootNode.startIndex ?? 0;
-      const rootEnd = rootNode.endOffset ?? rootNode.endByte ?? rootNode.endIndex ?? 0;
+      const rootStart = rootNode.startOffset ?? rootNode.startIndex ?? 0;
+      const rootEnd = rootNode.endOffset ?? rootNode.endIndex ?? 0;
       if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
         symId = existingEntry.id;
         oldSymbolsToDelete.delete(symId);
-        const prevStart = existingEntry.startOffset ?? existingEntry.startByte;
-        const prevEnd = existingEntry.endOffset ?? existingEntry.endByte;
+        const prevStart = existingEntry.startOffset;
+        const prevEnd = existingEntry.endOffset;
         if (prevStart !== rootStart || prevEnd !== rootEnd) {
           this.globalChangedIds.add(symId);
           this.globalStructuralChangedIds.add(symId);
@@ -858,8 +847,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         fieldName: null,
         parentId,
         resourceId: uri,
-        startByte: rootStart,
-        endByte: rootEnd,
         startOffset: rootStart,
         endOffset: rootEnd,
         exports: [],
@@ -913,8 +900,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             ruleName: "CSVVirtualComponent",
             namePath: "",
             fieldName: null,
-            startByte: 0,
-            endByte: 0,
             startOffset: 0,
             endOffset: 0,
             parentId: symId,
@@ -992,16 +977,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
               (c: any) => c.type === "class_modification" || c.type === "ClassModification",
             );
             const extEnd = modChild
-              ? (modChild.endOffset ?? modChild.endByte ?? modChild.endIndex ?? 0)
-              : (identChild.endOffset ?? identChild.endByte ?? identChild.endIndex ?? 0);
+              ? (modChild.endOffset ?? modChild.endIndex ?? 0)
+              : (identChild.endOffset ?? identChild.endIndex ?? 0);
             const extStart =
-              firstChild.startOffset ??
-              firstChild.startByte ??
-              firstChild.startIndex ??
-              node.startOffset ??
-              node.startByte ??
-              node.startIndex ??
-              0;
+              firstChild.startOffset ?? firstChild.startIndex ?? node.startOffset ?? node.startIndex ?? 0;
             if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
               extSymId = existingEntry.id;
               oldSymbolsToDelete.delete(extSymId);
@@ -1028,8 +1007,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
               fieldName: null,
               parentId,
               resourceId: uri,
-              startByte: extStart,
-              endByte: extEnd,
               startOffset: extStart,
               endOffset: extEnd,
               exports: [],
@@ -1051,7 +1028,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
 
       // Step 5b: If the CST node type matches a registered grammar IndexerHook (e.g. class_definition,
-      // component_clause, extends_clause, connect_clause), extract its name, byte/offset spans, and metadata.
+      // component_clause, extends_clause, connect_clause), extract its name, offset spans, and metadata.
       if (hook) {
         const nameNode = hook.namePath ? resolveFieldPath(node, hook.namePath) : null;
         let name = nameNode ? getNodeText(nameNode) : "";
@@ -1064,20 +1041,20 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         const matchKey = `${parentKey}:${hook.kind}:${name}:${hook.ruleName}`;
         let symId: SymbolId;
         const existingEntry = oldEntriesByKey.get(matchKey);
-        const nodeStart = node.startOffset ?? node.startByte ?? node.startIndex ?? 0;
-        const nodeEnd = node.endOffset ?? node.endByte ?? node.endIndex ?? 0;
+        const nodeStart = node.startOffset ?? node.startIndex ?? 0;
+        const nodeEnd = node.endOffset ?? node.endIndex ?? 0;
         if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
           symId = existingEntry.id;
           oldSymbolsToDelete.delete(symId);
           // Mark symbol dirty only if its span intersects the incremental edit ranges or shifted bounds.
           const dirtyRanges = this.fileDirtyRanges.get(uri);
-          const existingStart = existingEntry.startOffset ?? existingEntry.startByte;
-          const existingEnd = existingEntry.endOffset ?? existingEntry.endByte;
+          const existingStart = existingEntry.startOffset;
+          const existingEnd = existingEntry.endOffset;
           const intersectsDirty =
             dirtyRanges && dirtyRanges.length > 0
               ? dirtyRanges.some((r: any) => {
-                  const rStart = r.startOffset ?? r.startByte ?? 0;
-                  const rEnd = r.endOffset ?? r.endByte ?? 0;
+                  const rStart = r.startOffset ?? 0;
+                  const rEnd = r.endOffset ?? 0;
                   return (
                     Math.max(rStart, existingStart) <= Math.min(rEnd, existingEnd) ||
                     Math.max(rStart, nodeStart) <= Math.min(rEnd, nodeEnd)
@@ -1114,21 +1091,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         newIds.push(symId);
 
         // Capture precise identifier field ranges for diagnostic underlines and go-to-definition.
-        let fieldRanges:
-          | Record<
-              string,
-              { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-            >
-          | undefined;
+        let fieldRanges: Record<string, { startOffset: number; endOffset: number }> | undefined;
         if (nameNode) {
-          const nameStartOff = nameNode.startOffset ?? nameNode.startByte ?? nameNode.startIndex ?? nodeStart;
-          const nameEndOff = nameNode.endOffset ?? nameNode.endByte ?? nameNode.endIndex ?? nameStartOff + name.length;
-          const nameStartByte = nameNode.startByte ?? nameStartOff;
-          const nameEndByte = nameNode.endByte ?? nameEndOff;
+          const nameStartOff = nameNode.startOffset ?? nameNode.startIndex ?? nodeStart;
+          const nameEndOff = nameNode.endOffset ?? nameNode.endIndex ?? nameStartOff + name.length;
           fieldRanges = {
             name: {
-              startByte: nameStartByte,
-              endByte: nameEndByte,
               startOffset: nameStartOff,
               endOffset: nameEndOff,
             },
@@ -1147,8 +1115,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           fieldName: null,
           parentId,
           resourceId: uri,
-          startByte: node.startByte ?? nodeStart,
-          endByte: node.endByte ?? nodeEnd,
           startOffset: nodeStart,
           endOffset: nodeEnd,
           fieldRanges,
@@ -1306,9 +1272,27 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         ? Array.from(indexData.symbols.entries())
         : Object.entries(indexData.symbols || {});
 
+    const isCorruptedSymbolEntry = (rawEntry: any): boolean => {
+      if (!rawEntry || typeof rawEntry.name !== "string") return true;
+      const n = rawEntry.name;
+      if (/[\r\n]/.test(n) || n.startsWith("/") || /^\s/.test(n)) return true;
+      if (
+        (rawEntry.kind === "Component" && n === "component_declaration") ||
+        (rawEntry.kind === "Class" && n === "class_definition")
+      ) {
+        return true;
+      }
+      return false;
+    };
+
     const idMap = new Map<number, number>();
-    for (const [rawId] of symbolsSource) {
+    const skippedOldIds = new Set<number>();
+    for (const [rawId, rawEntry] of symbolsSource) {
       const oldId = typeof rawId === "string" && !isNaN(Number(rawId)) ? Number(rawId) : Number(rawId);
+      if (isCorruptedSymbolEntry(rawEntry)) {
+        skippedOldIds.add(oldId);
+        continue;
+      }
       const newId = this.nextSymbolId++;
       idMap.set(oldId, newId);
     }
@@ -1316,26 +1300,20 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     // 2. Merge symbols
     for (const [rawId, rawEntry] of symbolsSource) {
       const oldId = typeof rawId === "string" && !isNaN(Number(rawId)) ? Number(rawId) : Number(rawId);
+      if (skippedOldIds.has(oldId)) continue;
       const newId = idMap.get(oldId) ?? oldId;
       const entry: SymbolEntry = { ...(rawEntry as SymbolEntry) };
-      const startOff = entry.startOffset ?? entry.startByte ?? 0;
-      const endOff = entry.endOffset ?? entry.endByte ?? 0;
+      const startOff = entry.startOffset ?? 0;
+      const endOff = entry.endOffset ?? 0;
       entry.startOffset = startOff;
       entry.endOffset = endOff;
-      entry.startByte = entry.startByte ?? startOff;
-      entry.endByte = entry.endByte ?? endOff;
       if (entry.fieldRanges) {
-        const mappedRanges: Record<
-          string,
-          { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-        > = {};
+        const mappedRanges: Record<string, { startOffset: number; endOffset: number }> = {};
         for (const [k, v] of Object.entries(entry.fieldRanges)) {
           if (v) {
-            const fStart = v.startOffset ?? v.startByte ?? 0;
-            const fEnd = v.endOffset ?? v.endByte ?? 0;
+            const fStart = v.startOffset ?? 0;
+            const fEnd = v.endOffset ?? 0;
             mappedRanges[k] = {
-              startByte: v.startByte ?? fStart,
-              endByte: v.endByte ?? fEnd,
               startOffset: fStart,
               endOffset: fEnd,
             };
@@ -1347,6 +1325,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
       if (entry.parentId !== null && entry.parentId !== undefined) {
         const oldParent = Number(entry.parentId);
+        if (skippedOldIds.has(oldParent)) continue;
         entry.parentId = (idMap.get(oldParent) ?? oldParent) as SymbolId;
       }
 
@@ -1376,8 +1355,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             0,
             0,
             entry.name || "",
-            entry.startOffset ?? entry.startByte ?? 0,
-            entry.endOffset ?? entry.endByte ?? 0,
+            entry.startOffset ?? 0,
+            entry.endOffset ?? 0,
             0,
             0,
             parentFQN || "",
@@ -1392,8 +1371,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const byNameSource =
       indexData.byName instanceof Map ? indexData.byName.entries() : Object.entries(indexData.byName || {});
     for (const [name, ids] of byNameSource) {
+      if (/[\r\n]/.test(name) || name.startsWith("/") || /^\s/.test(name)) continue;
       const idList = Array.isArray(ids) ? (ids as SymbolId[]) : [];
-      const mappedIds = idList.map((id) => (idMap.get(Number(id)) ?? id) as SymbolId);
+      const mappedIds = idList
+        .filter((id) => !skippedOldIds.has(Number(id)))
+        .map((id) => (idMap.get(Number(id)) ?? id) as SymbolId);
+      if (mappedIds.length === 0) continue;
       const existing = this.unifiedIndex.byName.get(name);
       if (!existing) {
         this.unifiedIndex.byName.set(name, [...mappedIds]);
@@ -1414,9 +1397,13 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           : typeof rawParentId === "string" && !isNaN(Number(rawParentId))
             ? Number(rawParentId)
             : Number(rawParentId);
+      if (rawParent !== null && skippedOldIds.has(rawParent)) continue;
       const parentId = rawParent === null ? null : ((idMap.get(rawParent) ?? rawParent) as SymbolId);
       const childList = Array.isArray(children) ? (children as SymbolId[]) : [];
-      const mappedChildren = childList.map((c) => (idMap.get(Number(c)) ?? c) as SymbolId);
+      const mappedChildren = childList
+        .filter((c) => !skippedOldIds.has(Number(c)))
+        .map((c) => (idMap.get(Number(c)) ?? c) as SymbolId);
+      if (mappedChildren.length === 0) continue;
       const existing = this.unifiedIndex.childrenOf.get(parentId);
       if (!existing) {
         this.unifiedIndex.childrenOf.set(parentId, [...mappedChildren]);
@@ -1482,8 +1469,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     kind: number,
     flags: number,
     name: string,
-    startByte: number,
-    endByte: number,
+    startOffset: number,
+    endOffset: number,
     merkleLow = 0,
     merkleHigh = 0,
     parentFqn = "",
@@ -1498,8 +1485,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         kind,
         flags,
         name,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
         merkleLow,
         merkleHigh,
         parentFqn,
@@ -1523,8 +1510,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const ids = this.unifiedIndex.byName.get(name) ?? [];
     return ids.map((id) => {
       const sym = this.unifiedIndex.symbols.get(id);
-      const start = sym?.startOffset ?? sym?.startByte ?? 0;
-      const end = sym?.endOffset ?? sym?.endByte ?? 0;
+      const start = sym?.startOffset ?? 0;
+      const end = sym?.endOffset ?? 0;
       return {
         symbolId: id,
         fileId: sym ? (this.uriToId.get(sym.resourceId ?? "") ?? 0) : 0,
@@ -1532,8 +1519,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         kind: typeof sym?.kind === "number" ? sym.kind : 0,
         flags: 0,
         nameHash: 0,
-        startByte: sym?.startByte ?? start,
-        endByte: sym?.endByte ?? end,
         startOffset: start,
         endOffset: end,
       } as WasmStubSymbol;
@@ -1550,8 +1535,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const childrenIds = this.unifiedIndex.childrenOf.get(parentSymbolId) ?? [];
     return childrenIds.map((id) => {
       const sym = this.unifiedIndex.symbols.get(id);
-      const start = sym?.startOffset ?? sym?.startByte ?? 0;
-      const end = sym?.endOffset ?? sym?.endByte ?? 0;
+      const start = sym?.startOffset ?? 0;
+      const end = sym?.endOffset ?? 0;
       return {
         symbolId: id,
         fileId: sym ? (this.uriToId.get(sym.resourceId ?? "") ?? 0) : 0,
@@ -1559,8 +1544,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         kind: typeof sym?.kind === "number" ? sym.kind : 0,
         flags: 0,
         nameHash: 0,
-        startByte: sym?.startByte ?? start,
-        endByte: sym?.endByte ?? end,
         startOffset: start,
         endOffset: end,
       } as WasmStubSymbol;
@@ -1580,8 +1563,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const symIds = uri ? (this.fileSymbols.get(uri) ?? []) : [];
     return symIds.map((id) => {
       const sym = this.unifiedIndex.symbols.get(id);
-      const start = sym?.startOffset ?? sym?.startByte ?? 0;
-      const end = sym?.endOffset ?? sym?.endByte ?? 0;
+      const start = sym?.startOffset ?? 0;
+      const end = sym?.endOffset ?? 0;
       return {
         symbolId: id,
         fileId,
@@ -1589,8 +1572,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         kind: typeof sym?.kind === "number" ? sym.kind : 0,
         flags: 0,
         nameHash: 0,
-        startByte: sym?.startByte ?? start,
-        endByte: sym?.endByte ?? end,
         startOffset: start,
         endOffset: end,
       } as WasmStubSymbol;
@@ -1762,12 +1743,10 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     }
 
     for (const rawEntry of entries) {
-      const startOff = rawEntry.startOffset ?? rawEntry.startByte ?? 0;
-      const endOff = rawEntry.endOffset ?? rawEntry.endByte ?? 0;
+      const startOff = rawEntry.startOffset ?? 0;
+      const endOff = rawEntry.endOffset ?? 0;
       const entry: SymbolEntry = {
         ...rawEntry,
-        startByte: rawEntry.startByte ?? startOff,
-        endByte: rawEntry.endByte ?? endOff,
         startOffset: startOff,
         endOffset: endOff,
       };
@@ -1844,8 +1823,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
 
   /** Callback used to resolve a `SymbolId` to its backing CST node across workspace documents. */
   public cstNodeProvider?: ((id: SymbolId) => unknown | null) | undefined;
-  /** Callback used to slice raw source text `[startByte, endByte]` for a `SymbolEntry`. */
-  public cstTextProvider?: ((startByte: number, endByte: number, entry: SymbolEntry) => string | null) | undefined;
+  /** Callback used to slice raw source text `[startOffset, endOffset]` for a `SymbolEntry`. */
+  public cstTextProvider?: ((startOffset: number, endOffset: number, entry: SymbolEntry) => string | null) | undefined;
   /** Callback routing semantic `query(queryName, id)` invocations to the appropriate language `QueryEngine`. */
   public queryProvider?: ((queryName: string, id: SymbolId) => unknown | null) | undefined;
 
@@ -1859,19 +1838,19 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       if (!entry || !entry.resourceId) return null;
       const tree = this.getDocumentTree(entry.resourceId);
       if (!tree || !tree.rootNode) return null;
-      const start = entry.startOffset ?? entry.startByte;
-      const end = Math.max(start, entry.endOffset ?? entry.endByte);
+      const start = entry.startOffset;
+      const end = Math.max(start, entry.endOffset);
       return typeof tree.rootNode.descendantForIndex === "function"
         ? tree.rootNode.descendantForIndex(start, end)
         : null;
     };
 
-    this.cstTextProvider = (startByte: number, endByte: number, entry: SymbolEntry): string | null => {
+    this.cstTextProvider = (startOffset: number, endOffset: number, entry: SymbolEntry): string | null => {
       if (!entry || !entry.resourceId) return null;
       const text = this.getDocumentText(entry.resourceId);
       if (text === undefined) return null;
-      const start = startByte !== undefined ? startByte : (entry.startOffset ?? entry.startByte);
-      const end = endByte !== undefined ? endByte : (entry.endOffset ?? entry.endByte);
+      const start = startOffset !== undefined ? startOffset : entry.startOffset;
+      const end = endOffset !== undefined ? endOffset : entry.endOffset;
       return text.substring(start, end);
     };
 
@@ -1895,9 +1874,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return null;
   }
 
-  /** Extracts the source text slice `[startByte, endByte]` for `entry` using `cstTextProvider`. */
-  getCstText(startByte: number, endByte: number, entry: SymbolEntry): string | null {
-    if (this.cstTextProvider) return this.cstTextProvider(startByte, endByte, entry);
+  /** Extracts the source text slice `[startOffset, endOffset]` for `entry` using `cstTextProvider`. */
+  getCstText(startOffset: number, endOffset: number, entry: SymbolEntry): string | null {
+    if (this.cstTextProvider) return this.cstTextProvider(startOffset, endOffset, entry);
     return null;
   }
 
@@ -2304,14 +2283,12 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
               ? 0
               : remap(entry.parentId)
             : null;
-        const startOff = entry.startOffset ?? entry.startByte ?? 0;
-        const endOff = entry.endOffset ?? entry.endByte ?? 0;
+        const startOff = entry.startOffset ?? 0;
+        const endOff = entry.endOffset ?? 0;
         merged.symbols.set(newId, {
           ...entry,
           id: newId,
           parentId: newParentId,
-          startByte: entry.startByte ?? startOff,
-          endByte: entry.endByte ?? endOff,
           startOffset: startOff,
           endOffset: endOff,
           language: entry.language ?? lang,

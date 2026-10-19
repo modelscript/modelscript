@@ -41,8 +41,8 @@ export const modelscriptLanguage = language({
   // Bi-directional source writeback for in-place symbol value edits
   writeback: (ctx) => {
     const { entry, newValue } = ctx;
-    if (entry?.startByte != null && entry?.endByte != null && entry.endByte >= entry.startByte) {
-      return { startByte: entry.startByte, endByte: entry.endByte, newText: newValue.trim() };
+    if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset >= entry.startOffset) {
+      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: newValue.trim() };
     }
     return null;
   },

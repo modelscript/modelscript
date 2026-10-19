@@ -98,7 +98,7 @@ The `SymbolIndexer` walks the CST and produces a flat `SymbolIndex`:
 - `byName: Map<string, SymbolId[]>` — name-based lookup
 - `childrenOf: Map<SymbolId | null, SymbolId[]>` — parent→children tree
 
-Each `SymbolEntry` stores `startByte`/`endByte` ranges back into the source, allowing CST recovery via `db.cstNodeRange()`.
+Each `SymbolEntry` stores `startOffset`/`endOffset` ranges back into the source, allowing CST recovery via `db.cstNodeRange()`.
 
 **What is indexed:** class definitions, component declarations, extends clauses, connect equations, function definitions.
 

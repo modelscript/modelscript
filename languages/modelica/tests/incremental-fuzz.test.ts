@@ -222,8 +222,8 @@ describe("0.1 Randomized differential fuzzing", () => {
 
     // Byte offsets in UTF-16
     const edits = [
-      { startByte: e1Start * 2, oldEndByte: e1OldEnd * 2, newEndByte: e1NewEnd * 2 },
-      { startByte: e2Start * 2, oldEndByte: e2OldEnd * 2, newEndByte: e2NewEnd * 2 },
+      { startOffset: e1Start * 2, oldEndOffset: e1OldEnd * 2, newEndOffset: e1NewEnd * 2 },
+      { startOffset: e2Start * 2, oldEndOffset: e2OldEnd * 2, newEndOffset: e2NewEnd * 2 },
     ];
 
     const incRoot = f.parse(newText, edits, 0, 0, undefined, baseTree);

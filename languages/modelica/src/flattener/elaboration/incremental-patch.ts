@@ -21,8 +21,8 @@ export function findEquationNodeAt(root: any, start: number, end: number): any {
   while (queue.length > 0) {
     const curr = queue.pop();
     if (!curr) continue;
-    const s = curr.startIndex ?? curr.startByte ?? 0;
-    const e = curr.endIndex ?? curr.endByte ?? 0;
+    const s = curr.startIndex ?? curr.startOffset ?? 0;
+    const e = curr.endIndex ?? curr.endOffset ?? 0;
     const isEq = curr.type === "simple_equation";
     if (isEq && ((s <= start && e >= end) || (s >= start && e <= end) || (s < end && e > start))) {
       candidate = curr;
@@ -42,8 +42,8 @@ export function findComponentDeclarationAt(root: any, start: number, end: number
   while (queue.length > 0) {
     const curr = queue.pop();
     if (!curr) continue;
-    const s = curr.startIndex ?? curr.startByte ?? 0;
-    const e = curr.endIndex ?? curr.endByte ?? 0;
+    const s = curr.startIndex ?? curr.startOffset ?? 0;
+    const e = curr.endIndex ?? curr.endOffset ?? 0;
     const isComp =
       curr.type === "component_declaration" ||
       curr.type === "component_declaration1" ||
@@ -68,7 +68,7 @@ export function isCstNodeProtected(node: any, cache = new WeakMap<any, boolean>(
     return cache.get(node)!;
   }
   let curr = node;
-  const nodeStart = node?.startIndex ?? node?.startByte ?? 0;
+  const nodeStart = node?.startIndex ?? node?.startOffset ?? 0;
   while (curr) {
     if (curr.type === "ElementSection" || curr.type === "element_section") {
       const isProt = curr.children?.[0]?.text === "protected" || curr.text?.startsWith("protected");
@@ -101,8 +101,8 @@ export function isCstNodeProtected(node: any, cache = new WeakMap<any, boolean>(
         ) {
           isProt = false;
         }
-        const start = child.startIndex ?? child.startByte;
-        const end = child.endIndex ?? child.endByte;
+        const start = child.startIndex ?? child.startOffset;
+        const end = child.endIndex ?? child.endOffset;
         if (start !== undefined && end !== undefined) {
           if (nodeStart >= start && nodeStart < end) {
             cache.set(node, isProt);
@@ -238,7 +238,7 @@ export function patchIncremental(
   flattener: any,
   rootClassId: SymbolId,
   dae: DAEBuilder,
-  dirtyRanges: { startByte: number; endByte: number }[],
+  dirtyRanges: { startOffset: number; endOffset: number }[],
   delta?: number,
 ): boolean {
   if (!dirtyRanges || dirtyRanges.length === 0) return true;
@@ -308,7 +308,7 @@ export function patchIncremental(
   if (missingFromDb && newInDb) {
     (dae as any).renameVar?.(missingFromDb, newInDb);
     if (delta && delta !== 0 && dirtyRanges.length > 0) {
-      dae.shiftSourceRanges(dirtyRanges[0]!.endByte, delta);
+      dae.shiftSourceRanges(dirtyRanges[0]!.endOffset, delta);
     }
     return true;
   }
@@ -316,12 +316,12 @@ export function patchIncremental(
   for (const range of dirtyRanges) {
     const curDelta = (range as any).delta ?? (dirtyRanges.length === 1 ? delta : 0);
     // 1. Check if range matches an equation
-    const eqIdx = dae.findEqAtRange(range.startByte, range.endByte);
-    const varIdx = dae.findVarAtRange(range.startByte, range.endByte);
+    const eqIdx = dae.findEqAtRange(range.startOffset, range.endOffset);
+    const varIdx = dae.findVarAtRange(range.startOffset, range.endOffset);
     if (eqIdx >= 0) {
       const kind = dae.getEqKind(eqIdx);
       if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
-        const eqNode = findEquationNodeAt(rootCst, range.startByte, range.endByte);
+        const eqNode = findEquationNodeAt(rootCst, range.startOffset, range.endOffset);
         if (eqNode) {
           const expressions = (eqNode.children || []).filter(isEquationExpr);
           if (expressions.length >= 2) {
@@ -358,13 +358,13 @@ export function patchIncremental(
               }
             }
 
-            const startB = eqNode.startIndex ?? eqNode.startByte;
-            const endB = eqNode.endIndex ?? eqNode.endByte;
+            const startB = eqNode.startIndex ?? eqNode.startOffset;
+            const endB = eqNode.endIndex ?? eqNode.endOffset;
             if (startB != null && endB != null) {
               dae.setEqSourceRange(eqIdx, startB, endB);
             }
             if (curDelta && curDelta !== 0) {
-              dae.shiftSourceRanges(range.endByte, curDelta);
+              dae.shiftSourceRanges(range.endOffset, curDelta);
             }
             foldSingleArenaEquation(dae, eqIdx, db, rootClassId, flattener.options.omcCompatibility);
             continue;
@@ -375,7 +375,7 @@ export function patchIncremental(
     }
 
     // 2. Check if range matches an inserted equation
-    const insertedEqNode = findEquationNodeAt(rootCst, range.startByte, range.endByte);
+    const insertedEqNode = findEquationNodeAt(rootCst, range.startOffset, range.endOffset);
     if (insertedEqNode) {
       const expressions = (insertedEqNode.children || []).filter(isEquationExpr);
       if (expressions.length >= 2) {
@@ -388,13 +388,13 @@ export function patchIncremental(
         const newEqIdx = dae.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
         (dae as any).setOrigEqRhs?.(newEqIdx, rhsExprId);
 
-        const startB = insertedEqNode.startIndex ?? insertedEqNode.startByte;
-        const endB = insertedEqNode.endIndex ?? insertedEqNode.endByte;
+        const startB = insertedEqNode.startIndex ?? insertedEqNode.startOffset;
+        const endB = insertedEqNode.endIndex ?? insertedEqNode.endOffset;
         if (startB != null && endB != null) {
           dae.setEqSourceRange(newEqIdx, startB, endB);
         }
         if (curDelta && curDelta !== 0) {
-          dae.shiftSourceRanges(range.endByte, curDelta);
+          dae.shiftSourceRanges(range.endOffset, curDelta);
         }
         foldSingleArenaEquation(dae, newEqIdx, db, rootClassId, flattener.options.omcCompatibility);
         if ((dae as any).cachedBlt) {
@@ -406,11 +406,11 @@ export function patchIncremental(
     }
 
     // 3. Check if range matches a variable declaration or rename
-    const compNode = findComponentDeclarationAt(rootCst, range.startByte, range.endByte);
+    const compNode = findComponentDeclarationAt(rootCst, range.startOffset, range.endOffset);
     let targetVarIdx = varIdx;
     if (targetVarIdx < 0 && compNode) {
-      const cs = compNode.startIndex ?? compNode.startByte ?? range.startByte;
-      const ce = compNode.endIndex ?? compNode.endByte ?? range.endByte;
+      const cs = compNode.startIndex ?? compNode.startOffset ?? range.startOffset;
+      const ce = compNode.endIndex ?? compNode.endOffset ?? range.endOffset;
       targetVarIdx = dae.findVarAtRange(cs, ce);
     }
 
@@ -453,7 +453,7 @@ export function patchIncremental(
             }
             // Target var not found by range; check if an existing parameter was replaced at edit range
             if (targetVarIdx < 0) {
-              const oldVarIdx = dae.findVarAtRange(range.startByte, range.endByte);
+              const oldVarIdx = dae.findVarAtRange(range.startOffset, range.endOffset);
               if (oldVarIdx >= 0) {
                 const vn = dae.getVarName(oldVarIdx).split("[")[0];
                 (dae as any).renameVar?.(vn, newName);
@@ -521,7 +521,7 @@ export function patchIncremental(
               dae.setVarAttr(targetVarIdx, "start", attrVal);
             }
             if (curDelta && curDelta !== 0) {
-              dae.shiftSourceRanges(range.endByte, curDelta);
+              dae.shiftSourceRanges(range.endOffset, curDelta);
             }
             continue;
           }
@@ -544,7 +544,7 @@ export function patchIncremental(
             dae.setVarExpression(targetVarIdx, litId);
             dae.setVarStartValue(targetVarIdx, numVal);
             if (curDelta && curDelta !== 0) {
-              dae.shiftSourceRanges(range.endByte, curDelta);
+              dae.shiftSourceRanges(range.endOffset, curDelta);
             }
             if (oldVal !== numVal) {
               foldTargetedParamEquations(dae, baseName, db, rootClassId, flattener.options.omcCompatibility);
@@ -567,7 +567,7 @@ export function patchIncremental(
               ),
             });
             if (curDelta && curDelta !== 0) {
-              dae.shiftSourceRanges(range.endByte, curDelta);
+              dae.shiftSourceRanges(range.endOffset, curDelta);
             }
             continue;
           } else {
@@ -583,7 +583,7 @@ export function patchIncremental(
               const exprId = lowerExpr(exprNode, dae, "");
               dae.setVarExpression(targetVarIdx, exprId);
               if (curDelta && curDelta !== 0) {
-                dae.shiftSourceRanges(range.endByte, curDelta);
+                dae.shiftSourceRanges(range.endOffset, curDelta);
               }
               foldTargetedParamEquations(dae, baseName, db, rootClassId, flattener.options.omcCompatibility);
               continue;
@@ -596,7 +596,7 @@ export function patchIncremental(
             return false; // New component added: trigger structural fallback!
           }
           if (curDelta && curDelta !== 0) {
-            dae.shiftSourceRanges(range.endByte, curDelta);
+            dae.shiftSourceRanges(range.endOffset, curDelta);
           }
           continue;
         }

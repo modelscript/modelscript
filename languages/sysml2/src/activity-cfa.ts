@@ -22,15 +22,15 @@ export interface ActionPinInfo {
   direction: "in" | "out" | "inout" | "return";
   type?: string | undefined;
   hasDefault?: boolean | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface ActionAssignmentInfo {
   target: string;
   expr: string;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface ActivityNodeInfo {
@@ -41,8 +41,8 @@ export interface ActivityNodeInfo {
   inputs: ActionPinInfo[];
   outputs: ActionPinInfo[];
   assignments: ActionAssignmentInfo[];
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface ActivityFlowInfo {
@@ -51,8 +51,8 @@ export interface ActivityFlowInfo {
   kind: "control" | "object";
   guard?: string | undefined;
   itemType?: string | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface ActivityGraph {
@@ -60,8 +60,8 @@ export interface ActivityGraph {
   nodes: ActivityNodeInfo[];
   flows: ActivityFlowInfo[];
   declaredOutputs: ActionPinInfo[];
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface CfaDiagnostic {
@@ -69,8 +69,8 @@ export interface CfaDiagnostic {
   rule: string;
   nodeName: string;
   message: string;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface ActivityCfaResult {
@@ -269,8 +269,8 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       inputs,
       outputs,
       assignments,
-      startByte: m.index,
-      endByte: idx,
+      startOffset: m.index,
+      endOffset: idx,
     });
   }
 
@@ -286,8 +286,8 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       inputs: [],
       outputs: [],
       assignments: [],
-      startByte: cMatch.index,
-      endByte: cMatch.index + cMatch[0].length,
+      startOffset: cMatch.index,
+      endOffset: cMatch.index + cMatch[0].length,
     });
   }
 
@@ -304,8 +304,8 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       inputs: [],
       outputs: [],
       assignments: [],
-      startByte: dbMatch.index,
-      endByte: block.endPos,
+      startOffset: dbMatch.index,
+      endOffset: block.endPos,
     });
 
     const caseRegex =
@@ -321,16 +321,16 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
         inputs: [],
         outputs: [],
         assignments: [],
-        startByte: dbMatch.index + cm.index,
-        endByte: dbMatch.index + cm.index + cm[0].length,
+        startOffset: dbMatch.index + cm.index,
+        endOffset: dbMatch.index + cm.index + cm[0].length,
       });
       flows.push({
         source: decideName,
         target: targetName,
         kind: "control",
         guard: guardStr,
-        startByte: dbMatch.index + cm.index,
-        endByte: dbMatch.index + cm.index + cm[0].length,
+        startOffset: dbMatch.index + cm.index,
+        endOffset: dbMatch.index + cm.index + cm[0].length,
       });
     }
   }
@@ -349,8 +349,8 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       target: tgt,
       kind: isObject ? "object" : "control",
       guard: guard?.trim(),
-      startByte: sMatch.index,
-      endByte: sMatch.index + sMatch[0].length,
+      startOffset: sMatch.index,
+      endOffset: sMatch.index + sMatch[0].length,
     });
   }
 
@@ -359,8 +359,8 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
     nodes,
     flows,
     declaredOutputs,
-    startByte: 0,
-    endByte: sysmlSource.length,
+    startOffset: 0,
+    endOffset: sysmlSource.length,
   };
 }
 
@@ -379,7 +379,7 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
     const name = child.name;
 
     if (rule === "SuccessionAsUsage" || rule === "SuccessionFlowUsage" || rule === "FlowUsage") {
-      const text = db.cstText(child.startByte, child.endByte, child) || "";
+      const text = db.cstText(child.startOffset, child.endOffset, child) || "";
       const m =
         /\b(?:first|succession)\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?/.exec(
           text,
@@ -393,8 +393,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
           target: m[2]!,
           kind: rule === "SuccessionFlowUsage" || rule === "FlowUsage" ? "object" : "control",
           guard: m[3]?.trim(),
-          startByte: child.startByte,
-          endByte: child.endByte,
+          startOffset: child.startOffset,
+          endOffset: child.endOffset,
         });
       }
       continue;
@@ -411,7 +411,7 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
       rule === "ReferenceUsage" ||
       rule === "DefaultReferenceUsage"
     ) {
-      const text = (db.cstText(child.startByte, child.endByte, child) || "").trim();
+      const text = (db.cstText(child.startOffset, child.endOffset, child) || "").trim();
       const metaDir = (child.metadata as any)?.direction;
       const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
       const dir =
@@ -422,8 +422,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
           name,
           direction: dir === ("return" as any) ? "out" : dir,
           hasDefault,
-          startByte: child.startByte,
-          endByte: child.endByte,
+          startOffset: child.startOffset,
+          endOffset: child.endOffset,
         });
         continue;
       }
@@ -444,7 +444,7 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
       const childSymbols = db.childrenOf(child.id);
       for (const pin of childSymbols) {
         if (!pin.name || pin.name === "<anonymous>") continue;
-        const text = (db.cstText(pin.startByte, pin.endByte, pin) || "").trim();
+        const text = (db.cstText(pin.startOffset, pin.endOffset, pin) || "").trim();
         const metaDir = (pin.metadata as any)?.direction;
         const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
         const isParamRule = pin.ruleName === "ParameterMember" || pin.ruleName === "ReturnParameterMember";
@@ -462,8 +462,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
           name: pin.name,
           direction: isOut ? "out" : "in",
           hasDefault,
-          startByte: pin.startByte,
-          endByte: pin.endByte,
+          startOffset: pin.startOffset,
+          endOffset: pin.endOffset,
         };
         if (isOut) {
           outputs.push(pinInfo);
@@ -474,7 +474,7 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
       }
 
       // Check assignments and inline pins in CST text
-      const actionText = db.cstText(child.startByte, child.endByte, child) || "";
+      const actionText = db.cstText(child.startOffset, child.endOffset, child) || "";
       const headerSlice = actionText.split("{")[0] || actionText;
       const typeMatch = /:\s*([A-Za-z_][A-Za-z0-9_.]*)/.exec(headerSlice);
       const typingChild = childSymbols.find((c) => c.ruleName === "OwnedFeatureTyping" && c.name);
@@ -496,8 +496,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
           name: pName,
           direction: dir,
           type: pType,
-          startByte: child.startByte + bodyStartIdx + 1 + pMatch.index,
-          endByte: child.startByte + bodyStartIdx + 1 + pMatch.index + pMatch[0].length,
+          startOffset: child.startOffset + bodyStartIdx + 1 + pMatch.index,
+          endOffset: child.startOffset + bodyStartIdx + 1 + pMatch.index + pMatch[0].length,
         };
         if (dir === "in") {
           inputs.push(pinInfo);
@@ -513,8 +513,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         assignments.push({
           target: asMatch[1]!,
           expr: asMatch[2]!.trim(),
-          startByte: child.startByte + asMatch.index,
-          endByte: child.startByte + asMatch.index + asMatch[0].length,
+          startOffset: child.startOffset + asMatch.index,
+          endOffset: child.startOffset + asMatch.index + asMatch[0].length,
         });
       }
       const assignRevRegex = /\bassign\s+([^;=]+?)\s*=:\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
@@ -524,8 +524,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
           assignments.push({
             target: tgt,
             expr: asMatch[1]!.trim(),
-            startByte: child.startByte + asMatch.index,
-            endByte: child.startByte + asMatch.index + asMatch[0].length,
+            startOffset: child.startOffset + asMatch.index,
+            endOffset: child.startOffset + asMatch.index + asMatch[0].length,
           });
         }
       }
@@ -538,8 +538,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         inputs,
         outputs,
         assignments,
-        startByte: child.startByte,
-        endByte: child.endByte,
+        startOffset: child.startOffset,
+        endOffset: child.endOffset,
       });
     } else if (rule === "MergeNode" || rule === "DecisionNode" || rule === "ForkNode" || rule === "JoinNode") {
       let kind: ActivityNodeInfo["kind"] = "merge";
@@ -553,8 +553,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         inputs: [],
         outputs: [],
         assignments: [],
-        startByte: child.startByte,
-        endByte: child.endByte,
+        startOffset: child.startOffset,
+        endOffset: child.endOffset,
       });
     }
   }
@@ -564,8 +564,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
     nodes,
     flows,
     declaredOutputs,
-    startByte: actionSymbol.startByte,
-    endByte: actionSymbol.endByte,
+    startOffset: actionSymbol.startOffset,
+    endOffset: actionSymbol.endOffset,
   };
 }
 
@@ -632,8 +632,8 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
         rule: "unreachable-action",
         nodeName: n.name,
         message: `Action '${n.name}' is disconnected or unreachable from the workflow execution path.`,
-        startByte: n.startByte,
-        endByte: n.endByte,
+        startOffset: n.startOffset,
+        endOffset: n.endOffset,
       });
     }
   }
@@ -697,8 +697,8 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
               rule: "join-decide-deadlock",
               nodeName: join.name,
               message: `Join deadlock: join node '${join.name}' synchronizes mutually exclusive paths originating from decision node '${d}' without an intervening merge node.`,
-              startByte: join.startByte,
-              endByte: join.endByte,
+              startOffset: join.startOffset,
+              endOffset: join.endOffset,
             });
             break;
           }
@@ -785,8 +785,8 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
               rule: "use-before-def",
               nodeName: n.name,
               message: `Variable '${id}' may be used before being initialized in action '${n.name}'.`,
-              startByte: asgn.startByte || n.startByte,
-              endByte: asgn.endByte || n.endByte,
+              startOffset: asgn.startOffset || n.startOffset,
+              endOffset: asgn.endOffset || n.endOffset,
             });
           }
         }
@@ -822,8 +822,8 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
             rule: "definite-output-assignment",
             nodeName: outPin.name,
             message: `Output variable '${outPin.name}' is declared but not assigned across all action paths.`,
-            startByte: outPin.startByte || n.startByte,
-            endByte: outPin.endByte || n.endByte,
+            startOffset: outPin.startOffset || n.startOffset,
+            endOffset: outPin.endOffset || n.endOffset,
           });
         }
       }
@@ -855,8 +855,8 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
             rule: "definite-output-assignment",
             nodeName: v,
             message: `Output variable '${v}' is declared but not assigned across all action paths.`,
-            startByte: outPin?.startByte || m.startByte,
-            endByte: outPin?.endByte || m.endByte,
+            startOffset: outPin?.startOffset || m.startOffset,
+            endOffset: outPin?.endOffset || m.endOffset,
           });
         }
       }
@@ -873,8 +873,8 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
           rule: "unbound-action-input",
           nodeName: n.name,
           message: `Action '${n.name}' requires input (${n.inputs.map((p) => p.name).join(", ")}) but has no incoming flows.`,
-          startByte: n.startByte,
-          endByte: n.endByte,
+          startOffset: n.startOffset,
+          endOffset: n.endOffset,
         });
       }
     }
@@ -1025,8 +1025,8 @@ export function analyzeInterproceduralCfa(
           rule: "unresolved-callee-activity",
           nodeName: node.name,
           message: `Action invocation '${node.name}' references undefined activity '${node.calleeTypeName}'.`,
-          startByte: node.startByte,
-          endByte: node.endByte,
+          startOffset: node.startOffset,
+          endOffset: node.endOffset,
         });
         continue;
       }
@@ -1039,8 +1039,8 @@ export function analyzeInterproceduralCfa(
           rule: "unsound-callee-dependency",
           nodeName: node.name,
           message: `Action invocation '${node.name}' calls activity '${callee.name}', which has soundness errors (${calleeRes.summary}).`,
-          startByte: node.startByte,
-          endByte: node.endByte,
+          startOffset: node.startOffset,
+          endOffset: node.endOffset,
         });
       }
 
@@ -1067,8 +1067,8 @@ export function analyzeInterproceduralCfa(
             rule: "unfulfilled-callee-input",
             nodeName: node.name,
             message: `Required input pin '${pinName}' of activity '${callee.name}' is unfulfilled at call site '${node.name}'.`,
-            startByte: node.startByte,
-            endByte: node.endByte,
+            startOffset: node.startOffset,
+            endOffset: node.endOffset,
           });
         }
       }
@@ -1090,8 +1090,8 @@ export function analyzeInterproceduralCfa(
               rule: "unresolved-callee-pin",
               nodeName: node.name,
               message: `Pin '${pinName}' does not exist on invoked activity '${callee.name}'.`,
-              startByte: flow.startByte || node.startByte,
-              endByte: flow.endByte || node.endByte,
+              startOffset: flow.startOffset || node.startOffset,
+              endOffset: flow.endOffset || node.endOffset,
             });
           }
         }

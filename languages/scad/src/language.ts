@@ -443,7 +443,7 @@ export const scadLanguage = language({
                 s.kind === "Variable" &&
                 s.name === self.name &&
                 s.resourceId === self.resourceId &&
-                (s.startByte ?? 0) < (self.startByte ?? 0),
+                (s.startOffset ?? 0) < (self.startOffset ?? 0),
             );
             if (!earlier) return null;
             const nameRange = self.fieldRanges?.["name"];
@@ -452,8 +452,8 @@ export const scadLanguage = language({
               code: "SCAD_DUPLICATE_DECLARATION",
               message: `Variable '${self.name}' is assigned multiple times in the same scope; the last assignment overrides earlier ones.`,
               field: "name",
-              startByte: nameRange?.startByte ?? self.startByte,
-              endByte: nameRange?.endByte ?? (self.startByte ?? 0) + self.name.length,
+              startOffset: nameRange?.startOffset ?? self.startOffset,
+              endOffset: nameRange?.endOffset ?? (self.startOffset ?? 0) + self.name.length,
             };
           },
         },
@@ -488,7 +488,7 @@ export const scadLanguage = language({
                 s.kind === "Module" &&
                 s.name === self.name &&
                 s.resourceId === self.resourceId &&
-                (s.startByte ?? 0) < (self.startByte ?? 0),
+                (s.startOffset ?? 0) < (self.startOffset ?? 0),
             );
             if (!earlier) return null;
             const nameRange = self.fieldRanges?.["name"];
@@ -497,8 +497,8 @@ export const scadLanguage = language({
               code: "SCAD_DUPLICATE_DECLARATION",
               message: `Duplicate module declaration '${self.name}' in the same scope.`,
               field: "name",
-              startByte: nameRange?.startByte ?? self.startByte,
-              endByte: nameRange?.endByte ?? (self.startByte ?? 0) + self.name.length,
+              startOffset: nameRange?.startOffset ?? self.startOffset,
+              endOffset: nameRange?.endOffset ?? (self.startOffset ?? 0) + self.name.length,
             };
           },
         },
@@ -534,7 +534,7 @@ export const scadLanguage = language({
                 s.kind === "Function" &&
                 s.name === self.name &&
                 s.resourceId === self.resourceId &&
-                (s.startByte ?? 0) < (self.startByte ?? 0),
+                (s.startOffset ?? 0) < (self.startOffset ?? 0),
             );
             if (!earlier) return null;
             const nameRange = self.fieldRanges?.["name"];
@@ -543,8 +543,8 @@ export const scadLanguage = language({
               code: "SCAD_DUPLICATE_DECLARATION",
               message: `Duplicate function declaration '${self.name}' in the same scope.`,
               field: "name",
-              startByte: nameRange?.startByte ?? self.startByte,
-              endByte: nameRange?.endByte ?? (self.startByte ?? 0) + self.name.length,
+              startOffset: nameRange?.startOffset ?? self.startOffset,
+              endOffset: nameRange?.endOffset ?? (self.startOffset ?? 0) + self.name.length,
             };
           },
         },

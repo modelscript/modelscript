@@ -13,8 +13,6 @@ export interface ProvenanceToken {
   readonly tokenId: number;
   readonly sourceLang?: string | undefined;
   readonly sourceUri?: string | undefined;
-  readonly startByte?: number | undefined;
-  readonly endByte?: number | undefined;
   readonly startOffset?: number | undefined;
   readonly endOffset?: number | undefined;
   readonly symbolId?: string | number | undefined;
@@ -27,8 +25,6 @@ export interface OntologyProjectionResult {
   blameLocations?:
     | readonly {
         uri?: string | undefined;
-        startByte?: number | undefined;
-        endByte?: number | undefined;
         startOffset?: number | undefined;
         endOffset?: number | undefined;
         sourceLang?: string | undefined;
@@ -519,8 +515,6 @@ export interface SHACLViolation {
   readonly blameLocations?:
     | readonly {
         uri?: string | undefined;
-        startByte?: number | undefined;
-        endByte?: number | undefined;
         startOffset?: number | undefined;
         endOffset?: number | undefined;
         sourceLang?: string | undefined;
@@ -5532,6 +5526,31 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     const formatIri = (name: string) => (name.startsWith(prefix) || name.includes(":") ? name : `${prefix}${name}`);
 
     for (const [id, entry] of unified.symbols.entries()) {
+      if (entry.metadata?.isPredefined) continue;
+      const rawName = entry.name || "";
+      if (
+        !rawName ||
+        rawName.startsWith("'") ||
+        rawName.startsWith('"') ||
+        /[\s\r\n/]/.test(rawName) ||
+        rawName === entry.ruleName
+      ) {
+        continue;
+      }
+      const resId = entry.resourceId || "";
+      if (
+        resId.startsWith("modelica:") ||
+        resId.startsWith("sysml2://stdlib/") ||
+        resId.startsWith("library-bundle:/") ||
+        resId.includes("/modelscript_registry/") ||
+        resId.includes("/lib/Modelica") ||
+        resId.includes("/lib/Complex") ||
+        resId.includes("/lib/ModelicaServices") ||
+        resId.includes("data/libraries/")
+      ) {
+        continue;
+      }
+
       let entryLang = entry.language;
       if (
         !entryLang &&
@@ -5642,7 +5661,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
           });
           if (Array.isArray(entry.inherits)) {
             for (const sup of entry.inherits) {
-              if (sup) {
+              if (sup && !/[\s\r\n/]/.test(sup)) {
                 projected.push({
                   type: "SubClassOf",
                   subClassIri: iri,
@@ -5656,7 +5675,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
           for (const childId of children) {
             const child = unified.symbols.get(childId);
             if (child && (child.kind === "Extends" || child.ruleName === "extends_clause")) {
-              if (child.name) {
+              if (child.name && !/[\s\r\n/]/.test(child.name)) {
                 projected.push({
                   type: "SubClassOf",
                   subClassIri: iri,
@@ -5668,12 +5687,16 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
               child &&
               (child.kind === "Component" || child.kind === "Variable" || child.kind === "Connector")
             ) {
+              if (
+                !child.name ||
+                child.name.startsWith("'") ||
+                child.name.startsWith('"') ||
+                /[\s\r\n/]/.test(child.name) ||
+                child.name === child.ruleName
+              ) {
+                continue;
+              }
               const compIri = `${prefix}${entry.name}.${child.name}`;
-              projected.push({
-                type: "ClassDeclaration",
-                iri: compIri,
-                sourceLang: "modelica",
-              });
               projected.push({
                 type: "ObjectPropertyAssertion",
                 propertyIri: "mo:hasPart",
@@ -5682,7 +5705,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
                 sourceLang: "modelica",
               });
               const typeName = (child as any).type || (child as any).typeName;
-              if (typeName) {
+              if (typeName && !/[\s\r\n/]/.test(typeName)) {
                 projected.push({
                   type: "ClassAssertion",
                   individualIri: compIri,
@@ -6100,8 +6123,6 @@ export function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | 
   const base: Omit<SymbolEntry, "id" | "kind" | "name"> = {
     ruleName: "owl2:projected",
     namePath: "iri",
-    startByte: 0,
-    endByte: 0,
     startOffset: 0,
     endOffset: 0,
     parentId: null,

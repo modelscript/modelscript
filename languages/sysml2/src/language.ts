@@ -614,7 +614,7 @@ const getFeatureValue = (db: QueryDB, entry: SymbolEntry): EvalResult => {
   }
 
   // Look for default value in modification syntax (= expr)
-  const text = db.cstText(entry.startByte, entry.endByte);
+  const text = db.cstText(entry.startOffset, entry.endOffset);
   if (text) {
     const eqMatch = text.match(/=\s*([0-9]+(?:\.[0-9]+)?)\s*;?\s*$/);
     if (eqMatch) {
@@ -1233,7 +1233,7 @@ const constraintUsageQueries = {
 const getConstraintKind = (db: QueryDB, self: SymbolEntry): string => {
   const meta = metaStr(self, "constraintKind");
   if (meta) return meta;
-  const text = db.cstText(Math.max(0, self.startByte - 30), self.startByte);
+  const text = db.cstText(Math.max(0, self.startOffset - 30), self.startOffset);
   if (text && text.includes("assume")) return "assume";
   return "require"; // default
 };
@@ -1295,7 +1295,7 @@ const getRelationshipTargetName = (db: QueryDB, entry: SymbolEntry): string | nu
   // The CST text of the OwnedReferenceSubsetting span contains the qualified name.
   for (const child of db.childrenOf(entry.id)) {
     if (child.ruleName === "OwnedReferenceSubsetting") {
-      const raw = db.cstText(child.startByte, child.endByte);
+      const raw = db.cstText(child.startOffset, child.endOffset);
       if (raw) {
         const parts = raw.trim().split("::");
         return parts[parts.length - 1]!;
@@ -1305,7 +1305,7 @@ const getRelationshipTargetName = (db: QueryDB, entry: SymbolEntry): string | nu
 
   // Final fallback: read the raw CST text between the keyword and the body/semicolon
   // to get the target name from the source text.
-  const text = db.cstText(entry.startByte, entry.endByte);
+  const text = db.cstText(entry.startOffset, entry.endOffset);
   if (text) {
     // Match patterns:  "verify <name>" or "satisfy <name>" or qualified names like "Pkg::Name"
     const match = text.match(
@@ -1577,8 +1577,8 @@ const definitionLints = {
           code: SysML2ErrorCode.DUPLICATE_MEMBER.code,
           field: "declaredName",
           ...(dupRange
-            ? { startByte: dupRange.startByte, endByte: dupRange.endByte }
-            : { startByte: child.startByte, endByte: child.endByte }),
+            ? { startOffset: dupRange.startOffset, endOffset: dupRange.endOffset }
+            : { startOffset: child.startOffset, endOffset: child.endOffset }),
         });
       }
       seen.set(child.name, child);
@@ -1693,8 +1693,8 @@ const usageLints = {
     if (!isNaN(lower) && !isNaN(upper) && lower > upper) {
       return error(SysML2ErrorCode.INVALID_MULTIPLICITY_BOUNDS.message(lowerStr, upperStr), {
         code: SysML2ErrorCode.INVALID_MULTIPLICITY_BOUNDS.code,
-        startByte: self.startByte,
-        endByte: self.endByte,
+        startOffset: self.startOffset,
+        endOffset: self.endOffset,
       });
     }
 
@@ -1739,8 +1739,8 @@ const usageLints = {
     if (inferRes.error) {
       return error(inferRes.error.message, {
         code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
-        startByte: inferRes.error.startByte ?? self.startByte,
-        endByte: inferRes.error.endByte ?? self.endByte,
+        startOffset: inferRes.error.startOffset ?? self.startOffset,
+        endOffset: inferRes.error.endOffset ?? self.endOffset,
       });
     }
 
@@ -1753,8 +1753,8 @@ const usageLints = {
         ),
         {
           code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
-          startByte: self.startByte,
-          endByte: self.endByte,
+          startOffset: self.startOffset,
+          endOffset: self.endOffset,
         },
       );
     }
@@ -1799,8 +1799,8 @@ const constraintLints = {
     if (inferRes.error) {
       return error(inferRes.error.message, {
         code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
-        startByte: inferRes.error.startByte ?? self.startByte,
-        endByte: inferRes.error.endByte ?? self.endByte,
+        startOffset: inferRes.error.startOffset ?? self.startOffset,
+        endOffset: inferRes.error.endOffset ?? self.endOffset,
       });
     }
     return null;
@@ -2026,14 +2026,14 @@ const verificationCaseUsageLints = {
 
 const getAllocationEndpointName = (db: QueryDB, ref: SymbolEntry): string => {
   if (ref.name && ref.name !== "OwnedReferenceSubsetting" && !ref.name.includes(".")) {
-    const raw = (db.cstText(ref.startByte, ref.endByte) || "").trim();
+    const raw = (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
     if (raw.includes(".")) return raw;
     return ref.name.trim();
   }
   if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
     return ref.name.trim();
   }
-  return (db.cstText(ref.startByte, ref.endByte) || "").trim();
+  return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
 };
 
 const getUnresolvedFeatureRange = (
@@ -2041,9 +2041,9 @@ const getUnresolvedFeatureRange = (
   scopeId: number | null,
   ref: SymbolEntry,
   pathStr: string,
-): { startByte: number; endByte: number } => {
+): { startOffset: number; endOffset: number } => {
   if (!pathStr.includes(".")) {
-    return { startByte: ref.startByte, endByte: ref.endByte };
+    return { startOffset: ref.startOffset, endOffset: ref.endOffset };
   }
   const segments = pathStr.split(".");
   let curr = resolveFeatureInScope(db, scopeId, segments[0]!);
@@ -2071,8 +2071,8 @@ const getUnresolvedFeatureRange = (
   }
   const segLen = segments[failIdx]?.length ?? pathStr.length;
   return {
-    startByte: ref.startByte + offset,
-    endByte: Math.min(ref.endByte, ref.startByte + offset + segLen),
+    startOffset: ref.startOffset + offset,
+    endOffset: Math.min(ref.endOffset, ref.startOffset + offset + segLen),
   };
 };
 
@@ -2118,8 +2118,8 @@ const allocationLints = {
         return error(SysML2ErrorCode.ALLOCATION_TARGET_UNRESOLVED.message(targetName), {
           code: SysML2ErrorCode.ALLOCATION_TARGET_UNRESOLVED.code,
           field: "declaredName",
-          startByte: range.startByte,
-          endByte: range.endByte,
+          startOffset: range.startOffset,
+          endOffset: range.endOffset,
         });
       }
     }
@@ -2137,8 +2137,8 @@ const allocationLints = {
         return error(SysML2ErrorCode.ALLOCATION_SOURCE_UNRESOLVED.message(sourceName), {
           code: SysML2ErrorCode.ALLOCATION_SOURCE_UNRESOLVED.code,
           field: "declaredName",
-          startByte: range.startByte,
-          endByte: range.endByte,
+          startOffset: range.startOffset,
+          endOffset: range.endOffset,
         });
       }
     }
@@ -2173,8 +2173,8 @@ const allocationLints = {
               ),
               {
                 code: SysML2ErrorCode.DIMENSIONAL_CONNECTION_MISMATCH.code,
-                startByte: self.startByte,
-                endByte: self.endByte,
+                startOffset: self.startOffset,
+                endOffset: self.endOffset,
               },
             );
           }
@@ -2217,8 +2217,8 @@ const connectionLints = {
               ),
               {
                 code: SysML2ErrorCode.DIMENSIONAL_CONNECTION_MISMATCH.code,
-                startByte: self.startByte,
-                endByte: self.endByte,
+                startOffset: self.startOffset,
+                endOffset: self.endOffset,
               },
             );
           }
@@ -2235,8 +2235,8 @@ const connectionLints = {
       const connName = self.name && self.name !== "<anonymous>" ? self.name : v.connectionName || "<anonymous>";
       return error(SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.message(connName, v.reason), {
         code: SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.code,
-        startByte: self.startByte,
-        endByte: self.endByte,
+        startOffset: self.startOffset,
+        endOffset: self.endOffset,
       });
     }
     return null;
@@ -2292,8 +2292,8 @@ const actionCommonLints = {
         const emitFn = d.severity === "warning" ? warning : error;
         return emitFn(d.message, {
           code,
-          startByte: d.startByte ?? self.startByte,
-          endByte: d.endByte ?? self.endByte,
+          startOffset: d.startOffset ?? self.startOffset,
+          endOffset: d.endOffset ?? self.endOffset,
         });
       });
       return results.length === 1 ? results[0]! : results;
@@ -2301,7 +2301,7 @@ const actionCommonLints = {
     return null;
   },
   interproceduralContracts: (db: QueryDB, self: SymbolEntry) => {
-    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
     if (/\b(?:perform|:\s*[A-Za-z_])/.test(text)) {
       const res = analyzeInterproceduralCfa(db, self.name);
       const localRules = new Set([
@@ -2322,21 +2322,23 @@ const actionCommonLints = {
           !localRules.has(d.rule) &&
           (d.nodeName === self.name ||
             childNames.has(d.nodeName) ||
-            (d.startByte !== undefined && d.startByte >= self.startByte && (d.endByte ?? d.startByte) <= self.endByte)),
+            (d.startOffset !== undefined &&
+              d.startOffset >= self.startOffset &&
+              (d.endOffset ?? d.startOffset) <= self.endOffset)),
       );
       if (myErr) {
         const emitFn = myErr.severity === "warning" ? warning : error;
         return emitFn(myErr.message, {
           code: SysML2ErrorCode.INTERPROCEDURAL_CONTRACT_VIOLATION.code,
-          startByte: myErr.startByte ?? self.startByte,
-          endByte: myErr.endByte ?? self.endByte,
+          startOffset: myErr.startOffset ?? self.startOffset,
+          endOffset: myErr.endOffset ?? self.endOffset,
         });
       }
     }
     return null;
   },
   loopTermination: (db: QueryDB, self: SymbolEntry) => {
-    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
     const whileMatch = /\bwhile\s*(?:\(([^)]+)\)|([^{]+?))\s*\{/.exec(text);
     if (whileMatch) {
       const cond = (whileMatch[1] ?? whileMatch[2] ?? "").trim();
@@ -2348,8 +2350,8 @@ const actionCommonLints = {
         const firstErr = loopRes.diagnostics[0]!;
         return warning(firstErr.message, {
           code: SysML2ErrorCode.LOOP_NON_TERMINATING.code,
-          startByte: self.startByte + whileMatch.index,
-          endByte: self.endByte,
+          startOffset: self.startOffset + whileMatch.index,
+          endOffset: self.endOffset,
         });
       }
     }
@@ -2357,7 +2359,7 @@ const actionCommonLints = {
   },
   decisionTableExhaustiveness: (db: QueryDB, self: SymbolEntry) => {
     const hasDecisions = db.childrenOf(self.id).some((c) => c.ruleName === "DecisionNode");
-    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
     if (!hasDecisions && !/\bdecide\b/.test(text)) return null;
 
     let dtMap = DecisionTableVerifier.verifyAllDecisionsInDb(db, self);
@@ -2371,8 +2373,8 @@ const actionCommonLints = {
         results.push(
           error(SysML2ErrorCode.DECISION_TABLE_NONDETERMINISTIC.message(decideName, pairStr), {
             code: SysML2ErrorCode.DECISION_TABLE_NONDETERMINISTIC.code,
-            startByte: self.startByte,
-            endByte: self.endByte,
+            startOffset: self.startOffset,
+            endOffset: self.endOffset,
           }),
         );
       }
@@ -2380,8 +2382,8 @@ const actionCommonLints = {
         results.push(
           warning(SysML2ErrorCode.DECISION_TABLE_DEAD_BRANCH.message(decideName, dtRes.deadBranches.join(", ")), {
             code: SysML2ErrorCode.DECISION_TABLE_DEAD_BRANCH.code,
-            startByte: self.startByte,
-            endByte: self.endByte,
+            startOffset: self.startOffset,
+            endOffset: self.endOffset,
           }),
         );
       }
@@ -2394,8 +2396,8 @@ const actionCommonLints = {
             ),
             {
               code: SysML2ErrorCode.DECISION_TABLE_NON_EXHAUSTIVE.code,
-              startByte: self.startByte,
-              endByte: self.endByte,
+              startOffset: self.startOffset,
+              endOffset: self.endOffset,
             },
           ),
         );
@@ -2405,7 +2407,7 @@ const actionCommonLints = {
     return results.length === 1 ? results[0]! : results;
   },
   activitySafetyVerification: (db: QueryDB, self: SymbolEntry) => {
-    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
     if (!text || (!text.includes("hazard") && !text.includes("error") && !text.includes("assert"))) {
       return null;
     }
@@ -2417,8 +2419,8 @@ const actionCommonLints = {
     if (!res.isCertified && res.bmcResult?.violation) {
       return error(res.summary, {
         code: SysML2ErrorCode.ACTIVITY_SAFETY_VIOLATION.code,
-        startByte: self.startByte,
-        endByte: self.endByte,
+        startOffset: self.startOffset,
+        endOffset: self.endOffset,
       });
     }
     return null;
@@ -2785,8 +2787,8 @@ const stateMachineCommonLints = {
           error(diag.message, {
             code: SysML2ErrorCode.STATEMACHINE_NONDETERMINISTIC.code,
             field: "declaredName",
-            startByte: self.startByte,
-            endByte: self.endByte,
+            startOffset: self.startOffset,
+            endOffset: self.endOffset,
           }),
         );
       } else if (diag.type === "deadlock") {
@@ -2794,8 +2796,8 @@ const stateMachineCommonLints = {
           warning(diag.message, {
             code: SysML2ErrorCode.STATEMACHINE_DEADLOCK.code,
             field: "declaredName",
-            startByte: self.startByte,
-            endByte: self.endByte,
+            startOffset: self.startOffset,
+            endOffset: self.endOffset,
           }),
         );
       }
@@ -2828,7 +2830,7 @@ const transitionUsageLints = {
     if (stateSiblings.length === 0) return null;
     const validStateNames = new Set(stateSiblings.map((s) => s.name).filter(Boolean));
 
-    const text = db.cstText(self.startByte, self.endByte, self) || "";
+    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
     const firstMatch = /\bfirst\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(text);
     const thenMatch = /\bthen\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(text);
 
@@ -2837,8 +2839,8 @@ const transitionUsageLints = {
       if (stateName && !validStateNames.has(stateName) && !resolveFeatureInScope(db, self.parentId, stateName)) {
         return error(SysML2ErrorCode.UNRESOLVED_TRANSITION_STATE.message(stateName), {
           code: SysML2ErrorCode.UNRESOLVED_TRANSITION_STATE.code,
-          startByte: self.startByte,
-          endByte: self.endByte,
+          startOffset: self.startOffset,
+          endOffset: self.endOffset,
         });
       }
     }
@@ -3433,7 +3435,7 @@ export const sysml2Language = language({
       ) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         const { SysML2DaeLowerer } = await import("./sysml2-dae-lowerer.js");
-        const { simulateArena } = await import("@modelscript/simulate");
+        const { simulateArenaAsync } = await import("@modelscript/simulate");
 
         let sourceText = "";
         if (ctx.uri && ctx.workspaceManager?.getFileContent) {
@@ -3449,7 +3451,7 @@ export const sysml2Language = language({
         const startTime = params?.startTime ?? 0;
         const stopTime = params?.stopTime ?? 10;
         const step = params?.step ?? (stopTime > startTime ? (stopTime - startTime) / 100 : 0.1);
-        const simResult = simulateArena(lowered.arena, {
+        const simResult = await simulateArenaAsync(lowered.arena, {
           startTime,
           stopTime,
           step,

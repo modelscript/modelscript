@@ -82,14 +82,14 @@ function extractFirstString(entityArgs: string): string | null {
  */
 interface StepNameMatch {
   name: string;
-  startByte: number;
-  endByte: number;
-  nameStartByte: number;
-  nameEndByte: number;
+  startOffset: number;
+  endOffset: number;
+  nameStartOffset: number;
+  nameEndOffset: number;
 }
 
 /**
- * Parse STEP text to extract PRODUCT names and named shapes with byte positions.
+ * Parse STEP text to extract PRODUCT names and named shapes with character positions.
  */
 function extractStepNames(text: string): {
   products: StepNameMatch[];
@@ -146,15 +146,15 @@ function extractStepNames(text: string): {
       if (name && name.length > 0) {
         const matchEnd = endPos;
         const fullMatch = text.slice(matchStart, matchEnd);
-        const startByte = matchStart;
-        const endByte = matchEnd;
+        const startOffset = matchStart;
+        const endOffset = matchEnd;
         const nameIdx = fullMatch.indexOf(`'${name}'`);
-        const nameStart = nameIdx >= 0 ? matchStart + nameIdx + 1 : startByte;
-        const nameEnd = nameIdx >= 0 ? nameStart + name.length : endByte;
+        const nameStart = nameIdx >= 0 ? matchStart + nameIdx + 1 : startOffset;
+        const nameEnd = nameIdx >= 0 ? nameStart + name.length : endOffset;
         if (entityType === "PRODUCT") {
-          products.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
+          products.push({ name, startOffset, endOffset, nameStartOffset: nameStart, nameEndOffset: nameEnd });
         } else {
-          shapes.push({ name, startByte, endByte, nameStartByte: nameStart, nameEndByte: nameEnd });
+          shapes.push({ name, startOffset, endOffset, nameStartOffset: nameStart, nameEndOffset: nameEnd });
         }
       }
     }
@@ -318,31 +318,25 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         primaryProductId = productId;
         primaryProductName = productName;
       }
-      const productStart = product?.startByte ?? 0;
-      const productEnd = product?.endByte ?? 0;
+      const productStart = product?.startOffset ?? 0;
+      const productEnd = product?.endOffset ?? 0;
       const productEntry: SymbolEntry = {
         id: productId,
         kind: "Package",
         name: productName,
         ruleName: "step_product",
         namePath: productName,
-        startByte: productStart,
-        endByte: productEnd,
         startOffset: productStart,
         endOffset: productEnd,
         fieldRanges: product
           ? {
               name: {
-                startByte: product.nameStartByte,
-                endByte: product.nameEndByte,
-                startOffset: product.nameStartByte,
-                endOffset: product.nameEndByte,
+                startOffset: product.nameStartOffset,
+                endOffset: product.nameEndOffset,
               },
               declaredName: {
-                startByte: product.nameStartByte,
-                endByte: product.nameEndByte,
-                startOffset: product.nameStartByte,
-                endOffset: product.nameEndByte,
+                startOffset: product.nameStartOffset,
+                endOffset: product.nameEndOffset,
               },
             }
           : undefined,
@@ -377,22 +371,16 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         name: shape.name,
         ruleName: "step_shape",
         namePath: `${primaryProductName}::${shape.name}`,
-        startByte: shape.startByte,
-        endByte: shape.endByte,
-        startOffset: shape.startByte,
-        endOffset: shape.endByte,
+        startOffset: shape.startOffset,
+        endOffset: shape.endOffset,
         fieldRanges: {
           name: {
-            startByte: shape.nameStartByte,
-            endByte: shape.nameEndByte,
-            startOffset: shape.nameStartByte,
-            endOffset: shape.nameEndByte,
+            startOffset: shape.nameStartOffset,
+            endOffset: shape.nameEndOffset,
           },
           declaredName: {
-            startByte: shape.nameStartByte,
-            endByte: shape.nameEndByte,
-            startOffset: shape.nameStartByte,
-            endOffset: shape.nameEndByte,
+            startOffset: shape.nameStartOffset,
+            endOffset: shape.nameEndOffset,
           },
         },
         parentId: primaryProductId,
@@ -424,8 +412,6 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         name: meshName,
         ruleName: "step_shape",
         namePath: `${primaryProductName}::${meshName}`,
-        startByte: 0,
-        endByte: 0,
         startOffset: 0,
         endOffset: 0,
         parentId: primaryProductId,

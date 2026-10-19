@@ -34,8 +34,8 @@ export interface GateDiagnostic {
   message: string;
   line?: number | undefined;
   column?: number | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
   code?: string | undefined;
   sourceContext?: string | undefined;
   metadata?: Record<string, any> | undefined;
@@ -234,8 +234,8 @@ export async function verifyGate1Syntax(
           : `Syntax error near '${snippet || "<unknown>"}' at line ${pos.row + 1}, column ${pos.column + 1}.`,
         line: pos.row + 1,
         column: pos.column + 1,
-        startByte: node.startIndex ?? node.startByte,
-        endByte: node.endIndex ?? node.endByte,
+        startOffset: node.startIndex ?? node.startOffset,
+        endOffset: node.endIndex ?? node.endOffset,
         sourceContext: snippet,
       });
     }
@@ -344,8 +344,8 @@ export async function verifyGate2Dimensions(
             gateName: "QUDV Physical Dimensions",
             severity: "error",
             message: (assignDiag as any).message,
-            startByte: (assignDiag as any).range?.startByte,
-            endByte: (assignDiag as any).range?.endByte,
+            startOffset: (assignDiag as any).range?.startOffset,
+            endOffset: (assignDiag as any).range?.endOffset,
             metadata: { featureName: entry.name, rule: "dimensionalAssignment" },
           });
         }
@@ -367,8 +367,8 @@ export async function verifyGate2Dimensions(
               gateName: "QUDV Physical Dimensions",
               severity: "error",
               message: (constrDiag as any).message,
-              startByte: (constrDiag as any).range?.startByte,
-              endByte: (constrDiag as any).range?.endByte,
+              startOffset: (constrDiag as any).range?.startOffset,
+              endOffset: (constrDiag as any).range?.endOffset,
               metadata: { constraintName: entry.name, rule: "dimensionalConstraint" },
             });
           }
@@ -387,8 +387,8 @@ export async function verifyGate2Dimensions(
               gateName: "QUDV Physical Dimensions",
               severity: "error",
               message: (connDiag as any).message,
-              startByte: (connDiag as any).range?.startByte,
-              endByte: (connDiag as any).range?.endByte,
+              startOffset: (connDiag as any).range?.startOffset,
+              endOffset: (connDiag as any).range?.endOffset,
               metadata: { connectionName: entry.name, rule: "connectionDimensionalConsistency" },
             });
           }

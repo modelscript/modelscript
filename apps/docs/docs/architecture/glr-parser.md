@@ -44,8 +44,8 @@ When a source file is parsed, the parser allocates a continuous buffer of node h
 ├───────────┼───────────┼──────────────┼─────────────────┤
 │ typeId    │ 0         │ uint16       │ Node type code  │
 │ flags     │ 2         │ uint16       │ Semantic flags  │
-│ startByte │ 4         │ uint32       │ Start byte pos  │
-│ endByte   │ 8         │ uint32       │ End byte pos    │
+│ startOffset │ 4         │ uint32       │ Start byte pos  │
+│ endOffset   │ 8         │ uint32       │ End byte pos    │
 │ firstChild│ 12        │ uint32       │ Offset to child │
 │ nextSibling│ 16       │ uint32       │ Offset to sib   │
 └───────────┴───────────┴──────────────┴─────────────────┘

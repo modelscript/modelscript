@@ -71,7 +71,7 @@ tree2 = parser.parse(modelCode, tree2, edit2.startIndex, edit2.oldEndIndex, edit
 rPtr = (tree2?.rootNode as any)?.id ?? (tree2?.rootNode as any)?.ptr ?? 0;
 diags = facade.getDiagnostics(rPtr, 0, modelCode.length);
 console.log(`Sequence 2 diags: ${diags.length}`);
-for (const d of diags) console.log(`  ${d.message} [range: ${d.startCharOffset}-${d.endCharOffset}]`);
+for (const d of diags) console.log(`  ${d.message} [range: ${d.startOffset}-${d.endOffset}]`);
 
 console.log("\n=== Sequence 3: Type into equation section ===");
 const codeBeforeEquation = `model X
@@ -111,4 +111,4 @@ tree3 = parser.parse(text3_4, tree3, e4.startIndex, e4.oldEndIndex, e4.newEndInd
 rPtr = (tree3?.rootNode as any)?.id ?? (tree3?.rootNode as any)?.ptr ?? 0;
 diags = facade.getDiagnostics(rPtr, 0, text3_4.length);
 console.log(`Sequence 3 diags after 'a.x = 1;': ${diags.length}`);
-for (const d of diags) console.log(`  ${d.message} [range: ${d.startCharOffset}-${d.endCharOffset}]`);
+for (const d of diags) console.log(`  ${d.message} [range: ${d.startOffset}-${d.endOffset}]`);

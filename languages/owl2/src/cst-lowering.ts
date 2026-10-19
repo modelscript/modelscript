@@ -11,8 +11,6 @@ export interface GenericSyntaxNode {
   text?: string | undefined;
   startIndex?: number | undefined;
   endIndex?: number | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
   startOffset?: number | undefined;
   endOffset?: number | undefined;
   isError?: boolean | undefined;
@@ -145,8 +143,8 @@ export function getNodeText(node: GenericSyntaxNode, ctx: { sourceText?: string 
   if (node.text !== undefined) {
     return node.text.trim();
   }
-  const start = node.startIndex ?? node.startOffset ?? node.startByte;
-  const end = node.endIndex ?? node.endOffset ?? node.endByte;
+  const start = node.startIndex ?? node.startOffset;
+  const end = node.endIndex ?? node.endOffset;
   if (ctx.sourceText !== undefined && typeof start === "number" && typeof end === "number") {
     return ctx.sourceText.slice(start, end).trim();
   }

@@ -572,7 +572,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             const overrides = params.parameterOverrides ? { ...params.parameterOverrides } : {};
             overrides[parameterName] = val;
 
-            const arenaResult = simulateArena(arena, {
+            const arenaResult = await simulateArenaAsync(arena, {
               startTime,
               stopTime,
               step,
@@ -605,7 +605,7 @@ export function registerSimulationEndpoints(context: LspContext) {
           };
         }
 
-        const result = simulateArena(arena, {
+        const result = await simulateArenaAsync(arena, {
           startTime,
           stopTime,
           step,
@@ -1613,7 +1613,7 @@ export async function computeModelReachability(
     const baseOverrides = params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : undefined;
 
     const t0 = Date.now();
-    const nomResult = simulateArena(arena, {
+    const nomResult = await simulateArenaAsync(arena, {
       startTime,
       stopTime,
       step,
@@ -1732,7 +1732,7 @@ export async function computeModelReachability(
       const x0 = yArr[0]?.[col] ?? 0;
       const delta = Math.max(varSpan[col]! * 0.04, Math.abs(x0) * 0.04, 0.04);
       try {
-        const resPlus = simulateArena(arena, {
+        const resPlus = await simulateArenaAsync(arena, {
           startTime,
           stopTime,
           step: coarseStep,
@@ -1741,7 +1741,7 @@ export async function computeModelReachability(
           parameterOverrides: baseOverrides,
           initialStateOverrides: new Map([[sName, x0 + delta]]),
         });
-        const resMinus = simulateArena(arena, {
+        const resMinus = await simulateArenaAsync(arena, {
           startTime,
           stopTime,
           step: coarseStep,
@@ -1780,7 +1780,7 @@ export async function computeModelReachability(
         overPlus.set(p.name, pVal + pDelta);
         const overMinus = new Map(baseOverrides);
         overMinus.set(p.name, pVal - pDelta);
-        const resPlus = simulateArena(arena, {
+        const resPlus = await simulateArenaAsync(arena, {
           startTime,
           stopTime,
           step: coarseStep,
@@ -1788,7 +1788,7 @@ export async function computeModelReachability(
           outputStringIds,
           parameterOverrides: overPlus,
         });
-        const resMinus = simulateArena(arena, {
+        const resMinus = await simulateArenaAsync(arena, {
           startTime,
           stopTime,
           step: coarseStep,

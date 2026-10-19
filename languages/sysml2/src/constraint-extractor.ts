@@ -93,7 +93,7 @@ export function extractSysML2Constraints(db: QueryDB, filter?: string): Extracte
     }
 
     // Get the CST text for this constraint
-    const cstText = db.cstText(entry.startByte, entry.endByte, entry);
+    const cstText = db.cstText(entry.startOffset, entry.endOffset, entry);
     if (!cstText) continue;
 
     // Try to parse a comparison from the CST text
@@ -298,7 +298,7 @@ function resolveRhsFromDb(db: QueryDB, constraint: SymbolEntry, rhsPath: string)
   }
 
   // Extract numeric default from CST text
-  const text = db.cstText(current.startByte, current.endByte, current);
+  const text = db.cstText(current.startOffset, current.endOffset, current);
   if (text) {
     const match = text.match(/=\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
     if (match) return parseFloat(match[1]!);

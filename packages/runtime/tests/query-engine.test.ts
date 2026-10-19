@@ -245,16 +245,16 @@ describe("Phase 2: Reactive Salsa 3.0, Incremental Editing & Polyglot Vectors", 
     const fileSymbols = facade.getFileSymbols(100);
     expect(fileSymbols.length).toBe(3);
 
-    // ModelA was edited inside: endByte expanded by 25 (50 -> 75)
-    expect(fileSymbols[0].startByte).toBe(10);
-    expect(fileSymbols[0].endByte).toBe(75);
+    // ModelA was edited inside: endOffset expanded by 25 (50 -> 75)
+    expect(fileSymbols[0].startOffset).toBe(10);
+    expect(fileSymbols[0].endOffset).toBe(75);
 
     // ModelB was after offset 20: entire span shifted by +25 (100..200 -> 125..225)
-    expect(fileSymbols[1].startByte).toBe(125);
-    expect(fileSymbols[1].endByte).toBe(225);
+    expect(fileSymbols[1].startOffset).toBe(125);
+    expect(fileSymbols[1].endOffset).toBe(225);
 
     // ModelC was after offset 20: entire span shifted by +25 (300..400 -> 325..425)
-    expect(fileSymbols[2].startByte).toBe(325);
-    expect(fileSymbols[2].endByte).toBe(425);
+    expect(fileSymbols[2].startOffset).toBe(325);
+    expect(fileSymbols[2].endOffset).toBe(425);
   });
 });

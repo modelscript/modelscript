@@ -342,8 +342,8 @@ export function lowerCSTExpression(
         code: ModelicaErrorCode.ILLEGAL_END_USAGE.code,
         message: ModelicaErrorCode.ILLEGAL_END_USAGE.message(),
         range: {
-          startByte: targetNode.startIndex ?? targetNode.startByte,
-          endByte: targetNode.endIndex ?? targetNode.endByte,
+          startOffset: targetNode.startIndex ?? targetNode.startOffset,
+          endOffset: targetNode.endIndex ?? targetNode.endOffset,
           startPosition: targetNode.startPosition,
           endPosition: targetNode.endPosition,
         },
@@ -948,7 +948,7 @@ export function lowerCSTExpression(
                         severity: "error",
                         code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
                         message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(step)),
-                        range: { startByte: 0, endByte: 0 },
+                        range: { startOffset: 0, endOffset: 0 },
                       });
                     } else {
                       for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
@@ -1024,13 +1024,13 @@ export function lowerCSTExpression(
             eqNode = eqNode.parent;
           }
           const diagNode = eqNode ?? node;
-          const startB = diagNode?.startIndex ?? diagNode?.startByte;
-          const endB = diagNode?.endIndex ?? diagNode?.endByte;
+          const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+          const endB = diagNode?.endIndex ?? diagNode?.endOffset;
           const range =
             startB != null && endB != null
               ? {
-                  startByte: startB,
-                  endByte: endB,
+                  startOffset: startB,
+                  endOffset: endB,
                   startPosition: diagNode?.startPosition,
                   endPosition: diagNode?.endPosition,
                 }
@@ -1647,8 +1647,8 @@ export function lowerCSTExpression(
             callRange = {
               startPosition: diagNode.startPosition,
               endPosition: diagNode.endPosition,
-              startByte: diagNode.startIndex ?? diagNode.startByte,
-              endByte: diagNode.endIndex ?? diagNode.endByte,
+              startOffset: diagNode.startIndex ?? diagNode.startOffset,
+              endOffset: diagNode.endIndex ?? diagNode.endOffset,
             };
           }
           dae.diagnostics.push({
@@ -1803,15 +1803,15 @@ export function lowerCSTExpression(
             callRange = {
               startPosition: n.startPosition,
               endPosition: n.endPosition,
-              startByte: n.startIndex ?? n.startByte,
-              endByte: n.endIndex ?? n.endByte,
+              startOffset: n.startIndex ?? n.startOffset,
+              endOffset: n.endIndex ?? n.endOffset,
             };
           } else {
             callRange = {
               startPosition: node.startPosition,
               endPosition: node.endPosition,
-              startByte: node.startIndex ?? node.startByte,
-              endByte: node.endIndex ?? node.endByte,
+              startOffset: node.startIndex ?? node.startOffset,
+              endOffset: node.endIndex ?? node.endOffset,
             };
           }
         }
@@ -2982,8 +2982,8 @@ export function lowerCSTExpression(
           cur = cur.parent;
         }
         const diagNode = cur ?? node;
-        const startB = diagNode?.startIndex ?? diagNode?.startByte;
-        const endB = diagNode?.endIndex ?? diagNode?.endByte;
+        const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+        const endB = diagNode?.endIndex ?? diagNode?.endOffset;
         const argsText = argsNode?.text?.trim() ?? "()";
         const callArgsStr = argsText.startsWith("(") ? argsText : `(${argsText})`;
         const callStr = `${cleanFnName}${callArgsStr}`;
@@ -2995,8 +2995,8 @@ export function lowerCSTExpression(
           range:
             startB != null && endB != null
               ? {
-                  startByte: startB,
-                  endByte: endB,
+                  startOffset: startB,
+                  endOffset: endB,
                   startPosition: diagNode?.startPosition,
                   endPosition: diagNode?.endPosition,
                 }
@@ -3151,14 +3151,14 @@ export function lowerCSTExpression(
               clauseNode = clauseNode.parent;
             }
             const diagNode = clauseNode ?? node;
-            const startB = diagNode.startIndex ?? diagNode.startByte;
-            const endB = diagNode.endIndex ?? diagNode.endByte;
+            const startB = diagNode.startIndex ?? diagNode.startOffset;
+            const endB = diagNode.endIndex ?? diagNode.endOffset;
             dae.diagnostics.push({
               severity: "error",
               message: `Different dimension sizes in arguments to array in component <NO COMPONENT>.`,
               range: {
-                startByte: startB,
-                endByte: endB,
+                startOffset: startB,
+                endOffset: endB,
                 startPosition: diagNode.startPosition,
                 endPosition: diagNode.endPosition,
               },
@@ -3653,8 +3653,8 @@ export function lowerCSTExpression(
             range:
               node.startIndex != null && node.endIndex != null
                 ? {
-                    startByte: node.startIndex,
-                    endByte: node.endIndex,
+                    startOffset: node.startIndex,
+                    endOffset: node.endIndex,
                     startPosition: node.startPosition,
                     endPosition: node.endPosition,
                   }
@@ -4157,13 +4157,13 @@ export function lowerCSTExpression(
         eqNode = eqNode.parent;
       }
       const diagNode = eqNode ?? node;
-      const startB = diagNode?.startIndex ?? diagNode?.startByte;
-      const endB = diagNode?.endIndex ?? diagNode?.endByte;
+      const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+      const endB = diagNode?.endIndex ?? diagNode?.endOffset;
       const range =
         startB != null && endB != null
           ? {
-              startByte: startB,
-              endByte: endB,
+              startOffset: startB,
+              endOffset: endB,
               startPosition: diagNode?.startPosition,
               endPosition: diagNode?.endPosition,
             }
@@ -4825,14 +4825,14 @@ export function lowerCSTExpression(
             eqNode = eqNode.parent;
           }
           const diagNode = eqNode ?? node;
-          const startB = diagNode?.startIndex ?? diagNode?.startByte;
-          const endB = diagNode?.endIndex ?? diagNode?.endByte;
+          const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+          const endB = diagNode?.endIndex ?? diagNode?.endOffset;
 
           dae.diagnostics.push({
             severity: "error",
             code: ModelicaErrorCode.NO_MATCHING_OPERATOR_FUNCTION.code,
             message: `No matching function found for ${callStr}.\nCandidates are:\n${candidateLines}`,
-            range: startB != null && endB != null ? { startByte: startB, endByte: endB } : undefined,
+            range: startB != null && endB != null ? { startOffset: startB, endOffset: endB } : undefined,
           });
           return -1;
         }
@@ -5383,15 +5383,15 @@ export function lowerCSTExpression(
               callRange = {
                 startPosition: n.startPosition,
                 endPosition: n.endPosition,
-                startByte: n.startIndex ?? n.startByte,
-                endByte: n.endIndex ?? n.endByte,
+                startOffset: n.startIndex ?? n.startOffset,
+                endOffset: n.endIndex ?? n.endOffset,
               };
             } else {
               callRange = {
                 startPosition: node.startPosition,
                 endPosition: node.endPosition,
-                startByte: node.startIndex ?? node.startByte,
-                endByte: node.endIndex ?? node.endByte,
+                startOffset: node.startIndex ?? node.startOffset,
+                endOffset: node.endIndex ?? node.endOffset,
               };
             }
           }
@@ -5910,8 +5910,8 @@ export function lowerCSTExpression(
               const callSig = `.${cleanFnName || fnName}<function>(${callArgSigParts.join(", ")}) => ${retTypeStr} in component <NO COMPONENT>`;
               const candidateSig = `.${cleanFnName || fnName}<function>(${candArgSigParts.join(", ")}) => ${retTypeStr}`;
 
-              const startB = node.startIndex ?? node.startByte;
-              const endB = node.endIndex ?? node.endByte;
+              const startB = node.startIndex ?? node.startOffset;
+              const endB = node.endIndex ?? node.endOffset;
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.NO_MATCHING_FUNCTION.code,
@@ -5919,8 +5919,8 @@ export function lowerCSTExpression(
                 range:
                   startB != null && endB != null
                     ? {
-                        startByte: startB,
-                        endByte: endB,
+                        startOffset: startB,
+                        endOffset: endB,
                         startPosition: node.startPosition,
                         endPosition: node.endPosition,
                       }
@@ -5956,8 +5956,8 @@ export function lowerCSTExpression(
                 eqNode = eqNode.parent;
               }
               const diagNode = eqNode ?? node;
-              const startB = diagNode?.startIndex ?? diagNode?.startByte;
-              const endB = diagNode?.endIndex ?? diagNode?.endByte;
+              const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+              const endB = diagNode?.endIndex ?? diagNode?.endOffset;
               const argText = argNode?.text?.trim() ?? "...";
               const callText = `${cleanFnName || fnName}(${inputName}=${argText})`;
               dae.diagnostics.push({
@@ -5970,8 +5970,8 @@ export function lowerCSTExpression(
                   varTypeName(expectedType),
                 ),
                 range: {
-                  startByte: startB,
-                  endByte: endB,
+                  startOffset: startB,
+                  endOffset: endB,
                   startPosition: diagNode?.startPosition,
                   endPosition: diagNode?.endPosition,
                 },
@@ -6010,15 +6010,15 @@ export function lowerCSTExpression(
                 compClause = compClause.parent;
               }
               const diagNode = compClause ?? node;
-              const startB = diagNode?.startIndex ?? diagNode?.startByte;
-              const endB = diagNode?.endIndex ?? diagNode?.endByte;
+              const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+              const endB = diagNode?.endIndex ?? diagNode?.endOffset;
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.code,
                 message: ModelicaErrorCode.FUNCTION_ARG_VARIABILITY.message(paramName, argText, funcName, "constant"),
                 range: {
-                  startByte: startB,
-                  endByte: endB,
+                  startOffset: startB,
+                  endOffset: endB,
                   startPosition: diagNode?.startPosition,
                   endPosition: diagNode?.endPosition,
                 },
@@ -6212,15 +6212,15 @@ export function lowerCSTExpression(
               compClause = compClause.parent;
             }
             const diagNode = compClause ?? node;
-            const startB = err.range?.startByte ?? diagNode?.startIndex ?? diagNode?.startByte;
-            const endB = err.range?.endByte ?? diagNode?.endIndex ?? diagNode?.endByte;
+            const startB = err.range?.startOffset ?? diagNode?.startIndex ?? diagNode?.startOffset;
+            const endB = err.range?.endOffset ?? diagNode?.endIndex ?? diagNode?.endOffset;
             dae.diagnostics.push({
               severity: "error",
               code: err?.code ?? 0,
               message: err.message,
               range: {
-                startByte: startB,
-                endByte: endB,
+                startOffset: startB,
+                endOffset: endB,
                 startPosition: err.range?.startPosition ?? diagNode?.startPosition,
                 endPosition: err.range?.endPosition ?? diagNode?.endPosition,
               },
@@ -6307,13 +6307,13 @@ export function lowerCSTExpression(
         eqNode = eqNode.parent;
       }
       const diagNode = eqNode ?? node;
-      const startB = diagNode?.startIndex ?? diagNode?.startByte;
-      const endB = diagNode?.endIndex ?? diagNode?.endByte;
+      const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+      const endB = diagNode?.endIndex ?? diagNode?.endOffset;
       const range =
         startB != null && endB != null
           ? {
-              startByte: startB,
-              endByte: endB,
+              startOffset: startB,
+              endOffset: endB,
               startPosition: diagNode?.startPosition,
               endPosition: diagNode?.endPosition,
             }
@@ -6424,13 +6424,13 @@ export function lowerCSTExpression(
         eqNode = eqNode.parent;
       }
       const diagNode = eqNode ?? node;
-      const startB = diagNode?.startIndex ?? diagNode?.startByte;
-      const endB = diagNode?.endIndex ?? diagNode?.endByte;
+      const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+      const endB = diagNode?.endIndex ?? diagNode?.endOffset;
       const range =
         startB != null && endB != null
           ? {
-              startByte: startB,
-              endByte: endB,
+              startOffset: startB,
+              endOffset: endB,
               startPosition: diagNode?.startPosition,
               endPosition: diagNode?.endPosition,
             }
@@ -6623,8 +6623,8 @@ export function lowerCSTExpression(
           cur = cur.parent;
         }
         const diagNode = cur ?? node;
-        const startB = diagNode?.startIndex ?? diagNode?.startByte;
-        const endB = diagNode?.endIndex ?? diagNode?.endByte;
+        const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+        const endB = diagNode?.endIndex ?? diagNode?.endOffset;
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.CALLED_FUNCTION_PARTIAL.code,
@@ -6632,8 +6632,8 @@ export function lowerCSTExpression(
           range:
             startB != null && endB != null
               ? {
-                  startByte: startB,
-                  endByte: endB,
+                  startOffset: startB,
+                  endOffset: endB,
                   startPosition: diagNode?.startPosition,
                   endPosition: diagNode?.endPosition,
                 }
@@ -6659,8 +6659,8 @@ export function lowerCSTExpression(
         code: ModelicaErrorCode.TUPLE_SUBSCRIPT_NOT_ALLOWED?.code ?? 5016,
         message: "Tuple expression can not be subscripted.",
         range: {
-          startByte: node.startIndex ?? node.startByte,
-          endByte: node.endIndex ?? node.endByte,
+          startOffset: node.startIndex ?? node.startOffset,
+          endOffset: node.endIndex ?? node.endOffset,
           startPosition: node.startPosition,
           endPosition: node.endPosition,
         },
@@ -6870,7 +6870,7 @@ export function lowerCSTExpression(
                             severity: "error",
                             code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
                             message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(step)),
-                            range: { startByte: 0, endByte: 0 },
+                            range: { startOffset: 0, endOffset: 0 },
                           });
                         } else {
                           for (let val = s; step > 0 ? val <= e : val >= e; val += step) values.push(val);
@@ -7046,8 +7046,8 @@ export function lowerCSTExpression(
           code: ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
           message: `Arguments of concatenation comma operator have different sizes for the first dimension: ${item1Str} has dimension ${firstRowCount} and ${item2Str} has dimension ${rowCounts[mismatchIdx]}.`,
           range: {
-            startByte: diagNode?.startIndex ?? diagNode?.startByte,
-            endByte: diagNode?.endIndex ?? diagNode?.endByte,
+            startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+            endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
             startPosition: diagNode?.startPosition,
             endPosition: diagNode?.endPosition,
           },
@@ -7196,13 +7196,13 @@ export function lowerCSTExpression(
           eqNode = eqNode.parent;
         }
         const diagNode = eqNode ?? node;
-        const startB = diagNode?.startIndex ?? diagNode?.startByte;
-        const endB = diagNode?.endIndex ?? diagNode?.endByte;
+        const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+        const endB = diagNode?.endIndex ?? diagNode?.endOffset;
         const range =
           startB != null && endB != null
             ? {
-                startByte: startB,
-                endByte: endB,
+                startOffset: startB,
+                endOffset: endB,
                 startPosition: diagNode?.startPosition,
                 endPosition: diagNode?.endPosition,
               }
@@ -7341,13 +7341,13 @@ export function lowerCSTExpression(
         eqNode = eqNode.parent;
       }
       const diagNode = eqNode ?? node;
-      const startB = diagNode?.startIndex ?? diagNode?.startByte;
-      const endB = diagNode?.endIndex ?? diagNode?.endByte;
+      const startB = diagNode?.startIndex ?? diagNode?.startOffset;
+      const endB = diagNode?.endIndex ?? diagNode?.endOffset;
       const range =
         startB != null && endB != null
           ? {
-              startByte: startB,
-              endByte: endB,
+              startOffset: startB,
+              endOffset: endB,
               startPosition: diagNode?.startPosition,
               endPosition: diagNode?.endPosition,
             }
@@ -7703,8 +7703,8 @@ export function lowerCSTExpression(
                 code: ModelicaErrorCode.BINARY_OP_TYPE_MISMATCH.code,
                 message: `Cannot resolve type of expression ${leftNode?.text?.trim()} ${opToken} ${rightNode?.text?.trim()}. The operands have types ${leftTypeStr}, ${rightTypeStr} in component <NO COMPONENT>.`,
                 range: {
-                  startByte: stmtNode?.startIndex ?? stmtNode?.startByte ?? node.startIndex,
-                  endByte: stmtNode?.endIndex ?? stmtNode?.endByte ?? node.endIndex,
+                  startOffset: stmtNode?.startIndex ?? stmtNode?.startOffset ?? node.startIndex,
+                  endOffset: stmtNode?.endIndex ?? stmtNode?.endOffset ?? node.endIndex,
                   startPosition: stmtNode?.startPosition ?? node.startPosition,
                   endPosition: stmtNode?.endPosition ?? node.endPosition,
                 },
@@ -7830,14 +7830,14 @@ export function lowerCSTExpression(
           const leftTypeStr = getOperandFullTypeStr(leftId);
           const rightTypeStr = getOperandFullTypeStr(rightId);
           const rawExpr = `${node.child(0)?.text?.trim() ?? ""}${opToken}${node.child(2)?.text?.trim() ?? ""}`;
-          const startB = node.startIndex ?? node.startByte;
-          const endB = node.endIndex ?? node.endByte;
+          const startB = node.startIndex ?? node.startOffset;
+          const endB = node.endIndex ?? node.endOffset;
           dae.diagnostics.push({
             severity: "error",
             message: `Cannot resolve type of expression ${rawExpr}. The operands have types ${leftTypeStr}, ${rightTypeStr} in component <NO COMPONENT>.`,
             range: {
-              startByte: startB,
-              endByte: endB,
+              startOffset: startB,
+              endOffset: endB,
               startPosition: node.startPosition,
               endPosition: node.endPosition,
             },
@@ -7901,14 +7901,14 @@ export function lowerCSTExpression(
           const leftTypeStr = getOperandFullTypeStr(leftId, leftDims);
           const rightTypeStr = getOperandFullTypeStr(rightId, rightDims);
           const exprText = `${node.child(0)?.text?.trim() ?? ""} ${opToken} ${node.child(2)?.text?.trim() ?? ""}`;
-          const startB = node.startIndex ?? node.startByte;
-          const endB = node.endIndex ?? node.endByte;
+          const startB = node.startIndex ?? node.startOffset;
+          const endB = node.endIndex ?? node.endOffset;
           dae.diagnostics.push({
             severity: "error",
             message: `Cannot resolve type of expression ${exprText}. The operands have types ${leftTypeStr}, ${rightTypeStr} in component <NO COMPONENT>.`,
             range: {
-              startByte: startB,
-              endByte: endB,
+              startOffset: startB,
+              endOffset: endB,
               startPosition: node.startPosition,
               endPosition: node.endPosition,
             },
@@ -8287,8 +8287,8 @@ export function lowerCSTExpression(
         const lVal = getConstVal(leftId);
         const rVal = getConstVal(rightId);
         if (lVal !== null && rVal !== null && lVal < 0 && !Number.isInteger(rVal)) {
-          const startB = node.startIndex ?? node.startByte;
-          const endB = node.endIndex ?? node.endByte;
+          const startB = node.startIndex ?? node.startOffset;
+          const endB = node.endIndex ?? node.endOffset;
           const lStr = Number.isInteger(lVal) ? lVal.toFixed(1) : String(lVal);
           const rStr = Number.isInteger(rVal) ? rVal.toFixed(1) : String(rVal);
           dae.diagnostics.push({
@@ -8297,8 +8297,8 @@ export function lowerCSTExpression(
             range:
               startB != null && endB != null
                 ? {
-                    startByte: startB,
-                    endByte: endB,
+                    startOffset: startB,
+                    endOffset: endB,
                     startPosition: node.startPosition,
                     endPosition: node.endPosition,
                   }
@@ -9586,8 +9586,8 @@ export function lowerCSTExpression(
                     }
                     if (!isParam) {
                       const r = {
-                        startByte: node.startIndex ?? node.startByte ?? 0,
-                        endByte: node.endIndex ?? node.endByte ?? 0,
+                        startOffset: node.startIndex ?? node.startOffset ?? 0,
+                        endOffset: node.endIndex ?? node.endOffset ?? 0,
                         startPosition: node.startPosition,
                         endPosition: node.endPosition,
                       };
@@ -9956,8 +9956,8 @@ export function lowerCSTExpression(
                   curr = curr.parent;
                 }
                 const r = {
-                  startByte: stmtNode.startIndex ?? stmtNode.startByte,
-                  endByte: stmtNode.endIndex ?? stmtNode.endByte,
+                  startOffset: stmtNode.startIndex ?? stmtNode.startOffset,
+                  endOffset: stmtNode.endIndex ?? stmtNode.endOffset,
                   startPosition: stmtNode.startPosition,
                   endPosition: stmtNode.endPosition,
                 };
@@ -10074,8 +10074,8 @@ export function lowerCSTExpression(
                     continue;
                   }
                   const r = {
-                    startByte: stmtNode.startIndex ?? stmtNode.startByte,
-                    endByte: stmtNode.endIndex ?? stmtNode.endByte,
+                    startOffset: stmtNode.startIndex ?? stmtNode.startOffset,
+                    endOffset: stmtNode.endIndex ?? stmtNode.endOffset,
                     startPosition: stmtNode.startPosition,
                     endPosition: stmtNode.endPosition,
                   };
@@ -10133,8 +10133,8 @@ export function lowerCSTExpression(
               curr = curr.parent;
             }
             const r = {
-              startByte: stmtNode.startIndex ?? stmtNode.startByte,
-              endByte: stmtNode.endIndex ?? stmtNode.endByte,
+              startOffset: stmtNode.startIndex ?? stmtNode.startOffset,
+              endOffset: stmtNode.endIndex ?? stmtNode.endOffset,
               startPosition: stmtNode.startPosition,
               endPosition: stmtNode.endPosition,
             };
@@ -10665,11 +10665,11 @@ export function lowerCSTExpression(
             const hasPkgRestrictionError = dae.diagnostics.some(
               (d) =>
                 d.code === 4017 &&
-                ((pkgEntry?.startByte != null &&
-                  pkgEntry?.endByte != null &&
-                  d.range?.startByte != null &&
-                  d.range.startByte >= pkgEntry.startByte &&
-                  d.range.startByte <= pkgEntry.endByte) ||
+                ((pkgEntry?.startOffset != null &&
+                  pkgEntry?.endOffset != null &&
+                  d.range?.startOffset != null &&
+                  d.range.startOffset >= pkgEntry.startOffset &&
+                  d.range.startOffset <= pkgEntry.endOffset) ||
                   d.message.includes(`in ${pkgOrClass.name}`)),
             );
             if (hasPkgRestrictionError) {
@@ -10677,7 +10677,7 @@ export function lowerCSTExpression(
                 (flattener?.currentRootClassId ? db.symbol(flattener.currentRootClassId)?.name : "") ?? "";
               const rangeObj =
                 node.startIndex != null && node.endIndex != null
-                  ? { startByte: node.startIndex, endByte: node.endIndex }
+                  ? { startOffset: node.startIndex, endOffset: node.endIndex }
                   : undefined;
               dae.diagnostics.push({
                 severity: "error",
@@ -10751,7 +10751,7 @@ export function lowerCSTExpression(
                       (flattener?.currentRootClassId ? db.symbol(flattener.currentRootClassId)?.name : "") ?? "";
                     const rangeObj =
                       node.startIndex != null && node.endIndex != null
-                        ? { startByte: node.startIndex, endByte: node.endIndex }
+                        ? { startOffset: node.startIndex, endOffset: node.endIndex }
                         : undefined;
                     dae.diagnostics.push({
                       severity: "error",
@@ -10850,8 +10850,8 @@ export function lowerCSTExpression(
                   const rangeObj =
                     errNode.startIndex != null && errNode.endIndex != null
                       ? {
-                          startByte: errNode.startIndex,
-                          endByte: errNode.endIndex,
+                          startOffset: errNode.startIndex,
+                          endOffset: errNode.endIndex,
                           startPosition: errNode.startPosition,
                           endPosition: errNode.endPosition,
                         }
@@ -10992,8 +10992,8 @@ export function lowerCSTExpression(
                 eqNode = eqNode.parent;
               }
               const errRange = {
-                startByte: eqNode?.startIndex ?? eqNode?.startByte ?? node.startIndex,
-                endByte: eqNode?.endIndex ?? eqNode?.endByte ?? node.endIndex,
+                startOffset: eqNode?.startIndex ?? eqNode?.startOffset ?? node.startIndex,
+                endOffset: eqNode?.endIndex ?? eqNode?.endOffset ?? node.endIndex,
                 startPosition: eqNode?.startPosition ?? node.startPosition,
                 endPosition: eqNode?.endPosition ?? node.endPosition,
               };
@@ -11089,15 +11089,15 @@ export function lowerCSTExpression(
       }
       const rangeObj = clauseNode
         ? {
-            startByte: clauseNode.startIndex ?? clauseNode.startByte,
-            endByte: clauseNode.endIndex ?? clauseNode.endByte,
+            startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+            endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
             startPosition: clauseNode.startPosition,
             endPosition: clauseNode.endPosition,
           }
         : node.startIndex != null && node.endIndex != null
           ? {
-              startByte: node.startIndex,
-              endByte: node.endIndex,
+              startOffset: node.startIndex,
+              endOffset: node.endIndex,
               startPosition: node.startPosition,
               endPosition: node.endPosition,
             }

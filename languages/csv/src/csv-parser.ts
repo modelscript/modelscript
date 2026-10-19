@@ -310,9 +310,9 @@ export interface CsvDiagnostic {
   /** Human-readable diagnostic message. */
   message: string;
   /** 0-indexed character/byte start offset in CSV text */
-  startByte: number;
+  startOffset: number;
   /** 0-indexed character/byte end offset in CSV text */
-  endByte: number;
+  endOffset: number;
   /** 1-indexed start line */
   line: number;
   /** 1-indexed start column */
@@ -329,8 +329,8 @@ export interface CsvDiagnostic {
 interface LocatedCsvCell {
   text: string;
   rawText: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
   unclosedQuote?: boolean | undefined;
 }
 
@@ -339,8 +339,8 @@ interface LocatedCsvCell {
  */
 interface LocatedCsvRow {
   rowIndex: number;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
   cells: LocatedCsvCell[];
 }
 
@@ -433,8 +433,8 @@ function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter
         cells.push({
           text: currentVal.trim(),
           rawText: rawSlice,
-          startByte: trimmedStart,
-          endByte: trimmedEnd,
+          startOffset: trimmedStart,
+          endOffset: trimmedEnd,
         });
         currentVal = "";
         i++;
@@ -464,8 +464,8 @@ function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter
     cells.push({
       text: currentVal.trim(),
       rawText: rawSlice,
-      startByte: trimmedStart,
-      endByte: trimmedEnd,
+      startOffset: trimmedStart,
+      endOffset: trimmedEnd,
       unclosedQuote,
     });
 
@@ -478,8 +478,8 @@ function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter
     if (text.slice(rowStart, rowEnd).trim().length > 0) {
       rows.push({
         rowIndex: rowIndex++,
-        startByte: rowStart,
-        endByte: rowEnd,
+        startOffset: rowStart,
+        endOffset: rowEnd,
         cells,
       });
     }
@@ -504,22 +504,22 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
   const locator = new CsvLineLocator(csvText);
 
   const emit = (
-    startByte: number,
-    endByte: number,
+    startOffset: number,
+    endOffset: number,
     code: string,
     severity: "error" | "warning" | "info",
     message: string,
   ) => {
-    const localStart = Math.max(0, startByte);
-    const localEnd = Math.max(localStart + 1, endByte);
+    const localStart = Math.max(0, startOffset);
+    const localEnd = Math.max(localStart + 1, endOffset);
     const startPos = locator.offsetToPos(localStart);
     const endPos = locator.offsetToPos(localEnd);
     diagnostics.push({
       code,
       severity,
       message,
-      startByte: baseStartByte + localStart,
-      endByte: baseStartByte + localEnd,
+      startOffset: baseStartByte + localStart,
+      endOffset: baseStartByte + localEnd,
       line: startPos.line,
       column: startPos.column,
       endLine: endPos.line,
@@ -539,21 +539,21 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
     const cell = headerRow.cells[c]!;
     if (cell.unclosedQuote) {
       emit(
-        cell.startByte,
-        cell.endByte,
+        cell.startOffset,
+        cell.endOffset,
         "CSV_UNCLOSED_QUOTE",
         "error",
         `Unclosed quoted string in header column ${c + 1}.`,
       );
     }
     if (!cell.text) {
-      emit(cell.startByte, cell.endByte, "CSV_EMPTY_HEADER", "error", `Header column ${c + 1} is empty.`);
+      emit(cell.startOffset, cell.endOffset, "CSV_EMPTY_HEADER", "error", `Header column ${c + 1} is empty.`);
       continue;
     }
     if (seenHeaders.has(cell.text)) {
       emit(
-        cell.startByte,
-        cell.endByte,
+        cell.startOffset,
+        cell.endOffset,
         "CSV_DUPLICATE_HEADER",
         "error",
         `Duplicate header column '${cell.text}' (already defined at column ${seenHeaders.get(cell.text)! + 1}).`,
@@ -593,8 +593,8 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
       const cell = row.cells[c]!;
       if (cell.unclosedQuote) {
         emit(
-          cell.startByte,
-          cell.endByte,
+          cell.startOffset,
+          cell.endOffset,
           "CSV_UNCLOSED_QUOTE",
           "error",
           `Unclosed quoted string at row ${r + 1}, column ${c + 1}.`,
@@ -608,16 +608,16 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
         const firstExcess = row.cells[numCols]!;
         const lastExcess = row.cells[row.cells.length - 1]!;
         emit(
-          firstExcess.startByte,
-          lastExcess.endByte,
+          firstExcess.startOffset,
+          lastExcess.endOffset,
           "CSV_COLUMN_COUNT_MISMATCH",
           "error",
           `Row ${r + 1} has ${row.cells.length} columns, expected ${numCols} to match header row.`,
         );
       } else {
         emit(
-          row.startByte,
-          row.endByte,
+          row.startOffset,
+          row.endOffset,
           "CSV_COLUMN_COUNT_MISMATCH",
           "error",
           `Row ${r + 1} has ${row.cells.length} columns, expected ${numCols} to match header row.`,
@@ -632,8 +632,8 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
       const colName = headerRow.cells[c]?.text || `column ${c + 1}`;
       if (!cell.text) {
         emit(
-          cell.startByte,
-          cell.endByte,
+          cell.startOffset,
+          cell.endOffset,
           "CSV_INVALID_NUMERIC_CELL",
           "warning",
           `Missing numeric value in column '${colName}' at row ${r + 1}.`,
@@ -642,8 +642,8 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
       }
       if (!isStrictFiniteNumber(cell.text)) {
         emit(
-          cell.startByte,
-          cell.endByte,
+          cell.startOffset,
+          cell.endOffset,
           "CSV_INVALID_NUMERIC_CELL",
           "error",
           `Invalid numeric value '${cell.text}' in column '${colName}' at row ${r + 1}.`,
@@ -655,8 +655,8 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
         const tVal = parseFloat(cell.text);
         if (prevTimeVal !== undefined && tVal < prevTimeVal) {
           emit(
-            cell.startByte,
-            cell.endByte,
+            cell.startOffset,
+            cell.endOffset,
             "CSV_NON_MONOTONIC_TIME",
             "warning",
             `Non-monotonic time value ${tVal} at row ${r + 1} (previous time was ${prevTimeVal}).`,

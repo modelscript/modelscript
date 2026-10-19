@@ -633,10 +633,8 @@ export class PolyglotTransformer {
   private cstSpans = new Map<
     string,
     {
-      startByte: number;
-      endByte: number;
-      startOffset?: number | undefined;
-      endOffset?: number | undefined;
+      startOffset: number;
+      endOffset: number;
       line: number;
       column: number;
     }
@@ -721,39 +719,27 @@ export class PolyglotTransformer {
   }
 
   /**
-   * Associates an AST element with its concrete source byte spans.
+   * Associates an AST element with its concrete source character spans.
    */
   setCstSpan(
     id: string,
     span: {
-      startByte: number;
-      endByte: number;
-      startOffset?: number | undefined;
-      endOffset?: number | undefined;
+      startOffset: number;
+      endOffset: number;
       line: number;
       column: number;
     },
   ): void {
-    const startOff = span.startOffset ?? span.startByte;
-    const endOff = span.endOffset ?? span.endByte;
-    this.cstSpans.set(id, {
-      ...span,
-      startByte: span.startByte ?? startOff,
-      endByte: span.endByte ?? endOff,
-      startOffset: startOff,
-      endOffset: endOff,
-    });
+    this.cstSpans.set(id, { ...span });
   }
 
   /**
-   * Retrieves the source byte span for an element.
+   * Retrieves the source character span for an element.
    */
   getCstSpan(id: string):
     | {
-        startByte: number;
-        endByte: number;
-        startOffset?: number | undefined;
-        endOffset?: number | undefined;
+        startOffset: number;
+        endOffset: number;
         line: number;
         column: number;
       }

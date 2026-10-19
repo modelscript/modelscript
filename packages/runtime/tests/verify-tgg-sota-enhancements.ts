@@ -192,11 +192,11 @@ async function run() {
   // --------------------------------------------------------------------------
   console.log("[6/6] Pillar 6: CST Source Spans for Bi-Directional IDE Projection...");
 
-  transformer.setCstSpan("Chassis", { startByte: 104, endByte: 250, line: 8, column: 1 });
+  transformer.setCstSpan("Chassis", { startOffset: 104, endOffset: 250, line: 8, column: 1 });
   const span = transformer.getCstSpan("Chassis");
   assert(span);
-  assert.strictEqual(span.startByte, 104);
-  assert.strictEqual(span.endByte, 250);
+  assert.strictEqual(span.startOffset, 104);
+  assert.strictEqual(span.endOffset, 250);
   assert.strictEqual(span.line, 8);
   console.log("  ✓ Associated CST source ranges with polyglot model elements\n");
 

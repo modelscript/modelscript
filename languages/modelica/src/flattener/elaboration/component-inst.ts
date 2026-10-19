@@ -799,8 +799,8 @@ export function checkTypeAliasSpecialization(
   else if (/\bconnector\b/.test(cleanPrefixes)) kindDesc = "a connector";
 
   const range = {
-    startByte: cst.startIndex ?? cst.startByte,
-    endByte: cst.endIndex ?? cst.endByte,
+    startOffset: cst.startIndex ?? cst.startOffset,
+    endOffset: cst.endIndex ?? cst.endOffset,
     startPosition: cst.startPosition,
     endPosition: cst.endPosition,
   };
@@ -1014,8 +1014,8 @@ export function validateClassModifiers(
           code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
           message: "From here:",
           range: {
-            startByte: prevRedecl.modRange?.[0] ?? prevRedecl.modPosition?.startPosition,
-            endByte: prevRedecl.modRange?.[1] ?? prevRedecl.modPosition?.endPosition,
+            startOffset: prevRedecl.modRange?.[0] ?? prevRedecl.modPosition?.startPosition,
+            endOffset: prevRedecl.modRange?.[1] ?? prevRedecl.modPosition?.endPosition,
             startPosition: prevRedecl.modPosition?.startPosition,
             endPosition: prevRedecl.modPosition?.endPosition,
           },
@@ -1025,8 +1025,8 @@ export function validateClassModifiers(
           code: ModelicaErrorCode.DUPLICATE_REDECLARE.code,
           message: ModelicaErrorCode.DUPLICATE_REDECLARE.message(arg.name),
           range: {
-            startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-            endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+            startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+            endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
             startPosition: arg.modPosition?.startPosition,
             endPosition: arg.modPosition?.endPosition,
           },
@@ -1052,8 +1052,8 @@ export function validateClassModifiers(
           code: ModelicaErrorCode.MISSING_REDECLARE_KEYWORD.code,
           message: ModelicaErrorCode.MISSING_REDECLARE_KEYWORD.message(targetChild.name),
           range: {
-            startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-            endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+            startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+            endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
             startPosition: arg.modPosition?.startPosition,
             endPosition: arg.modPosition?.endPosition,
           },
@@ -1080,8 +1080,8 @@ export function validateClassModifiers(
           code: ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.code,
           message: ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.message(arg.name, targetClassName),
           range: {
-            startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-            endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+            startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+            endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
             startPosition: arg.modPosition?.startPosition,
             endPosition: arg.modPosition?.endPosition,
           },
@@ -1103,8 +1103,8 @@ export function validateClassModifiers(
           code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
           message: "From here:",
           range: {
-            startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-            endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+            startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+            endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
             startPosition: arg.modPosition?.startPosition,
             endPosition: arg.modPosition?.endPosition,
           },
@@ -1114,8 +1114,8 @@ export function validateClassModifiers(
           code: ModelicaErrorCode.INVALID_REDECLARATION_CLASS_AS_COMPONENT.code,
           message: ModelicaErrorCode.INVALID_REDECLARATION_CLASS_AS_COMPONENT.message(targetMember.name),
           range: {
-            startByte: errNode?.startIndex ?? errNode?.startByte,
-            endByte: errNode?.endIndex ?? errNode?.endByte,
+            startOffset: errNode?.startIndex ?? errNode?.startOffset,
+            endOffset: errNode?.endIndex ?? errNode?.endOffset,
             startPosition: errNode?.startPosition,
             endPosition: errNode?.endPosition,
           },
@@ -1133,8 +1133,8 @@ export function validateClassModifiers(
           code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
           message: "From here:",
           range: {
-            startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-            endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+            startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+            endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
             startPosition: arg.modPosition?.startPosition,
             endPosition: arg.modPosition?.endPosition,
           },
@@ -1212,8 +1212,8 @@ export function validateClassModifiers(
               code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
               message: "From here:",
               range: {
-                startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-                endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+                startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+                endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
                 startPosition: arg.modPosition?.startPosition,
                 endPosition: arg.modPosition?.endPosition,
               },
@@ -1223,8 +1223,8 @@ export function validateClassModifiers(
               code: ModelicaErrorCode.REDECLARE_ENUM_NOT_SUBTYPE.code,
               message: ModelicaErrorCode.REDECLARE_ENUM_NOT_SUBTYPE.message(targetMember.name),
               range: {
-                startByte: errNode?.startIndex ?? errNode?.startByte,
-                endByte: errNode?.endIndex ?? errNode?.endByte,
+                startOffset: errNode?.startIndex ?? errNode?.startOffset,
+                endOffset: errNode?.endIndex ?? errNode?.endOffset,
                 startPosition: errNode?.startPosition,
                 endPosition: errNode?.endPosition,
               },
@@ -1259,8 +1259,8 @@ export function validateClassModifiers(
                 }
                 const scopeName = `${classFqn}$${instName}`;
                 const eqRange = {
-                  startByte: eqNode?.startIndex ?? eqNode?.startByte,
-                  endByte: eqNode?.endIndex ?? eqNode?.endByte,
+                  startOffset: eqNode?.startIndex ?? eqNode?.startOffset,
+                  endOffset: eqNode?.endIndex ?? eqNode?.endOffset,
                   startPosition: eqNode?.startPosition,
                   endPosition: eqNode?.endPosition,
                 };
@@ -1285,8 +1285,8 @@ export function validateClassModifiers(
                 code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
                 message: "From here:",
                 range: {
-                  startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-                  endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+                  startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+                  endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
                   startPosition: arg.modPosition?.startPosition,
                   endPosition: arg.modPosition?.endPosition,
                 },
@@ -1296,8 +1296,8 @@ export function validateClassModifiers(
                 code: ModelicaErrorCode.REDECLARE_ENUM_NOT_SUBTYPE_GENERIC.code,
                 message: ModelicaErrorCode.REDECLARE_ENUM_NOT_SUBTYPE_GENERIC.message(targetMember.name),
                 range: {
-                  startByte: errNode?.startIndex ?? errNode?.startByte,
-                  endByte: errNode?.endIndex ?? errNode?.endByte,
+                  startOffset: errNode?.startIndex ?? errNode?.startOffset,
+                  endOffset: errNode?.endIndex ?? errNode?.endOffset,
                   startPosition: errNode?.startPosition,
                   endPosition: errNode?.endPosition,
                 },
@@ -1438,11 +1438,14 @@ export function instantiateElements(
           }
           const rangeObj = clauseNode
             ? {
-                startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
               }
             : elemCst
-              ? { startByte: elemCst.startIndex ?? elemCst.startByte, endByte: elemCst.endIndex ?? elemCst.endByte }
+              ? {
+                  startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                  endOffset: elemCst.endIndex ?? elemCst.endOffset,
+                }
               : undefined;
           dae.diagnostics.push({
             severity: "error",
@@ -1671,8 +1674,8 @@ export function instantiateElements(
                 code: ModelicaErrorCode.OUTER_MODIFIER.code,
                 message: ModelicaErrorCode.OUTER_MODIFIER.message(modNode.text?.trim() ?? "", child.name),
                 range: {
-                  startByte: spec?.startIndex ?? spec?.startByte ?? modNode.startIndex,
-                  endByte: spec?.endIndex ?? spec?.endByte ?? modNode.endIndex,
+                  startOffset: spec?.startIndex ?? spec?.startOffset ?? modNode.startIndex,
+                  endOffset: spec?.endIndex ?? spec?.endOffset ?? modNode.endIndex,
                   startPosition: spec?.startPosition ?? modNode.startPosition,
                   endPosition: spec?.endPosition ?? modNode.endPosition,
                 },
@@ -1695,8 +1698,8 @@ export function instantiateElements(
                 code: ModelicaErrorCode.OUTER_MODIFIER.code,
                 message: ModelicaErrorCode.OUTER_MODIFIER.message(modText, child.name),
                 range: {
-                  startByte: classModArg.modRange?.[0] ?? classModArg.modPosition?.startPosition,
-                  endByte: classModArg.modRange?.[1] ?? classModArg.modPosition?.endPosition,
+                  startOffset: classModArg.modRange?.[0] ?? classModArg.modPosition?.startPosition,
+                  endOffset: classModArg.modRange?.[1] ?? classModArg.modPosition?.endPosition,
                   startPosition: classModArg.modPosition?.startPosition,
                   endPosition: classModArg.modPosition?.endPosition,
                 },
@@ -1736,8 +1739,8 @@ export function instantiateElements(
           const elemNode = clauseNode?.parent?.type === "element" ? clauseNode.parent : clauseNode;
           const diagNode = elemNode ?? clauseNode ?? elemCst;
           const diagRange = {
-            startByte: diagNode?.startIndex ?? diagNode?.startByte,
-            endByte: diagNode?.endIndex ?? diagNode?.endByte,
+            startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+            endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
             startPosition: diagNode?.startPosition,
             endPosition: diagNode?.endPosition,
           };
@@ -1768,8 +1771,8 @@ export function instantiateElements(
           const elemNode = clauseNode?.parent?.type === "element" ? clauseNode.parent : clauseNode;
           const diagNode = elemNode ?? clauseNode ?? elemCst;
           const diagRange = {
-            startByte: diagNode?.startIndex ?? diagNode?.startByte,
-            endByte: diagNode?.endIndex ?? diagNode?.endByte,
+            startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+            endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
             startPosition: diagNode?.startPosition,
             endPosition: diagNode?.endPosition,
           };
@@ -1828,8 +1831,8 @@ export function instantiateElements(
               code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
               message: "From here:",
               range: {
-                startByte: matchingRedecl.modRange?.[0] ?? matchingRedecl.modPosition?.startPosition,
-                endByte: matchingRedecl.modRange?.[1] ?? matchingRedecl.modPosition?.endPosition,
+                startOffset: matchingRedecl.modRange?.[0] ?? matchingRedecl.modPosition?.startPosition,
+                endOffset: matchingRedecl.modRange?.[1] ?? matchingRedecl.modPosition?.endPosition,
                 startPosition: matchingRedecl.modPosition?.startPosition,
                 endPosition: matchingRedecl.modPosition?.endPosition,
               },
@@ -1873,8 +1876,8 @@ export function instantiateElements(
               code: ModelicaErrorCode.OUTER_MODIFIER.code,
               message: ModelicaErrorCode.OUTER_MODIFIER.message(modText, compInst.name),
               range: {
-                startByte: declNode?.startIndex ?? declNode?.startByte,
-                endByte: declNode?.endIndex ?? declNode?.endByte,
+                startOffset: declNode?.startIndex ?? declNode?.startOffset,
+                endOffset: declNode?.endIndex ?? declNode?.endOffset,
                 startPosition: declNode?.startPosition,
                 endPosition: declNode?.endPosition,
               },
@@ -1900,8 +1903,8 @@ export function instantiateElements(
               code: ModelicaErrorCode.OUTER_MODIFIER.code,
               message: ModelicaErrorCode.OUTER_MODIFIER.message(modText, compInst.name),
               range: {
-                startByte: matchingOuterArg.modRange?.[0] ?? matchingOuterArg.modPosition?.startPosition,
-                endByte: matchingOuterArg.modRange?.[1] ?? matchingOuterArg.modPosition?.endPosition,
+                startOffset: matchingOuterArg.modRange?.[0] ?? matchingOuterArg.modPosition?.startPosition,
+                endOffset: matchingOuterArg.modRange?.[1] ?? matchingOuterArg.modPosition?.endPosition,
                 startPosition: matchingOuterArg.modPosition?.startPosition,
                 endPosition: matchingOuterArg.modPosition?.endPosition,
               },
@@ -1942,8 +1945,8 @@ export function instantiateElements(
                 code: ModelicaErrorCode.TOP_LEVEL_OUTER_ELEMENT.code,
                 message: ModelicaErrorCode.TOP_LEVEL_OUTER_ELEMENT.message(compInst.name),
                 range: {
-                  startByte: declNode?.startIndex ?? declNode?.startByte,
-                  endByte: declNode?.endIndex ?? declNode?.endByte,
+                  startOffset: declNode?.startIndex ?? declNode?.startOffset,
+                  endOffset: declNode?.endIndex ?? declNode?.endOffset,
                   startPosition: declNode?.startPosition,
                   endPosition: declNode?.endPosition,
                 },
@@ -1990,8 +1993,8 @@ export function instantiateElements(
                     code: ModelicaErrorCode.INNER_NOT_FOUND_EXISTING_DECL.code,
                     message: ModelicaErrorCode.INNER_NOT_FOUND_EXISTING_DECL.message(compInst.name),
                     range: {
-                      startByte: declNode?.startIndex ?? declNode?.startByte,
-                      endByte: declNode?.endIndex ?? declNode?.endByte,
+                      startOffset: declNode?.startIndex ?? declNode?.startOffset,
+                      endOffset: declNode?.endIndex ?? declNode?.endOffset,
                       startPosition: declNode?.startPosition,
                       endPosition: declNode?.endPosition,
                     },
@@ -2031,8 +2034,8 @@ export function instantiateElements(
             ),
             range: rangeNode
               ? {
-                  startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                  endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                  startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                  endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                   startPosition: rangeNode.startPosition,
                   endPosition: rangeNode.endPosition,
                 }
@@ -2464,8 +2467,8 @@ export function instantiateElements(
                 const rangeNode = clauseNode ?? elemCst;
                 const rangeObj = rangeNode
                   ? {
-                      startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                      endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                      startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                      endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                       startPosition: rangeNode.startPosition,
                       endPosition: rangeNode.endPosition,
                     }
@@ -2499,8 +2502,8 @@ export function instantiateElements(
               clauseNode = clauseNode.parent;
             }
             const targetRangeNode = clauseNode ?? elemCst;
-            const sb = targetRangeNode?.startIndex ?? targetRangeNode?.startByte ?? sym?.startByte;
-            const eb = targetRangeNode?.endIndex ?? targetRangeNode?.endByte ?? sym?.endByte;
+            const sb = targetRangeNode?.startIndex ?? targetRangeNode?.startOffset ?? sym?.startOffset;
+            const eb = targetRangeNode?.endIndex ?? targetRangeNode?.endOffset ?? sym?.endOffset;
             if (sb != null && eb != null) {
               dae.setVarSourceRange(varIdx, sb, eb);
             }
@@ -2930,15 +2933,15 @@ export function instantiateElements(
             ? {
                 startPosition: clauseNode.startPosition,
                 endPosition: clauseNode.endPosition,
-                startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
               }
             : elemCst
               ? {
                   startPosition: elemCst.startPosition,
                   endPosition: elemCst.endPosition,
-                  startByte: elemCst.startIndex ?? elemCst.startByte,
-                  endByte: elemCst.endIndex ?? elemCst.endByte,
+                  startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                  endOffset: elemCst.endIndex ?? elemCst.endOffset,
                 }
               : undefined;
           const declClassId = elemSym?.parentId ?? flattener.currentClassId;
@@ -3019,8 +3022,8 @@ export function instantiateElements(
                 ? {
                     startPosition: n.startPosition,
                     endPosition: n.endPosition,
-                    startByte: n.startIndex ?? n.startByte,
-                    endByte: n.endIndex ?? n.endByte,
+                    startOffset: n.startIndex ?? n.startOffset,
+                    endOffset: n.endIndex ?? n.endOffset,
                   }
                 : undefined;
             };
@@ -3098,8 +3101,8 @@ export function instantiateElements(
                   ? {
                       startPosition: extCst.startPosition,
                       endPosition: extCst.endPosition,
-                      startByte: extCst.startIndex ?? extCst.startByte,
-                      endByte: extCst.endIndex ?? extCst.endByte,
+                      startOffset: extCst.startIndex ?? extCst.startOffset,
+                      endOffset: extCst.endIndex ?? extCst.endOffset,
                     }
                   : undefined;
                 dae.diagnostics.push({
@@ -3169,14 +3172,14 @@ export function instantiateElements(
             p = p.parent;
           }
           const notifRange = {
-            startByte: declNode?.startIndex ?? declNode?.startByte,
-            endByte: declNode?.endIndex ?? declNode?.endByte,
+            startOffset: declNode?.startIndex ?? declNode?.startOffset,
+            endOffset: declNode?.endIndex ?? declNode?.endOffset,
             startPosition: declNode?.startPosition,
             endPosition: declNode?.endPosition,
           };
           const errorRange = {
-            startByte: matchingParentArg.modRange?.[0] ?? matchingParentArg.modPosition?.startPosition,
-            endByte: matchingParentArg.modRange?.[1] ?? matchingParentArg.modPosition?.endPosition,
+            startOffset: matchingParentArg.modRange?.[0] ?? matchingParentArg.modPosition?.startPosition,
+            endOffset: matchingParentArg.modRange?.[1] ?? matchingParentArg.modPosition?.endPosition,
             startPosition: matchingParentArg.modPosition?.startPosition,
             endPosition: matchingParentArg.modPosition?.endPosition,
           };
@@ -3208,14 +3211,14 @@ export function instantiateElements(
           if (overridingArg) {
             const modText = overridingArg.modText || (overridingArg.value?.text ? `=${overridingArg.value.text}` : "");
             const notifRange = {
-              startByte: finalArg.modRange?.[0] ?? finalArg.modPosition?.startPosition,
-              endByte: finalArg.modRange?.[1] ?? finalArg.modPosition?.endPosition,
+              startOffset: finalArg.modRange?.[0] ?? finalArg.modPosition?.startPosition,
+              endOffset: finalArg.modRange?.[1] ?? finalArg.modPosition?.endPosition,
               startPosition: finalArg.modPosition?.startPosition,
               endPosition: finalArg.modPosition?.endPosition,
             };
             const errorRange = {
-              startByte: overridingArg.modRange?.[0] ?? overridingArg.modPosition?.startPosition,
-              endByte: overridingArg.modRange?.[1] ?? overridingArg.modPosition?.endPosition,
+              startOffset: overridingArg.modRange?.[0] ?? overridingArg.modPosition?.startPosition,
+              endOffset: overridingArg.modRange?.[1] ?? overridingArg.modPosition?.endPosition,
               startPosition: overridingArg.modPosition?.startPosition,
               endPosition: overridingArg.modPosition?.endPosition,
             };
@@ -3270,8 +3273,8 @@ export function instantiateElements(
               ),
               range: modRange
                 ? {
-                    startByte: modRange[0],
-                    endByte: modRange[1],
+                    startOffset: modRange[0],
+                    endOffset: modRange[1],
                     startPosition: modPos?.startPosition,
                     endPosition: modPos?.endPosition,
                   }
@@ -3428,8 +3431,8 @@ export function instantiateElements(
                       range: {
                         startPosition: cst.startPosition,
                         endPosition: cst.endPosition,
-                        startByte: cst.startIndex ?? cst.startByte,
-                        endByte: cst.endIndex ?? cst.endByte,
+                        startOffset: cst.startIndex ?? cst.startOffset,
+                        endOffset: cst.endIndex ?? cst.endOffset,
                       },
                     });
                     return;
@@ -3462,8 +3465,8 @@ export function instantiateElements(
                             range: {
                               startPosition: shortMod.startPosition,
                               endPosition: shortMod.endPosition,
-                              startByte: shortMod.startIndex ?? shortMod.startByte,
-                              endByte: shortMod.endIndex ?? shortMod.endByte,
+                              startOffset: shortMod.startIndex ?? shortMod.startOffset,
+                              endOffset: shortMod.endIndex ?? shortMod.endOffset,
                             },
                           });
                           dae.diagnostics.push({
@@ -3666,11 +3669,14 @@ export function instantiateElements(
             }
             const rangeObj = clauseNode
               ? {
-                  startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                  endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                  startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                  endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                 }
               : elemCst
-                ? { startByte: elemCst.startIndex ?? elemCst.startByte, endByte: elemCst.endIndex ?? elemCst.endByte }
+                ? {
+                    startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                    endOffset: elemCst.endIndex ?? elemCst.endOffset,
+                  }
                 : undefined;
             const typeName = compInst.typeSpecifier?.startsWith(".")
               ? compInst.typeSpecifier
@@ -3713,8 +3719,8 @@ export function instantiateElements(
           }
           const compRange = clauseNode
             ? {
-                startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                 startPosition: clauseNode.startPosition,
                 endPosition: clauseNode.endPosition,
               }
@@ -3775,15 +3781,15 @@ export function instantiateElements(
             }
             const rangeObj = clauseNode
               ? {
-                  startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                  endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                  startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                  endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                   startPosition: clauseNode.startPosition,
                   endPosition: clauseNode.endPosition,
                 }
               : elemCst
                 ? {
-                    startByte: elemCst.startIndex ?? elemCst.startByte,
-                    endByte: elemCst.endIndex ?? elemCst.endByte,
+                    startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                    endOffset: elemCst.endIndex ?? elemCst.endOffset,
                     startPosition: elemCst.startPosition,
                     endPosition: elemCst.endPosition,
                   }
@@ -3841,15 +3847,15 @@ export function instantiateElements(
                   }
                   const compRange = clauseNode
                     ? {
-                        startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                        endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                        startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                        endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                         startPosition: clauseNode.startPosition,
                         endPosition: clauseNode.endPosition,
                       }
                     : elemCst
                       ? {
-                          startByte: elemCst.startIndex ?? elemCst.startByte,
-                          endByte: elemCst.endIndex ?? elemCst.endByte,
+                          startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                          endOffset: elemCst.endIndex ?? elemCst.endOffset,
                           startPosition: elemCst.startPosition,
                           endPosition: elemCst.endPosition,
                         }
@@ -3902,8 +3908,8 @@ export function instantiateElements(
                 code: ModelicaErrorCode.INVALID_TYPE_PREFIX_FLOW_NESTED.code,
                 message: ModelicaErrorCode.INVALID_TYPE_PREFIX_FLOW_NESTED.message(fullNestedVar),
                 range: {
-                  startByte: clauseNode?.startIndex ?? clauseNode?.startByte,
-                  endByte: clauseNode?.endIndex ?? clauseNode?.endByte,
+                  startOffset: clauseNode?.startIndex ?? clauseNode?.startOffset,
+                  endOffset: clauseNode?.endIndex ?? clauseNode?.endOffset,
                   startPosition: clauseNode?.startPosition,
                   endPosition: clauseNode?.endPosition,
                 },
@@ -3923,8 +3929,8 @@ export function instantiateElements(
               const classCst = flattener.db.cstNode(flattener.currentClassId) as any;
               const rangeObj = classCst
                 ? {
-                    startByte: classCst.startIndex ?? classCst.startByte,
-                    endByte: classCst.endIndex ?? classCst.endByte,
+                    startOffset: classCst.startIndex ?? classCst.startOffset,
+                    endOffset: classCst.endIndex ?? classCst.endOffset,
                     startPosition: classCst.startPosition,
                     endPosition: classCst.endPosition,
                   }
@@ -3954,11 +3960,14 @@ export function instantiateElements(
             }
             const rangeObj = clauseNode
               ? {
-                  startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                  endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                  startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                  endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                 }
               : elemCst
-                ? { startByte: elemCst.startIndex ?? elemCst.startByte, endByte: elemCst.endIndex ?? elemCst.endByte }
+                ? {
+                    startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                    endOffset: elemCst.endIndex ?? elemCst.endOffset,
+                  }
                 : undefined;
             const targetClassName = classTarget?.name ?? compInst.typeSpecifier;
             dae.diagnostics.push({
@@ -3982,8 +3991,8 @@ export function instantiateElements(
             const targetCst = flattener.db.cstNode(classTargetId) as any;
             const targetRange = targetCst
               ? {
-                  startByte: targetCst.startIndex ?? targetCst.startByte,
-                  endByte: targetCst.endIndex ?? targetCst.endByte,
+                  startOffset: targetCst.startIndex ?? targetCst.startOffset,
+                  endOffset: targetCst.endIndex ?? targetCst.endOffset,
                   startPosition: targetCst.startPosition,
                   endPosition: targetCst.endPosition,
                 }
@@ -3994,15 +4003,15 @@ export function instantiateElements(
             }
             const compRange = clauseNode
               ? {
-                  startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                  endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                  startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                  endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                   startPosition: clauseNode.startPosition,
                   endPosition: clauseNode.endPosition,
                 }
               : elemCst
                 ? {
-                    startByte: elemCst.startIndex ?? elemCst.startByte,
-                    endByte: elemCst.endIndex ?? elemCst.endByte,
+                    startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                    endOffset: elemCst.endIndex ?? elemCst.endOffset,
                     startPosition: elemCst.startPosition,
                     endPosition: elemCst.endPosition,
                   }
@@ -4086,7 +4095,10 @@ export function instantiateElements(
                 );
                 if (!isRedeclared) {
                   const ncRange = ncCst
-                    ? { startByte: ncCst.startIndex ?? ncCst.startByte, endByte: ncCst.endIndex ?? ncCst.endByte }
+                    ? {
+                        startOffset: ncCst.startIndex ?? ncCst.startOffset,
+                        endOffset: ncCst.endIndex ?? ncCst.endOffset,
+                      }
                     : undefined;
                   let clauseNode: any = elemCst;
                   while (clauseNode && clauseNode.type !== "component_clause") {
@@ -4094,13 +4106,13 @@ export function instantiateElements(
                   }
                   const compRange = clauseNode
                     ? {
-                        startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                        endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                        startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                        endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                       }
                     : elemCst
                       ? {
-                          startByte: elemCst.startIndex ?? elemCst.startByte,
-                          endByte: elemCst.endIndex ?? elemCst.endByte,
+                          startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                          endOffset: elemCst.endIndex ?? elemCst.endOffset,
                         }
                       : undefined;
                   dae.diagnostics.push({
@@ -4780,15 +4792,15 @@ export function instantiateElements(
           }
           const compClauseRange = compClauseNode
             ? {
-                startByte: compClauseNode.startIndex ?? compClauseNode.startByte,
-                endByte: compClauseNode.endIndex ?? compClauseNode.endByte,
+                startOffset: compClauseNode.startIndex ?? compClauseNode.startOffset,
+                endOffset: compClauseNode.endIndex ?? compClauseNode.endOffset,
                 startPosition: compClauseNode.startPosition,
                 endPosition: compClauseNode.endPosition,
               }
             : elemCst
               ? {
-                  startByte: elemCst.startIndex ?? elemCst.startByte,
-                  endByte: elemCst.endIndex ?? elemCst.endByte,
+                  startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                  endOffset: elemCst.endIndex ?? elemCst.endOffset,
                   startPosition: elemCst.startPosition,
                   endPosition: elemCst.endPosition,
                 }
@@ -5096,8 +5108,8 @@ export function instantiateElements(
                             code: ModelicaErrorCode.FAILED_TO_DEDUCE_DIMENSION.code,
                             message: ModelicaErrorCode.FAILED_TO_DEDUCE_DIMENSION.message(targetDimIdx, targetVarName),
                             range: {
-                              startByte: diagNode?.startIndex ?? diagNode?.startByte,
-                              endByte: diagNode?.endIndex ?? diagNode?.endByte,
+                              startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+                              endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
                               startPosition: diagNode?.startPosition,
                               endPosition: diagNode?.endPosition,
                             },
@@ -5122,8 +5134,8 @@ export function instantiateElements(
                         });
                         return;
                       }
-                      const startB = elemCst?.startIndex ?? elemCst?.startByte;
-                      const endB = elemCst?.endIndex ?? elemCst?.endByte;
+                      const startB = elemCst?.startIndex ?? elemCst?.startOffset;
+                      const endB = elemCst?.endIndex ?? elemCst?.endOffset;
                       const arrayName = (dae.extensionMetadata as any)?.hasOldInstOption
                         ? `${compInst.name}[${dimName}]`
                         : compInst.name;
@@ -5131,8 +5143,8 @@ export function instantiateElements(
                         severity: "error",
                         message: `Could not evaluate structural parameter (or constant): ${dimName} which gives dimensions of array: ${arrayName}. Array dimensions must be known at compile time.`,
                         range: {
-                          startByte: startB,
-                          endByte: endB,
+                          startOffset: startB,
+                          endOffset: endB,
                           startPosition: elemCst?.startPosition,
                           endPosition: elemCst?.endPosition,
                         },
@@ -5413,8 +5425,8 @@ export function instantiateElements(
                   const rangeNode = clauseNode ?? elemCst;
                   const rangeObj = rangeNode
                     ? {
-                        startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                        endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                        startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                        endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                         startPosition: rangeNode.startPosition,
                         endPosition: rangeNode.endPosition,
                       }
@@ -5447,8 +5459,8 @@ export function instantiateElements(
                   const rangeNode = clauseNode ?? elemCst;
                   const rangeObj = rangeNode
                     ? {
-                        startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                        endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                        startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                        endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                         startPosition: rangeNode.startPosition,
                         endPosition: rangeNode.endPosition,
                       }
@@ -5478,8 +5490,8 @@ export function instantiateElements(
                   const rangeNode = clauseNode ?? elemCst;
                   const rangeObj = rangeNode
                     ? {
-                        startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                        endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                        startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                        endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                         startPosition: rangeNode.startPosition,
                         endPosition: rangeNode.endPosition,
                       }
@@ -5958,8 +5970,8 @@ export function instantiateElements(
                   code: enumErr.code,
                   message: enumErr.message,
                   range: {
-                    startByte: enumErr.startByte,
-                    endByte: enumErr.endByte,
+                    startOffset: enumErr.startOffset,
+                    endOffset: enumErr.endOffset,
                   },
                 });
                 return;
@@ -5993,9 +6005,12 @@ export function instantiateElements(
             ((matchingParentArg.value as any).origArrayCompText ?? matchingParentArg.value.text)?.trim() ?? "";
           if (modText.startsWith("array(") && modText.includes(" for ")) {
             const rangeObj = matchingParentArg.modRange
-              ? { startByte: matchingParentArg.modRange[0], endByte: matchingParentArg.modRange[1] }
+              ? { startOffset: matchingParentArg.modRange[0], endOffset: matchingParentArg.modRange[1] }
               : elemCst
-                ? { startByte: elemCst.startIndex ?? elemCst.startByte, endByte: elemCst.endIndex ?? elemCst.endByte }
+                ? {
+                    startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                    endOffset: elemCst.endIndex ?? elemCst.endOffset,
+                  }
                 : undefined;
             const idxMatch = prefix.match(/\[(\d+)\]$/);
             const idxVal = idxMatch ? parseInt(idxMatch[1]!, 10) : 1;
@@ -6163,31 +6178,31 @@ export function instantiateElements(
                 const memBinding = memMod?.bindingExpression?.text?.trim();
                 if (memType === "Integer" && memBinding && /^[+-]?\d+\.\d+/.test(memBinding)) {
                   const memCst = flattener.db.cstNode(memberEntry.id) as any;
-                  let memClauseStart = memCst?.startIndex ?? memCst?.startByte;
-                  let memClauseEnd = memCst?.endIndex ?? memCst?.endByte;
+                  let memClauseStart = memCst?.startIndex ?? memCst?.startOffset;
+                  let memClauseEnd = memCst?.endIndex ?? memCst?.endOffset;
                   if (memCst) {
                     let curr = memCst;
                     while (curr && curr.type !== "component_clause") curr = curr.parent;
                     if (curr) {
-                      memClauseStart = curr.startIndex ?? curr.startByte;
-                      memClauseEnd = curr.endIndex ?? curr.endByte;
+                      memClauseStart = curr.startIndex ?? curr.startOffset;
+                      memClauseEnd = curr.endIndex ?? curr.endOffset;
                     }
                   }
-                  let kClauseStart = elemCst?.startIndex ?? elemCst?.startByte;
-                  let kClauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
+                  let kClauseStart = elemCst?.startIndex ?? elemCst?.startOffset;
+                  let kClauseEnd = elemCst?.endIndex ?? elemCst?.endOffset;
                   if (elemCst) {
                     let curr = elemCst;
                     while (curr && curr.type !== "component_clause") curr = curr.parent;
                     if (curr) {
-                      kClauseStart = curr.startIndex ?? curr.startByte;
-                      kClauseEnd = curr.endIndex ?? curr.endByte;
+                      kClauseStart = curr.startIndex ?? curr.startOffset;
+                      kClauseEnd = curr.endIndex ?? curr.endOffset;
                     }
                   }
                   dae.diagnostics.push({
                     severity: "error",
                     code: ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
                     message: `Type mismatch in binding ${memberEntry.name} = ${memBinding}, expected subtype of Integer, got type Real.`,
-                    range: { startByte: memClauseStart, endByte: memClauseEnd },
+                    range: { startOffset: memClauseStart, endOffset: memClauseEnd },
                   });
                   const scopeName =
                     (flattener.currentRootClassId ? flattener.db.symbol(flattener.currentRootClassId)?.name : "") ?? "";
@@ -6195,7 +6210,7 @@ export function instantiateElements(
                     severity: "error",
                     code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
                     message: `Variable ${bRef} not found in scope ${scopeName}.`,
-                    range: { startByte: kClauseStart, endByte: kClauseEnd },
+                    range: { startOffset: kClauseStart, endOffset: kClauseEnd },
                   });
                   return;
                 }
@@ -6245,9 +6260,12 @@ export function instantiateElements(
           const bText = effectiveBinding.text.trim();
           if (/\btime\b/.test(bText)) {
             const rangeObj = matchingParentArg?.modRange
-              ? { startByte: matchingParentArg.modRange[0], endByte: matchingParentArg.modRange[1] }
+              ? { startOffset: matchingParentArg.modRange[0], endOffset: matchingParentArg.modRange[1] }
               : elemCst
-                ? { startByte: elemCst.startIndex ?? elemCst.startByte, endByte: elemCst.endIndex ?? elemCst.endByte }
+                ? {
+                    startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                    endOffset: elemCst.endIndex ?? elemCst.endOffset,
+                  }
                 : undefined;
             const formatted = bText.replace(/\*/g, " * ");
             dae.diagnostics.push({
@@ -6339,8 +6357,8 @@ export function instantiateElements(
             const rangeNode = clauseNode ?? elemCst;
             const rangeObj = rangeNode
               ? {
-                  startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                  endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                  startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                  endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                   startPosition: rangeNode.startPosition,
                   endPosition: rangeNode.endPosition,
                 }
@@ -6670,8 +6688,8 @@ export function instantiateElements(
                   const rangeNode = clauseNode ?? elemCst;
                   const rangeObj = rangeNode
                     ? {
-                        startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                        endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                        startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                        endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                         startPosition: rangeNode.startPosition,
                         endPosition: rangeNode.endPosition,
                       }
@@ -6749,13 +6767,13 @@ export function instantiateElements(
                   }
                   const rangeObj = clauseNode
                     ? {
-                        startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                        endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                        startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                        endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                       }
                     : elemCst
                       ? {
-                          startByte: elemCst.startIndex ?? elemCst.startByte,
-                          endByte: elemCst.endIndex ?? elemCst.endByte,
+                          startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                          endOffset: elemCst.endIndex ?? elemCst.endOffset,
                         }
                       : undefined;
                   const compName = prefix ? `.${prefix}.${compInst.name}` : `.${compInst.name}`;
@@ -7218,13 +7236,13 @@ export function instantiateElements(
                         }
                         const rangeObj = clauseNode
                           ? {
-                              startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                              endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                              startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                              endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                             }
                           : elemCst
                             ? {
-                                startByte: elemCst.startIndex ?? elemCst.startByte,
-                                endByte: elemCst.endIndex ?? elemCst.endByte,
+                                startOffset: elemCst.startIndex ?? elemCst.startOffset,
+                                endOffset: elemCst.endIndex ?? elemCst.endOffset,
                               }
                             : undefined;
                         const compName = prefix ? `.${prefix}.${compInst.name}` : `.${compInst.name}`;
@@ -7842,15 +7860,15 @@ export function instantiateElements(
                                   compClause = compClause.parent;
                                 }
                                 const diagNode = compClause ?? elemCst;
-                                const startB = err.range?.startByte ?? diagNode?.startIndex ?? diagNode?.startByte;
-                                const endB = err.range?.endByte ?? diagNode?.endIndex ?? diagNode?.endByte;
+                                const startB = err.range?.startOffset ?? diagNode?.startIndex ?? diagNode?.startOffset;
+                                const endB = err.range?.endOffset ?? diagNode?.endIndex ?? diagNode?.endOffset;
                                 dae.diagnostics.push({
                                   severity: "error",
                                   code: err?.code ?? 0,
                                   message: err.message,
                                   range: {
-                                    startByte: startB,
-                                    endByte: endB,
+                                    startOffset: startB,
+                                    endOffset: endB,
                                     startPosition: err.range?.startPosition ?? diagNode?.startPosition,
                                     endPosition: err.range?.endPosition ?? diagNode?.endPosition,
                                   },
@@ -8079,8 +8097,8 @@ export function instantiateElements(
                 code: ModelicaErrorCode.NEGATIVE_DIMENSION.code,
                 message: ModelicaErrorCode.NEGATIVE_DIMENSION.message(String(d.value), compInst.name),
                 range: {
-                  startByte: diagNode?.startIndex ?? diagNode?.startByte,
-                  endByte: diagNode?.endIndex ?? diagNode?.endByte,
+                  startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+                  endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
                   startPosition: diagNode?.startPosition,
                   endPosition: diagNode?.endPosition,
                 },
@@ -8210,14 +8228,14 @@ export function instantiateElements(
             const rowsCount = rows.length;
             const colsCount = rowElements.length > 0 ? rowElements[0]!.length : 0;
             if (arrayDims && arrayDims.length === 1) {
-              let clauseStart = elemCst?.startIndex ?? elemCst?.startByte;
-              let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
+              let clauseStart = elemCst?.startIndex ?? elemCst?.startOffset;
+              let clauseEnd = elemCst?.endIndex ?? elemCst?.endOffset;
               if (elemCst) {
                 let curr = elemCst;
                 while (curr && curr.type !== "component_clause") curr = curr.parent;
                 if (curr) {
-                  clauseStart = curr.startIndex ?? curr.startByte;
-                  clauseEnd = curr.endIndex ?? curr.endByte;
+                  clauseStart = curr.startIndex ?? curr.startOffset;
+                  clauseEnd = curr.endIndex ?? curr.endOffset;
                 }
               }
               const formattedExpr = "{" + rowElements.map((cols) => "{" + cols.join(", ") + "}").join(", ") + "}";
@@ -8227,7 +8245,7 @@ export function instantiateElements(
                 severity: "error",
                 code: ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
                 message: `Array dimension mismatch, expression ${formattedExpr} has type ${elemType}[${rowsCount}, ${colsCount}], expected array dimensions [${arrayDims.join(", ")}].`,
-                range: { startByte: clauseStart, endByte: clauseEnd },
+                range: { startOffset: clauseStart, endOffset: clauseEnd },
               });
               return;
             }
@@ -8409,8 +8427,8 @@ export function instantiateElements(
                           code: ModelicaErrorCode.FAILED_TO_DEDUCE_DIMENSION.code,
                           message: ModelicaErrorCode.FAILED_TO_DEDUCE_DIMENSION.message(targetDimIdx, targetVarName),
                           range: {
-                            startByte: diagNode?.startIndex ?? diagNode?.startByte,
-                            endByte: diagNode?.endIndex ?? diagNode?.endByte,
+                            startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+                            endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
                             startPosition: diagNode?.startPosition,
                             endPosition: diagNode?.endPosition,
                           },
@@ -8441,8 +8459,8 @@ export function instantiateElements(
                       severity: "error",
                       message: `Could not evaluate structural parameter (or constant): ${dimName} which gives dimensions of array: ${arrayName}. Array dimensions must be known at compile time.`,
                       range: {
-                        startByte: diagNode?.startIndex ?? diagNode?.startByte,
-                        endByte: diagNode?.endIndex ?? diagNode?.endByte,
+                        startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+                        endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
                         startPosition: diagNode?.startPosition,
                         endPosition: diagNode?.endPosition,
                       },
@@ -8751,15 +8769,15 @@ export function instantiateElements(
                 const rd = rawDims[i];
                 const isColon = rd?.text?.trim() === ":" || rd?.kind === "colon" || rd?.kind === "flexible";
                 if (isColon && resolvedDims[i]! <= 0 && !dae.diagnostics.some((d) => d.severity === "error")) {
-                  const startB = elemCst?.startIndex ?? elemCst?.startByte;
-                  const endB = elemCst?.endIndex ?? elemCst?.endByte;
+                  const startB = elemCst?.startIndex ?? elemCst?.startOffset;
+                  const endB = elemCst?.endIndex ?? elemCst?.endOffset;
                   dae.diagnostics.push({
                     severity: "error",
                     code: ModelicaErrorCode.FAILED_TO_DEDUCE_DIMENSION.code,
                     message: ModelicaErrorCode.FAILED_TO_DEDUCE_DIMENSION.message(String(i + 1), name),
                     range: {
-                      startByte: startB,
-                      endByte: endB,
+                      startOffset: startB,
+                      endOffset: endB,
                       startPosition: elemCst?.startPosition,
                       endPosition: elemCst?.endPosition,
                     },
@@ -8868,14 +8886,14 @@ export function instantiateElements(
                 if (rawText.startsWith("{") && rawText.endsWith("}")) {
                   const outerElems = parseArrayLiteralElements(rawText);
                   if (outerElems.length > 0 && !outerElems[0]!.startsWith("{")) {
-                    let clauseStart = elemCst?.startIndex ?? elemCst?.startByte;
-                    let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
+                    let clauseStart = elemCst?.startIndex ?? elemCst?.startOffset;
+                    let clauseEnd = elemCst?.endIndex ?? elemCst?.endOffset;
                     if (elemCst) {
                       let curr = elemCst;
                       while (curr && curr.type !== "component_clause") curr = curr.parent;
                       if (curr) {
-                        clauseStart = curr.startIndex ?? curr.startByte;
-                        clauseEnd = curr.endIndex ?? curr.endByte;
+                        clauseStart = curr.startIndex ?? curr.startOffset;
+                        clauseEnd = curr.endIndex ?? curr.endOffset;
                       }
                     }
                     const allInts = outerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim()));
@@ -8885,7 +8903,7 @@ export function instantiateElements(
                       severity: "error",
                       code: ModelicaErrorCode.ATTRIBUTE_TYPE_MISMATCH.code,
                       message: `Variable ${compInst.name}: Wrong type on builtin attribute ${arg.name} of type ${elemType}[${outerElems.length}], expected ${baseTypeName}.`,
-                      range: { startByte: clauseStart, endByte: clauseEnd },
+                      range: { startOffset: clauseStart, endOffset: clauseEnd },
                     });
                     return;
                   }
@@ -8908,14 +8926,14 @@ export function instantiateElements(
                 targetDims.length === 1 ||
                 (targetDims.length >= 2 && (targetDims[0] !== rowsCount || targetDims[1] !== colsCount))
               ) {
-                let clauseStart = elemCst?.startIndex ?? elemCst?.startByte;
-                let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
+                let clauseStart = elemCst?.startIndex ?? elemCst?.startOffset;
+                let clauseEnd = elemCst?.endIndex ?? elemCst?.endOffset;
                 if (elemCst) {
                   let curr = elemCst;
                   while (curr && curr.type !== "component_clause") curr = curr.parent;
                   if (curr) {
-                    clauseStart = curr.startIndex ?? curr.startByte;
-                    clauseEnd = curr.endIndex ?? curr.endByte;
+                    clauseStart = curr.startIndex ?? curr.startOffset;
+                    clauseEnd = curr.endIndex ?? curr.endOffset;
                   }
                 }
                 const formattedExpr = "{" + rowElements.map((cols) => "{" + cols.join(", ") + "}").join(", ") + "}";
@@ -8925,7 +8943,7 @@ export function instantiateElements(
                   severity: "error",
                   code: ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
                   message: `Array dimension mismatch, expression ${formattedExpr} has type ${elemType}[${rowsCount}, ${colsCount}], expected array dimensions [${targetDims.join(", ")}].`,
-                  range: { startByte: clauseStart, endByte: clauseEnd },
+                  range: { startOffset: clauseStart, endOffset: clauseEnd },
                 });
                 return;
               }
@@ -8943,14 +8961,14 @@ export function instantiateElements(
                   }
                 }
                 if (mismatchRow) {
-                  let clauseStart = elemCst?.startIndex ?? elemCst?.startByte;
-                  let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
+                  let clauseStart = elemCst?.startIndex ?? elemCst?.startOffset;
+                  let clauseEnd = elemCst?.endIndex ?? elemCst?.endOffset;
                   if (elemCst) {
                     let curr = elemCst;
                     while (curr && curr.type !== "component_clause") curr = curr.parent;
                     if (curr) {
-                      clauseStart = curr.startIndex ?? curr.startByte;
-                      clauseEnd = curr.endIndex ?? curr.endByte;
+                      clauseStart = curr.startIndex ?? curr.startOffset;
+                      clauseEnd = curr.endIndex ?? curr.endOffset;
                     }
                   }
                   const elemType = mismatchRow.innerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim()))
@@ -8961,25 +8979,25 @@ export function instantiateElements(
                     severity: "notification",
                     code: ModelicaErrorCode.NOTIFICATION_FROM_HERE_TRACE.code,
                     message: "From here:",
-                    range: { startByte: notifRange[0], endByte: notifRange[1] },
+                    range: { startOffset: notifRange[0], endOffset: notifRange[1] },
                   });
                   dae.diagnostics.push({
                     severity: "error",
                     code: ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
                     message: `Array dimension mismatch, expression ${mismatchRow.rowText} has type ${elemType}[${mismatchRow.innerElems.length}], expected array dimensions [${targetDims[1]}].`,
-                    range: { startByte: clauseStart, endByte: clauseEnd },
+                    range: { startOffset: clauseStart, endOffset: clauseEnd },
                   });
                   return;
                 }
               } else if (targetDims.length === 1 && outerElems.length !== targetDims[0]) {
-                let clauseStart = elemCst?.startIndex ?? elemCst?.startByte;
-                let clauseEnd = elemCst?.endIndex ?? elemCst?.endByte;
+                let clauseStart = elemCst?.startIndex ?? elemCst?.startOffset;
+                let clauseEnd = elemCst?.endIndex ?? elemCst?.endOffset;
                 if (elemCst) {
                   let curr = elemCst;
                   while (curr && curr.type !== "component_clause") curr = curr.parent;
                   if (curr) {
-                    clauseStart = curr.startIndex ?? curr.startByte;
-                    clauseEnd = curr.endIndex ?? curr.endByte;
+                    clauseStart = curr.startIndex ?? curr.startOffset;
+                    clauseEnd = curr.endIndex ?? curr.endOffset;
                   }
                 }
                 const elemType = outerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim())) ? "Integer" : "Real";
@@ -8988,13 +9006,13 @@ export function instantiateElements(
                   severity: "notification",
                   code: ModelicaErrorCode.NOTIFICATION_FROM_HERE_TRACE.code,
                   message: "From here:",
-                  range: { startByte: notifRange[0], endByte: notifRange[1] },
+                  range: { startOffset: notifRange[0], endOffset: notifRange[1] },
                 });
                 dae.diagnostics.push({
                   severity: "error",
                   code: ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code,
                   message: `Array dimension mismatch, expression ${rawText} has type ${elemType}[${outerElems.length}], expected array dimensions [${targetDims[0]}].`,
-                  range: { startByte: clauseStart, endByte: clauseEnd },
+                  range: { startOffset: clauseStart, endOffset: clauseEnd },
                 });
                 return;
               }
@@ -9038,8 +9056,8 @@ export function instantiateElements(
                     message: `Type mismatch in modifier of component ${compLabel}, expected type Real, got modifier =${formattedMod} of type Integer[${concreteShape.join(", ")}].`,
                     range: rangeNode
                       ? {
-                          startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                          endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                          startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                          endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                           startPosition: rangeNode.startPosition,
                           endPosition: rangeNode.endPosition,
                         }
@@ -9141,8 +9159,8 @@ export function instantiateElements(
               }
             }
             if (elemCst) {
-              const startB = elemCst.startIndex ?? elemCst.startByte;
-              const endB = elemCst.endIndex ?? elemCst.endByte;
+              const startB = elemCst.startIndex ?? elemCst.startOffset;
+              const endB = elemCst.endIndex ?? elemCst.endOffset;
               if (startB != null && endB != null) {
                 dae.setVarSourceRange(varIdx, startB, endB);
               }
@@ -9263,8 +9281,8 @@ export function instantiateElements(
                 const rangeNode = clauseNode ?? elemCst;
                 const rangeObj = rangeNode
                   ? {
-                      startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                      endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                      startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                      endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                       startPosition: rangeNode.startPosition,
                       endPosition: rangeNode.endPosition,
                     }
@@ -9297,8 +9315,8 @@ export function instantiateElements(
                 const rangeNode = clauseNode ?? elemCst;
                 const rangeObj = rangeNode
                   ? {
-                      startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                      endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                      startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                      endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                       startPosition: rangeNode.startPosition,
                       endPosition: rangeNode.endPosition,
                     }
@@ -9328,8 +9346,8 @@ export function instantiateElements(
                 const rangeNode = clauseNode ?? elemCst;
                 const rangeObj = rangeNode
                   ? {
-                      startByte: rangeNode.startIndex ?? rangeNode.startByte,
-                      endByte: rangeNode.endIndex ?? rangeNode.endByte,
+                      startOffset: rangeNode.startIndex ?? rangeNode.startOffset,
+                      endOffset: rangeNode.endIndex ?? rangeNode.endOffset,
                       startPosition: rangeNode.startPosition,
                       endPosition: rangeNode.endPosition,
                     }
@@ -9365,8 +9383,8 @@ export function instantiateElements(
               dae.hiddenVarIndices.add(varIdx);
             }
             if (elemCst) {
-              const startB = elemCst.startIndex ?? elemCst.startByte;
-              const endB = elemCst.endIndex ?? elemCst.endByte;
+              const startB = elemCst.startIndex ?? elemCst.startOffset;
+              const endB = elemCst.endIndex ?? elemCst.endOffset;
               if (startB != null && endB != null) {
                 dae.setVarSourceRange(varIdx, startB, endB);
               }
@@ -9541,8 +9559,8 @@ export function instantiateElements(
             dae.hiddenVarIndices.add(varIdx);
           }
           if (elemCst) {
-            const startB = elemCst.startIndex ?? elemCst.startByte;
-            const endB = elemCst.endIndex ?? elemCst.endByte;
+            const startB = elemCst.startIndex ?? elemCst.startOffset;
+            const endB = elemCst.endIndex ?? elemCst.endOffset;
             if (startB != null && endB != null) {
               dae.setVarSourceRange(varIdx, startB, endB);
             }
@@ -9649,8 +9667,8 @@ export function validateFunctionComponentDeclaration(
   const elemNode = clauseNode?.parent?.type === "element" ? clauseNode.parent : clauseNode;
   const diagNode = elemNode ?? clauseNode ?? elemCst;
   const diagRange = {
-    startByte: diagNode?.startIndex ?? diagNode?.startByte,
-    endByte: diagNode?.endIndex ?? diagNode?.endByte,
+    startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+    endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
     startPosition: diagNode?.startPosition,
     endPosition: diagNode?.endPosition,
   };
@@ -9697,8 +9715,8 @@ export function validateFunctionComponentDeclaration(
           code: ModelicaErrorCode.FUNCTION_PROTECTED_IO.code,
           message: ModelicaErrorCode.FUNCTION_PROTECTED_IO.message(compInst.name),
           range: {
-            startByte: clauseNode?.startIndex ?? clauseNode?.startByte ?? diagRange.startByte,
-            endByte: clauseNode?.endIndex ?? clauseNode?.endByte ?? diagRange.endByte,
+            startOffset: clauseNode?.startIndex ?? clauseNode?.startOffset ?? diagRange.startOffset,
+            endOffset: clauseNode?.endIndex ?? clauseNode?.endOffset ?? diagRange.endOffset,
             startPosition: clauseNode?.startPosition ?? diagRange.startPosition,
             endPosition: clauseNode?.endPosition ?? diagRange.endPosition,
           },
@@ -9729,8 +9747,8 @@ export function validateFunctionComponentDeclaration(
         code: ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.code,
         message: ModelicaErrorCode.FUNCTION_PUBLIC_VARIABLE.message(compInst.name),
         range: {
-          startByte: clauseNode?.startIndex ?? clauseNode?.startByte ?? diagRange.startByte,
-          endByte: clauseNode?.endIndex ?? clauseNode?.endByte ?? diagRange.endByte,
+          startOffset: clauseNode?.startIndex ?? clauseNode?.startOffset ?? diagRange.startOffset,
+          endOffset: clauseNode?.endIndex ?? clauseNode?.endOffset ?? diagRange.endOffset,
           startPosition: clauseNode?.startPosition ?? diagRange.startPosition,
           endPosition: clauseNode?.endPosition ?? diagRange.endPosition,
         },
@@ -9781,8 +9799,8 @@ export function validateComponentBasicAttributes(
     for (const arg of allArgs) {
       if (arg.isRedeclaration || arg.redeclaredKind) {
         const errorRange = {
-          startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-          endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+          startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+          endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
           startPosition: arg.modPosition?.startPosition,
           endPosition: arg.modPosition?.endPosition,
         };
@@ -9801,8 +9819,8 @@ export function validateComponentBasicAttributes(
       if (arg.nestedArgs && arg.nestedArgs.length > 0) {
         for (const nested of arg.nestedArgs) {
           const errorRange = {
-            startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-            endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+            startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+            endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
             startPosition: arg.modPosition?.startPosition,
             endPosition: arg.modPosition?.endPosition,
           };
@@ -9816,8 +9834,8 @@ export function validateComponentBasicAttributes(
         }
       } else if (arg.name && arg.name.includes(".")) {
         const errorRange = {
-          startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-          endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+          startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+          endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
           startPosition: arg.modPosition?.startPosition,
           endPosition: arg.modPosition?.endPosition,
         };
@@ -9837,14 +9855,14 @@ export function validateComponentBasicAttributes(
         const overridingArg = parentArgs.find((pa: any) => pa.name === localArg.name);
         if (overridingArg) {
           const notifRange = {
-            startByte: overridingArg.modRange?.[0] ?? overridingArg.modPosition?.startPosition,
-            endByte: overridingArg.modRange?.[1] ?? overridingArg.modPosition?.endPosition,
+            startOffset: overridingArg.modRange?.[0] ?? overridingArg.modPosition?.startPosition,
+            endOffset: overridingArg.modRange?.[1] ?? overridingArg.modPosition?.endPosition,
             startPosition: overridingArg.modPosition?.startPosition,
             endPosition: overridingArg.modPosition?.endPosition,
           };
           const errorRange = {
-            startByte: localArg.modRange?.[0] ?? localArg.modPosition?.startPosition,
-            endByte: localArg.modRange?.[1] ?? localArg.modPosition?.endPosition,
+            startOffset: localArg.modRange?.[0] ?? localArg.modPosition?.startPosition,
+            endOffset: localArg.modRange?.[1] ?? localArg.modPosition?.endPosition,
             startPosition: localArg.modPosition?.startPosition,
             endPosition: localArg.modPosition?.endPosition,
           };
@@ -9912,14 +9930,14 @@ export function validateComponentBasicAttributes(
               const fullVarName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
               const clauseRange = clauseNode
                 ? {
-                    startByte: clauseNode.startIndex ?? clauseNode.startByte,
-                    endByte: clauseNode.endIndex ?? clauseNode.endByte,
+                    startOffset: clauseNode.startIndex ?? clauseNode.startOffset,
+                    endOffset: clauseNode.endIndex ?? clauseNode.endOffset,
                     startPosition: clauseNode.startPosition,
                     endPosition: clauseNode.endPosition,
                   }
                 : {
-                    startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-                    endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+                    startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+                    endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
                     startPosition: arg.modPosition?.startPosition,
                     endPosition: arg.modPosition?.endPosition,
                   };
@@ -9932,8 +9950,8 @@ export function validateComponentBasicAttributes(
               return true;
             }
             const errorRange = {
-              startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-              endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+              startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+              endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
               startPosition: arg.modPosition?.startPosition,
               endPosition: arg.modPosition?.endPosition,
             };
@@ -10121,14 +10139,14 @@ export function validateComponentBasicAttributes(
               }
               const diagNode = clauseNode ?? elemCst;
               const notifRange = {
-                startByte: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
-                endByte: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
+                startOffset: arg.modRange?.[0] ?? arg.modPosition?.startPosition,
+                endOffset: arg.modRange?.[1] ?? arg.modPosition?.endPosition,
                 startPosition: arg.modPosition?.startPosition,
                 endPosition: arg.modPosition?.endPosition,
               };
               const errorRange = {
-                startByte: diagNode?.startIndex ?? diagNode?.startByte,
-                endByte: diagNode?.endIndex ?? diagNode?.endByte,
+                startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+                endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
                 startPosition: diagNode?.startPosition,
                 endPosition: diagNode?.endPosition,
               };
@@ -10509,9 +10527,9 @@ export function resolveInnerOuterClass(flattener: ComponentFlattener, classId: S
     if (typeof rawPrefixes === "string" && new RegExp(`\\b${prefix}\\b`).test(rawPrefixes)) {
       return true;
     }
-    if (s.startByte != null && typeof (flattener.db as any).cstText === "function") {
-      const lookbackStart = Math.max(0, s.startByte - 60);
-      const end = Math.min(s.startByte + 60, s.endByte ?? s.startByte + 60);
+    if (s.startOffset != null && typeof (flattener.db as any).cstText === "function") {
+      const lookbackStart = Math.max(0, s.startOffset - 60);
+      const end = Math.min(s.startOffset + 60, s.endOffset ?? s.startOffset + 60);
       const text = (flattener.db as any).cstText(lookbackStart, end, s);
       if (typeof text === "string") {
         const pattern = new RegExp(

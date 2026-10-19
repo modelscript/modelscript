@@ -297,9 +297,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               // Reveal the source location of a diagram element in the text editor.
               // The message contains byte offsets — we convert to Position using the document.
               const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uriString);
-              if (doc && typeof message.startByte === "number") {
-                const startPos = doc.positionAt(message.startByte);
-                const endPos = doc.positionAt(message.endByte ?? message.startByte);
+              if (doc && typeof message.startOffset === "number") {
+                const startPos = doc.positionAt(message.startOffset);
+                const endPos = doc.positionAt(message.endOffset ?? message.startOffset);
                 // Find or show the text editor for this document and reveal the range
                 vscode.window.showTextDocument(doc, {
                   viewColumn: vscode.ViewColumn.One,

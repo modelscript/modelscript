@@ -27,7 +27,7 @@ export class SuspectTracker {
       entry.ruleName,
       entry.kind,
       JSON.stringify(entry.metadata ?? {}),
-      entry.endByte - entry.startByte,
+      entry.endOffset - entry.startOffset,
     ].join("::");
     let hash = 0;
     for (let i = 0; i < core.length; i++) {

@@ -188,27 +188,69 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
     const loadCompanionCad = async () => {
       try {
         const docPath = document.uri.path;
-        const baseWithoutExt = docPath.replace(/\.(inp|inpt)$/, "");
-        const stepUri = document.uri.with({ path: `${baseWithoutExt}.step` });
-        const stpUri = document.uri.with({ path: `${baseWithoutExt}.stp` });
+        const dirIdx = docPath.lastIndexOf("/");
+        const docDir = dirIdx >= 0 ? docPath.slice(0, dirIdx) : "";
+        const parentDirIdx = docDir.lastIndexOf("/");
+        const parentDir = parentDirIdx >= 0 ? docDir.slice(0, parentDirIdx) : "";
+        const baseStem = (dirIdx >= 0 ? docPath.slice(dirIdx + 1) : docPath).replace(/\.(inp|inpt|fea)$/i, "");
+
+        const candidates: string[] = [];
+        for (const ext of ["step", "stp", "scad"]) {
+          candidates.push(`${docDir}/${baseStem}.${ext}`);
+          if (parentDir) {
+            candidates.push(`${parentDir}/cad/${baseStem}.${ext}`);
+          }
+        }
 
         let cadUriToLoad: vscode.Uri | null = null;
-        try {
-          await vscode.workspace.fs.stat(stepUri);
-          cadUriToLoad = stepUri;
-        } catch {
+        for (const cand of candidates) {
+          const uri = document.uri.with({ path: cand });
           try {
-            await vscode.workspace.fs.stat(stpUri);
-            cadUriToLoad = stpUri;
+            await vscode.workspace.fs.stat(uri);
+            cadUriToLoad = uri;
+            break;
           } catch {}
         }
 
         if (cadUriToLoad) {
-          const stepMeshes = await this.client.sendRequest<any[]>("modelscript/getStepMeshes", {
-            uri: cadUriToLoad.toString(),
-          });
-          if (stepMeshes && stepMeshes.length > 0 && !disposed) {
-            webviewPanel.webview.postMessage({ type: "companionCad", data: stepMeshes });
+          if (/\.scad$/i.test(cadUriToLoad.path)) {
+            const comps = await this.client.sendRequest<any[]>("modelscript/getCadComponents", {
+              uri: cadUriToLoad.toString(),
+            });
+            if (Array.isArray(comps) && comps.length > 0 && !disposed) {
+              const scadMeshes = comps
+                .filter((c) => c?.proceduralMesh?.vertices && c?.proceduralMesh?.indices)
+                .map((c, idx) => {
+                  const pos: [number, number, number] = Array.isArray(c.cad?.position)
+                    ? [Number(c.cad.position[0]) || 0, Number(c.cad.position[1]) || 0, Number(c.cad.position[2]) || 0]
+                    : [0, 0, 0];
+                  const rawVerts: number[] = c.proceduralMesh.vertices;
+                  const shifted = new Float32Array(rawVerts.length);
+                  for (let i = 0; i < rawVerts.length; i += 3) {
+                    shifted[i] = rawVerts[i]! + pos[0];
+                    shifted[i + 1] = rawVerts[i + 1]! + pos[1];
+                    shifted[i + 2] = rawVerts[i + 2]! + pos[2];
+                  }
+                  return {
+                    id: idx + 1,
+                    name: c.name || `part_${idx + 1}`,
+                    type: "SOLID",
+                    vertices: shifted,
+                    normals: new Float32Array(c.proceduralMesh.normals || []),
+                    indices: new Uint32Array(c.proceduralMesh.indices),
+                  };
+                });
+              if (scadMeshes.length > 0) {
+                webviewPanel.webview.postMessage({ type: "companionCad", data: scadMeshes });
+              }
+            }
+          } else {
+            const stepMeshes = await this.client.sendRequest<any[]>("modelscript/getStepMeshes", {
+              uri: cadUriToLoad.toString(),
+            });
+            if (stepMeshes && stepMeshes.length > 0 && !disposed) {
+              webviewPanel.webview.postMessage({ type: "companionCad", data: stepMeshes });
+            }
           }
         }
       } catch {

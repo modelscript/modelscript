@@ -107,8 +107,8 @@ async function benchN5000() {
   for (const cond of conditions) {
     const editSrc = cond.mutate(baseSrc);
     const editRanges = computeEditRanges(baseSrc, editSrc);
-    const editStart = editRanges.length > 0 ? editRanges[0].startByte : 0;
-    const editNewEnd = editRanges.length > 0 ? editRanges[editRanges.length - 1].endByte : 0;
+    const editStart = editRanges.length > 0 ? editRanges[0].startOffset : 0;
+    const editNewEnd = editRanges.length > 0 ? editRanges[editRanges.length - 1].endOffset : 0;
 
     const runs: number[] = [];
     for (let r = 0; r < 4; r++) {

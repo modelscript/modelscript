@@ -103,8 +103,8 @@ console.log("Test 3: Language-Agnostic VerificationRunner Case Verification...")
       name: "VoltageVerificationCase",
       kind: "Definition",
       ruleName: "VerificationCase",
-      startByte: 0,
-      endByte: 100,
+      startOffset: 0,
+      endOffset: 100,
       parentId: null,
     },
     {
@@ -112,8 +112,8 @@ console.log("Test 3: Language-Agnostic VerificationRunner Case Verification...")
       name: "maxVoltageReq",
       kind: "Usage",
       ruleName: "RequirementUsage",
-      startByte: 10,
-      endByte: 50,
+      startOffset: 10,
+      endOffset: 50,
       parentId: 1,
     },
     {
@@ -121,8 +121,8 @@ console.log("Test 3: Language-Agnostic VerificationRunner Case Verification...")
       name: "MaxVoltageConstraint",
       kind: "Usage",
       ruleName: "ConstraintUsage",
-      startByte: 20,
-      endByte: 45,
+      startOffset: 20,
+      endOffset: 45,
       parentId: 2,
     },
   ];

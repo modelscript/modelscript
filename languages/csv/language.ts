@@ -54,8 +54,8 @@ export const csvLanguage = language({
   // In-place cell value writeback using byte offsets recorded on the symbol entry
   writeback: (ctx) => {
     const { entry, newValue } = ctx;
-    if (entry?.startByte != null && entry?.endByte != null && entry.endByte >= entry.startByte) {
-      return { startByte: entry.startByte, endByte: entry.endByte, newText: newValue.trim() };
+    if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset >= entry.startOffset) {
+      return { startOffset: entry.startOffset, endOffset: entry.endOffset, newText: newValue.trim() };
     }
     return null;
   },
@@ -138,16 +138,16 @@ export const csvLanguage = language({
           },
           // Validate header uniqueness, row column counts, numeric cells, and time monotonicity
           lint__csvTableValidity: (db: QueryDB, self: SymbolEntry) => {
-            const text = db["cstText"](self.startByte, self.endByte, self);
+            const text = db["cstText"](self.startOffset, self.endOffset, self);
             if (!text) return null;
-            const diags = lintCsv(text, self.startByte ?? 0);
+            const diags = lintCsv(text, self.startOffset ?? 0);
             if (diags.length === 0) return null;
             return diags.map((d) => ({
               severity: d.severity,
               code: d.code,
               message: d.message,
-              startByte: d.startByte,
-              endByte: d.endByte,
+              startOffset: d.startOffset,
+              endOffset: d.endOffset,
             }));
           },
         },

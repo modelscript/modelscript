@@ -288,8 +288,8 @@ end DaeModel;
       const safeStart = daeContent.indexOf("model SafeCircuit");
       const singStart = daeContent.indexOf("model SingularCircuit");
       (validationService as any).listModelicaClassesForUri = () => [
-        { name: "SafeCircuit", symbolId: 10, startByte: safeStart, endByte: singStart },
-        { name: "SingularCircuit", symbolId: 11, startByte: singStart, endByte: daeContent.length },
+        { name: "SafeCircuit", symbolId: 10, startOffset: safeStart, endOffset: singStart },
+        { name: "SingularCircuit", symbolId: 11, startOffset: singStart, endOffset: daeContent.length },
       ];
       (validationService as any).flattenModelicaClassForVerification = (name: string) => {
         const arena: any = new DAEBuilder();
@@ -467,7 +467,7 @@ end X;
                       name: "X",
                       kind: "Class",
                       startOffset: 0,
-                      startByte: 0,
+                      startOffset: 0,
                       resourceId: testUri,
                     },
                   ],
@@ -479,7 +479,7 @@ end X;
                       name: "X",
                       kind: "Class",
                       startOffset: 850,
-                      startByte: 850,
+                      startOffset: 850,
                       resourceId: "file:///other/TestArrayUnknown.mo",
                     },
                   ],
@@ -490,7 +490,7 @@ end X;
                       name: "X",
                       kind: "Class",
                       startOffset: 1200,
-                      startByte: 1200,
+                      startOffset: 1200,
                       resourceId: "file:///other/ClassMod6.mo",
                     },
                   ],

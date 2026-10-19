@@ -2,7 +2,7 @@
 
 import { ContactShadows, GizmoHelper, GizmoViewport, OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import { CaeTelemetryPanel, type TelemetryDataPoint } from "./cad-viewer/cae-telemetry-panel";
@@ -23,10 +23,27 @@ import { SweepConfigDrawer, type ActiveSweepState } from "./cad-viewer/sweep-con
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
+interface CfgGeometryPart {
+  name: string;
+  positions: number[];
+  indices: number[];
+  normals?: number[];
+  color?: [number, number, number, number] | string;
+}
+
+interface CfgGeometryPayload {
+  positions: number[];
+  indices: number[];
+  normals?: number[];
+  sourceFile?: string;
+  parts?: CfgGeometryPart[];
+}
+
 interface CfgPayload {
   directives: Record<string, unknown>;
   markers: { name: string; type: string; options: (string | number)[] }[];
   meshFilename?: string;
+  geometry?: CfgGeometryPayload;
   stats: {
     machNumber?: number;
     aoa?: number;
@@ -35,13 +52,96 @@ interface CfgPayload {
   };
 }
 
+function resolvePartColor(color?: [number, number, number, number] | string): {
+  hex: THREE.ColorRepresentation;
+  opacity: number;
+} {
+  if (!color) return { hex: "#94a3b8", opacity: 1.0 };
+  if (typeof color === "string") return { hex: color, opacity: 1.0 };
+  if (Array.isArray(color) && color.length >= 3) {
+    const isByteRange = color[0]! > 1.0 || color[1]! > 1.0 || color[2]! > 1.0;
+    const r = isByteRange ? color[0]! / 255 : color[0]!;
+    const g = isByteRange ? color[1]! / 255 : color[1]!;
+    const b = isByteRange ? color[2]! / 255 : color[2]!;
+    const a = color.length >= 4 && color[3] !== undefined ? (color[3] > 1.0 ? color[3] / 255 : color[3]) : 1.0;
+    return { hex: new THREE.Color(r, g, b), opacity: Math.max(0.15, Math.min(1.0, a)) };
+  }
+  return { hex: "#94a3b8", opacity: 1.0 };
+}
+
+function CadBodyMesh({
+  geometryPayload,
+  clippingPlanes,
+}: {
+  geometryPayload?: CfgGeometryPayload;
+  clippingPlanes: THREE.Plane[];
+}) {
+  const partMeshes = useMemo(() => {
+    if (!geometryPayload) return [];
+    const sourceParts: CfgGeometryPart[] =
+      geometryPayload.parts && geometryPayload.parts.length > 0
+        ? geometryPayload.parts
+        : geometryPayload.positions.length >= 9 && geometryPayload.indices.length >= 3
+          ? [
+              {
+                name: geometryPayload.sourceFile ?? "body",
+                positions: geometryPayload.positions,
+                indices: geometryPayload.indices,
+                normals: geometryPayload.normals,
+              },
+            ]
+          : [];
+
+    return sourceParts.map((part, idx) => {
+      const geo = new THREE.BufferGeometry();
+      const posArr = new Float32Array(part.positions);
+      const idxArr = new Uint32Array(part.indices);
+      geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+      geo.setIndex(new THREE.BufferAttribute(idxArr, 1));
+      if (part.normals && part.normals.length === part.positions.length) {
+        geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(part.normals), 3));
+      } else {
+        geo.computeVertexNormals();
+      }
+      geo.computeBoundingSphere();
+      const { hex, opacity } = resolvePartColor(part.color);
+      return {
+        key: `${part.name}-${idx}`,
+        geo,
+        color: hex,
+        opacity,
+      };
+    });
+  }, [geometryPayload]);
+
+  if (partMeshes.length === 0) return null;
+
+  return (
+    <group>
+      {partMeshes.map((pm) => (
+        <mesh key={pm.key} geometry={pm.geo}>
+          <meshStandardMaterial
+            color={pm.color}
+            roughness={0.35}
+            metalness={0.55}
+            transparent={pm.opacity < 0.99}
+            opacity={pm.opacity}
+            side={THREE.DoubleSide}
+            clippingPlanes={clippingPlanes}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function BaseFlowDomain({ payload, clippingPlanes }: { payload?: CfgPayload; clippingPlanes: THREE.Plane[] }) {
   if (!payload) return null;
   return (
     <group>
-      {/* Proxy Aerodynamic Domain Bounding Box */}
+      {/* Aerodynamic Wind-Tunnel Domain Bounding Box */}
       <mesh position={[0, 0, 0]}>
-        <boxGeometry args={[1.2, 0.6, 0.4]} />
+        <boxGeometry args={[1.2, 0.6, 0.8]} />
         <meshStandardMaterial
           color="#0284c7"
           wireframe={true}
@@ -51,11 +151,8 @@ function BaseFlowDomain({ payload, clippingPlanes }: { payload?: CfgPayload; cli
         />
       </mesh>
 
-      {/* Central Airfoil/Body Proxy */}
-      <mesh position={[0, 0, 0]}>
-        <coneGeometry args={[0.08, 0.4, 16]} />
-        <meshStandardMaterial color="#94a3b8" roughness={0.3} metalness={0.8} clippingPlanes={clippingPlanes} />
-      </mesh>
+      {/* 3D CAD / Mesh Geometry from .scad, .step, or .su2 */}
+      <CadBodyMesh geometryPayload={payload.geometry} clippingPlanes={clippingPlanes} />
 
       {/* Inlet Marker Arrows (Green) */}
       <group position={[-0.6, 0, 0]}>
@@ -100,7 +197,12 @@ function SceneContents({
       ) : null}
 
       {/* GPU Streamline Ribbon Renderer */}
-      <StreamlineRenderer enabled={showStreamlines} flowVelocity={flowSpeed} clippingPlanes={clipPlanes} />
+      <StreamlineRenderer
+        enabled={showStreamlines}
+        flowVelocity={flowSpeed}
+        domainBounds={{ min: [-0.6, -0.25, -0.35], max: [0.6, 0.25, 0.35] }}
+        clippingPlanes={clipPlanes}
+      />
 
       {/* 3D Cutting Plane Wireframe */}
       <CuttingPlaneVisualizer options={cuttingPlane} />
@@ -211,9 +313,10 @@ function App() {
     params: Record<string, number>,
   ) => {
     setCfdResults((prev) => {
-      const positions = prev?.geometry.positions ?? [-1, -0.5, 0, 1, -0.5, 0, 1, 0.5, 0, -1, 0.5, 0];
-      const indices = prev?.geometry.indices ?? [0, 1, 2, 0, 2, 3];
-      const normals = prev?.geometry.normals;
+      const positions = prev?.geometry.positions ??
+        cfgData?.geometry?.positions ?? [-1, -0.5, 0, 1, -0.5, 0, 1, 0.5, 0, -1, 0.5, 0];
+      const indices = prev?.geometry.indices ?? cfgData?.geometry?.indices ?? [0, 1, 2, 0, 2, 3];
+      const normals = prev?.geometry.normals ?? cfgData?.geometry?.normals;
       const numNodes = positions.length / 3;
 
       const fieldValues = Array.from(field);
@@ -323,12 +426,34 @@ function App() {
                 {cfgData.stats.reynoldsNumber ? cfgData.stats.reynoldsNumber.toExponential(2) : "N/A"}
               </span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: cfgData.geometry?.sourceFile ? "4px" : "0",
+              }}
+            >
               <span style={{ color: "#94a3b8" }}>Mesh Target:</span>
               <span style={{ fontWeight: 600, maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {cfgData.meshFilename ?? "default.su2"}
               </span>
             </div>
+            {cfgData.geometry?.sourceFile && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#94a3b8" }}>3D Geometry:</span>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    color: "#38bdf8",
+                    maxWidth: "160px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {cfgData.geometry.sourceFile}
+                </span>
+              </div>
+            )}
           </div>
         )}
 

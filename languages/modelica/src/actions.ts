@@ -2,7 +2,7 @@
 
 import type { ActionExecutionContext } from "@modelscript/dsl";
 import { ExprKind, initBltWasm, printArenaDAE, Variability, VarType } from "@modelscript/runtime";
-import { simulateArena } from "@modelscript/simulate";
+import { simulateArenaAsync } from "@modelscript/simulate";
 import { ModelicaFlattener } from "./flattener.js";
 
 import { injectPredefinedTypes } from "./predefined-types.js";
@@ -438,7 +438,7 @@ export const modelicaActionHandlers: Record<
       // ignore if already initialized
     }
 
-    const result = simulateArena(arena as any, simOpts);
+    const result = await simulateArenaAsync(arena as any, simOpts);
     context.notifyProgress?.("Simulation complete", 100);
 
     const tArr = Array.from(result.t);

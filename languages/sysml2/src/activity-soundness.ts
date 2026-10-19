@@ -48,16 +48,16 @@ export function parseActivityElements(sysmlSource: string): {
     inputs: n.inputs.map((p) => ({ name: p.name, type: p.type || "Any" })),
     outputs: n.outputs.map((p) => ({ name: p.name, type: p.type || "Any" })),
     assignments: n.assignments.map((a) => ({ target: a.target, expr: a.expr })),
-    startByte: n.startByte,
-    endByte: n.endByte,
+    startOffset: n.startOffset,
+    endOffset: n.endOffset,
   }));
 
   const successions: ParsedSuccession[] = graph.flows.map((f) => ({
     source: f.source,
     target: f.target,
     guard: f.guard,
-    startByte: f.startByte,
-    endByte: f.endByte,
+    startOffset: f.startOffset,
+    endOffset: f.endOffset,
   }));
 
   const declaredOutputs = graph.declaredOutputs.map((p) => p.name);

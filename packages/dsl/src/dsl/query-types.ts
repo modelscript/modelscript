@@ -64,17 +64,15 @@ export interface CompilerLintFix<_RuleName extends string = string, FieldName ex
   kind?: "quickfix" | "refactor" | undefined;
   /** Whether this fix should be marked as the preferred default action in the IDE. */
   isPreferred?: boolean | undefined;
-  /** Computes the byte/offset text replacement edit to apply when the user invokes this fix. */
+  /** Computes the character offset text replacement edit to apply when the user invokes this fix. */
   generateEdit?:
     | ((
         db: any,
         node: number,
         $: Record<string, number>,
       ) => {
-        startByte: number;
-        endByte: number;
-        startOffset?: number | undefined;
-        endOffset?: number | undefined;
+        startOffset: number;
+        endOffset: number;
         newText: string;
       } | null)
     | undefined;
@@ -147,14 +145,6 @@ export interface LintRangeOptions {
   startOffset?: number | undefined;
   /** Zero-indexed ending character offset (exclusive) of the diagnostic span. */
   endOffset?: number | undefined;
-  /** Deprecated alias for `startOffset`. */
-  startCharOffset?: number | undefined;
-  /** Deprecated alias for `endOffset`. */
-  endCharOffset?: number | undefined;
-  /** Starting UTF-8 byte offset of the diagnostic span. */
-  startByte?: number | undefined;
-  /** Ending UTF-8 byte offset (exclusive) of the diagnostic span. */
-  endByte?: number | undefined;
   /** Numeric diagnostic code associated with the lint result. */
   code?: number | undefined;
 }
@@ -173,14 +163,6 @@ export interface LintResult {
   startOffset?: number | undefined;
   /** Zero-indexed ending character offset (exclusive) of the diagnostic span. */
   endOffset?: number | undefined;
-  /** Deprecated alias for `startOffset`. */
-  startCharOffset?: number | undefined;
-  /** Deprecated alias for `endOffset`. */
-  endCharOffset?: number | undefined;
-  /** Starting UTF-8 byte offset of the diagnostic span. */
-  startByte?: number | undefined;
-  /** Ending UTF-8 byte offset (exclusive) of the diagnostic span. */
-  endByte?: number | undefined;
   /** Numeric diagnostic error/warning code. */
   code?: number | undefined;
 }

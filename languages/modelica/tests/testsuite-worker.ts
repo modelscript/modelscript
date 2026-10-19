@@ -93,7 +93,7 @@ interface WasmBailRecord {
   code: number;
   reason: string;
   description: string;
-  range: { startByte: number; endByte: number } | null;
+  range: { startOffset: number; endOffset: number } | null;
   action: "strict-partial" | "ts-fallback";
 }
 
@@ -990,7 +990,7 @@ function runTestCaseCore(
           (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
         );
         if (targetSym) {
-          let charOffset = cd.startCharOffset ?? cd.startOffset;
+          let charOffset = cd.startOffset;
           if (charOffset == null && cd.range) {
             const lines = testCase.source.split("\n");
             charOffset = 0;
@@ -999,7 +999,7 @@ function runTestCaseCore(
             }
             charOffset += cd.range.start.character;
           }
-          if (charOffset != null && (charOffset < targetSym.startByte || charOffset > targetSym.endByte)) {
+          if (charOffset != null && (charOffset < targetSym.startOffset || charOffset > targetSym.endOffset)) {
             return false;
           }
         }
@@ -1045,8 +1045,8 @@ function runTestCaseCore(
             );
             if (
               targetSym &&
-              typeof d.startByte === "number" &&
-              (d.startByte < targetSym.startByte || d.startByte > targetSym.endByte)
+              typeof d.startOffset === "number" &&
+              (d.startOffset < targetSym.startOffset || d.startOffset > targetSym.endOffset)
             ) {
               return false;
             }
@@ -1107,7 +1107,7 @@ function runTestCaseCore(
       return { row: lo, column: lspPositionToUtf8Column(lo, charCol) };
     };
     if (wasmBail?.range) {
-      const p = byteToPosition(wasmBail.range.startByte);
+      const p = byteToPosition(wasmBail.range.startOffset);
       wasmBailLoc = `${p.row + 1}:${p.column + 1}`;
     }
 
@@ -1155,10 +1155,10 @@ function runTestCaseCore(
         }
         let range: DiagEntry["range"] = diag.range as DiagEntry["range"];
         const rangeRec = diag.range as Record<string, unknown> | null;
-        if (rangeRec && typeof rangeRec.startByte === "number" && typeof rangeRec.endByte === "number") {
+        if (rangeRec && typeof rangeRec.startOffset === "number" && typeof rangeRec.endOffset === "number") {
           range = {
-            startPosition: byteToPosition(rangeRec.startByte),
-            endPosition: byteToPosition(rangeRec.endByte),
+            startPosition: byteToPosition(rangeRec.startOffset),
+            endPosition: byteToPosition(rangeRec.endOffset),
           };
         } else if (range?.startPosition && range?.endPosition) {
           range = {
@@ -1267,8 +1267,8 @@ function runTestCaseCore(
           );
           if (
             targetSym &&
-            typeof d.startByte === "number" &&
-            (d.startByte < targetSym.startByte || d.startByte > targetSym.endByte)
+            typeof d.startOffset === "number" &&
+            (d.startOffset < targetSym.startOffset || d.startOffset > targetSym.endOffset)
           ) {
             continue;
           }
@@ -1312,16 +1312,16 @@ function runTestCaseCore(
         const codeMatch = d.message.match(/^\[M(\d+)\]/);
         if (codeMatch) code = parseInt(codeMatch[1], 10);
 
-        // Convert startByte/endByte from LintDiagnostic to row/col positions
+        // Convert startOffset/endOffset from LintDiagnostic to row/col positions
         let range: DiagEntry["range"] = null;
         const isUnrangedModErr =
           d.message.includes("In modifier (") &&
           d.message.includes("not found in <") &&
           !d.message.includes("Variable ");
-        if (!isUnrangedModErr && typeof d.startByte === "number" && typeof d.endByte === "number") {
+        if (!isUnrangedModErr && typeof d.startOffset === "number" && typeof d.endOffset === "number") {
           range = {
-            startPosition: byteToPosition(d.startByte),
-            endPosition: byteToPosition(d.endByte),
+            startPosition: byteToPosition(d.startOffset),
+            endPosition: byteToPosition(d.endOffset),
           };
         }
 
@@ -1383,7 +1383,7 @@ function runTestCaseCore(
         let cdMessage = cd.message as string;
         if (cdMessage.startsWith("Syntax Error: Unexpected")) {
           if (emittedSpecificSyntaxDiag) continue;
-          const startOff = cd.startCharOffset ?? cd.startOffset ?? 0;
+          const startOff = cd.startOffset ?? 0;
           const normalizedSyntax = normalizeModelicaSyntaxDiagnostic(cdMessage, testCase.source.slice(startOff));
           if (normalizedSyntax) {
             cdMessage = normalizedSyntax;
@@ -1418,18 +1418,18 @@ function runTestCaseCore(
                 column: lspPositionToUtf8Column(cd.range.end.line, cd.range.end.character),
               }
             : null;
-          let startCharOffset = cd.startCharOffset ?? cd.startOffset;
-          let endCharOffset = cd.endCharOffset ?? cd.endOffset;
-          if (typeof startCharOffset === "number" && typeof endCharOffset === "number") {
-            let s = startCharOffset;
-            while (s < endCharOffset && /\s/.test(testCase.source[s])) {
+          let startOffset = cd.startOffset;
+          let endOffset = cd.endOffset;
+          if (typeof startOffset === "number" && typeof endOffset === "number") {
+            let s = startOffset;
+            while (s < endOffset && /\s/.test(testCase.source[s])) {
               s++;
             }
-            let e = endCharOffset;
+            let e = endOffset;
             while (e > s && /\s/.test(testCase.source[e - 1])) {
               e--;
             }
-            if (s !== startCharOffset || e !== endCharOffset) {
+            if (s !== startOffset || e !== endOffset) {
               startPosition = byteToPosition(s);
               endPosition = byteToPosition(e);
             }

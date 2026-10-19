@@ -303,10 +303,7 @@ export class ValidationService {
    * Per-document viewport byte ranges, updated by `modelscript/visibleRanges` notifications.
    * When set, linting and reference resolution prioritize symbols within this range.
    */
-  public documentViewports = new Map<
-    string,
-    { startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }
-  >();
+  public documentViewports = new Map<string, { startOffset: number; endOffset: number }>();
 
   /** Shared ontological description logic reasoner service for cross-domain consistency checking. */
   public reasonerService: ReasonerService;
@@ -496,8 +493,8 @@ export class ValidationService {
               if (isSyntax) {
                 // Syntax Error
                 let range = d.range;
-                const startOff = d.startOffset ?? d.startCharOffset ?? d.startByte;
-                const endOff = d.endOffset ?? d.endCharOffset ?? d.endByte;
+                const startOff = d.startOffset;
+                const endOff = d.endOffset;
                 if (startOff !== undefined && endOff !== undefined) {
                   range = {
                     start: textDocument.positionAt(startOff),
@@ -542,17 +539,17 @@ export class ValidationService {
       const hasErr = typeof node.hasError === "function" ? node.hasError() : node.hasError;
       const isMissing = typeof node.isMissing === "function" ? node.isMissing() : node.isMissing;
 
-      let start = textDocument.positionAt(node.startOffset ?? node.startIndex ?? node.startByte);
-      let end = textDocument.positionAt(node.endOffset ?? node.endIndex ?? node.endByte);
+      let start = textDocument.positionAt(node.startOffset ?? node.startIndex ?? node.startOffset);
+      let end = textDocument.positionAt(node.endOffset ?? node.endIndex ?? node.endOffset);
 
       if (isMissing) {
         if (start.line === end.line && start.character === end.character) {
           if (node.previousSibling) {
             start = textDocument.positionAt(
-              node.previousSibling.startOffset ?? node.previousSibling.startIndex ?? node.previousSibling.startByte,
+              node.previousSibling.startOffset ?? node.previousSibling.startIndex ?? node.previousSibling.startOffset,
             );
             end = textDocument.positionAt(
-              node.previousSibling.endOffset ?? node.previousSibling.endIndex ?? node.previousSibling.endByte,
+              node.previousSibling.endOffset ?? node.previousSibling.endIndex ?? node.previousSibling.endOffset,
             );
           } else {
             end = { line: start.line, character: start.character + 1 };
@@ -724,9 +721,7 @@ export class ValidationService {
 
     const oldCached = this.documentManager.documentTrees.get(uri);
     let tree: any;
-    let editRanges:
-      | Array<{ startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }>
-      | undefined;
+    let editRanges: Array<{ startOffset: number; endOffset: number }> | undefined;
 
     try {
       if (oldCached && oldCached.text !== text) {
@@ -754,8 +749,6 @@ export class ValidationService {
           {
             startOffset: edit.startIndex,
             endOffset: edit.newEndIndex,
-            startByte: edit.startIndex,
-            endByte: edit.newEndIndex,
           },
         ];
       } else if (oldCached) {
@@ -855,9 +848,7 @@ export class ValidationService {
     uri: string;
     text: string;
     tree: any;
-    editRanges?:
-      | Array<{ startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }>
-      | undefined;
+    editRanges?: Array<{ startOffset: number; endOffset: number }> | undefined;
     baseDiagnostics: Diagnostic[];
     wasmLintDiags?: any[] | undefined;
     revisionAtStart: number | null;
@@ -916,8 +907,6 @@ export class ValidationService {
                 {
                   startOffset: edit.startIndex,
                   endOffset: maxEnd,
-                  startByte: edit.startIndex,
-                  endByte: maxEnd,
                 },
               ];
               totalDelta = edit.newEndIndex - edit.oldEndIndex;
@@ -1056,9 +1045,9 @@ export class ValidationService {
           const pluginSource = plugin?.name ? plugin.name.toLowerCase() : "modelscript";
 
           for (const d of wasmLintDiags) {
-            // Resolve character offsets — prefer startOffset (new), fall back to startCharOffset / startByte (deprecated)
-            const startOff = d.startOffset ?? d.startCharOffset ?? d.startByte;
-            const endOff = d.endOffset ?? d.endCharOffset ?? d.endByte;
+            // Resolve character offsets — prefer startOffset (new), fall back to startOffset / startOffset (deprecated)
+            const startOff = d.startOffset;
+            const endOff = d.endOffset;
 
             // Compute range from character offsets
             let range = d.range;
@@ -1221,8 +1210,8 @@ export class ValidationService {
         if (isStale()) return;
 
         for (const d of engineDiags) {
-          const startOff = d.startOffset ?? d.startByte;
-          const endOff = d.endOffset ?? d.endByte;
+          const startOff = d.startOffset;
+          const endOff = d.endOffset;
           const start = (bridge as any).positions.charOffsetToPosition(startOff);
           const end = (bridge as any).positions.charOffsetToPosition(endOff);
           let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
@@ -1464,9 +1453,7 @@ export class ValidationService {
     uri: string,
     text: string,
     tree: any,
-    editRanges:
-      | Array<{ startOffset?: number | undefined; endOffset?: number | undefined; startByte: number; endByte: number }>
-      | undefined,
+    editRanges: Array<{ startOffset: number; endOffset: number }> | undefined,
     baseDiagnostics: Diagnostic[],
     revisionAtStart: number | null,
     _context: any,
@@ -1538,8 +1525,8 @@ export class ValidationService {
                       ? DiagnosticSeverity.Information
                       : DiagnosticSeverity.Warning,
                 range: {
-                  start: textDocument.positionAt((d as any).startOffset ?? d.startByte),
-                  end: textDocument.positionAt((d as any).endOffset ?? d.endByte),
+                  start: textDocument.positionAt(d.startOffset),
+                  end: textDocument.positionAt(d.endOffset),
                 },
                 code: d.code,
                 message: d.message,
@@ -1740,8 +1727,8 @@ export class ValidationService {
                 ? DiagnosticSeverity.Information
                 : DiagnosticSeverity.Warning,
           range: {
-            start: textDocument.positionAt((lint as any).startOffset ?? lint.startByte),
-            end: textDocument.positionAt((lint as any).endOffset ?? lint.endByte),
+            start: textDocument.positionAt(lint.startOffset),
+            end: textDocument.positionAt(lint.endOffset),
           },
           code: lint.code,
           message: lint.message,
@@ -1784,8 +1771,8 @@ export class ValidationService {
                 ? DiagnosticSeverity.Information
                 : DiagnosticSeverity.Warning,
           range: {
-            start: textDocument.positionAt((lint as any).startOffset ?? lint.startByte),
-            end: textDocument.positionAt((lint as any).endOffset ?? lint.endByte),
+            start: textDocument.positionAt(lint.startOffset),
+            end: textDocument.positionAt(lint.endOffset),
           },
           code: lint.code,
           message: lint.message,
@@ -2715,8 +2702,8 @@ export class ValidationService {
         // Map proof results to 4-color LSP diagnostics
         // 1. Definite Bugs (Red)
         for (const bug of result.definiteBugs) {
-          const bugStart = (bug as any).startOffset ?? bug.startByte ?? algOffset;
-          const bugEnd = (bug as any).endOffset ?? bug.endByte ?? bugStart + 10;
+          const bugStart = (bug as any).startOffset ?? bug.startOffset ?? algOffset;
+          const bugEnd = (bug as any).endOffset ?? bug.endOffset ?? bugStart + 10;
           const startPos = textDocument.positionAt(bugStart);
           const endPos = textDocument.positionAt(bugEnd);
 
@@ -2731,8 +2718,8 @@ export class ValidationService {
 
         // 2. Potential Bugs / Warnings (Orange)
         for (const warn of result.potentialBugs) {
-          const warnStart = (warn as any).startOffset ?? warn.startByte ?? algOffset;
-          const warnEnd = (warn as any).endOffset ?? warn.endByte ?? warnStart + 10;
+          const warnStart = (warn as any).startOffset ?? warn.startOffset ?? algOffset;
+          const warnEnd = (warn as any).endOffset ?? warn.endOffset ?? warnStart + 10;
           const startPos = textDocument.positionAt(warnStart);
           const endPos = textDocument.positionAt(warnEnd);
 
@@ -2779,8 +2766,6 @@ export class ValidationService {
     symbolId: number;
     startOffset: number;
     endOffset: number;
-    startByte: number;
-    endByte: number;
   }> {
     const engine: any =
       this.workspaceManager?.globalModelicaQueryEngine ?? this.workspaceManager?.getQueryEngine?.("modelica");
@@ -2793,23 +2778,19 @@ export class ValidationService {
       symbolId: number;
       startOffset: number;
       endOffset: number;
-      startByte: number;
-      endByte: number;
     }> = [];
     for (const [id, entry] of symbols.entries()) {
       if (norm(entry.resourceId) !== target) continue;
       if (entry.kind !== "Class" && entry.kind !== "Def") continue;
       const classKind = (entry.metadata?.classKind as string | undefined) ?? "class";
       if (classKind !== "model" && classKind !== "block" && classKind !== "class") continue;
-      const startOff = entry.startOffset ?? entry.startByte ?? 0;
-      const endOff = entry.endOffset ?? entry.endByte ?? 0;
+      const startOff = entry.startOffset ?? 0;
+      const endOff = entry.endOffset ?? 0;
       out.push({
         name: entry.name,
         symbolId: id,
         startOffset: startOff,
         endOffset: endOff,
-        startByte: startOff,
-        endByte: endOff,
       });
     }
     out.sort((a, b) => a.startOffset - b.startOffset);
@@ -2962,8 +2943,8 @@ export class ValidationService {
 
         daeMap.set(cls.name, record);
 
-        const classStart = cls.startOffset ?? cls.startByte;
-        const rawClassEnd = cls.endOffset ?? cls.endByte;
+        const classStart = cls.startOffset;
+        const rawClassEnd = cls.endOffset;
         const classEnd = rawClassEnd > classStart ? rawClassEnd : text.length;
         const body = text.slice(classStart, classEnd);
         for (const issue of record.issues) {
@@ -3165,11 +3146,11 @@ export class ValidationService {
       if (fileNodes.length === 0) return { ok: true };
 
       const verifyCstTreeWrapper = {
-        getText: (startByte: number, endByte: number, entry?: any): string | null => {
+        getText: (startOffset: number, endOffset: number, entry?: any): string | null => {
           if (!entry || !entry.resourceId) return null;
           const entryUri = entry.resourceId;
           const docTree = this.documentManager.documentTrees.get(entryUri);
-          if (docTree && docTree.text) return docTree.text.substring(startByte, endByte);
+          if (docTree && docTree.text) return docTree.text.substring(startOffset, endOffset);
 
           let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
           if (!lazyCache && this.parserService.sharedContext) {
@@ -3186,18 +3167,18 @@ export class ValidationService {
               }
             } catch (e) {}
           }
-          if (lazyCache) return lazyCache.text.substring(startByte, endByte);
+          if (lazyCache) return lazyCache.text.substring(startOffset, endOffset);
 
           const doc = this.documentManager.documents.get(entryUri);
-          if (doc) return doc.getText().substring(startByte, endByte);
+          if (doc) return doc.getText().substring(startOffset, endOffset);
           return null;
         },
-        getNode: (startByte: number, endByte: number, entry?: any): any | null => {
+        getNode: (startOffset: number, endOffset: number, entry?: any): any | null => {
           if (!entry || !entry.resourceId) return null;
           const entryUri = entry.resourceId;
           const docTree = this.documentManager.documentTrees.get(entryUri);
           if (docTree && docTree.tree) {
-            return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+            return docTree.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
           }
 
           let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
@@ -3216,7 +3197,7 @@ export class ValidationService {
             } catch (e) {}
           }
           if (lazyCache) {
-            return lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+            return lazyCache.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
           }
 
           const doc = this.documentManager.documents.get(entryUri);
@@ -3232,7 +3213,7 @@ export class ValidationService {
             }
             if (tree) {
               this.documentManager.documentTrees.set(entryUri, { text, tree, classCache: new Map() });
-              return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+              return tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
             }
           }
           return null;
@@ -3263,7 +3244,7 @@ export class ValidationService {
 
         if (targetEntry) {
           for (const entry of db.symbols.values()) {
-            const text = sysmlDB.cstText(entry.startOffset ?? entry.startByte, entry.endOffset ?? entry.endByte, entry);
+            const text = sysmlDB.cstText(entry.startOffset, entry.endOffset, entry);
             if (
               text &&
               (text.includes(`implements="${targetEntry.name}"`) || text.includes(`::${targetEntry.name}"`))
@@ -3401,16 +3382,16 @@ export class ValidationService {
           const entry = db.symbols.get(id);
           if (
             entry &&
-            (typeof entry.startOffset === "number" || typeof entry.startByte === "number") &&
-            (typeof entry.endOffset === "number" || typeof entry.endByte === "number")
+            (typeof entry.startOffset === "number" || typeof entry.startOffset === "number") &&
+            (typeof entry.endOffset === "number" || typeof entry.endOffset === "number")
           ) {
             const matchesUri =
               entry.resourceId === currentUri ||
               (entry.resourceId && currentUri.endsWith(entry.resourceId)) ||
               (entry.resourceId && entry.resourceId.endsWith(currentUri));
             if (matchesUri) {
-              const startOff = entry.startOffset ?? entry.startByte;
-              const endOff = entry.endOffset ?? entry.endByte;
+              const startOff = entry.startOffset;
+              const endOff = entry.endOffset;
               const docTree = this.documentManager.documentTrees.get(currentUri);
               if (docTree && docTree.tree) {
                 const node = docTree.tree.rootNode.descendantForIndex(startOff, Math.max(startOff, endOff));
@@ -3484,12 +3465,12 @@ export class ValidationService {
           if (
             entry &&
             entry.resourceId &&
-            (typeof entry.startOffset === "number" || typeof entry.startByte === "number") &&
-            (typeof entry.endOffset === "number" || typeof entry.endByte === "number")
+            (typeof entry.startOffset === "number" || typeof entry.startOffset === "number") &&
+            (typeof entry.endOffset === "number" || typeof entry.endOffset === "number")
           ) {
             const entryUri = entry.resourceId;
-            const startOff = entry.startOffset ?? entry.startByte;
-            const endOff = entry.endOffset ?? entry.endByte;
+            const startOff = entry.startOffset;
+            const endOff = entry.endOffset;
 
             const docTree = this.documentManager.documentTrees.get(entryUri);
             if (docTree && docTree.tree) {

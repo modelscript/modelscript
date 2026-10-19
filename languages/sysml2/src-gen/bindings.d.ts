@@ -27,12 +27,9 @@ export interface RuntimeAdapter {
   getNodeType?(ptr: number): number;
 }
 export interface EditRange {
-  startByte: number;
-  oldEndByte: number;
-  newEndByte: number;
-  startOffset?: number | undefined;
-  oldEndOffset?: number | undefined;
-  newEndOffset?: number | undefined;
+  startOffset: number;
+  oldEndOffset: number;
+  newEndOffset: number;
 }
 export interface SemanticTokensEdit {
   start: number;
@@ -173,14 +170,6 @@ export interface Diagnostic {
   startOffset?: number | undefined;
   /** Character offset of the diagnostic end within the source text. */
   endOffset?: number | undefined;
-  /** @deprecated Use {@link startOffset} instead. */
-  startCharOffset?: number | undefined;
-  /** @deprecated Use {@link endOffset} instead. */
-  endCharOffset?: number | undefined;
-  /** @deprecated Use {@link startOffset} instead. */
-  startByte?: number | undefined;
-  /** @deprecated Use {@link endOffset} instead. */
-  endByte?: number | undefined;
 }
 export declare const SYNTAX_NAMES: string[];
 export declare const LINT_MESSAGES: Record<string, string>;
@@ -396,10 +385,8 @@ export declare class LspFacade {
   ): {
     start: number;
     end: number;
-    startByte: number;
-    endByte: number;
-    startOffset?: number | undefined;
-    endOffset?: number | undefined;
+    startOffset: number;
+    endOffset: number;
   }[];
   /**
    * Instantiates a new value-type TreeCursor rooted at rootNode.
@@ -416,8 +403,6 @@ export declare class LspFacade {
     end: Position;
     startOffset: number;
     endOffset: number;
-    startByte: number;
-    endByte: number;
     typeId: number;
     nodePtr: number;
   }[];
@@ -494,8 +479,8 @@ export declare class LspFacade {
     kind: number,
     flags: number,
     name: string,
-    startByte: number,
-    endByte: number,
+    startOffset: number,
+    endOffset: number,
     merkleLow?: number,
     merkleHigh?: number,
     parentFqn?: string,
@@ -518,10 +503,8 @@ export declare class LspFacade {
     kind: number;
     flags: number;
     nameHash: number;
-    startByte: number;
-    endByte: number;
-    startOffset?: number | undefined;
-    endOffset?: number | undefined;
+    startOffset: number;
+    endOffset: number;
     merkleLow?: number | undefined;
     merkleHigh?: number | undefined;
   }[];
@@ -536,10 +519,8 @@ export declare class LspFacade {
     kind: number;
     flags: number;
     nameHash: number;
-    startByte: number;
-    endByte: number;
-    startOffset?: number | undefined;
-    endOffset?: number | undefined;
+    startOffset: number;
+    endOffset: number;
     merkleLow?: number | undefined;
     merkleHigh?: number | undefined;
   }[];
@@ -551,10 +532,8 @@ export declare class LspFacade {
     kind: number;
     flags: number;
     nameHash: number;
-    startByte: number;
-    endByte: number;
-    startOffset?: number | undefined;
-    endOffset?: number | undefined;
+    startOffset: number;
+    endOffset: number;
     merkleLow?: number | undefined;
     merkleHigh?: number | undefined;
   }[];
@@ -566,10 +545,8 @@ export declare class LspFacade {
     kind: number;
     flags: number;
     nameHash: number;
-    startByte: number;
-    endByte: number;
-    startOffset?: number | undefined;
-    endOffset?: number | undefined;
+    startOffset: number;
+    endOffset: number;
     merkleLow?: number | undefined;
     merkleHigh?: number | undefined;
   }[];
@@ -595,10 +572,8 @@ export declare class LspFacade {
     kind: number;
     flags: number;
     nameHash: number;
-    startByte: number;
-    endByte: number;
-    startOffset?: number | undefined;
-    endOffset?: number | undefined;
+    startOffset: number;
+    endOffset: number;
     score: number;
   }[];
   /** Shifts byte offsets in-place across all stubs in a file after an interior edit. */
@@ -1019,16 +994,6 @@ export declare class SyntaxNode {
   /** The end character index of the node. Alias for {@link endOffset}. */
   get endIndex(): number;
   /**
-   * @deprecated Use {@link startOffset} instead. Despite the name, this returns a
-   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
-   */
-  get startByte(): number;
-  /**
-   * @deprecated Use {@link endOffset} instead. Despite the name, this returns a
-   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
-   */
-  get endByte(): number;
-  /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
    */
   isMissing(): boolean;
@@ -1258,10 +1223,8 @@ export declare class LspWorkspaceManager {
     uri: string;
     stubId: number;
     kind: number;
-    startByte: number;
-    endByte: number;
-    startOffset?: number | undefined;
-    endOffset?: number | undefined;
+    startOffset: number;
+    endOffset: number;
     score: number;
   }[];
 }

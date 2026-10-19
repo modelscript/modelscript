@@ -40,9 +40,9 @@ export interface WorkerStubResult {
   /** Optional string arena handle for the symbol name. */
   nameHandle?: number | undefined;
   /** Starting UTF-8 byte offset in the source buffer. */
-  startByte: number;
+  startOffset: number;
   /** Ending UTF-8 byte offset in the source buffer. */
-  endByte: number;
+  endOffset: number;
 }
 
 /**

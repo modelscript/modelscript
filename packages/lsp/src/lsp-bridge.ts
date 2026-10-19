@@ -266,11 +266,6 @@ export class PositionIndex {
   get lineCount(): number {
     return this.lineStarts.length;
   }
-
-  /** @deprecated Use {@link rangeFromOffsets} with character offsets instead. */
-  rangeFromBytes(startByte: number, endByte: number): LSPRange {
-    return this.rangeFromOffsets(startByte, endByte);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -491,11 +486,7 @@ export class LSPBridge {
       if (shortName && pkgName && shortName === name) {
         return this.resolveName(pkgName, null);
       }
-      const rawText = this.getEntrySourceSlice(
-        importEntry,
-        importEntry.startOffset ?? importEntry.startByte,
-        importEntry.endOffset ?? importEntry.endByte,
-      );
+      const rawText = this.getEntrySourceSlice(importEntry, importEntry.startOffset, importEntry.endOffset);
       const clause = (rawText || importEntry.name || "")
         .replace(/^import\s+/, "")
         .replace(/;\s*$/, "")
@@ -803,19 +794,12 @@ export class LSPBridge {
       }
       const entries = childrenOf.get(parentId) || [];
       return entries.map((entry) => {
-        const range = this.positions.rangeFromOffsets(
-          entry.startOffset ?? entry.startByte,
-          entry.endOffset ?? entry.endByte,
-        );
+        const range = this.positions.rangeFromOffsets(entry.startOffset, entry.endOffset);
 
         let name = entry.name;
         if (name === "<anonymous>") {
           try {
-            const source = this.engine.cstText(
-              entry.startOffset ?? entry.startByte,
-              entry.endOffset ?? entry.endByte,
-              entry,
-            );
+            const source = this.engine.cstText(entry.startOffset, entry.endOffset, entry);
             if (source) {
               const firstLine = source.trim().split("\n")[0]!.trim();
               name = firstLine.length > 40 ? firstLine.substring(0, 37) + "..." : firstLine;
@@ -830,15 +814,12 @@ export class LSPBridge {
           entry.fieldRanges?.["name"] ??
           (entry.fieldRanges ? entry.fieldRanges[entry.namePath] || entry.fieldRanges["identifier"] : undefined);
         if (nameField) {
-          selectionRange = this.positions.rangeFromOffsets(
-            nameField.startOffset ?? nameField.startByte,
-            nameField.endOffset ?? nameField.endByte,
-          );
+          selectionRange = this.positions.rangeFromOffsets(nameField.startOffset, nameField.endOffset);
         } else {
           const text = this.positions.getSourceText();
           if (text && entry.name && entry.name !== "<anonymous>") {
-            const startOff = entry.startOffset ?? entry.startByte;
-            const endOff = entry.endOffset ?? entry.endByte;
+            const startOff = entry.startOffset;
+            const endOff = entry.endOffset;
             const slice = text.slice(startOff, Math.min(startOff + 300, endOff));
             const idx = slice.indexOf(entry.name);
             if (idx !== -1) {
@@ -895,14 +876,14 @@ export class LSPBridge {
     const nameField =
       target.fieldRanges?.["name"] ??
       (target.fieldRanges ? target.fieldRanges[target.namePath] || target.fieldRanges["identifier"] : undefined);
-    let startOff = target.startOffset ?? target.startByte;
-    let endOff = target.endOffset ?? target.endByte;
+    let startOff = target.startOffset;
+    let endOff = target.endOffset;
     if (nameField) {
-      startOff = nameField.startOffset ?? nameField.startByte;
-      endOff = nameField.endOffset ?? nameField.endByte;
+      startOff = nameField.startOffset;
+      endOff = nameField.endOffset;
     } else if (text && target.name && target.name !== "<anonymous>") {
-      const baseStart = target.startOffset ?? target.startByte;
-      const baseEnd = target.endOffset ?? target.endByte;
+      const baseStart = target.startOffset;
+      const baseEnd = target.endOffset;
       const slice = text.slice(baseStart, Math.min(baseStart + 300, baseEnd));
       const idx = slice.indexOf(target.name);
       if (idx !== -1) {
@@ -975,9 +956,8 @@ export class LSPBridge {
     ) {
       const nameRange = refEntry.fieldRanges?.["name"];
       const isOverClassName = nameRange
-        ? byteOffset >= (nameRange.startOffset ?? nameRange.startByte) &&
-          byteOffset <= (nameRange.endOffset ?? nameRange.endByte)
-        : word === refEntry.name && byteOffset < (refEntry.startOffset ?? refEntry.startByte) + 200;
+        ? byteOffset >= nameRange.startOffset && byteOffset <= nameRange.endOffset
+        : word === refEntry.name && byteOffset < refEntry.startOffset + 200;
 
       if (!isOverClassName) {
         // Cursor is inside the class body — resolve the word within this class scope
@@ -1365,9 +1345,8 @@ export class LSPBridge {
       if (entry.kind === "Class" || entry.ruleName === "SourceFile" || entry.ruleName === "source_file") {
         const nameRange = entry.fieldRanges?.["name"];
         const isOverClassName = nameRange
-          ? wordStart >= (nameRange.startOffset ?? nameRange.startByte) &&
-            wordEnd <= (nameRange.endOffset ?? nameRange.endByte)
-          : word === entry.name && wordStart < (entry.startOffset ?? entry.startByte) + 200;
+          ? wordStart >= nameRange.startOffset && wordEnd <= nameRange.endOffset
+          : word === entry.name && wordStart < entry.startOffset + 200;
 
         if (isOverClassName) {
           targetDecl = entry;
@@ -1381,8 +1360,7 @@ export class LSPBridge {
       } else if (entry.kind === "Component" || entry.kind === "Variable") {
         const nameRange = entry.fieldRanges?.["name"] ?? entry.fieldRanges?.[entry.namePath];
         const isOverCompName = nameRange
-          ? wordStart >= (nameRange.startOffset ?? nameRange.startByte) &&
-            wordEnd <= (nameRange.endOffset ?? nameRange.endByte)
+          ? wordStart >= nameRange.startOffset && wordEnd <= nameRange.endOffset
           : word === entry.name && qualifiedPrefix === word;
         if (isOverCompName) {
           targetDecl = entry;
@@ -1505,7 +1483,7 @@ export class LSPBridge {
       if (this.engine && typeof this.engine.cstText === "function") {
         const full = this.engine.cstText(0, 10_000_000, entry);
         if (typeof full === "string" && full.length > 0) return full;
-        const entryEnd = entry.endOffset ?? entry.endByte ?? 0;
+        const entryEnd = entry.endOffset ?? 0;
         if (entryEnd > 0) {
           const prefix = this.engine.cstText(0, entryEnd, entry);
           if (typeof prefix === "string" && prefix.length > 0) return prefix;
@@ -1525,7 +1503,7 @@ export class LSPBridge {
   private extractComponentClausePrefix(
     entry: SymbolEntry,
   ): { fullPrefix: string; typePrefix: string; typeSpecifier: string; clauseStartOffset: number } | null {
-    const entryStart = entry.startOffset ?? entry.startByte ?? 0;
+    const entryStart = entry.startOffset ?? 0;
     const fullText = this.getEntryFullSourceText(entry);
     if (!fullText || entryStart <= 0 || entryStart > fullText.length) return null;
 
@@ -1989,8 +1967,8 @@ export class LSPBridge {
         return declStr;
       }
 
-      const entryStart = entry.startOffset ?? entry.startByte ?? 0;
-      const entryEnd = entry.endOffset ?? entry.endByte ?? 0;
+      const entryStart = entry.startOffset ?? 0;
+      const entryEnd = entry.endOffset ?? 0;
       const source = entryEnd > entryStart ? this.getEntrySourceSlice(entry, entryStart, entryEnd) : null;
 
       if (
@@ -2388,10 +2366,7 @@ export class LSPBridge {
       if (cleaned) return cleaned;
     }
 
-    const span =
-      rawSpan !== undefined
-        ? rawSpan
-        : this.getEntrySourceSlice(entry, entry.startOffset ?? entry.startByte, entry.endOffset ?? entry.endByte);
+    const span = rawSpan !== undefined ? rawSpan : this.getEntrySourceSlice(entry, entry.startOffset, entry.endOffset);
     if (!span) return null;
 
     if (entry.kind === "Class" || entry.kind === "Function" || entry.kind === "Package" || entry.kind === "Type") {
@@ -2440,7 +2415,7 @@ export class LSPBridge {
     // 1. Leading comments immediately preceding the declaration (or its component_clause)
     const fullText = this.getEntryFullSourceText(entry);
     if (fullText) {
-      let declStart = entry.startOffset ?? entry.startByte ?? 0;
+      let declStart = entry.startOffset ?? 0;
       if (entry.kind === "Component" || entry.kind === "Variable") {
         const clausePrefix = this.extractComponentClausePrefix(entry);
         if (clausePrefix && clausePrefix.clauseStartOffset < declStart) {
@@ -2553,8 +2528,8 @@ export class LSPBridge {
 
       let md = `\`\`\`${lang}\n${declStr}\n\`\`\``;
 
-      const entryStart = entry.startOffset ?? entry.startByte ?? 0;
-      const entryEnd = entry.endOffset ?? entry.endByte ?? 0;
+      const entryStart = entry.startOffset ?? 0;
+      const entryEnd = entry.endOffset ?? 0;
       const rawSpan = entryEnd > entryStart ? this.getEntrySourceSlice(entry, entryStart, entryEnd) : null;
 
       const docSections: string[] = [];
@@ -2794,7 +2769,7 @@ export class LSPBridge {
       .filter((ref) => ref.resourceId === this.documentUri)
       .map((ref) => ({
         uri: this.documentUri,
-        range: this.positions.rangeFromOffsets(ref.startOffset ?? ref.startByte, ref.endOffset ?? ref.endByte),
+        range: this.positions.rangeFromOffsets(ref.startOffset, ref.endOffset),
       }));
   }
 
@@ -2855,8 +2830,8 @@ export class LSPBridge {
     for (const id of this.getDocumentSymbolIds()) {
       const entry = this.index.symbols.get(id);
       if (!entry) continue;
-      const start = entry.startOffset ?? entry.startByte;
-      const end = entry.endOffset ?? entry.endByte;
+      const start = entry.startOffset;
+      const end = entry.endOffset;
       if (start <= offset && offset < end) {
         const size = end - start;
         if (size < bestSize) {
@@ -2881,8 +2856,8 @@ export class LSPBridge {
     for (const id of this.getDocumentSymbolIds()) {
       const entry = this.index.symbols.get(id);
       if (!entry) continue;
-      const start = entry.startOffset ?? entry.startByte;
-      const end = entry.endOffset ?? entry.endByte;
+      const start = entry.startOffset;
+      const end = entry.endOffset;
       if (start <= offset && offset <= end) {
         const size = end - start;
         if (size < bestSize) {

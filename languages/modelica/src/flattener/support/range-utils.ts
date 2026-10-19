@@ -3,8 +3,8 @@
 import { Cst } from "../../../src-gen/bindings.js";
 
 export interface DiagnosticRange {
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
   startPosition?: { row: number; column: number } | undefined;
   endPosition?: { row: number; column: number } | undefined;
 }
@@ -40,8 +40,8 @@ export function getElementDiagRange(target: any): DiagnosticRange | undefined {
   }
   const text: string = node.text ?? "";
   const trimmedLen = text.endsWith(";") ? text.length - 1 : text.length;
-  const startByte = node.startIndex ?? node.startByte ?? 0;
-  const endByte = startByte + trimmedLen;
+  const startOffset = node.startIndex ?? node.startOffset ?? 0;
+  const endOffset = startOffset + trimmedLen;
   let endPosition = node.endPosition;
   if (text.endsWith(";") && endPosition) {
     endPosition = {
@@ -50,8 +50,8 @@ export function getElementDiagRange(target: any): DiagnosticRange | undefined {
     };
   }
   return {
-    startByte,
-    endByte,
+    startOffset,
+    endOffset,
     startPosition: node.startPosition,
     endPosition,
   };
@@ -59,7 +59,7 @@ export function getElementDiagRange(target: any): DiagnosticRange | undefined {
 
 export function getClassDiagRange(target: any): DiagnosticRange | undefined {
   if (!target) return undefined;
-  let startByte = target.startIndex ?? target.startByte ?? 0;
+  let startOffset = target.startIndex ?? target.startOffset ?? 0;
   let startPosition = target.startPosition;
   const pfxNode =
     Cst.ClassDefinition.classPrefixes(target) ?? target.children?.find((c: any) => c.type === "class_prefixes");
@@ -67,14 +67,14 @@ export function getClassDiagRange(target: any): DiagnosticRange | undefined {
     for (const child of pfxNode.children) {
       if (child.type !== "comment" && child.type !== "description") {
         startPosition = child.startPosition ?? startPosition;
-        startByte = child.startIndex ?? (child as any).startByte ?? startByte;
+        startOffset = child.startIndex ?? (child as any).startOffset ?? startOffset;
         break;
       }
     }
   }
   return {
-    startByte,
-    endByte: target.endIndex ?? target.endByte ?? 0,
+    startOffset,
+    endOffset: target.endIndex ?? target.endOffset ?? 0,
     startPosition,
     endPosition: target.endPosition,
   };

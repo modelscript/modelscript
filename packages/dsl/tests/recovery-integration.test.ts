@@ -304,7 +304,7 @@ describe("GLR Parser Error Recovery Integration", () => {
     expect(diagnostics.length).toBeGreaterThan(0);
     const diag = diagnostics[0];
     expect(diag).toBeDefined();
-    expect(diag.startCharOffset).toBeGreaterThanOrEqual(0);
+    expect(diag.startOffset).toBeGreaterThanOrEqual(0);
   });
 
   it("should position error diagnostic directly on incomplete identifier 'le' on line 4 without bleeding to line 3", () => {
@@ -479,8 +479,8 @@ scope {
       expect(diagnostics.length).toBeGreaterThan(0);
 
       const firstDiag = diagnostics[0];
-      expect(firstDiag.startCharOffset).toBeGreaterThanOrEqual(14);
-      expect(firstDiag.endCharOffset).toBeGreaterThanOrEqual(21);
+      expect(firstDiag.startOffset).toBeGreaterThanOrEqual(14);
+      expect(firstDiag.endOffset).toBeGreaterThanOrEqual(21);
     });
 
     it("should handle 'let x= ======= 1;' without diagnostic or semantic token corruption", async () => {

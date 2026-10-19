@@ -347,7 +347,7 @@ export async function loadDependencyFromRegistry(
     let cached: any = null;
     const db = await openMSLCache();
     try {
-      const cacheKey = `lsp-bundle:dep:v3:${label}`;
+      const cacheKey = `lsp-bundle:dep:v4:${label}`;
 
       cached = await idbGet<any>(db, cacheKey);
 

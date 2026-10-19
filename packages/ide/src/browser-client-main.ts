@@ -821,7 +821,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Register Automated CAD-to-Mesh Commands
-    registerCadMeshingCommands(context);
+    registerCadMeshingCommands(context, client);
   } catch (e) {
     console.error("ModelScript language server failed to start:", e);
     lspOutputChannel.appendLine(`[client] Language server FAILED to start: ${e}`);

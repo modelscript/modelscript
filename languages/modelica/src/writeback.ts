@@ -40,18 +40,18 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
   if (!entry) return null;
 
   // 1. Precise CST byte-range replacement within the indexed declaration
-  if (entry.startByte != null && entry.endByte != null && entry.endByte > entry.startByte) {
-    const declText = fullText.substring(entry.startByte, entry.endByte);
+  if (entry.startOffset != null && entry.endOffset != null && entry.endOffset > entry.startOffset) {
+    const declText = fullText.substring(entry.startOffset, entry.endOffset);
     const eqMatch = declText.match(/(=(?!=))\s*([^;"\r\n]+)/);
     if (eqMatch && eqMatch.index !== undefined) {
       const rawVal = eqMatch[2]!.trimEnd();
       const valOffsetInDecl = eqMatch.index + declText.substring(eqMatch.index).indexOf(rawVal);
-      const valStartByte = entry.startByte + valOffsetInDecl;
+      const valStartByte = entry.startOffset + valOffsetInDecl;
       const valEndByte = valStartByte + rawVal.length;
 
       return {
-        startByte: valStartByte,
-        endByte: valEndByte,
+        startOffset: valStartByte,
+        endOffset: valEndByte,
         newText: newValue.trim(),
       };
     }
@@ -67,8 +67,8 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
       const valEnd = valStart + match[2]!.trimEnd().length;
 
       return {
-        startByte: valStart,
-        endByte: valEnd,
+        startOffset: valStart,
+        endOffset: valEnd,
         newText: newValue.trim(),
       };
     }

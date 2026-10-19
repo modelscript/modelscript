@@ -31,8 +31,8 @@ describe("SysML v2 Element Table & Attribute Rewriting Engine", () => {
       name: "Vehicle.engine",
       ruleName: "PartUsage",
       resourceId: "file:///workspace/vehicle.sysml",
-      startByte: 10,
-      endByte: 50,
+      startOffset: 10,
+      endOffset: 50,
       metadata: {
         typeName: "CombustionEngine",
         multiplicity: "1",
@@ -46,8 +46,8 @@ describe("SysML v2 Element Table & Attribute Rewriting Engine", () => {
       name: "Vehicle.transmission",
       ruleName: "PartUsage",
       resourceId: "file:///workspace/vehicle.sysml",
-      startByte: 60,
-      endByte: 100,
+      startOffset: 60,
+      endOffset: 100,
       metadata: {
         typeName: "AutomaticGearbox",
         multiplicity: "1",
@@ -60,8 +60,8 @@ describe("SysML v2 Element Table & Attribute Rewriting Engine", () => {
       name: "Vehicle.controlPort",
       ruleName: "PortUsage",
       resourceId: "file:///workspace/vehicle.sysml",
-      startByte: 110,
-      endByte: 140,
+      startOffset: 110,
+      endOffset: 140,
       metadata: {
         portType: "CanBusPort",
         direction: "inout",

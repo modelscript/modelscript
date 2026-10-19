@@ -137,7 +137,10 @@ export function findCstChildren(node: any, type: string, results: any[] = []): a
         const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad;
+        const pad = isFat
+          ? mem32[(currentChildPtr + 28) >>> 2] ||
+            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad)
+          : rawPad;
         const len = envHashPadding & 0x007fffff;
         const isInvisible = (typeFlags & (1 << 14)) !== 0;
 
@@ -206,7 +209,10 @@ export function findCstDescendants(node: any, type: string, results: any[] = [])
         const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad;
+        const pad = isFat
+          ? mem32[(currentChildPtr + 28) >>> 2] ||
+            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad)
+          : rawPad;
         const len = envHashPadding & 0x007fffff;
         const isInvisible = (typeFlags & (1 << 14)) !== 0;
 
@@ -272,7 +278,10 @@ export function findFirstDescendant(node: any, type: string): any | null {
         const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad;
+        const pad = isFat
+          ? mem32[(currentChildPtr + 28) >>> 2] ||
+            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad)
+          : rawPad;
         const len = envHashPadding & 0x007fffff;
         const isInvisible = (typeFlags & (1 << 14)) !== 0;
 
@@ -355,7 +364,10 @@ function lowerLinearWasmCstExpression(
         const ehp = mem32[(curPtr + 4) >>> 2]!;
         const rPad = tf >>> 22;
         const isFat = (ehp >>> 23) & 1;
-        const cPad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad;
+        const cPad = isFat
+          ? mem32[(curPtr + 28) >>> 2] ||
+            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad)
+          : rPad;
         const cLen = ehp & 0x007fffff;
         const isInv = (tf & (1 << 14)) !== 0;
 

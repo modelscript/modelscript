@@ -244,8 +244,8 @@ export function resolveTypeDimension(
   }
 
   // Check CST text for `:> SuperType`
-  if (typeof entry.startByte === "number" && typeof entry.endByte === "number") {
-    const text = db.cstText(entry.startByte, entry.endByte);
+  if (typeof entry.startOffset === "number" && typeof entry.endOffset === "number") {
+    const text = db.cstText(entry.startOffset, entry.endOffset);
     if (text) {
       const match = text.match(/:>\s*([a-zA-Z0-9_:]+)/);
       if (match && match[1]) {
@@ -264,8 +264,8 @@ export interface DimensionInferenceResult {
   error?:
     | {
         message: string;
-        startByte?: number | undefined;
-        endByte?: number | undefined;
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
       }
     | undefined;
 }
@@ -339,8 +339,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
             return {
               error: {
                 message: `Dimensional mismatch: arguments to '${fnName}' must have identical physical dimensions, got '${getDimensionLabel(leftDim)}' and '${getDimensionLabel(rightDim)}'.`,
-                startByte: node.startIndex ?? node.startOffset ?? node.startByte,
-                endByte: node.endIndex ?? node.endOffset ?? node.endByte,
+                startOffset: node.startIndex ?? node.startOffset,
+                endOffset: node.endIndex ?? node.endOffset,
               },
             };
           }
@@ -360,9 +360,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
             return {
               error: {
                 message: `Dimensional mismatch: argument to transcendental function '${fnName}' must be dimensionless, got '${getDimensionLabel(argDim)}'.`,
-                startByte:
-                  argNode.startIndex ?? argNode.startOffset ?? argNode.startByte ?? node.startIndex ?? node.startByte,
-                endByte: argNode.endIndex ?? argNode.endOffset ?? argNode.endByte ?? node.endIndex ?? node.endByte,
+                startOffset: argNode.startIndex ?? argNode.startOffset ?? node.startIndex ?? node.startOffset,
+                endOffset: argNode.endIndex ?? argNode.endOffset ?? node.endIndex ?? node.endOffset,
               },
             };
           }
@@ -398,8 +397,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
           return {
             error: {
               message: `Dimensional mismatch: cannot perform '${operators[i]}' on incompatible physical dimensions '${getDimensionLabel(curDim)}' and '${getDimensionLabel(nextDim)}'.`,
-              startByte: node.startIndex ?? node.startOffset ?? node.startByte,
-              endByte: node.endIndex ?? node.endOffset ?? node.endByte,
+              startOffset: node.startIndex ?? node.startOffset,
+              endOffset: node.endIndex ?? node.endOffset,
             },
           };
         }
@@ -434,8 +433,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
             return {
               error: {
                 message: `Dimensional mismatch: cannot perform '%' on incompatible physical dimensions '${getDimensionLabel(curDim)}' and '${getDimensionLabel(nextDim)}'.`,
-                startByte: node.startIndex ?? node.startOffset ?? node.startByte,
-                endByte: node.endIndex ?? node.endOffset ?? node.endByte,
+                startOffset: node.startIndex ?? node.startOffset,
+                endOffset: node.endIndex ?? node.endOffset,
               },
             };
           }
@@ -481,8 +480,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
         return {
           error: {
             message: `Dimensional mismatch: cannot compare incompatible physical dimensions '${getDimensionLabel(leftDim)}' and '${getDimensionLabel(rightDim)}'.`,
-            startByte: node.startIndex ?? node.startOffset ?? node.startByte,
-            endByte: node.endIndex ?? node.endOffset ?? node.endByte,
+            startOffset: node.startIndex ?? node.startOffset,
+            endOffset: node.endIndex ?? node.endOffset,
           },
         };
       }
@@ -513,8 +512,8 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
         return {
           error: {
             message: `Dimensional mismatch: cannot test equality between incompatible physical dimensions '${getDimensionLabel(leftDim)}' and '${getDimensionLabel(rightDim)}'.`,
-            startByte: node.startIndex ?? node.startOffset ?? node.startByte,
-            endByte: node.endIndex ?? node.endOffset ?? node.endByte,
+            startOffset: node.startIndex ?? node.startOffset,
+            endOffset: node.endIndex ?? node.endOffset,
           },
         };
       }

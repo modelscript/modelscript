@@ -164,8 +164,8 @@ export function emitVerificationDiagnostics(
     const targetNode = db.symbols.get(targetId);
 
     if (targetNode) {
-      const startOff = typeof targetNode.startOffset === "number" ? targetNode.startOffset : targetNode.startByte;
-      const endOff = typeof targetNode.endOffset === "number" ? targetNode.endOffset : targetNode.endByte;
+      const startOff = targetNode.startOffset;
+      const endOff = targetNode.endOffset;
       if (typeof startOff === "number" && typeof endOff === "number") {
         const toPos = (off: number) =>
           positions.charOffsetToPosition ? positions.charOffsetToPosition(off) : positions.offsetToPosition!(off);

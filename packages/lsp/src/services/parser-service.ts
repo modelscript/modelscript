@@ -290,7 +290,7 @@ export class ParserService {
 
   getSharedCstTreeWrapper() {
     return {
-      getText: (startByte: number, endByte: number, entry?: any): string | null => {
+      getText: (startOffset: number, endOffset: number, entry?: any): string | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
         const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
@@ -301,19 +301,19 @@ export class ParserService {
           (this.documentManager as any)?.documentManager?.documentTrees;
         const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri) ?? docTrees?.get(oneSlashUri);
         if (docTree && typeof docTree.text === "string" && docTree.text.length > 0) {
-          return docTree.text.substring(startByte, endByte);
+          return docTree.text.substring(startOffset, endOffset);
         }
 
         const openDoc = this.documents?.get(uri) ?? this.documents?.get(normUri) ?? this.documents?.get(oneSlashUri);
         if (openDoc && typeof openDoc.getText === "function") {
-          return openDoc.getText().substring(startByte, endByte);
+          return openDoc.getText().substring(startOffset, endOffset);
         }
 
         const wsText =
           this.workspaceManager?.unifiedWorkspace?.getDocumentText?.(uri) ??
           this.workspaceManager?.unifiedWorkspace?.getDocumentText?.(normUri);
         if (typeof wsText === "string" && wsText.length > 0) {
-          return wsText.substring(startByte, endByte);
+          return wsText.substring(startOffset, endOffset);
         }
 
         const lazyLibTrees =
@@ -356,10 +356,10 @@ export class ParserService {
             // ignore
           }
         }
-        if (lazyCache && typeof lazyCache.text === "string") return lazyCache.text.substring(startByte, endByte);
+        if (lazyCache && typeof lazyCache.text === "string") return lazyCache.text.substring(startOffset, endOffset);
         return null;
       },
-      getNode: (startByte: number, endByte: number, entry?: any): any | null => {
+      getNode: (startOffset: number, endOffset: number, entry?: any): any | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
         const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
@@ -370,7 +370,7 @@ export class ParserService {
           (this.documentManager as any)?.documentManager?.documentTrees;
         const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri) ?? docTrees?.get(oneSlashUri);
         if (docTree && docTree.tree) {
-          let n = docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+          let n = docTree.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
           if (n && n.type === "source_file") {
             for (let i = 0; i < n.childCount; i++) {
               if (n.child(i).type === "class_definition") {
@@ -432,7 +432,7 @@ export class ParserService {
           }
         }
         if (lazyCache && lazyCache.tree) {
-          let n = lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+          let n = lazyCache.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
           if (n && n.type === "source_file") {
             for (let i = 0; i < n.childCount; i++) {
               if (n.child(i).type === "class_definition") {
@@ -443,7 +443,7 @@ export class ParserService {
           }
           if (!n)
             this.connection.console.error(
-              `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startByte}-${endByte}]`,
+              `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startOffset}-${endOffset}]`,
             );
           return n;
         }
@@ -971,8 +971,8 @@ export class ParserService {
       for (const id of nameIds) {
         const entry = db.symbols.get(id);
         if (!entry) continue;
-        const startOff = typeof entry.startOffset === "number" ? entry.startOffset : entry.startByte;
-        const endOff = typeof entry.endOffset === "number" ? entry.endOffset : entry.endByte;
+        const startOff = entry.startOffset;
+        const endOff = entry.endOffset;
         if (entry.resourceId === currentUri && typeof startOff === "number" && typeof endOff === "number") {
           const bridge = (globalThis as any).documentLSPBridges?.get(currentUri);
           if (bridge) {

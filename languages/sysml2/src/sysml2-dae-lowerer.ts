@@ -1156,8 +1156,8 @@ export class SysML2DaeLowerer {
     sysmlSource: string,
     options: import("@modelscript/simulate").ArenaSimulateOptions = {},
   ): Promise<import("@modelscript/simulate").ArenaSimulationResult> {
-    const { simulateArena } = await import("@modelscript/simulate");
+    const { simulateArenaAsync } = await import("@modelscript/simulate");
     const arena = await this.lowerSystem(sysmlSource);
-    return simulateArena(arena, options);
+    return simulateArenaAsync(arena, options);
   }
 }

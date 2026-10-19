@@ -48,8 +48,6 @@ docHooks["lint__owl2Document"] = (db: any, entryOrId: any) => {
     resourceId: uri,
     startOffset: d.startOffset,
     endOffset: d.endOffset,
-    startByte: d.startByte,
-    endByte: d.endByte,
     uri,
   }));
 };

@@ -56,11 +56,11 @@ export enum SolidKind {
 // ── Solid source metadata ───────────────────────────────────────────────
 
 /** Source byte span of a transform modifier (`translate`, `rotate`, `scale`) for bidirectional CST writeback. */
-export interface TransformByteRange {
+export interface TransformOffsetRange {
   /** Inclusive start byte offset in source. */
-  readonly startByte: number;
+  readonly startOffset: number;
   /** Exclusive end byte offset in source. */
-  readonly endByte: number;
+  readonly endOffset: number;
   /** True when the transform was authored in fluent method-chaining syntax. */
   readonly isFluent?: boolean | undefined;
 }
@@ -78,19 +78,19 @@ export interface SolidSourceMetadata {
   /** Index of the argument in the method call. */
   readonly argIndex?: number | undefined;
   /** CST start byte in source code. */
-  readonly startByte?: number | undefined;
+  readonly startOffset?: number | undefined;
   /** CST end byte in source code. */
-  readonly endByte?: number | undefined;
+  readonly endOffset?: number | undefined;
   /** CST start byte of the underlying primitive call. */
-  readonly primitiveStartByte?: number | undefined;
+  readonly primitiveStartOffset?: number | undefined;
   /** CST end byte of the underlying primitive call. */
-  readonly primitiveEndByte?: number | undefined;
+  readonly primitiveEndOffset?: number | undefined;
   /** Specific byte span for the `translate(...)` operation wrapping this solid. */
-  readonly translateRange?: TransformByteRange | undefined;
+  readonly translateRange?: TransformOffsetRange | undefined;
   /** Specific byte span for the `rotate(...)` operation wrapping this solid. */
-  readonly rotateRange?: TransformByteRange | undefined;
+  readonly rotateRange?: TransformOffsetRange | undefined;
   /** Specific byte span for the `scale(...)` operation wrapping this solid. */
-  readonly scaleRange?: TransformByteRange | undefined;
+  readonly scaleRange?: TransformOffsetRange | undefined;
   /** Explicit user-authored translation offset [tx, ty, tz] in source code. */
   readonly translation?: Vec3 | undefined;
   /** Explicit user-authored Euler rotation [rx, ry, rz] (degrees) in source code. */

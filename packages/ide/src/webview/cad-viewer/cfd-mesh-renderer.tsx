@@ -20,7 +20,7 @@ export interface CfdMeshPayload {
   time: number;
   geometry: {
     positions: number[];
-    normals: number[];
+    normals?: number[];
     indices: number[];
   };
   fields: {
@@ -34,6 +34,7 @@ export interface CfdMeshPayload {
     moldWidth?: number;
     moldHeight?: number;
     dragForce?: [number, number, number];
+    liftForce?: [number, number, number];
     maxVelocity?: number;
     pressureDrop?: number;
   };
@@ -109,9 +110,18 @@ export function CfdMeshRenderer({ payload, position = [0, 0, 0], field = "auto" 
     const mode = selectedField === "auto" ? (isLbm ? "velocity" : "alpha") : selectedField;
 
     if (mode === "velocity" && velField) {
-      const maxV = Math.max(0.1, payload.metadata?.maxVelocity ?? Math.max(...velField));
+      let minV = Infinity;
+      let maxV = -Infinity;
       for (let i = 0; i < vertCount; i++) {
-        const t = Math.max(0, Math.min(1, (velField[i] ?? 0) / maxV));
+        const v = velField[i] ?? 0;
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+      }
+      const spanV = maxV - minV;
+      const denomV = spanV > 1e-3 ? spanV : Math.max(0.1, payload.metadata?.maxVelocity ?? maxV);
+      const baseV = spanV > 1e-3 ? minV : 0;
+      for (let i = 0; i < vertCount; i++) {
+        const t = Math.max(0, Math.min(1, ((velField[i] ?? 0) - baseV) / denomV));
         const [r, g, b] = turboColormap(t);
         colors[i * 3 + 0] = r;
         colors[i * 3 + 1] = g;
@@ -155,6 +165,13 @@ export function CfdMeshRenderer({ payload, position = [0, 0, 0], field = "auto" 
       geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     }
 
+    if (idxAttr && idxAttr.array.length === indices.length) {
+      (idxAttr.array as Uint32Array).set(indices);
+      idxAttr.needsUpdate = true;
+    } else {
+      geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
+    }
+
     if (normals && normals.length === positions.length) {
       if (normAttr && normAttr.array.length === normals.length) {
         (normAttr.array as Float32Array).set(normals);
@@ -173,9 +190,6 @@ export function CfdMeshRenderer({ payload, position = [0, 0, 0], field = "auto" 
       geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     }
 
-    if (!idxAttr || idxAttr.array.length !== indices.length) {
-      geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
-    }
     geometry.computeBoundingSphere();
   }, [payload, geometry, selectedField]);
 

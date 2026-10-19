@@ -75,7 +75,7 @@ end NonlinearThermalFluid;
 
   console.log(`Found ${homotopyDiags.length} homotopy recommendation diagnostics:`);
   for (const hd of homotopyDiags) {
-    console.log(` - [${hd.severity.toUpperCase()}] code=${hd.code} (${hd.startByte}-${hd.endByte}): ${hd.message}`);
+    console.log(` - [${hd.severity.toUpperCase()}] code=${hd.code} (${hd.startOffset}-${hd.endOffset}): ${hd.message}`);
   }
 
   if (homotopyDiags.length !== 3) {
@@ -96,9 +96,9 @@ end NonlinearThermalFluid;
   // 4. Test QuickFix text replacement
   console.log("\nSimulating QuickFix on T^4 equation:");
   const powDiag = homotopyDiags.find((d) => d.message.includes("T^4") || d.message.includes("T ^ 4"))!;
-  const originalTerm = testModel.substring(powDiag.startByte, powDiag.endByte);
+  const originalTerm = testModel.substring(powDiag.startOffset, powDiag.endOffset);
   const quickFixText = `homotopy(${originalTerm}, ${pow4})`;
-  const modifiedSource = testModel.slice(0, powDiag.startByte) + quickFixText + testModel.slice(powDiag.endByte);
+  const modifiedSource = testModel.slice(0, powDiag.startOffset) + quickFixText + testModel.slice(powDiag.endOffset);
 
   console.log("Original term:", originalTerm);
   console.log("Replaced with:", quickFixText);

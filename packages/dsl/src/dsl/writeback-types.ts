@@ -19,20 +19,14 @@ export interface WritebackContext {
 }
 
 /**
- * Byte-range patch replacement representing the source code edit.
- * Returning byte ranges allows zero-overhead integration with WebAssembly linear memory
- * and avoids coupling to IDE/LSP line-column structures.
+ * Character-range patch replacement representing the source code edit.
  */
 export interface WritebackEdit {
-  /** Start byte/character offset in the document */
-  startByte: number;
-  /** End byte/character offset in the document */
-  endByte: number;
   /** Start character offset in the document */
-  startOffset?: number | undefined;
+  startOffset: number;
   /** End character offset in the document */
-  endOffset?: number | undefined;
-  /** Replacement text to insert across [startByte, endByte] */
+  endOffset: number;
+  /** Replacement text to insert across [startOffset, endOffset] */
   newText: string;
 }
 

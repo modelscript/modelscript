@@ -294,8 +294,8 @@ export class PolyglotVisualizerPanel {
           parameterName?: string | undefined;
           transformMethod?: string | undefined;
           argIndex?: number | undefined;
-          startByte?: number | undefined;
-          endByte?: number | undefined;
+          startOffset?: number | undefined;
+          endOffset?: number | undefined;
         }
       | undefined;
   }): Promise<void> {
@@ -331,8 +331,8 @@ export class PolyglotVisualizerPanel {
           }
           if (patchRes) {
             const edit = new vscode.WorkspaceEdit();
-            const startPos = doc.positionAt(patchRes.replacedRange.startByte);
-            const endPos = doc.positionAt(patchRes.replacedRange.endByte);
+            const startPos = doc.positionAt(patchRes.replacedRange.startOffset);
+            const endPos = doc.positionAt(patchRes.replacedRange.endOffset);
             edit.replace(doc.uri, new vscode.Range(startPos, endPos), patchRes.newValue);
             await vscode.workspace.applyEdit(edit);
             return;
@@ -377,7 +377,7 @@ export class PolyglotVisualizerPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${this._panel.webview.cspSource} http: https: ws: wss: data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Polyglot Live Visualizer</title>
   <style>

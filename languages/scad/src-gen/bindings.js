@@ -415,7 +415,7 @@ export class WasmRuntime {
   static getWasmImports(onTextEdit, getMemory) {
     return {
       env: {
-        emitTextEdit: (startByte, endByte, newSourcePtr) => {
+        emitTextEdit: (startOffset, endOffset, newSourcePtr) => {
           const memory = getMemory();
           if (!memory) return;
           const memoryArray = new Uint16Array(memory.buffer);
@@ -428,7 +428,7 @@ export class WasmRuntime {
           for (let i = 0; i < lenChars; i++) {
             str += String.fromCharCode(memoryArray[offset + i]);
           }
-          onTextEdit(startByte, endByte, str);
+          onTextEdit(startOffset, endOffset, str);
         },
       },
     };
@@ -1960,10 +1960,6 @@ export class LspFacade {
         expectedTokens: expectedTokensList,
         startOffset: startCharOff,
         endOffset: endCharOff,
-        startCharOffset: startCharOff,
-        endCharOffset: endCharOff,
-        startByte: startCharOff,
-        endByte: endCharOff,
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
@@ -1989,9 +1985,9 @@ export class LspFacade {
         const isStartSameLine = prev.range.start.line === d.range.start.line;
         const isOverlapping =
           isStartSameLine &&
-          ((prev.endCharOffset !== undefined &&
-            d.startCharOffset !== undefined &&
-            d.startCharOffset <= prev.endCharOffset + 1) ||
+          ((prev.endOffset !== undefined &&
+            d.startOffset !== undefined &&
+            d.startOffset <= prev.endOffset + 1) ||
             prev.range.end.character + 1 >= d.range.start.character);
         if (isOverlapping && prev.code === undefined && d.code === undefined) {
           const prevIsSpecific =
@@ -2020,12 +2016,12 @@ export class LspFacade {
               prev.range.end = d.range.end;
             }
             if (
-              prev.endCharOffset !== undefined &&
-              d.endCharOffset !== undefined
+              prev.endOffset !== undefined &&
+              d.endOffset !== undefined
             ) {
-              prev.endCharOffset = Math.max(
-                prev.endCharOffset,
-                d.endCharOffset,
+              prev.endOffset = Math.max(
+                prev.endOffset,
+                d.endOffset,
               );
             }
             continue;
@@ -2109,17 +2105,15 @@ export class LspFacade {
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < count * 2; i += 2) {
-      const startByte = mem32[(dirPtr >>> 2) + i];
-      const endByte = mem32[(dirPtr >>> 2) + i + 1];
-      const startOff = Math.floor(startByte / div);
-      const endOff = Math.floor(endByte / div);
+      const rawStart = mem32[(dirPtr >>> 2) + i];
+      const rawEnd = mem32[(dirPtr >>> 2) + i + 1];
+      const startOff = Math.floor(rawStart / div);
+      const endOff = Math.floor(rawEnd / div);
       ranges.push({
         start: startOff,
         end: endOff,
         startOffset: startOff,
         endOffset: endOff,
-        startByte,
-        endByte,
       });
     }
     return ranges;
@@ -2172,8 +2166,6 @@ export class LspFacade {
         end: this.offsetToPos(rawEnd, lineStarts),
         startOffset: startOff,
         endOffset: endOff,
-        startByte: startOff,
-        endByte: endOff,
         typeId: mem32[(dirPtr >>> 2) + i + 2],
         nodePtr: mem32[(dirPtr >>> 2) + i + 3],
       });
@@ -2372,8 +2364,6 @@ export class LspFacade {
           typeId,
           startOffset: startOff,
           endOffset: endOff,
-          startByte: startOff,
-          endByte: endOff,
           start: this.offsetToPos(rawStartByte, lineStarts),
           end: this.offsetToPos(rawEndByte, lineStarts),
           x,
@@ -2525,8 +2515,8 @@ export class LspFacade {
     kind,
     flags,
     name,
-    startByte,
-    endByte,
+    startOffset,
+    endOffset,
     merkleLow = 0,
     merkleHigh = 0,
     parentFqn = "",
@@ -2543,8 +2533,8 @@ export class LspFacade {
       flags,
       nameHash,
       nameHandle,
-      startByte,
-      endByte,
+      startOffset,
+      endOffset,
       merkleLow,
       merkleHigh,
       parentFqnHash,
@@ -2593,8 +2583,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
-      const startByte = mem32[(dirPtr >>> 2) + i + 6];
-      const endByte = mem32[(dirPtr >>> 2) + i + 7];
+      const startOffset = mem32[(dirPtr >>> 2) + i + 6];
+      const endOffset = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2602,10 +2592,8 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte,
-        endByte,
-        startOffset: startByte,
-        endOffset: endByte,
+        startOffset,
+        endOffset,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2631,8 +2619,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
-      const startByte = mem32[(dirPtr >>> 2) + i + 6];
-      const endByte = mem32[(dirPtr >>> 2) + i + 7];
+      const startOffset = mem32[(dirPtr >>> 2) + i + 6];
+      const endOffset = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2640,10 +2628,8 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte,
-        endByte,
-        startOffset: startByte,
-        endOffset: endByte,
+        startOffset,
+        endOffset,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2662,8 +2648,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
-      const startByte = mem32[(dirPtr >>> 2) + i + 6];
-      const endByte = mem32[(dirPtr >>> 2) + i + 7];
+      const startOffset = mem32[(dirPtr >>> 2) + i + 6];
+      const endOffset = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2671,10 +2657,8 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte,
-        endByte,
-        startOffset: startByte,
-        endOffset: endByte,
+        startOffset,
+        endOffset,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2693,8 +2677,8 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
-      const startByte = mem32[(dirPtr >>> 2) + i + 6];
-      const endByte = mem32[(dirPtr >>> 2) + i + 7];
+      const startOffset = mem32[(dirPtr >>> 2) + i + 6];
+      const endOffset = mem32[(dirPtr >>> 2) + i + 7];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
         symbolId: mem32[(dirPtr >>> 2) + i + 1],
@@ -2702,10 +2686,8 @@ export class LspFacade {
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
-        startByte,
-        endByte,
-        startOffset: startByte,
-        endOffset: endByte,
+        startOffset,
+        endOffset,
         merkleLow: mem32[(dirPtr >>> 2) + i + 8],
         merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
@@ -2778,18 +2760,16 @@ export class LspFacade {
     const results = [];
     for (let i = 0; i < count * 7; i += 7) {
       const kf = mem32[(dirPtr >>> 2) + i + 2];
-      const startByte = mem32[(dirPtr >>> 2) + i + 4];
-      const endByte = mem32[(dirPtr >>> 2) + i + 5];
+      const startOffset = mem32[(dirPtr >>> 2) + i + 4];
+      const endOffset = mem32[(dirPtr >>> 2) + i + 5];
       results.push({
         stubId: mem32[(dirPtr >>> 2) + i + 0],
         fileId: mem32[(dirPtr >>> 2) + i + 1],
         kind: kf & 0xffff,
         flags: (kf >>> 16) & 0xffff,
         nameHash: mem32[(dirPtr >>> 2) + i + 3],
-        startByte,
-        endByte,
-        startOffset: startByte,
-        endOffset: endByte,
+        startOffset,
+        endOffset,
         score: mem32[(dirPtr >>> 2) + i + 6],
       });
     }
@@ -4224,11 +4204,9 @@ export class LspFacade {
         const mem32 = new Uint32Array(this.wasmMemory.buffer);
         for (let i = 0; i < edits.length; i++) {
           const base = (editsPtr >>> 2) + i * 3;
-          mem32[base] = (edits[i].startOffset ?? edits[i].startByte) * div;
-          mem32[base + 1] =
-            (edits[i].oldEndOffset ?? edits[i].oldEndByte) * div;
-          mem32[base + 2] =
-            (edits[i].newEndOffset ?? edits[i].newEndByte) * div;
+          mem32[base] = edits[i].startOffset * div;
+          mem32[base + 1] = edits[i].oldEndOffset * div;
+          mem32[base + 2] = edits[i].newEndOffset * div;
         }
         newAstRoot = this.exports.parseWithEdits(
           baseRoot,
@@ -4817,20 +4795,6 @@ export class SyntaxNode {
   }
   /** The end character index of the node. Alias for {@link endOffset}. */
   get endIndex() {
-    return this.endOffset;
-  }
-  /**
-   * @deprecated Use {@link startOffset} instead. Despite the name, this returns a
-   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
-   */
-  get startByte() {
-    return this.startOffset;
-  }
-  /**
-   * @deprecated Use {@link endOffset} instead. Despite the name, this returns a
-   * character offset (not a byte offset). Kept for tree-sitter API compatibility.
-   */
-  get endByte() {
     return this.endOffset;
   }
   /**
@@ -5858,8 +5822,8 @@ export class LspWorkspaceManager {
         s.typeId,
         0,
         `symbol_${s.typeId}_${i}`,
-        s.startOffset ?? s.startByte,
-        s.endOffset ?? s.endByte,
+        s.startOffset,
+        s.endOffset,
       );
     }
     if (keepAst) {
@@ -5888,10 +5852,8 @@ export class LspWorkspaceManager {
       uri: this.getUri(r.fileId) || "",
       stubId: r.stubId,
       kind: r.kind,
-      startByte: r.startByte,
-      endByte: r.endByte,
-      startOffset: r.startOffset ?? r.startByte,
-      endOffset: r.endOffset ?? r.endByte,
+      startOffset: r.startOffset,
+      endOffset: r.endOffset,
       score: r.score,
     }));
   }

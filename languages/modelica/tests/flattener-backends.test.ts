@@ -1038,6 +1038,94 @@ end FinalAndAttributes;
     console.log("   ✔ der(array), array if-expressions & algorithm implicit for-range verified in wasm & hybrid");
   }
 
+  // ---------------------------------------------------------------------------
+  // Test 26: initial(), non-range for-loop unrolling, Integer identity/zeros/ones, noEvent(), and Call coercion
+  // ---------------------------------------------------------------------------
+  {
+    console.log(
+      "\n26. Testing initial(), non-range for-loop unrolling, Integer identity/zeros/ones, noEvent(), and Call coercion...",
+    );
+    const modelCode = `
+      model TestWasmPhase13
+        function scaleReal
+          input Real x;
+          input Real u;
+          output Real y;
+        algorithm
+          y := x * u;
+        end scaleReal;
+
+        function sumVec
+          input Real v[3];
+          output Real s;
+        algorithm
+          s := v[1] + v[2] + v[3];
+        end sumVec;
+
+        parameter Integer n = 2;
+        Integer I[n, n] = identity(n);
+        parameter Integer Z[n] = zeros(n);
+        parameter Integer O[n] = ones(n);
+        Real a[3];
+        Real b(start = 0.0);
+        Real c;
+        Real d;
+        Real e;
+      equation
+        for i in {1, 2, 3} loop
+          a[i] = i * 1.0;
+        end for;
+        when initial() then
+          b = 5.0;
+        end when;
+        c = if noEvent(time > 1.0) then 1.0 else 0.0;
+        d = scaleReal(b, 3);
+        e = sumVec(a);
+      end TestWasmPhase13;
+    `;
+    const { ctx, uri } = await initContext(modelCode, "TestWasmPhase13");
+    const wasmRes = ctx.flattenArena("TestWasmPhase13", undefined, uri, {
+      backend: "wasm",
+      omcCompatibility: true,
+    });
+    assert(wasmRes !== null, "wasm arena should not be null");
+    assert.strictEqual((wasmRes as any).wasmErrorCode ?? 0, 0, "wasmErrorCode should be 0");
+    assert.strictEqual((wasmRes as any).wasmBail, undefined, "wasmBail should be undefined");
+    const printedWasm = printArenaDAE(wasmRes);
+    assert(printedWasm.includes("I = {{1, 0}, {0, 1}};"), "Integer identity(n) equation should be Integer matrix");
+    assert(printedWasm.includes("parameter Integer Z[1] = 0;"), "parameter Integer zeros(n) should be Integer 0");
+    assert(printedWasm.includes("parameter Integer O[1] = 1;"), "parameter Integer ones(n) should be Integer 1");
+    assert(printedWasm.includes("when initial() then"), "when initial() should be lowered in WASM");
+    assert(printedWasm.includes("noEvent(time > 1.0)"), "dynamic noEvent(time > 1.0) should be preserved");
+    assert(printedWasm.includes("TestWasmPhase13.scaleReal(b, 3.0)"), "IntLiteral call arg should coerce to 3.0");
+    assert(
+      printedWasm.includes("TestWasmPhase13.sumVec({a[1], a[2], a[3]})"),
+      "1D array call arg should reconstruct {a[1], a[2], a[3]}",
+    );
+
+    const tsRes = ctx.flattenArena("TestWasmPhase13", undefined, uri, {
+      backend: "ts",
+      omcCompatibility: true,
+    });
+    assert(tsRes !== null, "ts arena should not be null");
+    const printedTs = printArenaDAE(tsRes);
+    assert.strictEqual(printedWasm, printedTs, "WASM and TS printed DAE should match identically");
+
+    const diffRes = ctx.flattenArena("TestWasmPhase13", undefined, uri, {
+      backend: "diff",
+      omcCompatibility: true,
+    });
+    assert(diffRes !== null, "diff arena should not be null");
+    const diffReport = (diffRes as any).diffReport;
+    assert(diffReport !== undefined, "diffReport should be attached in diff mode");
+    assert.strictEqual(diffReport.bail, undefined, "diffReport.bail should be undefined when WASM succeeds");
+    assert.strictEqual(diffReport.varCount, diffRes.varCount, "diffReport varCount should match TS varCount");
+
+    console.log(
+      "   ✔ initial(), non-range for-loop unrolling, Integer identity/zeros/ones, noEvent(), and Call coercion verified",
+    );
+  }
+
   console.log("\nAll dual-engine backend tests passed successfully!");
 }
 

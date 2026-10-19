@@ -10,7 +10,7 @@ import {
   scalarizeArena,
   type DAEBuilder,
 } from "@modelscript/runtime";
-import { simulateArena, simulateArenaAsync, snapshotMemory, type MemorySnapshot } from "@modelscript/simulate";
+import { simulateArenaAsync, snapshotMemory, type MemorySnapshot } from "@modelscript/simulate";
 import { execFileSync, execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -421,7 +421,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
           break;
         case "js":
         default:
-          simulateJs(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          await simulateJs(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
           break;
       }
     } catch (err: unknown) {
@@ -441,9 +441,9 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 // ── JS Engine ──
 
 /**
- * Executes synchronous JavaScript/Arena DAE simulation via `simulateArena` and formats trajectories to stdout.
+ * Executes JavaScript/Arena DAE simulation via `simulateArenaAsync` and formats trajectories to stdout.
  */
-function simulateJs(
+async function simulateJs(
   arena: DAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
@@ -452,7 +452,7 @@ function simulateJs(
   step: number,
   memProfiles: Record<string, unknown>,
   lastSnap: MemorySnapshot | null,
-): void {
+): Promise<void> {
   profiler.start("simulation");
 
   const outputStringIds: number[] = [];
@@ -475,14 +475,19 @@ function simulateJs(
     | "auto"
     | "cvode"
     | "webgpu";
-  const result = simulateArena(arena, {
+  const opts: any = {
     startTime,
     stopTime,
     step,
     solver,
     outputStringIds,
     steadyStateOnly: Boolean(args["steady-state"] || args.steadyState),
-  });
+  };
+  if (args.tolerance) {
+    opts.atol = Number(args.tolerance);
+    opts.rtol = Number(args.tolerance);
+  }
+  const result = await simulateArenaAsync(arena, opts);
 
   profiler.end("simulation");
 

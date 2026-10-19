@@ -93,8 +93,8 @@ export interface WasmBailInfo {
   reason: WasmBailReasonName | "Unknown";
   /** Human-readable description of the unsupported construct. */
   description: string;
-  /** Source range of the offending CST node (string offsets, like CST `startByte`), when known. */
-  range: { startByte: number; endByte: number } | null;
+  /** Source range of the offending CST node (string offsets, like CST `startOffset`), when known. */
+  range: { startOffset: number; endOffset: number } | null;
   /** What the host did after the bail-out. */
   action: "strict-partial" | "ts-fallback";
 }
@@ -103,22 +103,22 @@ const UNKNOWN_BYTE = 0xffffffff;
 
 export function describeWasmBail(
   code: number,
-  startByte: number | undefined,
-  endByte: number | undefined,
+  startOffset: number | undefined,
+  endOffset: number | undefined,
   action: WasmBailInfo["action"],
   /** Bytes per code unit of the parser input buffer (2 for UTF-16, 4 for UTF-32). */
   unitSize = 1,
 ): WasmBailInfo {
   // Raw WASM exports surface u32 values as signed i32 in JS (0xffffffff → -1).
-  const start = typeof startByte === "number" ? startByte >>> 0 : UNKNOWN_BYTE;
-  const end = typeof endByte === "number" ? endByte >>> 0 : UNKNOWN_BYTE;
+  const start = typeof startOffset === "number" ? startOffset >>> 0 : UNKNOWN_BYTE;
+  const end = typeof endOffset === "number" ? endOffset >>> 0 : UNKNOWN_BYTE;
   const hasRange = start !== UNKNOWN_BYTE && end !== UNKNOWN_BYTE && end >= start;
   const div = unitSize > 0 ? unitSize : 1;
   return {
     code,
     reason: NAMES[code] ?? "Unknown",
     description: DESCRIPTIONS[code] ?? `kernel error ${code}`,
-    range: hasRange ? { startByte: Math.floor(start / div), endByte: Math.floor(end / div) } : null,
+    range: hasRange ? { startOffset: Math.floor(start / div), endOffset: Math.floor(end / div) } : null,
     action,
   };
 }

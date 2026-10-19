@@ -32,7 +32,7 @@ export interface PscadComponentLike {
   rotation?: number | undefined;
   mirror?: boolean | undefined;
   parameters: Record<string, string | number>;
-  sourceRange?: { startByte: number; endByte: number } | undefined;
+  sourceRange?: { startOffset: number; endOffset: number } | undefined;
   ports?:
     | {
         id: string;
@@ -49,7 +49,7 @@ export interface PscadBusLike {
   voltageBaseKv?: number | undefined;
   position: { x: number; y: number };
   length?: number | undefined;
-  sourceRange?: { startByte: number; endByte: number } | undefined;
+  sourceRange?: { startOffset: number; endOffset: number } | undefined;
 }
 
 export interface PscadWireLike {
@@ -58,7 +58,7 @@ export interface PscadWireLike {
   connectedPortIds?: string[] | undefined;
   startPortId?: string | undefined;
   endPortId?: string | undefined;
-  sourceRange?: { startByte: number; endByte: number } | undefined;
+  sourceRange?: { startOffset: number; endOffset: number } | undefined;
 }
 
 export interface PscadStickyLike {

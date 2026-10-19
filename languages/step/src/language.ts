@@ -26,17 +26,17 @@ export const stepLanguage = language({
   // Bi-directional source writeback for updating quoted string parameters in STEP entity records
   writeback: (ctx) => {
     const { entry, fullText, newValue } = ctx;
-    const startOffset = entry?.startOffset ?? entry?.startByte;
-    const endOffset = entry?.endOffset ?? entry?.endByte;
+    const startOffset = entry?.startOffset;
+    const endOffset = entry?.endOffset;
     if (startOffset != null && endOffset != null && endOffset > startOffset) {
       const declText = fullText.substring(startOffset, endOffset);
       // E.g. #10 = PRODUCT('DroneBody', ...)
       const strMatch = declText.match(/'([^'\\]*(?:\\.[^'\\]*)*)'/);
       if (strMatch && strMatch.index !== undefined) {
-        const valStartByte = startOffset + strMatch.index + 1;
-        const valEndByte = valStartByte + strMatch[1]!.length;
+        const valStartOffset = startOffset + strMatch.index + 1;
+        const valEndOffset = valStartOffset + strMatch[1]!.length;
         const cleanVal = newValue.replace(/^'|'$/g, "");
-        return { startByte: valStartByte, endByte: valEndByte, newText: cleanVal };
+        return { startOffset: valStartOffset, endOffset: valEndOffset, newText: cleanVal };
       }
     }
     return null;

@@ -231,21 +231,21 @@ export function registerClassQueryEndpoints(context: LspContext) {
         if (uri) {
           let line = 0;
           let character = 0;
-          let startByte = entry?.startOffset ?? entry?.startByte ?? 0;
+          let startOffset = entry?.startOffset ?? 0;
 
           const doc = context.documents.get(uri);
           if (doc) {
-            if (startByte === 0 && lastName) {
+            if (startOffset === 0 && lastName) {
               const docText = doc.getText();
               const regex = new RegExp(
                 `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
               );
               const match = regex.exec(docText);
               if (match && match.index !== undefined) {
-                startByte = match.index;
+                startOffset = match.index;
               }
             }
-            const pos = doc.positionAt(startByte);
+            const pos = doc.positionAt(startOffset);
             return { uri, line: pos.line, character: pos.character };
           }
 
@@ -264,17 +264,17 @@ export function registerClassQueryEndpoints(context: LspContext) {
             } catch {}
           }
           if (text) {
-            if (startByte === 0 && lastName) {
+            if (startOffset === 0 && lastName) {
               const regex = new RegExp(
                 `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
               );
               const match = regex.exec(text);
               if (match && match.index !== undefined) {
-                startByte = match.index;
+                startOffset = match.index;
               }
             }
-            if (startByte > 0) {
-              const prefix = text.substring(0, startByte);
+            if (startOffset > 0) {
+              const prefix = text.substring(0, startOffset);
               const lines = prefix.split("\n");
               line = lines.length - 1;
               character = lines[lines.length - 1]!.length;

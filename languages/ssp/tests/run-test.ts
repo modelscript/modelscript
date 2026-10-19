@@ -149,40 +149,40 @@ async function main() {
   const findByCode = (code: string) => diags.find((d) => d.code === code);
 
   const dupConn = findByCode("SSP_DUPLICATE_CONNECTOR");
-  if (!dupConn || invalidSsd.slice(dupConn.startByte, dupConn.endByte) !== "cmd") {
+  if (!dupConn || invalidSsd.slice(dupConn.startOffset, dupConn.endOffset) !== "cmd") {
     throw new Error(`Expected narrow 'cmd' range for SSP_DUPLICATE_CONNECTOR, got: ${JSON.stringify(dupConn)}`);
   }
 
   const unresolvedEl = findByCode("SSP_UNRESOLVED_ELEMENT");
-  if (!unresolvedEl || invalidSsd.slice(unresolvedEl.startByte, unresolvedEl.endByte) !== "GhostComp") {
+  if (!unresolvedEl || invalidSsd.slice(unresolvedEl.startOffset, unresolvedEl.endOffset) !== "GhostComp") {
     throw new Error(
       `Expected narrow 'GhostComp' range for SSP_UNRESOLVED_ELEMENT, got: ${JSON.stringify(unresolvedEl)}`,
     );
   }
 
   const unresolvedConn = findByCode("SSP_UNRESOLVED_CONNECTOR");
-  if (!unresolvedConn || invalidSsd.slice(unresolvedConn.startByte, unresolvedConn.endByte) !== "missingPort") {
+  if (!unresolvedConn || invalidSsd.slice(unresolvedConn.startOffset, unresolvedConn.endOffset) !== "missingPort") {
     throw new Error(
       `Expected narrow 'missingPort' range for SSP_UNRESOLVED_CONNECTOR, got: ${JSON.stringify(unresolvedConn)}`,
     );
   }
 
   const typeMismatch = findByCode("SSP_CONNECTOR_TYPE_MISMATCH");
-  if (!typeMismatch || invalidSsd.slice(typeMismatch.startByte, typeMismatch.endByte) !== "enable") {
+  if (!typeMismatch || invalidSsd.slice(typeMismatch.startOffset, typeMismatch.endOffset) !== "enable") {
     throw new Error(
       `Expected narrow 'enable' range for SSP_CONNECTOR_TYPE_MISMATCH, got: ${JSON.stringify(typeMismatch)}`,
     );
   }
 
   const causalConflict = findByCode("SSP_CONNECTOR_CAUSALITY_CONFLICT");
-  if (!causalConflict || invalidSsd.slice(causalConflict.startByte, causalConflict.endByte) !== "y") {
+  if (!causalConflict || invalidSsd.slice(causalConflict.startOffset, causalConflict.endOffset) !== "y") {
     throw new Error(
       `Expected narrow 'y' range for SSP_CONNECTOR_CAUSALITY_CONFLICT, got: ${JSON.stringify(causalConflict)}`,
     );
   }
 
   const expBounds = findByCode("SSP_INVALID_EXPERIMENT_BOUNDS");
-  if (!expBounds || invalidSsd.slice(expBounds.startByte, expBounds.endByte) !== "5.0") {
+  if (!expBounds || invalidSsd.slice(expBounds.startOffset, expBounds.endOffset) !== "5.0") {
     throw new Error(`Expected narrow '5.0' range for SSP_INVALID_EXPERIMENT_BOUNDS, got: ${JSON.stringify(expBounds)}`);
   }
 
@@ -207,27 +207,27 @@ async function main() {
   const findSsv = (code: string) => ssvDiags.find((d) => d.code === code);
 
   const dupParam = findSsv("SSV_DUPLICATE_PARAMETER");
-  if (!dupParam || invalidSsv.slice(dupParam.startByte, dupParam.endByte) !== "gain") {
+  if (!dupParam || invalidSsv.slice(dupParam.startOffset, dupParam.endOffset) !== "gain") {
     throw new Error(`Expected narrow 'gain' range for SSV_DUPLICATE_PARAMETER, got: ${JSON.stringify(dupParam)}`);
   }
 
   const badReal = findSsv("SSV_INVALID_REAL_VALUE");
-  if (!badReal || invalidSsv.slice(badReal.startByte, badReal.endByte) !== "not_a_float") {
+  if (!badReal || invalidSsv.slice(badReal.startOffset, badReal.endOffset) !== "not_a_float") {
     throw new Error(`Expected narrow 'not_a_float' range for SSV_INVALID_REAL_VALUE, got: ${JSON.stringify(badReal)}`);
   }
 
   const badInt = findSsv("SSV_INVALID_INTEGER_VALUE");
-  if (!badInt || invalidSsv.slice(badInt.startByte, badInt.endByte) !== "3.14") {
+  if (!badInt || invalidSsv.slice(badInt.startOffset, badInt.endOffset) !== "3.14") {
     throw new Error(`Expected narrow '3.14' range for SSV_INVALID_INTEGER_VALUE, got: ${JSON.stringify(badInt)}`);
   }
 
   const badBool = findSsv("SSV_INVALID_BOOLEAN_VALUE");
-  if (!badBool || invalidSsv.slice(badBool.startByte, badBool.endByte) !== "maybe") {
+  if (!badBool || invalidSsv.slice(badBool.startOffset, badBool.endOffset) !== "maybe") {
     throw new Error(`Expected narrow 'maybe' range for SSV_INVALID_BOOLEAN_VALUE, got: ${JSON.stringify(badBool)}`);
   }
 
   const missingType = findSsv("SSV_MISSING_PARAMETER_TYPE");
-  if (!missingType || invalidSsv.slice(missingType.startByte, missingType.endByte) !== "untyped") {
+  if (!missingType || invalidSsv.slice(missingType.startOffset, missingType.endOffset) !== "untyped") {
     throw new Error(
       `Expected narrow 'untyped' range for SSV_MISSING_PARAMETER_TYPE, got: ${JSON.stringify(missingType)}`,
     );

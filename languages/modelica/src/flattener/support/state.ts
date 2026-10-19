@@ -11,7 +11,7 @@ export interface FlatteningState {
   constantAliases?: Map<string, string> | undefined;
   stateOutputVars?: Set<string> | undefined;
   isInsidePrevious?: boolean | undefined;
-  currentCompClauseRange?: { startByte: number; endByte: number; startPosition?: any; endPosition?: any } | any;
+  currentCompClauseRange?: { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any } | any;
   outerNonConstantAccess?: any[] | undefined;
   currentPrefix?: string | undefined;
   tmpVarMap?: Map<string, string> | undefined;
@@ -25,7 +25,7 @@ export interface FlatteningState {
   functionParameterNames?: Set<string> | undefined;
   hasAlgorithmSection?: boolean | undefined;
   inAlgorithmSection?: boolean | undefined;
-  stmtRanges: Map<number, { startByte: number; endByte: number; startPosition?: any; endPosition?: any }>;
+  stmtRanges: Map<number, { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }>;
   lastLoweredShape?: number[] | undefined;
   deducedOutputShapes: Map<string, number[]>;
   ignoredEqIndices?: Set<number> | undefined;
@@ -113,11 +113,13 @@ export function getFlatteningState(dae: DAEBuilder, flattener?: any): Flattening
     set isInsidePrevious(val: boolean | undefined) {
       d.isInsidePrevious = val;
     },
-    get currentCompClauseRange(): { startByte: number; endByte: number; startPosition?: any; endPosition?: any } | any {
+    get currentCompClauseRange():
+      | { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }
+      | any {
       return d.currentCompClauseRange;
     },
     set currentCompClauseRange(
-      val: { startByte: number; endByte: number; startPosition?: any; endPosition?: any } | any,
+      val: { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any } | any,
     ) {
       d.currentCompClauseRange = val;
     },
@@ -199,10 +201,12 @@ export function getFlatteningState(dae: DAEBuilder, flattener?: any): Flattening
     set inAlgorithmSection(val: boolean | undefined) {
       d.inAlgorithmSection = val;
     },
-    get stmtRanges(): Map<number, { startByte: number; endByte: number; startPosition?: any; endPosition?: any }> {
+    get stmtRanges(): Map<number, { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }> {
       return (d.stmtRanges ??= new Map());
     },
-    set stmtRanges(val: Map<number, { startByte: number; endByte: number; startPosition?: any; endPosition?: any }>) {
+    set stmtRanges(
+      val: Map<number, { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }>,
+    ) {
       d.stmtRanges = val;
     },
     get lastLoweredShape(): number[] | undefined {

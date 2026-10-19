@@ -31,9 +31,9 @@ interface VariableInfo {
   /** Whether the variable is an array (element-wise assignments partially initialize it). */
   isArray?: boolean | undefined;
   /** Starting byte offset of the variable's identifier in the source file. */
-  startByte: number;
+  startOffset: number;
   /** Ending byte offset of the variable's identifier in the source file. */
-  endByte: number;
+  endOffset: number;
 }
 
 /**
@@ -114,9 +114,9 @@ interface ParsedStatement {
   /** Complete raw source text of the statement. */
   rawText: string;
   /** Starting byte offset of the statement in the source document. */
-  startByte: number;
+  startOffset: number;
   /** Ending byte offset of the statement in the source document. */
-  endByte: number;
+  endOffset: number;
   /** Conditional branches (`if` and `elseif` clauses) for `if` statements. */
   branches?: ParsedBranch[] | undefined;
   /** Statements in the fallback `else` clause of an `if` statement, if present. */
@@ -196,8 +196,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
       condExpr: branches[0]?.condExpr,
       condStartByte: branches[0]?.condStartByte,
       rawText,
-      startByte: sStart,
-      endByte: sEnd,
+      startOffset: sStart,
+      endOffset: sEnd,
       branches,
       elseStmts,
       thenStmts: branches[0]?.stmts,
@@ -240,8 +240,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     return {
       kind: "for",
       rawText,
-      startByte: sStart,
-      endByte: sEnd,
+      startOffset: sStart,
+      endOffset: sEnd,
       loopVars,
       rangeExpr,
       rangeStartByte,
@@ -275,8 +275,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     return {
       kind: "while",
       rawText,
-      startByte: sStart,
-      endByte: sEnd,
+      startOffset: sStart,
+      endOffset: sEnd,
       condExpr,
       condStartByte,
       whileBody,
@@ -309,8 +309,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     return {
       kind: "when",
       rawText,
-      startByte: sStart,
-      endByte: sEnd,
+      startOffset: sStart,
+      endOffset: sEnd,
       condExpr,
       condStartByte,
       whenBody,
@@ -343,8 +343,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
       valExpr,
       valStartByte,
       rawText,
-      startByte: sStart,
-      endByte: sEnd,
+      startOffset: sStart,
+      endOffset: sEnd,
     };
   }
 
@@ -367,8 +367,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
       valExpr,
       valStartByte,
       rawText,
-      startByte: sStart,
-      endByte: sEnd,
+      startOffset: sStart,
+      endOffset: sEnd,
     };
   }
 
@@ -380,10 +380,10 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     trimmed.startsWith("return(") ||
     trimmed.startsWith("return;")
   ) {
-    return { kind: "return", rawText, startByte: sStart, endByte: sEnd };
+    return { kind: "return", rawText, startOffset: sStart, endOffset: sEnd };
   }
   if (trimmed === "break" || trimmed.startsWith("break;") || trimmed.startsWith("break ")) {
-    return { kind: "break", rawText, startByte: sStart, endByte: sEnd };
+    return { kind: "break", rawText, startOffset: sStart, endOffset: sEnd };
   }
 
   // 8. Fallback: check if text has :=
@@ -404,16 +404,16 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
       valExpr,
       valStartByte: sStart + rawText.indexOf(":=") + 2,
       rawText,
-      startByte: sStart,
-      endByte: sEnd,
+      startOffset: sStart,
+      endOffset: sEnd,
     };
   }
 
   return {
     kind: "other",
     rawText,
-    startByte: sStart,
-    endByte: sEnd,
+    startOffset: sStart,
+    endOffset: sEnd,
   };
 }
 
@@ -506,8 +506,8 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
       }
 
       const ifText = body.slice(ifStart, j);
-      const startByte = algStartByte + offset + ifStart;
-      const endByte = algStartByte + offset + j;
+      const startOffset = algStartByte + offset + ifStart;
+      const endOffset = algStartByte + offset + j;
 
       // Split into if / elseif / else branches
       const branches: ParsedBranch[] = [];
@@ -522,8 +522,8 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
         const thenBody = firstBranchMatch[2]?.trim() || "";
         branches.push({
           condExpr,
-          condStartByte: startByte + (branchTokens[0]?.indexOf(condExpr) ?? 0),
-          stmts: parseStatementsFromText(thenBody, startByte),
+          condStartByte: startOffset + (branchTokens[0]?.indexOf(condExpr) ?? 0),
+          stmts: parseStatementsFromText(thenBody, startOffset),
         });
       }
 
@@ -538,13 +538,13 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
             const bodyText = match[2]?.trim() || "";
             branches.push({
               condExpr,
-              condStartByte: startByte,
-              stmts: parseStatementsFromText(bodyText, startByte),
+              condStartByte: startOffset,
+              stmts: parseStatementsFromText(bodyText, startOffset),
             });
           }
         } else if (token === "else") {
           const elseBody = content.replace(/\bend\s+if[\s\S]*$/, "").trim();
-          elseStmts = parseStatementsFromText(elseBody, startByte);
+          elseStmts = parseStatementsFromText(elseBody, startOffset);
         }
         k += 2;
       }
@@ -554,8 +554,8 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
         condExpr: branches[0]?.condExpr,
         condStartByte: branches[0]?.condStartByte,
         rawText: ifText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
         branches,
         elseStmts,
         thenStmts: branches[0]?.stmts,
@@ -593,8 +593,8 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
       }
 
       const forText = body.slice(forStart, j);
-      const startByte = algStartByte + offset + forStart;
-      const endByte = algStartByte + offset + j;
+      const startOffset = algStartByte + offset + forStart;
+      const endOffset = algStartByte + offset + j;
 
       const forMatch = /^for\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+for/i.exec(forText);
       const header = forMatch ? forMatch[1] || "" : "";
@@ -610,11 +610,11 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
       statements.push({
         kind: "for",
         rawText: forText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
         loopVars,
         rangeExpr,
-        loopBody: parseStatementsFromText(forBodyText, startByte),
+        loopBody: parseStatementsFromText(forBodyText, startOffset),
       });
 
       i = j;
@@ -649,8 +649,8 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
       }
 
       const whileText = body.slice(whileStart, j);
-      const startByte = algStartByte + offset + whileStart;
-      const endByte = algStartByte + offset + j;
+      const startOffset = algStartByte + offset + whileStart;
+      const endOffset = algStartByte + offset + j;
 
       const whileMatch = /^while\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+while/i.exec(whileText);
       const condExpr = whileMatch ? whileMatch[1]?.trim() || "" : "";
@@ -660,9 +660,9 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
         kind: "while",
         condExpr,
         rawText: whileText,
-        startByte,
-        endByte,
-        whileBody: parseStatementsFromText(whileBodyText, startByte),
+        startOffset,
+        endOffset,
+        whileBody: parseStatementsFromText(whileBodyText, startOffset),
       });
 
       i = j;
@@ -676,13 +676,13 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
     }
 
     const stmtText = body.slice(i, semiIdx).trim();
-    const startByte = algStartByte + offset + i;
-    const endByte = algStartByte + offset + semiIdx + 1;
+    const startOffset = algStartByte + offset + i;
+    const endOffset = algStartByte + offset + semiIdx + 1;
 
     if (stmtText === "return" || stmtText.startsWith("return ") || stmtText.startsWith("return(")) {
-      statements.push({ kind: "return", rawText: stmtText, startByte, endByte });
+      statements.push({ kind: "return", rawText: stmtText, startOffset, endOffset });
     } else if (stmtText === "break") {
-      statements.push({ kind: "break", rawText: stmtText, startByte, endByte });
+      statements.push({ kind: "break", rawText: stmtText, startOffset, endOffset });
     } else if (stmtText.includes(":=")) {
       const parts = stmtText.split(":=");
       const targetVar = parts[0]?.trim() || "";
@@ -699,15 +699,15 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
         targetVar,
         valExpr,
         rawText: stmtText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
       });
     } else {
       statements.push({
         kind: "other",
         rawText: stmtText,
-        startByte,
-        endByte,
+        startOffset,
+        endOffset,
       });
     }
 
@@ -786,7 +786,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
     // Use CST component_declaration children to extract declared variable names.
     // Each component_declaration has an IDENT for the variable name.
     const compDecls = findNodesByType(comp, "component_declaration");
-    const compStart = comp.startIndex ?? self.startByte;
+    const compStart = comp.startIndex ?? self.startOffset;
 
     if (compDecls.length > 0) {
       // CST-based extraction: reliable
@@ -863,8 +863,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
           isOutput,
           hasDefault,
           isArray,
-          startByte: nameStartByte,
-          endByte: nameEndByte,
+          startOffset: nameStartByte,
+          endOffset: nameEndByte,
         };
 
         if (isInput) {
@@ -905,8 +905,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
 
         const hasDefault = match[2] !== undefined || compText.includes("=");
         const matchIdx = match.index ?? 0;
-        const startByte = compStart + matchIdx;
-        const endByte = startByte + name.length;
+        const startOffset = compStart + matchIdx;
+        const endOffset = startOffset + name.length;
         const isArray = match[0].includes("[") || compText.includes("[");
 
         const info: VariableInfo = {
@@ -915,8 +915,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
           isOutput,
           hasDefault,
           isArray,
-          startByte,
-          endByte,
+          startOffset,
+          endOffset,
         };
 
         if (isInput) {
@@ -978,8 +978,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         const eByte = sByte + varName.length;
         results.push(
           warning(ModelicaErrorCode.UNINITIALIZED_VARIABLE_READ.message(varName), {
-            startByte: sByte,
-            endByte: eByte,
+            startOffset: sByte,
+            endOffset: eByte,
             code: ModelicaErrorCode.UNINITIALIZED_VARIABLE_READ.code,
           }),
         );
@@ -1015,8 +1015,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         // M5022: Unreachable statement
         results.push(
           warning(ModelicaErrorCode.UNREACHABLE_STATEMENT.message(), {
-            startByte: stmt.startByte,
-            endByte: stmt.endByte,
+            startOffset: stmt.startOffset,
+            endOffset: stmt.endOffset,
             code: ModelicaErrorCode.UNREACHABLE_STATEMENT.code,
           }),
         );
@@ -1031,8 +1031,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             if (!isAssigned) {
               results.push(
                 error(ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.message(outName, className), {
-                  startByte: stmt.startByte,
-                  endByte: stmt.endByte,
+                  startOffset: stmt.startOffset,
+                  endOffset: stmt.endOffset,
                   code: ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.code,
                 }),
               );
@@ -1047,7 +1047,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         if (stmt.valExpr) {
           checkExprReads(
             stmt.valExpr,
-            stmt.valStartByte ?? stmt.startByte + Math.max(0, stmt.rawText.indexOf(":=") + 2),
+            stmt.valStartByte ?? stmt.startOffset + Math.max(0, stmt.rawText.indexOf(":=") + 2),
             cur,
             activeLoopVars,
           );
@@ -1076,7 +1076,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
               ? [
                   {
                     condExpr: stmt.condExpr,
-                    condStartByte: stmt.condStartByte ?? stmt.startByte,
+                    condStartByte: stmt.condStartByte ?? stmt.startOffset,
                     stmts: stmt.thenStmts,
                   },
                 ]
@@ -1088,7 +1088,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
 
         for (const branch of branches) {
           if (branch.condExpr) {
-            checkExprReads(branch.condExpr, branch.condStartByte ?? stmt.startByte, cur, activeLoopVars);
+            checkExprReads(branch.condExpr, branch.condStartByte ?? stmt.startOffset, cur, activeLoopVars);
             if (branch.condExpr.trim() === "true") {
               hasStaticallyTrueBranch = true;
             }
@@ -1124,7 +1124,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         }
       } else if (stmt.kind === "for") {
         if (stmt.rangeExpr) {
-          checkExprReads(stmt.rangeExpr, stmt.rangeStartByte ?? stmt.startByte, cur, activeLoopVars);
+          checkExprReads(stmt.rangeExpr, stmt.rangeStartByte ?? stmt.startOffset, cur, activeLoopVars);
         }
         const loopVars = new Set(activeLoopVars);
         if (stmt.loopVars) {
@@ -1139,7 +1139,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         }
       } else if (stmt.kind === "while") {
         if (stmt.condExpr) {
-          checkExprReads(stmt.condExpr, stmt.condStartByte ?? stmt.startByte, cur, activeLoopVars);
+          checkExprReads(stmt.condExpr, stmt.condStartByte ?? stmt.startOffset, cur, activeLoopVars);
         }
         const whileRes = analyzeStatements(stmt.whileBody || [], cur, activeLoopVars);
         for (const a of whileRes.assigned) {
@@ -1151,7 +1151,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         }
       } else if (stmt.kind === "when") {
         if (stmt.condExpr) {
-          checkExprReads(stmt.condExpr, stmt.condStartByte ?? stmt.startByte, cur, activeLoopVars);
+          checkExprReads(stmt.condExpr, stmt.condStartByte ?? stmt.startOffset, cur, activeLoopVars);
         }
         const whenRes = analyzeStatements(stmt.whenBody || [], cur, activeLoopVars);
         for (const a of whenRes.assigned) {
@@ -1160,7 +1160,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         }
       } else {
         // Other statement
-        checkExprReads(stmt.rawText, stmt.startByte, cur, activeLoopVars);
+        checkExprReads(stmt.rawText, stmt.startOffset, cur, activeLoopVars);
         if (
           /^\s*assert\s*\(\s*false\b/.test(stmt.rawText) ||
           /^\s*(?:Modelica\.Utilities\.Streams\.)?error\s*\(/.test(stmt.rawText)
@@ -1179,7 +1179,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
 
   let hasWhileLoop = false;
   for (const alg of algSections) {
-    const algStart = alg.startIndex ?? self.startByte;
+    const algStart = alg.startIndex ?? self.startOffset;
     const stmts = extractStatementsFromCst(alg, algStart);
     if (stmts.length === 0) continue;
     hasNonEmptySection = true;
@@ -1215,8 +1215,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
       if (!isAssigned) {
         results.push(
           error(ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.message(outName, className), {
-            startByte: outInfo.startByte,
-            endByte: outInfo.endByte,
+            startOffset: outInfo.startOffset,
+            endOffset: outInfo.endOffset,
             code: ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.code,
           }),
         );

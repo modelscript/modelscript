@@ -269,8 +269,8 @@ export function registerCodeLensProvider(context: LspContext) {
 
           let startLine = sym.selectionRange?.start.line ?? sym.range?.start?.line;
           let startChar = sym.selectionRange?.start.character ?? sym.range?.start?.character;
-          if (startLine === undefined && doc && (sym.startOffset !== undefined || sym.startByte !== undefined)) {
-            const pos = doc.positionAt(sym.startOffset ?? sym.startByte);
+          if (startLine === undefined && doc && (sym.startOffset !== undefined || sym.startOffset !== undefined)) {
+            const pos = doc.positionAt(sym.startOffset);
             startLine = pos.line;
             startChar = pos.character;
           }

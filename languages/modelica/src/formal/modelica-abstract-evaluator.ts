@@ -12,8 +12,8 @@ import {
 export interface EvaluatorContext {
   instId: number;
   astNodeId?: number | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
   initializedVars?: Set<string> | undefined;
   declaredVars?: Set<string> | undefined;
 }
@@ -106,8 +106,8 @@ export class ModelicaAbstractEvaluator {
             verdict,
             description: desc,
             astNodeId: ctx?.astNodeId,
-            startByte: ctx?.startByte,
-            endByte: ctx?.endByte,
+            startOffset: ctx?.startOffset,
+            endOffset: ctx?.endOffset,
             witnessValues: { index: idxIval.toString(), arrayLength: dimTarget.toString() },
           });
         }
@@ -140,8 +140,8 @@ export class ModelicaAbstractEvaluator {
           verdict,
           description: `sqrt(${rawArgs[0]}) evaluated on domain ${argIval.toString()}`,
           astNodeId: ctx?.astNodeId,
-          startByte: ctx?.startByte,
-          endByte: ctx?.endByte,
+          startOffset: ctx?.startOffset,
+          endOffset: ctx?.endOffset,
           witnessValues: { arg: argIval.toString() },
         });
         return res.result;
@@ -158,8 +158,8 @@ export class ModelicaAbstractEvaluator {
           verdict,
           description: `${fnName}(${rawArgs[0]}) evaluated on domain ${argIval.toString()}`,
           astNodeId: ctx?.astNodeId,
-          startByte: ctx?.startByte,
-          endByte: ctx?.endByte,
+          startOffset: ctx?.startOffset,
+          endOffset: ctx?.endOffset,
           witnessValues: { arg: argIval.toString() },
         });
 
@@ -182,8 +182,8 @@ export class ModelicaAbstractEvaluator {
           verdict: "proven_safe",
           description: `exp(${rawArgs[0]}) safe across real domain with result [${lowExp}, ${highExp}]`,
           astNodeId: ctx?.astNodeId,
-          startByte: ctx?.startByte,
-          endByte: ctx?.endByte,
+          startOffset: ctx?.startOffset,
+          endOffset: ctx?.endOffset,
         });
         return new Interval(lowExp, highExp);
       }
@@ -204,8 +204,8 @@ export class ModelicaAbstractEvaluator {
           verdict,
           description: `${fnName}(${rawArgs[0]}) domain check on argument ${argIval.toString()}`,
           astNodeId: ctx?.astNodeId,
-          startByte: ctx?.startByte,
-          endByte: ctx?.endByte,
+          startOffset: ctx?.startOffset,
+          endOffset: ctx?.endOffset,
           witnessValues: { arg: argIval.toString() },
         });
         return new Interval(-Math.PI, Math.PI);
@@ -249,8 +249,8 @@ export class ModelicaAbstractEvaluator {
           verdict,
           description: `${fnName}(${rawArgs[0]}, ${rawArgs[1]}) with denominator ${yIval.toString()}`,
           astNodeId: ctx?.astNodeId,
-          startByte: ctx?.startByte,
-          endByte: ctx?.endByte,
+          startOffset: ctx?.startOffset,
+          endOffset: ctx?.endOffset,
           witnessValues: { numerator: xIval.toString(), denominator: yIval.toString() },
         });
 
@@ -356,8 +356,8 @@ export class ModelicaAbstractEvaluator {
             verdict,
             description: `Division '${leftStr} / ${rightStr}' with denominator domain ${rightIval.toString()}`,
             astNodeId: ctx?.astNodeId,
-            startByte: ctx?.startByte,
-            endByte: ctx?.endByte,
+            startOffset: ctx?.startOffset,
+            endOffset: ctx?.endOffset,
             witnessValues: { numerator: leftIval.toString(), denominator: rightIval.toString() },
           });
 
@@ -397,8 +397,8 @@ export class ModelicaAbstractEvaluator {
           verdict: "definite_bug",
           description: `Variable '${trimmed}' is read before being initialized or assigned.`,
           astNodeId: ctx.astNodeId,
-          startByte: ctx.startByte,
-          endByte: ctx.endByte,
+          startOffset: ctx.startOffset,
+          endOffset: ctx.endOffset,
           witnessValues: { variable: trimmed },
         });
       }
@@ -429,8 +429,8 @@ export class ModelicaAbstractEvaluator {
     const ctx: EvaluatorContext = {
       instId: inst.id,
       astNodeId: inst.astNodeId,
-      startByte: inst.startByte,
-      endByte: inst.endByte,
+      startOffset: inst.startOffset,
+      endOffset: inst.endOffset,
       initializedVars,
       declaredVars,
     };
@@ -552,8 +552,8 @@ export class ModelicaAbstractEvaluator {
             verdict,
             description: `Array element assignment '${arrName}[${idxExpr}] := ${valExpr}' with index ${idxIval.toString()} against declared size ${arrState.length.toString()}`,
             astNodeId: ctx.astNodeId,
-            startByte: ctx.startByte,
-            endByte: ctx.endByte,
+            startOffset: ctx.startOffset,
+            endOffset: ctx.endOffset,
             witnessValues: { index: idxIval.toString(), arrayLength: arrState.length.toString() },
           });
 

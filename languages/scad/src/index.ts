@@ -4,7 +4,7 @@ import { compileToStep, ManifoldWorker, SolidKind, type Solid, type SolidSourceM
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { TreeSitterParser } from "../src-gen/bindings.js";
+import { createWasmParser, type TreeSitterParser } from "../src-gen/bindings.js";
 import { ScadEvaluator, type ScadEvaluationOptions } from "./evaluator.js";
 import { scadLanguage } from "./language.js";
 import { lintScadCst, type ScadDiagnostic } from "./linter.js";
@@ -52,16 +52,24 @@ function findFile(relativePaths: string[]): string {
 /**
  * Initializes or retrieves the singleton WebAssembly GLR parser for SCAD.
  */
-export async function getScadParser(): Promise<TreeSitterParser> {
+export async function getScadParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | string): Promise<TreeSitterParser> {
   if (cachedParser) return cachedParser;
 
-  const wasmPath = findFile(["../parser.wasm", "../dist/parser.wasm", "../../dist/parser.wasm", "parser.wasm"]);
+  let wasmInput: Uint8Array | ArrayBuffer | string | undefined = wasmUrlOrBytes;
+  if (!wasmInput) {
+    if (
+      typeof fs?.readFileSync === "function" &&
+      typeof import.meta?.url === "string" &&
+      import.meta.url.startsWith("file:")
+    ) {
+      const wasmPath = findFile(["../parser.wasm", "../dist/parser.wasm", "../../dist/parser.wasm", "parser.wasm"]);
+      wasmInput = fs.readFileSync(wasmPath);
+    } else {
+      wasmInput = "scad.wasm";
+    }
+  }
 
-  const bindingsPath = findFile(["../src-gen/bindings.js", "../../src-gen/bindings.js", "src-gen/bindings.js"]);
-
-  const wasmBytes = fs.readFileSync(wasmPath);
-  const { createWasmParser } = await import(bindingsPath);
-  const { parser } = await createWasmParser(wasmBytes);
+  const { parser } = await createWasmParser(wasmInput);
   cachedParser = parser;
   return parser;
 }

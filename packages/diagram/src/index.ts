@@ -1247,8 +1247,8 @@ export function initGraph(isDark: boolean): Graph | null {
     if (props?.sourceRange) {
       postMessageToHost({
         type: "revealSource",
-        startByte: props.sourceRange.startByte,
-        endByte: props.sourceRange.endByte,
+        startOffset: props.sourceRange.startOffset,
+        endOffset: props.sourceRange.endOffset,
       });
     }
 

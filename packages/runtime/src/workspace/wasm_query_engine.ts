@@ -67,10 +67,6 @@ export interface LintResult {
   message: string;
   /** Diagnostic severity level. */
   severity: "error" | "warning" | "info" | "hint";
-  /** Optional explicit start byte offset in the source document. */
-  startByte?: number | undefined;
-  /** Optional explicit end byte offset in the source document. */
-  endByte?: number | undefined;
   /** Optional explicit start character offset in the source document. */
   startOffset?: number | undefined;
   /** Optional explicit end character offset in the source document. */
@@ -99,14 +95,10 @@ export class QueryCancelledError extends Error {
 export interface LintDiagnostic {
   /** Target symbol ID that produced the diagnostic. */
   symbolId: SymbolId;
-  /** Resolved start byte offset in the source document. */
-  startByte: number;
-  /** Resolved end byte offset in the source document. */
-  endByte: number;
   /** Resolved start character offset in the source document. */
-  startOffset?: number | undefined;
+  startOffset: number;
   /** Resolved end character offset in the source document. */
-  endOffset?: number | undefined;
+  endOffset: number;
   /** Formatted diagnostic message text. */
   message: string;
   /** Diagnostic severity level. */
@@ -546,10 +538,10 @@ export class WasmQueryEngine {
     }
   }
 
-  /** Extracts raw source text for the byte/character span `[startByte, endByte]` from the backing CST or document store. */
-  public getCstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
-    const start = startByte !== undefined ? startByte : entry ? (entry.startOffset ?? entry.startByte) : 0;
-    const end = endByte !== undefined ? endByte : entry ? (entry.endOffset ?? entry.endByte) : 0;
+  /** Extracts raw source text for the character span `[startOffset, endOffset]` from the backing CST or document store. */
+  public getCstText(startOffset: number, endOffset: number, entry?: SymbolEntry): string | null {
+    const start = startOffset !== undefined ? startOffset : entry ? entry.startOffset : 0;
+    const end = endOffset !== undefined ? endOffset : entry ? entry.endOffset : 0;
     if (this.tree && typeof (this.tree as any).getText === "function") {
       const text = (this.tree as any).getText(start, end, entry);
       if (text !== null && text !== undefined) return text;
@@ -573,7 +565,7 @@ export class WasmQueryEngine {
         return src.substring(start, Math.min(end, src.length));
       }
       const text = root.text;
-      const offset = root.startOffset ?? root.startIndex ?? root.startByte ?? 0;
+      const offset = root.startOffset ?? root.startIndex ?? 0;
       if (typeof text === "string" && start >= offset && start - offset <= text.length) {
         return text.substring(start - offset, Math.min(end - offset, text.length));
       }
@@ -581,17 +573,17 @@ export class WasmQueryEngine {
     return null;
   }
 
-  /** Recovers the linear CST node corresponding to `id`'s recorded byte range. */
+  /** Recovers the linear CST node corresponding to `id`'s recorded offset range. */
   public getCstNode(id: SymbolId): unknown | null {
     const entry = this.resolveEntry(id);
     if (!entry) return null;
-    return this.getCstNodeRange(entry.startOffset ?? entry.startByte, entry.endOffset ?? entry.endByte, entry);
+    return this.getCstNodeRange(entry.startOffset, entry.endOffset, entry);
   }
 
-  /** Recovers the smallest CST node enclosing `[startByte, endByte]` from the backing syntax tree. */
-  public getCstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
-    const start = startByte !== undefined ? startByte : entry ? (entry.startOffset ?? entry.startByte) : 0;
-    const end = endByte !== undefined ? endByte : entry ? (entry.endOffset ?? entry.endByte) : 0;
+  /** Recovers the smallest CST node enclosing `[startOffset, endOffset]` from the backing syntax tree. */
+  public getCstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry): unknown | null {
+    const start = startOffset !== undefined ? startOffset : entry ? entry.startOffset : 0;
+    const end = endOffset !== undefined ? endOffset : entry ? entry.endOffset : 0;
     let treeToUse = this.tree;
     if (entry?.resourceId && (this.index as any).documents) {
       const doc = (this.index as any).documents.get(entry.resourceId);
@@ -612,12 +604,12 @@ export class WasmQueryEngine {
         return root.descendantForByteRange(start, end);
       }
       const findNode = (n: any): any | null => {
-        const s = n.startOffset ?? n.startIndex ?? n.startByte ?? -1;
-        const e = n.endOffset ?? n.endIndex ?? n.endByte ?? -1;
+        const s = n.startOffset ?? n.startIndex ?? -1;
+        const e = n.endOffset ?? n.endIndex ?? -1;
         if (s === start && e === end) return n;
         for (const c of n.children || []) {
-          const cs = c.startOffset ?? c.startIndex ?? c.startByte ?? -1;
-          const ce = c.endOffset ?? c.endIndex ?? c.endByte ?? -1;
+          const cs = c.startOffset ?? c.startIndex ?? -1;
+          const ce = c.endOffset ?? c.endIndex ?? -1;
           if (cs <= start && ce >= end) {
             const found = findNode(c);
             if (found) return found;
@@ -631,8 +623,8 @@ export class WasmQueryEngine {
   }
 
   /** Alias for `getCstText` conforming to the `QueryDB` interface. */
-  public cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
-    return this.getCstText(startByte, endByte, entry);
+  public cstText(startOffset: number, endOffset: number, entry?: SymbolEntry): string | null {
+    return this.getCstText(startOffset, endOffset, entry);
   }
 
   /** Alias for `getCstNode` conforming to the `QueryDB` interface. */
@@ -641,8 +633,8 @@ export class WasmQueryEngine {
   }
 
   /** Alias for `getCstNodeRange` conforming to the `QueryDB` interface. */
-  public cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
-    return this.getCstNodeRange(startByte, endByte, entry);
+  public cstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry): unknown | null {
+    return this.getCstNodeRange(startOffset, endOffset, entry);
   }
 
   /** Evaluates or fetches the memoized result of `queryName` for `id`. */
@@ -706,7 +698,7 @@ export class WasmQueryEngine {
           if (prevName) changedNames.add(prevName);
         }
       }
-      // 3. Detect newly added symbols or existing symbols whose byte spans, kind, parent, rule, or name changed.
+      // 3. Detect newly added symbols or existing symbols whose offset spans, kind, parent, rule, or name changed.
       for (const [id, entry] of newIndex.symbols) {
         const old = this.index !== newIndex ? this.index.symbols.get(id) : undefined;
         const prevName = old?.name ?? this.symbolNames.get(id);
@@ -715,8 +707,8 @@ export class WasmQueryEngine {
           if (entry.name) changedNames.add(entry.name);
         } else if (
           (old &&
-            ((old.startOffset ?? old.startByte) !== (entry.startOffset ?? entry.startByte) ||
-              (old.endOffset ?? old.endByte) !== (entry.endOffset ?? entry.endByte) ||
+            (old.startOffset !== entry.startOffset ||
+              old.endOffset !== entry.endOffset ||
               old.name !== entry.name ||
               old.kind !== entry.kind ||
               old.parentId !== entry.parentId ||
@@ -970,7 +962,7 @@ export class WasmQueryEngine {
   }
 
   /**
-   * Resolves the precise byte and character offset range for a `LintResult` against its `SymbolEntry`,
+   * Resolves the precise character offset range for a `LintResult` against its `SymbolEntry`,
    * preferring explicit `result` spans, named `fieldRanges[result.field]`, identifier field ranges,
    * and finally the full symbol entry span.
    */
@@ -978,51 +970,37 @@ export class WasmQueryEngine {
     entry: SymbolEntry,
     result: LintResult,
   ): {
-    startByte: number;
-    endByte: number;
     startOffset: number;
     endOffset: number;
   } {
-    const entryStart = entry.startOffset ?? entry.startByte;
-    const entryEnd = entry.endOffset ?? entry.endByte;
-    const rStart = result.startOffset ?? (result as any).startCharOffset ?? result.startByte;
-    const rEnd = result.endOffset ?? (result as any).endCharOffset ?? result.endByte;
+    const entryStart = entry.startOffset;
+    const entryEnd = entry.endOffset;
+    const rStart = result.startOffset;
+    const rEnd = result.endOffset;
     const isWholeEntryRange = rStart === entryStart && rEnd === entryEnd;
 
     if (rStart !== undefined && rEnd !== undefined && rEnd >= rStart && !isWholeEntryRange) {
-      const startByte = result.startByte ?? rStart;
-      const endByte = result.endByte ?? rEnd;
-      return { startByte, endByte, startOffset: rStart, endOffset: rEnd };
+      return { startOffset: rStart, endOffset: rEnd };
     }
 
     const fieldRange = result.field ? entry.fieldRanges?.[result.field] : undefined;
     if (fieldRange) {
-      const startOffset = fieldRange.startOffset ?? fieldRange.startByte;
-      const endOffset = fieldRange.endOffset ?? fieldRange.endByte;
       return {
-        startByte: fieldRange.startByte ?? startOffset,
-        endByte: fieldRange.endByte ?? endOffset,
-        startOffset,
-        endOffset,
+        startOffset: fieldRange.startOffset,
+        endOffset: fieldRange.endOffset,
       };
     }
 
     const fallbackField =
       entry.fieldRanges?.["declaredName"] ?? entry.fieldRanges?.["name"] ?? entry.fieldRanges?.["id"];
     if (fallbackField) {
-      const startOffset = fallbackField.startOffset ?? fallbackField.startByte;
-      const endOffset = fallbackField.endOffset ?? fallbackField.endByte;
       return {
-        startByte: fallbackField.startByte ?? startOffset,
-        endByte: fallbackField.endByte ?? endOffset,
-        startOffset,
-        endOffset,
+        startOffset: fallbackField.startOffset,
+        endOffset: fallbackField.endOffset,
       };
     }
 
     return {
-      startByte: entry.startByte ?? entryStart,
-      endByte: entry.endByte ?? entryEnd,
       startOffset: entryStart,
       endOffset: entryEnd,
     };
@@ -1049,11 +1027,9 @@ export class WasmQueryEngine {
     for (const [id, entry] of symbolsToCheck) {
       if (resourceId && entry.resourceId !== resourceId) continue;
       for (const { lintName, result } of this.runLints(id)) {
-        const { startByte, endByte, startOffset, endOffset } = this.resolveLintDiagnosticRange(entry, result);
+        const { startOffset, endOffset } = this.resolveLintDiagnosticRange(entry, result);
         diagnostics.push({
           symbolId: id,
-          startByte,
-          endByte,
           startOffset,
           endOffset,
           message: result.message,
@@ -1072,14 +1048,12 @@ export class WasmQueryEngine {
    *
    * @param resourceId Optional document URI filter (`"__all__"` when omitted).
    * @param yieldFn Optional cooperative cancellation/yield callback returning `true` if cancelled.
-   * @param viewportRange Optional visible byte/offset range prioritized ahead of off-screen symbols.
+   * @param viewportRange Optional visible offset range prioritized ahead of off-screen symbols.
    */
   public async runAllLintsAsync(
     resourceId?: string,
     yieldFn?: () => Promise<boolean>,
     viewportRange?: {
-      startByte?: number | undefined;
-      endByte?: number | undefined;
       startOffset?: number | undefined;
       endOffset?: number | undefined;
     },
@@ -1114,14 +1088,14 @@ export class WasmQueryEngine {
     }
 
     if (viewportRange && symbolsToRelint.length > 1) {
-      const vpStart = viewportRange.startOffset ?? viewportRange.startByte ?? 0;
-      const vpEnd = viewportRange.endOffset ?? viewportRange.endByte ?? Infinity;
+      const vpStart = viewportRange.startOffset ?? 0;
+      const vpEnd = viewportRange.endOffset ?? Infinity;
       const inViewport: [SymbolId, SymbolEntry][] = [];
       const outViewport: [SymbolId, SymbolEntry][] = [];
       for (const pair of symbolsToRelint) {
         const entry = pair[1];
-        const entryStart = entry.startOffset ?? entry.startByte;
-        const entryEnd = entry.endOffset ?? entry.endByte;
+        const entryStart = entry.startOffset;
+        const entryEnd = entry.endOffset;
         if (entryStart <= vpEnd && entryEnd >= vpStart) {
           inViewport.push(pair);
         } else {
@@ -1138,11 +1112,9 @@ export class WasmQueryEngine {
       }
       const diags: LintDiagnostic[] = [];
       for (const { lintName, result } of this.runLints(id)) {
-        const { startByte, endByte, startOffset, endOffset } = this.resolveLintDiagnosticRange(entry, result);
+        const { startOffset, endOffset } = this.resolveLintDiagnosticRange(entry, result);
         diags.push({
           symbolId: id,
-          startByte,
-          endByte,
           startOffset,
           endOffset,
           message: result.message,
@@ -1858,13 +1830,11 @@ export class WasmQueryEngine {
         if (!base) throw new Error(`Cannot specialize unknown symbol ${baseId}`);
 
         const virtualId = engine.nextVirtualId--;
-        const baseStart = base.startOffset ?? base.startByte;
-        const baseEnd = base.endOffset ?? base.endByte;
+        const baseStart = base.startOffset;
+        const baseEnd = base.endOffset;
         const virtualEntry: SymbolEntry = {
           ...base,
           id: virtualId,
-          startByte: base.startByte ?? baseStart,
-          endByte: base.endByte ?? baseEnd,
           startOffset: baseStart,
           endOffset: baseEnd,
           metadata: { ...base.metadata },
@@ -1895,10 +1865,10 @@ export class WasmQueryEngine {
         return engine.evaluator(expression, scope, this);
       },
 
-      cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
+      cstText(startOffset: number, endOffset: number, entry?: SymbolEntry): string | null {
         const t = getTracker();
         if (t && entry) t.recordInput(entry.id);
-        return engine.getCstText(startByte, endByte, entry);
+        return engine.getCstText(startOffset, endOffset, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
@@ -1907,10 +1877,10 @@ export class WasmQueryEngine {
         return engine.getCstNode(id);
       },
 
-      cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
+      cstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry): unknown | null {
         const t = getTracker();
         if (t && entry) t.recordInput(entry.id);
-        return engine.getCstNodeRange(startByte, endByte, entry);
+        return engine.getCstNodeRange(startOffset, endOffset, entry);
       },
 
       flushVolatile(): void {
@@ -2360,13 +2330,11 @@ export class WasmQueryEngine {
         if (!base) throw new Error(`Cannot specialize unknown symbol ${baseId}`);
 
         const virtualId = engine.nextVirtualId--;
-        const baseStart = base.startOffset ?? base.startByte;
-        const baseEnd = base.endOffset ?? base.endByte;
+        const baseStart = base.startOffset;
+        const baseEnd = base.endOffset;
         const virtualEntry: SymbolEntry = {
           ...base,
           id: virtualId,
-          startByte: base.startByte ?? baseStart,
-          endByte: base.endByte ?? baseEnd,
           startOffset: baseStart,
           endOffset: baseEnd,
           metadata: { ...base.metadata },
@@ -2397,16 +2365,16 @@ export class WasmQueryEngine {
         return engine.evaluator(expression, scope, this);
       },
 
-      cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
-        return engine.getCstText(startByte, endByte, entry);
+      cstText(startOffset: number, endOffset: number, entry?: SymbolEntry): string | null {
+        return engine.getCstText(startOffset, endOffset, entry);
       },
 
       cstNode(id: SymbolId): unknown | null {
         return engine.getCstNode(id);
       },
 
-      cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
-        return engine.getCstNodeRange(startByte, endByte, entry);
+      cstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry): unknown | null {
+        return engine.getCstNodeRange(startOffset, endOffset, entry);
       },
 
       flushVolatile(): void {

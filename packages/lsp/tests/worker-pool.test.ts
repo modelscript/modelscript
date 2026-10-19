@@ -121,8 +121,8 @@ describe("LspWorkerPool Unit & Regression Tests", () => {
             kind: 1,
             flags: 0,
             nameHash: item.fileId * 100,
-            startByte: 0,
-            endByte: item.content.length,
+            startOffset: 0,
+            endOffset: item.content.length,
           })),
         };
       });
@@ -228,8 +228,8 @@ describe("LspWorkerPool Unit & Regression Tests", () => {
             kind: 1,
             flags: 0,
             nameHash: b.fileId,
-            startByte: 0,
-            endByte: 10,
+            startOffset: 0,
+            endOffset: 10,
           })),
         };
       });

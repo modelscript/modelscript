@@ -241,13 +241,13 @@ export class CadViewerPanel {
           dimensions?: [number, number, number] | undefined;
           transformMethod?: string | undefined;
           argIndex?: number | undefined;
-          startByte?: number | undefined;
-          endByte?: number | undefined;
-          primitiveStartByte?: number | undefined;
-          primitiveEndByte?: number | undefined;
-          translateRange?: { startByte: number; endByte: number } | undefined;
-          rotateRange?: { startByte: number; endByte: number } | undefined;
-          scaleRange?: { startByte: number; endByte: number } | undefined;
+          startOffset?: number | undefined;
+          endOffset?: number | undefined;
+          primitiveStartOffset?: number | undefined;
+          primitiveEndOffset?: number | undefined;
+          translateRange?: { startOffset: number; endOffset: number } | undefined;
+          rotateRange?: { startOffset: number; endOffset: number } | undefined;
+          scaleRange?: { startOffset: number; endOffset: number } | undefined;
           translation?: [number, number, number] | undefined;
           rotation?: [number, number, number] | undefined;
           scale?: [number, number, number] | undefined;
@@ -304,7 +304,7 @@ export class CadViewerPanel {
           // mode === "translate"
           if (
             sourceMetadata?.translateRange ||
-            sourceMetadata?.primitiveStartByte !== undefined ||
+            sourceMetadata?.primitiveStartOffset !== undefined ||
             sourceMetadata?.transformMethod === "translate"
           ) {
             patchRes = ScadPatcher.patchOrInsertTransform(
@@ -329,8 +329,8 @@ export class CadViewerPanel {
 
         if (patchRes) {
           const edit = new vscode.WorkspaceEdit();
-          const startPos = doc.positionAt(patchRes.replacedRange.startByte);
-          const endPos = doc.positionAt(patchRes.replacedRange.endByte);
+          const startPos = doc.positionAt(patchRes.replacedRange.startOffset);
+          const endPos = doc.positionAt(patchRes.replacedRange.endOffset);
           edit.replace(doc.uri, new vscode.Range(startPos, endPos), patchRes.newValue);
           await vscode.workspace.applyEdit(edit);
           await this.update();

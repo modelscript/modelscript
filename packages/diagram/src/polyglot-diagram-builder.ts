@@ -128,8 +128,8 @@ export interface SymbolEntry {
   parentId: SymbolId | null;
   metadata: Record<string, unknown>;
   resourceId?: string | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
   language?: string | undefined;
 }
 export interface SymbolIndex {
@@ -171,7 +171,7 @@ export interface PolyglotDiagramNode {
         description: string;
         parameters: { name: string; value: string }[];
         /** Source byte range for reveal-on-click. */
-        sourceRange?: { startByte: number; endByte: number } | undefined;
+        sourceRange?: { startOffset: number; endOffset: number } | undefined;
         /** Grammar rule name, used for cross-diagram navigation. */
         ruleName?: string | undefined;
         /** Embedded bitmap or SVG icon */
@@ -2626,8 +2626,8 @@ export function buildPolyglotDiagram(
     if (symId !== undefined) {
       const sym = index.symbols.get(symId);
       if (sym && node.properties) {
-        if (typeof sym.startByte === "number" && typeof sym.endByte === "number") {
-          node.properties.sourceRange = { startByte: sym.startByte, endByte: sym.endByte };
+        if (typeof sym.startOffset === "number" && typeof sym.endOffset === "number") {
+          node.properties.sourceRange = { startOffset: sym.startOffset, endOffset: sym.endOffset };
         }
         node.properties.ruleName = sym.ruleName;
       }
@@ -3012,12 +3012,12 @@ export function buildDiagramFromDSL(
     if (rawNode.text) return rawNode.text;
     if (
       sourceText &&
-      typeof rawNode.startByte === "number" &&
-      typeof rawNode.endByte === "number" &&
-      rawNode.endByte > rawNode.startByte &&
-      rawNode.endByte <= sourceText.length
+      typeof rawNode.startOffset === "number" &&
+      typeof rawNode.endOffset === "number" &&
+      rawNode.endOffset > rawNode.startOffset &&
+      rawNode.endOffset <= sourceText.length
     ) {
-      return sourceText.slice(rawNode.startByte, rawNode.endByte);
+      return sourceText.slice(rawNode.startOffset, rawNode.endOffset);
     }
     return "";
   };
@@ -3169,7 +3169,7 @@ export function buildDiagramFromDSL(
     // Determine parent container by byte range
     let parentId: string | undefined = undefined;
     for (const { rawNode: parentRaw } of containerNodes) {
-      if (rawNode.startByte >= parentRaw.startByte && rawNode.endByte <= parentRaw.endByte) {
+      if (rawNode.startOffset >= parentRaw.startOffset && rawNode.endOffset <= parentRaw.endOffset) {
         parentId = parentRaw.id;
         break;
       }

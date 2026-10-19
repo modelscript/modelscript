@@ -112,18 +112,18 @@ export function mergeSourceMetadata(
       ...outer,
       translateRange:
         outer.translateRange ??
-        (outer.transformMethod === "translate" && outer.startByte !== undefined && outer.endByte !== undefined
-          ? { startByte: outer.startByte, endByte: outer.endByte }
+        (outer.transformMethod === "translate" && outer.startOffset !== undefined && outer.endOffset !== undefined
+          ? { startOffset: outer.startOffset, endOffset: outer.endOffset }
           : undefined),
       rotateRange:
         outer.rotateRange ??
-        (outer.transformMethod === "rotate" && outer.startByte !== undefined && outer.endByte !== undefined
-          ? { startByte: outer.startByte, endByte: outer.endByte }
+        (outer.transformMethod === "rotate" && outer.startOffset !== undefined && outer.endOffset !== undefined
+          ? { startOffset: outer.startOffset, endOffset: outer.endOffset }
           : undefined),
       scaleRange:
         outer.scaleRange ??
-        (outer.transformMethod === "scale" && outer.startByte !== undefined && outer.endByte !== undefined
-          ? { startByte: outer.startByte, endByte: outer.endByte }
+        (outer.transformMethod === "scale" && outer.startOffset !== undefined && outer.endOffset !== undefined
+          ? { startOffset: outer.startOffset, endOffset: outer.endOffset }
           : undefined),
     };
   }
@@ -131,18 +131,18 @@ export function mergeSourceMetadata(
 
   const translateRange =
     outer.translateRange ??
-    (outer.transformMethod === "translate" && outer.startByte !== undefined && outer.endByte !== undefined
-      ? { startByte: outer.startByte, endByte: outer.endByte }
+    (outer.transformMethod === "translate" && outer.startOffset !== undefined && outer.endOffset !== undefined
+      ? { startOffset: outer.startOffset, endOffset: outer.endOffset }
       : inner.translateRange);
   const rotateRange =
     outer.rotateRange ??
-    (outer.transformMethod === "rotate" && outer.startByte !== undefined && outer.endByte !== undefined
-      ? { startByte: outer.startByte, endByte: outer.endByte }
+    (outer.transformMethod === "rotate" && outer.startOffset !== undefined && outer.endOffset !== undefined
+      ? { startOffset: outer.startOffset, endOffset: outer.endOffset }
       : inner.rotateRange);
   const scaleRange =
     outer.scaleRange ??
-    (outer.transformMethod === "scale" && outer.startByte !== undefined && outer.endByte !== undefined
-      ? { startByte: outer.startByte, endByte: outer.endByte }
+    (outer.transformMethod === "scale" && outer.startOffset !== undefined && outer.endOffset !== undefined
+      ? { startOffset: outer.startOffset, endOffset: outer.endOffset }
       : inner.scaleRange);
 
   const composedTranslation: Vec3 | undefined =
@@ -165,10 +165,10 @@ export function mergeSourceMetadata(
     dimensions: outer.dimensions ?? inner.dimensions,
     transformMethod: outer.transformMethod ?? inner.transformMethod,
     argIndex: outer.argIndex ?? inner.argIndex,
-    startByte: outer.startByte ?? inner.startByte,
-    endByte: outer.endByte ?? inner.endByte,
-    primitiveStartByte: outer.primitiveStartByte ?? inner.primitiveStartByte,
-    primitiveEndByte: outer.primitiveEndByte ?? inner.primitiveEndByte,
+    startOffset: outer.startOffset ?? inner.startOffset,
+    endOffset: outer.endOffset ?? inner.endOffset,
+    primitiveStartOffset: outer.primitiveStartOffset ?? inner.primitiveStartOffset,
+    primitiveEndOffset: outer.primitiveEndOffset ?? inner.primitiveEndOffset,
     translateRange,
     rotateRange,
     scaleRange,

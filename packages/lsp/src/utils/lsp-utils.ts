@@ -53,12 +53,12 @@ export function symbolEntryToLocation(
   const nameField =
     entry.fieldRanges?.name ??
     (entry.fieldRanges ? entry.fieldRanges[entry.namePath] || entry.fieldRanges["identifier"] : undefined);
-  let startOff = nameField?.startOffset ?? nameField?.startByte;
-  let endOff = nameField?.endOffset ?? nameField?.endByte;
+  let startOff = nameField?.startOffset;
+  let endOff = nameField?.endOffset;
 
   if (startOff === undefined || endOff === undefined) {
-    const baseStart = entry.startOffset ?? entry.startByte ?? 0;
-    const baseEnd = entry.endOffset ?? entry.endByte ?? baseStart;
+    const baseStart = entry.startOffset ?? 0;
+    const baseEnd = entry.endOffset ?? baseStart;
     if (text && entry.name && entry.name !== "<anonymous>") {
       // Check for STEP entity reference: #123
       if (/^#?\d+$/.test(entry.name)) {

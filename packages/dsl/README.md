@@ -21,7 +21,7 @@ Every polyglot language in ModelScript (`modelica`, `sysml2`, `modelscript`, `ps
 
 ### 3. Linear-Memory CST Accessors & Surgical CST Unparser (`@modelscript/dsl/unparser`)
 
-- **Zero-Allocation CST Traversal (`src/utils/cst-facade.ts`, `src/bindings/javascript/`)**: Provides typed integer-handle CST cursors (`u32` node pointers, `startByte`, `endByte`, `startPosition`, `endPosition`, child field lookup) operating directly over WebAssembly linear memory.
+- **Zero-Allocation CST Traversal (`src/utils/cst-facade.ts`, `src/bindings/javascript/`)**: Provides typed integer-handle CST cursors (`u32` node pointers, `startOffset`, `endOffset`, `startPosition`, `endPosition`, child field lookup) operating directly over WebAssembly linear memory.
 - **Surgical CST Unparser & Patch Engine (`src/unparser/index.ts`)**: Format-preserving CST printer and surgical text patcher that applies structural AST/diagram mutations (such as moving a component, rerouting a `connect()` wire, or updating a parameter modifier) back into source files while preserving surrounding comments, whitespace, and formatting.
 
 ### 4. Declarative `CompilerLint` & Static Analysis Engine (`@modelscript/dsl/codegen/analysis`)

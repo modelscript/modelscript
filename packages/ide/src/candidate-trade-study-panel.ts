@@ -392,7 +392,7 @@ export class CandidateTradeStudyPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${this._panel.webview.cspSource} http: https: ws: wss: data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Candidate Trade Study & Tier-3 Confirmation</title>
   <style>

@@ -136,7 +136,7 @@ export function exportToNuXmv(db: QueryDB, options: NuXmvExportOptions = {}): st
     let guard = meta?.guard;
 
     if (!source || !target) {
-      const text = db.cstText(t.startByte, t.endByte, t);
+      const text = db.cstText(t.startOffset, t.endOffset, t);
       if (text) {
         const match = text.match(/first\s+([a-zA-Z0-9_]+).*?then\s+([a-zA-Z0-9_]+)/);
         if (match) {
@@ -252,7 +252,7 @@ export function exportToOcra(
 
     for (const e of allEntries) {
       if (e.ruleName === "PortUsage" || e.ruleName === "PortDefinition") {
-        const text = db.cstText(e.startByte, e.endByte, e) ?? "";
+        const text = db.cstText(e.startOffset, e.endOffset, e) ?? "";
         const isInput = text.includes("in ") || text.includes("input");
         const isOutput = text.includes("out ") || text.includes("output");
         if (e.name) {
@@ -264,7 +264,7 @@ export function exportToOcra(
         e.ruleName === "RequirementDefinition" ||
         e.ruleName === "ConstraintUsage"
       ) {
-        const text = db.cstText(e.startByte, e.endByte, e) ?? "";
+        const text = db.cstText(e.startOffset, e.endOffset, e) ?? "";
         const assumeMatch = text.match(/assume\s+(.*?);/);
         const requireMatch = text.match(/require\s+(.*?);/) || text.match(/guarantee\s+(.*?);/);
         if (assumeMatch || requireMatch) {

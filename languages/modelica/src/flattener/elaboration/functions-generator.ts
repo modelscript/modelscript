@@ -1103,8 +1103,8 @@ export function flattenFunction(
         ? {
             startPosition: extCst.startPosition,
             endPosition: extCst.endPosition,
-            startByte: extCst.startIndex ?? extCst.startByte,
-            endByte: extCst.endIndex ?? extCst.endByte,
+            startOffset: extCst.startIndex ?? extCst.startOffset,
+            endOffset: extCst.endIndex ?? extCst.endOffset,
           }
         : undefined;
       fn.diagnostics.push({
@@ -1117,8 +1117,8 @@ export function flattenFunction(
         ? {
             startPosition: cst.startPosition,
             endPosition: cst.endPosition,
-            startByte: cst.startIndex ?? cst.startByte,
-            endByte: cst.endIndex ?? cst.endByte,
+            startOffset: cst.startIndex ?? cst.startOffset,
+            endOffset: cst.endIndex ?? cst.endOffset,
           }
         : undefined;
       fn.diagnostics.push({
@@ -1356,8 +1356,8 @@ export function flattenFunction(
                   const bCst = db.cstNode(targetSymId) as any;
                   const rangeObj = bCst
                     ? {
-                        startByte: bCst.startIndex ?? bCst.startByte,
-                        endByte: bCst.endIndex ?? bCst.endByte,
+                        startOffset: bCst.startIndex ?? bCst.startOffset,
+                        endOffset: bCst.endIndex ?? bCst.endOffset,
                         startPosition: bCst.startPosition,
                         endPosition: bCst.endPosition,
                       }
@@ -1380,8 +1380,8 @@ export function flattenFunction(
       const bCst = db.cstNode(targetSymId) as any;
       const rangeObj = bCst
         ? {
-            startByte: bCst.startIndex ?? bCst.startByte,
-            endByte: bCst.endIndex ?? bCst.endByte,
+            startOffset: bCst.startIndex ?? bCst.startOffset,
+            endOffset: bCst.endIndex ?? bCst.endOffset,
             startPosition: bCst.startPosition,
             endPosition: bCst.endPosition,
           }

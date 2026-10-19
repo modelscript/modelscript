@@ -423,17 +423,17 @@ export class ScadEvaluator {
       const argListNode = this.findChildByType(c, "ArgumentList");
       const methodName = methodNameNode ? methodNameNode.text.trim() : "";
       const args = this.evaluateArgumentList(argListNode, scope);
-      const startByte = c.startIndex ?? c.startByte;
-      const endByte = c.endIndex ?? c.endByte;
+      const startOffset = c.startIndex ?? c.startOffset;
+      const endOffset = c.endIndex ?? c.endOffset;
 
       const sourceMeta: SolidSourceMetadata = {
         transformMethod: methodName,
         argIndex: 0,
-        startByte,
-        endByte,
-        translateRange: methodName === "translate" ? { startByte, endByte, isFluent: true } : undefined,
-        rotateRange: methodName === "rotate" ? { startByte, endByte, isFluent: true } : undefined,
-        scaleRange: methodName === "scale" ? { startByte, endByte, isFluent: true } : undefined,
+        startOffset,
+        endOffset,
+        translateRange: methodName === "translate" ? { startOffset, endOffset, isFluent: true } : undefined,
+        rotateRange: methodName === "rotate" ? { startOffset, endOffset, isFluent: true } : undefined,
+        scaleRange: methodName === "scale" ? { startOffset, endOffset, isFluent: true } : undefined,
       };
 
       currentSolid = this.applyMethod(currentSolid, methodName, args, sourceMeta);
@@ -674,8 +674,8 @@ export class ScadEvaluator {
       return withSolidColor(combinedChild, parseScadColor(cArg, alphaArg));
     }
 
-    const startByte = opNode.startIndex ?? opNode.startByte;
-    const endByte = opNode.endIndex ?? opNode.endByte;
+    const startOffset = opNode.startIndex ?? opNode.startOffset;
+    const endOffset = opNode.endIndex ?? opNode.endOffset;
     const transformMethod = opText.startsWith("translate")
       ? "translate"
       : opText.startsWith("rotate")
@@ -689,11 +689,11 @@ export class ScadEvaluator {
     const sourceMeta: SolidSourceMetadata = {
       transformMethod,
       argIndex: 0,
-      startByte,
-      endByte,
-      translateRange: transformMethod === "translate" ? { startByte, endByte, isFluent: false } : undefined,
-      rotateRange: transformMethod === "rotate" ? { startByte, endByte, isFluent: false } : undefined,
-      scaleRange: transformMethod === "scale" ? { startByte, endByte, isFluent: false } : undefined,
+      startOffset,
+      endOffset,
+      translateRange: transformMethod === "translate" ? { startOffset, endOffset, isFluent: false } : undefined,
+      rotateRange: transformMethod === "rotate" ? { startOffset, endOffset, isFluent: false } : undefined,
+      scaleRange: transformMethod === "scale" ? { startOffset, endOffset, isFluent: false } : undefined,
     };
 
     if (opText.startsWith("translate")) {
@@ -751,7 +751,10 @@ export class ScadEvaluator {
           const ehp = mem32[(curPtr + 4) >>> 2]!;
           const rPad = tf >>> 22;
           const isFat = (ehp >>> 23) & 1;
-          const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad;
+          const pad = isFat
+            ? mem32[(curPtr + 28) >>> 2] ||
+              (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad)
+            : rPad;
           const len = ehp & 0x007fffff;
           const isInv = (tf & (1 << 14)) !== 0;
 
@@ -824,16 +827,16 @@ export class ScadEvaluator {
         }
       }
 
-      const startByte = node.startIndex ?? node.startByte;
-      const endByte = node.endIndex ?? node.endByte;
+      const startOffset = node.startIndex ?? node.startOffset;
+      const endOffset = node.endIndex ?? node.endOffset;
       const sourceMeta: SolidSourceMetadata = {
         parameterName: paramName,
         dimensionParams,
         dimensions: [w, h, d],
-        startByte,
-        endByte,
-        primitiveStartByte: startByte,
-        primitiveEndByte: endByte,
+        startOffset,
+        endOffset,
+        primitiveStartOffset: startOffset,
+        primitiveEndOffset: endOffset,
       };
 
       const b = box({ width: w, height: h, depth: d, sourceMetadata: sourceMeta });
@@ -873,16 +876,16 @@ export class ScadEvaluator {
         }
       }
 
-      const startByte = node.startIndex ?? node.startByte;
-      const endByte = node.endIndex ?? node.endByte;
+      const startOffset = node.startIndex ?? node.startOffset;
+      const endOffset = node.endIndex ?? node.endOffset;
       const sourceMeta: SolidSourceMetadata = {
         parameterName: paramName,
         dimensionParams,
         dimensions: [rAvg, h, rAvg],
-        startByte,
-        endByte,
-        primitiveStartByte: startByte,
-        primitiveEndByte: endByte,
+        startOffset,
+        endOffset,
+        primitiveStartOffset: startOffset,
+        primitiveEndOffset: endOffset,
       };
 
       const c = cylinder({
@@ -911,16 +914,16 @@ export class ScadEvaluator {
         if (idents.length > 0) paramName = idents[0];
       }
 
-      const startByte = node.startIndex ?? node.startByte;
-      const endByte = node.endIndex ?? node.endByte;
+      const startOffset = node.startIndex ?? node.startOffset;
+      const endOffset = node.endIndex ?? node.endOffset;
       const sourceMeta: SolidSourceMetadata = {
         parameterName: paramName,
         dimensionParams: paramName ? [paramName, paramName, paramName] : undefined,
         dimensions: [r, r, r],
-        startByte,
-        endByte,
-        primitiveStartByte: startByte,
-        primitiveEndByte: endByte,
+        startOffset,
+        endOffset,
+        primitiveStartOffset: startOffset,
+        primitiveEndOffset: endOffset,
       };
 
       return sphere({
@@ -954,16 +957,16 @@ export class ScadEvaluator {
         }
       }
 
-      const startByte = node.startIndex ?? node.startByte;
-      const endByte = node.endIndex ?? node.endByte;
+      const startOffset = node.startIndex ?? node.startOffset;
+      const endOffset = node.endIndex ?? node.endOffset;
       return polyhedron({
         points: pts,
         faces,
         sourceMetadata: {
-          startByte,
-          endByte,
-          primitiveStartByte: startByte,
-          primitiveEndByte: endByte,
+          startOffset,
+          endOffset,
+          primitiveStartOffset: startOffset,
+          primitiveEndOffset: endOffset,
         },
       });
     }
@@ -1511,7 +1514,10 @@ export class ScadEvaluator {
           const ehp = mem32[(curPtr + 4) >>> 2]!;
           const rPad = tf >>> 22;
           const isFat = (ehp >>> 23) & 1;
-          const pad = isFat && exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad;
+          const pad = isFat
+            ? mem32[(curPtr + 28) >>> 2] ||
+              (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad)
+            : rPad;
           const len = ehp & 0x007fffff;
           const isInv = (tf & (1 << 14)) !== 0;
 

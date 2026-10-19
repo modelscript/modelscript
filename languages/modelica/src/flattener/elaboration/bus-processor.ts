@@ -287,7 +287,7 @@ export function processExpandableConnectors(
           severity: "error",
           code: ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.code,
           message: ModelicaErrorCode.CANNOT_CONNECT_EXPANDABLE_WITH_NON_EXPANDABLE.message(expName, nonExpName),
-          range: srcRange ? { startByte: srcRange.startByte, endByte: srcRange.endByte } : undefined,
+          range: srcRange ? { startOffset: srcRange.startOffset, endOffset: srcRange.endOffset } : undefined,
         });
         return;
       } else {

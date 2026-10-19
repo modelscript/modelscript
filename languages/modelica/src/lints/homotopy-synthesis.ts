@@ -17,18 +17,14 @@
 export interface NonlinearTermInfo {
   /** Raw source text of the nonlinear sub-expression (e.g. `T ^ 4` or `v * abs(v)`). */
   termText: string;
-  /** Starting byte offset of the nonlinear sub-expression in the source file. */
-  startByte: number;
-  /** Ending byte offset (exclusive) of the nonlinear sub-expression in the source file. */
-  endByte: number;
-  /** Optional starting offset alias used by IDE code actions. */
-  startOffset?: number | undefined;
-  /** Optional ending offset alias used by IDE code actions. */
-  endOffset?: number | undefined;
-  /** Starting byte offset of the enclosing equation. */
-  eqStartByte: number;
-  /** Ending byte offset (exclusive) of the enclosing equation. */
-  eqEndByte: number;
+  /** Starting character offset of the nonlinear sub-expression in the source file. */
+  startOffset: number;
+  /** Ending character offset (exclusive) of the nonlinear sub-expression in the source file. */
+  endOffset: number;
+  /** Starting character offset of the enclosing equation. */
+  eqStartOffset: number;
+  /** Ending character offset (exclusive) of the enclosing equation. */
+  eqEndOffset: number;
   /** Classification of the nonlinear mathematical form. */
   kind: "power" | "quadratic_drag" | "exp" | "sqrt" | "log";
   /** Primary iteration variable name inside the nonlinear term. */
@@ -141,17 +137,17 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       };
 
       // Check for nonlinear patterns in equation CST first, then fallback to text
-      let eqStart = node.startIndex ?? node.startOffset ?? node.startByte ?? node.from ?? 0;
+      let eqStart = node.startIndex ?? node.startOffset ?? node.from ?? 0;
       if (eqStart === 0 && cst.text && text) {
         const posInCst = cst.text.indexOf(text);
         if (posInCst >= 0) {
-          const cstStart = cst.startIndex ?? cst.startOffset ?? cst.startByte ?? cst.from ?? 0;
+          const cstStart = cst.startIndex ?? cst.startOffset ?? cst.from ?? 0;
           eqStart = cstStart + posInCst;
         }
       }
-      const eqEnd = node.endIndex ?? node.endOffset ?? node.endByte ?? node.to ?? eqStart + text.length;
+      const eqEnd = node.endIndex ?? node.endOffset ?? node.to ?? eqStart + text.length;
       const seenRanges = new Set<string>();
-      // Deduplicates by (kind, startByte, endByte) so CST traversal and regex fallback do not double-report
+      // Deduplicates by (kind, startOffset, endOffset) so CST traversal and regex fallback do not double-report
       const recordTerm = (
         kind: "power" | "quadratic_drag" | "exp" | "sqrt" | "log",
         termText: string,
@@ -160,20 +156,18 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
         extra?: { power?: number | undefined; arg?: string | undefined },
       ) => {
         if (relIdx < 0 || isAlreadyInHomotopy(relIdx)) return;
-        const startByte = eqStart + relIdx;
-        const endByte = startByte + termText.length;
-        const key = `${kind}:${startByte}:${endByte}`;
+        const startOffset = eqStart + relIdx;
+        const endOffset = startOffset + termText.length;
+        const key = `${kind}:${startOffset}:${endOffset}`;
         if (seenRanges.has(key)) return;
         seenRanges.add(key);
         const simplified = deriveSimplification(kind, varName, extra);
         results.push({
           termText,
-          startByte,
-          endByte,
-          startOffset: startByte,
-          endOffset: endByte,
-          eqStartByte: eqStart,
-          eqEndByte: eqEnd,
+          startOffset,
+          endOffset,
+          eqStartOffset: eqStart,
+          eqEndOffset: eqEnd,
           kind,
           variableName: varName,
           simplifiedSubterm: simplified,
@@ -187,7 +181,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
         if (!exprNode) return;
         const et = exprNode.type || "";
         const eText = (exprNode.text || "").trim();
-        const nodeStart = exprNode.startIndex ?? exprNode.startOffset ?? exprNode.startByte ?? exprNode.from;
+        const nodeStart = exprNode.startIndex ?? exprNode.startOffset ?? exprNode.from;
         const relIdx =
           typeof nodeStart === "number" && nodeStart >= eqStart ? nodeStart - eqStart : text.indexOf(eText);
 

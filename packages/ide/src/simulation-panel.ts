@@ -733,8 +733,8 @@ export class SimulationPanel {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "simulation-webview.js"));
     const nonce = getNonce();
 
-    // Allow WebSocket connections for live MQTT streaming
-    const connectSrc = this.liveMode ? "connect-src ws: wss:;" : "";
+    // Allow WebSocket connections for live MQTT streaming, source maps, and local dev server
+    const connectSrc = `connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;`;
 
     return `<!DOCTYPE html>
 <html lang="en">

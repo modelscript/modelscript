@@ -27,8 +27,8 @@ export interface CollabPeerState {
 export interface CollabSymbolSpan {
   name: string;
   kind: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
 }
 
 export interface CollabTextOperation {
@@ -58,8 +58,8 @@ const PEER_COLORS = ["#38bdf8", "#f472b6", "#34d399", "#fbbf24", "#a78bfa", "#fb
 function findSymbolAtOffset(spans: CollabSymbolSpan[], offset: number): CollabSymbolSpan | undefined {
   let best: CollabSymbolSpan | undefined;
   for (const s of spans) {
-    if (offset >= s.startByte && offset <= s.endByte) {
-      if (!best || s.endByte - s.startByte <= best.endByte - best.startByte) {
+    if (offset >= s.startOffset && offset <= s.endOffset) {
+      if (!best || s.endOffset - s.startOffset <= best.endOffset - best.startOffset) {
         best = s;
       }
     }
@@ -71,8 +71,8 @@ function computeCollisions(room: CollabRoom) {
   const collisions: {
     symbolName: string;
     symbolKind: string;
-    startByte: number;
-    endByte: number;
+    startOffset: number;
+    endOffset: number;
     peers: { peerId: string; displayName: string; color: string }[];
     message: string;
   }[] = [];
@@ -92,8 +92,8 @@ function computeCollisions(room: CollabRoom) {
       collisions.push({
         symbolName: span.name,
         symbolKind: span.kind,
-        startByte: span.startByte,
-        endByte: span.endByte,
+        startOffset: span.startOffset,
+        endOffset: span.endOffset,
         peers: activePeers,
         message: `Concurrent editing on ${span.kind} '${span.name}' by ${activePeers.map((p) => p.displayName).join(", ")}.`,
       });
@@ -312,11 +312,11 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
         room.version += 1;
 
         for (const span of room.symbolSpans) {
-          if (start <= span.startByte) {
-            span.startByte = Math.max(0, span.startByte + delta);
-            span.endByte = Math.max(span.startByte, span.endByte + delta);
-          } else if (start <= span.endByte) {
-            span.endByte = Math.max(span.startByte, span.endByte + delta);
+          if (start <= span.startOffset) {
+            span.startOffset = Math.max(0, span.startOffset + delta);
+            span.endOffset = Math.max(span.startOffset, span.endOffset + delta);
+          } else if (start <= span.endOffset) {
+            span.endOffset = Math.max(span.startOffset, span.endOffset + delta);
           }
         }
 

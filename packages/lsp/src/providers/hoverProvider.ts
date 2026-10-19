@@ -590,8 +590,8 @@ export function registerHoverProvider(
             if (proof.cfg?.blocks) {
               for (const [bId, block] of proof.cfg.blocks) {
                 const inBlock = block.instructions.some((inst: any) => {
-                  const startOff = inst.startOffset ?? inst.startByte;
-                  const endOff = inst.endOffset ?? inst.endByte;
+                  const startOff = inst.startOffset;
+                  const endOff = inst.endOffset;
                   return startOff !== undefined && endOff !== undefined && offset >= startOff && offset <= endOff;
                 });
                 if (inBlock) {

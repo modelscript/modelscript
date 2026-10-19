@@ -470,8 +470,8 @@ export class DiagramService {
                 // Try to extract doc comment from source text
                 let description: string | undefined;
                 const docText = this.documentManager.documents.get(uri)?.getText();
-                const startOff = sym.startOffset ?? sym.startByte;
-                const endOff = sym.endOffset ?? sym.endByte;
+                const startOff = sym.startOffset;
+                const endOff = sym.endOffset;
                 if (docText && typeof startOff === "number" && typeof endOff === "number") {
                   const snippet = docText.substring(startOff, endOff);
                   const docMatch = snippet.match(/doc\s*\/\*\s*(.*?)\s*\*\//);

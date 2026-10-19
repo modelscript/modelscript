@@ -147,21 +147,21 @@ describe("SysML v2 Comprehensive Activity Control & Data Flow Analysis (CFA/DFA)
       name: "PipelineDef",
       ruleName: "ActionDefinition",
       kind: "Definition",
-      startByte: 0,
-      endByte: 100,
+      startOffset: 0,
+      endOffset: 100,
     } as any;
 
     const children: any[] = [
-      { id: 2, parentId: 1, name: "Step1", ruleName: "ActionUsage", kind: "Usage", startByte: 10, endByte: 30 },
-      { id: 3, parentId: 1, name: "Step2", ruleName: "ActionUsage", kind: "Usage", startByte: 35, endByte: 55 },
+      { id: 2, parentId: 1, name: "Step1", ruleName: "ActionUsage", kind: "Usage", startOffset: 10, endOffset: 30 },
+      { id: 3, parentId: 1, name: "Step2", ruleName: "ActionUsage", kind: "Usage", startOffset: 35, endOffset: 55 },
       {
         id: 4,
         parentId: 1,
         name: "first Step1 then Step2",
         ruleName: "SuccessionAsUsage",
         kind: "Usage",
-        startByte: 60,
-        endByte: 85,
+        startOffset: 60,
+        endOffset: 85,
       },
     ];
 

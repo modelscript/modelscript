@@ -41,7 +41,7 @@ export function reduceNestedValues(values: number[], shape: number[], op: "sum" 
 export function getEnclosingClauseRange(
   node: SyntaxNode | null | undefined,
   dae: DAEBuilder,
-): { startByte: number; endByte: number; startPosition?: any; endPosition?: any } | undefined {
+): { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any } | undefined {
   const state = getFlatteningState(dae);
   if (state.currentCompClauseRange) {
     return state.currentCompClauseRange;
@@ -59,11 +59,11 @@ export function getEnclosingClauseRange(
     curr = curr.parent;
   }
   if (curr) {
-    const startByte = curr.startIndex ?? curr.startByte;
-    const endByte = curr.endIndex ?? curr.endByte;
+    const startOffset = curr.startIndex ?? curr.startOffset;
+    const endOffset = curr.endIndex ?? curr.endOffset;
     return {
-      startByte,
-      endByte,
+      startOffset,
+      endOffset,
       startPosition: curr.startPosition,
       endPosition: curr.endPosition,
     };
@@ -330,7 +330,7 @@ export function expandColonToArrayCtor(exprId: number, dae: DAEBuilder, varType?
         severity: "error",
         code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
         message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(stepVal)),
-        range: { startByte: 0, endByte: 0 },
+        range: { startOffset: 0, endOffset: 0 },
       });
       return null;
     }
@@ -340,7 +340,7 @@ export function expandColonToArrayCtor(exprId: number, dae: DAEBuilder, varType?
         severity: "error",
         code: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.code,
         message: ModelicaErrorCode.RANGE_STEP_TOO_SMALL.message(String(stepVal)),
-        range: { startByte: 0, endByte: 0 },
+        range: { startOffset: 0, endOffset: 0 },
       });
       return null;
     }

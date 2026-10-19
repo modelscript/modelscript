@@ -314,4 +314,69 @@ Test Deck
     assert.ok(surrogateMetrics.capturedEnergy >= 0.999);
     assert.ok(surrogateMetrics.r2 > 0.99);
   });
+
+  it("extracts and normalizes 3D geometry from SCAD and SU2 mesh files for the CFD .cfg editor", async () => {
+    const { extractScadCadComponents } = await import("@modelscript/scad");
+    const { CaeParametricSampler } = await import("@modelscript/simulate");
+    const { normalizeCfdGeometry, parseSu2MeshSurface } = await import("../src/cfg-editor-provider.js");
+
+    // 1. Evaluate multi-part OpenSCAD geometry (e.g. fuselage + wings in mm scale)
+    const scadSource = `
+      union() {
+        color([0.2, 0.6, 0.9]) cube([200, 40, 20], center=true);
+        translate([0, 0, 15]) cylinder(r=25, h=30, center=true);
+      }
+    `;
+    const comps = await extractScadCadComponents(scadSource);
+    assert.strictEqual(comps.length, 2, "Should extract 2 CSG parts from SCAD");
+
+    const allPositions: number[] = [];
+    const allIndices: number[] = [];
+    for (const c of comps) {
+      const pos = c.cad.position ?? [0, 0, 0];
+      const baseV = allPositions.length / 3;
+      for (let i = 0; i < c.proceduralMesh.vertices.length; i += 3) {
+        const wx = c.proceduralMesh.vertices[i]! + pos[0];
+        const wy = c.proceduralMesh.vertices[i + 1]! + pos[1];
+        const wz = c.proceduralMesh.vertices[i + 2]! + pos[2];
+        allPositions.push(wx, wz, -wy);
+      }
+      for (const idx of c.proceduralMesh.indices) {
+        allIndices.push(baseV + idx);
+      }
+    }
+
+    const normalized = normalizeCfdGeometry({
+      positions: allPositions,
+      indices: allIndices,
+      sourceFile: "aircraft.scad",
+    });
+
+    assert.ok(normalized.positions.length > 30, "Should contain 3D CAD vertices");
+    let maxCoord = 0;
+    for (const v of normalized.positions) {
+      maxCoord = Math.max(maxCoord, Math.abs(v));
+    }
+    assert.ok(maxCoord <= 0.35 && maxCoord >= 0.3, `Normalized span half-extent (${maxCoord}) must fit wind tunnel`);
+
+    // 2. Sample CFD envelope on the normalized 3D CAD mesh
+    const [cfdRun] = CaeParametricSampler.sampleCfdEnvelope(
+      { positions: normalized.positions, indices: normalized.indices },
+      { velocities: [25.0], anglesOfAttackDeg: [5.0] },
+    );
+    assert.ok(cfdRun, "Must produce CFD run on 3D CAD mesh");
+    assert.strictEqual(cfdRun.fields["pressure"]!.length, normalized.positions.length / 3);
+    const minP = Math.min(...cfdRun.fields["pressure"]!);
+    const maxP = Math.max(...cfdRun.fields["pressure"]!);
+    assert.ok(maxP - minP > 50, "Pressure field must vary across the 3D CAD chord and upper/lower surfaces");
+
+    // 3. Verify SU2 surface mesh extraction
+    const box = StepMesher.createBoxSurface(0, 0, 0, 0.2, 0.1, 0.05);
+    const meshed = StepMesher.meshSurfaceToTetrahedra(box.vertices, box.indices, { resolution: 8 });
+    const su2Text = StepMesher.exportToSu2Mesh(meshed.mesh, meshed.patches);
+    const parsedSu2 = parseSu2MeshSurface(su2Text, ["WALL_BODY"]);
+    assert.ok(parsedSu2, "Must parse surface triangles from .su2 file");
+    assert.ok(parsedSu2.positions.length >= 24, "Must extract surface vertex coordinates");
+    assert.ok(parsedSu2.indices.length >= 36, "Must extract surface triangle indices");
+  });
 });

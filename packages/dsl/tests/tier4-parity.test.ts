@@ -206,14 +206,14 @@ describe("Tier 4 & Tree-sitter Parity Architecture Suite", () => {
       // Multi-range edit descriptors (in character offsets, scaled by encoding div inside parse)
       const edits = [
         {
-          startByte: posA,
-          oldEndByte: posA + 1,
-          newEndByte: posA + "alpha".length,
+          startOffset: posA,
+          oldEndOffset: posA + 1,
+          newEndOffset: posA + "alpha".length,
         },
         {
-          startByte: posB + 4, // shifted by +4 characters in new document
-          oldEndByte: posB + 4 + 1,
-          newEndByte: posB + 4 + "beta".length,
+          startOffset: posB + 4, // shifted by +4 characters in new document
+          oldEndOffset: posB + 4 + 1,
+          newEndOffset: posB + 4 + "beta".length,
         },
       ];
 

@@ -270,8 +270,8 @@ export class Context {
     injectPredefinedTypes(index);
     const missingResources = new Set<string>();
     const contextTree = {
-      getText: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId || (startByte === 0 && endByte === 0)) return null;
+      getText: (startOffset: number, endOffset: number, entry?: any) => {
+        if (!entry || !entry.resourceId || (startOffset === 0 && endOffset === 0)) return null;
         let tree = this.#trees.get(entry.resourceId);
         if (!tree) {
           if (missingResources.has(entry.resourceId)) return null;
@@ -285,13 +285,13 @@ export class Context {
           }
         }
         const src = (tree as any).sourceCode as string | undefined;
-        if (src) return src.substring(startByte, endByte);
+        if (src) return src.substring(startOffset, endOffset);
         const offset = tree.rootNode.startIndex;
-        return tree.rootNode.text.substring(startByte - offset, endByte - offset);
+        return tree.rootNode.text.substring(startOffset - offset, endOffset - offset);
       },
-      getNode: (startByte: number, endByte: number, entry?: any) => {
+      getNode: (startOffset: number, endOffset: number, entry?: any) => {
         if (entry && entry.id < 0) return null;
-        if (startByte === 0 && endByte === 0) return null;
+        if (startOffset === 0 && endOffset === 0) return null;
         let tree = entry?.resourceId ? this.#trees.get(entry.resourceId) : undefined;
         if (!tree && entry?.resourceId) {
           if (missingResources.has(entry.resourceId)) return null;
@@ -307,7 +307,7 @@ export class Context {
         if (!tree && !entry?.resourceId) {
           for (const [resId, t] of this.#trees.entries()) {
             if (resId.includes("modelscript-cas") || resId.includes("modelscript-studies")) continue;
-            if (t.rootNode && t.rootNode.startIndex <= startByte && t.rootNode.endIndex >= endByte) {
+            if (t.rootNode && t.rootNode.startIndex <= startOffset && t.rootNode.endIndex >= endOffset) {
               tree = t;
               break;
             }
@@ -319,11 +319,11 @@ export class Context {
           rangeCache = new Map<number, any>();
           (tree as any)._rangeNodeCache = rangeCache;
         }
-        const endIdx = Math.max(startByte, endByte);
-        const rangeKey = startByte * 0x4000000 + endIdx;
+        const endIdx = Math.max(startOffset, endOffset);
+        const rangeKey = startOffset * 0x4000000 + endIdx;
         const cachedNode = rangeCache.get(rangeKey);
         if (cachedNode !== undefined) return cachedNode;
-        const node = tree.rootNode.descendantForIndex(startByte, endIdx);
+        const node = tree.rootNode.descendantForIndex(startOffset, endIdx);
         rangeCache.set(rangeKey, node);
         return node;
       },
@@ -371,26 +371,26 @@ export class Context {
   }
 
   /**
-   * Slices the raw source text of `resourceId` between `startByte` and `endByte`.
+   * Slices the raw source text of `resourceId` between `startOffset` and `endOffset`.
    */
-  getTreeText(resourceId: string | undefined, startByte: number, endByte: number): string | null {
+  getTreeText(resourceId: string | undefined, startOffset: number, endOffset: number): string | null {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
     if (!tree) return null;
     const src = (tree as any).sourceCode as string | undefined;
-    if (src) return src.substring(startByte, endByte);
+    if (src) return src.substring(startOffset, endOffset);
     const offset = tree.rootNode.startIndex;
-    return tree.rootNode.text.substring(startByte - offset, endByte - offset);
+    return tree.rootNode.text.substring(startOffset - offset, endOffset - offset);
   }
 
   /**
-   * Recovers the smallest CST node spanning `[startByte, endByte)` in `resourceId`.
+   * Recovers the smallest CST node spanning `[startOffset, endOffset)` in `resourceId`.
    */
-  getTreeNode(resourceId: string | undefined, startByte: number, endByte: number): any | null {
+  getTreeNode(resourceId: string | undefined, startOffset: number, endOffset: number): any | null {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
     if (!tree) return null;
-    return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+    return tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
   }
 
   /** Registry of file-extension-to-WASM-parser mappings shared across `Context` instances. */
@@ -411,8 +411,8 @@ export class Context {
     // with on-demand parsing fallback if the tree has not been loaded yet.
     const missingResources = new Set<string>();
     const contextTree = {
-      getText: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId || (startByte === 0 && endByte === 0)) return null;
+      getText: (startOffset: number, endOffset: number, entry?: any) => {
+        if (!entry || !entry.resourceId || (startOffset === 0 && endOffset === 0)) return null;
         let tree = this.#trees.get(entry.resourceId);
         if (!tree) {
           if (missingResources.has(entry.resourceId)) return null;
@@ -426,12 +426,12 @@ export class Context {
           }
         }
         const src = (tree as any).sourceCode as string | undefined;
-        if (src) return src.substring(startByte, endByte);
+        if (src) return src.substring(startOffset, endOffset);
         const offset = tree.rootNode.startIndex;
-        return tree.rootNode.text.substring(startByte - offset, endByte - offset);
+        return tree.rootNode.text.substring(startOffset - offset, endOffset - offset);
       },
-      getNode: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId || entry.id < 0 || (startByte === 0 && endByte === 0)) return null;
+      getNode: (startOffset: number, endOffset: number, entry?: any) => {
+        if (!entry || !entry.resourceId || entry.id < 0 || (startOffset === 0 && endOffset === 0)) return null;
         let tree = this.#trees.get(entry.resourceId);
         if (!tree && entry?.resourceId) {
           if (missingResources.has(entry.resourceId)) return null;
@@ -450,11 +450,11 @@ export class Context {
           rangeCache = new Map<number, any>();
           (tree as any)._rangeNodeCache = rangeCache;
         }
-        const endIdx = Math.max(startByte, endByte);
-        const rangeKey = startByte * 0x4000000 + endIdx;
+        const endIdx = Math.max(startOffset, endOffset);
+        const rangeKey = startOffset * 0x4000000 + endIdx;
         const cachedNode = rangeCache.get(rangeKey);
         if (cachedNode !== undefined) return cachedNode;
-        const node = tree.rootNode.descendantForIndex(startByte, endIdx);
+        const node = tree.rootNode.descendantForIndex(startOffset, endIdx);
         rangeCache.set(rangeKey, node);
         return node;
       },
@@ -1068,7 +1068,7 @@ export class Context {
   load(input: string, resourceId?: string): Tree {
     const uri = resourceId ?? "synthetic-" + Math.random().toString();
     const prevText = this.#fileTexts.get(uri);
-    let editRanges: { startByte: number; endByte: number; delta?: number | undefined }[] | undefined = undefined;
+    let editRanges: { startOffset: number; endOffset: number; delta?: number | undefined }[] | undefined = undefined;
 
     if (prevText !== undefined && prevText !== input) {
       editRanges = computeEditRanges(prevText, input);
@@ -1081,9 +1081,9 @@ export class Context {
       | { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string | undefined }
       | undefined = undefined;
     if (editRanges && editRanges.length > 0 && prevText !== undefined) {
-      const editStart = editRanges[0]!.startByte;
+      const editStart = editRanges[0]!.startOffset;
       const lastRange = editRanges[editRanges.length - 1]!;
-      const editNewEnd = lastRange.endByte;
+      const editNewEnd = lastRange.endOffset;
       const totalDelta = input.length - prevText.length;
       const editOldEnd = editNewEnd - totalDelta;
       editBounds = { editStart, editOldEnd, editNewEnd, uri };

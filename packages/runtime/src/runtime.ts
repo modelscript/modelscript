@@ -78,22 +78,10 @@ export interface SymbolEntry {
   ruleName: string;
   /** Dot-path to the name field within the CST node (e.g. "name") */
   namePath: string;
-  /**
-   * CST node start character offset within the source text.
-   * Despite the name, this is a character offset (not a byte offset) — inherited
-   * from SyntaxNode.startByte which performs byte→char conversion internally.
-   * @deprecated Use {@link startOffset} for clarity.
-   */
-  startByte: number;
-  /**
-   * CST node end character offset within the source text.
-   * @deprecated Use {@link endOffset} for clarity.
-   */
-  endByte: number;
   /** CST node start character offset within the source text. */
-  startOffset?: number | undefined;
+  startOffset: number;
   /** CST node end character offset within the source text. */
-  endOffset?: number | undefined;
+  endOffset: number;
   /** Parent scope symbol, if any */
   parentId: SymbolId | null;
   /** Dot-paths of fields whose children are visible from this scope */
@@ -110,16 +98,11 @@ export interface SymbolEntry {
    */
   metadata: Record<string, unknown>;
   /**
-   * Byte ranges of named CST fields, stored at index time.
+   * Character offset ranges of named CST fields, stored at index time.
    * Used by lint rules to narrow diagnostic ranges to specific fields.
-   * Maps field name → { startByte, endByte, startOffset?, endOffset? }.
+   * Maps field name → { startOffset, endOffset }.
    */
-  fieldRanges?:
-    | Record<
-        string,
-        { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-      >
-    | undefined;
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number }> | undefined;
   /**
    * The CST field name under which this entry was indexed in its parent.
    * E.g., "body" for a component inside a class_definition's body field.
@@ -324,7 +307,7 @@ export interface QueryDB {
   // -------------------------------------------------------------------------
 
   /**
-   * Extract source text for a byte range from the parsed source.
+   * Extract source text for an offset range from the parsed source.
    *
    * Used by queries that need to read expression text, e.g.:
    * ```typescript
@@ -333,12 +316,12 @@ export interface QueryDB {
    *
    * Returns null if the tree is not available or the range is invalid.
    */
-  cstText(startByte: number, endByte: number, entry?: SymbolEntry | string): string | null;
+  cstText(startOffset: number, endOffset: number, entry?: SymbolEntry | string): string | null;
 
   /**
-   * Get the CST subtree node for a symbol (by its byte range).
+   * Get the CST subtree node for a symbol (by its offset range).
    *
-   * Returns an opaque tree-sitter SyntaxNode that can be walked
+   * Returns an opaque SyntaxNode that can be walked
    * for expression evaluation, equation processing, etc.
    *
    * Returns null if the tree is not available.
@@ -346,10 +329,10 @@ export interface QueryDB {
   cstNode(id: SymbolId): unknown | null;
 
   /**
-   * Get the CST subtree node covering a specific byte range.
-   * Returns an opaque tree-sitter SyntaxNode.
+   * Get the CST subtree node covering a specific offset range.
+   * Returns an opaque SyntaxNode.
    */
-  cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry | string): any;
+  cstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry | string): any;
 
   // -------------------------------------------------------------------------
   // Expression Evaluation
@@ -557,10 +540,10 @@ export type ExpressionEvaluator = (expression: unknown, scope: SymbolEntry | nul
  * Implementations wrap language-specific tree-sitter `Tree` objects.
  */
 export interface CSTTree {
-  /** Extract source text for a byte range. */
-  getText(startByte: number, endByte: number, entry?: SymbolEntry): string | null;
-  /** Get the CST node covering a byte range (smallest node that spans it). */
-  getNode(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null;
+  /** Extract source text for an offset range. */
+  getText(startOffset: number, endOffset: number, entry?: SymbolEntry): string | null;
+  /** Get the CST node covering an offset range (smallest node that spans it). */
+  getNode(startOffset: number, endOffset: number, entry?: SymbolEntry): unknown | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -615,8 +598,6 @@ export interface SourceLocation {
   startCol: number;
   endLine: number;
   endCol: number;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
   startOffset?: number | undefined;
   endOffset?: number | undefined;
 }
@@ -627,8 +608,6 @@ export interface Diagnostic {
   severity: "error" | "warning" | "info";
   message: string;
   range: { startPosition: { row: number; column: number }; endPosition: { row: number; column: number } } | null;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
   startOffset?: number | undefined;
   endOffset?: number | undefined;
 }

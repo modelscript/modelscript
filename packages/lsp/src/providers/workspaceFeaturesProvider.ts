@@ -94,11 +94,11 @@ export function registerWorkspaceFeaturesProvider(
     let targetEntry: any = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
-      const eStart = entry.startOffset ?? entry.startByte;
-      const eEnd = entry.endOffset ?? entry.endByte;
+      const eStart = entry.startOffset;
+      const eEnd = entry.endOffset;
       if (entry.resourceId === params.textDocument.uri && eStart <= offset && offset < eEnd) {
-        const targetStart = targetEntry ? (targetEntry.startOffset ?? targetEntry.startByte) : 0;
-        const targetEnd = targetEntry ? (targetEntry.endOffset ?? targetEntry.endByte) : 0;
+        const targetStart = targetEntry ? targetEntry.startOffset : 0;
+        const targetEnd = targetEntry ? targetEntry.endOffset : 0;
         if (!targetEntry || eEnd - eStart < targetEnd - targetStart) {
           targetEntry = entry;
         }
@@ -153,14 +153,10 @@ export function registerWorkspaceFeaturesProvider(
       if (declEntry && declEntry.resourceId) {
         const nameField = declEntry.fieldRanges?.name;
         if (nameField) {
-          addLocation(
-            declEntry.resourceId,
-            nameField.startOffset ?? nameField.startByte,
-            nameField.endOffset ?? nameField.endByte,
-          );
+          addLocation(declEntry.resourceId, nameField.startOffset, nameField.endOffset);
         } else {
-          let sOff = declEntry.startOffset ?? declEntry.startByte;
-          let eOff = declEntry.endOffset ?? declEntry.endByte;
+          let sOff = declEntry.startOffset;
+          let eOff = declEntry.endOffset;
           const declText =
             documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
           if (declText && declEntry.name && declEntry.name !== "<anonymous>") {
@@ -178,7 +174,7 @@ export function registerWorkspaceFeaturesProvider(
       const refs = findRefs(declId, unifiedIndex);
       for (const ref of refs) {
         if (ref.resourceId) {
-          addLocation(ref.resourceId, ref.startOffset ?? ref.startByte, ref.endOffset ?? ref.endByte);
+          addLocation(ref.resourceId, ref.startOffset, ref.endOffset);
         }
       }
     }
@@ -197,11 +193,11 @@ export function registerWorkspaceFeaturesProvider(
     let targetEntry: any = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
-      const eStart = entry.startOffset ?? entry.startByte;
-      const eEnd = entry.endOffset ?? entry.endByte;
+      const eStart = entry.startOffset;
+      const eEnd = entry.endOffset;
       if (entry.resourceId === params.textDocument.uri && eStart <= offset && offset < eEnd) {
-        const targetStart = targetEntry ? (targetEntry.startOffset ?? targetEntry.startByte) : 0;
-        const targetEnd = targetEntry ? (targetEntry.endOffset ?? targetEntry.endByte) : 0;
+        const targetStart = targetEntry ? targetEntry.startOffset : 0;
+        const targetEnd = targetEntry ? targetEntry.endOffset : 0;
         if (!targetEntry || eEnd - eStart < targetEnd - targetStart) {
           targetEntry = entry;
         }
@@ -254,8 +250,8 @@ export function registerWorkspaceFeaturesProvider(
         if (text) {
           const dummyDoc = TextDocument.create(declEntry.resourceId, "temp", 1, text);
           void dummyDoc;
-          const declStart = declEntry.startOffset ?? declEntry.startByte;
-          const declEnd = declEntry.endOffset ?? declEntry.endByte;
+          const declStart = declEntry.startOffset;
+          const declEnd = declEntry.endOffset;
           const nameMatch = text.substring(declStart, declEnd).indexOf(declEntry.name);
           if (nameMatch !== -1) {
             const matchStart = declStart + nameMatch;
@@ -268,7 +264,7 @@ export function registerWorkspaceFeaturesProvider(
       const refs = findRefs(declId, unifiedIndex);
       for (const ref of refs) {
         if (ref.resourceId) {
-          addEdit(ref.resourceId, ref.startOffset ?? ref.startByte, ref.endOffset ?? ref.endByte);
+          addEdit(ref.resourceId, ref.startOffset, ref.endOffset);
         }
       }
     }
@@ -600,7 +596,7 @@ export function registerWorkspaceFeaturesProvider(
         }
 
         if (fqn && fqn.toLowerCase().includes(query)) {
-          // Fallback to startByte/endByte if line numbers aren't computed
+          // Fallback to startOffset/endOffset if line numbers aren't computed
           symbols.push({
             name: fqn,
             kind: SymbolKind.Class,

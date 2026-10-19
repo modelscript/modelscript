@@ -59,8 +59,8 @@ function makeEntry(
   name: string,
   parentId: SymbolId | null = null,
   metadata: Record<string, unknown> = {},
-  startByte = 0,
-  endByte = 10,
+  startOffset = 0,
+  endOffset = 10,
 ): SymbolEntry {
   return {
     id,
@@ -68,8 +68,8 @@ function makeEntry(
     name,
     ruleName: "mock_rule",
     namePath: "name",
-    startByte,
-    endByte,
+    startOffset,
+    endOffset,
     parentId,
     exports: [],
     inherits: [],

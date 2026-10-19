@@ -17,7 +17,7 @@ const rootPtrNBSP = (treeNBSP.rootNode as any).id ?? (treeNBSP.rootNode as any).
 const diagsNBSP = facade.getDiagnostics(rootPtrNBSP, 0, sourceNBSP.length);
 console.log("Diags for NBSP code:", diagsNBSP);
 for (const d of diagsNBSP) {
-  console.log(`  NBSP Diag: ${d.message} [range: ${d.startCharOffset}-${d.endCharOffset}]`);
+  console.log(`  NBSP Diag: ${d.message} [range: ${d.startOffset}-${d.endOffset}]`);
 }
 
 function computeTreeEdit(oldText: string, newText: string) {

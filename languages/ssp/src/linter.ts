@@ -22,9 +22,9 @@ export interface SspDiagnostic {
   /** Human-readable diagnostic description. */
   message: string;
   /** 0-indexed character/byte start offset in XML */
-  startByte: number;
+  startOffset: number;
   /** 0-indexed character/byte end offset in XML */
-  endByte: number;
+  endOffset: number;
   /** 1-indexed start line */
   line: number;
   /** 1-indexed start column */
@@ -245,22 +245,22 @@ export function lintSsd(xml: string): SspDiagnostic[] {
   const locator = new LineLocator(xml);
 
   const emit = (
-    startByte: number,
-    endByte: number,
+    startOffset: number,
+    endOffset: number,
     code: string,
     severity: "error" | "warning" | "info",
     message: string,
   ) => {
-    const safeStart = Math.max(0, startByte);
-    const safeEnd = Math.max(safeStart + 1, endByte);
+    const safeStart = Math.max(0, startOffset);
+    const safeEnd = Math.max(safeStart + 1, endOffset);
     const startPos = locator.offsetToPos(safeStart);
     const endPos = locator.offsetToPos(safeEnd);
     diagnostics.push({
       code,
       severity,
       message,
-      startByte: safeStart,
-      endByte: safeEnd,
+      startOffset: safeStart,
+      endOffset: safeEnd,
       line: startPos.line,
       column: startPos.column,
       endLine: endPos.line,
@@ -638,22 +638,22 @@ function lintSsvRange(xml: string, rangeStart: number, rangeEnd: number, locator
   const diagnostics: SspDiagnostic[] = [];
 
   const emit = (
-    startByte: number,
-    endByte: number,
+    startOffset: number,
+    endOffset: number,
     code: string,
     severity: "error" | "warning" | "info",
     message: string,
   ) => {
-    const safeStart = Math.max(0, startByte);
-    const safeEnd = Math.max(safeStart + 1, endByte);
+    const safeStart = Math.max(0, startOffset);
+    const safeEnd = Math.max(safeStart + 1, endOffset);
     const startPos = locator.offsetToPos(safeStart);
     const endPos = locator.offsetToPos(safeEnd);
     diagnostics.push({
       code,
       severity,
       message,
-      startByte: safeStart,
-      endByte: safeEnd,
+      startOffset: safeStart,
+      endOffset: safeEnd,
       line: startPos.line,
       column: startPos.column,
       endLine: endPos.line,

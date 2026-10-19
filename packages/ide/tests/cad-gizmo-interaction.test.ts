@@ -16,8 +16,8 @@ describe("CAD Direct-Manipulation Gizmo & Live Writeback", () => {
           parameterName: "box_width",
           transformMethod: "translate",
           argIndex: 0,
-          startByte: 10,
-          endByte: 35,
+          startOffset: 10,
+          endOffset: 35,
         },
       },
     ];

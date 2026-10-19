@@ -19,16 +19,16 @@ export interface ParsedActionElement {
   inputs: { name: string; type: string }[];
   outputs: { name: string; type: string }[];
   assignments: { target: string; expr: string }[];
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export interface ParsedSuccession {
   source: string;
   target: string;
   guard?: string | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 export class SysML2FumlBridge {

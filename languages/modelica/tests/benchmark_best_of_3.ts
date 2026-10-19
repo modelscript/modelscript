@@ -65,8 +65,8 @@ async function runSinglePass(N: number): Promise<ConditionTiming[]> {
     let cstDiags: any[] = [];
     if (rootPtr && facade) {
       if (editRanges.length > 0) {
-        const editStart = editRanges[0].startByte;
-        const editNewEnd = editRanges[editRanges.length - 1].endByte;
+        const editStart = editRanges[0].startOffset;
+        const editNewEnd = editRanges[editRanges.length - 1].endOffset;
         cstDiags = (facade as any).getDiagnostics(rootPtr, editStart, editNewEnd);
       } else {
         cstDiags = (facade as any).getDiagnostics(rootPtr);

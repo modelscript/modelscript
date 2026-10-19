@@ -147,8 +147,8 @@ export interface RtmElement {
   domain: RtmDomain;
   type: string;
   uri: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
   metadata: {
     reqId?: string | undefined;
     hazardId?: string | undefined;
@@ -193,8 +193,8 @@ export interface RtmLink {
   isSuspect: boolean;
   suspectReason?: string | undefined;
   declarationUri?: string | undefined;
-  declarationStartByte?: number | undefined;
-  declarationEndByte?: number | undefined;
+  declarationStartOffset?: number | undefined;
+  declarationEndOffset?: number | undefined;
 }
 
 /**

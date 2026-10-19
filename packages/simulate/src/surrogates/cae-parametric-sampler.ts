@@ -168,17 +168,33 @@ export class CaeParametricSampler {
         const cosAoa = Math.cos(aoaRad);
         const sinAoa = Math.sin(aoaRad);
 
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (let i = 0; i < numNodes; i++) {
+          const px = baselineMesh.positions[i * 3 + 0] ?? 0;
+          const py = baselineMesh.positions[i * 3 + 1] ?? 0;
+          if (px < minX) minX = px;
+          if (px > maxX) maxX = px;
+          if (py < minY) minY = py;
+          if (py > maxY) maxY = py;
+        }
+        const spanX = maxX - minX > 1e-6 ? maxX - minX : 2.0;
+        const baseMinX = maxX - minX > 1e-6 ? minX : -1.0;
+        const midY = maxY - minY > 1e-6 ? 0.5 * (minY + maxY) : 0.0;
+
         for (let i = 0; i < numNodes; i++) {
           const x = baselineMesh.positions[i * 3 + 0] ?? 0;
           const y = baselineMesh.positions[i * 3 + 1] ?? 0;
 
           // Normalized chord station [0, 1]
-          const chordNorm = Math.max(0, Math.min(1, (x + 1.0) / 2.0));
+          const chordNorm = Math.max(0, Math.min(1, (x - baseMinX) / spanX));
 
           // Suction vs pressure side coefficient (Cp distribution)
           const cpUpper = -1.2 * (1.0 - chordNorm) * Math.sin(aoaRad + 0.1) - 0.2;
           const cpLower = 0.8 * (1.0 - chordNorm) * Math.cos(aoaRad) + 0.1;
-          const cp = y >= 0 ? cpUpper : cpLower;
+          const cp = y >= midY ? cpUpper : cpLower;
 
           // Static pressure: p = p_inf + Cp * q_inf
           pressureField[i] = 101325.0 + cp * q_inf;

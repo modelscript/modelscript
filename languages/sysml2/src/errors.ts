@@ -22,9 +22,9 @@ export interface SysML2Diagnostic {
   /** Field name if diagnostic targets a specific AST field. */
   field?: string | undefined;
   /** Starting byte offset in source. */
-  startByte?: number | undefined;
+  startOffset?: number | undefined;
   /** Ending byte offset in source. */
-  endByte?: number | undefined;
+  endOffset?: number | undefined;
 }
 
 /**

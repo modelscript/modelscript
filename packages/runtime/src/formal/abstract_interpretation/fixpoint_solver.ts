@@ -11,8 +11,6 @@ export interface RTECheckResult {
   verdict: RTEVerdict;
   description: string;
   astNodeId?: number | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
   startOffset?: number | undefined;
   endOffset?: number | undefined;
   witnessValues?: Record<string, string> | undefined;

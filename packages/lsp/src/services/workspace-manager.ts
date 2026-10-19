@@ -652,10 +652,10 @@ export class WorkspaceManager {
       return this.getCstNodeForSymbol(entry);
     };
 
-    this.unifiedWorkspace.cstTextProvider = (startByte, endByte, entry) => {
+    this.unifiedWorkspace.cstTextProvider = (startOffset, endOffset, entry) => {
       if (!entry.resourceId) return null;
       const engine = this.getEngine(entry.resourceId);
-      return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
+      return engine?.toQueryDB().cstText(startOffset, endOffset, entry) ?? null;
     };
 
     this.unifiedWorkspace.queryProvider = (queryName, id) => {
@@ -784,8 +784,8 @@ export class WorkspaceManager {
     }
     const root = tree?.rootNode ?? (tree as any)?.tree?.rootNode;
     if (root) {
-      const startOff = entry.startOffset ?? entry.startByte;
-      const endOff = entry.endOffset ?? entry.endByte;
+      const startOff = entry.startOffset;
+      const endOff = entry.endOffset;
       if (startOff != null && endOff != null) {
         let node: any = null;
         if (typeof root.descendantForIndex === "function") {
@@ -950,8 +950,8 @@ export class WorkspaceManager {
               if (!typeSpec && entry.resourceId) {
                 try {
                   const text = getSourceText(entry.resourceId);
-                  const sOff = child.startOffset ?? child.startByte;
-                  const eOff = child.endOffset ?? child.endByte;
+                  const sOff = child.startOffset;
+                  const eOff = child.endOffset;
                   if (text && sOff != null && eOff != null) {
                     const lineStart = text.lastIndexOf("\n", sOff);
                     const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);

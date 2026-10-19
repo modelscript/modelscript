@@ -15,8 +15,8 @@ describe("Design History File (DHF) Exporter", () => {
         domain: "hazard",
         type: "HazardDefinition",
         uri: "file:///insulin_pump.sysml",
-        startByte: 0,
-        endByte: 100,
+        startOffset: 0,
+        endOffset: 100,
         metadata: {
           hazardId: "HAZ-102",
           text: "Algorithm calculates insulin dose on stale sensor reading",
@@ -46,8 +46,8 @@ describe("Design History File (DHF) Exporter", () => {
         domain: "requirement",
         type: "RequirementDefinition",
         uri: "file:///requirements.sysml",
-        startByte: 110,
-        endByte: 220,
+        startOffset: 110,
+        endOffset: 220,
         metadata: {
           reqId: "SR-204",
           text: "The controller shall reject CGM data older than 5 minutes",
@@ -63,8 +63,8 @@ describe("Design History File (DHF) Exporter", () => {
         domain: "sysml_logical",
         type: "PartDefinition",
         uri: "file:///controller.sysml",
-        startByte: 230,
-        endByte: 300,
+        startOffset: 230,
+        endOffset: 300,
         metadata: {},
       },
     ];
@@ -77,8 +77,8 @@ describe("Design History File (DHF) Exporter", () => {
         domain: "verification_case",
         type: "VerificationCaseDefinition",
         uri: "file:///verification.sysml",
-        startByte: 310,
-        endByte: 400,
+        startOffset: 310,
+        endOffset: 400,
         metadata: {},
       },
     ];

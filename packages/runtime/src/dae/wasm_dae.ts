@@ -741,18 +741,12 @@ export class WasmDaeBridge implements IDaeBuilder {
   private ifMeta = new Map<number, IfEquationMeta>();
   /** List of synchronous state machines compiled into this arena. */
   public stateMachines: ArenaStateMachine[] = [];
-  /** Map from equation index to its byte range in the originating source file. */
-  private eqSourceRanges = new Map<
-    number,
-    { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-  >();
+  /** Map from equation index to its character offset range in the originating source file. */
+  private eqSourceRanges = new Map<number, { startOffset: number; endOffset: number }>();
   /** Map from equation index to explicit ordering rank for canonical output. */
   private eqOrders = new Map<number, number>();
-  /** Map from variable index to its byte range in the originating source file. */
-  private varSourceRanges = new Map<
-    number,
-    { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-  >();
+  /** Map from variable index to its character offset range in the originating source file. */
+  private varSourceRanges = new Map<number, { startOffset: number; endOffset: number }>();
   /** Dependency map from parameter name to the set of equation indices referencing that parameter. */
   private paramNameToEqs = new Map<string, Set<number>>();
   /** Host-side override map for equation kinds not natively stored in the WASM column. */
@@ -1954,20 +1948,16 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   /**
-   * Records the originating source byte range `[startByte, endByte]` for equation `eqIdx`.
+   * Records the originating source offset range `[startOffset, endOffset]` for equation `eqIdx`.
    */
-  setEqSourceRange(eqIdx: number, startByte: number, endByte: number): void {
-    this.eqSourceRanges.set(eqIdx, { startByte, endByte, startOffset: startByte, endOffset: endByte });
+  setEqSourceRange(eqIdx: number, startOffset: number, endOffset: number): void {
+    this.eqSourceRanges.set(eqIdx, { startOffset, endOffset });
   }
 
   /**
-   * Returns the originating source byte range for equation `eqIdx`, if recorded.
+   * Returns the originating source offset range for equation `eqIdx`, if recorded.
    */
-  getEqSourceRange(
-    eqIdx: number,
-  ):
-    | { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-    | undefined {
+  getEqSourceRange(eqIdx: number): { startOffset: number; endOffset: number } | undefined {
     return this.eqSourceRanges.get(eqIdx);
   }
 
@@ -2000,17 +1990,17 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   /**
-   * Finds the index of the first equation whose source byte range overlaps `[startByte, endByte]`,
+   * Finds the index of the first equation whose source offset range overlaps `[startOffset, endOffset]`,
    * or `-1` if no matching equation is found.
    */
-  findEqAtRange(startByte: number, endByte: number): number {
+  findEqAtRange(startOffset: number, endOffset: number): number {
     for (const [idx, range] of this.eqSourceRanges.entries()) {
-      const rStart = range.startOffset ?? range.startByte;
-      const rEnd = range.endOffset ?? range.endByte;
-      if (startByte >= rStart && endByte <= rEnd) {
+      const rStart = range.startOffset;
+      const rEnd = range.endOffset;
+      if (startOffset >= rStart && endOffset <= rEnd) {
         return idx;
       }
-      if (startByte < rEnd && endByte > rStart) {
+      if (startOffset < rEnd && endOffset > rStart) {
         return idx;
       }
     }
@@ -2018,35 +2008,31 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   /**
-   * Records the originating source byte range `[startByte, endByte]` for variable `varIdx`.
+   * Records the originating source offset range `[startOffset, endOffset]` for variable `varIdx`.
    */
-  setVarSourceRange(varIdx: number, startByte: number, endByte: number): void {
-    this.varSourceRanges.set(varIdx, { startByte, endByte, startOffset: startByte, endOffset: endByte });
+  setVarSourceRange(varIdx: number, startOffset: number, endOffset: number): void {
+    this.varSourceRanges.set(varIdx, { startOffset, endOffset });
   }
 
   /**
-   * Returns the originating source byte range for variable `varIdx`, if recorded.
+   * Returns the originating source offset range for variable `varIdx`, if recorded.
    */
-  getVarSourceRange(
-    varIdx: number,
-  ):
-    | { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-    | undefined {
+  getVarSourceRange(varIdx: number): { startOffset: number; endOffset: number } | undefined {
     return this.varSourceRanges.get(varIdx);
   }
 
   /**
-   * Finds the index of the first variable whose source byte range overlaps `[startByte, endByte]`,
+   * Finds the index of the first variable whose source offset range overlaps `[startOffset, endOffset]`,
    * or `-1` if no matching variable is found.
    */
-  findVarAtRange(startByte: number, endByte: number): number {
+  findVarAtRange(startOffset: number, endOffset: number): number {
     for (const [idx, range] of this.varSourceRanges.entries()) {
-      const rStart = range.startOffset ?? range.startByte;
-      const rEnd = range.endOffset ?? range.endByte;
-      if (startByte >= rStart && endByte <= rEnd) {
+      const rStart = range.startOffset;
+      const rEnd = range.endOffset;
+      if (startOffset >= rStart && endOffset <= rEnd) {
         return idx;
       }
-      if (startByte < rEnd && endByte > rStart) {
+      if (startOffset < rEnd && endOffset > rStart) {
         return idx;
       }
     }
@@ -2063,30 +2049,26 @@ export class WasmDaeBridge implements IDaeBuilder {
   }
 
   /**
-   * Shifts all recorded equation and variable source byte ranges starting after `afterByte` by `delta` bytes
+   * Shifts all recorded equation and variable source offset ranges starting after `afterOffset` by `delta`
    * following an incremental source edit.
    */
-  shiftSourceRanges(afterByte: number, delta: number): void {
+  shiftSourceRanges(afterOffset: number, delta: number): void {
     if (delta === 0) return;
     for (const [idx, range] of this.eqSourceRanges.entries()) {
-      const rStart = range.startOffset ?? range.startByte;
-      const rEnd = range.endOffset ?? range.endByte;
-      if (rStart > afterByte) {
+      const rStart = range.startOffset;
+      const rEnd = range.endOffset;
+      if (rStart > afterOffset) {
         this.eqSourceRanges.set(idx, {
-          startByte: rStart + delta,
-          endByte: rEnd + delta,
           startOffset: rStart + delta,
           endOffset: rEnd + delta,
         });
       }
     }
     for (const [idx, range] of this.varSourceRanges.entries()) {
-      const rStart = range.startOffset ?? range.startByte;
-      const rEnd = range.endOffset ?? range.endByte;
-      if (rStart > afterByte) {
+      const rStart = range.startOffset;
+      const rEnd = range.endOffset;
+      if (rStart > afterOffset) {
         this.varSourceRanges.set(idx, {
-          startByte: rStart + delta,
-          endByte: rEnd + delta,
           startOffset: rStart + delta,
           endOffset: rEnd + delta,
         });

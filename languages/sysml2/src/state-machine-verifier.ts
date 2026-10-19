@@ -946,7 +946,7 @@ export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: stri
 
       // Also check CST text if metadata isn't fully resolved
       if (!matches) {
-        const text = db.cstText(t.startByte, t.endByte, t);
+        const text = db.cstText(t.startOffset, t.endOffset, t);
         if (text && (text.includes(`first ${stateName}`) || text.includes(`transition ${stateName}`))) {
           matches = true;
         }
@@ -956,7 +956,7 @@ export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: stri
         let guardText = t.metadata?.["guard"];
         if (!guardText) {
           // Extract "if <guard>" from CST
-          const cstText = db.cstText(t.startByte, t.endByte, t);
+          const cstText = db.cstText(t.startOffset, t.endOffset, t);
           if (cstText) {
             const ifMatch = cstText.match(/\bif\s+([^{;do]+?)(?:\s+do|\s+then|[;{]|$)/);
             if (ifMatch) guardText = ifMatch[1]!.trim();

@@ -769,8 +769,6 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       fieldName: null,
       parentId: null,
       resourceId: "file:///workspace/Dummy.mo",
-      startByte: 0,
-      endByte: 10,
       startOffset: 0,
       endOffset: 10,
       exports: [],

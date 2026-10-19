@@ -85,12 +85,12 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
     webviewPanel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "goToSource": {
-          const { uri, startByte, endByte } = msg;
+          const { uri, startOffset, endOffset } = msg;
           const targetUri = uri ? vscode.Uri.parse(uri) : document.uri;
           try {
             const doc = await vscode.workspace.openTextDocument(targetUri);
-            const startPos = doc.positionAt(startByte ?? 0);
-            const endPos = doc.positionAt(endByte ?? startByte ?? 0);
+            const startPos = doc.positionAt(startOffset ?? 0);
+            const endPos = doc.positionAt(endOffset ?? startOffset ?? 0);
             vscode.window.showTextDocument(doc, {
               selection: new vscode.Range(startPos, endPos),
               viewColumn: vscode.ViewColumn.One,
@@ -259,7 +259,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;" />
   <title>Requirements & Traceability Control Surface</title>
   <style nonce="${nonce}">
     :root {
@@ -818,8 +818,8 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
             sourceName: item.row,
             targetName: item.col,
             linkKind: item.link.linkKind,
-            declarationRange: item.link.declarationStartByte !== undefined
-              ? [item.link.declarationStartByte, item.link.declarationEndByte]
+            declarationRange: item.link.declarationStartOffset !== undefined
+              ? [item.link.declarationStartOffset, item.link.declarationEndOffset]
               : undefined,
           });
         }
@@ -949,7 +949,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         for (const row of groupRows) {
           html += '<tr>';
           html += '<th class="row-header" title="' + esc(row.name) + '"><span class="link-src" data-uri="' +
-                  esc(row.uri) + '" data-start="' + row.startByte + '" data-end="' + row.endByte + '">' +
+                  esc(row.uri) + '" data-start="' + row.startOffset + '" data-end="' + row.endOffset + '">' +
                   esc(row.name) + '</span></th>';
 
           for (const col of cols) {
@@ -1068,8 +1068,8 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
           vscode.postMessage({
             type: 'goToSource',
             uri: el.dataset.uri,
-            startByte: parseInt(el.dataset.start, 10),
-            endByte: parseInt(el.dataset.end, 10),
+            startOffset: parseInt(el.dataset.start, 10),
+            endOffset: parseInt(el.dataset.end, 10),
           });
         });
       });
@@ -1158,8 +1158,8 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
           vscode.postMessage({
             type: 'goToSource',
             uri: link.declarationUri || rowUri,
-            startByte: link.declarationStartByte ?? 0,
-            endByte: link.declarationEndByte ?? 0,
+            startOffset: link.declarationStartOffset ?? 0,
+            endOffset: link.declarationEndOffset ?? 0,
           });
         });
       }
@@ -1194,8 +1194,8 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
             sourceName: row,
             targetName: col,
             linkKind: link.linkKind,
-            declarationRange: link.declarationStartByte !== undefined
-              ? [link.declarationStartByte, link.declarationEndByte]
+            declarationRange: link.declarationStartOffset !== undefined
+              ? [link.declarationStartOffset, link.declarationEndOffset]
               : undefined,
           });
         });
@@ -1254,7 +1254,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
         html += '<tr>' +
           '<td><span style="font-family: monospace; opacity: 0.8;">' + esc(r.reqId || '—') + '</span></td>' +
           '<td><span class="badge" style="background: rgba(255,255,255,0.06);">' + esc(r.type.replace('Requirement', 'Req')) + '</span></td>' +
-          '<td><span class="link-src" data-uri="' + esc(r.uri) + '" data-start="' + r.startByte + '" data-end="' + r.endByte + '">' + esc(r.name) + '</span></td>' +
+          '<td><span class="link-src" data-uri="' + esc(r.uri) + '" data-start="' + r.startOffset + '" data-end="' + r.endOffset + '">' + esc(r.name) + '</span></td>' +
           '<td>' + esc(r.text || '—') + '</td>' +
           '<td>' + (r.constraintIds ? r.constraintIds.length : 0) + '</td>' +
           '<td><span class="badge badge-' + (r.status || 'Pending') + '">' + (r.status || 'Pending') + '</span></td>' +
@@ -1269,8 +1269,8 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
           vscode.postMessage({
             type: 'goToSource',
             uri: el.dataset.uri,
-            startByte: parseInt(el.dataset.start, 10),
-            endByte: parseInt(el.dataset.end, 10),
+            startOffset: parseInt(el.dataset.start, 10),
+            endOffset: parseInt(el.dataset.end, 10),
           });
         });
       });

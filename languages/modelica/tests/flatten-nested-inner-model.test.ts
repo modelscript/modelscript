@@ -31,16 +31,16 @@ end BouncingBall;`;
     const unified = ws.toUnified();
 
     const cstWrapper = {
-      getText: (startByte: number, endByte: number, entry?: any): string | null => {
+      getText: (startOffset: number, endOffset: number, entry?: any): string | null => {
         const u = entry?.resourceId ?? uri;
         const dt = docTrees.get(u);
-        return dt ? dt.text.substring(startByte, endByte) : null;
+        return dt ? dt.text.substring(startOffset, endOffset) : null;
       },
-      getNode: (startByte: number, endByte: number, entry?: any): any | null => {
+      getNode: (startOffset: number, endOffset: number, entry?: any): any | null => {
         const u = entry?.resourceId ?? uri;
         const dt = docTrees.get(u);
         if (!dt) return null;
-        return dt.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
+        return dt.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
       },
     };
 

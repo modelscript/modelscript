@@ -525,7 +525,7 @@ export function parsePscx(xmlContent: string): PscxProject {
         ports,
         line: loc.line,
         column: loc.column,
-        sourceRange: { startByte: absOffset, endByte: absOffset + cMatch[0].length },
+        sourceRange: { startOffset: absOffset, endOffset: absOffset + cMatch[0].length },
       });
     }
 
@@ -565,7 +565,7 @@ export function parsePscx(xmlContent: string): PscxProject {
         phaseCount: 3,
         line: loc.line,
         column: loc.column,
-        sourceRange: { startByte: absOffset, endByte: absOffset + bMatch[0].length },
+        sourceRange: { startOffset: absOffset, endOffset: absOffset + bMatch[0].length },
       });
     }
 
@@ -633,7 +633,7 @@ export function parsePscx(xmlContent: string): PscxProject {
           phaseCount: 3,
           line: loc.line,
           column: loc.column,
-          sourceRange: { startByte: absOffset, endByte: absOffset + wMatch[0].length },
+          sourceRange: { startOffset: absOffset, endOffset: absOffset + wMatch[0].length },
         });
         continue;
       }
@@ -646,7 +646,7 @@ export function parsePscx(xmlContent: string): PscxProject {
           vertices,
           connectedPortIds: [],
           line: wLoc.line,
-          sourceRange: { startByte: absOffset, endByte: absOffset + wMatch[0].length },
+          sourceRange: { startOffset: absOffset, endOffset: absOffset + wMatch[0].length },
         });
       }
     }

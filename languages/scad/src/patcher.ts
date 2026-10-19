@@ -2,7 +2,7 @@
 
 export interface PatchResult {
   updatedSource: string;
-  replacedRange: { startByte: number; endByte: number };
+  replacedRange: { startOffset: number; endOffset: number };
   oldValue: string;
   newValue: string;
 }
@@ -12,16 +12,16 @@ export class ScadPatcher {
    * Patches a specific CST node by replacing its exact byte slice in the source string.
    */
   public static patchNode(source: string, node: any, newValue: string | number): PatchResult {
-    const startByte = node.startIndex ?? node.startByte ?? 0;
-    const endByte = node.endIndex ?? node.endByte ?? 0;
-    const oldValue = source.slice(startByte, endByte);
+    const startOffset = node.startIndex ?? node.startOffset ?? 0;
+    const endOffset = node.endIndex ?? node.endOffset ?? 0;
+    const oldValue = source.slice(startOffset, endOffset);
     const newStr = String(newValue);
 
-    const updatedSource = source.slice(0, startByte) + newStr + source.slice(endByte);
+    const updatedSource = source.slice(0, startOffset) + newStr + source.slice(endOffset);
 
     return {
       updatedSource,
-      replacedRange: { startByte, endByte },
+      replacedRange: { startOffset, endOffset },
       oldValue,
       newValue: newStr,
     };
@@ -71,7 +71,7 @@ export class ScadPatcher {
     targetMethod: string,
     argIndex: number,
     newVec: [number, number, number],
-    targetRange?: { startByte: number; endByte: number },
+    targetRange?: { startOffset: number; endOffset: number },
   ): PatchResult | null {
     const callNode = this.findMethodOrOpCall(rootNode, targetMethod, targetRange);
     if (!callNode) return null;
@@ -107,7 +107,7 @@ export class ScadPatcher {
     argIndex: number,
     compIndex: number,
     newValue: number,
-    targetRange?: { startByte: number; endByte: number },
+    targetRange?: { startOffset: number; endOffset: number },
   ): PatchResult | null {
     const callNode = this.findMethodOrOpCall(rootNode, targetMethod, targetRange);
     if (!callNode) return null;
@@ -146,25 +146,25 @@ export class ScadPatcher {
    */
   public static wrapPrimitiveWithTransform(
     source: string,
-    primitiveRange: { startByte: number; endByte: number },
+    primitiveRange: { startOffset: number; endOffset: number },
     transformMethod: "translate" | "rotate" | "scale",
     vec: [number, number, number],
     preferFluent = false,
   ): PatchResult {
-    const { startByte, endByte } = primitiveRange;
-    const oldValue = source.slice(startByte, endByte);
+    const { startOffset, endOffset } = primitiveRange;
+    const oldValue = source.slice(startOffset, endOffset);
     const formattedVec = `[${Number(vec[0].toFixed(4))}, ${Number(vec[1].toFixed(4))}, ${Number(vec[2].toFixed(4))}]`;
-    const trailingSlice = source.slice(endByte, endByte + 16).trimStart();
+    const trailingSlice = source.slice(endOffset, endOffset + 16).trimStart();
     const isFluentContext = preferFluent || trailingSlice.startsWith(".");
 
     const newStr = isFluentContext
       ? `${oldValue}.${transformMethod}(${formattedVec})`
       : `${transformMethod}(${formattedVec}) ${oldValue}`;
 
-    const updatedSource = source.slice(0, startByte) + newStr + source.slice(endByte);
+    const updatedSource = source.slice(0, startOffset) + newStr + source.slice(endOffset);
     return {
       updatedSource,
-      replacedRange: { startByte, endByte },
+      replacedRange: { startOffset, endOffset },
       oldValue,
       newValue: newStr,
     };
@@ -182,13 +182,13 @@ export class ScadPatcher {
     sourceMetadata?: {
       transformMethod?: string | undefined;
       argIndex?: number | undefined;
-      startByte?: number | undefined;
-      endByte?: number | undefined;
-      primitiveStartByte?: number | undefined;
-      primitiveEndByte?: number | undefined;
-      translateRange?: { startByte: number; endByte: number; isFluent?: boolean | undefined } | undefined;
-      rotateRange?: { startByte: number; endByte: number; isFluent?: boolean | undefined } | undefined;
-      scaleRange?: { startByte: number; endByte: number; isFluent?: boolean | undefined } | undefined;
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
+      primitiveStartOffset?: number | undefined;
+      primitiveEndOffset?: number | undefined;
+      translateRange?: { startOffset: number; endOffset: number; isFluent?: boolean | undefined } | undefined;
+      rotateRange?: { startOffset: number; endOffset: number; isFluent?: boolean | undefined } | undefined;
+      scaleRange?: { startOffset: number; endOffset: number; isFluent?: boolean | undefined } | undefined;
     },
   ): PatchResult | null {
     const specificRange =
@@ -200,9 +200,9 @@ export class ScadPatcher {
 
     const fallbackRange =
       sourceMetadata?.transformMethod === targetMethod &&
-      sourceMetadata.startByte !== undefined &&
-      sourceMetadata.endByte !== undefined
-        ? { startByte: sourceMetadata.startByte, endByte: sourceMetadata.endByte }
+      sourceMetadata.startOffset !== undefined &&
+      sourceMetadata.endOffset !== undefined
+        ? { startOffset: sourceMetadata.startOffset, endOffset: sourceMetadata.endOffset }
         : undefined;
 
     const range = specificRange ?? fallbackRange;
@@ -218,7 +218,7 @@ export class ScadPatcher {
       if (patched) return patched;
     }
 
-    if (sourceMetadata?.primitiveStartByte !== undefined && sourceMetadata?.primitiveEndByte !== undefined) {
+    if (sourceMetadata?.primitiveStartOffset !== undefined && sourceMetadata?.primitiveEndOffset !== undefined) {
       const preferFluent =
         Boolean(sourceMetadata.translateRange?.isFluent) ||
         Boolean(sourceMetadata.rotateRange?.isFluent) ||
@@ -226,8 +226,8 @@ export class ScadPatcher {
       return this.wrapPrimitiveWithTransform(
         source,
         {
-          startByte: sourceMetadata.primitiveStartByte,
-          endByte: sourceMetadata.primitiveEndByte,
+          startOffset: sourceMetadata.primitiveStartOffset,
+          endOffset: sourceMetadata.primitiveEndOffset,
         },
         targetMethod,
         newVec,
@@ -261,7 +261,7 @@ export class ScadPatcher {
   private static findMethodOrOpCall(
     node: any,
     name: string,
-    targetRange?: { startByte: number; endByte: number },
+    targetRange?: { startOffset: number; endOffset: number },
   ): any {
     if (!node) return null;
 
@@ -284,20 +284,24 @@ export class ScadPatcher {
   private static findMethodOrOpCallInRange(
     node: any,
     name: string,
-    targetRange: { startByte: number; endByte: number },
+    targetRange: { startOffset: number; endOffset: number },
   ): any {
     if (!node) return null;
 
-    const startByte = node.startIndex ?? node.startByte ?? 0;
-    const endByte = node.endIndex ?? node.endByte ?? 0;
+    const startOffset = node.startIndex ?? node.startOffset ?? 0;
+    const endOffset = node.endIndex ?? node.endOffset ?? 0;
 
     // Skip subtrees completely outside targetRange
-    if (endByte < targetRange.startByte || startByte > targetRange.endByte) {
+    if (endOffset < targetRange.startOffset || startOffset > targetRange.endOffset) {
       return null;
     }
 
     if (node.type === "MethodCall" || node.type === "TransformOp") {
-      if (node.text.includes(name) && startByte >= targetRange.startByte - 2 && endByte <= targetRange.endByte + 2) {
+      if (
+        node.text.includes(name) &&
+        startOffset >= targetRange.startOffset - 2 &&
+        endOffset <= targetRange.endOffset + 2
+      ) {
         return node;
       }
     }

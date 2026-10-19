@@ -171,12 +171,12 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       const engine = createModelicaQueryEngine(
         unifiedDb,
         {
-          getText: (startByte: number, endByte: number, entry?: any) => {
+          getText: (startOffset: number, endOffset: number, entry?: any) => {
             if (!entry?.resourceId) return null;
             ensureDocument(entry.resourceId);
-            return u.cstTextProvider ? u.cstTextProvider(startByte, endByte, entry) : null;
+            return u.cstTextProvider ? u.cstTextProvider(startOffset, endOffset, entry) : null;
           },
-          getNode: (_startByte: number, _endByte: number, entry?: any) => {
+          getNode: (_startOffset: number, _endOffset: number, entry?: any) => {
             if (!entry?.resourceId) return null;
             ensureDocument(entry.resourceId);
             return u.cstNodeProvider ? u.cstNodeProvider(entry.id) : null;

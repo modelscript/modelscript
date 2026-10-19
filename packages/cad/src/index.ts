@@ -31,7 +31,7 @@ export type {
   TaggedPatchSolid,
   TorusOptions,
   TorusSolid,
-  TransformByteRange,
+  TransformOffsetRange,
   TransformSolid,
   Vec3,
 } from "./types.js";

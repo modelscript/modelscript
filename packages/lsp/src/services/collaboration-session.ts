@@ -40,15 +40,15 @@ export interface AppliedTextOperation extends TextEditOperation {
 export interface SymbolSpan {
   name: string;
   kind: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
 }
 
 export interface SymbolEditCollision {
   symbolName: string;
   symbolKind: string;
-  startByte: number;
-  endByte: number;
+  startOffset: number;
+  endOffset: number;
   peers: {
     peerId: string;
     displayName: string;
@@ -117,7 +117,7 @@ export class CollaborationDocumentSession {
    * Registers symbol byte spans for semantic collision detection.
    */
   setSymbolSpans(spans: SymbolSpan[]): void {
-    this.#symbolSpans = [...spans].sort((a, b) => a.startByte - b.startByte);
+    this.#symbolSpans = [...spans].sort((a, b) => a.startOffset - b.startOffset);
     for (const peer of this.#peers.values()) {
       peer.activeSymbolName = this.findContainingSymbol(peer.cursorOffset)?.name;
     }
@@ -127,16 +127,16 @@ export class CollaborationDocumentSession {
    * Extracts symbol byte spans from a ModelScript `SymbolIndex`-like structure.
    */
   updateSymbolSpansFromIndex(symbolIndex: {
-    symbols: Map<number, { name: string; kind: string; startByte: number; endByte: number }>;
+    symbols: Map<number, { name: string; kind: string; startOffset: number; endOffset: number }>;
   }): void {
     const spans: SymbolSpan[] = [];
     for (const sym of symbolIndex.symbols.values()) {
-      if (sym.name && typeof sym.startByte === "number" && typeof sym.endByte === "number") {
+      if (sym.name && typeof sym.startOffset === "number" && typeof sym.endOffset === "number") {
         spans.push({
           name: sym.name,
           kind: sym.kind,
-          startByte: sym.startByte,
-          endByte: sym.endByte,
+          startOffset: sym.startOffset,
+          endOffset: sym.endOffset,
         });
       }
     }
@@ -149,8 +149,8 @@ export class CollaborationDocumentSession {
   findContainingSymbol(offset: number): SymbolSpan | undefined {
     let best: SymbolSpan | undefined;
     for (const span of this.#symbolSpans) {
-      if (offset >= span.startByte && offset <= span.endByte) {
-        if (!best || span.endByte - span.startByte <= best.endByte - best.startByte) {
+      if (offset >= span.startOffset && offset <= span.endOffset) {
+        if (!best || span.endOffset - span.startOffset <= best.endOffset - best.startOffset) {
           best = span;
         }
       }
@@ -308,11 +308,11 @@ export class CollaborationDocumentSession {
 
     // Shift symbol spans
     for (const span of this.#symbolSpans) {
-      if (start <= span.startByte) {
-        span.startByte = Math.max(0, span.startByte + delta);
-        span.endByte = Math.max(span.startByte, span.endByte + delta);
-      } else if (start <= span.endByte) {
-        span.endByte = Math.max(span.startByte, span.endByte + delta);
+      if (start <= span.startOffset) {
+        span.startOffset = Math.max(0, span.startOffset + delta);
+        span.endOffset = Math.max(span.startOffset, span.endOffset + delta);
+      } else if (start <= span.endOffset) {
+        span.endOffset = Math.max(span.startOffset, span.endOffset + delta);
       }
     }
 
@@ -410,8 +410,8 @@ export class CollaborationDocumentSession {
         collisions.push({
           symbolName: span.name,
           symbolKind: span.kind,
-          startByte: span.startByte,
-          endByte: span.endByte,
+          startOffset: span.startOffset,
+          endOffset: span.endOffset,
           peers,
           message: `Concurrent editing on ${span.kind} '${span.name}' by ${names}.`,
         });

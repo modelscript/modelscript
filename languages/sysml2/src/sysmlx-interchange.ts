@@ -101,11 +101,11 @@ export class SysML2ModelInterchange {
       // Map ruleName to OMG metaclass
       const metaclass = this.mapRuleToMetaclass(entry.ruleName, entry.kind);
       const entryText =
-        entry.startByte != null && entry.endByte != null
-          ? sysmlSource.slice(entry.startByte, entry.endByte)
-          : db.cstText(entry.startByte, entry.endByte, entry) || "";
+        entry.startOffset != null && entry.endOffset != null
+          ? sysmlSource.slice(entry.startOffset, entry.endOffset)
+          : db.cstText(entry.startOffset, entry.endOffset, entry) || "";
       const leadingText =
-        entry.startByte != null ? sysmlSource.slice(Math.max(0, entry.startByte - 30), entry.startByte) : "";
+        entry.startOffset != null ? sysmlSource.slice(Math.max(0, entry.startOffset - 30), entry.startOffset) : "";
       const isAbstract =
         entry.metadata?.["isAbstract"] === true ||
         entry.metadata?.["isAbstract"] === "true" ||
@@ -133,8 +133,8 @@ export class SysML2ModelInterchange {
       // Extract attributes and properties
       const attrs: Record<string, any> = { ...entry.metadata };
       if (entry.name) attrs["declaredName"] = entry.name;
-      if (entry.startByte != null) attrs["startByte"] = entry.startByte;
-      if (entry.endByte != null) attrs["endByte"] = entry.endByte;
+      if (entry.startOffset != null) attrs["startOffset"] = entry.startOffset;
+      if (entry.endOffset != null) attrs["endOffset"] = entry.endOffset;
 
       // Extract typing for usages
       const typingChild = children.find((c) => c.ruleName === "OwnedFeatureTyping");
@@ -173,8 +173,8 @@ export class SysML2ModelInterchange {
         if (!attrs["source"] || !attrs["target"]) {
           const refs = children.filter((c) => c.kind === "Reference" && c.name && !c.name.startsWith("Owned"));
           if (refs.length >= 2) {
-            attrs["source"] = refs[0]!.name || (db.cstText(refs[0]!.startByte, refs[0]!.endByte) || "").trim();
-            attrs["target"] = refs[1]!.name || (db.cstText(refs[1]!.startByte, refs[1]!.endByte) || "").trim();
+            attrs["source"] = refs[0]!.name || (db.cstText(refs[0]!.startOffset, refs[0]!.endOffset) || "").trim();
+            attrs["target"] = refs[1]!.name || (db.cstText(refs[1]!.startOffset, refs[1]!.endOffset) || "").trim();
           }
         }
       }

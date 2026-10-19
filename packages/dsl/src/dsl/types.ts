@@ -24,14 +24,10 @@ export interface SymbolEntry {
   ruleName: string;
   /** Fully-qualified dot-separated hierarchical path to this symbol. */
   namePath: string;
-  /** Starting UTF-8 byte offset of the symbol's CST node in the source document. */
-  startByte: number;
-  /** Ending UTF-8 byte offset (exclusive) of the symbol's CST node in the source document. */
-  endByte: number;
-  /** Optional starting character offset of the symbol in the source string. */
-  startOffset?: number | undefined;
-  /** Optional ending character offset (exclusive) of the symbol in the source string. */
-  endOffset?: number | undefined;
+  /** Starting character offset of the symbol's CST node in the source document. */
+  startOffset: number;
+  /** Ending character offset (exclusive) of the symbol's CST node in the source document. */
+  endOffset: number;
   /** Numeric `SymbolId` of the enclosing parent symbol, or `null` for top-level declarations. */
   parentId: SymbolId | null;
   /** List of child symbol names exported into the public namespace of this symbol. */
@@ -40,13 +36,8 @@ export interface SymbolEntry {
   inherits: string[];
   /** Arbitrary language-specific metadata extracted during symbol indexing. */
   metadata: Record<string, unknown>;
-  /** Source byte/character ranges for named AST fields belonging to this symbol's declaration node. */
-  fieldRanges?:
-    | Record<
-        string,
-        { startByte: number; endByte: number; startOffset?: number | undefined; endOffset?: number | undefined }
-      >
-    | undefined;
+  /** Source character ranges for named AST fields belonging to this symbol's declaration node. */
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number }> | undefined;
   /** Name of the AST field on the parent rule that holds this symbol, or `null` if unfielded. */
   fieldName: string | null;
   /** Optional workspace resource identifier for multi-file resolution. */

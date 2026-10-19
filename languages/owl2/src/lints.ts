@@ -21,8 +21,6 @@ export interface Owl2LintDiagnostic {
   readonly rule: string;
   readonly severity: Owl2DiagnosticSeverity;
   readonly message: string;
-  readonly startByte: number;
-  readonly endByte: number;
   readonly startOffset: number;
   readonly endOffset: number;
   readonly iri?: string | undefined;
@@ -154,12 +152,12 @@ const NON_SIMPLE_RESTRICTED_CONSTRUCTS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Extracts a normalized `[startByte, endByte]` range from a `GenericSyntaxNode`.
+ * Extracts a normalized `[startOffset, endOffset]` range from a `GenericSyntaxNode`.
  */
-function getNodeSpan(node: GenericSyntaxNode, sourceText?: string): { startByte: number; endByte: number } {
-  const start = node.startByte ?? node.startOffset ?? node.startIndex ?? 0;
-  const end = node.endByte ?? node.endOffset ?? node.endIndex ?? (sourceText ? sourceText.length : start);
-  return { startByte: start, endByte: Math.max(start, end) };
+function getNodeSpan(node: GenericSyntaxNode, sourceText?: string): { startOffset: number; endOffset: number } {
+  const start = node.startOffset ?? node.startIndex ?? 0;
+  const end = node.endOffset ?? node.endIndex ?? (sourceText ? sourceText.length : start);
+  return { startOffset: start, endOffset: Math.max(start, end) };
 }
 
 /**
@@ -250,9 +248,9 @@ export function lintOwl2Document(
   const emittedKeys = new Set<string>();
 
   const emit = (def: Owl2ErrorCodeDef, node: GenericSyntaxNode, args: string[], iri?: string): void => {
-    const { startByte, endByte } = getNodeSpan(node, sourceText);
+    const { startOffset, endOffset } = getNodeSpan(node, sourceText);
     const message = def.message(...args);
-    const dedupKey = `${def.code}:${startByte}:${endByte}:${message}`;
+    const dedupKey = `${def.code}:${startOffset}:${endOffset}:${message}`;
     if (emittedKeys.has(dedupKey)) return;
     emittedKeys.add(dedupKey);
     diagnostics.push({
@@ -260,10 +258,8 @@ export function lintOwl2Document(
       rule: def.rule,
       severity: def.severity,
       message,
-      startByte,
-      endByte,
-      startOffset: startByte,
-      endOffset: endByte,
+      startOffset,
+      endOffset,
       ...(iri !== undefined ? { iri } : {}),
     });
   };

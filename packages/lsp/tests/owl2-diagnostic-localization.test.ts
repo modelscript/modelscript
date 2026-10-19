@@ -159,8 +159,8 @@ describe("OWL2 Diagnostic Localization and Reasoner Explanations", () => {
     const mockTree = {
       type: "ClassDeclaration",
       children: [{ type: "name", text: "mo:ElectricalDevice" }],
-      startByte: 10,
-      endByte: 35,
+      startOffset: 10,
+      endOffset: 35,
     };
 
     index.indexDocument("memfs:test.owl", () => mockTree);

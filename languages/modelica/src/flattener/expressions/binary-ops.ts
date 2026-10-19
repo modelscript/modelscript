@@ -1562,8 +1562,8 @@ export function dispatchBinaryOperator(
       code: ModelicaErrorCode.AMBIGUOUS_OPERATOR_OVERLOAD.code,
       message: `Ambiguous matching overloaded operator functions found for ${exprText}.\nCandidates are:\n${candidateStrings.join("\n")}`,
       range: {
-        startByte: diagNode?.startIndex ?? diagNode?.startByte,
-        endByte: diagNode?.endIndex ?? diagNode?.endByte,
+        startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+        endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
         startPosition: diagNode?.startPosition,
         endPosition: diagNode?.endPosition,
       },
@@ -1662,8 +1662,8 @@ export function dispatchBinaryOperator(
               code: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER.code,
               message: `Type mismatch in modifier of component ${compName}, declared type ${recSym.name}[${M},${N}], got modifier ${modStr} of type ${recTypeBlock}.`,
               range: {
-                startByte: compClauseNode.startIndex ?? compClauseNode.startByte,
-                endByte: compClauseNode.endIndex ?? compClauseNode.endByte,
+                startOffset: compClauseNode.startIndex ?? compClauseNode.startOffset,
+                endOffset: compClauseNode.endIndex ?? compClauseNode.endOffset,
                 startPosition: compClauseNode.startPosition,
                 endPosition: compClauseNode.endPosition,
               },
@@ -1734,8 +1734,8 @@ export function dispatchBinaryOperator(
     code: ModelicaErrorCode.CANNOT_RESOLVE_OPERATOR_TYPE.code,
     message: `Cannot resolve type of expression ${exprText}. The operands have types ${leftTypeStr}, ${rightTypeStr} in component <NO_COMPONENT>.`,
     range: {
-      startByte: diagNode?.startIndex ?? diagNode?.startByte,
-      endByte: diagNode?.endIndex ?? diagNode?.endByte,
+      startOffset: diagNode?.startIndex ?? diagNode?.startOffset,
+      endOffset: diagNode?.endIndex ?? diagNode?.endOffset,
       startPosition: diagNode?.startPosition,
       endPosition: diagNode?.endPosition,
     },

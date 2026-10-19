@@ -31,8 +31,8 @@ describe("Interactive Traceability Matrix (RTM) Engine", () => {
       kind: "Usage",
       ruleName: "PartUsage",
       resourceId: "file:///vehicle.sysml",
-      startByte: 10,
-      endByte: 50,
+      startOffset: 10,
+      endOffset: 50,
       parentId: null,
     };
     symbols.set(1, partSym);
@@ -45,8 +45,8 @@ describe("Interactive Traceability Matrix (RTM) Engine", () => {
       kind: "Definition",
       ruleName: "RequirementDefinition",
       resourceId: "file:///requirements.sysml",
-      startByte: 0,
-      endByte: 100,
+      startOffset: 0,
+      endOffset: 100,
       parentId: null,
       metadata: { id: "REQ-001", doc: "Maximum weight limit" },
     };
@@ -60,8 +60,8 @@ describe("Interactive Traceability Matrix (RTM) Engine", () => {
       kind: "Definition",
       ruleName: "RequirementDefinition",
       resourceId: "file:///requirements.sysml",
-      startByte: 110,
-      endByte: 200,
+      startOffset: 110,
+      endOffset: 200,
       parentId: null,
       metadata: { id: "REQ-002", doc: "Minimum driving range" },
     };
@@ -75,8 +75,8 @@ describe("Interactive Traceability Matrix (RTM) Engine", () => {
       kind: "Usage",
       ruleName: "SatisfyRequirementUsage",
       resourceId: "file:///vehicle.sysml",
-      startByte: 25,
-      endByte: 45,
+      startOffset: 25,
+      endOffset: 45,
       parentId: 1,
     };
     symbols.set(4, satisfySym);
@@ -120,8 +120,8 @@ describe("Interactive Traceability Matrix (RTM) Engine", () => {
       kind: "Definition",
       ruleName: "RequirementDefinition",
       resourceId: "file:///thermal.sysml",
-      startByte: 0,
-      endByte: 50,
+      startOffset: 0,
+      endOffset: 50,
       parentId: null,
       metadata: { limit: 400 },
     };

@@ -169,11 +169,11 @@ export function breakMod(name: string): ModificationArg {
 /** Create an expression modification: `name = <CST expr at bytes start..end>`. */
 export function exprMod(
   name: string,
-  startByte: number,
-  endByte: number,
+  startOffset: number,
+  endOffset: number,
   opts?: Partial<Pick<ModificationArg, "each" | "final" | "nestedArgs">>,
 ): ModificationArg {
-  return modArg(name, { kind: "expression", cstBytes: [startByte, endByte] }, opts);
+  return modArg(name, { kind: "expression", cstBytes: [startOffset, endOffset] }, opts);
 }
 
 // ---------------------------------------------------------------------------

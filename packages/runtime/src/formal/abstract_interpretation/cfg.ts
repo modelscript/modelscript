@@ -20,8 +20,6 @@ export interface CFGInstruction {
   id: number;
   op: string;
   astNodeId?: number | undefined;
-  startByte?: number | undefined;
-  endByte?: number | undefined;
   startOffset?: number | undefined;
   endOffset?: number | undefined;
   operands?: any[] | undefined;
@@ -85,25 +83,19 @@ export class GenericCFG {
     operands?: any[],
     meta?: {
       astNodeId?: number | undefined;
-      startByte?: number | undefined;
-      endByte?: number | undefined;
       startOffset?: number | undefined;
       endOffset?: number | undefined;
       [key: string]: any;
     },
   ): CFGInstruction {
-    const startOff = meta?.startOffset ?? meta?.startByte;
-    const endOff = meta?.endOffset ?? meta?.endByte;
     return {
       id: this.nextInstId++,
       op,
       targetVar,
       operands,
       astNodeId: meta?.astNodeId,
-      startByte: meta?.startByte ?? startOff,
-      endByte: meta?.endByte ?? endOff,
-      startOffset: startOff,
-      endOffset: endOff,
+      startOffset: meta?.startOffset,
+      endOffset: meta?.endOffset,
       metadata: meta,
     };
   }

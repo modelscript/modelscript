@@ -35,9 +35,9 @@ export interface RequirementRow {
   /** URI of the document containing this requirement. */
   uri: string;
   /** Start byte in the source text (for go-to-source). */
-  startByte: number;
+  startOffset: number;
   /** End byte in the source text. */
-  endByte: number;
+  endOffset: number;
   /** IDs of child constraint symbols. */
   constraintIds: number[];
   /** Verification status placeholder. */
@@ -220,8 +220,8 @@ export function getRequirements(
       text,
       kind: entry.kind,
       uri: entry.resourceId ?? "",
-      startByte: entry.startByte,
-      endByte: entry.endByte,
+      startOffset: entry.startOffset,
+      endOffset: entry.endOffset,
       constraintIds,
       status,
       peakValue,
