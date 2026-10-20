@@ -1,0 +1,18 @@
+{
+  "name": "@modelscript/example-pscad-microgrid",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PSCAD Electromagnetic Transients (EMT) microgrid workspace with IEEE 2800-2022 compliance verification, COMTRADE waveforms, Single-Line Diagrams, and Modelica/SSP co-simulation.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "Microgrid_IBR.pscx",
+  "scripts": {
+    "diagram": "msx pscad diagram Microgrid_IBR.pscx --out=Microgrid_IBR.svg",
+    "export:modelica": "msx pscad export-modelica Microgrid_IBR.pscx --out=Microgrid_IBR.mo",
+    "export:ssp": "msx pscad export-ssp Microgrid_IBR.pscx --out=SystemStructure.ssd",
+    "lint": "msx pscad lint Microgrid_IBR.pscx",
+    "pipeline": "tsx run_simulation.ts && tsx verify_grid_code.ts",
+    "sim": "msx pscad sim Microgrid_IBR.pscx",
+    "verify": "msx pscad verify-ieee2800 Microgrid_IBR.pscx"
+  }
+}

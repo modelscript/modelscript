@@ -41,11 +41,12 @@
     "build": "tsc",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js tests/run-test.ts tests/comtrade.test.ts tests/pslx.test.ts",
+    "test": "node ../../scripts/test-runner.js tests/run-test.ts tests/comtrade.test.ts tests/pslx.test.ts tests/corpus.test.ts tests/model-corpus.test.ts tests/edit-engine.test.ts tests/sim-coverage.test.ts tests/param-eval.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelscript/dsl": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/runtime": "*",
+    "@modelscript/xml-cst": "*"
   }
 }

@@ -566,6 +566,15 @@ app.get("/", (_req, res) => {
     border-color: rgba(16, 185, 129, 0.9);
     box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(16, 185, 129, 0.28);
   }
+  .workspace-tile.pscad-tile {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(59, 130, 246, 0.1) 100%);
+    border-color: rgba(245, 158, 11, 0.45);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(245, 158, 11, 0.12);
+  }
+  .workspace-tile.pscad-tile:hover {
+    border-color: rgba(245, 158, 11, 0.9);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(245, 158, 11, 0.28);
+  }
   .workspace-tile.bouncing-ball-tile {
     background: linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(168, 85, 247, 0.1) 100%);
     border-color: rgba(236, 72, 153, 0.4);
@@ -603,6 +612,15 @@ app.get("/", (_req, res) => {
   .badge-dot.drone-dot {
     background-color: #10b981;
     box-shadow: 0 0 8px #10b981;
+  }
+  .workspace-badge.pscad-badge {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.35);
+  }
+  .badge-dot.pscad-dot {
+    background-color: #fbbf24;
+    box-shadow: 0 0 8px #fbbf24;
   }
   .workspace-badge.ball-badge {
     background: rgba(236, 72, 153, 0.15);
@@ -648,6 +666,11 @@ app.get("/", (_req, res) => {
     border-color: rgba(16, 185, 129, 0.25);
     color: #10b981;
   }
+  .workspace-icon.pscad-icon {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+  }
   .workspace-icon.ball-icon {
     background: rgba(236, 72, 153, 0.1);
     border-color: rgba(236, 72, 153, 0.25);
@@ -684,6 +707,10 @@ app.get("/", (_req, res) => {
   .workspace-btn.drone-btn {
     background: linear-gradient(135deg, #059669, #0284c7);
     box-shadow: 0 2px 8px rgba(5, 150, 105, 0.35);
+  }
+  .workspace-btn.pscad-btn {
+    background: linear-gradient(135deg, #d97706, #2563eb);
+    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
   }
   .workspace-btn.ball-btn {
     background: linear-gradient(135deg, #e11d48, #9333ea);
@@ -845,6 +872,27 @@ app.get("/", (_req, res) => {
       </div>
       <div class="workspace-footer">
         <span class="workspace-btn drone-btn">Launch Drone Reachability &rarr;</span>
+      </div>
+    </a>
+
+    <a href="/vscode/workbench/#memfs:pscad-microgrid" class="workspace-tile pscad-tile">
+      <div class="workspace-header">
+        <span class="workspace-badge pscad-badge"><span class="badge-dot pscad-dot"></span> Power Grid &amp; EMT</span>
+        <span class="workspace-tag">PSCAD &bull; IEEE 2800-2022 &bull; COMTRADE &bull; Modelica</span>
+      </div>
+      <div class="workspace-body">
+        <div class="workspace-icon pscad-icon">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <div class="workspace-text">
+          <div class="workspace-title">PSCAD Microgrid &amp; IBR Workspace</div>
+          <div class="workspace-desc">230 kV transmission microgrid with Inverter-Based Resource (IBR) solar interconnection, Dommel companion EMT simulation, automated IEEE 2800-2022 grid-code auditing, COMTRADE waveforms, and Modelica/SSP co-simulation.</div>
+        </div>
+      </div>
+      <div class="workspace-footer">
+        <span class="workspace-btn pscad-btn">Launch PSCAD Microgrid &rarr;</span>
       </div>
     </a>
 

@@ -300,12 +300,16 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               if (doc && typeof message.startOffset === "number") {
                 const startPos = doc.positionAt(message.startOffset);
                 const endPos = doc.positionAt(message.endOffset ?? message.startOffset);
-                // Find or show the text editor for this document and reveal the range
-                vscode.window.showTextDocument(doc, {
-                  viewColumn: vscode.ViewColumn.One,
-                  preserveFocus: true, // don't steal focus from the diagram
-                  selection: new vscode.Range(startPos, endPos),
-                });
+                const selection = new vscode.Range(startPos, endPos);
+                const visibleEditor = vscode.window.visibleTextEditors.find(
+                  (e) => e.document.uri.toString() === uriString,
+                );
+                // Only sync the selection when the source is already visible; a click on the
+                // diagram must never open or split a new code editor.
+                if (visibleEditor) {
+                  visibleEditor.selection = new vscode.Selection(startPos, endPos);
+                  visibleEditor.revealRange(selection, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+                }
               }
               break;
             }

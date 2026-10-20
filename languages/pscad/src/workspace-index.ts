@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
+import { registerPscadSource } from "./model/workspace-registry.js";
 
 /**
  * Workspace symbol indexer for PSCAD projects (.pslx libraries, .pscx cases, .pswx workspaces).
@@ -60,6 +61,7 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
    * Indexes a PSCAD project or library file.
    */
   public indexFile(uri: string, text: string): SymbolIndex {
+    registerPscadSource(uri, text);
     const symbols = new Map<SymbolId, SymbolEntry>();
     const byName = new Map<string, SymbolId[]>();
     const childrenOf = new Map<SymbolId | null, SymbolId[]>();

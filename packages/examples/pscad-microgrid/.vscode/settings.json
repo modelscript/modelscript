@@ -1,0 +1,17 @@
+{
+  "files.associations": {
+    "*.pscx": "pscad",
+    "*.pslx": "pscad",
+    "*.pswx": "pscad",
+    "*.psmx": "pscad",
+    "*.cfg": "comtrade",
+    "*.dat": "comtrade",
+    "*.ssd": "xml",
+    "*.mo": "modelica"
+  },
+  "workbench.editorAssociations": {
+    "*.pscx": "modelscript.diagramEditor",
+    "*.pslx": "modelscript.diagramEditor",
+    "*.cfg": "modelscript.comtradeViewer"
+  }
+}

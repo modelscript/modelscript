@@ -3181,7 +3181,11 @@ export class ValidationService {
           const entryUri = entry.resourceId;
           const docTree = this.documentManager.documentTrees.get(entryUri);
           if (docTree && docTree.tree) {
-            return docTree.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+            const root = docTree.tree.rootNode ?? (docTree.tree as any)?.tree?.rootNode;
+            if (root && typeof root.descendantForIndex === "function") {
+              return root.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+            }
+            return root ?? null;
           }
 
           let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
@@ -3199,8 +3203,12 @@ export class ValidationService {
               }
             } catch (e) {}
           }
-          if (lazyCache) {
-            return lazyCache.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+          if (lazyCache && lazyCache.tree) {
+            const root = lazyCache.tree.rootNode ?? (lazyCache.tree as any)?.tree?.rootNode;
+            if (root && typeof root.descendantForIndex === "function") {
+              return root.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+            }
+            return root ?? null;
           }
 
           const doc = this.documentManager.documents.get(entryUri);
@@ -3216,7 +3224,11 @@ export class ValidationService {
             }
             if (tree) {
               this.documentManager.documentTrees.set(entryUri, { text, tree, classCache: new Map() });
-              return tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+              const root = tree.rootNode ?? (tree as any)?.tree?.rootNode;
+              if (root && typeof root.descendantForIndex === "function") {
+                return root.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+              }
+              return root ?? null;
             }
           }
           return null;
@@ -3397,11 +3409,16 @@ export class ValidationService {
               const endOff = entry.endOffset;
               const docTree = this.documentManager.documentTrees.get(currentUri);
               if (docTree && docTree.tree) {
-                const node = docTree.tree.rootNode.descendantForIndex(startOff, Math.max(startOff, endOff));
-                return {
-                  start: { line: node.startPosition.row, character: node.startPosition.column },
-                  end: { line: node.endPosition.row, character: node.endPosition.column },
-                };
+                const root = docTree.tree.rootNode ?? (docTree.tree as any)?.tree?.rootNode;
+                if (root && typeof root.descendantForIndex === "function") {
+                  const node = root.descendantForIndex(startOff, Math.max(startOff, endOff));
+                  if (node && node.startPosition && node.endPosition) {
+                    return {
+                      start: { line: node.startPosition.row, character: node.startPosition.column },
+                      end: { line: node.endPosition.row, character: node.endPosition.column },
+                    };
+                  }
+                }
               }
               const doc = this.documentManager.documents.get(currentUri);
               if (doc) {
@@ -3477,14 +3494,19 @@ export class ValidationService {
 
             const docTree = this.documentManager.documentTrees.get(entryUri);
             if (docTree && docTree.tree) {
-              const node = docTree.tree.rootNode.descendantForIndex(startOff, Math.max(startOff, endOff));
-              return {
-                uri: entryUri,
-                range: {
-                  start: { line: node.startPosition.row, character: node.startPosition.column },
-                  end: { line: node.endPosition.row, character: node.endPosition.column },
-                },
-              };
+              const root = docTree.tree.rootNode ?? (docTree.tree as any)?.tree?.rootNode;
+              if (root && typeof root.descendantForIndex === "function") {
+                const node = root.descendantForIndex(startOff, Math.max(startOff, endOff));
+                if (node && node.startPosition && node.endPosition) {
+                  return {
+                    uri: entryUri,
+                    range: {
+                      start: { line: node.startPosition.row, character: node.startPosition.column },
+                      end: { line: node.endPosition.row, character: node.endPosition.column },
+                    },
+                  };
+                }
+              }
             }
 
             const doc = this.documentManager.documents.get(entryUri);
@@ -3512,14 +3534,19 @@ export class ValidationService {
               } catch (e) {}
             }
             if (lazyCache && lazyCache.tree) {
-              const node = lazyCache.tree.rootNode.descendantForIndex(startOff, Math.max(startOff, endOff));
-              return {
-                uri: entryUri,
-                range: {
-                  start: { line: node.startPosition.row, character: node.startPosition.column },
-                  end: { line: node.endPosition.row, character: node.endPosition.column },
-                },
-              };
+              const root = lazyCache.tree.rootNode ?? (lazyCache.tree as any)?.tree?.rootNode;
+              if (root && typeof root.descendantForIndex === "function") {
+                const node = root.descendantForIndex(startOff, Math.max(startOff, endOff));
+                if (node && node.startPosition && node.endPosition) {
+                  return {
+                    uri: entryUri,
+                    range: {
+                      start: { line: node.startPosition.row, character: node.startPosition.column },
+                      end: { line: node.endPosition.row, character: node.endPosition.column },
+                    },
+                  };
+                }
+              }
             }
           }
         }

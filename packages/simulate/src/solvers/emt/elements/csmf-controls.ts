@@ -21,7 +21,14 @@ export type CsmfBlockKind =
   | "pi"
   | "lag"
   | "leadlag"
-  | "compar";
+  | "compar"
+  | "square"
+  | "inv"
+  | "integral"
+  | "fp_int"
+  | "abcdq0_d"
+  | "abcdq0_q"
+  | "abcdq0_0";
 
 export interface CsmfActuatorBinding {
   kind?: "breaker_trip" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv" | undefined;
@@ -287,6 +294,50 @@ export class CsmfControlGraph {
           y = a * b.yPrev + b0 * u0 + b1 * b.uPrev;
           break;
         }
+        case "square": {
+          y = u0 * u0;
+          break;
+        }
+        case "inv": {
+          // Memoryless 1/x; a zero input is trapped to the configured output limit (default 1e6).
+          const lim = Number(cfg.maxOut ?? p["max"] ?? p["UL"] ?? 1e6);
+          y = u0 === 0 ? lim : 1.0 / u0;
+          break;
+        }
+        case "integral": {
+          // Trapezoidal integration: Y(t) = Y(t-dt) + dt/2 * (X(t) + X(t-dt)); optional initial value.
+          const k = Number(cfg.kp ?? p["K"] ?? p["G"] ?? 1.0);
+          const lo = Number(cfg.minOut ?? p["min"] ?? p["LL"] ?? -Infinity);
+          const hi = Number(cfg.maxOut ?? p["max"] ?? p["UL"] ?? Infinity);
+          b.integralState += 0.5 * k * dt * (u0 + b.uPrev);
+          b.integralState = Math.min(hi, Math.max(lo, b.integralState));
+          y = b.integralState;
+          break;
+        }
+        case "abcdq0_d":
+        case "abcdq0_q":
+        case "abcdq0_0": {
+          // Park transform split into one single-output block per axis. Inputs: [a, b, c, theta].
+          const val = (k: number): number => {
+            const idx = b.inputIndices[k] ?? -1;
+            return idx >= 0 ? this.blocks[idx]!.output : 0;
+          };
+          const [a, bb, c, th] = [val(0), val(1), val(2), val(3)];
+          const t2 = (2 * Math.PI) / 3;
+          if (cfg.kind === "abcdq0_d") {
+            y = (2 / 3) * (a * Math.cos(th) + bb * Math.cos(th - t2) + c * Math.cos(th + t2));
+          } else if (cfg.kind === "abcdq0_q") {
+            y = (-2 / 3) * (a * Math.sin(th) + bb * Math.sin(th - t2) + c * Math.sin(th + t2));
+          } else {
+            y = (a + bb + c) / 3;
+          }
+          break;
+        }
+        case "fp_int": {
+          // Real -> Integer conversion with truncation toward zero (Fortran INT semantics).
+          y = Math.trunc(u0);
+          break;
+        }
         case "compar": {
           const highVal = Number(p["high"] ?? 1.0);
           const lowVal = Number(p["low"] ?? 0.0);
@@ -295,7 +346,7 @@ export class CsmfControlGraph {
         }
       }
 
-      if (cfg.kind !== "limit" && cfg.kind !== "pi") {
+      if (cfg.kind !== "limit" && cfg.kind !== "pi" && cfg.kind !== "integral") {
         if (cfg.minOut !== undefined && y < cfg.minOut) y = cfg.minOut;
         if (cfg.maxOut !== undefined && y > cfg.maxOut) y = cfg.maxOut;
       }

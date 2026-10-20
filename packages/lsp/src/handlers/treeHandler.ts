@@ -231,6 +231,15 @@ export function registerTreeHandlers(context: LspContext) {
               iconCache.set(params.className, svg);
               return svg;
             }
+            if (
+              entry?.language === "pscad" ||
+              entry?.metadata?.["language"] === "pscad" ||
+              entry?.ruleName?.startsWith("pscad")
+            ) {
+              // PSCAD project, case study, or library container
+              iconCache.set(params.className, null);
+              return null;
+            }
           }
         }
       }
@@ -241,20 +250,19 @@ export function registerTreeHandlers(context: LspContext) {
         return null;
       }
 
-      const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className, {
-        iconOnly: true,
-      });
-      if (!cls) {
-        iconCache.set(params.className, null);
-        return null;
-      }
-
       try {
+        const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className, {
+          iconOnly: true,
+        });
+        if (!cls) {
+          iconCache.set(params.className, null);
+          return null;
+        }
+
         const svg = getIconSvg(cls, 20, false);
         iconCache.set(params.className, svg || null);
         return svg || null;
-      } catch (e) {
-        console.warn(`Failed to render icon for ${params.className}:`, e);
+      } catch (_e) {
         iconCache.set(params.className, null);
         return null;
       }

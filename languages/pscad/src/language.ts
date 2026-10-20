@@ -10,6 +10,7 @@
 import { language } from "@modelscript/dsl";
 import { emtResultToComtrade, writeComtrade } from "./comtrade/comtrade-writer.js";
 import { lintPscx } from "./lints/index.js";
+import { computeSimulationCoverage, type SimulationCoverage } from "./netlist/coverage.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "./netlist/emt-netlist.js";
 import { parsePscx } from "./parser/pscx-parser.js";
 import {
@@ -32,6 +33,11 @@ export interface PscadSimulationPipelineOptions {
   verifyIeee2800?: boolean | undefined;
   /** Optional overrides for the fault event specification evaluated during IEEE 2800-2022 verification. */
   faultSpec?: Partial<Ieee2800FaultSpec> | undefined;
+  /**
+   * When true, never fall back to the built-in companion synthesizer (which injects reference
+   * sources on unsourced buses and canned IBR currents). Without a `solverRunner` no result is produced.
+   */
+  strict?: boolean | undefined;
   /** Optional external EMT solver callback (e.g., `@modelscript/simulate` Dommel solver); falls back to built-in companion synthesizer when omitted. */
   solverRunner?:
     | ((
@@ -468,6 +474,34 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
   const netlist = extractEmtNetlist(project);
   const circuit = netlistToEmtCircuit(netlist);
   const diagnostics = lintPscx(project);
+  const coverage = computeSimulationCoverage(project, netlist);
+  const simulationReport: PscadSimulationReport = {
+    solver: "none",
+    coverage,
+    injectedReferenceBuses: [],
+    synthesizedIbr: false,
+  };
+  if (coverage.simulatable > 0 && coverage.ratio < 0.9) {
+    const top = coverage.dropped
+      .slice(0, 5)
+      .map((d) => `${d.definition} (${d.count})`)
+      .join(", ");
+    diagnostics.push({
+      code: "P6100",
+      rule: "emt-netlist-coverage",
+      severity: "warning",
+      message: `Only ${coverage.lowered} of ${coverage.simulatable} simulatable components are supported by the EMT netlist; unsupported: ${top}.`,
+    });
+  }
+
+  if (netlist.assumptions && netlist.assumptions.length > 0) {
+    diagnostics.push({
+      code: "P6103",
+      rule: "emt-assumed-parameters",
+      severity: "warning",
+      message: `${netlist.assumptions.length} parameter default(s) were assumed: ${netlist.assumptions[0]}${netlist.assumptions.length > 1 ? " (and more)" : ""}`,
+    });
+  }
 
   const timeStepSec = Math.max(1e-6, (project.settings.timeStepUs || 50.0) * 1e-6);
   const durationSec = Math.max(timeStepSec * 10, project.settings.durationSec || 0.2);
@@ -489,15 +523,40 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     | undefined;
 
   if (shouldRunSim) {
-    simulationResult = options.solverRunner
-      ? options.solverRunner(circuit, {
-          timeStepSec,
-          durationSec,
-          nominalFrequencyHz: netlist.nominalFrequencyHz || 60.0,
-          threePhase: true,
-          steadyStateInit: true,
-        })
-      : synthesizeCompanionTrajectory(netlist, timeStepSec, durationSec);
+    if (options.solverRunner) {
+      simulationReport.solver = "external";
+      simulationResult = options.solverRunner(circuit, {
+        timeStepSec,
+        durationSec,
+        nominalFrequencyHz: netlist.nominalFrequencyHz || 60.0,
+        threePhase: true,
+        steadyStateInit: true,
+      });
+    } else if (options.strict) {
+      diagnostics.push({
+        code: "P6101",
+        rule: "emt-no-solver",
+        severity: "error",
+        message: "Strict simulation requested but no EMT solver was supplied.",
+      });
+    } else {
+      simulationReport.solver = "builtin-companion";
+      const sourced = new Set(((netlist.sources ?? []) as { bus?: string }[]).map((s) => s.bus));
+      simulationReport.injectedReferenceBuses = Array.from(netlist.buses.keys()).filter((b) => !sourced.has(b));
+      simulationReport.synthesizedIbr = (netlist.fmuInstances ?? []).length > 0;
+      simulationResult = synthesizeCompanionTrajectory(netlist, timeStepSec, durationSec);
+      if (simulationReport.injectedReferenceBuses.length > 0 || simulationReport.synthesizedIbr) {
+        diagnostics.push({
+          code: "P6102",
+          rule: "emt-synthetic-fallback",
+          severity: "warning",
+          message:
+            `Built-in companion fallback used: injected reference sources on ${simulationReport.injectedReferenceBuses.length} unsourced bus(es)` +
+            (simulationReport.synthesizedIbr ? " and approximated IBR currents" : "") +
+            "; results are not a faithful EMT simulation.",
+        });
+      }
+    }
   }
 
   let comtrade: { cfg: string; dat: string } | undefined;
@@ -554,7 +613,18 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     simulationResult,
     comtrade,
     complianceReport,
+    simulationReport,
   };
+}
+
+/** Describes how a PSCAD simulation result was obtained and how much of the model it reflects. */
+export interface PscadSimulationReport {
+  solver: "external" | "builtin-companion" | "none";
+  coverage: SimulationCoverage;
+  /** Buses that received a fabricated Thevenin reference source in the companion fallback. */
+  injectedReferenceBuses: string[];
+  /** Whether IBR/FMU currents were approximated by the fallback's canned LVRT model. */
+  synthesizedIbr: boolean;
 }
 
 /**

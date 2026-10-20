@@ -7,6 +7,8 @@
  * electrical branches ready for the Dommel companion solver.
  */
 
+import { registeredPscadSourceTexts } from "../model/workspace-registry.js";
+import { parsePscx } from "../parser/pscx-parser.js";
 import type {
   EmtBranch,
   EmtBus,
@@ -24,12 +26,105 @@ import type {
   PscxModule,
   PscxProject,
 } from "../types.js";
+import { evalParamExpr, resolveParamBag, type ParamScope } from "./param-eval.js";
+
+const externalProjectCache = new Map<string, PscxProject | null>();
+
+/**
+ * Resolves a user-definition reference to its schematic module: first within the project itself,
+ * then in library projects registered with the workspace (`Lib:Name` references).
+ */
+export function resolveSubModule(project: PscxProject, rawDefn: string): PscxModule | undefined {
+  const idx = rawDefn.indexOf(":");
+  const lib = idx >= 0 ? rawDefn.slice(0, idx) : "";
+  const clean = idx >= 0 ? rawDefn.slice(idx + 1) : rawDefn;
+  if (lib === "master") return undefined;
+  const local = project.subModules.get(clean) ?? project.subModules.get(rawDefn);
+  if (local) return local;
+  if (!lib) return undefined;
+  for (const text of registeredPscadSourceTexts()) {
+    let ext = externalProjectCache.get(text);
+    if (ext === undefined) {
+      try {
+        ext = parsePscx(text);
+      } catch {
+        ext = null;
+      }
+      externalProjectCache.set(text, ext);
+    }
+    const m = ext?.subModules.get(clean);
+    if (m) return m;
+  }
+  return undefined;
+}
 
 /**
  * Extracts a structured `EmtNetlist` from a parsed `PscxProject`, recursively flattening
  * hierarchical sub-modules, snapping geometric wire/ground pins, and classifying electrical
  * and CSMF control components.
  */
+const WIRE_TOUCH_TOLERANCE = 4;
+const PHASE_SUFFIX = ["A", "B", "C"] as const;
+
+function segDist(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const u = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return Math.hypot(p.x - (a.x + u * dx), p.y - (a.y + u * dy));
+}
+
+/** Returns, per wire index, the union of connected port ids across its whole electrical net. */
+function mergeWireNets(mod: PscxModule): string[][] {
+  const n = mod.wires.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]!]!;
+      i = parent[i]!;
+    }
+    return i;
+  };
+  const union = (a: number, b: number): void => {
+    parent[find(a)] = find(b);
+  };
+  const byPort = new Map<string, number>();
+  mod.wires.forEach((w, i) => {
+    for (const p of w.connectedPortIds) {
+      const other = byPort.get(p);
+      if (other === undefined) byPort.set(p, i);
+      else union(i, other);
+    }
+  });
+  const touches = (a: PscxModule["wires"][number], b: PscxModule["wires"][number]): boolean => {
+    const ends = [a.vertices[0], a.vertices[a.vertices.length - 1]];
+    for (const e of ends) {
+      if (!e) continue;
+      for (let k = 0; k < b.vertices.length - 1; k++) {
+        if (segDist(e, b.vertices[k]!, b.vertices[k + 1]!) <= WIRE_TOUCH_TOLERANCE) return true;
+      }
+    }
+    return false;
+  };
+  for (let i = 0; i < n; i++) {
+    const wi = mod.wires[i]!;
+    if (wi.vertices.length < 2) continue;
+    for (let j = i + 1; j < n; j++) {
+      const wj = mod.wires[j]!;
+      if (wj.vertices.length < 2 || find(i) === find(j)) continue;
+      if (touches(wi, wj) || touches(wj, wi)) union(i, j);
+    }
+  }
+  const ports = new Map<number, Set<string>>();
+  mod.wires.forEach((w, i) => {
+    const r = find(i);
+    const s = ports.get(r) ?? new Set<string>();
+    for (const p of w.connectedPortIds) s.add(p);
+    ports.set(r, s);
+  });
+  return mod.wires.map((_, i) => [...ports.get(find(i))!]);
+}
+
 export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const buses = new Map<string, EmtBus>();
   const branches: EmtBranch[] = [];
@@ -37,6 +132,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const transmissionLines: EmtTransmissionLine[] = [];
   const fmuInstances: EmtFmuInstance[] = [];
   const sources: EmtSource[] = [];
+  const assumptions: string[] = [];
   const faults: EmtFault[] = [];
   const surgeArresters: EmtSurgeArrester[] = [];
   const synchronousMachines: EmtSynchronousMachine[] = [];
@@ -54,6 +150,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     prefix: string,
     boundaryBusOverrides: Map<string, string>,
     visitedDefs: Set<string>,
+    scope: ParamScope = new Map(),
   ): void {
     const qualifyId = (id: string): string => (prefix ? `${prefix}_${id}` : id);
 
@@ -92,7 +189,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       for (const port of cmp.ports) {
         if (port.kind === "signal") {
           signalPortIds.add(port.id);
-          if (port.name === "out") {
+          if (port.name === "out" || port.name === "dq0") {
             signalOutPortToBlockId.set(port.id, qualifyId(cmp.instanceName || cmp.id));
           }
         }
@@ -152,8 +249,14 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
 
     // Also build a signal port connectivity map: inputSignalPortId -> upstreamBlockId
     const signalPortSourceMap = new Map<string, string>();
+    /** Data-label name -> id of the block driving that label within this module. */
+    const labelSignalSource = new Map<string, string>();
 
-    for (const wire of mod.wires) {
+    // Merge wires into nets: wires sharing a port, or touching geometrically (T-junctions, end-to-end),
+    // are one electrical node. Each wire then sees the full port set of its net.
+    const netPorts = mergeWireNets(mod);
+    for (let wi = 0; wi < mod.wires.length; wi++) {
+      const wire = { connectedPortIds: netPorts[wi]! };
       if (wire.connectedPortIds.length === 0) continue;
 
       // Resolve CSMF signal wires
@@ -213,11 +316,15 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     // Also link wireless Data Label / XNode nets across signal and electrical ports
     if (mod.wirelessNets) {
       for (const [netLabel, portList] of Object.entries(mod.wirelessNets)) {
-        const connectedSignalOut = portList.find((id) => signalOutPortToBlockId.has(id));
-        if (connectedSignalOut) {
-          const srcBlockId = signalOutPortToBlockId.get(connectedSignalOut)!;
+        // The driver is either a block output in the net, or any label port already fed by a wire.
+        const driverPort = portList.find((id) => signalOutPortToBlockId.has(id));
+        const srcBlockId = driverPort
+          ? signalOutPortToBlockId.get(driverPort)
+          : portList.map((id) => signalPortSourceMap.get(id)).find((b) => b !== undefined);
+        if (srcBlockId) {
+          labelSignalSource.set(netLabel, srcBlockId);
           for (const pId of portList) {
-            if (pId !== connectedSignalOut && signalPortIds.has(pId)) {
+            if (pId !== driverPort && signalPortIds.has(pId)) {
               signalPortSourceMap.set(pId, srcBlockId);
             }
           }
@@ -266,12 +373,12 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       const cleanDefn = rawDefn.includes(":") ? rawDefn.split(":").pop()! : rawDefn;
       const defn = rawDefn.toLowerCase();
       const lowerClean = cleanDefn.toLowerCase();
-      const p = cmp.parameters;
+      const p = resolveParamBag(cmp.parameters, scope);
       const qCmpId = qualifyId(cmp.id);
       const qInstName = qualifyId(cmp.instanceName || cmp.id);
 
       // Check if component is a hierarchical sub-module instance in project.subModules
-      const subMod = project.subModules.get(cleanDefn) ?? project.subModules.get(rawDefn);
+      const subMod = resolveSubModule(project, rawDefn);
       if (subMod && !visitedDefs.has(subMod.name)) {
         const subBoundaryMap = new Map<string, string>();
         for (let idx = 0; idx < cmp.ports.length; idx++) {
@@ -292,7 +399,17 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         }
         const nextVisited = new Set(visitedDefs);
         nextVisited.add(subMod.name);
-        processModule(subMod, qInstName, subBoundaryMap, nextVisited);
+        // Child scope: definition defaults first, then instance overrides evaluated in the parent scope.
+        const childScope: ParamScope = new Map();
+        for (const [k, v] of Object.entries(subMod.parameterDefaults ?? {})) {
+          const n = evalParamExpr(v, childScope);
+          if (n !== undefined) childScope.set(k, n);
+        }
+        for (const [k, v] of Object.entries(cmp.parameters)) {
+          const n = evalParamExpr(v, scope);
+          if (n !== undefined) childScope.set(k, n);
+        }
+        processModule(subMod, qInstName, subBoundaryMap, nextVisited, childScope);
         continue;
       }
 
@@ -593,6 +710,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const rSrc = parseFloat(String(p["R"] ?? p["r"] ?? "0"));
         const lSrc = parseFloat(String(p["L"] ?? p["l"] ?? "0"));
 
+        if (p["V"] === undefined && p["v"] === undefined && p["Vbase"] === undefined && p["kv"] === undefined) {
+          assumptions.push(`Source '${qInstName}' (${rawDefn}) has no recognised voltage parameter; assumed 16.5 kV.`);
+        }
         const src: EmtSource = {
           id: qCmpId,
           name: qInstName || `Source_${qCmpId}`,
@@ -638,6 +758,67 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         branches.push(branch);
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
         if (buses.has(bus2)) buses.get(bus2)?.connectedBranchIds.push(qCmpId);
+      } else if (defn.endsWith(":abcdq0")) {
+        // abc -> dq0 Park transform, split into one single-output block per axis. The angle is the
+        // `Theta` parameter naming a signal (data label) rather than a wired input.
+        const abcPort = cmp.ports.find((pt) => pt.name === "abc");
+        const src = abcPort ? signalPortSourceMap.get(abcPort.id) : undefined;
+        const thetaName = String(cmp.parameters["Theta"] ?? "").trim();
+        const thetaBlock = thetaName ? labelSignalSource.get(thetaName) : undefined;
+        if (!src)
+          assumptions.push(`'${qInstName}' (abcdq0): abc input is not driven by a recognised signal; treated as 0.`);
+        if (!thetaBlock)
+          assumptions.push(
+            `'${qInstName}' (abcdq0): angle '${thetaName}' is not driven by a known signal; treated as 0.`,
+          );
+        const ins = [...PHASE_SUFFIX.map((s) => (src ? `${src}_phase${s}` : "")), thetaBlock ?? ""];
+        const kinds = ["abcdq0_d", "abcdq0_q", "abcdq0_0"] as const;
+        kinds.forEach((kind, i) => {
+          controlBlocks.push({
+            id: i === 0 ? qInstName : `${qInstName}_${kind.slice(-1)}`,
+            kind,
+            inputs: ins,
+            params: {},
+          });
+        });
+      } else if (defn.endsWith(":voltmeter") || defn.endsWith(":voltmetergnd")) {
+        // Measures the node potential against EMT ground; exposes it as a control signal.
+        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_V`);
+        controlBlocks.push({ id: qInstName, kind: "sensor_v", inputs: [], params: {}, sensorTarget: bus1 });
+        PHASE_SUFFIX.forEach((s, ph) =>
+          controlBlocks.push({
+            id: `${qInstName}_phase${s}`,
+            kind: "sensor_v",
+            inputs: [],
+            params: { phase: ph },
+            sensorTarget: bus1,
+          }),
+        );
+      } else if (defn.endsWith(":ammeter")) {
+        // In-line current meter: a near-zero impedance series branch plus a current sensor.
+        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_A`);
+        const bus2 = getOrCreateBus(cmp.ports[1]?.id, `${cmp.instanceName}_B`);
+        branches.push({
+          id: qCmpId,
+          kind: "rlc",
+          fromBus: bus1,
+          toBus: bus2,
+          resistanceOhm: 1e-4,
+          inductanceH: 0,
+          capacitanceF: 0,
+        });
+        buses.get(bus1)?.connectedBranchIds.push(qCmpId);
+        buses.get(bus2)?.connectedBranchIds.push(qCmpId);
+        controlBlocks.push({ id: qInstName, kind: "sensor_i", inputs: [], params: {}, sensorTarget: qCmpId });
+        PHASE_SUFFIX.forEach((s, ph) =>
+          controlBlocks.push({
+            id: `${qInstName}_phase${s}`,
+            kind: "sensor_i",
+            inputs: [],
+            params: { phase: ph },
+            sensorTarget: qCmpId,
+          }),
+        );
       } else if (defn.includes("breaker") || defn.includes("switch")) {
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
@@ -680,23 +861,54 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.endsWith(":leadlag") ||
         defn.endsWith(":limit") ||
         defn.endsWith(":const") ||
-        defn.endsWith(":compar")
+        defn.endsWith(":compar") ||
+        defn.endsWith(":mult") ||
+        defn.endsWith(":div") ||
+        defn.endsWith(":sumjct") ||
+        defn.endsWith(":emtconst") ||
+        defn.endsWith(":consti") ||
+        defn.endsWith(":hardlimit") ||
+        defn.endsWith(":unity") ||
+        defn.endsWith(":square") ||
+        defn.endsWith(":inv") ||
+        defn.endsWith(":integral") ||
+        defn.endsWith(":fp_int")
       ) {
-        const kind: EmtControlBlock["kind"] = defn.includes("pi")
-          ? "pi"
-          : defn.includes("gain")
-            ? "gain"
-            : defn.includes("sum")
-              ? "sum"
-              : defn.includes("leadlag")
-                ? "leadlag"
-                : defn.includes("pole") || defn.includes("lag")
-                  ? "lag"
-                  : defn.includes("limit")
-                    ? "limit"
-                    : defn.includes("compar")
-                      ? "compar"
-                      : "const";
+        const kind: EmtControlBlock["kind"] = defn.endsWith(":square")
+          ? "square"
+          : defn.endsWith(":inv")
+            ? "inv"
+            : defn.endsWith(":integral")
+              ? "integral"
+              : defn.endsWith(":fp_int")
+                ? "fp_int"
+                : defn.endsWith(":hardlimit")
+                  ? "limit"
+                  : defn.endsWith(":unity")
+                    ? "gain"
+                    : defn.endsWith(":mult")
+                      ? "mult"
+                      : defn.endsWith(":div")
+                        ? "div"
+                        : defn.endsWith(":sumjct")
+                          ? "sum"
+                          : defn.endsWith(":emtconst") || defn.endsWith(":consti")
+                            ? "const"
+                            : defn.includes("pi")
+                              ? "pi"
+                              : defn.includes("gain")
+                                ? "gain"
+                                : defn.includes("sum")
+                                  ? "sum"
+                                  : defn.includes("leadlag")
+                                    ? "leadlag"
+                                    : defn.includes("pole") || defn.includes("lag")
+                                      ? "lag"
+                                      : defn.includes("limit")
+                                        ? "limit"
+                                        : defn.includes("compar")
+                                          ? "compar"
+                                          : "const";
         const params: Record<string, number> = {};
         for (const [k, v] of Object.entries(p)) {
           const num = typeof v === "number" ? v : parseFloat(String(v));
@@ -711,7 +923,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const wiredInputs: string[] = [];
         if (explicitInputs.length === 0) {
           for (const pt of cmp.ports) {
-            if (pt.kind === "signal" && pt.name.startsWith("in")) {
+            if (pt.kind === "signal" && pt.name !== "out") {
               const srcBlock = signalPortSourceMap.get(pt.id);
               if (srcBlock) wiredInputs.push(srcBlock);
             }
@@ -730,6 +942,17 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
 
   processModule(project.rootModule, "", new Map<string, string>(), new Set<string>(["Main"]));
 
+  // Inputs that name a block which does not exist (e.g. per-phase taps of a non-sensor vector driver)
+  // evaluate as 0 in the solver; surface them instead of failing silently.
+  const knownBlocks = new Set(controlBlocks.map((b) => b.id));
+  for (const cb of controlBlocks) {
+    if (!cb.kind.startsWith("abcdq0_") || cb.kind !== "abcdq0_d") continue;
+    const dangling = cb.inputs.filter((id) => id !== "" && !knownBlocks.has(id));
+    if (dangling.length > 0) {
+      assumptions.push(`'${cb.id}' (abcdq0): input signal '${dangling[0]}' has no per-phase source; treated as 0.`);
+    }
+  }
+
   return {
     buses,
     branches,
@@ -743,6 +966,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     inductionMachines: inductionMachines.length > 0 ? inductionMachines : undefined,
     converterBridges: converterBridges.length > 0 ? converterBridges : undefined,
     controlBlocks: controlBlocks.length > 0 ? controlBlocks : undefined,
+    assumptions: assumptions.length > 0 ? assumptions : undefined,
     nominalFrequencyHz: project.settings.frequencyHz,
   };
 }
@@ -926,6 +1150,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     kind: cb.kind,
     inputs: cb.inputs,
     params: cb.params,
+    ...(cb.sensorTarget !== undefined ? { sensorTarget: cb.sensorTarget } : {}),
   }));
 
   return {

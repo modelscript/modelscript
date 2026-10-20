@@ -47,6 +47,26 @@ Located at [`packages/examples/drone-chassis/`](./drone-chassis/), this workspac
 
 ---
 
+### 3. `pscad-microgrid/` — Electromagnetic Transients (EMT), IEEE 2800 Verification & Polyglot Co-Simulation
+
+Located at [`packages/examples/pscad-microgrid/`](./pscad-microgrid/), this workspace demonstrates a 230 kV power transmission microgrid with Inverter-Based Resource (IBR) solar interconnection, Dommel companion-circuit EMT simulation, automated IEEE 2800-2022 / NERC PRC-029-1 grid-code auditing, IEEE C37.111 COMTRADE waveform recording, and polyglot projections to Modelica and SSP SystemStructure.
+
+#### Linked Domain Artifacts
+
+| File Path                                                                                                               | Domain / Format            | Role in the Digital Thread                                                                                                                    |
+| :---------------------------------------------------------------------------------------------------------------------- | :------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`modelscript.json`](./pscad-microgrid/modelscript.json)                                                                | Workspace Manifest         | Declares nominal grid parameters (230 kV, 60 Hz) and evaluated IEEE 2800-2022 ride-through clauses.                                           |
+| [`Microgrid_IBR.pscx`](./pscad-microgrid/Microgrid_IBR.pscx)                                                            | PSCAD Case Study (`.pscx`) | 3-phase grid network with 250 MVA utility source, 16.5/230 kV transformer, 50 km Bergeron line, 100 MVA IBR inverter, and CSMF droop control. |
+| [`Microgrid_Lib.pslx`](./pscad-microgrid/Microgrid_Lib.pslx)                                                            | PSCAD Library (`.pslx`)    | Custom component library defining reusable `IBR_Inverter_Defn`, `MOV_Arrester_Defn`, and `CSMF_Droop_Defn` catalog components.                |
+| [`Microgrid.pswx`](./pscad-microgrid/Microgrid.pswx)                                                                    | PSCAD Workspace (`.pswx`)  | Master workspace container indexing the case study and library.                                                                               |
+| [`Microgrid_IBR.svg`](./pscad-microgrid/Microgrid_IBR.svg)                                                              | Single-Line Diagram (SLD)  | Headless vector schematic visualization generated via `@modelscript/diagram`.                                                                 |
+| [`Microgrid_IBR.cfg`](./pscad-microgrid/Microgrid_IBR.cfg) & [`Microgrid_IBR.dat`](./pscad-microgrid/Microgrid_IBR.dat) | IEEE C37.111 COMTRADE      | High-frequency (50 kHz) transient fault recording with 21 analog channels.                                                                    |
+| [`Microgrid_IBR.mo`](./pscad-microgrid/Microgrid_IBR.mo)                                                                | Modelica (`.mo`)           | Polyglot projection to standard `Modelica.Electrical.Analog` DAE.                                                                             |
+| [`SystemStructure.ssd`](./pscad-microgrid/SystemStructure.ssd)                                                          | SSP 1.0 SystemStructure    | FMI/SSP multi-FMU co-simulation architecture.                                                                                                 |
+| [`ieee2800_report.md`](./pscad-microgrid/ieee2800_report.md)                                                            | Verification Audit Dossier | Full 7-clause IEEE 2800-2022 / NERC PRC-029-1 compliance report.                                                                              |
+
+---
+
 ## Running the Examples with `msx`
 
 From the repository root, use the `msx` (`@modelscript/cli`) binary to verify, simulate, and inspect the polyglot digital thread:
@@ -71,4 +91,12 @@ npx msx simulate TradeStudy packages/examples/drone-chassis/TradeStudy.mo --stop
 
 # 5. Export an FDA / ISO-compliant Design History File (DHF) verification dossier
 npx msx dhf export packages/examples/drone-reachability --format markdown -o Drone_DHF.md
+
+# 6. Lint, simulate, verify, and diagram the PSCAD microgrid workspace
+npx msx pscad lint packages/examples/pscad-microgrid/Microgrid_IBR.pscx
+npx msx pscad sim packages/examples/pscad-microgrid/Microgrid_IBR.pscx --step=20us --tstop=0.25
+npx msx pscad verify-ieee2800 packages/examples/pscad-microgrid/Microgrid_IBR.pscx
+npx msx pscad diagram packages/examples/pscad-microgrid/Microgrid_IBR.pscx --out=Microgrid_IBR.svg
+npx msx pscad export-modelica packages/examples/pscad-microgrid/Microgrid_IBR.pscx --out=Microgrid_IBR.mo
+npx msx pscad export-ssp packages/examples/pscad-microgrid/Microgrid_IBR.pscx --out=SystemStructure.ssd
 ```

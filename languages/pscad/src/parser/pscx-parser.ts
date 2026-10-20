@@ -8,6 +8,11 @@
  * source line/column locations, and electrical connectivity.
  */
 
+import { EXTRA_MASTER_PORT_LAYOUTS } from "../catalog/master-port-layouts.js";
+import { readDefinitionForm } from "../model/definition-form.js";
+import { buildProjectModel, type ExternalDefinitions, type ModelDefinition } from "../model/pscad-model.js";
+import { refineModulePorts } from "../model/refine-ports.js";
+import { registeredExternalDefinitions } from "../model/workspace-registry.js";
 import type {
   Point2D,
   PortKind,
@@ -136,10 +141,14 @@ const MASTER_LIBRARY_PORTS: Record<string, { name: string; kind: PortKind; dim: 
   pin: [{ name: "port", kind: "electrical", dim: 3, x: 0, y: 0 }],
   load: [{ name: "N", kind: "electrical", dim: 3, x: 0, y: -18 }],
   fixed_load: [{ name: "N", kind: "electrical", dim: 3, x: 0, y: -18 }],
-  voltmeter: [{ name: "N1", kind: "electrical", dim: 3, x: 0, y: 18 }],
+  // Offsets derived from wire-end statistics of real PSCAD 5 projects (not vendor documentation).
+  voltmeter: [
+    { name: "N1", kind: "electrical", dim: 3, x: 0, y: 0 },
+    { name: "out", kind: "signal", dim: 1, x: 0, y: 36 },
+  ],
   ammeter: [
-    { name: "N1", kind: "electrical", dim: 3, x: -18, y: 0 },
-    { name: "N2", kind: "electrical", dim: 3, x: 18, y: 0 },
+    { name: "N1", kind: "electrical", dim: 3, x: 0, y: 0 },
+    { name: "N2", kind: "electrical", dim: 3, x: 36, y: 0 },
   ],
   multimeter: [
     { name: "N1", kind: "electrical", dim: 3, x: -18, y: 0 },
@@ -222,7 +231,14 @@ function isOffsetInRanges(offset: number, ranges: { start: number; end: number }
  * Parses a PSCAD `.pscx` / `.pslx` / `.pswx` XML string into a structured `PscxProject`,
  * extracting project settings, user definitions, root/sub-module schematics, and spatially snapped wire nets.
  */
-export function parsePscx(xmlContent: string): PscxProject {
+export function parsePscx(xmlContent: string, options?: { external?: ExternalDefinitions }): PscxProject {
+  // Semantic model (lossless XML CST) used to reconcile port geometry with real wire endpoints.
+  let modelDefs: Map<string, ModelDefinition> | undefined;
+  try {
+    modelDefs = buildProjectModel(xmlContent, options?.external ?? registeredExternalDefinitions()).definitions;
+  } catch {
+    modelDefs = undefined;
+  }
   const lineStarts = computeLineStarts(xmlContent);
   const settings: PscxProjectSettings = {
     timeStepUs: 50.0,
@@ -486,7 +502,8 @@ export function parsePscx(xmlContent: string): PscxProject {
             });
           }
         } else {
-          const masterPorts = MASTER_LIBRARY_PORTS[cleanDefn.toLowerCase()];
+          const masterPorts =
+            MASTER_LIBRARY_PORTS[cleanDefn.toLowerCase()] ?? EXTRA_MASTER_PORT_LAYOUTS[cleanDefn.toLowerCase()];
           if (masterPorts) {
             for (const mp of masterPorts) {
               ports.push({
@@ -700,6 +717,16 @@ export function parsePscx(xmlContent: string): PscxProject {
     }
 
     // Resolve spatial wire connectivity
+    const modelDef = modelDefs?.get(modName);
+    refineModulePorts(mod, modelDef);
+    if (modelDef) {
+      const form = readDefinitionForm(modelDef);
+      if (form) {
+        const defaults: Record<string, string> = {};
+        for (const cat of form.categories) for (const p of cat.parameters) defaults[p.name] = p.defaultValue;
+        mod.parameterDefaults = defaults;
+      }
+    }
     snapWireConnections(mod);
     return mod;
   }

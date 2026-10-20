@@ -370,16 +370,20 @@ export class ParserService {
           (this.documentManager as any)?.documentManager?.documentTrees;
         const docTree = docTrees?.get(uri) ?? docTrees?.get(normUri) ?? docTrees?.get(oneSlashUri);
         if (docTree && docTree.tree) {
-          let n = docTree.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
-          if (n && n.type === "source_file") {
-            for (let i = 0; i < n.childCount; i++) {
-              if (n.child(i).type === "class_definition") {
-                n = n.child(i);
-                break;
+          const root = docTree.tree.rootNode ?? (docTree.tree as any)?.tree?.rootNode;
+          if (root && typeof root.descendantForIndex === "function") {
+            let n = root.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+            if (n && n.type === "source_file") {
+              for (let i = 0; i < n.childCount; i++) {
+                if (n.child(i).type === "class_definition") {
+                  n = n.child(i);
+                  break;
+                }
               }
             }
+            return n;
           }
-          return n;
+          return root ?? null;
         }
 
         const lazyLibTrees =
@@ -432,20 +436,24 @@ export class ParserService {
           }
         }
         if (lazyCache && lazyCache.tree) {
-          let n = lazyCache.tree.rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
-          if (n && n.type === "source_file") {
-            for (let i = 0; i < n.childCount; i++) {
-              if (n.child(i).type === "class_definition") {
-                n = n.child(i);
-                break;
+          const root = lazyCache.tree.rootNode ?? (lazyCache.tree as any)?.tree?.rootNode;
+          if (root && typeof root.descendantForIndex === "function") {
+            let n = root.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+            if (n && n.type === "source_file") {
+              for (let i = 0; i < n.childCount; i++) {
+                if (n.child(i).type === "class_definition") {
+                  n = n.child(i);
+                  break;
+                }
               }
             }
+            if (!n)
+              this.connection.console.error(
+                `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startOffset}-${endOffset}]`,
+              );
+            return n;
           }
-          if (!n)
-            this.connection.console.error(
-              `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startOffset}-${endOffset}]`,
-            );
-          return n;
+          return root ?? null;
         }
         this.connection.console.error(`[cstTreeWrapper] lazyCache completely empty for ${uri}`);
         return null;

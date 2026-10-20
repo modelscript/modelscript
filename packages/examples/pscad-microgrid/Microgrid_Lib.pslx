@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Microgrid_Lib" version="5.1.0" schema="" Target="Library">
+  <paramlist name="Settings">
+    <param name="creator" value="ModelScript,PSCAD-Team" />
+    <param name="time_duration" value="0.5" />
+    <param name="time_step" value="20" />
+    <param name="sample_step" value="250" />
+    <param name="description" value="ModelScript Polyglot Microgrid &amp; IBR Component Library" />
+  </paramlist>
+  <definitions>
+    <!-- Custom Inverter-Based Resource (IBR) Definition -->
+    <Definition classid="UserCmpDefn" name="IBR_Inverter_Defn" build="" crc="1048576" view="false" instances="0" date="0" id="1001" w="320" h="240">
+      <paramlist name="Parameters">
+        <param name="MVA" value="100.0" description="Rated apparent power (MVA)" />
+        <param name="V" value="230.0" description="Nominal line-to-line voltage (kV)" />
+        <param name="control_mode" value="grid_following" description="Control mode (grid_following | grid_forming)" />
+        <param name="pq_priority" value="q_priority" description="Fault current priority (q_priority | p_priority)" />
+      </paramlist>
+      <ports>
+        <port name="term" kind="electrical" dim="3" pos="[-20, 0]" description="3-Phase AC terminal" />
+        <port name="v_meas" kind="signal" dim="1" pos="[20, -10]" description="Measured POI voltage (pu)" />
+        <port name="q_order" kind="signal" dim="1" pos="[20, 10]" description="Reactive current order (pu)" />
+      </ports>
+      <graphics>
+        <rect x="-30" y="-30" width="60" height="60" stroke="#0284c7" fill="#0f172a" />
+        <text x="0" y="0" align="center" fill="#38bdf8">IBR</text>
+      </graphics>
+    </Definition>
+
+    <!-- Metal-Oxide Varistor (MOV) Surge Arrester Definition -->
+    <Definition classid="UserCmpDefn" name="MOV_Arrester_Defn" build="" crc="2097152" view="false" instances="0" date="0" id="1002" w="200" h="200">
+      <paramlist name="Parameters">
+        <param name="Vref" value="240.0" description="Reference voltage (kV)" />
+        <param name="energy_rating" value="5.0" description="Energy absorption capability (MJ)" />
+      </paramlist>
+      <ports>
+        <port name="p1" kind="electrical" dim="3" pos="[0, -18]" description="HV Line terminal" />
+        <port name="gnd" kind="electrical" dim="3" pos="[0, 18]" description="Substation ground terminal" />
+      </ports>
+      <graphics>
+        <rect x="-15" y="-20" width="30" height="40" stroke="#f59e0b" fill="#1e1b4b" />
+        <text x="0" y="0" align="center" fill="#fbbf24">MOV</text>
+      </graphics>
+    </Definition>
+
+    <!-- Fast Dynamic Voltage Droop Controller Definition -->
+    <Definition classid="UserCmpDefn" name="CSMF_Droop_Defn" build="" crc="3145728" view="false" instances="0" date="0" id="1003" w="240" h="180">
+      <paramlist name="Parameters">
+        <param name="Vref" value="1.0" description="Voltage reference setpoint (pu)" />
+        <param name="DroopGain" value="2.5" description="Incremental reactive droop gain k1" />
+        <param name="Kp" value="1.2" description="PI proportional gain" />
+        <param name="Ti" value="0.02" description="PI integral time constant (s)" />
+        <param name="Imax" value="1.2" description="Maximum reactive current injection ceiling (pu)" />
+      </paramlist>
+      <ports>
+        <port name="v_meas" kind="signal" dim="1" pos="[-18, 0]" description="Voltage feedback input (pu)" />
+        <port name="iq_cmd" kind="signal" dim="1" pos="[18, 0]" description="Dynamic reactive current command (pu)" />
+      </ports>
+      <graphics>
+        <rect x="-25" y="-20" width="50" height="40" stroke="#10b981" fill="#064e3b" />
+        <text x="0" y="0" align="center" fill="#6ee7b7">Droop</text>
+      </graphics>
+    </Definition>
+  </definitions>
+  <schematic>
+    <Sticky id="sticky_header" x="50" y="40" w="600" h="60">
+      <![CDATA[
+        ModelScript PSCAD Custom Library: Microgrid & IBR Components
+        Includes custom 3-Phase Solar Inverter, MOV Arrester, and IEEE 2800 Fast Droop Controllers.
+      ]]>
+    </Sticky>
+  </schematic>
+</project>

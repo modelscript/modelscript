@@ -111,7 +111,8 @@ describe("PSCAD LSP Integration Suite", () => {
     assert.ok(Array.isArray(diagram.nodes), "Should have nodes array");
     assert.ok(Array.isArray(diagram.edges), "Should have edges array");
     assert.ok(diagram.nodes.length >= 3, "Should have bus and component nodes");
-    assert.ok(diagram.coordinateSystem);
+    // PSCAD diagrams are laid out in schematic pixel space; no coordinate-system transform is applied.
+    assert.equal(diagram.coordinateSystem ?? null, null);
 
     const pslxFixturePath = path.resolve(__dirname, "../../../languages/pscad/tests/fixtures/Component_Lib.pslx");
     const pslxUri = `file://${pslxFixturePath}`;
@@ -120,7 +121,7 @@ describe("PSCAD LSP Integration Suite", () => {
     assert.ok(pslxDiagram, "Should return diagram data for .pslx library");
     assert.ok(Array.isArray(pslxDiagram.nodes), "Should have nodes array for .pslx");
     assert.ok(pslxDiagram.nodes.length >= 3, "Should have component nodes in library");
-    assert.ok(pslxDiagram.coordinateSystem);
+    assert.equal(pslxDiagram.coordinateSystem ?? null, null);
   });
 
   it("returns library tree nodes with iconSvg and valid icons for .pslx library", async () => {

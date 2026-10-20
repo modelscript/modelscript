@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Microgrid" version="5.0.0" Target="Workspace">
+  <paramlist name="Settings">
+    <param name="version" value="5.0.0" />
+    <param name="description" value="PSCAD Microgrid &amp; IEEE 2800 Verification Workspace" />
+  </paramlist>
+  <projects>
+    <project path="Microgrid_IBR.pscx" type="Case" active="true" />
+    <library path="Microgrid_Lib.pslx" type="Library" />
+  </projects>
+</project>

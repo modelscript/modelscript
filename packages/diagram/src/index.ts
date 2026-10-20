@@ -1899,14 +1899,35 @@ function renderDiagramInternal(
         height: cs.height * 1.25,
       };
       g.zoomToRect(expandedRect, { viewportArea });
+      g.centerContent();
     } else {
       try {
-        g.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8, viewportArea });
+        g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2, viewportArea });
         g.centerContent();
       } catch {
         // ignore
       }
     }
+
+    // In webviews, container dimensions can be 0 or small during initial mount.
+    // Ensure the diagram is properly sized and centered once the layout completes.
+    setTimeout(() => {
+      try {
+        if (g && (typeof (g as any).isDisposed === "function" ? !(g as any).isDisposed() : true)) {
+          const cw = g.container?.clientWidth ?? 0;
+          const ch = g.container?.clientHeight ?? 0;
+          if (cw > 0 && ch > 0) {
+            g.resize(cw, ch);
+          }
+          if (!cs) {
+            g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2 });
+            g.centerContent();
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 60);
   } else if (prevZoom !== null && prevTrans !== null) {
     try {
       g.zoom(prevZoom, { absolute: true });

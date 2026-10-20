@@ -133,12 +133,35 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     const width = bus.length ?? 80;
     const height = 14;
     const vbase = bus.voltageBaseKv ?? 230;
+    const color = vbase >= 200 ? "#dc2626" : vbase >= 69 ? "#d97706" : "#0284c7";
+    const busInId = `${bus.id}_in`;
+    const busOutId = `${bus.id}_out`;
+    const busMidId = `${bus.id}_mid`;
     const busPortId = `${bus.id}_bus`;
-    const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
 
+    portAnchorMap.set(busInId, {
+      cell: bus.id,
+      port: busInId,
+      world: { x: bus.position.x, y: bus.position.y },
+    });
+    portAnchorMap.set(busOutId, {
+      cell: bus.id,
+      port: busOutId,
+      world: { x: bus.position.x + width, y: bus.position.y },
+    });
+    portAnchorMap.set(busMidId, {
+      cell: bus.id,
+      port: busMidId,
+      world: { x: bus.position.x + Math.round(width / 2), y: bus.position.y },
+    });
+    portAnchorMap.set(busPortId, {
+      cell: bus.id,
+      port: busInId,
+      world: { x: bus.position.x, y: bus.position.y },
+    });
     portAnchorMap.set(bus.id, {
       cell: bus.id,
-      port: busPortId,
+      port: busInId,
       world: { x: bus.position.x, y: bus.position.y },
     });
 
@@ -153,25 +176,52 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       id: bus.id,
       shape: "rect",
       x: bus.position.x,
-      y: bus.position.y,
+      y: bus.position.y - height / 2,
       width,
       height,
       markup: busbarGlyph({ length: width, voltageBaseKv: vbase, label: bus.name }),
       attrs: {
         busbar: { fill: color, width },
-        busLabel: { text: `${bus.name} (${vbase} kV)`, fill: color },
-        label: { text: `${bus.name} (${vbase} kV)` },
+        busLabel: {
+          text: `${bus.name} (${vbase} kV)`,
+          fill: color,
+          fontSize: 10,
+          fontWeight: "bold",
+          fontFamily: "monospace",
+          textAnchor: "middle",
+          textVerticalAnchor: "bottom",
+          refX: width / 2,
+          refY: -6,
+        },
+        label: { text: "", fill: "none", fontSize: 0 },
       },
       ports: {
         groups: {
-          bus: {
-            position: { name: "absolute", args: { x: 0, y: 3 } },
+          busIn: {
+            position: { name: "absolute", args: { x: 0, y: height / 2 } },
+            attrs: {
+              circle: { r: 3.5, fill: color, stroke: "#0f172a", strokeWidth: 1, magnet: true },
+            },
+          },
+          busOut: {
+            position: { name: "absolute", args: { x: width, y: height / 2 } },
+            attrs: {
+              circle: { r: 3.5, fill: color, stroke: "#0f172a", strokeWidth: 1, magnet: true },
+            },
+          },
+          busMid: {
+            position: { name: "absolute", args: { x: Math.round(width / 2), y: height / 2 } },
             attrs: {
               circle: { r: 3.5, fill: color, stroke: "#0f172a", strokeWidth: 1, magnet: true },
             },
           },
         },
-        items: [{ id: busPortId, group: "bus" }],
+        items: [
+          { id: busInId, group: "busIn" },
+          { id: busOutId, group: "busOut" },
+          { id: busMidId, group: "busMid" },
+          { id: busPortId, group: "busIn" },
+        ],
       },
       properties: busProps,
       data: {
@@ -205,10 +255,16 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     // Build concise instance + rating label for apparatus glyphs
     const mvaRating = cmp.parameters["MVA"] ?? cmp.parameters["mva"] ?? cmp.parameters["rated_mva"];
     const vRating = cmp.parameters["V"] ?? cmp.parameters["Vref"] ?? cmp.parameters["v"];
+    const cleanLower = cleanName.toLowerCase();
+    const hasMva = mvaRating !== undefined && cleanLower.includes("mva");
+    const hasKv = vRating !== undefined && cleanLower.includes("kv");
     const displayLabel =
-      mvaRating !== undefined
+      mvaRating !== undefined && !hasMva
         ? `${cleanName} (${mvaRating} MVA)`
-        : vRating !== undefined && (defn.includes("source") || defn.includes("arrester") || defn.includes("mov"))
+        : vRating !== undefined &&
+            !hasKv &&
+            !hasMva &&
+            (defn.includes("source") || defn.includes("arrester") || defn.includes("mov"))
           ? `${cleanName} (${vRating} kV)`
           : cleanName;
 
@@ -316,28 +372,28 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       left: {
         position: "left",
         attrs: {
-          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
         },
-        label: { position: { name: "left", args: { x: -6 } } },
+        label: { position: { name: "left", args: { x: -2, y: -9 } } },
       },
       right: {
         position: "right",
         attrs: {
-          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
         },
-        label: { position: { name: "right", args: { x: 6 } } },
+        label: { position: { name: "right", args: { x: 2, y: -9 } } },
       },
       top: {
         position: "top",
         attrs: {
-          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
         },
         label: { position: { name: "top", args: { y: -6 } } },
       },
       bottom: {
         position: "bottom",
         attrs: {
-          circle: { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
         },
         label: { position: { name: "bottom", args: { y: 6 } } },
       },
@@ -385,11 +441,11 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
           group,
           attrs: {
             circle: isSignalPort
-              ? { r: 3.5, fill: "#c084fc", stroke: "#1e1b4b", strokeWidth: 1.5, magnet: true }
-              : { r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+              ? { r: 3.5, fill: "#7c3aed", stroke: "#1e1b4b", strokeWidth: 1.5, magnet: true }
+              : { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
             text: {
               text: p.name,
-              fill: isSignalPort ? "#d8b4fe" : "#94a3b8",
+              fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
               fontSize: 9,
             },
           },
@@ -414,6 +470,20 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     const topLeftX = Math.round(cmp.position.x - width / 2);
     const topLeftY = Math.round(cmp.position.y - height / 2);
 
+    const isProbeOrPin =
+      defn.includes("pgb") ||
+      defn.includes("probe") ||
+      defn.includes("oscilloscope") ||
+      defn.includes("multimeter") ||
+      defn.includes("voltmeter") ||
+      defn.includes("ammeter") ||
+      defn.includes("datalabel") ||
+      defn.includes("data_label") ||
+      defn.includes("xnode") ||
+      defn.includes("pin");
+
+    const labelColor = "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))";
+
     cells.push({
       id: cmp.id,
       shape: "rect",
@@ -430,9 +500,29 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       ],
       attrs: markup
         ? {
-            label: {
-              text: displayLabel,
-            },
+            label: isProbeOrPin
+              ? {
+                  text: displayLabel,
+                  fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
+                  fontSize: 8.5,
+                  fontWeight: "bold",
+                  fontFamily: "monospace",
+                  textAnchor: "middle",
+                  textVerticalAnchor: "middle",
+                  refX: 0.5,
+                  refY: 0.5,
+                }
+              : {
+                  text: displayLabel,
+                  fill: labelColor,
+                  fontSize: 9.5,
+                  fontWeight: "bold",
+                  fontFamily: "sans-serif",
+                  textAnchor: "middle",
+                  textVerticalAnchor: "top",
+                  refX: 0.5,
+                  refY: height + 6,
+                },
           }
         : {
             body: {
@@ -504,8 +594,25 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
   }
 
   const findNearestPortAnchor = (pt: { x: number; y: number }, preferredId?: string) => {
-    if (preferredId && portAnchorMap.has(preferredId)) {
-      return portAnchorMap.get(preferredId)!;
+    if (preferredId) {
+      // If preferredId is a bus ID (or any cell ID with multiple ports), find the closest port on this cell
+      let bestCellAnchor: { cell: string; port: string; world: { x: number; y: number } } | undefined;
+      let bestCellDist = Infinity;
+      for (const anchor of portAnchorMap.values()) {
+        if (anchor.cell === preferredId) {
+          const d = Math.hypot(pt.x - anchor.world.x, pt.y - anchor.world.y);
+          if (d < bestCellDist) {
+            bestCellDist = d;
+            bestCellAnchor = anchor;
+          }
+        }
+      }
+      if (bestCellAnchor && bestCellDist <= 25.0) {
+        return bestCellAnchor;
+      }
+      if (portAnchorMap.has(preferredId)) {
+        return portAnchorMap.get(preferredId)!;
+      }
     }
     let best: { cell: string; port: string; world: { x: number; y: number } } | undefined;
     let bestDist = 15.0;
@@ -536,7 +643,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         vertices: wire.vertices.slice(1, -1),
         attrs: {
           line: {
-            stroke: isSignalWire ? "#c084fc" : "#38bdf8",
+            stroke: isSignalWire ? "#7c3aed" : "#0284c7",
             strokeWidth: isSignalWire ? 1.5 : 2.5,
             strokeDasharray: isSignalWire ? "4,2" : undefined,
             targetMarker: isSignalWire ? { name: "block", width: 6, height: 5 } : null,
@@ -572,7 +679,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
             cx: 4,
             cy: 4,
             r: 4,
-            fill: "#38bdf8",
+            fill: "#0284c7",
             stroke: "#0f172a",
             strokeWidth: 1.5,
           },
@@ -693,7 +800,7 @@ export function renderPscadSvg(project: PscadProjectLike): string {
         }
       }
       pathData += ` L ${tgtPt.x} ${tgtPt.y}`;
-      elementsSvg += `  <path d="${pathData}" fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" />\n`;
+      elementsSvg += `  <path d="${pathData}" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />\n`;
     }
   }
 
@@ -706,10 +813,10 @@ export function renderPscadSvg(project: PscadProjectLike): string {
       if (c.data?.["kind"] === "junction") {
         const jx = c.data["position"]?.x ?? c.x + 4;
         const jy = c.data["position"]?.y ?? c.y + 4;
-        elementsSvg += `  <circle cx="${jx}" cy="${jy}" r="4" fill="#38bdf8" stroke="#0f172a" stroke-width="1.5" />\n`;
+        elementsSvg += `  <circle cx="${jx}" cy="${jy}" r="4" fill="#0284c7" stroke="#0f172a" stroke-width="1.5" />\n`;
       } else if (c.data?.["kind"] === "bus") {
         const vbase = c.data["vbase"] ?? 230;
-        const color = vbase >= 200 ? "#ff5252" : vbase >= 69 ? "#ffab40" : "#40c4ff";
+        const color = vbase >= 200 ? "#dc2626" : vbase >= 69 ? "#d97706" : "#0284c7";
         elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
         elementsSvg += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
         elementsSvg += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(String(c.data["name"] ?? c.id))} (${vbase} kV)</text>\n`;
@@ -725,6 +832,53 @@ export function renderPscadSvg(project: PscadProjectLike): string {
         for (const line of lines.slice(0, 12)) {
           elementsSvg += `    <text x="12" y="${textY}" fill="#1e293b" font-size="11" font-family="sans-serif">${escapeHtml(line)}</text>\n`;
           textY += 15;
+        }
+        elementsSvg += `  </g>\n`;
+      } else if (c.markup && Array.isArray(c.markup) && c.markup.length > 0) {
+        elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
+        for (const m of c.markup) {
+          const merged = { ...(m.attrs || {}), ...(c.attrs?.[m.selector] || {}) };
+          if (merged.fill === "none" && (merged.fontSize === 0 || merged["font-size"] === 0)) continue;
+          if (m.tagName === "rect") {
+            const rx = merged.rx ? ` rx="${merged.rx}"` : "";
+            const ry = merged.ry ? ` ry="${merged.ry}"` : "";
+            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : "";
+            const sw = merged.strokeWidth ?? merged["stroke-width"];
+            const swStr = sw ? ` stroke-width="${sw}"` : "";
+            elementsSvg += `    <rect x="${merged.x ?? 0}" y="${merged.y ?? 0}" width="${merged.width ?? w}" height="${merged.height ?? h}" fill="${merged.fill ?? "none"}"${stroke}${swStr}${rx}${ry} />\n`;
+          } else if (m.tagName === "circle") {
+            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : "";
+            const sw = merged.strokeWidth ?? merged["stroke-width"];
+            const swStr = sw ? ` stroke-width="${sw}"` : "";
+            elementsSvg += `    <circle cx="${merged.cx ?? w / 2}" cy="${merged.cy ?? h / 2}" r="${merged.r ?? 10}" fill="${merged.fill ?? "none"}"${stroke}${swStr} />\n`;
+          } else if (m.tagName === "line") {
+            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : ' stroke="#0284c7"';
+            const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
+            const sda = merged.strokeDasharray ?? merged["stroke-dasharray"];
+            const sdaStr = sda ? ` stroke-dasharray="${sda}"` : "";
+            elementsSvg += `    <line x1="${merged.x1}" y1="${merged.y1}" x2="${merged.x2}" y2="${merged.y2}"${stroke} stroke-width="${sw}"${sdaStr} />\n`;
+          } else if (m.tagName === "path") {
+            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : ' stroke="#0284c7"';
+            const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
+            elementsSvg += `    <path d="${merged.d}" fill="${merged.fill ?? "none"}"${stroke} stroke-width="${sw}" />\n`;
+          } else if (m.tagName === "polygon") {
+            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : "";
+            const sw = merged.strokeWidth ?? merged["stroke-width"];
+            const swStr = sw ? ` stroke-width="${sw}"` : "";
+            elementsSvg += `    <polygon points="${merged.points}" fill="${merged.fill ?? "none"}"${stroke}${swStr} />\n`;
+          } else if (m.tagName === "text") {
+            const textVal = escapeHtml(String(merged.text ?? ""));
+            if (!textVal) continue;
+            const tx =
+              merged.refX !== undefined ? (merged.refX <= 1 ? merged.refX * w : merged.refX) : (merged.x ?? w / 2);
+            const ty =
+              merged.refY !== undefined ? (merged.refY <= 1 ? merged.refY * h : merged.refY) : (merged.y ?? h + 10);
+            const fill = merged.fill ?? "#f8fafc";
+            const fs = merged.fontSize ?? merged["font-size"] ?? 9;
+            const fw = merged.fontWeight ?? merged["font-weight"] ?? "bold";
+            const ta = merged.textAnchor ?? merged["text-anchor"] ?? "middle";
+            elementsSvg += `    <text x="${tx}" y="${ty}" fill="${fill}" font-size="${fs}" font-weight="${fw}" font-family="sans-serif" text-anchor="${ta}">${textVal}</text>\n`;
+          }
         }
         elementsSvg += `  </g>\n`;
       } else {

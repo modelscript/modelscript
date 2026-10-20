@@ -892,11 +892,11 @@ async function main() {
 
   const sigEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.wireKind === "signal");
   const pwrEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.wireKind === "electrical");
-  if (!sigEdge || sigEdge.attrs?.line?.stroke !== "#c084fc" || !sigEdge.attrs?.line?.strokeDasharray) {
-    throw new Error("Expected CSMF signal wire to render with #c084fc dashed stroke and directional arrowhead");
+  if (!sigEdge || sigEdge.attrs?.line?.stroke !== "#7c3aed" || !sigEdge.attrs?.line?.strokeDasharray) {
+    throw new Error("Expected CSMF signal wire to render with #7c3aed dashed stroke and directional arrowhead");
   }
-  if (!pwrEdge || pwrEdge.attrs?.line?.stroke !== "#38bdf8") {
-    throw new Error("Expected 3-phase power wire to render with #38bdf8 solid stroke");
+  if (!pwrEdge || pwrEdge.attrs?.line?.stroke !== "#0284c7") {
+    throw new Error("Expected 3-phase power wire to render with #0284c7 solid stroke");
   }
 
   // Test .pscx LSP Completions, Hover, Definition, Document Symbols, and Quick Fixes

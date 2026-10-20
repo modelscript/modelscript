@@ -130,33 +130,10 @@ export class DiagramService {
           const rawDiagram = buildPscadDiagram(project);
           const nodes = rawDiagram.cells.filter((c) => c.shape !== "edge");
           const edges = rawDiagram.cells.filter((c) => c.shape === "edge");
-          let minX = Infinity;
-          let minY = Infinity;
-          let maxX = -Infinity;
-          let maxY = -Infinity;
-          for (const n of nodes) {
-            const nx = n.x ?? 0;
-            const ny = n.y ?? 0;
-            const nw = n.width ?? 100;
-            const nh = n.height ?? 60;
-            if (nx < minX) minX = nx;
-            if (ny < minY) minY = ny;
-            if (nx + nw > maxX) maxX = nx + nw;
-            if (ny + nh > maxY) maxY = ny + nh;
-          }
-          const cs =
-            isFinite(minX) && isFinite(minY)
-              ? {
-                  x: Math.max(0, minX - 40),
-                  y: Math.max(0, minY - 40),
-                  width: Math.max(800, maxX - minX + 80),
-                  height: Math.max(600, maxY - minY + 80),
-                }
-              : { x: 0, y: 0, width: 1200, height: 800 };
           const pscadResult = {
             nodes,
             edges,
-            coordinateSystem: cs,
+            coordinateSystem: null,
             cells: rawDiagram.cells,
             metadata: rawDiagram.metadata,
           };

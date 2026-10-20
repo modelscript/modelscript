@@ -1713,7 +1713,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         return {
           nodes,
           edges,
-          coordinateSystem: { x: 0, y: 0, width: 1200, height: 800 },
+          coordinateSystem: null,
           diagramBackground: null,
           cells: rawDiagram.cells,
           metadata: rawDiagram.metadata,
@@ -1741,7 +1741,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
           try {
             const text = await readPscxSource(params.uri);
             if (!text) return null;
-            const { parsePscx, getMasterComponentSchema } = await import("@modelscript/pscad");
+            const { parsePscx, getMasterComponentSchema, getUserDefinitionForm } = await import("@modelscript/pscad");
             const project = parsePscx(text);
             const mod =
               params.className && project.subModules.has(params.className)
@@ -1847,6 +1847,69 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
                     groups,
                   });
                 }
+              } else if (getUserDefinitionForm(text, cmp.definitionName)) {
+                const form = getUserDefinitionForm(text, cmp.definitionName)!;
+                const seenKeys = new Set<string>();
+                for (const cat of form.categories) {
+                  if (!cat.visible) continue;
+                  const fields: PropertyFieldConfig[] = [];
+                  for (const p of cat.parameters) {
+                    seenKeys.add(p.name);
+                    const current = cmp.parameters[p.name];
+                    const value = current !== undefined ? String(current) : p.defaultValue;
+                    const numeric =
+                      (p.type === "Real" || p.type === "Integer") && value.trim() !== "" && !isNaN(Number(value));
+                    parameters.push({
+                      name: p.name,
+                      localizedName: p.label,
+                      value,
+                      defaultValue: p.defaultValue,
+                      description: p.help || p.label,
+                      unit: p.unit || undefined,
+                      tab: cat.name,
+                      group: cat.name,
+                    });
+                    fields.push({
+                      key: p.name,
+                      label: p.label,
+                      kind: numeric ? "number" : "string",
+                      description: p.help || undefined,
+                      defaultValue: numeric ? Number(p.defaultValue) : p.defaultValue,
+                      unit: p.unit || undefined,
+                      validation: p.min !== undefined || p.max !== undefined ? { min: p.min, max: p.max } : undefined,
+                    });
+                  }
+                  if (fields.length > 0) {
+                    tabs.push({
+                      id: cat.name.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+                      label: cat.name,
+                      groups: [{ id: "parameters", label: cat.name, fields }],
+                    });
+                  }
+                }
+                // Instance parameters the definition's form does not declare (e.g. Name, hidden defaults).
+                const extra = Object.entries(cmp.parameters).filter(([k]) => !seenKeys.has(k));
+                if (extra.length > 0) {
+                  tabs.push({
+                    id: "instance",
+                    label: "Instance",
+                    groups: [
+                      {
+                        id: "instance_parameters",
+                        label: "Instance Parameters",
+                        fields: extra.map(([k, v]) => {
+                          parameters.push({ name: k, value: String(v), description: `PSCAD parameter '${k}'` });
+                          return {
+                            key: k,
+                            label: k,
+                            kind: typeof v === "number" ? ("number" as const) : ("string" as const),
+                            defaultValue: v,
+                          };
+                        }),
+                      },
+                    ],
+                  });
+                }
               } else {
                 const fields: PropertyFieldConfig[] = Object.entries(cmp.parameters).map(([k, v]) => {
                   parameters.push({
@@ -1944,7 +2007,17 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
           try {
             const text = await readPscxSource(params.uri);
             if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
-            const { parsePscx, buildComponentXmlSnippet } = await import("@modelscript/pscad");
+            const { parsePscx, buildComponentXmlSnippet, planDiagramActions } = await import("@modelscript/pscad");
+            // Preferred path: structural edits on the lossless XML tree. If an action references something
+            // the model cannot resolve, fall back to the legacy line-based logic below.
+            try {
+              const planned = planDiagramActions(text, params.actions as never);
+              if (planned.unresolved.length === 0) {
+                return { seq: params.seq, edits: planned.edits as TextEdit[], renderHint: planned.renderHint };
+              }
+            } catch {
+              // fall through to legacy path
+            }
             const project = parsePscx(text);
             const lines = text.split("\n");
             const allEdits: TextEdit[] = [];

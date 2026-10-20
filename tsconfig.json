@@ -45,6 +45,8 @@
       "@modelscript/scad": ["./languages/scad/src/index.ts"],
       "@modelscript/scad/parser": ["./languages/scad/src-gen/bindings.js"],
       "@modelscript/scad/*": ["./languages/scad/src/*"],
+      "@modelscript/xml-cst": ["./packages/xml-cst/src/index.ts"],
+      "@modelscript/xml-cst/parser": ["./packages/xml-cst/src-gen/bindings.js"],
       "@modelscript/csv": ["./languages/csv/language.ts"],
       "@modelscript/csv/language": ["./languages/csv/language.ts"],
       "@modelscript/csv/parser": ["./languages/csv/src-gen/bindings.js"],

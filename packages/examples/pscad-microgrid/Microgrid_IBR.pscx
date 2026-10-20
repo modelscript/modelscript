@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Microgrid_IBR" version="5.0.0" type="normal">
+  <param name="time_step" value="20.0"/>
+  <param name="time_duration" value="0.25"/>
+  <param name="start_type" value="0"/>
+  <param name="f_base" value="60.0"/>
+  <hierarchy>
+    <call name="Main" link="10001" />
+  </hierarchy>
+  <definitions>
+    <definition name="Main" type="module">
+      <schematic>
+        <!-- Substation 1: 16.5 kV Utility Generator -->
+        <User classid="UserCmp" defn="source_3p" id="G1" x="100" y="160" orient="0">
+          <param name="Name" value="Utility_Grid_250MVA"/>
+          <param name="V" value="16.5"/>
+          <param name="MVA" value="250.0"/>
+          <param name="freq" value="60.0"/>
+          <port name="out" pos="[30, 0]"/>
+        </User>
+
+        <!-- Bus 1 (16.5 kV Generator Substation Bus) -->
+        <Bus name="Bus1" id="B1" x="220" y="160" length="80" vbase="16.5"/>
+
+        <!-- Step-Up Transformer T1: 16.5 kV to 230 kV -->
+        <User classid="UserCmp" defn="xfmr-3p" id="T1" x="420" y="160" orient="0">
+          <param name="Name" value="Substation_Xfmr_250MVA"/>
+          <param name="MVA" value="250.0"/>
+          <param name="V1" value="16.5"/>
+          <param name="V2" value="230.0"/>
+          <param name="X" value="0.0576"/>
+          <port name="P" pos="[-30, 0]"/>
+          <port name="S" pos="[30, 0]"/>
+        </User>
+
+        <!-- Bus 2 (230 kV Transmission Substation Bus) -->
+        <Bus name="Bus2" id="B2" x="540" y="160" length="80" vbase="230.0"/>
+
+        <!-- Breaker CB1: 230 kV Substation Outgoing Line Breaker -->
+        <User classid="UserCmp" defn="breaker" id="CB1" x="720" y="160" orient="0">
+          <param name="Name" value="Line_Breaker_CB1"/>
+          <param name="status" value="closed"/>
+          <port name="N1" pos="[-20, 0]"/>
+          <port name="N2" pos="[20, 0]"/>
+        </User>
+
+        <!-- 3-Phase Bergeron Transmission Line L1: 50 km, 230 kV -->
+        <User classid="UserCmp" defn="tline_3p" id="L1" x="860" y="160" orient="0">
+          <param name="Name" value="Transmission_Line_50km"/>
+          <param name="Length" value="50.0"/>
+          <param name="R" value="0.035"/>
+          <param name="L" value="0.0012"/>
+          <param name="C" value="1.2e-8"/>
+          <param name="model" value="bergeron"/>
+          <port name="in" pos="[-40, 0]"/>
+          <port name="out" pos="[40, 0]"/>
+        </User>
+
+        <!-- Bus 3 (230 kV Point of Interconnection - POI Bus) -->
+        <Bus name="Bus3" id="B3" x="980" y="160" length="80" vbase="230.0"/>
+
+        <!-- Solar PV / BESS Inverter-Based Resource (IBR) FMU at Bus 3 -->
+        <User classid="UserCmp" defn="inverter_fmu" id="INV1" x="1170" y="160" orient="0">
+          <param name="Name" value="Solar_BESS_IBR_100MVA"/>
+          <param name="fmu_path" value="resources/SolarInverter.fmu"/>
+          <param name="MVA" value="100.0"/>
+          <param name="V" value="230.0"/>
+          <param name="control_mode" value="grid_following"/>
+          <port name="term" pos="[-30, 0]"/>
+        </User>
+
+        <!-- CSMF Fast Dynamic Voltage Droop Control Loop -->
+        <User classid="UserCmp" name="master:const" id="V_Ref" x="360" y="320" orient="0">
+          <param name="Name" value="V_Ref"/>
+          <param name="value" value="1.0"/>
+          <port name="out" kind="signal" dim="1" pos="[20, 0]"/>
+        </User>
+        <User classid="UserCmp" name="master:gain" id="Droop_Gain" x="520" y="320" orient="0">
+          <param name="Name" value="Droop_Gain"/>
+          <param name="K" value="2.5"/>
+          <param name="inputs" value="V_Ref"/>
+          <port name="in" kind="signal" dim="1" pos="[-20, 0]"/>
+          <port name="out" kind="signal" dim="1" pos="[20, 0]"/>
+        </User>
+        <User classid="UserCmp" name="master:pi_ctlr" id="Q_Controller" x="680" y="320" orient="0">
+          <param name="Name" value="Q_Controller"/>
+          <param name="Kp" value="1.2"/>
+          <param name="Ti" value="0.02"/>
+          <param name="inputs" value="Droop_Gain"/>
+          <port name="in" kind="signal" dim="1" pos="[-20, 0]"/>
+          <port name="out" kind="signal" dim="1" pos="[20, 0]"/>
+        </User>
+        <User classid="UserCmp" name="master:limit" id="Current_Limiter" x="840" y="320" orient="0">
+          <param name="Name" value="Current_Limiter"/>
+          <param name="max" value="1.2"/>
+          <param name="min" value="-1.2"/>
+          <param name="inputs" value="Q_Controller"/>
+          <port name="in" kind="signal" dim="1" pos="[-20, 0]"/>
+          <port name="out" kind="signal" dim="1" pos="[20, 0]"/>
+        </User>
+
+        <!-- Electrical & Control Interconnecting Wires -->
+        <!-- G1 to Bus1 -->
+        <Wire>
+          <vertex x="130" y="160"/>
+          <vertex x="220" y="160"/>
+        </Wire>
+        <!-- Bus1 to T1 -->
+        <Wire>
+          <vertex x="300" y="160"/>
+          <vertex x="390" y="160"/>
+        </Wire>
+        <!-- T1 to Bus2 -->
+        <Wire>
+          <vertex x="450" y="160"/>
+          <vertex x="540" y="160"/>
+        </Wire>
+        <!-- Bus2 to CB1 -->
+        <Wire>
+          <vertex x="620" y="160"/>
+          <vertex x="700" y="160"/>
+        </Wire>
+        <!-- CB1 to L1 -->
+        <Wire>
+          <vertex x="740" y="160"/>
+          <vertex x="820" y="160"/>
+        </Wire>
+        <!-- L1 to Bus3 -->
+        <Wire>
+          <vertex x="900" y="160"/>
+          <vertex x="980" y="160"/>
+        </Wire>
+        <!-- Bus3 to INV1 -->
+        <Wire>
+          <vertex x="1060" y="160"/>
+          <vertex x="1140" y="160"/>
+        </Wire>
+        <!-- CSMF Signal Wires -->
+        <Wire>
+          <vertex x="380" y="320"/>
+          <vertex x="500" y="320"/>
+        </Wire>
+        <Wire>
+          <vertex x="540" y="320"/>
+          <vertex x="660" y="320"/>
+        </Wire>
+        <Wire>
+          <vertex x="700" y="320"/>
+          <vertex x="820" y="320"/>
+        </Wire>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 80 1230 311" width="1230" height="311" style="background-color: #0f172a;">
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#334155" />
+    </pattern>
+  </defs>
+  <rect x="20" y="80" width="1230" height="311" fill="url(#grid)" />
+  <path d="M 130 160 L 220 160" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 300 160 L 390 160" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 450 160 L 540 160" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 620 160 L 700 160" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 740 160 L 820 160" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 900 160 L 980 160" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 1060 160 L 1140 160" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 380 320 L 500 320" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 540 320 L 660 320" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <path d="M 700 320 L 820 320" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />
+  <g transform="translate(220, 160)">
+    <rect width="80" height="14" rx="2" fill="#0284c7" />
+    <text x="40" y="-4" fill="#0284c7" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">Bus1 (16.5 kV)</text>
+  </g>
+  <g transform="translate(540, 160)">
+    <rect width="80" height="14" rx="2" fill="#dc2626" />
+    <text x="40" y="-4" fill="#dc2626" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">Bus2 (230 kV)</text>
+  </g>
+  <g transform="translate(980, 160)">
+    <rect width="80" height="14" rx="2" fill="#dc2626" />
+    <text x="40" y="-4" fill="#dc2626" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">Bus3 (230 kV)</text>
+  </g>
+  <g transform="translate(70, 130)">
+    <circle cx="30" cy="30" r="24" fill="rgba(217, 119, 6, 0.08)" stroke="#d97706" stroke-width="2" />
+    <path d="M 18,30 Q 24,20 30,30 Q 36,40 42,30" fill="none" stroke="#d97706" stroke-width="2" />
+    <text x="30" y="66" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Utility_Grid_250MVA</text>
+  </g>
+  <g transform="translate(384, 130)">
+    <circle cx="24" cy="30" r="16" fill="none" stroke="#0284c7" stroke-width="2" />
+    <circle cx="44" cy="30" r="16" fill="none" stroke="#0284c7" stroke-width="2" />
+    <line x1="8" y1="30" x2="0" y2="30" stroke="#0284c7" stroke-width="2" />
+    <line x1="60" y1="30" x2="68" y2="30" stroke="#0284c7" stroke-width="2" />
+    <text x="36" y="66" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Substation_Xfmr_250MVA</text>
+  </g>
+  <g transform="translate(696, 138)">
+    <rect x="6" y="10" width="36" height="24" fill="rgba(220, 38, 38, 0.14)" stroke="#dc2626" stroke-width="2" rx="3" ry="3" />
+    <line x1="0" y1="22" x2="6" y2="22" stroke="#0284c7" stroke-width="2" />
+    <line x1="42" y1="22" x2="48" y2="22" stroke="#0284c7" stroke-width="2" />
+    <line x1="16" y1="15" x2="32" y2="29" stroke="#dc2626" stroke-width="1.8" />
+    <line x1="16" y1="29" x2="32" y2="15" stroke="#dc2626" stroke-width="1.8" />
+    <text x="24" y="50" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Line_Breaker_CB1</text>
+  </g>
+  <g transform="translate(820, 136)">
+    <rect x="4" y="12" width="72" height="24" fill="rgba(2, 132, 199, 0.08)" stroke="#0284c7" stroke-width="1.8" rx="12" ry="12" />
+    <line x1="0" y1="24" x2="80" y2="24" stroke="#0284c7" stroke-width="2" />
+    <text x="40" y="54" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Transmission_Line_50km</text>
+  </g>
+  <g transform="translate(1140, 130)">
+    <rect x="4" y="4" width="52" height="52" fill="rgba(5, 150, 105, 0.08)" stroke="#059669" stroke-width="2" rx="4" ry="4" />
+    <line x1="4" y1="56" x2="56" y2="4" stroke="#059669" stroke-width="1.5" />
+    <line x1="14" y1="18" x2="26" y2="18" stroke="#059669" stroke-width="1.5" />
+    <line x1="14" y1="22" x2="26" y2="22" stroke="#059669" stroke-width="1.5" stroke-dasharray="2,2" />
+    <path d="M 32,42 Q 38,36 42,42 Q 46,48 50,42" fill="none" stroke="#059669" stroke-width="1.5" />
+    <text x="30" y="66" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Solar_BESS_IBR_100MVA</text>
+  </g>
+  <g transform="translate(328, 299)">
+    <rect x="2" y="2" width="60" height="38" fill="rgba(124, 58, 237, 0.08)" stroke="#7c3aed" stroke-width="1.8" rx="4" ry="4" />
+    <path d="M 12,30 Q 24,14 50,12" fill="none" stroke="#7c3aed" stroke-width="1.5" />
+    <text x="32" y="9" fill="#6d28d9" font-size="8" font-weight="bold" font-family="sans-serif" text-anchor="middle">CONST</text>
+    <text x="32" y="48" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">V_Ref</text>
+  </g>
+  <g transform="translate(494, 300)">
+    <polygon points="4,4 48,20 4,36" fill="rgba(124, 58, 237, 0.08)" stroke="#7c3aed" stroke-width="1.8" />
+    <text x="18" y="20" fill="#6d28d9" font-size="11" font-weight="bold" font-family="sans-serif" text-anchor="middle">K</text>
+    <text x="26" y="46" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Droop_Gain</text>
+  </g>
+  <g transform="translate(648, 299)">
+    <rect x="2" y="2" width="60" height="38" fill="rgba(124, 58, 237, 0.08)" stroke="#7c3aed" stroke-width="1.8" rx="4" ry="4" />
+    <path d="M 12,30 Q 24,14 50,12" fill="none" stroke="#7c3aed" stroke-width="1.5" />
+    <text x="32" y="9" fill="#6d28d9" font-size="8" font-weight="bold" font-family="sans-serif" text-anchor="middle">PI</text>
+    <text x="32" y="48" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Q_Controller</text>
+  </g>
+  <g transform="translate(808, 299)">
+    <rect x="2" y="2" width="60" height="38" fill="rgba(124, 58, 237, 0.08)" stroke="#7c3aed" stroke-width="1.8" rx="4" ry="4" />
+    <path d="M 12,30 L 22,30 L 40,12 L 50,12" fill="none" stroke="#7c3aed" stroke-width="1.5" />
+    <text x="32" y="9" fill="#6d28d9" font-size="8" font-weight="bold" font-family="sans-serif" text-anchor="middle">LIMIT</text>
+    <text x="32" y="48" fill="var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))" font-size="9.5" font-weight="bold" font-family="sans-serif" text-anchor="middle">Current_Limiter</text>
+  </g>
+
+</svg>

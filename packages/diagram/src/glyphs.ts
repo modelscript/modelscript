@@ -576,7 +576,7 @@ export function numericReadoutBadgeGlyph(options?: {
  * IEEE Standard 2-Winding Transformer Glyph (Overlapping Circles).
  */
 export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
-  const stroke = options?.stroke ?? "#90caf9";
+  const stroke = options?.stroke ?? "#0284c7";
   const strokeWidth = options?.strokeWidth ?? 2;
   const fill = options?.fill ?? "none";
 
@@ -638,7 +638,7 @@ export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: "#e2e8f0",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 9,
         fontWeight: "bold",
         refX: 34,
@@ -653,9 +653,9 @@ export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
  * Synchronous Generator / AC Source Glyph (Circle with Sine Wave).
  */
 export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
-  const stroke = options?.stroke ?? "#ffd54f";
+  const stroke = options?.stroke ?? "#d97706";
   const strokeWidth = options?.strokeWidth ?? 2;
-  const fill = options?.fill ?? "rgba(255, 213, 79, 0.08)";
+  const fill = options?.fill ?? "rgba(217, 119, 6, 0.08)";
 
   return [
     // Outer Circle
@@ -687,7 +687,7 @@ export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: "#fef08a",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 9,
         fontWeight: "bold",
         refX: 30,
@@ -702,9 +702,9 @@ export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
  * Inverter-Based Resource (IBR) Glyph (Split AC/DC Box).
  */
 export function inverterIbrGlyph(options?: GlyphOptions): X6Markup[] {
-  const stroke = options?.stroke ?? "#69f0ae";
+  const stroke = options?.stroke ?? "#059669";
   const strokeWidth = options?.strokeWidth ?? 2;
-  const fill = options?.fill ?? "rgba(105, 240, 174, 0.08)";
+  const fill = options?.fill ?? "rgba(5, 150, 105, 0.08)";
 
   return [
     // Outer Box
@@ -763,7 +763,7 @@ export function inverterIbrGlyph(options?: GlyphOptions): X6Markup[] {
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: "#a7f3d0",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 9,
         fontWeight: "bold",
         refX: 30,
@@ -832,8 +832,8 @@ export function busbarGlyph(options?: {
  */
 export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undefined }): X6Markup[] {
   const isOpen = options?.isOpen ?? false;
-  const stroke = options?.stroke ?? (isOpen ? "#fbbf24" : "#f87171");
-  const fill = options?.fill ?? (isOpen ? "rgba(251, 191, 36, 0.1)" : "rgba(248, 113, 113, 0.14)");
+  const stroke = options?.stroke ?? (isOpen ? "#d97706" : "#dc2626");
+  const fill = options?.fill ?? (isOpen ? "rgba(217, 119, 6, 0.1)" : "rgba(220, 38, 38, 0.14)");
 
   return [
     {
@@ -844,12 +844,12 @@ export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undef
     {
       tagName: "line",
       selector: "brkLeadL",
-      attrs: { x1: 0, y1: 22, x2: 6, y2: 22, stroke: "#81d4fa", strokeWidth: 2 },
+      attrs: { x1: 0, y1: 22, x2: 6, y2: 22, stroke: "#0284c7", strokeWidth: 2 },
     },
     {
       tagName: "line",
       selector: "brkLeadR",
-      attrs: { x1: 42, y1: 22, x2: 48, y2: 22, stroke: "#81d4fa", strokeWidth: 2 },
+      attrs: { x1: 42, y1: 22, x2: 48, y2: 22, stroke: "#0284c7", strokeWidth: 2 },
     },
     {
       tagName: "line",
@@ -866,7 +866,7 @@ export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undef
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: stroke,
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
         refX: 24,
@@ -881,14 +881,14 @@ export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undef
  * IEEE/IEC ZnO Metal-Oxide Varistor (MOV) Surge Arrester Glyph.
  */
 export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
-  const stroke = options?.stroke ?? "#c084fc";
-  const fill = options?.fill ?? "rgba(192, 132, 252, 0.12)";
+  const stroke = options?.stroke ?? "#7c3aed";
+  const fill = options?.fill ?? "rgba(124, 58, 237, 0.12)";
 
   return [
     {
       tagName: "line",
       selector: "arrLeadTop",
-      attrs: { x1: 20, y1: 0, x2: 20, y2: 10, stroke: "#81d4fa", strokeWidth: 2 },
+      attrs: { x1: 20, y1: 0, x2: 20, y2: 10, stroke: "#0284c7", strokeWidth: 2 },
     },
     {
       tagName: "rect",
@@ -925,7 +925,7 @@ export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: "#d8b4fe",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
         refX: 20,
@@ -940,8 +940,8 @@ export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
  * Short-Circuit Fault Strike (Lightning Bolt) Glyph.
  */
 export function faultGlyph(options?: GlyphOptions): X6Markup[] {
-  const stroke = options?.stroke ?? "#ef4444";
-  const fill = options?.fill ?? "rgba(239, 68, 68, 0.2)";
+  const stroke = options?.stroke ?? "#dc2626";
+  const fill = options?.fill ?? "rgba(220, 38, 38, 0.2)";
 
   return [
     {
@@ -959,7 +959,7 @@ export function faultGlyph(options?: GlyphOptions): X6Markup[] {
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: "#fca5a5",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
         refX: 20,
@@ -974,8 +974,8 @@ export function faultGlyph(options?: GlyphOptions): X6Markup[] {
  * HVDC / Power-Electronics Converter Bridge (VSC / LCC / MMC) Glyph.
  */
 export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string | undefined }): X6Markup[] {
-  const stroke = options?.stroke ?? "#2dd4bf";
-  const fill = options?.fill ?? "rgba(45, 212, 191, 0.1)";
+  const stroke = options?.stroke ?? "#059669";
+  const fill = options?.fill ?? "rgba(5, 150, 105, 0.1)";
   const badge = options?.badge ?? "MMC";
 
   return [
@@ -1009,7 +1009,7 @@ export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string |
       selector: "convBadge",
       attrs: {
         text: badge,
-        fill: "#f8fafc",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8,
         fontWeight: "bold",
         fontFamily: "monospace",
@@ -1023,7 +1023,7 @@ export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string |
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: "#99f6e4",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 9,
         fontWeight: "bold",
         refX: 36,
@@ -1039,8 +1039,8 @@ export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string |
  */
 export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boolean | undefined }): X6Markup[] {
   const isCable = options?.isCable ?? false;
-  const stroke = options?.stroke ?? (isCable ? "#f472b6" : "#38bdf8");
-  const fill = options?.fill ?? "rgba(56, 189, 248, 0.08)";
+  const stroke = options?.stroke ?? (isCable ? "#c026d3" : "#0284c7");
+  const fill = options?.fill ?? "rgba(2, 132, 199, 0.08)";
 
   return [
     {
@@ -1066,7 +1066,7 @@ export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boole
       selector: "label",
       attrs: {
         text: options?.label ?? "",
-        fill: "#bae6fd",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
         refX: 40,
@@ -1089,8 +1089,8 @@ export function csmfBlockGlyph(
   },
 ): X6Markup[] {
   const kind = options?.kind ?? "pi";
-  const stroke = options?.stroke ?? "#a855f7";
-  const fill = options?.fill ?? "rgba(168, 85, 247, 0.12)";
+  const stroke = options?.stroke ?? "#7c3aed";
+  const fill = options?.fill ?? "rgba(124, 58, 237, 0.08)";
   const label = options?.label ?? kind.toUpperCase();
 
   if (kind === "sum") {
@@ -1105,7 +1105,7 @@ export function csmfBlockGlyph(
         selector: "csmfSymbol",
         attrs: {
           text: "Σ",
-          fill: "#f3e8ff",
+          fill: "#6d28d9",
           fontSize: 14,
           fontWeight: "bold",
           refX: 22,
@@ -1119,7 +1119,7 @@ export function csmfBlockGlyph(
         selector: "label",
         attrs: {
           text: label,
-          fill: "#cbd5e1",
+          fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
           fontSize: 8,
           refX: 22,
           refY: 46,
@@ -1141,7 +1141,7 @@ export function csmfBlockGlyph(
         selector: "csmfSymbol",
         attrs: {
           text: "K",
-          fill: "#f3e8ff",
+          fill: "#6d28d9",
           fontSize: 11,
           fontWeight: "bold",
           refX: 18,
@@ -1155,7 +1155,7 @@ export function csmfBlockGlyph(
         selector: "label",
         attrs: {
           text: label,
-          fill: "#d8b4fe",
+          fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
           fontSize: 8,
           refX: 26,
           refY: 46,
@@ -1181,14 +1181,14 @@ export function csmfBlockGlyph(
     {
       tagName: "path",
       selector: "csmfCurve",
-      attrs: { d: curvePath, fill: "none", stroke: "#d8b4fe", strokeWidth: 1.5 },
+      attrs: { d: curvePath, fill: "none", stroke: "#7c3aed", strokeWidth: 1.5 },
     },
     {
       tagName: "text",
       selector: "csmfBadge",
       attrs: {
         text: kind === "pi" ? "PI" : kind === "lag" ? "1/(1+sT)" : kind === "const" ? "CONST" : kind.toUpperCase(),
-        fill: "#f3e8ff",
+        fill: "#6d28d9",
         fontSize: 8,
         fontWeight: "bold",
         fontFamily: "monospace",
@@ -1202,7 +1202,7 @@ export function csmfBlockGlyph(
       selector: "label",
       attrs: {
         text: label,
-        fill: "#d8b4fe",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8,
         refX: 32,
         refY: 48,

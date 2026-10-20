@@ -81,6 +81,8 @@ export interface PscxModule {
   stickies?: PscxSticky[] | undefined;
   junctions?: Point2D[] | undefined;
   wirelessNets?: Record<string, string[]> | undefined;
+  /** Default values of the definition's `<form>` parameters (name → raw expression). */
+  parameterDefaults?: Record<string, string> | undefined;
 }
 
 export interface PscxProjectSettings {
@@ -254,9 +256,30 @@ export interface EmtConverterBridge {
 
 export interface EmtControlBlock {
   id: string;
-  kind: "const" | "gain" | "sum" | "pi" | "lag" | "leadlag" | "limit" | "compar";
+  kind:
+    | "const"
+    | "gain"
+    | "sum"
+    | "pi"
+    | "lag"
+    | "leadlag"
+    | "limit"
+    | "compar"
+    | "mult"
+    | "div"
+    | "square"
+    | "inv"
+    | "integral"
+    | "fp_int"
+    | "sensor_v"
+    | "sensor_i"
+    | "abcdq0_d"
+    | "abcdq0_q"
+    | "abcdq0_0";
   inputs: string[];
   params: Record<string, number>;
+  /** Bus id (`sensor_v`) or branch id (`sensor_i`) measured by a sensor block. */
+  sensorTarget?: string | undefined;
 }
 
 export interface EmtNetlist {
@@ -272,6 +295,8 @@ export interface EmtNetlist {
   inductionMachines?: EmtInductionMachine[] | undefined;
   converterBridges?: EmtConverterBridge[] | undefined;
   controlBlocks?: EmtControlBlock[] | undefined;
+  /** Defaults the extractor had to assume because a parameter was missing or unrecognised. */
+  assumptions?: string[] | undefined;
   nominalFrequencyHz: number;
 }
 
