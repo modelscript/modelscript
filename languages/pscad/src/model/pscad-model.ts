@@ -55,6 +55,8 @@ export interface ResolvedPort {
   source: "definition" | "catalog" | "inferred";
   dim?: number;
   electype?: number;
+  /** PSCAD port mode: 1 = signal input, 2 = signal output, 3 = electrical. */
+  mode?: number;
 }
 
 export interface ModelWire {
@@ -314,6 +316,7 @@ function resolvePorts(model: PscadProjectModel, external?: ExternalDefinitions):
           source: "definition" as const,
           dim: p.dim,
           electype: p.electype,
+          mode: p.mode,
         };
       });
     }

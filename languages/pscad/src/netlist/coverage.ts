@@ -41,6 +41,7 @@ function idsInNetlist(netlist: EmtNetlist): Set<string> {
     netlist.transformers,
     netlist.fmuInstances,
     netlist.sources,
+    netlist.currentSources,
     netlist.faults,
     (netlist as unknown as Record<string, unknown>)["transmissionLines"],
     (netlist as unknown as Record<string, unknown>)["lines"],
@@ -75,7 +76,10 @@ export function computeSimulationCoverage(project: PscxProject, netlist: EmtNetl
         id === instanceName ||
         id.endsWith(`_${cmpId}`) ||
         id.startsWith(`${cmpId}_`) ||
-        (instanceName !== "" && id.endsWith(`_${instanceName}`)),
+        id.includes(`_${cmpId}_`) ||
+        (instanceName !== "" && id.endsWith(`_${instanceName}`)) ||
+        // Blocks expanded per phase (e.g. inverse abcdq0) are named `<instance>_phaseA/B/C`.
+        (instanceName !== "" && /_phase[ABC]$/.test(id) && id.slice(0, -"_phaseA".length).endsWith(instanceName)),
     );
   let simulatable = 0;
   let lowered = 0;

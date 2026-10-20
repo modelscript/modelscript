@@ -42,7 +42,7 @@ export function refineModulePorts(mod: PscxModule, def: ModelDefinition | undefi
         cmp.ports.push({
           id: `${cmp.id}_${dp.name}`,
           name: dp.name,
-          kind: dp.electype === 0 ? "signal" : "electrical",
+          kind: (dp.mode !== undefined ? dp.mode !== 3 : dp.electype === 0) ? "signal" : "electrical",
           dimension: dp.dim ?? 1,
           position: worldToLocal(dp, cmp.position, cmp.rotation ?? 0, Boolean(cmp.mirror)),
         });

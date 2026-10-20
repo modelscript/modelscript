@@ -120,10 +120,14 @@ export interface BreakerPoleState {
   gCurrent: number;
   isClosed: boolean;
   pendingOpen: boolean;
+  /** Set by a status actuator; the pole recloses at the start of the next step. */
+  pendingClose?: boolean | undefined;
   openTimeSec: number;
   closeTimeSec: number;
   choppingCurrentAmp: number;
   current: number;
+  /** Naturally commutated diode: no external control, switches on own V/I. */
+  diode?: boolean | undefined;
   clearedAtSec?: number | undefined;
 }
 

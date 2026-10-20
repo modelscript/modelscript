@@ -508,7 +508,7 @@ export const MASTER_LIBRARY_SCHEMAS: PscadComponentSchema[] = [
     defaultWidth: 72,
     defaultHeight: 60,
     ports: [
-      { name: "N1", kind: "electrical", side: "left", offsetX: -36, offsetY: 0 },
+      { name: "N1", kind: "electrical", side: "left", offsetX: -54, offsetY: 0 },
       { name: "N2", kind: "electrical", side: "right", offsetX: 36, offsetY: 0 },
     ],
     parameters: [

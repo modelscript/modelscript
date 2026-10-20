@@ -37,7 +37,7 @@ const MASTER_LIBRARY_PORTS: Record<string, { name: string; kind: PortKind; dim: 
     { name: "S", kind: "electrical", dim: 3, x: 30, y: 0 },
   ],
   "xfmr-3p2w": [
-    { name: "N1", kind: "electrical", dim: 3, x: -36, y: 0 },
+    { name: "N1", kind: "electrical", dim: 3, x: -54, y: 0 },
     { name: "N2", kind: "electrical", dim: 3, x: 36, y: 0 },
   ],
   tline_3p: [
@@ -131,9 +131,9 @@ const MASTER_LIBRARY_PORTS: Record<string, { name: string; kind: PortKind; dim: 
     { name: "out", kind: "signal", dim: 1, x: 18, y: 0 },
   ],
   compar: [
-    { name: "in1", kind: "signal", dim: 1, x: -18, y: 0 },
-    { name: "in2", kind: "signal", dim: 1, x: 0, y: 18 },
-    { name: "out", kind: "signal", dim: 1, x: 18, y: 0 },
+    { name: "in1", kind: "signal", dim: 1, x: 0, y: 0 },
+    { name: "in2", kind: "signal", dim: 1, x: 0, y: 36 },
+    { name: "out", kind: "signal", dim: 1, x: 72, y: 0 },
   ],
   pgb: [{ name: "in", kind: "signal", dim: 1, x: -18, y: 0 }],
   datalabel: [{ name: "port", kind: "signal", dim: 1, x: 0, y: 0 }],
@@ -345,7 +345,16 @@ export function parsePscx(xmlContent: string, options?: { external?: ExternalDef
           10,
         );
         const pElectype = /<param\s+name\s*=\s*["']electype["']\s+value\s*=\s*["']([^"']+)["']/i.exec(pBody)?.[1];
-        const kind: PortKind = pElectype === "0" || pElectype === "signal" ? "signal" : "electrical";
+        const pMode = /<param\s+name\s*=\s*["']mode["']\s+value\s*=\s*["']([^"']+)["']/i.exec(pBody)?.[1];
+        // PSCAD port `mode`: 1 = signal input, 2 = signal output, 3 = electrical. `electype` is 0 for all of them.
+        const kind: PortKind =
+          pMode !== undefined
+            ? pMode === "3"
+              ? "electrical"
+              : "signal"
+            : pElectype === "0" || pElectype === "signal"
+              ? "signal"
+              : "electrical";
         defPorts.push({
           id: pName,
           name: pName,
@@ -847,8 +856,10 @@ function snapWireConnections(mod: PscxModule): void {
         }
       }
       if (dStart > SNAP_TOLERANCE && dEnd > SNAP_TOLERANCE) {
+        // Bundle taps (datatap) sit up to one 18-unit grid step off the end of their wire.
+        const segTol = p.id.endsWith("_tap") ? 19 : SNAP_TOLERANCE;
         for (let k = 0; k < wire.vertices.length - 1; k++) {
-          if (pointToSegmentDistance(p.world, wire.vertices[k]!, wire.vertices[k + 1]!) <= SNAP_TOLERANCE) {
+          if (pointToSegmentDistance(p.world, wire.vertices[k]!, wire.vertices[k + 1]!) <= segTol) {
             connectedSet.add(p.id);
             addJunction(p.world);
             break;
@@ -887,6 +898,23 @@ function snapWireConnections(mod: PscxModule): void {
     }
 
     wire.connectedPortIds = Array.from(connectedSet);
+  }
+
+  // A ground voltmeter dropped on top of a wire (terminal unconnected, origin on the wire) taps that wire.
+  for (const cmp of mod.components) {
+    if (!cmp.definitionName.toLowerCase().endsWith(":voltmetergnd")) continue;
+    const port = cmp.ports.find((p) => p.kind === "electrical");
+    if (!port || mod.wires.some((w) => w.connectedPortIds.includes(port.id))) continue;
+    for (const w of mod.wires) {
+      let onWire = false;
+      for (let k = 0; k < w.vertices.length - 1 && !onWire; k++) {
+        onWire = pointToSegmentDistance(cmp.position, w.vertices[k]!, w.vertices[k + 1]!) <= 2;
+      }
+      if (onWire) {
+        w.connectedPortIds = [...w.connectedPortIds, port.id];
+        break;
+      }
+    }
   }
 
   // Group wireless Data Label / XNode / Pin components by shared label name

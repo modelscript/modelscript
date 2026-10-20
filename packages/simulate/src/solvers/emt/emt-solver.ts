@@ -149,6 +149,8 @@ export interface EmtCircuitDefinition {
         choppingCurrentAmp?: number | undefined;
         /** Phase pole(s) affected by the trip command (default: `"ALL"`). */
         singlePoleTripPhase?: "A" | "B" | "C" | "ALL" | undefined;
+        /** Ideal diode: closes when from-to voltage is positive, opens when its current reverses. */
+        diode?: boolean | undefined;
       }[]
     | undefined;
   /** Distributed-parameter Bergeron traveling-wave transmission lines. */
@@ -216,8 +218,25 @@ export interface EmtCircuitDefinition {
         phaseRad?: number | undefined;
         /** Norton source conductance ($\text{S}$). */
         gSource?: number | undefined;
+        /** Constant (DC) source of magnitude `vPeakKv`; frequency and phase are ignored. */
+        dc?: boolean | undefined;
         /** Series source resistance ($\Omega$, inverted when `gSource` is omitted). */
         rSource?: number | undefined;
+      }[]
+    | undefined;
+  /** Sinusoidal current sources; they only add to the RHS injection vector and never change the matrix. */
+  currentSources?:
+    | {
+        /** Optional identifier (defaults to `CurrentSource_<i>`). */
+        id?: string | undefined;
+        /** Bus the current is injected into. */
+        bus: string;
+        /** Peak injected current ($\text{A}$, positive flows into the bus). */
+        iPeakA: number;
+        /** Fundamental frequency ($\text{Hz}$). */
+        freqHz: number;
+        /** Phase angle at $t = 0$ ($\text{rad}$). */
+        phaseRad?: number | undefined;
       }[]
     | undefined;
   /** Time-switched balanced or unbalanced short-circuit faults. */
@@ -316,6 +335,8 @@ export class EmtSolver {
     phase: number;
     gSource: number;
   }[] = [];
+  /** Sinusoidal current injection states (RHS only). */
+  private readonly currentSources: { id: string; node: number; iPeakA: number; omega: number; phase: number }[] = [];
   /** Scheduled short-circuit fault element states. */
   private readonly faultStates: FaultElementState[] = [];
   /** Optional Continuous System Model Functions (CSMF) control and protection execution graph. */
@@ -545,6 +566,7 @@ export class EmtSolver {
             closeTimeSec: brk.closeTimeSec ?? Infinity,
             choppingCurrentAmp: brk.choppingCurrentAmp ?? 0.5,
             current: 0,
+            diode: brk.diode === true,
           });
         }
       }
@@ -704,9 +726,27 @@ export class EmtSolver {
             id: p === 0 ? baseId : `${baseId}_ph${p}`,
             node: getNodePhase(s.bus, p),
             vPeakKv: s.vPeakKv,
-            omega: 2 * Math.PI * s.freqHz,
-            phase: basePhase + phaseOffset,
+            omega: s.dc ? 0 : 2 * Math.PI * s.freqHz,
+            phase: s.dc ? Math.PI / 2 : basePhase + phaseOffset,
             gSource,
+          });
+        }
+      }
+    }
+
+    // 5b. Initialize sinusoidal current sources (balanced across phases like voltage sources)
+    if (circuit.currentSources) {
+      for (let i = 0; i < circuit.currentSources.length; i++) {
+        const s = circuit.currentSources[i]!;
+        const baseId = s.id ?? `CurrentSource_${i + 1}`;
+        for (let p = 0; p < this.nPhases; p++) {
+          const phaseOffset = p === 0 ? 0 : p === 1 ? -(2 * Math.PI) / 3 : (2 * Math.PI) / 3;
+          this.currentSources.push({
+            id: p === 0 ? baseId : `${baseId}_ph${p}`,
+            node: getNodePhase(s.bus, p),
+            iPeakA: s.iPeakA,
+            omega: 2 * Math.PI * s.freqHz,
+            phase: (s.phaseRad ?? 0) + phaseOffset,
           });
         }
       }
@@ -1079,7 +1119,8 @@ export class EmtSolver {
       }
 
       for (const bp of this.breakerPoles) {
-        if (!bp.isClosed && t >= bp.closeTimeSec && bp.clearedAtSec === undefined) {
+        if (!bp.isClosed && (bp.pendingClose || (t >= bp.closeTimeSec && bp.clearedAtSec === undefined))) {
+          bp.pendingClose = false;
           const deltaG = bp.gClosed - bp.gCurrent;
           stampTwoTerminalConductance(companionSys.Gdense, this.nNodes, bp.fromNode, bp.toNode, deltaG);
           bp.gCurrent = bp.gClosed;
@@ -1125,6 +1166,11 @@ export class EmtSolver {
           const vInstant = src.vPeakKv * 1e3 * Math.sin(src.omega * t + src.phase);
           bVec[src.node] = bVec[src.node]! + src.gSource * vInstant;
         }
+      }
+
+      // B2. Inject sinusoidal current sources directly into the RHS (no admittance stamp)
+      for (const cs of this.currentSources) {
+        if (cs.node >= 0) bVec[cs.node] = bVec[cs.node]! + cs.iPeakA * Math.sin(cs.omega * t + cs.phase);
       }
 
       // C. Subtract RLC branch history currents
@@ -1302,11 +1348,19 @@ export class EmtSolver {
         let newCurrent = (vFrom - vTo) * bp.gCurrent;
         const prevCurrent = bp.current;
 
+        if (bp.diode) {
+          if (bp.isClosed) {
+            if (newCurrent < 0) bp.pendingOpen = true;
+          } else if (vFrom - vTo > 0) {
+            bp.pendingClose = true;
+          }
+        }
+
         // Extinguish arc when current crosses zero or falls below chopping threshold
         if (bp.pendingOpen && bp.isClosed) {
           const crossedZero = prevCurrent * newCurrent <= 0 && step > 0;
           const belowChop = Math.abs(newCurrent) <= bp.choppingCurrentAmp;
-          if (crossedZero || belowChop) {
+          if (crossedZero || belowChop || bp.diode === true) {
             const denom = Math.abs(prevCurrent) + Math.abs(newCurrent);
             const alpha = crossedZero && denom > 1e-12 ? Math.abs(prevCurrent) / denom : 1.0;
             if (alpha < minAlpha) minAlpha = alpha;
@@ -1641,6 +1695,19 @@ export class EmtSolver {
               if (bp.id === act.targetId || bp.id.startsWith(`${act.targetId}_ph`)) {
                 if (bp.isClosed) {
                   bp.pendingOpen = true;
+                }
+              }
+            }
+          } else if (act.type === "breaker_status") {
+            // Level-driven: status > 0.5 = open, otherwise closed (reclose is allowed).
+            for (const bp of this.breakerPoles) {
+              if (bp.id === act.targetId || bp.id.startsWith(`${act.targetId}_ph`)) {
+                if (act.value > 0.5) {
+                  bp.pendingClose = false;
+                  if (bp.isClosed) bp.pendingOpen = true;
+                } else {
+                  bp.pendingOpen = false;
+                  if (!bp.isClosed) bp.pendingClose = true;
                 }
               }
             }

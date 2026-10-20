@@ -130,6 +130,12 @@ export interface EmtBranch {
   closeTimeSec?: number | undefined;
   choppingCurrentAmp?: number | undefined;
   singlePoleTripPhase?: 0 | 1 | 2 | undefined;
+  /** Closed-contact resistance in ohms (switch branches). */
+  rClosedOhm?: number | undefined;
+  /** Open-contact resistance in ohms (switch branches). */
+  rOpenOhm?: number | undefined;
+  /** Naturally commutated diode: conducts N1 (anode) -> N2 (cathode), blocks otherwise. */
+  diode?: boolean | undefined;
   metadata?: Record<string, any> | undefined;
 }
 
@@ -182,6 +188,21 @@ export interface EmtSource {
   mvaRating: number;
   rSourceOhm?: number | undefined;
   lSourceH?: number | undefined;
+  /** True when the source declared an `R`/`r` parameter (so `rSourceOhm` undefined then means an explicit 0). */
+  rSourceSpecified?: boolean | undefined;
+  /** Constant (DC) source: `AC=0` on a `source_1`. */
+  dc?: boolean | undefined;
+}
+
+/** Sinusoidal controlled current source (`master:src_ccin_1`); injects `iPeakA * sin(2*pi*f*t + phase)` into `bus`. */
+export interface EmtCurrentSource {
+  id: string;
+  name: string;
+  bus: string;
+  /** Peak injected current in amperes (positive flows into the bus). */
+  iPeakA: number;
+  frequencyHz: number;
+  phaseRad: number;
 }
 
 export interface EmtFault {
@@ -275,11 +296,32 @@ export interface EmtControlBlock {
     | "sensor_i"
     | "abcdq0_d"
     | "abcdq0_q"
-    | "abcdq0_0";
+    | "abcdq0_0"
+    | "select"
+    | "upramp"
+    | "tbreakn"
+    | "x_power_y"
+    | "angle_resolver"
+    | "maxmin"
+    | "rms3ph"
+    | "compare"
+    | "range"
+    | "ratelimit"
+    | "xy_table"
+    | "bin_delay"
+    | "trans_filt"
+    | "trig"
+    | "logic"
+    | "time_sig"
+    | "inv_abcdq0_a"
+    | "inv_abcdq0_b"
+    | "inv_abcdq0_c";
   inputs: string[];
   params: Record<string, number>;
   /** Bus id (`sensor_v`) or branch id (`sensor_i`) measured by a sensor block. */
   sensorTarget?: string | undefined;
+  /** Drives a solver element from this block's output (breaker status: > 0.5 = open, otherwise closed). */
+  actuator?: { type: "breaker_status"; targetId: string } | undefined;
 }
 
 export interface EmtNetlist {
@@ -289,6 +331,7 @@ export interface EmtNetlist {
   transmissionLines: EmtTransmissionLine[];
   fmuInstances: EmtFmuInstance[];
   sources: EmtSource[];
+  currentSources?: EmtCurrentSource[] | undefined;
   faults?: EmtFault[] | undefined;
   surgeArresters?: EmtSurgeArrester[] | undefined;
   synchronousMachines?: EmtSynchronousMachine[] | undefined;

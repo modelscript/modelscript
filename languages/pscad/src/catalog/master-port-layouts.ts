@@ -28,12 +28,12 @@ export const EXTRA_MASTER_PORT_LAYOUTS: Record<string, MasterPortLayout[]> = {
   // Signal sources
   emtconst: SRC,
   consti: SRC,
-  unity: SRC,
+  unity: SISO,
   "time-sig": SRC,
   sig_gen: [sig("in", -36, 0), OUT],
   upramp: SISO,
   trig: SRC,
-  bin_delay: SRC,
+  bin_delay: [sig("in", 0, 0), OUT],
   fp_int: [sig("in", 0, 72), OUT],
 
   // Single-in/single-out functions
@@ -48,12 +48,13 @@ export const EXTRA_MASTER_PORT_LAYOUTS: Record<string, MasterPortLayout[]> = {
   x_power_y: SISO,
   angle_resolver: SISO,
   maxmin: SISO,
-  compare: [sig("A", -36, -18), sig("B", -36, 18), OUT],
+  // Single input: wire ends in the DC-EMT corpus appear only at (-36,0) and (36,0); X is a parameter.
+  compare: SISO,
   rms3ph: [sig("in", -36, 0, 3), OUT],
 
   // Multi-input arithmetic
-  mult: [sig("A", -36, -18), sig("B", -36, 18), OUT],
-  div: [sig("A", -36, -18), sig("B", -36, 18), OUT],
+  mult: [sig("A", -36, 0), sig("B", 0, 36), OUT],
+  div: [sig("A", -36, 0), sig("B", 0, 36), OUT],
   sumjct: [sig("in1", -36, 0), sig("in2", 0, -36), sig("in3", 0, 36), OUT],
   logic_mult: [sig("A", -36, -18), sig("B", -36, 18), OUT],
   select: [sig("in1", -36, -36), sig("in2", -36, 0), sig("sel", -36, 36), OUT],
@@ -67,7 +68,10 @@ export const EXTRA_MASTER_PORT_LAYOUTS: Record<string, MasterPortLayout[]> = {
   nodeloop: [sig("loop", 0, -36)],
   radiolink: [sig("link", 0, 0)],
   abcdq0: [sig("abc", -36, 0, 3), sig("dq0", 36, 0, 3)],
-  current_scaler: [sig("in", -36, -18), sig("out", 36, -18)],
+  current_scaler: [
+    { name: "in", kind: "electrical", dim: 3, x: -36, y: -18 },
+    { name: "out", kind: "electrical", dim: 3, x: 36, y: -18 },
+  ],
 
   // Electrical items observed in practice
   voltmetergnd: [{ name: "N", kind: "electrical", dim: 3, x: 0, y: 18 }],
@@ -91,5 +95,6 @@ export const EXTRA_MASTER_PORT_LAYOUTS: Record<string, MasterPortLayout[]> = {
     { name: "N1", kind: "electrical", dim: 1, x: -36, y: 0 },
     { name: "N2", kind: "electrical", dim: 1, x: 36, y: 0 },
   ],
-  tbreakn: [{ name: "N1", kind: "electrical", dim: 3, x: -36, y: 0 }],
+  // Corpus wires end only at (-36,0), where a data label picks up the breaker status: a signal output.
+  tbreakn: [sig("out", -36, 0)],
 };

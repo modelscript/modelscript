@@ -15,13 +15,19 @@
 
 import { diffPscadProjects, renderPscadSvg } from "@modelscript/diagram/pscad-diagram-builder";
 import {
+  emtResultToComtrade,
   extractEmtNetlist,
   lintPscx,
   netlistToEmtCircuit,
   parsePscx,
   pscadToModelica,
   pscadToSsd,
+  registerPscadSource,
   verifyIeee2800Compliance,
+  writeComtrade,
+  writeComtradeBinary,
+  writeComtradeCff,
+  writePscadOut,
 } from "@modelscript/pscad";
 import { EmtSolver, type EmtCircuitDefinition } from "@modelscript/simulate";
 import fs from "node:fs";
@@ -58,6 +64,13 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         description: "Simulation fixed time step (e.g. '20us' or 20e-6)",
         type: "string",
         default: "20us",
+      })
+      .option("format", {
+        alias: "f",
+        description: "Result format for 'sim' with --out (base path): pscad (.out/.inf), comtrade, comtrade-bin, cff",
+        type: "string",
+        choices: ["pscad", "comtrade", "comtrade-bin", "cff"],
+        default: "pscad",
       });
   },
   handler: async (args) => {
@@ -76,6 +89,18 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
     }
 
     const xmlContent = fs.readFileSync(firstFilePath, "utf-8");
+
+    // Register library/definition sources (explicit extra files + sibling .pslx/.pscx) so `Lib:Name`
+    // user-definitions resolve during netlist extraction.
+    const libCandidates = new Set<string>(files.slice(1).map((f) => path.resolve(process.cwd(), f)));
+    for (const e of fs.readdirSync(path.dirname(firstFilePath))) {
+      if (/\.(pslx|pscx)$/i.test(e)) libCandidates.add(path.join(path.dirname(firstFilePath), e));
+    }
+    libCandidates.delete(firstFilePath);
+    for (const f of libCandidates) {
+      if (fs.existsSync(f)) registerPscadSource(f, fs.readFileSync(f, "utf-8"));
+    }
+
     const project = parsePscx(xmlContent);
 
     switch (action) {
@@ -161,6 +186,37 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         );
         console.log(`  Buses solved: ${result.busVoltages.size}`);
         console.log(`  Branches solved: ${result.branchCurrents.size}`);
+
+        const outArg = args["out"] as string | undefined;
+        if (outArg) {
+          const base = path.resolve(process.cwd(), outArg).replace(/\.(out|inf|cfg|dat|cff)$/i, "");
+          const fmt = (args["format"] as string) ?? "pscad";
+          const written: string[] = [];
+          const put = (p: string, c: string | Uint8Array) => {
+            fs.mkdirSync(path.dirname(p), { recursive: true });
+            fs.writeFileSync(p, c);
+            written.push(p);
+          };
+          if (fmt === "pscad") {
+            const o = writePscadOut(result, project.name);
+            put(`${base}.inf`, o.inf);
+            for (const f of o.out) put(`${base}${f.suffix}`, f.content);
+          } else {
+            const rec = emtResultToComtrade(result, project.name);
+            if (fmt === "comtrade") {
+              const c = writeComtrade(rec);
+              put(`${base}.cfg`, c.cfg);
+              put(`${base}.dat`, c.dat);
+            } else if (fmt === "comtrade-bin") {
+              const c = writeComtradeBinary(rec, "BINARY");
+              put(`${base}.cfg`, c.cfg);
+              put(`${base}.dat`, c.dat);
+            } else {
+              put(`${base}.cff`, writeComtradeCff(rec));
+            }
+          }
+          for (const w of written) console.log(`✓ Wrote ${w}`);
+        }
         break;
       }
 

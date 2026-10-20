@@ -28,11 +28,30 @@ export type CsmfBlockKind =
   | "fp_int"
   | "abcdq0_d"
   | "abcdq0_q"
-  | "abcdq0_0";
+  | "abcdq0_0"
+  | "select"
+  | "upramp"
+  | "tbreakn"
+  | "x_power_y"
+  | "angle_resolver"
+  | "maxmin"
+  | "rms3ph"
+  | "compare"
+  | "range"
+  | "ratelimit"
+  | "xy_table"
+  | "bin_delay"
+  | "trans_filt"
+  | "trig"
+  | "logic"
+  | "time_sig"
+  | "inv_abcdq0_a"
+  | "inv_abcdq0_b"
+  | "inv_abcdq0_c";
 
 export interface CsmfActuatorBinding {
-  kind?: "breaker_trip" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv" | undefined;
-  type?: "breaker_trip" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv" | undefined;
+  kind?: "breaker_trip" | "breaker_status" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv" | undefined;
+  type?: "breaker_trip" | "breaker_status" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv" | undefined;
   elementId?: string | undefined;
   targetId?: string | undefined;
 }
@@ -74,6 +93,8 @@ export class CsmfControlGraph {
   public readonly blocks: CsmfBlockRuntimeState[];
   public readonly blockMap = new Map<string, number>();
   private readonly dt: number;
+  /** Elapsed simulation time, advanced by one `dt` after each `step()`. */
+  private elapsed = 0;
 
   constructor(configs: CsmfBlockConfig[], dt: number, nominalFreqHz = 60.0) {
     this.dt = dt;
@@ -125,12 +146,12 @@ export class CsmfControlGraph {
   }
 
   public getActuators(): {
-    type: "breaker_trip" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv";
+    type: "breaker_trip" | "breaker_status" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv";
     targetId: string;
     value: number;
   }[] {
     const list: {
-      type: "breaker_trip" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv";
+      type: "breaker_trip" | "breaker_status" | "fmu_p_mw" | "fmu_q_mvar" | "source_v_kv";
       targetId: string;
       value: number;
     }[] = [];
@@ -203,6 +224,240 @@ export class CsmfControlGraph {
       switch (cfg.kind) {
         case "const": {
           y = Number(cfg.value ?? p["value"] ?? p["K"] ?? p["k"] ?? 0);
+          break;
+        }
+        case "time_sig": {
+          y = this.elapsed;
+          break;
+        }
+        case "logic": {
+          // Multi-input gate. Type: 0 AND, 1 OR, 2 NAND, 3 NOR, 4 XOR, 5 XNOR. Inv1..InvN invert input pins,
+          // Inv inverts the final output. Inputs are truthy above 0.5.
+          const n = Math.min(b.inputIndices.length, Math.trunc(Number(p["Num_in"] ?? b.inputIndices.length)));
+          const bits: boolean[] = [];
+          for (let k = 0; k < n; k++) {
+            const idx = b.inputIndices[k] ?? -1;
+            let v = (idx >= 0 ? this.blocks[idx]!.output : 0) > 0.5;
+            if (Number(p[`Inv${k + 1}`] ?? 0) === 1) v = !v;
+            bits.push(v);
+          }
+          const type = Math.trunc(Number(p["Type"] ?? 0));
+          const ones = bits.filter(Boolean).length;
+          let out: boolean;
+          switch (type) {
+            case 1:
+              out = ones > 0;
+              break;
+            case 2:
+              out = !(n > 0 && ones === n);
+              break;
+            case 3:
+              out = ones === 0;
+              break;
+            case 4:
+              out = ones % 2 === 1;
+              break;
+            case 5:
+              out = ones % 2 === 0;
+              break;
+            default:
+              out = n > 0 && ones === n;
+          }
+          if (Number(p["Inv"] ?? 0) === 1) out = !out;
+          y = out ? 1 : 0;
+          break;
+        }
+        case "trig": {
+          // Type is 1-based: 1 = sin, 2 = cos (input in radians). Other types are rejected by the netlist.
+          const type = Math.trunc(Number(p["Type"] ?? 1));
+          y = type === 2 ? Math.cos(u0) : type === 1 ? Math.sin(u0) : 0;
+          break;
+        }
+        case "upramp": {
+          // Piecewise-linear ramp of the input: 0 up to X1, linear to Y2 at X2, then held at Y2.
+          const x1 = Number(p["X1"] ?? 0);
+          const x2 = Number(p["X2"] ?? 1);
+          const y2 = Number(p["Y2"] ?? 1);
+          y = u0 <= x1 ? 0 : u0 >= x2 ? y2 : (y2 / (x2 - x1)) * (u0 - x1);
+          break;
+        }
+        case "tbreakn": {
+          // Timed breaker logic: status 0 = closed, 1 = open (unverified). INIT = 1 starts closed; the state
+          // flips at TO1 (NUMS >= 1) and flips back at TO2 (NUMS = 2).
+          const t = this.elapsed;
+          const initClosed = Number(p["INIT"] ?? 1) === 1;
+          const nums = Math.trunc(Number(p["NUMS"] ?? 1));
+          let closed = initClosed;
+          if (nums >= 1 && t >= Number(p["TO1"] ?? 0)) closed = !closed;
+          if (nums >= 2 && t >= Number(p["TO2"] ?? 0)) closed = !closed;
+          y = closed ? 0 : 1;
+          break;
+        }
+        case "x_power_y": {
+          // in^y; a negative base is clamped to 0 when xneg = 0 (unverified), otherwise passed to Math.pow.
+          const base = u0 < 0 && Number(p["xneg"] ?? 0) === 0 ? 0 : u0;
+          const pw = Math.pow(base, Number(p["y"] ?? 1));
+          y = Number.isFinite(pw) ? pw : 0;
+          break;
+        }
+        case "angle_resolver": {
+          // Radians in, radians out, wrapped to [-pi, pi] (only the all-zero unit/range flags are supported).
+          let a = u0 % (2 * Math.PI);
+          if (a > Math.PI) a -= 2 * Math.PI;
+          else if (a < -Math.PI) a += 2 * Math.PI;
+          y = a;
+          break;
+        }
+        case "maxmin": {
+          // Maximum (Type 1, default) or minimum (Type 2) over all connected inputs; one input passes through.
+          const vals: number[] = [];
+          for (const ix of b.inputIndices) if (ix >= 0) vals.push(this.blocks[ix]!.output);
+          if (vals.length === 0) vals.push(0);
+          y = Math.trunc(Number(p["Type"] ?? 1)) === 2 ? Math.min(...vals) : Math.max(...vals);
+          break;
+        }
+        case "rms3ph": {
+          // sqrt of the mean square of the three phases, smoothed by a first-order lag of time constant Ts.
+          const g = (k: number): number => {
+            const ix = b.inputIndices[k] ?? -1;
+            return ix >= 0 ? this.blocks[ix]!.output : 0;
+          };
+          const raw = Math.sqrt(Math.max(0, (g(0) ** 2 + g(1) ** 2 + g(2) ** 2) / 3));
+          if (b.rmsCount === 0) {
+            b.yPrev = Number(p["Vinit"] ?? 0);
+            b.rmsCount = 1;
+          }
+          const alpha = dt / (Math.max(0, Number(p["Ts"] ?? 0)) + dt);
+          y = alpha * raw + (1 - alpha) * b.yPrev;
+          break;
+        }
+        case "compare": {
+          // Single-input comparator against the constant X: OH when input > X, else OL; conv rounds the result.
+          const o = u0 > Number(p["X"] ?? 0) ? Number(p["OH"] ?? 1) : Number(p["OL"] ?? 0);
+          y = Number(p["conv"] ?? 0) === 1 ? Math.round(o) : o;
+          break;
+        }
+        case "range": {
+          // Band comparator: OL below XL, OH above XU, OM otherwise (boundaries are OM). conv rounds the result.
+          const xl = Number(p["XL"] ?? 0);
+          const xu = Number(p["XU"] ?? 0);
+          const o = u0 < xl ? Number(p["OL"] ?? 0) : u0 > xu ? Number(p["OH"] ?? 0) : Number(p["OM"] ?? 0);
+          y = Number(p["conv"] ?? 0) === 1 ? Math.round(o) : o;
+          break;
+        }
+        case "trans_filt": {
+          // Order 1/2 Butterworth low-pass at FBase (bilinear transform, prewarped), assuming Band=1 is low-pass
+          // and Type=1 is Butterworth (unverified numbering). Any other configuration passes the input through.
+          const order = Math.trunc(Number(p["Order"] ?? 0));
+          const fc = Number(p["FBase"] ?? 0);
+          const supported =
+            Math.trunc(Number(p["Band"] ?? 0)) === 1 &&
+            Math.trunc(Number(p["Type"] ?? 0)) === 1 &&
+            (order === 1 || order === 2) &&
+            fc > 0 &&
+            fc < 0.5 / dt;
+          if (!supported) {
+            y = u0;
+            break;
+          }
+          if (b.rmsCount === 0) {
+            // Start settled at the first input so DC passes without a start-up transient.
+            b.uPrev = u0;
+            b.yPrev = u0;
+            b.rmsSqSum = u0;
+            b.integralState = u0;
+            b.rmsCount = 1;
+          }
+          const k = Math.tan(Math.PI * fc * dt);
+          if (order === 1) {
+            const b0 = k / (1 + k);
+            const a1 = (k - 1) / (1 + k);
+            y = b0 * (u0 + b.uPrev) - a1 * b.yPrev;
+          } else {
+            const k2 = k * k;
+            const norm = 1 / (1 + Math.SQRT2 * k + k2);
+            const b0 = k2 * norm;
+            const a1 = 2 * (k2 - 1) * norm;
+            const a2 = (1 - Math.SQRT2 * k + k2) * norm;
+            y = b0 * (u0 + 2 * b.uPrev + b.rmsSqSum) - a1 * b.yPrev - a2 * b.integralState;
+            b.rmsSqSum = b.uPrev; // x[n-2] for the next step
+            b.integralState = b.yPrev; // y[n-2] for the next step
+          }
+          break;
+        }
+        case "bin_delay": {
+          // Binary on/off delay: a change of the thresholded (> 0.5) input is committed to the output only after
+          // it has persisted for T (rising) or Toff (falling) seconds. Starts at INITST (unverified semantics).
+          if (b.rmsCount === 0) {
+            b.yPrev = Number(p["INITST"] ?? 0) > 0.5 ? 1 : 0;
+            b.integralState = 0;
+            b.rmsCount = 1;
+          }
+          const inputOn = u0 > 0.5;
+          if (inputOn === b.yPrev > 0.5) {
+            b.integralState = 0;
+          } else {
+            b.integralState += dt;
+            const delay = Math.max(0, Number(inputOn ? (p["T"] ?? 0) : (p["Toff"] ?? 0)));
+            if (b.integralState >= delay) {
+              b.yPrev = inputOn ? 1 : 0;
+              b.integralState = 0;
+            }
+          }
+          y = b.yPrev;
+          break;
+        }
+        case "xy_table": {
+          // Piecewise-linear lookup through (X1,Y1)..(XN,YN), held at the end values outside the range.
+          // x' = Kx*(u + Xoff), y = Ky*f(x') + Yoff (offset/gain order unverified; neutral in the corpus).
+          const n = Math.max(0, Math.trunc(Number(p["N"] ?? 0)));
+          const xs: number[] = [];
+          const ys: number[] = [];
+          for (let k = 1; k <= n; k++) {
+            const xv = Number(p[`X${k}`]);
+            const yv = Number(p[`Y${k}`]);
+            if (Number.isFinite(xv) && Number.isFinite(yv)) {
+              xs.push(xv);
+              ys.push(yv);
+            }
+          }
+          const xq = Number(p["Kx"] ?? 1) * (u0 + Number(p["Xoff"] ?? 0));
+          let f = 0;
+          if (xs.length > 0) {
+            if (xq <= xs[0]!) f = ys[0]!;
+            else if (xq >= xs[xs.length - 1]!) f = ys[ys.length - 1]!;
+            else {
+              for (let k = 1; k < xs.length; k++) {
+                if (xq <= xs[k]!) {
+                  const dx = xs[k]! - xs[k - 1]!;
+                  f = dx > 0 ? ys[k - 1]! + ((ys[k]! - ys[k - 1]!) * (xq - xs[k - 1]!)) / dx : ys[k]!;
+                  break;
+                }
+              }
+            }
+          }
+          y = Number(p["Ky"] ?? 1) * f + Number(p["Yoff"] ?? 0);
+          break;
+        }
+        case "ratelimit": {
+          // Slew limiter: rise <= IR*dt, fall <= DR*dt per step; first step passes the input through.
+          if (b.rmsCount === 0) {
+            y = u0;
+            b.rmsCount = 1;
+          } else {
+            const ir = Number(p["IR"] ?? Infinity);
+            const dr = Number(p["DR"] ?? Infinity);
+            const dx = u0 - b.yPrev;
+            y = b.yPrev + Math.min(Math.max(dx, -dr * this.dt), ir * this.dt);
+          }
+          break;
+        }
+        case "select": {
+          // Two-input selector: inputs [A, B, Ctrl]; A passes when Ctrl equals the integer selection value.
+          const idx2 = b.inputIndices[2] ?? -1;
+          const ctrl = idx2 >= 0 ? this.blocks[idx2]!.output : 0;
+          const opval = Number(p["A"] ?? p["OPVAL"] ?? 1);
+          y = Math.trunc(ctrl) === Math.trunc(opval) ? u0 : u1;
           break;
         }
         case "sensor_v":
@@ -333,6 +588,20 @@ export class CsmfControlGraph {
           }
           break;
         }
+        case "inv_abcdq0_a":
+        case "inv_abcdq0_b":
+        case "inv_abcdq0_c": {
+          // Inverse Park: inputs [d, q, zero, theta].
+          const val = (k: number): number => {
+            const idx = b.inputIndices[k] ?? -1;
+            return idx >= 0 ? this.blocks[idx]!.output : 0;
+          };
+          const [d, q, z, th] = [val(0), val(1), val(2), val(3)];
+          const t2 = (2 * Math.PI) / 3;
+          const ang = cfg.kind === "inv_abcdq0_a" ? th : cfg.kind === "inv_abcdq0_b" ? th - t2 : th + t2;
+          y = d * Math.cos(ang) - q * Math.sin(ang) + z;
+          break;
+        }
         case "fp_int": {
           // Real -> Integer conversion with truncation toward zero (Fortran INT semantics).
           y = Math.trunc(u0);
@@ -355,5 +624,6 @@ export class CsmfControlGraph {
       b.yPrev = y;
       b.output = y;
     }
+    this.elapsed += dt;
   }
 }

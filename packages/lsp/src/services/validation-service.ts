@@ -1660,7 +1660,12 @@ export class ValidationService {
             ? Math.max(col + 1, (lint.endColumn ?? (lint.column ?? 1) + 10) - 1)
             : Math.max(0, (lint.endColumn ?? 1) - 1);
         pscadDiagnostics.push({
-          severity: lint.severity === "warning" ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
+          severity:
+            lint.severity === "warning"
+              ? DiagnosticSeverity.Warning
+              : lint.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Error,
           range: {
             start: { line, character: col },
             end: { line: endLine, character: endCol },

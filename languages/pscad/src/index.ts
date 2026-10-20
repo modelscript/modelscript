@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./analysis/control-intervals.js";
+export * from "./analysis/interval-report.js";
 export * from "./catalog/master-library-schemas.js";
 export * from "./comtrade/comtrade-reader.js";
 export * from "./comtrade/comtrade-types.js";
 export * from "./comtrade/comtrade-writer.js";
+export * from "./comtrade/pscad-out-writer.js";
 export * from "./edit/diagram-actions.js";
 export * from "./edit/edit-engine.js";
 export * from "./language.js";

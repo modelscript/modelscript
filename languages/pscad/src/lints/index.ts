@@ -7,6 +7,7 @@
  * mismatches, physically invalid parameters, and weak-grid warnings.
  */
 
+import { analyzeControlIntervals, isBounded, outputLimits } from "../analysis/control-intervals.js";
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
 import type { PscadDiagnostic, PscxProject } from "../types.js";
 
@@ -101,7 +102,87 @@ export const PscadErrorCode = {
     message: (wireId: string, sigPort: string, elecPort: string) =>
       `Wire '${wireId}' connects control signal port '${sigPort}' directly to 3-phase electrical port '${elecPort}'.`,
   },
+  /** `M6012`: CSMF control blocks form a feedback cycle that contains no state (integrator, lag, delay) block. */
+  ALGEBRAIC_LOOP: {
+    code: "M6012",
+    rule: "csmf-algebraic-loop",
+    severity: "error" as const,
+    message: (cycle: string) => `CSMF control blocks form an algebraic loop with no state or delay element: ${cycle}.`,
+  },
+  /** `M6013`: Two or more voltage sources with an explicit zero source impedance are connected to the same bus. */
+  PARALLEL_IDEAL_SOURCES: {
+    code: "M6013",
+    rule: "parallel-ideal-sources",
+    severity: "error" as const,
+    message: (busName: string, sourceIds: string) =>
+      `Ideal voltage sources ${sourceIds} are connected in parallel at bus '${busName}', making the nodal matrix singular.`,
+  },
+  /** `M6014`: Two or more voltage sources with no declared source impedance share a bus (solver applies a stiff default). */
+  PARALLEL_LOW_IMPEDANCE_SOURCES: {
+    code: "M6014",
+    rule: "parallel-low-impedance-sources",
+    severity: "warning" as const,
+    message: (busName: string, sourceIds: string) =>
+      `Voltage sources ${sourceIds} are connected in parallel at bus '${busName}' with no declared source impedance; a stiff default impedance is assumed and large circulating currents may result.`,
+  },
+  /** `M6015`: A limiter's input interval lies entirely outside its output limits, so it is permanently saturated. */
+  PERMANENT_SATURATION: {
+    code: "M6015",
+    rule: "limiter-permanently-saturated",
+    severity: "warning" as const,
+    message: (blockId: string, inLo: number, inHi: number, limLo: number, limHi: number) =>
+      `Limiter '${blockId}' is permanently saturated: its input stays within [${inLo}, ${inHi}] but its output limits are [${limLo}, ${limHi}].`,
+  },
 };
+
+/** Control block kinds whose output depends on internal state, which breaks algebraic loops. */
+const STATEFUL_BLOCK_KINDS = new Set(["pi", "lag", "leadlag", "integral", "fp_int", "upramp", "ratelimit"]);
+
+/**
+ * Tarjan strongly-connected-components over the control block graph (edge: input -> block).
+ * Returns the SCCs that form a feedback cycle (size > 1, or a self loop).
+ */
+function findControlCycles(blocks: { id: string; kind: string; inputs: string[] }[]): string[][] {
+  const ids = new Set(blocks.map((b) => b.id));
+  const succ = new Map<string, string[]>();
+  for (const b of blocks) succ.set(b.id, []);
+  for (const b of blocks) {
+    for (const inp of b.inputs) if (ids.has(inp)) succ.get(inp)!.push(b.id);
+  }
+  let index = 0;
+  const idx = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const out: string[][] = [];
+  const strong = (v: string): void => {
+    idx.set(v, index);
+    low.set(v, index);
+    index++;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of succ.get(v)!) {
+      if (!idx.has(w)) {
+        strong(w);
+        low.set(v, Math.min(low.get(v)!, low.get(w)!));
+      } else if (onStack.has(w)) {
+        low.set(v, Math.min(low.get(v)!, idx.get(w)!));
+      }
+    }
+    if (low.get(v) === idx.get(v)) {
+      const comp: string[] = [];
+      let w: string;
+      do {
+        w = stack.pop()!;
+        onStack.delete(w);
+        comp.push(w);
+      } while (w !== v);
+      if (comp.length > 1 || succ.get(v)!.includes(v)) out.push(comp);
+    }
+  };
+  for (const b of blocks) if (!idx.has(b.id)) strong(b.id);
+  return out;
+}
 
 /**
  * Runs all PSCAD linter rules on a parsed project.
@@ -540,6 +621,82 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
             endColumn: 20,
           });
         }
+      }
+    }
+  }
+
+  // 10. M6012: Algebraic loops in CSMF control graph (Tarjan SCC without a stateful block)
+  if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
+    const kindById = new Map(netlist.controlBlocks.map((b) => [b.id, b.kind as string]));
+    for (const comp of findControlCycles(netlist.controlBlocks)) {
+      if (comp.some((id) => STATEFUL_BLOCK_KINDS.has(kindById.get(id) ?? ""))) continue;
+      const first = comp[0]!;
+      const loc = cmpLocationMap.get(first);
+      diagnostics.push({
+        code: PscadErrorCode.ALGEBRAIC_LOOP.code,
+        rule: PscadErrorCode.ALGEBRAIC_LOOP.rule,
+        severity: PscadErrorCode.ALGEBRAIC_LOOP.severity,
+        message: PscadErrorCode.ALGEBRAIC_LOOP.message(comp.map((c) => `'${c}'`).join(" -> ")),
+        componentId: first,
+        line: loc?.line,
+        column: loc?.column,
+        endLine: loc?.line,
+        endColumn: loc?.column !== undefined ? loc.column + first.length : undefined,
+      });
+    }
+  }
+
+  // 11. M6013/M6014: Parallel zero-impedance voltage sources on one bus
+  const noImpedance = netlist.sources.filter((s) => (s.rSourceOhm ?? 0) === 0 && (s.lSourceH ?? 0) === 0);
+  const buckets = new Map<string, { strict: typeof noImpedance; loose: typeof noImpedance }>();
+  for (const src of noImpedance) {
+    const b = buckets.get(src.bus) ?? { strict: [], loose: [] };
+    b.loose.push(src);
+    if (src.rSourceSpecified) b.strict.push(src);
+    buckets.set(src.bus, b);
+  }
+  for (const [busId, { strict, loose }] of buckets) {
+    const isStrict = strict.length >= 2;
+    const group = isStrict ? strict : loose;
+    if (group.length < 2) continue;
+    const def = isStrict ? PscadErrorCode.PARALLEL_IDEAL_SOURCES : PscadErrorCode.PARALLEL_LOW_IMPEDANCE_SOURCES;
+    const second = group[1]!;
+    const loc = cmpLocationMap.get(second.id);
+    diagnostics.push({
+      code: def.code,
+      rule: def.rule,
+      severity: def.severity,
+      message: def.message(netlist.buses.get(busId)?.name ?? busId, group.map((s) => `'${s.name || s.id}'`).join(", ")),
+      componentId: second.id,
+      busId,
+      line: loc?.line,
+      column: loc?.column,
+      endLine: loc?.line,
+      endColumn: loc?.column !== undefined ? loc.column + second.id.length : undefined,
+    });
+  }
+
+  // 12. M6015: Permanently saturated limiters (interval abstract interpretation, Tier 2)
+  if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
+    const intervals = analyzeControlIntervals(netlist.controlBlocks);
+    for (const b of netlist.controlBlocks) {
+      if (b.kind !== "limit" || b.inputs.length !== 1) continue;
+      const input = intervals.get(b.inputs[0]!);
+      if (!input || !isBounded(input)) continue;
+      const lim = outputLimits(b);
+      if (input.hi < lim.lo || input.lo > lim.hi) {
+        const loc = cmpLocationMap.get(b.id);
+        diagnostics.push({
+          code: PscadErrorCode.PERMANENT_SATURATION.code,
+          rule: PscadErrorCode.PERMANENT_SATURATION.rule,
+          severity: PscadErrorCode.PERMANENT_SATURATION.severity,
+          message: PscadErrorCode.PERMANENT_SATURATION.message(b.id, input.lo, input.hi, lim.lo, lim.hi),
+          componentId: b.id,
+          line: loc?.line,
+          column: loc?.column,
+          endLine: loc?.line,
+          endColumn: loc?.column !== undefined ? loc.column + b.id.length : undefined,
+        });
       }
     }
   }

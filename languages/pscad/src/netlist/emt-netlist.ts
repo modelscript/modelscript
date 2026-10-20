@@ -8,12 +8,13 @@
  */
 
 import { registeredPscadSourceTexts } from "../model/workspace-registry.js";
-import { parsePscx } from "../parser/pscx-parser.js";
+import { computePortWorldPosition, parsePscx } from "../parser/pscx-parser.js";
 import type {
   EmtBranch,
   EmtBus,
   EmtControlBlock,
   EmtConverterBridge,
+  EmtCurrentSource,
   EmtFault,
   EmtFmuInstance,
   EmtInductionMachine,
@@ -23,6 +24,7 @@ import type {
   EmtSynchronousMachine,
   EmtTransformer,
   EmtTransmissionLine,
+  PscxComponent,
   PscxModule,
   PscxProject,
 } from "../types.js";
@@ -139,6 +141,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const inductionMachines: EmtInductionMachine[] = [];
   const converterBridges: EmtConverterBridge[] = [];
   const controlBlocks: EmtControlBlock[] = [];
+  const currentSources: EmtCurrentSource[] = [];
+  const vectorBlocks: EmtControlBlock[] = [];
   let virtualBusCounter = 1;
 
   /**
@@ -153,6 +157,17 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     scope: ParamScope = new Map(),
   ): void {
     const qualifyId = (id: string): string => (prefix ? `${prefix}_${id}` : id);
+    // Components in one module can share a display name (e.g. empty `Name` falls back to the definition);
+    // qualify those by canvas id so distinct blocks and sub-module instances never collide.
+    const instanceNameCounts = new Map<string, number>();
+    for (const c of mod.components) {
+      const n = c.instanceName || c.id;
+      instanceNameCounts.set(n, (instanceNameCounts.get(n) ?? 0) + 1);
+    }
+    const localName = (c: PscxComponent): string => {
+      const n = c.instanceName || c.id;
+      return (instanceNameCounts.get(n) ?? 1) > 1 ? `${n}_${c.id}` : n;
+    };
 
     // 1. Register explicit buses (remapping boundary buses if matched in boundaryBusOverrides)
     const localBusIdToNetlistBus = new Map<string, string>();
@@ -186,11 +201,22 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
 
     for (const cmp of mod.components) {
       const defn = cmp.definitionName.toLowerCase();
+      const isPark = defn.endsWith(":abcdq0");
+      const parkInverse = isPark && Number(cmp.parameters["IDir"] ?? 1) === 0;
+      const isMerge = defn.endsWith(":datamerge");
       for (const port of cmp.ports) {
-        if (port.kind === "signal") {
+        if (port.kind === "signal" || isPark || isMerge) {
           signalPortIds.add(port.id);
-          if (port.name === "out" || port.name === "dq0") {
-            signalOutPortToBlockId.set(port.id, qualifyId(cmp.instanceName || cmp.id));
+          const qn = qualifyId(localName(cmp));
+          if (isPark) {
+            // Forward: p5 = d, dq0 = q. Inverse: p4 = a, dq0 = b, p3 = c.
+            const outs: Record<string, string> = parkInverse
+              ? { p4: `${qn}_phaseA`, dq0: `${qn}_phaseB`, p3: `${qn}_phaseC` }
+              : { p5: qn, dq0: `${qn}_q` };
+            const o = outs[port.name];
+            if (o) signalOutPortToBlockId.set(port.id, o);
+          } else if (port.name === "out" || port.name === "dq0") {
+            signalOutPortToBlockId.set(port.id, qn);
           }
         }
       }
@@ -255,6 +281,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     // Merge wires into nets: wires sharing a port, or touching geometrically (T-junctions, end-to-end),
     // are one electrical node. Each wire then sees the full port set of its net.
     const netPorts = mergeWireNets(mod);
+    // A block's own output must never be resolved as the source of one of its own inputs.
+    const portOwner = new Map<string, string>();
+    for (const c of mod.components) for (const pt of c.ports) portOwner.set(pt.id, c.id);
     for (let wi = 0; wi < mod.wires.length; wi++) {
       const wire = { connectedPortIds: netPorts[wi]! };
       if (wire.connectedPortIds.length === 0) continue;
@@ -264,7 +293,11 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       if (connectedSignalOut) {
         const srcBlockId = signalOutPortToBlockId.get(connectedSignalOut)!;
         for (const pId of wire.connectedPortIds) {
-          if (pId !== connectedSignalOut && signalPortIds.has(pId)) {
+          if (
+            pId !== connectedSignalOut &&
+            signalPortIds.has(pId) &&
+            portOwner.get(pId) !== portOwner.get(connectedSignalOut)
+          ) {
             signalPortSourceMap.set(pId, srcBlockId);
           }
         }
@@ -349,6 +382,62 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       }
     }
 
+    // Pin abutment: an undriven signal input that sits exactly on another block's signal output is connected
+    // to it without a wire (bin_delay's input touches the preceding block's output in the corpus).
+    {
+      const outAt: { x: number; y: number; block: string }[] = [];
+      for (const cmp of mod.components) {
+        for (const pt of cmp.ports) {
+          const blk = signalOutPortToBlockId.get(pt.id);
+          if (!blk) continue;
+          const w = computePortWorldPosition(cmp.position, pt.position, cmp.rotation ?? 0, Boolean(cmp.mirror));
+          outAt.push({ x: w.x, y: w.y, block: blk });
+        }
+      }
+      for (const cmp of mod.components) {
+        if (!cmp.definitionName.endsWith(":datalabel")) continue;
+        for (const pt of cmp.ports) {
+          const blk = signalPortSourceMap.get(pt.id);
+          if (!blk) continue;
+          const w = computePortWorldPosition(cmp.position, pt.position, cmp.rotation ?? 0, Boolean(cmp.mirror));
+          outAt.push({ x: w.x, y: w.y, block: blk });
+        }
+      }
+      for (const cmp of mod.components) {
+        for (const pt of cmp.ports) {
+          if (pt.kind !== "signal" || pt.name === "out" || signalPortSourceMap.has(pt.id)) continue;
+          const w = computePortWorldPosition(cmp.position, pt.position, cmp.rotation ?? 0, Boolean(cmp.mirror));
+          const hit = outAt.find(
+            (o) =>
+              Math.hypot(o.x - w.x, o.y - w.y) <= 1 &&
+              !cmp.ports.some((q) => signalOutPortToBlockId.get(q.id) === o.block),
+          );
+          if (hit) signalPortSourceMap.set(pt.id, hit.block);
+        }
+      }
+    }
+
+    // Bundle taps: `tap` sits on the vector net, `in` feeds the consumer. Index 1/2/3 selects phase A/B/C.
+    {
+      const assignments = new Map<string, string>();
+      for (const cmp of mod.components) {
+        if (!cmp.definitionName.toLowerCase().endsWith(":datatap")) continue;
+        const tapPort = cmp.ports.find((pt) => pt.name === "tap");
+        const inPort = cmp.ports.find((pt) => pt.name === "in");
+        const src = tapPort ? signalPortSourceMap.get(tapPort.id) : undefined;
+        const suffix = PHASE_SUFFIX[Number(cmp.parameters["Index"] ?? 0) - 1];
+        if (!inPort || !src || !suffix) continue;
+        for (let wi = 0; wi < mod.wires.length; wi++) {
+          if (!netPorts[wi]!.includes(inPort.id)) continue;
+          for (const pId of netPorts[wi]!) {
+            if (pId !== inPort.id && !pId.endsWith("_tap") && signalPortIds.has(pId))
+              assignments.set(pId, `${src}_phase${suffix}`);
+          }
+        }
+      }
+      for (const [pId, s] of assignments) signalPortSourceMap.set(pId, s);
+    }
+
     function getOrCreateBus(portId?: string, defaultPrefix = "Node"): string {
       if (portId && portToBusMap.has(portId)) {
         return portToBusMap.get(portId)!;
@@ -375,7 +464,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       const lowerClean = cleanDefn.toLowerCase();
       const p = resolveParamBag(cmp.parameters, scope);
       const qCmpId = qualifyId(cmp.id);
-      const qInstName = qualifyId(cmp.instanceName || cmp.id);
+      const qInstName = qualifyId(localName(cmp));
 
       // Check if component is a hierarchical sub-module instance in project.subModules
       const subMod = resolveSubModule(project, rawDefn);
@@ -383,6 +472,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const subBoundaryMap = new Map<string, string>();
         for (let idx = 0; idx < cmp.ports.length; idx++) {
           const pt = cmp.ports[idx]!;
+          if (pt.kind === "signal") continue;
           const connectedParentBus = getOrCreateBus(pt.id, `${cmp.instanceName}_${pt.name}`);
           subBoundaryMap.set(pt.name, connectedParentBus);
           subBoundaryMap.set(pt.name.toLowerCase(), connectedParentBus);
@@ -700,6 +790,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         };
         fmuInstances.push(fmu);
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
+        // master:src_ccin_1 is deliberately NOT lowered. Injecting its Vm (0.251 kA or a placeholder-looking
+        // 132.79 kA) as a 60 Hz current into the DC-named rails it sits on drove node voltages to megavolts, and
+        // Cntrl=1 suggests the magnitude comes from an unwired control signal. `currentSources` stays available.
       } else if (defn.includes("source") || defn.includes("gen")) {
         const p1 = cmp.ports[0]?.id;
         const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
@@ -710,28 +803,79 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const rSrc = parseFloat(String(p["R"] ?? p["r"] ?? "0"));
         const lSrc = parseFloat(String(p["L"] ?? p["l"] ?? "0"));
 
-        if (p["V"] === undefined && p["v"] === undefined && p["Vbase"] === undefined && p["kv"] === undefined) {
+        const hasV = p["V"] !== undefined || p["v"] !== undefined || p["Vbase"] !== undefined || p["kv"] !== undefined;
+        // The evaluator yields SI (V) for "132.79 [kV]" but leaves a unitless "179.63" as written (assumed kV).
+        const vmRaw = parseFloat(String(p["Vm"] ?? ""));
+        const vmKv = vmRaw >= 1000 ? vmRaw / 1000 : vmRaw;
+        const useVm = !hasV && !isNaN(vmKv) && vmKv > 0;
+        const isDc = defn.endsWith(":source_1") && p["AC"] !== undefined && Number(p["AC"]) === 0;
+        if (useVm) {
+          assumptions.push(`Source '${qInstName}' (${rawDefn}): magnitude taken from Vm=${vmKv} (unit assumed kV).`);
+        } else if (!hasV) {
           assumptions.push(`Source '${qInstName}' (${rawDefn}) has no recognised voltage parameter; assumed 16.5 kV.`);
+        }
+        if (isDc) {
+          assumptions.push(
+            `Source '${qInstName}' (${rawDefn}): AC=0 modelled as a constant DC voltage of Vm; Type, Cntrl and external control inputs are ignored (unverified).`,
+          );
         }
         const src: EmtSource = {
           id: qCmpId,
           name: qInstName || `Source_${qCmpId}`,
           bus: bus1,
-          vPeakKv: isNaN(vKv) ? 16.5 : vKv,
+          vPeakKv: useVm ? vmKv : isNaN(vKv) ? 16.5 : vKv,
+          dc: isDc || undefined,
           frequencyHz: isNaN(freq) || freq <= 0 ? project.settings.frequencyHz : freq,
           phaseRad: isNaN(phaseDeg) ? 0 : (phaseDeg * Math.PI) / 180,
           mvaRating: isNaN(mva) || mva <= 0 ? 100.0 : mva,
           rSourceOhm: !isNaN(rSrc) && rSrc > 0 ? rSrc : undefined,
           lSourceH: !isNaN(lSrc) && lSrc > 0 ? lSrc : undefined,
+          rSourceSpecified: p["R"] !== undefined || p["r"] !== undefined,
         };
         sources.push(src);
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
+      } else if (defn.endsWith(":fixed_load")) {
+        // Constant-impedance load: balanced wye, parallel R and L per phase from the node to ground,
+        // sized at nominal PO/QO, VBO (line-to-line) and FR.
+        const num = (k: string): number => parseFloat(String(p[k] ?? ""));
+        const po = num("PO") * 1e6;
+        const qo = num("QO") * 1e6;
+        const vb = num("VBO") * 1e3;
+        const fr = num("FR");
+        const f = isNaN(fr) || fr <= 0 ? project.settings.frequencyHz : fr;
+        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_1`);
+        const addLoadBranch = (suffix: string, r: number, l: number): void => {
+          const id = `${qCmpId}_${suffix}`;
+          branches.push({
+            id,
+            kind: "rlc",
+            fromBus: bus1,
+            toBus: "GND",
+            resistanceOhm: r,
+            inductanceH: l,
+            capacitanceF: 0,
+          });
+          buses.get(bus1)?.connectedBranchIds.push(id);
+        };
+        if (!isNaN(po) && !isNaN(vb) && po > 0 && vb > 0) addLoadBranch("R", (vb * vb) / po, 0);
+        if (!isNaN(qo) && !isNaN(vb) && qo > 0 && vb > 0) addLoadBranch("L", 0, (vb * vb) / qo / (2 * Math.PI * f));
+        assumptions.push(
+          isNaN(po) || isNaN(qo) || isNaN(vb)
+            ? `'${qInstName}' (fixed_load): PO/QO/VBO did not evaluate to numbers; missing elements omitted.`
+            : `'${qInstName}' (fixed_load): constant R||L at nominal PO/QO/VBO/FR; NP, NQ, KPF, KQF and Dtls are ignored (unverified).`,
+        );
       } else if (
         defn.includes("resistor") ||
         defn.includes("inductor") ||
         defn.includes("capacitor") ||
-        defn.includes("rlc")
+        defn.includes("rlc") ||
+        defn.endsWith(":current_scaler")
       ) {
+        if (defn.endsWith(":current_scaler")) {
+          assumptions.push(
+            `'${qInstName}' (current_scaler): modelled as a 1 mOhm series connection between its terminals; the current gain G_CDCS is ignored (unverified).`,
+          );
+        }
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
         const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_1`);
@@ -759,28 +903,56 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
         if (buses.has(bus2)) buses.get(bus2)?.connectedBranchIds.push(qCmpId);
       } else if (defn.endsWith(":abcdq0")) {
-        // abc -> dq0 Park transform, split into one single-output block per axis. The angle is the
+        // Park transform, split into one single-output block per axis/phase. The angle is the
         // `Theta` parameter naming a signal (data label) rather than a wired input.
-        const abcPort = cmp.ports.find((pt) => pt.name === "abc");
-        const src = abcPort ? signalPortSourceMap.get(abcPort.id) : undefined;
+        const inverse = Number(cmp.parameters["IDir"] ?? 1) === 0;
+        const srcOf = (name: string): string | undefined => {
+          const pt = cmp.ports.find((x) => x.name === name);
+          return pt ? signalPortSourceMap.get(pt.id) : undefined;
+        };
         const thetaName = String(cmp.parameters["Theta"] ?? "").trim();
         const thetaBlock = thetaName ? labelSignalSource.get(thetaName) : undefined;
-        if (!src)
-          assumptions.push(`'${qInstName}' (abcdq0): abc input is not driven by a recognised signal; treated as 0.`);
         if (!thetaBlock)
           assumptions.push(
             `'${qInstName}' (abcdq0): angle '${thetaName}' is not driven by a known signal; treated as 0.`,
           );
-        const ins = [...PHASE_SUFFIX.map((s) => (src ? `${src}_phase${s}` : "")), thetaBlock ?? ""];
-        const kinds = ["abcdq0_d", "abcdq0_q", "abcdq0_0"] as const;
-        kinds.forEach((kind, i) => {
-          controlBlocks.push({
-            id: i === 0 ? qInstName : `${qInstName}_${kind.slice(-1)}`,
-            kind,
-            inputs: ins,
-            params: {},
+        if (inverse) {
+          // dq0 -> abc: p5 = d, abc = q, p6 = zero-sequence.
+          const ins = [srcOf("p5") ?? "", srcOf("abc") ?? "", srcOf("p6") ?? "", thetaBlock ?? ""];
+          if (!srcOf("p5") || !srcOf("abc"))
+            assumptions.push(`'${qInstName}' (abcdq0): d/q input is not driven by a recognised signal; treated as 0.`);
+          (["A", "B", "C"] as const).forEach((ph) => {
+            controlBlocks.push({
+              id: `${qInstName}_phase${ph}`,
+              kind: `inv_abcdq0_${ph.toLowerCase()}` as EmtControlBlock["kind"],
+              inputs: ins,
+              params: {},
+            });
           });
-        });
+        } else {
+          // abc -> dq0: p3 = a, abc = b, p4 = c. A single vector driver feeds all three via the abc port.
+          const vec = srcOf("abc");
+          const a = srcOf("p3");
+          const c = srcOf("p4");
+          let ins: string[];
+          if (a && c && vec) ins = [a, vec, c, thetaBlock ?? ""];
+          else {
+            ins = [...PHASE_SUFFIX.map((s) => (vec ? `${vec}_phase${s}` : "")), thetaBlock ?? ""];
+            if (!vec)
+              assumptions.push(
+                `'${qInstName}' (abcdq0): abc input is not driven by a recognised signal; treated as 0.`,
+              );
+          }
+          const kinds = ["abcdq0_d", "abcdq0_q", "abcdq0_0"] as const;
+          kinds.forEach((kind, i) => {
+            controlBlocks.push({
+              id: i === 0 ? qInstName : `${qInstName}_${kind.slice(-1)}`,
+              kind,
+              inputs: ins,
+              params: {},
+            });
+          });
+        }
       } else if (defn.endsWith(":voltmeter") || defn.endsWith(":voltmetergnd")) {
         // Measures the node potential against EMT ground; exposes it as a control signal.
         const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_V`);
@@ -794,8 +966,13 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
             sensorTarget: bus1,
           }),
         );
-      } else if (defn.endsWith(":ammeter")) {
-        // In-line current meter: a near-zero impedance series branch plus a current sensor.
+      } else if (defn.endsWith(":ammeter") || defn.endsWith(":multimeter")) {
+        // In-line meter: a near-zero impedance series branch plus a current sensor.
+        if (defn.endsWith(":multimeter")) {
+          assumptions.push(
+            `'${qInstName}' (multimeter): modelled as an ideal in-line meter; P/Q/RMS outputs are not computed (unverified).`,
+          );
+        }
         const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_A`);
         const bus2 = getOrCreateBus(cmp.ports[1]?.id, `${cmp.instanceName}_B`);
         branches.push({
@@ -846,11 +1023,66 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           choppingCurrentAmp: !isNaN(iChop) ? iChop : undefined,
           singlePoleTripPhase: spPhase === 0 || spPhase === 1 || spPhase === 2 ? spPhase : undefined,
         };
+        // PSCAD breaker1: NAME is the status signal it listens to; RON/ROFF are the contact resistances.
+        const num = (k: string): number => parseFloat(String(p[k] ?? ""));
+        const ron = num("RON");
+        const roff = num("ROFF");
+        if (!isNaN(ron) && ron > 0) branch.rClosedOhm = ron;
+        if (!isNaN(roff) && roff > 0) branch.rOpenOhm = roff;
+        if (defn.endsWith(":peswitch")) {
+          // Corpus: L=D <-> Type=0 (42/42) and L=I|Q <-> Type=3 (22/22). Only the diode is modelled.
+          const isDiode = String(p["L"] ?? "").trim() === "D" && Number(p["Type"]) === 0;
+          if (isDiode) {
+            branch.diode = true;
+            // Anode = N2, cathode = N1: with the opposite orientation the half-bridge legs in the corpus
+            // short their own source. Inferred from circuit topology, not from vendor documentation.
+            branch.fromBus = bus2;
+            branch.toBus = bus1;
+            assumptions.push(
+              `'${qInstName}' (peswitch): modelled as an ideal diode, anode N2 to cathode N1 (terminal polarity inverted for structural loop compatibility; unverified), RON/ROFF from the component; INTR, EFVD, EBO, Erw and the snubber are ignored.`,
+            );
+          } else {
+            assumptions.push(
+              `'${qInstName}' (peswitch): Type ${p["Type"]} (L='${p["L"]}') is gate-controlled and is not modelled; held closed.`,
+            );
+          }
+        }
+        if (defn.endsWith(":breaker1")) {
+          const sigName = String(p["NAME"] ?? "").trim();
+          const src = sigName ? labelSignalSource.get(sigName) : undefined;
+          const notes: string[] = [];
+          if (src) {
+            controlBlocks.push({
+              id: `${qCmpId}_status`,
+              kind: "sum",
+              inputs: [src],
+              params: {},
+              actuator: { type: "breaker_status", targetId: qCmpId },
+            });
+            notes.push(`status signal '${sigName}' (0 = closed, 1 = open; unverified)`);
+          } else {
+            notes.push(`status signal '${sigName}' is not driven; held closed`);
+          }
+          if (!(branch.rClosedOhm !== undefined)) notes.push("RON is 0 or missing; using 0.001 ohm");
+          notes.push("TD, TDR, BOpen and CLVL are ignored (instantaneous operation at current zero)");
+          assumptions.push(`'${qInstName}' (breaker1): ${notes.join("; ")}.`);
+        }
         branches.push(branch);
         if (!isOpen) {
           buses.get(bus1)?.connectedBranchIds.push(qCmpId);
           buses.get(bus2)?.connectedBranchIds.push(qCmpId);
         }
+      } else if (defn.endsWith(":datamerge")) {
+        // Bundles scalar inputs (top to bottom) into a vector; exposed per phase as identity blocks.
+        const ins = cmp.ports
+          .filter((pt) => pt.name !== "out")
+          .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)
+          .map((pt) => signalPortSourceMap.get(pt.id) ?? "");
+        PHASE_SUFFIX.forEach((s, i) => {
+          const input = ins[i] ?? "";
+          if (!input) assumptions.push(`'${qInstName}' (datamerge): input ${i + 1} is not driven; treated as 0.`);
+          controlBlocks.push({ id: `${qInstName}_phase${s}`, kind: "sum", inputs: [input], params: {} });
+        });
       } else if (
         defn.endsWith(":pi_ctlr") ||
         defn.endsWith(":pi") ||
@@ -872,47 +1104,208 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.endsWith(":square") ||
         defn.endsWith(":inv") ||
         defn.endsWith(":integral") ||
-        defn.endsWith(":fp_int")
+        defn.endsWith(":fp_int") ||
+        defn.endsWith(":select") ||
+        defn.endsWith(":upramp") ||
+        defn.endsWith(":range") ||
+        defn.endsWith(":compare") ||
+        defn.endsWith(":maxmin") ||
+        defn.endsWith(":x_power_y") ||
+        defn.endsWith(":tbreakn") ||
+        defn.endsWith(":angle_resolver") ||
+        defn.endsWith(":rms3ph") ||
+        defn.endsWith(":ratelimit") ||
+        defn.endsWith(":xy_transfer_function") ||
+        defn.endsWith(":bin_delay") ||
+        defn.endsWith(":trans_filt") ||
+        defn.endsWith(":time-sig") ||
+        defn.endsWith(":trig") ||
+        defn.endsWith(":current_scaler") ||
+        defn.endsWith(":logic_mult")
       ) {
-        const kind: EmtControlBlock["kind"] = defn.endsWith(":square")
-          ? "square"
-          : defn.endsWith(":inv")
-            ? "inv"
-            : defn.endsWith(":integral")
-              ? "integral"
-              : defn.endsWith(":fp_int")
-                ? "fp_int"
-                : defn.endsWith(":hardlimit")
-                  ? "limit"
-                  : defn.endsWith(":unity")
-                    ? "gain"
-                    : defn.endsWith(":mult")
-                      ? "mult"
-                      : defn.endsWith(":div")
-                        ? "div"
-                        : defn.endsWith(":sumjct")
-                          ? "sum"
-                          : defn.endsWith(":emtconst") || defn.endsWith(":consti")
-                            ? "const"
-                            : defn.includes("pi")
-                              ? "pi"
-                              : defn.includes("gain")
-                                ? "gain"
-                                : defn.includes("sum")
-                                  ? "sum"
-                                  : defn.includes("leadlag")
-                                    ? "leadlag"
-                                    : defn.includes("pole") || defn.includes("lag")
-                                      ? "lag"
-                                      : defn.includes("limit")
-                                        ? "limit"
-                                        : defn.includes("compar")
-                                          ? "compar"
-                                          : "const";
+        const kind: EmtControlBlock["kind"] = defn.endsWith(":tbreakn")
+          ? "tbreakn"
+          : defn.endsWith(":x_power_y")
+            ? "x_power_y"
+            : defn.endsWith(":angle_resolver")
+              ? "angle_resolver"
+              : defn.endsWith(":maxmin")
+                ? "maxmin"
+                : defn.endsWith(":rms3ph")
+                  ? "rms3ph"
+                  : defn.endsWith(":compare")
+                    ? "compare"
+                    : defn.endsWith(":trans_filt")
+                      ? "trans_filt"
+                      : defn.endsWith(":bin_delay")
+                        ? "bin_delay"
+                        : defn.endsWith(":range")
+                          ? "range"
+                          : defn.endsWith(":xy_transfer_function")
+                            ? "xy_table"
+                            : defn.endsWith(":ratelimit")
+                              ? "ratelimit"
+                              : defn.endsWith(":logic_mult")
+                                ? "logic"
+                                : defn.endsWith(":trig")
+                                  ? "trig"
+                                  : defn.endsWith(":current_scaler")
+                                    ? "gain"
+                                    : defn.endsWith(":time-sig")
+                                      ? "time_sig"
+                                      : defn.endsWith(":upramp")
+                                        ? "upramp"
+                                        : defn.endsWith(":select")
+                                          ? "select"
+                                          : defn.endsWith(":square")
+                                            ? "square"
+                                            : defn.endsWith(":inv")
+                                              ? "inv"
+                                              : defn.endsWith(":integral")
+                                                ? "integral"
+                                                : defn.endsWith(":fp_int")
+                                                  ? "fp_int"
+                                                  : defn.endsWith(":hardlimit")
+                                                    ? "limit"
+                                                    : defn.endsWith(":unity")
+                                                      ? "gain"
+                                                      : defn.endsWith(":mult")
+                                                        ? "mult"
+                                                        : defn.endsWith(":div")
+                                                          ? "div"
+                                                          : defn.endsWith(":sumjct")
+                                                            ? "sum"
+                                                            : defn.endsWith(":emtconst") || defn.endsWith(":consti")
+                                                              ? "const"
+                                                              : defn.includes("pi")
+                                                                ? "pi"
+                                                                : defn.includes("gain")
+                                                                  ? "gain"
+                                                                  : defn.includes("sum")
+                                                                    ? "sum"
+                                                                    : defn.includes("leadlag")
+                                                                      ? "leadlag"
+                                                                      : defn.includes("pole") || defn.includes("lag")
+                                                                        ? "lag"
+                                                                        : defn.includes("limit")
+                                                                          ? "limit"
+                                                                          : defn.includes("compar")
+                                                                            ? "compar"
+                                                                            : "const";
         const params: Record<string, number> = {};
         for (const [k, v] of Object.entries(p)) {
           const num = typeof v === "number" ? v : parseFloat(String(v));
           if (!isNaN(num)) params[k] = num;
+        }
+        if (kind === "trans_filt") {
+          const lowpass =
+            params["Band"] === 1 &&
+            params["Type"] === 1 &&
+            (params["Order"] === 1 || params["Order"] === 2) &&
+            (params["FBase"] ?? 0) > 0;
+          assumptions.push(
+            lowpass
+              ? `'${qInstName}' (trans_filt): Order ${params["Order"]} Butterworth low-pass at FBase=${params["FBase"]} Hz, assuming Band=1 is low-pass and Type=1 is Butterworth (unverified); Cnfg, Flow, Fup, Q and PRip are ignored.`
+              : `'${qInstName}' (trans_filt): Order=${params["Order"] ?? "?"} Band=${params["Band"] ?? "?"} Type=${params["Type"] ?? "?"} is not supported; the block is a unity pass-through (unverified).`,
+          );
+        }
+        if (kind === "upramp" && (params["X2"] === undefined || params["Y2"] === undefined)) {
+          assumptions.push(`'${qInstName}' (upramp): X2/Y2 did not evaluate to numbers; defaulted to 1.`);
+        }
+        if (kind === "tbreakn") {
+          const bad = ["TO1", "TO2"].filter((k) => params[k] === undefined);
+          assumptions.push(
+            bad.length > 0
+              ? `'${qInstName}' (tbreakn): ${bad.join("/")} did not evaluate to a number; defaulted to 0 s. Status 0 = closed, 1 = open (unverified).`
+              : `'${qInstName}' (tbreakn): status 0 = closed, 1 = open; INIT=1 starts closed (unverified).`,
+          );
+        }
+        if (kind === "x_power_y") {
+          assumptions.push(
+            `'${qInstName}' (x_power_y): in^y with y=${params["y"] ?? 1}; negative base ${Number(params["xneg"] ?? 0) === 0 ? "clamped to 0" : "passed to pow"} (unverified).`,
+          );
+        }
+        if (kind === "angle_resolver") {
+          const flags = ["IPUnit", "OPUnit", "OPRange"].map((k) => params[k] ?? 0);
+          assumptions.push(
+            flags.every((f) => f === 0)
+              ? `'${qInstName}' (angle_resolver): radians in/out wrapped to [-pi, pi] (unverified).`
+              : `'${qInstName}' (angle_resolver): IPUnit/OPUnit/OPRange ${flags.join("/")} not supported; wrapped to [-pi, pi] in radians.`,
+          );
+        }
+        if (kind === "maxmin") {
+          assumptions.push(
+            `'${qInstName}' (maxmin): Type ${params["Type"] ?? 1} taken as ${params["Type"] === 2 ? "minimum" : "maximum"} over the single wired input; flags A-G ignored (unverified).`,
+          );
+        }
+        if (kind === "rms3ph") {
+          assumptions.push(
+            `'${qInstName}' (rms3ph): modelled as sqrt(mean square of the 3 phases) through a first-order lag Ts; Type, Scale, NSAM and View ignored (unverified).`,
+          );
+        }
+        if (kind === "compare") {
+          assumptions.push(
+            params["X"] === undefined
+              ? `'${qInstName}' (compare): X did not evaluate to a number; threshold defaulted to 0.`
+              : `'${qInstName}' (compare): modelled as OH when input > X, else OL (unverified).`,
+          );
+        }
+        if (kind === "range") {
+          const missing = ["XL", "XU", "OL", "OM", "OH"].filter((k) => params[k] === undefined);
+          assumptions.push(
+            missing.length > 0
+              ? `'${qInstName}' (range): ${missing.join("/")} did not evaluate to numbers; defaulted to 0.`
+              : `'${qInstName}' (range): modelled as OL below XL, OH above XU, else OM (unverified).`,
+          );
+        }
+        if (kind === "bin_delay") {
+          const missing = ["T", "Toff"].filter((k) => params[k] === undefined);
+          assumptions.push(
+            missing.length > 0
+              ? `'${qInstName}' (bin_delay): ${missing.join("/")} did not evaluate to a number; that delay defaulted to 0 s.`
+              : `'${qInstName}' (bin_delay): input > 0.5 is on; T delays the rising edge, Toff the falling edge, starting at INITST=${params["INITST"] ?? 0}; the INTR setting is ignored (unverified).`,
+          );
+        }
+        if (kind === "xy_table") {
+          const n = Math.trunc(params["N"] ?? 0);
+          let ok = 0;
+          for (let k = 1; k <= n; k++) if (params[`X${k}`] !== undefined && params[`Y${k}`] !== undefined) ok++;
+          const modes = `Mode=${params["Mode"] ?? "?"} Method=${params["Method"] ?? "?"} InType=${params["InType"] ?? "?"} Per=${params["Per"] ?? "?"}`;
+          assumptions.push(
+            ok < n
+              ? `'${qInstName}' (xy_transfer_function): only ${ok} of ${n} X/Y points evaluated to numbers; unevaluated points are skipped.`
+              : `'${qInstName}' (xy_transfer_function): piecewise-linear table through ${n} points, end values held outside the range, not periodic; ${modes}, File and the Kx/Ky/Xoff/Yoff order are not interpreted (unverified).`,
+          );
+        }
+        if (kind === "ratelimit") {
+          const missing = ["IR", "DR"].filter((k) => params[k] === undefined);
+          assumptions.push(
+            missing.length > 0
+              ? `'${qInstName}' (ratelimit): ${missing.join("/")} did not evaluate to numbers; that direction is unlimited.`
+              : `'${qInstName}' (ratelimit): IR/DR taken as rise/fall rate limits per second (unverified).`,
+          );
+        }
+        if (kind === "logic") {
+          const t = Math.trunc(params["Type"] ?? 0);
+          assumptions.push(
+            t >= 0 && t <= 5
+              ? `'${qInstName}' (logic_mult): Type ${t} mapped to ${["AND", "OR", "NAND", "NOR", "XOR", "XNOR"][t]} (unverified).`
+              : `'${qInstName}' (logic_mult): Type ${t} is not recognised; treated as AND.`,
+          );
+        }
+        if (kind === "trig") {
+          const t = Math.trunc(params["Type"] ?? 1);
+          if (t !== 1 && t !== 2)
+            assumptions.push(`'${qInstName}' (trig): Type ${t} is not supported (only 1 = sin, 2 = cos); output is 0.`);
+          else assumptions.push(`'${qInstName}' (trig): Type ${t} mapped to ${t === 1 ? "sin" : "cos"} (unverified).`);
+        }
+        if (defn.endsWith(":current_scaler")) {
+          if (params["G_CDCS"] === undefined) {
+            assumptions.push(
+              `'${qInstName}' (current_scaler): G_CDCS did not evaluate to a number; gain defaulted to 1.`,
+            );
+          } else params["K"] = params["G_CDCS"];
+          assumptions.push(`'${qInstName}' (current_scaler): modelled as Y = G_CDCS * X with no offset (unverified).`);
         }
         const explicitInputs = String(p["inputs"] ?? "")
           .split(",")
@@ -930,17 +1323,44 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           }
         }
 
+        let blockInputs = explicitInputs.length > 0 ? explicitInputs : wiredInputs;
+        // A 3-phase vector driver feeds rms3ph through its per-phase signals.
+        if (kind === "rms3ph") {
+          const vec = blockInputs[0];
+          blockInputs = vec ? PHASE_SUFFIX.map((s) => `${vec}_phase${s}`) : [];
+          if (!vec)
+            assumptions.push(`'${qInstName}' (rms3ph): input is not driven by a recognised signal; treated as 0.`);
+        }
         controlBlocks.push({
           id: qInstName,
           kind,
-          inputs: explicitInputs.length > 0 ? explicitInputs : wiredInputs,
+          inputs: blockInputs,
           params,
         });
+        if (Number(p["Dim"]) === 3 && ["const", "mult", "div", "sum", "gain", "limit"].includes(kind)) {
+          vectorBlocks.push({ id: qInstName, kind, inputs: blockInputs, params });
+        }
       }
     }
   }
 
   processModule(project.rootModule, "", new Map<string, string>(), new Set<string>(["Main"]));
+
+  // Expand Dim=3 vector blocks into per-phase scalar blocks. Inputs follow their own phase signal when
+  // one exists, otherwise they broadcast as a scalar.
+  {
+    const have = new Set(controlBlocks.map((b) => b.id));
+    for (const v of vectorBlocks) {
+      PHASE_SUFFIX.forEach((s) => {
+        controlBlocks.push({
+          id: `${v.id}_phase${s}`,
+          kind: v.kind,
+          inputs: v.inputs.map((i) => (have.has(`${i}_phase${s}`) ? `${i}_phase${s}` : i)),
+          params: v.params,
+        });
+      });
+    }
+  }
 
   // Inputs that name a block which does not exist (e.g. per-phase taps of a non-sensor vector driver)
   // evaluate as 0 in the solver; surface them instead of failing silently.
@@ -960,6 +1380,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     transmissionLines,
     fmuInstances,
     sources,
+    currentSources: currentSources.length > 0 ? currentSources : undefined,
     faults: faults.length > 0 ? faults : undefined,
     surgeArresters: surgeArresters.length > 0 ? surgeArresters : undefined,
     synchronousMachines: synchronousMachines.length > 0 ? synchronousMachines : undefined,
@@ -1001,6 +1422,9 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
       openTimeSec: b.openTimeSec,
       closeTimeSec: b.closeTimeSec,
       choppingCurrentAmp: b.choppingCurrentAmp,
+      rClosedOhm: b.rClosedOhm,
+      rOpenOhm: b.rOpenOhm,
+      diode: b.diode,
       // Convert numeric 0/1/2 phase index into symbolic phase identifier ("A" | "B" | "C")
       singlePoleTripPhase:
         b.singlePoleTripPhase === 0
@@ -1053,6 +1477,16 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     id: s.id,
     bus: s.bus,
     vPeakKv: s.vPeakKv,
+    freqHz: s.frequencyHz,
+    phaseRad: s.phaseRad,
+    rSource: s.rSourceOhm,
+    dc: s.dc,
+  }));
+
+  const currentSources = netlist.currentSources?.map((s) => ({
+    id: s.id,
+    bus: s.bus,
+    iPeakA: s.iPeakA,
     freqHz: s.frequencyHz,
     phaseRad: s.phaseRad,
   }));
@@ -1151,6 +1585,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     inputs: cb.inputs,
     params: cb.params,
     ...(cb.sensorTarget !== undefined ? { sensorTarget: cb.sensorTarget } : {}),
+    ...(cb.actuator !== undefined ? { actuator: cb.actuator } : {}),
   }));
 
   return {
@@ -1161,6 +1596,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     transmissionLines: transmissionLines.length > 0 ? transmissionLines : undefined,
     fmuInstances: fmuInstances.length > 0 ? fmuInstances : undefined,
     sources: sources.length > 0 ? sources : undefined,
+    currentSources: currentSources && currentSources.length > 0 ? currentSources : undefined,
     faults: faults && faults.length > 0 ? faults : undefined,
     surgeArresters: surgeArresters && surgeArresters.length > 0 ? surgeArresters : undefined,
     synchronousMachines: synchronousMachines && synchronousMachines.length > 0 ? synchronousMachines : undefined,

@@ -443,6 +443,12 @@ export function startNodeServer(input?: any, output?: any) {
           const project = parsePscx(text);
           return lintPscx(project);
         },
+        analyze_pscad_signal_ranges: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parsePscx, analyzePscadSignalRanges } = await import("@modelscript/pscad");
+          return analyzePscadSignalRanges(parsePscx(text));
+        },
         inspect_pscad_schematic: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return null;
