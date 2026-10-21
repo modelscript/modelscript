@@ -1087,3 +1087,69 @@ function snapWireConnections(mod: PscxModule): void {
     mod.junctions = rawJunctions;
   }
 }
+
+/**
+ * Resolves flat solver variable names to hierarchical PSCAD-style paths.
+ * Example: 'i_CB1_a' -> 'Main:CB1:i'
+ *
+ * @param flatName The flat variable name produced by the solver (e.g., 'i_CB1_a', 'v_Bus1_a', 'i_Branch1')
+ * @param project Optional parsed PSCAD project for component/bus identity resolution
+ * @param defaultModule Default root module name (defaults to "Main")
+ */
+export function resolvePscadHierarchicalPath(
+  flatName: string,
+  project?: PscxProject,
+  defaultModule: string = "Main",
+): string {
+  if (!flatName) return "";
+
+  // 1. Identify signal prefix kind (v: voltage, i: current, etc.)
+  const match = /^(v|i|sig)_([a-zA-Z0-9_]+?)(?:_([abcABC]))?$/.exec(flatName);
+  if (!match) {
+    // If not matching typical v_... or i_..., format with default module if not already prefixed
+    return flatName.includes(":") ? flatName : `${defaultModule}:${flatName}`;
+  }
+
+  const [, kind, rawEntity, phase] = match;
+  let moduleName = defaultModule;
+  let entityName = rawEntity!;
+
+  // 2. Check if rawEntity contains a qualified module prefix (e.g., SubMod_Cmp)
+  if (project) {
+    const rootMod = project.rootModule;
+    const findComponentOrBus = (mod: PscxModule, idOrName: string) => {
+      return (
+        mod.components.find((c) => c.id === idOrName || c.instanceName === idOrName) ||
+        mod.buses.find((b) => b.id === idOrName || b.name === idOrName)
+      );
+    };
+
+    // Check if directly in root module
+    const rootEntity = findComponentOrBus(rootMod, rawEntity!);
+    if (rootEntity) {
+      moduleName = rootMod.name || defaultModule;
+      entityName = rootEntity.id;
+    } else {
+      // Check submodules
+      for (const [subName, subMod] of project.subModules) {
+        if (rawEntity!.startsWith(`${subName}_`)) {
+          const subEntityId = rawEntity!.slice(subName.length + 1);
+          const found = findComponentOrBus(subMod, subEntityId);
+          if (found) {
+            moduleName = `${defaultModule}:${subName}`;
+            entityName = found.id;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  const signalQuantity = kind!.toLowerCase();
+  const phaseSuffix = phase && phase.toLowerCase() !== "a" ? `:${phase.toLowerCase()}` : "";
+  // If user requested 'i_CB1_a' -> 'Main:CB1:i' exactly without phase or matching phase:
+  const result = phase
+    ? `${moduleName}:${entityName}:${signalQuantity}${phaseSuffix}`
+    : `${moduleName}:${entityName}:${signalQuantity}`;
+  return result;
+}

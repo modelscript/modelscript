@@ -15,6 +15,9 @@ interface SimulationData {
   y: number[][];
   states: string[];
   sweepResults?: { value: number; y: number[][] }[];
+  comtrade?: { cfg: string; dat: string };
+  pscadOut?: { inf: string; out: { suffix: string; content: string }[] };
+  projectName?: string;
 }
 
 /** Per-variable statistics from Monte Carlo analysis */
@@ -191,6 +194,8 @@ const selectXAxis = document.getElementById("select-xaxis") as HTMLSelectElement
 const checkboxNormalize = document.getElementById("checkbox-normalize") as HTMLInputElement | null;
 const checkboxDualY = document.getElementById("checkbox-dual-y") as HTMLInputElement | null;
 const btnExportCsv = document.getElementById("btn-export-csv");
+const btnExportComtrade = document.getElementById("btn-export-comtrade");
+const btnExportOut = document.getElementById("btn-export-out");
 const btnExportPng = document.getElementById("btn-export-png");
 const btnCopyCsv = document.getElementById("btn-copy-csv");
 const btnToggleCursors = document.getElementById("btn-toggle-cursors");
@@ -558,8 +563,51 @@ async function copyCsvToClipboard(btn: HTMLElement) {
   }
 }
 
+function downloadTextFile(filename: string, content: string, mime: string = "text/plain") {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8;` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportComtrade() {
+  if (!currentData?.comtrade) return;
+  const baseName = currentData.projectName || "simulation";
+  downloadTextFile(`${baseName}.cfg`, currentData.comtrade.cfg);
+  setTimeout(() => {
+    downloadTextFile(`${baseName}.dat`, currentData!.comtrade!.dat);
+  }, 100);
+}
+
+function exportPscadOut() {
+  if (!currentData?.pscadOut) return;
+  const baseName = currentData.projectName || "simulation";
+  downloadTextFile(`${baseName}.inf`, currentData.pscadOut.inf);
+  currentData.pscadOut.out.forEach((outFile, idx) => {
+    setTimeout(
+      () => {
+        downloadTextFile(`${baseName}${outFile.suffix}`, outFile.content);
+      },
+      (idx + 1) * 100,
+    );
+  });
+}
+
 btnExportCsv?.addEventListener("click", () => {
   exportCsv();
+});
+
+btnExportComtrade?.addEventListener("click", () => {
+  exportComtrade();
+});
+
+btnExportOut?.addEventListener("click", () => {
+  exportPscadOut();
 });
 
 btnExportPng?.addEventListener("click", () => {
@@ -696,6 +744,13 @@ window.addEventListener("message", (event) => {
       btn3dAnimation.style.display = "inline-block";
     } else {
       btn3dAnimation.style.display = "none";
+    }
+
+    if (btnExportComtrade) {
+      btnExportComtrade.style.display = msg.data.comtrade ? "inline-block" : "none";
+    }
+    if (btnExportOut) {
+      btnExportOut.style.display = msg.data.pscadOut ? "inline-block" : "none";
     }
 
     // Fill in Parameters with rich sliders, reset, and sweep controls
@@ -881,6 +936,29 @@ window.addEventListener("message", (event) => {
     toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
     if (stRtol && !stRtol.value) stRtol.value = (exp.tolerance ?? 1e-4).toString();
     if (stAtol && !stAtol.value) stAtol.value = "1e-6";
+
+    if (exp.solver && stSolver) {
+      const solverLower = exp.solver.toLowerCase();
+      if (solverLower.includes("dommel") || solverLower.includes("emt") || solverLower.includes("companion")) {
+        stSolver.value = "dommel";
+        if (stPreset) stPreset.value = "emt";
+      } else if (solverLower.includes("cvode") || solverLower.includes("bdf")) {
+        stSolver.value = "cvode";
+        if (stPreset) stPreset.value = "stiff";
+      } else if (solverLower.includes("rk4")) {
+        stSolver.value = "rk4";
+        if (stPreset) stPreset.value = "fast";
+      } else if (solverLower.includes("euler")) {
+        stSolver.value = "euler";
+        if (stPreset) stPreset.value = "custom";
+      } else if (solverLower.includes("webgpu")) {
+        stSolver.value = "webgpu";
+        if (stPreset) stPreset.value = "custom";
+      } else if (solverLower.includes("dopri")) {
+        stSolver.value = "dopri5";
+        if (stPreset) stPreset.value = "standard";
+      }
+    }
 
     // Update telemetry display if available
     btnSimulate?.classList.remove("loading");
@@ -1376,6 +1454,13 @@ stPreset?.addEventListener("change", () => {
     toleranceInput.value = "1e-5";
     if (stRtol) stRtol.value = "1e-5";
     if (stAtol) stAtol.value = "1e-7";
+    if (stSteadyState) stSteadyState.checked = false;
+  } else if (preset === "emt") {
+    if (stSolver) stSolver.value = "dommel";
+    intervalInput.value = "0.00005";
+    toleranceInput.value = "1e-4";
+    if (stRtol) stRtol.value = "1e-4";
+    if (stAtol) stAtol.value = "1e-6";
     if (stSteadyState) stSteadyState.checked = false;
   } else if (preset === "steady-state") {
     if (stSolver) stSolver.value = "dopri5";

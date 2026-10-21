@@ -485,8 +485,11 @@ export function startNodeServer(input?: any, output?: any) {
           return runPscadSimulationPipeline({
             documentText: text,
             runSimulation: true,
+            durationSec: params?.durationSec,
+            timeStepSec: params?.timeStepSec,
             verifyIeee2800: Boolean(params?.verifyIeee2800),
             exportComtrade: params?.exportComtrade ?? true,
+            exportOut: params?.exportOut ?? true,
             solverRunner,
           });
         },

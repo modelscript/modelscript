@@ -9,6 +9,7 @@
 
 import { language } from "@modelscript/dsl";
 import { emtResultToComtrade, writeComtrade } from "./comtrade/comtrade-writer.js";
+import { writePscadOut, type PscadOutResult } from "./comtrade/pscad-out-writer.js";
 import { lintPscx } from "./lints/index.js";
 import { computeSimulationCoverage, type SimulationCoverage } from "./netlist/coverage.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "./netlist/emt-netlist.js";
@@ -29,10 +30,16 @@ export interface PscadSimulationPipelineOptions {
   runSimulation?: boolean | undefined;
   /** Whether to serialize the simulated waveforms into IEEE C37.111 COMTRADE `.cfg` and `.dat` strings. */
   exportComtrade?: boolean | undefined;
+  /** Whether to serialize the simulated waveforms into PSCAD-style `.inf` and `_NN.out` files. */
+  exportOut?: boolean | undefined;
   /** Whether to run automated IEEE 2800-2022 / NERC PRC-029-1 fault ride-through compliance checks. */
   verifyIeee2800?: boolean | undefined;
   /** Optional overrides for the fault event specification evaluated during IEEE 2800-2022 verification. */
   faultSpec?: Partial<Ieee2800FaultSpec> | undefined;
+  /** Optional simulation duration override in seconds (defaults to project settings or 0.2s). */
+  durationSec?: number | undefined;
+  /** Optional simulation fixed time step override in seconds (defaults to project settings or 50us). */
+  timeStepSec?: number | undefined;
   /**
    * When true, never fall back to the built-in companion synthesizer (which injects reference
    * sources on unsourced buses and canned IBR currents). Without a `solverRunner` no result is produced.
@@ -503,8 +510,14 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     });
   }
 
-  const timeStepSec = Math.max(1e-6, (project.settings.timeStepUs || 50.0) * 1e-6);
-  const durationSec = Math.max(timeStepSec * 10, project.settings.durationSec || 0.2);
+  const timeStepSec =
+    typeof options.timeStepSec === "number" && options.timeStepSec > 0
+      ? options.timeStepSec
+      : Math.max(1e-6, (project.settings.timeStepUs || 50.0) * 1e-6);
+  const durationSec =
+    typeof options.durationSec === "number" && options.durationSec > 0
+      ? options.durationSec
+      : Math.max(timeStepSec * 10, project.settings.durationSec || 0.2);
   const shouldRunSim =
     Boolean(options.runSimulation) ||
     Boolean(options.solverRunner) ||
@@ -565,6 +578,11 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     comtrade = writeComtrade(record);
   }
 
+  let pscadOut: PscadOutResult | undefined;
+  if (simulationResult && (options.exportOut ?? true)) {
+    pscadOut = writePscadOut(simulationResult, project.name);
+  }
+
   let complianceReport: Ieee2800ComplianceReport | undefined;
   if (simulationResult && (options.verifyIeee2800 || netlist.fmuInstances.length > 0)) {
     const fmu = netlist.fmuInstances[0];
@@ -612,6 +630,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     diagnostics,
     simulationResult,
     comtrade,
+    pscadOut,
     complianceReport,
     simulationReport,
   };
@@ -721,6 +740,7 @@ export const pscadLanguage = language({
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         return runPscadSimulationPipeline({
+          runSimulation: true,
           ...params,
           documentText: text,
           solverRunner: params?.solverRunner ?? ctx?.solverRunner,

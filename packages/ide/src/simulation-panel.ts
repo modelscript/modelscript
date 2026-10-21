@@ -128,13 +128,14 @@ interface SimulationResult {
         enumLiterals?: { ordinal: number; label: string }[] | undefined;
       }[]
     | undefined;
-  /** Experiment configuration metadata extracted from model annotations. */
+  /** Experiment configuration metadata extracted from model annotations or simulation runner. */
   experiment?:
     | {
         startTime?: number | undefined;
         stopTime?: number | undefined;
         interval?: number | undefined;
         tolerance?: number | undefined;
+        solver?: string | undefined;
       }
     | undefined;
   /** Optional error message if the simulation failed. */
@@ -143,6 +144,12 @@ interface SimulationResult {
   sweepResults?: { value: number; y: number[][] }[] | undefined;
   /** Solver execution telemetry metrics. */
   telemetry?: { executionTimeMs: number; stepCount: number } | undefined;
+  /** Optional IEEE C37.111 COMTRADE export artifacts (.cfg and .dat). */
+  comtrade?: { cfg: string; dat: string } | undefined;
+  /** Optional PSCAD output export artifacts (.inf and .out files). */
+  pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+  /** Model or project name for export file naming. */
+  projectName?: string | undefined;
 }
 
 /**
@@ -503,29 +510,133 @@ export class SimulationPanel {
             async () => {
               if (!this.client) return;
               let result: SimulationResult;
-              try {
-                result = await this.client.sendRequest("modelscript/simulate", {
-                  uri,
-                  startTime: msg.payload?.startTime,
-                  stopTime: msg.payload?.stopTime,
-                  interval: msg.payload?.interval,
-                  solver: msg.payload?.solver,
-                  rtol: msg.payload?.rtol,
-                  atol: msg.payload?.atol,
-                  numberOfIntervals: msg.payload?.numberOfIntervals,
-                  maxStep: msg.payload?.maxStep,
-                  steadyStateOnly: msg.payload?.steadyStateOnly,
-                  parameterOverrides: msg.payload?.parameterOverrides,
-                  sweepConfig: msg.payload?.sweepConfig,
-                });
-              } catch {
-                const activeDoc = vscode.window.activeTextEditor?.document;
+              const isPscad = /\.(pscx|pslx|pswx|psmx)$/i.test(uri);
+
+              if (isPscad) {
+                let docText: string | undefined;
+                try {
+                  const activeDoc = vscode.window.activeTextEditor?.document;
+                  if (activeDoc && activeDoc.uri.toString() === uri) {
+                    docText = activeDoc.getText();
+                  } else {
+                    const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
+                    docText = new TextDecoder().decode(bytes);
+                  }
+                } catch {
+                  // Fall back if cannot read directly
+                }
+
                 const res: any = await this.client.sendRequest("modelscript/executeAction", {
-                  actionId: "simulate",
-                  languageId: activeDoc?.languageId ?? "modelica",
+                  actionId: "simulate_hybrid_emt",
+                  languageId: "pscad",
                   uri,
                   inputs: {
-                    documentText: activeDoc?.getText(),
+                    documentText: docText,
+                    durationSec: msg.payload?.stopTime,
+                    timeStepSec: msg.payload?.interval,
+                  },
+                });
+
+                const simRes = res?.simulationResult ?? res;
+                const timeArr: number[] = Array.isArray(simRes?.time)
+                  ? simRes.time
+                  : simRes?.time instanceof Float64Array || ArrayBuffer.isView(simRes?.time)
+                    ? Array.from(simRes.time as unknown as ArrayLike<number>)
+                    : simRes?.t
+                      ? Array.isArray(simRes.t)
+                        ? simRes.t
+                        : Array.from(simRes.t as unknown as ArrayLike<number>)
+                      : [];
+
+                const stateNames: string[] = [];
+                const yRows: number[][] = [];
+
+                if (simRes?.busPhaseVoltages) {
+                  const mapEntries =
+                    simRes.busPhaseVoltages instanceof Map
+                      ? Array.from(simRes.busPhaseVoltages.entries())
+                      : Object.entries(simRes.busPhaseVoltages);
+                  for (const [bus, phases] of mapEntries as [string, any][]) {
+                    for (const ph of ["a", "b", "c"] as const) {
+                      if (phases?.[ph]) {
+                        stateNames.push(`v_${bus}_${ph}`);
+                        yRows.push(Array.from(phases[ph]));
+                      }
+                    }
+                  }
+                } else if (simRes?.busVoltages) {
+                  const mapEntries =
+                    simRes.busVoltages instanceof Map
+                      ? Array.from(simRes.busVoltages.entries())
+                      : Object.entries(simRes.busVoltages);
+                  for (const [bus, arr] of mapEntries as [string, any][]) {
+                    stateNames.push(`v_${bus}`);
+                    yRows.push(Array.from(arr));
+                  }
+                }
+
+                if (simRes?.branchPhaseCurrents) {
+                  const mapEntries =
+                    simRes.branchPhaseCurrents instanceof Map
+                      ? Array.from(simRes.branchPhaseCurrents.entries())
+                      : Object.entries(simRes.branchPhaseCurrents);
+                  for (const [branch, phases] of mapEntries as [string, any][]) {
+                    for (const ph of ["a", "b", "c"] as const) {
+                      if (phases?.[ph]) {
+                        stateNames.push(`i_${branch}_${ph}`);
+                        yRows.push(Array.from(phases[ph]));
+                      }
+                    }
+                  }
+                } else if (simRes?.branchCurrents) {
+                  const mapEntries =
+                    simRes.branchCurrents instanceof Map
+                      ? Array.from(simRes.branchCurrents.entries())
+                      : Object.entries(simRes.branchCurrents);
+                  for (const [branch, arr] of mapEntries as [string, any][]) {
+                    stateNames.push(`i_${branch}`);
+                    yRows.push(Array.from(arr));
+                  }
+                }
+
+                let yMatrix: number[][] = [];
+                if (yRows.length > 0 && timeArr.length > 0) {
+                  const nSteps = timeArr.length;
+                  const nVars = yRows.length;
+                  yMatrix = new Array(nSteps);
+                  for (let ti = 0; ti < nSteps; ti++) {
+                    const row = new Array(nVars);
+                    for (let vi = 0; vi < nVars; vi++) {
+                      row[vi] = yRows[vi]![ti] ?? 0;
+                    }
+                    yMatrix[ti] = row;
+                  }
+                }
+
+                const dt = timeArr.length > 1 ? timeArr[1]! - timeArr[0]! : (res?.settings?.timeStepUs ?? 50) * 1e-6;
+                const tStop = timeArr[timeArr.length - 1] ?? res?.settings?.durationSec ?? 0.25;
+
+                result = {
+                  t: timeArr,
+                  y: yMatrix,
+                  states: stateNames,
+                  parameters: [],
+                  experiment: {
+                    startTime: timeArr[0] ?? 0,
+                    stopTime: tStop,
+                    interval: dt,
+                    tolerance: 1e-4,
+                    solver: "Dommel Companion (EMT)",
+                  },
+                  error: res?.error,
+                  comtrade: res?.comtrade ?? simRes?.comtrade,
+                  pscadOut: res?.pscadOut ?? simRes?.pscadOut,
+                  projectName: res?.project ?? "pscad_model",
+                };
+              } else {
+                try {
+                  const simulateRes: any = await this.client.sendRequest("modelscript/simulate", {
+                    uri,
                     startTime: msg.payload?.startTime,
                     stopTime: msg.payload?.stopTime,
                     interval: msg.payload?.interval,
@@ -537,18 +648,43 @@ export class SimulationPanel {
                     steadyStateOnly: msg.payload?.steadyStateOnly,
                     parameterOverrides: msg.payload?.parameterOverrides,
                     sweepConfig: msg.payload?.sweepConfig,
-                  },
-                });
-                result = {
-                  t: Array.isArray(res?.t) ? res.t : Object.values(res?.t || {}),
-                  y: Array.isArray(res?.y) ? res.y : Object.values(res?.y || {}),
-                  states: res?.states || [],
-                  parameters: res?.parameters,
-                  experiment: res?.experiment,
-                  error: res?.error,
-                  sweepResults: res?.sweepResults,
-                  telemetry: res?.telemetry,
-                };
+                  });
+                  if (simulateRes?.error) {
+                    throw new Error(simulateRes.error);
+                  }
+                  result = simulateRes;
+                } catch {
+                  const activeDoc = vscode.window.activeTextEditor?.document;
+                  const res: any = await this.client.sendRequest("modelscript/executeAction", {
+                    actionId: "simulate",
+                    languageId: activeDoc?.languageId ?? "modelica",
+                    uri,
+                    inputs: {
+                      documentText: activeDoc?.getText(),
+                      startTime: msg.payload?.startTime,
+                      stopTime: msg.payload?.stopTime,
+                      interval: msg.payload?.interval,
+                      solver: msg.payload?.solver,
+                      rtol: msg.payload?.rtol,
+                      atol: msg.payload?.atol,
+                      numberOfIntervals: msg.payload?.numberOfIntervals,
+                      maxStep: msg.payload?.maxStep,
+                      steadyStateOnly: msg.payload?.steadyStateOnly,
+                      parameterOverrides: msg.payload?.parameterOverrides,
+                      sweepConfig: msg.payload?.sweepConfig,
+                    },
+                  });
+                  result = {
+                    t: Array.isArray(res?.t) ? res.t : Object.values(res?.t || {}),
+                    y: Array.isArray(res?.y) ? res.y : Object.values(res?.y || {}),
+                    states: res?.states || [],
+                    parameters: res?.parameters,
+                    experiment: res?.experiment,
+                    error: res?.error,
+                    sweepResults: res?.sweepResults,
+                    telemetry: res?.telemetry,
+                  };
+                }
               }
 
               if (result && result.t) {
@@ -574,12 +710,14 @@ export class SimulationPanel {
                 if (msg.payload?.stopTime !== undefined) result.experiment.stopTime = msg.payload.stopTime;
                 if (msg.payload?.interval !== undefined) result.experiment.interval = msg.payload.interval;
                 if (msg.payload?.tolerance !== undefined) result.experiment.tolerance = msg.payload.tolerance;
+                if (msg.payload?.solver !== undefined) result.experiment.solver = msg.payload.solver;
               } else {
                 result.experiment = {
                   startTime: msg.payload?.startTime,
                   stopTime: msg.payload?.stopTime,
                   interval: msg.payload?.interval,
                   tolerance: msg.payload?.tolerance,
+                  solver: msg.payload?.solver,
                 };
               }
 
@@ -1392,6 +1530,7 @@ export class SimulationPanel {
               <option value="fast">Fast Preview (RK4)</option>
               <option value="high-accuracy">High Accuracy (1e-7)</option>
               <option value="stiff">Stiff DAE (CVODE/BDF)</option>
+              <option value="emt">EMT (Dommel Companion)</option>
               <option value="steady-state">Steady-State Only</option>
               <option value="custom">Custom</option>
             </select>
@@ -1399,6 +1538,7 @@ export class SimulationPanel {
           <div class="settings-row">
             <label for="st-solver">Solver</label>
             <select id="st-solver" class="settings-select">
+              <option value="dommel">Dommel (EMT Companion)</option>
               <option value="dopri5">DOPRI5 (Adaptive 5(4))</option>
               <option value="cvode">CVODE / BDF (Stiff DAE)</option>
               <option value="rodas4p">RODAS4P (SDIRK Stiff)</option>
@@ -1471,6 +1611,8 @@ export class SimulationPanel {
         <span class="spacer"></span>
 
         <button id="btn-export-csv" title="Download trajectory as CSV">📥 CSV</button>
+        <button id="btn-export-comtrade" style="display: none;" title="Download IEEE C37.111 COMTRADE (.cfg + .dat)">⚡ COMTRADE</button>
+        <button id="btn-export-out" style="display: none;" title="Download PSCAD (.inf + .out)">📄 OUT</button>
         <button id="btn-export-png" title="Download chart snapshot as PNG">📷 PNG</button>
         <button id="btn-copy-csv" title="Copy trajectory data to clipboard">📋 Copy</button>
 
