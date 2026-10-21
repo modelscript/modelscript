@@ -542,4 +542,59 @@ end X;
       );
     },
   );
+
+  await t.test(
+    "should not report false singular algebraic loop for coupled continuous ODE state equations (PressureInterlock)",
+    async () => {
+      const daeUri = "file:///workspace/PressureInterlock.mo";
+      const daeContent = `
+model PressureInterlock
+  Real p1;
+  Real p2;
+equation
+  der(p1) = -0.5 * (p1 - p2);
+  der(p2) = -0.5 * (p2 - p1);
+end PressureInterlock;
+`;
+      const daeDoc = TextDocument.create(daeUri, "modelica", 1, daeContent);
+      mockDocManager.documents.set(daeUri, daeDoc);
+
+      const { DAEBuilder, VarType, Variability, Causality, BinOp, EqKind } = await import("@modelscript/runtime");
+      const modelStart = daeContent.indexOf("model PressureInterlock");
+      (validationService as any).listModelicaClassesForUri = () => [
+        { name: "PressureInterlock", symbolId: 20, startOffset: modelStart, endOffset: daeContent.length },
+      ];
+      (validationService as any).flattenModelicaClassForVerification = () => {
+        const arena: any = new DAEBuilder();
+        arena.addVariable("p1", VarType.Real, Variability.Continuous, Causality.Local);
+        arena.addVariable("p2", VarType.Real, Variability.Continuous, Causality.Local);
+        const derP1 = arena.addDerExpr(arena.addNameExpr("p1"));
+        const rhs1 = arena.addBinaryExpr(
+          BinOp.Mul,
+          arena.addRealLiteral(-0.5),
+          arena.addBinaryExpr(BinOp.Sub, arena.addNameExpr("p1"), arena.addNameExpr("p2")),
+        );
+        arena.addEquation(EqKind.Simple, derP1, rhs1);
+
+        const derP2 = arena.addDerExpr(arena.addNameExpr("p2"));
+        const rhs2 = arena.addBinaryExpr(
+          BinOp.Mul,
+          arena.addRealLiteral(-0.5),
+          arena.addBinaryExpr(BinOp.Sub, arena.addNameExpr("p2"), arena.addNameExpr("p1")),
+        );
+        arena.addEquation(EqKind.Simple, derP2, rhs2);
+        return arena;
+      };
+
+      const diagnostics: any[] = [];
+      await validationService.postValidateModelicaDaeReachability(daeUri, daeDoc, diagnostics);
+
+      const singularLoop = diagnostics.find((d) => d.code === "singular_algebraic_loop");
+      assert.strictEqual(
+        singularLoop,
+        undefined,
+        "Coupled ODE state equations must not be classified as singular algebraic loops",
+      );
+    },
+  );
 });

@@ -2883,9 +2883,78 @@ export class ValidationService {
         const fingerprint = arenaFingerprint(arena);
         let record = this.daeVerificationCache.get(key)?.record;
         if (!record || this.daeVerificationCache.get(key)!.fingerprint !== fingerprint) {
+          // Identify continuous state variables referenced by der(...)
+          const stateVars = new Set<number>();
+          const scanDer = (exprId: number): void => {
+            if (exprId < 0) return;
+            const kind = arena.getExprKind(exprId);
+            if (kind === 12 /* ExprKind.Der */) {
+              const inner = arena.getExprData1(exprId);
+              if (inner >= 0 && arena.getExprKind(inner) === 0 /* ExprKind.Name */) {
+                const nameId = arena.getExprData1(inner);
+                let vIdx = arena.lookupVariable(nameId);
+                if (vIdx < 0) {
+                  const resolved = arena.interner?.resolve(nameId);
+                  if (resolved) vIdx = arena.getVarIdxByName(resolved);
+                }
+                if (vIdx >= 0) stateVars.add(vIdx);
+              }
+              return;
+            }
+            switch (kind) {
+              case 5 /* ExprKind.Binary */:
+                scanDer(arena.getExprLeft(exprId));
+                scanDer(arena.getExprRight(exprId));
+                break;
+              case 6 /* ExprKind.Unary */:
+              case 14 /* ExprKind.Negate */:
+                scanDer(arena.getExprLeft(exprId));
+                break;
+              case 11 /* ExprKind.IfElse */:
+                scanDer(arena.getExprData1(exprId));
+                scanDer(arena.getExprLeft(exprId));
+                scanDer(arena.getExprRight(exprId));
+                break;
+              case 10 /* ExprKind.Range */:
+                scanDer(arena.getExprData1(exprId));
+                scanDer(arena.getExprLeft(exprId));
+                scanDer(arena.getExprRight(exprId));
+                break;
+              case 7 /* ExprKind.Call */: {
+                const n = arena.getExprRight(exprId);
+                const first = arena.getExprLeft(exprId);
+                for (let k = 0; k < n; k++) {
+                  const argExpr = k === 0 ? first : arena.getExprLeft(exprId + k);
+                  if (argExpr >= 0) scanDer(argExpr);
+                }
+                break;
+              }
+            }
+          };
+
+          for (let i = 0; i < arena.eqCount; i++) {
+            scanDer(arena.getEqLhs(i));
+            scanDer(arena.getEqRhs(i));
+          }
+
+          // Ensure corresponding der(x) variables exist in arena
+          for (const sIdx of stateVars) {
+            const sName = arena.getVarName(sIdx);
+            const derName = `der(${sName})`;
+            if (arena.getVarIdxByName(derName) === -1) {
+              arena.addVariable(
+                derName,
+                arena.getVarType(sIdx),
+                arena.getVarVariability(sIdx),
+                arena.getVarCausality(sIdx),
+                0.0,
+              );
+            }
+          }
+
           let bltResult: any;
           try {
-            bltResult = performBltTransformationArena(arena);
+            bltResult = performBltTransformationArena(arena, stateVars.size > 0 ? stateVars : undefined);
           } catch {
             // No sound block structure: leave this class unverified rather than invent one.
             continue;
@@ -2895,6 +2964,7 @@ export class ValidationService {
             budgetMs: this.daeVerificationBudgetMs,
             sysmlRequirements: sysmlReqs,
             twinMap,
+            stateVars: stateVars.size > 0 ? stateVars : undefined,
           });
           const reachSummary = reachEngine.verify(bltResult);
           const hybridVerifier = new HybridModeConsistencyVerifier(arena);
@@ -2957,15 +3027,52 @@ export class ValidationService {
         const body = text.slice(classStart, classEnd);
         for (const issue of record.issues) {
           let issueOffset = classStart;
+          let issueLength = issue.varName?.length ?? 10;
           const varIdx = issue.varName ? body.indexOf(issue.varName) : -1;
           if (varIdx >= 0) {
             issueOffset = classStart + varIdx;
+            issueLength = issue.varName!.length;
+          } else if (typeof issue.eqIdx === "number" && issue.eqIdx >= 0) {
+            // Find corresponding equation in body
+            const eqLines = body.split("\n");
+            let eqCount = 0;
+            let currOffset = 0;
+            let foundEq = false;
+            for (const line of eqLines) {
+              const trimmed = line.trim();
+              if (
+                trimmed.length > 0 &&
+                !trimmed.startsWith("//") &&
+                !trimmed.startsWith("/*") &&
+                /der\s*\(|[a-zA-Z_][a-zA-Z0-9_]*\s*=[^=]/.test(line)
+              ) {
+                if (eqCount === issue.eqIdx) {
+                  const leadingSpaces = line.search(/\S/);
+                  issueOffset = classStart + currOffset + (leadingSpaces >= 0 ? leadingSpaces : 0);
+                  issueLength = trimmed.length;
+                  foundEq = true;
+                  break;
+                }
+                eqCount++;
+              }
+              currOffset += line.length + 1;
+            }
+            if (!foundEq) {
+              const eqKeywordIdx = body.indexOf("equation");
+              if (eqKeywordIdx >= 0) {
+                issueOffset = classStart + eqKeywordIdx;
+                issueLength = 8;
+              }
+            }
           } else {
             const eqIdx = body.indexOf("equation");
-            if (eqIdx >= 0) issueOffset = classStart + eqIdx;
+            if (eqIdx >= 0) {
+              issueOffset = classStart + eqIdx;
+              issueLength = 8;
+            }
           }
           const startPos = textDocument.positionAt(issueOffset);
-          const endPos = textDocument.positionAt(issueOffset + (issue.varName?.length ?? 10));
+          const endPos = textDocument.positionAt(issueOffset + issueLength);
           const definite = issue.severity === "definite";
           diagnostics.push({
             severity: definite ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
