@@ -84,7 +84,7 @@
     "@modelscript/modelica": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
-    "vscode-languageserver": "^9.0.1"
+    "vscode-languageserver": "^10.1.2"
   },
   "devDependencies": {},
   "nx": {
