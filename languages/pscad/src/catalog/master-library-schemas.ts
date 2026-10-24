@@ -2109,17 +2109,29 @@ export function getPscadHover(text: string, offset: number): { contents: string;
         }
       }
       if (cursorLine >= cmp.line && cursorLine <= endLine) {
+        const defName = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
+        const def = project.definitions?.get(defName) ?? project.definitions?.get(cmp.definitionName);
         const schema = getMasterComponentSchema(cmp.definitionName);
         const title = schema
           ? `${schema.label} (\`${cmp.definitionName}\`)`
           : `PSCAD Component \`${cmp.definitionName}\``;
+        const descriptionText =
+          def?.flyBy?.summary || schema?.description || def?.description || "PSCAD schematic component instance.";
         const md: string[] = [
           `### 🔌 ${title}`,
           `**Instance:** \`${cmp.instanceName || cmp.id}\` ${schema ? `| **Category:** *${schema.category}*` : ""}`,
           "",
-          schema?.description ?? "PSCAD schematic component instance.",
+          descriptionText,
           "",
         ];
+
+        if (def?.flyBy?.ports && Object.keys(def.flyBy.ports).length > 0) {
+          md.push("**Terminals & Signals:**");
+          for (const [pName, pDoc] of Object.entries(def.flyBy.ports)) {
+            md.push(`- **\`${pName}\`**: ${pDoc.replace(/\r?\n/g, " ")}`);
+          }
+          md.push("");
+        }
 
         // Compute derived engineering values
         const p = cmp.parameters;
@@ -2184,6 +2196,66 @@ export function getPscadHover(text: string, offset: number): { contents: string;
           line: cmp.line,
           contents: md.join("\n"),
         };
+      }
+    }
+
+    // Check if cursor is on or inside a <Definition> element (e.g. inside a library file like master.pslx)
+    if (project.definitions) {
+      const lines = text.split(/\r?\n/);
+      let defStartLine = -1;
+      let targetDefName: string | null = null;
+
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i]!;
+        const defMatch = /<Definition\b[^>]*?\bname\s*=\s*["']([^"']+)["']/i.exec(l);
+        if (defMatch) {
+          defStartLine = i + 1;
+          targetDefName = defMatch[1]!;
+        }
+        if (defStartLine > 0 && /<\/Definition>/i.test(l)) {
+          const defEndLine = i + 1;
+          if (cursorLine >= defStartLine && cursorLine <= defEndLine && targetDefName) {
+            const def = project.definitions.get(targetDefName);
+            if (def) {
+              const md: string[] = [`### 📦 PSCAD Component Definition \`${targetDefName}\``, ""];
+              if (def.flyBy?.summary) {
+                md.push(def.flyBy.summary);
+                md.push("");
+              } else if (def.description) {
+                md.push(def.description);
+                md.push("");
+              }
+
+              if (def.flyBy?.ports && Object.keys(def.flyBy.ports).length > 0) {
+                md.push("**Terminals & Signals:**");
+                for (const [pName, pDoc] of Object.entries(def.flyBy.ports)) {
+                  md.push(`- **\`${pName}\`**: ${pDoc.replace(/\r?\n/g, " ")}`);
+                }
+                md.push("");
+              }
+
+              if (def.checks && def.checks.length > 0) {
+                md.push(`**Parameter Validation Rules (${def.checks.length} assertions):**`);
+                for (const rule of def.checks.slice(0, 5)) {
+                  md.push(
+                    `- *${rule.severity.toUpperCase()}*: ${rule.message}${rule.condition ? ` (\`${rule.condition}\`)` : ""}`,
+                  );
+                }
+                if (def.checks.length > 5) {
+                  md.push(`- *...and ${def.checks.length - 5} more rules*`);
+                }
+                md.push("");
+              }
+
+              return {
+                line: defStartLine,
+                contents: md.join("\n"),
+              };
+            }
+          }
+          defStartLine = -1;
+          targetDefName = null;
+        }
       }
     }
   } catch {

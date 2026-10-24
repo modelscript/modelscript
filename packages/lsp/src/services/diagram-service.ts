@@ -117,7 +117,8 @@ export class DiagramService {
           }
         }
         if (text) {
-          const pscadCacheKey = `pscad:${params.uri}`;
+          const targetModule = params.className;
+          const pscadCacheKey = `pscad:${params.uri}:${targetModule ?? ""}`;
           const pscadVersion = `idx:${text.length}:${simpleHash(text)}`;
           const cachedPscad = this.diagramCache.get(pscadCacheKey);
           if (cachedPscad && cachedPscad.version === pscadVersion) {
@@ -127,15 +128,29 @@ export class DiagramService {
           const { parsePscx } = await import("@modelscript/pscad");
           const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
           const project = parsePscx(text);
-          const rawDiagram = buildPscadDiagram(project);
+          const rawDiagram = buildPscadDiagram(project, targetModule);
           const nodes = rawDiagram.cells.filter((c) => c.shape !== "edge");
           const edges = rawDiagram.cells.filter((c) => c.shape === "edge");
+          const rootName = project.rootModule.name || "Main";
+          const isSubModule = Boolean(targetModule && targetModule !== rootName);
+          const breadcrumbs = isSubModule
+            ? [
+                { id: rootName, label: `${rootName} (Overview)`, uri: params.uri },
+                { id: targetModule!, label: targetModule!, uri: params.uri },
+              ]
+            : [{ id: rootName, label: rootName, uri: params.uri }];
           const pscadResult = {
             nodes,
             edges,
             coordinateSystem: null,
             cells: rawDiagram.cells,
-            metadata: rawDiagram.metadata,
+            breadcrumbs,
+            metadata: {
+              ...rawDiagram.metadata,
+              currentModule: targetModule || rootName,
+              isSubModule,
+              breadcrumbs,
+            },
           };
           this.diagramCache.set(pscadCacheKey, { version: pscadVersion, data: pscadResult });
           return pscadResult;
@@ -169,6 +184,27 @@ export class DiagramService {
     const effectiveUri = params.uri.startsWith("modelscript-lib://global")
       ? "file://" + params.uri.substring("modelscript-lib://global".length)
       : params.uri;
+
+    // Check if the document has pending edits or has not been re-indexed yet.
+    // If so, flush validation immediately to produce up-to-date AST and diagram data without delay.
+    if (this.validationService) {
+      const doc = this.documentManager.documents.get(params.uri) ?? this.documentManager.documents.get(effectiveUri);
+      const isTimerPending =
+        this.validationService.activeValidationTimers.has(params.uri) ||
+        this.validationService.activeValidationTimers.has(effectiveUri);
+      const lastIndexed =
+        this.validationService.lastIndexedText.get(params.uri) ??
+        this.validationService.lastIndexedText.get(effectiveUri);
+      const isTextStale = doc && lastIndexed !== undefined && doc.getText() !== lastIndexed;
+
+      if (isTimerPending || isTextStale) {
+        await this.validationService.flushValidation(params.uri);
+        if (effectiveUri !== params.uri) {
+          await this.validationService.flushValidation(effectiveUri);
+        }
+      }
+    }
+
     const lastIndexedMap = this.validationService?.lastIndexedText ?? (globalThis as any).lastIndexedText;
     const dependenciesReady =
       this.validationService?.dependenciesReady ?? (globalThis as any).dependenciesReady ?? true;

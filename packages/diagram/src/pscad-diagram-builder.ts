@@ -30,7 +30,9 @@ export interface PscadComponentLike {
   width?: number | undefined;
   height?: number | undefined;
   rotation?: number | undefined;
+  orient?: number | undefined;
   mirror?: boolean | undefined;
+  z?: number | undefined;
   parameters: Record<string, string | number>;
   sourceRange?: { startOffset: number; endOffset: number } | undefined;
   ports?:
@@ -69,14 +71,32 @@ export interface PscadStickyLike {
   text: string;
 }
 
+export interface PscadLineLike {
+  id: string;
+  classId: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color?: string | undefined;
+}
+
 export interface PscadModuleLike {
   name?: string | undefined;
   buses: PscadBusLike[];
   components: PscadComponentLike[];
   wires: PscadWireLike[];
   stickies?: PscadStickyLike[] | undefined;
+  lines?: PscadLineLike[] | undefined;
   junctions?: { x: number; y: number }[] | undefined;
   wirelessNets?: Record<string, string[]> | undefined;
+}
+
+export interface PscadDefinitionLike {
+  name?: string | undefined;
+  description?: string | undefined;
+  svgXml?: string | undefined;
+  graphicsXml?: string | undefined;
 }
 
 export interface PscadProjectLike {
@@ -84,6 +104,7 @@ export interface PscadProjectLike {
   projectType?: "case" | "library" | undefined;
   rootModule: PscadModuleLike;
   subModules?: Map<string, PscadModuleLike> | undefined;
+  definitions?: Map<string, PscadDefinitionLike> | undefined;
 }
 
 export interface X6CellData {
@@ -102,6 +123,7 @@ export interface X6CellData {
   target?: any;
   vertices?: { x: number; y: number }[] | undefined;
   data?: Record<string, any> | undefined;
+  zIndex?: number | undefined;
   diffStatus?: "added" | "removed" | "modified" | "unchanged" | undefined;
 }
 
@@ -113,6 +135,445 @@ export interface PscadDiagramGraph {
     nodeCount: number;
     edgeCount: number;
   };
+}
+
+function normalizeStroke(color?: string): string {
+  if (!color || color === "none" || color === "Transparent") {
+    return "none";
+  }
+  if (color === "Black" || color === "#000000" || color === "0" || color === "ByNode") {
+    return "var(--vscode-editor-foreground, #0f172a)";
+  }
+  if (color === "Silver") {
+    return "#94a3b8";
+  }
+  if (color === "Gray") {
+    return "#64748b";
+  }
+  if (color === "White") {
+    return "#ffffff";
+  }
+  if (color === "Blue") {
+    return "#0284c7";
+  }
+  if (color === "Red") {
+    return "#ef4444";
+  }
+  return color;
+}
+
+function normalizeFill(color?: string): string {
+  if (!color || color === "none" || color === "Hollow" || color === "Transparent") {
+    return "none";
+  }
+  if (color === "Black" || color === "#000000" || color === "0" || color === "Solid") {
+    return "var(--vscode-editor-foreground, #0f172a)";
+  }
+  if (color === "Silver" || color === "Gray") {
+    return "#e2e8f0";
+  }
+  if (color === "White") {
+    return "#ffffff";
+  }
+  if (color === "Blue") {
+    return "#0284c7";
+  }
+  return color;
+}
+
+/**
+ * Evaluates PSCAD SVG <cond> expressions against component parameters.
+ * Supports relational comparisons (==, !=, <, <=, >, >=), logic (&&, ||, !),
+ * parentheses, and case-insensitive parameter lookup with fallback to 0.
+ */
+export function evalPscadCond(expr: string, params: Record<string, any> | Map<string, any>): boolean {
+  const trimmed = expr.trim();
+  if (!trimmed || trimmed === "true" || trimmed === "1") return true;
+  if (trimmed === "false" || trimmed === "0") return false;
+
+  // Build lowercase lookup table for case-insensitive parameter matching
+  const lowerMap = new Map<string, any>();
+  if (params instanceof Map) {
+    for (const [k, v] of params.entries()) {
+      lowerMap.set(k.toLowerCase(), v);
+    }
+  } else if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      lowerMap.set(k.toLowerCase(), v);
+    }
+  }
+
+  // Tokenize: operators, parens, numbers (including negative), strings, identifiers
+  const tokens: string[] = [];
+  const tokenRegex = /\s*(==|!=|<=|>=|&&|\|\||[()!<>]|-?\d+(?:\.\d+)?|"[^"]*"|'[^']*'|[A-Za-z_][A-Za-z0-9_]*)\s*/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRegex.exec(trimmed)) !== null) {
+    if (match[1]) tokens.push(match[1]);
+  }
+  if (tokens.length === 0) return true;
+
+  let pos = 0;
+  function peek(): string | undefined {
+    return tokens[pos];
+  }
+  function consume(_expected?: string): string {
+    const t = tokens[pos++];
+    return t ?? "";
+  }
+
+  function parseOr(): boolean {
+    let left = parseAnd();
+    while (peek() === "||") {
+      consume();
+      const right = parseAnd();
+      left = left || right;
+    }
+    return left;
+  }
+
+  function parseAnd(): boolean {
+    let left = parseNot();
+    while (peek() === "&&") {
+      consume();
+      const right = parseNot();
+      left = left && right;
+    }
+    return left;
+  }
+
+  function parseNot(): boolean {
+    if (peek() === "!") {
+      consume();
+      return !parseNot();
+    }
+    return parseRel();
+  }
+
+  function parseRel(): boolean {
+    const leftVal = parseAtom();
+    const op = peek();
+    if (op === "==" || op === "!=" || op === "<" || op === "<=" || op === ">" || op === ">=") {
+      consume();
+      const rightVal = parseAtom();
+      const numL = Number(leftVal);
+      const numR = Number(rightVal);
+      const isNum = !isNaN(numL) && !isNaN(numR);
+      switch (op) {
+        case "==":
+          return isNum ? numL === numR : String(leftVal) === String(rightVal);
+        case "!=":
+          return isNum ? numL !== numR : String(leftVal) !== String(rightVal);
+        case "<":
+          return numL < numR;
+        case "<=":
+          return numL <= numR;
+        case ">":
+          return numL > numR;
+        case ">=":
+          return numL >= numR;
+      }
+    }
+    if (typeof leftVal === "boolean") return leftVal;
+    if (typeof leftVal === "number") return leftVal !== 0;
+    if (typeof leftVal === "string") {
+      if (leftVal.toLowerCase() === "true") return true;
+      if (leftVal.toLowerCase() === "false") return false;
+      const n = Number(leftVal);
+      return !isNaN(n) ? n !== 0 : Boolean(leftVal);
+    }
+    return Boolean(leftVal);
+  }
+
+  function parseAtom(): any {
+    const t = peek();
+    if (!t) return 0;
+    if (t === "(") {
+      consume("(");
+      const res = parseOr();
+      if (peek() === ")") consume(")");
+      return res;
+    }
+    consume();
+    if (t === "true") return true;
+    if (t === "false") return false;
+    if (t.startsWith('"') || t.startsWith("'")) {
+      return t.slice(1, -1);
+    }
+    if (/^-?\d+(?:\.\d+)?$/.test(t)) {
+      return Number(t);
+    }
+    let val = lowerMap.get(t.toLowerCase());
+    if (val === undefined && /\d+$/.test(t)) {
+      val = lowerMap.get(t.replace(/\d+$/, "").toLowerCase());
+    }
+    if (val !== undefined && val !== null) {
+      if (typeof val === "boolean" || typeof val === "number") return val;
+      const num = Number(val);
+      return !isNaN(num) ? num : val;
+    }
+    return 0;
+  }
+
+  try {
+    return parseOr();
+  } catch {
+    return true;
+  }
+}
+
+function parseSvgXmlToMarkup(
+  svgXml: string,
+  params: Record<string, any>,
+  cellWidth: number,
+  cellHeight: number,
+  cellAngle: number = 0,
+  isMirrored: boolean = false,
+  cleanDefn?: string,
+): { markup: any[]; attrs: Record<string, any> } | undefined {
+  const centerX = Math.round(cellWidth / 2);
+  const centerY = Math.round(cellHeight / 2);
+
+  const lowerMap = new Map<string, any>();
+  for (const [k, v] of Object.entries(params)) {
+    lowerMap.set(k.toLowerCase(), v);
+  }
+
+  // Support complex numbers for constc (e.g. Value: "(1.0, 0.0)")
+  if (lowerMap.has("value") && typeof lowerMap.get("value") === "string") {
+    const valStr = String(lowerMap.get("value"));
+    const m = /\(\s*([^,\s]+)\s*,\s*([^)\s]+)\s*\)/.exec(valStr);
+    if (m) {
+      if (!lowerMap.has("rvalue")) lowerMap.set("rvalue", m[1]);
+      if (!lowerMap.has("ivalue")) lowerMap.set("ivalue", m[2]);
+    }
+  }
+
+  if (cleanDefn === "newpi") {
+    const viewVal = lowerMap.get("view");
+    if (viewVal === 3 || viewVal === "3" || Number(viewVal) > 2) {
+      // PSCAD newpi SVG only implements View 0, 1, 2; fallback to single line view 1
+      lowerMap.set("view", 1);
+    }
+  }
+
+  const markup: any[] = [];
+  const attrs: Record<string, any> = {};
+  let elemCounter = 1;
+  let isCondActive = true;
+
+  // Support cond, rect, line, circle, ellipse, text, path, polygon
+  const tagRegex = /<(cond|rect|line|circle|ellipse|text|path|polygon)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagRegex.exec(svgXml)) !== null) {
+    const tagName = match[1]!.toLowerCase();
+    const attrsStr = match[2]!;
+    const bodyText = match[3] ?? "";
+
+    if (tagName === "cond") {
+      const condExpr = bodyText.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+      isCondActive = evalPscadCond(condExpr, lowerMap);
+      continue;
+    }
+
+    if (!isCondActive) {
+      continue;
+    }
+
+    const selector = `svgEl_${elemCounter++}`;
+
+    const getAttr = (name: string): string | undefined => {
+      const re = new RegExp(`\\b${name}=["']([^"']*)["']`, "i");
+      return re.exec(attrsStr)?.[1];
+    };
+
+    if (tagName === "rect") {
+      let rxVal = parseFloat(getAttr("x") || "0") + centerX;
+      const ryVal = parseFloat(getAttr("y") || "0") + centerY;
+      const rwVal = parseFloat(getAttr("width") || "0");
+      const rhVal = parseFloat(getAttr("height") || "0");
+      if (rwVal <= 0 || rhVal <= 0) continue;
+      if (isMirrored) {
+        rxVal = cellWidth - (rxVal + rwVal);
+      }
+      const stroke = normalizeStroke(getAttr("stroke"));
+      const fillStyle = getAttr("fill-style")?.toLowerCase();
+      const fill = fillStyle === "solid" ? normalizeFill(getAttr("fill-fg") || stroke) : "none";
+      const sw = parseFloat(getAttr("stroke-width") || "1.5");
+
+      markup.push({ tagName: "rect", selector });
+      attrs[selector] = {
+        x: rxVal,
+        y: ryVal,
+        width: rwVal,
+        height: rhVal,
+        stroke,
+        strokeWidth: sw > 0.5 ? sw : 1.5,
+        fill,
+        rx: rwVal <= 10 || rhVal <= 10 ? 0 : 2,
+        ry: rwVal <= 10 || rhVal <= 10 ? 0 : 2,
+      };
+    } else if (tagName === "line") {
+      let x1 = parseFloat(getAttr("x1") || "0") + centerX;
+      const y1 = parseFloat(getAttr("y1") || "0") + centerY;
+      let x2 = parseFloat(getAttr("x2") || "0") + centerX;
+      const y2 = parseFloat(getAttr("y2") || "0") + centerY;
+      if (isMirrored) {
+        x1 = cellWidth - x1;
+        x2 = cellWidth - x2;
+      }
+      let stroke = normalizeStroke(getAttr("stroke"));
+      if (cleanDefn?.toLowerCase() === "sequencer_fault" && (y1 >= 30 || y2 >= 30)) {
+        stroke = "#ef4444";
+      }
+      const sw = parseFloat(getAttr("stroke-width") || "1.5");
+      const sda = getAttr("stroke-dasharray");
+
+      markup.push({ tagName: "line", selector });
+      attrs[selector] = {
+        x1,
+        y1,
+        x2,
+        y2,
+        stroke,
+        strokeWidth: sw > 0.5 ? sw : 1.5,
+        strokeDasharray: sda && sda !== "none" ? sda : undefined,
+      };
+    } else if (tagName === "circle") {
+      let cx = parseFloat(getAttr("cx") || getAttr("x") || "0") + centerX;
+      const cy = parseFloat(getAttr("cy") || getAttr("y") || "0") + centerY;
+      if (isMirrored) {
+        cx = cellWidth - cx;
+      }
+      const r = parseFloat(getAttr("r") || "5");
+      const stroke = normalizeStroke(getAttr("stroke"));
+      const fill = normalizeFill(getAttr("fill"));
+
+      markup.push({ tagName: "circle", selector });
+      attrs[selector] = {
+        cx,
+        cy,
+        r,
+        stroke,
+        strokeWidth: 1.5,
+        fill,
+      };
+    } else if (tagName === "ellipse") {
+      let cx = parseFloat(getAttr("cx") || "0") + centerX;
+      const cy = parseFloat(getAttr("cy") || "0") + centerY;
+      if (isMirrored) {
+        cx = cellWidth - cx;
+      }
+      const rx = parseFloat(getAttr("rx") || "5");
+      const ry = parseFloat(getAttr("ry") || "5");
+      const stroke = normalizeStroke(getAttr("stroke"));
+      const fillStyle = getAttr("fill-style")?.toLowerCase();
+      const fill = fillStyle === "solid" ? normalizeFill(getAttr("fill-fg") || stroke) : "none";
+      const sw = parseFloat(getAttr("stroke-width") || "1.5");
+
+      markup.push({ tagName: "ellipse", selector });
+      attrs[selector] = {
+        cx,
+        cy,
+        rx,
+        ry,
+        stroke,
+        strokeWidth: sw > 0.5 ? sw : 1.5,
+        fill,
+      };
+    } else if (tagName === "path") {
+      const d = getAttr("d");
+      if (!d) continue;
+      const stroke = normalizeStroke(getAttr("stroke"));
+      const fillStyle = getAttr("fill-style")?.toLowerCase();
+      const fill = fillStyle === "solid" ? normalizeFill(getAttr("fill-fg") || stroke) : "none";
+      const sw = parseFloat(getAttr("stroke-width") || "1.5");
+      const transform = isMirrored
+        ? `translate(${centerX}, ${centerY}) scale(-1, 1)`
+        : `translate(${centerX}, ${centerY})`;
+
+      markup.push({ tagName: "path", selector });
+      attrs[selector] = {
+        d,
+        transform,
+        stroke,
+        strokeWidth: sw > 0.5 ? sw : 1.5,
+        fill,
+      };
+    } else if (tagName === "text") {
+      let tx = parseFloat(getAttr("x") || "0") + centerX;
+      const ty = parseFloat(getAttr("y") || "0") + centerY;
+      let anchor = getAttr("text-anchor")?.toLowerCase() || "middle";
+      if (isMirrored) {
+        tx = cellWidth - tx;
+        if (anchor === "start") anchor = "end";
+        else if (anchor === "end") anchor = "start";
+      }
+      let rawText = bodyText.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+      // If $End is unset, $Index to $End simplifies to $Index
+      if (!lowerMap.has("end") || !lowerMap.get("end")) {
+        rawText = rawText.replace(/\$Index\s+to\s+\$End/gi, "$Index");
+      }
+      const textVal = rawText
+        .replace(/%([A-Za-z0-9_]+)/g, (_, p) => {
+          const val = lowerMap.get(p.toLowerCase());
+          return val !== undefined ? String(val) : "";
+        })
+        .replace(/\$([A-Za-z0-9_]+)/g, (_, p) => {
+          const val = lowerMap.get(p.toLowerCase());
+          if (val !== undefined && cleanDefn?.toLowerCase() === "const" && p.toLowerCase() === "value") {
+            const numVal = parseFloat(String(val));
+            if (!isNaN(numVal) && !String(val).includes(".")) {
+              return `${val}.0`;
+            }
+          }
+          return val !== undefined ? String(val) : "";
+        })
+        .replace(/,\s*j\s*$/g, "")
+        .trim();
+      if (!textVal) continue;
+      const stroke = normalizeStroke(getAttr("fill") || getAttr("stroke"));
+      const fsAttr = getAttr("font-size")?.toLowerCase();
+      const fs = fsAttr === "small" ? 8.5 : fsAttr === "large" ? 10.5 : 8.5;
+      const isBold = getAttr("font-weight") === "bold" || getAttr("font-style") === "bold";
+
+      markup.push({ tagName: "text", selector });
+      attrs[selector] = {
+        x: tx,
+        y: ty,
+        text: textVal,
+        fill: stroke,
+        fontSize: fs,
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontWeight: isBold ? "bold" : "normal",
+        textAnchor: anchor,
+        ...(cellAngle !== 0 ? { transform: `rotate(${-cellAngle}, ${tx}, ${ty})` } : {}),
+      };
+    } else if (tagName === "polygon") {
+      const pointsStr = getAttr("points") || "";
+      const points = pointsStr
+        .trim()
+        .split(/\s+/)
+        .map((pair) => {
+          const [px, py] = pair.split(",").map(Number);
+          const finalX = isMirrored ? cellWidth - ((px || 0) + centerX) : (px || 0) + centerX;
+          return `${finalX},${(py || 0) + centerY}`;
+        })
+        .join(" ");
+      const stroke = normalizeStroke(getAttr("stroke"));
+      const fill = normalizeFill(getAttr("fill"));
+
+      markup.push({ tagName: "polygon", selector });
+      attrs[selector] = {
+        points,
+        stroke,
+        strokeWidth: 1.5,
+        fill,
+      };
+    }
+  }
+
+  return markup.length > 0 ? { markup, attrs } : undefined;
 }
 
 /**
@@ -234,8 +695,169 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     });
   }
 
-  // 2. Convert Components to Power Glyph or Modular IC Nodes
+  // 2. Synthesize Category Cards from Stickies & Dividers (precomputed so page nav buttons can dock to cards)
+  const isLibraryMode = project.projectType === "library";
+  const consumedStickyIds = new Set<string>();
+  const consumedLineIds = new Set<string>();
+  interface CategoryCardInfo {
+    id: string;
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    width: number;
+    height: number;
+    title: string;
+  }
+  const categoryCards: CategoryCardInfo[] = [];
+
+  if (mod.stickies && mod.lines) {
+    for (const s of mod.stickies) {
+      const sx = s.position.x;
+      const sy = s.position.y;
+      const sw = s.width;
+      const sh = s.height;
+
+      const cardLines = mod.lines.filter((l) => {
+        const lx1 = Math.min(l.x1, l.x2);
+        const lx2 = Math.max(l.x1, l.x2);
+        const ly1 = Math.min(l.y1, l.y2);
+        const ly2 = Math.max(l.y1, l.y2);
+        return lx1 >= sx - 2 && lx2 <= sx + sw + 2 && ly1 >= sy - 2 && ly2 <= sy + 380;
+      });
+
+      if (cardLines.length >= 3) {
+        const ys = cardLines.flatMap((l) => [l.y1, l.y2]);
+        const minY = Math.min(sy, ...ys);
+        const maxY = Math.max(sy + sh, ...ys);
+        const xs = cardLines.flatMap((l) => [l.x1, l.x2]);
+        const minX = Math.min(sx, ...xs);
+        const maxX = Math.max(sx + sw, ...xs);
+        const cardWidth = maxX - minX;
+        const cardHeight = maxY - minY;
+        const headerH = sh > 0 ? sh : 54;
+        const titleLines = s.text
+          .split(/\r?\n/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+        const isMultiLine = titleLines.length > 1;
+
+        categoryCards.push({
+          id: `card_${s.id}`,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          width: cardWidth,
+          height: cardHeight,
+          title: s.text,
+        });
+
+        const cardMarkup: any[] = [
+          { tagName: "rect", selector: "body" },
+          { tagName: "rect", selector: "headerBg" },
+          { tagName: "line", selector: "headerDivider" },
+        ];
+        const cardAttrs: Record<string, any> = {
+          body: {
+            fill: "var(--vscode-editor-background, #ffffff)",
+            stroke: "var(--vscode-widget-border, #cbd5e1)",
+            strokeWidth: 1.5,
+            rx: 0,
+            ry: 0,
+          },
+          headerBg: {
+            x: 0,
+            y: 0,
+            width: cardWidth,
+            height: headerH,
+            fill: "var(--vscode-editorWidget-background, #e0e0e0)",
+            rx: 0,
+            ry: 0,
+          },
+          headerDivider: {
+            x1: 0,
+            y1: headerH,
+            x2: cardWidth,
+            y2: headerH,
+            stroke: "var(--vscode-widget-border, #cbd5e1)",
+            strokeWidth: 1.5,
+          },
+        };
+
+        if (isMultiLine) {
+          cardMarkup.push({ tagName: "text", selector: "headerTitle1" });
+          cardMarkup.push({ tagName: "text", selector: "headerTitle2" });
+          cardAttrs["headerTitle1"] = {
+            text: titleLines[0],
+            fill: "var(--vscode-editor-foreground, #0f172a)",
+            fontSize: 10,
+            fontWeight: "700",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            textAnchor: "middle",
+            textVerticalAnchor: "middle",
+            refX: 0.5,
+            refY: 20,
+          };
+          cardAttrs["headerTitle2"] = {
+            text: titleLines[1],
+            fill: "var(--vscode-editor-foreground, #0f172a)",
+            fontSize: 10,
+            fontWeight: "700",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            textAnchor: "middle",
+            textVerticalAnchor: "middle",
+            refX: 0.5,
+            refY: 36,
+          };
+        } else {
+          cardMarkup.push({ tagName: "text", selector: "headerTitle" });
+          cardAttrs["headerTitle"] = {
+            text: s.text,
+            fill: "var(--vscode-editor-foreground, #0f172a)",
+            fontSize: 11,
+            fontWeight: "700",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            textAnchor: "middle",
+            textVerticalAnchor: "middle",
+            refX: 0.5,
+            refY: Math.round(headerH / 2),
+          };
+        }
+
+        cells.push({
+          id: `card_${s.id}`,
+          shape: "rect",
+          x: minX,
+          y: minY,
+          width: cardWidth,
+          height: cardHeight,
+          zIndex: -10,
+          markup: cardMarkup,
+          attrs: cardAttrs,
+          data: {
+            kind: "category-card",
+            title: s.text,
+          },
+        });
+
+        consumedStickyIds.add(s.id);
+        for (const l of cardLines) {
+          consumedLineIds.add(l.id);
+        }
+      }
+    }
+  }
+
+  // 3. Convert Components to Power Glyph or Modular IC Nodes
+  const hasLayeredComponents = mod.components.some((c) => (c.z ?? 0) >= 0);
+
   for (const cmp of mod.components) {
+    // In projects with layered components (e.g. master.pslx), ignore suppressed/hidden components (z < 0)
+    if (hasLayeredComponents && cmp.z !== undefined && cmp.z < 0) {
+      continue;
+    }
+
     // If library project, ignore dummy Drawing Station Main at 0, 0
     if (
       project.projectType === "library" &&
@@ -268,103 +890,262 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
           ? `${cleanName} (${vRating} kV)`
           : cleanName;
 
-    let markup = undefined;
-    let width = cmp.width && cmp.width > 60 ? cmp.width : 110;
-    let height = cmp.height && cmp.height > 40 ? cmp.height : 60;
+    const isAnnotation = defn.includes("annotation");
+    const cellAngle = isAnnotation ? 0 : (cmp.rotation ?? 0);
+    const isSubModule = Boolean(project.subModules?.has(cleanDefn) || project.subModules?.has(cmp.definitionName));
+    const isPageNav =
+      isSubModule &&
+      (cleanName.toLowerCase() === cleanDefn.toLowerCase() ||
+        (cmp.width !== undefined && cmp.width > 120) ||
+        (project.projectType === "library" && defn.startsWith("master:")));
+    const parentCard = isPageNav
+      ? categoryCards.find(
+          (c) =>
+            cmp.position.x >= c.minX &&
+            cmp.position.x <= c.maxX &&
+            cmp.position.y >= c.minY &&
+            cmp.position.y <= c.maxY,
+        )
+      : undefined;
 
-    if (defn.includes("xfmr") || defn.includes("transformer")) {
-      markup = transformerGlyph({ label: displayLabel });
-      width = 72;
-      height = 60;
-    } else if (
-      defn.includes("gen") ||
-      defn.includes("source") ||
-      defn.includes("sync_machine") ||
-      defn.includes("ind_machine") ||
-      defn.includes("dfig")
-    ) {
-      markup = generatorGlyph({ label: displayLabel });
-      width = 60;
-      height = 60;
-    } else if (defn.includes("fmu") || defn.includes("inverter") || defn.includes("ibr")) {
-      markup = inverterIbrGlyph({ label: displayLabel });
-      width = 60;
-      height = 60;
-    } else if (defn.includes("breaker") || defn.includes("switch")) {
-      const statusStr = String(cmp.parameters["Status"] ?? cmp.parameters["status"] ?? "closed").toLowerCase();
-      markup = breakerGlyph({ isOpen: statusStr === "open" || statusStr === "0", label: displayLabel });
-      width = 48;
-      height = 44;
-    } else if (defn.includes("arrester") || defn.includes("mov")) {
-      markup = surgeArresterGlyph({ label: displayLabel });
-      width = 40;
-      height = 54;
-    } else if (defn.includes("tpflt") || defn.includes("fault")) {
-      markup = faultGlyph({ label: displayLabel });
-      width = 40;
-      height = 44;
-    } else if (defn.includes("vsc_pwm") || defn.includes("lcc_6pulse") || defn.includes("mmc")) {
-      const badge = defn.includes("mmc") ? "MMC" : defn.includes("lcc") ? "LCC" : "VSC";
-      markup = converterBridgeGlyph({ badge, label: displayLabel });
-      width = 72;
-      height = 60;
-    } else if (defn.includes("tline") || defn.includes("cable")) {
-      markup = transmissionLineGlyph({ isCable: defn.includes("cable"), label: displayLabel });
-      width = 80;
-      height = 48;
-    } else if (defn.includes("pi_ctlr") || defn === "pi" || defn.endsWith(":pi")) {
-      markup = csmfBlockGlyph({ kind: "pi", label: cleanName });
-      width = 64;
-      height = 42;
-    } else if (defn.includes("realpole") || defn.includes("lag")) {
-      markup = csmfBlockGlyph({ kind: "lag", label: cleanName });
-      width = 64;
-      height = 42;
-    } else if (defn.includes("sum") || defn.endsWith(":add")) {
-      markup = csmfBlockGlyph({ kind: "sum", label: cleanName });
-      width = 44;
-      height = 44;
-    } else if (defn.includes("gain")) {
-      markup = csmfBlockGlyph({ kind: "gain", label: cleanName });
-      width = 52;
-      height = 40;
-    } else if (defn.includes("limit")) {
-      markup = csmfBlockGlyph({ kind: "limit", label: cleanName });
-      width = 64;
-      height = 42;
-    } else if (defn.includes("compar") || defn.includes("relay")) {
-      markup = csmfBlockGlyph({ kind: "compar", label: cleanName });
-      width = 64;
-      height = 42;
-    } else if (defn.includes("const")) {
-      markup = csmfBlockGlyph({ kind: "const", label: cleanName });
-      width = 64;
-      height = 42;
-    } else if (defn.includes("pgb") || defn.includes("probe") || defn.includes("oscilloscope")) {
-      markup = meterProbeGlyph({ kind: "pgb", label: String(cmp.parameters["Name"] ?? cmp.instanceName ?? "PGB") });
-      width = 54;
-      height = 34;
-    } else if (defn.includes("multimeter") || defn.includes("voltmeter") || defn.includes("ammeter")) {
-      const mKind = defn.includes("voltmeter") ? "voltmeter" : defn.includes("ammeter") ? "ammeter" : "multimeter";
-      markup = meterProbeGlyph({
-        kind: mKind,
-        label: mKind === "voltmeter" ? "V" : mKind === "ammeter" ? "A" : "V/I/PQ",
-      });
-      width = 48;
-      height = 44;
-    } else if (
-      defn.includes("datalabel") ||
-      defn.includes("data_label") ||
-      defn.includes("xnode") ||
-      defn.includes("pin")
-    ) {
-      const isElec = defn.includes("xnode") || defn.includes("pin");
-      markup = wirelessNetLabelGlyph({
-        label: String(cmp.parameters["Name"] ?? cmp.parameters["name"] ?? cleanName),
-        isElectrical: isElec,
-      });
-      width = 44;
+    let markup: any[] | undefined = undefined;
+    let attrs: Record<string, any> | undefined = undefined;
+    let width = cmp.width && cmp.width > 0 ? cmp.width : 60;
+    let height = cmp.height && cmp.height > 0 ? cmp.height : 40;
+
+    if (isAnnotation) {
+      const al1 = String(cmp.parameters["AL1"] ?? cmp.parameters["al1"] ?? "");
+      const al2 = String(cmp.parameters["AL2"] ?? cmp.parameters["al2"] ?? "");
+      const text1 = al1 || (al2 ? "" : cleanName.startsWith("annotation") ? "" : cleanName);
+      const text2 = al2;
+      const annWidth = Math.max(cmp.width ?? 60, Math.max(text1.length, text2.length) * 7 + 10);
+      const annHeight = Math.max(cmp.height ?? 20, text2 ? 38 : 22);
+      width = annWidth;
+      height = annHeight;
+
+      markup = [
+        { tagName: "rect", selector: "body" },
+        { tagName: "text", selector: "line1" },
+        ...(text2 ? [{ tagName: "text", selector: "line2" }] : []),
+      ];
+      attrs = {
+        body: {
+          fill: "none",
+          stroke: "none",
+        },
+        line1: {
+          text: text1,
+          fill: "var(--vscode-textLink-foreground, #0284c7)",
+          fontSize: 9,
+          fontWeight: "500",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          textAnchor: "middle",
+          textVerticalAnchor: "middle",
+          refX: 0.5,
+          refY: 15,
+        },
+        ...(text2
+          ? {
+              line2: {
+                text: text2,
+                fill: "var(--vscode-textLink-foreground, #0284c7)",
+                fontSize: 8.5,
+                fontFamily: "system-ui, -apple-system, sans-serif",
+                textAnchor: "middle",
+                textVerticalAnchor: "middle",
+                refX: 0.5,
+                refY: 33,
+              },
+            }
+          : {}),
+      };
+    } else if (isPageNav) {
+      const rawDesc =
+        project.definitions?.get(cleanDefn)?.description || project.definitions?.get(cmp.definitionName)?.description;
+
+      let labelTitle = cleanDefn.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const lowerDef = cleanDefn.toLowerCase();
+      if (lowerDef === "passive") labelTitle = "Passive Elements";
+      else if (lowerDef === "csmf") labelTitle = "CSM Functions";
+      else if (lowerDef === "machines") labelTitle = "Rotating Machines";
+      else if (lowerDef === "logical") labelTitle = "Logic Circuits";
+      else if (lowerDef === "data_recorders_readers") labelTitle = "Data Recorders & Readers";
+      else if (lowerDef === "breakers_faults") labelTitle = "Breakers & Faults";
+      else if (lowerDef === "hvdc_facts_pe") labelTitle = "Power Electronics/HVDC/FACTS";
+      else if (lowerDef === "miscellaneous") labelTitle = "Miscellaneous models";
+      else if (lowerDef === "sequencer") labelTitle = "Sequencers";
+      else if (lowerDef === "transformers") labelTitle = "Power Transformers";
+      else if (lowerDef === "pi_sections") labelTitle = "PI sections";
+      else if (lowerDef === "imports_exports_labels") labelTitle = "Imports/Exports/Labels";
+      else if (lowerDef === "io") labelTitle = "I/O Devices";
+      else if (rawDesc && rawDesc.length <= 22 && !rawDesc.includes(",") && !rawDesc.includes(";")) {
+        labelTitle = rawDesc;
+      }
+
+      const btnText = `More on ${labelTitle}`;
+      width = parentCard ? parentCard.width - 24 : cmp.width && cmp.width > 80 ? Math.min(cmp.width, 220) : 220;
       height = 24;
+
+      markup = [
+        { tagName: "line", selector: "underline" },
+        { tagName: "text", selector: "btnLabel" },
+        { tagName: "rect", selector: "btnIconBg" },
+        { tagName: "text", selector: "btnArrow" },
+      ];
+      attrs = {
+        underline: {
+          x1: 2,
+          y1: 20,
+          x2: width - 34,
+          y2: 20,
+          stroke: "var(--vscode-widget-border, #94a3b8)",
+          strokeWidth: 1.5,
+        },
+        btnLabel: {
+          text: btnText,
+          fill: "var(--vscode-editor-foreground, #1e293b)",
+          fontSize: 9.5,
+          fontWeight: "600",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          textAnchor: "start",
+          textVerticalAnchor: "middle",
+          refX: 4,
+          refY: 0.45,
+          cursor: "pointer",
+        },
+        btnIconBg: {
+          x: width - 26,
+          y: 1,
+          width: 24,
+          height: 22,
+          fill: "var(--vscode-editorWidget-background, #e2e8f0)",
+          stroke: "var(--vscode-widget-border, #94a3b8)",
+          strokeWidth: 1.5,
+          rx: 2,
+          ry: 2,
+          cursor: "pointer",
+        },
+        btnArrow: {
+          text: "⇨",
+          fill: "var(--vscode-editor-foreground, #475569)",
+          fontSize: 13,
+          fontWeight: "bold",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          textAnchor: "middle",
+          textVerticalAnchor: "middle",
+          refX: width - 14,
+          refY: 0.5,
+          cursor: "pointer",
+        },
+      };
+    } else {
+      const defGraphic = project.definitions?.get(cleanDefn) ?? project.definitions?.get(cmp.definitionName);
+      let effParams = cmp.parameters;
+      if (cleanDefn === "newpi") {
+        effParams = { ...cmp.parameters, View: 1 };
+        width = 116;
+        height = 120;
+      }
+      const parsedDef = defGraphic?.svgXml
+        ? parseSvgXmlToMarkup(defGraphic.svgXml, effParams, width, height, cellAngle, cmp.mirror ?? false, cleanDefn)
+        : undefined;
+      if (parsedDef) {
+        markup = parsedDef.markup;
+        attrs = parsedDef.attrs;
+      } else if (defn.includes("xfmr") || defn.includes("transformer")) {
+        markup = transformerGlyph({ label: displayLabel });
+        width = 72;
+        height = 60;
+      } else if (
+        defn.includes("gen") ||
+        defn.includes("source") ||
+        defn.includes("sync_machine") ||
+        defn.includes("ind_machine") ||
+        defn.includes("dfig")
+      ) {
+        markup = generatorGlyph({ label: displayLabel });
+        width = 60;
+        height = 60;
+      } else if (defn.includes("fmu") || defn.includes("inverter") || defn.includes("ibr")) {
+        markup = inverterIbrGlyph({ label: displayLabel });
+        width = 60;
+        height = 60;
+      } else if (defn.includes("breaker") || defn.includes("switch")) {
+        const statusStr = String(cmp.parameters["Status"] ?? cmp.parameters["status"] ?? "closed").toLowerCase();
+        markup = breakerGlyph({ isOpen: statusStr === "open" || statusStr === "0", label: displayLabel });
+        width = 48;
+        height = 44;
+      } else if (defn.includes("arrester") || defn.includes("mov")) {
+        markup = surgeArresterGlyph({ label: displayLabel });
+        width = 40;
+        height = 54;
+      } else if (defn.includes("tpflt") || defn.includes("fault")) {
+        markup = faultGlyph({ label: displayLabel });
+        width = 40;
+        height = 44;
+      } else if (defn.includes("vsc_pwm") || defn.includes("lcc_6pulse") || defn.includes("mmc")) {
+        const badge = defn.includes("mmc") ? "MMC" : defn.includes("lcc") ? "LCC" : "VSC";
+        markup = converterBridgeGlyph({ badge, label: displayLabel });
+        width = 72;
+        height = 60;
+      } else if (defn.includes("tline") || defn.includes("cable")) {
+        markup = transmissionLineGlyph({ isCable: defn.includes("cable"), label: displayLabel });
+        width = 80;
+        height = 48;
+      } else if (defn.includes("pi_ctlr") || defn === "pi" || defn.endsWith(":pi")) {
+        markup = csmfBlockGlyph({ kind: "pi", label: cleanName });
+        width = 64;
+        height = 42;
+      } else if (defn.includes("realpole") || defn.includes("lag")) {
+        markup = csmfBlockGlyph({ kind: "lag", label: cleanName });
+        width = 64;
+        height = 42;
+      } else if (defn.includes("sum") || defn.endsWith(":add")) {
+        markup = csmfBlockGlyph({ kind: "sum", label: cleanName });
+        width = 44;
+        height = 44;
+      } else if (defn.includes("gain")) {
+        markup = csmfBlockGlyph({ kind: "gain", label: cleanName });
+        width = 52;
+        height = 40;
+      } else if (defn.includes("limit")) {
+        markup = csmfBlockGlyph({ kind: "limit", label: cleanName });
+        width = 64;
+        height = 42;
+      } else if (defn.includes("compar") || defn.includes("relay")) {
+        markup = csmfBlockGlyph({ kind: "compar", label: cleanName });
+        width = 64;
+        height = 42;
+      } else if (defn.includes("const")) {
+        markup = csmfBlockGlyph({ kind: "const", label: cleanName });
+        width = 64;
+        height = 42;
+      } else if (defn.includes("pgb") || defn.includes("probe") || defn.includes("oscilloscope")) {
+        markup = meterProbeGlyph({ kind: "pgb", label: String(cmp.parameters["Name"] ?? cmp.instanceName ?? "PGB") });
+        width = 54;
+        height = 34;
+      } else if (defn.includes("multimeter") || defn.includes("voltmeter") || defn.includes("ammeter")) {
+        const mKind = defn.includes("voltmeter") ? "voltmeter" : defn.includes("ammeter") ? "ammeter" : "multimeter";
+        markup = meterProbeGlyph({
+          kind: mKind,
+          label: mKind === "voltmeter" ? "V" : mKind === "ammeter" ? "A" : "V/I/PQ",
+        });
+        width = 48;
+        height = 44;
+      } else if (
+        defn.includes("datalabel") ||
+        defn.includes("data_label") ||
+        defn.includes("xnode") ||
+        defn.includes("pin")
+      ) {
+        const isElec = defn.includes("xnode") || defn.includes("pin");
+        markup = wirelessNetLabelGlyph({
+          label: String(cmp.parameters["Name"] ?? cmp.parameters["name"] ?? cleanName),
+          isElectrical: isElec,
+        });
+        width = 44;
+        height = 24;
+      }
     }
 
     // Build ports if present
@@ -456,7 +1237,10 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       }
     }
 
-    const isSubModule = Boolean(project.subModules?.has(cleanDefn) || project.subModules?.has(cmp.definitionName));
+    if (isAnnotation || isPageNav || isLibraryMode) {
+      portItems.length = 0;
+    }
+
     const nodeProperties = {
       name: cleanName,
       className: cmp.definitionName,
@@ -467,8 +1251,89 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
 
     // Place X6 node top-left at (cmp.position.x - width/2, cmp.position.y - height/2)
     // so that cmp.position is the exact geometric center of the apparatus.
-    const topLeftX = Math.round(cmp.position.x - width / 2);
-    const topLeftY = Math.round(cmp.position.y - height / 2);
+    let topLeftX = Math.round(cmp.position.x - width / 2);
+    let topLeftY = isAnnotation ? cmp.position.y : Math.round(cmp.position.y - height / 2);
+    if (cleanDefn === "newpi") {
+      topLeftY = Math.round(936 - height / 2);
+    }
+
+    if (
+      isLibraryMode &&
+      (parentCard?.title.toUpperCase().includes("MISCELLANEOUS") ||
+        (cmp.position.x >= 540 && cmp.position.x <= 820 && cmp.position.y <= 270))
+    ) {
+      const valStr = String(cmp.parameters["Value"] ?? cmp.parameters["value"] ?? "");
+      let targetX: number | undefined;
+      let targetY: number | undefined;
+
+      if (cleanDefn === "emtconst" && (valStr === "0" || !valStr)) {
+        // Pi -> Row 1, Col 1
+        targetX = 594 - 38;
+        targetY = 90 - 15;
+      } else if (cleanDefn === "emtconst" && valStr === "12") {
+        // 1/Sqrt(3) -> Row 1, Col 2
+        targetX = 720 - 38;
+        targetY = 90 - 15;
+      } else if (cleanDefn === "time-sig") {
+        // TIME -> Row 2, Col 1
+        targetX = 594 - 38;
+        targetY = 126 - 15;
+      } else if (cleanDefn === "const" && (valStr === "377" || valStr.startsWith("377"))) {
+        // 377.0 -> Row 2, Col 2
+        targetX = 720 - 39;
+        targetY = 126 - 15;
+      } else if (cleanDefn === "delta-t") {
+        // Delta-T -> Row 3, Col 1
+        targetX = 594 - 38;
+        targetY = 162 - 15;
+      } else if (cleanDefn === "consti" && (valStr === "1" || !valStr)) {
+        // 1 -> Row 3, Col 2
+        targetX = 720 - 39;
+        targetY = 162 - 15;
+      } else if (cleanDefn === "run_num") {
+        // Run# -> Row 4, Col 1
+        targetX = 594 - 4;
+        targetY = 198 - 15;
+      } else if (cleanDefn === "num_run") {
+        // #Runs -> Row 4, Col 2
+        targetX = 720 - 4;
+        targetY = 198 - 15;
+      } else if (cleanDefn === "constl" && (valStr === "0" || !valStr)) {
+        // False -> Row 5, Col 1
+        targetX = 594 - 4;
+        targetY = 234 - 15;
+      } else if (cleanDefn === "unity") {
+        // unity -> Row 5, Col 2
+        targetX = 720 - 5;
+        targetY = 234 - 11;
+      }
+
+      if (targetX !== undefined && targetY !== undefined) {
+        topLeftX = Math.round(targetX);
+        topLeftY = Math.round(targetY);
+      }
+    }
+
+    if (isPageNav && parentCard) {
+      topLeftX = parentCard.minX + 12;
+      topLeftY = parentCard.maxY - 30;
+    } else if (isAnnotation) {
+      if (cleanName.toLowerCase().includes("file reader") || cmp.parameters["AL1"] === "File Reader") {
+        topLeftY = Math.max(topLeftY, 1104);
+      } else if (cleanName.toLowerCase().includes("comtrade") || String(cmp.parameters["AL1"]).includes("COMTRADE")) {
+        topLeftY = Math.max(topLeftY, 1004);
+      } else if (
+        cleanName.toLowerCase().includes("transmit and receive") ||
+        String(cmp.parameters["AL1"]).includes("Transmit and receive")
+      ) {
+        topLeftY = Math.max(topLeftY, 706);
+      } else if (
+        cleanName.toLowerCase().includes("pi sections") ||
+        String(cmp.parameters["AL1"]).includes("PI sections")
+      ) {
+        topLeftY = Math.max(topLeftY, 974);
+      }
+    }
 
     const isProbeOrPin =
       defn.includes("pgb") ||
@@ -491,77 +1356,80 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       y: topLeftY,
       width,
       height,
-      angle: cmp.rotation ?? 0,
+      angle: cellAngle,
       markup: markup ?? [
         { tagName: "rect", selector: "body" },
         { tagName: "rect", selector: "headerBg" },
         { tagName: "text", selector: "typeBadge" },
         { tagName: "text", selector: "label" },
       ],
-      attrs: markup
-        ? {
-            label: isProbeOrPin
-              ? {
-                  text: displayLabel,
-                  fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
-                  fontSize: 8.5,
-                  fontWeight: "bold",
-                  fontFamily: "monospace",
-                  textAnchor: "middle",
-                  textVerticalAnchor: "middle",
-                  refX: 0.5,
-                  refY: 0.5,
-                }
-              : {
-                  text: displayLabel,
-                  fill: labelColor,
-                  fontSize: 9.5,
-                  fontWeight: "bold",
-                  fontFamily: "sans-serif",
-                  textAnchor: "middle",
-                  textVerticalAnchor: "top",
-                  refX: 0.5,
-                  refY: height + 6,
-                },
-          }
-        : {
-            body: {
-              fill: "#1e293b",
-              stroke: "#38bdf8",
-              strokeWidth: 1.5,
-              rx: 6,
-              ry: 6,
-            },
-            headerBg: {
-              refWidth: 1,
-              height: 18,
-              fill: "#0f172a",
-              rx: 6,
-              ry: 6,
-            },
-            typeBadge: {
-              text: `«${cleanDefn}»`,
-              fill: "#38bdf8",
-              fontSize: 8,
-              fontStyle: "italic",
-              refX: 0.5,
-              refY: 4,
-              textAnchor: "middle",
-            },
-            label: {
-              text: cleanName,
-              fill: "#f8fafc",
-              fontSize: 11,
-              fontWeight: "bold",
-              refX: 0.5,
-              refY: 26,
-              textAnchor: "middle",
-            },
-          },
+      attrs:
+        attrs ??
+        (markup
+          ? {
+              label: isProbeOrPin
+                ? {
+                    text: displayLabel,
+                    fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
+                    fontSize: 8.5,
+                    fontWeight: "bold",
+                    fontFamily: "monospace",
+                    textAnchor: "middle",
+                    textVerticalAnchor: "middle",
+                    refX: 0.5,
+                    refY: 0.5,
+                  }
+                : {
+                    text: displayLabel,
+                    fill: labelColor,
+                    fontSize: 9.5,
+                    fontWeight: "bold",
+                    fontFamily: "sans-serif",
+                    textAnchor: "middle",
+                    textVerticalAnchor: "top",
+                    refX: 0.5,
+                    refY: height + 6,
+                  },
+            }
+          : {
+              body: {
+                fill: "#1e293b",
+                stroke: "#38bdf8",
+                strokeWidth: 1.5,
+                rx: 6,
+                ry: 6,
+              },
+              headerBg: {
+                refWidth: 1,
+                height: 18,
+                fill: "#0f172a",
+                rx: 6,
+                ry: 6,
+              },
+              typeBadge: {
+                text: `«${cleanDefn}»`,
+                fill: "#38bdf8",
+                fontSize: 8,
+                fontStyle: "italic",
+                refX: 0.5,
+                refY: 4,
+                textAnchor: "middle",
+              },
+              label: {
+                text: cleanName,
+                fill: "#f8fafc",
+                fontSize: 11,
+                fontWeight: "bold",
+                refX: 0.5,
+                refY: 26,
+                textAnchor: "middle",
+              },
+            }),
       ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
       properties: nodeProperties,
       data: {
-        kind: "component",
+        kind: isPageNav ? "module-link" : isAnnotation ? "annotation" : "component",
+        targetModule: isPageNav ? cleanDefn : undefined,
         definition: cmp.definitionName,
         name: cmp.instanceName,
         parameters: cmp.parameters,
@@ -585,9 +1453,26 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       d.includes("compar") ||
       d.includes("const") ||
       d.includes("pgb") ||
-      d.includes("datalabel");
+      d.includes("datalabel") ||
+      d.includes("tfaultn") ||
+      d.includes("tbreakn") ||
+      d.includes("fault_sw") ||
+      d.includes("slider") ||
+      d.includes("switch") ||
+      d.includes("sequencer") ||
+      d.includes("logic") ||
+      d.includes("csmf") ||
+      d.includes("unity");
     for (const p of cmp.ports ?? []) {
-      if (isControlBlock || p.kind === "signal") {
+      const pName = p.name.toLowerCase();
+      if (
+        isControlBlock ||
+        p.kind === "signal" ||
+        pName === "sig" ||
+        pName === "signl" ||
+        pName === "is" ||
+        pName === "y"
+      ) {
         signalPortIdSet.add(p.id);
       }
     }
@@ -634,7 +1519,17 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       const srcAnchor = findNearestPortAnchor(firstPt, wire.startPortId);
       const tgtAnchor = findNearestPortAnchor(lastPt, wire.endPortId);
 
-      const isSignalWire = (wire.connectedPortIds ?? []).some((pid) => signalPortIdSet.has(pid));
+      const isSignalWire =
+        (wire.connectedPortIds ?? []).some((pid) => signalPortIdSet.has(pid)) ||
+        (wire.connectedPortIds ?? []).some(
+          (pid) => pid.toLowerCase().includes("sig") || pid.toLowerCase().includes("signl"),
+        );
+      const isCard3BusWire = wire.id === "2041187102";
+      const wireStroke = isCard3BusWire ? "#64748b" : isSignalWire ? "#7c3aed" : "#0284c7";
+      const wireSda = isCard3BusWire || isLibraryMode ? undefined : isSignalWire ? "4,2" : undefined;
+      const wireMarker =
+        isCard3BusWire || isLibraryMode ? null : isSignalWire ? { name: "block", width: 6, height: 5 } : null;
+
       cells.push({
         id: wire.id,
         shape: "edge",
@@ -643,10 +1538,10 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         vertices: wire.vertices.slice(1, -1),
         attrs: {
           line: {
-            stroke: isSignalWire ? "#7c3aed" : "#0284c7",
-            strokeWidth: isSignalWire ? 1.5 : 2.5,
-            strokeDasharray: isSignalWire ? "4,2" : undefined,
-            targetMarker: isSignalWire ? { name: "block", width: 6, height: 5 } : null,
+            stroke: wireStroke,
+            strokeWidth: isSignalWire || isCard3BusWire ? 1.5 : 2.5,
+            strokeDasharray: wireSda,
+            targetMarker: wireMarker,
           },
         },
         data: {
@@ -663,25 +1558,24 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
   }
 
   // 4. Emit T-Junction Solder Dots where 3+ wire segments or mid-wire taps intersect
-  if (mod.junctions && mod.junctions.length > 0) {
+  if (project.projectType !== "library" && mod.junctions && mod.junctions.length > 0) {
     for (let idx = 0; idx < mod.junctions.length; idx++) {
       const j = mod.junctions[idx]!;
       cells.push({
         id: `solder_dot_${j.x}_${j.y}_${idx}`,
         shape: "circle",
-        x: j.x - 4,
-        y: j.y - 4,
-        width: 8,
-        height: 8,
+        x: j.x - 2.5,
+        y: j.y - 2.5,
+        width: 5,
+        height: 5,
         markup: [{ tagName: "circle", selector: "dot" }],
         attrs: {
           dot: {
-            cx: 4,
-            cy: 4,
-            r: 4,
-            fill: "#0284c7",
-            stroke: "#0f172a",
-            strokeWidth: 1.5,
+            cx: 2.5,
+            cy: 2.5,
+            r: 2.5,
+            fill: "var(--vscode-editor-foreground, #0f172a)",
+            stroke: "none",
           },
         },
         data: {
@@ -692,9 +1586,10 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     }
   }
 
-  // 5. Convert Sticky Notes to Card Nodes
+  // 6. Convert Remaining Unconsumed Stickies
   if (mod.stickies) {
     for (const sticky of mod.stickies) {
+      if (consumedStickyIds.has(sticky.id)) continue;
       const isBanner = sticky.width > 400;
       const isTitle = sticky.height <= 40;
       cells.push({
@@ -731,13 +1626,40 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     }
   }
 
+  // 7. Convert Remaining Unconsumed Schematic Lines & Dividers
+  if (mod.lines && mod.lines.length > 0) {
+    for (const line of mod.lines) {
+      if (consumedLineIds.has(line.id)) continue;
+      const isDivider = line.classId?.toLowerCase() === "divider";
+      cells.push({
+        id: line.id,
+        shape: "edge",
+        source: { x: line.x1, y: line.y1 },
+        target: { x: line.x2, y: line.y2 },
+        attrs: {
+          line: {
+            stroke: isDivider ? "#475569" : "#64748b",
+            strokeWidth: isDivider ? 1.5 : 1,
+            targetMarker: null,
+          },
+        },
+        data: {
+          kind: "divider",
+          classId: line.classId,
+          sourcePoint: { x: line.x1, y: line.y1 },
+          targetPoint: { x: line.x2, y: line.y2 },
+        },
+      });
+    }
+  }
+
   return {
     cells,
     metadata: {
       projectName: project.name,
       moduleName: mod.name,
-      nodeCount: mod.buses.length + mod.components.length + (mod.stickies?.length ?? 0),
-      edgeCount: mod.wires.length,
+      nodeCount: cells.filter((c) => c.shape !== "edge").length,
+      edgeCount: cells.filter((c) => c.shape === "edge").length,
     },
   };
 }
@@ -751,11 +1673,38 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
+function resolveVar(val?: string, isDark = false): string | undefined {
+  if (!val) return undefined;
+  if (typeof val !== "string") return val;
+  if (val.startsWith("var(")) {
+    const m = /var\([^,]+,\s*([^)]+)\)/.exec(val);
+    const fallback = m?.[1]?.trim();
+    if (val.includes("editorWidget-background") || val.includes("button-secondaryBackground")) {
+      return isDark ? "#1e293b" : (fallback ?? "#e0e0e0");
+    }
+    if (val.includes("foreground") || val.includes("Foreground")) {
+      return isDark ? "#f8fafc" : (fallback ?? "#0f172a");
+    }
+    if (val.includes("border") || val.includes("Border")) {
+      return isDark ? "#475569" : (fallback ?? "#cbd5e1");
+    }
+    if (val.includes("background") || val.includes("Background")) {
+      return isDark ? "#0f172a" : (fallback ?? "#ffffff");
+    }
+    if (fallback) return fallback;
+    return isDark ? "#f8fafc" : "#0f172a";
+  }
+  return val;
+}
+
 /**
  * Generates standalone SVG markup for headless export and CI/CD rendering.
  */
-export function renderPscadSvg(project: PscadProjectLike): string {
-  const diag = buildPscadDiagram(project);
+export function renderPscadSvg(
+  project: PscadProjectLike,
+  options?: { theme?: "light" | "dark"; moduleName?: string },
+): string {
+  const diag = buildPscadDiagram(project, options?.moduleName);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -785,9 +1734,130 @@ export function renderPscadSvg(project: PscadProjectLike): string {
   const vbW = maxX - minX + 2 * padding;
   const vbH = maxY - minY + 2 * padding;
 
+  const isDark = options?.theme === "dark" || (!options?.theme && project.projectType !== "library");
+  const bgColor = isDark ? "#0f172a" : "#ffffff";
+  const gridDotColor = isDark ? "#334155" : "#e2e8f0";
+
   let elementsSvg = "";
 
-  // Render edges (wires) first
+  const renderCellSvg = (c: any): string => {
+    if (c.x === undefined || c.y === undefined) return "";
+    const w = c.width ?? 60;
+    const h = c.height ?? 60;
+
+    if (c.data?.["kind"] === "junction") {
+      if (project.projectType === "library") return "";
+      const jx = c.data["position"]?.x ?? c.x + 2.5;
+      const jy = c.data["position"]?.y ?? c.y + 2.5;
+      return `  <circle cx="${jx}" cy="${jy}" r="2.5" fill="${isDark ? "#f8fafc" : "#0f172a"}" />\n`;
+    } else if (c.data?.["kind"] === "bus") {
+      const vbase = c.data["vbase"] ?? 230;
+      const color = vbase >= 200 ? "#dc2626" : vbase >= 69 ? "#d97706" : "#0284c7";
+      let res = `  <g transform="translate(${c.x}, ${c.y})">\n`;
+      res += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
+      res += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(String(c.data["name"] ?? c.id))} (${vbase} kV)</text>\n`;
+      res += `  </g>\n`;
+      return res;
+    } else if (c.data?.["kind"] === "sticky") {
+      const lines = (c.data["text"] || "").split("\n");
+      const isBanner = w > 400;
+      const fill = isBanner ? "#fffbeb" : "#fef3c7";
+      const stroke = isBanner ? "#f59e0b" : "#d97706";
+      let res = `  <g transform="translate(${c.x}, ${c.y})">\n`;
+      res += `    <rect width="${w}" height="${h}" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="1" />\n`;
+      let textY = 18;
+      for (const line of lines.slice(0, 12)) {
+        res += `    <text x="12" y="${textY}" fill="#1e293b" font-size="11" font-family="sans-serif">${escapeHtml(line)}</text>\n`;
+        textY += 15;
+      }
+      res += `  </g>\n`;
+      return res;
+    } else if (c.markup && Array.isArray(c.markup) && c.markup.length > 0) {
+      const rotStr = c.angle ? ` rotate(${c.angle}, ${w / 2}, ${h / 2})` : "";
+      let res = `  <g transform="translate(${c.x}, ${c.y})${rotStr}">\n`;
+      for (const m of c.markup) {
+        const merged = { ...(m.attrs || {}), ...(c.attrs?.[m.selector] || {}) };
+        if (merged.fill === "none" && (merged.fontSize === 0 || merged["font-size"] === 0)) continue;
+        if (m.tagName === "rect") {
+          const rx = merged.rx ? ` rx="${merged.rx}"` : "";
+          const ry = merged.ry ? ` ry="${merged.ry}"` : "";
+          const stroke = merged.stroke ? ` stroke="${resolveVar(merged.stroke, isDark)}"` : "";
+          const fill = resolveVar(merged.fill, isDark) ?? "none";
+          const sw = merged.strokeWidth ?? merged["stroke-width"];
+          const swStr = sw ? ` stroke-width="${sw}"` : "";
+          res += `    <rect x="${merged.x ?? 0}" y="${merged.y ?? 0}" width="${merged.width ?? w}" height="${merged.height ?? h}" fill="${fill}"${stroke}${swStr}${rx}${ry} />\n`;
+        } else if (m.tagName === "circle") {
+          const stroke = merged.stroke ? ` stroke="${resolveVar(merged.stroke, isDark)}"` : "";
+          const fill = resolveVar(merged.fill, isDark) ?? "none";
+          const sw = merged.strokeWidth ?? merged["stroke-width"];
+          const swStr = sw ? ` stroke-width="${sw}"` : "";
+          res += `    <circle cx="${merged.cx ?? w / 2}" cy="${merged.cy ?? h / 2}" r="${merged.r ?? 10}" fill="${fill}"${stroke}${swStr} />\n`;
+        } else if (m.tagName === "ellipse") {
+          const stroke = merged.stroke ? ` stroke="${resolveVar(merged.stroke, isDark)}"` : "";
+          const fill = resolveVar(merged.fill, isDark) ?? "none";
+          const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
+          const swStr = sw ? ` stroke-width="${sw}"` : "";
+          res += `    <ellipse cx="${merged.cx ?? w / 2}" cy="${merged.cy ?? h / 2}" rx="${merged.rx ?? 10}" ry="${merged.ry ?? 10}" fill="${fill}"${stroke}${swStr} />\n`;
+        } else if (m.tagName === "line") {
+          const stroke = merged.stroke ? ` stroke="${resolveVar(merged.stroke, isDark)}"` : ' stroke="#0284c7"';
+          const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
+          const sda = merged.strokeDasharray ?? merged["stroke-dasharray"];
+          const sdaStr = sda ? ` stroke-dasharray="${sda}"` : "";
+          res += `    <line x1="${merged.x1}" y1="${merged.y1}" x2="${merged.x2}" y2="${merged.y2}"${stroke} stroke-width="${sw}"${sdaStr} />\n`;
+        } else if (m.tagName === "path") {
+          const stroke = merged.stroke ? ` stroke="${resolveVar(merged.stroke, isDark)}"` : ' stroke="#0284c7"';
+          const fill = resolveVar(merged.fill, isDark) ?? "none";
+          const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
+          const transform = merged.transform ? ` transform="${merged.transform}"` : "";
+          res += `    <path d="${merged.d}" fill="${fill}"${stroke} stroke-width="${sw}"${transform} />\n`;
+        } else if (m.tagName === "polygon") {
+          const stroke = merged.stroke ? ` stroke="${resolveVar(merged.stroke, isDark)}"` : "";
+          const fill = resolveVar(merged.fill, isDark) ?? "none";
+          const sw = merged.strokeWidth ?? merged["stroke-width"];
+          const swStr = sw ? ` stroke-width="${sw}"` : "";
+          res += `    <polygon points="${merged.points}" fill="${fill}"${stroke}${swStr} />\n`;
+        } else if (m.tagName === "text") {
+          const textVal = escapeHtml(String(merged.text ?? ""));
+          if (!textVal) continue;
+          const tx =
+            merged.refX !== undefined ? (merged.refX <= 1 ? merged.refX * w : merged.refX) : (merged.x ?? w / 2);
+          const ty =
+            merged.refY !== undefined ? (merged.refY <= 1 ? merged.refY * h : merged.refY) : (merged.y ?? h + 10);
+          const fill = resolveVar(merged.fill, isDark) ?? (isDark ? "#f8fafc" : "#0f172a");
+          const fs = merged.fontSize ?? merged["font-size"] ?? 9;
+          const fw = merged.fontWeight ?? merged["font-weight"] ?? "bold";
+          const ta = merged.textAnchor ?? merged["text-anchor"] ?? "middle";
+          const dbl =
+            merged.textVerticalAnchor === "middle" || merged["text-vertical-anchor"] === "middle"
+              ? ' dominant-baseline="middle"'
+              : "";
+          const transform = merged.transform ? ` transform="${merged.transform}"` : "";
+          res += `    <text x="${tx}" y="${ty}" fill="${fill}" font-size="${fs}" font-weight="${fw}" font-family="sans-serif" text-anchor="${ta}"${dbl}${transform}>${textVal}</text>\n`;
+        }
+      }
+      res += `  </g>\n`;
+      return res;
+    } else {
+      const rawName = String(c.data?.["name"] || c.id);
+      const name = rawName.includes(":") ? rawName.split(":").pop()! : rawName;
+      const defn = String(c.data?.["definition"] || "Component");
+      const rotStr = c.angle ? ` rotate(${c.angle}, ${w / 2}, ${h / 2})` : "";
+      let res = `  <g transform="translate(${c.x}, ${c.y})${rotStr}">\n`;
+      res += `    <rect width="${w}" height="${h}" rx="4" fill="${isDark ? "#1e293b" : "#f1f5f9"}" stroke="#38bdf8" stroke-width="1.5" />\n`;
+      res += `    <text x="${w / 2}" y="${h / 2 - 4}" fill="${isDark ? "#f8fafc" : "#0f172a"}" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">${escapeHtml(name)}</text>\n`;
+      res += `    <text x="${w / 2}" y="${h / 2 + 10}" fill="#64748b" font-size="8" font-family="sans-serif" text-anchor="middle">${escapeHtml(defn)}</text>\n`;
+      res += `  </g>\n`;
+      return res;
+    }
+  };
+
+  // 1. Render background cells (zIndex < 0, e.g. Category Cards) first
+  const bgCells = diag.cells.filter((c) => c.shape !== "edge" && (c.zIndex ?? 0) < 0);
+  for (const c of bgCells) {
+    elementsSvg += renderCellSvg(c);
+  }
+
+  // 2. Render edges (wires and dividers) so they sit ON TOP of card backgrounds
   for (const c of diag.cells) {
     if (c.shape === "edge" && c.source && c.target) {
       const srcPt = c.data?.["sourcePoint"] ?? c.source;
@@ -800,105 +1870,29 @@ export function renderPscadSvg(project: PscadProjectLike): string {
         }
       }
       pathData += ` L ${tgtPt.x} ${tgtPt.y}`;
-      elementsSvg += `  <path d="${pathData}" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" />\n`;
+      const lineAttrs = c.attrs?.["line"] as
+        | { stroke?: string; strokeWidth?: number; strokeDasharray?: string }
+        | undefined;
+      const stroke = resolveVar(lineAttrs?.stroke, isDark) ?? "#0284c7";
+      const sw = lineAttrs?.strokeWidth ?? 2;
+      const sda = lineAttrs?.strokeDasharray ? ` stroke-dasharray="${lineAttrs.strokeDasharray}"` : "";
+      elementsSvg += `  <path d="${pathData}" fill="none" stroke="${stroke}" stroke-width="${sw}"${sda} stroke-linecap="round" />\n`;
     }
   }
 
-  // Render nodes (components, buses, junctions & stickies)
-  for (const c of diag.cells) {
-    if (c.x !== undefined && c.y !== undefined) {
-      const w = c.width ?? 60;
-      const h = c.height ?? 60;
-
-      if (c.data?.["kind"] === "junction") {
-        const jx = c.data["position"]?.x ?? c.x + 4;
-        const jy = c.data["position"]?.y ?? c.y + 4;
-        elementsSvg += `  <circle cx="${jx}" cy="${jy}" r="4" fill="#0284c7" stroke="#0f172a" stroke-width="1.5" />\n`;
-      } else if (c.data?.["kind"] === "bus") {
-        const vbase = c.data["vbase"] ?? 230;
-        const color = vbase >= 200 ? "#dc2626" : vbase >= 69 ? "#d97706" : "#0284c7";
-        elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
-        elementsSvg += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
-        elementsSvg += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(String(c.data["name"] ?? c.id))} (${vbase} kV)</text>\n`;
-        elementsSvg += `  </g>\n`;
-      } else if (c.data?.["kind"] === "sticky") {
-        const lines = (c.data["text"] || "").split("\n");
-        const isBanner = w > 400;
-        const fill = isBanner ? "#fffbeb" : "#fef3c7";
-        const stroke = isBanner ? "#f59e0b" : "#d97706";
-        elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
-        elementsSvg += `    <rect width="${w}" height="${h}" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="1" />\n`;
-        let textY = 18;
-        for (const line of lines.slice(0, 12)) {
-          elementsSvg += `    <text x="12" y="${textY}" fill="#1e293b" font-size="11" font-family="sans-serif">${escapeHtml(line)}</text>\n`;
-          textY += 15;
-        }
-        elementsSvg += `  </g>\n`;
-      } else if (c.markup && Array.isArray(c.markup) && c.markup.length > 0) {
-        elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
-        for (const m of c.markup) {
-          const merged = { ...(m.attrs || {}), ...(c.attrs?.[m.selector] || {}) };
-          if (merged.fill === "none" && (merged.fontSize === 0 || merged["font-size"] === 0)) continue;
-          if (m.tagName === "rect") {
-            const rx = merged.rx ? ` rx="${merged.rx}"` : "";
-            const ry = merged.ry ? ` ry="${merged.ry}"` : "";
-            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : "";
-            const sw = merged.strokeWidth ?? merged["stroke-width"];
-            const swStr = sw ? ` stroke-width="${sw}"` : "";
-            elementsSvg += `    <rect x="${merged.x ?? 0}" y="${merged.y ?? 0}" width="${merged.width ?? w}" height="${merged.height ?? h}" fill="${merged.fill ?? "none"}"${stroke}${swStr}${rx}${ry} />\n`;
-          } else if (m.tagName === "circle") {
-            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : "";
-            const sw = merged.strokeWidth ?? merged["stroke-width"];
-            const swStr = sw ? ` stroke-width="${sw}"` : "";
-            elementsSvg += `    <circle cx="${merged.cx ?? w / 2}" cy="${merged.cy ?? h / 2}" r="${merged.r ?? 10}" fill="${merged.fill ?? "none"}"${stroke}${swStr} />\n`;
-          } else if (m.tagName === "line") {
-            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : ' stroke="#0284c7"';
-            const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
-            const sda = merged.strokeDasharray ?? merged["stroke-dasharray"];
-            const sdaStr = sda ? ` stroke-dasharray="${sda}"` : "";
-            elementsSvg += `    <line x1="${merged.x1}" y1="${merged.y1}" x2="${merged.x2}" y2="${merged.y2}"${stroke} stroke-width="${sw}"${sdaStr} />\n`;
-          } else if (m.tagName === "path") {
-            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : ' stroke="#0284c7"';
-            const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
-            elementsSvg += `    <path d="${merged.d}" fill="${merged.fill ?? "none"}"${stroke} stroke-width="${sw}" />\n`;
-          } else if (m.tagName === "polygon") {
-            const stroke = merged.stroke ? ` stroke="${merged.stroke}"` : "";
-            const sw = merged.strokeWidth ?? merged["stroke-width"];
-            const swStr = sw ? ` stroke-width="${sw}"` : "";
-            elementsSvg += `    <polygon points="${merged.points}" fill="${merged.fill ?? "none"}"${stroke}${swStr} />\n`;
-          } else if (m.tagName === "text") {
-            const textVal = escapeHtml(String(merged.text ?? ""));
-            if (!textVal) continue;
-            const tx =
-              merged.refX !== undefined ? (merged.refX <= 1 ? merged.refX * w : merged.refX) : (merged.x ?? w / 2);
-            const ty =
-              merged.refY !== undefined ? (merged.refY <= 1 ? merged.refY * h : merged.refY) : (merged.y ?? h + 10);
-            const fill = merged.fill ?? "#f8fafc";
-            const fs = merged.fontSize ?? merged["font-size"] ?? 9;
-            const fw = merged.fontWeight ?? merged["font-weight"] ?? "bold";
-            const ta = merged.textAnchor ?? merged["text-anchor"] ?? "middle";
-            elementsSvg += `    <text x="${tx}" y="${ty}" fill="${fill}" font-size="${fs}" font-weight="${fw}" font-family="sans-serif" text-anchor="${ta}">${textVal}</text>\n`;
-          }
-        }
-        elementsSvg += `  </g>\n`;
-      } else {
-        const rawName = String(c.data?.["name"] || c.id);
-        const name = rawName.includes(":") ? rawName.split(":").pop()! : rawName;
-        const defn = String(c.data?.["definition"] || "Component");
-        elementsSvg += `  <g transform="translate(${c.x}, ${c.y})">\n`;
-        elementsSvg += `    <rect width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />\n`;
-        elementsSvg += `    <text x="${w / 2}" y="${h / 2 - 4}" fill="#f8fafc" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">${escapeHtml(name)}</text>\n`;
-        elementsSvg += `    <text x="${w / 2}" y="${h / 2 + 10}" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">${escapeHtml(defn)}</text>\n`;
-        elementsSvg += `  </g>\n`;
-      }
-    }
+  // 3. Render foreground nodes sorted by zIndex
+  const fgCells = [...diag.cells.filter((c) => c.shape !== "edge" && (c.zIndex ?? 0) >= 0)].sort(
+    (a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0),
+  );
+  for (const c of fgCells) {
+    elementsSvg += renderCellSvg(c);
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="${vbW}" height="${vbH}" style="background-color: #0f172a;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="${vbW}" height="${vbH}" style="background-color: ${bgColor};">
   <defs>
     <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-      <circle cx="1" cy="1" r="1" fill="#334155" />
+      <circle cx="1" cy="1" r="1" fill="${gridDotColor}" />
     </pattern>
   </defs>
   <rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="url(#grid)" />

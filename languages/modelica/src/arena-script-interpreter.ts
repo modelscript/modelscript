@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { SyntaxNode } from "@modelscript/dsl/utils";
-import type { QueryEngine } from "@modelscript/runtime";
+import type { DAEBuilder, QueryEngine } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, type ArenaSimulateOptions } from "@modelscript/simulate";
 import { ModelicaCalibrator } from "@modelscript/simulate/optimizer";
 import fs from "node:fs";
@@ -731,7 +731,7 @@ export class ArenaScriptInterpreter {
         if (measurementFile && measurementFile !== "synthetic") {
           this.print(`Warning: Could not load measurement data from '${measurementFile}'; using synthetic fallback.`);
         }
-        const measData = this.generateSyntheticMeasurements(paramNames, stopTime);
+        const measData = this.generateSyntheticMeasurements(arena, stopTime, paramNames);
         for (const [varName, data] of measData) {
           measurements.set(varName, data);
         }
@@ -739,27 +739,10 @@ export class ArenaScriptInterpreter {
     }
 
     if (measurements.size === 0) {
-      // Fallback: generate simple displacement measurements
-      const t: number[] = [];
-      const y: number[] = [];
-      const dt = 0.05;
-      const N = Math.round(stopTime / dt);
-      // True parameters: k=80, c=5 (matching calibration template)
-      const k_true = 80,
-        c_true = 5,
-        m = 1.0;
-      let x = 1.0,
-        v = 0.0;
-      for (let i = 0; i <= N; i++) {
-        const time = i * dt;
-        const noise = 0.02 * Math.sin(time * 137.035999 + 7) * Math.cos(time * 42.7 + 3);
-        t.push(time);
-        y.push(x + noise);
-        const a = (-k_true * x - c_true * v) / m;
-        v += a * dt;
-        x += v * dt;
-      }
-      measurements.set("x", { t, y });
+      this.print(
+        `Error: No measurement data available to calibrate '${modelName}'. Please provide a valid CSV measurement file or configure calibration targets.`,
+      );
+      return;
     }
 
     // Set default bounds if not provided
@@ -812,30 +795,30 @@ export class ArenaScriptInterpreter {
   }
 
   private generateSyntheticMeasurements(
-    _paramNames: string[],
+    arena: DAEBuilder,
     stopTime: number,
+    paramNames: string[],
   ): Map<string, { t: number[]; y: number[] }> {
     const measurements = new Map<string, { t: number[]; y: number[] }>();
-    const dt = 0.05;
-    const N = Math.round(stopTime / dt);
-    // True parameters: k=80, c=5 matching the calibration template
-    const k_true = 80,
-      c_true = 5,
-      m = 1.0;
-    let x = 1.0,
-      v = 0.0;
-    const t: number[] = [];
-    const y: number[] = [];
-    for (let i = 0; i <= N; i++) {
-      const time = i * dt;
-      const noise = 0.02 * Math.sin(time * 137.035999 + 7) * Math.cos(time * 42.7 + 3);
-      t.push(time);
-      y.push(x + noise);
-      const a = (-k_true * x - c_true * v) / m;
-      v += a * dt;
-      x += v * dt;
+    try {
+      const res = simulateArena(arena, { stopTime, numberOfIntervals: 100 });
+      if (res && res.t && res.t.length > 0 && res.states && res.states.length > 0) {
+        for (let sIdx = 0; sIdx < res.states.length; sIdx++) {
+          const sName = res.states[sIdx]!;
+          if (!paramNames.includes(sName)) {
+            const rawY = res.y.map((row) => row[sIdx] ?? 0);
+            const y = rawY.map((val, idx) => {
+              const time = res.t[idx] ?? 0;
+              const noise = 0.005 * Math.sin(time * 137.035999 + 7);
+              return val + noise;
+            });
+            measurements.set(sName, { t: res.t, y });
+          }
+        }
+      }
+    } catch {
+      // Fallback: if simulation fails, do not inject unrelated physics
     }
-    measurements.set("x", { t, y });
     return measurements;
   }
 }

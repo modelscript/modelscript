@@ -97,7 +97,8 @@ export async function getWasmParserForLanguage(lang: ClosedLoopLanguage): Promis
         } catch {
           const path = await import("node:path");
           const fs = await import("node:fs");
-          const candidate = path.resolve(process.cwd(), "languages/sysml2/dist/parser.wasm");
+          const cwd = typeof process !== "undefined" && typeof process.cwd === "function" ? process.cwd() : "/";
+          const candidate = path.resolve(cwd, "languages/sysml2/dist/parser.wasm");
           if (fs.existsSync(candidate)) wasmPath = candidate;
         }
       }
@@ -124,7 +125,8 @@ export async function getWasmParserForLanguage(lang: ClosedLoopLanguage): Promis
         } catch {
           const path = await import("node:path");
           const fs = await import("node:fs");
-          const candidate = path.resolve(process.cwd(), "languages/modelica/dist/parser.wasm");
+          const cwd = typeof process !== "undefined" && typeof process.cwd === "function" ? process.cwd() : "/";
+          const candidate = path.resolve(cwd, "languages/modelica/dist/parser.wasm");
           if (fs.existsSync(candidate)) wasmPath = candidate;
         }
       }

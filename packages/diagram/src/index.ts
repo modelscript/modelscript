@@ -22,8 +22,11 @@ type Transform = any;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 import {
+  clearActiveDropPlaceholder,
   dropComponentGhost,
   ensureDiagramStyles,
+  getActiveDropPlaceholder,
+  getTypicalNodeSize,
   isEphemeralDiagramNode,
   type DropPlaceholderOptions,
 } from "./drop-placeholder.js";
@@ -49,9 +52,12 @@ import { applySwimlaneLayout } from "./swimlane-layout.js";
 import { animateCells } from "./telemetry.js";
 import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
 export {
+  clearActiveDropPlaceholder,
   computeEdgeNetIds,
   dropComponentGhost,
   ensureDiagramStyles,
+  getActiveDropPlaceholder,
+  getTypicalNodeSize,
   isEphemeralDiagramNode,
   type DropPlaceholderOptions,
 };
@@ -193,6 +199,8 @@ let graph: Graph | null = null;
 let selectedNodeId: string | null = null;
 /** True while renderDiagram is programmatically mutating the X6 graph. */
 let isRenderingDiagram = false;
+/** Tracks currently rendered sub-module / class name to detect transitions. */
+let lastRenderedModule: string | null = null;
 
 /** Cache for on-demand component properties (cleared on diagram re-render) */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -519,35 +527,50 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // ── Placement Mode (Drag and Drop in VS Code) ──
-  let placementData: { className: string; classKind: string; iconSvg?: string | undefined } | null = null;
+  let placementData: { className: string; classKind: string; iconSvg?: string | undefined; isDrag?: boolean } | null =
+    null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let placementGhost: any = null;
+  let isPointerOverCanvas = false;
+  let lastCanvasPos: { x: number; y: number } | null = null;
 
-  const startPlacement = (data: { className: string; classKind: string; iconSvg?: string | undefined }) => {
+  const startPlacement = (data: {
+    className: string;
+    classKind: string;
+    iconSvg?: string | undefined;
+    isDrag?: boolean;
+  }) => {
     ensureDiagramStyles();
     placementData = data;
-    const center = g.pageToLocal(window.innerWidth / 2, window.innerHeight / 2);
-    const strokeColor = isDark ? "#cccccc" : "#333333";
-    const fillColor = isDark ? "rgba(204, 204, 204, 0.15)" : "rgba(51, 51, 51, 0.08)";
-
+    isPointerOverCanvas = false;
+    lastCanvasPos = null;
     if (placementGhost) {
       placementGhost.remove();
       placementGhost = null;
     }
+    // Note: Do NOT add a ghost at the center of the diagram.
+    // The ghost will appear directly under the cursor when the pointer enters the canvas.
+  };
 
-    if (data.iconSvg) {
+  const createPlacementGhost = (x: number, y: number) => {
+    if (!placementData) return;
+    const strokeColor = isDark ? "#cccccc" : "#333333";
+    const fillColor = isDark ? "rgba(204, 204, 204, 0.15)" : "rgba(51, 51, 51, 0.08)";
+    const { width, height } = getTypicalNodeSize(g);
+
+    if (placementData.iconSvg) {
       placementGhost = g.addNode({
         id: "placement-ghost",
         shape: "image",
-        x: center.x - 20,
-        y: center.y - 20,
-        width: 40,
-        height: 40,
-        imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(data.iconSvg)}`,
+        x: x - width / 2,
+        y: y - height / 2,
+        width,
+        height,
+        imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(placementData.iconSvg)}`,
         attrs: {
           image: {
             preserveAspectRatio: "xMidYMid meet",
-            style: "pointer-events: none; opacity: 0.85;",
+            style: "pointer-events: none; opacity: 0.88; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));",
           },
         },
       });
@@ -555,10 +578,10 @@ export function initGraph(isDark: boolean): Graph | null {
       placementGhost = g.addNode({
         id: "placement-ghost",
         shape: "rect",
-        x: center.x - 20,
-        y: center.y - 20,
-        width: 40,
-        height: 40,
+        x: x - width / 2,
+        y: y - height / 2,
+        width,
+        height,
         attrs: {
           body: {
             fill: fillColor,
@@ -567,11 +590,11 @@ export function initGraph(isDark: boolean): Graph | null {
             strokeWidth: 2,
             rx: 6,
             ry: 6,
-            opacity: 0.85,
+            opacity: 0.88,
             pointerEvents: "none",
           },
           text: {
-            text: data.className.split(".").pop(),
+            text: placementData.className.split(".").pop(),
             fill: strokeColor,
             pointerEvents: "none",
             fontSize: 10,
@@ -582,36 +605,93 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   };
 
-  const handlePointerMove = (x: number, y: number) => {
+  const clearPlacement = () => {
     if (placementGhost) {
-      placementGhost.position(x - 20, y - 20);
+      placementGhost.remove();
+      placementGhost = null;
     }
+    placementData = null;
+    isPointerOverCanvas = false;
+    lastCanvasPos = null;
   };
-  g.on("blank:pointermove", ({ x, y }: { x: number; y: number }) => handlePointerMove(x, y));
-  g.on("cell:pointermove", ({ x, y }: { x: number; y: number }) => handlePointerMove(x, y));
 
+  let lastPlacementTimestamp = 0;
   const handlePlacementClick = (x: number, y: number) => {
+    const now = Date.now();
+    if (now - lastPlacementTimestamp < 350) return;
     if (placementData) {
+      lastPlacementTimestamp = now;
+      const snappedX = Math.round(x / 20) * 20;
+      const snappedY = Math.round(y / 20) * 20;
+      const { width, height } = getTypicalNodeSize(g);
       // Trigger the bounce animation placeholder while the action is processed
-      dropComponentGhost(g, x, y, placementData.className, placementData.iconSvg, isDark);
-      enqueueDiagramAction({ type: "addComponent", className: placementData.className, x, y });
-      if (placementGhost) {
-        placementGhost.remove();
-        placementGhost = null;
-      }
-      placementData = null;
+      dropComponentGhost(g, snappedX, snappedY, placementData.className, placementData.iconSvg, isDark, width, height);
+      enqueueDiagramAction({ type: "addComponent", className: placementData.className, x: snappedX, y: snappedY });
+      clearPlacement();
     }
   };
+
+  const handlePointerMove = (x: number, y: number, e?: any) => {
+    isPointerOverCanvas = true;
+    lastCanvasPos = { x, y };
+    (window as any).__lastCanvasPos = { x, y };
+    if (placementData) {
+      // If the user was dragging from the library tree and released the mouse button,
+      // subsequent pointer movement occurs with buttons === 0. Place immediately!
+      const btns =
+        e && typeof e.buttons === "number"
+          ? e.buttons
+          : typeof window !== "undefined" && window.event && typeof (window.event as any).buttons === "number"
+            ? (window.event as any).buttons
+            : undefined;
+      if (placementData.isDrag && btns === 0) {
+        handlePlacementClick(x, y);
+        return;
+      }
+      if (!placementGhost) {
+        createPlacementGhost(x, y);
+      } else {
+        const size = placementGhost.getSize?.() || getTypicalNodeSize(g);
+        placementGhost.position(x - size.width / 2, y - size.height / 2);
+      }
+    }
+  };
+
+  const handlePointerUpOrDrop = (x: number, y: number) => {
+    if (placementData) {
+      handlePlacementClick(x, y);
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (placementData) {
+      if (isPointerOverCanvas && lastCanvasPos) {
+        handlePlacementClick(lastCanvasPos.x, lastCanvasPos.y);
+      } else {
+        clearPlacement();
+      }
+    }
+  };
+
+  g.on("blank:pointermove", ({ x, y, e }: { x: number; y: number; e?: any }) => handlePointerMove(x, y, e));
+  g.on("cell:pointermove", ({ x, y, e }: { x: number; y: number; e?: any }) => handlePointerMove(x, y, e));
+  g.on("blank:pointerup", ({ x, y }: { x: number; y: number }) => handlePointerUpOrDrop(x, y));
+  g.on("cell:pointerup", ({ x, y }: { x: number; y: number }) => handlePointerUpOrDrop(x, y));
+  g.on("blank:mouseleave", () => {
+    isPointerOverCanvas = false;
+  });
+
   g.on("blank:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
   g.on("cell:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && placementData) {
-      if (placementGhost) {
-        placementGhost.remove();
-        placementGhost = null;
+    if (e.key === "Escape") {
+      clearPlacement();
+      clearActiveDropPlaceholder();
+      const existingPlaceholder = g.getCellById?.("__drop_placeholder__");
+      if (existingPlaceholder) {
+        g.removeCell?.(existingPlaceholder);
       }
-      placementData = null;
     }
   });
 
@@ -621,7 +701,23 @@ export function initGraph(isDark: boolean): Graph | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__movePlacementGhost = handlePointerMove;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__hidePlacementGhost = () => {
+    if (placementGhost) {
+      placementGhost.remove();
+      placementGhost = null;
+    }
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__clearPlacement = clearPlacement;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__handlePlacementClick = handlePlacementClick;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__handleDragEnd = handleDragEnd;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__setPointerOverCanvas = (over: boolean, pos?: { x: number; y: number }) => {
+    isPointerOverCanvas = over;
+    if (pos) lastCanvasPos = pos;
+  };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__getPlacementData = () => placementData;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1205,6 +1301,16 @@ export function initGraph(isDark: boolean): Graph | null {
     selectedNodeId = node.id;
     const data = node.getData();
 
+    // Module link button single-click navigation (e.g. 'More on Passive Elements' in PSCAD library)
+    if (data?.kind === "module-link" && data.targetModule) {
+      postMessageToHost({
+        type: "navigateTo",
+        className: data.targetModule,
+        diagramType: "All",
+      });
+      return;
+    }
+
     // Process interactive bindings on click (toggle, numeric, selector, faceplate)
     const interactiveBindings: InteractiveBinding[] = data?.interactive;
     if (Array.isArray(interactiveBindings)) {
@@ -1288,6 +1394,14 @@ export function initGraph(isDark: boolean): Graph | null {
   g.on("node:dblclick", ({ node }: { node: Node }) => {
     if (isEphemeralDiagramNode(node.id)) return;
     const data = node.getData();
+    if (data?.kind === "module-link" && data.targetModule) {
+      postMessageToHost({
+        type: "navigateTo",
+        className: data.targetModule,
+        diagramType: "All",
+      });
+      return;
+    }
     const props = data?.properties;
     if (!props?.ruleName) return;
 
@@ -1350,9 +1464,49 @@ function renderDiagramInternal(
   data: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any,
   isDark: boolean,
 ) {
-  // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives
-  const placeholder = g.getCellById("__drop_placeholder__");
-  if (placeholder) g.removeCell(placeholder);
+  // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives.
+  // Retain the drop placeholder if incoming data does not yet contain the newly dropped component
+  // (e.g. while language server is still indexing), preventing any visual gap where the component disappears.
+  const existingPlaceholder = g.getCellById("__drop_placeholder__");
+  const activeDrop = getActiveDropPlaceholder();
+
+  const currentCells = g.getCells();
+  const existingNonEphemeralNodeIds = new Set<string>();
+  for (const c of currentCells) {
+    if (c.isNode() && !isEphemeralDiagramNode(c.id)) {
+      existingNonEphemeralNodeIds.add(c.id);
+    }
+  }
+
+  // A drop is considered present in the new data if:
+  // 1. data.nodes contains a non-ephemeral node that did not exist in existing cells, OR
+  // 2. data.nodes contains a node close to activeDrop.x, activeDrop.y, OR
+  // 3. more than 5 seconds have passed (safety timeout)
+  const isSafetyTimeout = activeDrop ? Date.now() - activeDrop.timestamp > 5000 : false;
+  const isComponentPresentInData =
+    !activeDrop ||
+    isSafetyTimeout ||
+    data?.nodes?.some((n: any) => {
+      if (isEphemeralDiagramNode(n.id)) return false;
+      if (!existingNonEphemeralNodeIds.has(n.id)) return true;
+      const dx = Math.abs(n.x - activeDrop.x);
+      const dy = Math.abs(n.y - activeDrop.y);
+      return dx < 35 && dy < 35;
+    });
+
+  if (activeDrop && !isComponentPresentInData) {
+    // Stale diagram data received (the new component is not yet in data.nodes).
+    // DO NOT remove __drop_placeholder__! Keep it visible and pulsing so the component
+    // does not disappear while the language server is indexing.
+  } else {
+    // The real component is present in data.nodes (or no active drop is pending).
+    // Reveal the real component immediately without waiting for remaining bounce time!
+    if (existingPlaceholder) {
+      g.removeCell(existingPlaceholder);
+    }
+    clearActiveDropPlaceholder();
+  }
+
   const ghost = g.getCellById("placement-ghost");
   if (ghost) g.removeCell(ghost);
 
@@ -1875,6 +2029,16 @@ function renderDiagramInternal(
   // 2. Load the flat graph
   g.fromJSON({ nodes, edges });
 
+  // If a drop placeholder was active and the new component has NOT yet arrived in data.nodes,
+  // keep the placeholder visible until the real component arrives.
+  // If the new component IS present, it is already rendered in g.fromJSON — do not cover it up!
+  if (activeDrop && !isComponentPresentInData) {
+    const { width, height } = getTypicalNodeSize(g);
+    dropComponentGhost(g, activeDrop.x, activeDrop.y, activeDrop.className, activeDrop.iconSvg, isDark, width, height);
+  } else if (activeDrop && isComponentPresentInData) {
+    clearActiveDropPlaceholder();
+  }
+
   // 3. Programmatically establish all embedding relationships via standard API
   for (const [childId, parentId] of relations) {
     const parentCell = g.getCellById(parentId);
@@ -1884,8 +2048,14 @@ function renderDiagramInternal(
     }
   }
 
-  // Only fit view on first render — preserve zoom/pan on subsequent updates
-  if (isFirstRender) {
+  updateBreadcrumbs(data.breadcrumbs || data.metadata?.breadcrumbs);
+
+  const currentModule = data.metadata?.currentModule ?? (data as any).className ?? null;
+  const moduleChanged = lastRenderedModule !== null && currentModule !== null && lastRenderedModule !== currentModule;
+  lastRenderedModule = currentModule;
+
+  // Only fit view on first render or when switching modules — preserve zoom/pan on subsequent updates
+  if (isFirstRender || moduleChanged) {
     const containerW = g.container.clientWidth > 0 ? g.container.clientWidth : 800;
     const containerH = g.container.clientHeight > 0 ? g.container.clientHeight : 600;
     g.resize(containerW, containerH);
@@ -1984,23 +2154,17 @@ if (typeof document !== "undefined") {
     "mouseup",
     () => {
       isMouseDown = false;
-      setTimeout(() => {
-        if (!isMouseDown && pendingDiagramData) {
-          const pd = pendingDiagramData;
-          pendingDiagramData = null;
-          if (pd.data?.isLoading) {
-            Spinner.show();
-          }
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              renderDiagram(pd.data, pd.isDark);
-              if (!pd.data?.isLoading) {
-                Spinner.hide();
-              }
-            });
-          });
+      if (pendingDiagramData) {
+        const pd = pendingDiagramData;
+        pendingDiagramData = null;
+        if (pd.data?.isLoading) {
+          Spinner.show();
         }
-      }, 0);
+        renderDiagram(pd.data, pd.isDark);
+        if (!pd.data?.isLoading) {
+          Spinner.hide();
+        }
+      }
     },
     true,
   );
@@ -2035,30 +2199,60 @@ if (typeof window !== "undefined") {
           if (message.data?.isLoading) {
             Spinner.show();
           }
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              renderDiagram(message.data, message.isDark ?? true);
-              if (!message.data?.isLoading) {
-                Spinner.hide();
-              }
-            });
-          });
+          renderDiagram(message.data, message.isDark ?? true);
+          if (!message.data?.isLoading) {
+            Spinner.hide();
+          }
+        }
+        break;
+      }
+      case "dragEnd": {
+        if (!graph) return;
+        (window as { __handleDragEnd?: (() => void) | undefined }).__handleDragEnd?.();
+        break;
+      }
+      case "workbenchDragOver": {
+        if (!graph) return;
+        const { clientX, clientY } = message;
+        if (typeof clientX === "number" && typeof clientY === "number") {
+          const p = graph.clientToLocal(clientX, clientY);
+          const snappedX = Math.round(p.x / 20) * 20;
+          const snappedY = Math.round(p.y / 20) * 20;
+          (window as any).__movePlacementGhost?.(snappedX, snappedY);
+        }
+        break;
+      }
+      case "workbenchDrop": {
+        if (!graph) return;
+        const { clientX, clientY } = message;
+        const targetX = typeof clientX === "number" ? clientX : (window as any).__lastCanvasPos?.x;
+        const targetY = typeof clientY === "number" ? clientY : (window as any).__lastCanvasPos?.y;
+        if (typeof targetX === "number" && typeof targetY === "number") {
+          const p = graph.clientToLocal(targetX, targetY);
+          (window as any).__handlePlacementClick?.(p.x, p.y);
+        } else {
+          (window as any).__handleDragEnd?.();
         }
         break;
       }
       case "startPlacement": {
         if (!graph) return;
-        const { className, classKind, iconSvg } = message;
+        const { className, classKind, iconSvg, isDrag } = message;
         if (!className) break;
         // Calls the startPlacement function defined inside initGraph
         // which creates the ghost cursor and enters placement mode
         (
           window as {
             __startPlacement?:
-              | ((d: { className: string; classKind: string; iconSvg?: string | undefined }) => void)
+              | ((d: {
+                  className: string;
+                  classKind: string;
+                  iconSvg?: string | undefined;
+                  isDrag?: boolean | undefined;
+                }) => void)
               | undefined;
           }
-        ).__startPlacement?.({ className, classKind, iconSvg });
+        ).__startPlacement?.({ className, classKind, iconSvg, isDrag });
         break;
       }
       case "empty": {
@@ -2190,6 +2384,57 @@ if (typeof window !== "undefined") {
 }
 
 // ── Property Panel Rendering ──
+
+/**
+ * Updates the breadcrumb bar in the webview if present.
+ */
+function updateBreadcrumbs(breadcrumbs?: { id: string; label: string }[]) {
+  if (typeof document === "undefined") return;
+  const bar = document.getElementById("breadcrumb-bar");
+  if (!bar) return;
+  if (!breadcrumbs || breadcrumbs.length <= 1) {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+  bar.style.display = "flex";
+  bar.innerHTML = "";
+
+  breadcrumbs.forEach((crumb, idx) => {
+    if (idx > 0) {
+      const sep = document.createElement("span");
+      sep.className = "breadcrumb-separator";
+      sep.textContent = "›";
+      bar.appendChild(sep);
+    }
+    const item = document.createElement("span");
+    const isLast = idx === breadcrumbs.length - 1;
+    item.className = `breadcrumb-item${isLast ? " active" : ""}`;
+    item.textContent = crumb.label;
+    if (!isLast) {
+      item.onclick = () => {
+        postMessageToHost({
+          type: "navigateTo",
+          className: crumb.id,
+          diagramType: "All",
+        });
+      };
+    }
+    bar.appendChild(item);
+  });
+
+  const backBtn = document.createElement("button");
+  backBtn.className = "breadcrumb-back-btn";
+  backBtn.innerHTML = "◀ Back to Overview";
+  backBtn.onclick = () => {
+    postMessageToHost({
+      type: "navigateTo",
+      className: breadcrumbs[0]?.id ?? "",
+      diagramType: "All",
+    });
+  };
+  bar.appendChild(backBtn);
+}
 
 /**
  * Invokes the registered `onShowProperties` callback to display or update the component inspector.
@@ -2501,6 +2746,7 @@ export * from "./html-diff-bundle.js";
 export * from "./incremental-layout.js";
 export * from "./interactive.js";
 export * from "./layout-storage.js";
+export * from "./olga-diagram-builder.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-ilp-solver.js";
 export * from "./port-router.js";
@@ -2510,6 +2756,7 @@ export * from "./property-validator.js";
 export * from "./protocol.js";
 export type { ReactiveAnimationBinding, X6Markup } from "./protocol.js";
 export * from "./pscad-diagram-builder.js";
+export * from "./psse-diagram-builder.js";
 export * from "./svg-renderer.js";
 export * from "./swimlane-layout.js";
 export * from "./telemetry.js";

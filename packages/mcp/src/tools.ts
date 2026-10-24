@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { renderOlgaElevationProfileSvg, renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
 import { RtmIndexEngine, runSelfHealingPipeline } from "@modelscript/lsp";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
+import {
+  lintOlgaModel,
+  parseOlga,
+  simulateDriftFlux,
+  verifyFlowAssuranceLimits,
+  type FlowAssuranceLimits,
+} from "@modelscript/olga";
 import {
   executeBgpQuery,
   executeQueryString,
@@ -2135,6 +2143,165 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           content: [{ type: "text" as const, text: `PID tuning error: ${err.message}` }],
           isError: true,
         };
+      }
+    },
+  );
+
+  // ── olga_simulate ───────────────────────────────────────────────────────
+
+  server.tool(
+    "olga_simulate",
+    "Simulate transient multiphase flow, liquid accumulation, pressure drops, slugging, and pigging for an OLGA model (.opi, .key, .genkey).",
+    {
+      source: z.string().describe("OLGA model source content (.opi XML or .key keyword deck) or file path"),
+      durationSeconds: z.number().optional().describe("Simulation duration in seconds [s]"),
+      timeStepSeconds: z.number().optional().describe("Simulation time step in seconds [s]"),
+      format: z.enum(["json", "csv"]).optional().describe("Output data format (default: json)"),
+    },
+    async ({ source, durationSeconds, timeStepSeconds, format }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const model = parseOlga(content);
+        const result = simulateDriftFlux(model, {
+          durationSeconds: durationSeconds ?? Math.min(model.endTime - model.startTime, 3600),
+          timeStepSeconds: timeStepSeconds ?? model.maxDt,
+        });
+
+        if (format === "csv") {
+          const lines = [
+            "time,inlet_pressure_bar,arrival_pressure_bar,arrival_temperature_c,arrival_holdup,peak_surge_m3,mean_slug_length_m",
+          ];
+          for (let i = 0; i < result.times.length; i++) {
+            lines.push(
+              [
+                result.times[i]!.toFixed(1),
+                ((result.trends.inletPressure[i] ?? 0) / 1e5).toFixed(2),
+                ((result.trends.arrivalPressure[i] ?? 0) / 1e5).toFixed(2),
+                ((result.trends.arrivalTemperature[i] ?? 273.15) - 273.15).toFixed(2),
+                (result.trends.arrivalLiquidHoldup[i] ?? 0).toFixed(4),
+                result.trends.peakLiquidSurgeVolume.toFixed(2),
+                (result.trends.meanSlugLength?.[i] ?? 0).toFixed(2),
+              ].join(","),
+            );
+          }
+          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        }
+
+        const lastProfile = result.profiles[result.profiles.length - 1];
+        const summary = {
+          title: model.title,
+          stepsSimulated: result.times.length,
+          peakLiquidSurgeVolumeM3: result.trends.peakLiquidSurgeVolume,
+          arrivalPressureBar: (result.trends.arrivalPressure[result.trends.arrivalPressure.length - 1] ?? 0) / 1e5,
+          arrivalTemperatureC:
+            (result.trends.arrivalTemperature[result.trends.arrivalTemperature.length - 1] ?? 273.15) - 273.15,
+          meanSlugLengthM: result.trends.meanSlugLength?.[result.trends.meanSlugLength.length - 1] ?? 0,
+          slugFrequencyHz: result.trends.slugFrequency?.[result.trends.slugFrequency.length - 1] ?? 0,
+          activePigs: lastProfile?.pigs ?? [],
+          activeSlugs: lastProfile?.activeSlugs ?? [],
+        };
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `OLGA simulation error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── olga_lint ───────────────────────────────────────────────────────────
+
+  server.tool(
+    "olga_lint",
+    "Run pre-flight multiphase flow assurance diagnostics (M7001–M7007: CFL stability, steep risers, severe slugging dips, pig stuck hazard) on an OLGA model.",
+    {
+      source: z.string().describe("OLGA model source content (.opi XML or .key keyword deck) or file path"),
+    },
+    async ({ source }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const model = parseOlga(content);
+        const diagnostics = lintOlgaModel(model);
+        return { content: [{ type: "text" as const, text: JSON.stringify(diagnostics, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `OLGA lint error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── olga_verify ─────────────────────────────────────────────────────────
+
+  server.tool(
+    "olga_verify",
+    "Formally verify multiphase simulation against flow assurance limits (MAOP, hydrate subcooling margin, and slug catcher capacity).",
+    {
+      source: z.string().describe("OLGA model source content or file path"),
+      maopBar: z.number().optional().describe("Maximum Allowable Operating Pressure in bar (default: 250)"),
+      hydrateMarginK: z.number().optional().describe("Required hydrate subcooling safety margin in K (default: 3.0)"),
+      slugCatcherCapacityM3: z
+        .number()
+        .optional()
+        .describe("Slug catcher maximum liquid surge capacity in m³ (default: 150)"),
+      minGasVelocityMs: z.number().optional().describe("Minimum gas turndown velocity in m/s (default: 0.5)"),
+    },
+    async ({ source, maopBar, hydrateMarginK, slugCatcherCapacityM3, minGasVelocityMs }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const model = parseOlga(content);
+        const limits: FlowAssuranceLimits = {
+          maop: (maopBar ?? 250) * 1e5,
+          hydrateMarginKelvin: hydrateMarginK ?? 3.0,
+          slugCatcherLiquidCapacity: slugCatcherCapacityM3 ?? 150.0,
+          minGasVelocity: minGasVelocityMs ?? 0.5,
+        };
+        const result = verifyFlowAssuranceLimits(model, limits);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `OLGA verification error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── olga_diagram ────────────────────────────────────────────────────────
+
+  server.tool(
+    "olga_diagram",
+    "Generate standalone SVG diagrams for an OLGA flowline: topological P&ID schematic or pipeline elevation bathymetry Z(X) with holdup heatmaps and active slugs/pigs.",
+    {
+      source: z.string().describe("OLGA model source content or file path"),
+      view: z
+        .enum(["profile", "schematic"])
+        .optional()
+        .describe("View type: 'profile' (bathymetry Z(X)) or 'schematic' (P&ID)"),
+    },
+    async ({ source, view }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const model = parseOlga(content);
+        let svg: string;
+        if (view === "schematic") {
+          svg = renderOlgaSchematicSvg(model);
+        } else {
+          const simResult = simulateDriftFlux(model, {
+            durationSeconds: Math.min(model.endTime - model.startTime, 60),
+            timeStepSeconds: 1.0,
+          });
+          svg = renderOlgaElevationProfileSvg(model, simResult);
+        }
+        return { content: [{ type: "text" as const, text: svg }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `OLGA diagram error: ${err.message}` }], isError: true };
       }
     },
   );

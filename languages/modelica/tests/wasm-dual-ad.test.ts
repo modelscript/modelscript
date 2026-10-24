@@ -2,7 +2,7 @@
 
 import { SolversBridge } from "@modelscript/runtime/solvers_bridge.js";
 import expect from "expect";
-import { describe, test } from "node:test";
+import { before, describe, test } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { createWasmParser } from "../src-gen/bindings.js";
@@ -15,7 +15,7 @@ describe("In-WASM Forward-Mode Dual Number Automatic Differentiation", () => {
   let memory: WebAssembly.Memory;
   let bridge: SolversBridge;
 
-  beforeAll(async () => {
+  before(async () => {
     const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
     const { facade } = await createWasmParser(modelicaWasm);
     exports = facade.exports as any;

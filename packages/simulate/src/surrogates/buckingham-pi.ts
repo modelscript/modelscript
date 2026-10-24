@@ -401,43 +401,88 @@ export class BuckinghamPiEngine {
   }
 
   /**
-   * Identifies classic fluid-thermal dimensionless numbers.
+   * Identifies classic fluid-thermal dimensionless numbers based on physical dimension signatures.
    */
   private static identifyCanonicalGroup(
     vars: string[],
     exps: number[],
-    _allVars: PhysicalVariableSpec[],
+    allVars: PhysicalVariableSpec[],
   ): { type: DimensionlessGroup["canonical"]; symbol: string } | null {
     const varMap = new Map<string, number>();
     for (let i = 0; i < vars.length; i++) {
       varMap.set(vars[i]!.toLowerCase(), exps[i]!);
     }
 
-    // Reynolds Number: Re = rho * v * L / mu or v * L / nu
-    const hasV = varMap.has("v") || varMap.has("velocity") || varMap.has("speed");
-    const hasL = varMap.has("d") || varMap.has("diameter") || varMap.has("l") || varMap.has("length");
-    const hasRho = varMap.has("rho") || varMap.has("density");
-    const hasMu = varMap.has("mu") || varMap.has("viscosity");
+    const specMap = new Map<string, PhysicalVariableSpec>();
+    for (const v of allVars) {
+      specMap.set(v.name.toLowerCase(), v);
+    }
 
+    const sameDim = (d1: DimensionVector, d2: DimensionVector) => d1.every((val, idx) => val === d2[idx]);
+    const getDim = (name: string): DimensionVector | null => {
+      const spec = specMap.get(name);
+      if (!spec) return null;
+      if (spec.dimension) return spec.dimension;
+      if (spec.unit && BASE_UNITS_DIMENSIONS[spec.unit]) return BASE_UNITS_DIMENSIONS[spec.unit]!;
+      return null;
+    };
+
+    let hasV = false,
+      hasL = false,
+      hasRho = false,
+      hasMu = false,
+      hasP = false,
+      hasAlpha = false,
+      hasLambda = false,
+      hasCp = false;
+
+    for (const v of vars) {
+      const d = getDim(v.toLowerCase());
+      if (d) {
+        if (sameDim(d, [1, 0, -1, 0, 0, 0, 0]))
+          hasV = true; // velocity
+        else if (sameDim(d, [1, 0, 0, 0, 0, 0, 0]))
+          hasL = true; // length
+        else if (sameDim(d, [-3, 1, 0, 0, 0, 0, 0]))
+          hasRho = true; // density
+        else if (sameDim(d, [-1, 1, -1, 0, 0, 0, 0]))
+          hasMu = true; // dynamic viscosity
+        else if (sameDim(d, [-1, 1, -2, 0, 0, 0, 0]))
+          hasP = true; // pressure
+        else if (sameDim(d, [0, 1, -3, 0, -1, 0, 0]))
+          hasAlpha = true; // heat transfer coeff
+        else if (sameDim(d, [1, 1, -3, 0, -1, 0, 0]))
+          hasLambda = true; // thermal conductivity
+        else if (sameDim(d, [2, 0, -2, 0, -1, 0, 0])) hasCp = true; // specific heat
+      }
+    }
+
+    // Fallbacks to standard variable names if dimension was unspecified
+    hasV ||= varMap.has("v") || varMap.has("velocity") || varMap.has("speed");
+    hasL ||= varMap.has("d") || varMap.has("diameter") || varMap.has("l") || varMap.has("length");
+    hasRho ||= varMap.has("rho") || varMap.has("density");
+    hasMu ||= varMap.has("mu") || varMap.has("viscosity");
+    hasP ||= varMap.has("p") || varMap.has("delta_p") || varMap.has("pressure") || varMap.has("dp");
+    hasAlpha ||= varMap.has("alpha") || varMap.has("htc") || varMap.has("h");
+    hasLambda ||= varMap.has("lambda") || varMap.has("k_fluid") || varMap.has("conductivity");
+    hasCp ||= varMap.has("cp") || varMap.has("specific_heat");
+
+    // Reynolds Number: Re = rho * v * L / mu or v * L / nu
     if (hasV && hasL && hasRho && hasMu) {
       return { type: "Reynolds", symbol: "Re" };
     }
 
     // Euler Number: Eu = delta_p / (rho * v^2)
-    const hasP = varMap.has("p") || varMap.has("delta_p") || varMap.has("pressure") || varMap.has("dp");
     if (hasP && hasRho && hasV) {
       return { type: "Euler", symbol: "Eu" };
     }
 
     // Nusselt Number: Nu = alpha * L / lambda
-    const hasAlpha = varMap.has("alpha") || varMap.has("htc") || varMap.has("h");
-    const hasLambda = varMap.has("lambda") || varMap.has("k_fluid") || varMap.has("conductivity");
     if (hasAlpha && hasL && hasLambda) {
       return { type: "Nusselt", symbol: "Nu" };
     }
 
     // Prandtl Number: Pr = cp * mu / lambda
-    const hasCp = varMap.has("cp") || varMap.has("specific_heat");
     if (hasCp && hasMu && hasLambda) {
       return { type: "Prandtl", symbol: "Pr" };
     }

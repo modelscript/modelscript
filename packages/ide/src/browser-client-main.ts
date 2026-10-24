@@ -50,9 +50,11 @@ import { CloudStatusBar } from "./cloud-status-bar";
 import { ExperimentsTreeProvider } from "./experiments-tree";
 import { GCodeEditorProvider } from "./gcode-editor-provider";
 import { InpEditorProvider } from "./inp-editor-provider";
+import { OlgaEditorProvider } from "./olga-editor-provider";
 import { OptimizationPanel } from "./optimization-panel";
 import { PacemakerProgrammerPanel } from "./pacemaker-programmer-panel";
 import { SimulationViewPanel } from "./physics-setup-editor-provider";
+import { RawEditorProvider } from "./raw-editor-provider";
 import { FlowpipeEnvelope, SimulationPanel } from "./simulation-panel";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./ssp-document-provider";
 import { StepEditorProvider } from "./step-editor-provider";
@@ -975,6 +977,22 @@ export async function activate(context: vscode.ExtensionContext) {
       }),
     );
 
+    // Register PSS/E RAW Power Flow Editor (.raw)
+    const rawEditor = new RawEditorProvider(context);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(RawEditorProvider.viewType, rawEditor, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
+    );
+
+    // Register OLGA Multiphase Flow Assurance Editor (.opi / .key / .genkey)
+    const olgaEditor = new OlgaEditorProvider(context);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(OlgaEditorProvider.viewType, olgaEditor, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
+    );
+
     // Register Automated CAD-to-Mesh Commands
     registerCadMeshingCommands(context, client);
   } catch (e) {
@@ -1030,7 +1048,10 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register library tree view (before status handler so we can refresh on ready)
   const treeProvider = new LibraryTreeProvider(client, context);
   treeProvider.onDragStart = (data) => {
-    diagramProvider.postToActiveWebviews({ type: "startPlacement", ...data });
+    diagramProvider.postToActiveWebviews({ type: "startPlacement", isDrag: true, ...data });
+  };
+  treeProvider.onDragEnd = () => {
+    diagramProvider.postToActiveWebviews({ type: "dragEnd" });
   };
   diagramProvider.onDidOpenDocument = (uri) => {
     treeProvider.setDocumentUri(uri);

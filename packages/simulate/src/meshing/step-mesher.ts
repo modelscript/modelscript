@@ -460,8 +460,7 @@ export class StepMesher {
       return StepMesher.createBoxSurface(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    // Default procedural test geometry: 100mm x 20mm x 20mm beam
-    return StepMesher.createBoxSurface(0, 0, 0, 0.1, 0.02, 0.02);
+    throw new Error("Failed to extract surface mesh from STEP: insufficient geometry entities found.");
   }
 
   /**

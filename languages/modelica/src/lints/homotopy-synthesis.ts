@@ -177,6 +177,58 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
         });
       };
 
+      function isIdent(s: string): boolean {
+        if (!s) return false;
+        const first = s[0]!;
+        if (!((first >= "a" && first <= "z") || (first >= "A" && first <= "Z") || first === "_")) return false;
+        for (let i = 1; i < s.length; i++) {
+          const c = s[i]!;
+          if (!((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_")) return false;
+        }
+        return true;
+      }
+
+      function isNumeric(s: string): boolean {
+        if (!s) return false;
+        let hasDot = false;
+        let start = 0;
+        if (s[0] === "-" || s[0] === "+") start = 1;
+        if (start >= s.length) return false;
+        for (let i = start; i < s.length; i++) {
+          const c = s[i]!;
+          if (c >= "0" && c <= "9") continue;
+          if (c === "." && !hasDot) {
+            hasDot = true;
+            continue;
+          }
+          return false;
+        }
+        return true;
+      }
+
+      function extractFirstIdent(s: string): string | undefined {
+        let i = 0;
+        const len = s.length;
+        while (i < len) {
+          const ch = s[i]!;
+          if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
+            const start = i;
+            i++;
+            while (i < len) {
+              const c = s[i]!;
+              if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_") {
+                i++;
+              } else {
+                break;
+              }
+            }
+            return s.slice(start, i);
+          }
+          i++;
+        }
+        return undefined;
+      }
+
       const walkExprCst = (exprNode: any) => {
         if (!exprNode) return;
         const et = exprNode.type || "";
@@ -186,30 +238,47 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
           typeof nodeStart === "number" && nodeStart >= eqStart ? nodeStart - eqStart : text.indexOf(eText);
 
         if (et === "binary_expression" || et === "arithmetic_expression" || et === "term" || et === "factor") {
-          const powMatch = eText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\^\s*([0-9]+(?:\.[0-9]+)?)$/);
-          if (powMatch) {
-            const power = parseFloat(powMatch[2]!);
-            if (power > 1.0) {
-              recordTerm("power", eText, relIdx, powMatch[1]!, { power });
+          const caretIdx = eText.indexOf("^");
+          if (caretIdx !== -1) {
+            const lhs = eText.slice(0, caretIdx).trim();
+            const rhs = eText.slice(caretIdx + 1).trim();
+            const power = parseFloat(rhs);
+            if (!isNaN(power) && power > 1.0 && isIdent(lhs)) {
+              recordTerm("power", eText, relIdx, lhs, { power });
               return;
             }
           }
-          const dragMatch = eText.match(
-            /^([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*abs\(\s*\1\s*\)$|^abs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s*\*\s*\2$/,
-          );
-          if (dragMatch) {
-            const vName = (dragMatch[1] || dragMatch[2])!;
-            recordTerm("quadratic_drag", eText, relIdx, vName);
-            return;
+          const starIdx = eText.indexOf("*");
+          if (starIdx !== -1) {
+            const left = eText.slice(0, starIdx).trim();
+            const right = eText.slice(starIdx + 1).trim();
+            if (right.startsWith("abs(") && right.endsWith(")")) {
+              const arg = right.slice(4, -1).trim();
+              if (arg === left && isIdent(left)) {
+                recordTerm("quadratic_drag", eText, relIdx, left);
+                return;
+              }
+            } else if (left.startsWith("abs(") && left.endsWith(")")) {
+              const arg = left.slice(4, -1).trim();
+              if (arg === right && isIdent(right)) {
+                recordTerm("quadratic_drag", eText, relIdx, right);
+                return;
+              }
+            }
           }
         } else if (et === "function_call" || et === "primary") {
-          const fnMatch = eText.match(/^(exp|sqrt)\(([^()]+)\)$/);
-          if (fnMatch) {
-            const fnKind = fnMatch[1] as "exp" | "sqrt";
-            const arg = fnMatch[2]!.trim();
-            if (!/^[0-9.-]+$/.test(arg)) {
-              const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
-              recordTerm(fnKind, eText, relIdx, varName, { arg });
+          if (eText.startsWith("exp(") && eText.endsWith(")")) {
+            const arg = eText.slice(4, -1).trim();
+            if (!isNumeric(arg)) {
+              const varName = extractFirstIdent(arg) || "x";
+              recordTerm("exp", eText, relIdx, varName, { arg });
+              return;
+            }
+          } else if (eText.startsWith("sqrt(") && eText.endsWith(")")) {
+            const arg = eText.slice(5, -1).trim();
+            if (!isNumeric(arg)) {
+              const varName = extractFirstIdent(arg) || "x";
+              recordTerm("sqrt", eText, relIdx, varName, { arg });
               return;
             }
           }
@@ -222,47 +291,95 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       };
       walkExprCst(node);
 
-      // 1. Power expressions: e.g. T ^ 4, v ^ 2, x ^ 3
-      const powRegex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\^\s*([0-9]+(?:\.[0-9]+)?)/g;
-      let match: RegExpExecArray | null;
-      while ((match = powRegex.exec(text)) !== null) {
-        const fullMatch = match[0];
-        const varName = match[1]!;
-        const power = parseFloat(match[2]!);
-        if (power > 1.0) {
-          recordTerm("power", fullMatch, match.index, varName, { power });
+      // Only run text-level scan when the CST visitor didn't match candidate terms
+      if (seenRanges.size === 0) {
+        // 1. Power expressions: e.g. T ^ 4, v ^ 2, x ^ 3
+        let pIdx = text.indexOf("^");
+        while (pIdx !== -1) {
+          // Look backward for identifier
+          let lhsEnd = pIdx - 1;
+          while (lhsEnd >= 0 && (text[lhsEnd] === " " || text[lhsEnd] === "\t")) lhsEnd--;
+          let lhsStart = lhsEnd;
+          while (
+            lhsStart >= 0 &&
+            ((text[lhsStart]! >= "a" && text[lhsStart]! <= "z") ||
+              (text[lhsStart]! >= "A" && text[lhsStart]! <= "Z") ||
+              (text[lhsStart]! >= "0" && text[lhsStart]! <= "9") ||
+              text[lhsStart] === "_")
+          ) {
+            lhsStart--;
+          }
+          lhsStart++;
+          const varName = text.slice(lhsStart, lhsEnd + 1);
+
+          // Look forward for number
+          let rhsStart = pIdx + 1;
+          while (rhsStart < text.length && (text[rhsStart] === " " || text[rhsStart] === "\t")) rhsStart++;
+          let rhsEnd = rhsStart;
+          while (rhsEnd < text.length && ((text[rhsEnd]! >= "0" && text[rhsEnd]! <= "9") || text[rhsEnd] === ".")) {
+            rhsEnd++;
+          }
+          const numStr = text.slice(rhsStart, rhsEnd);
+          const power = parseFloat(numStr);
+          if (isIdent(varName) && !isNaN(power) && power > 1.0) {
+            const fullMatch = text.slice(lhsStart, rhsEnd);
+            recordTerm("power", fullMatch, lhsStart, varName, { power });
+          }
+          pIdx = text.indexOf("^", pIdx + 1);
         }
-      }
 
-      // 2. Quadratic drag / friction: v * abs(v) or abs(v) * v
-      const dragRegex =
-        /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*abs\(\s*\1\s*\)|\babs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s*\*\s*\2/g;
-      while ((match = dragRegex.exec(text)) !== null) {
-        const fullMatch = match[0];
-        const varName = (match[1] || match[2])!;
-        recordTerm("quadratic_drag", fullMatch, match.index, varName);
-      }
-
-      // 3. Exponentials: exp(...)
-      const expRegex = /\bexp\(([^()]+)\)/g;
-      while ((match = expRegex.exec(text)) !== null) {
-        const fullMatch = match[0];
-        const arg = match[1]!.trim();
-        // Skip trivial constants e.g. exp(1) or exp(0)
-        if (!/^[0-9.-]+$/.test(arg)) {
-          const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
-          recordTerm("exp", fullMatch, match.index, varName, { arg });
+        // 2. Quadratic drag / friction: v * abs(v) or abs(v) * v
+        let absIdx = text.indexOf("abs(");
+        while (absIdx !== -1) {
+          const closeParen = text.indexOf(")", absIdx);
+          if (closeParen !== -1) {
+            const vName = text.slice(absIdx + 4, closeParen).trim();
+            if (isIdent(vName)) {
+              // check if preceded by `vName * ` or followed by ` * vName`
+              const pre = text.slice(0, absIdx).trimEnd();
+              const post = text.slice(closeParen + 1).trimStart();
+              if (pre.endsWith(`*`) && pre.slice(0, -1).trimEnd().endsWith(vName)) {
+                const termStart = text.lastIndexOf(vName, absIdx);
+                const fullMatch = text.slice(termStart, closeParen + 1);
+                recordTerm("quadratic_drag", fullMatch, termStart, vName);
+              } else if (post.startsWith(`*`) && post.slice(1).trimStart().startsWith(vName)) {
+                const termEnd = closeParen + 1 + text.slice(closeParen + 1).indexOf(vName) + vName.length;
+                const fullMatch = text.slice(absIdx, termEnd);
+                recordTerm("quadratic_drag", fullMatch, absIdx, vName);
+              }
+            }
+          }
+          absIdx = text.indexOf("abs(", absIdx + 1);
         }
-      }
 
-      // 4. Square roots: sqrt(...)
-      const sqrtRegex = /\bsqrt\(([^()]+)\)/g;
-      while ((match = sqrtRegex.exec(text)) !== null) {
-        const fullMatch = match[0];
-        const arg = match[1]!.trim();
-        if (!/^[0-9.-]+$/.test(arg)) {
-          const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
-          recordTerm("sqrt", fullMatch, match.index, varName, { arg });
+        // 3. Exponentials: exp(...)
+        let expIdx = text.indexOf("exp(");
+        while (expIdx !== -1) {
+          const closeParen = text.indexOf(")", expIdx);
+          if (closeParen !== -1) {
+            const arg = text.slice(expIdx + 4, closeParen).trim();
+            if (!isNumeric(arg)) {
+              const varName = extractFirstIdent(arg) || "x";
+              const fullMatch = text.slice(expIdx, closeParen + 1);
+              recordTerm("exp", fullMatch, expIdx, varName, { arg });
+            }
+          }
+          expIdx = text.indexOf("exp(", expIdx + 1);
+        }
+
+        // 4. Square roots: sqrt(...)
+        let sqrtIdx = text.indexOf("sqrt(");
+        while (sqrtIdx !== -1) {
+          const closeParen = text.indexOf(")", sqrtIdx);
+          if (closeParen !== -1) {
+            const arg = text.slice(sqrtIdx + 5, closeParen).trim();
+            if (!isNumeric(arg)) {
+              const varName = extractFirstIdent(arg) || "x";
+              const fullMatch = text.slice(sqrtIdx, closeParen + 1);
+              recordTerm("sqrt", fullMatch, sqrtIdx, varName, { arg });
+            }
+          }
+          sqrtIdx = text.indexOf("sqrt(", sqrtIdx + 1);
         }
       }
 

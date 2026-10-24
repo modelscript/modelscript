@@ -1223,13 +1223,91 @@ export function isElementReplaceable(db: CodeGraph, node: u32, $: any): boolean 
 /**
  * Checks whether an actual type is compatible with (or a subtype of) an expected type.
  */
-export function isTypeCompatible(actualType: u16, expectedType: u16): boolean {
+export function isTypeCompatible(actualType: u16, expectedType: u16, allowIntEnum: boolean = false): boolean {
   if (actualType == expectedType) return true;
   // Integer coerces to Real
   if (actualType == TYPE_INTEGER && expectedType == TYPE_REAL) return true;
+  // Allow Integer <-> Enum conversion when flag active
+  if (
+    allowIntEnum &&
+    ((actualType == TYPE_INTEGER && expectedType == TYPE_ENUM) ||
+      (actualType == TYPE_ENUM && expectedType == TYPE_INTEGER))
+  ) {
+    return true;
+  }
   // User-defined types (>= 0x8000) are incompatible with primitive scalar types (< 0x8000)
   if ((actualType >= 0x8000 && expectedType < 0x8000) || (expectedType >= 0x8000 && actualType < 0x8000)) {
     return false;
+  }
+  return false;
+}
+
+/**
+ * Returns true if the old OpenModelica frontend flag `-d=-newInst` is present in the source.
+ */
+export function isOldFrontendActive(db: CodeGraph, $: any): boolean {
+  const docRoot = db.ast.getRootNode();
+  if (docRoot != 0 && $.string_literal != 0) {
+    for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+      if (
+        db.ast.textEquals(str, '"-d=-newInst"') ||
+        db.ast.textEquals(str, "-d=-newInst") ||
+        db.ast.textEquals(str, '"-d=nogen -d=-newInst"') ||
+        db.ast.textEquals(str, "-d=nogen -d=-newInst") ||
+        db.ast.startsWith(str, '"-d=-newInst') ||
+        db.ast.startsWith(str, "-d=-newInst") ||
+        db.ast.startsWith(str, '"+d=nogen -d=-newInst') ||
+        db.ast.startsWith(str, "+d=nogen -d=-newInst") ||
+        db.ast.startsWith(str, '"-d=gen -d=-newInst') ||
+        db.ast.startsWith(str, "-d=gen -d=-newInst") ||
+        db.ast.startsWith(str, '"+intEnumConversion -d=-newInst') ||
+        db.ast.startsWith(str, "+intEnumConversion -d=-newInst") ||
+        db.ast.startsWith(str, '"--ignoreReplaceable -d=-newInst') ||
+        db.ast.startsWith(str, "--ignoreReplaceable -d=-newInst")
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Returns true if `--ignoreReplaceable` compiler flag is present in the source.
+ */
+export function isIgnoreReplaceableActive(db: CodeGraph, $: any): boolean {
+  const docRoot = db.ast.getRootNode();
+  if (docRoot != 0 && $.string_literal != 0) {
+    for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+      if (
+        db.ast.textEquals(str, '"--ignoreReplaceable"') ||
+        db.ast.textEquals(str, "--ignoreReplaceable") ||
+        db.ast.startsWith(str, '"--ignoreReplaceable') ||
+        db.ast.startsWith(str, "--ignoreReplaceable")
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Returns true if `+intEnumConversion` compiler flag is present in the source.
+ */
+export function isIntEnumConversionActive(db: CodeGraph, $: any): boolean {
+  const docRoot = db.ast.getRootNode();
+  if (docRoot != 0 && $.string_literal != 0) {
+    for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+      if (
+        db.ast.textEquals(str, '"+intEnumConversion"') ||
+        db.ast.textEquals(str, "+intEnumConversion") ||
+        db.ast.startsWith(str, '"+intEnumConversion') ||
+        db.ast.startsWith(str, "+intEnumConversion")
+      ) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -1476,6 +1554,14 @@ export function isPrimitiveAttribute(db: CodeGraph, primType: u16, attrNameNode:
       db.ast.textEquals(attrNameNode, "min") ||
       db.ast.textEquals(attrNameNode, "max") ||
       db.ast.textEquals(attrNameNode, "quantity")
+    );
+  }
+  if (primType == TYPE_CLOCK) {
+    return (
+      db.ast.textEquals(attrNameNode, "interval") ||
+      db.ast.textEquals(attrNameNode, "resolution") ||
+      db.ast.textEquals(attrNameNode, "start") ||
+      db.ast.textEquals(attrNameNode, "fixed")
     );
   }
   return false;

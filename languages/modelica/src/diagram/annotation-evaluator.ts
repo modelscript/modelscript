@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Cst } from "../../src-gen/bindings.js";
+import { resolveModelicaConstant } from "../constants.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../types.js";
 
 // ── Annotation Enum Definitions ─────────────────────────────────────────────
@@ -34,111 +35,15 @@ export const ANNOTATION_ENUMS: Record<string, EnumDef> = {
 
 // ── Safe Arithmetic Evaluator ───────────────────────────────────────────────
 
+import { evalArithmeticString } from "../flattener/expressions/cst-utils.js";
+
+/**
+ * Evaluates safe arithmetic expressions, delegating to the unified
+ * canonical arithmetic string evaluator in cst-utils.
+ */
 export function evalSafeArithmetic(exprStr: string): number | null {
   if (!exprStr) return null;
-  const str = exprStr.trim();
-  if (!/^[0-9+\-*/().\s^eE]+$/.test(str)) return null;
-
-  let pos = 0;
-  const nextToken = (): string => {
-    while (pos < str.length && /\s/.test(str[pos]!)) pos++;
-    if (pos >= str.length) return "";
-    const ch = str[pos]!;
-    if ("+-*/()^".includes(ch)) {
-      pos++;
-      return ch;
-    }
-    const start = pos;
-    if (/[0-9.]/.test(ch)) {
-      while (pos < str.length && /[0-9.]/.test(str[pos]!)) {
-        pos++;
-      }
-      if (pos < str.length && (str[pos] === "e" || str[pos] === "E")) {
-        let ePos = pos + 1;
-        if (ePos < str.length && (str[ePos] === "+" || str[ePos] === "-")) {
-          ePos++;
-        }
-        if (ePos < str.length && /[0-9]/.test(str[ePos]!)) {
-          pos = ePos;
-          while (pos < str.length && /[0-9]/.test(str[pos]!)) {
-            pos++;
-          }
-        }
-      }
-      return str.slice(start, pos);
-    }
-    pos++;
-    return ch;
-  };
-
-  const tokens: string[] = [];
-  let t = nextToken();
-  while (t !== "") {
-    tokens.push(t);
-    t = nextToken();
-  }
-  if (tokens.length === 0) return null;
-
-  let tokIdx = 0;
-  const peek = () => tokens[tokIdx];
-  const consume = () => tokens[tokIdx++];
-
-  const parseExpr = (): number => {
-    let val = parseTerm();
-    while (peek() === "+" || peek() === "-") {
-      const op = consume();
-      const rhs = parseTerm();
-      val = op === "+" ? val + rhs : val - rhs;
-    }
-    return val;
-  };
-
-  const parseTerm = (): number => {
-    let val = parseFactor();
-    while (peek() === "*" || peek() === "/") {
-      const op = consume();
-      const rhs = parseFactor();
-      val = op === "*" ? val * rhs : rhs !== 0 ? val / rhs : NaN;
-    }
-    return val;
-  };
-
-  const parseFactor = (): number => {
-    const val = parsePrimary();
-    if (peek() === "^") {
-      consume();
-      const rhs = parseFactor();
-      return Math.pow(val, rhs);
-    }
-    return val;
-  };
-
-  const parsePrimary = (): number => {
-    if (peek() === "+") {
-      consume();
-      return parsePrimary();
-    }
-    if (peek() === "-") {
-      consume();
-      return -parsePrimary();
-    }
-    if (peek() === "(") {
-      consume();
-      const val = parseExpr();
-      if (peek() === ")") consume();
-      return val;
-    }
-    const tok = consume();
-    const num = Number(tok);
-    return isNaN(num) ? NaN : num;
-  };
-
-  try {
-    const result = parseExpr();
-    return !isNaN(result) ? result : null;
-  } catch {
-    return null;
-  }
+  return evalArithmeticString(exprStr, true);
 }
 
 // ── Value & Scope Extraction Helpers ────────────────────────────────────────
@@ -383,39 +288,8 @@ function resolveAnnotationName(name: string, evalScope: any): any {
   const trimmed = name.trim();
 
   // 1. Built-in mathematical & physical constants (Modelica.Constants)
-  const CONSTANTS_MAP: Record<string, number> = {
-    pi: Math.PI,
-    "Modelica.Constants.pi": Math.PI,
-    e: Math.E,
-    "Modelica.Constants.e": Math.E,
-    eps: 1e-15,
-    "Modelica.Constants.eps": 1e-15,
-    "ModelicaServices.Machine.eps": 1e-15,
-    inf: 1e60,
-    "Modelica.Constants.inf": 1e60,
-    "ModelicaServices.Machine.inf": 1e60,
-    small: 1e-60,
-    "Modelica.Constants.small": 1e-60,
-    D2R: Math.PI / 180,
-    "Modelica.Constants.D2R": Math.PI / 180,
-    R2D: 180 / Math.PI,
-    "Modelica.Constants.R2D": 180 / Math.PI,
-    g_n: 9.80665,
-    "Modelica.Constants.g_n": 9.80665,
-    c: 299792458,
-    "Modelica.Constants.c": 299792458,
-    h: 6.62607015e-34,
-    "Modelica.Constants.h": 6.62607015e-34,
-    k: 1.380649e-23,
-    "Modelica.Constants.k": 1.380649e-23,
-    N_A: 6.02214076e23,
-    "Modelica.Constants.N_A": 6.02214076e23,
-    q: 1.602176634e-19,
-    "Modelica.Constants.q": 1.602176634e-19,
-    T_zero: -273.15,
-    "Modelica.Constants.T_zero": -273.15,
-  };
-  if (trimmed in CONSTANTS_MAP) return CONSTANTS_MAP[trimmed];
+  const constVal = resolveModelicaConstant(trimmed);
+  if (constVal !== undefined) return constVal;
 
   // 2. Qualified enum (e.g. FillPattern.Solid or Modelica.Icons.FillPattern.Solid)
   const parts = trimmed.split(".");

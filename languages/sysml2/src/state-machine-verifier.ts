@@ -79,6 +79,37 @@ export function extractVariables(node: ExprNode, out: Set<string>): void {
   }
 }
 
+function isNumericLiteral(s: string): boolean {
+  if (!s) return false;
+  let hasDot = false;
+  let start = 0;
+  if (s[0] === "-" || s[0] === "+") start = 1;
+  if (start >= s.length) return false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i]!;
+    if (c >= "0" && c <= "9") continue;
+    if (c === "." && !hasDot) {
+      hasDot = true;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function isIdentifier(s: string): boolean {
+  if (!s) return false;
+  const first = s[0]!;
+  if (!((first >= "a" && first <= "z") || (first >= "A" && first <= "Z") || first === "_")) return false;
+  for (let i = 1; i < s.length; i++) {
+    const c = s[i]!;
+    if (!((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === ".")) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Converts a CST expression node into an ExprNode for formal solvers (DPLL(T) / HC4-Revise).
  */
@@ -113,7 +144,7 @@ function cstToExprNode(node: any): ExprNode | undefined {
   }
 
   // Number literal
-  if (/^\d+(?:\.\d+)?$/.test(node.text)) {
+  if (isNumericLiteral(node.text)) {
     return { kind: "const", value: parseFloat(node.text) };
   }
 
@@ -199,7 +230,7 @@ function cstToExprNode(node: any): ExprNode | undefined {
   }
 
   // Variable identifier
-  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(node.text)) {
+  if (isIdentifier(node.text)) {
     return { kind: "var", name: node.text };
   }
 
@@ -239,17 +270,51 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
   }
 
   const tokens: string[] = [];
-  const regex = /\s*([a-zA-Z_][a-zA-Z0-9_.]*|\d+(?:\.\d+)?|\+|-|\*|\/|\^|\(|\))\s*/g;
-  let match: RegExpExecArray | null;
-  let lastIndex = 0;
-  while ((match = regex.exec(str)) !== null) {
-    if (match.index !== lastIndex) {
-      return undefined;
+  let idx = 0;
+  const sLen = str.length;
+  while (idx < sLen) {
+    const ch = str[idx]!;
+    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") {
+      idx++;
+      continue;
     }
-    tokens.push(match[1]!);
-    lastIndex = regex.lastIndex;
-  }
-  if (lastIndex !== str.length && str.substring(lastIndex).trim().length > 0) {
+    if (ch === "+" || ch === "-" || ch === "*" || ch === "/" || ch === "^" || ch === "(" || ch === ")") {
+      tokens.push(ch);
+      idx++;
+      continue;
+    }
+    if (ch >= "0" && ch <= "9") {
+      const numStart = idx;
+      idx++;
+      let hasDot = false;
+      while (idx < sLen) {
+        const c = str[idx]!;
+        if (c >= "0" && c <= "9") {
+          idx++;
+        } else if (c === "." && !hasDot && idx + 1 < sLen && str[idx + 1]! >= "0" && str[idx + 1]! <= "9") {
+          hasDot = true;
+          idx++;
+        } else {
+          break;
+        }
+      }
+      tokens.push(str.slice(numStart, idx));
+      continue;
+    }
+    if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
+      const idStart = idx;
+      idx++;
+      while (idx < sLen) {
+        const c = str[idx]!;
+        if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === ".") {
+          idx++;
+        } else {
+          break;
+        }
+      }
+      tokens.push(str.slice(idStart, idx));
+      continue;
+    }
     return undefined;
   }
   if (tokens.length === 0) return undefined;
@@ -333,7 +398,7 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
       return inner;
     }
 
-    if (/^\d+(?:\.\d+)?$/.test(t)) {
+    if (isNumericLiteral(t)) {
       consume();
       return { kind: "const", value: parseFloat(t) };
     }
@@ -353,7 +418,7 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
     }
 
     // Variable identifier
-    if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(t)) {
+    if (isIdentifier(t)) {
       consume();
       return { kind: "var", name: t };
     }
@@ -370,12 +435,21 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
  * Attempts to parse a nonlinear comparison constraint (e.g., "x^2 + y^2 <= 1", "sin(x) > 0.8").
  */
 export function parseNonlinearGuardConstraint(token: string): GuardConstraint | undefined {
-  const opMatch = token.match(/(<=|>=|==|!=|<|>)/);
-  if (!opMatch || opMatch.index === undefined) return undefined;
+  const ops: GuardConstraint["operator"][] = ["<=", ">=", "==", "!=", "<", ">"];
+  let opIdx = -1;
+  let matchedOp: GuardConstraint["operator"] | undefined = undefined;
+  for (const o of ops) {
+    const idx = token.indexOf(o);
+    if (idx !== -1 && (opIdx === -1 || idx < opIdx)) {
+      opIdx = idx;
+      matchedOp = o;
+    }
+  }
+  if (opIdx === -1 || !matchedOp) return undefined;
 
-  const op = opMatch[1] as GuardConstraint["operator"];
-  const lhsStr = token.substring(0, opMatch.index).trim();
-  const rhsStr = token.substring(opMatch.index + op.length).trim();
+  const op = matchedOp;
+  const lhsStr = token.substring(0, opIdx).trim();
+  const rhsStr = token.substring(opIdx + matchedOp.length).trim();
 
   const lhsNode = parseArithmeticExpression(lhsStr);
   const rhsNode = parseArithmeticExpression(rhsStr);
@@ -428,53 +502,87 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
     cleaned = cleaned.substring(1, cleaned.length - 1).trim();
   }
 
-  // Split on "&&" or "and"
-  const tokens = cleaned.split(/&&|\band\b/i);
+  // Split on "&&" or "and" at top-level
+  const tokens: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i]!;
+    if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth--;
+
+    if (depth === 0) {
+      if (cleaned.substring(i, i + 2) === "&&") {
+        tokens.push(current.trim());
+        current = "";
+        i += 1;
+        continue;
+      }
+      if (cleaned.substring(i, i + 5).toLowerCase() === " and " && i > 0) {
+        tokens.push(current.trim());
+        current = "";
+        i += 4;
+        continue;
+      }
+    }
+    current += ch;
+  }
+  if (current.trim()) {
+    tokens.push(current.trim());
+  }
 
   for (const token of tokens) {
     const trimmed = token.trim();
     if (!trimmed) continue;
 
-    // Pattern: variable op value e.g. "fuelLevel > 0", "x <= 15.5", "v == 100"
-    const match = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(<=|>=|==|!=|<|>)\s*(-?[0-9]+(?:\.[0-9]+)?)$/);
-    if (match) {
-      constraints.push({
-        variable: match[1]!,
-        operator: match[2] as GuardConstraint["operator"],
-        value: parseFloat(match[3]!),
-      });
-      continue;
+    // Check simple comparison: variable op value or value op variable
+    const ops: GuardConstraint["operator"][] = ["<=", ">=", "==", "!=", "<", ">"];
+    let opIdx = -1;
+    let matchedOp: GuardConstraint["operator"] | undefined = undefined;
+    for (const o of ops) {
+      const idx = trimmed.indexOf(o);
+      if (idx !== -1 && (opIdx === -1 || idx < opIdx)) {
+        opIdx = idx;
+        matchedOp = o;
+      }
     }
 
-    // Pattern: value op variable e.g. "0 < fuelLevel", "10 >= x"
-    const revMatch = trimmed.match(/^(-?[0-9]+(?:\.[0-9]+)?)\s*(<=|>=|==|!=|<|>)\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/);
-    if (revMatch) {
-      const val = parseFloat(revMatch[1]!);
-      const op = revMatch[2];
-      const variable = revMatch[3]!;
-      let invertedOp: GuardConstraint["operator"];
-      switch (op) {
-        case "<":
-          invertedOp = ">";
-          break;
-        case "<=":
-          invertedOp = ">=";
-          break;
-        case ">":
-          invertedOp = "<";
-          break;
-        case ">=":
-          invertedOp = "<=";
-          break;
-        default:
-          invertedOp = op as GuardConstraint["operator"];
+    if (opIdx !== -1 && matchedOp) {
+      const lhs = trimmed.substring(0, opIdx).trim();
+      const rhs = trimmed.substring(opIdx + matchedOp.length).trim();
+      if (isIdentifier(lhs) && isNumericLiteral(rhs)) {
+        constraints.push({
+          variable: lhs,
+          operator: matchedOp,
+          value: parseFloat(rhs),
+        });
+        continue;
+      } else if (isNumericLiteral(lhs) && isIdentifier(rhs)) {
+        const val = parseFloat(lhs);
+        let invertedOp: GuardConstraint["operator"];
+        switch (matchedOp) {
+          case "<":
+            invertedOp = ">";
+            break;
+          case "<=":
+            invertedOp = ">=";
+            break;
+          case ">":
+            invertedOp = "<";
+            break;
+          case ">=":
+            invertedOp = "<=";
+            break;
+          default:
+            invertedOp = matchedOp;
+        }
+        constraints.push({
+          variable: rhs,
+          operator: invertedOp,
+          value: val,
+        });
+        continue;
       }
-      constraints.push({
-        variable,
-        operator: invertedOp,
-        value: val,
-      });
-      continue;
     }
 
     // Fall back to nonlinear expression parser
@@ -958,8 +1066,18 @@ export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: stri
           // Extract "if <guard>" from CST
           const cstText = db.cstText(t.startOffset, t.endOffset, t);
           if (cstText) {
-            const ifMatch = cstText.match(/\bif\s+([^{;do]+?)(?:\s+do|\s+then|[;{]|$)/);
-            if (ifMatch) guardText = ifMatch[1]!.trim();
+            const ifIdx = cstText.indexOf("if ");
+            if (ifIdx !== -1) {
+              const afterIf = cstText.substring(ifIdx + 3).trim();
+              let endIdx = afterIf.length;
+              for (const term of [";", "{", " do", " then"]) {
+                const ti = afterIf.indexOf(term);
+                if (ti !== -1 && ti < endIdx) {
+                  endIdx = ti;
+                }
+              }
+              guardText = afterIf.substring(0, endIdx).trim();
+            }
           }
         }
 

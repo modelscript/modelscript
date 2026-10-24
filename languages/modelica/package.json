@@ -36,6 +36,10 @@
       "types": "./dist/src/units.d.ts",
       "default": "./dist/src/units.js"
     },
+    "./constants": {
+      "types": "./dist/src/constants.d.ts",
+      "default": "./dist/src/constants.js"
+    },
     "./geometry": {
       "types": "./dist/src/extensions/geometry.d.ts",
       "default": "./dist/src/extensions/geometry.js"

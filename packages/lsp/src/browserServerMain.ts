@@ -277,7 +277,9 @@ import { cfdLanguage } from "@modelscript/cfd";
 import { feaLanguage } from "@modelscript/fea";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
+import { olgaLanguage } from "@modelscript/olga";
 import { PscadWorkspaceIndex, pscadLanguage } from "@modelscript/pscad";
+import { PsseWorkspaceIndex, psseLanguage } from "@modelscript/psse";
 import scadLangFallback from "@modelscript/scad/language";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -304,6 +306,10 @@ import { ValidationService } from "./services/validation-service.js";
 const pscadWsIndex = new PscadWorkspaceIndex();
 workspaceManager.setWorkspaceIndex("pscad", pscadWsIndex);
 workspaceManager.unifiedWorkspace.registerWorkspace("pscad", pscadWsIndex, { priority: 2, name: "pscad" });
+
+const psseWsIndex = new PsseWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("psse", psseWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("psse", psseWsIndex, { priority: 2, name: "psse" });
 
 const moWs = workspaceManager.getWorkspaceIndex("modelica");
 if (moWs) {
@@ -710,6 +716,81 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
             exportOut: params?.exportOut ?? true,
             solverRunner,
           });
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "psse",
+      name: "PSSE",
+      extensions: [".raw"],
+      languageDef: psseLanguage,
+      actionHandlers: {
+        lint_psse_case: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseRaw, lintPsse } = await import("@modelscript/psse");
+          const parsed = parseRaw(text);
+          return lintPsse(parsed);
+        },
+        extract_powerflow_netlist: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRaw, extractPowerFlowNetlist } = await import("@modelscript/psse");
+          const parsed = parseRaw(text);
+          return extractPowerFlowNetlist(parsed);
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "olga",
+      name: "OLGA",
+      extensions: [".opi", ".olga"],
+      languageDef: olgaLanguage,
+      actionHandlers: {
+        lint_olga_case: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseOpi, lintOlgaModel } = await import("@modelscript/olga");
+          const model = parseOpi(text);
+          return lintOlgaModel(model);
+        },
+        simulate_drift_flux: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseOpi, simulateDriftFlux } = await import("@modelscript/olga");
+          const model = parseOpi(text);
+          return simulateDriftFlux(model, { durationSeconds: params?.durationSeconds });
+        },
+        project_to_sysml2: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseOpi, olgaToSysml2 } = await import("@modelscript/olga");
+          const model = parseOpi(text);
+          return olgaToSysml2(model);
+        },
+        verify_flow_assurance: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseOpi, simulateDriftFlux, verifyFlowAssuranceTrajectory } = await import("@modelscript/olga");
+          const model = parseOpi(text);
+          const trajectory = simulateDriftFlux(model);
+          return verifyFlowAssuranceTrajectory(trajectory);
+        },
+        inspect_olga_elevation_profile: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseOpi, simulateDriftFlux } = await import("@modelscript/olga");
+          const { renderOlgaElevationProfileSvg, renderOlgaSchematicSvg } = await import("@modelscript/diagram");
+          const model = parseOpi(text);
+          const trajectory = simulateDriftFlux(model, { durationSeconds: 60 });
+          return {
+            schematicSvg: renderOlgaSchematicSvg(model),
+            elevationProfileSvg: renderOlgaElevationProfileSvg(model, trajectory),
+          };
         },
       },
       disposables: [],

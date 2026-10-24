@@ -32,6 +32,7 @@ export interface PscxComponent {
   height?: number | undefined;
   rotation?: number | undefined; // 0, 90, 180, 270
   mirror?: boolean | undefined;
+  z?: number | undefined;
   parameters: Record<string, string | number>;
   paramLocations?: Record<string, { line: number; column: number }> | undefined;
   ports: PscxPort[];
@@ -71,6 +72,58 @@ export interface PscxSticky {
   text: string;
 }
 
+export interface PscxLine {
+  id: string;
+  classId: string; // e.g. "Divider"
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color?: string | undefined;
+  sourceRange?: { startOffset: number; endOffset: number } | undefined;
+}
+
+export interface PscadScriptSegment {
+  name: string;
+  id?: string | undefined;
+  classid?: string | undefined;
+  content: string;
+}
+
+export interface PscadFlyByDoc {
+  summary: string;
+  ports: Record<string, string>;
+}
+
+export interface PscadCheckRule {
+  severity: "error" | "warning";
+  message: string;
+  condition?: string | undefined;
+  guard?: string | undefined;
+}
+
+export interface PscadBranchDescriptor {
+  name?: string | undefined;
+  fromNode: string;
+  toNode: string;
+  kind: "passive" | "breaker" | "ammeter" | "source" | "other";
+  r?: number | string | undefined;
+  l?: number | string | undefined;
+  c?: number | string | undefined;
+  extra?: string | undefined;
+  raw: string;
+}
+
+export interface PscxDefinitionGraphic {
+  name: string;
+  description?: string | undefined;
+  svgXml?: string | undefined;
+  graphicsXml?: string | undefined;
+  scriptSegments?: Map<string, PscadScriptSegment> | undefined;
+  flyBy?: PscadFlyByDoc | undefined;
+  checks?: PscadCheckRule[] | undefined;
+}
+
 export interface PscxModule {
   id: string;
   name: string;
@@ -79,6 +132,7 @@ export interface PscxModule {
   buses: PscxBus[];
   wires: PscxWire[];
   stickies?: PscxSticky[] | undefined;
+  lines?: PscxLine[] | undefined;
   junctions?: Point2D[] | undefined;
   wirelessNets?: Record<string, string[]> | undefined;
   /** Default values of the definition's `<form>` parameters (name → raw expression). */
@@ -101,6 +155,7 @@ export interface PscxProject {
   rootModule: PscxModule;
   subModules: Map<string, PscxModule>;
   linkedLibraries: string[];
+  definitions?: Map<string, PscxDefinitionGraphic> | undefined;
 }
 
 // ==========================================

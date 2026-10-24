@@ -27,6 +27,7 @@ import { cfdLanguage } from "@modelscript/cfd";
 import { CstUnparser } from "@modelscript/dsl";
 import { feaLanguage } from "@modelscript/fea";
 import { modelicaLanguage } from "@modelscript/modelica";
+import { olgaLanguage } from "@modelscript/olga";
 import { owl2Language } from "@modelscript/owl2";
 import { scadLanguage } from "@modelscript/scad";
 import { sspLanguage } from "@modelscript/ssp";
@@ -433,7 +434,42 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
     }
   }
 
-  // 9. JSON format
+  // 9. OLGA Multiphase Projects (.opi, .olga)
+  if (ext === ".opi" || ext === ".olga") {
+    try {
+      const { parseOpi, simulateDriftFlux } = require("@modelscript/olga");
+      const model = parseOpi(text);
+      const sim = simulateDriftFlux(model, { durationSeconds: 60 });
+      const flowpath = model.flowpaths[0];
+      const attributes = [
+        {
+          name: "totalLength",
+          type: "Real",
+          value: String(flowpath?.pipes.reduce((acc: number, p: any) => acc + p.length, 0) ?? 0),
+        },
+        {
+          name: "elevationDelta",
+          type: "Real",
+          value: String(flowpath?.pipes.reduce((acc: number, p: any) => acc + p.elevation, 0) ?? 0),
+        },
+        { name: "peakLiquidSurge", type: "Real", value: String(sim.trends.peakLiquidSurgeVolume.toFixed(2)) },
+      ];
+      const ports = model.nodes.map((n: any) => ({
+        name: n.name,
+        type: n.type,
+      }));
+      return {
+        name: baseName,
+        kind: "olga_flowline",
+        attributes,
+        ports,
+      };
+    } catch {
+      return { name: baseName, kind: "olga_flowline" };
+    }
+  }
+
+  // 10. JSON format
   if (ext === ".json") {
     try {
       const parsed = JSON.parse(text);
@@ -580,6 +616,7 @@ const VerifyCommand: CommandModule<{}, VerifyArgs> = {
       { domain: "SSP", polyglot: (sspLanguage as any).polyglot },
       { domain: "CFD", polyglot: (cfdLanguage as any).polyglot },
       { domain: "FEA", polyglot: (feaLanguage as any).polyglot },
+      { domain: "OLGA", polyglot: (olgaLanguage as any).polyglot },
     ];
 
     let totalRules = 0;

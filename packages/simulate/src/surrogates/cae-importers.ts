@@ -8,6 +8,7 @@
  * and Ansys Twin Builder Reduced Order Model packages into ModelScript's surrogate & DAE engines.
  */
 
+import { xml } from "@modelscript/dsl";
 import { DmdcSurrogate, LpvStateSpaceSurrogate, type LpvVertexModel } from "./dynamic-rom.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,67 +162,65 @@ function parseLegacyVtk(content: string): VtkFieldSnapshot {
   };
 }
 
+function findXmlElement(root: xml.XmlElement | null, tagName: string): xml.XmlElement | null {
+  if (!root) return null;
+  if (root.name.toLowerCase() === tagName.toLowerCase()) return root;
+  for (const child of root.children) {
+    const found = findXmlElement(child, tagName);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findXmlElements(root: xml.XmlElement | null, tagName: string): xml.XmlElement[] {
+  if (!root) return [];
+  const results: xml.XmlElement[] = [];
+  const walk = (el: xml.XmlElement) => {
+    if (el.name.toLowerCase() === tagName.toLowerCase()) results.push(el);
+    for (const child of el.children) walk(child);
+  };
+  walk(root);
+  return results;
+}
+
+function getXmlAttribute(el: xml.XmlElement, attrName: string): string | undefined {
+  return el.attributes.find((a) => a.name.toLowerCase() === attrName.toLowerCase())?.value;
+}
+
 function parseXmlVtu(content: string): VtkFieldSnapshot {
+  const doc = xml.parseXml(content);
   let numPoints = 0;
   let numCells = 0;
-  const pieceStart = content.indexOf("<Piece");
-  if (pieceStart !== -1) {
-    const pieceEnd = content.indexOf(">", pieceStart);
-    if (pieceEnd !== -1) {
-      const pieceAttrs = content.slice(pieceStart, pieceEnd);
-      const ptsMatch = pieceAttrs.match(/NumberOfPoints="(\d+)"/i);
-      const cellsMatch = pieceAttrs.match(/NumberOfCells="(\d+)"/i);
-      if (ptsMatch) numPoints = parseInt(ptsMatch[1]!, 10);
-      if (cellsMatch) numCells = parseInt(cellsMatch[1]!, 10);
-    }
+
+  const pieceEl = findXmlElement(doc.root, "Piece");
+  if (pieceEl) {
+    const ptsAttr = getXmlAttribute(pieceEl, "NumberOfPoints");
+    const cellsAttr = getXmlAttribute(pieceEl, "NumberOfCells");
+    if (ptsAttr) numPoints = parseInt(ptsAttr, 10);
+    if (cellsAttr) numCells = parseInt(cellsAttr, 10);
   }
 
   let points: Float64Array = new Float64Array(0);
-  const extractSection = (tag: string): string | null => {
-    const openTag = `<${tag}`;
-    const startIdx = content.indexOf(openTag);
-    if (startIdx === -1) return null;
-    const tagEnd = content.indexOf(">", startIdx);
-    if (tagEnd === -1) return null;
-    const closeTag = `</${tag}>`;
-    const endIdx = content.indexOf(closeTag, tagEnd);
-    if (endIdx === -1) return null;
-    return content.slice(tagEnd + 1, endIdx);
-  };
-
-  const pointsSection = extractSection("Points");
-  if (pointsSection) {
-    const daStart = pointsSection.indexOf("<DataArray");
-    if (daStart !== -1) {
-      const daTagEnd = pointsSection.indexOf(">", daStart);
-      const daEnd = pointsSection.indexOf("</DataArray>", daTagEnd);
-      if (daTagEnd !== -1 && daEnd !== -1) {
-        points = parseWhitespaceFloats(pointsSection.slice(daTagEnd + 1, daEnd));
-      }
+  const pointsEl = findXmlElement(doc.root, "Points");
+  if (pointsEl) {
+    const da = findXmlElement(pointsEl, "DataArray");
+    if (da && da.text) {
+      points = parseWhitespaceFloats(da.text);
     }
   }
 
   const scalars: Record<string, Float64Array> = {};
   const vectors: Record<string, Float64Array> = {};
 
-  const parseDataArrays = (sectionXml: string) => {
-    let cur = 0;
-    while (cur < sectionXml.length) {
-      const openIdx = sectionXml.indexOf("<DataArray", cur);
-      if (openIdx === -1) break;
-      const tagEnd = sectionXml.indexOf(">", openIdx);
-      if (tagEnd === -1) break;
-      const closeIdx = sectionXml.indexOf("</DataArray>", tagEnd);
-      if (closeIdx === -1) break;
-      const attrs = sectionXml.slice(openIdx + "<DataArray".length, tagEnd);
-      const body = sectionXml.slice(tagEnd + 1, closeIdx);
-      cur = closeIdx + "</DataArray>".length;
-
-      const nameMatch = attrs.match(/Name="([^"]+)"/i);
-      const compMatch = attrs.match(/NumberOfComponents="(\d+)"/i);
-      const name = nameMatch ? nameMatch[1]! : "field";
-      const nComp = compMatch ? parseInt(compMatch[1]!, 10) : 1;
-      const arr = parseWhitespaceFloats(body);
+  const processDataSection = (sectionName: string) => {
+    const secEl = findXmlElement(doc.root, sectionName);
+    if (!secEl) return;
+    const dataArrays = findXmlElements(secEl, "DataArray");
+    for (const da of dataArrays) {
+      const name = getXmlAttribute(da, "Name") ?? "field";
+      const compStr = getXmlAttribute(da, "NumberOfComponents");
+      const nComp = compStr ? parseInt(compStr, 10) : 1;
+      const arr = parseWhitespaceFloats(da.text);
       if (nComp === 3) {
         vectors[name] = arr;
       } else {
@@ -230,11 +229,8 @@ function parseXmlVtu(content: string): VtkFieldSnapshot {
     }
   };
 
-  const pointDataSection = extractSection("PointData");
-  if (pointDataSection) parseDataArrays(pointDataSection);
-
-  const cellDataSection = extractSection("CellData");
-  if (cellDataSection) parseDataArrays(cellDataSection);
+  processDataSection("PointData");
+  processDataSection("CellData");
 
   return {
     format: "vtu_xml",

@@ -142,38 +142,51 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     message: (target) =>
       `More than one state marked as initialState in state machine '${target["name"] || target.text}'.`,
     query: (db: CodeGraph, node: u32, $: any) => {
-      let initCount = 0;
+      let targetNode = node;
+      for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {
+        const nameId = db.ast.getChildByFieldId(spec, "name");
+        if (nameId != 0) targetNode = nameId;
+        break;
+      }
+      for (const spec of db.ast.getDescendants(node, $.short_class_specifier)) {
+        const nameId = db.ast.getChildByFieldId(spec, "name");
+        if (nameId != 0) targetNode = nameId;
+        break;
+      }
+
       // Count component declarations with modifier `initialState = true` in the immediate class scope
+      let compInitCount = 0;
       for (const comp of db.ast.getDescendants(node, $.component_clause)) {
         if (isDescendantOfInnerClass(db, comp, node, $)) continue;
         for (const mod of db.ast.getDescendants(comp, $.modification)) {
           if (db.ast.textEquals(mod, "initialState = true") || db.ast.textEquals(mod, "initialState=true")) {
-            initCount++;
+            compInitCount++;
           }
         }
       }
-      // Count `initialState(...)` operator calls in equations of the immediate class scope
-      for (const fc of db.ast.getDescendants(node, $.function_call)) {
-        if (isDescendantOfInnerClass(db, fc, node, $)) continue;
-        const fnName = getCallCalleeNode(db, fc, $);
-        if (fnName != 0 && db.ast.textEquals(fnName, "initialState")) {
-          initCount++;
-        }
-      }
-      // Emit M6010 if multiple initial states are declared in the same state machine partition
-      if (initCount > 1) {
-        let targetNode = node;
-        for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {
-          const nameId = db.ast.getChildByFieldId(spec, "name");
-          if (nameId != 0) targetNode = nameId;
-          break;
-        }
-        for (const spec of db.ast.getDescendants(node, $.short_class_specifier)) {
-          const nameId = db.ast.getChildByFieldId(spec, "name");
-          if (nameId != 0) targetNode = nameId;
-          break;
-        }
+      if (compInitCount > 1) {
         db.diagnostic(targetNode);
+        return;
+      }
+
+      // In each equation section (each represents an independent state machine partition per MLS §17.3.7),
+      // verify at most one initialState(...) is called.
+      if ($.equation_section != 0) {
+        for (const eqSec of db.ast.getDescendants(node, $.equation_section)) {
+          if (isDescendantOfInnerClass(db, eqSec, node, $)) continue;
+          let eqInitCount = 0;
+          for (const fc of db.ast.getDescendants(eqSec, $.function_call)) {
+            if (isDescendantOfInnerClass(db, fc, eqSec, $)) continue;
+            const fnName = getCallCalleeNode(db, fc, $);
+            if (fnName != 0 && db.ast.textEquals(fnName, "initialState")) {
+              eqInitCount++;
+            }
+          }
+          if (eqInitCount > 1) {
+            db.diagnostic(targetNode);
+            return;
+          }
+        }
       }
     },
   },

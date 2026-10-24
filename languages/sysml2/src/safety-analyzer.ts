@@ -199,10 +199,44 @@ export function enumerateAllMinimalCutSets(
  */
 export function evaluateBooleanFaultLogic(expression: string, active: Set<string>): boolean {
   const tokens: string[] = [];
-  const regex = /([a-zA-Z_][a-zA-Z0-9_.]*|&&|\|\||[!()])/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(expression)) !== null) {
-    tokens.push(match[1]!);
+  let i = 0;
+  const len = expression.length;
+  while (i < len) {
+    const ch = expression[i]!;
+    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") {
+      i++;
+      continue;
+    }
+    if (ch === "(" || ch === ")" || ch === "!") {
+      tokens.push(ch);
+      i++;
+      continue;
+    }
+    if (ch === "&" && i + 1 < len && expression[i + 1] === "&") {
+      tokens.push("&&");
+      i += 2;
+      continue;
+    }
+    if (ch === "|" && i + 1 < len && expression[i + 1] === "|") {
+      tokens.push("||");
+      i += 2;
+      continue;
+    }
+    if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
+      const start = i;
+      i++;
+      while (i < len) {
+        const c = expression[i]!;
+        if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === ".") {
+          i++;
+        } else {
+          break;
+        }
+      }
+      tokens.push(expression.slice(start, i));
+      continue;
+    }
+    i++;
   }
   if (tokens.length === 0) return false;
 
@@ -994,46 +1028,79 @@ export function extractSysML2ControlLoops(queryDB: QueryDB): ControlLoop[] {
   // 3. Also check source text for `connect A.out to B.in` or `flow of X from A to B`
   const srcText: string = (queryDB as any)?.source || (queryDB as any)?.doc?.text || "";
   if (srcText) {
-    const flowRegex =
-      /\bflow\s+(?:of\s+([A-Za-z_][A-Za-z0-9_]*)\s+)?from\s+([A-Za-z_][A-Za-z0-9_.]*)\s+to\s+([A-Za-z_][A-Za-z0-9_.]*)/g;
-    let fm: RegExpExecArray | null;
-    while ((fm = flowRegex.exec(srcText)) !== null) {
-      const payload = fm[1];
-      const srcEndpoint = fm[2]!;
-      const dstEndpoint = fm[3]!;
-      const srcComp = srcEndpoint.split(".")[0]!;
-      const srcPort = srcEndpoint.includes(".") ? srcEndpoint.split(".").pop()! : "controlFlow";
-      const dstComp = dstEndpoint.split(".")[0]!;
-      const act = payload || srcPort;
-      const loopId = `loop_${srcComp}_${act}`;
-      if (!seenIds.has(loopId)) {
-        seenIds.add(loopId);
-        loops.push({
-          id: loopId,
-          controller: srcComp,
-          controlAction: act,
-          controlledProcess: dstComp,
-        });
+    const words: string[] = [];
+    let i = 0;
+    const sLen = srcText.length;
+    while (i < sLen) {
+      const ch = srcText[i]!;
+      if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
+        const start = i;
+        i++;
+        while (i < sLen) {
+          const c = srcText[i]!;
+          if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === ".") {
+            i++;
+          } else {
+            break;
+          }
+        }
+        words.push(srcText.slice(start, i));
+      } else {
+        i++;
       }
     }
 
-    const connRegex = /\bconnect\s+([A-Za-z_][A-Za-z0-9_.]*)\s+to\s+([A-Za-z_][A-Za-z0-9_.]*)/g;
-    let cm: RegExpExecArray | null;
-    while ((cm = connRegex.exec(srcText)) !== null) {
-      const srcEndpoint = cm[1]!;
-      const dstEndpoint = cm[2]!;
-      const srcComp = srcEndpoint.split(".")[0]!;
-      const srcPort = srcEndpoint.includes(".") ? srcEndpoint.split(".").pop()! : actions[0] || "command";
-      const dstComp = dstEndpoint.split(".")[0]!;
-      const loopId = `loop_${srcComp}_${srcPort}`;
-      if (!seenIds.has(loopId)) {
-        seenIds.add(loopId);
-        loops.push({
-          id: loopId,
-          controller: srcComp,
-          controlAction: srcPort,
-          controlledProcess: dstComp,
-        });
+    for (let w = 0; w < words.length; w++) {
+      const word = words[w]!;
+      if (word === "flow") {
+        let payload: string | undefined = undefined;
+        let srcIdx = -1;
+        if (words[w + 1] === "of" && words[w + 3] === "from" && words[w + 5] === "to") {
+          payload = words[w + 2];
+          srcIdx = w + 4;
+        } else if (words[w + 1] === "from" && words[w + 3] === "to") {
+          srcIdx = w + 2;
+        }
+        if (srcIdx !== -1 && srcIdx + 2 < words.length) {
+          const srcEndpoint = words[srcIdx]!;
+          const dstEndpoint = words[srcIdx + 2]!;
+          if (srcEndpoint && dstEndpoint) {
+            const srcComp = srcEndpoint.split(".")[0]!;
+            const srcPort = srcEndpoint.includes(".") ? srcEndpoint.split(".").pop()! : "controlFlow";
+            const dstComp = dstEndpoint.split(".")[0]!;
+            const act = payload || srcPort;
+            const loopId = `loop_${srcComp}_${act}`;
+            if (!seenIds.has(loopId)) {
+              seenIds.add(loopId);
+              loops.push({
+                id: loopId,
+                controller: srcComp,
+                controlAction: act,
+                controlledProcess: dstComp,
+              });
+            }
+          }
+        }
+      } else if (word === "connect") {
+        if (words[w + 2] === "to" && w + 3 < words.length) {
+          const srcEndpoint = words[w + 1]!;
+          const dstEndpoint = words[w + 3]!;
+          if (srcEndpoint && dstEndpoint) {
+            const srcComp = srcEndpoint.split(".")[0]!;
+            const srcPort = srcEndpoint.includes(".") ? srcEndpoint.split(".").pop()! : actions[0] || "command";
+            const dstComp = dstEndpoint.split(".")[0]!;
+            const loopId = `loop_${srcComp}_${srcPort}`;
+            if (!seenIds.has(loopId)) {
+              seenIds.add(loopId);
+              loops.push({
+                id: loopId,
+                controller: srcComp,
+                controlAction: srcPort,
+                controlledProcess: dstComp,
+              });
+            }
+          }
+        }
       }
     }
   }

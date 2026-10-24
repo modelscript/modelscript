@@ -219,6 +219,26 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     });
   }
 
+  // PSS/E RAW Power Flow Grid & SLD Editor
+  if (languages.some((l) => l.id === "psse")) {
+    customEditors.push({
+      viewType: "modelscript.rawEditor",
+      displayName: "PSS/E Grid & Single-Line Diagram (SLD) Editor",
+      selector: [{ filenamePattern: "*.raw" }],
+      priority: "option",
+    });
+  }
+
+  // OLGA Transient Multiphase Flow Assurance Editor
+  if (languages.some((l) => l.id === "olga")) {
+    customEditors.push({
+      viewType: "modelscript.olgaEditor",
+      displayName: "OLGA Multiphase Flow Assurance Editor",
+      selector: [{ filenamePattern: "*.opi" }, { filenamePattern: "*.key" }, { filenamePattern: "*.genkey" }],
+      priority: "option",
+    });
+  }
+
   // SysML Requirements Matrix & Element Table Custom Editors
   if (languages.some((l) => l.id === "sysml2" || l.id === "sysml")) {
     customEditors.push({
@@ -536,6 +556,9 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     }
     if (languages.some((l) => l.id === "cfd")) {
       diagramViewTypes.push("modelscript.cfgEditor");
+    }
+    if (languages.some((l) => l.id === "olga")) {
+      diagramViewTypes.push("modelscript.olgaEditor");
     }
     const customEditorWhen = diagramViewTypes.map((vt) => `activeCustomEditorId == ${vt}`).join(" || ");
 
@@ -1912,6 +1935,22 @@ module.exports.default = module.exports;
     static isBuffer(val) { return val instanceof Uint8Array; }
     toString(enc) { return new TextDecoder().decode(this); }
   };
+}
+if (typeof globalThis.process === "undefined") {
+  globalThis.process = {
+    env: {},
+    cwd: () => "/",
+    platform: "browser",
+    pid: 1,
+    version: "v18.0.0",
+    argv: ["node", "script"],
+    nextTick: (cb) => setTimeout(cb, 0),
+    memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
+    hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
+  };
+}
+if (typeof self !== "undefined" && typeof self.process === "undefined") {
+  self.process = globalThis.process;
 }`,
       },
       plugins: [ignorePlugin],
@@ -2063,6 +2102,26 @@ module.exports.default = module.exports;
       minify: false,
       keepNames: true,
       sourcemap: "linked",
+      banner: {
+        js: `if (typeof globalThis.process === "undefined") {
+  globalThis.process = {
+    env: {},
+    cwd: () => "/",
+    platform: "browser",
+    pid: 1,
+    version: "v18.0.0",
+    argv: ["node", "script"],
+    nextTick: (cb) => setTimeout(cb, 0),
+    memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
+    hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
+  };
+}
+if (typeof self !== "undefined" && typeof self.process === "undefined") {
+  self.process = globalThis.process;
+}
+var process = globalThis.process;
+`,
+      },
       define: {
         "process.env": "{}",
         "process.browser": "true",
@@ -2087,6 +2146,26 @@ module.exports.default = module.exports;
         minify: false,
         keepNames: true,
         sourcemap: "linked",
+        banner: {
+          js: `if (typeof globalThis.process === "undefined") {
+  globalThis.process = {
+    env: {},
+    cwd: () => "/",
+    platform: "browser",
+    pid: 1,
+    version: "v18.0.0",
+    argv: ["node", "script"],
+    nextTick: (cb) => setTimeout(cb, 0),
+    memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
+    hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
+  };
+}
+if (typeof self !== "undefined" && typeof self.process === "undefined") {
+  self.process = globalThis.process;
+}
+var process = globalThis.process;
+`,
+        },
         define: {
           "process.env": "{}",
           "process.browser": "true",

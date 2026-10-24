@@ -1134,14 +1134,21 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
     (sym as any)._isEncapsulated = true;
     return true;
   }
+  const cst = db.cstNode(sym.id) as any;
+  if (cst && cst.children) {
+    for (const ch of cst.children) {
+      if (ch.type === "encapsulated" || ch.type === '"encapsulated"' || ch.text === "encapsulated") {
+        (sym as any)._isEncapsulated = true;
+        return true;
+      }
+      if (ch.type === "class_prefixes" || ch.type === "class_specifier") break;
+    }
+  }
   let text = "";
   if (sym.startOffset != null && sym.endOffset != null && typeof (db as any).cstText === "function") {
     text = (db as any).cstText(sym.startOffset, Math.min(sym.endOffset, sym.startOffset + 120), sym) ?? "";
-  } else {
-    const cst = db.cstNode(sym.id) as any;
-    if (cst) {
-      text = (cst.text ?? "").slice(0, 120);
-    }
+  } else if (cst) {
+    text = (cst.text ?? "").slice(0, 120);
   }
   const res = /^(?:\s*(?:within\b[^;]*;|final|inner|outer|redeclare|replaceable)\b)*\s*encapsulated\b/.test(text);
   (sym as any)._isEncapsulated = res;
@@ -2307,14 +2314,127 @@ function isRedeclareQuery(db: QueryDB, self: SymbolEntry): boolean {
 }
 
 /**
+ * Resolves whether a symbol is declared with the `inner` scoping prefix.
+ */
+export function isInnerQuery(db: QueryDB, self: SymbolEntry): boolean {
+  if (!self) return false;
+  const meta = self.metadata as any;
+  const rawPrefixes = meta?.classPrefixes ?? meta?.prefixes;
+  if (typeof rawPrefixes === "string" && /\binner\b/.test(rawPrefixes)) {
+    return true;
+  }
+  let current = db.cstNode(self.id) as any;
+  if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
+    current = current.parent;
+  }
+  while (current) {
+    if (
+      current.type === "Element" ||
+      current.type === "element" ||
+      current.type === "element_replaceable" ||
+      current.type === "ElementReplaceable"
+    ) {
+      if (current.children) {
+        for (const ch of current.children) {
+          if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
+          if (ch.type === "component_clause" || ch.type === "class_definition") break;
+        }
+      }
+      return /\binner\b/.test(current.text ?? "");
+    }
+    if (current.type === "class_prefixes" || current.type === "prefixes") {
+      if (current.children) {
+        for (const ch of current.children) {
+          if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
+        }
+      }
+      return /\binner\b/.test(current.text ?? "");
+    }
+    if (current.children) {
+      for (const ch of current.children) {
+        if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
+      }
+    }
+    if (
+      current.type === "Composition" ||
+      current.type === "composition" ||
+      current.type === "stored_definition" ||
+      current.type === "StoredDefinition"
+    ) {
+      break;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+/**
+ * Resolves whether a symbol is declared with the `outer` scoping prefix.
+ */
+export function isOuterQuery(db: QueryDB, self: SymbolEntry): boolean {
+  if (!self) return false;
+  const meta = self.metadata as any;
+  const rawPrefixes = meta?.classPrefixes ?? meta?.prefixes;
+  if (typeof rawPrefixes === "string" && /\bouter\b/.test(rawPrefixes)) {
+    return true;
+  }
+  let current = db.cstNode(self.id) as any;
+  if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
+    current = current.parent;
+  }
+  while (current) {
+    if (
+      current.type === "Element" ||
+      current.type === "element" ||
+      current.type === "element_replaceable" ||
+      current.type === "ElementReplaceable"
+    ) {
+      if (current.children) {
+        for (const ch of current.children) {
+          if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
+          if (ch.type === "component_clause" || ch.type === "class_definition") break;
+        }
+      }
+      return /\bouter\b/.test(current.text ?? "");
+    }
+    if (current.type === "class_prefixes" || current.type === "prefixes") {
+      if (current.children) {
+        for (const ch of current.children) {
+          if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
+        }
+      }
+      return /\bouter\b/.test(current.text ?? "");
+    }
+    if (current.children) {
+      for (const ch of current.children) {
+        if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
+      }
+    }
+    if (
+      current.type === "Composition" ||
+      current.type === "composition" ||
+      current.type === "stored_definition" ||
+      current.type === "StoredDefinition"
+    ) {
+      break;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+/**
  * Salsa semantic and lint queries attached to `class_definition` (`ClassDefinition`) symbols.
  */
 export const classDefinitionQueries: Record<string, any> = {
   /** All direct children of this class. */
-
   members: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id),
   /** Returns `true` if this class definition carries a `redeclare` prefix. */
   isRedeclare: (db: QueryDB, self: SymbolEntry) => isRedeclareQuery(db, self),
+  /** Checks whether this class is declared with the `inner` dynamic scoping prefix. */
+  isInner: (db: QueryDB, self: SymbolEntry) => isInnerQuery(db, self),
+  /** Checks whether this class is declared with the `outer` dynamic scoping prefix. */
+  isOuter: (db: QueryDB, self: SymbolEntry) => isOuterQuery(db, self),
 
   /** Recommends homotopy operator for steep nonlinear equations. */
   lint__homotopyRecommended: (db: QueryDB, self: SymbolEntry) => {
@@ -2528,6 +2648,19 @@ export const classDefinitionQueries: Record<string, any> = {
       db.childrenOf(self.id).some((c) => c.kind === "Extends" && c.name === self.name) &&
       /\bextends\s+[A-Za-z0-9_']/.test((cst.text ?? "").slice(0, 80))
     ) {
+      let hasIgnoreReplaceable = false;
+      let currId: SymbolId | null = self.id;
+      while (currId !== null) {
+        const currNode = db.cstNode(currId) as any;
+        if (currNode?.text?.includes("--ignoreReplaceable")) {
+          hasIgnoreReplaceable = true;
+          break;
+        }
+        const sym = db.symbol(currId);
+        currId = sym?.parentId ?? null;
+      }
+      if (hasIgnoreReplaceable) return null;
+
       const inheritedMap = db.query<Record<string, SymbolId>>("inheritedSymbolsMap", self.parentId);
       const inheritedId = inheritedMap?.[self.name];
       if (inheritedId !== undefined && !db.query<boolean>("isReplaceable", inheritedId)) {
@@ -4299,14 +4432,7 @@ export const componentDeclarationQueries: Record<string, any> = {
   isRedeclare: (db: QueryDB, self: SymbolEntry) => isRedeclareQuery(db, self),
 
   /** Checks whether this component is declared with the `inner` dynamic scoping prefix. */
-  isInner: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "Element" && current.type !== "element") {
-      if (current.type === "Composition" || current.type === "composition") break;
-      current = current.parent;
-    }
-    return current ? /\binner\b/.test(current.text) : false;
-  },
+  isInner: (db: QueryDB, self: SymbolEntry) => isInnerQuery(db, self),
 
   /** Checks whether this component is declared with the `replaceable` prefix. */
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {
@@ -4385,14 +4511,7 @@ export const componentDeclarationQueries: Record<string, any> = {
   },
 
   /** Checks whether this component is declared with the `outer` dynamic scoping prefix. */
-  isOuter: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
-    while (current && current.type !== "Element" && current.type !== "element") {
-      if (current.type === "Composition" || current.type === "composition") break;
-      current = current.parent;
-    }
-    return current ? /\bouter\b/.test(current.text) : false;
-  },
+  isOuter: (db: QueryDB, self: SymbolEntry) => isOuterQuery(db, self),
 
   // =================================================================
   // Milestone 3: Component Instantiation

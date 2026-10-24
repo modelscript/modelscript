@@ -102,7 +102,7 @@ async function run() {
   const mdot2 = exports.dae_addVariable(daePtr, 304, VarType.Real, Variability.Continuous, Causality.Local, -5.0, 0);
 
   exports.flattener_addStreamConnection(flattenerPtr, h1, mdot1, h2, mdot2);
-  assert.strictEqual(bridge.getEqCount(), 3, "Stream connection added upwind mixing equation");
+  assert.strictEqual(bridge.getEqCount(), 4, "Stream connection added upwind mixing equations");
   console.log("✓ Stream connection upwind mixing equation passed");
 
   // Test 4: Expandable Connector Bus Allocation

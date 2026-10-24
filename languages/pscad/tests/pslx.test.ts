@@ -54,6 +54,43 @@ describe("PSCAD Library Project (.pslx) Suite", () => {
     const banner = project.rootModule.stickies?.find((s) => s.text.includes("EMT-Tools PSCAD Library"));
     assert.ok(banner, "Should find header banner sticky");
     assert.ok(banner.width > 500, "Banner should have expected width");
+
+    // Definitions (graphics, SVG icons, descriptions)
+    assert.ok(project.definitions && project.definitions.size >= 4, "Should index component definitions");
+    assert.ok(project.definitions.has("Rational_Operator"), "Should have Rational_Operator definition");
+    const ratDef = project.definitions.get("Rational_Operator");
+    assert.ok(ratDef?.graphicsXml || ratDef?.svgXml, "Should extract graphic markup");
+  });
+
+  it("parses schematic frame divider lines and text annotations", () => {
+    const xml = `
+      <project name="TestDiv" version="5.1.0" type="library">
+        <definitions>
+          <Definition classid="UserCmpDefn" name="Main">
+            <Schematic>
+              <Line classid="Divider" x="36" y="18" w="234" h="0" />
+              <Line classid="Divider" x="270" y="18" w="0" h="360" />
+              <User classid="UserCmp" name="master:annotation" id="101" x="100" y="100">
+                <paramlist>
+                  <param name="AL1" value="Header Title" />
+                  <param name="AL2" value="Sub Title" />
+                </paramlist>
+              </User>
+            </Schematic>
+          </Definition>
+        </definitions>
+      </project>
+    `;
+    const proj = parsePscx(xml);
+    assert.equal(proj.rootModule.lines?.length, 2, "Should parse 2 divider lines");
+    assert.equal(proj.rootModule.lines?.[0].classId, "Divider");
+    assert.equal(proj.rootModule.lines?.[0].x1, 36);
+    assert.equal(proj.rootModule.lines?.[0].y1, 18);
+    assert.equal(proj.rootModule.lines?.[0].x2, 270);
+    assert.equal(proj.rootModule.lines?.[0].y2, 18);
+    const ann = proj.rootModule.components.find((c) => c.definitionName === "master:annotation");
+    assert.ok(ann, "Should parse annotation component");
+    assert.equal(ann.parameters?.AL1, "Header Title");
   });
 
   it("indexes .pslx components into PscadWorkspaceIndex for the Library panel", async () => {

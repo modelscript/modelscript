@@ -2,6 +2,7 @@
 
 export * from "./ad-transforms.js";
 export * from "./adjoint-integrator.js";
+export * from "./callbacks.js";
 export * from "./continuum-participant.js";
 export * from "./dae-adjoint-solver.js";
 export * from "./dense-checkpoint-tape.js";

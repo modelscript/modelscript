@@ -21,6 +21,11 @@ import {
   type SymbolId,
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
+import {
+  BARE_SINGLE_LETTER_MODELICA_CONSTANTS,
+  MAX_ARRAY_EXPANSION_LENGTH,
+  MODELICA_CONSTANTS,
+} from "../../constants.js";
 import { getShortClassSpecifierNode } from "../../queries.js";
 import { getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import {
@@ -1838,75 +1843,7 @@ export function isIntegerTypeSpec(
   return false;
 }
 
-const KNOWN_MODELICA_CONSTANTS: Record<string, number> = {
-  pi: Math.PI,
-  "Modelica.Constants.pi": Math.PI,
-  "Constants.pi": Math.PI,
-  e: Math.E,
-  "Modelica.Constants.e": Math.E,
-  "Constants.e": Math.E,
-  "Modelica.Constants.c": 299792458,
-  "Constants.c": 299792458,
-  g_n: 9.80665,
-  "Modelica.Constants.g_n": 9.80665,
-  "Constants.g_n": 9.80665,
-  "Modelica.Constants.G": 6.6743e-11,
-  "Constants.G": 6.6743e-11,
-  "Modelica.Constants.q": 1.602176634e-19,
-  "Constants.q": 1.602176634e-19,
-  "Modelica.Constants.h": 6.62607015e-34,
-  "Constants.h": 6.62607015e-34,
-  "Modelica.Constants.k": 1.380649e-23,
-  "Constants.k": 1.380649e-23,
-  N_A: 6.02214076e23,
-  "Modelica.Constants.N_A": 6.02214076e23,
-  "Constants.N_A": 6.02214076e23,
-  "Modelica.Constants.F": 1.602176634e-19 * 6.02214076e23,
-  "Constants.F": 1.602176634e-19 * 6.02214076e23,
-  "Modelica.Constants.R": 1.380649e-23 * 6.02214076e23,
-  "Constants.R": 1.380649e-23 * 6.02214076e23,
-  mu_0: 4 * Math.PI * 1.00000000055e-7,
-  "Modelica.Constants.mu_0": 4 * Math.PI * 1.00000000055e-7,
-  "Constants.mu_0": 4 * Math.PI * 1.00000000055e-7,
-  epsilon_0: 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458),
-  "Modelica.Constants.epsilon_0": 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458),
-  "Constants.epsilon_0": 1 / (4 * Math.PI * 1.00000000055e-7 * 299792458 * 299792458),
-  sigma: 5.670374419e-8,
-  "Modelica.Constants.sigma": 5.670374419e-8,
-  "Constants.sigma": 5.670374419e-8,
-  R_inf: 10973731.56816,
-  "Modelica.Constants.R_inf": 10973731.56816,
-  "Constants.R_inf": 10973731.56816,
-  T_zero: -273.15,
-  "Modelica.Constants.T_zero": -273.15,
-  "Constants.T_zero": -273.15,
-  eps: Number.EPSILON,
-  "Modelica.Constants.eps": Number.EPSILON,
-  "Constants.eps": Number.EPSILON,
-  "ModelicaServices.Machine.eps": Number.EPSILON,
-  small: Number.MIN_VALUE,
-  "Modelica.Constants.small": Number.MIN_VALUE,
-  "Constants.small": Number.MIN_VALUE,
-  "ModelicaServices.Machine.small": Number.MIN_VALUE,
-  inf: 1e60,
-  "Modelica.Constants.inf": 1e60,
-  "Constants.inf": 1e60,
-  "ModelicaServices.Machine.inf": 1e60,
-  Integer_inf: 2147483647,
-  "Modelica.Constants.Integer_inf": 2147483647,
-  "Constants.Integer_inf": 2147483647,
-  "ModelicaServices.Machine.Integer_inf": 2147483647,
-};
-
-const BARE_SINGLE_LETTER_MODELICA_CONSTANTS: Record<string, number> = {
-  c: 299792458,
-  G: 6.6743e-11,
-  q: 1.602176634e-19,
-  h: 6.62607015e-34,
-  k: 1.380649e-23,
-  F: 1.602176634e-19 * 6.02214076e23,
-  R: 1.380649e-23 * 6.02214076e23,
-};
+const KNOWN_MODELICA_CONSTANTS: Record<string, number> = MODELICA_CONSTANTS;
 
 function canSubstituteBareSingleLetterConstant(
   ident: string,
@@ -2121,6 +2058,115 @@ function evalKnownConstantExprText(exprText: string, db?: QueryDB, scopeId?: Sym
   return result;
 }
 
+/**
+ * Domain-specific evaluator for Modelica media property functions (e.g. `specificEnthalpy_pTX`)
+ * when resolving compile-time constant attributes during symbol table indexing.
+ */
+function evaluateMediumPropertyConstant(
+  str: string,
+  db: QueryDB,
+  evalScope: SymbolId | undefined,
+  isInteger: boolean,
+  evalExprStr: (s: string) => { value: any; isInteger: boolean } | null,
+): { value: number; isInteger: boolean } | null {
+  if (!evalScope) return null;
+  const specEnthMatch = str.match(
+    /^(?:([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\.)?specificEnthalpy_pTX\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)$/,
+  );
+  if (!specEnthMatch) return null;
+  const callPkgPrefix = specEnthMatch[1]?.trim();
+  const stripNamed = (s: string) => s.replace(/^[a-zA-Z_]\w*\s*=\s*/, "").trim();
+  const tArg = stripNamed(specEnthMatch[3]!);
+  let mediumScopeId: SymbolId | undefined = evalScope;
+  if (callPkgPrefix) {
+    const resolvedPkg =
+      db.query<any>("resolveName", evalScope)?.(callPkgPrefix) ??
+      db.query<any>("resolveSimpleName", evalScope)?.(callPkgPrefix) ??
+      db
+        .byName(callPkgPrefix.split(".").pop()!)
+        .find(
+          (s) =>
+            (s.kind === "Class" || s.kind === "Package") &&
+            (s.name === callPkgPrefix || getSymbolQualifiedName(db, s.id).endsWith(callPkgPrefix)),
+        );
+    if (resolvedPkg) {
+      let pkgSym: SymbolEntry = resolvedPkg;
+      const seenAliases = new Set<SymbolId>();
+      while (pkgSym && !seenAliases.has(pkgSym.id)) {
+        seenAliases.add(pkgSym.id);
+        if (!getShortClassSpecifierNode(db.cstNode(pkgSym.id) as any)) break;
+        const nextBase = db.query<SymbolEntry | null>("resolvedBaseClass", pkgSym.id);
+        if (nextBase) pkgSym = nextBase;
+        else break;
+      }
+      mediumScopeId = pkgSym.id;
+    }
+  } else {
+    const fnSym =
+      db.query<any>("resolveSimpleName", evalScope)?.("specificEnthalpy_pTX") ??
+      db.query<any>("resolveName", evalScope)?.("specificEnthalpy_pTX");
+    if (fnSym?.parentId != null) {
+      mediumScopeId = fnSym.parentId;
+    }
+  }
+  const lookupScopedMediumConst = (constName: string) => {
+    if (callPkgPrefix) {
+      const qualRes = lookupDbConstant(`${callPkgPrefix}.${constName}`, db, evalScope);
+      if (qualRes && typeof qualRes.value === "number") return qualRes;
+    }
+    const rawScopes = callPkgPrefix ? [mediumScopeId, evalScope] : [evalScope, mediumScopeId];
+    const startScopes = rawScopes.filter((id, idx, arr): id is SymbolId => id !== undefined && arr.indexOf(id) === idx);
+    for (const sId of startScopes) {
+      const queue: SymbolId[] = [sId];
+      const visited = new Set<SymbolId>();
+      while (queue.length > 0) {
+        const curId = queue.shift()!;
+        if (visited.has(curId)) continue;
+        visited.add(curId);
+        const direct = db.childrenOf(curId).find((ch) => ch.kind === "Component" && ch.name === constName);
+        if (direct) {
+          const val = extractDbConstantValue(direct, db, sId);
+          if (val && typeof val.value === "number") return val;
+        }
+        const base = db.query<SymbolEntry | null>("resolvedBaseClass", curId);
+        if (base && !visited.has(base.id)) queue.push(base.id);
+        for (const ch of db.childrenOf(curId)) {
+          if (ch.kind === "Extends") {
+            const extBase = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
+            if (extBase && !visited.has(extBase.id)) queue.push(extBase.id);
+          }
+        }
+      }
+    }
+    const primaryScope = callPkgPrefix ? mediumScopeId : (evalScope ?? mediumScopeId);
+    return (
+      (primaryScope ? lookupDbConstant(constName, db, primaryScope) : null) ??
+      (mediumScopeId ? lookupDbConstant(constName, db, mediumScopeId) : null) ??
+      lookupDbConstant(constName, db, evalScope)
+    );
+  };
+  const cpRes = lookupScopedMediumConst("cp_const");
+  const t0Res = lookupScopedMediumConst("T0");
+  const tRes =
+    evalExprStr(tArg) ??
+    (callPkgPrefix && tArg.startsWith(`${callPkgPrefix}.`) && mediumScopeId
+      ? lookupDbConstant(tArg.slice(callPkgPrefix.length + 1), db, mediumScopeId)
+      : null) ??
+    lookupDbConstant(tArg, db, (callPkgPrefix ? mediumScopeId : evalScope) ?? mediumScopeId ?? evalScope);
+  if (
+    cpRes &&
+    typeof cpRes.value === "number" &&
+    t0Res &&
+    typeof t0Res.value === "number" &&
+    tRes &&
+    typeof tRes.value === "number"
+  ) {
+    const val = cpRes.value * (tRes.value - t0Res.value);
+    return { value: val, isInteger: isInteger && Number.isInteger(val) };
+  }
+  return null;
+}
+
 export function extractDbConstantValue(
   c: SymbolEntry,
   db: QueryDB,
@@ -2179,7 +2225,7 @@ export function extractDbConstantValue(
         typeof countRes.value === "number"
       ) {
         const cnt = Math.round(countRes.value);
-        if (cnt >= 0 && cnt <= 1000) {
+        if (cnt >= 0 && cnt <= MAX_ARRAY_EXPANSION_LENGTH) {
           return {
             value: Array(cnt).fill(elemRes.value),
             isInteger,
@@ -2237,102 +2283,9 @@ export function extractDbConstantValue(
     if (knownVal !== null) {
       return { value: knownVal, isInteger: isInteger && Number.isInteger(knownVal) };
     }
-    const specEnthMatch = str.match(
-      /^(?:([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\.)?specificEnthalpy_pTX\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)$/,
-    );
-    if (specEnthMatch && evalScope) {
-      const callPkgPrefix = specEnthMatch[1]?.trim();
-      const stripNamed = (s: string) => s.replace(/^[a-zA-Z_]\w*\s*=\s*/, "").trim();
-      const tArg = stripNamed(specEnthMatch[3]!);
-      let mediumScopeId: SymbolId | undefined = evalScope;
-      if (callPkgPrefix) {
-        const resolvedPkg =
-          db.query<any>("resolveName", evalScope)?.(callPkgPrefix) ??
-          db.query<any>("resolveSimpleName", evalScope)?.(callPkgPrefix) ??
-          db
-            .byName(callPkgPrefix.split(".").pop()!)
-            .find(
-              (s) =>
-                (s.kind === "Class" || s.kind === "Package") &&
-                (s.name === callPkgPrefix || getSymbolQualifiedName(db, s.id).endsWith(callPkgPrefix)),
-            );
-        if (resolvedPkg) {
-          let pkgSym: SymbolEntry = resolvedPkg;
-          const seenAliases = new Set<SymbolId>();
-          while (pkgSym && !seenAliases.has(pkgSym.id)) {
-            seenAliases.add(pkgSym.id);
-            if (!getShortClassSpecifierNode(db.cstNode(pkgSym.id) as any)) break;
-            const nextBase = db.query<SymbolEntry | null>("resolvedBaseClass", pkgSym.id);
-            if (nextBase) pkgSym = nextBase;
-            else break;
-          }
-          mediumScopeId = pkgSym.id;
-        }
-      } else {
-        const fnSym =
-          db.query<any>("resolveSimpleName", evalScope)?.("specificEnthalpy_pTX") ??
-          db.query<any>("resolveName", evalScope)?.("specificEnthalpy_pTX");
-        if (fnSym?.parentId != null) {
-          mediumScopeId = fnSym.parentId;
-        }
-      }
-      const lookupScopedMediumConst = (constName: string) => {
-        if (callPkgPrefix) {
-          const qualRes = lookupDbConstant(`${callPkgPrefix}.${constName}`, db, evalScope);
-          if (qualRes && typeof qualRes.value === "number") return qualRes;
-        }
-        const rawScopes = callPkgPrefix ? [mediumScopeId, evalScope] : [evalScope, mediumScopeId];
-        const startScopes = rawScopes.filter(
-          (id, idx, arr): id is SymbolId => id !== undefined && arr.indexOf(id) === idx,
-        );
-        for (const sId of startScopes) {
-          const queue: SymbolId[] = [sId];
-          const visited = new Set<SymbolId>();
-          while (queue.length > 0) {
-            const curId = queue.shift()!;
-            if (visited.has(curId)) continue;
-            visited.add(curId);
-            const direct = db.childrenOf(curId).find((ch) => ch.kind === "Component" && ch.name === constName);
-            if (direct) {
-              const val = extractDbConstantValue(direct, db, sId);
-              if (val && typeof val.value === "number") return val;
-            }
-            const base = db.query<SymbolEntry | null>("resolvedBaseClass", curId);
-            if (base && !visited.has(base.id)) queue.push(base.id);
-            for (const ch of db.childrenOf(curId)) {
-              if (ch.kind === "Extends") {
-                const extBase = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
-                if (extBase && !visited.has(extBase.id)) queue.push(extBase.id);
-              }
-            }
-          }
-        }
-        const primaryScope = callPkgPrefix ? mediumScopeId : (evalScope ?? mediumScopeId);
-        return (
-          (primaryScope ? lookupDbConstant(constName, db, primaryScope) : null) ??
-          (mediumScopeId ? lookupDbConstant(constName, db, mediumScopeId) : null) ??
-          lookupDbConstant(constName, db, evalScope)
-        );
-      };
-      const cpRes = lookupScopedMediumConst("cp_const");
-      const t0Res = lookupScopedMediumConst("T0");
-      const tRes =
-        evalExprStr(tArg) ??
-        (callPkgPrefix && tArg.startsWith(`${callPkgPrefix}.`) && mediumScopeId
-          ? lookupDbConstant(tArg.slice(callPkgPrefix.length + 1), db, mediumScopeId)
-          : null) ??
-        lookupDbConstant(tArg, db, (callPkgPrefix ? mediumScopeId : evalScope) ?? mediumScopeId ?? evalScope);
-      if (
-        cpRes &&
-        typeof cpRes.value === "number" &&
-        t0Res &&
-        typeof t0Res.value === "number" &&
-        tRes &&
-        typeof tRes.value === "number"
-      ) {
-        const val = cpRes.value * (tRes.value - t0Res.value);
-        return { value: val, isInteger: isInteger && Number.isInteger(val) };
-      }
+    const mediumConst = evaluateMediumPropertyConstant(str, db, evalScope, isInteger, evalExprStr);
+    if (mediumConst !== null) {
+      return mediumConst;
     }
     let guardSet = (db as any)._inExtractDbConst as Set<SymbolId> | undefined;
     if (!guardSet) {

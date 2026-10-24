@@ -482,6 +482,22 @@ await yargs(rawArgs)
       "PscadCommand",
     ),
   )
+  .command(
+    lazy(
+      "psse <action> [files..]",
+      "Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)",
+      () => import("./commands/psse.js"),
+      "PsseCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "olga <action> [files..]",
+      "Simulate, lint, verify, and visualize OLGA multiphase flow models (.opi, .key, .genkey)",
+      () => import("./commands/olga.js"),
+      "OlgaCommand",
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

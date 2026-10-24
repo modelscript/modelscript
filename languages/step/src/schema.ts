@@ -1,5 +1,127 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export interface StepEntity {
+  id: string;
+  type: string;
+  args: string;
+  startOffset: number;
+  endOffset: number;
+}
+
+/**
+ * High-performance, zero-regex scanner that parses all `#ID = TYPE(ARGS);` entities
+ * from STEP ISO 10303-21 clear text, correctly respecting comments, quoted strings, and nested parentheses.
+ */
+export function scanStepEntities(text: string): StepEntity[] {
+  const entities: StepEntity[] = [];
+  let i = 0;
+  const len = text.length;
+
+  while (i < len) {
+    // Skip whitespace
+    while (i < len && text.charCodeAt(i) <= 32) i++;
+    if (i >= len) break;
+
+    // Skip comments /* ... */
+    if (text.charCodeAt(i) === 47 /* / */ && text.charCodeAt(i + 1) === 42 /* * */) {
+      i += 2;
+      while (i < len && !((text.charCodeAt(i) === 42 /* * */ && text.charCodeAt(i + 1) === 47) /* / */)) i++;
+      i += 2;
+      continue;
+    }
+
+    // Look for `#`
+    if (text.charCodeAt(i) === 35 /* # */) {
+      const startOffset = i;
+      i++;
+      const numStart = i;
+      while (i < len && text.charCodeAt(i) >= 48 && text.charCodeAt(i) <= 57) i++;
+      if (i === numStart) continue; // Not a valid entity ID
+
+      const id = `#${text.slice(numStart, i)}`;
+
+      // Skip whitespace to '='
+      while (
+        i < len &&
+        (text.charCodeAt(i) === 32 ||
+          text.charCodeAt(i) === 9 ||
+          text.charCodeAt(i) === 13 ||
+          text.charCodeAt(i) === 10)
+      )
+        i++;
+      if (i >= len || text.charCodeAt(i) !== 61 /* = */) continue;
+      i++; // skip '='
+
+      while (i < len && text.charCodeAt(i) <= 32) i++;
+      if (i >= len) break;
+
+      // Check for '(' in complex entity, or keyword
+      let type = "";
+      if (text.charCodeAt(i) === 40 /* ( */) {
+        type = "COMPLEX_ENTITY";
+      } else {
+        const typeStart = i;
+        while (
+          i < len &&
+          ((text.charCodeAt(i) >= 65 && text.charCodeAt(i) <= 90) ||
+            (text.charCodeAt(i) >= 48 && text.charCodeAt(i) <= 57) ||
+            text.charCodeAt(i) === 95)
+        ) {
+          i++;
+        }
+        type = text.slice(typeStart, i);
+      }
+
+      // Skip to '('
+      while (i < len && text.charCodeAt(i) <= 32) i++;
+      if (i >= len || text.charCodeAt(i) !== 40 /* ( */) continue;
+      i++; // skip '('
+
+      const argsStart = i;
+      let depth = 1;
+      let inString = false;
+      while (i < len && depth > 0) {
+        const ch = text.charCodeAt(i);
+        if (ch === 39 /* ' */) {
+          if (inString && text.charCodeAt(i + 1) === 39) {
+            i += 2;
+            continue;
+          }
+          inString = !inString;
+        } else if (!inString) {
+          if (ch === 40 /* ( */) depth++;
+          else if (ch === 41 /* ) */) {
+            depth--;
+            if (depth === 0) break;
+          } else if (ch === 59 /* ; */) break;
+        }
+        i++;
+      }
+
+      const args = text.slice(argsStart, i);
+      if (i < len && text.charCodeAt(i) === 41 /* ) */) i++;
+
+      // Skip to ';'
+      while (i < len && text.charCodeAt(i) <= 32) i++;
+      if (i < len && text.charCodeAt(i) === 59 /* ; */) i++;
+      const endOffset = i;
+
+      entities.push({
+        id,
+        type,
+        args,
+        startOffset,
+        endOffset,
+      });
+      continue;
+    }
+
+    i++;
+  }
+
+  return entities;
+}
+
 /**
  * Scans raw STEP ISO 10303-21 text to extract all `#N = ENTITY(...)` instance definitions
  * and `#N` entity reference occurrences (skipping comments and single-quoted strings).
@@ -8,15 +130,14 @@ export function parseStepReferences(text: string) {
   const definitions = new Map<string, { startOffset: number; endOffset: number; text: string; type: string }>();
   const references: { id: string; startOffset: number; endOffset: number }[] = [];
 
-  // Pass 1: index all `#id = KEYWORD(...)` or complex `#id = (...)` definitions
-  const defPattern = /#([0-9]+)\s*=\s*([A-Z][A-Z0-9_]*|\()/g;
-  let match;
-  while ((match = defPattern.exec(text)) !== null) {
-    definitions.set(`#${match[1]}`, {
-      startOffset: match.index,
-      endOffset: match.index + match[0].length,
-      text: match[0],
-      type: match[2] === "(" ? "COMPLEX_ENTITY" : match[2]!,
+  // Pass 1: index all `#id = KEYWORD(...)` or complex `#id = (...)` definitions using zero-regex scanner
+  const entityList = scanStepEntities(text);
+  for (const ent of entityList) {
+    definitions.set(ent.id, {
+      startOffset: ent.startOffset,
+      endOffset: ent.endOffset,
+      text: text.slice(ent.startOffset, ent.endOffset),
+      type: ent.type,
     });
   }
 

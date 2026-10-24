@@ -5,6 +5,7 @@ export * from "./connections.js";
 export { modelicaLanguage } from "./language.js";
 export * from "./modifications.js";
 
+export * from "./constants.js";
 export * from "./context.js";
 export * from "./errors.js";
 export * from "./factory.js";

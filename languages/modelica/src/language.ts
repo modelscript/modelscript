@@ -491,8 +491,8 @@ export const modelicaLanguage = language({
   lsp: {
     fileExtension: ".mo",
     icons: {
-      light: "./assets/icon-light.png",
-      dark: "./assets/icon-dark.png",
+      light: "./assets/modelica/icon-light.png",
+      dark: "./assets/modelica/icon-dark.png",
     },
     folding: [
       "class_definition",

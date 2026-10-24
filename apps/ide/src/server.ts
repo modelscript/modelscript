@@ -259,6 +259,80 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
       }
     });
   }
+
+  // Ensure drops over diagram webview iframes are allowed and forwarded with correct local coordinates
+  function forwardToWebviews(type, clientX, clientY, extra) {
+    try {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        var iframe = iframes[i];
+        var r = iframe.getBoundingClientRect();
+        if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+          var localX = clientX - r.left;
+          var localY = clientY - r.top;
+          var msg = Object.assign({ type: type, clientX: localX, clientY: localY }, extra || {});
+          if (iframe.contentWindow) {
+            iframe.contentWindow.postMessage(msg, '*');
+            try {
+              var innerFrames = iframe.contentDocument ? iframe.contentDocument.querySelectorAll('iframe') : [];
+              for (var j = 0; j < innerFrames.length; j++) {
+                var inner = innerFrames[j];
+                var innerRect = inner.getBoundingClientRect();
+                var innerX = localX - innerRect.left;
+                var innerY = localY - innerRect.top;
+                if (inner.contentWindow) {
+                  inner.contentWindow.postMessage(Object.assign({}, msg, { clientX: innerX, clientY: innerY }), '*');
+                }
+              }
+            } catch (innerErr) {
+              try {
+                for (var k = 0; k < iframe.contentWindow.frames.length; k++) {
+                  iframe.contentWindow.frames[k].postMessage(msg, '*');
+                }
+              } catch (e2) {}
+            }
+          }
+        }
+      }
+    } catch (err) {}
+  }
+
+  window.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    forwardToWebviews('workbenchDragOver', e.clientX, e.clientY);
+  }, true);
+
+  window.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var extra = {};
+    try {
+      if (e.dataTransfer) {
+        extra.className = e.dataTransfer.getData('application/vnd.modelscript.classname');
+        extra.iconSvg = e.dataTransfer.getData('application/vnd.modelscript.iconsvg');
+        extra.json = e.dataTransfer.getData('application/json');
+      }
+    } catch (mErr) {}
+    forwardToWebviews('workbenchDrop', e.clientX, e.clientY, extra);
+  }, true);
+
+  window.addEventListener('dragend', function() {
+    try {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        if (iframes[i].contentWindow) {
+          iframes[i].contentWindow.postMessage({ type: 'dragEnd' }, '*');
+          try {
+            for (var k = 0; k < iframes[i].contentWindow.frames.length; k++) {
+              iframes[i].contentWindow.frames[k].postMessage({ type: 'dragEnd' }, '*');
+            }
+          } catch (e2) {}
+        }
+      }
+    } catch (err) {}
+  }, true);
 })();
 </script>`;
 
@@ -323,6 +397,8 @@ app.use(
   "/static/devextensions",
   (_req, res, next) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     next();
   },
   express.static(MODELSCRIPT_EXT_DIR, { dotfiles: "allow" }),

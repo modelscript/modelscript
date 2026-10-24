@@ -23,6 +23,7 @@
  */
 
 import type { ExpressionEvaluator, QueryDB, SymbolEntry } from "@modelscript/runtime";
+import { resolveModelicaConstant } from "./constants.js";
 import { evalArithmeticString, splitTopLevel } from "./flattener/expressions/cst-utils.js";
 import type { ModificationValue } from "./modifications.js";
 
@@ -370,8 +371,9 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   // Simple name reference — resolve in scope
   if (/^\.?[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(trimmed) && scope) {
     const cleanName = trimmed.startsWith(".") ? trimmed.slice(1) : trimmed;
-    if (cleanName === "Modelica.Constants.inf" || cleanName === "Constants.inf") {
-      return 1e60;
+    const constVal = resolveModelicaConstant(cleanName);
+    if (constVal !== undefined) {
+      return constVal;
     }
     const isQualified = cleanName.includes(".");
     const resolveHook = isQualified ? "resolveName" : "resolveSimpleName";

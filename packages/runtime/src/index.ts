@@ -35,6 +35,7 @@ export * from "./autodiff/wasm_isolation.js";
 export * from "./autodiff/wasm_tape.js";
 export * from "./config/config_client.js";
 export * from "./config/indexeddb_snapshot.js";
+export * from "./dae/fluent/index.js";
 export * from "./dae/wasm_dae.js";
 export * from "./dae/wasm_dae_printer.js";
 export * from "./dae/wasm_evaluator.js";
@@ -83,6 +84,8 @@ export * from "./interop/trade_study.js";
 export * from "./interop/vcycle_verifier.js";
 export * from "./ontology/parallel_reasoner.js";
 export * from "./ontology/wasm_ontology.js";
+export * from "./passes/index.js";
+export * from "./rewriting/index.js";
 export * from "./storage/paged_store.js";
 
 export * from "./pipeline.js";

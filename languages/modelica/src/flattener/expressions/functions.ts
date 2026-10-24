@@ -17,6 +17,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/runtime";
+import { isInnerQuery, isOuterQuery } from "../../queries.js";
 import { getFlatteningState } from "../support/state.js";
 import { getArrayCtorElements } from "./binary-ops.js";
 import {
@@ -78,11 +79,10 @@ export function isEquationExpr(c: any): boolean {
 
 export function isOuterFunctionSymbol(db: any, sym: any): boolean {
   if (!sym || !db) return false;
-  const cst = db.cstNode(sym.id) as any;
-  if (/\bouter\b/.test(cst?.text ?? "") || /\bouter\b/.test(cst?.parent?.text ?? "")) return true;
+  if (db.query?.("isOuter", sym.id) || isOuterQuery(db, sym)) return true;
   if (sym.parentId) {
-    const parentCst = db.cstNode(sym.parentId) as any;
-    if (/\bouter\b/.test(parentCst?.text ?? "") || /\bouter\b/.test(parentCst?.parent?.text ?? "")) return true;
+    const parentSym = db.symbol ? db.symbol(sym.parentId) : null;
+    if (parentSym && (db.query?.("isOuter", parentSym.id) || isOuterQuery(db, parentSym))) return true;
   }
   return false;
 }
@@ -94,8 +94,7 @@ export function hasMatchingInnerFunction(db: any, flattener: any, name: string):
   if (!candidates) return false;
   return candidates.some((c: any) => {
     if (c.kind !== "Class" && c.kind !== "Function") return false;
-    const cst = db.cstNode(c.id) as any;
-    const hasInner = /\binner\b/.test(cst?.text ?? "") || /\binner\b/.test(cst?.parent?.text ?? "");
+    const hasInner = db.query?.("isInner", c.id) || isInnerQuery(db, c);
     if (!hasInner) return false;
     return !flattener?.isClassPartial?.(c.id);
   });

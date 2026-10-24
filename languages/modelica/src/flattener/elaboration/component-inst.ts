@@ -18,12 +18,15 @@ import {
   type SymbolId,
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
+import { MAX_ARRAY_EXPANSION_LENGTH } from "../../constants.js";
 import { AnnotationEvaluator } from "../../diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { isPredefinedType } from "../../predefined-types.js";
 import {
   cyclicDimensionDiagnostics,
   getShortClassSpecifierNode,
+  isInnerQuery,
+  isOuterQuery,
   isScopeEncapsulated,
   isSymbolEncapsulated,
   resolveQualified,
@@ -135,9 +138,14 @@ function findFirstExpressionCst(n: any): any {
   return null;
 }
 
+const STANDALONE_EXPR_CACHE_LIMIT = 512;
+const standaloneExprCache = new Map<string, any>();
+
 function parseStandaloneExpressionCst(exprText: string): any | null {
   const trimmed = exprText.trim();
   if (!trimmed) return null;
+  const cached = standaloneExprCache.get(trimmed);
+  if (cached !== undefined) return cached;
   const parser = UnifiedWorkspace.getGlobalParser(".mo");
   if (!parser) return null;
   try {
@@ -151,7 +159,12 @@ function parseStandaloneExpressionCst(exprText: string): any | null {
       }
       return null;
     };
-    return findRhs(dummyTree.rootNode) ?? findFirstExpressionCst(dummyTree.rootNode);
+    const res = findRhs(dummyTree.rootNode) ?? findFirstExpressionCst(dummyTree.rootNode);
+    if (standaloneExprCache.size >= STANDALONE_EXPR_CACHE_LIMIT) {
+      standaloneExprCache.clear();
+    }
+    standaloneExprCache.set(trimmed, res);
+    return res;
   } catch {
     return null;
   }
@@ -413,7 +426,7 @@ function evaluateComprehensionRangeValues(
     const stopVal = evalNumPart(colonParts[colonParts.length - 1]!);
     if (startVal !== null && stepVal !== null && stopVal !== null && stepVal !== 0) {
       const values: string[] = [];
-      const maxLen = 10000;
+      const maxLen = MAX_ARRAY_EXPANSION_LENGTH;
       if (stepVal > 0) {
         for (let v = startVal; v <= stopVal + 1e-12 && values.length < maxLen; v += stepVal) {
           values.push(String(Number.isInteger(v) ? v : Number(v.toPrecision(15))));
@@ -441,62 +454,58 @@ function parseModelicaArrayArg(
   scopeId?: SymbolId,
 ): any {
   const trimmed = raw.trim();
-  try {
-    return JSON.parse(trimmed.replace(/\{/g, "[").replace(/\}/g, "]"));
-  } catch {
-    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
-    const elems = parseArrayLiteralElements(trimmed);
-    const parsed: any[] = [];
-    for (const el of elems) {
-      const et = el.trim();
-      if (et.startsWith("{") && et.endsWith("}")) {
-        const sub = parseModelicaArrayArg(et, dae, flattener, prefix, scopeId);
-        if (sub === undefined) return undefined;
-        parsed.push(sub);
-        continue;
-      }
-      if (et === "true") {
-        parsed.push(true);
-        continue;
-      }
-      if (et === "false") {
-        parsed.push(false);
-        continue;
-      }
-      if (et.startsWith('"') && et.endsWith('"')) {
-        parsed.push(et.slice(1, -1));
-        continue;
-      }
-      const num = Number(et);
-      if (!isNaN(num) && et !== "") {
-        parsed.push(num);
-        continue;
-      }
-      const scoped = prefix ? `${prefix}.${et}` : et;
-      let vIdx = dae.lookupVariable(scoped);
-      if (vIdx < 0) vIdx = dae.lookupVariable(et);
-      if (vIdx >= 0) {
-        const sv = dae.getVarExpression(vIdx);
-        const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
-        if (val !== null && val !== undefined) {
-          parsed.push(val);
-          continue;
-        }
-      }
-      const cstNum = evaluateCSTNumber(et, undefined, scopeId, flattener.db, dae, prefix);
-      if (typeof cstNum === "number" && !isNaN(cstNum)) {
-        parsed.push(cstNum);
-        continue;
-      }
-      const ev = flattener.db?.evaluate?.(et, scopeId);
-      if (ev !== null && ev !== undefined) {
-        parsed.push(ev);
-        continue;
-      }
-      return undefined;
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
+  const elems = parseArrayLiteralElements(trimmed);
+  const parsed: any[] = [];
+  for (const el of elems) {
+    const et = el.trim();
+    if (et.startsWith("{") && et.endsWith("}")) {
+      const sub = parseModelicaArrayArg(et, dae, flattener, prefix, scopeId);
+      if (sub === undefined) return undefined;
+      parsed.push(sub);
+      continue;
     }
-    return parsed;
+    if (et === "true") {
+      parsed.push(true);
+      continue;
+    }
+    if (et === "false") {
+      parsed.push(false);
+      continue;
+    }
+    if (et.startsWith('"') && et.endsWith('"')) {
+      parsed.push(et.slice(1, -1));
+      continue;
+    }
+    const num = Number(et);
+    if (!isNaN(num) && et !== "") {
+      parsed.push(num);
+      continue;
+    }
+    const scoped = prefix ? `${prefix}.${et}` : et;
+    let vIdx = dae.lookupVariable(scoped);
+    if (vIdx < 0) vIdx = dae.lookupVariable(et);
+    if (vIdx >= 0) {
+      const sv = dae.getVarExpression(vIdx);
+      const val = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
+      if (val !== null && val !== undefined) {
+        parsed.push(val);
+        continue;
+      }
+    }
+    const cstNum = evaluateCSTNumber(et, undefined, scopeId, flattener.db, dae, prefix);
+    if (typeof cstNum === "number" && !isNaN(cstNum)) {
+      parsed.push(cstNum);
+      continue;
+    }
+    const ev = flattener.db?.evaluate?.(et, scopeId);
+    if (ev !== null && ev !== undefined) {
+      parsed.push(ev);
+      continue;
+    }
+    return undefined;
   }
+  return parsed;
 }
 
 function canonicalizeOldFrontendExpr(exprId: number, varType: number, dae: DAEBuilder, forceOldStyle = false): number {
@@ -8617,7 +8626,10 @@ export function instantiateElements(
                             const evaluatedKey = prefix ? `${prefix}.${name}` : name;
                             flattener.evaluatedConstantArrays.set(evaluatedKey, evalRes);
                           }
-                        } catch {}
+                        } catch {
+                          // Speculative evaluation of constant function call during dimension inference.
+                          // If evaluation cannot be completed at this stage, continue with standard dimension resolution.
+                        }
                       }
                     }
                   }
@@ -8783,7 +8795,10 @@ export function instantiateElements(
                               }
                             }
                           }
-                        } catch {}
+                        } catch {
+                          // Speculative evaluation of array shape during dimension inference.
+                          // If evaluation cannot be completed at this stage, continue with standard dimension resolution.
+                        }
                       }
                     }
                   }
@@ -10584,43 +10599,9 @@ export function resolveInnerOuterClass(flattener: ComponentFlattener, classId: S
   if (!sym) return classId;
 
   const hasPrefix = (s: SymbolEntry, prefix: "inner" | "outer"): boolean => {
-    const meta = s.metadata as any;
-    const rawPrefixes = meta?.classPrefixes ?? meta?.prefixes;
-    if (typeof rawPrefixes === "string" && new RegExp(`\\b${prefix}\\b`).test(rawPrefixes)) {
-      return true;
-    }
-    if (s.startOffset != null && typeof (flattener.db as any).cstText === "function") {
-      const lookbackStart = Math.max(0, s.startOffset - 60);
-      const end = Math.min(s.startOffset + 60, s.endOffset ?? s.startOffset + 60);
-      const text = (flattener.db as any).cstText(lookbackStart, end, s);
-      if (typeof text === "string") {
-        const pattern = new RegExp(
-          `\\b${prefix}\\s+(?:(?:partial|encapsulated|final|replaceable)\\s+)*(?:class|model|block|record|connector|type|function|package)\\s+${s.name}\\b`,
-        );
-        if (pattern.test(text)) {
-          return true;
-        }
-      }
-    }
-    const cst = flattener.db.cstNode(s.id) as any;
-    const prefixesNode = (cst?.children || []).find((c: any) => c.type === "class_prefixes" || c.type === "prefixes");
-    if (prefixesNode) {
-      return Boolean((prefixesNode.text ?? "").includes(prefix));
-    }
-    for (const c of cst?.children || []) {
-      const ct = c.text?.trim();
-      if (ct === prefix) return true;
-      if (
-        c.type === "class" ||
-        c.type === "model" ||
-        c.type === "block" ||
-        c.type === "record" ||
-        c.type === "package"
-      ) {
-        break;
-      }
-    }
-    return false;
+    return prefix === "inner"
+      ? (flattener.db.query("isInner", s.id) ?? isInnerQuery(flattener.db, s))
+      : (flattener.db.query("isOuter", s.id) ?? isOuterQuery(flattener.db, s));
   };
 
   if (!hasPrefix(sym, "outer")) return classId;

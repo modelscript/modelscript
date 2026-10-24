@@ -373,6 +373,26 @@ module.exports.default = module.exports;
           loader: "js",
         };
       }
+      if (mod === "process") {
+        return {
+          contents: `
+const proc = (typeof globalThis !== 'undefined' && globalThis.process) || {
+  env: {},
+  cwd: () => '/',
+  platform: 'browser',
+  pid: 1,
+  version: 'v18.0.0',
+  argv: ['node', 'script'],
+  nextTick: (cb) => setTimeout(cb, 0),
+  memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
+  hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
+};
+module.exports = proc;
+module.exports.default = proc;
+`,
+          loader: "js",
+        };
+      }
       return { contents: "", loader: "js" };
     });
   },
@@ -393,11 +413,32 @@ async function run() {
     minify: false,
     keepNames: true,
     sourcemap: "linked",
+    banner: {
+      js: `if (typeof globalThis.process === "undefined") {
+  globalThis.process = {
+    env: {},
+    cwd: () => "/",
+    platform: "browser",
+    pid: 1,
+    version: "v18.0.0",
+    argv: ["node", "script"],
+    nextTick: (cb) => setTimeout(cb, 0),
+    memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
+    hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
+  };
+}
+if (typeof self !== "undefined" && typeof self.process === "undefined") {
+  self.process = globalThis.process;
+}
+var process = globalThis.process;
+`,
+    },
     define: {
       "process.env": "{}",
       "process.browser": "true",
       "import.meta.url": "self.location.href",
     },
+    inject: [path.join(__dirname, "process-polyfill.js")],
     logOverride: {
       "duplicate-object-key": "silent",
       "empty-import-meta": "silent",

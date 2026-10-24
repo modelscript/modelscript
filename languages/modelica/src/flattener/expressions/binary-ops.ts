@@ -1841,3 +1841,75 @@ export function negateExpr(operandId: number, dae: DAEBuilder): number {
   }
   return dae.addExpression(ExprKind.Negate, 0, operandId);
 }
+
+/**
+ * Applies declarative trigonometric simplifications:
+ * - sin(x)^2 + cos(x)^2 => 1.0
+ * - 2 * sin(x) * cos(x) => sin(2 * x)
+ */
+export function simplifyTrigonometricBinary(
+  dae: DAEBuilder,
+  binOp: BinOp,
+  leftId: number,
+  rightId: number,
+): number | null {
+  if (binOp === BinOp.Add) {
+    if (
+      dae.getExprKind(leftId) === ExprKind.Binary &&
+      dae.getExprData1(leftId) === BinOp.Pow &&
+      dae.getExprKind(rightId) === ExprKind.Binary &&
+      dae.getExprData1(rightId) === BinOp.Pow
+    ) {
+      const lBase = dae.getExprLeft(leftId);
+      const lExp = dae.getExprRight(leftId);
+      const rBase = dae.getExprLeft(rightId);
+      const rExp = dae.getExprRight(rightId);
+      const isExpTwo = (id: number) =>
+        (dae.getExprKind(id) === ExprKind.RealLiteral && dae.getExprRealValue(id) === 2.0) ||
+        (dae.getExprKind(id) === ExprKind.IntLiteral && dae.getExprData1(id) === 2);
+      if (
+        isExpTwo(lExp) &&
+        isExpTwo(rExp) &&
+        dae.getExprKind(lBase) === ExprKind.Call &&
+        dae.getExprKind(rBase) === ExprKind.Call &&
+        dae.getExprRight(lBase) === 1 &&
+        dae.getExprRight(rBase) === 1
+      ) {
+        const lFn = dae.interner.resolve(dae.getExprData1(lBase));
+        const rFn = dae.interner.resolve(dae.getExprData1(rBase));
+        if (
+          ((lFn === "sin" && rFn === "cos") || (lFn === "cos" && rFn === "sin")) &&
+          areExpressionsEqual(dae, dae.getExprLeft(lBase), dae.getExprLeft(rBase))
+        ) {
+          return dae.addRealLiteral(1.0);
+        }
+      }
+    }
+  } else if (binOp === BinOp.Mul) {
+    if (
+      dae.getExprKind(leftId) === ExprKind.Binary &&
+      dae.getExprData1(leftId) === BinOp.Mul &&
+      dae.getExprKind(rightId) === ExprKind.Call &&
+      dae.getExprRight(rightId) === 1
+    ) {
+      const mL = dae.getExprLeft(leftId);
+      const mR = dae.getExprRight(leftId);
+      const isTwo =
+        (dae.getExprKind(mL) === ExprKind.RealLiteral && dae.getExprRealValue(mL) === 2.0) ||
+        (dae.getExprKind(mL) === ExprKind.IntLiteral && dae.getExprData1(mL) === 2);
+      if (isTwo && dae.getExprKind(mR) === ExprKind.Call && dae.getExprRight(mR) === 1) {
+        const fn1 = dae.interner.resolve(dae.getExprData1(mR));
+        const fn2 = dae.interner.resolve(dae.getExprData1(rightId));
+        const arg1 = dae.getExprLeft(mR);
+        const arg2 = dae.getExprLeft(rightId);
+        if (
+          ((fn1 === "sin" && fn2 === "cos") || (fn1 === "cos" && fn2 === "sin")) &&
+          areExpressionsEqual(dae, arg1, arg2)
+        ) {
+          return dae.addCallExpr("sin", [dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(2.0), arg1)]);
+        }
+      }
+    }
+  }
+  return null;
+}

@@ -12,8 +12,13 @@ import {
   causalizeVectorArena,
   convertArenaToMicroModelica,
   eliminateVectorArenaAliases,
+  evalTable1DValue,
+  evalTimeTableTmax,
+  evalTimeTableTmin,
+  evalTimeTableValue,
   evaluateArenaExpression,
   expandSetBasedConnectionsArena,
+  getOrCreateCachedTable,
   hasArrayEquations,
   isolateSymbolicallyArena,
   pantelidesIndexReductionArena,
@@ -21,6 +26,7 @@ import {
   scalarizeArena,
   tryOptimizeLoopWithGroebner,
   type ArenaStateMachine,
+  type DAEPassManager,
 } from "@modelscript/runtime";
 import { bdf } from "@modelscript/runtime/wasm_bdf.js";
 import { dopri5 } from "@modelscript/runtime/wasm_dopri5.js";
@@ -39,6 +45,7 @@ import { qssSolve } from "../solvers/qss-solver.js";
 import { rodas4p } from "../solvers/rodas4p.js";
 import { trbdf2 } from "../solvers/trbdf2.js";
 import { tsit5 } from "../solvers/tsit5.js";
+import { CallbackDispatcher, type IntegratorCallback } from "./callbacks.js";
 import {
   type ArenaAssertion,
   type ArenaEventIndicator,
@@ -55,257 +62,6 @@ const NEWTON_MAX_ITER = 20;
 const NEWTON_TOL = 1e-10;
 /** Square root of machine epsilon for finite-difference perturbation. */
 const SQRT_EPS = 1.4901161193847656e-8;
-
-/**
- * Cached 1D lookup table data extracted from a Modelica `CombiTimeTable` or `CombiTable1D` block.
- */
-interface CachedTable1D {
-  /** 2D array of table rows `[time_or_u, col_1, col_2, ...]`. */
-  table: number[][];
-  /** 1-based column indices to interpolate from `table`. */
-  columns: number[];
-  /** Time offset subtracted from simulation time before lookup (`s`). */
-  shiftTime: number;
-  /** Time scaling factor applied to shifted simulation time. */
-  timeScale: number;
-  /** Activation start time for the table block (`s`). */
-  startTime: number;
-  /** Whether the block declares a `timeScaled` variable. */
-  hasTimeScaled?: boolean;
-}
-
-/**
- * Recursively extracts a numeric scalar or nested array literal from a DAE arena expression node.
- *
- * @param arena - DAE arena instance.
- * @param exprId - Expression node index in the arena.
- * @returns Numeric scalar, nested array of numbers, or `null` if not a literal expression.
- */
-function extractSimArrayLiteral(arena: any, exprId: number): any {
-  if (exprId < 0) return null;
-  const kind = arena.getExprKind(exprId);
-  if (kind === ExprKind.IntLiteral) return arena.getExprData1(exprId);
-  if (kind === ExprKind.RealLiteral) return arena.getExprRealValue(exprId);
-  if (kind === ExprKind.Negate) {
-    const inner = extractSimArrayLiteral(arena, arena.getExprLeft(exprId));
-    return typeof inner === "number" ? -inner : null;
-  }
-  if (kind === ExprKind.Unary) {
-    const op = arena.getExprData1(exprId) as UnaryOp;
-    const inner = extractSimArrayLiteral(arena, arena.getExprLeft(exprId));
-    if (typeof inner !== "number") return null;
-    if (op === UnaryOp.Negate) return -inner;
-    if (op === UnaryOp.Not) return inner === 0 ? 1 : 0;
-    return inner;
-  }
-  if (kind === ExprKind.ArrayCtor) {
-    const count = arena.getExprData1(exprId);
-    const elems: any[] = [];
-    elems.push(extractSimArrayLiteral(arena, arena.getExprLeft(exprId)));
-    for (let i = 1; i < count; i++) {
-      elems.push(extractSimArrayLiteral(arena, arena.getExprLeft(exprId + i)));
-    }
-    return elems;
-  }
-  return null;
-}
-
-/**
- * Performs piecewise linear 1D interpolation with constant clamping outside the table domain.
- *
- * @param table - 2D array of sorted rows where column `0` is the abscissa (`u`).
- * @param colIdx - Zero-based column index of the ordinate (`y`) to interpolate.
- * @param u - Query abscissa value.
- * @returns Interpolated ordinate value at `u`.
- */
-function interpolate1DSim(table: number[][], colIdx: number, u: number): number {
-  if (!table || table.length === 0) return 0.0;
-  const n = table.length;
-  if (n === 1) return table[0]![colIdx] ?? 0.0;
-
-  if (u <= table[0]![0]!) return table[0]![colIdx] ?? 0.0;
-  if (u >= table[n - 1]![0]!) return table[n - 1]![colIdx] ?? 0.0;
-
-  let lo = 0;
-  let hi = n - 1;
-  while (lo < hi - 1) {
-    const mid = (lo + hi) >> 1;
-    if (table[mid]![0]! <= u) lo = mid;
-    else hi = mid;
-  }
-
-  while (hi < n - 1 && table[hi]![0]! <= u) {
-    lo = hi;
-    hi++;
-  }
-
-  const x0 = table[lo]![0]!;
-  const x1 = table[hi]![0]!;
-  const y0 = table[lo]![colIdx] ?? 0.0;
-  const y1 = table[hi]![colIdx] ?? 0.0;
-
-  if (Math.abs(x1 - x0) < 1e-15) return y1;
-  const t = (u - x0) / (x1 - x0);
-  return y0 + t * (y1 - y0);
-}
-
-/**
- * Retrieves or builds a cached 1D lookup table (`CachedTable1D`) for a `CombiTimeTable` or `CombiTable1D` block in the arena.
- *
- * @param arena - DAE arena instance.
- * @param tableVarNameId - Interned string ID of the `.tableID` variable.
- * @returns Cached table descriptor, or `null` if no table data could be resolved.
- */
-function getOrCreateSimCachedTable(arena: any, tableVarNameId: number): CachedTable1D | null {
-  if (!arena._cachedTables) {
-    arena._cachedTables = new Map<number, CachedTable1D>();
-  }
-  const cachedMap: Map<number, CachedTable1D> = arena._cachedTables;
-  if (cachedMap.has(tableVarNameId)) {
-    return cachedMap.get(tableVarNameId)!;
-  }
-
-  const tableVarName = arena.interner.resolve(tableVarNameId) ?? "";
-  const prefix = tableVarName.replace(/\.tableID$/, "");
-
-  let tableData: number[][] | null = null;
-  const tableIdx = arena.getVarIdxByName(`${prefix}.table`);
-  if (tableIdx >= 0) {
-    const tableExpr = arena.getVarExpression(tableIdx);
-    const data = tableExpr !== undefined ? extractSimArrayLiteral(arena, tableExpr) : null;
-    if (Array.isArray(data)) tableData = data;
-  }
-  if (!tableData) {
-    if (arena.getVarIdxByName(`${prefix}.table[1,1]`) >= 0) {
-      tableData = [];
-      let r = 1;
-      while (true) {
-        if (arena.getVarIdxByName(`${prefix}.table[${r},1]`) < 0) break;
-        const row: number[] = [];
-        let c = 1;
-        while (true) {
-          const vIdx = arena.getVarIdxByName(`${prefix}.table[${r},${c}]`);
-          if (vIdx < 0) break;
-          const exprId = arena.getVarExpression(vIdx);
-          const extracted = exprId !== undefined && exprId >= 0 ? extractSimArrayLiteral(arena, exprId) : null;
-          const val = (typeof extracted === "number" ? extracted : arena.getVarStartValue(vIdx)) ?? 0;
-          row.push(val);
-          c++;
-        }
-        if (row.length === 0) break;
-        tableData.push(row);
-        r++;
-      }
-    }
-  }
-  if (!tableData || tableData.length === 0) return null;
-
-  let columns: number[] = [];
-  const colsIdx = arena.getVarIdxByName(`${prefix}.columns`);
-  if (colsIdx >= 0) {
-    const colsExpr = arena.getVarExpression(colsIdx);
-    const colsData = colsExpr !== undefined ? extractSimArrayLiteral(arena, colsExpr) : null;
-    if (Array.isArray(colsData)) {
-      columns = colsData.map(Number);
-    }
-  } else if (arena.getVarIdxByName(`${prefix}.columns[1]`) >= 0) {
-    columns = [];
-    let i = 1;
-    while (true) {
-      const vIdx = arena.getVarIdxByName(`${prefix}.columns[${i}]`);
-      if (vIdx < 0) break;
-      const exprId = arena.getVarExpression(vIdx);
-      const extracted = exprId !== undefined && exprId >= 0 ? extractSimArrayLiteral(arena, exprId) : null;
-      const val = (typeof extracted === "number" ? extracted : arena.getVarStartValue(vIdx)) ?? i + 1;
-      columns.push(Math.round(val));
-      i++;
-    }
-  }
-
-  const shiftIdx = arena.getVarIdxByName(`${prefix}.shiftTime`);
-  let shiftTime = 0.0;
-  if (shiftIdx >= 0) {
-    const shiftExpr = arena.getVarExpression(shiftIdx);
-    const val = shiftExpr !== undefined ? extractSimArrayLiteral(arena, shiftExpr) : null;
-    shiftTime = typeof val === "number" ? val : arena.getVarStartValue(shiftIdx);
-  }
-
-  const scaleIdx = arena.getVarIdxByName(`${prefix}.timeScale`);
-  let timeScale = 1.0;
-  if (scaleIdx >= 0) {
-    const scaleExpr = arena.getVarExpression(scaleIdx);
-    const val = scaleExpr !== undefined ? extractSimArrayLiteral(arena, scaleExpr) : null;
-    const rawScale = typeof val === "number" ? val : arena.getVarStartValue(scaleIdx);
-    if (rawScale !== 0) timeScale = rawScale;
-  }
-
-  const startIdx = arena.getVarIdxByName(`${prefix}.startTime`);
-  let startTime = 0.0;
-  if (startIdx >= 0) {
-    const startExpr = arena.getVarExpression(startIdx);
-    const val = startExpr !== undefined ? extractSimArrayLiteral(arena, startExpr) : null;
-    startTime = typeof val === "number" ? val : arena.getVarStartValue(startIdx);
-  }
-
-  const hasTimeScaled = arena.getVarIdxByName(`${prefix}.timeScaled`) >= 0;
-
-  const record: CachedTable1D = {
-    table: tableData,
-    columns,
-    shiftTime,
-    timeScale,
-    startTime,
-    hasTimeScaled,
-  };
-  cachedMap.set(tableVarNameId, record);
-  return record;
-}
-
-/**
- * Evaluates a `Modelica.Blocks.Tables.CombiTable1D` output column at a given input `u` (without time scaling/shifting).
- */
-function evalSimTable1DValue(cached: CachedTable1D | null, icol: number, u: number): number {
-  if (!cached || !cached.table || cached.table.length === 0) return 0.0;
-  const table = cached.table;
-  const colInTable =
-    cached.columns && cached.columns.length >= icol && cached.columns[icol - 1]! >= 2
-      ? cached.columns[icol - 1]! - 1
-      : icol;
-  return interpolate1DSim(table, colInTable, u);
-}
-
-/**
- * Evaluates a `Modelica.Blocks.Tables.CombiTimeTable` output column at a given simulation time.
- *
- * @param cached - Cached table descriptor.
- * @param icol - 1-based output port index (`y[icol]`).
- * @param timeIn - Current simulation time (`s`).
- * @param isAlreadyScaled - Whether `timeIn` is already divided by `timeScale`.
- * @param isAlreadyShifted - Whether `timeIn` already has `shiftTime` subtracted.
- * @returns Interpolated table output value.
- */
-function evalSimTimeTableValue(
-  cached: CachedTable1D | null,
-  icol: number,
-  timeIn: number,
-  isAlreadyScaled = false,
-  isAlreadyShifted = false,
-): number {
-  if (!cached || !cached.table || cached.table.length === 0) return 0.0;
-  const table = cached.table;
-  const scale = cached.timeScale || 1.0;
-  const alreadyScaled = isAlreadyScaled || Boolean(cached.hasTimeScaled);
-  const effTime = alreadyScaled
-    ? isAlreadyShifted
-      ? timeIn
-      : timeIn - cached.shiftTime / scale
-    : (isAlreadyShifted ? timeIn : timeIn - cached.shiftTime) / scale;
-  const colInTable =
-    cached.columns && cached.columns.length >= icol && cached.columns[icol - 1]! >= 2
-      ? cached.columns[icol - 1]! - 1
-      : icol;
-  return interpolate1DSim(table, colInTable, effTime);
-}
 
 /**
  * Arena-native DAE/ODE simulation engine operating directly on linear-memory `DAEBuilder` structures.
@@ -495,17 +251,17 @@ export class ArenaSimulator {
       this.extractEventIndicators();
       this.extractStateMachines();
       this.prepareFmuMappings();
+      this.prepareFrictionMappings();
       return;
     }
 
-    (this.arena as any)._mutatedBySim = true;
+    this.arena.isMutatedBySim = true;
     (this.arena as any)._delayHistory = new Map();
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
     this.resolveParameters(preOverrides);
     this.resolveKinematicVelocities();
     this.reduceAffineStateConstraints();
     this.identifyDerivatives();
-    this.eliminateAliases();
 
     // Arena-Native Pantelides Index Reduction
     const pantelidesRes = pantelidesIndexReductionArena(
@@ -539,6 +295,7 @@ export class ArenaSimulator {
     this.extractEventIndicators();
     this.extractStateMachines();
     this.prepareFmuMappings();
+    this.prepareFrictionMappings();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -771,15 +528,6 @@ export class ArenaSimulator {
         }
       }
     }
-  }
-
-  /**
-   * No-op stub retained for pipeline compatibility; linear alias elimination is performed
-   * during flattening via `eliminateArenaAliases()`.
-   */
-  private eliminateAliases() {
-    // Alias elimination was moved to the flattener via eliminateArenaAliases()
-    // in O(N) time. The simulator no longer needs to do it!
   }
 
   /**
@@ -2234,6 +1982,7 @@ export class ArenaSimulator {
    * from the Modelica 3.3 synchronous state machines registered in the DAE arena.
    */
   private extractStateMachines() {
+    this.prevStateMachineTime = -1;
     this.stateMachineRuntimes = [];
     for (const sm of this.arena.stateMachines) {
       this.stateMachineRuntimes.push(this.buildStateMachineRuntime(sm));
@@ -2281,23 +2030,19 @@ export class ArenaSimulator {
   //                    of the source state have reached a final state
   // ─────────────────────────────────────────────────────────────────────────
 
+  private prevStateMachineTime = -1;
+
   /** Executes one tick of all top-level synchronous state machine runtimes. */
   private executeStateMachines(valuesByStringId: Float64Array): void {
-    for (const rt of this.stateMachineRuntimes) {
-      this.executeSingleStateMachine(rt, valuesByStringId);
-    }
-  }
-
-  /** Get the simulation step size from the time variable delta (or a default). */
-  private getStepSize(valuesByStringId: Float64Array): number {
+    if (this.stateMachineRuntimes.length === 0) return;
     const timeId = this.arena.interner.intern("time");
     const t = valuesByStringId[timeId] ?? 0;
-    // Use a stored previous time to compute dt; fallback to 0.001
-    const prevTimeId = this.arena.interner.intern("$__prevTime");
-    const prevT = valuesByStringId[prevTimeId] ?? t;
-    const dt = t - prevT;
-    valuesByStringId[prevTimeId] = t;
-    return dt > 0 ? dt : 0;
+    const dt = this.prevStateMachineTime >= 0 ? Math.max(0, t - this.prevStateMachineTime) : 0;
+    this.prevStateMachineTime = t;
+
+    for (const rt of this.stateMachineRuntimes) {
+      this.executeSingleStateMachine(rt, valuesByStringId, dt);
+    }
   }
 
   /**
@@ -2305,9 +2050,7 @@ export class ArenaSimulator {
    * and Modelica 3.3 state machine intrinsics (`activeState`, `ticksInState`, `timeInState`, `previousState`)
    * for a single state machine runtime.
    */
-  private executeSingleStateMachine(rt: ArenaStateMachineRuntime, valuesByStringId: Float64Array): void {
-    const dt = this.getStepSize(valuesByStringId);
-
+  private executeSingleStateMachine(rt: ArenaStateMachineRuntime, valuesByStringId: Float64Array, dt: number): void {
     // ── Phase 1: Evaluate transitions from the current active state (priority-ordered) ──
     let transitioned = false;
     for (let ti = 0; ti < rt.def.transitions.length; ti++) {
@@ -2401,7 +2144,7 @@ export class ArenaSimulator {
       for (const childSm of activeStateDef.stateMachines) {
         const childRt = rt.children.find((c) => c.def.name === childSm.name);
         if (childRt) {
-          this.executeSingleStateMachine(childRt, valuesByStringId);
+          this.executeSingleStateMachine(childRt, valuesByStringId, dt);
         }
       }
     }
@@ -2667,24 +2410,20 @@ export class ArenaSimulator {
       // 1. Runtime helper table passed into compiled closures for external tables, fallback expressions, and Newton blocks
       const helpers = {
         getTimeTableValue: (tableIdStrId: number, icol: number, timeIn: number) => {
-          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
-          return evalSimTimeTableValue(cached, icol, timeIn);
+          const cached = getOrCreateCachedTable(arena, tableIdStrId);
+          return evalTimeTableValue(cached, icol, timeIn);
         },
         getTable1DValue: (tableIdStrId: number, icol: number, uIn: number) => {
-          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
-          return evalSimTable1DValue(cached, icol, uIn);
+          const cached = getOrCreateCachedTable(arena, tableIdStrId);
+          return evalTable1DValue(cached, icol, uIn);
         },
         getTimeTableTmin: (tableIdStrId: number) => {
-          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
-          return cached && cached.table.length > 0
-            ? (cached.table[0]![0]! + cached.shiftTime) * (cached.timeScale || 1.0)
-            : 0;
+          const cached = getOrCreateCachedTable(arena, tableIdStrId);
+          return evalTimeTableTmin(cached);
         },
         getTimeTableTmax: (tableIdStrId: number) => {
-          const cached = getOrCreateSimCachedTable(arena, tableIdStrId);
-          return cached && cached.table.length > 0
-            ? (cached.table[cached.table.length - 1]![0]! + cached.shiftTime) * (cached.timeScale || 1.0)
-            : 0;
+          const cached = getOrCreateCachedTable(arena, tableIdStrId);
+          return evalTimeTableTmax(cached);
         },
         getNextTimeEvent: (_tableIdStrId: number, _timeIn: number) => {
           return 1e100;
@@ -3715,6 +3454,7 @@ export class ArenaSimulator {
       onStepViolation?:
         | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
         | undefined;
+      callbacks?: IntegratorCallback[] | undefined;
     },
   ) {
     const solver = options?.solver ?? "rk4";
@@ -3784,6 +3524,13 @@ export class ArenaSimulator {
     for (const m of stlMonitors) m.reset();
     let terminatedEarly = false;
 
+    const callbackDispatcher = new CallbackDispatcher(options?.callbacks, startTime);
+    const stateIndexMap = new Map<string, number>();
+    for (let i = 0; i < n; i++) {
+      const sName = this.arena.interner.resolve(stateStringIds[i]!);
+      if (sName) stateIndexMap.set(sName, i);
+    }
+
     for (let s = 0; s <= steps; s++) {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
@@ -3829,6 +3576,22 @@ export class ArenaSimulator {
           }
         }
         if (terminatedEarly) break;
+      }
+
+      // ── Dynamic Callbacks Dispatch ──
+      if (callbackDispatcher.hasCallbacks) {
+        const controls = callbackDispatcher.step(currentTime, currentState, stateIndexMap, this.parameters);
+        if (controls.discontinuityOccurred) {
+          for (let i = 0; i < n; i++) {
+            valuesByStringId[stateStringIds[i] ?? -1] = currentState[i] ?? 0;
+          }
+          this.evaluateBlocks(valuesByStringId);
+          this.evaluateDerivativeEquations(valuesByStringId);
+        }
+        if (controls.terminated) {
+          terminatedEarly = true;
+          break;
+        }
       }
 
       // ── Interval / singularity barrier check ──
@@ -4248,49 +4011,60 @@ export class ArenaSimulator {
     };
   }
 
+  private frictionStateMappings: { stateIndex: number; stateId: number; flowVarId: number }[] = [];
+
   /**
-   * Projects velocity states of components with dry/rolling friction to rest (0)
-   * when the velocity crosses zero or is within regularized friction boundary
-   * without an active driving force/torque.
+   * Pre-resolves mechanical friction/stiction state variables and associated connector
+   * flow variables once during prepare(), avoiding inner-loop string parsing and full-arena scans.
    */
-  private projectFrictionRestStates(y0: Float64Array | number[], vals: Float64Array, stateIds: number[]): void {
-    const n = stateIds.length;
+  private prepareFrictionMappings(): void {
+    this.frictionStateMappings = [];
+    const stateStringIds = Array.from(this.stateVars).map((v) => this.arena.getVarNameId(v));
+    const n = stateStringIds.length;
+
+    const frictionSuffixes = [
+      ".locked",
+      ".startForward",
+      ".startBackward",
+      ".sa",
+      ".f_c",
+      ".tau_c",
+      ".v_small",
+      ".w_small",
+      ".mode",
+      ".free",
+      ".mu_pos",
+      ".cgeo",
+      ".F_prop",
+      ".F_Coulomb",
+    ];
+
+    let hasAnyFrictionIndicator = false;
+    for (let vIdx = 0; vIdx < this.arena.varCount; vIdx++) {
+      if (this.arena.isVarRemoved(vIdx)) continue;
+      const vName = this.arena.getVarName(vIdx);
+      for (const suf of frictionSuffixes) {
+        if (vName.endsWith(suf)) {
+          hasAnyFrictionIndicator = true;
+          break;
+        }
+      }
+      if (hasAnyFrictionIndicator) break;
+    }
+
+    if (!hasAnyFrictionIndicator) return;
+
     for (let i = 0; i < n; i++) {
-      const sId = stateIds[i] ?? -1;
+      const sId = stateStringIds[i] ?? -1;
       if (sId < 0) continue;
       const name = this.arena.interner.resolve(sId);
       if (!name) continue;
       const dotIdx = name.lastIndexOf(".");
       if (dotIdx < 0) continue;
       const leaf = name.substring(dotIdx + 1);
-      // Only apply to mechanical velocity states (.v, .w, .v_rel, .w_rel)
       if (leaf !== "v" && leaf !== "w" && leaf !== "v_rel" && leaf !== "w_rel") continue;
 
-      const v0 = (y0 as any)[i] ?? 0;
-      const v1 = vals[sId] ?? 0;
-      const crossedZero = (v0 > 1e-9 && v1 <= 0) || (v0 < -1e-9 && v1 >= 0);
-      const deceleratingIntoStiction =
-        Math.abs(v0) > Math.abs(v1) && ((v0 > 0 && v1 <= 0.005) || (v0 < 0 && v1 >= -0.005) || Math.abs(v1) <= 1e-4);
-      if (!crossedZero && !deceleratingIntoStiction) continue;
-
       const prefix = name.substring(0, dotIdx);
-      // Verify the component (or model) actually has dry/rolling friction variables or parameters
-      const frictionSuffixes = [
-        ".locked",
-        ".startForward",
-        ".startBackward",
-        ".sa",
-        ".f_c",
-        ".tau_c",
-        ".v_small",
-        ".w_small",
-        ".mode",
-        ".free",
-        ".mu_pos",
-        ".cgeo",
-        ".F_prop",
-        ".F_Coulomb",
-      ];
       let hasFrictionIndicator = false;
       for (const suf of frictionSuffixes) {
         if (this.arena.getVarIdxByName(prefix + suf) >= 0 || this.parameters.has(prefix + suf)) {
@@ -4298,26 +4072,8 @@ export class ArenaSimulator {
           break;
         }
       }
-      if (!hasFrictionIndicator) {
-        for (let vIdx = 0; vIdx < this.arena.varCount; vIdx++) {
-          if (this.arena.isVarRemoved(vIdx)) continue;
-          const vName = this.arena.getVarName(vIdx);
-          if (
-            vName.endsWith(".locked") ||
-            vName.endsWith(".startForward") ||
-            vName.endsWith(".sa") ||
-            vName.endsWith(".v_small") ||
-            vName.endsWith(".w_small") ||
-            vName.endsWith(".F_Coulomb")
-          ) {
-            hasFrictionIndicator = true;
-            break;
-          }
-        }
-      }
       if (!hasFrictionIndicator) continue;
 
-      // Verify the component has a connector flow variable with negligible net driving force/torque
       let flowVarNameId = -1;
       for (let vIdx = 0; vIdx < this.arena.varCount; vIdx++) {
         if (this.arena.isVarRemoved(vIdx) || !this.arena.isVarFlow(vIdx)) continue;
@@ -4333,10 +4089,35 @@ export class ArenaSimulator {
         if (faIdx >= 0) flowVarNameId = this.arena.getVarNameId(faIdx);
         else if (faPhiIdx >= 0) flowVarNameId = this.arena.getVarNameId(faPhiIdx);
       }
-      if (flowVarNameId < 0) continue;
-      const flowVal = vals[flowVarNameId] ?? 0;
+      if (flowVarNameId >= 0) {
+        this.frictionStateMappings.push({
+          stateIndex: i,
+          stateId: sId,
+          flowVarId: flowVarNameId,
+        });
+      }
+    }
+  }
+
+  /**
+   * Projects velocity states of components with dry/rolling friction to rest (0)
+   * when the velocity crosses zero or is within regularized friction boundary
+   * without an active driving force/torque.
+   */
+  private projectFrictionRestStates(y0: Float64Array | number[], vals: Float64Array, _stateIds: number[]): void {
+    if (this.frictionStateMappings.length === 0) return;
+
+    for (const mapping of this.frictionStateMappings) {
+      const v0 = (y0 as any)[mapping.stateIndex] ?? 0;
+      const v1 = vals[mapping.stateId] ?? 0;
+      const crossedZero = (v0 > 1e-9 && v1 <= 0) || (v0 < -1e-9 && v1 >= 0);
+      const deceleratingIntoStiction =
+        Math.abs(v0) > Math.abs(v1) && ((v0 > 0 && v1 <= 0.005) || (v0 < 0 && v1 >= -0.005) || Math.abs(v1) <= 1e-4);
+      if (!crossedZero && !deceleratingIntoStiction) continue;
+
+      const flowVal = vals[mapping.flowVarId] ?? 0;
       if (Math.abs(flowVal) < 1e-3) {
-        vals[sId] = 0;
+        vals[mapping.stateId] = 0;
       }
     }
   }
@@ -5321,6 +5102,10 @@ export interface ArenaSimulateOptions {
   onStepViolation?:
     | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
     | undefined;
+  /** Dynamic simulation callbacks (continuous root-crossings, discrete stepping, manifold projections). */
+  callbacks?: IntegratorCallback[] | undefined;
+  /** Optional pre-simulation compiler pass pipeline to execute before solving. */
+  passManager?: DAEPassManager | undefined;
   /** When true, runs set-based connector expansion, loop alias elimination, and vector causalization before scalarization. */
   vectorCausalize?: boolean | undefined;
   /** When true, lowers discontinuous expressions (abs, sign, min, max, if-else) to μ-Modelica discrete variables and When zero-crossings. */
@@ -5338,6 +5123,9 @@ export interface ArenaSimulateOptions {
  *   5. Transform output into the standard `{ t, y, states }` format
  */
 export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions): ArenaSimulationResult {
+  if (options?.passManager) {
+    options.passManager.run(arena);
+  }
   if (options?.vectorCausalize) {
     expandSetBasedConnectionsArena(arena);
     eliminateVectorArenaAliases(arena);
@@ -5517,6 +5305,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
     }),
     ...(options?.intervalBarrierCheck !== undefined && { intervalBarrierCheck: options.intervalBarrierCheck }),
     ...(options?.onStepViolation !== undefined && { onStepViolation: options.onStepViolation }),
+    ...(options?.callbacks !== undefined && { callbacks: options.callbacks }),
   });
 
   // ── Step 7.5: Terminate FMU subsystems ──

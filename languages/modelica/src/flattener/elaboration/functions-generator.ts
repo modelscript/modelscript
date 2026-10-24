@@ -1158,25 +1158,57 @@ export function flattenFunction(
         extText = extText.replace(/^external\b/, 'external "C"');
       }
 
-      const langRawMatch = extClause.text?.match(/^external\s+("(?:[^"\\]|\\.)*")/);
-      if (langRawMatch) {
-        const rawLang = langRawMatch[1];
-        const lang = rawLang.startsWith('"') ? rawLang.slice(1, -1) : rawLang;
-        if (lang !== "C" && lang !== "FORTRAN 77" && lang !== "Fortran 77" && lang !== "builtin" && lang !== "none") {
-          const bCst = db.cstNode(targetSymId) as any;
-          const rangeObj = getClassDiagRange(bCst);
-          fn.diagnostics.push({
-            severity: "error",
-            code: ModelicaErrorCode.EXTERNAL_INVALID_LANGUAGE.code,
-            message: ModelicaErrorCode.EXTERNAL_INVALID_LANGUAGE.message(lang),
-            range: rangeObj,
-          });
+      // 1. Language specification
+      const langSpecNode = extClause.children?.find(
+        (c: any) => c.type === "language_specification" || c.type === "string_literal",
+      );
+      let lang: string | null = null;
+      if (langSpecNode) {
+        const rawLang = langSpecNode.text?.trim() ?? "";
+        lang = rawLang.startsWith('"') && rawLang.endsWith('"') ? rawLang.slice(1, -1) : rawLang;
+      } else {
+        const langRawMatch = extClause.text?.match(/^external\s+("(?:[^"\\]|\\.)*")/);
+        if (langRawMatch) {
+          const rawLang = langRawMatch[1];
+          lang = rawLang.startsWith('"') ? rawLang.slice(1, -1) : rawLang;
         }
       }
+      if (
+        lang &&
+        lang !== "C" &&
+        lang !== "FORTRAN 77" &&
+        lang !== "Fortran 77" &&
+        lang !== "builtin" &&
+        lang !== "none"
+      ) {
+        const bCst = db.cstNode(targetSymId) as any;
+        const rangeObj = getClassDiagRange(bCst);
+        fn.diagnostics.push({
+          severity: "error",
+          code: ModelicaErrorCode.EXTERNAL_INVALID_LANGUAGE.code,
+          message: ModelicaErrorCode.EXTERNAL_INVALID_LANGUAGE.message(lang),
+          range: rangeObj,
+        });
+      }
 
-      // Check if external function return (explicit LHS) has array type
-      const extLhsMatch = extText.match(/^external(?:\s+"[^"]+"|\s+\b\w+\b)?\s+([a-zA-Z_]\w*)\s*=/);
-      const lhsVarName = extLhsMatch ? extLhsMatch[1] : null;
+      // 2. Check if external function return (explicit LHS) has array type
+      const extCallNode = extClause.children?.find((c: any) => c.type === "external_function_call");
+      let lhsVarName: string | null = null;
+      if (extCallNode?.children) {
+        const eqIdx = extCallNode.children.findIndex((c: any) => c.text?.trim() === "=");
+        if (eqIdx > 0) {
+          const compRef = extCallNode.children
+            .slice(0, eqIdx)
+            .find((c: any) => c.type === "component_reference" || c.type === "identifier");
+          if (compRef) {
+            lhsVarName = compRef.text?.trim() ?? null;
+          }
+        }
+      }
+      if (!lhsVarName) {
+        const extLhsMatch = extText.match(/^external(?:\s+"[^"]+"|\s+\b\w+\b)?\s+([a-zA-Z_]\w*)\s*=/);
+        if (extLhsMatch) lhsVarName = extLhsMatch[1]!;
+      }
       if (lhsVarName) {
         const vIdx = fn.getVarIdxByName(lhsVarName);
         if (vIdx >= 0) {
@@ -1198,55 +1230,71 @@ export function flattenFunction(
         }
       }
 
-      // External function call arguments validation
-      const callArgsMatch = extText.match(/\((.*)\)\s*$/);
-      if (callArgsMatch) {
-        const rawArgsStr = callArgsMatch[1].trim();
-        if (rawArgsStr) {
-          const argsList: string[] = [];
-          let depth = 0,
-            current = "";
-          for (let i = 0; i < rawArgsStr.length; i++) {
-            const ch = rawArgsStr[i];
-            if (ch === "(" || ch === "{" || ch === "[") depth++;
-            else if (ch === ")" || ch === "}" || ch === "]") depth--;
-            if (ch === "," && depth === 0) {
-              argsList.push(current.trim());
-              current = "";
-            } else {
-              current += ch;
-            }
+      // 3. External function call arguments validation
+      const exprListNode = extCallNode?.children?.find(
+        (c: any) => c.type === "expression_list" || c.type === "ExpressionList",
+      );
+      const argList: { text: string; node?: any }[] = [];
+      if (exprListNode?.children) {
+        for (const ch of exprListNode.children) {
+          if (ch.type === "expression" || (ch.text && ch.text !== "," && ch.text !== "(" && ch.text !== ")")) {
+            argList.push({ text: ch.text?.trim() ?? "", node: ch });
           }
-          if (current.trim()) argsList.push(current.trim());
-
-          for (const a of argsList) {
-            if (a.startsWith("{") && a.endsWith("}")) {
-              const bCst = db.cstNode(targetSymId) as any;
-              const rangeObj = getClassDiagRange(bCst);
-              fn.diagnostics.push({
-                severity: "error",
-                code: ModelicaErrorCode.EXTERNAL_INVALID_ARG_EXPR.code,
-                message: ModelicaErrorCode.EXTERNAL_INVALID_ARG_EXPR.message(a),
-                range: rangeObj,
-              });
-              break;
-            }
-            const sizeMatch = a.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(.*)\)$/);
-            if (sizeMatch) {
-              const dimExpr = sizeMatch[2]!.trim();
-              const isConstNum = /^\d+$/.test(dimExpr);
-              if (!isConstNum) {
-                const bCst = db.cstNode(targetSymId) as any;
-                const rangeObj = getClassDiagRange(bCst);
-                fn.diagnostics.push({
-                  severity: "error",
-                  code: ModelicaErrorCode.EXTERNAL_INVALID_ARG_SIZE_CONST.code,
-                  message: ModelicaErrorCode.EXTERNAL_INVALID_ARG_SIZE_CONST.message(a),
-                  range: rangeObj,
-                });
-                break;
+        }
+      } else {
+        const callArgsMatch = extText.match(/\((.*)\)\s*$/);
+        if (callArgsMatch) {
+          const rawArgsStr = callArgsMatch[1].trim();
+          if (rawArgsStr) {
+            let depth = 0,
+              current = "";
+            for (let i = 0; i < rawArgsStr.length; i++) {
+              const ch = rawArgsStr[i];
+              if (ch === "(" || ch === "{" || ch === "[") depth++;
+              else if (ch === ")" || ch === "}" || ch === "]") depth--;
+              if (ch === "," && depth === 0) {
+                if (current.trim()) argList.push({ text: current.trim() });
+                current = "";
+              } else {
+                current += ch;
               }
             }
+            if (current.trim()) argList.push({ text: current.trim() });
+          }
+        }
+      }
+
+      for (const arg of argList) {
+        const a = arg.text;
+        const isArrayCtor =
+          arg.node?.type === "array_constructor" ||
+          arg.node?.children?.some((c: any) => c.type === "array_constructor") ||
+          (a.startsWith("{") && a.endsWith("}"));
+        if (isArrayCtor) {
+          const bCst = db.cstNode(targetSymId) as any;
+          const rangeObj = getClassDiagRange(bCst);
+          fn.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.EXTERNAL_INVALID_ARG_EXPR.code,
+            message: ModelicaErrorCode.EXTERNAL_INVALID_ARG_EXPR.message(a),
+            range: rangeObj,
+          });
+          break;
+        }
+        const sizeMatch = a.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(.*)\)$/);
+        if (sizeMatch) {
+          const dimExpr = sizeMatch[2]!.trim();
+          const isConstNum = /^\d+$/.test(dimExpr);
+          if (!isConstNum) {
+            const bCst = db.cstNode(targetSymId) as any;
+            const rangeObj = getClassDiagRange(bCst);
+            fn.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.EXTERNAL_INVALID_ARG_SIZE_CONST.code,
+              message: ModelicaErrorCode.EXTERNAL_INVALID_ARG_SIZE_CONST.message(a),
+              range: rangeObj,
+            });
+            break;
           }
         }
       }

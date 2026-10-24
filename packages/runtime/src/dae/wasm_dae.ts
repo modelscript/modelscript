@@ -12,6 +12,7 @@ import { join } from "node:path";
 import type { SourceLocation } from "../runtime.js";
 import type { StringId } from "../workspace/wasm_string_pool.js";
 import { StringInterner, WasmStringPool } from "../workspace/wasm_string_pool.js";
+import { ArenaEquation, ArenaExpr, ArenaVariable } from "./fluent/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums (stored as small integers in Uint8Array columns)
@@ -768,6 +769,15 @@ export class WasmDaeBridge implements IDaeBuilder {
     | undefined;
   /** Current homotopy continuation parameter $\lambda \in [0, 1]$ during initialization. */
   public homotopyLambda?: number | undefined;
+  /** Indicates whether this arena has undergone destructive in-place simulation transformations. */
+  public isMutatedBySim = false;
+  /** Backward-compatible accessor for isMutatedBySim. */
+  public get _mutatedBySim(): boolean {
+    return this.isMutatedBySim;
+  }
+  public set _mutatedBySim(val: boolean) {
+    this.isMutatedBySim = val;
+  }
 
   /**
    * Creates a new `WasmDaeBridge` (`DAEBuilder`) instance backed by WebAssembly linear memory.
@@ -3533,6 +3543,72 @@ export class WasmDaeBridge implements IDaeBuilder {
       };
     }
     return copy;
+  }
+
+  // ── Fluent Symbolic API ──
+
+  /** Returns an `ArenaExpr` flyweight wrapping the given expression ID. */
+  expr(id: number): ArenaExpr {
+    return new ArenaExpr(this, id);
+  }
+
+  /** Returns an `ArenaEquation` flyweight wrapping the given equation ID. */
+  equation(id: number): ArenaEquation {
+    return new ArenaEquation(this, id);
+  }
+
+  /** Returns an array of all active `ArenaEquation` objects. */
+  equations(): ArenaEquation[] {
+    const list: ArenaEquation[] = [];
+    const count = this.getEqCount();
+    for (let i = 0; i < count; i++) {
+      if (!this.isEqRemoved(i)) {
+        list.push(new ArenaEquation(this, i));
+      }
+    }
+    return list;
+  }
+
+  /** Returns an `ArenaVariable` flyweight by index or by name. */
+  variable(idOrName: number | string): ArenaVariable | null {
+    const idx = typeof idOrName === "number" ? idOrName : this.lookupVariable(idOrName);
+    return idx >= 0 && idx < this.getVarCount() ? new ArenaVariable(this, idx) : null;
+  }
+
+  /** Returns an array of all active `ArenaVariable` objects. */
+  variables(): ArenaVariable[] {
+    const list: ArenaVariable[] = [];
+    const count = this.getVarCount();
+    for (let i = 0; i < count; i++) {
+      if (!this.isVarRemoved(i)) {
+        list.push(new ArenaVariable(this, i));
+      }
+    }
+    return list;
+  }
+
+  /** Creates a real, integer, boolean, or string literal expression wrapped in an `ArenaExpr`. */
+  lit(val: number | boolean | string): ArenaExpr {
+    if (typeof val === "boolean") {
+      return new ArenaExpr(this, this.addBoolLiteral(val));
+    }
+    if (typeof val === "string") {
+      return new ArenaExpr(this, this.addStringLiteral(val));
+    }
+    return new ArenaExpr(this, this.addRealLiteral(val));
+  }
+
+  /** Creates a variable reference expression wrapped in an `ArenaExpr`. */
+  varExpr(nameOrId: string | number): ArenaExpr {
+    const nameStr = typeof nameOrId === "string" ? nameOrId : this.getVarName(nameOrId);
+    const nameId = this.interner.intern(nameStr);
+    return new ArenaExpr(this, this.addExpression(ExprKind.Name, nameId));
+  }
+
+  /** Creates a `der(...)` derivative expression wrapped in an `ArenaExpr`. */
+  derExpr(nameOrId: string | number): ArenaExpr {
+    const vExpr = this.varExpr(nameOrId);
+    return new ArenaExpr(this, this.addDerExpr(vExpr.id));
   }
 }
 

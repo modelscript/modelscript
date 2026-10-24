@@ -28,6 +28,8 @@ import {
   isElementProtected,
   isElementReplaceable,
   isEnumStepRangeExpr,
+  isIgnoreReplaceableActive,
+  isOldFrontendActive,
   isPartialTypeComponentInScope,
   VARIABILITY_CONTINUOUS,
 } from "./helpers.js";
@@ -252,6 +254,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     message: (node, varName) =>
       `Invalid public variable ${varName && varName.text ? varName.text : node.text}, function variables that are not input/output must be protected.`,
     query: (db: CodeGraph, node: u32, $: any) => {
+      if (isOldFrontendActive(db, $)) return;
       // Flag public component declarations in functions that lack `input`, `output`, or `constant`
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
@@ -585,6 +588,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       return `Redeclaration with a new type requires '${eName}' to be replaceable.`;
     },
     query: (db: CodeGraph, node: u32, $: any) => {
+      if (isIgnoreReplaceableActive(db, $)) return;
       // Verify that any `redeclare` changing a member's type targets an element with the `replaceable` prefix
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -730,8 +734,12 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["element"],
     severity: "error",
     code: 4063,
-    message: (target, elementName) => {
+    message: (target, elementName, isOldFrontend) => {
       const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
+      const isOld = isOldFrontend && (isOldFrontend.asNumber ? isOldFrontend.asNumber() : Number(isOldFrontend)) === 1;
+      if (isOld) {
+        return `Invalid redeclaration of class ${eName}, class extends only allowed on inherited classes.`;
+      }
       return `Base class targeted by class extends ${eName} not found in the inherited classes.`;
     },
     query: (db: CodeGraph, node: u32, $: any) => {
@@ -797,7 +805,22 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }
 
       if (!isInherited) {
-        db.diagnostic(classDef, redeclNameNode);
+        let isOldFrontend: u32 = 0;
+        const docRoot = db.ast.getRootNode();
+        if (docRoot != 0 && $.string_literal != 0) {
+          for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+            if (
+              db.ast.textEquals(str, '"-d=-newInst"') ||
+              db.ast.textEquals(str, "-d=-newInst") ||
+              db.ast.textEquals(str, '"-d=nogen -d=-newInst"') ||
+              db.ast.textEquals(str, "-d=nogen -d=-newInst")
+            ) {
+              isOldFrontend = 1;
+              break;
+            }
+          }
+        }
+        db.diagnostic(classDef, redeclNameNode, isOldFrontend);
       }
     },
   },
@@ -836,6 +859,22 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       let redeclNameNode: u32 = 0;
       let targetDiagNode: u32 = node;
 
+      let isOldFrontend: u32 = 0;
+      const docRoot = db.ast.getRootNode();
+      if (docRoot != 0 && $.string_literal != 0) {
+        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
+          if (
+            db.ast.textEquals(str, '"-d=-newInst"') ||
+            db.ast.textEquals(str, "-d=-newInst") ||
+            db.ast.textEquals(str, '"-d=nogen -d=-newInst"') ||
+            db.ast.textEquals(str, "-d=nogen -d=-newInst")
+          ) {
+            isOldFrontend = 1;
+            break;
+          }
+        }
+      }
+
       let classDef: u32 = 0;
       for (const cd of db.ast.getDescendants(node, $.class_definition)) {
         classDef = cd;
@@ -846,6 +885,9 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           let sch = db.ast.getFirstChild(spec);
           while (sch != 0) {
             if (db.ast.startsWith(sch, "extends") || db.ast.textEquals(sch, "extends")) {
+              if (isOldFrontend) {
+                break;
+              }
               return;
             }
             sch = db.ast.getNextSibling(sch);

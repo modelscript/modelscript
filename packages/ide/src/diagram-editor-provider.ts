@@ -94,37 +94,59 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     const languageId =
       document.languageId && document.languageId !== "" ? document.languageId : uriString.split(".").pop() || "generic";
     let currentDiagramType = "All";
+    let currentClassName: string | undefined = undefined;
     let diagramEditQueue = Promise.resolve();
     let isSpatialEditPending = false;
     let lastOptimisticEditTime = 0;
+    let lastDiagramEditTime = 0;
+    let isAddComponentPending = false;
+    let hasRenderedDiagramOnce = false;
     // True when a text-change-triggered update has been scheduled (debounced or immediate).
     // Prevents projectTreeChanged from scheduling a redundant second rebuild.
     let textChangeUpdatePending = false;
 
     /** Immediately request fresh diagram data (cancels any pending debounced request). */
-    const immediateUpdate = () => {
+    const immediateUpdate = (showLoading = false) => {
       if (updateTimeout) clearTimeout(updateTimeout);
       updateTimeout = null;
       textChangeUpdatePending = false;
       diagramRequestNonce++;
       const currentNonce = diagramRequestNonce;
-      webviewPanel.webview.postMessage({ type: "loading" });
-      this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
-        isCanceled: () => diagramRequestNonce !== currentNonce,
-      });
+      if (showLoading || !hasRenderedDiagramOnce) {
+        webviewPanel.webview.postMessage({ type: "loading" });
+      }
+      this.requestDiagramData(
+        webviewPanel,
+        uriString,
+        currentDiagramType,
+        currentClassName,
+        { isCanceled: () => diagramRequestNonce !== currentNonce },
+        () => {
+          hasRenderedDiagramOnce = true;
+        },
+      );
     };
 
     /** Request diagram data after a debounce (for external text changes like user typing). */
-    const debouncedUpdate = (delayMs = 500) => {
+    const debouncedUpdate = (delayMs = 500, showLoading = false) => {
       if (updateTimeout) clearTimeout(updateTimeout);
       updateTimeout = setTimeout(() => {
         textChangeUpdatePending = false;
         diagramRequestNonce++;
         const currentNonce = diagramRequestNonce;
-        webviewPanel.webview.postMessage({ type: "loading" });
-        this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
-          isCanceled: () => diagramRequestNonce !== currentNonce,
-        });
+        if (showLoading || !hasRenderedDiagramOnce) {
+          webviewPanel.webview.postMessage({ type: "loading" });
+        }
+        this.requestDiagramData(
+          webviewPanel,
+          uriString,
+          currentDiagramType,
+          currentClassName,
+          { isCanceled: () => diagramRequestNonce !== currentNonce },
+          () => {
+            hasRenderedDiagramOnce = true;
+          },
+        );
       }, delayMs);
     };
 
@@ -203,7 +225,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               actions = [{ type: "deleteComponents", names: message.names }];
               break;
             case "drop":
+            case "addComponent":
               actions = [{ type: "addComponent", className: message.className, x: message.x, y: message.y }];
+              isAddComponentPending = true;
               break;
             case "updateName":
               actions = [{ type: "updateName", oldName: message.oldName, newName: message.newName }];
@@ -241,13 +265,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   a.type === "updateProperty",
               );
               if (!isOptimistic) {
-                webviewPanel.webview.postMessage({ type: "loading" }); // Show spinner only for semantic/structural edits
+                const hasLocalPlaceholder = actions?.some((a: any) => a.type === "addComponent");
+                if (hasLocalPlaceholder) {
+                  isAddComponentPending = true;
+                } else {
+                  webviewPanel.webview.postMessage({ type: "loading" }); // Show spinner only for semantic/structural edits
+                }
               }
               break;
             }
             case "changeDiagramType": {
               currentDiagramType = message.diagramType;
-              immediateUpdate();
+              immediateUpdate(true);
               break;
             }
             case "collabMessage": {
@@ -258,11 +287,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               break;
             }
             case "undo": {
-              vscode.commands.executeCommand("undo").then(() => immediateUpdate());
+              vscode.commands.executeCommand("undo").then(() => immediateUpdate(false));
               break;
             }
             case "redo": {
-              vscode.commands.executeCommand("redo").then(() => immediateUpdate());
+              vscode.commands.executeCommand("redo").then(() => immediateUpdate(false));
               break;
             }
             case "getProperties": {
@@ -314,8 +343,12 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               break;
             }
             case "navigateTo": {
-              // Cross-diagram navigation: switch diagram type and optionally focus a class.
-              // E.g., double-click a StateDefinition in BDD → open StateMachine diagram.
+              // Cross-diagram navigation: switch diagram type and optionally focus a class / sub-module.
+              // E.g., double-click a StateDefinition in BDD → open StateMachine diagram,
+              // or click 'More on Passive Elements' in PSCAD library → drill down into Passive sub-module.
+              if (message.className !== undefined) {
+                currentClassName = message.className;
+              }
               if (message.diagramType) {
                 currentDiagramType = message.diagramType;
                 // Update the diagram type dropdown in the webview
@@ -323,8 +356,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   type: "setDiagramType",
                   diagramType: message.diagramType,
                 });
-                immediateUpdate();
               }
+              immediateUpdate();
               break;
             }
           }
@@ -393,6 +426,10 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             } else {
               // ── Semantic path: full re-render cycle with spinner ──
               diagramRequestNonce++; // Cancel incoming stale diagramData
+              if (actions.some((a: any) => a.type === "addComponent")) {
+                isAddComponentPending = true;
+              }
+              lastDiagramEditTime = Date.now();
               diagramEditQueue = diagramEditQueue
                 .then(async () => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -426,14 +463,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     if (pendingRenderHint !== null) {
                       const hint = pendingRenderHint;
                       pendingRenderHint = null;
-                      if (hint === "immediate") immediateUpdate();
+                      const showLoading = !isAddComponentPending;
+                      isAddComponentPending = false;
+                      if (hint === "immediate") immediateUpdate(showLoading);
                       else if (hint === "debounced") debouncedUpdate();
                       else webviewPanel.webview.postMessage({ type: "stopLoading" });
                     }
                   } else {
                     // No edits generated or response was null.
                     // We must trigger an update to clear the loading spinner which was shown when the request was canceled.
-                    if (response?.renderHint === "immediate") immediateUpdate();
+                    const showLoading = !isAddComponentPending;
+                    isAddComponentPending = false;
+                    if (response?.renderHint === "immediate") immediateUpdate(showLoading);
                     else if (response?.renderHint === "debounced") debouncedUpdate();
                     else webviewPanel.webview.postMessage({ type: "stopLoading" });
                   }
@@ -474,18 +515,23 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         // and hide the spinner once the semantic pipeline has completed validating the edit.
         isSpatialEditPending = true;
         lastOptimisticEditTime = Date.now();
+        lastDiagramEditTime = Date.now();
         return;
       }
 
       isSpatialEditPending = false;
-      lastOptimisticEditTime = 0;
 
       if (hint === "immediate") {
-        // Semantic edit — immediate refresh
-        immediateUpdate();
+        // Semantic edit — immediate refresh without full-page spinner if in-place bounce placeholder is active
+        const hasPlaceholder = isAddComponentPending;
+        isAddComponentPending = false;
+        lastOptimisticEditTime = Date.now();
+        lastDiagramEditTime = Date.now();
+        immediateUpdate(!hasPlaceholder);
         return;
       }
       if (hint === "debounced") {
+        lastDiagramEditTime = Date.now();
         textChangeUpdatePending = true;
         debouncedUpdate();
         return;
@@ -493,13 +539,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       // External change (user typing) — debounced refresh.
       // Mark that a text-change update is pending so projectTreeChanged
       // doesn't schedule a redundant second rebuild.
+      lastOptimisticEditTime = 0;
       textChangeUpdatePending = true;
       debouncedUpdate();
     });
 
     // React to semantic pipeline completions from the language server
     const projectTreeListener = this.client.onNotification("modelscript/projectTreeChanged", () => {
-      if (isSpatialEditPending || Date.now() - lastOptimisticEditTime < 800) {
+      const timeSinceEdit = Date.now() - Math.max(lastOptimisticEditTime, lastDiagramEditTime);
+      if (isSpatialEditPending || timeSinceEdit < 1500) {
         isSpatialEditPending = false;
         webviewPanel.webview.postMessage({ type: "stopLoading" }); // Hide spinner when edit finishes
         return;
@@ -507,7 +555,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       // Skip if a text-change-triggered update is already pending —
       // it will fire soon and produce the same result without double work.
       if (textChangeUpdatePending) return;
-      debouncedUpdate();
+      debouncedUpdate(500, false);
     });
 
     // Make sure we get rid of the listeners when our editor is closed.
@@ -519,7 +567,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     // Initial load
     // Tell the webview the document language (enables diagram features/palette)
     webviewPanel.webview.postMessage({ type: "setLanguage", language: languageId });
-    debouncedUpdate();
+    debouncedUpdate(50, true);
   }
 
   /**
@@ -530,7 +578,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     uri: string,
     diagramType: string,
+    className?: string,
     cancelToken?: { isCanceled: () => boolean },
+    onSuccess?: () => void,
   ) {
     try {
       let sidecarContent: string | undefined;
@@ -553,6 +603,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       const data = await this.client.sendRequest(DiagramMethods.getData, {
         uri,
         diagramType,
+        className,
         sidecarContent,
       });
       if (cancelToken?.isCanceled()) return;
@@ -561,7 +612,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
           webviewPanel.webview.postMessage({ type: "loading" });
           setTimeout(() => {
             if (!cancelToken?.isCanceled()) {
-              this.requestDiagramData(webviewPanel, uri, diagramType, cancelToken);
+              this.requestDiagramData(webviewPanel, uri, diagramType, className, cancelToken);
             }
           }, 1500);
           return;
@@ -569,7 +620,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         const isDark =
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-        webviewPanel.webview.postMessage({ type: "diagramData", data, isDark });
+        webviewPanel.webview.postMessage({ type: "diagramData", data, isDark, className });
+        onSuccess?.();
       } else {
         webviewPanel.webview.postMessage({ type: "empty" });
       }
@@ -584,7 +636,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
    * Generates the HTML document and CSP headers for the interactive diagram webview.
    */
   private getHtmlForWebview(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", "diagram.js"));
+    const scriptUri = webview
+      .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", "diagram.js"))
+      .with({ query: `v=${Date.now()}` });
     const nonce = getNonce();
 
     return `<!DOCTYPE html>
@@ -655,6 +709,63 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       padding: 2px 4px;
       font-size: 12px;
       outline: none;
+    }
+    #breadcrumb-bar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      background: var(--vscode-editorWidget-background, #252526);
+      border: 1px solid var(--vscode-widget-border, #454545);
+      border-radius: 4px;
+      padding: 4px 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 12px;
+      color: var(--vscode-foreground, #ccc);
+    }
+    .breadcrumb-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      color: var(--vscode-textLink-foreground, #38bdf8);
+      font-weight: 500;
+      user-select: none;
+    }
+    .breadcrumb-item:hover {
+      text-decoration: underline;
+    }
+    .breadcrumb-item.active {
+      color: var(--vscode-foreground, #ccc);
+      font-weight: 600;
+      cursor: default;
+      text-decoration: none;
+    }
+    .breadcrumb-separator {
+      opacity: 0.5;
+      font-size: 10px;
+    }
+    .breadcrumb-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--vscode-button-secondaryBackground, #3a3d41);
+      color: var(--vscode-button-secondaryForeground, #ffffff);
+      border: 1px solid var(--vscode-button-border, transparent);
+      border-radius: 3px;
+      padding: 2px 8px;
+      margin-left: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .breadcrumb-back-btn:hover {
+      background: var(--vscode-button-secondaryHoverBackground, #45494e);
     }
     @keyframes diagram-spin { to { transform: rotate(360deg); } }
 
@@ -756,6 +867,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       <option value="Package">Package</option>
     </select>
   </div>
+  <div id="breadcrumb-bar" style="display: none;"></div>
   <div id="container"></div>
   <div id="placeholder">Loading diagram...</div>
   <div id="spinner"></div>

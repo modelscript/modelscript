@@ -79,28 +79,92 @@ export interface SimplexResult {
  * Parses a linear expression string (e.g. "2*x + 3.5*y - z" or "1.2e-4*x - 3.5e-2*y") into terms and constant offset.
  */
 export function parseLinearExpression(expr: string): { terms: LinearTerm[]; constant: number } {
-  let cleaned = expr.trim().replace(/\s+/g, "");
-  if (!cleaned) return { terms: [], constant: 0 };
-
-  // Normalize leading plus
-  if (!cleaned.startsWith("+") && !cleaned.startsWith("-")) {
-    cleaned = "+" + cleaned;
+  let cleaned = "";
+  for (let j = 0; j < expr.length; j++) {
+    const ch = expr[j]!;
+    if (ch !== " " && ch !== "\t" && ch !== "\r" && ch !== "\n") {
+      cleaned += ch;
+    }
   }
-
-  // Tokenize signed terms supporting scientific notation
-  const regex = /([+-])(?:([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\*?)?([a-zA-Z_][a-zA-Z0-9_.]*)?/g;
-  let match: RegExpExecArray | null;
+  if (!cleaned) return { terms: [], constant: 0 };
 
   const terms: LinearTerm[] = [];
   let constant = 0;
+  let idx = 0;
+  const cLen = cleaned.length;
 
-  while ((match = regex.exec(cleaned)) !== null) {
-    if (match.index === regex.lastIndex) regex.lastIndex++;
-    const sign = match[1] === "-" ? -1 : 1;
-    const numStr = match[2];
-    const ident = match[3];
+  while (idx < cLen) {
+    let sign = 1;
+    const ch = cleaned[idx]!;
+    if (ch === "+") {
+      sign = 1;
+      idx++;
+    } else if (ch === "-") {
+      sign = -1;
+      idx++;
+    }
 
-    if (!numStr && !ident) continue;
+    if (idx >= cLen) break;
+
+    // Scan number if present
+    let numStr: string | undefined = undefined;
+    const numStart = idx;
+    let hasDot = false;
+    let hasExp = false;
+    let isNum = false;
+
+    while (idx < cLen) {
+      const c = cleaned[idx]!;
+      if (c >= "0" && c <= "9") {
+        isNum = true;
+        idx++;
+      } else if (c === "." && !hasDot && !hasExp) {
+        hasDot = true;
+        isNum = true;
+        idx++;
+      } else if ((c === "e" || c === "E") && isNum && !hasExp) {
+        hasExp = true;
+        idx++;
+        if (idx < cLen && (cleaned[idx] === "+" || cleaned[idx] === "-")) {
+          idx++;
+        }
+      } else {
+        break;
+      }
+    }
+
+    if (isNum) {
+      numStr = cleaned.slice(numStart, idx);
+    }
+
+    // Optional '*'
+    if (idx < cLen && cleaned[idx] === "*") {
+      idx++;
+    }
+
+    // Scan identifier if present
+    let ident: string | undefined = undefined;
+    if (idx < cLen) {
+      const ic = cleaned[idx]!;
+      if ((ic >= "a" && ic <= "z") || (ic >= "A" && ic <= "Z") || ic === "_") {
+        const idStart = idx;
+        idx++;
+        while (idx < cLen) {
+          const c = cleaned[idx]!;
+          if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === ".") {
+            idx++;
+          } else {
+            break;
+          }
+        }
+        ident = cleaned.slice(idStart, idx);
+      }
+    }
+
+    if (!numStr && !ident) {
+      if (idx === numStart) idx++;
+      continue;
+    }
 
     if (ident) {
       const coeff = (numStr !== undefined ? parseFloat(numStr) : 1.0) * sign;

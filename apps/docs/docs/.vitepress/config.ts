@@ -225,6 +225,8 @@ export default defineConfig({
             { text: "Modelica", link: "/languages/modelica" },
             { text: "SysML v2 / KerML", link: "/languages/sysml2" },
             { text: "PSCAD Power Systems", link: "/languages/pscad" },
+            { text: "PSS/E Power Flow (.raw)", link: "/languages/psse" },
+            { text: "OLGA Multiphase Flow", link: "/languages/olga" },
             { text: "STEP CAD (ISO 10303)", link: "/languages/step" },
             { text: "OWL2 Ontology", link: "/languages/owl2" },
             { text: "CSV Telemetry", link: "/languages/csv" },

@@ -396,6 +396,61 @@ function extractUserFunctionsFromDb(db: QueryDB): SmtFunctionDef[] {
 
   for (const e of entries) {
     if (e.ruleName === "CalculationDefinition" || e.ruleName === "ActionDefinition") {
+      let extracted: SmtFunctionDef | null = null;
+
+      // 1. Direct CST inspection if QueryDB provides cstNode
+      if (typeof (db as any).cstNode === "function") {
+        try {
+          const cst = (db as any).cstNode(e.id);
+          if (cst) {
+            const nameNode = findFirstDescendant(cst, "Name") || findFirstDescendant(cst, "ID");
+            const name = nameNode?.text?.trim();
+            if (name) {
+              const params: { name: string; type?: string | undefined }[] = [];
+              const paramNodes = [...findCstDescendants(cst, "Parameter"), ...findCstDescendants(cst, "InUsage")];
+              for (const pn of paramNodes) {
+                const pName = (findFirstDescendant(pn, "Name") || findFirstDescendant(pn, "ID"))?.text?.trim();
+                const pType = findFirstDescendant(pn, "FeatureTyping")
+                  ?.text?.replace(/^[:\s]+/, "")
+                  .trim();
+                if (pName) {
+                  params.push({ name: pName, type: pType ?? "Real" });
+                }
+              }
+
+              const retNode = findFirstDescendant(cst, "ReturnFeature") || findFirstDescendant(cst, "FeatureTyping");
+              const returnType = retNode?.text?.replace(/^[:\s]+/, "").trim() || "Real";
+
+              const returnExpr =
+                findFirstDescendant(cst, "ResultExpressionMember") ||
+                findFirstDescendant(cst, "ReturnStatement") ||
+                findFirstDescendant(cst, "OwnedExpression");
+              const bodyText = returnExpr?.text
+                ?.replace(/^return\s+/, "")
+                .replace(/;$/, "")
+                .trim();
+
+              if (bodyText) {
+                extracted = {
+                  name,
+                  params,
+                  returnType: returnType === "Real" || returnType === "Integer" ? "Real" : returnType,
+                  body: infixArithmeticToSmt(bodyText),
+                };
+              }
+            }
+          }
+        } catch {
+          // CST inspection fallback
+        }
+      }
+
+      if (extracted) {
+        funcs.push(extracted);
+        continue;
+      }
+
+      // 2. Textual fallback for mock QueryDB
       const text = db.cstText(e.startOffset, e.endOffset, e);
       if (!text) continue;
 

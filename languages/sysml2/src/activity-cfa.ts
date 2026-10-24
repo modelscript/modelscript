@@ -17,6 +17,40 @@
 
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 
+function isSpace(ch: string | undefined): boolean {
+  return ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
+}
+
+function isIdentChar(ch: string | undefined): boolean {
+  if (!ch) return false;
+  return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_";
+}
+
+function isIdentOrTypeChar(ch: string | undefined): boolean {
+  if (!ch) return false;
+  return isIdentChar(ch) || ch === "." || ch === ":";
+}
+
+function extractIdentifiers(expr: string): string[] {
+  const idents: string[] = [];
+  let i = 0;
+  const len = expr.length;
+  while (i < len) {
+    const ch = expr[i]!;
+    if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
+      const start = i;
+      i++;
+      while (i < len && isIdentChar(expr[i])) {
+        i++;
+      }
+      idents.push(expr.slice(start, i));
+    } else {
+      i++;
+    }
+  }
+  return idents;
+}
+
 export interface ActionPinInfo {
   name: string;
   direction: "in" | "out" | "inout" | "return";
@@ -473,61 +507,181 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         }
       }
 
-      // Check assignments and inline pins in CST text
+      // 1. Direct CST node inspection for pins and assignments if available
+      const cstNode = (db as any).cstNode?.(child.id);
+      if (cstNode) {
+        const walkCst = (n: any) => {
+          if (!n) return;
+          const nt = (n.type || "").toLowerCase();
+          if (
+            nt.includes("inusage") ||
+            nt.includes("outusage") ||
+            nt.includes("itemusage") ||
+            nt.includes("attributeusage") ||
+            nt.includes("parametermember")
+          ) {
+            const pName = n.childForFieldName?.("name")?.text || n.name || "";
+            const isOut = nt.includes("out") || nt.includes("return");
+            if (pName && !inputs.some((p) => p.name === pName) && !outputs.some((p) => p.name === pName)) {
+              const pinInfo: ActionPinInfo = {
+                name: pName,
+                direction: isOut ? "out" : "in",
+                startOffset: n.startIndex ?? child.startOffset,
+                endOffset: n.endIndex ?? child.endOffset,
+              };
+              if (isOut) {
+                outputs.push(pinInfo);
+                declaredOutputs.push(pinInfo);
+              } else {
+                inputs.push(pinInfo);
+              }
+            }
+          }
+          if (nt.includes("assign")) {
+            const tgt = n.childForFieldName?.("target")?.text || n.childForFieldName?.("name")?.text;
+            const expr = n.childForFieldName?.("value")?.text || n.childForFieldName?.("expression")?.text;
+            if (tgt && expr && !assignments.some((a) => a.target === tgt)) {
+              assignments.push({
+                target: tgt,
+                expr: expr.trim(),
+                startOffset: n.startIndex ?? child.startOffset,
+                endOffset: n.endIndex ?? child.endOffset,
+              });
+            }
+          }
+          if (Array.isArray(n.children)) {
+            for (const c of n.children) walkCst(c);
+          } else if (typeof n.childCount === "number") {
+            for (let i = 0; i < n.childCount; i++) walkCst(n.child(i));
+          }
+        };
+        walkCst(cstNode);
+      }
+
+      // 2. Check assignments and inline pins in CST text without regex
       const actionText = db.cstText(child.startOffset, child.endOffset, child) || "";
       const headerSlice = actionText.split("{")[0] || actionText;
-      const typeMatch = /:\s*([A-Za-z_][A-Za-z0-9_.]*)/.exec(headerSlice);
+      let typeMatchVal: string | undefined = undefined;
+      const colonIdx = headerSlice.indexOf(":");
+      if (colonIdx !== -1) {
+        let p = colonIdx + 1;
+        while (p < headerSlice.length && isSpace(headerSlice[p])) p++;
+        const s = p;
+        while (p < headerSlice.length && isIdentOrTypeChar(headerSlice[p])) p++;
+        if (p > s) typeMatchVal = headerSlice.slice(s, p);
+      }
       const typingChild = childSymbols.find((c) => c.ruleName === "OwnedFeatureTyping" && c.name);
-      const calleeTypeName = (child as any).typeName || typingChild?.name || (typeMatch ? typeMatch[1] : undefined);
+      const calleeTypeName = (child as any).typeName || typingChild?.name || typeMatchVal;
       const isInvocation = rule === "PerformActionUsage" || Boolean(calleeTypeName);
 
-      // Fallback regex extraction for pins if not already indexed as child symbols
+      // Extract inline pins from bodySlice
       const bodyStartIdx = actionText.indexOf("{");
-      const bodySlice = bodyStartIdx !== -1 ? actionText.slice(bodyStartIdx + 1) : "";
-      const pinRegex =
-        /\b(in|out|inout)\s+(?:item\s+|attribute\s+|ref\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.:]+))?/g;
-      let pMatch: RegExpExecArray | null;
-      while ((pMatch = pinRegex.exec(bodySlice)) !== null) {
-        const dir = pMatch[1] as "in" | "out" | "inout";
-        const pName = pMatch[2]!;
-        const pType = pMatch[3];
-        if (inputs.some((p) => p.name === pName) || outputs.some((p) => p.name === pName)) continue;
-        const pinInfo: ActionPinInfo = {
-          name: pName,
-          direction: dir,
-          type: pType,
-          startOffset: child.startOffset + bodyStartIdx + 1 + pMatch.index,
-          endOffset: child.startOffset + bodyStartIdx + 1 + pMatch.index + pMatch[0].length,
-        };
-        if (dir === "in") {
-          inputs.push(pinInfo);
-        } else {
-          outputs.push(pinInfo);
-          declaredOutputs.push(pinInfo);
+      if (bodyStartIdx !== -1) {
+        const bodySlice = actionText.slice(bodyStartIdx + 1);
+        let bi = 0;
+        const bLen = bodySlice.length;
+        while (bi < bLen) {
+          let dir: "in" | "out" | "inout" | null = null;
+          let kwLen = 0;
+          if (bodySlice.startsWith("inout", bi) && !isIdentChar(bodySlice[bi + 5])) {
+            dir = "inout";
+            kwLen = 5;
+          } else if (bodySlice.startsWith("out", bi) && !isIdentChar(bodySlice[bi + 3])) {
+            dir = "out";
+            kwLen = 3;
+          } else if (bodySlice.startsWith("in", bi) && !isIdentChar(bodySlice[bi + 2])) {
+            dir = "in";
+            kwLen = 2;
+          }
+
+          if (dir) {
+            const pStart = bi;
+            bi += kwLen;
+            while (bi < bLen && isSpace(bodySlice[bi])) bi++;
+            for (const prefix of ["item", "attribute", "ref"]) {
+              if (bodySlice.startsWith(prefix, bi) && !isIdentChar(bodySlice[bi + prefix.length])) {
+                bi += prefix.length;
+                while (bi < bLen && isSpace(bodySlice[bi])) bi++;
+                break;
+              }
+            }
+            const idStart = bi;
+            while (bi < bLen && isIdentChar(bodySlice[bi])) bi++;
+            const pName = bodySlice.slice(idStart, bi);
+            if (pName) {
+              while (bi < bLen && isSpace(bodySlice[bi])) bi++;
+              let pType: string | undefined = undefined;
+              if (bi < bLen && bodySlice[bi] === ":") {
+                bi++;
+                while (bi < bLen && isSpace(bodySlice[bi])) bi++;
+                const typeStart = bi;
+                while (bi < bLen && isIdentOrTypeChar(bodySlice[bi])) bi++;
+                if (bi > typeStart) pType = bodySlice.slice(typeStart, bi);
+              }
+              const pEnd = bi;
+              if (!inputs.some((p) => p.name === pName) && !outputs.some((p) => p.name === pName)) {
+                const pinInfo: ActionPinInfo = {
+                  name: pName,
+                  direction: dir,
+                  type: pType,
+                  startOffset: child.startOffset + bodyStartIdx + 1 + pStart,
+                  endOffset: child.startOffset + bodyStartIdx + 1 + pEnd,
+                };
+                if (dir === "in") {
+                  inputs.push(pinInfo);
+                } else {
+                  outputs.push(pinInfo);
+                  declaredOutputs.push(pinInfo);
+                }
+              }
+            }
+            continue;
+          }
+          bi++;
         }
       }
 
-      const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;]+);/g;
-      let asMatch: RegExpExecArray | null;
-      while ((asMatch = assignRegex.exec(actionText)) !== null) {
-        assignments.push({
-          target: asMatch[1]!,
-          expr: asMatch[2]!.trim(),
-          startOffset: child.startOffset + asMatch.index,
-          endOffset: child.startOffset + asMatch.index + asMatch[0].length,
-        });
-      }
-      const assignRevRegex = /\bassign\s+([^;=]+?)\s*=:\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
-      while ((asMatch = assignRevRegex.exec(actionText)) !== null) {
-        const tgt = asMatch[2]!;
-        if (!assignments.some((a) => a.target === tgt)) {
-          assignments.push({
-            target: tgt,
-            expr: asMatch[1]!.trim(),
-            startOffset: child.startOffset + asMatch.index,
-            endOffset: child.startOffset + asMatch.index + asMatch[0].length,
-          });
+      // Extract assignments without regex: assign <target> := <expr>; or assign <expr> =: <target>;
+      let ai = 0;
+      const aLen = actionText.length;
+      while (ai < aLen) {
+        if (actionText.startsWith("assign", ai) && !isIdentChar(actionText[ai + 6])) {
+          const assignStart = ai;
+          ai += 6;
+          while (ai < aLen && isSpace(actionText[ai])) ai++;
+          const semiIdx = actionText.indexOf(";", ai);
+          if (semiIdx !== -1) {
+            const clause = actionText.slice(ai, semiIdx);
+            const assignWalrusIdx = clause.indexOf(":=");
+            const assignRevIdx = clause.indexOf("=:");
+            if (assignWalrusIdx !== -1) {
+              const target = clause.slice(0, assignWalrusIdx).trim();
+              const expr = clause.slice(assignWalrusIdx + 2).trim();
+              if (target && !assignments.some((a) => a.target === target)) {
+                assignments.push({
+                  target,
+                  expr,
+                  startOffset: child.startOffset + assignStart,
+                  endOffset: child.startOffset + semiIdx + 1,
+                });
+              }
+            } else if (assignRevIdx !== -1) {
+              const expr = clause.slice(0, assignRevIdx).trim();
+              const target = clause.slice(assignRevIdx + 2).trim();
+              if (target && !assignments.some((a) => a.target === target)) {
+                assignments.push({
+                  target,
+                  expr,
+                  startOffset: child.startOffset + assignStart,
+                  endOffset: child.startOffset + semiIdx + 1,
+                });
+              }
+            }
+            ai = semiIdx + 1;
+            continue;
+          }
         }
+        ai++;
       }
 
       nodes.push({
@@ -774,7 +928,7 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
 
       // Check Use-Before-Def for expressions in assignments:
       for (const asgn of n.assignments) {
-        const idents = asgn.expr.match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) || [];
+        const idents = extractIdentifiers(asgn.expr);
         for (const id of idents) {
           // If identifier matches an output or local variable but is not yet in newIn
           const isDeclaredOut = declaredOutputs.some((o) => o.name === id);

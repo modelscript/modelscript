@@ -1111,6 +1111,29 @@ export class ModelicaFlattener {
 
   private _unsupportedWasmCache = new Map<SymbolId, boolean>();
 
+  private static readonly UNSUPPORTED_WASM_IDENTIFIERS = new Set([
+    "homotopy",
+    "semiLinear",
+    "outerProduct",
+    "identity",
+    "diagonal",
+    "equalityConstraint",
+    "Connections",
+    "StateSelect",
+  ]);
+
+  private cstContainsAnyIdentifier(node: any, names: Set<string>): boolean {
+    if (!node) return false;
+    const t = node.type;
+    if (t === "identifier" || t === "IDENT" || t === "ident") {
+      if (names.has(node.text?.trim() ?? "")) return true;
+    }
+    for (const ch of node.children || []) {
+      if (this.cstContainsAnyIdentifier(ch, names)) return true;
+    }
+    return false;
+  }
+
   private classHasUnsupportedWasmFeatures(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
     if (!classId || visited.has(classId)) return false;
     const cached = this._unsupportedWasmCache.get(classId);
@@ -1154,15 +1177,17 @@ export class ModelicaFlattener {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
+    const cstNode = this.db.cstNode(classId) as any;
+    if (cstNode && this.cstContainsAnyIdentifier(cstNode, ModelicaFlattener.UNSUPPORTED_WASM_IDENTIFIERS)) {
+      this._unsupportedWasmCache.set(classId, true);
+      return true;
+    }
+
     if (
       /\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text) ||
-      /\bStateSelect\s*\[/.test(text) ||
-      /\bConnections\s*\./.test(text) ||
-      /\bequalityConstraint\b/.test(text) ||
       /\[\s*:\s*\]\s*=/.test(text) ||
       /\bfill\s*\([^,]+,\s*\d+\.\d+/.test(text) ||
       /\bexternal\s+"FORTRAN 77"/i.test(text) ||
-      /\b(?:homotopy|semiLinear|outerProduct|identity|diagonal)\s*\(/.test(text) ||
       /(?:=|\()\s*\.[a-zA-Z_]\w*/.test(text) ||
       (sym?.parentId != null && /\bconstant\s+/.test(text))
     ) {
@@ -2921,14 +2946,19 @@ export class ModelicaFlattener {
             }
           }
         }
-      } catch {
+      } catch (err: any) {
         flattenedInWasm = false;
-        wasmBail ??= describeWasmBail(
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const bail = describeWasmBail(
           WasmBailReason.KernelTrap,
           undefined,
           undefined,
           isStrictWasm ? "strict-partial" : "ts-fallback",
         );
+        if (errMsg) {
+          bail.description = `${bail.description}: ${errMsg}`;
+        }
+        wasmBail ??= bail;
       } finally {
         if (wasmFlattener && typeof (dae.exports as any)?.flattener_destroy === "function") {
           try {
@@ -3781,7 +3811,16 @@ export class ModelicaFlattener {
                   for (const idx of arrayIndices) {
                     dae.setVarAttr(idx, "quantity", qId);
                   }
-                } catch {}
+                } catch {
+                  // Fallback for non-standard string escapes in Modelica quantity attribute
+                  const qStr = qMatch[1].slice(1, -1);
+                  const qId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(qStr));
+                  dae.setVarAttr(varIdx, "quantity", qId);
+                  const arrayIndices = dae.getArrayElementIndices(name);
+                  for (const idx of arrayIndices) {
+                    dae.setVarAttr(idx, "quantity", qId);
+                  }
+                }
               }
               const ssMatch = rawText.match(/\bstateSelect\s*=\s*(?:StateSelect\.)?([a-zA-Z]+)/);
               if (ssMatch) {

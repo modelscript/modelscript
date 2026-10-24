@@ -126,8 +126,17 @@ export class LibraryTreeItem extends vscode.TreeItem {
     } else if (info.iconUri && info.iconUri.scheme !== "vscode-userdata") {
       this.iconPath = info.iconUri;
     } else if (info.iconSvg) {
-      const iconUri = svgToIconUri(info.iconSvg);
-      this.iconPath = iconUri;
+      if (info.iconSvg.includes("currentColor")) {
+        const lightSvg = info.iconSvg.replace(/currentColor/g, "#0f172a");
+        const darkSvg = info.iconSvg.replace(/currentColor/g, "#f8fafc");
+        this.iconPath = {
+          light: svgToIconUri(lightSvg),
+          dark: svgToIconUri(darkSvg),
+        };
+      } else {
+        const iconUri = svgToIconUri(info.iconSvg);
+        this.iconPath = iconUri;
+      }
     } else if (info.icon) {
       const iconName = info.icon === "class" ? "symbol-class" : info.icon;
       try {
@@ -156,10 +165,11 @@ export class LibraryTreeItem extends vscode.TreeItem {
         arguments: [info.compositeName],
       };
     } else {
-      // Leaf models and definitions: double-click / click opens in editor
+      // Models, blocks, and component definitions: double-click / click opens in editor
       const nonOpenableKinds = new Set(["package", "import", "comment", "file", "folder", "ontology"]);
-      const isOpenable = !nonOpenableKinds.has(info.classKind?.toLowerCase());
-      if (isOpenable && !info.hasChildren && !info.id.startsWith("__LIB__:") && !info.id.startsWith("__ONTOLOGY__:")) {
+      const kind = (info.classKind || "").toLowerCase();
+      const isOpenable = !nonOpenableKinds.has(kind);
+      if (isOpenable && !info.id.startsWith("__LIB__:") && !info.id.startsWith("__ONTOLOGY__:")) {
         this.command = {
           command: "modelscript.openModel",
           title: "Open Model in Editor",
@@ -175,6 +185,8 @@ export class LibraryTreeProvider
 {
   public readonly dragMimeTypes = [
     "application/vnd.code.tree.modelscript.libraryTree",
+    "application/vnd.modelscript.classname",
+    "application/vnd.modelscript.iconsvg",
     "application/json",
     "text/plain",
   ];
@@ -275,35 +287,51 @@ export class LibraryTreeProvider
   }
 
   public onDragStart?:
-    | ((data: { className: string; classKind: string; iconSvg?: string | undefined }) => void)
+    | ((data: { className: string; classKind: string; iconSvg?: string | undefined; isDrag?: boolean }) => void)
     | undefined;
+
+  public onDragEnd?: (() => void) | undefined;
 
   public async handleDrag(
     source: readonly LibraryTreeItem[],
     dataTransfer: vscode.DataTransfer,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _token: vscode.CancellationToken,
+    token: vscode.CancellationToken,
   ): Promise<void> {
     const item = source[0];
     if (!item) return;
 
-    const nonAddableKinds = new Set(["package", "import", "comment", "file", "folder"]);
-    const isAddable = !nonAddableKinds.has(item.info.classKind.toLowerCase()) && !item.info.hasChildren;
+    const kind = (item.info.classKind || "").toLowerCase();
+    const nonAddableKinds = new Set(["package", "import", "comment", "file", "folder", "ontology"]);
+    const isAddable =
+      !nonAddableKinds.has(kind) && !item.info.id.startsWith("__LIB__:") && !item.info.id.startsWith("__ONTOLOGY__:");
     if (!isAddable) return;
 
+    const className = item.info.compositeName || item.info.name;
+    if (!className) return;
+
+    const iconSvg = item.info.iconSvg ?? this.iconCache.get(className);
     const dragData = {
-      className: item.info.compositeName,
-      classKind: item.info.classKind,
-      iconSvg: item.info.iconSvg ?? this.iconCache.get(item.info.compositeName),
+      className,
+      classKind: item.info.classKind || "class",
+      iconSvg,
+      isDrag: true,
     };
 
     const payload = JSON.stringify(dragData);
     dataTransfer.set("application/json", new vscode.DataTransferItem(payload));
     dataTransfer.set("text/plain", new vscode.DataTransferItem(payload));
+    dataTransfer.set("application/vnd.modelscript.classname", new vscode.DataTransferItem(className));
+    if (iconSvg) {
+      dataTransfer.set("application/vnd.modelscript.iconsvg", new vscode.DataTransferItem(iconSvg));
+    }
     dataTransfer.set("application/vnd.code.tree.modelscript.libraryTree", new vscode.DataTransferItem(item));
 
     // Notify diagram webviews to enter placement mode
     this.onDragStart?.(dragData);
+
+    token.onCancellationRequested(() => {
+      this.onDragEnd?.();
+    });
   }
 
   async getChildren(element?: LibraryTreeItem): Promise<LibraryTreeItem[]> {

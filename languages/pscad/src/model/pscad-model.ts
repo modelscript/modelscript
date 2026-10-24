@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ensureXmlParser, parseXml, type XmlElement } from "@modelscript/xml-cst";
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 
 /**
  * Semantic model of a PSCAD project (`.pscx`/`.pslx`) built on the lossless XML CST.
@@ -66,6 +66,9 @@ export interface ModelWire {
   element: XmlElement;
 }
 
+import { parseChecksSegment, parseFlyBySegment, parseScriptElement } from "../script/script-parser.js";
+import type { PscadCheckRule, PscadFlyByDoc, PscadScriptSegment } from "../types.js";
+
 export interface ModelDefinition {
   name: string;
   id: string;
@@ -74,6 +77,9 @@ export interface ModelDefinition {
   instances: ModelInstance[];
   wires: ModelWire[];
   element: XmlElement;
+  scripts?: Map<string, PscadScriptSegment> | undefined;
+  flyBy?: PscadFlyByDoc | undefined;
+  checks?: PscadCheckRule[] | undefined;
 }
 
 export interface PscadProjectModel {
@@ -171,7 +177,6 @@ function collectSchematic(
 }
 
 export function buildProjectModel(source: string, external?: ExternalDefinitions): PscadProjectModel {
-  ensureXmlParser();
   const doc = parseXml(source);
   const root = doc.root;
   if (!root) {
@@ -207,6 +212,19 @@ export function buildProjectModel(source: string, external?: ExternalDefinitions
     const wires: ModelWire[] = [];
     const sch = childrenNamed(d, "schematic")[0];
     if (sch) collectSchematic(sch, instances, wires);
+
+    const scriptEl = childrenNamed(d, "script")[0];
+    let scripts: Map<string, PscadScriptSegment> | undefined;
+    let flyBy: PscadFlyByDoc | undefined;
+    let checks: PscadCheckRule[] | undefined;
+    if (scriptEl) {
+      scripts = parseScriptElement(scriptEl, source);
+      const flyByText = scripts.get("flyby")?.content;
+      if (flyByText) flyBy = parseFlyBySegment(flyByText);
+      const checksText = scripts.get("checks")?.content;
+      if (checksText) checks = parseChecksSegment(checksText);
+    }
+
     model.definitions.set(name, {
       name,
       id: attr(d, "id") ?? "",
@@ -215,6 +233,9 @@ export function buildProjectModel(source: string, external?: ExternalDefinitions
       instances,
       wires,
       element: d,
+      scripts,
+      flyBy,
+      checks,
     });
   }
   finalizeModel(model, external);

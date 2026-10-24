@@ -7,7 +7,7 @@ import {
   setAttributeSplice,
   type Splice,
   type XmlElement,
-} from "@modelscript/xml-cst";
+} from "@modelscript/dsl/xml";
 import {
   attr,
   buildProjectModel,

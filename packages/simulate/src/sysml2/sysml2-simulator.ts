@@ -44,7 +44,6 @@ export async function simulateSysml2(
     }
   }
   const arena = await SysML2DaeLowerer.lowerSystem(sysmlSource);
-
   return simulateArenaAsync(arena, options);
 }
 

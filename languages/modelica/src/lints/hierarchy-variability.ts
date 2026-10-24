@@ -29,6 +29,7 @@ import {
   isDottedVariableDeclared,
   isExpandableConnector,
   isNonArrayScalarModification,
+  isOldFrontendActive,
   isPrimitiveAttribute,
   isReplaceableBaseClassInScope,
   isTopLevelClassName,
@@ -1534,6 +1535,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     message: (target) =>
       `Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: any) => {
+      if (isOldFrontendActive(db, $)) return;
       // Flag simple equations outside 'when' blocks that assign to a discrete variable
       if (isDiscreteAssignedOutsideWhen(db, node, $)) {
         const lhs = db.ast.getChildByFieldId(node, "lhs");
@@ -1591,8 +1593,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           type == $.component_clause1 ||
           type == $.element_redeclaration ||
           type == $.element_replaceable ||
-          type == $.short_class_definition ||
-          type == $.short_class_specifier ||
           type == $.component_clause ||
           type == $.extends_clause
         ) {
@@ -1601,6 +1601,14 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         }
       }
       if (parentDecl == 0) return;
+
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc == parentDecl) break;
+        const at = db.ast.getType(anc);
+        if (at == $.element_redeclaration || at == $.element_replaceable) {
+          return;
+        }
+      }
 
       let typeNode: u32 = 0;
       for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
@@ -1732,6 +1740,9 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       // Check user-defined classes
       const targetClass = findClassByName(db, typeNode, $);
       if (targetClass != 0) {
+        if (isClassKind(db, targetClass, "operator_record") || isClassKind(db, targetClass, "operator record")) {
+          return;
+        }
         let idCount: u32 = 0;
         for (const _id of db.ast.getDescendants(nameNode, $.identifier)) {
           idCount++;

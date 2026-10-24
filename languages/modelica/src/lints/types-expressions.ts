@@ -20,6 +20,7 @@ import {
   inferExprUnit,
   isClassKind,
   isDescendantOfInnerClass,
+  isIntEnumConversionActive,
   isStreamVariable,
   isTypeCompatible,
   resolveBasePrimitiveType,
@@ -136,6 +137,30 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (isDesc) continue;
+
+            if (expectedType == TYPE_BOOLEAN) {
+              let inRel = false;
+              for (const anc of db.ast.getAncestors(str)) {
+                if (anc == node) break;
+                let ch = db.ast.getFirstChild(anc);
+                while (ch != 0) {
+                  if (
+                    db.ast.textEquals(ch, "==") ||
+                    db.ast.textEquals(ch, "<>") ||
+                    db.ast.textEquals(ch, "<") ||
+                    db.ast.textEquals(ch, "<=") ||
+                    db.ast.textEquals(ch, ">") ||
+                    db.ast.textEquals(ch, ">=")
+                  ) {
+                    inRel = true;
+                    break;
+                  }
+                  ch = db.ast.getNextSibling(ch);
+                }
+                if (inRel) break;
+              }
+              if (inRel) continue;
+            }
 
             let isAttrMod = false;
             for (const anc of db.ast.getAncestors(str)) {
@@ -741,7 +766,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const lhsType = inferExprType(db, lhs, $);
         const rhsType = inferExprType(db, rhs, $);
         if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && (lhsType < 0x8000 || rhsType < 0x8000)) {
-          if (!isTypeCompatible(rhsType, lhsType) && !isTypeCompatible(lhsType, rhsType)) {
+          const allowIntEnum = isIntEnumConversionActive(db, $);
+          if (!isTypeCompatible(rhsType, lhsType, allowIntEnum) && !isTypeCompatible(lhsType, rhsType, allowIntEnum)) {
             let isOldFrontend: u32 = 0;
             const docRoot = db.ast.getRootNode();
             if (docRoot != 0 && $.string_literal != 0) {
@@ -811,7 +837,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const targetType = inferExprType(db, target, $);
         const valType = inferExprType(db, value, $);
         if (targetType != TYPE_UNKNOWN && valType != TYPE_UNKNOWN) {
-          if (!isTypeCompatible(valType, targetType)) {
+          const allowIntEnum = isIntEnumConversionActive(db, $);
+          if (!isTypeCompatible(valType, targetType, allowIntEnum)) {
             db.diagnostic(node, targetType, valType);
           }
         }

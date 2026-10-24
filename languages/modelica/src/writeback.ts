@@ -33,10 +33,10 @@ function escapeRegex(str: string): string {
 /**
  * First-class writeback handler for Modelica.
  * Handles parameter bindings, component declarations, and equation modifications
- * directly on source CST byte slices.
+ * directly on source CST byte slices, strictly scoped to the declaration or parent class bounds.
  */
 export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): WritebackEdit | WritebackEdit[] | null => {
-  const { entry, fullText, newValue } = ctx;
+  const { entry, fullText, newValue, queryEngine } = ctx;
   if (!entry) return null;
 
   // 1. Precise CST byte-range replacement within the indexed declaration
@@ -57,20 +57,24 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
     }
   }
 
-  // 2. Lexical scope fallback for parameter bindings
+  // 2. Lexical scope fallback for parameter bindings, strictly constrained to enclosing parent class
   const name = entry.name;
-  if (name) {
-    const regex = new RegExp(`(\\b${escapeRegex(name)}\\s*=\\s*)([^;"\\r\\n]+)`);
-    const match = fullText.match(regex);
-    if (match && match.index !== undefined) {
-      const valStart = match.index + match[1]!.length;
-      const valEnd = valStart + match[2]!.trimEnd().length;
+  if (name && entry.parentId != null && queryEngine?.index?.symbols) {
+    const parent = queryEngine.index.symbols.get(entry.parentId);
+    if (parent && parent.startOffset != null && parent.endOffset != null && parent.endOffset > parent.startOffset) {
+      const parentText = fullText.substring(parent.startOffset, parent.endOffset);
+      const regex = new RegExp(`(\\b${escapeRegex(name)}\\s*=\\s*)([^;"\\r\\n]+)`);
+      const match = parentText.match(regex);
+      if (match && match.index !== undefined) {
+        const valStart = parent.startOffset + match.index + match[1]!.length;
+        const valEnd = valStart + match[2]!.trimEnd().length;
 
-      return {
-        startOffset: valStart,
-        endOffset: valEnd,
-        newText: newValue.trim(),
-      };
+        return {
+          startOffset: valStart,
+          endOffset: valEnd,
+          newText: newValue.trim(),
+        };
+      }
     }
   }
 

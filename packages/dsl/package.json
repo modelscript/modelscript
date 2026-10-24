@@ -149,6 +149,15 @@
       "types": "./dist/unparser/*.d.ts",
       "default": "./dist/unparser/*.js"
     },
+    "./xml": {
+      "types": "./dist/xml/index.d.ts",
+      "default": "./dist/xml/index.js"
+    },
+    "./xml/parser.wasm": "./dist/xml/parser.wasm",
+    "./xml/*": {
+      "types": "./dist/xml/*.d.ts",
+      "default": "./dist/xml/*.js"
+    },
     "./*.js": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"

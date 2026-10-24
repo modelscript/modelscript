@@ -829,7 +829,6 @@ function runTestCaseCore(
         (rawCstDiags.some((d: any) => d.code === 4033) || lints.some((d: any) => d.code === 4033))
       )
         return false;
-      if (intEnumConversion && cd.code === 5006 && (msg.includes("Integer") || msg.includes("Enum"))) return false;
       if (
         cd.code === 4042 &&
         (rawCstDiags.some((d: any) => d.code === 4017) || arena?.diagnostics.some((d: any) => d.code === 4017))
@@ -968,23 +967,6 @@ function runTestCaseCore(
       )
         return false;
       if (cd.code === 4017 && isOldFrontend && msg.includes("in a package")) return false;
-      if ((cd.code === 4019 || cd.code === 2096) && testCase.source.includes("--ignoreReplaceable")) return false;
-      if (
-        cd.code === 4045 &&
-        (msg.includes("not found in class clock") ||
-          lints.some((ld: any) => ld.code === 2004 || String(ld.message).includes("not found in <")) ||
-          (testCase.source.includes("operator record ") && testCase.source.includes(" = ")) ||
-          (testCase.source.includes("extends ") &&
-            /extends\s+\S+\s*\(\s*(?:redeclare\s+)?replaceable\b/.test(testCase.source)))
-      ) {
-        return false;
-      }
-      if (cd.code === 3001 && msg.includes("expected subtype of Boolean, got type String") && /[<>=]/.test(msg)) {
-        return false;
-      }
-      if (cd.code === 6010 && (testCase.source.match(/\bequation\b/g) || []).length > 1) {
-        return false;
-      }
       if ((cd.code === 4017 || cd.code === 4042) && testCase.metadata.status === "correct" && lastClassName) {
         const targetSym = Array.from(context.queryEngine.index.symbols.values()).find(
           (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
@@ -1010,30 +992,12 @@ function runTestCaseCore(
     let flattenedResult: string | null = null;
     if (arena) {
       // Check for flattener-level error diagnostics and lint errors
-      const hasCstErrors = cstDiags.some(
-        (d: any) => d.severity === 1 && !(d.code === 4007 && testCase.source.includes("-d=-newInst")),
-      );
+      const hasCstErrors = cstDiags.some((d: any) => d.severity === 1);
       const hasLintErrors =
         hasCstErrors ||
         lints.some((d: Record<string, unknown>) => {
           if (d.severity !== "error") return false;
           const lintName = (d.lintName as string) ?? (d.rule as string) ?? "";
-          if (
-            (lintName === "functionPublicVariable" ||
-              (d as any).code === 4007 ||
-              (typeof d.message === "string" && d.message.includes("Invalid public variable"))) &&
-            testCase.source.includes("-d=-newInst")
-          ) {
-            return false;
-          }
-          if (
-            ((d as any).code === 4019 ||
-              (d as any).code === 2096 ||
-              (typeof d.message === "string" && d.message.includes("Redeclaration with a new type requires"))) &&
-            testCase.source.includes("--ignoreReplaceable")
-          ) {
-            return false;
-          }
           if (
             ((d as any).code === 4019 ||
               (typeof d.message === "string" && d.message.includes("Redeclaration with a new type requires"))) &&
@@ -1242,22 +1206,6 @@ function runTestCaseCore(
 
         if (dd.severity === "warning") continue;
         if (
-          (lintName === "functionPublicVariable" ||
-            (dd as any).code === 4007 ||
-            d.message.includes("Invalid public variable")) &&
-          testCase.source.includes("-d=-newInst")
-        ) {
-          continue;
-        }
-        if (
-          ((dd as any).code === 4019 ||
-            (dd as any).code === 2096 ||
-            d.message.includes("Redeclaration with a new type requires")) &&
-          testCase.source.includes("--ignoreReplaceable")
-        ) {
-          continue;
-        }
-        if (
           ((dd as any).code === 4019 || d.message.includes("Redeclaration with a new type requires")) &&
           testCase.metadata.status === "correct" &&
           lastClassName
@@ -1347,28 +1295,6 @@ function runTestCaseCore(
       let emittedSpecificSyntaxDiag = false;
       for (const cd of cstDiags) {
         if (cd.severity === 2) continue; // skip warnings
-        if (cd.code === 4007 && testCase.source.includes("-d=-newInst")) continue;
-        if ((cd.code === 4019 || cd.code === 2096) && testCase.source.includes("--ignoreReplaceable")) continue;
-        if (
-          cd.code === 4045 &&
-          (String(cd.message).includes("not found in class clock") ||
-            lints.some((ld: any) => ld.code === 2004 || String(ld.message).includes("not found in <")) ||
-            (testCase.source.includes("operator record ") && testCase.source.includes(" = ")) ||
-            (testCase.source.includes("extends ") &&
-              /extends\s+\S+\s*\(\s*(?:redeclare\s+)?replaceable\b/.test(testCase.source)))
-        ) {
-          continue;
-        }
-        if (
-          cd.code === 3001 &&
-          String(cd.message).includes("expected subtype of Boolean, got type String") &&
-          /[<>=]/.test(String(cd.message))
-        ) {
-          continue;
-        }
-        if (cd.code === 6010 && (testCase.source.match(/\bequation\b/g) || []).length > 1) {
-          continue;
-        }
         if (hasFatalParseIdDiag && cd.code !== 2005) continue;
         if (cd.code === 2005) {
           if (emittedParseIdDiag) continue;
@@ -1436,26 +1362,6 @@ function runTestCaseCore(
           }
           return startPosition && endPosition ? { startPosition, endPosition } : null;
         })();
-        if (isOldFrontend && cd.code === 4063) {
-          const m = /^Base class targeted by class extends (\S+) not found in the inherited classes\.$/.exec(normCdMsg);
-          if (m) {
-            diagnostics.push({
-              type: sevStr,
-              code: 4063,
-              message: `Invalid redeclaration of class ${m[1]}, class extends only allowed on inherited classes.`,
-              resource: testCase.file,
-              range: cdRange,
-            });
-            diagnostics.push({
-              type: sevStr,
-              code: 4061,
-              message: `Illegal redeclare of element ${m[1]}, no inherited element with that name exists.`,
-              resource: testCase.file,
-              range: cdRange,
-            });
-            continue;
-          }
-        }
         diagnostics.push({
           type: sevStr,
           code: cd.code,

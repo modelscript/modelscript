@@ -8,14 +8,21 @@
  * source line/column locations, and electrical connectivity.
  */
 
+import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import { EXTRA_MASTER_PORT_LAYOUTS } from "../catalog/master-port-layouts.js";
 import { readDefinitionForm } from "../model/definition-form.js";
 import { buildProjectModel, type ExternalDefinitions, type ModelDefinition } from "../model/pscad-model.js";
 import { refineModulePorts } from "../model/refine-ports.js";
 import { registeredExternalDefinitions } from "../model/workspace-registry.js";
+import { parseChecksSegment, parseFlyBySegment, parseScriptElement } from "../script/script-parser.js";
 import type {
   Point2D,
   PortKind,
+  PscadCheckRule,
+  PscadFlyByDoc,
+  PscadScriptSegment,
+  PscxDefinitionGraphic,
+  PscxLine,
   PscxModule,
   PscxPort,
   PscxProject,
@@ -216,29 +223,32 @@ function parseParamValue(raw: string): string | number {
   return !isNaN(num) ? num : raw;
 }
 
-/**
- * Checks whether a byte/character offset falls within any excluded XML range (e.g., `StationDefn` or sub-module blocks).
- */
-function isOffsetInRanges(offset: number, ranges: { start: number; end: number }[]): boolean {
-  for (let i = 0; i < ranges.length; i++) {
-    const r = ranges[i]!;
-    if (offset >= r.start && offset < r.end) return true;
-  }
-  return false;
+function attr(el: XmlElement, name: string): string | undefined {
+  const lower = name.toLowerCase();
+  return el.attributes.find((a) => a.name.toLowerCase() === lower)?.value;
+}
+
+function attrObj(el: XmlElement, name: string): XmlAttribute | undefined {
+  const lower = name.toLowerCase();
+  return el.attributes.find((a) => a.name.toLowerCase() === lower);
 }
 
 /**
- * Parses a PSCAD `.pscx` / `.pslx` / `.pswx` XML string into a structured `PscxProject`,
- * extracting project settings, user definitions, root/sub-module schematics, and spatially snapped wire nets.
+ * Parses a PSCAD project using the DSL-generated lossless XML CST (@modelscript/dsl/xml).
  */
-export function parsePscx(xmlContent: string, options?: { external?: ExternalDefinitions }): PscxProject {
-  // Semantic model (lossless XML CST) used to reconcile port geometry with real wire endpoints.
+export function parsePscxCst(xmlContent: string, options?: { external?: ExternalDefinitions }): PscxProject {
+  const doc = parseXml(xmlContent);
+  if (!doc.root) {
+    throw new Error("PSCAD XML has no root element");
+  }
+
   let modelDefs: Map<string, ModelDefinition> | undefined;
   try {
     modelDefs = buildProjectModel(xmlContent, options?.external ?? registeredExternalDefinitions()).definitions;
   } catch {
     modelDefs = undefined;
   }
+
   const lineStarts = computeLineStarts(xmlContent);
   const settings: PscxProjectSettings = {
     timeStepUs: 50.0,
@@ -247,46 +257,42 @@ export function parsePscx(xmlContent: string, options?: { external?: ExternalDef
     frequencyHz: 60.0,
   };
 
-  let projectName = "Untitled";
-  let version = "5.0";
-  let projectType: "case" | "library" = "case";
+  const rootEl = doc.root;
+  const projectName = attr(rootEl, "name") ?? "Untitled";
+  const version = attr(rootEl, "version") ?? "5.0";
+  const targetOrType = attr(rootEl, "type") || attr(rootEl, "target") || "";
+  const projectType: "case" | "library" = targetOrType.toLowerCase().includes("library") ? "library" : "case";
   const linkedLibraries: string[] = [];
 
-  // Match root <project> or <workspace> tag
-  const projectMatch = /<(?:project|workspace)\b([^>]*?)>/i.exec(xmlContent);
-  if (projectMatch) {
-    const attrText = projectMatch[1]!;
-    const nameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(attrText);
-    if (nameMatch) projectName = nameMatch[1]!;
-    const verMatch = /version\s*=\s*["']([^"']+)["']/i.exec(attrText);
-    if (verMatch) version = verMatch[1]!;
-    const typeMatch = /type\s*=\s*["']([^"']+)["']/i.exec(attrText) || /target\s*=\s*["']([^"']+)["']/i.exec(attrText);
-    if (typeMatch && typeMatch[1]!.toLowerCase().includes("library")) {
-      projectType = "library";
+  // Traverse all elements for filepath attributes
+  function collectFilepaths(el: XmlElement) {
+    const fp = attr(el, "filepath");
+    if (fp) linkedLibraries.push(fp);
+    for (const c of el.children) collectFilepaths(c);
+  }
+  collectFilepaths(rootEl);
+
+  // Settings
+  function collectSettingsParams(el: XmlElement): XmlElement[] {
+    const lower = el.name.toLowerCase();
+    if (lower === "paramlist" && attr(el, "name")?.toLowerCase() === "settings") {
+      return el.children.filter((c) => c.name.toLowerCase() === "param");
     }
+    for (const c of el.children) {
+      const res = collectSettingsParams(c);
+      if (res.length > 0) return res;
+    }
+    return [];
   }
 
-  // Extract linked libraries from workspace <projects> or <Reference> tags
-  const libFileRegex = /\bfilepath\s*=\s*["']([^"']+)["']/gi;
-  let libMatch: RegExpExecArray | null;
-  while ((libMatch = libFileRegex.exec(xmlContent)) !== null) {
-    if (libMatch[1]) linkedLibraries.push(libMatch[1]);
+  let settingParams = collectSettingsParams(rootEl);
+  if (settingParams.length === 0) {
+    settingParams = rootEl.children.filter((c) => c.name.toLowerCase() === "param");
   }
 
-  // Scope project settings strictly to project header / <paramlist name="Settings">
-  // so component-level parameters (e.g. a source's "frequency") never overwrite project settings.
-  const defsIdx = xmlContent.search(/<(?:definitions|hierarchy)\b/i);
-  const settingsXml =
-    /<paramlist\b[^>]*?\bname\s*=\s*["']Settings["'][^>]*>([\s\S]*?)<\/paramlist>/i.exec(xmlContent)?.[1] ??
-    (defsIdx > 0 ? xmlContent.slice(0, defsIdx) : xmlContent.slice(0, 2000));
-
-  const paramRegex = /<param\b([^>]*?)(?:\/>|>(.*?)<\/param>)/gi;
-  let pMatch: RegExpExecArray | null;
-  while ((pMatch = paramRegex.exec(settingsXml)) !== null) {
-    const attrs = pMatch[1]!;
-    const nameAttr = /name\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1];
-    const valAttr = /value\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] ?? pMatch[2]?.trim();
-
+  for (const p of settingParams) {
+    const nameAttr = attr(p, "name");
+    const valAttr = attr(p, "value") ?? p.text.trim();
     if (!nameAttr || valAttr === undefined) continue;
 
     const lowerName = nameAttr.toLowerCase();
@@ -306,95 +312,162 @@ export function parsePscx(xmlContent: string, options?: { external?: ExternalDef
     }
   }
 
-  // Extract definition ports from <Definition classid="UserCmpDefn" name="...">...<graphics>...<Port ...>
-  // and identify excluded station/sub-module ranges.
+  // Find all definitions
   const definitionPorts = new Map<string, PscxPort[]>();
-  const excludedRanges: { start: number; end: number }[] = [];
-  const subModuleDefs: { name: string; xml: string; baseOffset: number }[] = [];
+  const projectDefinitions = new Map<string, PscxDefinitionGraphic>();
+  const excludedElements = new Set<XmlElement>();
+  const subModuleDefs: { name: string; element: XmlElement }[] = [];
 
-  const defRegex = /<Definition\b([^>]*?)>([\s\S]*?)<\/Definition>/gi;
-  let defMatch: RegExpExecArray | null;
-  while ((defMatch = defRegex.exec(xmlContent)) !== null) {
-    const dAttrs = defMatch[1]!;
-    const dBody = defMatch[2]!;
-    const defName = /name\s*=\s*["']([^"']+)["']/i.exec(dAttrs)?.[1];
-    const classId = /classid\s*=\s*["']([^"']+)["']/i.exec(dAttrs)?.[1];
-    const defType = /type\s*=\s*["']([^"']+)["']/i.exec(dAttrs)?.[1];
+  function findDefinitions(el: XmlElement): XmlElement[] {
+    const out: XmlElement[] = [];
+    if (el.name.toLowerCase() === "definition") {
+      out.push(el);
+    }
+    for (const c of el.children) {
+      out.push(...findDefinitions(c));
+    }
+    return out;
+  }
 
-    // Exclude Drawing Station (StationDefn) from root schematic
+  function findStationCanvases(el: XmlElement): XmlElement[] {
+    const out: XmlElement[] = [];
+    if (el.name.toLowerCase() === "schematic" && attr(el, "classid")?.toLowerCase() === "stationcanvas") {
+      out.push(el);
+    }
+    for (const c of el.children) {
+      out.push(...findStationCanvases(c));
+    }
+    return out;
+  }
+
+  for (const sc of findStationCanvases(rootEl)) {
+    excludedElements.add(sc);
+  }
+
+  const allDefinitions = findDefinitions(rootEl);
+  for (const defEl of allDefinitions) {
+    const defName = attr(defEl, "name");
+    const classId = attr(defEl, "classid");
+    const defType = attr(defEl, "type");
+
     if (classId === "StationDefn" || defName === "DS") {
-      excludedRanges.push({ start: defMatch.index, end: defMatch.index + defMatch[0].length });
+      excludedElements.add(defEl);
       continue;
     }
 
     if (defName && classId === "UserCmpDefn") {
       const defPorts: PscxPort[] = [];
-      const portRegex = /<Port\b([^>]*?)>([\s\S]*?)<\/Port>/gi;
-      let portMatch: RegExpExecArray | null;
       const seenPortNames = new Set<string>();
-      while ((portMatch = portRegex.exec(dBody)) !== null) {
-        const pAttrs = portMatch[1]!;
-        const pBody = portMatch[2]!;
-        const portX = parseFloat(/x\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1] || "0");
-        const portY = parseFloat(/y\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1] || "0");
-        const pName = /<param\s+name\s*=\s*["']name["']\s+value\s*=\s*["']([^"']+)["']/i.exec(pBody)?.[1] || "p";
-        if (seenPortNames.has(pName)) continue;
-        seenPortNames.add(pName);
-        const pDim = parseInt(
-          /<param\s+name\s*=\s*["']dim["']\s+value\s*=\s*["']([^"']+)["']/i.exec(pBody)?.[1] || "1",
-          10,
-        );
-        const pElectype = /<param\s+name\s*=\s*["']electype["']\s+value\s*=\s*["']([^"']+)["']/i.exec(pBody)?.[1];
-        const pMode = /<param\s+name\s*=\s*["']mode["']\s+value\s*=\s*["']([^"']+)["']/i.exec(pBody)?.[1];
-        // PSCAD port `mode`: 1 = signal input, 2 = signal output, 3 = electrical. `electype` is 0 for all of them.
-        const kind: PortKind =
-          pMode !== undefined
-            ? pMode === "3"
-              ? "electrical"
-              : "signal"
-            : pElectype === "0" || pElectype === "signal"
-              ? "signal"
-              : "electrical";
-        defPorts.push({
-          id: pName,
-          name: pName,
-          kind,
-          dimension: isNaN(pDim) ? 1 : pDim,
-          position: { x: portX, y: portY },
-        });
+
+      function findPorts(el: XmlElement) {
+        if (el.name.toLowerCase() === "port") {
+          const portX = parseFloat(attr(el, "x") || "0");
+          const portY = parseFloat(attr(el, "y") || "0");
+
+          let pName = "p";
+          let pDim = 1;
+          let pElectype: string | undefined;
+          let pMode: string | undefined;
+
+          function readPortParams(pel: XmlElement) {
+            if (pel.name.toLowerCase() === "param") {
+              const pname = attr(pel, "name")?.toLowerCase();
+              const pval = attr(pel, "value") ?? pel.text.trim();
+              if (pname === "name" && pval) pName = pval;
+              else if (pname === "dim" && pval) pDim = parseInt(pval, 10);
+              else if (pname === "electype") pElectype = pval;
+              else if (pname === "mode") pMode = pval;
+            }
+            for (const pc of pel.children) readPortParams(pc);
+          }
+          readPortParams(el);
+
+          if (!seenPortNames.has(pName)) {
+            seenPortNames.add(pName);
+            const kind: PortKind =
+              pMode !== undefined
+                ? pMode === "3"
+                  ? "electrical"
+                  : "signal"
+                : pElectype === "0" || pElectype === "signal"
+                  ? "signal"
+                  : "electrical";
+
+            defPorts.push({
+              id: pName,
+              name: pName,
+              kind,
+              dimension: isNaN(pDim) ? 1 : pDim,
+              position: { x: portX, y: portY },
+            });
+          }
+        }
+        for (const c of el.children) findPorts(c);
       }
+      findPorts(defEl);
+
       if (defPorts.length > 0) {
         definitionPorts.set(defName, defPorts);
       }
     }
 
-    // If this is a non-Main sub-module definition with its own schematic, parse it into subModules
-    if (
-      defName &&
-      defName !== "Main" &&
-      (classId === "UserCmpDefn" || defType === "module") &&
-      /<schematic\b/i.test(dBody)
-    ) {
-      const bodyStartOffset = defMatch.index + defMatch[0].indexOf(dBody);
-      subModuleDefs.push({ name: defName, xml: dBody, baseOffset: bodyStartOffset });
-      excludedRanges.push({ start: defMatch.index, end: defMatch.index + defMatch[0].length });
+    if (defName && (classId === "UserCmpDefn" || defType === "module")) {
+      let svgXml: string | undefined;
+      let graphicsXml: string | undefined;
+      let desc: string | undefined;
+      let scriptSegments: Map<string, PscadScriptSegment> | undefined;
+      let flyBy: PscadFlyByDoc | undefined;
+      let checks: PscadCheckRule[] | undefined;
+
+      for (const c of defEl.children) {
+        const cname = c.name.toLowerCase();
+        if (cname === "svg") {
+          svgXml = xmlContent.slice(c.start, c.end);
+        } else if (cname === "graphics") {
+          graphicsXml = xmlContent.slice(c.start, c.end);
+        } else if (cname === "paramlist") {
+          for (const p of c.children) {
+            if (attr(p, "name")?.toLowerCase() === "description") {
+              desc = attr(p, "value") ?? p.text.trim();
+            }
+          }
+        } else if (cname === "script") {
+          scriptSegments = parseScriptElement(c, xmlContent);
+          const flyByText = scriptSegments.get("flyby")?.content;
+          if (flyByText) {
+            flyBy = parseFlyBySegment(flyByText);
+          }
+          const checksText = scriptSegments.get("checks")?.content;
+          if (checksText) {
+            checks = parseChecksSegment(checksText);
+          }
+        }
+      }
+
+      // If description was empty or unset, fall back to the first line of the FlyBy summary
+      if ((!desc || !desc.trim()) && flyBy?.summary) {
+        desc = flyBy.summary.split("\n")[0]?.trim();
+      }
+
+      projectDefinitions.set(defName, {
+        name: defName,
+        description: desc,
+        svgXml,
+        graphicsXml,
+        scriptSegments,
+        flyBy,
+        checks,
+      });
+    }
+
+    const hasSchematic = defEl.children.some((c) => c.name.toLowerCase() === "schematic");
+    if (defName && defName !== "Main" && (classId === "UserCmpDefn" || defType === "module") && hasSchematic) {
+      subModuleDefs.push({ name: defName, element: defEl });
+      excludedElements.add(defEl);
     }
   }
 
-  // Also exclude standalone <schematic classid="StationCanvas"> blocks
-  const stationCanvasRegex = /<schematic\b[^>]*?\bclassid=["']StationCanvas["'][\s\S]*?<\/schematic>/gi;
-  let scMatch: RegExpExecArray | null;
-  while ((scMatch = stationCanvasRegex.exec(xmlContent)) !== null) {
-    excludedRanges.push({ start: scMatch.index, end: scMatch.index + scMatch[0].length });
-  }
-
-  function parseModuleFromXml(
-    modId: string,
-    modName: string,
-    xmlSlice: string,
-    baseOffset: number,
-    skipRanges: { start: number; end: number }[],
-  ): PscxModule {
+  function parseModule(modId: string, modName: string, container: XmlElement, skipExcluded: boolean): PscxModule {
     const mod: PscxModule = {
       id: modId,
       name: modName,
@@ -404,328 +477,308 @@ export function parsePscx(xmlContent: string, options?: { external?: ExternalDef
     };
 
     let autoIdCounter = 1;
+    let wireId = 1;
+    let stickyId = 1;
+    let lineId = 1;
+    const stickies: PscxSticky[] = [];
+    const lines: PscxLine[] = [];
 
-    // 1. Extract User / Component elements (including self-closing <User .../> tags)
-    const cmpRegex = /<(?:User|Component)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:User|Component)>)/gi;
-    let cMatch: RegExpExecArray | null;
+    function walk(el: XmlElement) {
+      if (skipExcluded && excludedElements.has(el)) return;
 
-    while ((cMatch = cmpRegex.exec(xmlSlice)) !== null) {
-      const absOffset = baseOffset + cMatch.index;
-      if (skipRanges.length > 0 && isOffsetInRanges(absOffset, skipRanges)) continue;
+      const tag = el.name.toLowerCase();
+      if (tag === "svg" || tag === "graphics" || tag === "form" || tag === "script") return;
 
-      const attrs = cMatch[1]!;
-      const inner = cMatch[2] ?? "";
+      if (tag === "user" || tag === "component") {
+        const defn = attr(el, "defn") || attr(el, "name") || attr(el, "type") || "Component";
+        const idAttr = attrObj(el, "id");
+        const id = idAttr?.value || String(autoIdCounter++);
+        const cmpLocOffset = idAttr ? idAttr.start : el.start;
+        const loc = offsetToLineCol(lineStarts, cmpLocOffset);
+        const posX = parseFloat(attr(el, "x") || "0");
+        const posY = parseFloat(attr(el, "y") || "0");
+        const width = parseFloat(attr(el, "w") || "0");
+        const height = parseFloat(attr(el, "h") || "0");
+        const orientRaw = parseInt(attr(el, "orient") || "0", 10);
+        const zRaw = parseInt(attr(el, "z") || "0", 10);
+        const z = isNaN(zRaw) ? 0 : zRaw;
+        const mirrorAttr = attr(el, "mirror");
+        const mirror = mirrorAttr === "true" || mirrorAttr === "1" || (orientRaw >= 4 && orientRaw <= 7);
 
-      const defn =
-        /defn\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] ||
-        /\bname\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] ||
-        /type\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] ||
-        "Component";
+        const rotation =
+          orientRaw >= 0 && orientRaw <= 3
+            ? orientRaw * 90
+            : orientRaw >= 4 && orientRaw <= 7
+              ? (orientRaw - 4) * 90
+              : isNaN(orientRaw)
+                ? 0
+                : orientRaw % 360;
 
-      const idMatch = /\bid\s*=\s*["']([^"']+)["']/i.exec(attrs);
-      const id = idMatch?.[1] || String(autoIdCounter++);
-      let cmpLocOffset = absOffset;
-      const cmpAttrsIdx = cMatch[0].indexOf(attrs);
-      if (idMatch && cmpAttrsIdx >= 0) {
-        cmpLocOffset = absOffset + cmpAttrsIdx + idMatch.index + idMatch[0].lastIndexOf(id);
-      }
-      const loc = offsetToLineCol(lineStarts, cmpLocOffset);
-      const posX = parseFloat(/\bx\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0");
-      const posY = parseFloat(/\by\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0");
-      const width = parseFloat(/\bw\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0");
-      const height = parseFloat(/\bh\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0");
-      const orientRaw = parseInt(/orient\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0", 10);
-      const mirrorAttr = /mirror\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1];
-      const mirror = mirrorAttr === "true" || mirrorAttr === "1" || (orientRaw >= 4 && orientRaw <= 7);
+        const params: Record<string, string | number> = {};
+        const paramLocations: Record<string, { line: number; column: number }> = {};
+        const ports: PscxPort[] = [];
 
-      // Normalize rotation: PSCAD orient 0..3 -> 0, 90, 180, 270 degrees
-      const rotation =
-        orientRaw >= 0 && orientRaw <= 3
-          ? orientRaw * 90
-          : orientRaw >= 4 && orientRaw <= 7
-            ? (orientRaw - 4) * 90
-            : isNaN(orientRaw)
-              ? 0
-              : orientRaw % 360;
-
-      const params: Record<string, string | number> = {};
-      const paramLocations: Record<string, { line: number; column: number }> = {};
-      const ports: PscxPort[] = [];
-      const innerStartInMatch = inner ? cMatch[0].indexOf(inner) : 0;
-
-      // Parse inner parameters
-      let innerParamMatch: RegExpExecArray | null;
-      const innerParamRegex = /<param\b([^>]*?)(?:\/>|>(.*?)<\/param>)/gi;
-      while ((innerParamMatch = innerParamRegex.exec(inner)) !== null) {
-        const pAttrs = innerParamMatch[1]!;
-        const pNameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(pAttrs);
-        const pName = pNameMatch?.[1];
-        const pVal = /value\s*=\s*["']([^"']*)["']/i.exec(pAttrs)?.[1] ?? innerParamMatch[2]?.trim();
-        if (pName && pVal !== undefined) {
-          params[pName] = parseParamValue(pVal);
-          if (innerStartInMatch >= 0) {
-            const pAttrsIdx = innerParamMatch[0].indexOf(pAttrs);
-            const nameOffsetInParam =
-              pNameMatch && pAttrsIdx >= 0 ? pAttrsIdx + pNameMatch.index + pNameMatch[0].lastIndexOf(pName) : 0;
-            paramLocations[pName] = offsetToLineCol(
-              lineStarts,
-              absOffset + innerStartInMatch + innerParamMatch.index + nameOffsetInParam,
-            );
+        function collectCmpChildren(c: XmlElement) {
+          const cTag = c.name.toLowerCase();
+          if (cTag === "param") {
+            const pNameAttr = attrObj(c, "name");
+            const pName = pNameAttr?.value;
+            const pVal = attr(c, "value") ?? c.text.trim();
+            if (pName && pVal !== undefined) {
+              params[pName] = parseParamValue(pVal);
+              const nameOffsetInParam = pNameAttr ? pNameAttr.start : c.start;
+              paramLocations[pName] = offsetToLineCol(lineStarts, nameOffsetInParam);
+            }
+          } else if (cTag === "port") {
+            const portName = attr(c, "name") || "p";
+            const posVal = attr(c, "pos");
+            const kindVal = (attr(c, "kind") as PortKind) || "electrical";
+            const dimVal = parseInt(attr(c, "dim") || "3", 10);
+            ports.push({
+              id: `${id}_${portName}`,
+              name: portName,
+              kind: kindVal,
+              dimension: isNaN(dimVal) ? 3 : dimVal,
+              position: parsePoint(posVal),
+            });
+          } else {
+            for (const child of c.children) collectCmpChildren(child);
           }
         }
-      }
+        for (const child of el.children) collectCmpChildren(child);
 
-      // Parse inner ports
-      let portMatch: RegExpExecArray | null;
-      const portRegex = /<port\b([^>]*?)(?:\/>|>(.*?)<\/port>)/gi;
-      while ((portMatch = portRegex.exec(inner)) !== null) {
-        const portAttrs = portMatch[1]!;
-        const portName = /name\s*=\s*["']([^"']+)["']/i.exec(portAttrs)?.[1] || "p";
-        const posVal = /pos\s*=\s*["']([^"']+)["']/i.exec(portAttrs)?.[1];
-        const kindVal = (/kind\s*=\s*["']([^"']+)["']/i.exec(portAttrs)?.[1] as PortKind) || "electrical";
-        const dimVal = parseInt(/dim\s*=\s*["']([^"']+)["']/i.exec(portAttrs)?.[1] || "3", 10);
-
-        ports.push({
-          id: `${id}_${portName}`,
-          name: portName,
-          kind: kindVal,
-          dimension: isNaN(dimVal) ? 3 : dimVal,
-          position: parsePoint(posVal),
-        });
-      }
-
-      // If no inline ports found, inherit from user definition or Master Library catalog
-      const cleanDefn = defn.includes(":") ? defn.split(":").pop()! : defn;
-      if (ports.length === 0) {
-        if (definitionPorts.has(cleanDefn)) {
-          const seenInheritedNames = new Set<string>();
-          for (const dp of definitionPorts.get(cleanDefn)!) {
-            if (seenInheritedNames.has(dp.name)) continue;
-            seenInheritedNames.add(dp.name);
-            ports.push({
-              id: `${id}_${dp.name}`,
-              name: dp.name,
-              kind: dp.kind,
-              dimension: dp.dimension,
-              position: { ...dp.position },
-            });
-          }
-        } else {
-          const masterPorts =
-            MASTER_LIBRARY_PORTS[cleanDefn.toLowerCase()] ?? EXTRA_MASTER_PORT_LAYOUTS[cleanDefn.toLowerCase()];
-          if (masterPorts) {
-            for (const mp of masterPorts) {
+        const cleanDefn = defn.includes(":") ? defn.split(":").pop()! : defn;
+        if (ports.length === 0) {
+          if (definitionPorts.has(cleanDefn)) {
+            const seenInheritedNames = new Set<string>();
+            for (const dp of definitionPorts.get(cleanDefn)!) {
+              if (seenInheritedNames.has(dp.name)) continue;
+              seenInheritedNames.add(dp.name);
               ports.push({
-                id: `${id}_${mp.name}`,
-                name: mp.name,
-                kind: mp.kind,
-                dimension: mp.dim,
-                position: { x: mp.x, y: mp.y },
+                id: `${id}_${dp.name}`,
+                name: dp.name,
+                kind: dp.kind,
+                dimension: dp.dimension,
+                position: { ...dp.position },
               });
+            }
+          } else {
+            const masterPorts =
+              MASTER_LIBRARY_PORTS[cleanDefn.toLowerCase()] ?? EXTRA_MASTER_PORT_LAYOUTS[cleanDefn.toLowerCase()];
+            if (masterPorts) {
+              for (const mp of masterPorts) {
+                ports.push({
+                  id: `${id}_${mp.name}`,
+                  name: mp.name,
+                  kind: mp.kind,
+                  dimension: mp.dim,
+                  position: { x: mp.x, y: mp.y },
+                });
+              }
             }
           }
         }
+
+        const nameAttr = attr(el, "name");
+        const paramName = (params["Name"] ?? params["name"]) as string | number | undefined;
+        const instanceName =
+          paramName !== undefined && String(paramName).trim() !== ""
+            ? String(paramName).trim()
+            : nameAttr && nameAttr.trim() !== ""
+              ? nameAttr.trim()
+              : `${defn}_${id}`;
+
+        mod.components.push({
+          id,
+          definitionName: defn,
+          instanceName,
+          position: { x: posX, y: posY },
+          width: width > 0 ? width : undefined,
+          height: height > 0 ? height : undefined,
+          rotation,
+          mirror: mirror || undefined,
+          z,
+          parameters: params,
+          paramLocations,
+          ports,
+          line: loc.line,
+          column: loc.column,
+          sourceRange: { startOffset: el.start, endOffset: el.end },
+        });
+        return;
       }
 
-      // Infer instance name if present in params or attrs
-      const nameAttr = /name\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1];
-      const paramName = (params["Name"] ?? params["name"]) as string | number | undefined;
-      const instanceName =
-        paramName !== undefined && String(paramName).trim() !== ""
-          ? String(paramName).trim()
-          : nameAttr && nameAttr.trim() !== ""
-            ? nameAttr.trim()
-            : `${defn}_${id}`;
-
-      mod.components.push({
-        id,
-        definitionName: defn,
-        instanceName,
-        position: { x: posX, y: posY },
-        width: width > 0 ? width : undefined,
-        height: height > 0 ? height : undefined,
-        rotation,
-        mirror: mirror || undefined,
-        parameters: params,
-        paramLocations,
-        ports,
-        line: loc.line,
-        column: loc.column,
-        sourceRange: { startOffset: absOffset, endOffset: absOffset + cMatch[0].length },
-      });
-    }
-
-    // 2. Extract <Bus .../> elements
-    const busRegex = /<Bus\b([^>]*?)(?:\/>|>([\s\S]*?)<\/Bus>)/gi;
-    let bMatch: RegExpExecArray | null;
-    while ((bMatch = busRegex.exec(xmlSlice)) !== null) {
-      const absOffset = baseOffset + bMatch.index;
-      if (skipRanges.length > 0 && isOffsetInRanges(absOffset, skipRanges)) continue;
-
-      const attrs = bMatch[1]!;
-      const busNameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(attrs);
-      const busIdMatch = /\bid\s*=\s*["']([^"']+)["']/i.exec(attrs);
-      const busName = busNameMatch?.[1] || `Bus_${autoIdCounter++}`;
-      const busId = busIdMatch?.[1] || busName;
-      let busLocOffset = absOffset;
-      const bAttrsIdx = bMatch[0].indexOf(attrs);
-      if (busNameMatch && bAttrsIdx >= 0) {
-        busLocOffset = absOffset + bAttrsIdx + busNameMatch.index + busNameMatch[0].lastIndexOf(busName);
-      } else if (busIdMatch && bAttrsIdx >= 0) {
-        busLocOffset = absOffset + bAttrsIdx + busIdMatch.index + busIdMatch[0].lastIndexOf(busId);
-      }
-      const loc = offsetToLineCol(lineStarts, busLocOffset);
-      const posX = parseFloat(/\bx\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0");
-      const posY = parseFloat(/\by\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0");
-      const vbase = parseFloat(
-        /vbase\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || /v_base\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "0",
-      );
-      const length = parseFloat(/length\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] || "50");
-
-      mod.buses.push({
-        id: busId,
-        name: busName,
-        voltageBaseKv: vbase > 0 ? vbase : undefined,
-        position: { x: posX, y: posY },
-        length,
-        phaseCount: 3,
-        line: loc.line,
-        column: loc.column,
-        sourceRange: { startOffset: absOffset, endOffset: absOffset + bMatch[0].length },
-      });
-    }
-
-    // 3. Extract Wires (and <Wire classid="Bus"> busbars in PSCAD v4/v5)
-    const wireRegex = /<Wire\b([^>]*?)>([\s\S]*?)<\/Wire>/gi;
-    let wMatch: RegExpExecArray | null;
-    let wireId = 1;
-    while ((wMatch = wireRegex.exec(xmlSlice)) !== null) {
-      const absOffset = baseOffset + wMatch.index;
-      if (skipRanges.length > 0 && isOffsetInRanges(absOffset, skipRanges)) continue;
-
-      const wAttrs = wMatch[1]!;
-      const inner = wMatch[2]!;
-      const classId = /classid\s*=\s*["']([^"']+)["']/i.exec(wAttrs)?.[1] || "";
-
-      // Skip hierarchy branch links
-      if (classId.toLowerCase() === "branch") continue;
-
-      const wireX = parseFloat(/\bx\s*=\s*["']([^"']+)["']/i.exec(wAttrs)?.[1] || "0");
-      const wireY = parseFloat(/\by\s*=\s*["']([^"']+)["']/i.exec(wAttrs)?.[1] || "0");
-      const vertices: Point2D[] = [];
-
-      const vertexRegex = /<vertex\b([^>]*?)\/>/gi;
-      let vMatch: RegExpExecArray | null;
-      while ((vMatch = vertexRegex.exec(inner)) !== null) {
-        const vAttrs = vMatch[1]!;
-        const vx = parseFloat(/\bx\s*=\s*["']([^"']+)["']/i.exec(vAttrs)?.[1] || "0") + wireX;
-        const vy = parseFloat(/\by\s*=\s*["']([^"']+)["']/i.exec(vAttrs)?.[1] || "0") + wireY;
-        vertices.push({ x: vx, y: vy });
-      }
-
-      if (classId.toLowerCase() === "bus") {
-        const innerNameMatch = /<param\s+name\s*=\s*["']Name["']\s+value\s*=\s*["']([^"']+)["']/i.exec(inner);
-        const attrNameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(wAttrs);
-        const attrIdMatch = /\bid\s*=\s*["']([^"']+)["']/i.exec(wAttrs);
-        const busName = innerNameMatch?.[1] || attrNameMatch?.[1] || `Bus_${autoIdCounter++}`;
-        const busId = attrIdMatch?.[1] || busName;
-        let busLocOffset = absOffset;
-        if (innerNameMatch) {
-          const innerIdx = wMatch[0].indexOf(inner);
-          if (innerIdx >= 0) {
-            busLocOffset = absOffset + innerIdx + innerNameMatch.index + innerNameMatch[0].lastIndexOf(busName);
-          }
-        } else if (attrNameMatch) {
-          const attrsIdx = wMatch[0].indexOf(wAttrs);
-          if (attrsIdx >= 0) {
-            busLocOffset = absOffset + attrsIdx + attrNameMatch.index + attrNameMatch[0].lastIndexOf(busName);
-          }
-        }
+      if (tag === "bus") {
+        const busNameAttr = attrObj(el, "name");
+        const busIdAttr = attrObj(el, "id");
+        const busName = busNameAttr?.value || `Bus_${autoIdCounter++}`;
+        const busId = busIdAttr?.value || busName;
+        const busLocOffset = busNameAttr ? busNameAttr.start : busIdAttr ? busIdAttr.start : el.start;
         const loc = offsetToLineCol(lineStarts, busLocOffset);
-        const vbaseStr =
-          /<param\s+name\s*=\s*["'](?:BaseKV|VBase|vbase)["']\s+value\s*=\s*["']([^"']+)["']/i.exec(inner)?.[1] || "0";
-        const vbase = parseFloat(vbaseStr);
-        const startPt = vertices[0] ?? { x: wireX, y: wireY };
-        const endPt = vertices[vertices.length - 1] ?? { x: wireX + 50, y: wireY };
-        const segLen = distance(startPt, endPt) || 50;
+        const posX = parseFloat(attr(el, "x") || "0");
+        const posY = parseFloat(attr(el, "y") || "0");
+        const vbase = parseFloat(attr(el, "vbase") || attr(el, "v_base") || "0");
+        const length = parseFloat(attr(el, "length") || "50");
 
         mod.buses.push({
           id: busId,
           name: busName,
           voltageBaseKv: vbase > 0 ? vbase : undefined,
-          position: startPt,
-          length: segLen,
-          vertices: vertices.length >= 2 ? vertices : undefined,
+          position: { x: posX, y: posY },
+          length,
           phaseCount: 3,
           line: loc.line,
           column: loc.column,
-          sourceRange: { startOffset: absOffset, endOffset: absOffset + wMatch[0].length },
+          sourceRange: { startOffset: el.start, endOffset: el.end },
         });
-        continue;
+        return;
       }
 
-      if (vertices.length >= 2) {
-        const attrWireId = /\bid\s*=\s*["']([^"']+)["']/i.exec(wAttrs)?.[1];
-        const wLoc = offsetToLineCol(lineStarts, absOffset);
-        mod.wires.push({
-          id: attrWireId || `wire_${wireId++}`,
-          vertices,
-          connectedPortIds: [],
-          line: wLoc.line,
-          sourceRange: { startOffset: absOffset, endOffset: absOffset + wMatch[0].length },
-        });
-      }
-    }
-
-    // 4. Extract Stickies (canvas banners & descriptive notes common in .pslx libraries)
-    const stickyRegex = /<Sticky\b([^>]*?)>([\s\S]*?)<\/Sticky>/gi;
-    let sMatch: RegExpExecArray | null;
-    let stickyId = 1;
-    const stickies: PscxSticky[] = [];
-    while ((sMatch = stickyRegex.exec(xmlSlice)) !== null) {
-      const absOffset = baseOffset + sMatch.index;
-      if (skipRanges.length > 0 && isOffsetInRanges(absOffset, skipRanges)) continue;
-
-      const sAttrs = sMatch[1]!;
-      const sInner = sMatch[2]!;
-      const sx = parseFloat(/\bx\s*=\s*["']([^"']+)["']/i.exec(sAttrs)?.[1] || "0");
-      const sy = parseFloat(/\by\s*=\s*["']([^"']+)["']/i.exec(sAttrs)?.[1] || "0");
-      const sw = parseFloat(/\bw\s*=\s*["']([^"']+)["']/i.exec(sAttrs)?.[1] || "200");
-      const sh = parseFloat(/\bh\s*=\s*["']([^"']+)["']/i.exec(sAttrs)?.[1] || "100");
-      const sid = /\bid\s*=\s*["']([^"']+)["']/i.exec(sAttrs)?.[1] || `sticky_${stickyId++}`;
-
-      let text = "";
-      const cdataStart = sInner.indexOf("<![CDATA[");
-      if (cdataStart !== -1) {
-        const cdataEnd = sInner.indexOf("]]>", cdataStart + 9);
-        if (cdataEnd !== -1) {
-          text = sInner.slice(cdataStart + 9, cdataEnd).trim();
+      if (tag === "wire") {
+        const classId = attr(el, "classid") || "";
+        if (classId.toLowerCase() === "branch") {
+          for (const c of el.children) walk(c);
+          return;
         }
-      } else {
-        let prev: string;
-        let stripped = sInner;
-        do {
-          prev = stripped;
-          stripped = stripped.replace(/<[^><]+>/g, "");
-        } while (stripped !== prev);
-        text = stripped.trim();
+
+        const wireX = parseFloat(attr(el, "x") || "0");
+        const wireY = parseFloat(attr(el, "y") || "0");
+        const vertices: Point2D[] = [];
+
+        function collectVertices(wel: XmlElement) {
+          if (wel.name.toLowerCase() === "vertex") {
+            const vx = parseFloat(attr(wel, "x") || "0") + wireX;
+            const vy = parseFloat(attr(wel, "y") || "0") + wireY;
+            vertices.push({ x: vx, y: vy });
+          }
+          for (const c of wel.children) collectVertices(c);
+        }
+        collectVertices(el);
+
+        if (classId.toLowerCase() === "bus") {
+          let innerName: string | undefined;
+          let innerNameOffset: number | undefined;
+          let vbaseStr = "0";
+
+          function findWireBusParams(wel: XmlElement) {
+            if (wel.name.toLowerCase() === "param") {
+              const pname = attr(wel, "name");
+              const pval = attr(wel, "value") ?? wel.text.trim();
+              if (pname && pname.toLowerCase() === "name") {
+                innerName = pval;
+                innerNameOffset = wel.start;
+              } else if (pname && ["basekv", "vbase"].includes(pname.toLowerCase())) {
+                vbaseStr = pval;
+              }
+            }
+            for (const c of wel.children) findWireBusParams(c);
+          }
+          findWireBusParams(el);
+
+          const attrNameAttr = attrObj(el, "name");
+          const attrIdAttr = attrObj(el, "id");
+          const busName = innerName || attrNameAttr?.value || `Bus_${autoIdCounter++}`;
+          const busId = attrIdAttr?.value || busName;
+          const busLocOffset = innerNameOffset ?? attrNameAttr?.start ?? el.start;
+          const loc = offsetToLineCol(lineStarts, busLocOffset);
+          const vbase = parseFloat(vbaseStr);
+          const startPt = vertices[0] ?? { x: wireX, y: wireY };
+          const endPt = vertices[vertices.length - 1] ?? { x: wireX + 50, y: wireY };
+          const segLen = distance(startPt, endPt) || 50;
+
+          mod.buses.push({
+            id: busId,
+            name: busName,
+            voltageBaseKv: vbase > 0 ? vbase : undefined,
+            position: startPt,
+            length: segLen,
+            vertices: vertices.length >= 2 ? vertices : undefined,
+            phaseCount: 3,
+            line: loc.line,
+            column: loc.column,
+            sourceRange: { startOffset: el.start, endOffset: el.end },
+          });
+          return;
+        }
+
+        if (vertices.length >= 2) {
+          const attrWireId = attr(el, "id");
+          const wLoc = offsetToLineCol(lineStarts, el.start);
+          mod.wires.push({
+            id: attrWireId || `wire_${wireId++}`,
+            vertices,
+            connectedPortIds: [],
+            line: wLoc.line,
+            sourceRange: { startOffset: el.start, endOffset: el.end },
+          });
+        }
+        return;
       }
 
-      if (text) {
-        stickies.push({
-          id: sid,
-          position: { x: sx, y: sy },
-          width: sw,
-          height: sh,
-          text,
-        });
+      if (tag === "sticky") {
+        const sx = parseFloat(attr(el, "x") || "0");
+        const sy = parseFloat(attr(el, "y") || "0");
+        const sw = parseFloat(attr(el, "w") || "200");
+        const sh = parseFloat(attr(el, "h") || "100");
+        const sid = attr(el, "id") || `sticky_${stickyId++}`;
+
+        let text = "";
+        if (el.cdata.length > 0) {
+          text = el.cdata[0]!.text.trim();
+        } else {
+          let prev: string;
+          let stripped = el.text;
+          do {
+            prev = stripped;
+            stripped = stripped.replace(/<[^><]+>/g, "");
+          } while (stripped !== prev);
+          text = stripped.trim();
+        }
+
+        if (text) {
+          stickies.push({
+            id: sid,
+            position: { x: sx, y: sy },
+            width: sw,
+            height: sh,
+            text,
+          });
+        }
+        return;
       }
+
+      if (tag === "line") {
+        const classId = attr(el, "classid") || "";
+        if (classId.toLowerCase() !== "divider") return;
+        const lx = parseFloat(attr(el, "x") || "0");
+        const ly = parseFloat(attr(el, "y") || "0");
+        const lw = parseFloat(attr(el, "w") || "0");
+        const lh = parseFloat(attr(el, "h") || "0");
+        const lid = attr(el, "id") || `line_${lineId++}`;
+        lines.push({
+          id: lid,
+          classId,
+          x1: lx,
+          y1: ly,
+          x2: lx + lw,
+          y2: ly + lh,
+          sourceRange: { startOffset: el.start, endOffset: el.end },
+        });
+        return;
+      }
+
+      for (const c of el.children) walk(c);
     }
+
+    walk(container);
+
     if (stickies.length > 0) {
       mod.stickies = stickies;
     }
+    if (lines.length > 0) {
+      mod.lines = lines;
+    }
 
-    // Resolve spatial wire connectivity
     const modelDef = modelDefs?.get(modName);
     refineModulePorts(mod, modelDef);
     if (modelDef) {
@@ -740,10 +793,10 @@ export function parsePscx(xmlContent: string, options?: { external?: ExternalDef
     return mod;
   }
 
-  const rootModule = parseModuleFromXml("Main", "Main", xmlContent, 0, excludedRanges);
+  const rootModule = parseModule("Main", "Main", rootEl, true);
   const subModules = new Map<string, PscxModule>();
   for (const sub of subModuleDefs) {
-    subModules.set(sub.name, parseModuleFromXml(sub.name, sub.name, sub.xml, sub.baseOffset, []));
+    subModules.set(sub.name, parseModule(sub.name, sub.name, sub.element, false));
   }
 
   return {
@@ -754,7 +807,16 @@ export function parsePscx(xmlContent: string, options?: { external?: ExternalDef
     rootModule,
     subModules,
     linkedLibraries,
+    definitions: projectDefinitions,
   };
+}
+
+/**
+ * Parses a PSCAD `.pscx` / `.pslx` / `.pswx` XML string into a structured `PscxProject`
+ * using the lossless XML CST parser from `@modelscript/dsl/xml`.
+ */
+export function parsePscx(xmlContent: string, options?: { external?: ExternalDefinitions }): PscxProject {
+  return parsePscxCst(xmlContent, options);
 }
 
 /**
@@ -861,7 +923,6 @@ function snapWireConnections(mod: PscxModule): void {
         for (let k = 0; k < wire.vertices.length - 1; k++) {
           if (pointToSegmentDistance(p.world, wire.vertices[k]!, wire.vertices[k + 1]!) <= segTol) {
             connectedSet.add(p.id);
-            addJunction(p.world);
             break;
           }
         }

@@ -20,6 +20,9 @@ export * from "./tools/index.js";
 // Generalized CST Unparser & Surgical Patch Engine
 export * from "./unparser/index.js";
 
+// Lossless XML Concrete Syntax Tree, Streaming & Schema DSL
+export * as xml from "./xml/index.js";
+
 export type { SyntaxNode };
 
 export type CSTNode = SyntaxNode;

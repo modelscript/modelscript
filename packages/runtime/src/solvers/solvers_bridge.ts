@@ -90,13 +90,26 @@ export class SolversBridge {
       converged: t >= tEnd - 1e-10,
     };
   }
+  private alloc(size: number): number {
+    const fn = this.wasmExports?.alloc ?? this.wasmExports?.dae_alloc;
+    if (typeof fn !== "function") {
+      throw new Error("WASM module does not export 'alloc' or 'dae_alloc' memory allocator for dual evaluation.");
+    }
+    return fn(size);
+  }
+
+  private free(ptr: number): void {
+    if (typeof this.wasmExports?.free === "function") {
+      this.wasmExports.free(ptr);
+    }
+  }
 
   /**
    * Evaluates an expression with dual numbers in WASM linear memory.
    */
   evalDualExpr(daePtr: number, exprId: number, dualVars: Float64Array): { val: number; dot: number } {
     const totalBytes = dualVars.byteLength + 16;
-    const dualVarsPtr = this.wasmExports.alloc ? this.wasmExports.alloc(totalBytes) : 65536;
+    const dualVarsPtr = this.alloc(totalBytes);
     const outValPtr = dualVarsPtr + dualVars.byteLength;
     const outDotPtr = outValPtr + 8;
 
@@ -112,9 +125,7 @@ export class SolversBridge {
 
       return { val, dot };
     } finally {
-      if (this.wasmExports.free) {
-        this.wasmExports.free(dualVarsPtr);
-      }
+      this.free(dualVarsPtr);
     }
   }
 
@@ -123,7 +134,7 @@ export class SolversBridge {
    */
   evalDualEquationResidual(daePtr: number, eqId: number, dualVars: Float64Array): { val: number; dot: number } {
     const totalBytes = dualVars.byteLength + 16;
-    const dualVarsPtr = this.wasmExports.alloc ? this.wasmExports.alloc(totalBytes) : 65536;
+    const dualVarsPtr = this.alloc(totalBytes);
     const outValPtr = dualVarsPtr + dualVars.byteLength;
     const outDotPtr = outValPtr + 8;
 
@@ -139,9 +150,7 @@ export class SolversBridge {
 
       return { val, dot };
     } finally {
-      if (this.wasmExports.free) {
-        this.wasmExports.free(dualVarsPtr);
-      }
+      this.free(dualVarsPtr);
     }
   }
 
@@ -154,15 +163,15 @@ export class SolversBridge {
     const dualVarsBytes = dualVars.byteLength;
     const outColBytes = nEqs * 8;
 
-    const eqIndicesPtr = this.wasmExports.alloc ? this.wasmExports.alloc(eqIndicesBytes) : 65536;
-    const dualVarsPtr = this.wasmExports.alloc
-      ? this.wasmExports.alloc(dualVarsBytes)
-      : (eqIndicesPtr + eqIndicesBytes + 7) & ~7;
-    const outColPtr = this.wasmExports.alloc
-      ? this.wasmExports.alloc(outColBytes)
-      : (dualVarsPtr + dualVarsBytes + 7) & ~7;
+    let eqIndicesPtr = 0;
+    let dualVarsPtr = 0;
+    let outColPtr = 0;
 
     try {
+      eqIndicesPtr = this.alloc(eqIndicesBytes);
+      dualVarsPtr = this.alloc(dualVarsBytes);
+      outColPtr = this.alloc(outColBytes);
+
       const mem32 = new Uint32Array(this.memory.buffer);
       let mem64 = new Float64Array(this.memory.buffer);
 
@@ -181,11 +190,9 @@ export class SolversBridge {
 
       return result;
     } finally {
-      if (this.wasmExports.free) {
-        this.wasmExports.free(eqIndicesPtr);
-        this.wasmExports.free(dualVarsPtr);
-        this.wasmExports.free(outColPtr);
-      }
+      if (eqIndicesPtr) this.free(eqIndicesPtr);
+      if (dualVarsPtr) this.free(dualVarsPtr);
+      if (outColPtr) this.free(outColPtr);
     }
   }
 

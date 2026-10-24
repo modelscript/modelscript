@@ -9,6 +9,7 @@
 
 import { analyzeControlIntervals, isBounded, outputLimits } from "../analysis/control-intervals.js";
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
+import { evaluateCheckRules } from "../script/script-parser.js";
 import type { PscadDiagnostic, PscxProject } from "../types.js";
 
 /**
@@ -132,6 +133,20 @@ export const PscadErrorCode = {
     severity: "warning" as const,
     message: (blockId: string, inLo: number, inHi: number, limLo: number, limHi: number) =>
       `Limiter '${blockId}' is permanently saturated: its input stays within [${inLo}, ${inHi}] but its output limits are [${limLo}, ${limHi}].`,
+  },
+  /** `M6016`: Parameter validation check assertion failed in component `<segment name="Checks">`. */
+  CHECK_FAILED: {
+    code: "M6016",
+    rule: "component-check-failed",
+    severity: "error" as const,
+    message: (cmpName: string, reason: string) => `Component '${cmpName}' check failed: ${reason}.`,
+  },
+  /** `M6017`: Parameter validation check warning in component `<segment name="Checks">`. */
+  CHECK_WARNING: {
+    code: "M6017",
+    rule: "component-check-warning",
+    severity: "warning" as const,
+    message: (cmpName: string, reason: string) => `Component '${cmpName}' check warning: ${reason}.`,
   },
 };
 
@@ -696,6 +711,51 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           column: loc?.column,
           endLine: loc?.line,
           endColumn: loc?.column !== undefined ? loc.column + b.id.length : undefined,
+        });
+      }
+    }
+  }
+
+  // 12. Component Parameter Checks (from <segment name="Checks">)
+  if (project.definitions) {
+    const allComponents = allModules.flatMap((m) => m.components);
+    for (const cmp of allComponents) {
+      const defName = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
+      const def = project.definitions.get(defName) ?? project.definitions.get(cmp.definitionName);
+      if (!def?.checks || def.checks.length === 0) continue;
+
+      const params: Record<string, string | number> = {
+        ...(project.rootModule.parameterDefaults ?? {}),
+        ...cmp.parameters,
+      };
+
+      const portDims: Record<string, number> = {};
+      for (const port of cmp.ports) {
+        if (port.name) {
+          portDims[port.name] = port.dimension ?? 1;
+        }
+      }
+
+      const failures = evaluateCheckRules(def.checks, params, portDims);
+      for (const fail of failures) {
+        const isWarn = fail.severity === "warning";
+        const ruleDef = isWarn ? PscadErrorCode.CHECK_WARNING : PscadErrorCode.CHECK_FAILED;
+        const loc = cmpLocationMap.get(cmp.id);
+        diagnostics.push({
+          code: ruleDef.code,
+          rule: ruleDef.rule,
+          severity: ruleDef.severity,
+          message: isWarn
+            ? PscadErrorCode.CHECK_WARNING.message(cmp.instanceName || cmp.id, fail.message)
+            : PscadErrorCode.CHECK_FAILED.message(cmp.instanceName || cmp.id, fail.message),
+          componentId: cmp.id,
+          line: loc?.line ?? cmp.line,
+          column: loc?.column ?? cmp.column,
+          endLine: loc?.line ?? cmp.line,
+          endColumn:
+            (loc?.column ?? cmp.column) !== undefined
+              ? (loc?.column ?? cmp.column)! + (cmp.instanceName || cmp.id).length
+              : undefined,
         });
       }
     }

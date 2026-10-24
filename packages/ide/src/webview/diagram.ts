@@ -6,6 +6,8 @@
 import {
   dropComponentGhost,
   evaluatePropertyPredicate,
+  getGraph,
+  getTypicalNodeSize,
   initGraph,
   setDiagramOptions,
   updateParameterText,
@@ -22,6 +24,9 @@ function escapeHtml(str: unknown): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+const SNAP_GRID = 20;
+const snapToGrid = (val: number, step = SNAP_GRID) => Math.round(val / step) * step;
 
 // Add global binding for close button
 function initPropertiesClose() {
@@ -81,83 +86,227 @@ function initDiagramBridge() {
     document.documentElement.classList.contains("vscode-dark") ||
     document.documentElement.classList.contains("vscode-high-contrast");
 
-  // Hack to handle VS Code Webview drag-and-drop limitations:
-  // 1. Move the ghost during native HTML5 dragover (which suppresses mousemove)
-  // 2. Drop the component on global mouseup (because native drop is swallowed by VS Code sandbox)
-  window.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).__movePlacementGhost) {
-      const g = initGraph(isDark);
-      if (g) {
-        const p = g.clientToLocal(e.clientX, e.clientY);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).__movePlacementGhost(p.x, p.y);
-      }
-    }
-  });
+  let ghostRafId: number | null = null;
+  let lastGhostClientPos: { x: number; y: number } | null = null;
 
-  const handleDropOrPlace = (clientX: number, clientY: number, dataTransfer?: DataTransfer | null) => {
+  const updateGhostPosition = (clientX: number, clientY: number) => {
+    lastGhostClientPos = { x: clientX, y: clientY };
+    if (!ghostRafId) {
+      ghostRafId = requestAnimationFrame(() => {
+        ghostRafId = null;
+        if (lastGhostClientPos && (window as any).__movePlacementGhost) {
+          const g = getGraph() ?? initGraph(isDark);
+          if (g) {
+            const p = g.clientToLocal(lastGhostClientPos.x, lastGhostClientPos.y);
+            (window as any).__movePlacementGhost(snapToGrid(p.x), snapToGrid(p.y), window.event);
+          }
+        }
+      });
+    }
+  };
+
+  let isPointerOverCanvas = false;
+
+  window.addEventListener(
+    "mouseenter",
+    () => {
+      isPointerOverCanvas = true;
+      (window as any).__setPointerOverCanvas?.(true);
+    },
+    true,
+  );
+
+  window.addEventListener(
+    "mouseleave",
+    () => {
+      isPointerOverCanvas = false;
+      (window as any).__setPointerOverCanvas?.(false);
+    },
+    true,
+  );
+
+  const onDragEnterOrOver = (e: DragEvent) => {
+    e.preventDefault();
+    isPointerOverCanvas = true;
+    lastGhostClientPos = { x: e.clientX, y: e.clientY };
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    updateGhostPosition(e.clientX, e.clientY);
+    (window as any).__setPointerOverCanvas?.(true, { x: e.clientX, y: e.clientY });
+  };
+
+  window.addEventListener("dragenter", onDragEnterOrOver, true);
+  window.addEventListener("dragover", onDragEnterOrOver, true);
+  container.addEventListener("dragenter", onDragEnterOrOver, true);
+  container.addEventListener("dragover", onDragEnterOrOver, true);
+
+  window.addEventListener(
+    "mousemove",
+    (e) => {
+      isPointerOverCanvas = true;
+      lastGhostClientPos = { x: e.clientX, y: e.clientY };
+      const placementData = (window as any).__getPlacementData?.();
+      if (placementData) {
+        // If dragging from the library tree and the mouse button is no longer held down (buttons === 0),
+        // the drop has completed! Place the component immediately.
+        if (placementData.isDrag && typeof e.buttons === "number" && e.buttons === 0) {
+          handleDropOrPlace(e.clientX, e.clientY);
+          return;
+        }
+        updateGhostPosition(e.clientX, e.clientY);
+      }
+    },
+    true,
+  );
+
+  window.addEventListener(
+    "dragleave",
+    (e) => {
+      // In HTML5 drag and drop, dragleave fires on transitions between child SVG/DOM elements,
+      // where e.relatedTarget is frequently null in browsers.
+      // Only hide placement ghost if the pointer has actually exited the webview window bounds!
+      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        isPointerOverCanvas = false;
+        (window as any).__setPointerOverCanvas?.(false);
+        if (ghostRafId) {
+          cancelAnimationFrame(ghostRafId);
+          ghostRafId = null;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__hidePlacementGhost?.();
+      }
+    },
+    true,
+  );
+
+  let lastDropTimestamp = 0;
+
+  const handleDropOrPlace = (clientX?: number, clientY?: number, dataTransferOrExtra?: any) => {
+    const now = Date.now();
+    if (now - lastDropTimestamp < 350) return;
+    if (ghostRafId) {
+      cancelAnimationFrame(ghostRafId);
+      ghostRafId = null;
+    }
+    const targetX = typeof clientX === "number" && clientX > 0 ? clientX : (lastGhostClientPos?.x ?? 0);
+    const targetY = typeof clientY === "number" && clientY > 0 ? clientY : (lastGhostClientPos?.y ?? 0);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const getPlacementData = (window as any).__getPlacementData;
     let placementData = getPlacementData ? getPlacementData() : null;
 
-    if (!placementData && dataTransfer) {
-      try {
-        const json = dataTransfer.getData("application/json") || dataTransfer.getData("text/plain");
-        if (json) {
-          const parsed = JSON.parse(json);
-          if (parsed && parsed.className) {
-            placementData = parsed;
-          }
+    if (!placementData && dataTransferOrExtra) {
+      if (dataTransferOrExtra.className) {
+        placementData = {
+          className: dataTransferOrExtra.className,
+          iconSvg: dataTransferOrExtra.iconSvg || undefined,
+        };
+      } else if (typeof dataTransferOrExtra.getData === "function") {
+        const classNameMime = dataTransferOrExtra.getData("application/vnd.modelscript.classname");
+        const iconSvgMime = dataTransferOrExtra.getData("application/vnd.modelscript.iconsvg");
+        if (classNameMime) {
+          placementData = { className: classNameMime, iconSvg: iconSvgMime || undefined };
         }
-      } catch {
-        // ignore parse error
-      }
-      if (!placementData) {
-        const className = dataTransfer.getData("application/vnd.modelscript.classname");
-        const iconSvg = dataTransfer.getData("application/vnd.modelscript.iconsvg");
-        if (className) {
-          placementData = { className, iconSvg };
+
+        if (!placementData) {
+          const treeMime =
+            dataTransferOrExtra.getData("application/vnd.code.tree.modelscript.librarytree") ||
+            dataTransferOrExtra.getData("application/vnd.code.tree.modelscript.libraryTree");
+          const rawText =
+            treeMime || dataTransferOrExtra.getData("application/json") || dataTransferOrExtra.getData("text/plain");
+          if (rawText) {
+            try {
+              const parsed = JSON.parse(rawText);
+              if (parsed && parsed.className) {
+                placementData = parsed;
+              } else if (Array.isArray(parsed) && parsed[0]?.info?.compositeName) {
+                placementData = {
+                  className: parsed[0].info.compositeName,
+                  iconSvg: parsed[0].info.iconSvg,
+                };
+              }
+            } catch {
+              const trimmed = rawText.trim();
+              if (trimmed && /^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(trimmed)) {
+                placementData = { className: trimmed };
+              }
+            }
+          }
         }
       }
     }
 
     if (placementData && placementData.className) {
-      const g = initGraph(isDark);
+      lastDropTimestamp = now;
+      const g = getGraph() ?? initGraph(isDark);
       if (g) {
-        const p = g.clientToLocal(clientX, clientY);
-        dropComponentGhost(g, p.x, p.y, placementData.className, placementData.iconSvg, isDark);
+        const p = g.clientToLocal(targetX, targetY);
+        const snappedX = snapToGrid(p.x);
+        const snappedY = snapToGrid(p.y);
+        const { width, height } = getTypicalNodeSize(g);
+        dropComponentGhost(
+          g,
+          snappedX,
+          snappedY,
+          placementData.className,
+          placementData.iconSvg,
+          isDark,
+          width,
+          height,
+        );
         enqueueDiagramAction({
           type: "addComponent",
           className: placementData.className,
-          x: p.x,
-          y: p.y,
+          x: snappedX,
+          y: snappedY,
         });
-        // Dispatch Escape to clear the placement state inside diagram-core
-        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        // Clear placement ghost and state inside diagram-core without removing the drop animation
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__clearPlacement?.();
       }
     }
   };
 
-  window.addEventListener("drop", (e) => {
+  const onDrop = (e: DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     handleDropOrPlace(e.clientX, e.clientY, e.dataTransfer);
-  });
+  };
 
-  window.addEventListener("mouseup", (e) => {
-    handleDropOrPlace(e.clientX, e.clientY);
-  });
+  window.addEventListener("drop", onDrop, true);
+  window.addEventListener("drop", onDrop, false);
+  container.addEventListener("drop", onDrop, true);
+  container.addEventListener("drop", onDrop, false);
 
-  window.addEventListener("mousemove", (e) => {
+  const onPointerUpOrMouseUp = (e: MouseEvent | PointerEvent) => {
+    // Only handle placement on mouseup/pointerup if placement mode was active
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).__movePlacementGhost) {
-      const g = initGraph(isDark);
-      if (g) {
-        const p = g.clientToLocal(e.clientX, e.clientY);
+    if ((window as any).__getPlacementData?.()) {
+      handleDropOrPlace(e.clientX, e.clientY);
+    }
+  };
+
+  window.addEventListener("mouseup", onPointerUpOrMouseUp, true);
+  window.addEventListener("mouseup", onPointerUpOrMouseUp, false);
+  window.addEventListener("pointerup", onPointerUpOrMouseUp, true);
+  window.addEventListener("pointerup", onPointerUpOrMouseUp, false);
+  container.addEventListener("mouseup", onPointerUpOrMouseUp, true);
+  container.addEventListener("pointerup", onPointerUpOrMouseUp, true);
+
+  // Handle messages forwarded from the top-level workbench or extension host
+  window.addEventListener("message", (e) => {
+    if (!e.data || typeof e.data !== "object") return;
+    if (e.data.type === "workbenchDrop") {
+      handleDropOrPlace(e.data.clientX, e.data.clientY, e.data);
+    } else if (e.data.type === "workbenchDragOver" && typeof e.data.clientX === "number") {
+      isPointerOverCanvas = true;
+      (window as any).__setPointerOverCanvas?.(true, { x: e.data.clientX, y: e.data.clientY });
+      updateGhostPosition(e.data.clientX, e.data.clientY);
+    } else if (e.data.type === "dragEnd") {
+      if (isPointerOverCanvas && lastGhostClientPos) {
+        handleDropOrPlace(lastGhostClientPos.x, lastGhostClientPos.y);
+      } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).__movePlacementGhost(p.x, p.y);
+        (window as any).__clearPlacement?.();
       }
     }
   });

@@ -4,6 +4,7 @@
 import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "@modelscript/runtime";
 import { extractStepAssembly } from "./assembly-extractor.js";
 import type { StepAssemblyModel } from "./physical-data.js";
+import { scanStepEntities } from "./schema.js";
 
 let occtPromise: Promise<any> | null = null;
 let nodeRequire: any = null;
@@ -98,43 +99,9 @@ function extractStepNames(text: string): {
   const products: StepNameMatch[] = [];
   const shapes: StepNameMatch[] = [];
 
-  const headerRegex = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
-  let headerMatch: RegExpExecArray | null;
-
-  while ((headerMatch = headerRegex.exec(text)) !== null) {
-    const entityType = headerMatch[1];
-    const matchStart = headerMatch.index;
-    const argsStart = matchStart + headerMatch[0].length;
-    let depth = 1;
-    let pos = argsStart;
-    let inString = false;
-    while (pos < text.length) {
-      const ch = text[pos];
-      if (ch === "'" && text[pos - 1] !== "\\") {
-        inString = !inString;
-      } else if (!inString) {
-        if (ch === "(") depth++;
-        else if (ch === ")") {
-          depth--;
-          if (depth === 0) break;
-        } else if (ch === ";") {
-          break;
-        }
-      }
-      pos++;
-    }
-    const args = text.slice(argsStart, pos);
-    let endPos = pos;
-    if (text[endPos] === ")") endPos++;
-    while (
-      endPos < text.length &&
-      (text[endPos] === " " || text[endPos] === "\t" || text[endPos] === "\r" || text[endPos] === "\n")
-    ) {
-      endPos++;
-    }
-    if (text[endPos] === ";") endPos++;
-    headerRegex.lastIndex = endPos;
-
+  const entities = scanStepEntities(text);
+  for (const ent of entities) {
+    const entityType = ent.type;
     if (
       entityType === "PRODUCT" ||
       entityType === "MANIFOLD_SOLID_BREP" ||
@@ -142,14 +109,13 @@ function extractStepNames(text: string): {
       entityType === "FACETED_BREP" ||
       entityType === "GEOMETRIC_TOLERANCE"
     ) {
-      const name = extractFirstString(args);
+      const name = extractFirstString(ent.args);
       if (name && name.length > 0) {
-        const matchEnd = endPos;
-        const fullMatch = text.slice(matchStart, matchEnd);
-        const startOffset = matchStart;
-        const endOffset = matchEnd;
+        const fullMatch = text.slice(ent.startOffset, ent.endOffset);
+        const startOffset = ent.startOffset;
+        const endOffset = ent.endOffset;
         const nameIdx = fullMatch.indexOf(`'${name}'`);
-        const nameStart = nameIdx >= 0 ? matchStart + nameIdx + 1 : startOffset;
+        const nameStart = nameIdx >= 0 ? startOffset + nameIdx + 1 : startOffset;
         const nameEnd = nameIdx >= 0 ? nameStart + name.length : endOffset;
         if (entityType === "PRODUCT") {
           products.push({ name, startOffset, endOffset, nameStartOffset: nameStart, nameEndOffset: nameEnd });

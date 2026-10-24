@@ -232,7 +232,7 @@ class RuntimeFlattener {
     return idx;
   }
 
-  addStreamConnection(h1VarId: u32, mdot1VarId: u32, h2VarId: u32, _mdot2VarId: u32): u32 {
+  addStreamConnection(h1VarId: u32, mdot1VarId: u32, h2VarId: u32, mdot2VarId: u32): u32 {
     const idx = this.streamCount++;
     const eh1 = this.dae.addExpression(ExprKind.Name, h1VarId);
     const eh2 = this.dae.addExpression(ExprKind.Name, h2VarId);
@@ -241,6 +241,13 @@ class RuntimeFlattener {
     const cond1 = this.dae.addExpression(ExprKind.Binary, BinOp.Gt as u32, emdot1, zeroReal);
     const ifExpr1 = this.dae.addExpression(ExprKind.IfElse, cond1, eh2, eh1);
     this.dae.addEquation(EqKind.Simple, eh1, ifExpr1, FLAG_EQ_STREAM_CONNECT as u32);
+
+    if (mdot2VarId != mdot1VarId && h2VarId != h1VarId) {
+      const emdot2 = this.dae.addExpression(ExprKind.Name, mdot2VarId);
+      const cond2 = this.dae.addExpression(ExprKind.Binary, BinOp.Gt as u32, emdot2, zeroReal);
+      const ifExpr2 = this.dae.addExpression(ExprKind.IfElse, cond2, eh1, eh2);
+      this.dae.addEquation(EqKind.Simple, eh2, ifExpr2, FLAG_EQ_STREAM_CONNECT as u32);
+    }
     return idx;
   }
 

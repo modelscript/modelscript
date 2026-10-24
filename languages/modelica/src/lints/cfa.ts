@@ -783,9 +783,12 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
     const isInput = /\binput\b/.test(compText);
     const isOutput = /\boutput\b/.test(compText);
 
-    // Use CST component_declaration children to extract declared variable names.
+    // Use CST component_declaration or declaration children to extract declared variable names.
     // Each component_declaration has an IDENT for the variable name.
-    const compDecls = findNodesByType(comp, "component_declaration");
+    let compDecls = findNodesByType(comp, "component_declaration");
+    if (compDecls.length === 0) {
+      compDecls = findNodesByType(comp, "declaration");
+    }
     const compStart = comp.startIndex ?? self.startOffset;
 
     if (compDecls.length > 0) {
@@ -817,13 +820,29 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             if (name) break;
           }
         }
-        // Fallback: extract first identifier from declaration text
+        // Fallback: extract first identifier from declaration text without regex
         if (!name) {
-          const m = declText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
-          if (m && m[1]) {
-            name = m[1];
-            nameStartByte = decl.startIndex ?? compStart;
-            nameEndByte = nameStartByte + m[1].length;
+          let s = 0;
+          while (s < declText.length && (declText[s] === " " || declText[s] === "\t")) s++;
+          if (
+            s < declText.length &&
+            ((declText[s]! >= "a" && declText[s]! <= "z") ||
+              (declText[s]! >= "A" && declText[s]! <= "Z") ||
+              declText[s] === "_")
+          ) {
+            const idStart = s;
+            s++;
+            while (s < declText.length) {
+              const c = declText[s]!;
+              if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_") {
+                s++;
+              } else {
+                break;
+              }
+            }
+            name = declText.slice(idStart, s);
+            nameStartByte = (decl.startIndex ?? compStart) + idStart;
+            nameEndByte = nameStartByte + (s - idStart);
           }
         }
 
@@ -876,56 +895,80 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         }
       }
     } else {
-      // Fallback: regex-based extraction for when CST nodes aren't available.
+      // Fallback: character scanner for when CST nodes aren't available.
       // Skip the type specifier by finding the first identifier after prefixes and type name.
-      const declMatches = compText.matchAll(/([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\[[^\]]*\])?(?:\s*=\s*([^,;]+))?/g);
       let seenTypeSpec = false;
+      let pos = 0;
+      const tLen = compText.length;
+      while (pos < tLen) {
+        const ch = compText[pos]!;
+        if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
+          const idStart = pos;
+          pos++;
+          while (pos < tLen) {
+            const c = compText[pos]!;
+            if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_") {
+              pos++;
+            } else {
+              break;
+            }
+          }
+          const name = compText.slice(idStart, pos);
+          if (
+            name === "Real" ||
+            name === "Integer" ||
+            name === "Boolean" ||
+            name === "String" ||
+            name === "input" ||
+            name === "output" ||
+            name === "parameter" ||
+            name === "constant"
+          ) {
+            continue;
+          }
 
-      for (const match of declMatches) {
-        const name = match[1];
-        if (
-          !name ||
-          name === "Real" ||
-          name === "Integer" ||
-          name === "Boolean" ||
-          name === "String" ||
-          name === "input" ||
-          name === "output" ||
-          name === "parameter" ||
-          name === "constant"
-        ) {
+          // The first non-keyword identifier is the type specifier — skip it
+          if (!seenTypeSpec) {
+            seenTypeSpec = true;
+            continue;
+          }
+
+          while (pos < tLen && (compText[pos] === " " || compText[pos] === "\t")) pos++;
+          let isArray = false;
+          if (pos < tLen && compText[pos] === "[") {
+            isArray = true;
+            const closeBracket = compText.indexOf("]", pos);
+            pos = closeBracket !== -1 ? closeBracket + 1 : pos + 1;
+          }
+          while (pos < tLen && (compText[pos] === " " || compText[pos] === "\t")) pos++;
+          let hasDefault = compText.includes("=");
+          if (pos < tLen && compText[pos] === "=") {
+            hasDefault = true;
+            while (pos < tLen && compText[pos] !== "," && compText[pos] !== ";") pos++;
+          }
+
+          const startOffset = compStart + idStart;
+          const endOffset = startOffset + name.length;
+          const info: VariableInfo = {
+            name,
+            isInput,
+            isOutput,
+            hasDefault,
+            isArray: isArray || compText.includes("["),
+            startOffset,
+            endOffset,
+          };
+
+          if (isInput) {
+            inputs.set(name, info);
+          } else if (isOutput) {
+            outputs.set(name, info);
+          } else {
+            locals.set(name, info);
+          }
           continue;
         }
-
-        // The first non-keyword identifier is the type specifier — skip it
-        if (!seenTypeSpec) {
-          seenTypeSpec = true;
-          continue;
-        }
-
-        const hasDefault = match[2] !== undefined || compText.includes("=");
-        const matchIdx = match.index ?? 0;
-        const startOffset = compStart + matchIdx;
-        const endOffset = startOffset + name.length;
-        const isArray = match[0].includes("[") || compText.includes("[");
-
-        const info: VariableInfo = {
-          name,
-          isInput,
-          isOutput,
-          hasDefault,
-          isArray,
-          startOffset,
-          endOffset,
-        };
-
-        if (isInput) {
-          inputs.set(name, info);
-        } else if (isOutput) {
-          outputs.set(name, info);
-        } else {
-          locals.set(name, info);
-        }
+        pos++;
       }
     }
   }

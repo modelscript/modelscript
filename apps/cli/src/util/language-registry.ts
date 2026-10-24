@@ -152,6 +152,12 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
     extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     isBuiltIn: true,
   },
+  {
+    id: "olga",
+    name: "OLGA",
+    extensions: [".opi", ".olga"],
+    isBuiltIn: true,
+  },
 ];
 
 /**
