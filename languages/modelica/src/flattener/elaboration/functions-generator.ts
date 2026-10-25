@@ -78,21 +78,25 @@ export function generateRecordConstructorFor(
   if (!sym) return null;
   const db: QueryDB = flattener.db;
   const qualName = getSymbolQualifiedName(db, sym.id);
-  const isRedeclaredInRoot = Boolean(
+  let effParentId = sym.parentId;
+  while (effParentId !== null && db.symbol(effParentId)?.kind === "Extends") {
+    effParentId = db.symbol(effParentId)?.parentId ?? null;
+  }
+  const isDirectInCurrentRoot = Boolean(
+    flattener.currentRootClassId
+      ? effParentId === flattener.currentRootClassId
+      : rootClassId && effParentId === rootClassId,
+  );
+  const isDirectOrRedeclaredInRoot = Boolean(
     rootClassId &&
-    sym.parentId !== rootClassId &&
-    qualName &&
-    collectExtendsMods(flattener, rootClassId).some(
-      (a: any) =>
-        a.isRedeclaration &&
-        a.name === sym.name &&
-        (a.redeclaredTypeSpecifier === qualName || a.redeclaredTypeSpecifier === `.${qualName}`),
-    ),
+    (isDirectInCurrentRoot ||
+      (qualName &&
+        collectExtendsMods(flattener, rootClassId).some((a: any) => a.isRedeclaration && a.name === sym.name))),
   );
   const fnName =
     overrideFnName ??
-    (rootClassId && (sym.parentId === rootClassId || isRedeclaredInRoot) && dae.name && dae.classKind !== "function"
-      ? dae.name.includes(".") || !qualName.includes(".") || isRedeclaredInRoot
+    (isDirectOrRedeclaredInRoot && dae.name && dae.classKind !== "function"
+      ? dae.name.includes(".") || !qualName.includes(".") || isDirectInCurrentRoot
         ? `${dae.name}.${sym.name}`
         : qualName
       : qualName || sym.name);
@@ -511,6 +515,56 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
       usedRecordNames.add(cleanType);
       usedRecordNames.add(typeSpec);
+      const rawTarget = db.query<any>("classInstance", comp.id);
+      let compTarget: SymbolEntry | null =
+        typeof rawTarget === "number" ? (db.symbol(rawTarget) ?? null) : (rawTarget ?? null);
+      if (!compTarget) {
+        compTarget = db.byName(cleanType).find((t) => isRecordSym(t)) ?? null;
+      }
+      if (compTarget && (compTarget.kind === "Model" || compTarget.kind === "Block" || compTarget.kind === "Class")) {
+        const subComps = db.childrenOf(compTarget.id).filter((c) => c.kind === "Component");
+        for (const sc of subComps) {
+          const scInst = db.query<ComponentInstanceData>("componentInstance", sc.id);
+          const scMeta = (sc.metadata as any) || {};
+          const scType = scInst?.typeSpecifier ?? scMeta.typeSpecifier;
+          if (scType) {
+            const scClean = scType.includes(".") ? scType.split(".").pop()! : scType;
+            const scTarget = db.byName(scClean).find((t) => isRecordSym(t));
+            if (scTarget && isRecordSym(scTarget)) {
+              usedRecordNames.add(scTarget.name);
+              const qSc = getSymbolQualifiedName(db, scTarget.id);
+              if (qSc) usedRecordNames.add(qSc);
+            }
+          }
+        }
+      }
+      if (
+        compTarget &&
+        isRecordSym(compTarget) &&
+        compInst?.modification?.args &&
+        compInst.modification.args.length > 0 &&
+        dae.classKind !== "function" &&
+        !(rootSym && isFunctionSym(db, rootSym))
+      ) {
+        const qTarget = getSymbolQualifiedName(db, compTarget.id) || compTarget.name;
+        if (!flattener.instantiatedRecordComponents) {
+          flattener.instantiatedRecordComponents = new Map<string, Set<string>>();
+        }
+        let s = flattener.instantiatedRecordComponents.get(qTarget);
+        if (!s) {
+          s = new Set<string>();
+          flattener.instantiatedRecordComponents.set(qTarget, s);
+        }
+        s.add(comp.name);
+        if (compTarget.name && compTarget.name !== qTarget) {
+          let s2 = flattener.instantiatedRecordComponents.get(compTarget.name);
+          if (!s2) {
+            s2 = new Set<string>();
+            flattener.instantiatedRecordComponents.set(compTarget.name, s2);
+          }
+          s2.add(comp.name);
+        }
+      }
     }
   }
   for (let i = 0; i < dae.varCount; i++) {
@@ -626,6 +680,24 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
               }
             }
           }
+          const extendsChildren = db.childrenOf(sym.id).filter((c) => c.kind === "Extends");
+          for (const ext of extendsChildren) {
+            const baseRes =
+              db.query<any>("resolveSimpleName", sym.id)?.(ext.name) ?? db.query<any>("classInstance", ext.id);
+            const baseClassId = typeof baseRes === "number" ? baseRes : (baseRes?.id ?? null);
+            const baseSym = baseClassId
+              ? db.symbol(baseClassId)
+              : (db.byName(ext.name.split(".").pop()!).find((t) => isRecordSym(t)) ?? null);
+            if (baseSym && isRecordSym(baseSym)) {
+              const bName = baseSym.name;
+              const qBName = getSymbolQualifiedName(db, baseSym.id);
+              if (!usedRecordNames.has(bName)) {
+                usedRecordNames.add(bName);
+                if (qBName) usedRecordNames.add(qBName);
+                changed = true;
+              }
+            }
+          }
         }
       }
     }
@@ -642,13 +714,17 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
     if (!sym || !sym.name) return false;
     const name = sym.name;
     const qName = getSymbolQualifiedName(db, sym.id);
-    if (sym.parentId && sym.parentId !== rootClassId && flattener.isClassPartial?.(sym.parentId)) {
-      if ((dae as any).specializedPrefix && sym.parentId === (dae as any).enclosingScopeId) {
+    let effParentId = sym.parentId;
+    while (effParentId !== null && db.symbol(effParentId)?.kind === "Extends") {
+      effParentId = db.symbol(effParentId)?.parentId ?? null;
+    }
+    if (effParentId && effParentId !== rootClassId && flattener.isClassPartial?.(effParentId)) {
+      if ((dae as any).specializedPrefix && effParentId === (dae as any).enclosingScopeId) {
         return usedRecordNames.has(name) || (Boolean(qName) && usedRecordNames.has(qName!));
       }
       return false;
     }
-    if (sym.parentId && sym.parentId !== rootClassId && (recordNameCounts.get(name) ?? 0) > 1) {
+    if (effParentId && effParentId !== rootClassId && (recordNameCounts.get(name) ?? 0) > 1) {
       return Boolean(flattener.usedRecordSymIds?.has(sym.id)) || (Boolean(qName) && usedRecordNames.has(qName!));
     }
     return usedRecordNames.has(name) || (Boolean(qName) && usedRecordNames.has(qName!));

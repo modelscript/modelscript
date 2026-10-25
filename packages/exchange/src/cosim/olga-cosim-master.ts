@@ -304,8 +304,16 @@ function resolveSubseaParticipant(
     }
   } else if (source instanceof Uint8Array) {
     const str = Buffer.from(source).toString("latin1");
-    const opiMatch = str.match(/<OLGAModel[\s\S]*?<\/OLGAModel>/);
-    model = opiMatch ? parseOlga(opiMatch[0]) : createDefaultSubseaRiserModel("subsea_fmu");
+    const startIdx = str.indexOf("<OLGAModel");
+    let modelXml: string | null = null;
+    if (startIdx !== -1) {
+      const endTag = "</OLGAModel>";
+      const endIdx = str.indexOf(endTag, startIdx);
+      if (endIdx !== -1) {
+        modelXml = str.slice(startIdx, endIdx + endTag.length);
+      }
+    }
+    model = modelXml ? parseOlga(modelXml) : createDefaultSubseaRiserModel("subsea_fmu");
   } else {
     model = source;
   }

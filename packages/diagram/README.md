@@ -27,7 +27,9 @@ ModelScript polyglot diagramming and visual schematic engine — AntV X6 interac
 - **Fault Tree Analysis (`src/fault-tree.ts`, `@modelscript/diagram/fault-tree`)**: IEC 61025 Fault Tree gate symbols (`AND`, `OR`, `XOR`, `VOTING k-out-of-n`, `INHIBIT`, `PRIORITY_AND`, basic/undeveloped/conditioning events), minimal cut-set highlighting, and top-event probability propagation.
 - **OWL 2 Ontology Graphs**: Class hierarchy (`SubClassOf`), object property domain/range edges, and inferred axiom dashed overlays.
 - **SSP 1.0 System Topology**: Multi-FMU architecture block diagrams with typed causal connectors and parameter mapping badges.
-- **PSCAD Single-Line Diagrams (SLD) (`src/pscad-diagram-builder.ts`)**: Electrical power system busbars, multi-winding transformers, transmission lines, breakers, and Inverter-Based Resource (IBR) schematics.
+- **PSCAD & PSS/E Power Grid Diagrams (`src/pscad-diagram-builder.ts`, `src/psse-diagram-builder.ts`)**: Electrical power system Single-Line Diagrams (SLD), busbars, multi-winding transformers, transmission lines, breakers, generator capability limits, and Inverter-Based Resource (IBR) schematics.
+- **Pipeline & Multiphase Fluid Networks (`src/olga-diagram-builder.ts`, `src/lps-diagram-builder.ts`)**: OLGA subsea flowline elevation bathymetry, topside risers, chokes, wells, and PipelineStudio continental compressor/regulator network graphs.
+- **SIMA Offshore Marine Schematics (`src/sima-diagram-builder.ts`)**: Multi-body floater geometry, fairlead attachments, catenary mooring line touchdown profiles, and anchor polar spread layouts.
 
 ### 4. Perceptual Dark-Mode Color Inversion
 

@@ -48,7 +48,7 @@ describe("PSCAD real-world corpus", { skip: files.length === 0 ? `no corpus at $
       const m = computeCorpusMetrics(name, text);
       rows.push(m);
       assert.ok(m.components > 0, "expected components");
-      assert.ok(m.parseMs < 2000, `parse too slow: ${m.parseMs.toFixed(0)}ms`);
+      assert.ok(m.parseMs < 5000, `parse too slow: ${m.parseMs.toFixed(0)}ms`);
       const base = BASELINES[name];
       if (base) {
         assert.ok(

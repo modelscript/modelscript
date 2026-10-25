@@ -1,0 +1,68 @@
+{
+  "name": "@modelscript/easy5",
+  "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/easy5-parser.d.ts",
+      "default": "./dist/src/parser/easy5-parser.js"
+    },
+    "./catalog": {
+      "types": "./dist/src/catalog/gp-library.d.ts",
+      "default": "./dist/src/catalog/gp-library.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/lowering.d.ts",
+      "default": "./dist/src/dae/lowering.js"
+    },
+    "./linear": {
+      "types": "./dist/src/linear/index.d.ts",
+      "default": "./dist/src/linear/index.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/index.d.ts",
+      "default": "./dist/src/projections/index.js"
+    },
+    "./diagram": {
+      "types": "./dist/src/diagram/easy5-diagram.d.ts",
+      "default": "./dist/src/diagram/easy5-diagram.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/fortran": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

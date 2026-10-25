@@ -4,14 +4,19 @@ import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { CfgEditorProvider } from "../cfg-editor-provider.js";
 import { DiagramEditorProvider } from "../diagram-editor-provider.js";
+import { Easy5EditorProvider } from "../easy5-editor-provider.js";
 import { ElementTableProvider } from "../element-table-provider.js";
 import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "../fmu-document-provider.js";
 import { GCodeEditorProvider } from "../gcode-editor-provider.js";
+import { GtSuiteEditorProvider } from "../gtsuite-editor-provider.js";
 import { InpEditorProvider } from "../inp-editor-provider.js";
+import { LpsEditorProvider } from "../lps-editor-provider.js";
 import { OlgaEditorProvider } from "../olga-editor-provider.js";
 import { PsoutEditorProvider } from "../psout-editor-provider.js";
 import { RawEditorProvider } from "../raw-editor-provider.js";
 import { RequirementsEditorProvider } from "../requirements-editor-provider.js";
+import { RocetsEditorProvider } from "../rocets-editor-provider.js";
+import { SimaEditorProvider } from "../sima-editor-provider.js";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "../ssp-document-provider.js";
 import { StepEditorProvider } from "../step-editor-provider.js";
 
@@ -118,6 +123,41 @@ export function registerCustomEditors(
   const psoutEditor = new PsoutEditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(PsoutEditorProvider.viewType, psoutEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const easy5Editor = new Easy5EditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(Easy5EditorProvider.viewType, easy5Editor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const rocetsEditor = new RocetsEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(RocetsEditorProvider.viewType, rocetsEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const lpsEditor = new LpsEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(LpsEditorProvider.viewType, lpsEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const simaEditor = new SimaEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(SimaEditorProvider.viewType, simaEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const gtsuiteEditor = new GtSuiteEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(GtSuiteEditorProvider.viewType, gtsuiteEditor, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );

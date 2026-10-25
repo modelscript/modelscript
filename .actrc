@@ -9,3 +9,9 @@
 
 # Force amd64 architecture
 --container-architecture linux/amd64
+
+# Enable local artifact server for actions/upload-artifact@v4
+--artifact-server-path=.cache/act-artifacts
+
+# Default event payload for pull_request events (needed by nrwl/nx-set-shas)
+--eventpath=.github/act-event.json

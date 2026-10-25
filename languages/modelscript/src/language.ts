@@ -83,8 +83,8 @@ export const modelscriptLanguage = language({
     lineComment: "//",
   },
 
-  // Resolve LR ambiguity between empty block statements `{}` and empty object literals `{}`
-  conflicts: ($) => [[$["Statement"]!, $["ObjectField"]!]],
+  // Resolve LR ambiguity between block statements `{}` and object literals `{}`
+  conflicts: ($) => [[$["BlockStatement"]!, $["ObjectLiteral"]!, $["Statement"]!, $["ObjectField"]!, $["IDENTIFIER"]!]],
 
   extras: () => [/\s+/],
 

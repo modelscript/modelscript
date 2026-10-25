@@ -5001,6 +5001,14 @@ end ModelScript;
  * @param dae - Target `WasmDaeBridge` (`DAEBuilder`) arena.
  */
 export function eliminateArenaAliases(dae: WasmDaeBridge): void {
+  if (
+    typeof dae.exports?.dae_eliminateAliases === "function" &&
+    (!dae.stateMachines || dae.stateMachines.length === 0)
+  ) {
+    dae.exports.dae_eliminateAliases(dae.ptr);
+    return;
+  }
+
   const aliasMap = new Map<number, number>();
 
   function find(id: number): number {

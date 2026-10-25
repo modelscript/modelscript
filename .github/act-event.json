@@ -1,0 +1,13 @@
+{
+  "pull_request": {
+    "number": 1,
+    "merged": false,
+    "state": "open",
+    "base": {
+      "ref": "main"
+    },
+    "head": {
+      "ref": "main"
+    }
+  }
+}

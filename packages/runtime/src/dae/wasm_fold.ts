@@ -1988,6 +1988,10 @@ export function foldArenaConstants(
   omcCompatibility = false,
   maxIterations = 100,
 ): number {
+  if (!db && !scopeId && (arena as any).exports?.dae_foldConstantsEx) {
+    return (arena as any).exports.dae_foldConstantsEx((arena as any).ptr, maxIterations, omcCompatibility);
+  }
+
   const nameToIdx = new Map<string, number>();
   for (let i = 0; i < arena.varCount; i++) {
     if (!arena.isVarRemoved(i)) {
@@ -2335,9 +2339,6 @@ export function foldArenaConstants(
             if (newRhs !== rhsExpr) {
               arena.setEqRhs(eq, newRhs);
               rhsExpr = newRhs;
-              if (isCall && eqKind === EqKind.Array && Boolean((arena as any).extensionMetadata?.isGen)) {
-                arena.setEqKind(eq, EqKind.Simple);
-              }
             }
           }
         }

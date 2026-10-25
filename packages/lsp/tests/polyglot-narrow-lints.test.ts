@@ -258,4 +258,44 @@ END SUBROUTINE
     assert.strictEqual(undeclaredDiag.range.start.line, 2);
     assert.strictEqual(undeclaredDiag.source, "fortran");
   });
+
+  it("EASY5 (.ez5): validates algebraic loops, disconnected ports, and reports diagnostics", async () => {
+    const { service, diagnosticsByUri } = createTestValidationService();
+    const ez5Source = `MODEL: DirectLoop
+COMPONENTS:
+  GA01 TYPE=GP/GA
+    XP: K=2.0
+  SJ01 TYPE=GP/SJ
+    XP: SGN1=1.0, SGN2=1.0
+
+CONNECTIONS:
+  GA01.OUT -> SJ01.IN1
+  SJ01.OUT -> GA01.IN
+`;
+    const uri = "file:///test/model.ez5";
+    const doc = TextDocument.create(uri, "easy5", 1, ez5Source);
+    await service.validateTextDocument(doc);
+
+    const diags = diagnosticsByUri.get(uri) ?? [];
+    const loopDiag = diags.find((d) => d.code === "M7002");
+    assert.ok(loopDiag, "Expected M7002 direct algebraic loop diagnostic");
+    assert.strictEqual(loopDiag.source, "easy5");
+  });
+
+  it("ROCETS (.roc): validates propulsion decks, valve schedules, and reports diagnostics", async () => {
+    const { service, diagnosticsByUri } = createTestValidationService();
+    const rocSource = `DECK: TestDeck
+COMPONENTS:
+  VALV01 TYPE=VALVE
+    PARAMS: CV=0.005, POSITION=1.8
+`;
+    const uri = "file:///test/engine.roc";
+    const doc = TextDocument.create(uri, "rocets", 1, rocSource);
+    await service.validateTextDocument(doc);
+
+    const diags = diagnosticsByUri.get(uri) ?? [];
+    const valveDiag = diags.find((d) => d.code === "M8008");
+    assert.ok(valveDiag, "Expected M8008 invalid valve schedule diagnostic");
+    assert.strictEqual(valveDiag.source, "rocets");
+  });
 });

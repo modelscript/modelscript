@@ -2189,15 +2189,50 @@ export class LSPBridge {
       return s;
     };
 
+    const stripTagAndContent = (input: string, tagName: string): string => {
+      let result = "";
+      let cursor = 0;
+      const lower = input.toLowerCase();
+      const openPrefix = `<${tagName.toLowerCase()}`;
+      const closeTag = `</${tagName.toLowerCase()}`;
+
+      while (cursor < input.length) {
+        const startIdx = lower.indexOf(openPrefix, cursor);
+        if (startIdx === -1) {
+          result += input.slice(cursor);
+          break;
+        }
+        const afterPrefix = lower[startIdx + openPrefix.length];
+        if (afterPrefix !== undefined && afterPrefix !== ">" && afterPrefix !== "/" && !/\s/.test(afterPrefix)) {
+          result += input.slice(cursor, startIdx + openPrefix.length);
+          cursor = startIdx + openPrefix.length;
+          continue;
+        }
+        result += input.slice(cursor, startIdx);
+        const openTagEnd = lower.indexOf(">", startIdx);
+        if (openTagEnd === -1) {
+          break;
+        }
+        if (lower[openTagEnd - 1] === "/") {
+          cursor = openTagEnd + 1;
+          continue;
+        }
+        const closeIdx = lower.indexOf(closeTag, openTagEnd + 1);
+        if (closeIdx === -1) {
+          break;
+        }
+        const closeTagEnd = lower.indexOf(">", closeIdx);
+        if (closeTagEnd === -1) {
+          break;
+        }
+        cursor = closeTagEnd + 1;
+      }
+      return result;
+    };
+
     // 0. Strip script and style blocks completely
-    let prevHtml: string;
-    do {
-      prevHtml = html;
-      html = html
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
-        .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "")
-        .replace(/<\/?(?:script|style)\b[^>]*>/gi, "");
-    } while (html !== prevHtml);
+    html = stripTagAndContent(html, "script");
+    html = stripTagAndContent(html, "style");
 
     // 1. Preserve <pre>...</pre> blocks as fenced code blocks
     const preBlocks: string[] = [];

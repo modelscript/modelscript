@@ -1,0 +1,72 @@
+{
+  "name": "@modelscript/rocets",
+  "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/deck-parser.d.ts",
+      "default": "./dist/src/parser/deck-parser.js"
+    },
+    "./catalog": {
+      "types": "./dist/src/catalog/modules.d.ts",
+      "default": "./dist/src/catalog/modules.js"
+    },
+    "./thermo": {
+      "types": "./dist/src/thermo/index.d.ts",
+      "default": "./dist/src/thermo/index.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/lowering.d.ts",
+      "default": "./dist/src/dae/lowering.js"
+    },
+    "./solver": {
+      "types": "./dist/src/solver/index.d.ts",
+      "default": "./dist/src/solver/index.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/index.d.ts",
+      "default": "./dist/src/projections/index.js"
+    },
+    "./diagram": {
+      "types": "./dist/src/diagram/pid-diagram.d.ts",
+      "default": "./dist/src/diagram/pid-diagram.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/fortran": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

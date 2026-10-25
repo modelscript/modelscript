@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // AssemblyScript implementation of WebAssembly Solvers, DAE Builder & BLT
+export { atomicChunkAlloc, atomicChunkFree } from "../src/wasm/core/array";
 export * from "../src/wasm/dae/alias";
 export * from "../src/wasm/autodiff/affine";
 export * from "../src/wasm/solvers/bdf";

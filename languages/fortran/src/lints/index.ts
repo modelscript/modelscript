@@ -173,9 +173,21 @@ export function lintFortranSource(
       if (intM) maxIntStorage = Math.max(maxIntStorage, parseInt(intM[1]!, 10));
     }
 
-    // 3. Declarations (IMPLICIT NONE, #LOCAL, REAL, INTEGER)
+    // 3. Declarations (IMPLICIT NONE, SUBROUTINE params, #LOCAL, REAL, INTEGER)
     if (/^IMPLICIT\s+NONE\b/i.test(trimmed)) {
       hasImplicitNone = true;
+    }
+
+    const subMatch = /^(?:SUBROUTINE|FUNCTION)\s+[A-Za-z0-9_]+\s*\(([^)]*)\)/i.exec(trimmed);
+    if (subMatch && subMatch[1]) {
+      const args = subMatch[1]
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const a of args) {
+        declaredVars.add(a);
+        assignedVars.add(a);
+      }
     }
 
     const localMatch = /#LOCAL\s+(?:REAL|INTEGER)\b(.*)/i.exec(trimmed);
@@ -187,7 +199,10 @@ export function lintFortranSource(
       for (const v of vars) declaredVars.add(v);
     }
 
-    const typeDeclMatch = /^(?:REAL|INTEGER|DOUBLE\s+PRECISION|LOGICAL|DIMENSION)\b(?:\s*::)?\s*(.*)/i.exec(trimmed);
+    const typeDeclMatch =
+      /^(?:REAL(?:\*[0-9]+)?|INTEGER(?:\*[0-9]+)?|DOUBLE\s+PRECISION|LOGICAL|DIMENSION)\b(?:\s*::)?\s*(.*)/i.exec(
+        trimmed,
+      );
     if (typeDeclMatch && !trimmed.startsWith("REALPOLE") && !trimmed.includes("=")) {
       const decls = splitTopLevelCommas(typeDeclMatch[1]!);
       for (const d of decls) {
@@ -195,9 +210,13 @@ export function lintFortranSource(
         if (idMatch) declaredVars.add(idMatch[1]!);
 
         // 4. Array Dimension Underflow Check (M4078)
-        const dimMatch = /\(([^)]+)\)/.exec(d);
-        if (dimMatch && idMatch) {
-          const dims = dimMatch[1]!.split(",").map((s) => s.trim());
+        const openParen = d.indexOf("(");
+        const closeParen = d.lastIndexOf(")");
+        if (openParen !== -1 && closeParen > openParen && idMatch) {
+          const dims = d
+            .slice(openParen + 1, closeParen)
+            .split(",")
+            .map((s) => s.trim());
           for (const dm of dims) {
             const num = parseInt(dm, 10);
             if (!isNaN(num) && num <= 0) {
@@ -295,10 +314,20 @@ export function lintFortranSource(
     }
 
     // 9. Assignment & DO Loop Index Mutation (M4075)
-    const assignMatch = /^([A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z0-9_]+)\s*=\s*(.*)$/.exec(trimmed);
-    if (assignMatch) {
-      const target = assignMatch[1]!;
-      const rhs = assignMatch[2]!;
+    const eqIdx = trimmed.indexOf("=");
+    let assignTarget: string | null = null;
+    let assignRhs = "";
+    if (eqIdx !== -1) {
+      const lhs = trimmed.slice(0, eqIdx).trim();
+      if (/^([A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z0-9_]+)$/.test(lhs)) {
+        assignTarget = lhs;
+        assignRhs = trimmed.slice(eqIdx + 1).trim();
+      }
+    }
+    if (assignTarget) {
+      const target = assignTarget;
+      const rhs = assignRhs;
+      const rhsColStart = rawLine.indexOf(rhs, rawLine.indexOf("=") + 1);
 
       if (insideDoLoop && target.toUpperCase() === insideDoLoop.indexVar.toUpperCase()) {
         const col = rawLine.indexOf(target) + 1;
@@ -342,7 +371,7 @@ export function lintFortranSource(
         readVars.add(id);
 
         if (hasImplicitNone && !declaredVars.has(id)) {
-          const col = rawLine.indexOf(id, assignMatch[0].indexOf(rhs)) + 1;
+          const col = rawLine.indexOf(id, rhsColStart >= 0 ? rhsColStart : 0) + 1;
           diagnostics.push({
             ...FortranErrorCode.UNDECLARED_VARIABLE,
             severity: FortranErrorCode.UNDECLARED_VARIABLE.severity,
@@ -354,7 +383,7 @@ export function lintFortranSource(
           });
         } else if (!assignedVars.has(id) && (declaredVars.has(id) || !hasImplicitNone)) {
           // Uninitialized warning
-          const col = rawLine.indexOf(id, assignMatch[0].indexOf(rhs)) + 1;
+          const col = rawLine.indexOf(id, rhsColStart >= 0 ? rhsColStart : 0) + 1;
           diagnostics.push({
             ...FortranErrorCode.UNINITIALIZED_VARIABLE,
             severity: FortranErrorCode.UNINITIALIZED_VARIABLE.severity,

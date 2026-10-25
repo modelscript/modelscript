@@ -498,6 +498,46 @@ await yargs(rawArgs)
       "OlgaCommand",
     ),
   )
+  .command(
+    lazy(
+      "easy5 <action> [files..]",
+      "Inspect, lint, linearize, and project EASY5 continuous simulation models (.ez5, .ezm, .ezd, .eas)",
+      () => import("./commands/easy5.js"),
+      "Easy5Command",
+    ),
+  )
+  .command(
+    lazy(
+      "rocets <action> [files..]",
+      "Inspect, lint, balance, simulate, and project NASA ROCETS liquid propulsion models (.roc, .deck)",
+      () => import("./commands/rocets.js"),
+      "RocetsCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "lps <action> [files..]",
+      "Inspect, lint, simulate, and verify PipelineStudio gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
+      () => import("./commands/lps.js"),
+      "LpsCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "sima <action> [files..]",
+      "Inspect, lint, verify, and project SINTEF Ocean SIMO / RIFLEX offshore models (.inp, .sima, .hyd)",
+      () => import("./commands/sima.js"),
+      "SimaCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "gtsuite <action> [files..]",
+      "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER engine models (.gtm, .gtd, .gtx)",
+      () => import("./commands/gtsuite.js"),
+      "GtSuiteCommand",
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

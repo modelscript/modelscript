@@ -53,7 +53,16 @@ export interface OlgaFmuResult {
 
 /** Sanitize an identifier for C code and XML schema. */
 function sanitizeIdentifier(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "olga_model";
+  const sanitized = name.replace(/[^a-zA-Z0-9_]/g, "_");
+  let start = 0;
+  while (start < sanitized.length && sanitized[start] === "_") {
+    start++;
+  }
+  let end = sanitized.length;
+  while (end > start && sanitized[end - 1] === "_") {
+    end--;
+  }
+  return sanitized.slice(start, end) || "olga_model";
 }
 
 /** Generate a stable GUID from a seed string. */

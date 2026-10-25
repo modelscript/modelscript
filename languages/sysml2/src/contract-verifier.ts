@@ -1114,7 +1114,7 @@ function extractAttributesFromBody(body: string): ParsedAttr[] {
   const clean = stripCommentsPreserveStructure(body);
   const attrs: ParsedAttr[] = [];
   const attrRegex =
-    /\b(?:(in|out|inout)\s+)?attribute\s+(?!def\b)([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w:]*))?(?:\s*=\s*([^;{\n]+))?\s*;/g;
+    /\b(?:(in|out|inout)\s+)?attribute\s+(?!def\b)([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w:]*))?(?:\s*=\s*([^;{\s\r\n](?:[^;{\r\n]*[^;{\s\r\n])?))?\s*;/g;
   let m: RegExpExecArray | null;
   while ((m = attrRegex.exec(clean)) !== null) {
     const rawType = m[3] ? m[3].split("::").pop()! : "Real";
@@ -1136,7 +1136,10 @@ function extractClausesFromBody(
   const guarantees: string[] = [];
 
   const normalizeClause = (raw: string): string => {
-    let expr = raw.replace(/\s+/g, " ").replace(/;+$/, "").trim();
+    let expr = raw.replace(/\s+/g, " ").trim();
+    while (expr.endsWith(";")) {
+      expr = expr.slice(0, -1).trimEnd();
+    }
     // Normalize qualified references like cell::T or system::airflow::T_outlet
     expr = expr.replace(/\b(?:[A-Za-z_]\w*::)+([A-Za-z_]\w*)\b/g, (_full, last) => {
       return constMap.get(last) ?? last;
@@ -1931,7 +1934,7 @@ export function extractSysML2ContractHierarchy(
           guarantees: g,
         });
       }
-    } else {
+    } else if (constraintDefs.length > 0) {
       const firstC = constraintDefs[0]!;
       systemNode = {
         name: firstC.name,
@@ -1940,6 +1943,8 @@ export function extractSysML2ContractHierarchy(
         assumptions: [...firstC.guarantees],
         guarantees: [...firstC.guarantees],
       };
+    } else {
+      return null;
     }
   }
 
@@ -1964,16 +1969,34 @@ export function extractSysML2ContractHierarchy(
       if (!states.includes(stm[1]!)) states.push(stm[1]!);
     }
 
-    const trRegex =
-      /\btransition\s+(?:([A-Za-z_]\w*)\s+)?first\s+([A-Za-z_]\w*)(?:\s+if\s+([^\n]+?))?\s+then\s+([A-Za-z_]\w*)\s*;/g;
+    const trRegex = /\btransition\s+([^;]+);/g;
     let trm: RegExpExecArray | null;
     while ((trm = trRegex.exec(bodyClean)) !== null) {
-      const from = trm[2]!;
-      const to = trm[4]!;
-      const tName = trm[1] ?? `${from}_to_${to}`;
+      const trBody = trm[1]!.replace(/\s+/g, " ").trim();
+      const firstIdx = trBody.indexOf("first ");
+      if (firstIdx === -1) continue;
+      const tName = trBody.slice(0, firstIdx).trim();
+      const afterFirst = trBody.slice(firstIdx + 6).trim();
+      const thenIdx = afterFirst.indexOf("then ");
+      if (thenIdx === -1) continue;
+      const beforeThen = afterFirst.slice(0, thenIdx).trim();
+      const to = afterFirst
+        .slice(thenIdx + 5)
+        .trim()
+        .split(" ")[0]!;
+
+      let from = beforeThen;
+      let guard: string | undefined = undefined;
+      const ifIdx = beforeThen.indexOf(" if ");
+      if (ifIdx !== -1) {
+        from = beforeThen.slice(0, ifIdx).trim();
+        guard = beforeThen.slice(ifIdx + 4).trim();
+      }
+      if (!from || !to) continue;
+      const resolvedName = tName || `${from}_to_${to}`;
       if (!states.includes(from)) states.push(from);
       if (!states.includes(to)) states.push(to);
-      transitions.push({ name: tName, from, to, guard: trm[3]?.trim(), stateMachine: smName });
+      transitions.push({ name: resolvedName, from, to, guard, stateMachine: smName });
     }
     stateDefRegex.lastIndex = block.endPos;
   }

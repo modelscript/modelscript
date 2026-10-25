@@ -43,10 +43,17 @@ export function parseProfileVariableHeader(header: string, unitFallback?: string
   let name = header.trim();
   let unit = (unitFallback ?? "").replace(/[[\]]/g, "").trim().toUpperCase() || "-";
 
-  const bracketMatch = name.match(/^(.+?)\s*\[([^\]]+)\]$/);
-  if (bracketMatch) {
-    name = bracketMatch[1]!.trim().toUpperCase();
-    unit = bracketMatch[2]!.trim().toUpperCase();
+  if (name.endsWith("]")) {
+    const openBracket = name.lastIndexOf("[");
+    if (openBracket > 0) {
+      unit = name
+        .slice(openBracket + 1, -1)
+        .trim()
+        .toUpperCase();
+      name = name.slice(0, openBracket).trim().toUpperCase();
+    } else {
+      name = name.toUpperCase();
+    }
   } else {
     name = name.toUpperCase();
   }
@@ -208,7 +215,7 @@ export function parseOlgaPpl(pplContent: string): OlgaProfileDataset {
     // Column headers within a time snapshot: e.g. "X [M] PT [PA] TM [C] HOL [-] ..."
     // Must contain X coordinate
     if (upper.split(/\s+/).some((t) => t.startsWith("X"))) {
-      const colMatches = Array.from(rawLine.matchAll(/([A-Za-z0-9_]+)(?:\s*\[([^\]]+)\])?/g));
+      const colMatches = Array.from(rawLine.matchAll(/\b([A-Za-z0-9_]+)(?:\s*\[([^\]\r\n]+)\])?/g));
       let unitsTokens: string[] = [];
 
       // Check next line for bracketed units if inline units were not found

@@ -101,8 +101,8 @@ function lowerExprToArena(
   const trimmed = expr.trim();
 
   // Numeric literal
-  if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(trimmed)) {
-    return builder.addRealLiteral(parseFloat(trimmed));
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eEdD][+-]?\d+)?$/.test(trimmed)) {
+    return builder.addRealLiteral(parseFloat(trimmed.replace(/[dD]/, "e")));
   }
 
   // EASY5 State Reference: S(i)

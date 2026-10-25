@@ -1,6 +1,6 @@
 # `@modelscript/ide-client`
 
-ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) â€” polyglot Language Server Protocol (`vscode-languageclient`) integration, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 9 custom editors, and 20+ specialized engineering webview panels.
+ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) â€” polyglot Language Server Protocol (`vscode-languageclient`) integration, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 17 custom editors, and 20+ specialized engineering webview panels.
 
 ---
 
@@ -31,9 +31,9 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) â
 
 - **`ModelicaNotebookSerializer` & `ModelicaNotebookController`**: Native VS Code Notebook integration for `.monb` files interleaving GitHub-Flavored Markdown + KaTeX equations (`src/markdown-it-plugin.ts`) with executable polyglot code cells (`modelica`, `sysml2`, `modelscript`, `scad`, `sparql`), rendering inline time-series plots, Bode diagrams, 3D CAD meshes, and SVG schematics.
 
-### 5. 9 Custom Editors
+### 5. 17 Custom Editors
 
-1. **Bi-Directional Diagram & Schematic Editor (`src/diagram-editor-provider.ts`)**: Interactive graphical editor for `.mo`, `.sysml`, and `.pscx` files with drag-and-drop palette placement, Manhattan A\* wire routing, and real-time CST writeback.
+1. **Bi-Directional Diagram & Schematic Editor (`src/diagram-editor-provider.ts`)**: Interactive graphical editor for `.mo`, `.sysml`, `.pscx`, and polyglot schematics.
 2. **Interactive `.monb` Notebook Editor (`src/notebook-serializer.ts`)**: Literate multi-domain simulation notebooks.
 3. **FMU Archive Inspector (`src/fmu-document-provider.ts`)**: Inspects FMI 2.0/3.0 `modelDescription.xml`, causal port matrices, and executes interactive FMU test runs.
 4. **SSP System Topology Editor (`src/ssp-document-provider.ts`, `src/ssp-parser.ts`)**: Visual block-diagram editor for `.ssp`, `.ssd`, and `.ssv` multi-FMU architectures.
@@ -42,6 +42,15 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) â
 7. **CalculiX / Abaqus FEA Deck Editor (`src/inp-editor-provider.ts`)**: Visual mesh, boundary condition, and material inspector for `.inp` structural decks.
 8. **SU2 CFD Configuration Editor (`src/cfg-editor-provider.ts`)**: Interactive aerodynamic regime, boundary marker, and solver convergence editor for `.cfg` files.
 9. **G-Code CNC Toolpath Viewer (`src/gcode-editor-provider.ts`)**: 3D layer-by-layer toolpath visualizer for `.gcode`/`.nc` manufacturing files.
+10. **Element Table Editor (`src/element-table-provider.ts`)**: Spreadsheet-style editor for bulk parameter inspection and writeback.
+11. **PSCAD Binary Waveform Viewer (`src/psout-editor-provider.ts`)**: High-performance multi-trace waveform visualizer for `.psout` files.
+12. **PSS/E Power Flow Editor (`src/raw-editor-provider.ts`)**: Transmission network and AC power flow inspector for `.raw` base cases.
+13. **OLGA Multiphase Flowline Editor (`src/olga-editor-provider.ts`)**: Pipeline flowpath, elevation profile, and valve editor for `.opi` / `.olga` models.
+14. **GT-SUITE Powertrain Editor (`src/gtsuite-editor-provider.ts`)**: 1D powertrain, cylinder kinematics, and runner schematic editor for `.gtm` / `.gtx` models.
+15. **SIMA Marine Operations Editor (`src/sima-editor-provider.ts`)**: Offshore floater, mooring catenary, and RAO transfer function inspector for `.sima` / `.sys` files.
+16. **EASY5 Systems Editor (`src/easy5-editor-provider.ts`)**: Continuous block diagram and transfer function editor for Boeing / MSC `.ez5` models.
+17. **ROCETS Propulsion Editor (`src/rocets-editor-provider.ts`)**: Rocket turbomachinery power cycle balance and thrust chamber schematic for NASA `.roc` decks.
+18. **PipelineStudio Editor (`src/lps-editor-provider.ts`)**: Continental gas/liquid pipeline network topology and line pack editor for `.lps` / `.tgx` files.
 
 ### 6. 20+ Specialized Engineering Webview Panels & Tree Views
 

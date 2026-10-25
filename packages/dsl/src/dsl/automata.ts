@@ -644,7 +644,7 @@ export class GLRTable {
 
         let isWhitelisted = false;
 
-        // Extract all involved non-terminals for this conflict
+        // Extract all involved non-terminals for this conflict (both reduce and shift items)
         const involvedRules = new Set<string>();
         for (const a of actions) {
           if (a.type === ActionType.REDUCE && a.target !== undefined) {
@@ -652,16 +652,33 @@ export class GLRTable {
             if (prod) involvedRules.add(formatRule(prod.left));
           }
         }
+        const state = this.automaton.states[stateId];
+        if (state) {
+          for (const item of state.items) {
+            if (item.dot < item.production.right.length && item.production.right[item.dot] === terminal) {
+              involvedRules.add(formatRule(item.production.left));
+            }
+          }
+        }
 
-        // If the user specified a conflict array that contains all these reduced rules, suppress it
+        const ruleMatchesEntry = (rule: string, g: string): boolean => {
+          if (g === rule) return true;
+          if (rule.includes(g) || g.includes(rule)) return true;
+          const origins = this.grammar.syntheticOrigins?.get(rule);
+          if (origins) {
+            if (origins.has(g)) return true;
+            for (const o of origins) {
+              if (o === g || o.includes(g) || g.includes(o)) return true;
+            }
+          }
+          return false;
+        };
+
+        // If the user specified a conflict array that contains all these rules, suppress it
         for (const conflictGroup of this.grammar.conflicts) {
           let matchesAll = true;
           for (const rule of involvedRules) {
-            const hasMatch = conflictGroup.some((g) => {
-              if (g === rule) return true;
-              if (rule.includes(g) || g.includes(rule)) return true;
-              return false;
-            });
+            const hasMatch = conflictGroup.some((g) => ruleMatchesEntry(rule, g));
             if (!hasMatch) {
               matchesAll = false;
               break;

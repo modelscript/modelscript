@@ -126,7 +126,7 @@ run_task() {
 if [ "$MODE_LINT" = true ]; then
   echo ""
   log_info "Verifying package-lock.json sync, project graph cycles, file headers and filename conventions..."
-  npm ci --dry-run --ignore-scripts >/dev/null
+  npm run lint:lockfile
   npm run lint:cycles
   npm run lint:headers
   npm run lint:filenames

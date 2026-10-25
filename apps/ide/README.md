@@ -10,7 +10,7 @@ Browser-based VS Code Web engineering environment for polyglot systems modeling,
 ## Features
 
 - **Full VS Code Web Workbench**: Complete browser-based editor experience with incremental WASM GLR parsing, semantic diagnostics, auto-completions, and AST-aware structural Git diffs.
-- **Polyglot Engineering Support**: Native editing, visualization, and verification for ModelScript (`.msx`), Modelica (`.mo`), SysML v2 (`.sysml`), STEP CAD (`.step`/`.stp`), OpenSCAD (`.scad`), OWL 2 (`.owl`/`.ofn`), CSV (`.csv`), CFD (`.cfg`/`.cfgt`), FEA (`.inp`/`.inpt`), SSP (`.ssp`), and PSCAD (`.pscx`/`.pslx`).
+- **Polyglot Engineering Support**: Native editing, visualization, and verification for ModelScript (`.msx`), Modelica (`.mo`), SysML v2 (`.sysml`), STEP CAD (`.step`/`.stp`), OpenSCAD (`.scad`), OWL 2 (`.owl`/`.ofn`), CSV (`.csv`), CFD (`.cfg`/`.cfgt`), FEA (`.inp`/`.inpt`), SSP (`.ssp`), PSCAD (`.pscx`/`.pslx`), PSS/E (`.raw`), OLGA (`.opi`), GT-SUITE (`.gtm`), SIMA (`.sima`), EASY5 (`.ez5`), ROCETS (`.roc`), LPS (`.lps`), and Fortran (`.f`).
 - **DAP Simulation Debugger**: Built-in Debug Adapter Protocol (`ModelScriptDebugSession`) supporting breakpoints on equations and algorithm statements, single-stepping across solver time steps, and live inspection of state, derivative, and algebraic variables.
 - **3-Tier AI Assistant**:
   1. **Browser-Local WebGPU**: Privacy-preserving `Qwen3-0.6B` powered by WebLLM running directly on client WebGPU with zero external network calls.
@@ -22,19 +22,27 @@ Browser-based VS Code Web engineering environment for polyglot systems modeling,
 
 ---
 
-## 9 Custom Editors
+## 17 Custom Editors
 
-| Custom Editor            | View Type                        | Supported Formats & Capabilities                                                                                   |
-| ------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Polyglot Diagram**     | `modelscript.diagramEditor`      | Interactive schematic & block diagram editor for `.mo`, `.sysml`, `.pscx`, `.pslx`, `.owl`, `.step`, `.scad`, etc. |
-| **FMU Inspector**        | `modelscript.fmuEditor`          | Inspect `modelDescription.xml`, causal ports, and run in-browser simulations of `.fmu` (FMI 2.0/3.0) archives      |
-| **SSP Topology Editor**  | `modelscript.sspEditor`          | Visual architecture and signal wiring editor for `.ssp` System Structure & Parameterization containers             |
-| **3D STEP CAD Viewer**   | `modelscript.stepEditor`         | Interactive 3D B-Rep solid, assembly tree, cross-section, and GD&T viewer for `.step` / `.stp` files               |
-| **G-Code Toolpath**      | `modelscript.gcodeEditor`        | 3D additive/subtractive manufacturing toolpath and layer-by-layer visualizer for `.gcode` files                    |
-| **3D FEA Deck Editor**   | `modelscript.inpEditor`          | 3D finite element mesh, node set, and boundary condition inspector for CalculiX/Abaqus `.inp` / `.inpt` decks      |
-| **3D CFD Config Editor** | `modelscript.cfgEditor`          | 3D flow domain, boundary patch, and solver configuration editor for SU2 `.cfg` / `.cfgt` files                     |
-| **Requirements Matrix**  | `modelscript.requirementsEditor` | Interactive SysML v2 / ReqIF requirements verification table and satisfaction traceability matrix                  |
-| **Element Table**        | `modelscript.elementTableEditor` | Spreadsheet-style editor for bulk inspection and writeback of model parameters, ports, and attributes              |
+| Custom Editor              | View Type                        | Supported Formats & Capabilities                                                                                   |
+| -------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Polyglot Diagram**       | `modelscript.diagram`            | Interactive schematic & block diagram editor for `.mo`, `.sysml`, `.pscx`, `.pslx`, `.owl`, `.step`, `.scad`, etc. |
+| **FMU Inspector**          | `modelscript.fmuViewer`          | Inspect `modelDescription.xml`, causal ports, and run in-browser simulations of `.fmu` (FMI 2.0/3.0) archives      |
+| **SSP Topology Editor**    | `modelscript.sspViewer`          | Visual architecture and signal wiring editor for `.ssp` System Structure & Parameterization containers             |
+| **3D STEP CAD Viewer**     | `modelscript.stepEditor`         | Interactive 3D B-Rep solid, assembly tree, cross-section, and GD&T viewer for `.step` / `.stp` files               |
+| **G-Code Toolpath**        | `modelscript.gcodeViewer`        | 3D additive/subtractive manufacturing toolpath and layer-by-layer visualizer for `.gcode` files                    |
+| **3D FEA Deck Editor**     | `modelscript.inpEditor`          | 3D finite element mesh, node set, and boundary condition inspector for CalculiX/Abaqus `.inp` / `.inpt` decks      |
+| **3D CFD Config Editor**   | `modelscript.cfgEditor`          | 3D flow domain, boundary patch, and solver configuration editor for SU2 `.cfg` / `.cfgt` files                     |
+| **Requirements Matrix**    | `modelscript.requirementsEditor` | Interactive SysML v2 / ReqIF requirements verification table and satisfaction traceability matrix                  |
+| **Element Table**          | `modelscript.elementTable`       | Spreadsheet-style editor for bulk inspection and writeback of model parameters, ports, and attributes              |
+| **PSCAD Waveform Viewer**  | `modelscript.psoutViewer`        | High-performance waveform visualizer for PSCAD V5+ binary `.psout` simulation runs                                 |
+| **PSS/E Power Flow**       | `modelscript.rawEditor`          | Transmission network and AC power flow inspector for Siemens PTI PSS/E `.raw` base cases                           |
+| **OLGA Flowline Editor**   | `modelscript.olgaEditor`         | Multiphase pipeline flowpath, elevation profile, and valve editor for `.opi` / `.olga` models                      |
+| **GT-SUITE Powertrain**    | `modelscript.gtsuiteEditor`      | 1D powertrain, cylinder kinematics, and runner schematic editor for `.gtm` / `.gtx` models                         |
+| **SIMA Marine Operations** | `modelscript.simaEditor`         | Offshore floater, mooring catenary, and RAO transfer function inspector for `.sima` / `.sys` archives              |
+| **EASY5 Systems Editor**   | `modelscript.easy5Editor`        | Continuous block diagram and transfer function editor for Boeing / MSC `.ez5` models                               |
+| **ROCETS Propulsion**      | `modelscript.rocetsEditor`       | Rocket turbomachinery power cycle balance and thrust chamber schematic for NASA `.roc` decks                       |
+| **PipelineStudio Editor**  | `modelscript.lpsEditor`          | Continental gas/liquid pipeline network topology and line pack editor for `.lps` / `.tgx` files                    |
 
 ---
 

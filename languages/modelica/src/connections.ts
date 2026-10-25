@@ -145,13 +145,6 @@ export class ModelicaPortBalancer {
         ocGraphMeta.branches?.length > 0 ||
         ocGraphMeta.queriedRoots?.size > 0),
     );
-    let hasStreamVars = false;
-    for (let i = 0; i < dae.varCount; i++) {
-      if (!dae.isVarRemoved(i) && dae.isVarStream(i)) {
-        hasStreamVars = true;
-        break;
-      }
-    }
 
     let hasConnectEq = false;
     for (let i = 0; i < dae.eqCount; i++) {
@@ -162,7 +155,7 @@ export class ModelicaPortBalancer {
     }
 
     // Fast path: delegate standard acausal connections to the in-WASM AssemblyScript connection kernel
-    // when no stream variables, overconstrained connection graphs, or expandable buses are present.
+    // when no expandable buses are present.
     const state = getFlatteningState(dae);
     if (
       hasConnectEq &&
@@ -170,8 +163,6 @@ export class ModelicaPortBalancer {
       dae.exports &&
       typeof dae.exports.flattener_expandConnections === "function" &&
       !options?.omcCompatibility &&
-      !hasStreamVars &&
-      !hasOverconstrained &&
       expBuses.length === 0
     ) {
       const existingWasmFlattener = state.wasmFlattener;

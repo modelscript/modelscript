@@ -376,6 +376,63 @@ export class ArenaStringPool {
     return id;
   }
 
+  internIndexedName(baseNameId: u32, indices: StaticArray<u32>, dimCount: u32): u32 {
+    if (baseNameId == 0 || baseNameId >= this.stringCount || dimCount == 0) return baseNameId;
+
+    let baseLen = this.stringLengths.get(baseNameId);
+    let baseStart = this.stringOffsets.get(baseNameId);
+
+    let tempStart = this.charOffset;
+    let outOffset = tempStart;
+
+    // 1. Copy base name
+    for (let i: u32 = 0; i < baseLen; i++) {
+      this.charBuffer.set(outOffset++, this.charBuffer.get(baseStart + i));
+    }
+
+    // 2. Append '['
+    this.charBuffer.set(outOffset++, 91); // '['
+
+    // 3. Append indices separated by ','
+    let digitBuf = new StaticArray<u8>(10);
+    for (let d: u32 = 0; d < dimCount; d++) {
+      if (d > 0) {
+        this.charBuffer.set(outOffset++, 44); // ','
+      }
+      let val = indices[d];
+      if (val == 0) {
+        this.charBuffer.set(outOffset++, 48); // '0'
+      } else {
+        let count: u32 = 0;
+        let v = val;
+        while (v > 0) {
+          digitBuf[count++] = (48 + (v % 10)) as u8;
+          v /= 10;
+        }
+        for (let i: u32 = 0; i < count; i++) {
+          this.charBuffer.set(outOffset++, digitBuf[count - 1 - i]);
+        }
+      }
+    }
+
+    // 4. Append ']'
+    this.charBuffer.set(outOffset++, 93); // ']'
+
+    let totalLen = outOffset - tempStart;
+    let h = hashChunkedBytes64(this.charBuffer, tempStart, totalLen);
+    let existingId = this.getStringMap().get(h);
+    if (existingId != 0 && this._matchesChunk(existingId, tempStart, totalLen)) {
+      return existingId;
+    }
+
+    let id = this.stringCount++;
+    this.stringOffsets.set(id, tempStart);
+    this.stringLengths.set(id, totalLen);
+    this.charOffset += totalLen;
+    this.getStringMap().set(h, id);
+    return id;
+  }
+
   getLength(id: u32): u32 {
     return id < this.stringCount ? this.stringLengths.get(id) : 0;
   }

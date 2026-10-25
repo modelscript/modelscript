@@ -76,6 +76,7 @@
     "validate": "tsx validation/fmi/scripts/validate.ts"
   },
   "dependencies": {
+    "@modelscript/lps": "*",
     "@modelscript/olga": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",

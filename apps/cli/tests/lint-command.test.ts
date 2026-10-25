@@ -70,6 +70,11 @@ describe("Unified Polyglot CLI Linter (`msx lint`)", () => {
       "fea",
       "pscad",
       "fortran",
+      "easy5",
+      "rocets",
+      "lps",
+      "sima",
+      "gtsuite",
     ]) {
       assert.ok(ids.includes(expectedId), `Expected built-in language '${expectedId}'`);
     }
@@ -272,6 +277,61 @@ END SUBROUTINE
     assert.ok(
       f90Diags.some((d) => d.code === "M4070"),
       `Expected M4070 undeclared variable diagnostic in Fortran, got ${JSON.stringify(f90Diags)}`,
+    );
+
+    const ez5File = path.join(scratchDir, "loop.ez5");
+    fs.writeFileSync(
+      ez5File,
+      `MODEL: LoopTest
+COMPONENTS:
+  GA01 TYPE=GP/GA
+    XP: K=2.0
+  SJ01 TYPE=GP/SJ
+    XP: SGN1=1.0, SGN2=1.0
+CONNECTIONS:
+  GA01.OUT -> SJ01.IN1
+  SJ01.OUT -> GA01.IN
+`,
+      "utf-8",
+    );
+    const { diags: ez5Diags } = await runLintJson({ path: ez5File });
+    assert.ok(
+      ez5Diags.some((d) => d.code === "M7002"),
+      `Expected M7002 algebraic loop diagnostic in EASY5, got ${JSON.stringify(ez5Diags)}`,
+    );
+
+    const simaFile = path.join(scratchDir, "semi.sima");
+    fs.writeFileSync(
+      simaFile,
+      `<?xml version="1.0" encoding="UTF-8"?>
+<sima:SlenderSystem name="NegativeGM" waterDepth="200.0">
+  <sima:Vessel name="Semi" length="100.0" displacement="15000.0" gmt="-1.5" gml="10.0" draft="20.0" />
+</sima:SlenderSystem>
+`,
+      "utf-8",
+    );
+    const { diags: simaDiags } = await runLintJson({ path: simaFile });
+    assert.ok(
+      simaDiags.some((d) => d.code === "M7001"),
+      `Expected M7001 negative metacentric height diagnostic in SIMA, got ${JSON.stringify(simaDiags)}`,
+    );
+
+    const gtmFile = path.join(scratchDir, "engine.gtm");
+    fs.writeFileSync(
+      gtmFile,
+      `MODEL: BadEngine
+SPEED: 3000.0
+LAMBDA: 3.5
+
+COMPONENTS:
+  CYL1 = cylinder (BORE = 0.0825, STROKE = 0.0928, ROD = 0.144, CR = 35.0, ANCHOR = 15, DURATION = 45)
+`,
+      "utf-8",
+    );
+    const { diags: gtmDiags } = await runLintJson({ path: gtmFile });
+    assert.ok(
+      gtmDiags.some((d) => d.code === "M9005"),
+      `Expected M9005 compression ratio diagnostic in GT-SUITE, got ${JSON.stringify(gtmDiags)}`,
     );
 
     // Filter directory linting by --language

@@ -274,14 +274,19 @@ workspaceManager.setWorkspaceIndex("step", stepWsIndex);
 workspaceManager.unifiedWorkspace.registerWorkspace("step", stepWsIndex, { priority: 2, name: "step" });
 
 import { cfdLanguage } from "@modelscript/cfd";
+import { Easy5WorkspaceIndex, easy5Language } from "@modelscript/easy5";
 import { feaLanguage } from "@modelscript/fea";
 import { fortranLanguage } from "@modelscript/fortran";
+import { GtSuiteWorkspaceIndex, gtsuiteLanguage } from "@modelscript/gtsuite";
+import { lpsLanguage } from "@modelscript/lps";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { olgaLanguage } from "@modelscript/olga";
 import { PscadWorkspaceIndex, pscadLanguage } from "@modelscript/pscad";
 import { PsseWorkspaceIndex, psseLanguage } from "@modelscript/psse";
+import { RocetsWorkspaceIndex, rocetsLanguage } from "@modelscript/rocets";
 import scadLangFallback from "@modelscript/scad/language";
+import { SimaWorkspaceIndex, simaLanguage } from "@modelscript/sima";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { registerActionRouter } from "./handlers/actionRouter.js";
@@ -311,6 +316,22 @@ workspaceManager.unifiedWorkspace.registerWorkspace("pscad", pscadWsIndex, { pri
 const psseWsIndex = new PsseWorkspaceIndex();
 workspaceManager.setWorkspaceIndex("psse", psseWsIndex);
 workspaceManager.unifiedWorkspace.registerWorkspace("psse", psseWsIndex, { priority: 2, name: "psse" });
+
+const easy5WsIndex = new Easy5WorkspaceIndex();
+workspaceManager.setWorkspaceIndex("easy5", easy5WsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("easy5", easy5WsIndex, { priority: 2, name: "easy5" });
+
+const rocetsWsIndex = new RocetsWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("rocets", rocetsWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("rocets", rocetsWsIndex, { priority: 2, name: "rocets" });
+
+const simaWsIndex = new SimaWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("sima", simaWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("sima", simaWsIndex, { priority: 2, name: "sima" });
+
+const gtsuiteWsIndex = new GtSuiteWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("gtsuite", gtsuiteWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("gtsuite", gtsuiteWsIndex, { priority: 2, name: "gtsuite" });
 
 const moWs = workspaceManager.getWorkspaceIndex("modelica");
 if (moWs) {
@@ -723,6 +744,117 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     });
 
     globalLanguageRegistry.register({
+      id: "easy5",
+      name: "EASY5",
+      extensions: [".ez5", ".ezm", ".ezd", ".eas"],
+      languageDef: easy5Language,
+      actionHandlers: {
+        lint_easy5_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return lintEasy5(model);
+        },
+        linearize_easy5_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEasy5, linearizeEasy5 } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return linearizeEasy5(model, params?.operatingPoint);
+        },
+        inspect_easy5_bode: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEasy5, linearizeEasy5, computeEasy5FrequencyResponse } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          const sys = linearizeEasy5(model, params?.operatingPoint);
+          return computeEasy5FrequencyResponse(sys, params?.options);
+        },
+        export_easy5_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseEasy5, easy5ToModelica } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return easy5ToModelica(model);
+        },
+        export_easy5_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseEasy5, easy5ToSsp } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return easy5ToSsp(model);
+        },
+        inspect_easy5_diagram: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEasy5, buildEasy5DiagramData, renderEasy5SvgDiagram } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return {
+            graphData: buildEasy5DiagramData(model),
+            svg: renderEasy5SvgDiagram(model),
+          };
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "rocets",
+      name: "ROCETS",
+      extensions: [".roc", ".deck"],
+      languageDef: rocetsLanguage,
+      actionHandlers: {
+        lint_rocets_deck: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseRocetsDeck, lintRocets } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return lintRocets(model);
+        },
+        solve_rocets_balance: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRocetsDeck, solveRocetsBalance } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return solveRocetsBalance(model, params?.options);
+        },
+        simulate_rocets_transient: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRocetsDeck, simulateRocetsTransient } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return simulateRocetsTransient(model, params?.options);
+        },
+        export_rocets_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseRocetsDeck, rocetsToModelica } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return rocetsToModelica(model);
+        },
+        export_rocets_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseRocetsDeck, rocetsToSsp } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return rocetsToSsp(model);
+        },
+        inspect_rocets_diagram: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRocetsDeck, buildRocetsDiagramData, renderRocetsPidSvg } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return {
+            graphData: buildRocetsDiagramData(model),
+            svg: renderRocetsPidSvg(model),
+          };
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
       id: "psse",
       name: "PSSE",
       extensions: [".raw"],
@@ -798,6 +930,47 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     });
 
     globalLanguageRegistry.register({
+      id: "lps",
+      name: "PipelineStudio",
+      extensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
+      languageDef: lpsLanguage,
+      actionHandlers: {
+        lint_lps_network: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseLps, lintLpsModel } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          return lintLpsModel(model);
+        },
+        solve_lps_steady: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseLps, SteadyNetworkSolver, LinePackEngine, PipelineVerifier } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          const steady = SteadyNetworkSolver.solve(model);
+          const analysis = LinePackEngine.analyze(model, steady);
+          const verification = PipelineVerifier.verifySteady(model, steady);
+          return { steady, analysis, verification };
+        },
+        simulate_lps_transient: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseLps, GasEulerDaeSolver } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          return GasEulerDaeSolver.simulate(model, { durationSeconds: params?.durationSeconds });
+        },
+        project_lps_sysml2: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseLps, lpsToSysml2 } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          return lpsToSysml2(model);
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
       id: "fortran",
       name: "Fortran",
       extensions: [".f", ".for", ".f90", ".f95", ".f03", ".f08"],
@@ -808,6 +981,168 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
           if (!text) return [];
           const { lintFortran } = await import("@modelscript/fortran");
           return lintFortran(text);
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "sima",
+      name: "SIMA",
+      extensions: [".inp", ".sima", ".sys", ".hyd"],
+      languageDef: simaLanguage,
+      actionHandlers: {
+        lint_sima_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseSimaFile, lintSimaProject } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return lintSimaProject(model);
+        },
+        verify_dnv_compliance: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSimaFile, verifyDnvMooringCompliance } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return verifyDnvMooringCompliance(model, params?.consequenceClass ?? 2);
+        },
+        evaluate_offset_limits: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSimaFile, evaluateOffsetLimits } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return evaluateOffsetLimits(model, params?.options);
+        },
+        project_sima_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile, simaToModelica } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return simaToModelica(model);
+        },
+        project_sima_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile, simaToSsp } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return simaToSsp(model);
+        },
+        project_sima_sysml2: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile, simaToSysml2 } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return simaToSysml2(model);
+        },
+        render_catenary_profile: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile } = await import("@modelscript/sima");
+          const { renderSimaCatenaryProfileSvg } = await import("@modelscript/diagram/sima-diagram-builder");
+          const model = parseSimaFile(text, params?.uri);
+          const firstLine = model.lines[0];
+          const avgWeight = firstLine
+            ? firstLine.segments.reduce((acc, s) => acc + s.submergedWeightPerMeter, 0) /
+              Math.max(1, firstLine.segments.length)
+            : 2500;
+          return renderSimaCatenaryProfileSvg({
+            title: firstLine ? `Catenary Profile: ${firstLine.name}` : "Catenary Profile Preview",
+            waterDepth: model.environment.waterDepth,
+            horizontalSpan: firstLine
+              ? Math.hypot(
+                  (firstLine.fairleadPosition?.[0] ?? 0) - firstLine.anchorPosition[0],
+                  (firstLine.fairleadPosition?.[1] ?? 0) - firstLine.anchorPosition[1],
+                )
+              : 800,
+            lineLength: firstLine ? firstLine.totalLength : 850,
+            submergedWeight: avgWeight,
+          });
+        },
+        render_mooring_spread: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile } = await import("@modelscript/sima");
+          const { renderSimaMooringSpreadSvg } = await import("@modelscript/diagram/sima-diagram-builder");
+          const model = parseSimaFile(text, params?.uri);
+          return renderSimaMooringSpreadSvg({
+            title: "Overhead Mooring Spread & Watch Circle",
+            waterDepth: model.environment.waterDepth,
+            vesselName: model.vessels[0]?.name ?? "Floater Platform",
+            lines: model.lines.map((l) => ({
+              id: l.id,
+              name: l.name,
+              fairleadPos: l.fairleadPosition,
+              anchorPos: l.anchorPosition,
+            })),
+            environment: {
+              waveDir: model.environment.wave.direction,
+              waveHs: model.environment.wave.hs,
+              windDir: model.environment.wind.direction,
+              windSpeed: model.environment.wind.speed,
+              currentDir: model.environment.current.direction,
+              currentSpeed: model.environment.current.surfaceSpeed,
+            },
+          });
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "gtsuite",
+      name: "GT-SUITE",
+      extensions: [".gtm", ".gtd", ".gtx", ".gt"],
+      languageDef: gtsuiteLanguage,
+      actionHandlers: {
+        lint_gtsuite_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseGtmModel, lintGtModel } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return lintGtModel(model);
+        },
+        simulate_gtsuite_transient: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseGtmModel, runGtSuiteSimulation } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return runGtSuiteSimulation(model, params?.options);
+        },
+        verify_gtsuite_gates: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseGtmModel, runGtSuiteSimulation, verifyEngineGates } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          const simResult = await runGtSuiteSimulation(model, params?.options);
+          return verifyEngineGates(simResult, params?.gateOptions);
+        },
+        project_gtsuite_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, gtsuiteToModelica } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return gtsuiteToModelica(model);
+        },
+        project_gtsuite_sysml2: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, gtsuiteToSysml2 } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return gtsuiteToSysml2(model);
+        },
+        project_gtsuite_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, gtsuiteToSsp } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return gtsuiteToSsp(model);
+        },
+        render_gtsuite_schematic: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, renderGtSuiteSchematicSvg } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return renderGtSuiteSchematicSvg(model);
         },
       },
       disposables: [],

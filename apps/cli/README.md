@@ -3,7 +3,7 @@
 
 # @modelscript/cli
 
-Unified command-line interface (`modelscript`, alias `msx`) for ModelScript. Provides a high-performance polyglot toolchain for compilation, simulation, optimization, formal verification, enterprise digital thread coexistence, CAD extraction, and package management across Modelica, SysML v2, STEP, and related engineering domains.
+Unified command-line interface (`modelscript`, alias `msx`) for ModelScript. Provides a high-performance polyglot toolchain for compilation, simulation, optimization, formal verification, enterprise digital thread coexistence, CAD extraction, and package management across modern open standards (SysML v2, Modelica, STEP) and legacy/SOTA industrial formats (PSCAD, PSS/E, OLGA, GT-SUITE, SIMA, EASY5, ROCETS, LPS, Fortran).
 
 ---
 
@@ -25,7 +25,7 @@ npx msx --daemon <command>
 
 ## Command Reference
 
-### 1. Modeling, Flattening, Simulation & Power Systems
+### 1. Modeling, Flattening, Simulation & Multi-Physics Domain Solvers
 
 | Command                             | Description                                                                                      |
 | :---------------------------------- | :----------------------------------------------------------------------------------------------- |
@@ -41,6 +41,13 @@ npx msx --daemon <command>
 | `msx surrogate <name> [paths...]`   | Train or import an AI surrogate model (ROM) and generate C, ONNX, or Modelica code               |
 | `msx csg <name> <paths...>`         | Compile and extract Constructive Solid Geometry (CSG) topologies to 3D meshes                    |
 | `msx pscad <action> [files...]`     | Inspect, lint, diff, and simulate PSCAD power system projects (`.pscx`, `.pslx`) and COMTRADE    |
+| `msx psse <action> [files...]`      | Inspect, solve AC power flow, and lint Siemens PTI PSS/E transmission cases (`.raw`)             |
+| `msx olga <action> [files...]`      | Parse, lint, simulate 1D drift-flux dynamics, and verify hydrate/slug limits for OLGA (`.opi`)   |
+| `msx gtsuite <action> [files...]`   | Parse, lint, and simulate GT-SUITE / GT-POWER engine and powertrain models (`.gtm`, `.gtx`)      |
+| `msx sima <action> [files...]`      | Inspect, solve catenary mooring lines, and verify DNV line safety factors for SIMA (`.sima`)     |
+| `msx easy5 <action> [files...]`     | Parse, extract Jacobians ($A, B, C, D$), analyze Bode plots, and simulate EASY5 models (`.ez5`)  |
+| `msx rocets <action> [files...]`    | Parse, balance turbomachinery power cycles, and simulate transient propulsion for NASA ROCETS    |
+| `msx lps <action> [files...]`       | Solve network steady-state and dynamic gas/liquid Euler surge transients for PipelineStudio      |
 
 ### 2. Formal Verification & Automated Testing
 

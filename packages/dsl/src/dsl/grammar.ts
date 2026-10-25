@@ -139,7 +139,7 @@ export class SeqNormalizer implements RuleNormalizer {
 export class ChoiceNormalizer implements RuleNormalizer {
   /** Synthesizes a helper non-terminal with one production per alternative branch and returns a reference to it. */
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
-    const choiceSym = g.nextSynthetic(g.getEBNF(rule), p, rule);
+    const choiceSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
     if (g.nonTerminals.has(choiceSym)) return [{ sym: choiceSym, field: p.field }];
 
     for (const child of children) {
@@ -163,7 +163,7 @@ export class RepeatNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP: FlattenContext = { ...p };
     const childSyms = g.flatten(ctx, children[0], childP);
-    const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule);
+    const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
 
     if (g.nonTerminals.has(repeatSym)) return [{ sym: repeatSym, field: p.field }];
 
@@ -183,7 +183,7 @@ export class Repeat1Normalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP: FlattenContext = { ...p };
     const childSyms = g.flatten(ctx, children[0], childP);
-    const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule);
+    const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
 
     if (g.nonTerminals.has(repeatSym)) return [{ sym: repeatSym, field: p.field }];
 
@@ -202,7 +202,7 @@ export class PrecNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying the specified static precedence level. */
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence };
-    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule);
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule, ctx);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym, field: p.field }];
 
     const childSyms = g.flatten(ctx, children[0], childP);
@@ -220,7 +220,7 @@ export class PrecLeftNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying static precedence and `"left"` associativity. */
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "left" as const };
-    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule);
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule, ctx);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym, field: p.field }];
 
     const childSyms = g.flatten(ctx, children[0], childP);
@@ -238,7 +238,7 @@ export class PrecRightNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying static precedence and `"right"` associativity. */
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "right" as const };
-    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule);
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule, ctx);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym, field: p.field }];
 
     const childSyms = g.flatten(ctx, children[0], childP);
@@ -256,7 +256,7 @@ export class PrecDynamicNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying the specified dynamic precedence value. */
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, dynamicPrec: rule.value !== undefined ? rule.value : rule.precedence };
-    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule);
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule, ctx);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym, field: p.field }];
 
     const childSyms = g.flatten(ctx, children[0], childP);
@@ -285,7 +285,7 @@ export class DefRefNormalizer implements RuleNormalizer {
 export class OptionalNormalizer implements RuleNormalizer {
   /** Synthesizes a helper non-terminal with one production matching the child rule and one empty epsilon production. */
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
-    const optSym = g.nextSynthetic(g.getEBNF(rule), p, rule);
+    const optSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
     if (g.nonTerminals.has(optSym)) return [{ sym: optSym, field: p.field }];
 
     const childSyms = g.flatten(ctx, children[0], p);
@@ -452,6 +452,8 @@ export class NormalizedGrammar {
   public syntheticCount = 0;
   /** Memoization map from structural rule signatures to synthesized non-terminal names. */
   private syntheticCache = new Map<string, string>();
+  /** Mapping from synthetic non-terminal symbol names to the grammar rule(s) and wrapped symbol(s) they originate from. */
+  public syntheticOrigins = new Map<string, Set<string>>();
 
   /** Bijective mapping from terminal and non-terminal symbol names to numeric symbol IDs. */
   symToInt = new Map<string, number>();
@@ -845,20 +847,48 @@ export class NormalizedGrammar {
       field?: string | undefined;
     },
     rule?: any,
+    ctx?: string,
   ): string {
     const sig = rule ? this.getRuleSignature(rule) : ebnf;
     const cacheKey = `${sig}#${p.prec}#${p.assoc}#${p.dynamicPrec}#${p.field}`;
-    if (this.syntheticCache.has(cacheKey)) {
-      return this.syntheticCache.get(cacheKey)!;
+    let symName = this.syntheticCache.get(cacheKey);
+    if (!symName) {
+      symName = `_${ebnf}`;
+      let counter = 1;
+      while (this.nonTerminals.has(symName)) {
+        symName = `_${ebnf}_${counter++}`;
+      }
+      this.syntheticCache.set(cacheKey, symName);
     }
 
-    let symName = `_${ebnf}`;
-    let counter = 1;
-    while (this.nonTerminals.has(symName)) {
-      symName = `_${ebnf}_${counter++}`;
+    if (ctx || rule) {
+      if (!this.syntheticOrigins.has(symName)) {
+        this.syntheticOrigins.set(symName, new Set());
+      }
+      const set = this.syntheticOrigins.get(symName)!;
+      if (ctx) {
+        set.add(ctx);
+        const parentOrigins = this.syntheticOrigins.get(ctx);
+        if (parentOrigins) {
+          for (const o of parentOrigins) set.add(o);
+        }
+      }
+      if (rule) {
+        if (rule.value && typeof rule.value === "string") set.add(rule.value);
+        if (rule.name && typeof rule.name === "string") set.add(rule.name);
+        const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []);
+        for (const c of children) {
+          if (c && typeof c === "object") {
+            if (c.type === "SYMBOL" && (c.value || c.name)) {
+              set.add(c.value || c.name);
+            } else if (c.value && typeof c.value === "string") {
+              set.add(c.value);
+            }
+          }
+        }
+      }
     }
 
-    this.syntheticCache.set(cacheKey, symName);
     return symName;
   }
 

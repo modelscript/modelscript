@@ -22,10 +22,15 @@ export function parseTrendVariableHeader(headerStr: string, unitStr?: string): O
   let unit = (unitStr ?? "").replace(/[[\]]/g, "").trim().toUpperCase() || "-";
 
   // Check if header itself contains bracketed unit: "PT:FLOWPATH_1(1) [PA]"
-  const bracketMatch = cleanHeader.match(/^(.+?)\s*\[([^\]]+)\]$/);
-  if (bracketMatch) {
-    id = bracketMatch[1]!.trim();
-    unit = bracketMatch[2]!.trim().toUpperCase();
+  if (cleanHeader.endsWith("]")) {
+    const openBracket = cleanHeader.lastIndexOf("[");
+    if (openBracket > 0) {
+      id = cleanHeader.slice(0, openBracket).trim();
+      unit = cleanHeader
+        .slice(openBracket + 1, -1)
+        .trim()
+        .toUpperCase();
+    }
   }
 
   // Parse OLGA variable syntax: "VAR:BRANCH(SECTION)" or "VAR(SECTION)"

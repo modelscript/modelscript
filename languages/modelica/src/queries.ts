@@ -51,7 +51,9 @@ function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
   let curr: SymbolEntry | null | undefined = sym;
   while (curr && !seen.has(curr.id)) {
     seen.add(curr.id);
-    parts.unshift(curr.name);
+    if (curr.kind !== "Extends") {
+      parts.unshift(curr.name);
+    }
     curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
   }
   const fqn = parts.join(".");

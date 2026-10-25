@@ -22,40 +22,40 @@ Values are reported as `Max Absolute Error (NRMSE %)`. A simulation passes if th
 
 ## Simulation Matrix
 
-| Model        | FMI | Mode | Native msx        | msx-FMU (msx)     | msx-FMU (fmusim)    | msx-FMU (omsim)   |
-| ------------ | --- | ---- | ----------------- | ----------------- | ------------------- | ----------------- |
-| BouncingBall | 2.0 | CS   | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%)   | ✅ 2.5e-2 (0.45%) |
-| BouncingBall | 2.0 | ME   | ✅ 2.6e-4 (0.01%) | ✅ 2.7e-4 (0.01%) | ✅ 5.3e-5 (0.00%)   | ✅ 2.3e-4 (0.02%) |
-| BouncingBall | 3.0 | CS   | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%) | ✅ 2.5e-2 (0.45%)   | Not Supported     |
-| BouncingBall | 3.0 | ME   | ✅ 2.6e-4 (0.01%) | ✅ 2.7e-4 (0.01%) | ✅ 5.3e-5 (0.00%)   | Not Supported     |
-| VanDerPol    | 2.0 | CS   | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%)   | ✅ 1.0e-1 (3.74%) |
-| VanDerPol    | 2.0 | ME   | ✅ 3.0e-3 (0.02%) | ✅ 3.0e-3 (0.02%) | ✅ 0.0e+0 (0.00%)   | ✅ 2.7e-4 (0.59%) |
-| VanDerPol    | 3.0 | CS   | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%) | ✅ 2.8e-1 (1.43%)   | Not Supported     |
-| VanDerPol    | 3.0 | ME   | ✅ 3.0e-3 (0.02%) | ✅ 3.0e-3 (0.02%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| Dahlquist    | 2.0 | CS   | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%)   | ✅ 1.9e-2 (1.42%) |
-| Dahlquist    | 2.0 | ME   | ✅ 2.5e-4 (0.01%) | ✅ 2.5e-4 (0.01%) | ✅ 0.0e+0 (0.00%)   | ✅ 3.8e-4 (0.02%) |
-| Dahlquist    | 3.0 | CS   | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%) | ✅ 1.9e-2 (0.81%)   | Not Supported     |
-| Dahlquist    | 3.0 | ME   | ✅ 2.5e-4 (0.01%) | ✅ 2.5e-4 (0.01%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| Stair        | 2.0 | CS   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.74%)   | ✅ 0.0e+0 (0.00%) |
-| Stair        | 2.0 | ME   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
-| Stair        | 3.0 | CS   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.74%)   | Not Supported     |
-| Stair        | 3.0 | ME   | ✅ 1.0e+0 (0.98%) | ✅ 1.0e+0 (0.98%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| StateSpace   | 2.0 | CS   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
-| StateSpace   | 2.0 | ME   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
-| StateSpace   | 3.0 | CS   | ✅ 3.3e+2 (0.11%) | ✅ 3.3e+2 (0.11%) | ✅ 3.3e+2 (0.11%)   | Not Supported     |
-| StateSpace   | 3.0 | ME   | ✅ 8.2e+1 (0.03%) | ✅ 8.3e+1 (0.03%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| Feedthrough  | 2.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
-| Feedthrough  | 2.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
-| Feedthrough  | 3.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| Feedthrough  | 3.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| Resource     | 2.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
-| Resource     | 2.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
-| Resource     | 3.0 | CS   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| Resource     | 3.0 | ME   | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%) | ✅ 0.0e+0 (0.00%)   | Not Supported     |
-| Roberts      | 2.0 | CS   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
-| Roberts      | 2.0 | ME   | Done (No Ref)     | Done (No Ref)     | Done (No Ref)       | Done (No Ref)     |
-| Roberts      | 3.0 | CS   | ✅ 1.5e-6 (0.00%) | ✅ 4.0e-7 (0.00%) | ✅ 4.0e-7 (0.00%)   | Not Supported     |
-| Roberts      | 3.0 | ME   | ✅ 1.2e-4 (0.27%) | ✅ 1.2e-4 (0.26%) | ✅ 1.6e-2 (196.67%) | Not Supported     |
+| Model        | FMI | Mode | Native msx         | msx-FMU (msx)      | msx-FMU (fmusim)    | msx-FMU (omsim)   |
+| ------------ | --- | ---- | ------------------ | ------------------ | ------------------- | ----------------- |
+| BouncingBall | 2.0 | CS   | ✅ 2.5e-2 (0.45%)  | ✅ 2.5e-2 (0.45%)  | ✅ 2.5e-2 (0.45%)   | ✅ 2.5e-2 (0.45%) |
+| BouncingBall | 2.0 | ME   | ✅ 2.6e-4 (0.01%)  | ✅ 2.7e-4 (0.01%)  | ✅ 5.3e-5 (0.00%)   | ✅ 2.3e-4 (0.02%) |
+| BouncingBall | 3.0 | CS   | ✅ 2.5e-2 (0.45%)  | ✅ 2.5e-2 (0.45%)  | ✅ 2.5e-2 (0.45%)   | Not Supported     |
+| BouncingBall | 3.0 | ME   | ✅ 2.6e-4 (0.01%)  | ✅ 2.7e-4 (0.01%)  | ✅ 5.3e-5 (0.00%)   | Not Supported     |
+| VanDerPol    | 2.0 | CS   | ✅ 2.8e-1 (1.43%)  | ✅ 2.8e-1 (1.43%)  | ✅ 2.8e-1 (1.43%)   | ✅ 1.0e-1 (3.74%) |
+| VanDerPol    | 2.0 | ME   | ✅ 3.0e-3 (0.02%)  | ✅ 3.0e-3 (0.02%)  | ✅ 0.0e+0 (0.00%)   | ✅ 2.7e-4 (0.59%) |
+| VanDerPol    | 3.0 | CS   | ✅ 2.8e-1 (1.43%)  | ✅ 2.8e-1 (1.43%)  | ✅ 2.8e-1 (1.43%)   | Not Supported     |
+| VanDerPol    | 3.0 | ME   | ✅ 3.0e-3 (0.02%)  | ✅ 3.0e-3 (0.02%)  | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Dahlquist    | 2.0 | CS   | ✅ 1.9e-2 (0.81%)  | ✅ 1.9e-2 (0.81%)  | ✅ 1.9e-2 (0.81%)   | ✅ 1.9e-2 (1.42%) |
+| Dahlquist    | 2.0 | ME   | ✅ 2.5e-4 (0.01%)  | ✅ 2.5e-4 (0.01%)  | ✅ 0.0e+0 (0.00%)   | ✅ 3.8e-4 (0.02%) |
+| Dahlquist    | 3.0 | CS   | ✅ 1.9e-2 (0.81%)  | ✅ 1.9e-2 (0.81%)  | ✅ 1.9e-2 (0.81%)   | Not Supported     |
+| Dahlquist    | 3.0 | ME   | ✅ 2.5e-4 (0.01%)  | ✅ 2.5e-4 (0.01%)  | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Stair        | 2.0 | CS   | ✅ 1.0e+0 (0.98%)  | ✅ 1.0e+0 (0.98%)  | ✅ 1.0e+0 (0.74%)   | ✅ 0.0e+0 (0.00%) |
+| Stair        | 2.0 | ME   | ✅ 1.0e+0 (0.98%)  | ✅ 1.0e+0 (0.98%)  | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Stair        | 3.0 | CS   | ✅ 1.0e+0 (0.98%)  | ✅ 1.0e+0 (0.98%)  | ✅ 1.0e+0 (0.74%)   | Not Supported     |
+| Stair        | 3.0 | ME   | ✅ 1.0e+0 (0.98%)  | ✅ 1.0e+0 (0.98%)  | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| StateSpace   | 2.0 | CS   | Done (No Ref)      | Done (No Ref)      | Done (No Ref)       | Done (No Ref)     |
+| StateSpace   | 2.0 | ME   | Done (No Ref)      | Done (No Ref)      | Done (No Ref)       | Done (No Ref)     |
+| StateSpace   | 3.0 | CS   | ❌ 6.6e+4 (23.38%) | ❌ 6.6e+4 (23.38%) | ❌ 6.6e+4 (23.38%)  | Not Supported     |
+| StateSpace   | 3.0 | ME   | ❌ 6.6e+4 (23.37%) | ❌ 6.6e+4 (23.37%) | ❌ 6.6e+4 (23.37%)  | Not Supported     |
+| Feedthrough  | 2.0 | CS   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Feedthrough  | 2.0 | ME   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Feedthrough  | 3.0 | CS   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Feedthrough  | 3.0 | ME   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Resource     | 2.0 | CS   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Resource     | 2.0 | ME   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | ✅ 0.0e+0 (0.00%) |
+| Resource     | 3.0 | CS   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Resource     | 3.0 | ME   | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)  | ✅ 0.0e+0 (0.00%)   | Not Supported     |
+| Roberts      | 2.0 | CS   | Done (No Ref)      | Done (No Ref)      | Done (No Ref)       | Done (No Ref)     |
+| Roberts      | 2.0 | ME   | Done (No Ref)      | Done (No Ref)      | Done (No Ref)       | Done (No Ref)     |
+| Roberts      | 3.0 | CS   | ✅ 1.5e-6 (0.00%)  | ✅ 4.0e-7 (0.00%)  | ✅ 4.0e-7 (0.00%)   | Not Supported     |
+| Roberts      | 3.0 | ME   | ✅ 1.2e-4 (0.27%)  | ✅ 1.2e-4 (0.26%)  | ✅ 1.6e-2 (196.67%) | Not Supported     |
 
 ## Models & Validation Plots
 

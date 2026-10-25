@@ -551,15 +551,20 @@ export const scadLanguage = language({
       }),
 
     IfStatement: ($) =>
-      prec.right(
-        seq(
-          "if",
-          "(",
-          field("condition", $["Expression"]!),
-          ")",
-          field("consequence", $["Statement"]!),
-          optional(seq("else", field("alternative", $["Statement"]!))),
+      choice(
+        prec.right(
+          1,
+          seq(
+            "if",
+            "(",
+            field("condition", $["Expression"]!),
+            ")",
+            field("consequence", $["Statement"]!),
+            "else",
+            field("alternative", $["Statement"]!),
+          ),
         ),
+        prec.right(0, seq("if", "(", field("condition", $["Expression"]!), ")", field("consequence", $["Statement"]!))),
       ),
 
     ForStatement: ($) =>

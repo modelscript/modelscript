@@ -63,7 +63,9 @@ export function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
   const parts: string[] = [];
   let curr: SymbolEntry | null | undefined = sym;
   while (curr) {
-    parts.unshift(curr.name);
+    if (curr.kind !== "Extends") {
+      parts.unshift(curr.name);
+    }
     curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
   }
   const fqn = parts.join(".");

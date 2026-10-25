@@ -991,7 +991,7 @@ export class ModelicaFlattener {
 
   private _redeclareCache = new Map<SymbolId, boolean>();
 
-  private classHasRedeclare(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
+  public classHasRedeclare(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
     if (!classId || visited.has(classId)) return false;
     const cached = this._redeclareCache.get(classId);
     if (cached !== undefined) return cached;
@@ -1117,8 +1117,6 @@ export class ModelicaFlattener {
     "outerProduct",
     "identity",
     "diagonal",
-    "equalityConstraint",
-    "Connections",
     "StateSelect",
   ]);
 
@@ -2545,7 +2543,6 @@ export class ModelicaFlattener {
           !this.options.omcCompatibility &&
           Boolean(this.options.useWasmKernel) &&
           !this.useLocalDirection &&
-          !this.classHasRedeclare(rootClassId) &&
           !this.classHasUnsupportedWasmFeatures(rootClassId)));
 
     let wasmDiffStats: {

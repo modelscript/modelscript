@@ -159,9 +159,39 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
     isBuiltIn: true,
   },
   {
+    id: "lps",
+    name: "PipelineStudio",
+    extensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
+    isBuiltIn: true,
+  },
+  {
     id: "fortran",
     name: "Fortran",
     extensions: [".f", ".for", ".f90", ".f95", ".f03", ".f08"],
+    isBuiltIn: true,
+  },
+  {
+    id: "easy5",
+    name: "EASY5",
+    extensions: [".ez5", ".ezm", ".ezd", ".eas"],
+    isBuiltIn: true,
+  },
+  {
+    id: "rocets",
+    name: "ROCETS",
+    extensions: [".roc", ".deck"],
+    isBuiltIn: true,
+  },
+  {
+    id: "sima",
+    name: "SIMA",
+    extensions: [".inp", ".sima", ".sys", ".hyd"],
+    isBuiltIn: true,
+  },
+  {
+    id: "gtsuite",
+    name: "GT-SUITE",
+    extensions: [".gtm", ".gtd", ".gtx", ".gt"],
     isBuiltIn: true,
   },
 ];

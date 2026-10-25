@@ -29,7 +29,7 @@ export {
 import {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
-  FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
+  FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_STREAM, FLAG_VAR_FIXED, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
   FLAG_EQ_INITIAL, FLAG_EQ_REMOVED,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
@@ -760,8 +760,23 @@ export class DaeBuilder {
   }
 
   @inline
+  addUnaryExpr(op: u32, left: u32): u32 {
+    return this.addExpression(ExprKind.Unary, op, left, 0xffffffff);
+  }
+
+  @inline
   addDer(varId: u32): u32 {
     return this.addExpression(ExprKind.Der, varId);
+  }
+
+  @inline
+  addDerExpr(operand: u32): u32 {
+    return this.addExpression(ExprKind.Der, operand);
+  }
+
+  @inline
+  addPreExpr(operand: u32): u32 {
+    return this.addExpression(ExprKind.Pre, operand);
   }
 
   @inline
@@ -943,6 +958,42 @@ export class DaeBuilder {
       this.getVarData().set(offset, flags | FLAG_VAR_FLOW);
     } else {
       this.getVarData().set(offset, flags & ~FLAG_VAR_FLOW);
+    }
+  }
+
+  @inline
+  isVarStream(varIdx: u32): boolean {
+    if (varIdx >= this.varCount) return false;
+    return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_STREAM) != 0;
+  }
+
+  @inline
+  setVarStream(varIdx: u32, isStream: bool): void {
+    if (varIdx >= this.varCount) return;
+    let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
+    let flags = this.getVarData().get(offset);
+    if (isStream) {
+      this.getVarData().set(offset, flags | FLAG_VAR_STREAM);
+    } else {
+      this.getVarData().set(offset, flags & ~FLAG_VAR_STREAM);
+    }
+  }
+
+  @inline
+  isVarFixed(varIdx: u32): boolean {
+    if (varIdx >= this.varCount) return false;
+    return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_FIXED) != 0;
+  }
+
+  @inline
+  setVarFixed(varIdx: u32, isFixed: bool): void {
+    if (varIdx >= this.varCount) return;
+    let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
+    let flags = this.getVarData().get(offset);
+    if (isFixed) {
+      this.getVarData().set(offset, flags | FLAG_VAR_FIXED);
+    } else {
+      this.getVarData().set(offset, flags & ~FLAG_VAR_FIXED);
     }
   }
 
@@ -1321,6 +1372,18 @@ export function dae_addName(ptr: u32, varId: u32): u32 {
 
 export function dae_addBinaryExpr(ptr: u32, op: i32, left: u32, right: u32): u32 {
   return changetype<DaeBuilder>(ptr).addBinaryExpr(op as u16, left, right);
+}
+
+export function dae_addUnaryExpr(ptr: u32, op: u32, left: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addUnaryExpr(op, left);
+}
+
+export function dae_addDerExpr(ptr: u32, operand: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addDerExpr(operand);
+}
+
+export function dae_addPreExpr(ptr: u32, operand: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addPreExpr(operand);
 }
 
 export function dae_addRealLiteral(ptr: u32, value: f64): u32 {

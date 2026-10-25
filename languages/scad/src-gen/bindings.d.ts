@@ -1309,10 +1309,10 @@ export declare enum SyntaxKind {
   _START = 99,
   EmptyStatement = 102,
   _EmptyStatement = 102,
-  IDENTIFIER = 141,
-  NUMBER = 142,
-  STRING = 143,
-  UNDEF = 145,
+  IDENTIFIER = 142,
+  NUMBER = 143,
+  STRING = 144,
+  UNDEF = 146,
   EOF = 1023,
 }
 

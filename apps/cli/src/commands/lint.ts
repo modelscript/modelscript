@@ -24,7 +24,7 @@ interface LintArgs {
   path: string;
   /** Additional file or directory paths to load into the workspace. */
   paths: string[] | undefined;
-  /** Optional language ID filter (`"modelica"`, `"sysml2"`, `"owl2"`, `"scad"`, `"ssp"`, `"cfd"`, `"fea"`, `"pscad"`, `"fortran"`). */
+  /** Optional language ID filter (`"modelica"`, `"sysml2"`, `"owl2"`, `"scad"`, `"ssp"`, `"cfd"`, `"fea"`, `"pscad"`, `"fortran"`, `"easy5"`, `"rocets"`, `"lps"`, `"sima"`, `"gtsuite"`). */
   language?: string | undefined;
   /** Diagnostic output format (`"terminal"` or `"json"`). */
   format?: "terminal" | "json" | undefined;
@@ -479,7 +479,8 @@ export const Lint: CommandModule<any, LintArgs> = {
       })
       .option("language", {
         alias: "l",
-        description: "Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran)",
+        description:
+          "Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran, easy5, rocets, lps, sima, gtsuite)",
         type: "string",
       })
       .option("format", {
@@ -912,6 +913,60 @@ export const Lint: CommandModule<any, LintArgs> = {
           continue;
         }
 
+        if (langId === "easy5") {
+          const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
+          const model = parseEasy5(item.text);
+          const easy5Diags = lintEasy5(model);
+          for (const ed of easy5Diags) {
+            const startOffset = lineColToByte(item.text, ed.line ?? 1, ed.column ?? 1);
+            const endOffset = lineColToByte(
+              item.text,
+              ed.endLine ?? ed.line ?? 1,
+              ed.endColumn ?? (ed.column ?? 1) + 5,
+            );
+            const codeStr = typeof ed.code === "number" ? `M${ed.code}` : String(ed.code);
+            diagnostics.push({
+              severity: ed.severity,
+              lintName: codeStr.toLowerCase(),
+              code: codeStr,
+              domain: "easy5",
+              message: ed.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset,
+            });
+          }
+          continue;
+        }
+
+        if (langId === "rocets") {
+          const { parseRocetsDeck, lintRocets } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(item.text);
+          const rocetsDiags = lintRocets(model);
+          for (const rd of rocetsDiags) {
+            const startOffset = lineColToByte(item.text, rd.line ?? 1, rd.column ?? 1);
+            const endOffset = lineColToByte(
+              item.text,
+              rd.endLine ?? rd.line ?? 1,
+              rd.endColumn ?? (rd.column ?? 1) + 5,
+            );
+            const codeStr = typeof rd.code === "number" ? `M${rd.code}` : String(rd.code);
+            diagnostics.push({
+              severity: rd.severity,
+              lintName: codeStr.toLowerCase(),
+              code: codeStr,
+              domain: "rocets",
+              message: rd.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset,
+            });
+          }
+          continue;
+        }
+
         if (langId === "ssp") {
           const { lintSsd, lintSsv } = await import("@modelscript/ssp");
           const isSsv = filePath.toLowerCase().endsWith(".ssv") || item.text.includes("<ssv:ParameterSet");
@@ -982,6 +1037,126 @@ export const Lint: CommandModule<any, LintArgs> = {
           } catch {}
           const stepDiags = await lintStepText(item.text, filePath);
           diagnostics.push(...stepDiags);
+          continue;
+        }
+
+        if (langId === "lps") {
+          try {
+            const { parseLps, lintLpsModel } = await import("@modelscript/lps");
+            const model = parseLps(item.text, filePath);
+            const lpsDiags = lintLpsModel(model);
+            for (const ld of lpsDiags) {
+              diagnostics.push({
+                severity: ld.severity,
+                lintName: ld.rule,
+                code: ld.code,
+                domain: "lps",
+                message: ld.message,
+                symbolId: null,
+                resourceId: filePath,
+                startOffset: 0,
+                endOffset: Math.min(item.text.length, 50),
+              });
+            }
+          } catch (e: any) {
+            diagnostics.push({
+              severity: "error",
+              lintName: "lps-parse-error",
+              code: "M8000",
+              domain: "lps",
+              message: e?.message ?? "Failed to parse PipelineStudio study",
+              symbolId: null,
+              resourceId: filePath,
+              startOffset: 0,
+              endOffset: 10,
+            });
+          }
+          continue;
+        }
+
+        if (langId === "sima") {
+          try {
+            const { parseSimaFile, lintSimaProject } = await import("@modelscript/sima");
+            const model = parseSimaFile(item.text, filePath);
+            const simaDiags = lintSimaProject(model);
+            for (const sd of simaDiags) {
+              const startOffset = lineColToByte(item.text, sd.line ?? 1, sd.column ?? 1);
+              const endOffset = lineColToByte(
+                item.text,
+                sd.endLine ?? sd.line ?? 1,
+                sd.endColumn ?? (sd.column ?? 1) + 5,
+              );
+              const codeStr =
+                typeof sd.code === "number" ? `M${sd.code}` : String(sd.code || (sd as any).id || "M7000");
+              const lintName = sd.rule || codeStr.toLowerCase();
+              diagnostics.push({
+                severity: sd.severity,
+                lintName,
+                code: codeStr,
+                domain: "sima",
+                message: sd.message,
+                symbolId: null,
+                resourceId: filePath,
+                startOffset,
+                endOffset,
+              });
+            }
+          } catch (e: any) {
+            diagnostics.push({
+              severity: "error",
+              lintName: "sima-parse-error",
+              code: "M7000",
+              domain: "sima",
+              message: e?.message ?? "Failed to parse SIMO/RIFLEX deck",
+              symbolId: null,
+              resourceId: filePath,
+              startOffset: 0,
+              endOffset: 10,
+            });
+          }
+          continue;
+        }
+
+        if (langId === "gtsuite") {
+          try {
+            const { parseGtmModel, lintGtModel } = await import("@modelscript/gtsuite");
+            const model = parseGtmModel(item.text, filePath);
+            const gtDiags = lintGtModel(model);
+            for (const gd of gtDiags) {
+              const startOffset = lineColToByte(item.text, gd.line ?? 1, gd.column ?? 1);
+              const endOffset = lineColToByte(
+                item.text,
+                gd.endLine ?? gd.line ?? 1,
+                gd.endColumn ?? (gd.column ?? 1) + 5,
+              );
+              const codeStr =
+                typeof gd.code === "number" ? `M${gd.code}` : String(gd.code || (gd as any).id || "M9000");
+              const lintName = gd.rule || codeStr.toLowerCase();
+              diagnostics.push({
+                severity: gd.severity,
+                lintName,
+                code: codeStr,
+                domain: "gtsuite",
+                message: gd.message,
+                symbolId: null,
+                resourceId: filePath,
+                startOffset,
+                endOffset,
+              });
+            }
+          } catch (e: any) {
+            diagnostics.push({
+              severity: "error",
+              lintName: "gtsuite-parse-error",
+              code: "M9000",
+              domain: "gtsuite",
+              message: e?.message ?? "Failed to parse GT-SUITE model",
+              symbolId: null,
+              resourceId: filePath,
+              startOffset: 0,
+              endOffset: 10,
+            });
+          }
           continue;
         }
 

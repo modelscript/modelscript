@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineStudio id="study_permian_express" title="Permian Basin to Gulf Coast Pipeline" simulationType="TGNET">
+  <Nodes>
+    <Node name="Waha_Supply" type="SUPPLY" elevation="800m" pressure="75.0bar" flow="150.0" />
+    <Node name="Compressor_Suction" type="JUNCTION" elevation="650m" />
+    <Node name="Compressor_Discharge" type="JUNCTION" elevation="650m" />
+    <Node name="Houston_Delivery" type="DELIVERY" elevation="15m" minDeliveryPressure="35.0bar" flow="150.0" />
+  </Nodes>
+  <Pipes>
+    <Pipe name="Pipe_Segment_1" from="Waha_Supply" to="Compressor_Suction" length="150.0km" diameter="36inch" roughness="0.000045m" maop="100.0bar" />
+    <Pipe name="Pipe_Segment_2" from="Compressor_Discharge" to="Houston_Delivery" length="220.0km" diameter="36inch" roughness="0.000045m" maop="100.0bar" />
+  </Pipes>
+  <Compressors>
+    <Compressor name="Junction_Compressor" from="Compressor_Suction" to="Compressor_Discharge" type="CENTRIFUGAL" power="30000000" maxRatio="1.8" efficiency="0.85" mode="DISCHARGE_PRESSURE" setpoint="85.0bar" status="RUNNING" />
+  </Compressors>
+  <GasComposition ch4="0.92" c2h6="0.04" c3h8="0.015" co2="0.005" n2="0.01" h2="0.01" ghv="39.5" />
+  <SimulationControls startTime="0" endTime="86400" timeStep="60" eos="AGA8" steadyStateFirst="true" />
+</PipelineStudio>

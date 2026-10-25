@@ -1063,9 +1063,9 @@ end FinalAndAttributes;
         end sumVec;
 
         parameter Integer n = 2;
-        Integer I[n, n] = identity(n);
         parameter Integer Z[n] = zeros(n);
         parameter Integer O[n] = ones(n);
+        Integer I[n, n] = identity(n);
         Real a[3];
         Real b(start = 0.0);
         Real c;

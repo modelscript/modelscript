@@ -118,7 +118,7 @@ export function getOlgaQuickFixes(text: string, uri: string): OlgaQuickFix[] {
         let valveFixed = false;
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i]!;
-          const valveMatch = /(<Valve[^>]*\sopening\s*=\s*["'])([0-9.]+)(["'])/i.exec(line);
+          const valveMatch = /(<Valve[^<>]*?\sopening\s*=\s*["'])(?:([0-9]+(?:\.[0-9]*)?|\.[0-9]+))(["'])/i.exec(line);
           if (valveMatch && parseFloat(valveMatch[2]!) > 0.6) {
             const startCol = line.indexOf(valveMatch[0]);
             const endCol = startCol + valveMatch[0].length;
@@ -150,7 +150,7 @@ export function getOlgaQuickFixes(text: string, uri: string): OlgaQuickFix[] {
           // Increase pipe diameter to reduce mixture velocity
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i]!;
-            const pipeMatch = /(<Pipe[^>]*\sdiameter\s*=\s*["'])([0-9.]+)(["'])/i.exec(line);
+            const pipeMatch = /(<Pipe[^<>]*?\sdiameter\s*=\s*["'])(?:([0-9]+(?:\.[0-9]*)?|\.[0-9]+))(["'])/i.exec(line);
             if (pipeMatch) {
               const currentDiam = parseFloat(pipeMatch[2]!);
               const enlargedDiam = (currentDiam * 1.35).toFixed(3);
@@ -182,7 +182,9 @@ export function getOlgaQuickFixes(text: string, uri: string): OlgaQuickFix[] {
         // Sand dropout / deposition hazard: increase source rate
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i]!;
-          const srcMatch = /(<Source[^>]*\stotalMassRate\s*=\s*["'])([0-9.]+)(["'])/i.exec(line);
+          const srcMatch = /(<Source[^<>]*?\stotalMassRate\s*=\s*["'])(?:([0-9]+(?:\.[0-9]*)?|\.[0-9]+))(["'])/i.exec(
+            line,
+          );
           if (srcMatch) {
             const currentRate = parseFloat(srcMatch[2]!);
             const boostedRate = Math.max(30.0, currentRate * 2.0).toFixed(1);

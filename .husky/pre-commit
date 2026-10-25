@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+# 0. Check Lockfile Consistency & Staging
+npm run lint:lockfile
+
 # 1. Check Project Graph Cycles
 npm run lint:cycles
 

@@ -690,6 +690,20 @@ export class ValidationService {
       return;
     }
 
+    // Handle EASY5 model files (.ez5, .ezm, .ezd, .eas)
+    const isEasy5 = textDocument.languageId === "easy5" || /\.(ez5|ezm|ezd|eas)($|\?|#)/i.test(uri);
+    if (isEasy5) {
+      await this.validateEasy5Document(textDocument, plugin);
+      return;
+    }
+
+    // Handle NASA ROCETS liquid propulsion deck files (.roc, .deck)
+    const isRocets = textDocument.languageId === "rocets" || /\.(roc|deck)($|\?|#)/i.test(uri);
+    if (isRocets) {
+      await this.validateRocetsDocument(textDocument, plugin);
+      return;
+    }
+
     // Handle Fortran files (.f, .for, .f90, .f95, .f03, .f08)
     const isFortran = textDocument.languageId === "fortran" || /\.(f|for|f90|f95|f03|f08)($|\?|#)/i.test(uri);
     if (isFortran) {
@@ -1732,6 +1746,142 @@ export class ValidationService {
 
     this.lastSemanticDiagnostics.set(textDocument.uri, pscadDiagnostics);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: pscadDiagnostics });
+  }
+
+  /**
+   * Parses, lints, and indexes an EASY5 (`.ez5`, `.ezm`, `.ezd`, `.eas`) dynamic simulation model.
+   */
+  private async validateEasy5Document(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const easy5Diagnostics: Diagnostic[] = [];
+    try {
+      const text = textDocument.getText();
+      this.connection.console.info(`[easy5] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
+      const model = parseEasy5(text);
+      const lints = lintEasy5(model);
+
+      for (const lint of lints) {
+        const line = Math.max(0, (lint.line ?? 1) - 1);
+        const col = Math.max(0, (lint.column ?? 1) - 1);
+        const endLine = Math.max(line, (lint.endLine ?? lint.line ?? 1) - 1);
+        const endCol =
+          endLine === line
+            ? Math.max(col + 1, (lint.endColumn ?? (lint.column ?? 1) + 10) - 1)
+            : Math.max(0, (lint.endColumn ?? 1) - 1);
+
+        const errCode = typeof lint.code === "number" ? `M${lint.code}` : String(lint.code);
+        easy5Diagnostics.push({
+          severity:
+            lint.severity === "warning"
+              ? DiagnosticSeverity.Warning
+              : lint.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Error,
+          range: {
+            start: { line, character: col },
+            end: { line: endLine, character: endCol },
+          },
+          code: errCode,
+          message: `[${errCode}] ${lint.message}`,
+          source: "easy5",
+        });
+      }
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data: model } } as any,
+        classCache: new Map(),
+      });
+
+      // Index symbols for Library Tree panel and navigation
+      const easy5Ws = this.workspaceManager.getWorkspaceIndex("easy5");
+      if (easy5Ws && typeof (easy5Ws as any).indexFile === "function") {
+        (easy5Ws as any).indexFile(textDocument.uri, text);
+        this.sendProjectTreeChanged();
+      }
+    } catch (err: any) {
+      this.connection.console.error(`[easy5] Error validating EASY5 document ${textDocument.uri}: ${err.message}`);
+      easy5Diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 1 },
+        },
+        message: `EASY5 Parse Error: ${err.message}`,
+        source: "easy5",
+      });
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, easy5Diagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: easy5Diagnostics });
+  }
+
+  /**
+   * Parses, lints, and indexes a NASA ROCETS (`.roc`, `.deck`) propulsion deck.
+   */
+  private async validateRocetsDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const rocetsDiagnostics: Diagnostic[] = [];
+    try {
+      const text = textDocument.getText();
+      this.connection.console.info(`[rocets] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { parseRocetsDeck, lintRocets } = await import("@modelscript/rocets");
+      const model = parseRocetsDeck(text);
+      const lints = lintRocets(model);
+
+      for (const lint of lints) {
+        const line = Math.max(0, (lint.line ?? 1) - 1);
+        const col = Math.max(0, (lint.column ?? 1) - 1);
+        const endLine = Math.max(line, (lint.endLine ?? lint.line ?? 1) - 1);
+        const endCol =
+          endLine === line
+            ? Math.max(col + 1, (lint.endColumn ?? (lint.column ?? 1) + 10) - 1)
+            : Math.max(0, (lint.endColumn ?? 1) - 1);
+
+        const errCode = typeof lint.code === "number" ? `M${lint.code}` : String(lint.code);
+        rocetsDiagnostics.push({
+          severity:
+            lint.severity === "warning"
+              ? DiagnosticSeverity.Warning
+              : lint.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Error,
+          range: {
+            start: { line, character: col },
+            end: { line: endLine, character: endCol },
+          },
+          code: errCode,
+          message: `[${errCode}] ${lint.message}`,
+          source: "rocets",
+        });
+      }
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data: model } } as any,
+        classCache: new Map(),
+      });
+
+      // Index symbols for Library Tree panel and navigation
+      const rocetsWs = this.workspaceManager.getWorkspaceIndex("rocets");
+      if (rocetsWs && typeof (rocetsWs as any).indexFile === "function") {
+        (rocetsWs as any).indexFile(textDocument.uri, text);
+        this.sendProjectTreeChanged();
+      }
+    } catch (err: any) {
+      this.connection.console.error(`[rocets] Error validating ROCETS document ${textDocument.uri}: ${err.message}`);
+      rocetsDiagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 1 },
+        },
+        message: `ROCETS Parse Error: ${err.message}`,
+        source: "rocets",
+      });
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, rocetsDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: rocetsDiagnostics });
   }
 
   /**

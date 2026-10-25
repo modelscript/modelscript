@@ -3,8 +3,11 @@
 import { cfdLanguage } from "@modelscript/cfd";
 import csvLangFallback from "@modelscript/csv/language";
 import { createWasmParser } from "@modelscript/dsl/bindings";
+import { easy5Language, Easy5WorkspaceIndex } from "@modelscript/easy5";
 import { feaLanguage } from "@modelscript/fea";
 import { fortranLanguage } from "@modelscript/fortran";
+import { gtsuiteLanguage, GtSuiteWorkspaceIndex } from "@modelscript/gtsuite";
+import { lpsLanguage } from "@modelscript/lps";
 import {
   ArenaQueryFlattener,
   deriveSimplification,
@@ -26,8 +29,10 @@ import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/ow
 import owl2LangFallback from "@modelscript/owl2/language";
 import { pscadLanguage, PscadWorkspaceIndex } from "@modelscript/pscad";
 import { psseLanguage, PsseWorkspaceIndex } from "@modelscript/psse";
+import { rocetsLanguage, RocetsWorkspaceIndex } from "@modelscript/rocets";
 import { DAEBuilder, initBltWasm } from "@modelscript/runtime";
 import scadLangFallback from "@modelscript/scad/language";
+import { simaLanguage, SimaWorkspaceIndex } from "@modelscript/sima";
 import { stepLanguage, StepWorkspaceIndex } from "@modelscript/step";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
@@ -307,6 +312,22 @@ export function startNodeServer(input?: any, output?: any) {
   workspaceManager.unifiedWorkspace.registerWorkspace("psse", workspaceManager.getWorkspaceIndex("psse"), {
     priority: 2,
   });
+  workspaceManager.setWorkspaceIndex("easy5", new Easy5WorkspaceIndex());
+  workspaceManager.unifiedWorkspace.registerWorkspace("easy5", workspaceManager.getWorkspaceIndex("easy5"), {
+    priority: 2,
+  });
+  workspaceManager.setWorkspaceIndex("rocets", new RocetsWorkspaceIndex());
+  workspaceManager.unifiedWorkspace.registerWorkspace("rocets", workspaceManager.getWorkspaceIndex("rocets"), {
+    priority: 2,
+  });
+  workspaceManager.setWorkspaceIndex("sima", new SimaWorkspaceIndex());
+  workspaceManager.unifiedWorkspace.registerWorkspace("sima", workspaceManager.getWorkspaceIndex("sima"), {
+    priority: 2,
+  });
+  workspaceManager.setWorkspaceIndex("gtsuite", new GtSuiteWorkspaceIndex());
+  workspaceManager.unifiedWorkspace.registerWorkspace("gtsuite", workspaceManager.getWorkspaceIndex("gtsuite"), {
+    priority: 2,
+  });
 
   // Initialize built-in WASM parsers
   const require = createRequire(import.meta.url);
@@ -323,6 +344,8 @@ export function startNodeServer(input?: any, output?: any) {
     { id: "modelscript", pkg: "@modelscript/modelscript", name: "ModelScript", ext: [".modelscript", ".msx"] },
     { id: "fea", pkg: "@modelscript/fea", name: "FEA", ext: [".inp", ".bdf"] },
     { id: "cfd", pkg: "@modelscript/cfd", name: "CFD", ext: [".cfg"] },
+    { id: "sima", pkg: "@modelscript/sima", name: "SIMA", ext: [".inp", ".sima", ".sys", ".hyd"] },
+    { id: "gtsuite", pkg: "@modelscript/gtsuite", name: "GT-SUITE", ext: [".gtm", ".gtd", ".gtx", ".gt"] },
   ];
 
   for (const item of builtInPkgs) {
@@ -509,6 +532,129 @@ export function startNodeServer(input?: any, output?: any) {
     connection.console.warn(`[NodeServer] Could not register PSCAD plugin: ${err.message}`);
   }
 
+  // Register EASY5 Simulation Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "easy5",
+      name: "EASY5",
+      extensions: [".ez5", ".ezm", ".ezd", ".eas"],
+      languageDef: easy5Language,
+      actionHandlers: {
+        lint_easy5_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return lintEasy5(model);
+        },
+        linearize_easy5_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEasy5, linearizeEasy5 } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return linearizeEasy5(model, params?.operatingPoint);
+        },
+        inspect_easy5_bode: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEasy5, linearizeEasy5, computeEasy5FrequencyResponse } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          const sys = linearizeEasy5(model, params?.operatingPoint);
+          return computeEasy5FrequencyResponse(sys, params?.options);
+        },
+        export_easy5_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseEasy5, easy5ToModelica } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return easy5ToModelica(model);
+        },
+        export_easy5_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseEasy5, easy5ToSsp } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return easy5ToSsp(model);
+        },
+        inspect_easy5_diagram: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEasy5, buildEasy5DiagramData, renderEasy5SvgDiagram } = await import("@modelscript/easy5");
+          const model = parseEasy5(text);
+          return {
+            graphData: buildEasy5DiagramData(model),
+            svg: renderEasy5SvgDiagram(model),
+          };
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered EASY5 language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register EASY5 plugin: ${err.message}`);
+  }
+
+  // Register NASA ROCETS Propulsion Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "rocets",
+      name: "ROCETS",
+      extensions: [".roc", ".deck"],
+      languageDef: rocetsLanguage,
+      actionHandlers: {
+        lint_rocets_deck: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseRocetsDeck, lintRocets } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return lintRocets(model);
+        },
+        solve_rocets_balance: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRocetsDeck, solveRocetsBalance } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return solveRocetsBalance(model, params?.options);
+        },
+        simulate_rocets_transient: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRocetsDeck, simulateRocetsTransient } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return simulateRocetsTransient(model, params?.options);
+        },
+        export_rocets_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseRocetsDeck, rocetsToModelica } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return rocetsToModelica(model);
+        },
+        export_rocets_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseRocetsDeck, rocetsToSsp } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return rocetsToSsp(model);
+        },
+        inspect_rocets_diagram: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRocetsDeck, buildRocetsDiagramData, renderRocetsPidSvg } = await import("@modelscript/rocets");
+          const model = parseRocetsDeck(text);
+          return {
+            graphData: buildRocetsDiagramData(model),
+            svg: renderRocetsPidSvg(model),
+          };
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered ROCETS language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register ROCETS plugin: ${err.message}`);
+  }
+
   // Register PSS/E RAW Language Plugin
   try {
     globalLanguageRegistry.register({
@@ -596,6 +742,53 @@ export function startNodeServer(input?: any, output?: any) {
     connection.console.warn(`[NodeServer] Could not register OLGA plugin: ${err.message}`);
   }
 
+  // Register PipelineStudio (LPS) Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "lps",
+      name: "PipelineStudio",
+      extensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
+      languageDef: lpsLanguage,
+      actionHandlers: {
+        lint_lps_network: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseLps, lintLpsModel } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          return lintLpsModel(model);
+        },
+        solve_lps_steady: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseLps, SteadyNetworkSolver, LinePackEngine, PipelineVerifier } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          const steady = SteadyNetworkSolver.solve(model);
+          const analysis = LinePackEngine.analyze(model, steady);
+          const verification = PipelineVerifier.verifySteady(model, steady);
+          return { steady, analysis, verification };
+        },
+        simulate_lps_transient: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseLps, GasEulerDaeSolver } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          return GasEulerDaeSolver.simulate(model, { durationSeconds: params?.durationSeconds });
+        },
+        project_lps_sysml2: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseLps, lpsToSysml2 } = await import("@modelscript/lps");
+          const model = parseLps(text);
+          return lpsToSysml2(model);
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered PipelineStudio (LPS) language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register PipelineStudio plugin: ${err.message}`);
+  }
+
   // Register Fortran Language Plugin
   try {
     globalLanguageRegistry.register({
@@ -616,6 +809,180 @@ export function startNodeServer(input?: any, output?: any) {
     connection.console.info("[NodeServer] Registered Fortran language plugin");
   } catch (err: any) {
     connection.console.warn(`[NodeServer] Could not register Fortran plugin: ${err.message}`);
+  }
+
+  // Register SIMA / SIMO / RIFLEX Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "sima",
+      name: "SIMA",
+      extensions: [".inp", ".sima", ".sys", ".hyd"],
+      languageDef: simaLanguage,
+      actionHandlers: {
+        lint_sima_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseSimaFile, lintSimaProject } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return lintSimaProject(model);
+        },
+        verify_dnv_compliance: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSimaFile, verifyDnvMooringCompliance } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return verifyDnvMooringCompliance(model, params?.consequenceClass ?? 2);
+        },
+        evaluate_offset_limits: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSimaFile, evaluateOffsetLimits } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return evaluateOffsetLimits(model, params?.options);
+        },
+        project_sima_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile, simaToModelica } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return simaToModelica(model);
+        },
+        project_sima_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile, simaToSsp } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return simaToSsp(model);
+        },
+        project_sima_sysml2: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile, simaToSysml2 } = await import("@modelscript/sima");
+          const model = parseSimaFile(text, params?.uri);
+          return simaToSysml2(model);
+        },
+        render_catenary_profile: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile } = await import("@modelscript/sima");
+          const { renderSimaCatenaryProfileSvg } = await import("@modelscript/diagram/sima-diagram-builder");
+          const model = parseSimaFile(text, params?.uri);
+          const firstLine = model.lines[0];
+          const avgWeight = firstLine
+            ? firstLine.segments.reduce((acc, s) => acc + s.submergedWeightPerMeter, 0) /
+              Math.max(1, firstLine.segments.length)
+            : 2500;
+          return renderSimaCatenaryProfileSvg({
+            title: firstLine ? `Catenary Profile: ${firstLine.name}` : "Catenary Profile Preview",
+            waterDepth: model.environment.waterDepth,
+            horizontalSpan: firstLine
+              ? Math.hypot(
+                  (firstLine.fairleadPosition?.[0] ?? 0) - firstLine.anchorPosition[0],
+                  (firstLine.fairleadPosition?.[1] ?? 0) - firstLine.anchorPosition[1],
+                )
+              : 800,
+            lineLength: firstLine ? firstLine.totalLength : 850,
+            submergedWeight: avgWeight,
+          });
+        },
+        render_mooring_spread: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimaFile } = await import("@modelscript/sima");
+          const { renderSimaMooringSpreadSvg } = await import("@modelscript/diagram/sima-diagram-builder");
+          const model = parseSimaFile(text, params?.uri);
+          return renderSimaMooringSpreadSvg({
+            title: "Overhead Mooring Spread & Watch Circle",
+            waterDepth: model.environment.waterDepth,
+            vesselName: model.vessels[0]?.name ?? "Floater Platform",
+            lines: model.lines.map((l) => ({
+              id: l.id,
+              name: l.name,
+              fairleadPos: l.fairleadPosition,
+              anchorPos: l.anchorPosition,
+            })),
+            environment: {
+              waveDir: model.environment.wave.direction,
+              waveHs: model.environment.wave.hs,
+              windDir: model.environment.wind.direction,
+              windSpeed: model.environment.wind.speed,
+              currentDir: model.environment.current.direction,
+              currentSpeed: model.environment.current.surfaceSpeed,
+            },
+          });
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered SIMA language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register SIMA plugin: ${err.message}`);
+  }
+
+  // Register GT-SUITE / GT-POWER Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "gtsuite",
+      name: "GT-SUITE",
+      extensions: [".gtm", ".gtd", ".gtx", ".gt"],
+      languageDef: gtsuiteLanguage,
+      actionHandlers: {
+        lint_gtsuite_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseGtmModel, lintGtModel } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return lintGtModel(model);
+        },
+        simulate_gtsuite_transient: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseGtmModel, runGtSuiteSimulation } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return runGtSuiteSimulation(model, params?.options);
+        },
+        verify_gtsuite_gates: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseGtmModel, runGtSuiteSimulation, verifyEngineGates } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          const simResult = await runGtSuiteSimulation(model, params?.options);
+          return verifyEngineGates(simResult, params?.gateOptions);
+        },
+        project_gtsuite_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, gtsuiteToModelica } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return gtsuiteToModelica(model);
+        },
+        project_gtsuite_sysml2: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, gtsuiteToSysml2 } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return gtsuiteToSysml2(model);
+        },
+        project_gtsuite_ssp: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, gtsuiteToSsp } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return gtsuiteToSsp(model);
+        },
+        render_gtsuite_schematic: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGtmModel, renderGtSuiteSchematicSvg } = await import("@modelscript/gtsuite");
+          const model = parseGtmModel(text, params?.uri);
+          return renderGtSuiteSchematicSvg(model);
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered GT-SUITE language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register GT-SUITE plugin: ${err.message}`);
   }
 
   /**

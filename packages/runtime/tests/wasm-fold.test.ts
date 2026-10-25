@@ -137,4 +137,51 @@ console.log("Test 3: Multi-pass cascading fixed-point parameter & equation foldi
   console.log("  ✓ Cascading fixed-point iteration resolved parameters a=2, b=5, c=20 and equation y=30");
 }
 
+// ── Test 4: In-WASM Algebraic Identity Simplification ──
+console.log("Test 4: In-WASM algebraic identity simplification & dead branch elimination...");
+{
+  const arena = new DAEBuilder();
+  const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+  const xExpr = arena.addNameExpr("x");
+
+  const zero = arena.addRealLiteral(0.0);
+  const one = arena.addRealLiteral(1.0);
+
+  // eq1: y1 = x * 0.0  -> 0.0
+  arena.addVariable("y1", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+  const eq1 = arena.addEquation(EqKind.Simple, arena.addNameExpr("y1"), arena.addBinaryExpr(BinOp.Mul, xExpr, zero));
+
+  // eq2: y2 = x * 1.0  -> x
+  arena.addVariable("y2", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+  const eq2 = arena.addEquation(EqKind.Simple, arena.addNameExpr("y2"), arena.addBinaryExpr(BinOp.Mul, xExpr, one));
+
+  // eq3: y3 = x + 0.0  -> x
+  arena.addVariable("y3", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+  const eq3 = arena.addEquation(EqKind.Simple, arena.addNameExpr("y3"), arena.addBinaryExpr(BinOp.Add, xExpr, zero));
+
+  // eq4: y4 = if (2.0 > 1.0) then x else 999.0  -> x
+  const two = arena.addRealLiteral(2.0);
+  const cond = arena.addBinaryExpr(BinOp.Gt, two, one);
+  const nine = arena.addRealLiteral(999.0);
+  const ifExpr = arena.addIfElseExpr(cond, xExpr, nine);
+  arena.addVariable("y4", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+  const eq4 = arena.addEquation(EqKind.Simple, arena.addNameExpr("y4"), ifExpr);
+
+  foldArenaConstants(arena);
+
+  const rhs1 = arena.getEqRhs(eq1);
+  assert(arena.getExprKind(rhs1) === ExprKind.RealLiteral && arena.getExprRealValue(rhs1) === 0.0, "x * 0 -> 0.0");
+
+  const rhs2 = arena.getEqRhs(eq2);
+  assert(arena.getExprKind(rhs2) === ExprKind.Name, "x * 1 -> x");
+
+  const rhs3 = arena.getEqRhs(eq3);
+  assert(arena.getExprKind(rhs3) === ExprKind.Name, "x + 0 -> x");
+
+  const rhs4 = arena.getEqRhs(eq4);
+  assert(arena.getExprKind(rhs4) === ExprKind.Name, "if true then x else 999 -> x");
+
+  console.log("  ✓ Algebraic reductions (x*0->0, x*1->x, x+0->x, if-pruning) passed cleanly");
+}
+
 console.log("=== All WASM Constant Folding Tests Passed Cleanly ===");

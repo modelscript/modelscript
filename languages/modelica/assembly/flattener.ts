@@ -15,6 +15,7 @@ import {
   FLAG_VAR_FLOW,
   FLAG_VAR_STREAM,
   FLAG_EQ_STREAM_CONNECT,
+  FLAG_EQ_OVERCONSTRAINED,
   FLAG_EQ_INITIAL,
   EQ_STRIDE,
   EQ_KIND,
@@ -1368,6 +1369,111 @@ function findComponentDeclInClass(classLoc: u64, compNameId: u32, pool: ArenaStr
   return 0;
 }
 
+function findComponentSubscriptsInClass(classLoc: u64, compNameId: u32, pool: ArenaStringPool, flattener: ModelicaFlattener, maxDepth: i32 = 120): u64 {
+  if (locIsNull(classLoc) || compNameId == 0 || maxDepth <= 0) return 0;
+  let ch = locFirstChild(classLoc);
+  while (!locIsNull(ch)) {
+    let t = locType(ch);
+    if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+      let decl = locFindDescendant(ch, SyntaxType.COMPONENT_DECLARATION);
+      while (!locIsNull(decl)) {
+        let idLoc = locFindDescendant(decl, SyntaxType.IDENTIFIER);
+        if (locIsNull(idLoc)) idLoc = locFindDescendant(decl, SyntaxType.TOKEN_IDENTIFIER_ALT);
+        if (!locIsNull(idLoc) && locIntern(pool, idLoc) == compNameId) {
+          let declSub = flattener.findDeclarationSubscripts(decl);
+          if (!locIsNull(declSub)) return declSub;
+          return flattener.findClauseSubscripts(ch);
+        }
+        decl = locNextSibling(decl);
+      }
+    } else if (t != SyntaxType.CLASS_DEFINITION) {
+      let found = findComponentSubscriptsInClass(ch, compNameId, pool, flattener, maxDepth - 1);
+      if (!locIsNull(found)) return found;
+    }
+    ch = locNextSibling(ch);
+  }
+  return 0;
+}
+
+function findConstantDeclInClass(classLoc: u64, compNameId: u32, pool: ArenaStringPool, maxDepth: i32 = 120): u64 {
+  if (locIsNull(classLoc) || compNameId == 0 || maxDepth <= 0) return 0;
+  let ch = locFirstChild(classLoc);
+  while (!locIsNull(ch)) {
+    let t = locType(ch);
+    if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+      let tpLoc = locFindDescendant(ch, SyntaxType.TYPE_PREFIX);
+      let isConst = false;
+      if (!locIsNull(tpLoc)) {
+        let tpChild = locFirstChild(tpLoc);
+        while (!locIsNull(tpChild)) {
+          let tt = locType(tpChild);
+          if (tt == SyntaxType.TOKEN_CONSTANT || locMatches(tpChild, "constant")) {
+            isConst = true;
+            break;
+          }
+          tpChild = locNextSibling(tpChild);
+        }
+      }
+      if (isConst) {
+        let decl = locFindDescendant(ch, SyntaxType.COMPONENT_DECLARATION);
+        while (!locIsNull(decl)) {
+          let idLoc = locFindDescendant(decl, SyntaxType.IDENTIFIER);
+          if (locIsNull(idLoc)) idLoc = locFindDescendant(decl, SyntaxType.TOKEN_IDENTIFIER_ALT);
+          if (!locIsNull(idLoc) && locIntern(pool, idLoc) == compNameId) {
+            return decl;
+          }
+          decl = locNextSibling(decl);
+        }
+      }
+    } else if (t != SyntaxType.CLASS_DEFINITION) {
+      let found = findConstantDeclInClass(ch, compNameId, pool, maxDepth - 1);
+      if (!locIsNull(found)) return found;
+    }
+    ch = locNextSibling(ch);
+  }
+  return 0;
+}
+
+function findFunctionOutputCompDecl(fnClassLoc: u64, pool: ArenaStringPool, maxDepth: i32 = 120): u64 {
+  if (locIsNull(fnClassLoc) || maxDepth <= 0) return 0;
+  let ch = locFirstChild(fnClassLoc);
+  while (!locIsNull(ch)) {
+    let t = locType(ch);
+    if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+      let isOutput = false;
+      let tpLoc = locFindDescendant(ch, SyntaxType.TYPE_PREFIX);
+      if (!locIsNull(tpLoc)) {
+        if (locMatches(tpLoc, "output")) {
+          isOutput = true;
+        } else {
+          let tpChild = locFirstChild(tpLoc);
+          while (!locIsNull(tpChild)) {
+            let tt = locType(tpChild);
+            if (tt == SyntaxType.TOKEN_OUTPUT || locMatches(tpChild, "output")) {
+              isOutput = true;
+              break;
+            }
+            tpChild = locNextSibling(tpChild);
+          }
+        }
+      }
+      if (!isOutput && (locStartsWith(ch, "output") || locMatches(ch, "output") || !locIsNull(locFindDescendant(ch, SyntaxType.TOKEN_OUTPUT)))) {
+        isOutput = true;
+      }
+      if (isOutput) {
+        let decl = locFindDescendant(ch, SyntaxType.COMPONENT_DECLARATION);
+        if (!locIsNull(decl)) return decl;
+        return ch;
+      }
+    } else if (t != SyntaxType.CLASS_DEFINITION) {
+      let found = findFunctionOutputCompDecl(ch, pool, maxDepth - 1);
+      if (!locIsNull(found)) return found;
+    }
+    ch = locNextSibling(ch);
+  }
+  return 0;
+}
+
 function getPathLastPart(pool: ArenaStringPool, id: u32): u32 {
   if (id == 0 || id >= pool.stringCount) return 0;
   let len = pool.stringLengths.get(id);
@@ -1391,6 +1497,34 @@ function findClassByPtr(rootLoc: u64, targetPtr: u32, maxDepth: i32 = 120): u64 
     if (locPtr(ch) == targetPtr) return ch;
     let found = findClassByPtr(ch, targetPtr, maxDepth - 1);
     if (!locIsNull(found)) return found;
+    ch = locNextSibling(ch);
+  }
+  return 0;
+}
+
+function findEnclosingClassDefinitionLoc(parentLoc: u64, targetLoc: u64): u64 {
+  if (locIsNull(parentLoc) || locIsNull(targetLoc)) return 0;
+  let targetOff = locOffset(targetLoc);
+  let targetLen = locLen(targetLoc);
+  let targetEnd = targetOff + targetLen;
+  let targetPtr = locPtr(targetLoc);
+
+  let ch = locFirstChild(parentLoc);
+  while (!locIsNull(ch)) {
+    let off = locOffset(ch);
+    let len = locLen(ch);
+    if (off <= targetOff && off + len >= targetEnd) {
+      if (locType(ch) == SyntaxType.CLASS_DEFINITION) {
+        if (locPtr(ch) != targetPtr && (off < targetOff || off + len > targetEnd)) {
+          let inner = findEnclosingClassDefinitionLoc(ch, targetLoc);
+          return !locIsNull(inner) ? inner : ch;
+        } else {
+          return 0;
+        }
+      }
+      let inner = findEnclosingClassDefinitionLoc(ch, targetLoc);
+      if (!locIsNull(inner)) return inner;
+    }
     ch = locNextSibling(ch);
   }
   return 0;
@@ -1465,7 +1599,7 @@ function isExpandableConnectorClassLoc(classLoc: u64, rootLoc: u64 = 0, pool: Ar
   return false;
 }
 
-function getExprDimensions(dae: DaeBuilder, exprId: u32, pool: ArenaStringPool | null = null): u64 {
+function getExprDimensions(dae: DaeBuilder, exprId: u32, pool: ArenaStringPool | null = null, flattenerPtr: usize = 0): u64 {
   if (exprId >= dae.exprCount) return 0;
   let kind = dae.getExprKind(exprId);
   if (kind == ExprKind.ArrayCtor) {
@@ -1478,12 +1612,12 @@ function getExprDimensions(dae: DaeBuilder, exprId: u32, pool: ArenaStringPool |
     return ((d1 as u64) << 32) | (d2 as u64);
   }
   if (kind == ExprKind.Unary) {
-    return getExprDimensions(dae, dae.getExprLeft(exprId), pool);
+    return getExprDimensions(dae, dae.getExprLeft(exprId), pool, flattenerPtr);
   }
   if (kind == ExprKind.Binary) {
-    let d = getExprDimensions(dae, dae.getExprLeft(exprId), pool);
+    let d = getExprDimensions(dae, dae.getExprLeft(exprId), pool, flattenerPtr);
     if (d != 0) return d;
-    return getExprDimensions(dae, dae.getExprRight(exprId), pool);
+    return getExprDimensions(dae, dae.getExprRight(exprId), pool, flattenerPtr);
   }
   if (kind == ExprKind.Name && pool != null) {
     let nameId = dae.getExprData1(exprId);
@@ -1500,6 +1634,106 @@ function getExprDimensions(dae: DaeBuilder, exprId: u32, pool: ArenaStringPool |
       let d1: u32 = 1;
       while (dae.lookupVariableByName(concatArrayIndex1D(pool, nameId, d1 + 1)) >= 0) d1++;
       return (d1 as u64) << 32;
+    }
+    let isPrefix1 = false;
+    for (let v: u32 = 0; v < dae.varCount; v++) {
+      if (pool.hasPrefix(dae.getVarNameId(v), test1)) {
+        isPrefix1 = true;
+        break;
+      }
+    }
+    if (isPrefix1) {
+      let d1: u32 = 1;
+      while (true) {
+        let nextTest = concatArrayIndex1D(pool, nameId, d1 + 1);
+        let hasNext = false;
+        for (let v: u32 = 0; v < dae.varCount; v++) {
+          if (pool.hasPrefix(dae.getVarNameId(v), nextTest)) {
+            hasNext = true;
+            break;
+          }
+        }
+        if (hasNext) d1++;
+        else break;
+      }
+      return (d1 as u64) << 32;
+    }
+    if (flattenerPtr != 0) {
+      let flattener = changetype<ModelicaFlattener>(flattenerPtr);
+      let baseSrcNameId = stripTrailingSubscriptsId(pool, nameId);
+      let declSub: u64 = 0;
+      if (pool.hasDot(baseSrcNameId)) {
+        let pkgId = pool.getParentPrefix(baseSrcNameId);
+        let compId = getPathLastPart(pool, baseSrcNameId);
+        let pkgLoc = flattener.findClassLoc(flattener.currentClassLoc, pkgId, pool);
+        if (locIsNull(pkgLoc)) pkgLoc = flattener.findClassLoc(flattener.rootProgramLoc, pkgId, pool);
+        if (!locIsNull(pkgLoc)) {
+          declSub = findComponentSubscriptsInClass(pkgLoc, compId, pool, flattener);
+        }
+      } else {
+        declSub = findComponentSubscriptsInClass(flattener.currentClassLoc, baseSrcNameId, pool, flattener);
+        if (locIsNull(declSub)) declSub = findComponentSubscriptsInClass(flattener.rootProgramLoc, baseSrcNameId, pool, flattener);
+      }
+      if (!locIsNull(declSub)) {
+        let dims = parseArrayDimensionsLoc(declSub, dae, pool);
+        if (dims != 0 && dims != 0xffffffffffffffff) {
+          return dims;
+        }
+      }
+    }
+  }
+  if (kind == ExprKind.Call && pool != null) {
+    let fnId = dae.getExprData1(exprId);
+    let argCount = dae.getExprRight(exprId);
+    if (poolMatchesSimple(pool, fnId, "zeros") || poolMatchesSimple(pool, fnId, "ones")) {
+      if (argCount == 1) {
+        let leftId = dae.getExprLeft(exprId);
+        let d1: i32 = -1;
+        if (flattenerPtr != 0) {
+          d1 = changetype<ModelicaFlattener>(flattenerPtr).evalConstIntArg(leftId);
+        }
+        if (d1 < 0 && leftId < dae.exprCount && dae.getExprKind(leftId) == ExprKind.IntLiteral) {
+          d1 = dae.getExprData1(leftId) as i32;
+        }
+        return d1 > 0 ? ((d1 as u64) << 32) : 0;
+      } else if (argCount == 2) {
+        let leftId = dae.getExprLeft(exprId);
+        let d1: i32 = -1;
+        if (flattenerPtr != 0) d1 = changetype<ModelicaFlattener>(flattenerPtr).evalConstIntArg(leftId);
+        if (d1 < 0 && leftId < dae.exprCount && dae.getExprKind(leftId) == ExprKind.IntLiteral) d1 = dae.getExprData1(leftId) as i32;
+        let rightTupleId = exprId + 1;
+        let d2: i32 = -1;
+        if (rightTupleId < dae.exprCount && dae.getExprKind(rightTupleId) == ExprKind.Tuple) {
+          let tArg = dae.getExprLeft(rightTupleId);
+          if (flattenerPtr != 0) d2 = changetype<ModelicaFlattener>(flattenerPtr).evalConstIntArg(tArg);
+          if (d2 < 0 && tArg < dae.exprCount && dae.getExprKind(tArg) == ExprKind.IntLiteral) d2 = dae.getExprData1(tArg) as i32;
+        }
+        return ((d1 > 0 ? (d1 as u64) : 0) << 32) | (d2 > 0 ? (d2 as u64) : 0);
+      }
+    } else if (flattenerPtr != 0) {
+      let flattener = changetype<ModelicaFlattener>(flattenerPtr);
+      let fnLoc = flattener.findClassLoc(flattener.currentClassLoc, fnId, pool);
+      if (locIsNull(fnLoc)) fnLoc = flattener.findClassLoc(flattener.rootProgramLoc, fnId, pool);
+      if (!locIsNull(fnLoc)) {
+        let outDecl = findFunctionOutputCompDecl(fnLoc, pool);
+        if (!locIsNull(outDecl)) {
+          let declSub = flattener.findDeclarationSubscripts(outDecl);
+          if (locIsNull(declSub)) declSub = flattener.findClauseSubscripts(outDecl);
+          if (!locIsNull(declSub)) {
+            let dim1 = flattener.resolveFunctionOutputDim(fnLoc, declSub, exprId, pool);
+            if (dim1 > 0) {
+              return (dim1 as u64) << 32;
+            }
+          }
+        }
+      }
+      for (let a: u32 = 0; a < argCount; a++) {
+        let aId = a == 0 ? dae.getExprLeft(exprId) : (exprId + a < dae.exprCount ? dae.getExprLeft(exprId + a) : 0xffffffff);
+        if (aId != 0xffffffff) {
+          let argDims = getExprDimensions(dae, aId, pool, flattenerPtr);
+          if (argDims > 0) return argDims;
+        }
+      }
     }
   }
   return 0;
@@ -1603,6 +1837,89 @@ function evalDimExpr(dae: DaeBuilder, pool: ArenaStringPool, text: SourceTextVie
         let rightVal = evalDimExpr(dae, pool, text, (i + 1) as u32, endChar, prefixPathId, scopeStackPtr);
         if (leftVal < 0 || rightVal < 0) return -1;
         return b == 42 ? leftVal * rightVal : (rightVal != 0 ? leftVal / rightVal : -1);
+      }
+    }
+  }
+
+  // Check for size(...) call
+  if (endChar - startChar > 5 &&
+      text.charAt(startChar) == 115 && // 's'
+      text.charAt(startChar + 1) == 105 && // 'i'
+      text.charAt(startChar + 2) == 122 && // 'z'
+      text.charAt(startChar + 3) == 101 && // 'e'
+      text.charAt(endChar - 1) == 41) { // ')'
+    let pOpen = startChar + 4;
+    while (pOpen < endChar && (text.charAt(pOpen) == 32 || text.charAt(pOpen) == 9)) pOpen++;
+    if (pOpen < endChar && text.charAt(pOpen) == 40) { // '('
+      let argParenDepth = 0;
+      let commaIdx: i32 = -1;
+      for (let i = pOpen + 1; i < endChar - 1; i++) {
+        let b = text.charAt(i);
+        if (b == 40 || b == 91) argParenDepth++;
+        else if (b == 41 || b == 93) { if (argParenDepth > 0) argParenDepth--; }
+        else if (argParenDepth == 0 && b == 44) { // ','
+          commaIdx = i as i32;
+          break;
+        }
+      }
+      let arrStart = pOpen + 1;
+      let arrEnd = commaIdx >= 0 ? (commaIdx as u32) : (endChar - 1);
+      let dimVal: i32 = 1;
+      if (commaIdx >= 0) {
+        dimVal = evalDimExpr(dae, pool, text, (commaIdx + 1) as u32, endChar - 1, prefixPathId, scopeStackPtr);
+        if (dimVal < 0) return -1;
+      }
+      while (arrStart < arrEnd && (text.charAt(arrStart) == 32 || text.charAt(arrStart) == 9)) arrStart++;
+      while (arrEnd > arrStart && (text.charAt(arrEnd - 1) == 32 || text.charAt(arrEnd - 1) == 9)) arrEnd--;
+      if (arrStart < arrEnd) {
+        let aBytes = text.byteOffset(arrStart);
+        let aLen = text.byteLength(arrEnd - arrStart);
+        let arrNameId = text.isUtf16 ? pool.internUtf16(aBytes, aLen) : pool.intern(aBytes, aLen);
+        if (scopeStackPtr != 0) {
+          let modVal = changetype<ScopeStack>(scopeStackPtr).lookup(arrNameId);
+          if (modVal != 0xffffffff) {
+            let mk = dae.getExprKind(modVal);
+            if (mk == ExprKind.ArrayCtor) {
+              let ctorCount = getArrayCtorCount(dae, modVal);
+              if (dimVal == 1) return ctorCount as i32;
+              if (dimVal == 2) {
+                if (ctorCount > 0) {
+                  let fElem = getArrayCtorElement(dae, modVal, 0);
+                  if (dae.getExprKind(fElem) == ExprKind.ArrayCtor) {
+                    return getArrayCtorCount(dae, fElem) as i32;
+                  }
+                }
+                return 0;
+              }
+            } else if (mk == ExprKind.Call) {
+              let fnId = dae.getExprData1(modVal);
+              if (poolMatchesSimple(pool, fnId, "zeros") || poolMatchesSimple(pool, fnId, "ones")) {
+                let callArgCount = dae.getExprRight(modVal);
+                if (dimVal == 1 && callArgCount >= 1) {
+                  let d1Expr = dae.getExprLeft(modVal);
+                  if (d1Expr < dae.exprCount && dae.getExprKind(d1Expr) == ExprKind.IntLiteral) {
+                    return dae.getExprData1(d1Expr) as i32;
+                  }
+                }
+              }
+            } else if (mk == ExprKind.Name) {
+              let srcNameId = dae.getExprData1(modVal);
+              let d1: u32 = 0;
+              while (dae.lookupVariableByName(concatArrayIndex1D(pool, srcNameId, d1 + 1)) >= 0) d1++;
+              if (d1 > 0 && dimVal == 1) return d1 as i32;
+            }
+          }
+        }
+        if (prefixPathId != 0) {
+          let pNameId = pool.concatIds(prefixPathId, arrNameId);
+          let d1: u32 = 0;
+          while (dae.lookupVariableByName(concatArrayIndex1D(pool, pNameId, d1 + 1)) >= 0) d1++;
+          if (d1 > 0 && dimVal == 1) return d1 as i32;
+        }
+        let d1: u32 = 0;
+        while (dae.lookupVariableByName(concatArrayIndex1D(pool, arrNameId, d1 + 1)) >= 0) d1++;
+        if (d1 > 0 && dimVal == 1) return d1 as i32;
+        return 0;
       }
     }
   }
@@ -2173,6 +2490,40 @@ function extractModAttr(modLoc: u64, attrName: string, exprVisitor: WasmExprVisi
   return 0xffffffff;
 }
 
+function extractModAttrById(modLoc: u64, attrNameId: u32, pool: ArenaStringPool, exprVisitor: WasmExprVisitor): u32 {
+  if (locIsNull(modLoc) || attrNameId == 0) return 0xffffffff;
+  let classMod = findClassModificationLoc(modLoc);
+  if (!locIsNull(classMod) && classMod != modLoc) {
+    return extractModAttrById(classMod, attrNameId, pool, exprVisitor);
+  }
+  let ch = locFirstChild(modLoc);
+  while (!locIsNull(ch)) {
+    let t = locType(ch);
+    if (t == SyntaxType.CLASS_MODIFICATION) {
+      ch = locNextSibling(ch);
+      continue;
+    }
+    if (t == SyntaxType.ELEMENT_MODIFICATION || t == SyntaxType.ELEMENT_MODIFICATION_OR_REPLACEABLE) {
+      let nameCur = locFindDescendant(ch, SyntaxType.IDENTIFIER);
+      if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.TOKEN_IDENTIFIER_ALT);
+      if (locIsNull(nameCur)) nameCur = locFindDescendant(ch, SyntaxType.NAME);
+      if (!locIsNull(nameCur) && locIntern(pool, nameCur) == attrNameId) {
+        let exprLoc = findBindingExpressionLoc(ch);
+        if (!locIsNull(exprLoc)) {
+          let uid = exprVisitor.visitLoc(exprLoc);
+          if (uid != 0xffffffff) return uid;
+        }
+      }
+      ch = locNextSibling(ch);
+      continue;
+    }
+    let sub = extractModAttrById(ch, attrNameId, pool, exprVisitor);
+    if (sub != 0xffffffff) return sub;
+    ch = locNextSibling(ch);
+  }
+  return 0xffffffff;
+}
+
 function findElementModClassModLoc(modLoc: u64, targetNameId: u32, pool: ArenaStringPool): u64 {
   if (locIsNull(modLoc)) return 0;
   let ch = locFirstChild(modLoc);
@@ -2460,6 +2811,33 @@ export class ModificationEnvironment {
         }
       }
       if (isRedeclare) {
+        this.bindRedeclare(keyHash, redeclareTypeHash, valExprId, isFinal, isEach);
+      }
+    }
+  }
+
+  mergeDefaultsFrom(other: ModificationEnvironment): void {
+    for (let i: u32 = 0; i < other.count; i++) {
+      let entry = other.getEntry(i);
+      let isFinal = entry.isFinal;
+      let isEach = entry.isEach;
+      let isRedeclare = entry.isRedeclare;
+      let keyHash = entry.keyHash;
+      let valExprId = entry.valExprId;
+      let childEnvPtr = entry.childEnvPtr;
+      let redeclareTypeHash = entry.redeclareTypeHash;
+      if (valExprId != 0xffffffff && this.lookup(keyHash) == 0xffffffff) {
+        this.bind(keyHash, valExprId, isFinal, isEach);
+      }
+      if (childEnvPtr != 0) {
+        let existingChildPtr = this.lookupNested(keyHash);
+        if (existingChildPtr != 0) {
+          changetype<ModificationEnvironment>(existingChildPtr).mergeDefaultsFrom(changetype<ModificationEnvironment>(childEnvPtr));
+        } else {
+          this.bindNested(keyHash, childEnvPtr, isFinal, isEach);
+        }
+      }
+      if (isRedeclare && this.lookupRedeclare(keyHash) == 0) {
         this.bindRedeclare(keyHash, redeclareTypeHash, valExprId, isFinal, isEach);
       }
     }
@@ -6101,6 +6479,12 @@ export class WasmExprVisitor {
             }
             return this.dae.addExpression(ExprKind.Name, prefixedId);
           }
+          if (this.flattenerPtr != 0) {
+            let flattener = changetype<ModelicaFlattener>(this.flattenerPtr);
+            if (flattener.componentTypesPtr != 0 && flattener.componentTypes.has(prefixedId)) {
+              return this.dae.addExpression(ExprKind.Name, prefixedId);
+            }
+          }
         }
 
         let modExpr = ss.lookup(nameId);
@@ -6129,6 +6513,23 @@ export class WasmExprVisitor {
           if (vt == VarType.Enumeration) return this.dae.addExpression(ExprKind.EnumLiteral, varAcc.startValue as i32, 0);
         }
         return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
+      }
+      if (this.flattenerPtr != 0) {
+        let flattener = changetype<ModelicaFlattener>(this.flattenerPtr);
+        if (!locIsNull(flattener.currentClassLoc)) {
+          let constDecl = findConstantDeclInClass(flattener.currentClassLoc, resolvedSimpleId, pool);
+          if (!locIsNull(constDecl)) {
+            let cModLoc = locFindDescendant(constDecl, SyntaxType.MODIFICATION);
+            let cBinding = findBindingExpressionLoc(cModLoc);
+            if (!locIsNull(cBinding)) {
+              let cVal = this.visitLoc(cBinding);
+              if (cVal != 0xffffffff) return cVal;
+            }
+          }
+        }
+        if (flattener.componentTypesPtr != 0 && flattener.componentTypes.has(resolvedSimpleId)) {
+          return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
+        }
       }
 
       let sliceSubLoc = this.findSliceSubscript(loc);
@@ -6175,6 +6576,33 @@ export class WasmExprVisitor {
               let constVal = this.visitLoc(bExpr);
               this.scopeStackPtr = savedScope;
               if (constVal != 0xffffffff) return constVal;
+            }
+          }
+        }
+      }
+
+      if (this.flattenerPtr != 0 && !pool.hasDot(nameId)) {
+        let flattener = changetype<ModelicaFlattener>(this.flattenerPtr);
+        let encClassLoc = flattener.currentClassLoc;
+        while (!locIsNull(encClassLoc)) {
+          encClassLoc = findEnclosingClassDefinitionLoc(flattener.rootProgramLoc, encClassLoc);
+          if (locIsNull(encClassLoc)) break;
+          let compDecl = findComponentDeclInClass(encClassLoc, nameId, pool);
+          if (!locIsNull(compDecl)) {
+            let modLoc = locFindDescendant(compDecl, SyntaxType.MODIFICATION);
+            let bExpr = findBindingExpressionLoc(modLoc);
+            if (!locIsNull(bExpr)) {
+              let savedScope = this.scopeStackPtr;
+              this.scopeStackPtr = 0;
+              let constVal = this.visitLoc(bExpr);
+              this.scopeStackPtr = savedScope;
+              if (constVal != 0xffffffff) {
+                let typeSpecLoc = locFindDescendant(compDecl, SyntaxType.TYPE_SPECIFIER);
+                if (!locIsNull(typeSpecLoc) && locMatches(typeSpecLoc, "Real") && !this.isRealExpr(constVal)) {
+                  constVal = this.castToReal(constVal);
+                }
+                return constVal;
+              }
             }
           }
         }
@@ -6510,6 +6938,70 @@ export class DisjointSet {
 }
 
 /**
+ * Strips trailing array bracket subscripts (e.g. `c1.o[1]` -> `c1.o`) from an interned name ID.
+ */
+function stripTrailingSubscriptsId(pool: ArenaStringPool, nameId: u32): u32 {
+  if (nameId == 0) return 0;
+  let len = pool.getLength(nameId);
+  let off = pool.getOffset(nameId);
+  while (len > 0 && pool.charBuffer.get(off + len - 1) == 93) { // ']'
+    let openIdx: i32 = -1;
+    for (let i: i32 = (len as i32) - 2; i >= 0; i--) {
+      if (pool.charBuffer.get(off + (i as u32)) == 91) { // '['
+        openIdx = i;
+        break;
+      }
+    }
+    if (openIdx >= 0) {
+      let allDigits = true;
+      for (let j: i32 = openIdx + 1; j < (len as i32) - 1; j++) {
+        let ch = pool.charBuffer.get(off + (j as u32));
+        if ((ch < 48 || ch > 57) && ch != 44 && ch != 32) {
+          allDigits = false;
+          break;
+        }
+      }
+      if (allDigits) {
+        len = openIdx as u32;
+        nameId = pool.internChunk(off, len);
+      } else {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+  return nameId;
+}
+
+/**
+ * Extracts a single 1D trailing integer subscript (e.g. `c1[2]` -> 2).
+ * Returns -1 if no trailing 1D subscript is found.
+ */
+function extractTrailingSubscript1D(pool: ArenaStringPool, nameId: u32): i32 {
+  if (nameId == 0) return -1;
+  let len = pool.getLength(nameId);
+  let off = pool.getOffset(nameId);
+  if (len < 3 || pool.charBuffer.get(off + len - 1) != 93) return -1; // ']'
+  let openIdx: i32 = -1;
+  for (let i: i32 = (len as i32) - 2; i >= 0; i--) {
+    let ch = pool.charBuffer.get(off + (i as u32));
+    if (ch == 91) { // '['
+      openIdx = i;
+      break;
+    }
+    if (ch < 48 || ch > 57) return -1;
+  }
+  if (openIdx < 0 || openIdx + 1 >= (len as i32) - 1) return -1;
+  let val: i32 = 0;
+  for (let i: i32 = openIdx + 1; i < (len as i32) - 1; i++) {
+    val = val * 10 + ((pool.charBuffer.get(off + (i as u32)) - 48) as i32);
+  }
+  return val;
+}
+
+
+/**
  * Modelica & Physical Semantic Flattening Engine in WebAssembly.
  *
  * Implements the in-WASM AssemblyScript flattening kernel: walks linear-memory green CST nodes,
@@ -6625,6 +7117,53 @@ export class ModelicaFlattener {
   /** Scratch state counter (`0`, `1`, or `2`) used while extracting `connect(ref1, ref2)` arguments. */
   connectRefFound: i32;
 
+  /** Parallel column: node A string ID in `Connections.branch(a, b)`. */
+  ocBranchA: ChunkedUint32Array;
+  /** Parallel column: node B string ID in `Connections.branch(a, b)`. */
+  ocBranchB: ChunkedUint32Array;
+  /** Number of registered `Connections.branch` edges. */
+  ocBranchCount: u32;
+
+  /** Interned string IDs of `Connections.root` / `Connections.uniqueRoot` targets. */
+  ocRoots: ChunkedUint32Array;
+  /** Number of registered `Connections.root` targets. */
+  ocRootCount: u32;
+
+  /** Parallel column: interned string IDs of `Connections.potentialRoot(c, priority)` targets. */
+  ocPotentialRoots: ChunkedUint32Array;
+  /** Parallel column: integer priority for each entry in `ocPotentialRoots`. */
+  ocPotentialRootPrios: ChunkedInt32Array;
+  /** Number of registered `Connections.potentialRoot` targets. */
+  ocPotentialRootCount: u32;
+
+  /** Interned string IDs of `Connections.isRoot(c)` targets. */
+  ocQueriedRoots: ChunkedUint32Array;
+  /** Number of registered `Connections.isRoot` targets. */
+  ocQueriedRootCount: u32;
+
+  /** Parallel column: broken overconstrained connection edge node U string ID. */
+  brokenOcConnU: ChunkedUint32Array;
+  /** Parallel column: broken overconstrained connection edge node V string ID. */
+  brokenOcConnV: ChunkedUint32Array;
+  /** Number of broken overconstrained connection edges. */
+  brokenOcConnCount: u32;
+
+  /** Linear memory pointer (`usize`) to an `UnmanagedMap64` mapping component name string IDs to type name string IDs. */
+  componentTypesPtr: usize;
+
+  /** Linear memory pointer (`usize`) to an `UnmanagedSet64` of selected root node string IDs. */
+  selectedRootsPtr: usize;
+
+  /** Returns the `UnmanagedMap64` mapping component name string IDs to type name string IDs. */
+  @inline get componentTypes(): UnmanagedMap64 {
+    return changetype<UnmanagedMap64>(this.componentTypesPtr);
+  }
+
+  /** Returns the `UnmanagedSet64` holding the string IDs of selected root nodes. */
+  @inline get selectedRoots(): UnmanagedSet64 {
+    return changetype<UnmanagedSet64>(this.selectedRootsPtr);
+  }
+
   /** Interned string IDs of component prefixes disabled by false conditional declarations (`if false`). */
   disabledNames: ChunkedUint32Array;
   /** Number of conditionally disabled component prefixes in `disabledNames`. */
@@ -6669,6 +7208,10 @@ export class ModelicaFlattener {
   errorEndByte: u32;
   /** Packed 64-bit CST location of the simple equation currently being expanded, used to attribute bail-outs raised from expression-level helpers. */
   curEqLoc: u64;
+  debugVal1: u32;
+  debugVal2: u32;
+  debugVal3: u32;
+  debugVal4: u32;
 
   /** Algorithm sections emitted into the DAE statement arena (`[startStmtIdx, stmtCount, isInitial]`, stride = `3`). */
   algSections: ChunkedUint32Array;
@@ -6742,8 +7285,16 @@ export class ModelicaFlattener {
     return changetype<WasmExprVisitor>(this.exprVisitorPtr);
   }
 
+  @inline get tempBuffer(): ChunkedUint32Array {
+    return this.exprVisitor.tempBuffer;
+  }
+
   @inline get scopeStack(): ScopeStack {
     return changetype<ScopeStack>(this.scopeStackPtr);
+  }
+
+  @inline evalConstIntArg(exprId: u32): i32 {
+    return this.exprVisitor.evalConstIntArg(exprId);
   }
 
   init(dae: DaeBuilder): void {
@@ -6756,6 +7307,10 @@ export class ModelicaFlattener {
     this.errorStartByte = 0xffffffff;
     this.errorEndByte = 0xffffffff;
     this.curEqLoc = 0;
+    this.debugVal1 = 0;
+    this.debugVal2 = 0;
+    this.debugVal3 = 0;
+    this.debugVal4 = 0;
     this.curSubtypeStartId = 0xffffffff;
     this.curSubtypeFixedId = 0xffffffff;
     this.curSubtypeMinId = 0xffffffff;
@@ -6832,6 +7387,22 @@ export class ModelicaFlattener {
     this.savedModEnvPoolIdx = ModificationEnvironment.poolIdx;
     this.isDestroyed = false;
     g_isOmcNewInst = false;
+
+    this.ocBranchA = createChunkedUint32Array(32);
+    this.ocBranchB = createChunkedUint32Array(32);
+    this.ocBranchCount = 0;
+    this.ocRoots = createChunkedUint32Array(32);
+    this.ocRootCount = 0;
+    this.ocPotentialRoots = createChunkedUint32Array(32);
+    this.ocPotentialRootPrios = createChunkedInt32Array(32);
+    this.ocPotentialRootCount = 0;
+    this.ocQueriedRoots = createChunkedUint32Array(32);
+    this.ocQueriedRootCount = 0;
+    this.brokenOcConnU = createChunkedUint32Array(32);
+    this.brokenOcConnV = createChunkedUint32Array(32);
+    this.brokenOcConnCount = 0;
+    this.componentTypesPtr = changetype<usize>(createMap64(64));
+    this.selectedRootsPtr = changetype<usize>(createSet64());
   }
 
   reset(dae: DaeBuilder): void {
@@ -6844,6 +7415,10 @@ export class ModelicaFlattener {
     this.errorStartByte = 0xffffffff;
     this.errorEndByte = 0xffffffff;
     this.curEqLoc = 0;
+    this.debugVal1 = 0;
+    this.debugVal2 = 0;
+    this.debugVal3 = 0;
+    this.debugVal4 = 0;
     this.curSubtypeStartId = 0xffffffff;
     this.curSubtypeFixedId = 0xffffffff;
     this.curSubtypeMinId = 0xffffffff;
@@ -6926,6 +7501,22 @@ export class ModelicaFlattener {
     this.savedModEnvPoolIdx = ModificationEnvironment.poolIdx;
     this.isDestroyed = false;
     g_isOmcNewInst = false;
+
+    this.ocBranchCount = 0;
+    this.ocRootCount = 0;
+    this.ocPotentialRootCount = 0;
+    this.ocQueriedRootCount = 0;
+    this.brokenOcConnCount = 0;
+    if (this.componentTypesPtr != 0) {
+      this.componentTypes.clear();
+    } else {
+      this.componentTypesPtr = changetype<usize>(createMap64(64));
+    }
+    if (this.selectedRootsPtr != 0) {
+      this.selectedRoots.clear();
+    } else {
+      this.selectedRootsPtr = changetype<usize>(createSet64());
+    }
   }
 
   destroy(): void {
@@ -7027,6 +7618,18 @@ export class ModelicaFlattener {
     }
     let resolved = this.resolveScopeClass(scopeLoc, targetNameId);
     if (!locIsNull(resolved)) return resolved;
+    if (pool.hasDot(targetNameId)) {
+      let pkgId = pool.getParentPrefix(targetNameId);
+      let childNameId = getPathLastPart(pool, targetNameId);
+      let pkgLoc = this.findClassLoc(scopeLoc, pkgId, pool);
+      if (locIsNull(pkgLoc) && !locIsNull(this.rootProgramLoc) && scopeLoc != this.rootProgramLoc) {
+        pkgLoc = this.findClassLoc(this.rootProgramLoc, pkgId, pool);
+      }
+      if (!locIsNull(pkgLoc)) {
+        let childLoc = this.findClassLoc(pkgLoc, childNameId, pool);
+        if (!locIsNull(childLoc)) return childLoc;
+      }
+    }
     if (!locIsNull(scopeLoc)) {
       resolved = findClassDefinitionLoc(scopeLoc, targetNameId, pool);
       if (!locIsNull(resolved)) return resolved;
@@ -8056,17 +8659,231 @@ export class ModelicaFlattener {
    * Finalizes all connection graphs, emitting zero-sum Kirchhoff equations for flow variable sets
    * and potential equality equations.
    */
-  finalizeConnections(): u32 {
+  findConnectorFlowVar(streamVarIdx: u32): i32 {
+    if (streamVarIdx >= this.dae.varCount) return -1;
+    let pool = this.dae.getStringPool();
+    let nameId = this.dae.getVarNameId(streamVarIdx);
+    let prefixId = pool.getParentPrefix(nameId);
+    if (prefixId == 0) return -1;
+
+    let varCount = this.dae.varCount;
+    for (let v: u32 = 0; v < varCount; v++) {
+      if (this.dae.isVarRemoved(v)) continue;
+      if (this.dae.isVarFlow(v) && !this.isVarStream(v)) {
+        let vNameId = this.dae.getVarNameId(v);
+        if (pool.hasPrefix(vNameId, prefixId)) {
+          return v as i32;
+        }
+      }
+    }
+    return -1;
+  }
+
+  rewriteStreamExpr(exprId: u32, inStreamExprs: ChunkedInt32Array, pool: ArenaStringPool, zeroExpr: u32): u32 {
+    if (exprId >= this.dae.exprCount) return exprId;
+    let offset = exprId * EXPR_STRIDE;
+    let kind = this.dae.getExprData().get(offset + EXPR_KIND);
+    let data1 = this.dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let left = this.dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = this.dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+
+    if (kind == ExprKind.Call) {
+      let funcNameId = data1;
+      let argCount = right;
+      let firstArg = left;
+
+      let isInstream = false;
+      let isActualstream = false;
+
+      let fLen = pool.getLength(funcNameId);
+      let fOff = pool.getOffset(funcNameId);
+      if (fLen == 8) {
+        if (
+          pool.charBuffer.get(fOff) == 105 && pool.charBuffer.get(fOff + 1) == 110 &&
+          pool.charBuffer.get(fOff + 2) == 83 && pool.charBuffer.get(fOff + 3) == 116 &&
+          pool.charBuffer.get(fOff + 4) == 114 && pool.charBuffer.get(fOff + 5) == 101 &&
+          pool.charBuffer.get(fOff + 6) == 97 && pool.charBuffer.get(fOff + 7) == 109
+        ) {
+          isInstream = true;
+        }
+      } else if (fLen == 12) {
+        if (
+          pool.charBuffer.get(fOff) == 97 && pool.charBuffer.get(fOff + 1) == 99 &&
+          pool.charBuffer.get(fOff + 2) == 116 && pool.charBuffer.get(fOff + 3) == 117 &&
+          pool.charBuffer.get(fOff + 4) == 97 && pool.charBuffer.get(fOff + 5) == 108 &&
+          pool.charBuffer.get(fOff + 6) == 83 && pool.charBuffer.get(fOff + 7) == 116 &&
+          pool.charBuffer.get(fOff + 8) == 114 && pool.charBuffer.get(fOff + 9) == 101 &&
+          pool.charBuffer.get(fOff + 10) == 97 && pool.charBuffer.get(fOff + 11) == 109
+        ) {
+          isActualstream = true;
+        }
+      }
+
+      if (isInstream && argCount >= 1 && firstArg < this.dae.exprCount) {
+        let argKind = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_KIND);
+        if (argKind == ExprKind.Name) {
+          let vNameId = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_DATA1) as u32;
+          let vIdx = this.dae.lookupVariableByName(vNameId);
+          if (vIdx >= 0 && (vIdx as u32) < this.dae.varCount) {
+            let repl = inStreamExprs.get(vIdx as u32);
+            if (repl >= 0) return repl as u32;
+            return firstArg;
+          }
+        }
+      }
+
+      if (isActualstream && argCount >= 1 && firstArg < this.dae.exprCount) {
+        let argKind = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_KIND);
+        if (argKind == ExprKind.Name) {
+          let vNameId = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_DATA1) as u32;
+          let vIdx = this.dae.lookupVariableByName(vNameId);
+          if (vIdx >= 0 && (vIdx as u32) < this.dae.varCount) {
+            let flowIdx = this.findConnectorFlowVar(vIdx as u32);
+            let inStrExpr: u32 = firstArg;
+            let repl = inStreamExprs.get(vIdx as u32);
+            if (repl >= 0) inStrExpr = repl as u32;
+
+            if (flowIdx >= 0) {
+              let fExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(flowIdx as u32));
+              let cond = this.dae.addBinaryExpr(BinOp.Gt as u16, fExpr, zeroExpr);
+              let selfExpr = this.dae.addExpression(ExprKind.Name, vNameId);
+              return this.dae.addIfElse(cond, inStrExpr, selfExpr);
+            }
+            return inStrExpr;
+          }
+        }
+      }
+
+      let isIsRoot = poolMatchesSimple(pool, funcNameId, "Connections.isRoot") || poolMatchesSimple(pool, funcNameId, "isRoot");
+      let isRooted = poolMatchesSimple(pool, funcNameId, "Connections.rooted") || poolMatchesSimple(pool, funcNameId, "rooted");
+      if ((isIsRoot || isRooted) && argCount >= 1 && firstArg < this.dae.exprCount) {
+        let argKind = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_KIND);
+        let connNameId: u32 = 0;
+        if (argKind == ExprKind.Name) {
+          connNameId = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_DATA1) as u32;
+        } else if (argKind == ExprKind.ArrayCtor) {
+          let ctorCount = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_DATA1) as u32;
+          if (ctorCount > 0) {
+            let firstEl = this.dae.getExprData().get(firstArg * EXPR_STRIDE + EXPR_LEFT) as u32;
+            if (firstEl < this.dae.exprCount && this.dae.getExprKind(firstEl) == ExprKind.Name) {
+              let elNameId = this.dae.getExprData().get(firstEl * EXPR_STRIDE + EXPR_DATA1) as u32;
+              connNameId = stripTrailingSubscriptsId(pool, elNameId);
+            }
+          }
+        }
+        if (connNameId != 0) {
+          let isRoot = this.selectedRoots.has(connNameId);
+          if (!isRoot) {
+            for (let r: u32 = 0; r < this.ocRootCount; r++) {
+              if (this.ocRoots.get(r) == connNameId) {
+                isRoot = true;
+                break;
+              }
+            }
+          }
+          return this.dae.addExpression(ExprKind.BoolLiteral, isRoot ? 1 : 0);
+        }
+      }
+
+      let clonedArgs = new Array<u32>(argCount as i32);
+      let changed = false;
+      for (let a: u32 = 0; a < argCount; a++) {
+        let argId = a == 0 ? firstArg : this.dae.getCallArgExprId(exprId, a);
+        let rw = this.rewriteStreamExpr(argId, inStreamExprs, pool, zeroExpr);
+        clonedArgs[a as i32] = rw;
+        if (rw != argId) changed = true;
+      }
+      if (changed) {
+        let callId = this.dae.addCall(data1 as i32, clonedArgs[0], argCount);
+        for (let a: u32 = 1; a < argCount; a++) {
+          this.dae.addExpression(ExprKind.Tuple, 0, clonedArgs[a as i32], 0);
+        }
+        return callId;
+      }
+      return exprId;
+    }
+
+    if (kind == ExprKind.ArrayCtor) {
+      let count = data1;
+      let firstElem = left;
+      let changed = false;
+      let cloned = new Array<u32>(count as i32);
+      for (let i: u32 = 0; i < count; i++) {
+        let el = i == 0 ? firstElem : this.dae.getExprData().get((exprId + i) * EXPR_STRIDE + EXPR_LEFT) as u32;
+        let rw = this.rewriteStreamExpr(el, inStreamExprs, pool, zeroExpr);
+        cloned[i as i32] = rw;
+        if (rw != el) changed = true;
+      }
+      if (changed) {
+        let ctorId = this.dae.addExpression(ExprKind.ArrayCtor, count, cloned[0], 0xffffffff);
+        for (let i: u32 = 1; i < count; i++) {
+          this.dae.addExpression(ExprKind.Tuple, 0, cloned[i as i32], 0xffffffff);
+        }
+        return ctorId;
+      }
+      return exprId;
+    }
+
+    if (kind == ExprKind.Binary) {
+      let rwLeft = this.rewriteStreamExpr(left, inStreamExprs, pool, zeroExpr);
+      let rwRight = this.rewriteStreamExpr(right, inStreamExprs, pool, zeroExpr);
+      if (rwLeft != left || rwRight != right) {
+        return this.dae.addBinaryExpr(data1 as u16, rwLeft, rwRight);
+      }
+      return exprId;
+    }
+
+    if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+      let rwLeft = this.rewriteStreamExpr(left, inStreamExprs, pool, zeroExpr);
+      if (rwLeft != left) {
+        return this.dae.addExpression(kind, data1, rwLeft, right);
+      }
+      return exprId;
+    }
+
+    if (kind == ExprKind.IfElse) {
+      let rwCond = this.rewriteStreamExpr(data1, inStreamExprs, pool, zeroExpr);
+      let rwThen = this.rewriteStreamExpr(left, inStreamExprs, pool, zeroExpr);
+      let rwElse = this.rewriteStreamExpr(right, inStreamExprs, pool, zeroExpr);
+      if (rwCond != data1 || rwThen != left || rwElse != right) {
+        return this.dae.addIfElse(rwCond, rwThen, rwElse);
+      }
+      return exprId;
+    }
+
+    if (kind == ExprKind.Der || kind == ExprKind.Pre) {
+      let inner = data1 != 0 && data1 != 0xffffffff ? data1 : left;
+      let rwInner = this.rewriteStreamExpr(inner, inStreamExprs, pool, zeroExpr);
+      if (rwInner != inner) {
+        if (kind == ExprKind.Der) {
+          if (rwInner < this.dae.exprCount && this.dae.getExprKind(rwInner) == ExprKind.Name) {
+            let targetVar = this.dae.getExprData().get(rwInner * EXPR_STRIDE + EXPR_DATA1) as u32;
+            return this.dae.addDer(targetVar);
+          }
+          return this.dae.addExpression(ExprKind.Der, rwInner);
+        }
+        return this.dae.addExpression(ExprKind.Pre, rwInner, 0xffffffff, 0xffffffff);
+      }
+      return exprId;
+    }
+
+    return exprId;
+  }
+
+  finalizeConnections(omcCompatibility: boolean = false): u32 {
     let varCount = this.dae.varCount;
     if (varCount == 0) return 0;
+    let pool = this.dae.getStringPool();
 
     let head = createChunkedInt32Array(varCount);
     let next = createChunkedInt32Array(varCount);
     let groupSize = createChunkedUint32Array(varCount);
+    let inStreamExprs = createChunkedInt32Array(varCount);
     for (let i: u32 = 0; i < varCount; i++) {
       head.set(i, -1);
       next.set(i, -1);
       groupSize.set(i, 0);
+      inStreamExprs.set(i, -1);
     }
 
     for (let v: u32 = 0; v < varCount; v++) {
@@ -8128,10 +8945,504 @@ export class ModelicaFlattener {
             curr = next.get(vIdx);
           }
         }
+      } else {
+        // Stream connection set resolution (MLS §15.2)
+        if (size == 1) {
+          let vIdx = head.get(r) as u32;
+          let vExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(vIdx));
+          inStreamExprs.set(vIdx, vExpr as i32);
+        } else if (size == 2) {
+          let v1 = head.get(r) as u32;
+          let v2 = next.get(v1) as u32;
+          let e1 = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(v1));
+          let e2 = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(v2));
+          inStreamExprs.set(v1, e2 as i32);
+          inStreamExprs.set(v2, e1 as i32);
+        } else {
+          let members = new Array<u32>(size as i32);
+          let flows = new Array<i32>(size as i32);
+          let count: u32 = 0;
+          let curr = head.get(r);
+          while (curr >= 0) {
+            let vIdx = curr as u32;
+            members[count] = vIdx;
+            flows[count] = this.findConnectorFlowVar(vIdx);
+            count++;
+            curr = next.get(vIdx);
+          }
+
+          let posMaxId = internStaticString(pool, "$OMC$PositiveMax");
+          let epsExpr = this.dae.addRealLiteral(1e-7);
+
+          for (let i: u32 = 0; i < size; i++) {
+            let allHaveFlow = true;
+            for (let j: u32 = 0; j < size; j++) {
+              if (j != i && flows[j] == -1) {
+                allHaveFlow = false;
+                break;
+              }
+            }
+
+            if (allHaveFlow) {
+              let numExpr: u32 = 0;
+              let denExpr: u32 = 0;
+              let first: boolean = true;
+              let firstPeerStreamExpr: u32 = 0xffffffff;
+              for (let j: u32 = 0; j < size; j++) {
+                if (j == i) continue;
+                let sPeer = members[j];
+                let fPeer = flows[j] as u32;
+
+                let sPeerExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(sPeer));
+                if (firstPeerStreamExpr == 0xffffffff) firstPeerStreamExpr = sPeerExpr;
+                let fPeerExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(fPeer));
+
+                let inflowExpr = this.dae.addExpression(ExprKind.Negate, 0, fPeerExpr);
+                let posMaxExpr = this.dae.addCall(posMaxId as i32, inflowExpr, 2);
+                this.dae.addExpression(ExprKind.Tuple, 0, epsExpr, 0);
+
+                let termExpr = this.dae.addBinaryExpr(BinOp.Mul as u16, posMaxExpr, sPeerExpr);
+
+                if (first) {
+                  numExpr = termExpr;
+                  denExpr = posMaxExpr;
+                  first = false;
+                } else {
+                  numExpr = this.dae.addBinaryExpr(BinOp.Add as u16, numExpr, termExpr);
+                  denExpr = this.dae.addBinaryExpr(BinOp.Add as u16, denExpr, posMaxExpr);
+                }
+              }
+              let mixExpr = this.dae.addBinaryExpr(BinOp.Div as u16, numExpr, denExpr);
+              if (omcCompatibility && firstPeerStreamExpr != 0xffffffff) {
+                let divId = internStaticString(pool, "$OMC$inStreamDiv");
+                let callDiv = this.dae.addCall(divId as i32, mixExpr, 2);
+                this.dae.addExpression(ExprKind.Tuple, 0, firstPeerStreamExpr, 0);
+                mixExpr = callDiv;
+              }
+              inStreamExprs.set(members[i], mixExpr as i32);
+            } else {
+              let sumExpr: u32 = 0;
+              let first: boolean = true;
+              for (let j: u32 = 0; j < size; j++) {
+                if (j == i) continue;
+                let sPeer = members[j];
+                let sPeerExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(sPeer));
+                if (first) {
+                  sumExpr = sPeerExpr;
+                  first = false;
+                } else {
+                  sumExpr = this.dae.addBinaryExpr(BinOp.Add as u16, sumExpr, sPeerExpr);
+                }
+              }
+              let countExpr = this.dae.addRealLiteral((size - 1) as f64);
+              let avgExpr = this.dae.addBinaryExpr(BinOp.Div as u16, sumExpr, countExpr);
+              inStreamExprs.set(members[i], avgExpr as i32);
+            }
+          }
+        }
+      }
+    }
+
+    // Rewrite inStream and actualStream operator calls across all equations
+    let totalEqs = this.dae.eqCount;
+    for (let e: u32 = 0; e < totalEqs; e++) {
+      let eqOffset = e * EQ_STRIDE;
+      let lhs = this.dae.getEqData().get(eqOffset + EQ_LHS) as u32;
+      let rhs = this.dae.getEqData().get(eqOffset + EQ_RHS) as u32;
+      if (lhs < this.dae.exprCount) {
+        let rwLhs = this.rewriteStreamExpr(lhs, inStreamExprs, pool, zeroExpr);
+        if (rwLhs != lhs) {
+          this.dae.getEqData().set(eqOffset + EQ_LHS, rwLhs as i32);
+        }
+      }
+      if (rhs < this.dae.exprCount) {
+        let rwRhs = this.rewriteStreamExpr(rhs, inStreamExprs, pool, zeroExpr);
+        if (rwRhs != rhs) {
+          this.dae.getEqData().set(eqOffset + EQ_RHS, rwRhs as i32);
+        }
+      }
+    }
+
+    // Rewrite variable bindings as well
+    for (let v: u32 = 0; v < varCount; v++) {
+      if (this.dae.isVarRemoved(v)) continue;
+      let b = this.dae.getVarAttrExpr(v, VarAttrKind.Binding as u32);
+      if (b < this.dae.exprCount && b != 0xffffffff && b != 0) {
+        let rwB = this.rewriteStreamExpr(b, inStreamExprs, pool, zeroExpr);
+        if (rwB != b) {
+          this.dae.setVarAttrExpr(v, VarAttrKind.Binding as u32, rwB);
+        }
       }
     }
 
     return generatedEqs;
+  }
+
+  isConnectionsOp(fnNameId: u32): boolean {
+    let pool = this.dae.getStringPool();
+    return (
+      poolMatchesSimple(pool, fnNameId, "Connections.branch") ||
+      poolMatchesSimple(pool, fnNameId, "branch") ||
+      poolMatchesSimple(pool, fnNameId, "Connections.root") ||
+      poolMatchesSimple(pool, fnNameId, "Connections.uniqueRoot") ||
+      poolMatchesSimple(pool, fnNameId, "root") ||
+      poolMatchesSimple(pool, fnNameId, "uniqueRoot") ||
+      poolMatchesSimple(pool, fnNameId, "Connections.potentialRoot") ||
+      poolMatchesSimple(pool, fnNameId, "potentialRoot") ||
+      poolMatchesSimple(pool, fnNameId, "Connections.isRoot") ||
+      poolMatchesSimple(pool, fnNameId, "isRoot")
+    );
+  }
+
+  resolveOverconstrainedArgName(exprId: u32): u32 {
+    if (exprId >= this.dae.exprCount) return 0;
+    let pool = this.dae.getStringPool();
+    let k = this.dae.getExprKind(exprId);
+    if (k == ExprKind.Name) {
+      return stripTrailingSubscriptsId(pool, this.dae.getExprData1(exprId));
+    }
+    if (k == ExprKind.ArrayCtor) {
+      let count = this.dae.getExprData1(exprId);
+      if (count > 0) {
+        let firstElem = this.dae.getExprData().get(exprId * EXPR_STRIDE + EXPR_LEFT) as u32;
+        if (firstElem < this.dae.exprCount && this.dae.getExprKind(firstElem) == ExprKind.Name) {
+          return stripTrailingSubscriptsId(pool, this.dae.getExprData1(firstElem));
+        }
+      }
+    }
+    return 0;
+  }
+
+  handleConnectionsOp(nodeLoc: u64, fnNameId: u32): void {
+    let callArgsLoc = locFindChild(nodeLoc, SyntaxType.FUNCTION_CALL_ARGS);
+    if (locIsNull(callArgsLoc)) return;
+    let pool = this.dae.getStringPool();
+
+    let argStart = this.exprVisitor.tempBuffer.length;
+    this.exprVisitor.collectFunctionArguments(callArgsLoc, this.exprVisitor.tempBuffer);
+    let argCount = this.exprVisitor.tempBuffer.length - argStart;
+    if (argCount == 0) return;
+
+    let isBranch = poolMatchesSimple(pool, fnNameId, "Connections.branch") || poolMatchesSimple(pool, fnNameId, "branch");
+    let isRoot = poolMatchesSimple(pool, fnNameId, "Connections.root") || poolMatchesSimple(pool, fnNameId, "Connections.uniqueRoot") ||
+                 poolMatchesSimple(pool, fnNameId, "root") || poolMatchesSimple(pool, fnNameId, "uniqueRoot");
+    let isPotentialRoot = poolMatchesSimple(pool, fnNameId, "Connections.potentialRoot") || poolMatchesSimple(pool, fnNameId, "potentialRoot");
+    let isIsRoot = poolMatchesSimple(pool, fnNameId, "Connections.isRoot") || poolMatchesSimple(pool, fnNameId, "isRoot");
+
+    if (isBranch && argCount >= 2) {
+      let aNameId = this.resolveOverconstrainedArgName(this.exprVisitor.tempBuffer.get(argStart));
+      let bNameId = this.resolveOverconstrainedArgName(this.exprVisitor.tempBuffer.get(argStart + 1));
+      if (aNameId != 0 && bNameId != 0) {
+        this.ocBranchA.push(aNameId);
+        this.ocBranchB.push(bNameId);
+        this.ocBranchCount++;
+      }
+    } else if (isRoot && argCount >= 1) {
+      let aNameId = this.resolveOverconstrainedArgName(this.exprVisitor.tempBuffer.get(argStart));
+      if (aNameId != 0) {
+        this.ocRoots.push(aNameId);
+        this.ocRootCount++;
+      }
+    } else if (isPotentialRoot && argCount >= 1) {
+      let aNameId = this.resolveOverconstrainedArgName(this.exprVisitor.tempBuffer.get(argStart));
+      let prio: i32 = 0;
+      if (argCount >= 2) {
+        let pExpr = this.exprVisitor.tempBuffer.get(argStart + 1);
+        let pk = this.dae.getExprKind(pExpr);
+        if (pk == ExprKind.IntLiteral) {
+          prio = this.dae.getExprData1(pExpr) as i32;
+        } else if (pk == ExprKind.RealLiteral) {
+          prio = this.dae.getExprRealValue(pExpr) as i32;
+        }
+      }
+      if (aNameId != 0) {
+        this.ocPotentialRoots.push(aNameId);
+        this.ocPotentialRootPrios.push(prio);
+        this.ocPotentialRootCount++;
+      }
+    } else if (isIsRoot && argCount >= 1) {
+      let aNameId = this.resolveOverconstrainedArgName(this.exprVisitor.tempBuffer.get(argStart));
+      if (aNameId != 0) {
+        this.ocQueriedRoots.push(aNameId);
+        this.ocQueriedRootCount++;
+      }
+    }
+
+    this.exprVisitor.tempBuffer.length = argStart;
+  }
+
+  matchOcEndpoint(pool: ArenaStringPool, nameId: u32, targetId: u32): boolean {
+    if (nameId == targetId) return true;
+    if (pool.hasPrefix(nameId, targetId)) {
+      let tLen = pool.getLength(targetId);
+      let nOff = pool.getOffset(nameId);
+      let nextChar = pool.charBuffer.get(nOff + tLen);
+      if (nextChar == 91 || nextChar == 46) return true;
+    }
+    return false;
+  }
+
+  isBrokenOcPair(nameAId: u32, nameBId: u32): boolean {
+    if (this.brokenOcConnCount == 0) return false;
+    let pool = this.dae.getStringPool();
+    for (let i: u32 = 0; i < this.brokenOcConnCount; i++) {
+      let uId = this.brokenOcConnU.get(i);
+      let vId = this.brokenOcConnV.get(i);
+      let matchAB = this.matchOcEndpoint(pool, nameAId, uId) && this.matchOcEndpoint(pool, nameBId, vId);
+      let matchBA = this.matchOcEndpoint(pool, nameAId, vId) && this.matchOcEndpoint(pool, nameBId, uId);
+      if (matchAB || matchBA) return true;
+    }
+    return false;
+  }
+
+  resolveOverconstrainedGraph(): void {
+    if (this.ocBranchCount == 0 && this.ocRootCount == 0 && this.ocPotentialRootCount == 0) {
+      return;
+    }
+
+    let pool = this.dae.getStringPool();
+    let initialEqCount = this.dae.eqCount;
+
+    let nodeMap = changetype<UnmanagedMap64>(createMap64(64));
+    let nodeList = new Array<u32>();
+
+    for (let i: u32 = 0; i < this.ocRoots.length && i < this.ocRootCount; i++) {
+      let n = this.ocRoots.get(i);
+      if (!nodeMap.has(n)) {
+        nodeMap.set(n, nodeList.length);
+        nodeList.push(n);
+      }
+    }
+    for (let i: u32 = 0; i < this.ocPotentialRoots.length && i < this.ocPotentialRootCount; i++) {
+      let n = this.ocPotentialRoots.get(i);
+      if (!nodeMap.has(n)) {
+        nodeMap.set(n, nodeList.length);
+        nodeList.push(n);
+      }
+    }
+    for (let i: u32 = 0; i < this.ocBranchCount; i++) {
+      let na = this.ocBranchA.get(i);
+      let nb = this.ocBranchB.get(i);
+      if (!nodeMap.has(na)) {
+        nodeMap.set(na, nodeList.length);
+        nodeList.push(na);
+      }
+      if (!nodeMap.has(nb)) {
+        nodeMap.set(nb, nodeList.length);
+        nodeList.push(nb);
+      }
+    }
+    for (let i: u32 = 0; i < this.ocQueriedRoots.length && i < this.ocQueriedRootCount; i++) {
+      let n = this.ocQueriedRoots.get(i);
+      if (!nodeMap.has(n)) {
+        nodeMap.set(n, nodeList.length);
+        nodeList.push(n);
+      }
+    }
+
+    if (nodeList.length == 0) return;
+
+    let suffixes = new Array<u32>();
+    let hasEmptySuffix = false;
+
+    for (let e: u32 = 0; e < initialEqCount; e++) {
+      let eq = EqAccessor.at(this.dae.getEqData(), e);
+      if (eq.isConnect) {
+        let lhsExpr = eq.lhs;
+        let rhsExpr = eq.rhs;
+        if (lhsExpr < this.dae.exprCount && rhsExpr < this.dae.exprCount) {
+          let lhs = ExprAccessor.at(this.dae.getExprData(), lhsExpr);
+          let rhs = ExprAccessor.at(this.dae.getExprData(), rhsExpr);
+          if (lhs.isName && rhs.isName) {
+            let fromNameId = lhs.varId;
+            let toNameId = rhs.varId;
+            for (let i = 0; i < nodeList.length; i++) {
+              let n = nodeList[i];
+              if (n == fromNameId || n == toNameId) {
+                hasEmptySuffix = true;
+              } else {
+                if (pool.hasPrefix(n, fromNameId)) {
+                  let suff = pool.getSuffixAfterPrefix(n, fromNameId);
+                  if (suff != 0) {
+                    let found = false;
+                    for (let s = 0; s < suffixes.length; s++) {
+                      if (suffixes[s] == suff) { found = true; break; }
+                    }
+                    if (!found) suffixes.push(suff);
+                  }
+                }
+                if (pool.hasPrefix(n, toNameId)) {
+                  let suff = pool.getSuffixAfterPrefix(n, toNameId);
+                  if (suff != 0) {
+                    let found = false;
+                    for (let s = 0; s < suffixes.length; s++) {
+                      if (suffixes[s] == suff) { found = true; break; }
+                    }
+                    if (!found) suffixes.push(suff);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (suffixes.length == 0 && !hasEmptySuffix) {
+      hasEmptySuffix = true;
+    }
+
+    let uf = new Array<i32>(nodeList.length);
+    for (let i = 0; i < nodeList.length; i++) uf[i] = i;
+
+    // Union all branch edges first
+    for (let i: u32 = 0; i < this.ocBranchCount; i++) {
+      let na = this.ocBranchA.get(i);
+      let nb = this.ocBranchB.get(i);
+      let idxA = nodeMap.get(na) as i32;
+      let idxB = nodeMap.get(nb) as i32;
+      let ra = idxA;
+      while (uf[ra] != ra) ra = uf[ra];
+      let rb = idxB;
+      while (uf[rb] != rb) rb = uf[rb];
+      if (ra != rb) {
+        uf[rb] = ra;
+      }
+    }
+
+    // Process connect equations in reverse order
+    for (let e: i32 = (initialEqCount as i32) - 1; e >= 0; e--) {
+      let eq = EqAccessor.at(this.dae.getEqData(), e as u32);
+      if (eq.isConnect) {
+        let lhsExpr = eq.lhs;
+        let rhsExpr = eq.rhs;
+        if (lhsExpr < this.dae.exprCount && rhsExpr < this.dae.exprCount) {
+          let lhs = ExprAccessor.at(this.dae.getExprData(), lhsExpr);
+          let rhs = ExprAccessor.at(this.dae.getExprData(), rhsExpr);
+          if (lhs.isName && rhs.isName) {
+            let fromNameId = lhs.varId;
+            let toNameId = rhs.varId;
+
+            let maxSfx = suffixes.length + (hasEmptySuffix ? 1 : 0);
+            for (let s = 0; s < maxSfx; s++) {
+              let sfx = (s < suffixes.length) ? suffixes[s] : 0;
+              let u = sfx != 0 ? pool.concatIds(fromNameId, sfx) : fromNameId;
+              let v = sfx != 0 ? pool.concatIds(toNameId, sfx) : toNameId;
+
+              let hasU = nodeMap.has(u) || (this.componentTypesPtr != 0 && this.componentTypes.has(u)) || this.dae.lookupVariableByName(u) >= 0;
+              let hasV = nodeMap.has(v) || (this.componentTypesPtr != 0 && this.componentTypes.has(v)) || this.dae.lookupVariableByName(v) >= 0;
+              if (!hasU || !hasV) continue;
+
+              if (!nodeMap.has(u)) {
+                nodeMap.set(u, nodeList.length);
+                nodeList.push(u);
+                uf.push((nodeList.length - 1) as i32);
+              }
+              if (!nodeMap.has(v)) {
+                nodeMap.set(v, nodeList.length);
+                nodeList.push(v);
+                uf.push((nodeList.length - 1) as i32);
+              }
+
+              let idxU = nodeMap.get(u) as i32;
+              let idxV = nodeMap.get(v) as i32;
+              let ru = idxU;
+              while (uf[ru] != ru) ru = uf[ru];
+              let rv = idxV;
+              while (uf[rv] != rv) rv = uf[rv];
+
+              if (ru == rv) {
+                if (this.ocBranchCount > 0) {
+                  this.brokenOcConnU.push(u);
+                  this.brokenOcConnV.push(v);
+                  this.brokenOcConnCount++;
+                }
+              } else {
+                uf[rv] = ru;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Select roots per connected component
+    for (let r = 0; r < nodeList.length; r++) {
+      if (uf[r] != r) continue;
+      let explicitRoot: u32 = 0;
+      let bestPotentialRoot: u32 = 0;
+      let bestPrio: i32 = 0x7fffffff;
+      let firstNode: u32 = 0;
+
+      for (let i = 0; i < nodeList.length; i++) {
+        let rootOfI = i;
+        while (uf[rootOfI] != rootOfI) rootOfI = uf[rootOfI];
+        if (rootOfI == r) {
+          let nodeNameId = nodeList[i];
+          if (firstNode == 0) firstNode = nodeNameId;
+          for (let er: u32 = 0; er < this.ocRootCount; er++) {
+            if (this.ocRoots.get(er) == nodeNameId) {
+              explicitRoot = nodeNameId;
+              this.selectedRoots.add(nodeNameId);
+              break;
+            }
+          }
+          for (let pr: u32 = 0; pr < this.ocPotentialRootCount; pr++) {
+            if (this.ocPotentialRoots.get(pr) == nodeNameId) {
+              let p = this.ocPotentialRootPrios.get(pr);
+              if (p < bestPrio) {
+                bestPrio = p;
+                bestPotentialRoot = nodeNameId;
+              }
+            }
+          }
+        }
+      }
+
+      if (explicitRoot == 0) {
+        if (bestPotentialRoot != 0) {
+          this.selectedRoots.add(bestPotentialRoot);
+        } else if (firstNode != 0) {
+          this.selectedRoots.add(firstNode);
+        }
+      }
+    }
+  }
+
+  getEqualityConstraintResidueLen(typeNameId: u32): u32 {
+    let pool = this.dae.getStringPool();
+    let classLoc = this.findClassLoc(this.currentClassLoc, typeNameId, pool);
+    if (locIsNull(classLoc)) return 1;
+
+    let eqConstId = internStaticString(pool, "equalityConstraint");
+    let fnLoc = findClassDefinitionLoc(classLoc, eqConstId, pool);
+    if (locIsNull(fnLoc)) return 1;
+
+    let ch = locFirstChild(fnLoc);
+    while (!locIsNull(ch)) {
+      if (locType(ch) == SyntaxType.COMPONENT_CLAUSE || locType(ch) == SyntaxType.ELEMENT) {
+        let isOutput = !locIsNull(locFindChild(ch, SyntaxType.TOKEN_OUTPUT)) ||
+                       !locIsNull(locFindMatchingDescendant(ch, "output"));
+        if (isOutput) {
+          let compDecl = locFindDescendant(ch, SyntaxType.COMPONENT_DECLARATION);
+          if (!locIsNull(compDecl)) {
+            let arrSub = locFindDescendant(compDecl, SyntaxType.ARRAY_SUBSCRIPTS);
+            if (!locIsNull(arrSub)) {
+              let subCh = locFindDescendant(arrSub, SyntaxType.SUBSCRIPT);
+              if (locIsNull(subCh)) subCh = arrSub;
+              let numLoc = locFindDescendant(subCh, SyntaxType.UNSIGNED_INTEGER);
+              if (locIsNull(numLoc)) numLoc = locFindDescendant(subCh, SyntaxType.TOKEN_UNSIGNED_INT_ALT);
+              if (locIsNull(numLoc)) numLoc = locFindDescendant(subCh, SyntaxType.UNSIGNED_NUMBER);
+              if (!locIsNull(numLoc)) {
+                return locParseInt(numLoc) as u32;
+              }
+            }
+            return 1;
+          }
+        }
+      }
+      ch = locNextSibling(ch);
+    }
+    return 1;
   }
 
   /**
@@ -8141,6 +9452,8 @@ export class ModelicaFlattener {
     let pool = this.dae.getStringPool();
     let initialEqCount = this.dae.eqCount;
     let varCount = this.dae.varCount;
+
+    this.resolveOverconstrainedGraph();
 
     for (let i: u32 = 0; i < initialEqCount; i++) {
       let eq = EqAccessor.at(this.dae.getEqData(), i);
@@ -8158,11 +9471,13 @@ export class ModelicaFlattener {
             let toExact = this.dae.lookupVariableByName(toNameId);
             if (fromExact >= 0 && toExact >= 0) {
               if (!this.dae.isVarRemoved(fromExact as u32) && !this.dae.isVarRemoved(toExact as u32)) {
-                this.ensureUfCapacity(fromExact as u32);
-                this.ensureUfCapacity(toExact as u32);
-                this.unionSets(fromExact as u32, toExact as u32);
-                this.disjointSet.incrementCardinality(fromExact as u32);
-                this.disjointSet.incrementCardinality(toExact as u32);
+                if (!this.isBrokenOcPair(fromNameId, toNameId)) {
+                  this.ensureUfCapacity(fromExact as u32);
+                  this.ensureUfCapacity(toExact as u32);
+                  this.unionSets(fromExact as u32, toExact as u32);
+                  this.disjointSet.incrementCardinality(fromExact as u32);
+                  this.disjointSet.incrementCardinality(toExact as u32);
+                }
               }
             } else {
               for (let v: u32 = 0; v < varCount; v++) {
@@ -8174,11 +9489,13 @@ export class ModelicaFlattener {
                     let targetNameId = pool.concatIds(toNameId, suffId);
                     let toVar = this.dae.lookupVariableByName(targetNameId);
                     if (toVar >= 0 && !this.dae.isVarRemoved(toVar as u32)) {
-                      this.ensureUfCapacity(v);
-                      this.ensureUfCapacity(toVar as u32);
-                      this.unionSets(v, toVar as u32);
-                      this.disjointSet.incrementCardinality(v);
-                      this.disjointSet.incrementCardinality(toVar as u32);
+                      if (!this.isBrokenOcPair(vNameId, targetNameId)) {
+                        this.ensureUfCapacity(v);
+                        this.ensureUfCapacity(toVar as u32);
+                        this.unionSets(v, toVar as u32);
+                        this.disjointSet.incrementCardinality(v);
+                        this.disjointSet.incrementCardinality(toVar as u32);
+                      }
                     }
                   }
                 }
@@ -8189,7 +9506,43 @@ export class ModelicaFlattener {
       }
     }
 
-    return this.finalizeConnections();
+    // Emit equalityConstraint(u, v) = {0.0, ...} for broken overconstrained connection loops
+    if (this.brokenOcConnCount > 0) {
+      let dotEqConstraintId = internStaticString(pool, ".equalityConstraint");
+      let plainEqConstraintId = internStaticString(pool, "equalityConstraint");
+
+      for (let i: u32 = 0; i < this.brokenOcConnCount; i++) {
+        let uNameId = this.brokenOcConnU.get(i);
+        let vNameId = this.brokenOcConnV.get(i);
+
+        let typeNameId: u32 = 0;
+        if (this.componentTypesPtr != 0) {
+          if (this.componentTypes.has(uNameId)) {
+            typeNameId = this.componentTypes.get(uNameId) as u32;
+          } else if (this.componentTypes.has(vNameId)) {
+            typeNameId = this.componentTypes.get(vNameId) as u32;
+          }
+        }
+
+        let residueLen = typeNameId != 0 ? this.getEqualityConstraintResidueLen(typeNameId) : 1;
+        if (residueLen > 0) {
+          let fnNameId = typeNameId != 0 ? pool.concatIds(typeNameId, dotEqConstraintId) : plainEqConstraintId;
+          let uExpr = this.dae.addExpression(ExprKind.Name, uNameId);
+          let vExpr = this.dae.addExpression(ExprKind.Name, vNameId);
+          let callExpr = this.dae.addCall(fnNameId as i32, uExpr, 2);
+          this.dae.addExpression(ExprKind.Tuple, 0, vExpr, 0);
+
+          let zeroExpr = this.dae.addRealLiteral(0.0);
+          let rhsCtor = this.dae.addExpression(ExprKind.ArrayCtor, residueLen, zeroExpr, 0xffffffff);
+          for (let z: u32 = 1; z < residueLen; z++) {
+            this.dae.addExpression(ExprKind.Tuple, 0, zeroExpr, 0xffffffff);
+          }
+          this.dae.addEquation(EqKind.Simple, callExpr, rhsCtor, FLAG_EQ_OVERCONSTRAINED);
+        }
+      }
+    }
+
+    return this.finalizeConnections(omcCompatibility);
   }
 
   /**
@@ -8244,6 +9597,14 @@ export class ModelicaFlattener {
         !locIsNull(locFindMatchingDescendant(nodeLoc, "transition"))
       ) {
         this.setErrorAt(WasmBailReason.WhenOrIfEquation, nodeLoc);
+        return 0;
+      }
+      let compRef = locFindChild(nodeLoc, SyntaxType.COMPONENT_REFERENCE);
+      if (locIsNull(compRef)) compRef = locFirstNonEmptyChild(nodeLoc);
+      let pool = this.dae.getStringPool();
+      let fnNameId = locIntern(pool, compRef);
+      if (this.isConnectionsOp(fnNameId)) {
+        this.handleConnectionsOp(nodeLoc, fnNameId);
         return 0;
       }
       let callExpr = this.exprVisitor.visitLoc(nodeLoc);
@@ -8629,6 +9990,9 @@ export class ModelicaFlattener {
         }
       }
       if (this.dae.lookupVariableByName(lNameId) == -1 && !pool.isTime(lNameId) && !this.isInsideExpandableBus(lNameId, pool)) {
+        if (this.isRecordPrefix(lNameId)) {
+          return this.emitRecordExpandedEquation(lNameId, rhs, isInitial);
+        }
         this.setError(WasmBailReason.EquationLhsUnresolved);
         return 0;
       }
@@ -8642,7 +10006,7 @@ export class ModelicaFlattener {
           rExpr = ExprAccessor.at(this.dae.getExprData(), rhs);
         }
       }
-      if (this.dae.lookupVariableByName(rNameId) == -1 && !pool.isTime(rNameId) && !this.isInsideExpandableBus(rNameId, pool)) {
+      if (this.dae.lookupVariableByName(rNameId) == -1 && !pool.isTime(rNameId) && !this.isInsideExpandableBus(rNameId, pool) && !this.isRecordPrefix(rNameId)) {
         this.setError(WasmBailReason.EquationRhsUnresolved);
         return 0;
       }
@@ -8698,9 +10062,6 @@ export class ModelicaFlattener {
         let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
         let vVar = varAcc.variability;
         if (vVar == Variability.Constant || vVar == Variability.Parameter) {
-          if (this.isOmcCompatibility && vVar == Variability.Parameter) {
-            varAcc.setFlag(FLAG_VAR_FINAL);
-          }
           let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
           if (bExpr != 0 && bExpr != 0xffffffff && bExpr != exprId) {
             if (this.evalConstScalar(bExpr, depth + 1)) return true;
@@ -8765,9 +10126,6 @@ export class ModelicaFlattener {
         let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
         let vVar = varAcc.variability;
         if (vVar == Variability.Constant || vVar == Variability.Parameter) {
-          if (this.isOmcCompatibility && vVar == Variability.Parameter) {
-            varAcc.setFlag(FLAG_VAR_FINAL);
-          }
           let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
           if (bExpr != 0 && bExpr != 0xffffffff && bExpr != exprId) {
             let res = this.evalCondExpr(bExpr, depth + 1);
@@ -8907,6 +10265,14 @@ export class ModelicaFlattener {
       return true;
     }
     if (t == SyntaxType.FUNCTION_CALL) {
+      let compRef = locFindChild(eqLoc, SyntaxType.COMPONENT_REFERENCE);
+      if (locIsNull(compRef)) compRef = locFirstNonEmptyChild(eqLoc);
+      let pool = this.dae.getStringPool();
+      let fnNameId = locIntern(pool, compRef);
+      if (this.isConnectionsOp(fnNameId)) {
+        this.handleConnectionsOp(eqLoc, fnNameId);
+        return true;
+      }
       let callExpr = this.exprVisitor.visitLoc(eqLoc);
       if (callExpr == 0xffffffff) {
         this.setErrorAt(WasmBailReason.SimpleEquationExpr, eqLoc);
@@ -9385,37 +10751,89 @@ export class ModelicaFlattener {
   }
 
 
-  hasLateArrayOrExtendsDependency(parentLoc: u64, maxDepth: i32 = 8): boolean {
-    if (locIsNull(parentLoc) || maxDepth <= 0) return false;
-    let seenNonParam = false;
-    let seenNonParamNeedsParam = false;
-    let ch = locFirstChild(parentLoc);
+  hasTrailingExtendsSeenComp: boolean = false;
+  lateDepSeenNonParam: boolean = false;
+  lateDepSeenNonParamNeedsParam: boolean = false;
+
+  checkTrailingExtends(loc: u64, maxDepth: i32 = 12): boolean {
+    if (locIsNull(loc) || maxDepth <= 0) return false;
+    let ch = locFirstChild(loc);
     while (!locIsNull(ch)) {
       let t = locType(ch);
       if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
-        let isParam = this.isComponentClauseParamOrConst(ch);
-        if (!isParam) {
-          seenNonParam = true;
-          if (!locIsNull(locFindDescendant(ch, SyntaxType.ARRAY_SUBSCRIPTS)) ||
-              !locIsNull(locFindDescendant(ch, SyntaxType.CONDITION_ATTRIBUTE))) {
-            seenNonParamNeedsParam = true;
-          }
-        } else if (seenNonParamNeedsParam) {
-          return true;
-        }
+        this.hasTrailingExtendsSeenComp = true;
       } else if (t == SyntaxType.EXTENDS_CLAUSE) {
-        if (seenNonParam) return true;
+        if (this.hasTrailingExtendsSeenComp) return true;
       } else if (t != SyntaxType.CLASS_DEFINITION && t != SyntaxType.EQUATION_SECTION && t != SyntaxType.ALGORITHM_SECTION) {
-        if (this.hasLateArrayOrExtendsDependency(ch, maxDepth - 1)) return true;
+        if (this.checkTrailingExtends(ch, maxDepth - 1)) return true;
       }
       ch = locNextSibling(ch);
     }
     return false;
   }
 
+  checkLateArrayOrExtendsDependency(loc: u64, maxDepth: i32 = 12): boolean {
+    if (locIsNull(loc) || maxDepth <= 0) return false;
+    let ch = locFirstChild(loc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+        let isParam = this.isComponentClauseParamOrConst(ch);
+        if (!isParam) {
+          this.lateDepSeenNonParam = true;
+          if (!locIsNull(locFindDescendant(ch, SyntaxType.ARRAY_SUBSCRIPTS)) ||
+              !locIsNull(locFindDescendant(ch, SyntaxType.CONDITION_ATTRIBUTE))) {
+            this.lateDepSeenNonParamNeedsParam = true;
+          }
+        } else if (this.lateDepSeenNonParamNeedsParam) {
+          return true;
+        }
+      } else if (t == SyntaxType.EXTENDS_CLAUSE) {
+        if (this.lateDepSeenNonParam) return true;
+      } else if (t != SyntaxType.CLASS_DEFINITION && t != SyntaxType.EQUATION_SECTION && t != SyntaxType.ALGORITHM_SECTION) {
+        if (this.checkLateArrayOrExtendsDependency(ch, maxDepth - 1)) return true;
+      }
+      ch = locNextSibling(ch);
+    }
+    return false;
+  }
+
+  hasLateArrayOrExtendsDependency(parentLoc: u64): boolean {
+    if (locIsNull(parentLoc)) return false;
+    let prev1 = this.lateDepSeenNonParam;
+    let prev2 = this.lateDepSeenNonParamNeedsParam;
+    this.lateDepSeenNonParam = false;
+    this.lateDepSeenNonParamNeedsParam = false;
+    let res = this.checkLateArrayOrExtendsDependency(parentLoc);
+    this.lateDepSeenNonParam = prev1;
+    this.lateDepSeenNonParamNeedsParam = prev2;
+    return res;
+  }
+
+  hasTrailingExtends(parentLoc: u64): boolean {
+    if (locIsNull(parentLoc)) return false;
+    let prev = this.hasTrailingExtendsSeenComp;
+    this.hasTrailingExtendsSeenComp = false;
+    let res = this.checkTrailingExtends(parentLoc);
+    this.hasTrailingExtendsSeenComp = prev;
+    return res;
+  }
+
   instantiateCompositionElements(parentLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, isBaseProtected: boolean = false): u32 {
     let count: u32 = 0;
     this.preScanInnerDeclarations(parentLoc, prefixPathId, pool);
+    if (this.hasTrailingExtends(parentLoc)) {
+      count += this.instantiateCompositionElementsPass(parentLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, isBaseProtected, 3);
+      if (this.hasError) return 0;
+      if (this.hasLateArrayOrExtendsDependency(parentLoc)) {
+        count += this.instantiateCompositionElementsPass(parentLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, isBaseProtected, 1);
+        if (this.hasError) return 0;
+        count += this.instantiateCompositionElementsPass(parentLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, isBaseProtected, 2);
+      } else {
+        count += this.instantiateCompositionElementsPass(parentLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, isBaseProtected, 4);
+      }
+      return count;
+    }
     if (!this.hasLateArrayOrExtendsDependency(parentLoc)) {
       return this.instantiateCompositionElementsPass(parentLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, isBaseProtected, 0);
     }
@@ -9462,6 +10880,7 @@ export class ModelicaFlattener {
     }
 
     if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+      if (pass == 3) return 0;
       let isParam = this.isComponentClauseParamOrConst(elementLoc);
       if (pass == 1 && !isParam) return 0;
       if (pass == 2 && isParam) return 0;
@@ -9469,7 +10888,7 @@ export class ModelicaFlattener {
     }
 
     if (t == SyntaxType.EXTENDS_CLAUSE) {
-      if (pass == 2) return 0; // extends clauses instantiated in pass 1
+      if (pass == 2 || pass == 4) return 0; // extends clauses instantiated in pass 1 or pass 3
       return this.instantiateExtendsClause(elementLoc, prefixPathId, pool, isTopLevelInterface, parentCausality, isSectionProtected);
     }
 
@@ -9524,6 +10943,844 @@ export class ModelicaFlattener {
     return false;
   }
 
+  isComponentClauseConstant(clauseLoc: u64): boolean {
+    let typePrefixLoc = locFindDescendant(clauseLoc, SyntaxType.TYPE_PREFIX);
+    if (locIsNull(typePrefixLoc)) return false;
+    let ch = locFirstChild(typePrefixLoc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.TOKEN_CONSTANT || locMatches(ch, "constant")) {
+        return true;
+      }
+      ch = locNextSibling(ch);
+    }
+    return false;
+  }
+
+  collectRecordFieldsUnder(parentLoc: u64, outNames: ChunkedUint32Array, pool: ArenaStringPool): void {
+    let ch = locFirstChild(parentLoc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.COMPONENT_DECLARATION || t == SyntaxType.COMPONENT_DECLARATION1) {
+        let declLoc = locFindChild(ch, SyntaxType.DECLARATION);
+        if (locIsNull(declLoc)) declLoc = locFindDescendant(ch, SyntaxType.DECLARATION);
+        if (!locIsNull(declLoc)) {
+          let idLoc = locFirstNonEmptyChild(declLoc);
+          let innerId = locFindDescendant(idLoc, SyntaxType.IDENTIFIER);
+          if (!locIsNull(innerId)) idLoc = innerId;
+          let fieldNameId = locIntern(pool, idLoc);
+          if (fieldNameId != 0) {
+            outNames.push(fieldNameId);
+          }
+        }
+      } else if (t == SyntaxType.DECLARATION) {
+        let idLoc = locFirstNonEmptyChild(ch);
+        let innerId = locFindDescendant(idLoc, SyntaxType.IDENTIFIER);
+        if (!locIsNull(innerId)) idLoc = innerId;
+        let fieldNameId = locIntern(pool, idLoc);
+        if (fieldNameId != 0) {
+          outNames.push(fieldNameId);
+        }
+      } else if (
+        t != SyntaxType.TYPE_SPECIFIER &&
+        t != SyntaxType.TYPE_PREFIX &&
+        t != SyntaxType.CONDITION_ATTRIBUTE &&
+        t != SyntaxType.DESCRIPTION
+      ) {
+        this.collectRecordFieldsUnder(ch, outNames, pool);
+      }
+      ch = locNextSibling(ch);
+    }
+  }
+
+  collectRecordElements(parentLoc: u64, outNames: ChunkedUint32Array, pool: ArenaStringPool, isProtected: boolean = false, maxDepth: i32 = 30): void {
+    if (locIsNull(parentLoc) || maxDepth <= 0) return;
+    let ch = locFirstChild(parentLoc);
+    let curProtected = isProtected;
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.TOKEN_PROTECTED || locMatches(ch, "protected")) {
+        curProtected = true;
+      } else if (t == SyntaxType.TOKEN_PUBLIC || locMatches(ch, "public")) {
+        curProtected = false;
+      } else if (!curProtected) {
+        if (t == SyntaxType.EXTENDS_CLAUSE) {
+          let baseNameNode = locFindChild(ch, SyntaxType.TYPE_SPECIFIER);
+          if (locIsNull(baseNameNode)) baseNameNode = locFindChild(ch, SyntaxType.NAME);
+          if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.TYPE_SPECIFIER);
+          if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.NAME);
+          if (!locIsNull(baseNameNode)) {
+            let baseNameId = locIntern(pool, baseNameNode);
+            let baseClassLoc = this.findClassLoc(parentLoc, baseNameId, pool);
+            if (locIsNull(baseClassLoc)) {
+              baseClassLoc = this.findClassLoc(this.rootProgramLoc, baseNameId, pool);
+            }
+            if (!locIsNull(baseClassLoc)) {
+              this.collectRecordInputFields(baseClassLoc, outNames, pool);
+            }
+          }
+        } else if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+          if (!this.isComponentClauseConstant(ch)) {
+            this.collectRecordFieldsUnder(ch, outNames, pool);
+          }
+        } else if (t != SyntaxType.CLASS_DEFINITION && t != SyntaxType.EQUATION_SECTION && t != SyntaxType.ALGORITHM_SECTION) {
+          this.collectRecordElements(ch, outNames, pool, curProtected, maxDepth - 1);
+        }
+      }
+      ch = locNextSibling(ch);
+    }
+  }
+
+  resolveRecordClassLoc(classLoc: u64, pool: ArenaStringPool, maxDepth: i32 = 10): u64 {
+    if (locIsNull(classLoc) || maxDepth <= 0) return 0;
+    let compLoc = findCompositionLoc(classLoc);
+    if (!locIsNull(compLoc)) return classLoc;
+    let shortSpec = this.findShortClassSpecifier(classLoc);
+    if (!locIsNull(shortSpec)) {
+      let baseTypeSpec = locFindDescendant(shortSpec, SyntaxType.TYPE_SPECIFIER);
+      if (!locIsNull(baseTypeSpec)) {
+        let targetId = locIntern(pool, baseTypeSpec);
+        let targetClassLoc: u64 = this.findClassLoc(classLoc, targetId, pool);
+        if (locIsNull(targetClassLoc)) {
+          let baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.IDENTIFIER);
+          if (locIsNull(baseIdLoc)) baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.TOKEN_IDENTIFIER_ALT);
+          if (locIsNull(baseIdLoc)) baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.NAME);
+          if (!locIsNull(baseIdLoc)) {
+            targetId = locIntern(pool, baseIdLoc);
+            targetClassLoc = this.findClassLoc(classLoc, targetId, pool);
+          }
+        }
+        if (locIsNull(targetClassLoc)) {
+          targetClassLoc = this.findClassLoc(this.rootProgramLoc, targetId, pool);
+        }
+        if (!locIsNull(targetClassLoc) && targetClassLoc != classLoc) {
+          return this.resolveRecordClassLoc(targetClassLoc, pool, maxDepth - 1);
+        }
+      }
+    }
+    return classLoc;
+  }
+
+  isClassDerivedFrom(derivedLoc: u64, targetLoc: u64, pool: ArenaStringPool, maxDepth: i32 = 10): boolean {
+    if (derivedLoc == targetLoc) return true;
+    if (locIsNull(derivedLoc) || locIsNull(targetLoc) || maxDepth <= 0) return false;
+    let dResolved = this.resolveRecordClassLoc(derivedLoc, pool);
+    let tResolved = this.resolveRecordClassLoc(targetLoc, pool);
+    if (dResolved == tResolved && !locIsNull(dResolved)) return true;
+    let compLoc = findCompositionLoc(dResolved);
+    if (locIsNull(compLoc)) return false;
+    return this.isClassDerivedFromRecursive(compLoc, tResolved, pool, maxDepth);
+  }
+
+  isClassDerivedFromRecursive(parentLoc: u64, targetLoc: u64, pool: ArenaStringPool, maxDepth: i32): boolean {
+    if (locIsNull(parentLoc) || maxDepth <= 0) return false;
+    let ch = locFirstChild(parentLoc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.EXTENDS_CLAUSE) {
+        let baseNameNode = locFindChild(ch, SyntaxType.TYPE_SPECIFIER);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindChild(ch, SyntaxType.NAME);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.TYPE_SPECIFIER);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.NAME);
+        if (!locIsNull(baseNameNode)) {
+          let baseNameId = locIntern(pool, baseNameNode);
+          let baseClassLoc = this.findClassLoc(parentLoc, baseNameId, pool);
+          if (locIsNull(baseClassLoc)) {
+            baseClassLoc = this.findClassLoc(this.rootProgramLoc, baseNameId, pool);
+          }
+          if (!locIsNull(baseClassLoc)) {
+            let baseResolved = this.resolveRecordClassLoc(baseClassLoc, pool);
+            if (baseResolved == targetLoc) return true;
+            if (this.isClassDerivedFrom(baseResolved, targetLoc, pool, maxDepth - 1)) return true;
+          }
+        }
+      } else if (t != SyntaxType.CLASS_DEFINITION && t != SyntaxType.EQUATION_SECTION && t != SyntaxType.ALGORITHM_SECTION) {
+        if (this.isClassDerivedFromRecursive(ch, targetLoc, pool, maxDepth)) return true;
+      }
+      ch = locNextSibling(ch);
+    }
+    return false;
+  }
+
+  findComponentDeclInClassOrExtends(classLoc: u64, fieldNameId: u32, pool: ArenaStringPool, maxDepth: i32 = 10): u64 {
+    if (locIsNull(classLoc) || fieldNameId == 0 || maxDepth <= 0) return 0;
+    let decl = findComponentDeclInClass(classLoc, fieldNameId, pool);
+    if (!locIsNull(decl)) return decl;
+    let resolved = this.resolveRecordClassLoc(classLoc, pool);
+    let compLoc = findCompositionLoc(resolved);
+    if (locIsNull(compLoc)) return 0;
+    return this.findComponentDeclInCompositionOrExtends(compLoc, fieldNameId, pool, maxDepth);
+  }
+
+  findComponentDeclInCompositionOrExtends(parentLoc: u64, fieldNameId: u32, pool: ArenaStringPool, maxDepth: i32): u64 {
+    if (locIsNull(parentLoc) || maxDepth <= 0) return 0;
+    let ch = locFirstChild(parentLoc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.EXTENDS_CLAUSE) {
+        let baseNameNode = locFindChild(ch, SyntaxType.TYPE_SPECIFIER);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindChild(ch, SyntaxType.NAME);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.TYPE_SPECIFIER);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.NAME);
+        if (!locIsNull(baseNameNode)) {
+          let baseNameId = locIntern(pool, baseNameNode);
+          let baseClassLoc = this.findClassLoc(parentLoc, baseNameId, pool);
+          if (locIsNull(baseClassLoc)) {
+            baseClassLoc = this.findClassLoc(this.rootProgramLoc, baseNameId, pool);
+          }
+          if (!locIsNull(baseClassLoc)) {
+            let found = this.findComponentDeclInClassOrExtends(baseClassLoc, fieldNameId, pool, maxDepth - 1);
+            if (!locIsNull(found)) return found;
+          }
+        }
+      } else if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+        let decl = findComponentDeclInClass(ch, fieldNameId, pool);
+        if (!locIsNull(decl)) return decl;
+      } else if (t != SyntaxType.CLASS_DEFINITION && t != SyntaxType.EQUATION_SECTION && t != SyntaxType.ALGORITHM_SECTION) {
+        let found = this.findComponentDeclInCompositionOrExtends(ch, fieldNameId, pool, maxDepth - 1);
+        if (!locIsNull(found)) return found;
+      }
+      ch = locNextSibling(ch);
+    }
+    return 0;
+  }
+
+  populateEnvFromRecordExtendsDefaults(env: ModificationEnvironment, classLoc: u64, pool: ArenaStringPool, maxDepth: i32 = 5): void {
+    if (locIsNull(classLoc) || maxDepth <= 0) return;
+    let resolved = this.resolveRecordClassLoc(classLoc, pool);
+    let compLoc = findCompositionLoc(resolved);
+    if (locIsNull(compLoc)) return;
+    this.populateEnvFromRecordExtendsDefaultsRecursive(env, compLoc, pool, maxDepth);
+  }
+
+  populateEnvFromRecordExtendsDefaultsRecursive(env: ModificationEnvironment, parentLoc: u64, pool: ArenaStringPool, maxDepth: i32): void {
+    if (locIsNull(parentLoc) || maxDepth <= 0) return;
+    let ch = locFirstChild(parentLoc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.EXTENDS_CLAUSE) {
+        let extMod = findClassModificationLoc(ch);
+        if (!locIsNull(extMod)) {
+          populateEnvFromClassModLoc(changetype<usize>(env) as u32, extMod, pool, this.exprVisitor, true);
+        }
+        let baseNameNode = locFindChild(ch, SyntaxType.TYPE_SPECIFIER);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindChild(ch, SyntaxType.NAME);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.TYPE_SPECIFIER);
+        if (locIsNull(baseNameNode)) baseNameNode = locFindDescendant(ch, SyntaxType.NAME);
+        if (!locIsNull(baseNameNode)) {
+          let baseNameId = locIntern(pool, baseNameNode);
+          let baseClassLoc = this.findClassLoc(parentLoc, baseNameId, pool);
+          if (locIsNull(baseClassLoc)) {
+            baseClassLoc = this.findClassLoc(this.rootProgramLoc, baseNameId, pool);
+          }
+          if (!locIsNull(baseClassLoc)) {
+            this.populateEnvFromRecordExtendsDefaults(env, baseClassLoc, pool, maxDepth - 1);
+          }
+        }
+      } else if (t != SyntaxType.CLASS_DEFINITION && t != SyntaxType.EQUATION_SECTION && t != SyntaxType.ALGORITHM_SECTION) {
+        this.populateEnvFromRecordExtendsDefaultsRecursive(env, ch, pool, maxDepth);
+      }
+      ch = locNextSibling(ch);
+    }
+  }
+
+  collectRecordInputFields(classLoc: u64, outNames: ChunkedUint32Array, pool: ArenaStringPool): u32 {
+    let resolved = this.resolveRecordClassLoc(classLoc, pool);
+    let compLoc = findCompositionLoc(resolved);
+    if (locIsNull(compLoc)) return 0;
+    let startLen = outNames.length;
+    this.collectRecordElements(compLoc, outNames, pool, false, 30);
+    return outNames.length - startLen;
+  }
+
+  populateEnvNamedArgs(env: ModificationEnvironment, nodeLoc: u64, pool: ArenaStringPool): void {
+    let ch = locFirstChild(nodeLoc);
+    while (!locIsNull(ch)) {
+      let t = locType(ch);
+      if (t == SyntaxType.NAMED_ARGUMENT) {
+        let idLoc = locFirstNonEmptyChild(ch);
+        let innerId = locFindDescendant(idLoc, SyntaxType.IDENTIFIER);
+        if (!locIsNull(innerId)) idLoc = innerId;
+        let argNameId = locIntern(pool, idLoc);
+        let exprLoc = locFindChild(ch, SyntaxType.EXPRESSION);
+        if (locIsNull(exprLoc)) exprLoc = locFindDescendant(ch, SyntaxType.EXPRESSION);
+        if (!locIsNull(exprLoc)) {
+          let eid = this.exprVisitor.visitLoc(exprLoc);
+          if (eid != 0xffffffff && argNameId != 0) {
+            env.bind(argNameId, eid, false, false);
+          }
+        }
+      } else if (
+        t == SyntaxType.FUNCTION_ARGUMENTS ||
+        t == SyntaxType.FUNCTION_ARGUMENTS_NON_FIRST ||
+        t == SyntaxType.NAMED_ARGUMENTS ||
+        t == SyntaxType.ARGUMENT_LIST ||
+        t == SyntaxType.ARGUMENT ||
+        t == SyntaxType.FUNCTION_ARGUMENT
+      ) {
+        this.populateEnvNamedArgs(env, ch, pool);
+      }
+      ch = locNextSibling(ch);
+    }
+  }
+
+  populateEnvFromFunctionReturnRecord(
+    env: ModificationEnvironment,
+    fnClassLoc: u64,
+    recClassLoc: u64,
+    valExprId: u32,
+    fieldsStart: u32,
+    fieldCount: u32,
+    pool: ArenaStringPool
+  ): boolean {
+    if (this.dae.getExprRight(valExprId) > 0) return false;
+    let outDecl = findFunctionOutputCompDecl(fnClassLoc, pool);
+    if (locIsNull(outDecl)) return false;
+
+    let idLoc = locFindDescendant(outDecl, SyntaxType.IDENTIFIER);
+    if (locIsNull(idLoc)) idLoc = locFindDescendant(outDecl, SyntaxType.TOKEN_IDENTIFIER_ALT);
+    let outVarNameId = !locIsNull(idLoc) ? locIntern(pool, idLoc) : 0;
+
+    let effectiveDecl = outDecl;
+
+    let prevClassLoc = this.currentClassLoc;
+    this.currentClassLoc = fnClassLoc;
+
+    let algSec = locFindDescendant(fnClassLoc, SyntaxType.ALGORITHM_SECTION);
+    if (!locIsNull(algSec) && outVarNameId != 0) {
+      let start = this.stmtItems.length;
+      this.collectStmtItems(algSec);
+      let end = this.stmtItems.length;
+      for (let i = start; i < end; i += 2) {
+        let it = this.stmtItemAt(i);
+        let asgLoc: u64 = 0;
+        if (locType(it) == SyntaxType.ASSIGNMENT_STATEMENT) {
+          asgLoc = it;
+        } else {
+          asgLoc = locFindDescendant(it, SyntaxType.ASSIGNMENT_STATEMENT);
+        }
+        if (!locIsNull(asgLoc)) {
+          let asgStart = this.stmtItems.length;
+          this.collectStmtItems(asgLoc);
+          let asgEnd = this.stmtItems.length;
+          let targetLoc: u64 = 0;
+          let valueLoc: u64 = 0;
+          let seenAssign = false;
+          for (let j = asgStart; j < asgEnd; j += 2) {
+            let item = this.stmtItemAt(j);
+            let tt = locType(item);
+            if (locMatches(item, ":=")) seenAssign = true;
+            else if (!seenAssign && tt == SyntaxType.COMPONENT_REFERENCE) targetLoc = item;
+            else if (seenAssign && valueLoc == 0) valueLoc = item;
+          }
+          this.stmtItems.length = asgStart;
+
+          if (targetLoc != 0 && valueLoc != 0) {
+            let tBaseLoc = locFindDescendant(targetLoc, SyntaxType.IDENTIFIER);
+            if (locIsNull(tBaseLoc)) tBaseLoc = locFindDescendant(targetLoc, SyntaxType.TOKEN_IDENTIFIER_ALT);
+            let tBaseNameId = !locIsNull(tBaseLoc) ? locIntern(pool, tBaseLoc) : 0;
+            if (tBaseNameId == outVarNameId) {
+              let vIdLoc = locFindDescendant(valueLoc, SyntaxType.IDENTIFIER);
+              if (locIsNull(vIdLoc)) vIdLoc = locFindDescendant(valueLoc, SyntaxType.TOKEN_IDENTIFIER_ALT);
+              let vNameId = !locIsNull(vIdLoc) ? locIntern(pool, vIdLoc) : 0;
+              if (vNameId != 0) {
+                let rhsDecl = findComponentDeclInClass(fnClassLoc, vNameId, pool);
+                if (!locIsNull(rhsDecl)) {
+                  effectiveDecl = rhsDecl;
+                }
+              }
+            }
+          }
+        }
+      }
+      this.stmtItems.length = start;
+    }
+
+    let modLoc = locFindDescendant(effectiveDecl, SyntaxType.MODIFICATION);
+    if (!locIsNull(modLoc)) {
+      let classModLoc = findClassModificationLoc(modLoc);
+      if (!locIsNull(classModLoc)) {
+        populateEnvFromClassModLoc(changetype<usize>(env) as u32, classModLoc, pool, this.exprVisitor);
+      }
+      let bExprLoc = findBindingExpressionLoc(modLoc);
+      if (!locIsNull(bExprLoc)) {
+        let bExprId = this.exprVisitor.visitLoc(bExprLoc);
+        if (bExprId != 0xffffffff) {
+          this.populateEnvFromRecordBinding(env, recClassLoc, bExprId, effectiveDecl, modLoc, pool);
+        }
+      }
+    }
+
+    for (let i: u32 = 0; i < fieldCount; i++) {
+      let fieldNameId = this.tempBuffer.get(fieldsStart + i);
+      if (env.lookup(fieldNameId) == 0xffffffff && !locIsNull(recClassLoc)) {
+        let fieldDecl = this.findComponentDeclInClassOrExtends(recClassLoc, fieldNameId, pool);
+        if (!locIsNull(fieldDecl)) {
+          let fModLoc = locFindDescendant(fieldDecl, SyntaxType.MODIFICATION);
+          let fBinding = findBindingExpressionLoc(fModLoc);
+          if (!locIsNull(fBinding)) {
+            let declClassLoc = findEnclosingClassDefinitionLoc(this.rootProgramLoc, fieldDecl);
+            if (!locIsNull(declClassLoc)) this.currentClassLoc = declClassLoc;
+            let defExprId = this.exprVisitor.visitLoc(fBinding);
+            this.currentClassLoc = fnClassLoc;
+            if (defExprId != 0xffffffff) {
+              let typeSpecLoc = locFindDescendant(fieldDecl, SyntaxType.TYPE_SPECIFIER);
+              if (!locIsNull(typeSpecLoc) && locMatches(typeSpecLoc, "Real") && !this.exprVisitor.isRealExpr(defExprId)) {
+                defExprId = this.exprVisitor.castToReal(defExprId);
+              }
+              env.bind(fieldNameId, defExprId, false, false);
+            }
+          }
+        }
+      }
+    }
+
+    this.currentClassLoc = prevClassLoc;
+    return true;
+  }
+
+  populateEnvFromRecordBinding(
+    env: ModificationEnvironment,
+    recClassLoc: u64,
+    valExprId: u32,
+    declLoc: u64,
+    modLoc: u64,
+    pool: ArenaStringPool
+  ): boolean {
+    if (valExprId == 0xffffffff) return false;
+    let fieldsStart = this.tempBuffer.length;
+    let fieldCount = this.collectRecordInputFields(recClassLoc, this.tempBuffer, pool);
+
+    let k = this.dae.getExprKind(valExprId);
+    if (k == ExprKind.Call) {
+      let fnNameId = this.dae.getExprData1(valExprId);
+      let fnClassLoc = this.findClassLoc(this.currentClassLoc, fnNameId, pool);
+      if (locIsNull(fnClassLoc)) {
+        fnClassLoc = this.findClassLoc(this.rootProgramLoc, fnNameId, pool);
+      }
+      let resolvedRec = this.resolveRecordClassLoc(recClassLoc, pool);
+      let resolvedFn = this.resolveRecordClassLoc(fnClassLoc, pool);
+      let isRecCtor = (resolvedFn == resolvedRec || this.isClassDerivedFrom(resolvedFn, resolvedRec, pool) || locIsNull(fnClassLoc));
+      if (isRecCtor) {
+        if (!locIsNull(fnClassLoc)) {
+          this.populateEnvFromRecordExtendsDefaults(env, fnClassLoc, pool);
+        }
+        let argCount = this.dae.getExprRight(valExprId);
+        let maxArgs = argCount < fieldCount ? argCount : fieldCount;
+        for (let i: u32 = 0; i < maxArgs; i++) {
+          let argExprId = this.dae.getCallArgExprId(valExprId, i);
+          let fieldNameId = this.tempBuffer.get(fieldsStart + i);
+          env.bind(fieldNameId, argExprId, false, false);
+        }
+        let bExprLoc = findBindingExpressionLoc(modLoc);
+        let callArgsLoc = !locIsNull(bExprLoc) ? locFindDescendant(bExprLoc, SyntaxType.FUNCTION_CALL_ARGS) : 0;
+        if (!locIsNull(callArgsLoc)) {
+          this.populateEnvNamedArgs(env, callArgsLoc, pool);
+        }
+
+        let prevClassLoc = this.currentClassLoc;
+        this.scopeStack.push(0, changetype<usize>(env) as u32);
+
+        for (let i: u32 = 0; i < fieldCount; i++) {
+          let fieldNameId = this.tempBuffer.get(fieldsStart + i);
+          if (env.lookup(fieldNameId) == 0xffffffff) {
+            let fieldDecl: u64 = 0;
+            if (!locIsNull(fnClassLoc)) fieldDecl = this.findComponentDeclInClassOrExtends(fnClassLoc, fieldNameId, pool);
+            if (locIsNull(fieldDecl) && !locIsNull(recClassLoc)) fieldDecl = this.findComponentDeclInClassOrExtends(recClassLoc, fieldNameId, pool);
+            if (!locIsNull(fieldDecl)) {
+              let fModLoc = locFindDescendant(fieldDecl, SyntaxType.MODIFICATION);
+              let fBinding = findBindingExpressionLoc(fModLoc);
+              if (!locIsNull(fBinding)) {
+                let declClassLoc = findEnclosingClassDefinitionLoc(this.rootProgramLoc, fieldDecl);
+                if (!locIsNull(declClassLoc)) this.currentClassLoc = declClassLoc;
+                let defExprId = this.exprVisitor.visitLoc(fBinding);
+                if (defExprId != 0xffffffff) {
+                  let typeSpecLoc = locFindDescendant(fieldDecl, SyntaxType.TYPE_SPECIFIER);
+                  if (!locIsNull(typeSpecLoc) && locMatches(typeSpecLoc, "Real") && !this.exprVisitor.isRealExpr(defExprId)) {
+                    defExprId = this.exprVisitor.castToReal(defExprId);
+                  }
+                  env.bind(fieldNameId, defExprId, false, false);
+                }
+                this.currentClassLoc = !locIsNull(fnClassLoc) ? fnClassLoc : recClassLoc;
+              }
+            }
+          }
+        }
+
+        this.scopeStack.pop();
+        this.currentClassLoc = prevClassLoc;
+        this.tempBuffer.length = fieldsStart;
+        return true;
+      } else if (!locIsNull(fnClassLoc)) {
+        let res = this.populateEnvFromFunctionReturnRecord(env, fnClassLoc, recClassLoc, valExprId, fieldsStart, fieldCount, pool);
+        this.tempBuffer.length = fieldsStart;
+        return res;
+      }
+      this.tempBuffer.length = fieldsStart;
+      return false;
+    } else if (k == ExprKind.Name) {
+      let srcRecordNameId = this.dae.getExprData1(valExprId);
+      let baseSrcNameId = stripTrailingSubscriptsId(pool, srcRecordNameId);
+      let srcCompDecl: u64 = 0;
+      let isSrcLocalVar = false;
+      if (pool.hasDot(baseSrcNameId)) {
+        let pkgId = pool.getParentPrefix(baseSrcNameId);
+        let compId = getPathLastPart(pool, baseSrcNameId);
+        let pkgLoc = this.findClassLoc(this.currentClassLoc, pkgId, pool);
+        if (locIsNull(pkgLoc)) pkgLoc = this.findClassLoc(this.rootProgramLoc, pkgId, pool);
+        if (!locIsNull(pkgLoc)) {
+          srcCompDecl = findComponentDeclInClass(pkgLoc, compId, pool);
+        }
+      } else {
+        srcCompDecl = this.findComponentDeclInClassOrExtends(this.currentClassLoc, baseSrcNameId, pool);
+        if (!locIsNull(srcCompDecl)) {
+          isSrcLocalVar = true;
+        } else {
+          srcCompDecl = findComponentDeclInClass(this.rootProgramLoc, baseSrcNameId, pool);
+        }
+      }
+
+      let srcEnvPtr: u32 = 0;
+      if (!isSrcLocalVar && !locIsNull(srcCompDecl)) {
+        let srcModLoc = locFindDescendant(srcCompDecl, SyntaxType.MODIFICATION);
+        if (!locIsNull(srcModLoc)) {
+          let srcClassMod = findClassModificationLoc(srcModLoc);
+          if (!locIsNull(srcClassMod)) {
+            srcEnvPtr = flattener_envCreate(0);
+            populateEnvFromClassModLoc(srcEnvPtr, srcClassMod, pool, this.exprVisitor);
+          } else {
+            let bExprLoc = findBindingExpressionLoc(srcModLoc);
+            if (!locIsNull(bExprLoc)) {
+              let bExprId = this.exprVisitor.visitLoc(bExprLoc);
+              if (bExprId != 0xffffffff) {
+                srcEnvPtr = flattener_envCreate(0);
+                this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(srcEnvPtr), recClassLoc, bExprId, declLoc, modLoc, pool);
+              }
+            }
+          }
+        }
+      }
+
+      let subIdx: i32 = -1;
+      if (srcRecordNameId != baseSrcNameId) {
+        subIdx = extractTrailingSubscript1D(pool, srcRecordNameId);
+      }
+
+      for (let i: u32 = 0; i < fieldCount; i++) {
+        let fieldNameId = this.tempBuffer.get(fieldsStart + i);
+        let bound = false;
+        if (srcEnvPtr != 0) {
+          let modVal = changetype<ModificationEnvironment>(srcEnvPtr).lookup(fieldNameId);
+          if (modVal == 0xffffffff) {
+            modVal = changetype<ModificationEnvironment>(srcEnvPtr).lookupPath(pool, fieldNameId);
+          }
+          if (modVal != 0xffffffff) {
+            if (subIdx > 0 && this.dae.getExprKind(modVal) == ExprKind.ArrayCtor) {
+              let ctorCount = getArrayCtorCount(this.dae, modVal);
+              if (subIdx <= (ctorCount as i32)) {
+                modVal = getArrayCtorElement(this.dae, modVal, (subIdx - 1) as u32);
+              }
+            }
+            env.bind(fieldNameId, modVal, false, false);
+            bound = true;
+          } else {
+            // Field not explicitly overridden in package constant record; look up default in recClassLoc
+            let fieldDecl = this.findComponentDeclInClassOrExtends(recClassLoc, fieldNameId, pool);
+            if (!locIsNull(fieldDecl)) {
+              let fModLoc = locFindDescendant(fieldDecl, SyntaxType.MODIFICATION);
+              let fBinding = findBindingExpressionLoc(fModLoc);
+              if (!locIsNull(fBinding)) {
+                let declClassLoc = findEnclosingClassDefinitionLoc(this.rootProgramLoc, fieldDecl);
+                let prevClassLoc = this.currentClassLoc;
+                if (!locIsNull(declClassLoc)) this.currentClassLoc = declClassLoc;
+                let defExprId = this.exprVisitor.visitLoc(fBinding);
+                this.currentClassLoc = prevClassLoc;
+                if (defExprId != 0xffffffff) {
+                  let typeSpecLoc = locFindDescendant(fieldDecl, SyntaxType.TYPE_SPECIFIER);
+                  if (!locIsNull(typeSpecLoc) && locMatches(typeSpecLoc, "Real") && !this.exprVisitor.isRealExpr(defExprId)) {
+                    defExprId = this.exprVisitor.castToReal(defExprId);
+                  }
+                  env.bind(fieldNameId, defExprId, false, false);
+                  bound = true;
+                }
+              }
+            }
+          }
+        }
+        if (!bound && env.lookup(fieldNameId) != 0xffffffff) {
+          bound = true;
+        }
+        if (!bound) {
+          let srcFieldId = pool.concatIds(srcRecordNameId, fieldNameId);
+          let srcExprId = this.dae.addExpression(ExprKind.Name, srcFieldId);
+          env.bind(fieldNameId, srcExprId, false, false);
+          bound = true;
+        }
+      }
+      this.tempBuffer.length = fieldsStart;
+      return true;
+    }
+    this.tempBuffer.length = fieldsStart;
+    return false;
+  }
+
+  bindFunctionInputIfAny(
+    clauseLoc: u64,
+    inIdx: u32,
+    argCount: u32,
+    callExprId: u32,
+    fnEnv: ModificationEnvironment,
+    pool: ArenaStringPool
+  ): u32 {
+    let isInput = false;
+    let tpLoc = locFindDescendant(clauseLoc, SyntaxType.TYPE_PREFIX);
+    if (!locIsNull(tpLoc)) {
+      if (locMatches(tpLoc, "input")) {
+        isInput = true;
+      } else {
+        let tpChild = locFirstChild(tpLoc);
+        while (!locIsNull(tpChild)) {
+          let t = locType(tpChild);
+          if (t == SyntaxType.TOKEN_INPUT || locMatches(tpChild, "input")) {
+            isInput = true;
+            break;
+          }
+          tpChild = locNextSibling(tpChild);
+        }
+      }
+    }
+    if (!isInput && (locStartsWith(clauseLoc, "input") || locMatches(clauseLoc, "input") || !locIsNull(locFindDescendant(clauseLoc, SyntaxType.TOKEN_INPUT)))) {
+      isInput = true;
+    }
+    if (!isInput) return inIdx;
+    let listLoc = locFindDescendant(clauseLoc, SyntaxType.COMPONENT_LIST);
+    let target = !locIsNull(listLoc) ? locFirstChild(listLoc) : locFindDescendant(clauseLoc, SyntaxType.COMPONENT_DECLARATION);
+    while (!locIsNull(target)) {
+      let tt = locType(target);
+      if (tt == SyntaxType.COMPONENT_DECLARATION || tt == SyntaxType.COMPONENT_DECLARATION1) {
+        let idLoc = locFindDescendant(target, SyntaxType.IDENTIFIER);
+        if (locIsNull(idLoc)) idLoc = locFindDescendant(target, SyntaxType.TOKEN_IDENTIFIER_ALT);
+        let inIdentId = !locIsNull(idLoc) ? locIntern(pool, idLoc) : 0;
+        if (inIdentId != 0 && inIdx < argCount) {
+          let argExprId = this.dae.getCallArgExprId(callExprId, inIdx);
+          if (argExprId != 0xffffffff) {
+            if (this.dae.getExprKind(argExprId) != ExprKind.IntLiteral) {
+              let constVal = this.evalConstIntArg(argExprId);
+              if (constVal >= 0) {
+                argExprId = this.dae.addIntLiteral(constVal);
+              }
+            }
+            fnEnv.bind(inIdentId, argExprId, false, false);
+          }
+          inIdx++;
+        }
+      }
+      target = locNextSibling(target);
+    }
+    return inIdx;
+  }
+
+  bindFunctionInputs(loc: u64, inIdx: u32, argCount: u32, callExprId: u32, fnEnv: ModificationEnvironment, pool: ArenaStringPool, maxDepth: i32 = 120): u32 {
+    if (locIsNull(loc) || maxDepth <= 0 || inIdx >= argCount) return inIdx;
+    let ch = locFirstChild(loc);
+    while (!locIsNull(ch) && inIdx < argCount) {
+      let t = locType(ch);
+      if (t == SyntaxType.COMPONENT_CLAUSE || t == SyntaxType.COMPONENT_CLAUSE1) {
+        inIdx = this.bindFunctionInputIfAny(ch, inIdx, argCount, callExprId, fnEnv, pool);
+      } else if (t != SyntaxType.CLASS_DEFINITION) {
+        inIdx = this.bindFunctionInputs(ch, inIdx, argCount, callExprId, fnEnv, pool, maxDepth - 1);
+      }
+      ch = locNextSibling(ch);
+    }
+    return inIdx;
+  }
+
+  resolveFunctionOutputDim(fnClassLoc: u64, declSubLoc: u64, callExprId: u32, pool: ArenaStringPool): u32 {
+    if (locIsNull(fnClassLoc) || locIsNull(declSubLoc) || callExprId >= this.dae.exprCount) return 0;
+    let argCount = this.dae.getExprRight(callExprId);
+    let fnEnvPtr = flattener_envCreate(0);
+    let fnEnv = changetype<ModificationEnvironment>(fnEnvPtr);
+
+    this.bindFunctionInputs(fnClassLoc, 0, argCount, callExprId, fnEnv, pool);
+
+    this.scopeStack.push(0, fnEnvPtr, 0, 0);
+    let dims = parseArrayDimensionsLoc(declSubLoc, this.dae, pool, 0, this.scopeStackPtr as usize);
+    this.scopeStack.pop();
+
+    if (dims != 0 && dims != 0xffffffffffffffff) {
+      return (dims >> 32) as u32;
+    }
+    return 0;
+  }
+
+  exprDependsOnContinuous(exprId: u32, pool: ArenaStringPool, depth: i32 = 0): boolean {
+    if (exprId >= this.dae.exprCount || depth > 30) return false;
+    let k = this.dae.getExprKind(exprId);
+    if (k == ExprKind.IntLiteral || k == ExprKind.RealLiteral || k == ExprKind.BoolLiteral || k == ExprKind.StringLiteral || k == ExprKind.EnumLiteral) {
+      return false;
+    }
+    if (k == ExprKind.Name) {
+      let nameId = this.dae.getExprData1(exprId);
+      if (pool.isTime(nameId)) return true;
+      let vIdx = this.dae.lookupVariableByName(nameId);
+      if (vIdx >= 0) {
+        let v = VarAccessor.at(this.dae.getVarData(), vIdx as u32).variability;
+        if (v == (Variability.Continuous as i32) || v == (Variability.Discrete as i32)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    if (k == ExprKind.Unary) {
+      return this.exprDependsOnContinuous(this.dae.getExprLeft(exprId), pool, depth + 1);
+    }
+    if (k == ExprKind.Binary) {
+      return this.exprDependsOnContinuous(this.dae.getExprLeft(exprId), pool, depth + 1) ||
+             this.exprDependsOnContinuous(this.dae.getExprRight(exprId), pool, depth + 1);
+    }
+    if (k == ExprKind.Call) {
+      let argCount = this.dae.getExprRight(exprId);
+      for (let i: u32 = 0; i < argCount; i++) {
+        let argId = this.dae.getCallArgExprId(exprId, i);
+        if (this.exprDependsOnContinuous(argId, pool, depth + 1)) return true;
+      }
+      return false;
+    }
+    if (k == ExprKind.ArrayCtor) {
+      let count = getArrayCtorCount(this.dae, exprId);
+      for (let i: u32 = 0; i < count; i++) {
+        let elemId = getArrayCtorElement(this.dae, exprId, i);
+        if (this.exprDependsOnContinuous(elemId, pool, depth + 1)) return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  exprContainsTime(exprId: u32, pool: ArenaStringPool, depth: i32 = 0): boolean {
+    if (exprId >= this.dae.exprCount || depth > 30) return false;
+    let k = this.dae.getExprKind(exprId);
+    if (k == ExprKind.IntLiteral || k == ExprKind.RealLiteral || k == ExprKind.BoolLiteral || k == ExprKind.StringLiteral || k == ExprKind.EnumLiteral) {
+      return false;
+    }
+    if (k == ExprKind.Name) {
+      return pool.isTime(this.dae.getExprData1(exprId));
+    }
+    if (k == ExprKind.Unary) {
+      return this.exprContainsTime(this.dae.getExprLeft(exprId), pool, depth + 1);
+    }
+    if (k == ExprKind.Binary) {
+      return this.exprContainsTime(this.dae.getExprLeft(exprId), pool, depth + 1) ||
+             this.exprContainsTime(this.dae.getExprRight(exprId), pool, depth + 1);
+    }
+    if (k == ExprKind.Call) {
+      let argCount = this.dae.getExprRight(exprId);
+      for (let i: u32 = 0; i < argCount; i++) {
+        let argId = this.dae.getCallArgExprId(exprId, i);
+        if (this.exprContainsTime(argId, pool, depth + 1)) return true;
+      }
+      return false;
+    }
+    if (k == ExprKind.ArrayCtor) {
+      let count = getArrayCtorCount(this.dae, exprId);
+      for (let i: u32 = 0; i < count; i++) {
+        let elemId = getArrayCtorElement(this.dae, exprId, i);
+        if (this.exprContainsTime(elemId, pool, depth + 1)) return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  isRecordPrefix(prefixId: u32): boolean {
+    if (prefixId == 0) return false;
+    let pool = this.dae.getStringPool();
+    let vCount = this.dae.varCount;
+    for (let i: u32 = 0; i < vCount; i++) {
+      let vNameId = this.dae.getVarNameId(i);
+      if (pool.hasPrefix(vNameId, prefixId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  emitRecordExpandedEquation(lNameId: u32, rhs: u32, isInitial: boolean): u32 {
+    let pool = this.dae.getStringPool();
+    let rKind = this.dae.getExprKind(rhs);
+    let count: u32 = 0;
+
+    if (rKind == ExprKind.Name) {
+      let rNameId = this.dae.getExprData1(rhs);
+      if (this.dae.lookupVariableByName(rNameId) == -1) {
+        rNameId = this.resolveOuterToInner(pool, rNameId);
+      }
+      let vCount = this.dae.varCount;
+      for (let v: u32 = 0; v < vCount; v++) {
+        let vNameId = this.dae.getVarNameId(v);
+        if (pool.hasPrefix(vNameId, lNameId)) {
+          let suffId = pool.getSuffixAfterPrefix(vNameId, lNameId);
+          let targetRNameId = pool.concatIds(rNameId, suffId);
+          let lFieldExpr = this.dae.addExpression(ExprKind.Name, vNameId);
+          let rFieldExpr = this.dae.addExpression(ExprKind.Name, targetRNameId);
+          count += this.emitExpandedEquation(lFieldExpr, rFieldExpr, isInitial);
+        }
+      }
+      return count;
+    }
+
+    if (rKind == ExprKind.Call) {
+      let callFnNameId = this.dae.getExprData1(rhs);
+      let recClassLoc = this.findClassLoc(this.currentClassLoc, callFnNameId, pool);
+      if (locIsNull(recClassLoc)) {
+        recClassLoc = this.findClassLoc(this.rootProgramLoc, callFnNameId, pool);
+      }
+      if (!locIsNull(recClassLoc)) {
+        let fieldsStart = this.tempBuffer.length;
+        let fieldCount = this.collectRecordInputFields(recClassLoc, this.tempBuffer, pool);
+
+        let tempEnvPtr = flattener_envCreate(0);
+        let tempEnvObj = changetype<ModificationEnvironment>(tempEnvPtr);
+        let callArgsLoc: u64 = 0;
+        if (!locIsNull(this.curEqLoc)) {
+          let rhsLoc = locFindChild(this.curEqLoc, SyntaxType.EXPRESSION);
+          if (!locIsNull(rhsLoc)) callArgsLoc = locFindDescendant(rhsLoc, SyntaxType.FUNCTION_CALL_ARGS);
+        }
+        if (!locIsNull(callArgsLoc)) {
+          this.populateEnvNamedArgs(tempEnvObj, callArgsLoc, pool);
+        }
+
+        let callArgCount = this.dae.getExprRight(rhs);
+        for (let i: u32 = 0; i < fieldCount; i++) {
+          let fieldNameId = this.tempBuffer.get(fieldsStart + i);
+          let lVarNameId = pool.concatIds(lNameId, fieldNameId);
+          let argExprId = tempEnvObj.lookup(fieldNameId);
+          if (argExprId == 0xffffffff && i < callArgCount) {
+            argExprId = this.dae.getCallArgExprId(rhs, i);
+          }
+          if (argExprId != 0xffffffff) {
+            let lFieldExpr = this.dae.addExpression(ExprKind.Name, lVarNameId);
+            count += this.emitExpandedEquation(lFieldExpr, argExprId, isInitial);
+          }
+        }
+        this.tempBuffer.length = fieldsStart;
+        return count;
+      }
+    }
+
+    if (rKind == ExprKind.ArrayCtor) {
+      let ctorCount = getArrayCtorCount(this.dae, rhs);
+      for (let i: u32 = 1; i <= ctorCount; i++) {
+        let elemPrefix = concatArrayIndex1D(pool, lNameId, i);
+        let elemRhs = getArrayCtorElement(this.dae, rhs, i - 1);
+        count += this.emitRecordExpandedEquation(elemPrefix, elemRhs, isInitial);
+      }
+      return count;
+    }
+
+    return 0;
+  }
+
   instantiateExtendsClause(extLoc: u64, prefixPathId: u32, pool: ArenaStringPool, isTopLevelInterface: boolean = false, parentCausality: i32 = 0, isSectionProtected: boolean = false): u32 {
     let ext = CstNodeView.at(extLoc);
     let baseNameNode = locFindChild(extLoc, SyntaxType.TYPE_SPECIFIER);
@@ -9570,6 +11827,11 @@ export class ModelicaFlattener {
 
   findDeclarationSubscripts(declLoc: u64): u64 {
     if (locIsNull(declLoc)) return 0;
+    if (locType(declLoc) == SyntaxType.COMPONENT_DECLARATION || locType(declLoc) == SyntaxType.COMPONENT_DECLARATION1) {
+      let innerDecl = locFindChild(declLoc, SyntaxType.DECLARATION);
+      if (locIsNull(innerDecl)) innerDecl = locFindDescendant(declLoc, SyntaxType.DECLARATION);
+      if (!locIsNull(innerDecl)) declLoc = innerDecl;
+    }
     let ch = locFirstChild(declLoc);
     while (!locIsNull(ch)) {
       let t = locType(ch);
@@ -10110,6 +12372,11 @@ export class ModelicaFlattener {
     let compNameId = locIntern(pool, idLoc);
     let fullVarNameId = prefixPathId != 0 ? pool.concatIds(prefixPathId, compNameId) : compNameId;
 
+    if (this.componentTypesPtr != 0 && typeNameId != 0) {
+      this.componentTypes.set(fullVarNameId, typeNameId);
+      if (prefixPathId != 0) this.componentTypes.set(compNameId, typeNameId);
+    }
+
     // 1. Resolve component-level or type-level redeclare from enclosing modification environments
     if (!isPrimitive && this.scopeStackPtr != 0) {
       let ss = changetype<ScopeStack>(this.scopeStackPtr);
@@ -10349,7 +12616,7 @@ export class ModelicaFlattener {
 
     if (hasSubscripts) {
       if ((dim1 == 0 || dim2 == 0) && valExprId != 0xffffffff) {
-        let inferred = getExprDimensions(this.dae, valExprId, pool);
+        let inferred = getExprDimensions(this.dae, valExprId, pool, changetype<usize>(this));
         let infD1 = (inferred >> 32) as u32;
         let infD2 = (inferred & 0xffffffff) as u32;
         if (dim1 == 0 && (infD1 > 0 || isArrayCtor)) dim1 = infD1;
@@ -10867,7 +13134,7 @@ export class ModelicaFlattener {
           }
         }
 
-        if (valExprId != 0xffffffff) {
+        if (valExprId != 0xffffffff && !isRec) {
           this.setErrorAt(WasmBailReason.BindingExpr, declLoc);
           return 0;
         }
@@ -10876,6 +13143,16 @@ export class ModelicaFlattener {
         if (!locIsNull(classModLoc)) {
           subEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
           populateEnvFromClassModLoc(subEnvPtr, classModLoc, pool, this.exprVisitor);
+        }
+        let recCallEquation = false;
+        if (isRec && valExprId != 0xffffffff && dim1 == 0) {
+          if (subEnvPtr == 0) {
+            subEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
+          }
+          let resolvedRecBinding = this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(subEnvPtr), subClassLoc, valExprId, declLoc, modLoc, pool);
+          if (!resolvedRecBinding) {
+            recCallEquation = true;
+          }
         }
         if (this.scopeStackPtr != 0) {
           let typeEnv = changetype<ScopeStack>(this.scopeStackPtr).lookupNested(typeNameId);
@@ -10896,7 +13173,11 @@ export class ModelicaFlattener {
             if (subEnvPtr == 0) {
               subEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
             }
-            changetype<ModificationEnvironment>(subEnvPtr).mergeFrom(changetype<ModificationEnvironment>(outerChildEnv));
+            if (isRec && valExprId != 0xffffffff) {
+              changetype<ModificationEnvironment>(subEnvPtr).mergeDefaultsFrom(changetype<ModificationEnvironment>(outerChildEnv));
+            } else {
+              changetype<ModificationEnvironment>(subEnvPtr).mergeFrom(changetype<ModificationEnvironment>(outerChildEnv));
+            }
           }
         }
         let isCompProtected = (varFlags & FLAG_VAR_PROTECTED) != 0;
@@ -10914,6 +13195,48 @@ export class ModelicaFlattener {
           for (let i: u32 = 1; i <= dim1; i++) {
             let subPrefix = concatArrayIndex1D(pool, fullVarNameId, i);
             let elemEnvPtr = subEnvPtr;
+            if (isRec && valExprId != 0xffffffff) {
+              if (elemEnvPtr == 0 || elemEnvPtr == subEnvPtr) {
+                elemEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
+                if (subEnvPtr != 0) {
+                  changetype<ModificationEnvironment>(elemEnvPtr).mergeFrom(changetype<ModificationEnvironment>(subEnvPtr));
+                }
+              }
+              let k = this.dae.getExprKind(valExprId);
+              if (k == ExprKind.ArrayCtor) {
+                let ctorCount = getArrayCtorCount(this.dae, valExprId);
+                if (i <= ctorCount) {
+                  let slicedVal = getArrayCtorElement(this.dae, valExprId, i - 1);
+                  this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(elemEnvPtr), subClassLoc, slicedVal, declLoc, modLoc, pool);
+                }
+              } else if (k == ExprKind.Name) {
+                let srcArrayNameId = this.dae.getExprData1(valExprId);
+                let elemSrcNameId = concatArrayIndex1D(pool, srcArrayNameId, i);
+                let elemValExprId = this.dae.addExpression(ExprKind.Name, elemSrcNameId);
+                this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(elemEnvPtr), subClassLoc, elemValExprId, declLoc, modLoc, pool);
+              } else if (k == ExprKind.Call) {
+                let fnNameId = this.dae.getExprData1(valExprId);
+                let argCount = this.dae.getExprRight(valExprId);
+                let aStart = this.tempBuffer.length;
+                for (let a: u32 = 0; a < argCount; a++) {
+                  let aExprId = this.dae.getCallArgExprId(valExprId, a);
+                  let slicedArg = aExprId;
+                  if (aExprId != 0xffffffff && this.dae.getExprKind(aExprId) == ExprKind.ArrayCtor) {
+                    let cCount = getArrayCtorCount(this.dae, aExprId);
+                    if (i <= cCount) {
+                      slicedArg = getArrayCtorElement(this.dae, aExprId, i - 1);
+                    }
+                  }
+                  this.tempBuffer.push(slicedArg);
+                }
+                let slicedCallId = this.dae.addExpression(ExprKind.Call, fnNameId, argCount > 0 ? this.tempBuffer.get(aStart) : 0xffffffff, argCount);
+                for (let a: u32 = 1; a < argCount; a++) {
+                  this.dae.addExpression(ExprKind.Tuple, 0, this.tempBuffer.get(aStart + a), 0);
+                }
+                this.tempBuffer.length = aStart;
+                this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(elemEnvPtr), subClassLoc, slicedCallId, declLoc, modLoc, pool);
+              }
+            }
             if (subEnvPtr != 0) {
               let subEnvObj = changetype<ModificationEnvironment>(subEnvPtr);
               let hasArrayCtorMod = false;
@@ -10921,9 +13244,21 @@ export class ModelicaFlattener {
                 let entry = subEnvObj.getEntry(m);
                 let valExprId = entry.valExprId;
                 if (!entry.isEach && valExprId != 0xffffffff && valExprId != 0) {
-                  if (this.dae.getExprKind(valExprId) == ExprKind.ArrayCtor) {
+                  let ek = this.dae.getExprKind(valExprId);
+                  if (ek == ExprKind.ArrayCtor) {
                     hasArrayCtorMod = true;
                     break;
+                  }
+                  if (ek == ExprKind.Name) {
+                    let nId = this.dae.getExprData1(valExprId);
+                    let d1 = this.getArrayShapeDim(nId, 1);
+                    if (d1 == 0 && prefixPathId != 0) {
+                      d1 = this.getArrayShapeDim(pool.concatIds(prefixPathId, nId), 1);
+                    }
+                    if (d1 > 0) {
+                      hasArrayCtorMod = true;
+                      break;
+                    }
                   }
                 }
               }
@@ -10937,15 +13272,186 @@ export class ModelicaFlattener {
                   let eChildEnvPtr = entry.childEnvPtr;
                   let eIsFinal = entry.isFinal;
                   let eIsEach = entry.isEach;
-                  if (!eIsEach && eValExprId != 0xffffffff && eValExprId != 0 && this.dae.getExprKind(eValExprId) == ExprKind.ArrayCtor) {
-                    let ctorCount = getArrayCtorCount(this.dae, eValExprId);
-                    if (i <= ctorCount) {
-                      let slicedExprId = getArrayCtorElement(this.dae, eValExprId, i - 1);
-                      elemEnvObj.bind(eKeyHash, slicedExprId, eIsFinal, false);
+                  let sliced = false;
+                  if (!eIsEach && eValExprId != 0xffffffff && eValExprId != 0) {
+                    let ek = this.dae.getExprKind(eValExprId);
+                    if (ek == ExprKind.ArrayCtor) {
+                      let ctorCount = getArrayCtorCount(this.dae, eValExprId);
+                      if (i <= ctorCount) {
+                        let slicedExprId = getArrayCtorElement(this.dae, eValExprId, i - 1);
+                        elemEnvObj.bind(eKeyHash, slicedExprId, eIsFinal, false);
+                        sliced = true;
+                      }
+                    } else if (ek == ExprKind.Name) {
+                      let nId = this.dae.getExprData1(eValExprId);
+                      let d1 = this.getArrayShapeDim(nId, 1);
+                      if (d1 == 0 && prefixPathId != 0) {
+                        d1 = this.getArrayShapeDim(pool.concatIds(prefixPathId, nId), 1);
+                      }
+                      if (d1 > 0) {
+                        let elemNameId = concatArrayIndex1D(pool, nId, i);
+                        let slicedExprId = this.dae.addExpression(ExprKind.Name, elemNameId);
+                        elemEnvObj.bind(eKeyHash, slicedExprId, eIsFinal, false);
+                        sliced = true;
+                      }
                     }
-                  } else {
+                  }
+                  if (!sliced) {
                     if (eValExprId != 0xffffffff && eValExprId != 0) {
                       elemEnvObj.bind(eKeyHash, eValExprId, eIsFinal, eIsEach);
+                    }
+                  }
+                  if (eChildEnvPtr != 0) {
+                    elemEnvObj.bindNested(eKeyHash, eChildEnvPtr, eIsFinal, eIsEach);
+                  }
+                }
+              }
+            }
+            let varStartIdx = this.dae.varCount;
+            this.scopeStack.push(0, elemEnvPtr, subPrefix, 0);
+            count += this.instantiateClassLoc(subClassLoc, subPrefix, nextIsTopLevelInterface, nextParentCausality, isCompProtected);
+            this.scopeStack.pop();
+            let varEndIdx = this.dae.varCount;
+            if (isRec) {
+              if (variability == (Variability.Constant as i32)) {
+                for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                  VarAccessor.at(this.dae.getVarData(), v).variability = Variability.Constant as i32;
+                }
+              } else if (variability == (Variability.Parameter as i32)) {
+                for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                  let vAcc = VarAccessor.at(this.dae.getVarData(), v);
+                  if (vAcc.variability == (Variability.Continuous as i32) || vAcc.variability == (Variability.Discrete as i32)) {
+                    vAcc.variability = Variability.Parameter as i32;
+                  }
+                }
+              } else if (variability == (Variability.Discrete as i32)) {
+                for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                  let vAcc = VarAccessor.at(this.dae.getVarData(), v);
+                  if (vAcc.variability == (Variability.Continuous as i32)) {
+                    vAcc.variability = Variability.Discrete as i32;
+                  }
+                }
+              } else {
+                for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                  let vVar = VarAccessor.at(this.dae.getVarData(), v).variability;
+                  if (vVar == (Variability.Continuous as i32) || vVar == (Variability.Discrete as i32)) {
+                    let bExpr = this.dae.getVarAttrExpr(v, VarAttrKind.Binding as u32);
+                    if (bExpr != 0xffffffff && (this.isOmcCompatibility ? this.exprContainsTime(bExpr, pool) : this.exprDependsOnContinuous(bExpr, pool))) {
+                      this.dae.setVarAttrExpr(v, VarAttrKind.Binding as u32, 0xffffffff);
+                      let lhsNameExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(v));
+                      this.dae.addEquation(EqKind.Simple, lhsNameExpr, bExpr, 0);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } else if (dim1 > 0 && dim2 > 0) {
+          for (let i: u32 = 1; i <= dim1; i++) {
+            for (let j: u32 = 1; j <= dim2; j++) {
+              let subPrefix = concatArrayIndex2D(pool, fullVarNameId, i, j);
+              let elemEnvPtr = subEnvPtr;
+              if (isRec && valExprId != 0xffffffff) {
+                if (elemEnvPtr == 0 || elemEnvPtr == subEnvPtr) {
+                  elemEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
+                  if (subEnvPtr != 0) {
+                    changetype<ModificationEnvironment>(elemEnvPtr).mergeFrom(changetype<ModificationEnvironment>(subEnvPtr));
+                  }
+                }
+                let k = this.dae.getExprKind(valExprId);
+                if (k == ExprKind.ArrayCtor) {
+                  let rowCount = getArrayCtorCount(this.dae, valExprId);
+                  if (i <= rowCount) {
+                    let rowElem = getArrayCtorElement(this.dae, valExprId, i - 1);
+                    if (rowElem != 0xffffffff && this.dae.getExprKind(rowElem) == ExprKind.ArrayCtor) {
+                      let colCount = getArrayCtorCount(this.dae, rowElem);
+                      if (j <= colCount) {
+                        let slicedVal = getArrayCtorElement(this.dae, rowElem, j - 1);
+                        this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(elemEnvPtr), subClassLoc, slicedVal, declLoc, modLoc, pool);
+                      }
+                    } else if (dim2 == 1 && j == 1) {
+                      this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(elemEnvPtr), subClassLoc, rowElem, declLoc, modLoc, pool);
+                    }
+                  }
+                } else if (k == ExprKind.Name) {
+                  let srcArrayNameId = this.dae.getExprData1(valExprId);
+                  let elemSrcNameId = concatArrayIndex2D(pool, srcArrayNameId, i, j);
+                  let elemValExprId = this.dae.addExpression(ExprKind.Name, elemSrcNameId);
+                  this.populateEnvFromRecordBinding(changetype<ModificationEnvironment>(elemEnvPtr), subClassLoc, elemValExprId, declLoc, modLoc, pool);
+                }
+              }
+              if (subEnvPtr != 0) {
+                let subEnvObj = changetype<ModificationEnvironment>(subEnvPtr);
+                let hasArrayCtorMod = false;
+                for (let m: u32 = 0; m < subEnvObj.count; m++) {
+                  let entry = subEnvObj.getEntry(m);
+                  let eValExprId = entry.valExprId;
+                  if (!entry.isEach && eValExprId != 0xffffffff && eValExprId != 0) {
+                    let ek = this.dae.getExprKind(eValExprId);
+                    if (ek == ExprKind.ArrayCtor) {
+                      hasArrayCtorMod = true;
+                      break;
+                    }
+                    if (ek == ExprKind.Name) {
+                      let nId = this.dae.getExprData1(eValExprId);
+                      let d1 = this.getArrayShapeDim(nId, 1);
+                      if (d1 == 0 && prefixPathId != 0) {
+                        d1 = this.getArrayShapeDim(pool.concatIds(prefixPathId, nId), 1);
+                      }
+                      if (d1 > 0) {
+                        hasArrayCtorMod = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+                if (hasArrayCtorMod) {
+                  elemEnvPtr = flattener_envCreate(this.scopeStack.currentEnvPtr);
+                  let elemEnvObj = changetype<ModificationEnvironment>(elemEnvPtr);
+                  for (let m: u32 = 0; m < subEnvObj.count; m++) {
+                    let entry = subEnvObj.getEntry(m);
+                    let eKeyHash = entry.keyHash;
+                    let eValExprId = entry.valExprId;
+                    let eChildEnvPtr = entry.childEnvPtr;
+                    let eIsFinal = entry.isFinal;
+                    let eIsEach = entry.isEach;
+                    let sliced = false;
+                    if (!eIsEach && eValExprId != 0xffffffff && eValExprId != 0) {
+                      let ek = this.dae.getExprKind(eValExprId);
+                      if (ek == ExprKind.ArrayCtor) {
+                        let rowCount = getArrayCtorCount(this.dae, eValExprId);
+                        if (i <= rowCount) {
+                          let rowElem = getArrayCtorElement(this.dae, eValExprId, i - 1);
+                          if (rowElem != 0xffffffff && this.dae.getExprKind(rowElem) == ExprKind.ArrayCtor) {
+                            let colCount = getArrayCtorCount(this.dae, rowElem);
+                            if (j <= colCount) {
+                              let slicedExprId = getArrayCtorElement(this.dae, rowElem, j - 1);
+                              elemEnvObj.bind(eKeyHash, slicedExprId, eIsFinal, false);
+                              sliced = true;
+                            }
+                          } else if (dim2 == 1 && j == 1) {
+                            elemEnvObj.bind(eKeyHash, rowElem, eIsFinal, false);
+                            sliced = true;
+                          }
+                        }
+                      } else if (ek == ExprKind.Name) {
+                        let nId = this.dae.getExprData1(eValExprId);
+                        let d1 = this.getArrayShapeDim(nId, 1);
+                        if (d1 == 0 && prefixPathId != 0) {
+                          d1 = this.getArrayShapeDim(pool.concatIds(prefixPathId, nId), 1);
+                        }
+                        if (d1 > 0) {
+                          let elemNameId = concatArrayIndex2D(pool, nId, i, j);
+                          let slicedExprId = this.dae.addExpression(ExprKind.Name, elemNameId);
+                          elemEnvObj.bind(eKeyHash, slicedExprId, eIsFinal, false);
+                          sliced = true;
+                        }
+                      }
+                    }
+                    if (!sliced) {
+                      if (eValExprId != 0xffffffff && eValExprId != 0) {
+                        elemEnvObj.bind(eKeyHash, eValExprId, eIsFinal, eIsEach);
+                      }
                     }
                     if (eChildEnvPtr != 0) {
                       elemEnvObj.bindNested(eKeyHash, eChildEnvPtr, eIsFinal, eIsEach);
@@ -10953,19 +13459,103 @@ export class ModelicaFlattener {
                   }
                 }
               }
+              let varStartIdx = this.dae.varCount;
+              this.scopeStack.push(0, elemEnvPtr, subPrefix, 0);
+              count += this.instantiateClassLoc(subClassLoc, subPrefix, nextIsTopLevelInterface, nextParentCausality, isCompProtected);
+              this.scopeStack.pop();
+              let varEndIdx = this.dae.varCount;
+              if (isRec) {
+                if (variability == (Variability.Constant as i32)) {
+                  for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                    VarAccessor.at(this.dae.getVarData(), v).variability = Variability.Constant as i32;
+                  }
+                } else if (variability == (Variability.Parameter as i32)) {
+                  for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                    let vAcc = VarAccessor.at(this.dae.getVarData(), v);
+                    if (vAcc.variability == (Variability.Continuous as i32) || vAcc.variability == (Variability.Discrete as i32)) {
+                      vAcc.variability = Variability.Parameter as i32;
+                    }
+                  }
+                } else if (variability == (Variability.Discrete as i32)) {
+                  for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                    let vAcc = VarAccessor.at(this.dae.getVarData(), v);
+                    if (vAcc.variability == (Variability.Continuous as i32)) {
+                      vAcc.variability = Variability.Discrete as i32;
+                    }
+                  }
+                } else {
+                  for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                    let vVar = VarAccessor.at(this.dae.getVarData(), v).variability;
+                    if (vVar == (Variability.Continuous as i32) || vVar == (Variability.Discrete as i32)) {
+                      let bExpr = this.dae.getVarAttrExpr(v, VarAttrKind.Binding as u32);
+                      if (bExpr != 0xffffffff && (this.isOmcCompatibility ? this.exprContainsTime(bExpr, pool) : this.exprDependsOnContinuous(bExpr, pool))) {
+                        this.dae.setVarAttrExpr(v, VarAttrKind.Binding as u32, 0xffffffff);
+                        let lhsNameExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(v));
+                        this.dae.addEquation(EqKind.Simple, lhsNameExpr, bExpr, 0);
+                      }
+                    }
+                  }
+                }
+              }
             }
-            this.scopeStack.push(0, elemEnvPtr, subPrefix, 0);
-            count += this.instantiateClassLoc(subClassLoc, subPrefix, nextIsTopLevelInterface, nextParentCausality, isCompProtected);
-            this.scopeStack.pop();
           }
-        } else if (dim1 > 0 && dim2 > 0) {
-          this.parentFlowFlags = prevParentFlowFlags;
-          this.setErrorAt(WasmBailReason.DeclarationDimensions, declLoc);
-          return 0;
         } else {
+          let varStartIdx = this.dae.varCount;
           this.scopeStack.push(0, subEnvPtr, fullVarNameId, 0);
           count += this.instantiateClassLoc(subClassLoc, fullVarNameId, nextIsTopLevelInterface, nextParentCausality, isCompProtected);
           this.scopeStack.pop();
+          let varEndIdx = this.dae.varCount;
+          if (isRec) {
+            if (variability == (Variability.Constant as i32)) {
+              for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                VarAccessor.at(this.dae.getVarData(), v).variability = Variability.Constant as i32;
+              }
+            } else if (variability == (Variability.Parameter as i32)) {
+              for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                let vAcc = VarAccessor.at(this.dae.getVarData(), v);
+                if (vAcc.variability == (Variability.Continuous as i32) || vAcc.variability == (Variability.Discrete as i32)) {
+                  vAcc.variability = Variability.Parameter as i32;
+                }
+              }
+            } else if (variability == (Variability.Discrete as i32)) {
+              for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                let vAcc = VarAccessor.at(this.dae.getVarData(), v);
+                if (vAcc.variability == (Variability.Continuous as i32)) {
+                  vAcc.variability = Variability.Discrete as i32;
+                }
+              }
+            } else {
+              for (let v: u32 = varStartIdx; v < varEndIdx; v++) {
+                let vVar = VarAccessor.at(this.dae.getVarData(), v).variability;
+                if (vVar == (Variability.Continuous as i32) || vVar == (Variability.Discrete as i32)) {
+                  let bExpr = this.dae.getVarAttrExpr(v, VarAttrKind.Binding as u32);
+                  if (bExpr != 0xffffffff && (this.isOmcCompatibility ? this.exprContainsTime(bExpr, pool) : this.exprDependsOnContinuous(bExpr, pool))) {
+                    this.dae.setVarAttrExpr(v, VarAttrKind.Binding as u32, 0xffffffff);
+                    let lhsNameExpr = this.dae.addExpression(ExprKind.Name, this.dae.getVarNameId(v));
+                    this.dae.addEquation(EqKind.Simple, lhsNameExpr, bExpr, 0);
+                  }
+                }
+              }
+              if (valExprId != 0xffffffff && !isRec) {
+                let k = this.dae.getExprKind(valExprId);
+                if (k == ExprKind.Call) {
+                  let fnNameId = this.dae.getExprData1(valExprId);
+                  let calledClassLoc = this.findClassLoc(this.currentClassLoc, fnNameId, pool);
+                  if (locIsNull(calledClassLoc)) {
+                    calledClassLoc = this.findClassLoc(this.rootProgramLoc, fnNameId, pool);
+                  }
+                  if (locIsNull(calledClassLoc) || !isRecordClassLoc(calledClassLoc)) {
+                    let lhsNameExpr = this.dae.addExpression(ExprKind.Name, fullVarNameId);
+                    this.dae.addEquation(EqKind.Simple, lhsNameExpr, valExprId, 0);
+                  }
+                }
+              }
+            }
+            if (recCallEquation) {
+              let lhsNameExpr = this.dae.addExpression(ExprKind.Name, fullVarNameId);
+              this.dae.addEquation(EqKind.Simple, lhsNameExpr, valExprId, 0);
+            }
+          }
         }
         this.parentFlowFlags = prevParentFlowFlags;
       }
@@ -12081,6 +14671,30 @@ export function flattener_getCardinality(flattenerPtr: u32, varId: u32): u32 {
   return changetype<ModelicaFlattener>(flattenerPtr).getCardinality(varId);
 }
 
+export function flattener_getDebugVal(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let fl = changetype<ModelicaFlattener>(flattenerPtr);
+  if (idx == 1) return fl.debugVal1;
+  if (idx == 2) return fl.debugVal2;
+  if (idx == 3) return fl.debugVal3;
+  if (idx == 4) return fl.debugVal4;
+  return 0;
+}
+
+export function flattener_getDebugField(flattenerPtr: u32, idx: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  let fl = changetype<ModelicaFlattener>(flattenerPtr);
+  if (idx < (fl.tempBuffer.length as u32)) {
+    return fl.tempBuffer.get(idx);
+  }
+  return 0;
+}
+
+export function flattener_getDebugBufferLen(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).tempBuffer.length as u32;
+}
+
 export function flattener_expandConnector(flattenerPtr: u32, busVarId: u32, memberNameHash: u32, varType: u32): u32 {
   if (flattenerPtr == 0) return 0;
   return changetype<ModelicaFlattener>(flattenerPtr).expandConnector(busVarId, memberNameHash, varType);
@@ -12467,4 +15081,14 @@ export function flattener_setExprLeft(daePtr: u32, exprId: u32, leftVal: u32): v
   let d = changetype<DaeBuilder>(daePtr);
   if (exprId >= d.exprCount) return;
   ExprAccessor.at(d.getExprData(), exprId).left = leftVal;
+}
+
+export function flattener_getBrokenOcConnCount(flattenerPtr: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).brokenOcConnCount;
+}
+
+export function flattener_isNodeSelectedRoot(flattenerPtr: u32, nameId: u32): u32 {
+  if (flattenerPtr == 0) return 0;
+  return changetype<ModelicaFlattener>(flattenerPtr).selectedRoots.has(nameId) ? 1 : 0;
 }

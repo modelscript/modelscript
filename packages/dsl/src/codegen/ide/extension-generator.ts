@@ -245,6 +245,31 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     });
   }
 
+  // EASY5 Dynamic Simulation & Linear Control Editor
+  if (languages.some((l) => l.id === "easy5")) {
+    customEditors.push({
+      viewType: "modelscript.easy5Editor",
+      displayName: "EASY5 Schematic & Linear Control Editor",
+      selector: [
+        { filenamePattern: "*.ez5" },
+        { filenamePattern: "*.ezm" },
+        { filenamePattern: "*.ezd" },
+        { filenamePattern: "*.eas" },
+      ],
+      priority: "option",
+    });
+  }
+
+  // NASA ROCETS Liquid Propulsion P&ID & Balance Editor
+  if (languages.some((l) => l.id === "rocets")) {
+    customEditors.push({
+      viewType: "modelscript.rocetsEditor",
+      displayName: "ROCETS Propulsion Schematic & Balance Editor",
+      selector: [{ filenamePattern: "*.roc" }, { filenamePattern: "*.deck" }],
+      priority: "option",
+    });
+  }
+
   // SysML Requirements Matrix & Element Table Custom Editors
   if (languages.some((l) => l.id === "sysml2" || l.id === "sysml")) {
     customEditors.push({
