@@ -1067,14 +1067,47 @@ interface ParsedReqDef {
 }
 
 function stripCommentsPreserveStructure(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length))
-    .replace(/\/\/[^\r\n]*/g, (m) => " ".repeat(m.length));
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    if (src[i] === "/" && i + 1 < n) {
+      if (src[i + 1] === "/") {
+        let count = 2;
+        i += 2;
+        while (i < n && src[i] !== "\n" && src[i] !== "\r") {
+          i++;
+          count++;
+        }
+        out += " ".repeat(count);
+        continue;
+      } else if (src[i + 1] === "*") {
+        let count = 2;
+        i += 2;
+        while (i + 1 < n && !(src[i] === "*" && src[i + 1] === "/")) {
+          i++;
+          count++;
+        }
+        if (i + 1 < n) {
+          i += 2;
+          count += 2;
+        }
+        out += " ".repeat(count);
+        continue;
+      }
+    }
+    out += src[i++];
+  }
+  return out;
 }
 
 function extractDocComment(body: string): string | undefined {
-  const m = /\bdoc\s*\/\*([\s\S]*?)\*\//.exec(body);
-  return m ? m[1]!.replace(/\s+/g, " ").trim() : undefined;
+  const docIdx = body.search(/\bdoc\s*\/\*/);
+  if (docIdx === -1) return undefined;
+  const start = body.indexOf("/*", docIdx) + 2;
+  const end = body.indexOf("*/", start);
+  if (end === -1) return undefined;
+  return body.slice(start, end).replace(/\s+/g, " ").trim();
 }
 
 function extractAttributesFromBody(body: string): ParsedAttr[] {

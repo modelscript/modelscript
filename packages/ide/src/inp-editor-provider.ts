@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { applyBoundaryActionToDeck, materializeCalculixDeck, parseInpDeck, type InpDeckData } from "@modelscript/fea";
+import {
+  applyBoundaryActionToDeck,
+  extractCalculixInpMesh,
+  materializeCalculixDeck,
+  parseInpDeck,
+  type InpDeckData,
+  type InpMeshGeometry,
+  type InpMeshPayload,
+} from "@modelscript/fea";
 import {
   CaeParametricSampler,
   CaeSnapshotExtractor,
@@ -14,28 +22,19 @@ import {
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CaeCloudClient } from "./cae-cloud-client.js";
+import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
-export interface InpMeshPayload {
-  positions: number[];
-  indices: number[];
-  normals: number[];
-  fixedNodes: { id: number; position: [number, number, number] }[];
-  loads: { id: number; position: [number, number, number]; force: [number, number, number] }[];
-  stats: {
-    numNodes: number;
-    numElements: number;
-    materials: string[];
-    isQuadratic: boolean;
-  };
-}
+export type { InpMeshGeometry, InpMeshPayload };
 
-export class InpEditorProvider implements vscode.CustomTextEditorProvider {
+export class InpEditorProvider extends BaseCustomEditorProvider {
   public static readonly viewType = "modelscript.inpEditor";
 
   constructor(
-    private readonly context: vscode.ExtensionContext,
+    context: vscode.ExtensionContext,
     private readonly client: LanguageClient,
-  ) {}
+  ) {
+    super(context);
+  }
 
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -43,13 +42,13 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _token: vscode.CancellationToken,
   ): Promise<void> {
-    webviewPanel.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist")],
-    };
+    this.configureWebview(webviewPanel);
 
     let disposed = false;
-    webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+    webviewPanel.webview.html = this.getHtmlShell(webviewPanel.webview, {
+      title: "FEA Deck 3D Viewer",
+      scriptName: "fea-deck-webview.js",
+    });
 
     let currentParsedData: InpDeckData | null = null;
     let currentMesh: Tet4Mesh | null = null;
@@ -67,109 +66,19 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
         const data = parseInpDeck(rawDeck);
         currentParsedData = data;
 
-        // Map nodes into contiguous arrays
-        const nodeIdToIdx = new Map<number, number>();
-        const positions: number[] = [];
-        let idx = 0;
-        for (const [id, node] of data.nodes.entries()) {
-          nodeIdToIdx.set(id, idx++);
-          positions.push(node.x, node.y, node.z);
-        }
-        currentNodeIdToIdx = nodeIdToIdx;
-
-        // Map elements
-        const elementIndices: number[] = [];
-        let isQuadratic = false;
-        for (const elem of data.elements.values()) {
-          if (elem.type === "C3D10") isQuadratic = true;
-          for (const nId of elem.nodes) {
-            const nIdx = nodeIdToIdx.get(nId);
-            if (nIdx !== undefined) elementIndices.push(nIdx);
-          }
-        }
-
-        const elements = new Uint32Array(elementIndices);
-        const nodesPerElem = isQuadratic ? 10 : 4;
-        const numElems = elements.length > 0 ? elements.length / nodesPerElem : 0;
-
+        const geom = extractCalculixInpMesh(data);
+        currentNodeIdToIdx = geom.nodeIdToIdx;
         currentMesh = {
-          nodeCoords: new Float32Array(positions),
-          elements,
+          nodeCoords: new Float32Array(geom.positions),
+          elements: geom.elements,
           numNodes: data.nodes.size,
-          numElements: numElems,
-          elementOrder: isQuadratic ? "quadratic" : "linear",
-          nodesPerElement: nodesPerElem,
+          numElements: geom.numElems,
+          elementOrder: geom.isQuadratic ? "quadratic" : "linear",
+          nodesPerElement: geom.nodesPerElem,
           boundaryNodes: new Map(),
         };
-
-        // Resolve material
-        let firstMat: MaterialProperties = { E: 70e9, nu: 0.33, rho: 2700.0 };
-        for (const mat of data.materials.values()) {
-          firstMat = {
-            E: mat.E ?? 70e9,
-            nu: mat.nu ?? 0.33,
-            rho: mat.rho ?? 2700.0,
-          };
-          break;
-        }
-        currentMaterial = firstMat;
-
-        // Surface boundary extraction
-        const surfaceIndices: number[] = [];
-        if (numElems > 0) {
-          const faceMap = new Map<string, { count: number; face: [number, number, number] }>();
-          for (let e = 0; e < numElems; e++) {
-            const base = e * nodesPerElem;
-            const n0 = elements[base + 0]!;
-            const n1 = elements[base + 1]!;
-            const n2 = elements[base + 2]!;
-            const n3 = elements[base + 3]!;
-
-            const faces: [number, number, number][] = [
-              [n0, n2, n1],
-              [n0, n1, n3],
-              [n1, n2, n3],
-              [n0, n3, n2],
-            ];
-            for (const f of faces) {
-              const key = [f[0], f[1], f[2]].sort((a, b) => a - b).join("_");
-              const entry = faceMap.get(key);
-              if (entry) entry.count++;
-              else faceMap.set(key, { count: 1, face: f });
-            }
-          }
-          for (const { count, face } of faceMap.values()) {
-            if (count === 1) surfaceIndices.push(face[0], face[1], face[2]);
-          }
-        }
-
-        // Fixed nodes and loads positions
-        const fixedNodesList: { id: number; position: [number, number, number] }[] = [];
-        for (const nId of data.fixedNodes) {
-          const node = data.nodes.get(nId);
-          if (node) fixedNodesList.push({ id: nId, position: [node.x, node.y, node.z] });
-        }
-
-        const loadsList: { id: number; position: [number, number, number]; force: [number, number, number] }[] = [];
-        for (const [nId, f] of data.nodalLoads.entries()) {
-          const node = data.nodes.get(nId);
-          if (node) loadsList.push({ id: nId, position: [node.x, node.y, node.z], force: f });
-        }
-
-        const payload: InpMeshPayload = {
-          positions,
-          indices:
-            surfaceIndices.length > 0 ? surfaceIndices : Array.from({ length: positions.length / 3 }, (_, i) => i),
-          normals: [],
-          fixedNodes: fixedNodesList,
-          loads: loadsList,
-          stats: {
-            numNodes: data.nodes.size,
-            numElements: numElems,
-            materials: Array.from(data.materials.keys()),
-            isQuadratic,
-          },
-        };
+        currentMaterial = geom.material;
+        const payload = geom.payload;
 
         if (!disposed) {
           webviewPanel.webview.postMessage({ type: "inpMeshData", data: payload });
@@ -696,37 +605,4 @@ export class InpEditorProvider implements vscode.CustomTextEditorProvider {
       cleanupCallbacks.length = 0;
     });
   }
-
-  private getHtmlForWebview(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, "dist", "fea-deck-webview.js"),
-    );
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} https: http: ws: wss: data: blob:; worker-src 'self' blob:;">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FEA Deck 3D Viewer</title>
-    <style>
-      html, body, #root { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #1e1e1e; }
-    </style>
-</head>
-<body class="vscode-dark">
-    <div id="root"></div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

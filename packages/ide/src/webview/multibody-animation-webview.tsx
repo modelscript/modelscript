@@ -298,6 +298,7 @@ function App() {
   const [meshes, setMeshes] = useState<StepMeshPayload[]>([]);
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
   const [focusedPartName, setFocusedPartName] = useState<string | undefined>(undefined);
+  const [contextLost, setContextLost] = useState<boolean>(false);
   const [isDark, setIsDark] = useState<boolean>(true);
   const animationControllerRef = useRef<AnimationController | null>(null);
   const [, forceUpdate] = useState(0);
@@ -468,11 +469,55 @@ function App() {
         </div>
       ) : (
         <>
+          {contextLost && (
+            <div
+              style={{
+                position: "absolute",
+                top: 16,
+                left: 16,
+                right: 16,
+                zIndex: 100,
+                padding: "10px 16px",
+                borderRadius: 6,
+                background: "rgba(220, 38, 38, 0.9)",
+                color: "#ffffff",
+                fontSize: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+                backdropFilter: "blur(6px)",
+              }}
+            >
+              <span>⚠ WebGL graphics context was suspended by host system. Waiting for GPU recovery…</span>
+            </div>
+          )}
+
           <Canvas
             shadows
             camera={{ position: [100, 100, 100], fov: 50 }}
             gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
             style={{ background: isDark ? "#1a1a2e" : "#f0f4f8" }}
+            onCreated={({ gl }) => {
+              const dom = gl.domElement;
+              dom.addEventListener(
+                "webglcontextlost",
+                (e) => {
+                  e.preventDefault();
+                  console.warn("[MultiBodyAnimation] WebGL context lost! Waiting for restoration...");
+                  setContextLost(true);
+                },
+                false,
+              );
+              dom.addEventListener(
+                "webglcontextrestored",
+                () => {
+                  console.info("[MultiBodyAnimation] WebGL context restored!");
+                  setContextLost(false);
+                },
+                false,
+              );
+            }}
           >
             {animationControllerRef.current && (
               <SceneContents

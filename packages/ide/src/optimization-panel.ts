@@ -5,16 +5,14 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
-export class OptimizationPanel {
+export class OptimizationPanel extends BaseWebviewPanel {
   static currentPanel: OptimizationPanel | undefined;
   static readonly viewType = "modelscript.optimization";
 
-  private readonly panel: vscode.WebviewPanel;
-  private readonly extensionUri: vscode.Uri;
   public sourceUri?: string | undefined;
   private client?: LanguageClient | undefined;
-  private disposables: vscode.Disposable[] = [];
 
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
     const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
@@ -25,7 +23,7 @@ export class OptimizationPanel {
 
     if (OptimizationPanel.currentPanel) {
       OptimizationPanel.currentPanel.sourceUri = sourceUri;
-      OptimizationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      OptimizationPanel.currentPanel._panel.reveal(vscode.ViewColumn.Beside);
       return;
     }
 
@@ -40,17 +38,20 @@ export class OptimizationPanel {
       },
     );
 
-    OptimizationPanel.currentPanel = new OptimizationPanel(panel, extensionUri);
-    OptimizationPanel.currentPanel.client = client;
-    OptimizationPanel.currentPanel.sourceUri = sourceUri;
+    OptimizationPanel.currentPanel = new OptimizationPanel(panel, extensionUri, client, sourceUri);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this.panel = panel;
-    this.extensionUri = extensionUri;
-    this.panel.webview.html = this.getHtmlForWebview();
-    this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
-    this.panel.webview.onDidReceiveMessage(
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient, sourceUri: string) {
+    super(panel, extensionUri);
+    this.client = client;
+    this.sourceUri = sourceUri;
+
+    this._panel.webview.html = this.getHtmlShell({
+      title: "Optimization Dashboard",
+      scriptName: "optimization-webview.js",
+    });
+
+    this._panel.webview.onDidReceiveMessage(
       async (msg) => {
         if (msg.type === "optimizeRequest") {
           try {
@@ -69,7 +70,7 @@ export class OptimizationPanel {
             const isDark =
               vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
               vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-            this.panel.webview.postMessage({
+            this._panel.webview.postMessage({
               type: "optimizationResult",
               data: result,
               isDark,
@@ -77,62 +78,17 @@ export class OptimizationPanel {
           } catch (e: unknown) {
             const errMsg = e instanceof Error ? e.message : String(e);
             vscode.window.showErrorMessage(`Optimization failed: ${errMsg}`);
-            this.panel.webview.postMessage({ type: "optimizationError", error: errMsg });
+            this._panel.webview.postMessage({ type: "optimizationError", error: errMsg });
           }
         }
       },
       null,
-      this.disposables,
+      this._disposables,
     );
   }
 
-  private getHtmlForWebview(): string {
-    const webview = this.panel.webview;
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "optimization-webview.js"));
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;">
-  <title>Optimization Dashboard</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      width: 100vw;
-      height: 100vh;
-      background: var(--vscode-editor-background, #1e1e1e);
-      color: var(--vscode-foreground, #ccc);
-      font-family: var(--vscode-font-family, system-ui, sans-serif);
-    }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-
-  private dispose() {
+  public override dispose(): void {
     OptimizationPanel.currentPanel = undefined;
-    this.panel.dispose();
-    while (this.disposables.length) {
-      const d = this.disposables.pop();
-      if (d) d.dispose();
-    }
+    super.dispose();
   }
-}
-
-function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

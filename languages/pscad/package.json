@@ -28,20 +28,32 @@
       "types": "./dist/src/netlist/emt-netlist.d.ts",
       "default": "./dist/src/netlist/emt-netlist.js"
     },
+    "./edit": {
+      "types": "./dist/src/edit/diagram-actions.d.ts",
+      "default": "./dist/src/edit/diagram-actions.js"
+    },
     "./lints": {
       "types": "./dist/src/lints/index.d.ts",
       "default": "./dist/src/lints/index.js"
-    }
+    },
+    "./psout": {
+      "types": "./dist/src/psout/index.d.ts",
+      "default": "./dist/src/psout/index.js"
+    },
+    "./psout.wasm": "./dist/psout.wasm",
+    "./dist/psout.wasm": "./dist/psout.wasm"
   },
   "files": [
     "src/**",
-    "dist/**"
+    "dist/**",
+    "assembly/**"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:wasm && tsc",
+    "build:wasm": "asc assembly/psout.ts --config asconfig.json",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js tests/run-test.ts tests/comtrade.test.ts tests/pslx.test.ts tests/corpus.test.ts tests/model-corpus.test.ts tests/edit-engine.test.ts tests/sim-coverage.test.ts tests/param-eval.test.ts tests/datamerge.test.ts tests/meters-logic.test.ts tests/structural-lints.test.ts tests/control-intervals.test.ts tests/script-segments.test.ts",
+    "test": "node ../../scripts/test-runner.js tests/run-test.ts tests/comtrade.test.ts tests/pslx.test.ts tests/corpus.test.ts tests/model-corpus.test.ts tests/edit-engine.test.ts tests/sim-coverage.test.ts tests/param-eval.test.ts tests/datamerge.test.ts tests/meters-logic.test.ts tests/structural-lints.test.ts tests/control-intervals.test.ts tests/script-segments.test.ts tests/master-pslx-loader.test.ts tests/psout.test.ts tests/fortran-transliterator.test.ts tests/fortran-simulation.test.ts tests/emtdc-subroutines.test.ts tests/ieee2800-cfrt-and-ja-transformer.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

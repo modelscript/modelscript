@@ -9,12 +9,22 @@
  */
 
 import { Causality, DAEBuilder, VarType, Variability } from "@modelscript/runtime";
-import type { OlgaFlowpath, OlgaModel, OlgaSimulationResult, SpatialProfileSnapshot } from "../types.js";
-import { evaluateEmulsionViscosity } from "./emulsion-rheology.js";
+import { captureSimulationCheckpoint } from "../engine/checkpoint.js";
+import type { PvtTableData } from "../parser/pvt-table-parser.js";
+import type {
+  OlgaCheckpointState,
+  OlgaFlowpath,
+  OlgaHeatExchanger,
+  OlgaModel,
+  OlgaSimulationResult,
+  SpatialProfileSnapshot,
+} from "../types.js";
+import { AntiSlugController, type AntiSlugControllerOptions } from "./anti-slug-controller.js";
 import { classifyFlowRegime } from "./flow-regimes.js";
+import { evaluateCellFluidProperties, resolvePvtTable } from "./fluid-properties.js";
 import { PigTracker } from "./pig-tracker.js";
 import { SlugTracker } from "./slug-tracker.js";
-import { computeChurchillFriction, computeZuberFindlaySlip, evaluateBlackOilPvt } from "./zuber-findlay.js";
+import { computeChurchillFriction, computeZuberFindlaySlip } from "./zuber-findlay.js";
 
 /**
  * Lowers an OLGA flowpath into ModelScript's zero-GC linear memory DAEBuilder arena.
@@ -85,6 +95,12 @@ export interface SimulationOptions {
   durationSeconds?: number | undefined;
   timeStepSeconds?: number | undefined;
   snapshotCount?: number | undefined;
+  pvtTable?: PvtTableData | string | undefined;
+  pvtModel?: "TABULAR" | "BLACK_OIL" | undefined;
+  initialCheckpoint?: OlgaCheckpointState | undefined;
+  checkpointIntervalSeconds?: number | undefined;
+  onCheckpoint?: ((checkpoint: OlgaCheckpointState) => void) | undefined;
+  antiSlugController?: AntiSlugControllerOptions | undefined;
 }
 
 /**
@@ -93,6 +109,7 @@ export interface SimulationOptions {
  * and thermal cooldown along the pipeline trajectory.
  */
 export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions): OlgaSimulationResult {
+  const tableData = options?.pvtModel === "BLACK_OIL" ? null : resolvePvtTable(options?.pvtTable);
   const flowpath = model.flowpaths[0];
   if (!flowpath || flowpath.pipes.length === 0) {
     return {
@@ -126,6 +143,7 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
     sinTheta: number;
     uHeatTransfer: number;
     ambientTemp: number;
+    heatExchangers?: OlgaHeatExchanger[] | undefined;
   }
 
   const cells: GridCell[] = [];
@@ -165,6 +183,25 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
         ambientTemp,
       });
       currentX += dx;
+    }
+  }
+
+  // Associate heat exchangers with their closest cells
+  if (flowpath.heatExchangers && flowpath.heatExchangers.length > 0 && cells.length > 0) {
+    for (const hex of flowpath.heatExchangers) {
+      let closestIdx = 0;
+      let minDiff = Infinity;
+      for (let i = 0; i < cells.length; i++) {
+        const diff = Math.abs(cells[i]!.x - hex.position);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIdx = i;
+        }
+      }
+      if (!cells[closestIdx]!.heatExchangers) {
+        cells[closestIdx]!.heatExchangers = [];
+      }
+      cells[closestIdx]!.heatExchangers!.push(hex);
     }
   }
 
@@ -215,15 +252,50 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
   const alphaG = new Float64Array(N);
   const jFace = new Float64Array(N + 1);
 
-  // Initialize with hydrostatic/friction profile
-  for (let i = 0; i < N; i++) {
-    const frac = i / N;
-    P[i] = outletPressure + (1.0 - frac) * 35.0e5;
-    T[i] = inletTemp - frac * (inletTemp - cells[i]!.ambientTemp) * 0.45;
-    alphaG[i] = Math.max(0.05, Math.min(0.9, inletGasFraction * 2.0));
-  }
-  for (let i = 0; i <= N; i++) {
-    jFace[i] = inletMassRate / (cells[0]!.area * 700.0);
+  let startTime = 0;
+  if (options?.initialCheckpoint) {
+    startTime = options.initialCheckpoint.simulatedTime;
+    const cpCells = options.initialCheckpoint.gridCells;
+    if (cpCells.length === N) {
+      for (let i = 0; i < N; i++) {
+        P[i] = cpCells[i]!.pressurePa;
+        T[i] = cpCells[i]!.temperatureK;
+        alphaG[i] = cpCells[i]!.gasHoldup;
+        const jVal = cpCells[i]!.gasVelocityMps * alphaG[i]! + cpCells[i]!.liquidVelocityMps * cpCells[i]!.liquidHoldup;
+        jFace[i] = jVal;
+      }
+      jFace[N] = jFace[N - 1]!;
+    } else {
+      // Spatial re-interpolation onto target discretization
+      for (let i = 0; i < N; i++) {
+        const xTarget = cells[i]!.x;
+        let closest = cpCells[0]!;
+        let minDx = Infinity;
+        for (const c of cpCells) {
+          const d = Math.abs(c.x - xTarget);
+          if (d < minDx) {
+            minDx = d;
+            closest = c;
+          }
+        }
+        P[i] = closest.pressurePa;
+        T[i] = closest.temperatureK;
+        alphaG[i] = closest.gasHoldup;
+        jFace[i] = closest.gasVelocityMps * alphaG[i]! + closest.liquidVelocityMps * closest.liquidHoldup;
+      }
+      jFace[N] = jFace[N - 1]!;
+    }
+  } else {
+    // Initialize with hydrostatic/friction profile
+    for (let i = 0; i < N; i++) {
+      const frac = i / N;
+      P[i] = outletPressure + (1.0 - frac) * 35.0e5;
+      T[i] = inletTemp - frac * (inletTemp - cells[i]!.ambientTemp) * 0.45;
+      alphaG[i] = Math.max(0.05, Math.min(0.9, inletGasFraction * 2.0));
+    }
+    for (let i = 0; i <= N; i++) {
+      jFace[i] = inletMassRate / (cells[0]!.area * 700.0);
+    }
   }
 
   // Advanced modules: Lagrangian slug tracker & scraper pigging dynamics
@@ -233,6 +305,10 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
 
   const slugTracker = new SlugTracker();
   const pigTracker = new PigTracker(flowpath.pigs || []);
+
+  if (options?.initialCheckpoint?.pigStates && options.initialCheckpoint.pigStates.length > 0) {
+    pigTracker.restoreStates(options.initialCheckpoint.pigStates);
+  }
 
   // Telemetry records
   const times: number[] = [];
@@ -255,30 +331,49 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
   let peakLiquidSurgeVolume = 0.0;
   const g = 9.80665;
 
+  const antiSlug = options?.antiSlugController ? new AntiSlugController(options.antiSlugController) : null;
+  const trendChokeOpening: number[] = [];
+  const trendControllerError: number[] = [];
+
   // Time integration loop (Explicit TVD / Donor-cell predictor-corrector)
   for (let step = 0; step <= totalSteps; step++) {
-    const currentTime = step * dt;
+    const currentTime = startTime + step * dt;
+
+    // Active anti-slug closed-loop controller update
+    if (antiSlug) {
+      const riserBasePressure = P[0]!;
+      const topsidePressure = P[N - 1]!;
+      const ctrlOutput = antiSlug.step(
+        {
+          riserBasePressurePa: riserBasePressure,
+          topsidePressurePa: topsidePressure,
+          surgeVolumeM3: accumulatedLiquidVolume,
+        },
+        dt,
+      );
+      chokeOpening = ctrlOutput.chokeOpening;
+      trendChokeOpening.push(ctrlOutput.chokeOpening);
+      trendControllerError.push(ctrlOutput.filteredErrorPa);
+    }
 
     // Upwind mass and momentum update
     for (let i = 0; i < N; i++) {
       const cell = cells[i]!;
-      const pvt = evaluateBlackOilPvt(P[i]!, T[i]!);
+      const fluid = evaluateCellFluidProperties(tableData, P[i]!, T[i]!, inletWaterCut);
 
       const alphaL = 1.0 - alphaG[i]!;
-      const rhoM = alphaG[i]! * pvt.rhoG + alphaL * pvt.rhoL;
+      const rhoM = alphaG[i]! * fluid.rhoG + alphaL * fluid.rhoL;
 
       // Zuber-Findlay drift-flux closure
       const theta = Math.asin(cell.sinTheta);
-      const { c0, ugj } = computeZuberFindlaySlip(alphaG[i]!, pvt.rhoG, pvt.rhoL, 0.025, theta);
+      const { c0, ugj } = computeZuberFindlaySlip(alphaG[i]!, fluid.rhoG, fluid.rhoL, fluid.sigma, theta);
 
       // Velocities at cell
       const jCell = 0.5 * (jFace[i]! + jFace[i + 1]!);
       const ug = c0 * jCell + ugj;
 
-      // Emulsion rheology with phase inversion peak
-      const emulsion = evaluateEmulsionViscosity(inletWaterCut, pvt.muL, 0.001);
-      const muL = emulsion.effectiveViscosity;
-      const muM = alphaG[i]! * pvt.muG + alphaL * muL;
+      const muL = fluid.muL;
+      const muM = alphaG[i]! * fluid.muG + alphaL * muL;
 
       // Friction gradient
       const vm = Math.abs(jCell);
@@ -303,19 +398,43 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
       }
 
       // Void fraction rate of change (gas mass continuity)
-      const fluxGasIn = i === 0 ? (inletMassRate * inletGasFraction) / cell.area : alphaG[i - 1]! * pvt.rhoG * ug;
-      const fluxGasOut = alphaG[i]! * pvt.rhoG * ug;
-      const dAlphaGdt = -(fluxGasOut - fluxGasIn) / (cell.dx * Math.max(1.0, pvt.rhoG));
+      const fluxGasIn = i === 0 ? (inletMassRate * inletGasFraction) / cell.area : alphaG[i - 1]! * fluid.rhoG * ug;
+      const fluxGasOut = alphaG[i]! * fluid.rhoG * ug;
+      const dAlphaGdt = -(fluxGasOut - fluxGasIn) / (cell.dx * Math.max(1.0, fluid.rhoG));
 
       alphaG[i] = Math.max(0.01, Math.min(0.99, alphaG[i]! + 0.1 * dt * dAlphaGdt));
 
-      // Thermal cooling balance: d(rho Cp T)/dt = - d(rho Cp u T)/dx - 4 U (T - T_amb) / D
+      // Thermal cooling balance: d(rho Cp T)/dt = - d(rho Cp u T)/dx - 4 U (T - T_amb) / D + q_hex
       const cpM = 2200.0; // J / (kg * K)
       const qLoss = (4.0 * cell.uHeatTransfer * (T[i]! - cell.ambientTemp)) / cell.diameter;
       const advectionT = (rhoM * cpM * vm * (i === 0 ? T[i]! - inletTemp : T[i]! - T[i - 1]!)) / cell.dx;
-      const dTdt = -(advectionT + qLoss) / (rhoM * cpM);
 
-      T[i] = Math.max(cell.ambientTemp, T[i]! + dt * dTdt);
+      let qHex = 0.0;
+      const cellVolume = cell.area * cell.dx;
+      if (cell.heatExchangers && cell.heatExchangers.length > 0 && cellVolume > 0) {
+        for (const hex of cell.heatExchangers) {
+          if (hex.dutyKw !== undefined) {
+            // dutyKw in kW -> W: positive for heating, negative for cooling
+            qHex += (hex.dutyKw * 1000.0) / cellVolume;
+          } else if (hex.overallUa !== undefined) {
+            const tSecondary = hex.ambientTemperature ?? cell.ambientTemp;
+            qHex += (hex.overallUa * (tSecondary - T[i]!)) / cellVolume;
+          } else if (hex.targetTemperature !== undefined) {
+            const tauHex = Math.max(0.1, dt * 2.0);
+            qHex += (rhoM * cpM * (hex.targetTemperature - T[i]!)) / tauHex;
+          }
+        }
+      }
+
+      const dTdt = -(advectionT + qLoss - qHex) / (rhoM * cpM);
+      const isActivelyCooled = cell.heatExchangers?.some(
+        (h) =>
+          (h.dutyKw !== undefined && h.dutyKw < 0) ||
+          (h.targetTemperature !== undefined && h.targetTemperature < cell.ambientTemp) ||
+          (h.ambientTemperature !== undefined && h.ambientTemperature < cell.ambientTemp),
+      );
+      const minTempAllowed = isActivelyCooled ? 180.0 : cell.ambientTemp;
+      T[i] = Math.max(minTempAllowed, T[i]! + dt * dTdt);
     }
 
     // Step Lagrangian slug tracker and scraper pigging dynamics
@@ -359,12 +478,12 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
     const arrivalP = P[N - 1]!;
     const arrivalT = T[N - 1]!;
     const arrivalAlphaL = 1.0 - alphaG[N - 1]!;
-    const arrivalPvt = evaluateBlackOilPvt(arrivalP, arrivalT);
+    const arrivalFluid = evaluateCellFluidProperties(tableData, arrivalP, arrivalT, inletWaterCut);
     const arrivalArea = cells[N - 1]!.area;
     const arrivalVelocity = jFace[N]!;
-    const arrivalLiquidRate = arrivalAlphaL * arrivalPvt.rhoL * arrivalVelocity * arrivalArea;
+    const arrivalLiquidRate = arrivalAlphaL * arrivalFluid.rhoL * arrivalVelocity * arrivalArea;
 
-    const deltaLiquidVol = (arrivalLiquidRate / arrivalPvt.rhoL) * dt;
+    const deltaLiquidVol = (arrivalLiquidRate / arrivalFluid.rhoL) * dt;
     accumulatedLiquidVolume += deltaLiquidVol;
     if (accumulatedLiquidVolume > peakLiquidSurgeVolume) {
       peakLiquidSurgeVolume = accumulatedLiquidVolume;
@@ -384,8 +503,7 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
     trendActiveSlugs.push(activeSlugs.length);
     trendPigPos.push(activePigs[0]?.position ?? 0);
     trendPigVel.push(activePigs[0]?.velocity ?? 0);
-    const curEmulsion = evaluateEmulsionViscosity(inletWaterCut, arrivalPvt.muL, 0.001);
-    trendEmulsionVisc.push(curEmulsion.effectiveViscosity);
+    trendEmulsionVisc.push(arrivalFluid.muL);
 
     // Record spatial profile snapshot
     if (step % snapshotInterval === 0 || step === totalSteps) {
@@ -400,9 +518,9 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
 
       for (let i = 0; i < N; i++) {
         const cell = cells[i]!;
-        const pvt = evaluateBlackOilPvt(P[i]!, T[i]!);
+        const fluid = evaluateCellFluidProperties(tableData, P[i]!, T[i]!, inletWaterCut);
         const theta = Math.asin(cell.sinTheta);
-        const { c0, ugj } = computeZuberFindlaySlip(alphaG[i]!, pvt.rhoG, pvt.rhoL, 0.025, theta);
+        const { c0, ugj } = computeZuberFindlaySlip(alphaG[i]!, fluid.rhoG, fluid.rhoL, fluid.sigma, theta);
         const jVal = 0.5 * (jFace[i]! + jFace[i + 1]!);
         const ug = c0 * jVal + ugj;
         const al = 1.0 - alphaG[i]!;
@@ -413,10 +531,10 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
           inclinationRad: theta,
           superficialGasVelocity: Math.max(0.01, alphaG[i]! * ug),
           superficialLiquidVelocity: Math.max(0.01, al * Math.abs(ul)),
-          rhoGas: pvt.rhoG,
-          rhoLiquid: pvt.rhoL,
-          muGas: pvt.muG,
-          muLiquid: pvt.muL,
+          rhoGas: fluid.rhoG,
+          rhoLiquid: fluid.rhoL,
+          muGas: fluid.muG,
+          muLiquid: fluid.muL,
           roughness: cell.roughness,
         });
 
@@ -458,6 +576,66 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
         })),
       });
     }
+
+    // Checkpoint snapshotting during time-stepping
+    if (options?.checkpointIntervalSeconds && options.onCheckpoint) {
+      if (step > 0 && (step * dt) % options.checkpointIntervalSeconds < dt) {
+        const cp = captureSimulationCheckpoint({
+          modelTitle: model.title,
+          simulatedTime: currentTime,
+          cells,
+          P,
+          T,
+          alphaG,
+          jFace,
+          pigs: activePigs.map((p) => ({
+            name: p.name,
+            position: p.position,
+            velocity: p.velocity,
+            sweptVolume: p.sweptLiquidVolume,
+            isStuck: p.isStuck,
+          })),
+          slugs: activeSlugs.map((s) => ({
+            id: s.id,
+            tailX: s.tailPos,
+            frontX: s.frontPos,
+            length: s.length,
+            velocity: s.velocity,
+          })),
+        });
+        options.onCheckpoint(cp);
+      }
+    }
+  }
+
+  // Final checkpoint at simulation completion if requested
+  if (options?.onCheckpoint) {
+    const lastPigs = pigTracker.getStates();
+    const lastSlugs = slugTracker.getActiveSlugs();
+    const finalCp = captureSimulationCheckpoint({
+      modelTitle: model.title,
+      simulatedTime: startTime + duration,
+      cells,
+      P,
+      T,
+      alphaG,
+      jFace,
+      pigs: lastPigs.map((p) => ({
+        name: p.name,
+        position: p.position,
+        velocity: p.velocity,
+        sweptVolume: p.sweptLiquidVolume,
+        isStuck: p.isStuck,
+      })),
+      slugs: lastSlugs.map((s) => ({
+        id: s.id,
+        tailX: s.tailPos,
+        frontX: s.frontPos,
+        length: s.length,
+        velocity: s.velocity,
+      })),
+    });
+    options.onCheckpoint(finalCp);
   }
 
   return {
@@ -477,6 +655,8 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
       pigPosition: trendPigPos,
       pigVelocity: trendPigVel,
       emulsionViscosity: trendEmulsionVisc,
+      chokeOpening: trendChokeOpening.length > 0 ? trendChokeOpening : undefined,
+      controllerError: trendControllerError.length > 0 ? trendControllerError : undefined,
     },
   };
 }

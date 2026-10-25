@@ -58,12 +58,18 @@ export function verifyFlowAssuranceTrajectory(
   let peakPressureObserved = -Infinity;
   let minVelocityObserved = Infinity;
 
+  let minWaxMarginObserved = Infinity;
+  let waxCriticalLocation = 0;
+  let maxVelocityObserved = -Infinity;
+
   for (const snapshot of trajectory.profiles) {
     const count = snapshot.x.length;
     for (let i = 0; i < count; i++) {
       const p = snapshot.pressure[i]!;
       const t = snapshot.temperature[i]!;
       const ug = snapshot.gasVelocity[i]!;
+      const ul = snapshot.liquidVelocity[i]!;
+      const um = Math.abs(snapshot.liquidHoldup[i]! * ul + (1.0 - snapshot.liquidHoldup[i]!) * ug);
       const loc = snapshot.x[i]!;
 
       // 1. Hydrate margin check
@@ -83,6 +89,20 @@ export function verifyFlowAssuranceTrajectory(
       if (ug < minVelocityObserved) {
         minVelocityObserved = ug;
       }
+
+      // 4. Max velocity check (erosion)
+      if (um > maxVelocityObserved) {
+        maxVelocityObserved = um;
+      }
+
+      // 5. Wax margin check
+      if (limits.cloudPointTemp != null) {
+        const waxMargin = t - limits.cloudPointTemp;
+        if (waxMargin < minWaxMarginObserved) {
+          minWaxMarginObserved = waxMargin;
+          waxCriticalLocation = loc;
+        }
+      }
     }
   }
 
@@ -94,7 +114,20 @@ export function verifyFlowAssuranceTrajectory(
   const maopPassed = peakPressureObserved <= limits.maop;
   const turndownPassed = minVelocityObserved >= limits.minGasVelocity;
 
-  const passed = hydratePassed && slugPassed && maopPassed && turndownPassed;
+  let waxPassed = true;
+  if (limits.cloudPointTemp != null) {
+    waxPassed = minWaxMarginObserved >= (limits.minWaxMarginKelvin ?? 3.0);
+  }
+
+  let sandPassed = true;
+  if (limits.minSandTransportVelocity != null && minVelocityObserved < limits.minSandTransportVelocity) {
+    sandPassed = false;
+  }
+  if (limits.maxErosionalVelocity != null && maxVelocityObserved > limits.maxErosionalVelocity) {
+    sandPassed = false;
+  }
+
+  const passed = hydratePassed && slugPassed && maopPassed && turndownPassed && waxPassed && sandPassed;
 
   return {
     passed,
@@ -120,6 +153,27 @@ export function verifyFlowAssuranceTrajectory(
         minVelocityObserved,
         requiredVelocity: limits.minGasVelocity,
       },
+      ...(limits.cloudPointTemp != null
+        ? {
+            waxAvoidance: {
+              passed: waxPassed,
+              minMarginObserved: minWaxMarginObserved,
+              requiredMargin: limits.minWaxMarginKelvin ?? 3.0,
+              criticalLocation: waxCriticalLocation,
+            },
+          }
+        : {}),
+      ...(limits.minSandTransportVelocity != null || limits.maxErosionalVelocity != null
+        ? {
+            sandTransport: {
+              passed: sandPassed,
+              minVelocityObserved,
+              maxVelocityObserved,
+              requiredMinVelocity: limits.minSandTransportVelocity ?? 0.7,
+              erosionalLimit: limits.maxErosionalVelocity ?? 18.0,
+            },
+          }
+        : {}),
     },
   };
 }

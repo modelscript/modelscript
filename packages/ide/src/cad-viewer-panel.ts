@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
 /**
  * Manages the interactive 3D CAD & Multi-Body Webview Panel in VS Code.
@@ -11,20 +12,14 @@ import { LanguageClient } from "vscode-languageclient/browser";
  * 3D viewport, and writes interactive gizmo transforms and CAD variable bindings back
  * into OpenSCAD (`.scad`) and Modelica (`.mo`) source documents.
  */
-export class CadViewerPanel {
+export class CadViewerPanel extends BaseWebviewPanel {
   /** Singleton instance of the currently open CAD viewer panel, if any. */
   public static currentPanel: CadViewerPanel | undefined;
   /** VS Code webview view type identifier for the 3D CAD viewer. */
   public static readonly viewType = "modelscript.cadViewer";
 
-  /** Underlying VS Code webview panel host. */
-  private readonly _panel: vscode.WebviewPanel;
-  /** Root URI of the extension used to resolve bundled scripts and CAD assets. */
-  private readonly _extensionUri: vscode.Uri;
   /** Active LSP language client used to request CAD component meshes and listen for AST updates. */
   private readonly _client: LanguageClient;
-  /** Subscriptions and timers disposed when the panel closes. */
-  private _disposables: vscode.Disposable[] = [];
 
   /**
    * Creates a new 3D CAD Viewer webview panel beside the active editor, or reveals
@@ -33,12 +28,15 @@ export class CadViewerPanel {
    * @param extensionUri - Base URI of the IDE extension.
    * @param client - Active LSP `LanguageClient`.
    */
-  public static createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
+  public static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, initialFocusPart?: string) {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
 
     if (CadViewerPanel.currentPanel) {
       CadViewerPanel.currentPanel._panel.reveal(column);
       CadViewerPanel.currentPanel.update();
+      if (initialFocusPart) {
+        CadViewerPanel.currentPanel.focusPart(initialFocusPart);
+      }
       return;
     }
 
@@ -49,6 +47,9 @@ export class CadViewerPanel {
     });
 
     CadViewerPanel.currentPanel = new CadViewerPanel(panel, extensionUri, client);
+    if (initialFocusPart) {
+      CadViewerPanel.currentPanel.focusPart(initialFocusPart);
+    }
   }
 
   /**
@@ -56,11 +57,8 @@ export class CadViewerPanel {
    * writebacks, and subscribes to editor and workspace change events.
    */
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    super(panel, extensionUri);
     this._client = client;
-
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(
       (message) => {
@@ -82,7 +80,14 @@ export class CadViewerPanel {
       this._disposables,
     );
 
-    this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
+    const cadBaseUri = this._panel.webview
+      .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "images", "cad"))
+      .toString();
+    this._panel.webview.html = this.getHtmlShell({
+      title: "3D CAD Viewer",
+      scriptName: "cad-webview.js",
+      injectedGlobalJs: `window.__CAD_ASSET_BASE_URL__ = "${cadBaseUri}";`,
+    });
 
     // Watch for active editor changes to auto-update CAD viewer
     vscode.window.onDidChangeActiveTextEditor(
@@ -433,52 +438,8 @@ export class CadViewerPanel {
   /**
    * Disposes the webview panel and all registered event listeners and timers.
    */
-  public dispose() {
+  public override dispose(): void {
     CadViewerPanel.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const x = this._disposables.pop();
-      if (x) {
-        x.dispose();
-      }
-    }
+    super.dispose();
   }
-
-  /**
-   * Generates the HTML document shell for the 3D CAD viewer webview with a strict Content Security Policy.
-   */
-  private _getHtmlForWebview(webview: vscode.Webview) {
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "dist", "cad-webview.js"));
-    const cadBaseUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "images", "cad")).toString();
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} https: http: ws: wss: data: blob:; worker-src 'self' blob:;">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D CAD Viewer</title>
-</head>
-<body class="vscode-dark">
-    <div id="root"></div>
-    <script nonce="${nonce}">
-      window.__CAD_ASSET_BASE_URL__ = "${cadBaseUri}";
-    </script>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-}
-
-/**
- * Generates a random 32-character alphanumeric cryptographic nonce for webview script tags.
- */
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

@@ -15,8 +15,8 @@ const corpus = process.env["PSCAD_CORPUS_DIR"] ?? path.resolve(here, "../../../.
 
 /** Ratchet: minimum EMT netlist coverage per corpus file. Only ever raise. */
 const BASELINE: Record<string, number> = {
-  "DC_EMT_demo.pscx": 0.99,
-  "DC_EMT_compare.pscx": 0.99,
+  "DC_EMT_demo.pscx": 1.0,
+  "DC_EMT_compare.pscx": 1.0,
 };
 
 function findFiles(dir: string): string[] {

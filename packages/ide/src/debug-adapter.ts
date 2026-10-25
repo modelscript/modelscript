@@ -186,20 +186,52 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  /** Returns the single `"Local"` variable scope for the paused simulation frame. */
+  /** Returns categorized variable scopes (States, Algebraic, Parameters, Metrics) for the simulation frame. */
   protected override scopesRequest(response: DebugProtocol.ScopesResponse): void {
     response.body = {
-      scopes: [new Scope("Local", 1, false)],
+      scopes: [
+        new Scope("States & Derivatives", 1, false),
+        new Scope("Algebraic Variables", 2, false),
+        new Scope("Parameters", 3, false),
+        new Scope("Solver Metrics", 4, false),
+      ],
     };
     this.sendResponse(response);
   }
 
-  /** Fetches the current DAE state, algebraic, and parameter variable values from the LSP simulator. */
-  protected override async variablesRequest(response: DebugProtocol.VariablesResponse): Promise<void> {
+  /** Fetches and filters simulation variables by scope category. */
+  protected override async variablesRequest(
+    response: DebugProtocol.VariablesResponse,
+    args: DebugProtocol.VariablesArguments,
+  ): Promise<void> {
     if (getLspDebugVariables) {
       try {
-        const vars = await getLspDebugVariables();
-        response.body = { variables: vars };
+        const allVars = await getLspDebugVariables();
+        let filtered = allVars;
+        if (args.variablesReference === 1) {
+          // States & Derivatives
+          filtered = allVars.filter(
+            (v) => v.name.startsWith("der(") || v.name.endsWith(".state") || /^(?:x|v|omega|theta)\b/i.test(v.name),
+          );
+          if (filtered.length === 0) filtered = allVars;
+        } else if (args.variablesReference === 2) {
+          // Algebraic Variables
+          filtered = allVars.filter(
+            (v) =>
+              !v.name.startsWith("der(") &&
+              !/^(?:time|dt|step|iterations?|residual)\b/i.test(v.name) &&
+              !v.name.startsWith("param_"),
+          );
+        } else if (args.variablesReference === 3) {
+          // Parameters
+          filtered = allVars.filter(
+            (v) => v.name.startsWith("param_") || v.name.includes(".param") || /^[A-Z_0-9]+$/.test(v.name),
+          );
+        } else if (args.variablesReference === 4) {
+          // Solver Metrics
+          filtered = allVars.filter((v) => /^(?:time|dt|step|iterations?|residual|solver|converged)\b/i.test(v.name));
+        }
+        response.body = { variables: filtered };
       } catch {
         response.body = { variables: [] };
       }
@@ -235,7 +267,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
-  /** Evaluates a watched or hovered variable name against the current simulation state table. */
+  /** Evaluates a watched expression, dot-path, or arithmetic formula against simulation variables. */
   protected override async evaluateRequest(
     response: DebugProtocol.EvaluateResponse,
     args: DebugProtocol.EvaluateArguments,
@@ -243,17 +275,43 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     if (getLspDebugVariables) {
       try {
         const vars = await getLspDebugVariables();
-        // Exact match for the variable name in the environment
-        const found = vars.find((v) => v.name === args.expression);
+        const expr = (args.expression || "").trim();
+
+        // 1. Direct match
+        const found = vars.find((v) => v.name === expr || v.name.toLowerCase() === expr.toLowerCase());
         if (found) {
-          response.body = {
-            result: found.value,
-            variablesReference: 0,
-          };
-        } else {
-          // Fallback for non-matching expressions
-          response.body = { result: "undefined", variablesReference: 0 };
+          response.body = { result: found.value, variablesReference: 0 };
+          this.sendResponse(response);
+          return;
         }
+
+        // 2. Hierarchical dot-path suffix match (e.g., "resistor.v" matching "circuit.resistor.v")
+        const suffixMatch = vars.find((v) => v.name.endsWith("." + expr));
+        if (suffixMatch) {
+          response.body = { result: suffixMatch.value, variablesReference: 0 };
+          this.sendResponse(response);
+          return;
+        }
+
+        // 3. Simple arithmetic evaluation with variable substitution (e.g., "a + b" or "2 * x")
+        let evaluatedExpr = expr;
+        for (const v of vars) {
+          if (!isNaN(Number(v.value))) {
+            const varPattern = new RegExp(`\\b${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
+            evaluatedExpr = evaluatedExpr.replace(varPattern, v.value);
+          }
+        }
+        if (/^[\d.\s+\-*/()]+$/.test(evaluatedExpr)) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-implied-eval
+            const mathResult = Function(`"use strict"; return (${evaluatedExpr});`)();
+            response.body = { result: String(mathResult), variablesReference: 0 };
+            this.sendResponse(response);
+            return;
+          } catch {}
+        }
+
+        response.body = { result: "undefined", variablesReference: 0 };
       } catch {
         response.body = { result: "error", variablesReference: 0 };
       }

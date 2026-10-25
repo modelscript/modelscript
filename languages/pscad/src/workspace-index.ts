@@ -6,6 +6,28 @@ import { registerPscadSource } from "./model/workspace-registry.js";
 import { parseFlyBySegment } from "./script/script-parser.js";
 import type { PscadFlyByDoc } from "./types.js";
 
+function unwrapCdata(s: string): string {
+  let out = "";
+  let idx = 0;
+  while (idx < s.length) {
+    const cdataStart = s.indexOf("<![CDATA[", idx);
+    if (cdataStart === -1) {
+      out += s.slice(idx);
+      break;
+    }
+    out += s.slice(idx, cdataStart);
+    const contentStart = cdataStart + 9;
+    const cdataEnd = s.indexOf("]]>", contentStart);
+    if (cdataEnd === -1) {
+      out += s.slice(contentStart);
+      break;
+    }
+    out += s.slice(contentStart, cdataEnd);
+    idx = cdataEnd + 3;
+  }
+  return out;
+}
+
 /**
  * Workspace symbol indexer for PSCAD projects (.pslx libraries, .pscx cases, .pswx workspaces).
  *
@@ -134,15 +156,17 @@ export class PscadWorkspaceIndex implements IWorkspaceIndex {
 
       const descMatch = /<param\s+name\s*=\s*["']Description["']\s+value\s*=\s*["']([^"']*)["']/i.exec(dBody);
       let desc = descMatch ? descMatch[1] : undefined;
-      const flyByMatch = /<segment\b[^>]*?name\s*=\s*["']FlyBy["'][^>]*>([\s\S]*?)<\/segment>/i.exec(dBody);
       let flyByDoc: PscadFlyByDoc | undefined;
-      if (flyByMatch) {
-        let flyByText = flyByMatch[1]!;
-        const cdata = /^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/i.exec(flyByText);
-        if (cdata) flyByText = cdata[1]!;
-        flyByDoc = parseFlyBySegment(flyByText);
-        if ((!desc || !desc.trim()) && flyByDoc.summary) {
-          desc = flyByDoc.summary.split("\n")[0]?.trim();
+      const segRegex = /<segment\b([^>]*)>([\s\S]*?)<\/segment>/gi;
+      let sm: RegExpExecArray | null;
+      while ((sm = segRegex.exec(dBody)) !== null) {
+        if (/name\s*=\s*["']FlyBy["']/i.test(sm[1]!)) {
+          const flyByText = unwrapCdata(sm[2]!).trim();
+          flyByDoc = parseFlyBySegment(flyByText);
+          if ((!desc || !desc.trim()) && flyByDoc.summary) {
+            desc = flyByDoc.summary.split("\n")[0]?.trim();
+          }
+          break;
         }
       }
       const iconSvg = renderPscadDefinitionIconSvg(dBody, 16, defName);
@@ -387,7 +411,7 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16, defName =
       } else if (tag === "text") {
         const tx = parseFloat(getAttr("x") || "0");
         const ty = parseFloat(getAttr("y") || "0");
-        const t = bodyText.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+        const t = unwrapCdata(bodyText).trim();
         if (t && !t.startsWith("%") && t.length <= 6) {
           const stroke = normalizeIconStroke(getAttr("stroke") || getAttr("fill"));
           items.push({

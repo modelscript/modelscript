@@ -17,6 +17,7 @@ interface SimulationData {
   sweepResults?: { value: number; y: number[][] }[];
   comtrade?: { cfg: string; dat: string };
   pscadOut?: { inf: string; out: { suffix: string; content: string }[] };
+  pscadPsout?: Uint8Array | string;
   projectName?: string;
 }
 
@@ -196,6 +197,7 @@ const checkboxDualY = document.getElementById("checkbox-dual-y") as HTMLInputEle
 const btnExportCsv = document.getElementById("btn-export-csv");
 const btnExportComtrade = document.getElementById("btn-export-comtrade");
 const btnExportOut = document.getElementById("btn-export-out");
+const btnExportPsout = document.getElementById("btn-export-psout");
 const btnExportPng = document.getElementById("btn-export-png");
 const btnCopyCsv = document.getElementById("btn-copy-csv");
 const btnToggleCursors = document.getElementById("btn-toggle-cursors");
@@ -598,6 +600,30 @@ function exportPscadOut() {
   });
 }
 
+function exportPscadPsout() {
+  if (!currentData?.pscadPsout) return;
+  const baseName = currentData.projectName || "simulation";
+  let bytes: Uint8Array;
+  if (typeof currentData.pscadPsout === "string") {
+    const binary = atob(currentData.pscadPsout);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  } else if (currentData.pscadPsout instanceof Uint8Array) {
+    bytes = currentData.pscadPsout;
+  } else {
+    bytes = new Uint8Array(Object.values(currentData.pscadPsout));
+  }
+  const blob = new Blob([bytes], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${baseName}.psout`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 btnExportCsv?.addEventListener("click", () => {
   exportCsv();
 });
@@ -608,6 +634,10 @@ btnExportComtrade?.addEventListener("click", () => {
 
 btnExportOut?.addEventListener("click", () => {
   exportPscadOut();
+});
+
+btnExportPsout?.addEventListener("click", () => {
+  exportPscadPsout();
 });
 
 btnExportPng?.addEventListener("click", () => {
@@ -751,6 +781,9 @@ window.addEventListener("message", (event) => {
     }
     if (btnExportOut) {
       btnExportOut.style.display = msg.data.pscadOut ? "inline-block" : "none";
+    }
+    if (btnExportPsout) {
+      btnExportPsout.style.display = msg.data.pscadPsout ? "inline-block" : "none";
     }
 
     // Fill in Parameters with rich sliders, reset, and sweep controls
@@ -937,14 +970,20 @@ window.addEventListener("message", (event) => {
     if (stRtol && !stRtol.value) stRtol.value = (exp.tolerance ?? 1e-4).toString();
     if (stAtol && !stAtol.value) stAtol.value = "1e-6";
 
-    if (exp.solver && stSolver) {
-      const solverLower = exp.solver.toLowerCase();
+    if (stSolver) {
+      const solverLower = (exp.solver || "").toLowerCase();
       if (solverLower.includes("dommel") || solverLower.includes("emt") || solverLower.includes("companion")) {
         stSolver.value = "dommel";
         if (stPreset) stPreset.value = "emt";
       } else if (solverLower.includes("cvode") || solverLower.includes("bdf")) {
         stSolver.value = "cvode";
         if (stPreset) stPreset.value = "stiff";
+      } else if (solverLower.includes("rodas")) {
+        stSolver.value = "rodas4p";
+        if (stPreset) stPreset.value = "stiff";
+      } else if (solverLower.includes("tsit")) {
+        stSolver.value = "tsit5";
+        if (stPreset) stPreset.value = "standard";
       } else if (solverLower.includes("rk4")) {
         stSolver.value = "rk4";
         if (stPreset) stPreset.value = "fast";
@@ -954,7 +993,7 @@ window.addEventListener("message", (event) => {
       } else if (solverLower.includes("webgpu")) {
         stSolver.value = "webgpu";
         if (stPreset) stPreset.value = "custom";
-      } else if (solverLower.includes("dopri")) {
+      } else {
         stSolver.value = "dopri5";
         if (stPreset) stPreset.value = "standard";
       }
@@ -1465,6 +1504,21 @@ stPreset?.addEventListener("change", () => {
   } else if (preset === "steady-state") {
     if (stSolver) stSolver.value = "dopri5";
     if (stSteadyState) stSteadyState.checked = true;
+  }
+});
+
+// Solver change listener: sync preset when user manually selects a solver
+stSolver?.addEventListener("change", () => {
+  if (stPreset) {
+    if (
+      stSolver.value === "dopri5" &&
+      (stPreset.value === "standard" || stPreset.value === "high-accuracy" || stPreset.value === "steady-state")
+    )
+      return;
+    if (stSolver.value === "rk4" && stPreset.value === "fast") return;
+    if (stSolver.value === "cvode" && stPreset.value === "stiff") return;
+    if (stSolver.value === "dommel" && stPreset.value === "emt") return;
+    stPreset.value = "custom";
   }
 });
 

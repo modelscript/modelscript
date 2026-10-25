@@ -258,6 +258,33 @@ export interface EmtCircuitDefinition {
     | undefined;
   /** Continuous System Model Functions (CSMF) control and protection block diagram definitions. */
   csmfBlocks?: CsmfBlockConfig[] | undefined;
+  /** Custom procedural Fortran script components (<segment name="Fortran"> / "Dsdyn"). */
+  customFortranBlocks?:
+    | {
+        /** Unique component instance identifier. */
+        id: string;
+        /** User-friendly component name. */
+        name?: string | undefined;
+        /** Fortran state size for STORF (REAL). */
+        numRealStates?: number | undefined;
+        /** Fortran state size for STORI (INTEGER). */
+        numIntStates?: number | undefined;
+        /** Input port bindings: port name -> source electrical bus or control signal ID. */
+        inputs?: { portName: string; sourceId?: string | undefined }[] | undefined;
+        /** Output port bindings: port name -> target signal ID. */
+        outputs?: { portName: string; targetId?: string | undefined }[] | undefined;
+        /** Execution closure compiling Fortran AST into high-performance zero-allocation step. */
+        step: (ctx: {
+          time: number;
+          dt: number;
+          firstStep: boolean;
+          inputs: (portName: string) => number;
+          setOutput: (portName: string, value: number) => void;
+          storf: Float64Array;
+          stori: Int32Array;
+        }) => void;
+      }[]
+    | undefined;
 }
 
 /** Internal runtime state for a single phase-to-ground or phase-to-phase fault conductance element. */
@@ -341,6 +368,25 @@ export class EmtSolver {
   private readonly faultStates: FaultElementState[] = [];
   /** Optional Continuous System Model Functions (CSMF) control and protection execution graph. */
   private readonly csmfGraph?: CsmfControlGraph | undefined;
+  /** Custom Fortran procedural components. */
+  private readonly fortranBlocks: {
+    id: string;
+    name: string;
+    storf: Float64Array;
+    stori: Int32Array;
+    inputs: { portName: string; sourceId?: string | undefined }[];
+    outputs: { portName: string; targetId?: string | undefined }[];
+    currentOutputs: Map<string, number>;
+    stepFn: (ctx: {
+      time: number;
+      dt: number;
+      firstStep: boolean;
+      inputs: (portName: string) => number;
+      setOutput: (portName: string, value: number) => void;
+      storf: Float64Array;
+      stori: Int32Array;
+    }) => void;
+  }[] = [];
 
   /**
    * Constructs an `EmtSolver` instance from a circuit topology definition and solver options,
@@ -387,6 +433,20 @@ export class EmtSolver {
     const dt = this.options.timeStepSec;
     if (circuit.csmfBlocks && circuit.csmfBlocks.length > 0) {
       this.csmfGraph = new CsmfControlGraph(circuit.csmfBlocks, dt, this.options.nominalFrequencyHz);
+    }
+    if (circuit.customFortranBlocks && circuit.customFortranBlocks.length > 0) {
+      for (const b of circuit.customFortranBlocks) {
+        this.fortranBlocks.push({
+          id: b.id,
+          name: b.name ?? b.id,
+          storf: new Float64Array(Math.max(b.numRealStates ?? 1, 1)),
+          stori: new Int32Array(Math.max(b.numIntStates ?? 1, 1)),
+          inputs: b.inputs ?? [],
+          outputs: b.outputs ?? [],
+          currentOutputs: new Map<string, number>(),
+          stepFn: b.step,
+        });
+      }
     }
 
     // 1. Index buses (GND is -1). In 3-phase mode, bus i occupies nodes [3*i + 0, 3*i + 1, 3*i + 2].
@@ -740,12 +800,14 @@ export class EmtSolver {
         const s = circuit.currentSources[i]!;
         const baseId = s.id ?? `CurrentSource_${i + 1}`;
         for (let p = 0; p < this.nPhases; p++) {
+          const node = getNodePhase(s.bus, p);
+          if (node < 0) continue;
           const phaseOffset = p === 0 ? 0 : p === 1 ? -(2 * Math.PI) / 3 : (2 * Math.PI) / 3;
           this.currentSources.push({
             id: p === 0 ? baseId : `${baseId}_ph${p}`,
-            node: getNodePhase(s.bus, p),
-            iPeakA: s.iPeakA,
-            omega: 2 * Math.PI * s.freqHz,
+            node,
+            iPeakA: s.iPeakA ?? 0,
+            omega: 2 * Math.PI * (s.freqHz ?? 0),
             phase: (s.phaseRad ?? 0) + phaseOffset,
           });
         }
@@ -1060,10 +1122,24 @@ export class EmtSolver {
       registerBranchOutput(this.fmuStates[i]!.id, i % this.nPhases);
     }
 
-    const controlSignals = this.csmfGraph ? new Map<string, Float64Array>() : undefined;
+    const controlSignals =
+      this.csmfGraph || this.fortranBlocks.length > 0 ? new Map<string, Float64Array>() : undefined;
     if (this.csmfGraph && controlSignals) {
       for (const blockId of this.csmfGraph.getBlockIds()) {
         controlSignals.set(blockId, new Float64Array(totalSteps));
+      }
+    }
+    if (controlSignals && this.fortranBlocks.length > 0) {
+      for (const fb of this.fortranBlocks) {
+        if (!controlSignals.has(fb.id)) {
+          controlSignals.set(fb.id, new Float64Array(totalSteps));
+        }
+        for (const out of fb.outputs) {
+          const sigId = out.targetId ?? `${fb.id}_${out.portName}`;
+          if (!controlSignals.has(sigId)) {
+            controlSignals.set(sigId, new Float64Array(totalSteps));
+          }
+        }
       }
     }
 
@@ -1665,7 +1741,116 @@ export class EmtSolver {
         }
       }
 
-      // K. Evaluate Continuous System Model Functions (CSMF) control blocks & apply feedback actuators
+      // K. Evaluate Custom Fortran blocks
+      for (const fb of this.fortranBlocks) {
+        const inputLookup = (portName: string): number => {
+          const inp = fb.inputs.find(
+            (i) => i.portName === portName || i.portName.toLowerCase() === portName.toLowerCase(),
+          );
+          if (!inp || !inp.sourceId) return 0;
+          const srcId = inp.sourceId;
+
+          // 1. Bus voltage
+          const bIdx = this.busMap.get(srcId);
+          if (bIdx !== undefined) {
+            return vVec[bIdx * this.nPhases] ?? 0;
+          }
+
+          // 2. Branch current
+          const branchCur = branchCurrents.get(srcId);
+          if (branchCur) {
+            return branchCur[step] ?? 0;
+          }
+
+          // 3. CSMF control block output
+          if (this.csmfGraph && this.csmfGraph.blockMap.has(srcId)) {
+            return this.csmfGraph.getOutput(srcId);
+          }
+
+          // 4. Other Fortran block output
+          for (const otherFb of this.fortranBlocks) {
+            if (otherFb.currentOutputs.has(srcId)) {
+              return otherFb.currentOutputs.get(srcId) ?? 0;
+            }
+            for (const out of otherFb.outputs) {
+              if (out.targetId === srcId || `${otherFb.id}_${out.portName}` === srcId) {
+                return otherFb.currentOutputs.get(out.portName) ?? 0;
+              }
+            }
+          }
+
+          return 0;
+        };
+
+        const setOutput = (portName: string, val: number): void => {
+          fb.currentOutputs.set(portName, val);
+          const out = fb.outputs.find(
+            (o) => o.portName === portName || o.portName.toLowerCase() === portName.toLowerCase(),
+          );
+          const sigId = out?.targetId ?? `${fb.id}_${portName}`;
+          if (controlSignals) {
+            const arr = controlSignals.get(sigId);
+            if (arr) arr[step] = val;
+            const mainArr = controlSignals.get(fb.id);
+            if (mainArr) mainArr[step] = val;
+          }
+        };
+
+        fb.stepFn({
+          time: t,
+          dt,
+          firstStep: step === 0,
+          inputs: inputLookup,
+          setOutput,
+          storf: fb.storf,
+          stori: fb.stori,
+        });
+
+        // Apply any actuator feedback directly bound to this Fortran block's outputs
+        for (const out of fb.outputs) {
+          if (!out.targetId) continue;
+          const val = fb.currentOutputs.get(out.portName) ?? 0;
+          for (const bp of this.breakerPoles) {
+            if (bp.id === out.targetId || bp.id.startsWith(`${out.targetId}_ph`)) {
+              if (val > 0.5) {
+                bp.pendingClose = false;
+                if (bp.isClosed) bp.pendingOpen = true;
+              } else {
+                bp.pendingOpen = false;
+                if (!bp.isClosed) bp.pendingClose = true;
+              }
+            }
+          }
+          for (const src of this.sources) {
+            if (src.id === out.targetId || src.id.startsWith(`${out.targetId}_ph`)) {
+              src.vPeakKv = val;
+            }
+          }
+        }
+      }
+
+      // External signal provider for CSMF graph reading from Fortran blocks
+      const getFortranSignal = (sigId: string): number | undefined => {
+        for (const fb of this.fortranBlocks) {
+          if (fb.id === sigId) {
+            const firstPort = fb.outputs[0]?.portName;
+            if (firstPort && fb.currentOutputs.has(firstPort)) {
+              return fb.currentOutputs.get(firstPort);
+            }
+          }
+          if (fb.currentOutputs.has(sigId)) {
+            return fb.currentOutputs.get(sigId);
+          }
+          for (const out of fb.outputs) {
+            if (out.targetId === sigId || `${fb.id}_${out.portName}` === sigId) {
+              return fb.currentOutputs.get(out.portName);
+            }
+          }
+        }
+        return undefined;
+      };
+
+      // Evaluate Continuous System Model Functions (CSMF) control blocks & apply feedback actuators
       if (this.csmfGraph && controlSignals) {
         this.csmfGraph.step(
           (busName, phaseIdx = 0) => {
@@ -1683,10 +1868,12 @@ export class EmtSolver {
             if (!wf) return 0;
             return phaseIdx === 1 ? (wf.b[step] ?? 0) : (wf.c[step] ?? 0);
           },
+          getFortranSignal,
         );
 
-        for (const [blockId, arr] of controlSignals.entries()) {
-          arr[step] = this.csmfGraph.getOutput(blockId);
+        for (const blockId of this.csmfGraph.getBlockIds()) {
+          const arr = controlSignals.get(blockId);
+          if (arr) arr[step] = this.csmfGraph.getOutput(blockId);
         }
 
         for (const act of this.csmfGraph.getActuators()) {

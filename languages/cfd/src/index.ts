@@ -5,5 +5,6 @@ export { parseSu2Config } from "./dialects/su2.js";
 export * from "./language.js";
 export * from "./materializer.js";
 export { materializeCfdConfig as materializeSu2Config } from "./materializer.js";
+export * from "./mesh.js";
 export * from "./types.js";
 export type Su2ConfigData = import("./types.js").CfdModelData;

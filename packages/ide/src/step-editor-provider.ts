@@ -2,14 +2,17 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
-export class StepEditorProvider implements vscode.CustomTextEditorProvider {
+export class StepEditorProvider extends BaseCustomEditorProvider {
   static readonly viewType = "modelscript.stepEditor";
 
   constructor(
-    private readonly context: vscode.ExtensionContext,
+    context: vscode.ExtensionContext,
     private readonly _client: LanguageClient,
-  ) {}
+  ) {
+    super(context);
+  }
 
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -17,13 +20,13 @@ export class StepEditorProvider implements vscode.CustomTextEditorProvider {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _token: vscode.CancellationToken,
   ): Promise<void> {
-    webviewPanel.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist")],
-    };
+    this.configureWebview(webviewPanel);
 
     let disposed = false;
-    webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+    webviewPanel.webview.html = this.getHtmlShell(webviewPanel.webview, {
+      title: "3D CAD Viewer (STEP)",
+      scriptName: "step-webview.js",
+    });
 
     const loadMeshes = async (retries = 3, delayMs = 500) => {
       if (disposed) return;
@@ -74,10 +77,8 @@ export class StepEditorProvider implements vscode.CustomTextEditorProvider {
       loadMeshes(1, 0); // No retries needed here, it's already an update
     });
 
-    const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.toString() === document.uri.toString()) {
-        loadMeshes(1, 0);
-      }
+    const changeSubscription = this.subscribeDocumentChanges(document, () => {
+      loadMeshes(1, 0);
     });
 
     webviewPanel.onDidDispose(() => {
@@ -87,35 +88,4 @@ export class StepEditorProvider implements vscode.CustomTextEditorProvider {
       changeSubscription.dispose();
     });
   }
-
-  private getHtmlForWebview(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", "step-webview.js"));
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} data: blob:; worker-src 'self' blob:;">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D CAD Viewer (STEP)</title>
-    <style>
-      html, body, #root { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
-    </style>
-</head>
-<body class="vscode-dark">
-    <div id="root"></div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

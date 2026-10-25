@@ -23,11 +23,10 @@ import {
 } from "@modelscript/psse";
 
 import * as vscode from "vscode";
+import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
-export class RawEditorProvider implements vscode.CustomTextEditorProvider {
+export class RawEditorProvider extends BaseCustomEditorProvider {
   static readonly viewType = "modelscript.rawEditor";
-
-  constructor(private readonly context: vscode.ExtensionContext) {}
 
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -35,10 +34,7 @@ export class RawEditorProvider implements vscode.CustomTextEditorProvider {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _token: vscode.CancellationToken,
   ): Promise<void> {
-    webviewPanel.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist")],
-    };
+    this.configureWebview(webviewPanel);
 
     let disposed = false;
     webviewPanel.webview.html = this.getHtmlForWebview();

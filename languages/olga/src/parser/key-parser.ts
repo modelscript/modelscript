@@ -8,16 +8,24 @@
  */
 
 import type {
+  IprModelType,
+  OlgaAsphalteneConfig,
+  OlgaCompressor,
   OlgaController,
   OlgaFlowpath,
+  OlgaHeatExchanger,
+  OlgaIpr,
   OlgaModel,
   OlgaNode,
   OlgaNodeKind,
   OlgaPig,
   OlgaPipe,
+  OlgaPump,
+  OlgaSandConfig,
   OlgaSource,
   OlgaValve,
   OlgaWallLayer,
+  OlgaWaxConfig,
 } from "../types.js";
 
 interface DirectiveToken {
@@ -106,6 +114,37 @@ function parseUnitValue(raw: string | undefined, defaultVal: number): number {
     case "day":
       return val * 86400.0;
 
+    // Power -> kW
+    case "kw":
+      return val;
+    case "mw":
+      return val * 1000.0;
+    case "w":
+      return val * 1.0e-3;
+    case "hp":
+      return val * 0.7457;
+
+    // Volumetric flow -> m3/s
+    case "m3/s":
+      return val;
+    case "m3/h":
+      return val / 3600.0;
+    case "m3/d":
+    case "sm3/d":
+      return val / 86400.0;
+    case "bpd":
+      return (val * 0.158987) / 86400.0;
+
+    // Rotational speed -> rpm
+    case "rpm":
+      return val;
+
+    // Microns -> meters
+    case "um":
+    case "micron":
+    case "microns":
+      return val * 1.0e-6;
+
     default:
       // If no unit or standard unit, check heuristic for pressure/temp
       if (!unit && val > 0 && val < 1500 && raw.toLowerCase().includes("bar")) {
@@ -146,16 +185,46 @@ function tokenizeDirectives(text: string): DirectiveToken[] {
     const rest = full.slice(firstSpace).trim();
 
     const params: Record<string, string> = {};
-    // Regex matching KEY = VALUE where value can be quoted or parenthesized
-    const paramRegex = /([A-Za-z0-9_]+)\s*=\s*("[^"]*"|'[^']*'|\([^)]*\)|[^,]+)(?:,|$)/g;
-    let match: RegExpExecArray | null;
-    while ((match = paramRegex.exec(rest)) !== null) {
-      const k = match[1]!.toUpperCase();
-      let v = match[2]!.trim();
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-        v = v.slice(1, -1);
+    let pIdx = 0;
+    const pLen = rest.length;
+    while (pIdx < pLen) {
+      while (pIdx < pLen && (rest[pIdx] === " " || rest[pIdx] === "\t" || rest[pIdx] === ",")) pIdx++;
+      if (pIdx >= pLen) break;
+      const keyStart = pIdx;
+      while (pIdx < pLen && rest[pIdx] !== "=" && rest[pIdx] !== "," && rest[pIdx] !== " " && rest[pIdx] !== "\t")
+        pIdx++;
+      const k = rest.slice(keyStart, pIdx).trim().toUpperCase();
+      while (pIdx < pLen && (rest[pIdx] === " " || rest[pIdx] === "\t")) pIdx++;
+      if (pIdx < pLen && rest[pIdx] === "=") {
+        pIdx++; // skip '='
+        while (pIdx < pLen && (rest[pIdx] === " " || rest[pIdx] === "\t")) pIdx++;
+        let v = "";
+        if (pIdx < pLen && (rest[pIdx] === '"' || rest[pIdx] === "'")) {
+          const quote = rest[pIdx++];
+          const valStart = pIdx;
+          while (pIdx < pLen && rest[pIdx] !== quote) pIdx++;
+          v = rest.slice(valStart, pIdx);
+          if (pIdx < pLen) pIdx++; // skip quote
+        } else if (pIdx < pLen && rest[pIdx] === "(") {
+          let depth = 1;
+          const valStart = pIdx;
+          pIdx++;
+          while (pIdx < pLen && depth > 0) {
+            if (rest[pIdx] === "(") depth++;
+            else if (rest[pIdx] === ")") depth--;
+            pIdx++;
+          }
+          v = rest.slice(valStart, pIdx);
+        } else {
+          const valStart = pIdx;
+          while (pIdx < pLen && rest[pIdx] !== ",") pIdx++;
+          v = rest.slice(valStart, pIdx).trim();
+        }
+        if (k) params[k] = v;
+      } else if (k) {
+        params[k] = "";
       }
-      params[k] = v;
+      if (pIdx < pLen && rest[pIdx] === ",") pIdx++;
     }
 
     directives.push({ keyword, params });
@@ -177,6 +246,10 @@ export function parseKeyDeck(keyText: string): OlgaModel {
   let endTime = 7200;
   let minDt = 0.001;
   let maxDt = 1.0;
+  let restartConfig: { file: string; time?: number | undefined } | undefined;
+  let outputConfig:
+    | { trendInterval?: number | undefined; profileInterval?: number | undefined; variables?: string[] | undefined }
+    | undefined;
 
   const flowpaths: OlgaFlowpath[] = [];
   const nodes: OlgaNode[] = [];
@@ -207,6 +280,27 @@ export function parseKeyDeck(keyText: string): OlgaModel {
         break;
       }
 
+      case "RESTART": {
+        const file = params["FILE"] || "restart.rst";
+        const time = params["TIME"] ? parseUnitValue(params["TIME"], 0) : undefined;
+        restartConfig = { file, time };
+        break;
+      }
+
+      case "OUTPUT": {
+        const trend = params["TREND"] ? parseUnitValue(params["TREND"], 10.0) : undefined;
+        const profile = params["PROFILE"] ? parseUnitValue(params["PROFILE"], 60.0) : undefined;
+        let variables: string[] | undefined;
+        if (params["VARIABLES"]) {
+          variables = params["VARIABLES"]
+            .replace(/[()]/g, "")
+            .split(/[\s,]+/)
+            .filter(Boolean);
+        }
+        outputConfig = { trendInterval: trend, profileInterval: profile, variables };
+        break;
+      }
+
       case "FLOWPATH": {
         const name = params["NAME"] || `FLOWPATH_${flowpaths.length + 1}`;
         currentFlowpath = {
@@ -234,6 +328,11 @@ export function parseKeyDeck(keyText: string): OlgaModel {
           roughness: parseUnitValue(params["ROUGHNESS"] ?? params["ROUGH"], 4.5e-5),
           discretization: Math.max(2, Math.floor(parseUnitValue(params["NSEGMENT"] ?? params["DISCRETIZATION"], 10))),
         };
+        const metallurgy = params["METALLURGY"] || params["MATERIAL"];
+        const cladding = params["CLADDING"];
+        if (metallurgy) pipe.metallurgy = metallurgy;
+        if (cladding) pipe.cladding = cladding;
+
         currentFlowpath.pipes.push(pipe);
         break;
       }
@@ -273,6 +372,9 @@ export function parseKeyDeck(keyText: string): OlgaModel {
           temperature: parseUnitValue(params["TEMPERATURE"], 353.15),
           pressure: params["PRESSURE"] ? parseUnitValue(params["PRESSURE"], 150e5) : undefined,
         };
+        if (params["H2S"] !== undefined) source.h2sMoleFraction = parseUnitValue(params["H2S"], 0.0);
+        if (params["CO2"] !== undefined) source.co2MoleFraction = parseUnitValue(params["CO2"], 0.0);
+
         currentFlowpath.sources.push(source);
         break;
       }
@@ -352,6 +454,186 @@ export function parseKeyDeck(keyText: string): OlgaModel {
         break;
       }
 
+      case "PUMP": {
+        if (!currentFlowpath) {
+          currentFlowpath = { name: "FLOWPATH_1", pipes: [], valves: [], sources: [], controllers: [] };
+          flowpaths.push(currentFlowpath);
+        }
+        if (!currentFlowpath.pumps) currentFlowpath.pumps = [];
+        const rawType = (params["TYPE"] || "CENTRIFUGAL").toUpperCase();
+        const type = rawType === "ESP" || rawType === "MULTIPHASE_TWIN_SCREW" ? rawType : "CENTRIFUGAL";
+        const pump: OlgaPump = {
+          name: params["NAME"] || `PUMP_${currentFlowpath.pumps.length + 1}`,
+          position: parseUnitValue(params["ABSPOSITION"] ?? params["POSITION"], 0),
+          type,
+          ratedHead: parseUnitValue(params["HEAD"] ?? params["RATEDHEAD"] ?? params["PRESSUREBOOST"], 100.0),
+          ratedFlowRate: parseUnitValue(params["FLOWRATE"] ?? params["RATEDFLOWRATE"] ?? params["Q"], 0.05),
+          speedRpm: parseUnitValue(params["SPEED"] ?? params["RPM"] ?? params["SPEEDRPM"], 3500.0),
+          ratedPowerKw: parseUnitValue(params["POWER"] ?? params["RATEDPOWERKW"], 400.0),
+          gasVoidFractionLimit: parseUnitValue(params["GVFLIMIT"] ?? params["GVF"], 0.2),
+        };
+        currentFlowpath.pumps.push(pump);
+        break;
+      }
+
+      case "COMPRESSOR": {
+        if (!currentFlowpath) {
+          currentFlowpath = { name: "FLOWPATH_1", pipes: [], valves: [], sources: [], controllers: [] };
+          flowpaths.push(currentFlowpath);
+        }
+        if (!currentFlowpath.compressors) currentFlowpath.compressors = [];
+        const rawType = (params["TYPE"] || "CENTRIFUGAL").toUpperCase();
+        const type = rawType === "RECIPROCATING" ? "RECIPROCATING" : "CENTRIFUGAL";
+        const compressor: OlgaCompressor = {
+          name: params["NAME"] || `COMP_${currentFlowpath.compressors.length + 1}`,
+          position: parseUnitValue(params["ABSPOSITION"] ?? params["POSITION"], 0),
+          type,
+          pressureRatio: parseUnitValue(params["PRESSRATIO"] ?? params["PRESSURERATIO"] ?? params["RATIO"], 2.5),
+          polytropicEfficiency: parseUnitValue(
+            params["EFFICIENCY"] ?? params["POLYTROPICEFFICIENCY"] ?? params["POLY_EFF"],
+            0.78,
+          ),
+          ratedPowerKw: parseUnitValue(params["POWER"] ?? params["RATEDPOWERKW"], 2500.0),
+          antiSurgeMargin: parseUnitValue(params["ANTISURGEMARGIN"] ?? params["SURGEMARGIN"], 0.1),
+        };
+        currentFlowpath.compressors.push(compressor);
+        break;
+      }
+
+      case "WELL":
+      case "IPR": {
+        if (!currentFlowpath) {
+          currentFlowpath = { name: "FLOWPATH_1", pipes: [], valves: [], sources: [], controllers: [] };
+          flowpaths.push(currentFlowpath);
+        }
+        const rawType = (params["TYPE"] || "VOGEL").toUpperCase();
+        const type: IprModelType = rawType === "LINEAR_PI" || rawType === "FETKOVICH" ? rawType : "VOGEL";
+        const ipr: OlgaIpr = {
+          type,
+          reservoirPressure: parseUnitValue(params["PRES"] ?? params["RESERVOIRPRESSURE"] ?? params["PRESSURE"], 180e5),
+          reservoirTemperature: parseUnitValue(
+            params["TRES"] ?? params["RESERVOIRTEMPERATURE"] ?? params["TEMPERATURE"],
+            353.15,
+          ),
+          bubblePointPressure: params["PBUBBLE"] ? parseUnitValue(params["PBUBBLE"], 140e5) : undefined,
+          productivityIndex: params["PI"] ? parseUnitValue(params["PI"], 5e-7) : undefined,
+          maxLiquidRate: params["QMAX"] ? parseUnitValue(params["QMAX"], 45.0) : undefined,
+          cFactor: params["CFACTOR"] ? parseUnitValue(params["CFACTOR"], 1e-12) : undefined,
+          nExponent: params["NEXPONENT"] ? parseUnitValue(params["NEXPONENT"], 0.85) : undefined,
+          gasMassFraction: parseUnitValue(params["GASFRACTION"] ?? params["GASMASSFRACTION"], 0.2),
+          waterCut: parseUnitValue(params["WATERCUT"], 0.05),
+        };
+        currentFlowpath.ipr = ipr;
+        break;
+      }
+
+      case "WAX": {
+        if (!currentFlowpath) {
+          currentFlowpath = { name: "FLOWPATH_1", pipes: [], valves: [], sources: [], controllers: [] };
+          flowpaths.push(currentFlowpath);
+        }
+        const waxConfig: OlgaWaxConfig = {
+          cloudPointTemp: parseUnitValue(params["CLOUDPOINT"] ?? params["WAT"] ?? params["CLOUDPOINTTEMP"], 310.15),
+          molecularDiffusionCoeff: params["DIFFUSION"] ? parseUnitValue(params["DIFFUSION"], 1.5e-9) : undefined,
+          waxDensity: params["DENSITY"] ? parseUnitValue(params["DENSITY"], 880.0) : undefined,
+        };
+        currentFlowpath.waxConfig = waxConfig;
+        break;
+      }
+
+      case "SAND": {
+        if (!currentFlowpath) {
+          currentFlowpath = { name: "FLOWPATH_1", pipes: [], valves: [], sources: [], controllers: [] };
+          flowpaths.push(currentFlowpath);
+        }
+        const sandConfig: OlgaSandConfig = {
+          sandMassRate: parseUnitValue(params["MASSRATE"] ?? params["SANDMASSRATE"] ?? params["RATE"], 0.05),
+          particleDiameter: params["DIAMETER"] ? parseUnitValue(params["DIAMETER"], 150e-6) : undefined,
+          sandDensity: params["DENSITY"] ? parseUnitValue(params["DENSITY"], 2650.0) : undefined,
+        };
+        currentFlowpath.sandConfig = sandConfig;
+        break;
+      }
+
+      case "ASPHALTENE":
+      case "ASPHALTENES": {
+        if (!currentFlowpath) {
+          currentFlowpath = { name: "FLOWPATH_1", pipes: [], valves: [], sources: [], controllers: [] };
+          flowpaths.push(currentFlowpath);
+        }
+        const sat = parseUnitValue(params["SATURATES"] ?? params["SAT"], 40.0);
+        const aro = parseUnitValue(params["AROMATICS"] ?? params["ARO"], 30.0);
+        const res = parseUnitValue(params["RESINS"] ?? params["RES"], 20.0);
+        const asp = parseUnitValue(params["ASPHALTENES"] ?? params["ASP"], 10.0);
+        const asphalteneConfig: OlgaAsphalteneConfig = {
+          sara: {
+            saturatesPercent: sat,
+            aromaticsPercent: aro,
+            resinsPercent: res,
+            asphaltenesPercent: asp,
+          },
+          bubblePointPressure:
+            (params["BUBBLEPOINT"] ?? params["PB"])
+              ? parseUnitValue(params["BUBBLEPOINT"] ?? params["PB"], 120e5)
+              : undefined,
+          exposureTimeHours:
+            (params["EXPOSURETIME"] ?? params["HOURS"])
+              ? (() => {
+                  const raw = (params["EXPOSURETIME"] ?? params["HOURS"])!.trim();
+                  const m = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([A-Za-z]+)?/.exec(raw);
+                  if (!m) return 720.0;
+                  const v = parseFloat(m[1]!);
+                  const u = (m[2] || "").toLowerCase();
+                  if (u === "s" || u === "sec" || u === "seconds") return v / 3600.0;
+                  if (u === "d" || u === "day" || u === "days") return v * 24.0;
+                  return v;
+                })()
+              : undefined,
+          existingDepositThicknessM:
+            (params["INITIALTHICKNESS"] ?? params["THICKNESS"])
+              ? parseUnitValue(params["INITIALTHICKNESS"] ?? params["THICKNESS"], 0.0)
+              : undefined,
+        };
+        currentFlowpath.asphalteneConfig = asphalteneConfig;
+        break;
+      }
+
+      case "HEATEXCHANGER":
+      case "HEX": {
+        if (!currentFlowpath) {
+          currentFlowpath = { name: "FLOWPATH_1", pipes: [], valves: [], sources: [], controllers: [] };
+          flowpaths.push(currentFlowpath);
+        }
+        if (!currentFlowpath.heatExchangers) currentFlowpath.heatExchangers = [];
+        const rawType = (params["TYPE"] || "SIMPLE").toUpperCase();
+        const type = ["SIMPLE", "CROSS_FLOW", "CO_CURRENT", "COUNTER_CURRENT"].includes(rawType)
+          ? (rawType as "SIMPLE" | "CROSS_FLOW" | "CO_CURRENT" | "COUNTER_CURRENT")
+          : "SIMPLE";
+        const hex: OlgaHeatExchanger = {
+          name: params["NAME"] || `HEX_${currentFlowpath.heatExchangers.length + 1}`,
+          position: parseUnitValue(params["ABSPOSITION"] ?? params["POSITION"], 0),
+          type,
+          dutyKw:
+            (params["DUTY"] ?? params["CAPACITY"])
+              ? parseUnitValue(params["DUTY"] ?? params["CAPACITY"], 1000.0)
+              : undefined,
+          targetTemperature:
+            (params["TARGETTEMP"] ?? params["TARGETTEMPERATURE"] ?? params["TOUT"])
+              ? parseUnitValue(params["TARGETTEMP"] ?? params["TARGETTEMPERATURE"] ?? params["TOUT"], 313.15)
+              : undefined,
+          overallUa:
+            (params["UA"] ?? params["OVERALLUA"])
+              ? parseUnitValue(params["UA"] ?? params["OVERALLUA"], 50000.0)
+              : undefined,
+          ambientTemperature:
+            (params["TAMB"] ?? params["AMBIENTTEMPERATURE"] ?? params["TCOOLANT"])
+              ? parseUnitValue(params["TAMB"] ?? params["AMBIENTTEMPERATURE"] ?? params["TCOOLANT"], 288.15)
+              : undefined,
+        };
+        currentFlowpath.heatExchangers.push(hex);
+        break;
+      }
+
       case "NODE": {
         const name = params["NAME"] || `NODE_${nodes.length + 1}`;
         const rawType = (params["TYPE"] || "INTERNAL").toUpperCase();
@@ -376,6 +658,9 @@ export function parseKeyDeck(keyText: string): OlgaModel {
           gasMassFraction: params["GASFRACTION"] ? parseUnitValue(params["GASFRACTION"], 0.2) : undefined,
           waterCut: params["WATERCUT"] ? parseUnitValue(params["WATERCUT"], 0.05) : undefined,
         };
+        if (params["H2S"] !== undefined) node.h2sMoleFraction = parseUnitValue(params["H2S"], 0.0);
+        if (params["CO2"] !== undefined) node.co2MoleFraction = parseUnitValue(params["CO2"], 0.0);
+
         nodes.push(node);
         break;
       }
@@ -406,6 +691,8 @@ export function parseKeyDeck(keyText: string): OlgaModel {
     maxDt,
     flowpaths,
     nodes,
+    restartConfig,
+    outputConfig,
   };
 }
 
@@ -423,6 +710,22 @@ export function serializeKeyDeck(model: OlgaModel): string {
 
   if (model.tableFile) {
     lines.push(`FILES TABLE = "${model.tableFile}"`);
+  }
+
+  if (model.restartConfig) {
+    const tStr = model.restartConfig.time !== undefined ? `, TIME = ${model.restartConfig.time} s` : "";
+    lines.push(`RESTART FILE = "${model.restartConfig.file}"${tStr}`);
+  }
+
+  if (model.outputConfig) {
+    const outParts: string[] = [];
+    if (model.outputConfig.trendInterval !== undefined) outParts.push(`TREND = ${model.outputConfig.trendInterval} s`);
+    if (model.outputConfig.profileInterval !== undefined)
+      outParts.push(`PROFILE = ${model.outputConfig.profileInterval} s`);
+    if (model.outputConfig.variables && model.outputConfig.variables.length > 0) {
+      outParts.push(`VARIABLES = (${model.outputConfig.variables.join(", ")})`);
+    }
+    lines.push(`OUTPUT ${outParts.join(", ")}`);
   }
   lines.push("");
 
@@ -444,8 +747,10 @@ export function serializeKeyDeck(model: OlgaModel): string {
 
     // Pipes
     for (const p of fp.pipes) {
+      const metaStr = p.metallurgy ? `, METALLURGY = ${p.metallurgy}` : "";
+      const cladStr = p.cladding ? `, CLADDING = ${p.cladding}` : "";
       lines.push(
-        `PIPE LABEL = ${p.label}, LENGTH = ${p.length} m, DIAMETER = ${p.diameter} m, ELEVATION = ${p.elevation} m, ROUGHNESS = ${p.roughness} m, NSEGMENT = ${p.discretization}`,
+        `PIPE LABEL = ${p.label}, LENGTH = ${p.length} m, DIAMETER = ${p.diameter} m, ELEVATION = ${p.elevation} m, ROUGHNESS = ${p.roughness} m, NSEGMENT = ${p.discretization}${metaStr}${cladStr}`,
       );
     }
 
@@ -459,8 +764,10 @@ export function serializeKeyDeck(model: OlgaModel): string {
     // Sources
     for (const s of fp.sources) {
       const pStr = s.pressure !== undefined ? `, PRESSURE = ${s.pressure / 1e5} bar` : "";
+      const h2sStr = s.h2sMoleFraction !== undefined ? `, H2S = ${s.h2sMoleFraction}` : "";
+      const co2Str = s.co2MoleFraction !== undefined ? `, CO2 = ${s.co2MoleFraction}` : "";
       lines.push(
-        `MASSSOURCE NAME = ${s.name}, POSITION = ${s.position} m, TOTALMASSRATE = ${s.totalMassRate} kg/s, GASFRACTION = ${s.gasMassFraction}, WATERCUT = ${s.waterCut}, TEMPERATURE = ${s.temperature} K${pStr}`,
+        `MASSSOURCE NAME = ${s.name}, POSITION = ${s.position} m, TOTALMASSRATE = ${s.totalMassRate} kg/s, GASFRACTION = ${s.gasMassFraction}, WATERCUT = ${s.waterCut}, TEMPERATURE = ${s.temperature} K${pStr}${h2sStr}${co2Str}`,
       );
     }
 
@@ -471,12 +778,109 @@ export function serializeKeyDeck(model: OlgaModel): string {
       );
     }
 
+    // Pumps
+    if (fp.pumps) {
+      for (const p of fp.pumps) {
+        lines.push(
+          `PUMP NAME = ${p.name}, ABSPOSITION = ${p.position} m, TYPE = ${p.type}, HEAD = ${p.ratedHead} m, FLOWRATE = ${p.ratedFlowRate} m3/s, SPEED = ${p.speedRpm} rpm, POWER = ${p.ratedPowerKw} kW, GVFLIMIT = ${p.gasVoidFractionLimit}`,
+        );
+      }
+    }
+
+    // Compressors
+    if (fp.compressors) {
+      for (const c of fp.compressors) {
+        lines.push(
+          `COMPRESSOR NAME = ${c.name}, ABSPOSITION = ${c.position} m, TYPE = ${c.type}, PRESSRATIO = ${c.pressureRatio}, EFFICIENCY = ${c.polytropicEfficiency}, POWER = ${c.ratedPowerKw} kW, ANTISURGEMARGIN = ${c.antiSurgeMargin}`,
+        );
+      }
+    }
+
+    // IPR / Well
+    if (fp.ipr) {
+      const iprParts: string[] = [
+        `WELL NAME = WELL_IPR`,
+        `TYPE = ${fp.ipr.type}`,
+        `PRES = ${fp.ipr.reservoirPressure / 1e5} bar`,
+        `TRES = ${fp.ipr.reservoirTemperature} K`,
+        `GASFRACTION = ${fp.ipr.gasMassFraction}`,
+        `WATERCUT = ${fp.ipr.waterCut}`,
+      ];
+      if (fp.ipr.bubblePointPressure !== undefined) iprParts.push(`PBUBBLE = ${fp.ipr.bubblePointPressure / 1e5} bar`);
+      if (fp.ipr.productivityIndex !== undefined) iprParts.push(`PI = ${fp.ipr.productivityIndex}`);
+      if (fp.ipr.maxLiquidRate !== undefined) iprParts.push(`QMAX = ${fp.ipr.maxLiquidRate} kg/s`);
+      if (fp.ipr.cFactor !== undefined) iprParts.push(`CFACTOR = ${fp.ipr.cFactor}`);
+      if (fp.ipr.nExponent !== undefined) iprParts.push(`NEXPONENT = ${fp.ipr.nExponent}`);
+      lines.push(iprParts.join(", "));
+    }
+
+    // Wax
+    if (fp.waxConfig) {
+      const waxParts: string[] = [`WAX CLOUDPOINT = ${fp.waxConfig.cloudPointTemp} K`];
+      if (fp.waxConfig.molecularDiffusionCoeff !== undefined) {
+        waxParts.push(`DIFFUSION = ${fp.waxConfig.molecularDiffusionCoeff}`);
+      }
+      if (fp.waxConfig.waxDensity !== undefined) {
+        waxParts.push(`DENSITY = ${fp.waxConfig.waxDensity} kg/m3`);
+      }
+      lines.push(waxParts.join(", "));
+    }
+
+    // Sand
+    if (fp.sandConfig) {
+      const sandParts: string[] = [`SAND MASSRATE = ${fp.sandConfig.sandMassRate} kg/s`];
+      if (fp.sandConfig.particleDiameter !== undefined) {
+        sandParts.push(`DIAMETER = ${fp.sandConfig.particleDiameter} m`);
+      }
+      if (fp.sandConfig.sandDensity !== undefined) {
+        sandParts.push(`DENSITY = ${fp.sandConfig.sandDensity} kg/m3`);
+      }
+      lines.push(sandParts.join(", "));
+    }
+
+    // Asphaltene
+    if (fp.asphalteneConfig) {
+      const a = fp.asphalteneConfig;
+      const parts: string[] = [
+        `ASPHALTENE SATURATES = ${a.sara.saturatesPercent} %`,
+        `AROMATICS = ${a.sara.aromaticsPercent} %`,
+        `RESINS = ${a.sara.resinsPercent} %`,
+        `ASPHALTENES = ${a.sara.asphaltenesPercent} %`,
+      ];
+      if (a.bubblePointPressure !== undefined) {
+        parts.push(`BUBBLEPOINT = ${a.bubblePointPressure} Pa`);
+      }
+      if (a.exposureTimeHours !== undefined) {
+        parts.push(`EXPOSURETIME = ${a.exposureTimeHours} h`);
+      }
+      if (a.existingDepositThicknessM !== undefined) {
+        parts.push(`INITIALTHICKNESS = ${a.existingDepositThicknessM} m`);
+      }
+      lines.push(parts.join(", "));
+    }
+
     // Pigs
     if (fp.pigs) {
       for (const p of fp.pigs) {
         lines.push(
           `PIG NAME = ${p.name}, LAUNCHTIME = ${p.launchTime} s, MASS = ${p.mass ?? 100} kg, DIAMETER = ${p.diameter ?? 0.3} m, BYPASS = ${p.bypassFraction ?? 0.0}, FRICTION = ${p.frictionForce ?? 2500} N`,
         );
+      }
+    }
+
+    // Heat Exchangers
+    if (fp.heatExchangers) {
+      for (const h of fp.heatExchangers) {
+        const parts = [
+          `HEATEXCHANGER NAME = ${h.name}`,
+          `ABSPOSITION = ${h.position} m`,
+          `TYPE = ${h.type || "SIMPLE"}`,
+        ];
+        if (h.dutyKw !== undefined) parts.push(`DUTY = ${h.dutyKw} kW`);
+        if (h.targetTemperature !== undefined) parts.push(`TARGETTEMP = ${h.targetTemperature} K`);
+        if (h.overallUa !== undefined) parts.push(`UA = ${h.overallUa} W/K`);
+        if (h.ambientTemperature !== undefined) parts.push(`TAMB = ${h.ambientTemperature} K`);
+        lines.push(parts.join(", "));
       }
     }
     lines.push("");
@@ -495,6 +899,8 @@ export function serializeKeyDeck(model: OlgaModel): string {
     if (n.massRate !== undefined) parts.push(`TOTALMASSRATE = ${n.massRate} kg/s`);
     if (n.gasMassFraction !== undefined) parts.push(`GASFRACTION = ${n.gasMassFraction}`);
     if (n.waterCut !== undefined) parts.push(`WATERCUT = ${n.waterCut}`);
+    if (n.h2sMoleFraction !== undefined) parts.push(`H2S = ${n.h2sMoleFraction}`);
+    if (n.co2MoleFraction !== undefined) parts.push(`CO2 = ${n.co2MoleFraction}`);
 
     lines.push(parts.join(", "));
   }

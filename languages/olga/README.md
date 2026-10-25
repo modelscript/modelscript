@@ -23,35 +23,56 @@ High-fidelity transient multiphase dynamic flow assurance package (`.opi`) for M
 - **Flow Assurance & State Machine Verifier (`verifyFlowAssuranceTrajectory`, `verifyOperatingProcedureStateTransitions`)**:
   - Evaluates continuous multiphase simulation trajectories against hydrate equilibrium curves and slug catcher capacity
   - Uses `@modelscript/sysml2`'s `StateMachineVerifier` to prove transition determinism and completeness for emergency shut-in and blowdown procedures.
-- **Pre-Flight Multiphase Linter (`lintOlgaModel`, `M7001`–`M7005`)**: Pre-simulation validation of Courant-Friedrichs-Lewy (CFL) numerical stability, pipe dimensions, steep inclination riser traps, and boundary condition completeness.
+- **Complete Keyword Parser & Serializer Parity (`parseKeyDeck`, `serializeKeyDeck`)**: Full round-trip fidelity for legacy OLGA `.key` and `.genkey` decks, supporting `CASE`, `INTEGRATION`, `DTCONTROL`, `BRANCH`, `PIPE`, `VALVE`, `CHOKE`, `SOURCE`, `NODE`, `PUMP`, `COMPRESSOR`, `WELL`/`IPR`, `WAX`, `SAND`, `METALLURGY`, `RESTART`, and `OUTPUT`.
+- **State Checkpointing & Zero-Discontinuity Warm Restart (`saveCheckpoint`, `loadCheckpoint`)**: Complete hydrodynamic state serialization to `.rst` / JSON format (pressure, temperature, phase holdups, velocities, active slugs, pigs, and controllers) enabling instantaneous warm restarts from arbitrary time points.
+- **Autonomous Field History Matching & Parameter Tuning (`calibrateOlgaModel`)**: Non-linear bounded Nelder-Mead simplex calibration of pipe roughness, overall heat transfer coefficient ($U$), choke flow coefficient ($C_d$), and well productivity against SCADA field telemetry.
 
 ---
 
-## Pre-Flight Multiphase Lint Rules (`M7001`–`M7005`)
+## Pre-Flight Multiphase Lint Rules (`M7001`–`M7011`)
 
-| Code    | Rule                         | Severity  | Description                                                                                  |
-| :------ | :--------------------------- | :-------- | :------------------------------------------------------------------------------------------- |
-| `M7001` | `cfl-condition-violation`    | `warning` | Configured `maxDt` exceeds convective/acoustic CFL stability limit ($\Delta x / (u_m + c)$). |
-| `M7002` | `invalid-pipe-dimensions`    | `error`   | Pipe diameter $\le 0$, length $\le 0$, or roughness $< 0$.                                   |
-| `M7003` | `missing-boundary-condition` | `error`   | Flowpath is missing an inlet mass source or outlet pressure/separator boundary.              |
-| `M7004` | `steep-elevation-warning`    | `info`    | Pipe inclination $> 80^\circ$; monitor for severe riser slugging and liquid fallback.        |
-| `M7005` | `fully-closed-choke-hazard`  | `warning` | Choke valve is fully closed ($0.0$), creating shut-in overpressure risk.                     |
+| Code    | Rule                             | Severity  | Description                                                                                  |
+| :------ | :------------------------------- | :-------- | :------------------------------------------------------------------------------------------- |
+| `M7001` | `cfl-condition-violation`        | `warning` | Configured `maxDt` exceeds convective/acoustic CFL stability limit ($\Delta x / (u_m + c)$). |
+| `M7002` | `invalid-pipe-dimensions`        | `error`   | Pipe diameter $\le 0$, length $\le 0$, or roughness $< 0$.                                   |
+| `M7003` | `missing-boundary-condition`     | `error`   | Flowpath is missing an inlet mass source or outlet pressure/separator boundary.              |
+| `M7004` | `steep-elevation-warning`        | `info`    | Pipe inclination $> 80^\circ$; monitor for severe riser slugging and liquid fallback.        |
+| `M7005` | `fully-closed-choke-hazard`      | `warning` | Choke valve is fully closed ($0.0$), creating shut-in overpressure risk.                     |
+| `M7006` | `severe-slugging-hazard`         | `warning` | Deep seabed dip followed by steep riser without active choke or slug controller.             |
+| `M7007` | `pig-stuck-hazard`               | `error`   | Pipeline scraper pig friction force exceeds maximum flowline drive capability.               |
+| `M7008` | `pvt-table-missing-or-invalid`   | `warning` | Fluid table has invalid extension or boundary operating states deviate from grid bounds.     |
+| `M7009` | `wax-deposition-risk`            | `warning` | Operating fluid temperature drops below Wax Appearance Temperature without insulation.       |
+| `M7010` | `sand-erosion-or-dropout-hazard` | `warning` | Mixture velocity below sand settling threshold or exceeds API RP 14E erosion limit.          |
+| `M7011` | `sour-service-metallurgy-risk`   | `error`   | Flowpath operates in NACE MR0175 sour region without CRA metallurgical cladding.             |
 
 ---
 
 ## Package Structure
 
-| Path                                          | Description                                                                 |
-| :-------------------------------------------- | :-------------------------------------------------------------------------- |
-| `src/index.ts`                                | Public package exports                                                      |
-| `src/language.ts`                             | `olgaLanguage` definition, LSP actions, and polyglot TGG rules              |
-| `src/types.ts`                                | Core TypeScript interfaces (`OlgaModel`, `OlgaFlowpath`, `OlgaPipe`, etc.)  |
-| `src/parser/opi-parser.ts`                    | XML `.opi` project parser using `@modelscript/dsl/xml`                      |
-| `src/solver/zuber-findlay.ts`                 | Zuber-Findlay drift-flux closure, Churchill friction, and hydrate curve     |
-| `src/solver/drift-flux-dae.ts`                | Linear-memory DAE lowerer (`DAEBuilder`) and 1D Drift-Flux transient solver |
-| `src/projections/olga-to-sysml2.ts`           | SysML v2 polyglot projection generator                                      |
-| `src/verification/flow-assurance-verifier.ts` | Verification engine for hydrate margins, slug surge, and state machines     |
-| `src/lints/index.ts`                          | Pre-flight multiphase diagnostic linter (`M7001`–`M7005`)                   |
+| Path                                          | Description                                                                  |
+| :-------------------------------------------- | :--------------------------------------------------------------------------- |
+| `src/index.ts`                                | Public package exports                                                       |
+| `src/language.ts`                             | `olgaLanguage` definition, LSP actions, and polyglot TGG rules               |
+| `src/types.ts`                                | Core TypeScript interfaces (`OlgaModel`, `OlgaCheckpointState`, etc.)        |
+| `src/parser/opi-parser.ts`                    | XML `.opi` project parser using `@modelscript/dsl/xml`                       |
+| `src/parser/key-parser.ts`                    | Legacy keyword input deck parser & serializer (`.key` / `.genkey`)           |
+| `src/parser/pvt-table-parser.ts`              | Industrial 2D fluid property table parser (`.tab` / `.pvt`, SI/Metric/Field) |
+| `src/solver/wellbore-ipr.ts`                  | Reservoir inflow performance models (Vogel, Fetkovich, Linear PI)            |
+| `src/solver/machinery.ts`                     | Multiphase booster pumps (GVF degradation) and gas compressors               |
+| `src/solver/network-solver.ts`                | Branched gathering network solver with manifold junction coupling            |
+| `src/solver/drift-flux-dae.ts`                | 1D Drift-Flux transient solver with checkpoint seeding and snapshotting      |
+| `src/solver/three-fluid-dae.ts`               | 3-Fluid 9-equation mechanistic hydrodynamic solver with droplet dynamics     |
+| `src/solver/fluid-properties.ts`              | Local cell PVT interpolation, 3-phase blending, and derivatives              |
+| `src/solver/wax-and-sand.ts`                  | Molecular diffusion wax growth & Wicks/Salama sand deposition screening      |
+| `src/solver/slug-tracker.ts`                  | Lagrangian slug tracking module                                              |
+| `src/solver/pig-tracker.ts`                   | Dynamic pipeline scraper pigging tracker                                     |
+| `src/engine/checkpoint.ts`                    | State snapshot serialization and deserialization engine (`.rst` / JSON)      |
+| `src/tuning/history-matcher.ts`               | Nelder-Mead simplex field history matching & parameter calibration engine    |
+| `src/projections/olga-to-sysml2.ts`           | SysML v2 polyglot projection generator                                       |
+| `src/verification/flow-assurance-verifier.ts` | Verification engine for hydrate/wax margins, slug surge, and state machines  |
+| `src/verification/flow-assurance-gate.ts`     | CI/CD safety gate evaluator with automatic markdown summary generation       |
+| `src/lints/index.ts`                          | Pre-flight multiphase diagnostic linter (`M7001`–`M7011`)                    |
+| `src/engine/olga-orchestrator.ts`             | Batch orchestrator for Schlumberger OLGA (`olga.exe`) with WASM fallback     |
 
 ---
 

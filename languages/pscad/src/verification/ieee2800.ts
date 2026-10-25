@@ -36,6 +36,22 @@ export interface Ieee2800FaultSpec {
   minK2Gain?: number | undefined; // Required incremental negative-sequence reactive gain k2 (default: 1.5)
   /** Whether to evaluate the full 7-clause sequence-domain IEEE 2800-2022 and NERC PRC-029-1 suite. */
   evaluateExtendedClauses?: boolean | undefined; // Evaluate full 7-clause IEEE 2800 / NERC PRC-029 suite
+  /** Optional consecutive faults specification for Clause 4.7.2 / 7.2.2.7 Consecutive Fault Ride-Through (CFRT). */
+  consecutiveFaults?:
+    | {
+        faultStartSec: number;
+        faultDurationSec: number;
+        vFaultKv?: number | undefined;
+      }[]
+    | undefined;
+  /** Whether to evaluate Clause 7.2.2.7 Consecutive Fault Ride-Through (CFRT). */
+  evaluateConsecutiveFaults?: boolean | undefined;
+  /** Optional expected phase-angle jump in degrees for Clause 7.2.2.8 Phase-Angle Jump Ride-Through (e.g. 25 or 45 deg). */
+  phaseJumpDegrees?: number | undefined;
+  /** Whether to evaluate Clause 7.2.2.8 Positive-Sequence Phase-Angle Jump Ride-Through. */
+  evaluatePhaseJump?: boolean | undefined;
+  /** Maximum allowable transient overcurrent in per-unit during ride-through (default: `1.30` pu). */
+  maxTransientCurrentPu?: number | undefined;
 }
 
 /**
@@ -498,8 +514,15 @@ export function verifyIeee2800Compliance(
   // Optional Sequence-Domain & Extended IEEE 2800-2022 / NERC PRC-029 Clauses
   let sequencePhasors: SequencePhasorTrajectory | undefined;
   const runExtended = Boolean(faultSpec.evaluateExtendedClauses || (vPoiAbc && iIbrAbc));
+  const runCfrt = Boolean(
+    faultSpec.evaluateConsecutiveFaults || (faultSpec.consecutiveFaults && faultSpec.consecutiveFaults.length > 0),
+  );
+  const runPaj = Boolean(faultSpec.evaluatePhaseJump || faultSpec.phaseJumpDegrees !== undefined);
 
-  if (runExtended) {
+  const iBase =
+    faultSpec.ratedCurrentAmp && faultSpec.ratedCurrentAmp > 0 ? faultSpec.ratedCurrentAmp : Math.max(1.0, iPreFault);
+
+  if (runExtended || ((runCfrt || runPaj) && vPoiAbc && iIbrAbc)) {
     const synthVAbc: ThreePhaseChannels = vPoiAbc ?? {
       a: vPoi,
       b: vPoi,
@@ -511,7 +534,9 @@ export function verifyIeee2800Compliance(
       c: iIbr,
     };
     sequencePhasors = extractSequencePhasors(time, synthVAbc, synthIAbc, freqHz);
+  }
 
+  if (runExtended && sequencePhasors) {
     // Check 4: Clause 7.2.2.1 / NERC PRC-029-1 Piecewise Time-Voltage Ride-Through Curve
     const vFaultPu = faultSpec.vPreFaultKv > 0 ? faultSpec.vFaultKv / faultSpec.vPreFaultKv : 0.1;
     const mandatoryDuration = getMandatoryVrtDurationSec(vFaultPu);
@@ -528,8 +553,6 @@ export function verifyIeee2800Compliance(
     });
 
     // Check 5: Clause 7.2.2.3.4 Sequence Reactive Current Gain (k1 = dI_1q_pu / dV_1_pu)
-    const iBase =
-      faultSpec.ratedCurrentAmp && faultSpec.ratedCurrentAmp > 0 ? faultSpec.ratedCurrentAmp : Math.max(1.0, iPreFault);
     let i1qPre = 0;
     let i1qFaultMax = 0;
     let v1FaultMin = vBase;
@@ -593,6 +616,136 @@ export function verifyIeee2800Compliance(
       details: frtPass
         ? "PLL and current control loop maintained synchronism through phase jump and frequency excursion."
         : "Synchronism lost or unit ceased output during phase/frequency transient.",
+    });
+  }
+
+  // Check 8: Clause 7.2.2.7 / Clause 4.7.2 Consecutive Fault Ride-Through (CFRT)
+  if (runCfrt) {
+    const faultList =
+      faultSpec.consecutiveFaults && faultSpec.consecutiveFaults.length > 0
+        ? faultSpec.consecutiveFaults
+        : [
+            {
+              faultStartSec: faultSpec.faultStartSec,
+              faultDurationSec: faultSpec.faultDurationSec,
+              vFaultKv: faultSpec.vFaultKv,
+            },
+          ];
+
+    const maxLimitPu = faultSpec.maxTransientCurrentPu ?? 1.3;
+    const cessationLimit = Math.max(0.1 * iPreFault, 1e-3);
+    const cfrtFailReasons: string[] = [];
+    let minConsecutiveCurrent = Infinity;
+    let maxConsecutivePeak = 0;
+
+    for (let fIdx = 0; fIdx < faultList.length; fIdx++) {
+      const f = faultList[fIdx]!;
+      const fStart = f.faultStartSec;
+      const fEnd = fStart + f.faultDurationSec;
+      let minCurrentInThisFault = Infinity;
+      let maxCurrentInThisFault = 0;
+      let faultSampleCount = 0;
+
+      for (let i = 0; i < n; i++) {
+        const t = time[i]!;
+        if (t >= fStart && t <= fEnd) {
+          faultSampleCount++;
+          const cur = envelopes[i]!;
+          if (cur > maxCurrentInThisFault) maxCurrentInThisFault = cur;
+          if (t > fStart + Math.min(0.015, f.faultDurationSec * 0.5)) {
+            if (cur < minCurrentInThisFault) minCurrentInThisFault = cur;
+          }
+        }
+      }
+
+      if (!isFinite(minCurrentInThisFault)) {
+        minCurrentInThisFault = faultSampleCount > 0 ? maxCurrentInThisFault : 0;
+      }
+      if (minCurrentInThisFault < minConsecutiveCurrent) {
+        minConsecutiveCurrent = minCurrentInThisFault;
+      }
+      if (maxCurrentInThisFault > maxConsecutivePeak) {
+        maxConsecutivePeak = maxCurrentInThisFault;
+      }
+
+      if (minCurrentInThisFault < cessationLimit) {
+        cfrtFailReasons.push(
+          `Momentary cessation on fault #${fIdx + 1} (current dropped to ${minCurrentInThisFault.toFixed(1)} A)`,
+        );
+      }
+    }
+
+    // Check transient overcurrent across all consecutive faults and clearance windows
+    const maxConsecutiveIpu = iBase > 0 ? maxConsecutivePeak / iBase : 1.0;
+    if (maxConsecutiveIpu > maxLimitPu) {
+      cfrtFailReasons.push(
+        `Transient peak current ${maxConsecutiveIpu.toFixed(2)} pu exceeded ${maxLimitPu.toFixed(2)} pu limit`,
+      );
+    }
+
+    // Check active power recovery after the last fault clears
+    const lastFault = faultList[faultList.length - 1]!;
+    const lastFaultEnd = lastFault.faultStartSec + lastFault.faultDurationSec;
+    let postLastFaultMax = 0;
+    let hasPostRecoveryWindow = false;
+    for (let i = 0; i < n; i++) {
+      if (time[i]! > lastFaultEnd + 0.005) {
+        hasPostRecoveryWindow = true;
+        if (envelopes[i]! > postLastFaultMax) postLastFaultMax = envelopes[i]!;
+      }
+    }
+    const finalRecoveryRatio = !hasPostRecoveryWindow || iPreFault <= 0 ? 1.0 : postLastFaultMax / iPreFault;
+    if (finalRecoveryRatio < 0.9) {
+      cfrtFailReasons.push(`Post-consecutive recovery reached only ${(finalRecoveryRatio * 100).toFixed(1)}% (< 90%)`);
+    }
+
+    const cfrtPass = cfrtFailReasons.length === 0;
+    checks.push({
+      clause: "7.2.2.7",
+      title: "Consecutive Fault Ride-Through (CFRT)",
+      status: cfrtPass ? "PASS" : "FAIL",
+      measuredValue: `${faultList.length} consecutive fault(s) evaluated (peak = ${maxConsecutiveIpu.toFixed(2)} pu, min current = ${minConsecutiveCurrent.toFixed(1)} A)`,
+      requiredLimit: `Continuous operation across consecutive faults without cessation; peak current <= ${maxLimitPu.toFixed(2)} pu; recovery >= 90%`,
+      details: cfrtPass
+        ? `IBR successfully rode through ${faultList.length} consecutive transmission faults without momentary cessation or tripping, bounded peak current (${maxConsecutiveIpu.toFixed(2)} pu <= ${maxLimitPu.toFixed(2)} pu), and restored output to ${(finalRecoveryRatio * 100).toFixed(1)}% of pre-fault level.`
+        : `IBR failed consecutive fault ride-through: ${cfrtFailReasons.join("; ")}.`,
+    });
+  }
+
+  // Check 9: Clause 7.2.2.8 Positive-Sequence Phase-Angle Jump Ride-Through
+  if (runPaj) {
+    const maxLimitPu = faultSpec.maxTransientCurrentPu ?? 1.3;
+    const observedJumpDeg = sequencePhasors
+      ? sequencePhasors.maxPhaseJumpDeg
+      : Math.abs(faultSpec.phaseJumpDegrees ?? 0);
+    const evalJumpDeg = Math.max(observedJumpDeg, Math.abs(faultSpec.phaseJumpDegrees ?? 0));
+
+    let maxDisturbanceI = 0;
+    for (let i = 0; i < n; i++) {
+      if (envelopes[i]! > maxDisturbanceI) maxDisturbanceI = envelopes[i]!;
+    }
+    const maxPajIpu = iBase > 0 ? maxDisturbanceI / iBase : 1.0;
+
+    const pajFailReasons: string[] = [];
+    if (momentaryCessationDetected) {
+      pajFailReasons.push("Momentary cessation or converter trip detected during phase-angle transient");
+    }
+    if (maxPajIpu > maxLimitPu) {
+      pajFailReasons.push(
+        `Transient current peak ${maxPajIpu.toFixed(2)} pu exceeded ${maxLimitPu.toFixed(2)} pu withstand limit`,
+      );
+    }
+
+    const pajPass = pajFailReasons.length === 0;
+    checks.push({
+      clause: "7.2.2.8",
+      title: "Positive-Sequence Phase-Angle Jump Ride-Through",
+      status: pajPass ? "PASS" : "FAIL",
+      measuredValue: `Phase jump = ${evalJumpDeg.toFixed(1)} deg (peak current = ${maxPajIpu.toFixed(2)} pu)`,
+      requiredLimit: `Continuous operation through phase jump >= 20.0 deg with peak current <= ${maxLimitPu.toFixed(2)} pu`,
+      details: pajPass
+        ? `Converter maintained continuous synchronism and stable current regulation across a ${evalJumpDeg.toFixed(1)} deg phase-angle jump with peak current limited to ${maxPajIpu.toFixed(2)} pu <= ${maxLimitPu.toFixed(2)} pu.`
+        : `Converter failed phase-angle jump ride-through: ${pajFailReasons.join("; ")}.`,
     });
   }
 

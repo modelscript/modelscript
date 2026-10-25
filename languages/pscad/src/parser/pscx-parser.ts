@@ -504,6 +504,8 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
         const z = isNaN(zRaw) ? 0 : zRaw;
         const mirrorAttr = attr(el, "mirror");
         const mirror = mirrorAttr === "true" || mirrorAttr === "1" || (orientRaw >= 4 && orientRaw <= 7);
+        const disableAttr = attr(el, "disable");
+        const disabled = disableAttr === "true" || disableAttr === "1";
 
         const rotation =
           orientRaw >= 0 && orientRaw <= 3
@@ -597,6 +599,7 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
           height: height > 0 ? height : undefined,
           rotation,
           mirror: mirror || undefined,
+          disabled: disabled || undefined,
           z,
           parameters: params,
           paramLocations,
@@ -1053,6 +1056,11 @@ function snapWireConnections(mod: PscxModule): void {
       if (ec.count >= 3) addJunction(ec.pt);
     }
 
+    const getOrCreateJunctionId = (pt: Point2D) => {
+      addJunction(pt);
+      return `junc_${Math.round(pt.x)}_${Math.round(pt.y)}`;
+    };
+
     for (let i = 0; i < nWires; i++) {
       const wA = mod.wires[i]!;
       if (wA.vertices.length < 2) continue;
@@ -1071,16 +1079,14 @@ function snapWireConnections(mod: PscxModule): void {
           const segEnd = wB.vertices[k + 1]!;
           if (pointToSegmentDistance(aStart, segStart, segEnd) <= SNAP_TOLERANCE) {
             touches = true;
-            if (distance(aStart, bStart) > SNAP_TOLERANCE && distance(aStart, bEnd) > SNAP_TOLERANCE) {
-              addJunction(aStart);
-            }
+            const jId = getOrCreateJunctionId(aStart);
+            if (!wA.startPortId) wA.startPortId = jId;
             break;
           }
           if (pointToSegmentDistance(aEnd, segStart, segEnd) <= SNAP_TOLERANCE) {
             touches = true;
-            if (distance(aEnd, bStart) > SNAP_TOLERANCE && distance(aEnd, bEnd) > SNAP_TOLERANCE) {
-              addJunction(aEnd);
-            }
+            const jId = getOrCreateJunctionId(aEnd);
+            if (!wA.endPortId) wA.endPortId = jId;
             break;
           }
         }
@@ -1090,19 +1096,41 @@ function snapWireConnections(mod: PscxModule): void {
             const segEnd = wA.vertices[k + 1]!;
             if (pointToSegmentDistance(bStart, segStart, segEnd) <= SNAP_TOLERANCE) {
               touches = true;
-              if (distance(bStart, aStart) > SNAP_TOLERANCE && distance(bStart, aEnd) > SNAP_TOLERANCE) {
-                addJunction(bStart);
-              }
+              const jId = getOrCreateJunctionId(bStart);
+              if (!wB.startPortId) wB.startPortId = jId;
               break;
             }
             if (pointToSegmentDistance(bEnd, segStart, segEnd) <= SNAP_TOLERANCE) {
               touches = true;
-              if (distance(bEnd, aStart) > SNAP_TOLERANCE && distance(bEnd, aEnd) > SNAP_TOLERANCE) {
-                addJunction(bEnd);
-              }
+              const jId = getOrCreateJunctionId(bEnd);
+              if (!wB.endPortId) wB.endPortId = jId;
               break;
             }
           }
+        }
+        if (distance(aStart, bStart) <= SNAP_TOLERANCE) {
+          touches = true;
+          const jId = getOrCreateJunctionId(aStart);
+          if (!wA.startPortId) wA.startPortId = jId;
+          if (!wB.startPortId) wB.startPortId = jId;
+        }
+        if (distance(aStart, bEnd) <= SNAP_TOLERANCE) {
+          touches = true;
+          const jId = getOrCreateJunctionId(aStart);
+          if (!wA.startPortId) wA.startPortId = jId;
+          if (!wB.endPortId) wB.endPortId = jId;
+        }
+        if (distance(aEnd, bStart) <= SNAP_TOLERANCE) {
+          touches = true;
+          const jId = getOrCreateJunctionId(aEnd);
+          if (!wA.endPortId) wA.endPortId = jId;
+          if (!wB.startPortId) wB.startPortId = jId;
+        }
+        if (distance(aEnd, bEnd) <= SNAP_TOLERANCE) {
+          touches = true;
+          const jId = getOrCreateJunctionId(aEnd);
+          if (!wA.endPortId) wA.endPortId = jId;
+          if (!wB.endPortId) wB.endPortId = jId;
         }
         if (touches) {
           union(i, j);

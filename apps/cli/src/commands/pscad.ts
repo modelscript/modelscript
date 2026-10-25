@@ -22,12 +22,14 @@ import {
   parsePscx,
   pscadToModelica,
   pscadToSsd,
+  readPscadPsout,
   registerPscadSource,
   verifyIeee2800Compliance,
   writeComtrade,
   writeComtradeBinary,
   writeComtradeCff,
   writePscadOut,
+  writePscadPsout,
 } from "@modelscript/pscad";
 import { EmtSolver, type EmtCircuitDefinition } from "@modelscript/simulate";
 import fs from "node:fs";
@@ -36,13 +38,14 @@ import type { CommandModule } from "yargs";
 
 export const PscadCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "pscad <action> [files...]",
-  describe: "Inspect, lint, diff, simulate, and verify PSCAD projects (.pscx, .pslx)",
+  describe: "Inspect, lint, diff, simulate, and verify PSCAD projects (.pscx, .pslx, .psout)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, diagram, diff, sim, verify-ieee2800, export-modelica, export-ssp)",
+        description:
+          "Action to perform (lint, diagram, diff, sim, verify-ieee2800, export-modelica, export-ssp, psout)",
         type: "string",
-        choices: ["lint", "diagram", "diff", "sim", "verify-ieee2800", "export-modelica", "export-ssp"],
+        choices: ["lint", "diagram", "diff", "sim", "verify-ieee2800", "export-modelica", "export-ssp", "psout"],
         demandOption: true,
       })
       .positional("files", {
@@ -52,7 +55,7 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
       })
       .option("out", {
         alias: "o",
-        description: "Output file path (for diagram SVG, Modelica, or SSD export)",
+        description: "Output file path (for diagram SVG, Modelica, SSD, CSV, or COMTRADE export)",
         type: "string",
       })
       .option("tstop", {
@@ -67,9 +70,10 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
       })
       .option("format", {
         alias: "f",
-        description: "Result format for 'sim' with --out (base path): pscad (.out/.inf), comtrade, comtrade-bin, cff",
+        description:
+          "Result format for 'sim' with --out (base path): pscad (.out/.inf), psout (.psout), comtrade, comtrade-bin, cff",
         type: "string",
-        choices: ["pscad", "comtrade", "comtrade-bin", "cff"],
+        choices: ["pscad", "psout", "comtrade", "comtrade-bin", "cff"],
         default: "pscad",
       });
   },
@@ -86,6 +90,80 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
     if (!fs.existsSync(firstFilePath)) {
       console.error(`Error: File not found: ${firstFilePath}`);
       process.exit(1);
+    }
+
+    if (action === "psout") {
+      const psoutBuf = fs.readFileSync(firstFilePath);
+      const doc = readPscadPsout(new Uint8Array(psoutBuf));
+      const run0 = doc.run(0);
+      const traces = Array.from(run0.traces.values());
+      const simResult = doc.toSimulationResult(0);
+      const timeVec = simResult.time;
+      const outArg = args["out"] as string | undefined;
+
+      if (outArg) {
+        const resolvedOut = path.resolve(process.cwd(), outArg);
+        fs.mkdirSync(path.dirname(resolvedOut), { recursive: true });
+        if (outArg.endsWith(".csv")) {
+          // Export to CSV
+          const channelNames = traces.map((t) => (t.unit ? `${t.name} (${t.unit})` : t.name));
+          const header = ["Time (s)", ...channelNames].join(",");
+          const nSamples = timeVec.length;
+          const rows: string[] = [header];
+          for (let i = 0; i < nSamples; i++) {
+            const vals = [timeVec[i]!.toFixed(6), ...traces.map((t) => t.values[i]?.toFixed(6) ?? "0.0")];
+            rows.push(vals.join(","));
+          }
+          fs.writeFileSync(resolvedOut, rows.join("\n"), "utf-8");
+          console.log(`✓ Exported ${traces.length} trace channels (${nSamples} samples) to CSV: ${outArg}`);
+        } else if (outArg.endsWith(".cfg") || outArg.endsWith(".dat") || args["format"] === "comtrade") {
+          // Convert to COMTRADE
+          const base = resolvedOut.replace(/\.(cfg|dat)$/i, "");
+          const rec = emtResultToComtrade(simResult, path.parse(firstFilePath).name, "MSX_PSOUT");
+          const c = writeComtrade(rec);
+          fs.writeFileSync(`${base}.cfg`, c.cfg, "utf-8");
+          fs.writeFileSync(`${base}.dat`, c.dat, "utf-8");
+          console.log(`✓ Converted PSCAD .psout to COMTRADE: ${base}.cfg and ${base}.dat`);
+        } else {
+          console.error(`Error: Unsupported output format for .psout: ${outArg}. Please use .csv or .cfg`);
+          process.exit(1);
+        }
+      } else {
+        // Inspect Mode: print formatted summary
+        console.log(`\nPSCAD V5+ PSOUT Binary Container: ${path.basename(firstFilePath)}`);
+        console.log(`================================================================`);
+        console.log(`  Version:         V${doc.header.version}`);
+        console.log(
+          `  File Size:       ${(fs.statSync(firstFilePath).size / 1024).toFixed(1)} KB (${doc.header.pageCount} slotted pages)`,
+        );
+        console.log(`  Created Date:    ${doc.header.createdOn.toISOString()}`);
+        console.log(`  Container GUID:  ${doc.header.guid}`);
+        console.log(`  Runs:            ${doc.numRuns}`);
+        console.log(`  Total Channels:  ${traces.length}`);
+        console.log(`  Sample Count:    ${timeVec.length}`);
+        if (timeVec.length > 1) {
+          const dt = (timeVec[timeVec.length - 1]! - timeVec[0]!) / (timeVec.length - 1);
+          console.log(`  Duration:        ${(timeVec[timeVec.length - 1]! - timeVec[0]!).toFixed(4)} s`);
+          console.log(
+            `  Sample Rate:     ${Math.round(1 / dt).toLocaleString()} Hz (dt = ${(dt * 1e6).toFixed(2)} µs)`,
+          );
+        }
+        console.log(`\n  Indexed Waveform Traces:`);
+        console.log(`  ---------------------------------------------------------------------------------`);
+        console.log(
+          `  ${"#".padEnd(4)} ${"Channel Name".padEnd(30)} ${"Unit".padEnd(8)} ${"Group".padEnd(16)} ${"Min".padEnd(10)} ${"Max".padEnd(10)}`,
+        );
+        console.log(`  ---------------------------------------------------------------------------------`);
+        traces.forEach((tr, idx) => {
+          const minStr = Number.isFinite(tr.min) ? tr.min.toFixed(2) : "N/A";
+          const maxStr = Number.isFinite(tr.max) ? tr.max.toFixed(2) : "N/A";
+          console.log(
+            `  ${String(idx + 1).padEnd(4)} ${(tr.name || "unnamed").padEnd(30)} ${(tr.unit || "-").padEnd(8)} ${(tr.group || "-").padEnd(16)} ${minStr.padEnd(10)} ${maxStr.padEnd(10)}`,
+          );
+        });
+        console.log(`  ---------------------------------------------------------------------------------\n`);
+      }
+      return;
     }
 
     const xmlContent = fs.readFileSync(firstFilePath, "utf-8");
@@ -189,7 +267,7 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
 
         const outArg = args["out"] as string | undefined;
         if (outArg) {
-          const base = path.resolve(process.cwd(), outArg).replace(/\.(out|inf|cfg|dat|cff)$/i, "");
+          const base = path.resolve(process.cwd(), outArg).replace(/\.(out|inf|cfg|dat|cff|psout)$/i, "");
           const fmt = (args["format"] as string) ?? "pscad";
           const written: string[] = [];
           const put = (p: string, c: string | Uint8Array) => {
@@ -201,6 +279,9 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
             const o = writePscadOut(result, project.name);
             put(`${base}.inf`, o.inf);
             for (const f of o.out) put(`${base}${f.suffix}`, f.content);
+          } else if (fmt === "psout") {
+            const psoutBytes = writePscadPsout(result, { projectName: project.name });
+            put(`${base}.psout`, psoutBytes);
           } else {
             const rec = emtResultToComtrade(result, project.name);
             if (fmt === "comtrade") {

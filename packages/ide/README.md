@@ -18,7 +18,7 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) â
 
 - **`ModelScriptDebugSession` (`"type": "modelscript"`)**: Lets engineers debug continuous-time DAE integrations, hybrid `when` events, and state machines using standard VS Code debugging controls:
   - **Breakpoints**: Equation-line breakpoints, zero-crossing event traps (`breakOnZeroCrossing`), and conditional simulation time/expression triggers (e.g., `time >= 2.5` or `der(omega) < 0`).
-  - **Execution Controls**: `Continue`, `Step Over` (advance one integrator step $\Delta t$), `Step Into` (Newton-Raphson and event-iteration micro-steps), `Step Back` (reverse-time trajectory scrubbing), and `Restart`.
+  - **Execution Controls**: `Continue`, `Step Over` (advance one integrator step $\Delta t$), `Step Into` (advance single statement/micro-step iteration), and `Restart` (`Step Back` reverse-time trajectory scrubbing is reserved for future adjoint solvers).
   - **Live Variable Scopes**: Inspect `States (x)`, `Derivatives (der(x))`, `Algebraic Variables (y)`, `Parameters (p)`, `Discrete / Clocked`, and solver health metrics (`h`, local error, Jacobian condition number).
 
 ### 3. 3-Tier AI Engineering Assistant (`src/chat-panel.ts`, `src/chat-participant.ts`, `src/llm-provider.ts`, `src/mcp-bridge.ts`)

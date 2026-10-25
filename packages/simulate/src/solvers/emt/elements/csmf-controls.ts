@@ -207,6 +207,7 @@ export class CsmfControlGraph {
   public step(
     getBusVoltage: (busName: string, phaseIdx?: number) => number,
     getBranchCurrent: (branchId: string, phaseIdx?: number) => number,
+    getExternalSignal?: ((signalId: string) => number | undefined) | undefined,
   ): void {
     const dt = this.dt;
 
@@ -214,10 +215,29 @@ export class CsmfControlGraph {
       const b = this.blocks[i]!;
       const cfg = b.config;
       const p = cfg.params ?? {};
+
+      const getInVal = (k: number): number => {
+        const idx = b.inputIndices[k] ?? -1;
+        if (idx >= 0) return this.blocks[idx]!.output;
+        if (getExternalSignal) {
+          const inpName = cfg.inputs?.[k];
+          if (inpName) {
+            const ext = getExternalSignal(inpName);
+            if (ext !== undefined) return ext;
+          }
+        }
+        return 0;
+      };
+
       const inIdx0 = b.inputIndices[0] ?? -1;
-      const u0 = inIdx0 >= 0 ? this.blocks[inIdx0]!.output : 0;
+      const u0 = inIdx0 >= 0 ? this.blocks[inIdx0]!.output : getInVal(0);
       const inIdx1 = b.inputIndices[1] ?? -1;
-      const u1 = inIdx1 >= 0 ? this.blocks[inIdx1]!.output : Number(cfg.value ?? p["threshold"] ?? p["value"] ?? 0);
+      const u1 =
+        inIdx1 >= 0
+          ? this.blocks[inIdx1]!.output
+          : getExternalSignal && cfg.inputs?.[1] && getExternalSignal(cfg.inputs[1]) !== undefined
+            ? getExternalSignal(cfg.inputs[1])!
+            : Number(cfg.value ?? p["threshold"] ?? p["value"] ?? 0);
 
       let y = 0;
 
@@ -233,11 +253,11 @@ export class CsmfControlGraph {
         case "logic": {
           // Multi-input gate. Type: 0 AND, 1 OR, 2 NAND, 3 NOR, 4 XOR, 5 XNOR. Inv1..InvN invert input pins,
           // Inv inverts the final output. Inputs are truthy above 0.5.
-          const n = Math.min(b.inputIndices.length, Math.trunc(Number(p["Num_in"] ?? b.inputIndices.length)));
+          const inCount = Math.max(b.inputIndices.length, cfg.inputs?.length ?? 0);
+          const n = Math.min(inCount, Math.trunc(Number(p["Num_in"] ?? inCount)));
           const bits: boolean[] = [];
           for (let k = 0; k < n; k++) {
-            const idx = b.inputIndices[k] ?? -1;
-            let v = (idx >= 0 ? this.blocks[idx]!.output : 0) > 0.5;
+            let v = getInVal(k) > 0.5;
             if (Number(p[`Inv${k + 1}`] ?? 0) === 1) v = !v;
             bits.push(v);
           }
@@ -310,19 +330,16 @@ export class CsmfControlGraph {
         }
         case "maxmin": {
           // Maximum (Type 1, default) or minimum (Type 2) over all connected inputs; one input passes through.
+          const inCount = Math.max(b.inputIndices.length, cfg.inputs?.length ?? 0);
           const vals: number[] = [];
-          for (const ix of b.inputIndices) if (ix >= 0) vals.push(this.blocks[ix]!.output);
+          for (let k = 0; k < inCount; k++) vals.push(getInVal(k));
           if (vals.length === 0) vals.push(0);
           y = Math.trunc(Number(p["Type"] ?? 1)) === 2 ? Math.min(...vals) : Math.max(...vals);
           break;
         }
         case "rms3ph": {
           // sqrt of the mean square of the three phases, smoothed by a first-order lag of time constant Ts.
-          const g = (k: number): number => {
-            const ix = b.inputIndices[k] ?? -1;
-            return ix >= 0 ? this.blocks[ix]!.output : 0;
-          };
-          const raw = Math.sqrt(Math.max(0, (g(0) ** 2 + g(1) ** 2 + g(2) ** 2) / 3));
+          const raw = Math.sqrt(Math.max(0, (getInVal(0) ** 2 + getInVal(1) ** 2 + getInVal(2) ** 2) / 3));
           if (b.rmsCount === 0) {
             b.yPrev = Number(p["Vinit"] ?? 0);
             b.rmsCount = 1;
@@ -490,11 +507,10 @@ export class CsmfControlGraph {
         }
         case "sum": {
           let acc = 0;
-          for (let k = 0; k < b.inputIndices.length; k++) {
-            const idx = b.inputIndices[k]!;
+          const count = Math.max(b.inputIndices.length, cfg.inputs?.length ?? 0);
+          for (let k = 0; k < count; k++) {
             const sign = b.signs[k] ?? 1.0;
-            const val = idx >= 0 ? this.blocks[idx]!.output : 0;
-            acc += sign * val;
+            acc += sign * getInVal(k);
           }
           y = acc;
           break;
@@ -573,11 +589,7 @@ export class CsmfControlGraph {
         case "abcdq0_q":
         case "abcdq0_0": {
           // Park transform split into one single-output block per axis. Inputs: [a, b, c, theta].
-          const val = (k: number): number => {
-            const idx = b.inputIndices[k] ?? -1;
-            return idx >= 0 ? this.blocks[idx]!.output : 0;
-          };
-          const [a, bb, c, th] = [val(0), val(1), val(2), val(3)];
+          const [a, bb, c, th] = [getInVal(0), getInVal(1), getInVal(2), getInVal(3)];
           const t2 = (2 * Math.PI) / 3;
           if (cfg.kind === "abcdq0_d") {
             y = (2 / 3) * (a * Math.cos(th) + bb * Math.cos(th - t2) + c * Math.cos(th + t2));
@@ -592,11 +604,7 @@ export class CsmfControlGraph {
         case "inv_abcdq0_b":
         case "inv_abcdq0_c": {
           // Inverse Park: inputs [d, q, zero, theta].
-          const val = (k: number): number => {
-            const idx = b.inputIndices[k] ?? -1;
-            return idx >= 0 ? this.blocks[idx]!.output : 0;
-          };
-          const [d, q, z, th] = [val(0), val(1), val(2), val(3)];
+          const [d, q, z, th] = [getInVal(0), getInVal(1), getInVal(2), getInVal(3)];
           const t2 = (2 * Math.PI) / 3;
           const ang = cfg.kind === "inv_abcdq0_a" ? th : cfg.kind === "inv_abcdq0_b" ? th - t2 : th + t2;
           y = d * Math.cos(ang) - q * Math.sin(ang) + z;

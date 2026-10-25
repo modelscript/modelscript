@@ -10,6 +10,9 @@
  */
 
 import { lintPscx } from "../lints/index.js";
+import { readDefinitionForm } from "../model/definition-form.js";
+import type { ModelDefinition, ModelPort } from "../model/pscad-model.js";
+import { getRegisteredMasterProject } from "../model/workspace-registry.js";
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
 import { parsePscx } from "../parser/pscx-parser.js";
 
@@ -1869,21 +1872,202 @@ export const MASTER_LIBRARY_SCHEMAS: PscadComponentSchema[] = [
   },
 ];
 
+const DYNAMIC_MASTER_SCHEMAS = new Map<string, PscadComponentSchema>();
+
+function deduceCategory(name: string, _ports: ModelPort[]): PscadComponentSchema["category"] {
+  const n = name.toLowerCase();
+  if (
+    n.includes("machine") ||
+    n.includes("motor") ||
+    n.includes("gen") ||
+    n.includes("source") ||
+    n.includes("vsrc") ||
+    n.includes("wound_rotor")
+  ) {
+    return "Sources & Rotating Machines";
+  }
+  if (
+    n.includes("tline") ||
+    n.includes("line") ||
+    n.includes("cable") ||
+    n.includes("xfmr") ||
+    n.includes("transformer") ||
+    n.includes("inductor") ||
+    n.includes("capacitor") ||
+    n.includes("resistor") ||
+    n.includes("rlc")
+  ) {
+    return "Transformers, Lines & Cables";
+  }
+  if (
+    n.includes("breaker") ||
+    n.includes("switch") ||
+    n.includes("fault") ||
+    n.includes("tpflt") ||
+    n.includes("arrester") ||
+    n.includes("mov")
+  ) {
+    return "Switchgear & Protection";
+  }
+  if (
+    n.includes("vsc") ||
+    n.includes("pwm") ||
+    n.includes("lcc") ||
+    n.includes("thyristor") ||
+    n.includes("inverter") ||
+    n.includes("converter") ||
+    n.includes("peswitch") ||
+    n.includes("diode") ||
+    n.includes("battery") ||
+    n.includes("mmc")
+  ) {
+    return "Power Electronics, HVDC & FACTS";
+  }
+  if (
+    n.includes("meter") ||
+    n.includes("rms") ||
+    n.includes("voltmeter") ||
+    n.includes("ammeter") ||
+    n.includes("probe") ||
+    n.includes("pgb") ||
+    n.includes("multimeter") ||
+    n.includes("annotation") ||
+    n.includes("sticky") ||
+    n.includes("bus")
+  ) {
+    return "Meters, Probes & Buses";
+  }
+  return "CSMF Control Blocks";
+}
+
+function deduceDomain(category: PscadComponentSchema["category"]): "electrical" | "control" | "meter" | "bus" {
+  if (category === "Meters, Probes & Buses") return "meter";
+  if (category === "CSMF Control Blocks") return "control";
+  return "electrical";
+}
+
+function synthesizeMasterSchema(def: ModelDefinition): PscadComponentSchema {
+  const category = deduceCategory(def.name, def.ports);
+  const domain = deduceDomain(category);
+  const form = readDefinitionForm(def);
+
+  const ports: PscadPortSchema[] = def.ports.map((p) => {
+    let side: "left" | "right" | "top" | "bottom" = "right";
+    if (Math.abs(p.x) >= Math.abs(p.y)) {
+      side = p.x < 0 ? "left" : "right";
+    } else {
+      side = p.y < 0 ? "top" : "bottom";
+    }
+    const isSig = p.mode === 1 || p.mode === 2 || (p.electype === 0 && p.mode !== 3);
+    return {
+      name: p.name,
+      kind: isSig ? ("signal" as const) : ("electrical" as const),
+      side,
+      offsetX: p.x,
+      offsetY: p.y,
+    };
+  });
+
+  const parameters: PscadParameterSchema[] = [];
+  if (form) {
+    for (const cat of form.categories) {
+      for (const p of cat.parameters) {
+        let tab: PscadParameterSchema["tab"] = "General";
+        const catLower = cat.name.toLowerCase();
+        if (catLower.includes("rating")) tab = "Ratings";
+        else if (catLower.includes("impedance") || catLower.includes("param")) tab = "Impedances";
+        else if (catLower.includes("control")) tab = "Control";
+        else if (catLower.includes("geom")) tab = "Geometry";
+        else if (catLower.includes("protect")) tab = "Protection";
+
+        let kind: PscadParameterSchema["kind"] = "string";
+        if (p.type === "Boolean") kind = "boolean";
+        else if (p.type === "Real" || p.type === "Integer") kind = "number";
+
+        parameters.push({
+          key: p.name,
+          label: p.label,
+          tab,
+          group: cat.name,
+          kind,
+          unit: p.unit || undefined,
+          defaultValue: kind === "number" ? Number(p.defaultValue) || 0 : p.defaultValue,
+          min: p.min,
+          max: p.max,
+          description: p.help || p.label,
+        });
+      }
+    }
+  }
+
+  const label = def.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const description = def.flyBy?.summary || `PSCAD Master Library component: ${def.name}`;
+
+  return {
+    className: `master:${def.name}`,
+    aliases: [def.name, `master:${def.name}`],
+    label,
+    category,
+    domain,
+    description,
+    defaultWidth: 60,
+    defaultHeight: 60,
+    ports,
+    parameters,
+  };
+}
+
 /**
  * Looks up a Master Library schema by definition name (e.g. `"master:sync_machine"` or `"sync_machine"`).
  */
 export function getMasterComponentSchema(definitionName: string): PscadComponentSchema | undefined {
   const norm = definitionName.trim().toLowerCase();
   const short = norm.includes(":") ? norm.split(":").pop()! : norm;
-  return MASTER_LIBRARY_SCHEMAS.find(
+
+  // 1. If dynamic master.pslx is loaded, prioritize its authentic XML definitions
+  if (DYNAMIC_MASTER_SCHEMAS.has(short)) {
+    return DYNAMIC_MASTER_SCHEMAS.get(short);
+  }
+
+  const masterProj = getRegisteredMasterProject();
+  if (masterProj) {
+    const def =
+      masterProj.definitions.get(short) ??
+      [...masterProj.definitions.values()].find((d) => d.name.toLowerCase() === short);
+    if (def) {
+      const synthesized = synthesizeMasterSchema(def);
+      DYNAMIC_MASTER_SCHEMAS.set(short, synthesized);
+      DYNAMIC_MASTER_SCHEMAS.set(`master:${short}`, synthesized);
+      return synthesized;
+    }
+  }
+
+  // 2. Fall back to static standalone schemas only if master.pslx is absent
+  const hardcoded = MASTER_LIBRARY_SCHEMAS.find(
     (s) =>
       s.className.toLowerCase() === norm ||
       s.className.toLowerCase().endsWith(`:${short}`) ||
       s.aliases.some((a) => a.toLowerCase() === norm || a.toLowerCase() === short),
   );
+  if (hardcoded) return hardcoded;
+
+  return undefined;
 }
 
 export function getAllMasterComponentSchemas(): PscadComponentSchema[] {
+  const masterProj = getRegisteredMasterProject();
+  if (masterProj) {
+    for (const def of masterProj.definitions.values()) {
+      const short = def.name.toLowerCase();
+      if (!DYNAMIC_MASTER_SCHEMAS.has(short)) {
+        const syn = synthesizeMasterSchema(def);
+        DYNAMIC_MASTER_SCHEMAS.set(short, syn);
+        DYNAMIC_MASTER_SCHEMAS.set(`master:${short}`, syn);
+      }
+    }
+    // When master.pslx is registered, dynamic schemas are the source of truth
+    return Array.from(DYNAMIC_MASTER_SCHEMAS.values());
+  }
   return MASTER_LIBRARY_SCHEMAS;
 }
 
@@ -1902,11 +2086,13 @@ export function getPscadPaletteCategories() {
 
   return categoryOrder.map((catName) => ({
     name: catName,
-    items: MASTER_LIBRARY_SCHEMAS.filter((s) => s.category === catName).map((s) => ({
-      label: s.label,
-      className: s.className,
-      description: s.description,
-    })),
+    items: getAllMasterComponentSchemas()
+      .filter((s) => s.category === catName)
+      .map((s) => ({
+        label: s.label,
+        className: s.className,
+        description: s.description,
+      })),
   }));
 }
 

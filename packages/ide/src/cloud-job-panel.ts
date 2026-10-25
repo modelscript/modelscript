@@ -2,18 +2,10 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { CaeCloudClient, type ComputeProfileInfo } from "./cae-cloud-client.js";
 import { SimulationPanel } from "./simulation-panel.js";
 
-export interface ComputeProfileViewModel {
-  id: string;
-  name: string;
-  description: string;
-  partition: string;
-  cpus: number;
-  memoryMb: number;
-  gpus?: number | undefined;
-  costCreditsPerHour: number;
-}
+export type ComputeProfileViewModel = ComputeProfileInfo;
 
 export class CloudJobPanel {
   public static currentPanel: CloudJobPanel | undefined;
@@ -109,18 +101,16 @@ export class CloudJobPanel {
       if (ext === ".cfg") domain = "cfd";
       else if (ext === ".inp") domain = "fea";
 
-      const { baseUrl, headers } = this._getApiConfig();
+      const { baseUrl } = this._getApiConfig();
+      const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
+      const token = cfg.get<string>("authToken");
+      const cloudClient = new CaeCloudClient(baseUrl, token);
 
       // Fetch profiles & balance
-      const [profilesRes, balanceRes] = await Promise.all([
-        fetch(`${baseUrl}/cloud/profiles`, { headers }).catch(() => null),
-        fetch(`${baseUrl}/cloud/balance`, { headers }).catch(() => null),
+      const [profiles, balanceData] = await Promise.all([
+        cloudClient.getComputeProfiles().catch(() => []),
+        cloudClient.getBalance().catch(() => ({ balance: 0 })),
       ]);
-
-      const profiles = profilesRes?.ok
-        ? ((await profilesRes.json()) as { profiles: ComputeProfileViewModel[] }).profiles
-        : [];
-      const balanceData = balanceRes?.ok ? ((await balanceRes.json()) as { balance: number }) : { balance: 0 };
 
       this._panel.webview.postMessage({
         type: "initData",

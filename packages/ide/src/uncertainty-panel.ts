@@ -7,7 +7,8 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
-import { SimulationPanel } from "./simulation-panel";
+import { SimulationPanel } from "./simulation-panel.js";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
 interface SimulationResult {
   t: number[];
@@ -35,15 +36,12 @@ interface SimulationResult {
   error?: string | undefined;
 }
 
-export class UncertaintyPanel {
+export class UncertaintyPanel extends BaseWebviewPanel {
   static currentPanel: UncertaintyPanel | undefined;
   static readonly viewType = "modelscript.uncertainty";
 
-  private readonly panel: vscode.WebviewPanel;
-  private readonly extensionUri: vscode.Uri;
   public sourceUri?: string | undefined;
   private client?: LanguageClient | undefined;
-  private disposables: vscode.Disposable[] = [];
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
     const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
@@ -55,7 +53,7 @@ export class UncertaintyPanel {
     if (UncertaintyPanel.currentPanel) {
       UncertaintyPanel.currentPanel.sourceUri = sourceUri;
       UncertaintyPanel.currentPanel.client = client;
-      UncertaintyPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      UncertaintyPanel.currentPanel._panel.reveal(vscode.ViewColumn.Beside);
       // Re-fetch parameters for the (possibly new) source URI
       await UncertaintyPanel.currentPanel.fetchAndSendParameters();
       return;
@@ -72,27 +70,30 @@ export class UncertaintyPanel {
       },
     );
 
-    UncertaintyPanel.currentPanel = new UncertaintyPanel(panel, extensionUri);
-    UncertaintyPanel.currentPanel.client = client;
-    UncertaintyPanel.currentPanel.sourceUri = sourceUri;
+    UncertaintyPanel.currentPanel = new UncertaintyPanel(panel, extensionUri, client, sourceUri);
 
     // Fetch parameters from the model and send to the webview
     await UncertaintyPanel.currentPanel.fetchAndSendParameters();
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this.panel = panel;
-    this.extensionUri = extensionUri;
-    this.panel.webview.html = this.getHtmlForWebview();
-    this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
-    this.panel.webview.onDidReceiveMessage(
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient, sourceUri: string) {
+    super(panel, extensionUri);
+    this.client = client;
+    this.sourceUri = sourceUri;
+
+    this._panel.webview.html = this.getHtmlShell({
+      title: "Uncertainty Dashboard",
+      scriptName: "uncertainty-webview.js",
+    });
+
+    this._panel.webview.onDidReceiveMessage(
       async (msg) => {
         if (msg.type === "montecarloRequest") {
           await this.handleMonteCarloRequest(msg.payload);
         }
       },
       null,
-      this.disposables,
+      this._disposables,
     );
   }
 
@@ -107,146 +108,89 @@ export class UncertaintyPanel {
         uri: this.sourceUri,
         startTime: 0,
         stopTime: 0,
-        interval: 1,
       });
-      if (result.parameters && result.parameters.length > 0) {
-        this.panel.webview.postMessage({
+
+      if (result && result.parameters && result.parameters.length > 0) {
+        this._panel.webview.postMessage({
           type: "modelParameters",
           parameters: result.parameters,
         });
       }
     } catch {
-      // Ignore — parameters will need to be entered manually
+      // Non-fatal: user can still enter parameter names manually
     }
   }
 
   private async handleMonteCarloRequest(payload: {
-    numSamples: number;
-    confidenceLevel: number;
-    method: string;
-    parameters: {
-      name: string;
-      distribution: string;
-      mean?: number | undefined;
-      stddev?: number | undefined;
-      lo?: number | undefined;
-      hi?: number | undefined;
-    }[];
-    startTime?: number | undefined;
-    stopTime?: number | undefined;
-    interval?: number | undefined;
-  }): Promise<void> {
-    if (!this.client) return;
+    samples: number;
+    distributions: Record<string, { type: string; mean: number; stdDev: number; min: number; max: number }>;
+    seed?: number;
+    parallel?: boolean;
+    sysmlUri?: string;
+    sysmlFilter?: string;
+    constraintsUri?: string;
+    constraintsFilter?: string;
+  }) {
+    if (!this.client || !this.sourceUri) return;
 
+    const sourceUri = this.sourceUri;
+
+    // Use withProgress to show a notification in VS Code
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Running Monte Carlo (${payload.numSamples} samples)...`,
+        title: `Running Monte Carlo (${payload.samples} samples)...`,
         cancellable: false,
       },
-      async () => {
+      async (progress) => {
         try {
-          this.panel.webview.postMessage({ type: "montecarloRunning" });
+          progress.report({ increment: 10, message: "Sampling distributions..." });
 
-          if (!this.client) return;
-          const result = await this.client.sendRequest("modelscript/montecarlo", {
-            uri: this.sourceUri,
-            numSamples: payload.numSamples,
-            confidenceLevel: payload.confidenceLevel,
-            method: payload.method,
-            parameters: payload.parameters,
-            startTime: payload.startTime,
-            stopTime: payload.stopTime,
-            interval: payload.interval,
+          const constraintsUri = payload.constraintsUri ?? payload.sysmlUri;
+          const constraintsFilter = payload.constraintsFilter ?? payload.sysmlFilter;
+
+          const result = await this.client!.sendRequest("modelscript/montecarlo", {
+            uri: sourceUri,
+            samples: payload.samples,
+            distributions: payload.distributions,
+            seed: payload.seed,
+            parallel: payload.parallel ?? true,
+            constraintsUri,
+            constraintsFilter,
+            sysmlUri: constraintsUri,
+            sysmlFilter: constraintsFilter,
           });
+
+          progress.report({ increment: 80, message: "Computing statistics..." });
 
           const isDark =
             vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
             vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
 
-          this.panel.webview.postMessage({
+          this._panel.webview.postMessage({
             type: "montecarloResult",
             data: result,
             isDark,
           });
 
-          // Forward MC results to the SimulationPanel for fan-chart overlay
-          const mcData = result as {
-            success: boolean;
-            numSamples: number;
-            statistics: Record<
-              string,
-              {
-                mean: number[];
-                stddev: number[];
-                ciLo: number[];
-                ciHi: number[];
-                percentiles: Record<string, number[]>;
-              }
-            >;
-            t: number[];
-            convergence: { coeffOfVariation: number; effectiveSampleSize: number };
-          };
-
-          if (mcData.success && mcData.t.length > 0) {
-            SimulationPanel.postMonteCarloData(mcData, isDark);
+          // If SimulationPanel is open, update its trajectory chart with the MC envelope
+          const simPanel = SimulationPanel.currentPanel;
+          if (simPanel && (result as { runs?: unknown[] }).runs) {
+            (simPanel as any).postResults?.(result as any);
           }
+
+          progress.report({ increment: 10, message: "Done" });
         } catch (e: unknown) {
           const errMsg = e instanceof Error ? e.message : String(e);
-          vscode.window.showErrorMessage(`Uncertainty analysis failed: ${errMsg}`);
-          this.panel.webview.postMessage({ type: "montecarloError", error: errMsg });
+          vscode.window.showErrorMessage(`Monte Carlo simulation failed: ${errMsg}`);
+          this._panel.webview.postMessage({ type: "montecarloError", error: errMsg });
         }
       },
     );
   }
 
-  private getHtmlForWebview(): string {
-    const webview = this.panel.webview;
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "uncertainty-webview.js"));
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;">
-  <title>Uncertainty Dashboard</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      width: 100vw;
-      height: 100vh;
-      background: var(--vscode-editor-background, #1e1e1e);
-      color: var(--vscode-foreground, #ccc);
-      font-family: var(--vscode-font-family, system-ui, sans-serif);
-    }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-
-  private dispose() {
+  public override dispose(): void {
     UncertaintyPanel.currentPanel = undefined;
-    this.panel.dispose();
-    while (this.disposables.length) {
-      const d = this.disposables.pop();
-      if (d) d.dispose();
-    }
+    super.dispose();
   }
-}
-
-function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

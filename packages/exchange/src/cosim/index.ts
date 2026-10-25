@@ -20,6 +20,7 @@ export {
   type WasmParticipantSpec,
 } from "@modelscript/runtime";
 export * from "./coupling.js";
+export * from "./olga-cosim-master.js";
 export * from "./orchestrator.js";
 export * from "./participant.js";
 export * from "./realtime.js";

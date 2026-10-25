@@ -28,6 +28,8 @@ export interface FlatSemanticEdit {
   regulatoryImpact?: RegulatoryImpact | undefined;
 }
 
+let nextSemanticCommentId = 1;
+
 class SemanticDiffComment implements vscode.Comment {
   id: number;
   label?: string;
@@ -36,7 +38,7 @@ class SemanticDiffComment implements vscode.Comment {
   author: vscode.CommentAuthorInformation;
 
   constructor(body: string, label?: string) {
-    this.id = Math.random();
+    this.id = nextSemanticCommentId++;
     if (label !== undefined) this.label = label;
     const md = new vscode.MarkdownString(body);
     md.isTrusted = true;

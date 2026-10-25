@@ -190,21 +190,24 @@ export function buildProjectModel(source: string, external?: ExternalDefinitions
     root,
     errors: doc.errors,
   };
-  const defsEl = childrenNamed(root, "definitions")[0];
-  for (const d of defsEl ? childrenNamed(defsEl, "Definition") : []) {
+  const defsEl = childrenNamed(root, "definitions")[0] ?? childrenNamed(root, "Definitions")[0];
+  const defElements = defsEl ? [...childrenNamed(defsEl, "Definition"), ...childrenNamed(defsEl, "definition")] : [];
+  for (const d of defElements) {
     const name = attr(d, "name") ?? "";
     const ports: ModelPort[] = [];
-    const graphics = childrenNamed(d, "graphics")[0];
-    for (const p of graphics ? childrenNamed(graphics, "Port") : []) {
+    const graphics = childrenNamed(d, "graphics")[0] ?? childrenNamed(d, "Graphics")[0];
+    const portEls = graphics ? [...childrenNamed(graphics, "Port"), ...childrenNamed(graphics, "port")] : [];
+    for (const p of portEls) {
       const pr = readParamList(p);
+      const pName = attr(p, "name") ?? pr.get("name") ?? "";
       ports.push({
-        name: pr.get("name") ?? "",
+        name: pName,
         x: num(attr(p, "x")),
         y: num(attr(p, "y")),
-        mode: num(pr.get("mode")),
-        dim: num(pr.get("dim"), 1),
-        datatype: num(pr.get("datatype")),
-        electype: num(pr.get("electype")),
+        mode: num(attr(p, "mode") ?? pr.get("mode")),
+        dim: num(attr(p, "dim") ?? pr.get("dim"), 1),
+        datatype: num(attr(p, "datatype") ?? pr.get("datatype")),
+        electype: num(attr(p, "electype") ?? pr.get("electype")),
         element: p,
       });
     }
@@ -324,9 +327,7 @@ function resolvePorts(model: PscadProjectModel, external?: ExternalDefinitions):
       const target =
         inst.lib === model.name || inst.lib === ""
           ? model.definitions.get(inst.defnName)
-          : inst.lib === "master"
-            ? undefined
-            : external?.(inst.lib, inst.defnName);
+          : external?.(inst.lib, inst.defnName);
       if (!target) continue;
       inst.ports = target.ports.map((p) => {
         const o = orientOffset({ x: p.x, y: p.y }, inst.orient);

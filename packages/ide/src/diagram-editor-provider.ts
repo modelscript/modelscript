@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { getNonce } from "./utils/nonce.js";
 
 /** JSON-RPC method constants for the unified Diagram API protocol. */
 const DiagramMethods = {
@@ -27,6 +28,20 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   /** Optional callback invoked when a document is opened in the diagram editor. */
   public onDidOpenDocument?: ((uri: string) => void) | undefined;
 
+  /** Singleton instance of the provider */
+  public static instance: DiagramEditorProvider | undefined;
+
+  /** Post simulation telemetry data to all active diagram webviews for a URI */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public static postSimulationData(uri: string, simData: any): void {
+    if (!DiagramEditorProvider.instance) return;
+    DiagramEditorProvider.instance.postToActiveWebviews({
+      type: "simulationData",
+      uri,
+      data: simData,
+    });
+  }
+
   /**
    * Initializes the diagram editor provider and registers the `modelscript.autoLayout` command.
    */
@@ -34,6 +49,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     private readonly context: vscode.ExtensionContext,
     private readonly client: LanguageClient,
   ) {
+    DiagramEditorProvider.instance = this;
     context.subscriptions.push(
       vscode.commands.registerCommand("modelscript.autoLayout", () => {
         for (const panel of this.activeWebviews) {
@@ -251,6 +267,64 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 },
               ];
               break;
+            case "rotate":
+              actions = [{ type: "rotate", item: { name: message.name, rotation: message.rotation } }];
+              break;
+            case "toggleDisable":
+              actions = [{ type: "toggleDisable", name: message.name, disabled: message.disabled }];
+              break;
+            case "toggleBreakerState":
+              actions = [
+                {
+                  type: "updateParameter",
+                  name: message.name,
+                  parameter: "Status",
+                  value: message.targetStatus,
+                },
+              ];
+              vscode.commands.executeCommand("modelscript.diagram.simulate", document.uri);
+              break;
+            case "openLineGeometryEditor":
+              vscode.commands.executeCommand("modelscript.openLineGeometryEditor", {
+                uri: document.uri.toString(),
+                componentName: message.name,
+                defn: message.defn,
+                params: message.parameters,
+              });
+              break;
+            case "applyLineParameters":
+              if (message.params && message.componentName) {
+                actions = [
+                  {
+                    type: "updateParameter",
+                    name: message.componentName,
+                    parameter: "R",
+                    value: message.params.R.toFixed(5),
+                  },
+                  {
+                    type: "updateParameter",
+                    name: message.componentName,
+                    parameter: "L",
+                    value: message.params.L.toFixed(6),
+                  },
+                  {
+                    type: "updateParameter",
+                    name: message.componentName,
+                    parameter: "C",
+                    value: message.params.C.toExponential(4),
+                  },
+                  {
+                    type: "updateParameter",
+                    name: message.componentName,
+                    parameter: "length",
+                    value: message.params.length.toFixed(1),
+                  },
+                ];
+              }
+              break;
+            case "runSimulation":
+              vscode.commands.executeCommand("modelscript.diagram.simulate", document.uri);
+              break;
             case "diagramEdit": {
               // Direct batch from the webview (already in actions format)
               actions = message.actions;
@@ -260,6 +334,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   a.type === "move" ||
                   a.type === "resize" ||
                   a.type === "rotate" ||
+                  a.type === "toggleDisable" ||
                   a.type === "moveEdge" ||
                   a.type === "updateParameter" ||
                   a.type === "updateProperty",
@@ -376,6 +451,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 a.type === "move" ||
                 a.type === "resize" ||
                 a.type === "rotate" ||
+                a.type === "toggleDisable" ||
                 a.type === "moveEdge" ||
                 a.type === "updateParameter" ||
                 a.type === "updateProperty",
@@ -849,9 +925,252 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     select.prop-input {
       appearance: none;
     }
+
+    /* Floating Canvas HUD */
+    #canvas-hud {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 150;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      background: var(--vscode-editorWidget-background, rgba(30, 41, 59, 0.9));
+      border: 1px solid var(--vscode-widget-border, #334155);
+      border-radius: 6px;
+      padding: 3px 6px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 11px;
+      backdrop-filter: blur(8px);
+      user-select: none;
+    }
+    .hud-btn {
+      background: transparent;
+      color: var(--vscode-foreground, #cbd5e1);
+      border: 1px solid transparent;
+      border-radius: 4px;
+      padding: 3px 7px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+    .hud-btn:hover {
+      background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+      color: #fff;
+    }
+    .hud-btn.active {
+      background: var(--vscode-button-background, #0284c7);
+      color: var(--vscode-button-foreground, #fff);
+    }
+    .hud-btn-accent {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #34d399;
+    }
+    .hud-btn-accent:hover {
+      background: rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    .hud-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--vscode-widget-border, #475569);
+      margin: 0 3px;
+    }
+
+    /* Diagram Context Menu */
+    #diagram-context-menu {
+      position: absolute;
+      z-index: 1000;
+      display: none;
+      min-width: 190px;
+      background: var(--vscode-menu-background, #1e293b);
+      color: var(--vscode-menu-foreground, #e2e8f0);
+      border: 1px solid var(--vscode-menu-border, #334155);
+      border-radius: 6px;
+      padding: 4px 0;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 12px;
+      user-select: none;
+    }
+    .context-menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      cursor: pointer;
+      gap: 12px;
+    }
+    .context-menu-item:hover {
+      background: var(--vscode-menu-selectionBackground, #0284c7);
+      color: var(--vscode-menu-selectionForeground, #fff);
+    }
+    .context-menu-item .shortcut {
+      opacity: 0.6;
+      font-size: 10px;
+      font-family: monospace;
+    }
+    .context-menu-divider {
+      height: 1px;
+      background: var(--vscode-menu-separatorBackground, #334155);
+      margin: 4px 0;
+    }
+
+    /* Spotlight Omni-Insert Popover */
+    #spotlight-omni-insert {
+      position: absolute;
+      z-index: 950;
+      display: none;
+      width: 300px;
+      background: var(--vscode-editorWidget-background, #1e293b);
+      border: 1px solid var(--vscode-focusBorder, #0284c7);
+      border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+      overflow: hidden;
+      font-family: var(--vscode-font-family, sans-serif);
+    }
+    #spotlight-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--vscode-widget-border, #334155);
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--vscode-input-foreground, #fff);
+      outline: none;
+    }
+    #spotlight-results {
+      max-height: 220px;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .spotlight-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--vscode-foreground, #cbd5e1);
+    }
+    .spotlight-item:hover, .spotlight-item.selected {
+      background: var(--vscode-list-activeSelectionBackground, #0284c7);
+      color: #fff;
+    }
+    .spotlight-badge {
+      font-size: 10px;
+      opacity: 0.7;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.1);
+    }
+
+    /* Wire Probe Tooltip */
+    #wire-probe-tooltip {
+      position: absolute;
+      z-index: 800;
+      display: none;
+      pointer-events: none;
+      background: rgba(15, 23, 42, 0.92);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-family: monospace;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(6px);
+      max-width: 240px;
+    }
+
+    /* Pinned Sparkline Scope Cards */
+    #pinned-scopes-container {
+      position: absolute;
+      top: 60px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 700;
+      pointer-events: none;
+      max-height: calc(100vh - 80px);
+      overflow-y: auto;
+    }
+    .pinned-scope-card {
+      pointer-events: auto;
+      width: 280px;
+      background: rgba(15, 23, 42, 0.94);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(6px);
+      overflow: hidden;
+      font-family: var(--vscode-font-family, sans-serif);
+    }
+    .scope-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      background: rgba(30, 41, 59, 0.85);
+      border-bottom: 1px solid rgba(51, 65, 85, 0.8);
+      font-size: 11px;
+      font-weight: 600;
+      color: #f8fafc;
+    }
+    .scope-close-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0 2px;
+    }
+    .scope-close-btn:hover {
+      color: #f87171;
+    }
+    .scope-body {
+      padding: 8px 10px;
+    }
+    .scope-metrics {
+      display: flex;
+      gap: 8px;
+      font-family: monospace;
+      font-size: 10px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
   </style>
 </head>
 <body>
+  <div id="canvas-hud" class="canvas-hud">
+    <button id="hud-select" class="hud-btn active" title="Select Tool (V)">↖</button>
+    <div class="hud-divider"></div>
+    <button id="hud-wire" class="hud-btn" title="Orthogonal Wire Tool (W)">⚡ Wire</button>
+    <button id="hud-gnd" class="hud-btn" title="Insert Ground (G)">⏚ Gnd</button>
+    <button id="hud-bus" class="hud-btn" title="Insert Busbar (B)">━ Bus</button>
+    <button id="hud-breaker" class="hud-btn" title="Insert Breaker (K)">⎎ Brk</button>
+    <button id="hud-resistor" class="hud-btn" title="Insert Resistor (R)">〰 R</button>
+    <div class="hud-divider"></div>
+    <button id="hud-omni" class="hud-btn" title="Search Component (Shift+A / Tab)">🔍 Search</button>
+    <button id="hud-run" class="hud-btn hud-btn-accent" title="Run EMT Simulation (F5)">▶ Run</button>
+  </div>
+  <div id="diagram-context-menu"></div>
+  <div id="spotlight-omni-insert">
+    <input id="spotlight-input" type="text" placeholder="Search PSCAD components... (↵ to drop)" autocomplete="off" />
+    <div id="spotlight-results"></div>
+  </div>
+  <div id="wire-probe-tooltip"></div>
+  <div id="pinned-scopes-container"></div>
   <div id="toolbar" style="display: none;">
     <span>Diagram View:</span>
     <select id="diagramTypeSelect">
@@ -885,16 +1204,4 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 </body>
 </html>`;
   }
-}
-
-/**
- * Generates a 32-character alphanumeric nonce for Content-Security-Policy script authorization.
- */
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

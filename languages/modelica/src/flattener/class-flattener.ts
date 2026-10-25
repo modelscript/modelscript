@@ -350,7 +350,7 @@ export class ModelicaFlattener {
     if ((sym as any)._isOperatorRecord !== undefined) return (sym as any)._isOperatorRecord;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-    const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+    const cleanKind = stripComments(rawKind).trim();
     if (/\boperator\s+record\b/.test(cleanKind)) {
       (sym as any)._isOperatorRecord = true;
       return true;
@@ -361,7 +361,7 @@ export class ModelicaFlattener {
     }
     const cst = this.db.cstNode(sym.id) as any;
     if (cst) {
-      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+      const text = stripComments(cst.text?.trim() ?? "").trim();
       if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) {
         (sym as any)._isOperatorRecord = true;
         return true;

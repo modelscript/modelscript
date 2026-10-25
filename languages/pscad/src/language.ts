@@ -14,6 +14,7 @@ import { lintPscx } from "./lints/index.js";
 import { computeSimulationCoverage, type SimulationCoverage } from "./netlist/coverage.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "./netlist/emt-netlist.js";
 import { parsePscx } from "./parser/pscx-parser.js";
+import { writePscadPsout } from "./psout/index.js";
 import {
   verifyIeee2800Compliance,
   type Ieee2800ComplianceReport,
@@ -32,6 +33,8 @@ export interface PscadSimulationPipelineOptions {
   exportComtrade?: boolean | undefined;
   /** Whether to serialize the simulated waveforms into PSCAD-style `.inf` and `_NN.out` files. */
   exportOut?: boolean | undefined;
+  /** Whether to serialize the simulated waveforms into modern PSCAD V5+ binary `.psout` file. */
+  exportPsout?: boolean | undefined;
   /** Whether to run automated IEEE 2800-2022 / NERC PRC-029-1 fault ride-through compliance checks. */
   verifyIeee2800?: boolean | undefined;
   /** Optional overrides for the fault event specification evaluated during IEEE 2800-2022 verification. */
@@ -235,10 +238,11 @@ function synthesizeCompanionTrajectory(
       : 1.5;
   for (let i = 0; i < nBuses; i++) {
     if (!busSources.has(i)) {
-      // Weak Thevenin reference unless connected via branches to a sourced bus
       const hasBranch = companionBranches.some((b) => b.fromIdx === i || b.toIdx === i);
-      const gFallback = hasBranch ? 1e-3 : 1.0 / defaultSrcR;
-      busSources.set(i, [{ vPeak: busList[i]!.vPeak, freqRad: omega, phaseRad: 0.0, gSrc: gFallback }]);
+      // For passive nodes connected via branches, stabilize at 0V with a ground conductance
+      // rather than fabricating an artificial multi-kilovolt voltage source.
+      const gStab = hasBranch ? 1e-5 : 1e-4;
+      busSources.set(i, [{ vPeak: 0.0, freqRad: 0, phaseRad: 0.0, gSrc: gStab }]);
     }
   }
 
@@ -555,7 +559,12 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     } else {
       simulationReport.solver = "builtin-companion";
       const sourced = new Set(((netlist.sources ?? []) as { bus?: string }[]).map((s) => s.bus));
-      simulationReport.injectedReferenceBuses = Array.from(netlist.buses.keys()).filter((b) => !sourced.has(b));
+      const isolatedUnsourced = Array.from(netlist.buses.keys()).filter((b) => {
+        if (sourced.has(b)) return false;
+        const busObj = netlist.buses.get(b);
+        return !busObj || busObj.connectedBranchIds.length === 0;
+      });
+      simulationReport.injectedReferenceBuses = isolatedUnsourced;
       simulationReport.synthesizedIbr = (netlist.fmuInstances ?? []).length > 0;
       simulationResult = synthesizeCompanionTrajectory(netlist, timeStepSec, durationSec);
       if (simulationReport.injectedReferenceBuses.length > 0 || simulationReport.synthesizedIbr) {
@@ -564,7 +573,10 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
           rule: "emt-synthetic-fallback",
           severity: "warning",
           message:
-            `Built-in companion fallback used: injected reference sources on ${simulationReport.injectedReferenceBuses.length} unsourced bus(es)` +
+            `Built-in companion fallback used: ` +
+            (simulationReport.injectedReferenceBuses.length > 0
+              ? `stabilized ${simulationReport.injectedReferenceBuses.length} floating isolated bus(es)`
+              : "") +
             (simulationReport.synthesizedIbr ? " and approximated IBR currents" : "") +
             "; results are not a faithful EMT simulation.",
         });
@@ -581,6 +593,11 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
   let pscadOut: PscadOutResult | undefined;
   if (simulationResult && (options.exportOut ?? true)) {
     pscadOut = writePscadOut(simulationResult, project.name);
+  }
+
+  let pscadPsout: Uint8Array | undefined;
+  if (simulationResult && (options.exportPsout ?? true)) {
+    pscadPsout = writePscadPsout(simulationResult, { projectName: project.name });
   }
 
   let complianceReport: Ieee2800ComplianceReport | undefined;
@@ -631,6 +648,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     simulationResult,
     comtrade,
     pscadOut,
+    pscadPsout,
     complianceReport,
     simulationReport,
   };
@@ -652,9 +670,9 @@ export interface PscadSimulationReport {
  */
 export const pscadLanguage = language({
   name: "pscad",
-  fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx"],
+  fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx", ".psout"],
   lsp: {
-    fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx"],
+    fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx", ".psout"],
     icons: {
       light: "./assets/pscad/icon-light.png",
       dark: "./assets/pscad/icon-dark.png",

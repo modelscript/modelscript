@@ -32,13 +32,61 @@ export function clearPscadSources(): void {
   byName = undefined;
 }
 
+/**
+ * Tries to discover and register a local master.pslx if present in standard locations.
+ */
+function tryAutoDiscoverMaster(): void {
+  if (typeof process === "undefined" || !process.env) return;
+  try {
+    const nodeFs = typeof process.versions?.node === "string" ? eval("require('node:fs')") : undefined;
+    if (!nodeFs) return;
+    const candidates = [
+      process.env["PSCAD_MASTER_LIB_PATH"],
+      "master.pslx",
+      ".pscad/master.pslx",
+      ".cache/pscad-corpus/master.pslx",
+      ".cache/pscad-corpus/DC-EMT_v0/master.pslx",
+    ].filter((p): p is string => typeof p === "string" && p.length > 0);
+
+    for (const cand of candidates) {
+      if (nodeFs.existsSync(cand)) {
+        const text = nodeFs.readFileSync(cand, "utf-8");
+        registerPscadSource("file:///master.pslx", text);
+        break;
+      }
+    }
+  } catch {
+    // Environment does not support synchronous fs lookup; ignore
+  }
+}
+
+/** Registers a master library text (e.g. from user-provided master.pslx). */
+export function registerMasterLibrary(text: string): void {
+  registerPscadSource("file:///master.pslx", text);
+}
+
+/** Returns the registered master library project model if one is registered or discovered. */
+export function getRegisteredMasterProject(): PscadProjectModel | undefined {
+  return projects().get("master") ?? projects().get("Master");
+}
+
 function projects(): Map<string, PscadProjectModel> {
   if (byName) return byName;
+  if (!sources.has("file:///master.pslx")) {
+    tryAutoDiscoverMaster();
+  }
   const map = new Map<string, PscadProjectModel>();
-  for (const text of sources.values()) {
+  for (const [uri, text] of sources.entries()) {
     try {
       const m = buildProjectModel(text);
-      if (m.name && !map.has(m.name)) map.set(m.name, m);
+      if (m.name) {
+        if (!map.has(m.name)) map.set(m.name, m);
+        const lower = m.name.toLowerCase();
+        if (!map.has(lower)) map.set(lower, m);
+      }
+      if (uri.toLowerCase().endsWith("master.pslx")) {
+        if (!map.has("master")) map.set("master", m);
+      }
     } catch {
       // Unparseable sources simply do not contribute definitions.
     }
@@ -49,8 +97,14 @@ function projects(): Map<string, PscadProjectModel> {
 
 /** Lookup suitable for `buildProjectModel`/`parsePscx`; `undefined` when nothing is registered. */
 export function registeredExternalDefinitions(): ExternalDefinitions | undefined {
+  if (sources.size === 0) {
+    tryAutoDiscoverMaster();
+  }
   if (sources.size === 0) return undefined;
-  return (lib: string, name: string): ModelDefinition | undefined => projects().get(lib)?.definitions.get(name);
+  return (lib: string, name: string): ModelDefinition | undefined => {
+    const p = projects();
+    return p.get(lib)?.definitions.get(name) ?? p.get(lib.toLowerCase())?.definitions.get(name);
+  };
 }
 
 /** Raw texts of every registered source (used to resolve cross-file schematic modules). */

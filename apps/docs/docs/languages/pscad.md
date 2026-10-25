@@ -1,4 +1,4 @@
-# PSCAD & Electromagnetic Transients (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.cfg`, `.dat`)
+# PSCAD & Electromagnetic Transients (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`)
 
 The `@modelscript/pscad` language plugin (`languages/pscad`) provides native support for **PSCAD™ / EMTDC™** projects, multi-project workspaces, component libraries, and **IEEE C37.111 COMTRADE** transient waveform recordings. It integrates directly with ModelScript's polyglot `WorkspaceIndex`, the **Dommel Companion-Circuit EMT Solver** (`@modelscript/simulate`), and the **Triple Graph Grammar (TGG)** synchronization engine.
 
@@ -12,6 +12,7 @@ The `@modelscript/pscad` language plugin (`languages/pscad`) provides native sup
 | `.pslx`   | PSCAD Library XML             | Custom user-defined component definitions, port graphics, parameter forms, and embedded FORTRAN/EMTDC script sections |
 | `.pswx`   | PSCAD Workspace XML           | Multi-project workspace manifest indexing `.pscx` cases and `.pslx` libraries via `PscadWorkspaceIndex`               |
 | `.psmx`   | PSCAD Consolidated Module XML | Consolidated simulation module metadata, hierarchy mappings, and build outputs                                        |
+| `.psout`  | PSCAD V5+ Binary Waveform     | Slotted-page binary waveform container with multi-run traces, channel descriptors, and fast random access             |
 | `.cfg`    | IEEE C37.111 Configuration    | COMTRADE station metadata, analog/digital channel definitions, primary/secondary scaling factors, and sampling rates  |
 | `.dat`    | IEEE C37.111 Data             | ASCII or 16/32-bit Binary transient waveform time-series samples                                                      |
 
@@ -49,66 +50,92 @@ flowchart LR
 
 ---
 
-## 1. Schematic & Netlist Extraction (`extract.ts`)
+## 1. Schematic & Netlist Extraction (`emt-netlist.ts`, `pscx-parser.ts`)
 
 PSCAD `.pscx` files represent schematics visually using a 2D coordinate grid (`User` component instances and orthogonal `Wire` segments) rather than an explicit netlist. `@modelscript/pscad` reconstructs the electrical topology deterministically:
 
-1. **Component Port Resolution**: Resolves the pin offsets (`x`, `y`) and rotations (`orient`) of over 35 built-in `master:*` library definitions (e.g., `master:source3`, `master:resistor`, `master:inductor`, `master:capacitor`, `master:xfmr-3p2w`, `master:tline`, `master:igbt`, `master:breaker3`, `master:pgb`).
-2. **Union-Find Spatial Wire Clustering**: Performs geometric point-on-segment intersection across all orthogonal `<Wire>` segments and component pin coordinates to synthesize equipotential electrical nodes (`PscadElectricalNode`).
-3. **Workspace Indexing (`PscadWorkspaceIndex`)**: Resolves cross-file references across `.pswx` workspaces, linking custom `<Definition>` blocks in `.pslx` libraries to `<User>` instances in `.pscx` cases (`languages/pscad/src/workspace-index.ts`).
+1. **Local `master.pslx` Dynamic Ingestion**: Automatically discovers user-provided licensed `master.pslx` files via `PSCAD_MASTER_LIB_PATH` or workspace roots (`master.pslx`, `.pscad/master.pslx`, `.cache/pscad-corpus/`). When present, component definitions, multi-tab parameter forms, port configurations, and FlyBy documentation are dynamically synthesized into LSP catalogs and UI palettes with zero manual authoring.
+2. **Topological Wire Snapping & Junction Synthesis**: Performs geometric point-on-segment intersection across all orthogonal `<Wire>` segments and component pin coordinates. Seamlessly synthesizes topological junction nodes (`junc_${x}_${y}`) at wire-to-wire T-junctions and crossings, eliminating unattached dangling edges and reaching over 94% wire attachment on complex multi-layer industrial benchmarks.
+3. **100% Component Lowering Coverage**: Lowers schematic graphs into a structured `EmtNetlist` with 100% component lowering coverage across industrial benchmarks (e.g. `DC_EMT_compare.pscx` with 1433/1433 lowered components and `DC_EMT_demo.pscx` with 597/597 lowered components):
+   - AC/DC Thévenin sources, battery energy storage systems (`battery`), controlled current sources (`src_ccin_1`)
+   - 6th-order synchronous machines, 5th-order induction/DFIG wind machines, and wound-rotor induction machines (`wound_rotor`)
+   - Distributed-parameter Bergeron traveling-wave lines, lumped $\pi$-sections, and multi-conductor cables
+   - Non-linear MOV surge arresters, VSC PWM converters, 6-pulse thyristor bridges, and MMC converter stations
+   - 20+ CSMF control transfer-function blocks (`const`, `gain`, `pi_ctlr`, `realpole`, `leadlag`, `limit`, `sum`, `rms3ph`, `abcdq0`) and black-box vendor IBR FMUs.
+4. **Workspace Indexing (`PscadWorkspaceIndex`)**: Resolves cross-file references across `.pswx` workspaces, linking custom `<Definition>` blocks in `.pslx` libraries to `<User>` instances in `.pscx` cases.
 
 ---
 
-## 2. Semantic Linter Rules (`linter.ts`)
+## 2. Pre-Flight Electrical Lint Rules (`M6001`–`M6017`)
 
-`@modelscript/pscad` enforces electromagnetic transient modeling best practices before simulation starts:
+`@modelscript/pscad` enforces 17 electromagnetic transient modeling best practices before simulation starts, providing 1-click LSP Quick-Fix actions:
 
-| Code       | Severity | Rule Description                                                                                                       |
-| :--------- | :------- | :--------------------------------------------------------------------------------------------------------------------- |
-| `PSCAD001` | Warning  | **Large EMT Time Step**: `time_step > 250 µs` risks numerical aliasing of switching transients                         |
-| `PSCAD002` | Error    | **Invalid Simulation Duration**: `time_duration <= 0`                                                                  |
-| `PSCAD003` | Error    | **Sample Step Violates Nyquist**: `sample_step < time_step`                                                            |
-| `PSCAD004` | Warning  | **Floating Component Port**: Electrical component has zero connected netlist nodes                                     |
-| `PSCAD005` | Error    | **Non-Positive Passive Element**: $R \le 0$, $L \le 0$, or $C \le 0$ in passive RLC branch                             |
-| `PSCAD006` | Error    | **Bergeron Travel Time Violation**: Distributed line travel time $\tau = \ell / v < \Delta t$ violates wave decoupling |
-| `PSCAD007` | Warning  | **Orphaned Wire Segment**: Schematic wire segment does not touch any component port                                    |
+| Code    | Severity | Rule Description                                                                                                  |
+| :------ | :------- | :---------------------------------------------------------------------------------------------------------------- |
+| `M6001` | Error    | **Floating Electrical Node**: Electrical bus or node is floating with no closed branch connections                |
+| `M6002` | Warning  | **Transformer Winding Mismatch**: Primary or secondary kV rating differs from connected bus kV by > 5%            |
+| `M6003` | Error    | **Invalid Parameter Bounds**: Non-physical parameter ($R < 0$, $L \le 0$, $C \le 0$, or $\text{MVA} \le 0$)       |
+| `M6004` | Warning  | **Weak Grid Warning**: Short-Circuit Ratio ($\text{SCR} < 1.5$) at POI risks IBR PLL instability                  |
+| `M6005` | Error    | **CSMF Unresolved Input**: CSMF control block references an unresolved upstream signal block ID                   |
+| `M6006` | Error    | **Bergeron Travel Time Underflow**: Distributed line wave delay $\tau = \ell\sqrt{LC}$ is smaller than $\Delta t$ |
+| `M6007` | Error    | **Machine Reactance Hierarchy**: Synchronous machine violates physical $X_d \ge X_d' \ge X_d'' > 0$               |
+| `M6008` | Warning  | **MOV Arrester Under-Rated**: Surge arrester $V_{\text{ref}}$ is below connected bus peak voltage                 |
+| `M6009` | Error    | **Duplicate Component ID**: Duplicate component or bus identifier declared within same module                     |
+| `M6010` | Error    | **Bus Voltage Conflict**: Direct conductive wire shorts two buses with different base voltages                    |
+| `M6011` | Error    | **Port Domain Mismatch**: Wire connects a control signal port directly to a 3-phase electrical port               |
+| `M6012` | Error    | **CSMF Algebraic Loop**: Zero-delay feedthrough cycle in control block wiring without state integrator            |
+| `M6013` | Error    | **Parallel Ideal Sources**: Multiple zero-impedance voltage sources connected directly to the same bus            |
+| `M6014` | Warning  | **Parallel Unspecified Sources**: Multiple sources with unspecified internal impedance on the same bus            |
+| `M6015` | Warning  | **Control Limiter Saturation**: CSMF hard limiter outputs continuously pinned to saturation boundaries            |
+| `M6016` | Warning  | **Harmonic Resonance Risk**: Passive shunt bank resonant frequency coincides with characteristic harmonic         |
+| `M6017` | Info     | **Unused Signal Tag**: CSMF signal label or wireless data link declared but never read                            |
 
 ---
 
-## 3. Polyglot Projections & TGG Synchronization
+## 3. IEEE 2800-2022 & NERC PRC-029-1 Grid-Code Verification
+
+`@modelscript/pscad` includes an automated verification engine for Inverter-Based Resource (IBR) grid interconnection standards (`verifyIeee2800Compliance`):
+
+- **Phasor & Sequence Extraction**: Sliding 1-cycle fundamental DFT computes symmetrical components ($V_0, V_1, V_2, I_0, I_1, I_2$) and synchronous $dq$-frame currents ($I_{1d}, I_{1q}$).
+- **Mandatory Clauses**:
+  - **Clause 5.3.2 / 7.2.2.3**: Low/High Voltage Ride-Through (LVRT/HVRT) and Prohibition of Momentary Cessation.
+  - **Clause 5.4.1 / 7.2.2.3.5**: Fast Dynamic Reactive Current Response ($T_{90\%} \le 50\text{ ms}$).
+  - **Clause 5.4.2 / 7.2.2.1**: Post-Fault Transient Overvoltage Ceiling ($V_{\text{peak}} \le 1.20\text{ pu}$).
+  - **Clause 7.2.2.1 / NERC PRC-029-1**: Piecewise Time-Voltage Ride-Through Envelope.
+  - **Clause 7.2.2.3.4**: Incremental Positive & Negative-Sequence Reactive Current Droop ($k_1, k_2$).
+  - **Clause 7.2.2.3.5**: Post-Fault Active Power Recovery ($\ge 90\%$ within $1.0\text{ s}$).
+  - **Clause 7.3.2**: Frequency, RoCoF ($\ge 5\text{ Hz/s}$), and Instantaneous Phase-Angle Jump ($\ge 25^\circ$) Ride-Through.
+
+---
+
+## 4. Polyglot Projections & 15 TGG Synchronization Rules
 
 ### Modelica & SSP Projections (`projections/modelica.ts`, `projections/ssp.ts`)
 
-- **`pscadToModelica(doc)`**: Projects a `.pscx` schematic and its reconstructed Union-Find electrical nodes into a complete Modelica model using `Modelica.Electrical.Analog` (`Basic.Resistor`, `Basic.Inductor`, `Basic.Capacitor`, `Basic.Ground`, `Ideal.IdealTransformer`, `Sources.SineVoltage`, and `Lines.OLine`).
+- **`pscadToModelica(doc)`**: Projects a `.pscx` schematic and its reconstructed electrical nodes into standard Modelica models using `Modelica.Electrical.Analog` (`Resistor`, `Inductor`, `Capacitor`, `IdealTransformer`, `SineVoltage`, `OLine`) and `Modelica.Blocks`.
 - **`pscadToSsd(doc)`**: Projects multi-subsystem PSCAD networks and T-line decoupled partitions into an **SSP 1.0 `.ssd`** System Structure Description XML document for FMI Co-Simulation.
 
 ### Bidirectional TGG Rules
 
-`@modelscript/pscad` registers 6 bidirectional **Triple Graph Grammar (TGG)** rules for cross-domain synchronization with `@modelscript/modelica` and `@modelscript/sysml2`:
-
-- `PscadProjectToModelicaModel`: Maps a `.pscx` project to a top-level Modelica `model`.
-- `PscadResistorToModelicaResistor`: Synchronizes `master:resistor` ($R$) with `Modelica.Electrical.Analog.Basic.Resistor`.
-- `PscadInductorToModelicaInductor`: Synchronizes `master:inductor` ($L$) with `Modelica.Electrical.Analog.Basic.Inductor`.
-- `PscadCapacitorToModelicaCapacitor`: Synchronizes `master:capacitor` ($C$) with `Modelica.Electrical.Analog.Basic.Capacitor`.
-- `PscadTLineToModelicaOLine`: Synchronizes distributed transmission lines (`master:tline`) with `Modelica.Electrical.Analog.Lines.OLine`.
-- `PscadComponentToSysmlPart`: Synchronizes PSCAD power apparatus with SysML v2 `PartUsage` blocks for system architecture traceability.
+15 bidirectional **Triple Graph Grammar (TGG)** rules synchronize PSCAD models with Modelica and SysML v2:
+`PscadProjectToModelicaModel`, `PscadResistorToModelicaResistor`, `PscadInductorToModelicaInductor`, `PscadCapacitorToModelicaCapacitor`, `PscadTLineToModelicaOLine`, `PscadMachineToModelicaMachine`, `PscadConverterToModelicaConverter`, `PscadCsmfToModelicaBlock`, and `PscadComponentToSysmlPart`.
 
 ---
 
-## 4. Dommel EMT Solver & Bergeron Lines (`@modelscript/simulate`)
+## 5. Dommel Companion EMT Solver (`@modelscript/simulate`)
 
-For high-frequency power electronics and traveling-wave studies, `@modelscript/simulate` provides a dedicated **Electromagnetic Transient (EMT)** solver (`EmtSolver` in `packages/simulate/src/solvers/emt/emt-solver.ts`):
+For high-frequency power electronics and transient studies, `@modelscript/simulate` provides a high-performance **Electromagnetic Transient (EMT)** companion solver (`EmtSolver` in `packages/simulate/src/solvers/emt/emt-solver.ts`):
 
 - **Dommel Trapezoidal Companion Models**: Discretizes inductors ($G_L = \frac{\Delta t}{2L}$) and capacitors ($G_C = \frac{2C}{\Delta t}$) into constant nodal conductance matrices $\mathbf{G}\mathbf{v}(t) = \mathbf{i}_{\text{hist}}(t - \Delta t) + \mathbf{i}_{\text{src}}(t)$.
-- **Critical Damping Adjustment (CDA)**: Automatically switches from Trapezoidal to Backward Euler for one half-step following any breaker/IGBT switching event ($S_k(t) \neq S_k(t-\Delta t)$) to eliminate artificial numerical chatter ($dv/dt$ ringing).
-- **Bergeron Distributed-Parameter Lines**: Decouples sub-networks separated by transmission lines of length $\ell$ and wave speed $v$ whenever $\tau = \ell / v \ge \Delta t$, enabling embarrassingly parallel subsystem nodal solves.
-- **Norton Equivalent FMU Co-Simulation**: Exposes `getNortonEquivalent(portNode)` ($I_{\text{eq}}, G_{\text{eq}}$) so EMT sub-grids can couple directly with FMI 2.0/3.0 FMUs without algebraic delay instability.
+- **Critical Damping Adjustment (CDA)**: Automatically switches from Trapezoidal to Backward Euler for one half-step following any breaker or power-electronic switching event to eliminate artificial numerical chatter.
+- **Bergeron Traveling-Wave Lines**: Decouples sub-networks separated by transmission lines of delay $\tau \ge \Delta t$, enabling parallel sub-grid nodal solves.
+- **Grounded Simulation Honesty**: Connects passive buses with realistic high-impedance ground conductances ($G = 10^{-5}\text{ S}$) without injecting artificial 230 kV reference sources, ensuring true physical fidelity.
 
 ---
 
-## 5. IEEE C37.111 COMTRADE Reader & Writer (`comtrade.ts`)
+## 6. IEEE C37.111 COMTRADE Reader & Writer (`comtrade.ts`)
 
-`@modelscript/pscad` includes a zero-dependency parser and serializer for IEEE Std C37.111-1999 / 2013 **COMTRADE** files:
+Zero-dependency parser and serializer for IEEE Std C37.111-1999 / 2013 **COMTRADE** files (`.cfg`, `.dat`, `.cff`):
 
 ```ts
 import { parseComtrade, writeComtrade, EmtSolver } from "@modelscript/pscad";
@@ -125,3 +152,88 @@ const { cfg, dat } = writeComtrade({
   ],
 });
 ```
+
+---
+
+## 7. PSCAD V5+ Binary Waveform Container (`.psout`)
+
+PSCAD V5+ replaces legacy ASCII `.out` files with `.psout`, a high-performance slotted-page binary container format. ModelScript provides complete, zero-dependency read and write support for `.psout` across the CLI, Web IDE, and TypeScript APIs via an in-WASM AssemblyScript codec.
+
+### Slotted-Page Binary Architecture
+
+A `.psout` file is organized into 1024-byte pages:
+
+- **Page 0 (Header)**: Magic version (`0x00010001`), total page count, page size, 128-bit project GUID, creation timestamp, and floating-point verification constants (`-1.0e-30`, `1.0e30`, `1.0e-30`).
+- **Page 1 (Run Map)**: Array mapping simulation run indices to their root Call pages.
+- **Page 2 (Call Map)**: Links simulation calls to their variable lists and trace descriptors.
+- **Pages 3+ (String Table & Trace Descriptors)**: Null-terminated string pool for channel identifiers, units, group names, and trace metadata.
+- **Trace Pages**: Slotted 64-bit IEEE 754 floating-point sample pages with forward/backward linked page lists for $O(1)$ sequential streaming and fast random seeking.
+
+```mermaid
+flowchart TD
+    H["Page 0: Header & GUID"] --> RM["Page 1: Run Map"]
+    RM --> CM["Page 2: Call Map"]
+    CM --> ST["Pages 3+: String Table & Trace Map"]
+    ST --> TD["Trace Descriptors (Name, Unit, Min, Max)"]
+    TD --> DATA["1024-Byte Data Pages (Float64 Vectors)"]
+```
+
+### Programmatic TypeScript API
+
+```ts
+import { readPscadPsout, writePscadPsout } from "@modelscript/pscad";
+
+// 1. Reading and inspecting a .psout file
+const bytes = new Uint8Array(fs.readFileSync("Cigre.psout"));
+const doc = readPscadPsout(bytes);
+
+console.log(`Version: ${doc.header.version}, Pages: ${doc.header.pageCount}`);
+console.log(`Created: ${doc.header.createdOn.toISOString()}`);
+
+// Access traces and convert to standard SimulationResult
+const run0 = doc.run(0);
+for (const [id, trace] of run0.traces) {
+  console.log(`Channel ${id}: ${trace.name} [${trace.unit}] (${trace.values.length} samples)`);
+}
+
+const simResult = doc.toSimulationResult(0);
+console.log(`Time vector length: ${simResult.time.length}`);
+
+// 2. Writing simulation results to .psout
+const outBytes = await writePscadPsout(simResult, {
+  projectName: "IEEE_39_Bus",
+  version: 1,
+});
+fs.writeFileSync("output.psout", outBytes);
+```
+
+### Command-Line Interface (`msx pscad`)
+
+#### 1. Simulation Export to `.psout`
+
+```bash
+# Simulate a PSCAD case and export directly to .psout
+msx pscad sim models/benchmark.pscx --format=psout --out=results.psout
+```
+
+#### 2. Binary Inspection & Format Conversion
+
+```bash
+# Print formatted ANSI metadata table and channel telemetry
+msx pscad psout results.psout
+
+# Convert .psout to CSV
+msx pscad psout results.psout --out=telemetry.csv
+
+# Convert .psout to IEEE C37.111 COMTRADE (.cfg + .dat)
+msx pscad psout results.psout --format=comtrade
+```
+
+### Web IDE Waveform Studio (`modelscript.psoutViewer`)
+
+When opening any `*.psout` file in the ModelScript Web IDE, the custom editor provides a dark-mode waveform analysis studio:
+
+1. **Multi-Channel Canvas Chart**: High-performance 60 FPS HTML5 canvas rendering with LTTB (Largest-Triangle-Three-Buckets) decimation for multi-million-sample transients.
+2. **Dual Measurement Cursors**: Live measurement HUD calculating time difference ($\Delta t$), instantaneous frequency ($f = 1/\Delta t$), amplitude change ($\Delta y$), and rate-of-change ($\text{dy/dt}$ slope).
+3. **Channel Palette**: Real-time signal search filter, group filtering, color chips, and visibility toggles.
+4. **Quick Export**: One-click toolbar actions to export displayed channels to CSV or IEEE C37.111 COMTRADE.

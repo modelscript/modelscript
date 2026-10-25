@@ -392,23 +392,31 @@ class WasmFmi2Instance {
     return this.instance.exports as Record<string, CallableFunction>;
   }
 
+  private bumpPtr = 0;
+
   /** Allocate bytes in WASM linear memory. */
   private malloc(size: number): number {
     const alloc = this.exports["malloc"] ?? this.exports["fmi2_malloc"];
-    if (!alloc) {
-      // Fallback: grow memory and use a bump allocator at the end
-      const pages = this.memory.buffer.byteLength;
-      // Simple bump allocation from the end of current memory
-      const ptr = pages; // Use current size as allocation point
-      const needed = Math.ceil((ptr + size) / 65536);
-      const current = this.memory.buffer.byteLength / 65536;
-      if (needed > current) {
-        this.memory.grow(needed - current);
-      }
+    if (alloc) {
+      const ptr = alloc(size) as number;
       this.allocations.push(ptr);
       return ptr;
     }
-    const ptr = alloc(size) as number;
+
+    // Fallback: 8-byte aligned bump allocator starting after initial memory image
+    if (this.bumpPtr === 0) {
+      this.bumpPtr = this.memory.buffer.byteLength;
+    }
+    this.bumpPtr = (this.bumpPtr + 7) & ~7;
+    const ptr = this.bumpPtr;
+    this.bumpPtr += size;
+
+    const neededBytes = this.bumpPtr;
+    const currentBytes = this.memory.buffer.byteLength;
+    if (neededBytes > currentBytes) {
+      const neededPages = Math.ceil((neededBytes - currentBytes) / 65536);
+      this.memory.grow(neededPages);
+    }
     this.allocations.push(ptr);
     return ptr;
   }
@@ -540,6 +548,7 @@ class WasmFmi2Instance {
       this.free(ptr);
     }
     this.allocations = [];
+    this.bumpPtr = 0;
     this.component = 0;
   }
 

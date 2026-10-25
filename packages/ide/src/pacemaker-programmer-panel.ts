@@ -6,6 +6,8 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { getNonce } from "./utils/nonce.js";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
 export type PacemakerMode = "DDD" | "DDDR" | "VVI" | "VVIR" | "AAI" | "VOO" | "CRT-D";
 
@@ -46,15 +48,12 @@ export interface DisturbanceInjectionResult {
   timestamp: number;
 }
 
-export class PacemakerProgrammerPanel {
+export class PacemakerProgrammerPanel extends BaseWebviewPanel {
   public static currentPanel: PacemakerProgrammerPanel | undefined;
   public static readonly viewType = "modelscript.pacemakerProgrammer";
 
-  private readonly _panel: vscode.WebviewPanel;
-  public readonly _extensionUri: vscode.Uri;
   public client?: LanguageClient | undefined;
   public sourceUri?: string | undefined;
-  private _disposables: vscode.Disposable[] = [];
 
   private _state: PacemakerProgrammerState = {
     parameters: {
@@ -107,12 +106,9 @@ export class PacemakerProgrammerPanel {
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client?: LanguageClient, uri?: string) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    super(panel, extensionUri);
     this.client = client;
     this.sourceUri = uri;
-
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(
       (message) => {
@@ -133,6 +129,24 @@ export class PacemakerProgrammerPanel {
     );
 
     this._panel.webview.html = this._getHtmlForWebview();
+
+    if (this.client && typeof this.client.onNotification === "function") {
+      this._disposables.push(
+        this.client.onNotification("modelscript/pacemakerTelemetry", (data: any) => {
+          if (data && typeof data === "object") {
+            this.updateTelemetry(data);
+          }
+        }),
+      );
+    }
+  }
+
+  public updateTelemetry(data: Partial<PacemakerTelemetry>): void {
+    this._state.telemetry = {
+      ...this._state.telemetry,
+      ...data,
+    };
+    this.sendState();
   }
 
   public getCurrentState(): PacemakerProgrammerState {
@@ -237,13 +251,9 @@ export class PacemakerProgrammerPanel {
     this._panel.reveal(column);
   }
 
-  public dispose(): void {
+  public override dispose(): void {
     PacemakerProgrammerPanel.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const d = this._disposables.pop();
-      if (d) d.dispose();
-    }
+    super.dispose();
   }
 
   private _getHtmlForWebview(): string {
@@ -701,13 +711,4 @@ export class PacemakerProgrammerPanel {
 </body>
 </html>`;
   }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

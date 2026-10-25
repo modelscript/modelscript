@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 
 export interface PolyglotVisualizerState {
   sourceUri: string;
@@ -22,14 +23,13 @@ export interface PolyglotVisualizerState {
   };
 }
 
-export class PolyglotVisualizerPanel {
+import { BaseWebviewPanel } from "./webview/base-panel.js";
+
+export class PolyglotVisualizerPanel extends BaseWebviewPanel {
   public static currentPanel: PolyglotVisualizerPanel | undefined;
   public static readonly viewType = "modelscript.polyglotVisualizer";
 
-  private readonly _panel: vscode.WebviewPanel;
-  public readonly _extensionUri: vscode.Uri;
   private readonly _client?: LanguageClient | undefined;
-  private _disposables: vscode.Disposable[] = [];
 
   public sourceUri: string;
   public targetLang: string = "sysml2";
@@ -72,12 +72,9 @@ export class PolyglotVisualizerPanel {
     client: LanguageClient | undefined,
     sourceUri: string,
   ) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    super(panel, extensionUri);
     this._client = client;
     this.sourceUri = sourceUri;
-
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(
       async (msg) => {
@@ -362,13 +359,9 @@ export class PolyglotVisualizerPanel {
     }
   }
 
-  public dispose(): void {
+  public override dispose(): void {
     PolyglotVisualizerPanel.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const d = this._disposables.pop();
-      if (d) d.dispose();
-    }
+    super.dispose();
   }
 
   private _getHtmlForWebview(): string {
@@ -690,7 +683,31 @@ export class PolyglotVisualizerPanel {
 
     // ── Modern Hardware-Accelerated WebGL 3D Polyglot Engine ─────────────────
     const canvas = document.getElementById('viewport3D');
-    const gl = canvas.getContext('webgl', { antialias: true, alpha: false });
+    let gl = null;
+    let isContextLost = false;
+    try {
+      gl = canvas.getContext('webgl', { antialias: true, alpha: false });
+    } catch (e) {
+      console.warn('[Polyglot 3D] Failed to get WebGL context:', e);
+    }
+
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      isContextLost = true;
+      console.warn('[Polyglot 3D] WebGL context lost! Activating fallback SVG renderer.');
+      const hud = document.getElementById('shapeStats');
+      if (hud) hud.innerHTML = '<strong>⚠ WebGL Context Suspended</strong><br>Displaying SVG schematic representation.';
+      updateFallbackSvg();
+    }, false);
+
+    canvas.addEventListener('webglcontextrestored', () => {
+      console.info('[Polyglot 3D] WebGL context restored! Re-initializing 3D scene.');
+      isContextLost = false;
+      const hud = document.getElementById('shapeStats');
+      if (hud) hud.innerHTML = '<em>Graphics context restored.</em>';
+      removeFallbackSvg();
+      initShadersAndBuffers();
+    }, false);
 
     // Shaders for shaded 3D solids
     const solidVsSource = [
@@ -957,8 +974,20 @@ export class PolyglotVisualizerPanel {
     let shapeInstances = [];
     let selectedShapeIdx = 0;
 
-    // Camera & Orbit state
+    // Camera & Orbit state with VS Code webview state serialization
     let cameraOrbit = { rotX: 0.45, rotY: 0.65, dist: 120, panX: 0, panY: 0 };
+    const savedState = vscode.getState();
+    if (savedState && savedState.cameraOrbit) {
+      cameraOrbit = Object.assign(cameraOrbit, savedState.cameraOrbit);
+      if (typeof savedState.selectedShapeIdx === 'number') {
+        selectedShapeIdx = savedState.selectedShapeIdx;
+      }
+    }
+    function saveViewportState() {
+      const prev = vscode.getState() || {};
+      vscode.setState({ ...prev, cameraOrbit: { ...cameraOrbit }, selectedShapeIdx });
+    }
+
     let isDragging = false;
     let dragButton = 0;
     let lastMouse = { x: 0, y: 0 };
@@ -1029,17 +1058,20 @@ export class PolyglotVisualizerPanel {
       }
       isDragging = false;
       gizmoActive = false;
+      saveViewportState();
     });
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       cameraOrbit.dist = Math.max(30, Math.min(450, cameraOrbit.dist * (1 + e.deltaY * 0.001)));
+      saveViewportState();
     }, { passive: false });
 
     // Cycle through shapes on canvas click
     canvas.addEventListener('click', (e) => {
       if (!gizmoActive && shapeInstances.length > 0) {
         selectedShapeIdx = (selectedShapeIdx + 1) % shapeInstances.length;
+        saveViewportState();
         const cur = shapeInstances[selectedShapeIdx];
         document.getElementById('shapeStats').innerHTML =
           '<strong>Selected:</strong> ' + cur.name + ' (' + cur.type + ')<br>' +
@@ -1047,6 +1079,7 @@ export class PolyglotVisualizerPanel {
           '<em>Hold Shift + Drag to manipulate</em>';
       }
     });
+
 
     // ── Render Loop ─────────────────────────────────────────────────────────
     function render() {
@@ -1163,6 +1196,84 @@ export class PolyglotVisualizerPanel {
           '<strong>3D Solids:</strong> ' + shapeInstances.map(s => s.name).join(', ') + '<br>' +
           '<em>Hold Shift + Drag to manipulate</em>';
       }
+
+      if (!gl || isContextLost) {
+        updateFallbackSvg();
+      }
+    }
+
+    function updateFallbackSvg() {
+      const container = canvas.parentElement;
+      if (!container) return;
+      let svg = document.getElementById('polyglotFallbackSvg');
+      if (!svg) {
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.id = 'polyglotFallbackSvg';
+        svg.setAttribute('viewBox', '-150 -100 300 200');
+        svg.style.position = 'absolute';
+        svg.style.inset = '0';
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.pointerEvents = 'none';
+        container.appendChild(svg);
+      }
+      svg.innerHTML = '';
+      if (shapeInstances && shapeInstances.length > 0) {
+        shapeInstances.forEach((inst, idx) => {
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          const isSelected = (idx === selectedShapeIdx);
+          const stroke = isSelected ? '#38bdf8' : '#71717a';
+          const fill = isSelected ? 'rgba(56, 189, 248, 0.25)' : 'rgba(113, 113, 122, 0.15)';
+          const px = (inst.pos?.[0] || 0) * 1.5;
+          const py = -(inst.pos?.[1] || 0) * 1.5;
+          if (inst.type === 'cylinder') {
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', String(px - 15));
+            rect.setAttribute('y', String(py - 20));
+            rect.setAttribute('width', '30');
+            rect.setAttribute('height', '40');
+            rect.setAttribute('rx', '6');
+            rect.setAttribute('stroke', stroke);
+            rect.setAttribute('fill', fill);
+            rect.setAttribute('stroke-width', isSelected ? '2' : '1');
+            g.appendChild(rect);
+          } else if (inst.type === 'sphere') {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', String(px));
+            circle.setAttribute('cy', String(py));
+            circle.setAttribute('r', '18');
+            circle.setAttribute('stroke', stroke);
+            circle.setAttribute('fill', fill);
+            circle.setAttribute('stroke-width', isSelected ? '2' : '1');
+            g.appendChild(circle);
+          } else {
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('x', String(px - 18));
+            rect.setAttribute('y', String(py - 18));
+            rect.setAttribute('width', '36');
+            rect.setAttribute('height', '36');
+            rect.setAttribute('rx', '2');
+            rect.setAttribute('stroke', stroke);
+            rect.setAttribute('fill', fill);
+            rect.setAttribute('stroke-width', isSelected ? '2' : '1');
+            g.appendChild(rect);
+          }
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', String(px));
+          text.setAttribute('y', String(py + 30));
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('fill', isSelected ? '#38bdf8' : '#a1a1aa');
+          text.setAttribute('font-size', '10');
+          text.textContent = inst.name || inst.type;
+          g.appendChild(text);
+          svg.appendChild(g);
+        });
+      }
+    }
+
+    function removeFallbackSvg() {
+      const svg = document.getElementById('polyglotFallbackSvg');
+      if (svg) svg.remove();
     }
 
     // ── Extension Host Message Handling ─────────────────────────────────────
@@ -1209,13 +1320,4 @@ export class PolyglotVisualizerPanel {
 </body>
 </html>`;
   }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

@@ -5,5 +5,6 @@ export { parseInpDeck } from "./dialects/inp.js";
 export * from "./language.js";
 export * from "./materializer.js";
 export { materializeFeaDeck as materializeCalculixDeck } from "./materializer.js";
+export * from "./mesh.js";
 export * from "./types.js";
 export type InpDeckData = import("./types.js").FeaModelData;

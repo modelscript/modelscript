@@ -42,7 +42,7 @@ export function mcpPropertySchemaToZod(schema: McpPropertySchema): z.ZodTypeAny 
         }
         zType = z.object(shape);
       } else {
-        zType = z.record(z.any());
+        zType = z.record(z.string(), z.any());
       }
       break;
     default:
@@ -285,7 +285,7 @@ export class PolyglotMcpHost {
         promptShape[arg.name] = zArg;
       }
 
-      this.server.prompt(prompt.name, prompt.description, promptShape, async (args: Record<string, string>) => {
+      this.server.prompt(prompt.name, prompt.description, promptShape, async (args: any) => {
         return {
           messages: [
             {

@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { getNonce } from "./utils/nonce.js";
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   static readonly viewType = "modelscript.chat";
@@ -110,8 +111,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             actualInput["classKind"] || "model",
           );
 
-          // Wait a tick for VS Code's text editor to physically apply the component edit
-          await new Promise((r) => setTimeout(r, 200));
+          // Wait for VS Code's text editor to physically apply the component edit
+          const targetDocUri = editorBefore?.document.uri;
+          await new Promise<void>((resolve) => {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            const sub = vscode.workspace.onDidChangeTextDocument((e) => {
+              if (targetDocUri && e.document.uri.toString() === targetDocUri.toString()) {
+                sub.dispose();
+                if (timeoutId) clearTimeout(timeoutId);
+                resolve();
+              }
+            });
+            timeoutId = setTimeout(() => {
+              sub.dispose();
+              resolve();
+            }, 300);
+          });
 
           const editorAfter = vscode.window.activeTextEditor;
           const linesAfter = editorAfter ? editorAfter.document.lineCount : 0;
@@ -776,13 +791,4 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`;
   }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

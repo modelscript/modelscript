@@ -2190,7 +2190,14 @@ export class LSPBridge {
     };
 
     // 0. Strip script and style blocks completely
-    html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+    let prevHtml: string;
+    do {
+      prevHtml = html;
+      html = html
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "")
+        .replace(/<\/?(?:script|style)\b[^>]*>/gi, "");
+    } while (html !== prevHtml);
 
     // 1. Preserve <pre>...</pre> blocks as fenced code blocks
     const preBlocks: string[] = [];

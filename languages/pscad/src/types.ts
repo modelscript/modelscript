@@ -32,6 +32,7 @@ export interface PscxComponent {
   height?: number | undefined;
   rotation?: number | undefined; // 0, 90, 180, 270
   mirror?: boolean | undefined;
+  disabled?: boolean | undefined;
   z?: number | undefined;
   parameters: Record<string, string | number>;
   paramLocations?: Record<string, { line: number; column: number }> | undefined;
@@ -204,6 +205,31 @@ export interface EmtTransformer {
   leakageReactancePu: number;
   noLoadLossesPu?: number | undefined;
   windingConnection: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D";
+  /** Whether core saturation modeling is enabled for this transformer. */
+  saturation?: boolean | undefined;
+  /** Core saturation and hysteresis model type (default: `"PIECEWISE_LINEAR"`). */
+  coreModel?: "PIECEWISE_LINEAR" | "JILES_ATHERTON" | undefined;
+  /** Linear unsaturated magnetizing inductance in Henries. */
+  lUnsatH?: number | undefined;
+  /** Saturated air-core magnetizing inductance in Henries. */
+  lSatH?: number | undefined;
+  /** Knee flux linkage in Weber-turns. */
+  kneeFluxWb?: number | undefined;
+  /** Remanent (residual) core flux linkage in Weber-turns. */
+  remanentFluxWb?: number | undefined;
+  /** Non-linear Jiles-Atherton dynamic hysteresis parameters. */
+  jaParams?:
+    | {
+        ms?: number | undefined;
+        a?: number | undefined;
+        alpha?: number | undefined;
+        k?: number | undefined;
+        c?: number | undefined;
+        coreAreaM2?: number | undefined;
+        magneticLengthM?: number | undefined;
+        primaryTurns?: number | undefined;
+      }
+    | undefined;
 }
 
 export interface EmtTransmissionLine {
@@ -258,6 +284,7 @@ export interface EmtCurrentSource {
   iPeakA: number;
   frequencyHz: number;
   phaseRad: number;
+  parallelConductance?: number | undefined;
 }
 
 export interface EmtFault {
@@ -383,6 +410,7 @@ export interface EmtNetlist {
   buses: Map<string, EmtBus>;
   branches: EmtBranch[];
   transformers: EmtTransformer[];
+  saturableTransformers?: EmtTransformer[] | undefined;
   transmissionLines: EmtTransmissionLine[];
   fmuInstances: EmtFmuInstance[];
   sources: EmtSource[];
@@ -393,9 +421,22 @@ export interface EmtNetlist {
   inductionMachines?: EmtInductionMachine[] | undefined;
   converterBridges?: EmtConverterBridge[] | undefined;
   controlBlocks?: EmtControlBlock[] | undefined;
+  customFortranBlocks?: EmtCustomFortranBlock[] | undefined;
   /** Defaults the extractor had to assume because a parameter was missing or unrecognised. */
   assumptions?: string[] | undefined;
   nominalFrequencyHz: number;
+}
+
+export interface EmtCustomFortranBlock {
+  id: string;
+  name: string;
+  referencedPorts: string[];
+  assignedPorts: string[];
+  numRealStates: number;
+  numIntStates: number;
+  inputs?: { portName: string; sourceId?: string | undefined }[] | undefined;
+  outputs?: { portName: string; targetId?: string | undefined }[] | undefined;
+  step: (ctx: any) => void;
 }
 
 // ==========================================

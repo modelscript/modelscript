@@ -33,6 +33,7 @@ export type DiagramAction =
       }[];
     }
   | { type: "rotate"; item: { name: string; rotation?: number } }
+  | { type: "toggleDisable"; name: string; disabled?: boolean }
   | { type: "updateParameter"; name: string; parameter: string; value: unknown }
   | { type: "updateProperty"; name: string; key: string; value: unknown }
   | { type: "updateName"; oldName: string; newName: string }
@@ -218,6 +219,17 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           y: hit.i.y,
           orient: orientCode(a.item.rotation ?? 0),
         });
+        renderHint = "immediate";
+        break;
+      }
+      case "toggleDisable": {
+        const a = action as Extract<DiagramAction, { type: "toggleDisable" }>;
+        const hit = findInst(a.name);
+        if (!hit) {
+          unresolved.push(a.name);
+          break;
+        }
+        ops.push({ type: "toggleDisable", id: hit.i.id, disabled: a.disabled });
         renderHint = "immediate";
         break;
       }

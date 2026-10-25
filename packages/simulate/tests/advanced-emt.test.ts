@@ -144,6 +144,56 @@ describe("Advanced Physical Modeling & Solvers Suite", () => {
       assert.ok(peakedInrush > 10, "Inrush current spike must exceed unsaturated current");
       assert.ok(state.gMag > 0);
     });
+
+    it("simulates dynamic Jiles-Atherton hysteresis loop, remanence, and core dissipation", () => {
+      const dt = 20e-6; // 20 us
+      const state = createSaturableTransformerState(
+        {
+          id: "T_JA",
+          primaryNode: 0,
+          secondaryNode: 1,
+          ratedMva: 50,
+          primaryKv: 138,
+          secondaryKv: 13.8,
+          leakageReactancePu: 0.1,
+          coreModel: "JILES_ATHERTON",
+          remanentFluxWb: 50.0, // 50 Wb residual core flux
+          jaParams: {
+            ms: 1.5e6,
+            a: 120.0,
+            alpha: 2.5e-4,
+            k: 180.0,
+            c: 0.15,
+          },
+        },
+        dt,
+      );
+
+      assert.equal(state.coreModel, "JILES_ATHERTON");
+      assert.ok(state.bFluxDensity > 0, "Initial remanent flux density must be positive");
+
+      // Apply 3 full sinusoidal cycles at 60 Hz (3 * 833 steps = 2500 steps)
+      const totalSteps = 2500;
+      let maxCurrent = 0;
+      let minCurrent = 0;
+      for (let i = 0; i < totalSteps; i++) {
+        const t = i * dt;
+        const vPrimary = 112e3 * Math.cos(2 * Math.PI * 60 * t);
+        const { iMag } = updateSaturableCore(state, vPrimary, dt);
+        if (iMag > maxCurrent) maxCurrent = iMag;
+        if (iMag < minCurrent) minCurrent = iMag;
+      }
+
+      assert.ok(
+        state.hysteresisEnergyJoulesPerM3 > 0,
+        "Core must dissipate positive hysteresis energy W = integral(H dB)",
+      );
+      assert.ok(Math.abs(maxCurrent) > 0.1, "Magnetizing current must be non-zero");
+      assert.ok(
+        Math.abs(maxCurrent) !== Math.abs(minCurrent),
+        "Asymmetric inrush current envelope due to non-zero remanence",
+      );
+    });
   });
 
   // ── 3. Multi-Rate Co-Simulation Orchestrator ─────────────────────────

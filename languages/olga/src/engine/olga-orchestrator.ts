@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { serializeKeyDeck } from "../parser/key-parser.js";
 import { simulateDriftFlux } from "../solver/drift-flux-dae.js";
-import type { OlgaModel, OlgaSimulationResult, SpatialProfileSnapshot } from "../types.js";
+import type { OlgaModel, OlgaSimulationResult } from "../types.js";
 
 /** Configuration options for executing the Schlumberger OLGA engine. */
 export interface OlgaEngineOptions {
@@ -33,169 +33,18 @@ export interface OlgaEngineOptions {
   durationSeconds?: number | undefined;
 }
 
-/**
- * Parses an OLGA Trend Plot (.tpl) ASCII output file into an OlgaSimulationResult.
- *
- * OLGA .tpl format typically starts with case metadata and column titles:
- * TIME [S]  PT:FLOWPATH_1(1) [PA]  TM:FLOWPATH_1(N) [C]  HOL:FLOWPATH_1(N)  QLT:FLOWPATH_1(N)
- */
-export function parseOlgaTpl(tplContent: string): OlgaSimulationResult {
-  const lines = tplContent.split(/\r?\n/);
-  const times: number[] = [];
-  const inletPressure: number[] = [];
-  const arrivalPressure: number[] = [];
-  const arrivalTemperature: number[] = [];
-  const arrivalLiquidHoldup: number[] = [];
-  const arrivalLiquidMassRate: number[] = [];
-  const accumulatedLiquidVolume: number[] = [];
+import { decodeOlgaFlowRegime, parseOlgaPpl, parseOlgaPplSnapshots, profileDatasetToSnapshots } from "./ppl-parser.js";
+import { parseOlgaTpl, parseOlgaTplDataset, parseTrendVariableHeader } from "./tpl-parser.js";
 
-  let headerIndices: {
-    time: number;
-    inletP: number;
-    outletP: number;
-    outletT: number;
-    outletHol: number;
-    outletQlt: number;
-  } = {
-    time: 0,
-    inletP: -1,
-    outletP: -1,
-    outletT: -1,
-    outletHol: -1,
-    outletQlt: -1,
-  };
-
-  let inDataSection = false;
-  let headersParsed = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!.trim();
-    if (!line || line.startsWith("!") || line.startsWith("CATALOG") || line.startsWith("OLGA")) {
-      continue;
-    }
-
-    // Identify header line with column identifiers (must contain TIME column)
-    if (
-      !headersParsed &&
-      line
-        .toUpperCase()
-        .split(/\s+/)
-        .some((w) => w.startsWith("TIME"))
-    ) {
-      const cols = line.split(/\s+/).map((c) => c.toUpperCase());
-      cols.forEach((col, idx) => {
-        if (col.startsWith("TIME")) headerIndices.time = idx;
-        else if (col.includes("PT") && (col.includes("(1)") || col.includes("_INLET") || headerIndices.inletP === -1)) {
-          if (headerIndices.inletP === -1) headerIndices.inletP = idx;
-          else headerIndices.outletP = idx;
-        } else if (col.includes("PT") && (col.includes("OUTLET") || col.includes("_END"))) {
-          headerIndices.outletP = idx;
-        } else if (col.includes("TM") || col.includes("TEMP")) {
-          headerIndices.outletT = idx;
-        } else if (col.includes("HOL") || col.includes("HL") || col.includes("HOLDUP")) {
-          headerIndices.outletHol = idx;
-        } else if (col.includes("QLT") || col.includes("QL") || col.includes("MASSL")) {
-          headerIndices.outletQlt = idx;
-        }
-      });
-
-      // Default fallback indices if columns are generic
-      if (headerIndices.inletP === -1 && cols.length >= 2) headerIndices.inletP = 1;
-      if (headerIndices.outletP === -1 && cols.length >= 3) headerIndices.outletP = 2;
-      if (headerIndices.outletT === -1 && cols.length >= 4) headerIndices.outletT = 3;
-      if (headerIndices.outletHol === -1 && cols.length >= 5) headerIndices.outletHol = 4;
-      if (headerIndices.outletQlt === -1 && cols.length >= 6) headerIndices.outletQlt = 5;
-
-      headersParsed = true;
-      // Skip unit line if the next line has bracketed units e.g. [S], [PA]
-      if (i + 1 < lines.length && lines[i + 1]!.trim().startsWith("[")) {
-        i++;
-      }
-      inDataSection = true;
-      continue;
-    }
-
-    if (!inDataSection) continue;
-
-    const values = line.split(/\s+/).map(Number);
-    if (values.length < 2 || isNaN(values[0]!)) continue;
-
-    const t = values[headerIndices.time] ?? 0;
-    times.push(t);
-
-    const pin = headerIndices.inletP >= 0 ? (values[headerIndices.inletP] ?? 50e5) : 50e5;
-    const pout = headerIndices.outletP >= 0 ? (values[headerIndices.outletP] ?? 20e5) : 20e5;
-    let tout = headerIndices.outletT >= 0 ? (values[headerIndices.outletT] ?? 293.15) : 293.15;
-    // Normalize Celsius to Kelvin if in [0..100] range
-    if (tout < 150) tout += 273.15;
-
-    const hol = headerIndices.outletHol >= 0 ? (values[headerIndices.outletHol] ?? 0.1) : 0.1;
-    const qlt = headerIndices.outletQlt >= 0 ? (values[headerIndices.outletQlt] ?? 5.0) : 5.0;
-
-    inletPressure.push(pin);
-    arrivalPressure.push(pout);
-    arrivalTemperature.push(tout);
-    arrivalLiquidHoldup.push(hol);
-    arrivalLiquidMassRate.push(qlt);
-
-    // Compute accumulated liquid volume
-    const dt = times.length > 1 ? t - times[times.length - 2]! : 0;
-    const prevVol =
-      accumulatedLiquidVolume.length > 0 ? accumulatedLiquidVolume[accumulatedLiquidVolume.length - 1]! : 0;
-    // Assuming 800 kg/m3 liquid density for volumetric accumulation
-    accumulatedLiquidVolume.push(prevVol + (qlt / 800.0) * dt);
-  }
-
-  // If file was empty or unparseable, return empty baseline
-  if (times.length === 0) {
-    return {
-      times: [0],
-      profiles: [],
-      trends: {
-        inletPressure: [50e5],
-        arrivalPressure: [20e5],
-        arrivalTemperature: [293.15],
-        arrivalLiquidHoldup: [0.1],
-        arrivalLiquidMassRate: [5.0],
-        accumulatedLiquidVolume: [0],
-        peakLiquidSurgeVolume: 0,
-      },
-    };
-  }
-
-  // Calculate peak surge volume
-  let peakLiquidSurgeVolume = 0;
-  for (let j = 1; j < accumulatedLiquidVolume.length; j++) {
-    const windowVol = accumulatedLiquidVolume[j]! - accumulatedLiquidVolume[Math.max(0, j - 10)]!;
-    if (windowVol > peakLiquidSurgeVolume) peakLiquidSurgeVolume = windowVol;
-  }
-
-  // Synthesize terminal profile snapshot
-  const finalProfile: SpatialProfileSnapshot = {
-    time: times[times.length - 1]!,
-    x: [0, 5000],
-    elevation: [0, 50],
-    pressure: [inletPressure[inletPressure.length - 1]!, arrivalPressure[arrivalPressure.length - 1]!],
-    temperature: [330.15, arrivalTemperature[arrivalTemperature.length - 1]!],
-    liquidHoldup: [0.05, arrivalLiquidHoldup[arrivalLiquidHoldup.length - 1]!],
-    gasVelocity: [8.5, 12.0],
-    liquidVelocity: [1.2, 1.8],
-  };
-
-  return {
-    times,
-    profiles: [finalProfile],
-    trends: {
-      inletPressure,
-      arrivalPressure,
-      arrivalTemperature,
-      arrivalLiquidHoldup,
-      arrivalLiquidMassRate,
-      accumulatedLiquidVolume,
-      peakLiquidSurgeVolume,
-    },
-  };
-}
+export {
+  decodeOlgaFlowRegime,
+  parseOlgaPpl,
+  parseOlgaPplSnapshots,
+  parseOlgaTpl,
+  parseOlgaTplDataset,
+  parseTrendVariableHeader,
+  profileDatasetToSnapshots,
+};
 
 /**
  * Checks whether the Schlumberger OLGA native executable is installed and reachable.
@@ -276,8 +125,29 @@ export async function runOlgaEngine(model: OlgaModel, options: OlgaEngineOptions
     });
 
     // 4. Read and parse the resulting .tpl trend file
-    const tplRaw = await fs.readFile(tplPath, "utf-8");
-    return parseOlgaTpl(tplRaw);
+    let simResult: OlgaSimulationResult;
+    try {
+      const tplRaw = await fs.readFile(tplPath, "utf-8");
+      simResult = parseOlgaTpl(tplRaw);
+    } catch {
+      simResult = simulateDriftFlux(model, { durationSeconds: options.durationSeconds });
+    }
+
+    // 5. Ingest .ppl spatial profile file if generated by engine
+    const pplPath = path.join(caseDir, `${caseBaseName}.ppl`);
+    try {
+      const pplRaw = await fs.readFile(pplPath, "utf-8");
+      const pplDataset = parseOlgaPpl(pplRaw);
+      simResult.profileDataset = pplDataset;
+      const snapshots = profileDatasetToSnapshots(pplDataset);
+      if (snapshots.length > 0) {
+        simResult.profiles = snapshots;
+      }
+    } catch {
+      // .ppl is optional or case had no profile output
+    }
+
+    return simResult;
   } catch (_err) {
     // Gracefully fallback to in-WASM drift-flux if external engine failed
     return simulateDriftFlux(model, { durationSeconds: options.durationSeconds });

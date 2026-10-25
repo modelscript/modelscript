@@ -87,8 +87,11 @@ export function getUserDefinitionForm(documentText: string, definitionName: stri
   const colon = definitionName.indexOf(":");
   const lib = colon >= 0 ? definitionName.slice(0, colon) : "";
   const name = colon >= 0 ? definitionName.slice(colon + 1) : definitionName;
-  if (lib === "master") return undefined;
   const external = registeredExternalDefinitions();
+  if (lib === "master" || lib === "Master") {
+    const def = external?.("master", name) ?? external?.("Master", name);
+    return def ? readDefinitionForm(def) : undefined;
+  }
   let model;
   try {
     model = buildProjectModel(documentText, external);

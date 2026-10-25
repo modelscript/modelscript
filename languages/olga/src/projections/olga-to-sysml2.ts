@@ -67,10 +67,12 @@ export function olgaToSysml2(model: OlgaModel, options?: Sysml2ProjectionOptions
     `        port topsideArrival: MultiphaseFluidPort;`,
   ];
 
-  if (flowpath) {
-    for (const [idx, pipe] of flowpath.pipes.entries()) {
+  for (const fp of model.flowpaths) {
+    for (const [idx, pipe] of fp.pipes.entries()) {
+      const partName =
+        model.flowpaths.length > 1 ? `${sanitizeIdentifier(fp.name)}_pipe_${idx + 1}` : `pipe_${idx + 1}`;
       lines.push(
-        `        part pipe_${idx + 1} {`,
+        `        part ${partName} {`,
         `            attribute label: String = "${pipe.label}";`,
         `            attribute length: Length = ${pipe.length.toFixed(1)} [m];`,
         `            attribute diameter: Length = ${pipe.diameter.toFixed(4)} [m];`,
@@ -79,7 +81,7 @@ export function olgaToSysml2(model: OlgaModel, options?: Sysml2ProjectionOptions
       );
     }
 
-    for (const valve of flowpath.valves) {
+    for (const valve of fp.valves) {
       lines.push(
         `        part ${sanitizeIdentifier(valve.name)} {`,
         `            attribute position: Length = ${valve.position.toFixed(1)} [m];`,
@@ -87,6 +89,30 @@ export function olgaToSysml2(model: OlgaModel, options?: Sysml2ProjectionOptions
         `            attribute throatDiameter: Length = ${valve.diameter.toFixed(4)} [m];`,
         `        }`,
       );
+    }
+
+    if (fp.pumps) {
+      for (const pump of fp.pumps) {
+        lines.push(
+          `        part ${sanitizeIdentifier(pump.name)} {`,
+          `            attribute position: Length = ${pump.position.toFixed(1)} [m];`,
+          `            attribute ratedHead: Length = ${pump.ratedHead.toFixed(1)} [m];`,
+          `            attribute ratedPower: Power = ${pump.ratedPowerKw.toFixed(1)} [kW];`,
+          `        }`,
+        );
+      }
+    }
+
+    if (fp.compressors) {
+      for (const comp of fp.compressors) {
+        lines.push(
+          `        part ${sanitizeIdentifier(comp.name)} {`,
+          `            attribute position: Length = ${comp.position.toFixed(1)} [m];`,
+          `            attribute pressureRatio: Real = ${comp.pressureRatio.toFixed(2)};`,
+          `            attribute ratedPower: Power = ${comp.ratedPowerKw.toFixed(1)} [kW];`,
+          `        }`,
+        );
+      }
     }
   }
 
@@ -114,6 +140,23 @@ export function olgaToSysml2(model: OlgaModel, options?: Sysml2ProjectionOptions
     `        assert constraint { arrivalSurgeVolume <= 0.85 * slugCatcherCapacity }`,
     `    }`,
     ``,
+  );
+
+  if (options?.limits?.cloudPointTemp != null) {
+    const watC = options.limits.cloudPointTemp - 273.15;
+    lines.push(
+      `    requirement def WaxAvoidanceRequirement {`,
+      `        doc /* Operating fluid temperature must remain above Wax Appearance Temperature (${watC.toFixed(1)} C) */`,
+      `        attribute operatingTemperature: Temperature;`,
+      `        attribute cloudPointTemp: Temperature = ${options.limits.cloudPointTemp.toFixed(1)} [K];`,
+      ``,
+      `        assert constraint { operatingTemperature >= cloudPointTemp }`,
+      `    }`,
+      ``,
+    );
+  }
+
+  lines.push(
     `    requirement def PipelineMaopRequirement {`,
     `        doc /* Maximum transient pressure must not exceed pipeline MAOP */`,
     `        attribute peakPressure: Pressure;`,

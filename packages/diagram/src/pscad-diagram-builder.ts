@@ -32,6 +32,7 @@ export interface PscadComponentLike {
   rotation?: number | undefined;
   orient?: number | undefined;
   mirror?: boolean | undefined;
+  disabled?: boolean | undefined;
   z?: number | undefined;
   parameters: Record<string, string | number>;
   sourceRange?: { startOffset: number; endOffset: number } | undefined;
@@ -124,6 +125,7 @@ export interface X6CellData {
   vertices?: { x: number; y: number }[] | undefined;
   data?: Record<string, any> | undefined;
   zIndex?: number | undefined;
+  opacity?: number | undefined;
   diffStatus?: "added" | "removed" | "modified" | "unchanged" | undefined;
 }
 
@@ -299,12 +301,21 @@ export function evalPscadCond(expr: string, params: Record<string, any> | Map<st
     if (t.startsWith('"') || t.startsWith("'")) {
       return t.slice(1, -1);
     }
-    if (/^-?\d+(?:\.\d+)?$/.test(t)) {
-      return Number(t);
+    if (t.trim() !== "") {
+      const parsedNum = Number(t);
+      if (!Number.isNaN(parsedNum)) {
+        return parsedNum;
+      }
     }
     let val = lowerMap.get(t.toLowerCase());
-    if (val === undefined && /\d+$/.test(t)) {
-      val = lowerMap.get(t.replace(/\d+$/, "").toLowerCase());
+    if (val === undefined) {
+      let endIdx = t.length;
+      while (endIdx > 0 && t.charCodeAt(endIdx - 1) >= 48 && t.charCodeAt(endIdx - 1) <= 57) {
+        endIdx--;
+      }
+      if (endIdx > 0 && endIdx < t.length) {
+        val = lowerMap.get(t.slice(0, endIdx).toLowerCase());
+      }
     }
     if (val !== undefined && val !== null) {
       if (typeof val === "boolean" || typeof val === "number") return val;
@@ -1356,6 +1367,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       y: topLeftY,
       width,
       height,
+      opacity: cmp.disabled ? 0.45 : 1,
       angle: cellAngle,
       markup: markup ?? [
         { tagName: "rect", selector: "body" },
@@ -1432,6 +1444,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         targetModule: isPageNav ? cleanDefn : undefined,
         definition: cmp.definitionName,
         name: cmp.instanceName,
+        disabled: cmp.disabled,
         parameters: cmp.parameters,
         centerPosition: { x: cmp.position.x, y: cmp.position.y },
         properties: nodeProperties,

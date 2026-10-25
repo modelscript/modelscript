@@ -234,7 +234,13 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     customEditors.push({
       viewType: "modelscript.olgaEditor",
       displayName: "OLGA Multiphase Flow Assurance Editor",
-      selector: [{ filenamePattern: "*.opi" }, { filenamePattern: "*.key" }, { filenamePattern: "*.genkey" }],
+      selector: [
+        { filenamePattern: "*.opi" },
+        { filenamePattern: "*.key" },
+        { filenamePattern: "*.genkey" },
+        { filenamePattern: "*.tpl" },
+        { filenamePattern: "*.ppl" },
+      ],
       priority: "option",
     });
   }
@@ -292,6 +298,12 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       viewType: "modelscript.gcodeViewer",
       displayName: "3D G-Code Toolpath Viewer",
       selector: [{ filenamePattern: "*.gcode" }, { filenamePattern: "*.nc" }],
+      priority: "default",
+    },
+    {
+      viewType: "modelscript.psoutViewer",
+      displayName: "PSCAD PSOUT Waveform Studio",
+      selector: [{ filenamePattern: "*.psout" }],
       priority: "default",
     },
   );
@@ -436,6 +448,17 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       title: "ModelScript: Open Simulation View (RK4 / CVODE)",
       category: "ModelScript Simulation",
       icon: "$(play)",
+    },
+    {
+      command: "modelscript.openVrVisualization",
+      title: "ModelScript: Open VR Factory Visualization",
+      category: "ModelScript Visualization",
+      icon: "$(device-camera-video)",
+    },
+    {
+      command: "modelscript.owl2.goToDeclaration",
+      title: "ModelScript: Go to OWL2 Declaration",
+      category: "ModelScript OWL2",
     },
   ];
 
@@ -1968,7 +1991,12 @@ if (typeof self !== "undefined" && typeof self.process === "undefined") {
   if (fs.existsSync(webviewDir)) {
     const files = fs.readdirSync(webviewDir);
     for (const f of files) {
-      if ((f.endsWith(".ts") || f.endsWith(".tsx")) && f !== "notebook-renderer.ts" && f !== "notebookRenderer.ts") {
+      if (
+        (f.endsWith(".ts") || f.endsWith(".tsx")) &&
+        f !== "notebook-renderer.ts" &&
+        f !== "notebookRenderer.ts" &&
+        !f.startsWith("base-")
+      ) {
         const fullPath = path.join(webviewDir, f);
         if (fs.statSync(fullPath).isFile()) {
           webviewEntries.push(fullPath);
@@ -1985,7 +2013,7 @@ if (typeof self !== "undefined" && typeof self.process === "undefined") {
       format: "iife",
       platform: "browser",
       sourcemap: "linked",
-      external: ["@kitware/vtk.js", "@kitware/vtk.js/*"],
+      external: ["vscode", "@kitware/vtk.js", "@kitware/vtk.js/*"],
       define: {
         "process.env": JSON.stringify({}),
         "process.browser": "true",

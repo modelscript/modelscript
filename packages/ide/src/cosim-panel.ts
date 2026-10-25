@@ -16,6 +16,7 @@ import { BrowserHistorian } from "./browser-historian";
 import { FmuBrowserParticipant } from "./fmu-browser-participant";
 import { LspSimulatorParticipant } from "./lsp-simulator-participant";
 import { SimulationPanel } from "./simulation-panel";
+import { getNonce } from "./utils/nonce.js";
 
 /** Common interface for both Modelica (LSP) and FMU (browser) participants. */
 interface BrowserParticipant {
@@ -1722,13 +1723,4 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`;
   }
-}
-
-function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

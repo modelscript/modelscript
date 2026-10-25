@@ -164,6 +164,8 @@ export const window = {
   showErrorMessage: async (_message: string, ..._items: any[]) => undefined,
   showWarningMessage: async (_message: string, ..._items: any[]) => undefined,
   showQuickPick: async (items: any[], _options?: any) => (Array.isArray(items) ? items[0] : undefined),
+  showSaveDialog: async (options?: any) =>
+    options?.defaultUri ? options.defaultUri : Uri.file("/workspace/export.csv"),
   createOutputChannel: (_name: string) => ({
     appendLine: (_val: string) => {},
     append: (_val: string) => {},

@@ -90,6 +90,19 @@ export class CaeCloudClient {
   }
 
   /**
+   * Fetches the user's available compute balance / credits.
+   */
+  public async getBalance(): Promise<{ balance: number }> {
+    const res = await fetch(`${this.apiBaseUrl}/cae/balance`, {
+      headers: this.buildHeaders(),
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      return { balance: 0 };
+    }
+    return (await res.json()) as { balance: number };
+  }
+
+  /**
    * Uploads raw mesh or CAD geometry to the cloud server with Content-Addressable Storage (CAS) deduplication.
    */
   public async uploadGeometry(fileBytes: Uint8Array, fileName: string): Promise<{ hash: string; cached: boolean }> {

@@ -44,7 +44,8 @@ export type PscadEditOp =
     }
   | { type: "setWirePoints"; id: string; points: Pt[] }
   | { type: "addWire"; definition?: string; points: Pt[] }
-  | { type: "removeWire"; id: string };
+  | { type: "removeWire"; id: string }
+  | { type: "toggleDisable"; id: string; disabled?: boolean | undefined };
 
 export interface PscadEditResult {
   text: string;
@@ -291,6 +292,17 @@ export function planPscadEdits(
           removed.add(hit.wire.element.start);
           splices.push(removeElementSplice(hit.wire.element, text));
         }
+        break;
+      }
+      case "toggleDisable": {
+        const hit = findInstance(model, op.id);
+        if (!hit) {
+          errors.push(`Component '${op.id}' not found.`);
+          break;
+        }
+        const current = attr(hit.inst.element, "disable") === "true";
+        const target = op.disabled !== undefined ? op.disabled : !current;
+        writeAttr(hit.inst.element, "disable", target ? "true" : "false");
         break;
       }
     }

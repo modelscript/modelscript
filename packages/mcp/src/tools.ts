@@ -7,11 +7,23 @@ import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { Context } from "@modelscript/modelica/context";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import {
+  calibrateOlgaModel,
+  evaluateFlowAssuranceGate,
+  importBathymetrySurvey,
   lintOlgaModel,
+  loadCheckpoint,
+  parseObservationCsv,
   parseOlga,
+  parseOlgaPpl,
+  parseOlgaTplDataset,
+  saveCheckpoint,
+  serializeKeyDeck,
+  serializeOpi,
   simulateDriftFlux,
   verifyFlowAssuranceLimits,
   type FlowAssuranceLimits,
+  type OlgaCheckpointState,
+  type TunableParameter,
 } from "@modelscript/olga";
 import {
   executeBgpQuery,
@@ -455,7 +467,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     {
       name: z.string().describe("Fully qualified class name to analyze"),
       inputs: z
-        .record(z.object({ min: z.number(), max: z.number() }))
+        .record(z.string(), z.object({ min: z.number(), max: z.number() }))
         .describe("Parameter ranges: name → { min, max }"),
       outputs: z.array(z.string()).describe("Output variable names to record"),
       strategy: z
@@ -533,7 +545,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     {
       name: z.string().describe("Fully qualified class name to analyze"),
       parameters: z
-        .record(z.object({ nominal: z.number(), perturbation: z.number().optional() }))
+        .record(z.string(), z.object({ nominal: z.number(), perturbation: z.number().optional() }))
         .describe("Parameters to analyze: name → { nominal, perturbation? (default: 0.01) }"),
       outputs: z.array(z.string()).describe("Output variable names to observe"),
       stopTime: z.number().optional().describe("Simulation stop time (default: from annotation or 10)"),
@@ -568,7 +580,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const parameterNames: string[] = [];
         const nominalValues = new Map<string, number>();
         let perturbationFactor = 0.01;
-        for (const [paramName, spec] of Object.entries(parameters)) {
+        for (const [paramName, spec] of Object.entries(
+          parameters as Record<string, { nominal: number; perturbation?: number }>,
+        )) {
           parameterNames.push(paramName);
           nominalValues.set(paramName, spec.nominal);
           if (spec.perturbation !== undefined) perturbationFactor = spec.perturbation;
@@ -1491,12 +1505,16 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       name: z.string().describe("Fully qualified class name of the Modelica model to calibrate"),
       parameters: z.array(z.string()).describe("Names of parameters to estimate / calibrate"),
       parameterBounds: z
-        .record(z.object({ min: z.number(), max: z.number() }))
+        .record(z.string(), z.object({ min: z.number(), max: z.number() }))
         .optional()
         .describe("Parameter box bounds: { paramName: { min, max } }"),
-      initialGuess: z.record(z.number()).optional().describe("Optional initial guess overrides: { paramName: value }"),
+      initialGuess: z
+        .record(z.string(), z.number())
+        .optional()
+        .describe("Optional initial guess overrides: { paramName: value }"),
       measurements: z
         .record(
+          z.string(),
           z.object({
             t: z.array(z.number()),
             y: z.array(z.number()),
@@ -1545,7 +1563,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
         const boundsMap = new Map<string, { min: number; max: number }>();
         if (parameterBounds) {
-          for (const [p, b] of Object.entries(parameterBounds)) {
+          for (const [p, b] of Object.entries(parameterBounds as Record<string, { min: number; max: number }>)) {
             if (b && typeof b.min === "number" && typeof b.max === "number") {
               boundsMap.set(p, { min: b.min, max: b.max });
             }
@@ -1554,13 +1572,13 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
         const guessMap = new Map<string, number>();
         if (initialGuess) {
-          for (const [p, val] of Object.entries(initialGuess)) {
+          for (const [p, val] of Object.entries(initialGuess as Record<string, number>)) {
             if (typeof val === "number") guessMap.set(p, val);
           }
         }
 
         const measMap = new Map<string, { t: number[]; y: number[] }>();
-        for (const [v, series] of Object.entries(measurements)) {
+        for (const [v, series] of Object.entries(measurements as Record<string, { t: number[]; y: number[] }>)) {
           if (series && Array.isArray(series.t) && Array.isArray(series.y)) {
             measMap.set(v, { t: series.t, y: series.y });
           }
@@ -1693,7 +1711,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       faultBus: z.string().optional().describe("Optional bus ID to apply a 3-phase fault to ground"),
       faultStart: z.number().optional().describe("Fault inception time in seconds (default: 0.05)"),
       faultDuration: z.number().optional().describe("Fault duration in seconds (default: 0.05)"),
-      format: z.enum(["summary", "comtrade", "json"]).optional().describe("Output format (default: summary)"),
+      format: z.enum(["summary", "comtrade", "json", "psout"]).optional().describe("Output format (default: summary)"),
     },
     async ({ path: filePath, dt, tstop, faultBus, faultStart, faultDuration, format }) => {
       try {
@@ -1741,6 +1759,20 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         });
 
         const result = solver.solve();
+
+        if (format === "psout") {
+          const { writePscadPsout } = await import("@modelscript/pscad");
+          const psoutBytes = writePscadPsout(result, { projectName: project.name });
+          const base64 = Buffer.from(psoutBytes).toString("base64");
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `=== PSCAD V5 Binary Waveform Container (.psout) ===\nSize: ${psoutBytes.byteLength} bytes\nChannels: ${result.busVoltages.size + result.branchCurrents.size}\nSamples: ${result.time.length}\nBase64 Payload (${base64.length} chars):\n${base64.slice(0, 1000)}... [truncated]`,
+              },
+            ],
+          };
+        }
 
         if (format === "comtrade") {
           const namedVoltages = new Map<string, Float64Array>();
@@ -2157,18 +2189,40 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       durationSeconds: z.number().optional().describe("Simulation duration in seconds [s]"),
       timeStepSeconds: z.number().optional().describe("Simulation time step in seconds [s]"),
       format: z.enum(["json", "csv"]).optional().describe("Output data format (default: json)"),
+      restart: z.string().optional().describe("Path to .rst or .json checkpoint file to resume simulation from"),
+      checkpointOut: z.string().optional().describe("Path to save final simulation state snapshot (.rst)"),
+      checkpointInterval: z.number().optional().describe("Periodic checkpoint snapshot interval in seconds [s]"),
     },
-    async ({ source, durationSeconds, timeStepSeconds, format }) => {
+    async ({ source, durationSeconds, timeStepSeconds, format, restart, checkpointOut, checkpointInterval }) => {
       try {
         let content = source;
         if (fs.existsSync(source)) {
           content = fs.readFileSync(source, "utf-8");
         }
         const model = parseOlga(content);
+
+        let initialCheckpoint: OlgaCheckpointState | undefined;
+        if (restart && fs.existsSync(restart)) {
+          initialCheckpoint = loadCheckpoint(restart);
+        }
+
+        let lastCheckpoint: OlgaCheckpointState | undefined;
         const result = simulateDriftFlux(model, {
           durationSeconds: durationSeconds ?? Math.min(model.endTime - model.startTime, 3600),
           timeStepSeconds: timeStepSeconds ?? model.maxDt,
+          initialCheckpoint,
+          checkpointIntervalSeconds: checkpointInterval,
+          onCheckpoint: (cp) => {
+            lastCheckpoint = cp;
+            if (checkpointOut && checkpointInterval) {
+              saveCheckpoint(cp, checkpointOut);
+            }
+          },
         });
+
+        if (checkpointOut && lastCheckpoint) {
+          saveCheckpoint(lastCheckpoint, checkpointOut);
+        }
 
         if (format === "csv") {
           const lines = [
@@ -2202,6 +2256,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           slugFrequencyHz: result.trends.slugFrequency?.[result.trends.slugFrequency.length - 1] ?? 0,
           activePigs: lastProfile?.pigs ?? [],
           activeSlugs: lastProfile?.activeSlugs ?? [],
+          checkpointSaved: checkpointOut ?? null,
+          restartedFrom: restart
+            ? { time: initialCheckpoint?.simulatedTime, cells: initialCheckpoint?.gridCells.length }
+            : null,
         };
 
         return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
@@ -2302,6 +2360,334 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         return { content: [{ type: "text" as const, text: svg }] };
       } catch (err: any) {
         return { content: [{ type: "text" as const, text: `OLGA diagram error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── olga_parse_tpl ────────────────────────────────────────────────────────
+  server.tool(
+    "olga_parse_tpl",
+    "Parse an OLGA simulation trend plot (.tpl) file or content into structured time-series dataset with variable catalog, units, and channel statistics.",
+    {
+      source: z.string().describe("OLGA .tpl trend content or file path"),
+      includeData: z
+        .boolean()
+        .optional()
+        .describe("Whether to include the full raw numerical data array (defaults to false for compact summary)"),
+    },
+    async ({ source, includeData }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const dataset = parseOlgaTplDataset(content);
+        const variablesWithStats = dataset.variables.map((v, idx) => {
+          const vals = dataset.data[idx] || [];
+          let minVal = Infinity;
+          let maxVal = -Infinity;
+          let sum = 0;
+          for (const val of vals) {
+            if (val < minVal) minVal = val;
+            if (val > maxVal) maxVal = val;
+            sum += val;
+          }
+          const mean = vals.length > 0 ? sum / vals.length : 0;
+          return {
+            id: v.id,
+            name: v.name,
+            variable: v.variable,
+            branch: v.branch,
+            sectionIndex: v.sectionIndex,
+            unit: v.unit,
+            count: vals.length,
+            min: isFinite(minVal) ? minVal : null,
+            max: isFinite(maxVal) ? maxVal : null,
+            mean: isFinite(mean) ? mean : null,
+            sampleStart: vals.slice(0, 3),
+            sampleEnd: vals.slice(-3),
+          };
+        });
+
+        const result: Record<string, unknown> = {
+          title: dataset.title,
+          caseName: dataset.caseName,
+          timestepsCount: dataset.times.length,
+          timeSpan: {
+            start: dataset.times[0] ?? 0,
+            end: dataset.times[dataset.times.length - 1] ?? 0,
+          },
+          channelsCount: dataset.variables.length,
+          variables: variablesWithStats,
+        };
+
+        if (includeData) {
+          result["times"] = dataset.times;
+          result["data"] = dataset.data;
+        }
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `OLGA .tpl parsing error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── olga_parse_ppl ────────────────────────────────────────────────────────
+  server.tool(
+    "olga_parse_ppl",
+    "Parse an OLGA spatial profile plot (.ppl) file or content into structured spatial snapshots along pipeline coordinate X with flow regimes and critical extrema.",
+    {
+      source: z.string().describe("OLGA .ppl profile content or file path"),
+      snapshotIndex: z
+        .number()
+        .optional()
+        .describe("Optional index of specific time snapshot to return in full detail"),
+    },
+    async ({ source, snapshotIndex }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const dataset = parseOlgaPpl(content);
+        const snapshotSummaries = dataset.snapshots.map((s, idx) => {
+          const xSpan = {
+            start: s.x[0] ?? 0,
+            end: s.x[s.x.length - 1] ?? 0,
+            sectionsCount: s.x.length,
+          };
+          const variableExtrema: Record<string, { min: number; max: number }> = {};
+          for (const [varName, arr] of Object.entries(s.variables)) {
+            let minVal = Infinity;
+            let maxVal = -Infinity;
+            for (const v of arr) {
+              if (v < minVal) minVal = v;
+              if (v > maxVal) maxVal = v;
+            }
+            variableExtrema[varName] = {
+              min: isFinite(minVal) ? minVal : 0,
+              max: isFinite(maxVal) ? maxVal : 0,
+            };
+          }
+          return {
+            index: idx,
+            time: s.time,
+            xSpan,
+            variableExtrema,
+            flowRegimesObserved: s.flowRegimes ? Array.from(new Set(s.flowRegimes)) : [],
+          };
+        });
+
+        const response: Record<string, unknown> = {
+          title: dataset.title,
+          branch: dataset.branch,
+          snapshotsCount: dataset.snapshots.length,
+          variables: dataset.variables,
+          snapshots: snapshotSummaries,
+        };
+
+        if (snapshotIndex !== undefined && dataset.snapshots[snapshotIndex]) {
+          response["detailedSnapshot"] = dataset.snapshots[snapshotIndex];
+        }
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `OLGA .ppl parsing error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── olga_tune ────────────────────────────────────────────────────────────
+
+  server.tool(
+    "olga_tune",
+    "Calibrate OLGA flowline model parameters (roughness, choke Cd, heat transfer, well PI) using autonomous Nelder-Mead simplex history matching against telemetry CSV observations.",
+    {
+      source: z.string().describe("OLGA model source content (.opi XML or .key keyword deck) or file path"),
+      observations: z
+        .string()
+        .describe(
+          "Field telemetry observation CSV content or file path with headers TIME, PT_INLET, PT_ARRIVAL, TM_ARRIVAL, QLT",
+        ),
+      parameters: z
+        .array(z.enum(["roughness", "heat-transfer", "choke-cd", "well-rate"]))
+        .optional()
+        .describe("List of parameters to calibrate (default: roughness, choke-cd, heat-transfer)"),
+      maxEvaluations: z.number().optional().describe("Maximum optimization evaluations (default: 100)"),
+      outPath: z.string().optional().describe("Optional file path to write calibrated model (.opi or .key)"),
+      reportPath: z.string().optional().describe("Optional file path to write Markdown calibration report"),
+    },
+    async ({ source, observations, parameters, maxEvaluations, outPath, reportPath }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        let obsText = observations;
+        if (fs.existsSync(observations)) {
+          obsText = fs.readFileSync(observations, "utf-8");
+        }
+        const model = parseOlga(content);
+        const obsData = parseObservationCsv(obsText);
+        const result = calibrateOlgaModel(model, obsData, {
+          parameters: parameters as TunableParameter[] | undefined,
+          maxEvaluations: maxEvaluations ?? 100,
+        });
+
+        if (outPath) {
+          let serialized: string;
+          if (outPath.endsWith(".opi")) {
+            serialized = serializeOpi(result.calibratedModel);
+          } else {
+            serialized = serializeKeyDeck(result.calibratedModel);
+          }
+          fs.writeFileSync(outPath, serialized, "utf-8");
+        }
+
+        if (reportPath) {
+          fs.writeFileSync(reportPath, result.markdownReport, "utf-8");
+        }
+
+        const summary = {
+          success: result.success,
+          evaluations: result.evaluations,
+          initialObjective: result.initialObjective,
+          finalObjective: result.finalObjective,
+          improvementPercent: result.improvementPercent,
+          calibratedParameters: result.calibratedParameters,
+          metrics: result.metrics,
+          markdownReport: result.markdownReport,
+          savedModelPath: outPath ?? null,
+          savedReportPath: reportPath ?? null,
+        };
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `OLGA history matching error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── olga_gate ────────────────────────────────────────────────────────────
+
+  server.tool(
+    "olga_gate",
+    "Evaluate an automated Flow Assurance CI/CD Safety Gate check on an OLGA model for pull requests and operational envelope verification.",
+    {
+      source: z.string().describe("OLGA model source content or file path"),
+      maxSurgeM3: z.number().optional().describe("Maximum allowable topside slug catcher surge volume in m³ [m³]"),
+      minHydrateMarginK: z
+        .number()
+        .optional()
+        .describe("Minimum required hydrate avoidance subcooling margin in Kelvin [K]"),
+      maxWaxMm: z.number().optional().describe("Maximum allowable wax deposition layer thickness in mm [mm]"),
+      maxCorrosionMmPerYear: z
+        .number()
+        .optional()
+        .describe("Maximum allowable sweet CO2 corrosion rate in mm/year [mm/yr]"),
+      maopBar: z.number().optional().describe("Maximum Allowable Operating Pressure limit in bar [bar]"),
+      minGasVel: z.number().optional().describe("Minimum gas turndown velocity in m/s [m/s]"),
+      durationSeconds: z.number().optional().describe("Simulation evaluation duration in seconds [s]"),
+      reportPath: z.string().optional().describe("Optional path to save Markdown summary report"),
+    },
+    async ({
+      source,
+      maxSurgeM3,
+      minHydrateMarginK,
+      maxWaxMm,
+      maxCorrosionMmPerYear,
+      maopBar,
+      minGasVel,
+      durationSeconds,
+      reportPath,
+    }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const model = parseOlga(content);
+        const result = evaluateFlowAssuranceGate(model, {
+          maxSurgeM3,
+          minHydrateMarginK,
+          maxWaxThicknessMm: maxWaxMm,
+          maxCorrosionRateMmPerYear: maxCorrosionMmPerYear,
+          maxPressureBar: maopBar,
+          minGasVelocity: minGasVel,
+          durationSeconds,
+        });
+
+        if (reportPath) {
+          fs.writeFileSync(reportPath, result.markdownReport, "utf-8");
+        }
+
+        const summary = {
+          passed: result.passed,
+          verdict: result.passed ? "APPROVED (PASSED)" : "BLOCKED (FAILED)",
+          checks: result.checks,
+          markdownReport: result.markdownReport,
+          savedReportPath: reportPath ?? null,
+        };
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `OLGA gate evaluation error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── olga_survey ──────────────────────────────────────────────────────────
+
+  server.tool(
+    "olga_survey",
+    "Ingest 3D seabed bathymetry survey coordinates (CSV with Easting,Northing,Depth or KP,Elevation) and discretize into adaptive curvature-aware OLGA pipe segments.",
+    {
+      source: z.string().describe("Survey CSV content or file path"),
+      defaultDiameter: z.number().optional().describe("Default pipe internal diameter in meters [m] (default: 0.3048)"),
+      targetCellLength: z
+        .number()
+        .optional()
+        .describe("Target cell length for curvature discretization in meters [m] (default: 50.0)"),
+      outPath: z.string().optional().describe("Optional path to save discretized <Pipe> XML snippet"),
+    },
+    async ({ source, defaultDiameter, targetCellLength, outPath }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) {
+          content = fs.readFileSync(source, "utf-8");
+        }
+        const surveyResult = importBathymetrySurvey(content, {
+          defaultDiameter: defaultDiameter ?? 0.3048,
+          targetCellLength: targetCellLength ?? 50.0,
+        });
+
+        if (outPath) {
+          fs.writeFileSync(outPath, surveyResult.opiXmlSnippet, "utf-8");
+        }
+
+        const summary = {
+          totalLengthM: surveyResult.totalLengthM,
+          minElevationM: surveyResult.minElevationM,
+          maxElevationM: surveyResult.maxElevationM,
+          maxDoglegSeverityDegPer30m: surveyResult.maxDoglegSeverity,
+          discretizedPipesCount: surveyResult.pipes.length,
+          opiXmlSnippet: surveyResult.opiXmlSnippet,
+          savedXmlPath: outPath ?? null,
+        };
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `OLGA survey ingestion error: ${err.message}` }],
+          isError: true,
+        };
       }
     },
   );

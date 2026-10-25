@@ -2,16 +2,13 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
-export class MultiBodyAnimationPanel {
+export class MultiBodyAnimationPanel extends BaseWebviewPanel {
   public static currentPanel: MultiBodyAnimationPanel | undefined;
   public static readonly viewType = "modelscript.multibodyAnimation";
 
-  private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
   private readonly _client: LanguageClient;
-  private _disposables: vscode.Disposable[] = [];
-
   public sourceUri?: string | undefined;
 
   public static async createOrShow(
@@ -45,12 +42,9 @@ export class MultiBodyAnimationPanel {
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient, sourceUri: string) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    super(panel, extensionUri);
     this._client = client;
     this.sourceUri = sourceUri;
-
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(
       (message) => {
@@ -63,7 +57,10 @@ export class MultiBodyAnimationPanel {
       this._disposables,
     );
 
-    this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
+    this._panel.webview.html = this.getHtmlShell({
+      title: "3D Multi-Body Animation",
+      scriptName: "multibody-animation-webview.js",
+    });
   }
 
   public async loadData(simulationData: { t: number[]; y: number[][]; states: string[] }) {
@@ -110,44 +107,8 @@ export class MultiBodyAnimationPanel {
     this._panel.reveal(column);
   }
 
-  public dispose() {
+  public override dispose(): void {
     MultiBodyAnimationPanel.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const x = this._disposables.pop();
-      if (x) {
-        x.dispose();
-      }
-    }
+    super.dispose();
   }
-
-  private _getHtmlForWebview(webview: vscode.Webview) {
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, "dist", "multibody-animation-webview.js"),
-    );
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} data: blob:; worker-src 'self' blob:;">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Multi-Body Animation</title>
-</head>
-<body class="vscode-dark">
-    <div id="root"></div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

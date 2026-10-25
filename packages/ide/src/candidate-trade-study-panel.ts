@@ -22,6 +22,10 @@ import {
 } from "@modelscript/simulate";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
+import { CaeCloudClient } from "./cae-cloud-client.js";
+import { CloudJobPanel } from "./cloud-job-panel.js";
+import { getNonce } from "./utils/nonce.js";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
 export interface TradeStudyCandidate {
   id: string;
@@ -40,14 +44,11 @@ export interface TradeStudyCandidate {
   allowableStressMPa?: number | undefined;
 }
 
-export class CandidateTradeStudyPanel {
+export class CandidateTradeStudyPanel extends BaseWebviewPanel {
   public static currentPanel: CandidateTradeStudyPanel | undefined;
   public static readonly viewType = "modelscript.candidateTradeStudy";
 
-  private readonly _panel: vscode.WebviewPanel;
-  public readonly _extensionUri: vscode.Uri;
   public readonly _client?: LanguageClient | undefined;
-  private _disposables: vscode.Disposable[] = [];
   private _selectedCandidateId = "cand_1";
 
   private _candidates: TradeStudyCandidate[] = [
@@ -146,11 +147,9 @@ export class CandidateTradeStudyPanel {
     client?: LanguageClient,
     _targetEntityName?: string,
   ) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    super(panel, extensionUri);
     this._client = client;
 
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.html = this._getHtmlForWebview();
 
     this._panel.webview.onDidReceiveMessage(
@@ -160,6 +159,56 @@ export class CandidateTradeStudyPanel {
             this._selectedCandidateId = msg.candidateId;
             this.refresh();
             break;
+
+          case "importCandidates": {
+            const uris = await vscode.window.showOpenDialog({
+              canSelectMany: false,
+              filters: { "Trade Study Data": ["json", "csv"] },
+              openLabel: "Import Candidates",
+            });
+            if (uris && uris[0]) {
+              try {
+                const bytes = await vscode.workspace.fs.readFile(uris[0]);
+                const text = new TextDecoder().decode(bytes);
+                if (uris[0].path.endsWith(".json")) {
+                  const parsed = JSON.parse(text);
+                  if (Array.isArray(parsed)) {
+                    this.loadCandidates(parsed);
+                    vscode.window.showInformationMessage(`Imported ${parsed.length} trade study candidates.`);
+                  }
+                } else {
+                  const lines = text.trim().split(/\r?\n/);
+                  const headers = lines[0]!.split(",").map((h) => h.trim());
+                  const imported: TradeStudyCandidate[] = [];
+                  for (let i = 1; i < lines.length; i++) {
+                    const parts = lines[i]!.split(",").map((p) => p.trim());
+                    const row: Record<string, string> = {};
+                    headers.forEach((h, idx) => (row[h] = parts[idx] ?? ""));
+                    imported.push({
+                      id: row["id"] || `cand_${i}`,
+                      name: row["name"] || `Candidate #${i}`,
+                      massKg: parseFloat(row["massKg"] || "1.0"),
+                      dragN: parseFloat(row["dragN"] || "10.0"),
+                      safetyMarginPct: parseFloat(row["safetyMarginPct"] || "15.0"),
+                      rank: parseInt(row["rank"] || "1", 10),
+                      isParetoOptimal: row["isParetoOptimal"] === "true" || row["isParetoOptimal"] === "1",
+                      tier1Status: (row["tier1Status"] as any) || "passed",
+                      tier2Status: (row["tier2Status"] as any) || "passed",
+                      tier3Status: (row["tier3Status"] as any) || "unverified",
+                      parameters: {},
+                    });
+                  }
+                  if (imported.length > 0) {
+                    this.loadCandidates(imported);
+                    vscode.window.showInformationMessage(`Imported ${imported.length} candidates from CSV.`);
+                  }
+                }
+              } catch (err: any) {
+                vscode.window.showErrorMessage(`Failed to import candidates: ${err?.message || err}`);
+              }
+            }
+            break;
+          }
 
           case "launchLocalTier3":
             await this._handleLaunchLocal(msg.candidateId);
@@ -362,14 +411,70 @@ export class CandidateTradeStudyPanel {
     const cand = this._candidates.find((c) => c.id === candidateId);
     if (!cand) return;
 
-    cand.tier3Status = "running";
-    this.refresh();
-    vscode.window.showInformationMessage(
-      `Dispatched Candidate '${cand.name}' to Cloud HPC Cluster (Slurm / AWS Batch)...`,
-    );
+    try {
+      const config = vscode.workspace.getConfiguration("modelscript");
+      const cloudEndpoint = config.get<string>("caeApiUrl") || "http://localhost:3000/api/v1";
+      const cloudClient = new CaeCloudClient(cloudEndpoint);
+
+      cand.tier3Status = "running";
+      this.refresh();
+
+      const res = await cloudClient.submitJob({
+        solver: "calculix",
+        title: `Tier-3 Verification - Candidate ${cand.name}`,
+        deck: {
+          content: `*HEADING\nVerification FEA for ${cand.name}\n*NODE\n`,
+          format: "inp",
+        },
+        options: {
+          profile: "standard-4cpu",
+        },
+      });
+
+      vscode.window.showInformationMessage(
+        `Dispatched Candidate '${cand.name}' to Cloud HPC (Job ID: ${res.jobId}). Opening Cloud Job Monitor...`,
+      );
+      CloudJobPanel.createOrShow(this._extensionUri, this._client);
+    } catch (err: any) {
+      cand.tier3Status = "unverified";
+      this.refresh();
+      const choice = await vscode.window.showWarningMessage(
+        `Could not dispatch to Cloud HPC: ${err?.message || "Endpoint unreachable"}. Open Cloud Job Dispatch panel to configure remote endpoints or run locally?`,
+        "Open Cloud Dispatch",
+        "Run Locally Instead",
+      );
+      if (choice === "Open Cloud Dispatch") {
+        CloudJobPanel.createOrShow(this._extensionUri, this._client);
+      } else if (choice === "Run Locally Instead") {
+        await this._handleLaunchLocal(candidateId);
+      }
+    }
   }
 
-  public refresh() {
+  public loadCandidates(candidates: TradeStudyCandidate[]) {
+    if (Array.isArray(candidates) && candidates.length > 0 && candidates[0]) {
+      this._candidates = candidates;
+      this._selectedCandidateId = candidates[0].id;
+      this.refresh();
+    }
+  }
+
+  public async refresh(): Promise<void> {
+    if (this._client) {
+      try {
+        const uri = vscode.window.activeTextEditor?.document.uri.toString();
+        const remoteCandidates = await this._client.sendRequest<TradeStudyCandidate[]>(
+          "modelscript/getTradeStudyCandidates",
+          { uri },
+        );
+        if (Array.isArray(remoteCandidates) && remoteCandidates.length > 0) {
+          this._candidates = remoteCandidates;
+        }
+      } catch {
+        // preserve local / test candidates
+      }
+    }
+
     this._panel.webview.postMessage({
       type: "update",
       candidates: this._candidates,
@@ -377,13 +482,9 @@ export class CandidateTradeStudyPanel {
     });
   }
 
-  public dispose() {
+  public override dispose(): void {
     CandidateTradeStudyPanel.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const d = this._disposables.pop();
-      if (d) d.dispose();
-    }
+    super.dispose();
   }
 
   private _getHtmlForWebview(): string {
@@ -514,7 +615,7 @@ export class CandidateTradeStudyPanel {
     <div class="card">
       <div class="card-title">
         <span>Shortlisted Final Candidates</span>
-        <span style="font-size: 11px;">NSGA-II Non-Dominated</span>
+        <button class="btn-secondary" id="btnImportData" style="padding: 2px 8px; font-size: 11px;">📂 Import Data</button>
       </div>
       <div style="overflow-y: auto; flex: 1;">
         <table id="candidateTable">
@@ -699,18 +800,13 @@ export class CandidateTradeStudyPanel {
       }
     }
 
+    document.getElementById("btnImportData")?.addEventListener("click", () => {
+      vscode.postMessage({ type: "importCandidates" });
+    });
+
     window.addEventListener("resize", renderCanvas);
   </script>
 </body>
 </html>`;
   }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

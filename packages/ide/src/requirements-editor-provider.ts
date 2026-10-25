@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
+import { getNonce } from "./utils/nonce.js";
 
 /**
  * Custom editor provider for SysML v2 requirements & Interactive Traceability Matrix (RTM).
@@ -1306,13 +1307,4 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
 </body>
 </html>`;
   }
-}
-
-function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

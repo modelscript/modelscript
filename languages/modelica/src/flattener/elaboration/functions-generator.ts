@@ -15,6 +15,7 @@ import {
 import { Cst } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated } from "../../queries.js";
+import { stripComments } from "../expressions/cst-utils.js";
 import {
   castToRealExpr,
   escapeRegExp,
@@ -34,7 +35,7 @@ export function isFunctionSym(db: QueryDB, sym: any): boolean {
   if ((sym as any)._isFunction !== undefined) return (sym as any)._isFunction;
   const meta = (sym.metadata as any) || {};
   const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-  const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+  const cleanKind = stripComments(rawKind).trim();
   const words = cleanKind.split(/\s+/).filter(Boolean);
   if (words.includes("function")) {
     (sym as any)._isFunction = true;

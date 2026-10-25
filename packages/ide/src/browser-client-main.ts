@@ -1,340 +1,47 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
-import { simulateDroneReachability } from "@modelscript/runtime";
-
-import * as vscode from "vscode";
-import { Uri, commands, workspace } from "vscode";
-import { LanguageClientOptions } from "vscode-languageclient";
-import { LanguageClient } from "vscode-languageclient/browser";
-import { AnalysisPanel } from "./analysis-panel";
-import { getTemplatePrimaryFile, mountArtifactToMemFs, scaffoldTemplateFiles } from "./templates/catalog";
-
-import { ChatViewProvider } from "./chat-panel";
-import { CosimViewProvider } from "./cosim-panel";
-import { ModelScriptDebugSession } from "./debug-adapter";
-import { DiagramEditorProvider } from "./diagram-editor-provider";
-import { ElementTableProvider } from "./element-table-provider";
-import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider, extractFromZip } from "./fmu-document-provider";
-import { LibraryTreeProvider } from "./library-tree-provider";
-import { registerLLMProvider } from "./llm-provider";
-import { registerMCPTools } from "./mcp-bridge";
-import { MqttTreeProvider } from "./mqtt-tree-provider";
-import { ModelicaNotebookController } from "./notebook-controller";
-import { ModelicaNotebookSerializer } from "./notebook-serializer";
-import { registerRegistryView } from "./registry-tree-provider";
-import { registerRepl } from "./repl-terminal";
-import { RequirementsEditorProvider } from "./requirements-editor-provider";
-
-import { ContractHierarchyPanel } from "./contract-hierarchy-panel";
-import { MarkdownResolver, createMarkdownItPlugin } from "./markdown-it-plugin";
-import { registerMultiDomainScaffolding } from "./multi-domain-scaffolding.js";
-import { registerPolyglotActions } from "./polyglot-actions.js";
-import { registerScmIntegration } from "./scm-integration";
-import { registerScmTreeView } from "./scm-tree-view";
-import { registerSemanticDiffComments } from "./semantic-diff-comments";
-import { ThreadExplorerPanel } from "./thread-explorer-panel.js";
-import { TraceReplayPanel } from "./trace-replay-panel";
-import { VerificationPanel } from "./verification-panel";
-
-import { OWL2DiagramPanel } from "./owl2-diagram-panel";
-
-import { materializeCfdConfig } from "@modelscript/cfd";
-import { materializeFeaDeck } from "@modelscript/fea";
-import { registerCadMeshingCommands } from "./cad-meshing-commands";
-import { CadViewerPanel } from "./cad-viewer-panel";
-import { CalibrationPanel } from "./calibration-panel";
-import { CandidateTradeStudyPanel } from "./candidate-trade-study-panel";
-import { CfgEditorProvider } from "./cfg-editor-provider";
-import { CloudJobPanel } from "./cloud-job-panel";
-import { CloudStatusBar } from "./cloud-status-bar";
-import { ExperimentsTreeProvider } from "./experiments-tree";
-import { GCodeEditorProvider } from "./gcode-editor-provider";
-import { InpEditorProvider } from "./inp-editor-provider";
-import { OlgaEditorProvider } from "./olga-editor-provider";
-import { OptimizationPanel } from "./optimization-panel";
-import { PacemakerProgrammerPanel } from "./pacemaker-programmer-panel";
-import { SimulationViewPanel } from "./physics-setup-editor-provider";
-import { RawEditorProvider } from "./raw-editor-provider";
-import { FlowpipeEnvelope, SimulationPanel } from "./simulation-panel";
-import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./ssp-document-provider";
-import { StepEditorProvider } from "./step-editor-provider";
-import { SurrogatePanel } from "./surrogate-panel";
-import { UncertaintyPanel } from "./uncertainty-panel";
-
-function decodeBase64ToArray(base64: string): Uint8Array {
-  // Extract only base64 characters
-  const b64 = base64.replace(/[^A-Za-z0-9+/=]/g, "");
-
-  // Calculate unpadded length
-  let padding = 0;
-  if (b64.endsWith("==")) padding = 2;
-  else if (b64.endsWith("=")) padding = 1;
-  const bufferLength = b64.length * 0.75 - padding;
-
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  const lookup = new Uint8Array(256);
-  for (let i = 0; i < chars.length; i++) {
-    lookup[chars.charCodeAt(i)] = i;
-  }
-
-  const bytes = new Uint8Array(bufferLength);
-  let p = 0;
-  for (let i = 0; i < b64.length; i += 4) {
-    const encoded1 = lookup[b64.charCodeAt(i)]!;
-    const encoded2 = lookup[b64.charCodeAt(i + 1)]!;
-    const encoded3 = lookup[b64.charCodeAt(i + 2)]!;
-    const encoded4 = lookup[b64.charCodeAt(i + 3)]!;
-
-    bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
-    if (p < bufferLength) bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
-    if (p < bufferLength) bytes[p++] = ((encoded3 & 3) << 6) | (encoded4 & 63);
-  }
-  return bytes;
-}
-
-let activeClient: LanguageClient | undefined;
-let client: LanguageClient | undefined;
-const clientProxy = new Proxy({} as LanguageClient, {
-  get(_target, prop, receiver) {
-    if (!activeClient) return undefined;
-    const val = Reflect.get(activeClient as object, prop, receiver);
-    return typeof val === "function" ? val.bind(activeClient) : val;
-  },
-  set(_target, prop, value, receiver) {
-    if (!activeClient) return false;
-    return Reflect.set(activeClient as object, prop, value, receiver);
-  },
-});
-let fmuContentProvider: FmuContentProvider | undefined;
-let sspContentProvider: SspContentProvider | undefined;
-
-/**
- * Simple in-memory filesystem provider for the `tmp` scheme.
- * Used by blank project mode to store files in memory.
- */
-class MemoryFileSystemProvider implements vscode.FileSystemProvider {
-  private files = new Map<string, Uint8Array>();
-  private directories = new Set<string>(["/"]); // Root always exists
-  private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-  readonly onDidChangeFile = this._emitter.event;
-
-  watch(): vscode.Disposable {
-    // No-op: we don't need to watch for external changes
-    return new vscode.Disposable(() => undefined);
-  }
-
-  stat(uri: vscode.Uri): vscode.FileStat {
-    const path = uri.path;
-    // Check directories FIRST — a path registered as a directory must not be treated as a file
-    if (this.directories.has(path) || path === "/" || path === "") {
-      return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
-    }
-    if (this.files.has(path)) {
-      return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: this.files.get(path)?.length ?? 0 };
-    }
-    // Fall back to open text documents — files created through the VS Code UI may
-    // exist only in the text model layer, not yet persisted to our in-memory store.
-    const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === uri.scheme && d.uri.path === path);
-    if (doc) {
-      const content = new TextEncoder().encode(doc.getText());
-      return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: content.length };
-    }
-    throw vscode.FileSystemError.FileNotFound(uri);
-  }
-
-  readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
-    const prefix = uri.path === "/" ? "/" : uri.path + "/";
-    const result: [string, vscode.FileType][] = [];
-    const seen = new Set<string>();
-    for (const [path] of this.files) {
-      if (path.startsWith(prefix)) {
-        const rest = path.slice(prefix.length);
-        const name = rest.split("/")[0]!;
-        if (!seen.has(name)) {
-          seen.add(name);
-          result.push([name, rest.includes("/") ? vscode.FileType.Directory : vscode.FileType.File]);
-        }
-      }
-    }
-    for (const dir of this.directories) {
-      if (dir.startsWith(prefix)) {
-        const rest = dir.slice(prefix.length);
-        if (!rest.includes("/") && !seen.has(rest)) {
-          seen.add(rest);
-          result.push([rest, vscode.FileType.Directory]);
-        }
-      }
-    }
-    return result;
-  }
-
-  createDirectory(uri: vscode.Uri): void {
-    this._mkdirp(uri.path);
-  }
-
-  readFile(uri: vscode.Uri): Uint8Array {
-    const data = this.files.get(uri.path);
-    if (data) return data;
-    // Fall back to open text documents (see stat() comment above)
-    const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === uri.scheme && d.uri.path === uri.path);
-    if (doc) {
-      const content = new TextEncoder().encode(doc.getText());
-      // Persist into our store so subsequent reads don't need the fallback
-      this.files.set(uri.path, content);
-      return content;
-    }
-    throw vscode.FileSystemError.FileNotFound(uri);
-  }
-
-  writeFile(uri: vscode.Uri, content: Uint8Array): void {
-    // Auto-create parent directories
-    const parts = uri.path.split("/");
-    for (let i = 1; i < parts.length - 1; i++) {
-      this._mkdirp(parts.slice(0, i + 1).join("/"));
-    }
-    const isNew = !this.files.has(uri.path);
-    this.files.set(uri.path, content);
-    this._emitter.fire([{ type: isNew ? vscode.FileChangeType.Created : vscode.FileChangeType.Changed, uri }]);
-  }
-
-  writeFiles(entries: [vscode.Uri, Uint8Array][]): void {
-    const events: vscode.FileChangeEvent[] = [];
-    for (const [uri, content] of entries) {
-      const parts = uri.path.split("/");
-      for (let i = 1; i < parts.length - 1; i++) {
-        this._mkdirp(parts.slice(0, i + 1).join("/"));
-      }
-      const isNew = !this.files.has(uri.path);
-      this.files.set(uri.path, content);
-      events.push({ type: isNew ? vscode.FileChangeType.Created : vscode.FileChangeType.Changed, uri });
-    }
-    this._emitter.fire(events);
-  }
-
-  delete(uri: vscode.Uri): void {
-    this.files.delete(uri.path);
-    this.directories.delete(uri.path);
-    this._emitter.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
-  }
-
-  rename(oldUri: vscode.Uri, newUri: vscode.Uri): void {
-    const data = this.files.get(oldUri.path);
-    if (data) {
-      this.files.delete(oldUri.path);
-      this.files.set(newUri.path, data);
-    }
-  }
-
-  private _mkdirp(path: string): void {
-    this.directories.add(path);
-  }
-}
-
-/**
- * Read-only filesystem provider for the `modelica://` virtual scheme.
- * Resolves standard library files (e.g. MSL) hosted in the language server's virtual VFS.
- */
-class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
-  private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
-  readonly onDidChangeFile = this._emitter.event;
-  private cache = new Map<string, Uint8Array>();
-
-  watch(): vscode.Disposable {
-    return new vscode.Disposable(() => undefined);
-  }
-
-  async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    console.log("[ModelicaFileSystemProvider] stat called for:", uri.toString());
-    const cached = this.cache.get(uri.toString());
-    if (cached) {
-      return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: cached.length };
-    }
-    if (!client) {
-      console.warn("[ModelicaFileSystemProvider] stat: client is not defined!");
-      throw vscode.FileSystemError.FileNotFound(uri);
-    }
-    try {
-      const res: any = await client.sendRequest("modelscript/getVirtualFile", { uri: uri.toString() });
-      console.log("[ModelicaFileSystemProvider] stat response:", uri.toString(), JSON.stringify(res));
-      if (res && res.exists) {
-        if (res.isDirectory) {
-          return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
-        }
-        return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: res.size ?? (res.content?.length || 0) };
-      }
-    } catch (e) {
-      console.warn("[ModelicaFileSystemProvider] stat error:", e);
-    }
-    throw vscode.FileSystemError.FileNotFound(uri);
-  }
-
-  async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    console.log("[ModelicaFileSystemProvider] readFile called for:", uri.toString());
-    const cached = this.cache.get(uri.toString());
-    if (cached) return cached;
-
-    if (!client) {
-      console.warn("[ModelicaFileSystemProvider] readFile: client is not defined!");
-      throw vscode.FileSystemError.FileNotFound(uri);
-    }
-    try {
-      const res: any = await client.sendRequest("modelscript/getVirtualFile", { uri: uri.toString() });
-      console.log(
-        "[ModelicaFileSystemProvider] readFile response:",
-        uri.toString(),
-        res ? { exists: res.exists, length: res.content?.length } : null,
-      );
-      if (res && res.exists && typeof res.content === "string") {
-        const data = new TextEncoder().encode(res.content);
-        this.cache.set(uri.toString(), data);
-        return data;
-      }
-    } catch (e) {
-      console.warn("[ModelicaFileSystemProvider] readFile error:", e);
-    }
-    throw vscode.FileSystemError.FileNotFound(uri);
-  }
-
-  async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-    if (!client) return [];
-    try {
-      const res: any = await client.sendRequest("modelscript/readVirtualDirectory", { uri: uri.toString() });
-      if (Array.isArray(res)) {
-        return res.map((e: any) => [e.name, e.isDirectory ? vscode.FileType.Directory : vscode.FileType.File]);
-      }
-    } catch (e) {
-      console.warn("[ModelicaFileSystemProvider] readDirectory error:", e);
-    }
-    return [];
-  }
-
-  createDirectory(): void {
-    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
-  }
-
-  writeFile(): void {
-    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
-  }
-
-  delete(): void {
-    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
-  }
-
-  rename(): void {
-    throw vscode.FileSystemError.NoPermissions("Read-only filesystem");
-  }
-}
 
 import { StoppedEvent } from "@vscode/debugadapter";
-import { activeDebugSession, setLspDebugCallbacks } from "./debug-adapter";
+import * as vscode from "vscode";
+import { commands, workspace } from "vscode";
+import { CfgEditorProvider } from "./cfg-editor-provider.js";
+import { ChatViewProvider } from "./chat-panel.js";
+import { registerChatParticipant } from "./chat-participant.js";
+import { CloudStatusBar } from "./cloud-status-bar.js";
+import { registerCollaborationPresence, type IdePeerPresence, type IdeSymbolCollision } from "./collab-presence.js";
+import { registerDynamicActions } from "./controllers/action-router-controller.js";
+import { registerAnalyticalCommands } from "./controllers/analytical-controller.js";
+import { registerCadAndMeshingCommands } from "./controllers/cad-meshing-controller.js";
+import { registerCloudCommands } from "./controllers/cloud-controller.js";
+import { registerCosimCommands } from "./controllers/cosim-controller.js";
+import { registerCustomEditors } from "./controllers/custom-editors-controller.js";
+import { registerSimulationCommands } from "./controllers/simulation-controller.js";
+import { TreeViewController } from "./controllers/tree-view-controller.js";
+import { CosimViewProvider } from "./cosim-panel.js";
+import { activeDebugSession } from "./debug-adapter.js";
+import { DiagramEditorProvider } from "./diagram-editor-provider.js";
+import { InpEditorProvider } from "./inp-editor-provider.js";
+import { registerLLMProvider } from "./llm-provider.js";
+import { registerMCPTools } from "./mcp-bridge.js";
+import { registerMultiDomainScaffolding } from "./multi-domain-scaffolding.js";
+import { ModelicaNotebookController } from "./notebook-controller.js";
+import { ModelicaNotebookSerializer } from "./notebook-serializer.js";
+import { registerPolyglotActions } from "./polyglot-actions.js";
+import { PsoutEditorProvider } from "./psout-editor-provider.js";
+import { registerRepl } from "./repl-terminal.js";
+import { RequirementsEditorProvider } from "./requirements-editor-provider.js";
+import { registerScmIntegration } from "./scm-integration.js";
+import { registerSemanticDiffComments } from "./semantic-diff-comments.js";
+import { DebugAdapterService } from "./services/debug-adapter-service.js";
+import { HostBridgeService } from "./services/host-bridge-service.js";
+import { LspClientManager } from "./services/lsp-client-manager.js";
+import { MarkdownPreviewService } from "./services/markdown-preview-service.js";
+import { initWorkspaceAndTree, registerVirtualFileSystems } from "./services/virtual-fs-service.js";
+import { SimulationViewPanel } from "./simulation-view-panel.js";
+import { StepEditorProvider } from "./step-editor-provider.js";
+import { VrVisualizationPanel } from "./vr-visualization-panel.js";
 
-class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
-  createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    // Keep session around to satisfy TS, though we do not use it
-    void session;
-    return new vscode.DebugAdapterInlineImplementation(new ModelScriptDebugSession());
-  }
-}
+let lspManager: LspClientManager | undefined;
+export let languageWorker: Worker | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
@@ -359,156 +66,34 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  // ── Markdown Preview: LSP-backed resolver ──
-  // Cache variable values, requirements, and diagram data from the LSP
-  // so the markdown-it plugin can inject them synchronously during rendering.
-  const markdownVarCache: Record<string, string> = {};
-  const markdownDiagramCache: Record<string, string> = {};
-  const markdownRequirementsCache: Record<string, { reqId: string; name: string; text: string; status: string }[]> = {};
-  const markdownDiagramComponentsCache: Record<
-    string,
-    { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
-  > = {};
+  // 1. LSP Client Manager & Services
+  lspManager = new LspClientManager(context);
+  context.subscriptions.push(lspManager);
 
-  const resolver: MarkdownResolver = {
-    resolveVariable(name: string): string | undefined {
-      return markdownVarCache[name];
-    },
-    resolveDiagramSvg(target: string): string | undefined {
-      return markdownDiagramCache[target];
-    },
-    resolveRequirements(target: string) {
-      return markdownRequirementsCache[target];
-    },
-    resolveDiagramComponents(target: string) {
-      return markdownDiagramComponentsCache[target]?.components;
-    },
-    resolveDiagramConnections(target: string) {
-      return markdownDiagramComponentsCache[target]?.connections;
-    },
-  };
+  const debugAdapterService = new DebugAdapterService(context, () => lspManager?.client);
+  context.subscriptions.push(debugAdapterService);
 
-  /**
-   * Fetch all markdown-related data from the LSP and refresh the preview.
-   */
-  async function refreshMarkdownData(): Promise<void> {
-    if (!client) return;
-    try {
-      const varsResult = await client
-        .sendRequest<{ values: Record<string, string> }>("modelscript/resolveMarkdownVars")
-        .catch(() => null);
+  const markdownService = new MarkdownPreviewService(context, () => lspManager?.client);
+  context.subscriptions.push(markdownService);
 
-      let changed = false;
-      if (varsResult?.values) {
-        for (const [k, v] of Object.entries(varsResult.values)) {
-          if (markdownVarCache[k] !== v) {
-            markdownVarCache[k] = String(v);
-            changed = true;
-          }
-        }
-      }
+  // 2. Virtual File Systems (memfs:// and modelica://)
+  const { memFs, memfsRootUri } = registerVirtualFileSystems(context, () => lspManager?.client);
 
-      if (changed) {
-        vscode.commands.executeCommand("markdown.preview.refresh");
-      }
-    } catch (e) {
-      console.warn("[ModelScript] refreshMarkdownData error:", e);
-    }
-  }
+  // 3. Custom Editors & Documents (Diagram, FMU, SSP, STEP, GCode, INP, CFG, RAW, OLGA, Requirements, ElementTable)
+  const { fmuContentProvider, diagramProvider } = registerCustomEditors(context, lspManager.client);
 
-  const STATIC_ACTION_COMMANDS = new Set([
-    "modelscript.modelica.simulate",
-    "modelscript.modelica.flatten",
-    "modelscript.action.simulate",
-    "modelscript.action.flatten",
-    "modelscript.flatten",
-    "modelscript.runSimulation",
-    "modelscript.scad.preview_csg",
-    "modelscript.scad.export_step",
-    "modelscript.previewCsg",
-  ]);
+  // 4. Tree View Controller (Library, Experiments, MQTT, Registry, SCM, OWL2)
+  const treeController = new TreeViewController(context, () => lspManager!.client, diagramProvider);
+  context.subscriptions.push(treeController);
 
-  async function getProjectDependencies() {
-    const defaultDeps = [
-      { name: "Modelica", version: "4.1.0" },
-      { name: "SysML", version: "2026.3.0" },
-    ];
-
-    if (!workspace.workspaceFolders || workspace.workspaceFolders.length === 0) {
-      return defaultDeps;
-    }
-
-    const rootUri = workspace.workspaceFolders[0]!.uri;
-
-    try {
-      const msJsonUri = vscode.Uri.joinPath(rootUri, "modelscript.json");
-      const content = await workspace.fs.readFile(msJsonUri);
-      const json = JSON.parse(new TextDecoder().decode(content));
-      if (json.dependencies) {
-        return Object.entries(json.dependencies).map(([name, version]) => ({ name, version }));
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      const pkgJsonUri = vscode.Uri.joinPath(rootUri, "package.json");
-      const content = await workspace.fs.readFile(pkgJsonUri);
-      const json = JSON.parse(new TextDecoder().decode(content));
-      if (json.modelscript?.dependencies) {
-        return Object.entries(json.modelscript.dependencies).map(([name, version]) => ({ name, version }));
-      }
-    } catch {
-      // ignore
-    }
-
-    return defaultDeps;
-  }
-
-  // Register in-memory filesystem for blank project mode (memfs:// scheme)
-  // Must be registered synchronously before any await to avoid ENOPRO race conditions during workspace validation.
-  const memFs = new MemoryFileSystemProvider();
-  context.subscriptions.push(workspace.registerFileSystemProvider("memfs", memFs, { isCaseSensitive: true }));
-  console.log("[blank-project] Registered memfs:// filesystem provider");
-
-  const modelicaFs = new ModelicaFileSystemProvider();
-  context.subscriptions.push(
-    workspace.registerFileSystemProvider("modelica", modelicaFs, { isReadonly: true, isCaseSensitive: true }),
+  // 5. Host Bridge Service (BroadcastChannel & mount handoff)
+  const hostBridgeService = new HostBridgeService(
+    context,
+    memFs,
+    memfsRootUri,
+    () => treeController.libraryTreeProvider,
   );
-  console.log("[modelica-vfs] Registered modelica:// filesystem provider");
-
-  const folders = workspace.workspaceFolders;
-  let memfsRootUri: vscode.Uri | undefined;
-  if (folders && folders.length > 0 && folders[0]!.uri.scheme === "memfs") {
-    memfsRootUri = folders[0]!.uri;
-  } else {
-    try {
-      const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
-      if (hash.startsWith("memfs")) {
-        const template = hash.split(":")[1] || "empty";
-        memfsRootUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template });
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  if (memfsRootUri) {
-    memFs.createDirectory(memfsRootUri);
-    // Scaffold template files SYNCHRONOUSLY into the memfs store so they exist
-    // before VS Code attempts to restore previously-open editors (including
-    // diagram custom editors) from a prior session. Without this, restored editors
-    // trigger FileNotFound because initWorkspaceAndTree runs asynchronously later.
-    scaffoldTemplateFiles(memFs, memfsRootUri);
-  }
-
-  try {
-    context.subscriptions.push(
-      vscode.debug.registerDebugAdapterDescriptorFactory("modelscript", new InlineDebugAdapterFactory()),
-    );
-  } catch (e) {
-    console.warn("Failed to register debug adapter factory:", e);
-  }
+  context.subscriptions.push(hostBridgeService);
 
   // Register URI handler for vscode://modelscript.modelscript/install?package=xyz
   context.subscriptions.push(
@@ -526,737 +111,67 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  setLspDebugCallbacks(
-    async (program: string) => {
-      let uri = program;
-      try {
-        const doc = vscode.workspace.textDocuments.find((d) => d.uri.path === program || d.fileName === program);
-        if (doc) uri = doc.uri.toString();
-        else uri = vscode.Uri.file(program).toString();
-      } catch {
-        /* ignore */
-      }
-      if (client) {
-        const result = await client.sendRequest<{ error?: string | undefined }>("modelscript/simulateDebug", { uri });
-        if (result && result.error) {
-          vscode.window.showErrorMessage(`Debugger failed to start: ${result.error}`);
-        }
-        return result;
-      }
-      return { error: "LSP Client not active" };
-    },
-    async () => {
-      if (client) await client.sendRequest("modelscript/debuggerContinue");
-    },
-    async () => {
-      if (client) return client.sendRequest("modelscript/debuggerVariables");
-      return [];
-    },
-    async (program: string, bps: { line: number; column?: number | undefined }[]) => {
-      let uri = program;
-      try {
-        const doc = vscode.workspace.textDocuments.find((d) => d.uri.path === program || d.fileName === program);
-        if (doc) uri = doc.uri.toString();
-        else uri = vscode.Uri.file(program).toString();
-      } catch {
-        /* ignore */
-      }
-      if (client) await client.sendNotification("modelscript/setBreakpoints", { uri, breakpoints: bps });
-    },
-    async () => {
-      if (client) await client.sendRequest("modelscript/debuggerContinue", { step: true });
-    },
-  );
-
-  context.subscriptions
-    .push
-    // We can't push 'client.onNotification' to subscriptions directly, but we can set it up after client init.
-    // In browserClientMain.ts, the client is initialized later, so we'll just wait for it.
-    ();
-
-  // Clean up any stale Modelica color overrides persisted by a previous version.
-  // VS Code's built-in themes (Dark Modern, Light Modern) already color the LSP's
-  // standard semantic token types correctly, matching Morsel's colors.
-  const config = workspace.getConfiguration();
-  if (config.get("editor.semanticTokenColorCustomizations")) {
-    await config.update("editor.semanticTokenColorCustomizations", undefined, vscode.ConfigurationTarget.Global);
-  }
-  if (config.get("editor.tokenColorCustomizations")) {
-    await config.update("editor.tokenColorCustomizations", undefined, vscode.ConfigurationTarget.Global);
-  }
-
-  // Register virtual document provider and custom editor for FMU files
-  fmuContentProvider = new FmuContentProvider();
-  context.subscriptions.push(workspace.registerTextDocumentContentProvider(FMU_VIEW_SCHEME, fmuContentProvider));
-  const fmuEditor = new FmuEditorProvider(fmuContentProvider);
+  // 6. Notebook Controller & Serializer
   context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(FmuEditorProvider.viewType, fmuEditor, {
-      supportsMultipleEditorsPerDocument: false,
-      webviewOptions: { retainContextWhenHidden: false },
-    }),
+    vscode.workspace.registerNotebookSerializer("modelscript-notebook", new ModelicaNotebookSerializer()),
   );
+  const notebookController = new ModelicaNotebookController();
+  notebookController.client = lspManager.client;
+  context.subscriptions.push(notebookController);
 
-  // Register virtual document provider and custom editor for SSP files
-  sspContentProvider = new SspContentProvider();
-  context.subscriptions.push(workspace.registerTextDocumentContentProvider(SSP_VIEW_SCHEME, sspContentProvider));
-  const sspEditor = new SspEditorProvider(sspContentProvider);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(SspEditorProvider.viewType, sspEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  // Physics editor is registered after the LSP client starts (needs client for STEP meshes)
-
-  const contributedLanguages =
-    (context.extension?.packageJSON?.contributes?.languages as
-      | { id: string; extensions?: string[] | undefined }[]
-      | undefined) || [];
-  const dynamicLanguageSelectors: ({ language: string } | { pattern: string })[] = [];
-  const allExts: string[] = [
-    "mo",
-    "mos",
-    "sysml",
-    "sysml2",
-    "step",
-    "stp",
-    "p21",
-    "owl",
-    "ttl",
-    "ofn",
-    "csv",
-    "scad",
-    "cfg",
-    "cfd",
-    "cfgt",
-    "su2",
-    "inp",
-    "fea",
-    "inpt",
-    "bdf",
-  ];
-
-  if (contributedLanguages.length > 0) {
-    for (const lang of contributedLanguages) {
-      dynamicLanguageSelectors.push({ language: lang.id });
-      if (lang.extensions) {
-        for (const ext of lang.extensions) {
-          const cleanExt = ext.startsWith(".") ? ext.slice(1) : ext;
-          if (!allExts.includes(cleanExt)) allExts.push(cleanExt);
-        }
-      }
-    }
-  } else {
-    dynamicLanguageSelectors.push(
-      { language: "modelica" },
-      { language: "sysml" },
-      { language: "sysml2" },
-      { language: "step" },
-      { language: "owl2" },
-      { language: "csv" },
-      { language: "scad" },
-      { language: "cfd" },
-      { language: "fea" },
-    );
-  }
-
-  dynamicLanguageSelectors.push({ pattern: "**/*.{js,ts}" });
-  dynamicLanguageSelectors.push({ pattern: `**/*.{${allExts.join(",")}}` });
-  const documentSelector = dynamicLanguageSelectors;
-
-  // Options to control the language client
-  const lspOutputChannel = vscode.window.createOutputChannel("ModelScript Language Server");
-  const clientOptions: LanguageClientOptions = {
-    documentSelector,
-    synchronize: {},
-    initializationOptions: {
-      extensionUri: context.extensionUri.toString(),
-      registryUrl:
-        vscode.workspace.getConfiguration("modelscript").get("registryUrl") ||
-        (typeof location !== "undefined" && (location.hostname === "localhost" || location.hostname === "127.0.0.1")
-          ? `${location.protocol}//${location.hostname}:3000`
-          : "https://api.modelscript.org"),
-      useLocalMsl: !(vscode.workspace.getConfiguration("modelscript").get("library.useApiRegistry") ?? false),
-      projectDependencies: await getProjectDependencies(),
-    },
-    outputChannel: lspOutputChannel,
-  };
-
-  activeClient = await createWorkerLanguageClient(context, clientOptions);
-  client = clientProxy;
-
-  try {
-    await activeClient.start();
-    console.log("ModelScript language server is ready");
-    lspOutputChannel.appendLine("[client] Language server started successfully");
-
-    // Dynamically register language actions from the server Action Router
-    try {
-      const actions = await client.sendRequest<any[]>("modelscript/listActions", {});
-      if (Array.isArray(actions)) {
-        for (const action of actions) {
-          if (!action.id) continue;
-          try {
-            const cmdId = `modelscript.action.${action.id}`;
-            const handler = async (args?: any) => {
-              let targetDoc = vscode.window.activeTextEditor?.document;
-              let targetUri = (args instanceof vscode.Uri ? args.toString() : args?.uri) ?? targetDoc?.uri.toString();
-              if (!targetUri) {
-                const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-                if (tab?.input instanceof vscode.TabInputCustom) {
-                  targetUri = tab.input.uri.toString();
-                }
-              }
-              const inputs = typeof args === "object" && args && !(args instanceof vscode.Uri) ? { ...args } : {};
-              if (!inputs.documentText) {
-                if (targetDoc) {
-                  inputs.documentText = targetDoc.getText();
-                } else if (targetUri) {
-                  const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === targetUri);
-                  if (openDoc) {
-                    inputs.documentText = openDoc.getText();
-                  } else {
-                    try {
-                      const fileBytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(targetUri));
-                      inputs.documentText = new TextDecoder().decode(fileBytes);
-                    } catch {
-                      // ignore
-                    }
-                  }
-                }
-              }
-              if (!inputs.name && inputs.documentText) {
-                const text = inputs.documentText;
-                const m = text.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-                if (m) inputs.name = m[1];
-              }
-              if (action.id === "open_diagram" || action.id === "diagram" || action.id === "openDiagram") {
-                return await vscode.commands.executeCommand("modelscript.openDiagram", args);
-              }
-              if (action.id === "open_cad_viewer") {
-                return await vscode.commands.executeCommand("modelscript.openStepViewer", args);
-              }
-              if (action.id === "preview_csg" || action.id === "scad_preview_csg") {
-                return await vscode.commands.executeCommand("modelscript.previewCsg", args);
-              }
-              if (action.id === "open_requirements_matrix") {
-                return await vscode.commands.executeCommand("modelscript.openRequirements", args);
-              }
-              if (action.id === "export_fmu") {
-                return await vscode.commands.executeCommand("modelscript.exportFmi2", args);
-              }
-              if (action.id === "compile_wasm") {
-                return await vscode.commands.executeCommand("modelscript.compileWasm", args);
-              }
-              if (action.id === "analyze_blt") {
-                return await vscode.commands.executeCommand("modelscript.analyzeBlt", args);
-              }
-              if (action.id === "generate_multibody") {
-                return await vscode.commands.executeCommand("modelscript.generateMultiBody", args);
-              }
-              if (action.id === "generate_fea_mesh" || action.id === "discretize_fea") {
-                return await vscode.commands.executeCommand("modelscript.generateFeaMesh", args);
-              }
-              if (action.id === "generate_cfd_mesh" || action.id === "discretize_cfd") {
-                return await vscode.commands.executeCommand("modelscript.generateCfdMesh", args);
-              }
-              if (action.id === "create_fea_setup") {
-                return await vscode.commands.executeCommand("modelscript.createFeaSetup", args);
-              }
-              if (action.id === "create_cfd_setup") {
-                return await vscode.commands.executeCommand("modelscript.createCfdSetup", args);
-              }
-              if (action.id === "export_step" || action.id === "scad_export_step") {
-                const isScad = targetUri?.endsWith(".scad") || targetDoc?.languageId === "scad";
-                if (isScad) {
-                  return await vscode.commands.executeCommand("modelscript.scad.exportStep", args);
-                }
-                return await vscode.commands.executeCommand("modelscript.exportShapeToStep", args);
-              }
-              if (action.id === "materialize_deck") {
-                return await vscode.commands.executeCommand("modelscript.materializeCalculixDeck", args);
-              }
-              if (action.id === "materialize_config") {
-                return await vscode.commands.executeCommand("modelscript.materializeSu2Config", args);
-              }
-              if (action.id === "open_ontology_diagram") {
-                return await vscode.commands.executeCommand("modelscript.owl2.openDiagram", args);
-              }
-              if (action.id === "launch_cosimulation") {
-                return await vscode.commands.executeCommand("modelscript.cosimOpenLivePlot", args);
-              }
-
-              if (action.id === "simulate_hybrid_emt" || action.category === "simulate") {
-                try {
-                  return await vscode.window.withProgress(
-                    {
-                      location: vscode.ProgressLocation.Notification,
-                      title: action.title ? `Running ${action.title}...` : "Running EMT simulation...",
-                      cancellable: false,
-                    },
-                    async () => {
-                      const res = await client?.sendRequest<any>("modelscript/executeAction", {
-                        actionId: action.id,
-                        uri: targetUri,
-                        languageId: action.languageId ?? targetDoc?.languageId ?? "pscad",
-                        inputs,
-                      });
-                      const simRes = res?.simulationResult ?? res;
-                      if (simRes) {
-                        const timeArr: number[] = Array.isArray(simRes.time)
-                          ? simRes.time
-                          : simRes.time instanceof Float64Array || ArrayBuffer.isView(simRes.time)
-                            ? Array.from(simRes.time as unknown as ArrayLike<number>)
-                            : simRes.t
-                              ? Array.isArray(simRes.t)
-                                ? simRes.t
-                                : Array.from(simRes.t as unknown as ArrayLike<number>)
-                              : [];
-                        if (timeArr.length > 0) {
-                          const stateNames: string[] = [];
-                          const yRows: number[][] = [];
-
-                          if (simRes.busPhaseVoltages) {
-                            const mapEntries =
-                              simRes.busPhaseVoltages instanceof Map
-                                ? Array.from(simRes.busPhaseVoltages.entries())
-                                : Object.entries(simRes.busPhaseVoltages);
-                            for (const [bus, phases] of mapEntries as [string, any][]) {
-                              for (const ph of ["a", "b", "c"] as const) {
-                                if (phases?.[ph]) {
-                                  stateNames.push(`v_${bus}_${ph}`);
-                                  yRows.push(Array.from(phases[ph]));
-                                }
-                              }
-                            }
-                          } else if (simRes.busVoltages) {
-                            const mapEntries =
-                              simRes.busVoltages instanceof Map
-                                ? Array.from(simRes.busVoltages.entries())
-                                : Object.entries(simRes.busVoltages);
-                            for (const [bus, arr] of mapEntries as [string, any][]) {
-                              stateNames.push(`v_${bus}`);
-                              yRows.push(Array.from(arr));
-                            }
-                          }
-
-                          if (simRes.branchPhaseCurrents) {
-                            const mapEntries =
-                              simRes.branchPhaseCurrents instanceof Map
-                                ? Array.from(simRes.branchPhaseCurrents.entries())
-                                : Object.entries(simRes.branchPhaseCurrents);
-                            for (const [branch, phases] of mapEntries as [string, any][]) {
-                              for (const ph of ["a", "b", "c"] as const) {
-                                if (phases?.[ph]) {
-                                  stateNames.push(`i_${branch}_${ph}`);
-                                  yRows.push(Array.from(phases[ph]));
-                                }
-                              }
-                            }
-                          } else if (simRes.branchCurrents) {
-                            const mapEntries =
-                              simRes.branchCurrents instanceof Map
-                                ? Array.from(simRes.branchCurrents.entries())
-                                : Object.entries(simRes.branchCurrents);
-                            for (const [branch, arr] of mapEntries as [string, any][]) {
-                              stateNames.push(`i_${branch}`);
-                              yRows.push(Array.from(arr));
-                            }
-                          }
-
-                          if (yRows.length > 0) {
-                            // Transpose yRows from y[varIndex][timeIndex] to yMatrix[timeIndex][varIndex]
-                            const nSteps = timeArr.length;
-                            const nVars = yRows.length;
-                            const yMatrix: number[][] = new Array(nSteps);
-                            for (let ti = 0; ti < nSteps; ti++) {
-                              const row = new Array(nVars);
-                              for (let vi = 0; vi < nVars; vi++) {
-                                row[vi] = yRows[vi]![ti] ?? 0;
-                              }
-                              yMatrix[ti] = row;
-                            }
-
-                            const dt =
-                              timeArr.length > 1 ? timeArr[1]! - timeArr[0]! : (res?.settings?.timeStepUs ?? 50) * 1e-6;
-                            const tStop = timeArr[timeArr.length - 1] ?? res?.settings?.durationSec ?? 0.25;
-
-                            SimulationPanel.createOrShowWithData(
-                              context.extensionUri,
-                              {
-                                t: timeArr,
-                                states: stateNames,
-                                y: yMatrix,
-                                parameters: [],
-                                experiment: {
-                                  startTime: timeArr[0] ?? 0,
-                                  stopTime: tStop,
-                                  interval: dt,
-                                  tolerance: 1e-4,
-                                  solver: "Dommel Companion (EMT)",
-                                },
-                                comtrade: res?.comtrade ?? simRes?.comtrade,
-                                pscadOut: res?.pscadOut ?? simRes?.pscadOut,
-                                projectName: res?.project ?? "pscad_model",
-                              },
-                              targetUri || "",
-                              client,
-                            );
-                            return res;
-                          }
-                        }
-                      }
-                      if (res?.complianceReport) {
-                        vscode.window.showInformationMessage(
-                          `IEEE 2800 Verification: ${res.complianceReport.overallCompliance ? "PASS" : "NON-COMPLIANT"} (${res.complianceReport.clauses?.length ?? 0} clauses evaluated).`,
-                        );
-                      }
-                      return res;
-                    },
-                  );
-                } catch (simErr: any) {
-                  vscode.window.showErrorMessage(`Simulation failed: ${simErr?.message ?? simErr}`);
-                  throw simErr;
-                }
-              }
-
-              return await client?.sendRequest("modelscript/executeAction", {
-                actionId: action.id,
-                uri: targetUri,
-                languageId: action.languageId ?? targetDoc?.languageId,
-                inputs,
-              });
-            };
-            if (!STATIC_ACTION_COMMANDS.has(cmdId)) {
-              context.subscriptions.push(safeRegisterCommand(cmdId, handler));
-            }
-            if (action.languageId) {
-              const langCmdId = `modelscript.${action.languageId}.${action.id}`;
-              if (!STATIC_ACTION_COMMANDS.has(langCmdId)) {
-                context.subscriptions.push(safeRegisterCommand(langCmdId, handler));
-              }
-            }
-          } catch (actionErr) {
-            console.warn(`[client] Failed to register dynamic action '${action.id}':`, actionErr);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("[client] Could not register dynamic language actions:", err);
-    }
-
-    // Register 3D CAD step viewer
-    const stepEditor = new StepEditorProvider(context, client);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(StepEditorProvider.viewType, stepEditor, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
-
-    // Register GCode viewer
-    const gcodeEditor = new GCodeEditorProvider(context);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(GCodeEditorProvider.viewType, gcodeEditor, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
-
-    // Register FEA Deck 3D Editor (.inp / .inpt)
-    const inpEditor = new InpEditorProvider(context, client);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(InpEditorProvider.viewType, inpEditor, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
-
-    // Register CFD Config 3D Editor (.cfg / .cfgt)
-    const cfgEditor = new CfgEditorProvider(context, client);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(CfgEditorProvider.viewType, cfgEditor, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
-
-    // Register PSS/E RAW Power Flow Editor (.raw)
-    const rawEditor = new RawEditorProvider(context);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(RawEditorProvider.viewType, rawEditor, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
-
-    // Register OLGA Multiphase Flow Assurance Editor (.opi / .key / .genkey)
-    const olgaEditor = new OlgaEditorProvider(context);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(OlgaEditorProvider.viewType, olgaEditor, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
-
-    // Register Automated CAD-to-Mesh Commands
-    registerCadMeshingCommands(context, client);
-  } catch (e) {
-    console.error("ModelScript language server failed to start:", e);
-    lspOutputChannel.appendLine(`[client] Language server FAILED to start: ${e}`);
-  }
-
-  // Register AI integration components (proposed APIs — may not be available in web builds)
+  // 7. AI & Chat Integration
   try {
     registerLLMProvider(context);
   } catch {
     /* proposed API not available */
   }
-  // Note: registerChatParticipant requires a chatParticipants manifest entry — use the custom ChatPanel instead
   try {
-    registerMCPTools(context, client);
+    registerMCPTools(context, lspManager.client);
   } catch {
     /* proposed API not available */
   }
-
-  // Register chat view provider (secondary sidebar)
-  if (client) {
-    const chatProvider = new ChatViewProvider(context.extensionUri, client);
-    context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chatProvider, {
-        webviewOptions: { retainContextWhenHidden: true },
-      }),
-    );
+  try {
+    registerChatParticipant(context);
+  } catch {
+    /* ignore */
   }
 
-  // Custom chat panel (works without VS Code Chat API / Copilot)
+  const chatProvider = new ChatViewProvider(context.extensionUri, lspManager.client);
   context.subscriptions.push(
-    vscode.commands.registerCommand("modelscript.openChat", () => {
-      vscode.commands.executeCommand("modelscript.chat.focus");
+    vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chatProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
     }),
   );
 
-  // Output channel for script execution
-  const outputChannel = vscode.window.createOutputChannel("ModelScript Output");
-  context.subscriptions.push(outputChannel);
-
-  // Register notebook serializer and controller
-  context.subscriptions.push(
-    vscode.workspace.registerNotebookSerializer("modelscript-notebook", new ModelicaNotebookSerializer()),
-  );
-  const notebookController = new ModelicaNotebookController();
-  notebookController.client = client;
-  context.subscriptions.push(notebookController);
-
-  // Create diagram editor provider (needed before tree registration for drag callback)
-  const diagramProvider = new DiagramEditorProvider(context, client);
-
-  // Register library tree view (before status handler so we can refresh on ready)
-  const treeProvider = new LibraryTreeProvider(client, context);
-  treeProvider.onDragStart = (data) => {
-    diagramProvider.postToActiveWebviews({ type: "startPlacement", isDrag: true, ...data });
-  };
-  treeProvider.onDragEnd = () => {
-    diagramProvider.postToActiveWebviews({ type: "dragEnd" });
-  };
-  diagramProvider.onDidOpenDocument = (uri) => {
-    treeProvider.setDocumentUri(uri);
-  };
-  let treeView: vscode.TreeView<any> | undefined;
-  try {
-    treeView = vscode.window.createTreeView("modelscript.libraryTree", {
-      treeDataProvider: treeProvider,
-      dragAndDropController: treeProvider,
-      canSelectMany: false,
-    });
-    context.subscriptions.push(treeView);
-
-    context.subscriptions.push(
-      vscode.commands.registerCommand("modelscript.libraryView.refresh", () => {
-        treeProvider.refresh();
-      }),
-    );
-  } catch (e) {
-    console.warn("Could not register modelscript.libraryTree view:", e);
-  }
-
-  // Handler for dynamic artifact handoff and mounting from web host shell
-  const handleMountArtifact = async (payload: {
-    artifactId: string | number;
-    title?: string | undefined;
-    viewType?: string | undefined;
-    viewConfig?: any;
-  }) => {
-    if (!payload?.artifactId) return;
-    const targetUri = memfsRootUri || vscode.Uri.from({ scheme: "memfs", path: `/artifact-${payload.artifactId}` });
-    try {
-      memFs.createDirectory(targetUri);
-    } catch {
-      // directory may already exist
-    }
-
-    const { primaryFile } = mountArtifactToMemFs(memFs, targetUri, {
-      artifactId: payload.artifactId,
-      title: payload.title,
-      viewType: payload.viewType,
-      viewConfig: payload.viewConfig,
-    });
-
-    try {
-      const fileUri = Uri.joinPath(targetUri, primaryFile);
-      if (primaryFile.endsWith(".monb")) {
-        await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
-      } else {
-        const doc = await workspace.openTextDocument(fileUri);
-        await vscode.window.showTextDocument(doc);
-        treeProvider.setDocumentUri(fileUri.toString());
-      }
-      treeProvider.refresh();
-      vscode.window.showInformationMessage(`Mounted artifact #${payload.artifactId}: ${payload.title || primaryFile}`);
-    } catch (err) {
-      console.warn("[artifact-mount] Auto-focus primary file failed:", err);
-    }
-  };
-
-  const sendShareToFeed = async () => {
-    const editor = vscode.window.activeTextEditor;
-    let snippet = "";
-    let title = "Model";
-
-    if (editor) {
-      const doc = editor.document;
-      title = doc.uri.path.split("/").pop() || "Model";
-      const selection = editor.selection;
-      if (!selection.isEmpty) {
-        snippet = doc.getText(selection);
-      } else {
-        snippet = doc.getText();
-      }
-      if (snippet.length > 2000) {
-        snippet = snippet.slice(0, 2000) + "\n// ... (truncated)";
-      }
-    }
-
-    const payload = {
-      title: `Shared model: ${title}`,
-      content: `Sharing model \`${title}\` from ModelScript IDE workbench:\n\n\`\`\`modelica\n${snippet}\n\`\`\``,
-      codeSnippet: snippet,
-      morselPayload: {
-        title: title.replace(/\.[^/.]+$/, ""),
-        code: snippet,
-        dialect: title.endsWith(".sysml") ? "sysml2" : title.endsWith(".owl") ? "owl2" : "modelica",
-      },
-    };
-
-    try {
-      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "MODELSCRIPT_SHARE_TO_FEED", payload }, window.location.origin);
-      }
-      const channel = new BroadcastChannel("modelscript:host-bridge");
-      channel.postMessage({
-        type: "MODELSCRIPT_SHARE_TO_FEED",
-        payload,
-      });
-      channel.close();
-      vscode.window.showInformationMessage(`Opened share composer in ModelScript Hub for ${title}`);
-    } catch {
-      await vscode.env.clipboard.writeText(snippet);
-      vscode.window.showInformationMessage(`Copied snippet for ${title} to clipboard.`);
-    }
-  };
-
-  try {
-    const bridge = new BroadcastChannel("modelscript:host-bridge");
-    bridge.onmessage = (ev) => {
-      if (ev.data?.type === "MODELSCRIPT_MOUNT_ARTIFACT" && ev.data?.artifactId) {
-        handleMountArtifact(ev.data).catch((e) => console.warn("[host-bridge] Mount artifact error:", e));
-      } else if (ev.data?.type === "MODELSCRIPT_REQUEST_ACTIVE_FILE") {
-        sendShareToFeed();
-      } else if (ev.data?.type === "MODELSCRIPT_RESTART_LSP") {
-        vscode.commands.executeCommand("modelscript.restartLsp");
-      }
-    };
-    context.subscriptions.push({ dispose: () => bridge.close() });
-  } catch {
-    // BroadcastChannel unsupported in environment
-  }
-
-  if (typeof window !== "undefined") {
-    const windowMsgHandler = (ev: MessageEvent) => {
-      if (ev.data?.type === "MODELSCRIPT_MOUNT_ARTIFACT" && ev.data?.artifactId) {
-        handleMountArtifact(ev.data).catch((e) => console.warn("[window-message] Mount artifact error:", e));
-      } else if (ev.data?.type === "MODELSCRIPT_REQUEST_ACTIVE_FILE") {
-        sendShareToFeed();
-      } else if (ev.data?.type === "MODELSCRIPT_RESTART_LSP") {
-        vscode.commands.executeCommand("modelscript.restartLsp");
-      }
-    };
-    window.addEventListener("message", windowMsgHandler);
-    context.subscriptions.push({ dispose: () => window.removeEventListener("message", windowMsgHandler) });
-  }
-
-  // Register MQTT participant tree view
-  let mqttTreeProvider: MqttTreeProvider | undefined;
-  try {
-    mqttTreeProvider = new MqttTreeProvider(client, context);
-    const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
-      treeDataProvider: mqttTreeProvider,
-      dragAndDropController: mqttTreeProvider,
-      canSelectMany: false,
-    });
-    context.subscriptions.push(mqttTreeView, mqttTreeProvider);
-    if (mqttTreeView.visible) {
-      mqttTreeProvider.startPolling();
-    }
-    if (typeof mqttTreeView.onDidChangeVisibility === "function") {
-      context.subscriptions.push(
-        mqttTreeView.onDidChangeVisibility((e) => {
-          if (e.visible) {
-            mqttTreeProvider?.startPolling();
-          } else {
-            mqttTreeProvider?.stopPolling();
-          }
-        }),
-      );
-    }
-  } catch (e) {
-    console.warn("Could not register modelscript.mqttTree view:", e);
-  }
-
-  // Register experiments tree view (discovers experiment annotations)
-  let experimentsTreeProvider: ExperimentsTreeProvider | undefined;
-  try {
-    experimentsTreeProvider = new ExperimentsTreeProvider(client);
-    const experimentsTreeView = vscode.window.createTreeView("modelscript.experimentsView", {
-      treeDataProvider: experimentsTreeProvider,
-      canSelectMany: false,
-    });
-    context.subscriptions.push(experimentsTreeView);
-  } catch (e) {
-    console.warn("Could not register modelscript.experimentsView view:", e);
-  }
-
-  // Register ModelScript package registry tree view (Extensions-bar style)
-  registerRegistryView(context, client);
-
-  // Register REPL terminal command
-  if (client) {
-    registerRepl(context, client);
-  }
-
-  // Register co-simulation panel (sidebar webview)
-  const cosimProvider = new CosimViewProvider(context.extensionUri, client);
+  // 8. Co-Simulation Sidebar View Provider
+  const cosimProvider = new CosimViewProvider(context.extensionUri, lspManager.client);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(CosimViewProvider.viewType, cosimProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
 
-  // Status bar item to show loading progress
-  const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
-  statusItem.text = "$(sync~spin) ModelScript: Loading...";
-  statusItem.tooltip = "ModelScript language server is initializing";
-  statusItem.show();
-  context.subscriptions.push(statusItem);
+  // 9. Collaboration Presence
+  try {
+    const collabController = registerCollaborationPresence(context);
+    lspManager.onBindNotifications((targetClient) => {
+      targetClient.onNotification(
+        "modelscript/peerPresenceChanged",
+        (params: { documentUri: string; peers: IdePeerPresence[]; collisions?: IdeSymbolCollision[] }) => {
+          if (params?.documentUri && Array.isArray(params.peers)) {
+            collabController.updateDocumentState(params.documentUri, params.peers, params.collisions ?? []);
+          }
+        },
+      );
+    });
+  } catch (e) {
+    console.warn("Could not register collaboration presence:", e);
+  }
 
+  // 10. Status Bar Items
   const cloudStatusBar = new CloudStatusBar();
   context.subscriptions.push(cloudStatusBar);
 
-  // ── Host Social Hub Integration (Synergy 2) ──
   const shareStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   shareStatusBar.text = "$(sparkle) Share to Feed";
   shareStatusBar.tooltip = "Share active model snippet or results to ModelScript social feed";
@@ -1264,27 +179,11 @@ export async function activate(context: vscode.ExtensionContext) {
   shareStatusBar.show();
   context.subscriptions.push(shareStatusBar);
 
-  safeRegisterCommand("modelscript.shareToFeed", sendShareToFeed);
+  safeRegisterCommand("modelscript.shareToFeed", () => hostBridgeService.sendShareToFeed());
 
-  const broadcastLspStatus = (status: "ready" | "loading" | "error" | "offline", message?: string) => {
-    try {
-      const payload = { type: "MODELSCRIPT_LSP_STATUS", status, message };
-      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-        window.parent.postMessage(payload, window.location.origin);
-      }
-      const channel = new BroadcastChannel("modelscript:host-bridge");
-      channel.postMessage(payload);
-      channel.close();
-    } catch {
-      // ignore
-    }
-  };
-
-  // Listen for status notifications from the LSP server
+  // 11. Start Language Server Client & Notification Handlers
   let isScmRegistered = false;
-  let hideTimeout: NodeJS.Timeout | null = null;
-
-  const bindClientNotifications = (targetClient: LanguageClient) => {
+  lspManager.onBindNotifications((targetClient) => {
     targetClient.onNotification(
       "modelscript/debuggerStopped",
       (params: { uri?: string | undefined; line?: number | undefined; column?: number | undefined }) => {
@@ -1298,52 +197,17 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     targetClient.onNotification("modelscript/status", (params: { state: string; message: string }) => {
-      if (hideTimeout) {
-        clearTimeout(hideTimeout);
-        hideTimeout = null;
-      }
-      switch (params.state) {
-        case "loading":
-          statusItem.show();
-          statusItem.text = `$(sync~spin) ${params.message}`;
-          statusItem.tooltip = "ModelScript is loading...";
-          statusItem.command = undefined;
-          broadcastLspStatus("loading", params.message);
-          break;
-        case "ready":
-          statusItem.show();
-          statusItem.text = `$(check) ${params.message}`;
-          statusItem.tooltip = "ModelScript language server is ready";
-          statusItem.command = undefined;
-          broadcastLspStatus("ready", params.message);
-          hideTimeout = setTimeout(() => statusItem.hide(), 5000);
-          // Auto-refresh UI components now that LSP is fully initialized
-          treeProvider.refresh();
-          experimentsTreeProvider?.refresh();
+      if (params.state === "ready") {
+        treeController.libraryTreeProvider.refresh();
+        treeController.experimentsTreeProvider?.refresh();
 
-          // Register integrations only once
-          if (!isScmRegistered && client) {
-            isScmRegistered = true;
-            // Register SCM Integration
-            registerScmIntegration(context, client);
+        if (!isScmRegistered && lspManager?.client) {
+          isScmRegistered = true;
+          registerScmIntegration(context, lspManager.client);
+          registerSemanticDiffComments(context, lspManager.client);
+        }
 
-            // Register SCM Structural Tree View
-            registerScmTreeView(context, client);
-
-            // Register Semantic Diff Comments for diff editors
-            registerSemanticDiffComments(context, client);
-          }
-
-          // Resolve markdown variable values, requirements, and diagram data.
-          setTimeout(() => refreshMarkdownData(), 3000);
-          break;
-        case "error":
-          statusItem.show();
-          statusItem.text = `$(warning) ${params.message}`;
-          statusItem.tooltip = "ModelScript encountered an error. Click to restart.";
-          statusItem.command = "modelscript.restartLsp";
-          broadcastLspStatus("error", params.message);
-          break;
+        setTimeout(() => markdownService.refreshMarkdownData(), 3000);
       }
     });
 
@@ -1360,142 +224,73 @@ export async function activate(context: vscode.ExtensionContext) {
         data?: number[] | undefined;
         payload?: any;
       }) => {
-        // Forward the co-simulation streaming events to the CAD Viewer React webview
-        const { CadViewerPanel } = await import("./cad-viewer-panel");
+        const { CadViewerPanel } = await import("./cad-viewer-panel.js");
         if (CadViewerPanel.currentPanel) {
-          // Send message with type VTK_PAYLOAD so that VtkRenderer can pick it up
           if (msg.type === "vtk") {
             CadViewerPanel.currentPanel.postMessage({
               type: "VTK_PAYLOAD",
               data: {
                 pid: msg.participantId,
                 time: msg.time,
-                buffer: new Uint8Array(msg.data || []), // Parse Array back to typed array
+                buffer: new Uint8Array(msg.data || []),
               },
             });
           } else if (msg.type === "fea-frame" || msg.type === "fea") {
             CadViewerPanel.currentPanel.sendFeaPayload(msg.payload || msg);
           } else {
-            // Forward general step or complete events
             CadViewerPanel.currentPanel.postMessage(msg);
           }
         }
       },
     );
-  };
+  });
 
-  if (activeClient) {
-    bindClientNotifications(activeClient);
+  try {
+    await lspManager.start();
+    languageWorker = lspManager.languageWorker;
+    console.log("ModelScript language server is ready");
+  } catch (e) {
+    console.error("ModelScript language server failed to start:", e);
   }
 
   safeRegisterCommand("modelscript.restartLsp", async () => {
-    statusItem.show();
-    statusItem.text = "$(sync~spin) Restarting LSP…";
-    broadcastLspStatus("loading", "Restarting language server…");
-
+    if (!lspManager) return;
     try {
-      const oldWorker = languageWorker;
-      if (activeClient) {
-        try {
-          await activeClient.stop();
-        } catch (e) {
-          console.warn("[lsp-restart] Clean stop error:", e);
-        }
-      }
-      if (oldWorker) {
-        try {
-          oldWorker.terminate();
-        } catch {
-          // ignore worker termination errors
-        }
-      }
-      activeClient = await createWorkerLanguageClient(context, clientOptions);
-      client = clientProxy;
-      await activeClient.start();
-      bindClientNotifications(activeClient);
-      notebookController.client = client;
-      treeProvider.refresh();
-      experimentsTreeProvider?.refresh();
-      statusItem.text = "$(check) LSP Ready";
-      statusItem.command = undefined;
-      broadcastLspStatus("ready", "Language server restarted");
-      setTimeout(() => statusItem.hide(), 4000);
+      await lspManager.restart();
+      languageWorker = lspManager.languageWorker;
+      notebookController.client = lspManager.client;
+      treeController.libraryTreeProvider.refresh();
+      treeController.experimentsTreeProvider?.refresh();
       vscode.window.showInformationMessage("ModelScript language server restarted successfully.");
     } catch (err: any) {
-      statusItem.text = "$(cloud-offline) LSP Offline — Click to Restart";
-      statusItem.command = "modelscript.restartLsp";
-      broadcastLspStatus("error", err?.message || "Failed to restart LSP");
       vscode.window.showErrorMessage(`Failed to restart language server: ${err?.message || err}`);
     }
   });
 
-  // Update tree when active editor changes to a .mo or .owl2 file
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => {
-      if (editor?.document && editor.document.uri.scheme !== "output") {
-        treeProvider.setDocumentUri(editor.document.uri.toString());
-      }
-      // Set context keys for palette visibility
-      const langId = editor?.document.languageId;
-      vscode.commands.executeCommand("setContext", "modelscript.activeLanguage", langId);
-      vscode.commands.executeCommand(
-        "setContext",
-        "modelscript.sysml2Active",
-        langId === "sysml" || langId === "sysml2",
-      );
-      vscode.commands.executeCommand("setContext", "modelscript.owl2Active", langId === "owl2");
-      if (langId) {
-        vscode.commands.executeCommand("setContext", `modelscript.${langId}Active`, true);
-      }
-    }),
-  );
-
-  // ── Viewport tracking for prioritized linting ────────────────────────
-  // Send visible line ranges to the LSP server when the user scrolls.
-  // The server uses this to prioritize linting symbols in the visible area.
-  let visibleRangeTimer: ReturnType<typeof setTimeout> | undefined;
-  context.subscriptions.push(
-    vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
-      if (!client) return;
-      clearTimeout(visibleRangeTimer);
-      visibleRangeTimer = setTimeout(() => {
-        const uri = e.textEditor.document.uri.toString();
-        const ranges = e.visibleRanges.map((r) => ({
-          startLine: r.start.line,
-          endLine: r.end.line,
-        }));
-        client?.sendNotification("modelscript/visibleRanges", { uri, ranges });
-      }, 150);
-    }),
-  );
-
-  // Trigger once for the initially active editor (since the event doesn't fire for the first tab)
-  if (vscode.window.activeTextEditor?.document && vscode.window.activeTextEditor.document.uri.scheme !== "output") {
-    const initDoc = vscode.window.activeTextEditor.document;
-    const initUri = initDoc.uri.toString();
-    treeProvider.setDocumentUri(initUri);
-    const initLangId = initDoc.languageId;
-    vscode.commands.executeCommand("setContext", "modelscript.activeLanguage", initLangId);
-    vscode.commands.executeCommand(
-      "setContext",
-      "modelscript.sysml2Active",
-      initLangId === "sysml" || initLangId === "sysml2",
-    );
-    vscode.commands.executeCommand("setContext", "modelscript.owl2Active", initLangId === "owl2");
-    if (initLangId) {
-      vscode.commands.executeCommand("setContext", `modelscript.${initLangId}Active`, true);
-    }
+  // 12. Register Dynamic Actions and Modular Command Controllers
+  if (lspManager.client) {
+    await registerDynamicActions(context, lspManager.client, safeRegisterCommand);
+    registerRepl(context, lspManager.client);
   }
 
-  // Register commands
+  context.subscriptions.push(
+    ...registerSimulationCommands(context, lspManager.client, lspManager.outputChannel, fmuContentProvider, () =>
+      markdownService.refreshMarkdownData(),
+    ),
+    ...registerCloudCommands(context, lspManager.client, treeController.experimentsTreeProvider),
+    ...registerCosimCommands(context, cosimProvider, treeController.mqttTreeProvider),
+    ...registerAnalyticalCommands(context, lspManager.client, {}, () => markdownService.scheduleMarkdownRefresh()),
+    ...registerCadAndMeshingCommands(context, lspManager.client),
+    registerPolyglotActions(context, lspManager.client),
+    registerMultiDomainScaffolding(context),
+  );
+
+  // 13. UI Navigation & Diagram Commands
   context.subscriptions.push(
     commands.registerCommand("modelscript.openDiagram", async () => {
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor?.document && activeEditor.document.uri.scheme !== "output") {
         try {
-          // Ensure the file exists on the filesystem before opening the custom editor.
-          // In memfs workspaces, files created in the text editor buffer may not be persisted
-          // to the MemoryFileSystemProvider yet, causing CustomTextEditorProvider to fail.
           const docUri = activeEditor.document.uri;
           if (docUri.scheme === "memfs") {
             const content = new TextEncoder().encode(activeEditor.document.getText());
@@ -1518,7 +313,9 @@ export async function activate(context: vscode.ExtensionContext) {
                           filePath.endsWith(".pswx") ||
                           filePath.endsWith(".psmx")
                         ? "pscad.diagramEditor"
-                        : DiagramEditorProvider.viewType;
+                        : filePath.endsWith(".psout")
+                          ? PsoutEditorProvider.viewType
+                          : DiagramEditorProvider.viewType;
           try {
             await vscode.commands.executeCommand("vscode.openWith", docUri, targetViewType);
           } catch {
@@ -1529,1190 +326,23 @@ export async function activate(context: vscode.ExtensionContext) {
         }
       }
     }),
+
     commands.registerCommand("modelscript.openDiagramSource", () => {
       const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
       if (
         tab?.input instanceof vscode.TabInputCustom &&
-        (tab.input.viewType === DiagramEditorProvider.viewType ||
-          tab.input.viewType.endsWith(".diagramEditor") ||
-          tab.input.viewType === StepEditorProvider.viewType ||
-          tab.input.viewType === InpEditorProvider.viewType ||
-          tab.input.viewType === CfgEditorProvider.viewType)
+        (tab.input.viewType === DiagramEditorProvider.viewType || tab.input.viewType.endsWith(".diagramEditor"))
       ) {
-        vscode.commands.executeCommand("vscode.openWith", tab.input.uri, "default");
+        vscode.window.showTextDocument(tab.input.uri, { viewColumn: vscode.ViewColumn.One });
       }
     }),
-    commands.registerCommand("modelscript.openCadViewer", () => {
-      if (!client) return;
-      CadViewerPanel.createOrShow(context.extensionUri, client);
-    }),
-    commands.registerCommand("modelscript.openStepViewer", async (uri?: vscode.Uri) => {
-      let targetUri = uri;
-      if (!targetUri) {
-        const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor?.document && /\.(step|stp)$/i.test(activeEditor.document.uri.path)) {
-          targetUri = activeEditor.document.uri;
-        }
-      }
-      if (!targetUri) {
-        const stepFiles = await vscode.workspace.findFiles("**/*.{step,stp}", undefined, 1);
-        if (stepFiles.length > 0) {
-          targetUri = stepFiles[0];
-        }
-      }
-      if (targetUri) {
-        await vscode.commands.executeCommand("vscode.openWith", targetUri, StepEditorProvider.viewType);
-      } else {
-        vscode.window.showInformationMessage("No STEP CAD file found in the workspace.");
-      }
-    }),
-    commands.registerCommand("modelscript.previewCsg", async (args?: any) => {
-      let targetUri: vscode.Uri | undefined;
-      if (args instanceof vscode.Uri) {
-        targetUri = args;
-      } else if (args?.uri) {
-        targetUri = typeof args.uri === "string" ? vscode.Uri.parse(args.uri) : args.uri;
-      } else {
-        const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor?.document && /\.scad$/i.test(activeEditor.document.uri.path)) {
-          targetUri = activeEditor.document.uri;
-        }
-      }
-      if (!targetUri) {
-        const scadFiles = await vscode.workspace.findFiles("**/*.scad", undefined, 1);
-        if (scadFiles.length > 0) {
-          targetUri = scadFiles[0];
-        }
-      }
-      if (!targetUri) {
-        vscode.window.showInformationMessage("No OpenSCAD (.scad) file found in the workspace.");
-        return;
-      }
 
-      try {
-        let docText: string | undefined;
-        for (const doc of vscode.workspace.textDocuments) {
-          if (doc.uri.toString() === targetUri.toString()) {
-            docText = doc.getText();
-            break;
-          }
-        }
-        if (!docText) {
-          const raw = await vscode.workspace.fs.readFile(targetUri);
-          docText = new TextDecoder().decode(raw);
-        }
+    commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown) => {
+      if (!lspManager?.client) return;
 
-        const res = await client?.sendRequest<any>("modelscript/executeAction", {
-          actionId: "preview_csg",
-          uri: targetUri.toString(),
-          languageId: "scad",
-          inputs: { documentText: docText },
-        });
-
-        if (res && res.step) {
-          const stepUri = targetUri.with({ path: targetUri.path.replace(/\.scad$/i, ".step") });
-          await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(res.step));
-          if (client && Array.isArray(res.components) && res.components.length > 0) {
-            CadViewerPanel.createOrShow(context.extensionUri, client);
-          } else {
-            await vscode.commands.executeCommand(
-              "vscode.openWith",
-              stepUri,
-              StepEditorProvider.viewType,
-              vscode.ViewColumn.Beside,
-            );
-          }
-        } else {
-          vscode.window.showWarningMessage("OpenSCAD model evaluated, but produced no 3D solid geometry.");
-        }
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to preview OpenSCAD 3D model: ${err?.message ?? err}`);
-      }
-    }),
-    commands.registerCommand("modelscript.scad.preview_csg", (args?: any) =>
-      vscode.commands.executeCommand("modelscript.previewCsg", args),
-    ),
-    commands.registerCommand("modelscript.scad.exportStep", async (args?: any) => {
-      let targetUri: vscode.Uri | undefined;
-      if (args instanceof vscode.Uri) {
-        targetUri = args;
-      } else if (args?.uri) {
-        targetUri = typeof args.uri === "string" ? vscode.Uri.parse(args.uri) : args.uri;
-      } else {
-        const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor?.document && /\.scad$/i.test(activeEditor.document.uri.path)) {
-          targetUri = activeEditor.document.uri;
-        }
-      }
-      if (!targetUri) return;
-      try {
-        let docText: string | undefined;
-        for (const doc of vscode.workspace.textDocuments) {
-          if (doc.uri.toString() === targetUri.toString()) {
-            docText = doc.getText();
-            break;
-          }
-        }
-        if (!docText) {
-          const raw = await vscode.workspace.fs.readFile(targetUri);
-          docText = new TextDecoder().decode(raw);
-        }
-        const res = await client?.sendRequest<any>("modelscript/executeAction", {
-          actionId: "export_step",
-          uri: targetUri.toString(),
-          languageId: "scad",
-          inputs: { documentText: docText },
-        });
-        if (res && res.step) {
-          const stepUri = targetUri.with({ path: targetUri.path.replace(/\.scad$/i, ".step") });
-          await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(res.step));
-          vscode.window.showInformationMessage(`Exported ${stepUri.path.split("/").pop()} to workspace`);
-          await vscode.commands.executeCommand(
-            "vscode.openWith",
-            stepUri,
-            StepEditorProvider.viewType,
-            vscode.ViewColumn.Beside,
-          );
-        }
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to export STEP CAD: ${err?.message ?? err}`);
-      }
-    }),
-    commands.registerCommand("modelscript.scad.export_step", (args?: any) =>
-      vscode.commands.executeCommand("modelscript.scad.exportStep", args),
-    ),
-    commands.registerCommand("modelscript.openGCodeViewer", () => {
-      vscode.window.showInformationMessage(
-        "Clicking on a .gcode file in the explorer now opens the Toolpath Viewer directly.",
-      );
-    }),
-    commands.registerCommand("modelscript.exportShapeToStep", async () => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showErrorMessage("Please open a file containing a shape class.");
-        return;
-      }
-
-      const uri = editor.document.uri.toString();
-
-      let symbols: vscode.DocumentSymbol[] | unknown[] | undefined;
-      try {
-        symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[] | unknown[]>(
-          "vscode.executeDocumentSymbolProvider",
-          editor.document.uri,
-        );
-      } catch (e) {
-        vscode.window.showErrorMessage("Error fetching symbols: " + e);
-      }
-
-      const classNames: string[] = [];
-      if (symbols && symbols.length > 0) {
-        const extractClasses = (syms: vscode.DocumentSymbol[], prefix: string) => {
-          for (const sym of syms) {
-            const fullName = prefix ? `${prefix}.${sym.name}` : sym.name;
-            // Include everything except primitive variables/fields
-            if (
-              sym.kind !== vscode.SymbolKind.Variable &&
-              sym.kind !== vscode.SymbolKind.Property &&
-              sym.kind !== vscode.SymbolKind.Field &&
-              sym.kind !== vscode.SymbolKind.Constant &&
-              sym.kind !== vscode.SymbolKind.Function &&
-              sym.kind !== vscode.SymbolKind.Method
-            ) {
-              classNames.push(fullName);
-            }
-            if (sym.children && sym.children.length > 0) {
-              extractClasses(sym.children, fullName);
-            }
-          }
-        };
-        extractClasses(symbols as vscode.DocumentSymbol[], "");
-      }
-
-      let className: string | undefined;
-      if (classNames.length === 1) {
-        className = classNames[0];
-      } else if (classNames.length > 1) {
-        className = await vscode.window.showQuickPick(classNames, {
-          placeHolder: "Select the shape class to export to STEP",
-        });
-      } else {
-        className = await vscode.window.showInputBox({
-          prompt: `Enter shape class (Fallback - symbols: ${symbols?.length || "undefined"})`,
-          placeHolder: "e.g., DroneCAD.DroneChassis",
-        });
-      }
-
-      if (!className) return;
-
-      try {
-        const result = await client.sendRequest<{ step: string; name: string }>("modelscript/exportShapeToStep", {
-          uri,
-          className,
-        });
-
-        if (result && result.step) {
-          // Write to file
-          const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
-          const fileUri = vscode.Uri.joinPath(folder, `${result.name.split(".").pop()}.step`);
-          await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(result.step));
-          vscode.window.showInformationMessage(`Exported ${result.name} to ${fileUri.fsPath}`);
-
-          // Open the generated step file
-          vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript.stepEditor");
-        }
-      } catch (e: unknown) {
-        vscode.window.showErrorMessage(`Failed to export shape: ${e instanceof Error ? e.message : e}`);
-      }
-    }),
-    commands.registerCommand("modelscript.owl2.openDiagram", async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (editor?.document && editor.document.uri.scheme !== "output") {
-        try {
-          const docUri = editor.document.uri;
-          if (docUri.scheme === "memfs") {
-            const content = new TextEncoder().encode(editor.document.getText());
-            await workspace.fs.writeFile(docUri, content);
-          }
-          await vscode.commands.executeCommand("vscode.openWith", docUri, DiagramEditorProvider.viewType);
-        } catch (e: unknown) {
-          vscode.window.showErrorMessage(`Failed to open diagram: ${(e as Error)?.message || e}`);
-        }
-      } else if (client) {
-        OWL2DiagramPanel.createOrShow(client, undefined);
-      }
-    }),
-    commands.registerCommand("modelscript.owl2.goToDeclaration", async (iri: string) => {
-      if (!client) return;
-      try {
-        const result = await client.sendRequest<{ uri: string; line: number; character: number } | null>(
-          "modelscript/owl2/goToDeclaration",
-          { iri },
-        );
-        if (result) {
-          const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(result.uri));
-          const pos = new vscode.Position(result.line, result.character);
-          await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos) });
-        }
-      } catch (e) {
-        console.error("[owl2] Failed to navigate to declaration:", e);
-      }
-    }),
-    commands.registerCommand("modelscript.openModel", async (firstArg: any) => {
-      console.log("[modelscript.openModel] CALLED with firstArg:", JSON.stringify(firstArg));
-      if (!client) {
-        console.warn("[modelscript.openModel] client is undefined or not ready!");
-        return;
-      }
-      let className: string | undefined;
-      let targetUri: string | undefined;
-
-      if (typeof firstArg === "string") {
-        className = firstArg;
-      } else if (firstArg && typeof firstArg === "object") {
-        const itemFromMap =
-          (firstArg.id ? treeProvider.getItem(firstArg.id) : undefined) ||
-          (firstArg.tooltip ? treeProvider.getItem(firstArg.tooltip) : undefined);
-        className =
-          itemFromMap?.info?.compositeName ||
-          firstArg.info?.compositeName ||
-          firstArg.info?.name ||
-          (typeof firstArg.compositeName === "string" ? firstArg.compositeName : undefined) ||
-          (typeof firstArg.className === "string" ? firstArg.className : undefined) ||
-          (typeof firstArg.id === "string" &&
-          !firstArg.id.startsWith("__LIB__:") &&
-          !firstArg.id.startsWith("__ONTOLOGY__:")
-            ? firstArg.id
-            : undefined) ||
-          (typeof firstArg.tooltip === "string" && !firstArg.tooltip.startsWith("__LIB__:")
-            ? firstArg.tooltip
-            : undefined) ||
-          (typeof firstArg.label === "string" ? firstArg.label : firstArg.label?.label);
-        targetUri = firstArg.uri || firstArg.info?.uri || itemFromMap?.info?.uri;
-      }
-      if (className?.startsWith("__LIB__:") || className?.startsWith("__ONTOLOGY__:")) {
-        className = undefined;
-      }
-      console.log("[modelscript.openModel] Resolved className:", className, "targetUri:", targetUri);
-      if (!className && !targetUri) {
-        vscode.window.showWarningMessage("Please select a valid model or class to open.");
-        return;
-      }
-
-      try {
-        let uriToOpen = targetUri;
-        let line = 0;
-        let character = 0;
-
-        // If targetUri is already known, we can open the document immediately!
-        if (uriToOpen) {
-          const docUri = vscode.Uri.parse(uriToOpen);
-          console.log("[modelscript.openModel] Fast-path opening text document:", docUri.toString());
-          const doc = await vscode.workspace.openTextDocument(docUri);
-
-          // Locate declaration in document text
-          const lastName = className ? className.split(".").pop() || "" : "";
-          if (lastName) {
-            const text = doc.getText();
-            const regex = new RegExp(
-              `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
-            );
-            const match = regex.exec(text);
-            if (match && match.index !== undefined) {
-              const pos = doc.positionAt(match.index);
-              line = pos.line;
-              character = pos.character;
-            }
-          }
-
-          const pos = new vscode.Position(line, character);
-          await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos), preview: false });
-          console.log("[modelscript.openModel] Fast-path document opened successfully:", docUri.toString());
-          return;
-        }
-
-        // Fall back to querying language server for location
-        const resultPromise = client.sendRequest<{
-          uri: string;
-          line?: number | undefined;
-          character?: number | undefined;
-        } | null>("modelscript/getClassLocation", { className });
-        // Timeout after 4s so UI never freezes
-        const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 4000));
-        const result = await Promise.race([resultPromise, timeoutPromise]);
-
-        console.log("[modelscript.openModel] getClassLocation result:", JSON.stringify(result));
-        if (result && result.uri) {
-          const docUri = vscode.Uri.parse(result.uri);
-          console.log("[modelscript.openModel] Opening text document with URI:", docUri.toString());
-          const doc = await vscode.workspace.openTextDocument(docUri);
-          const pos = new vscode.Position(result.line ?? 0, result.character ?? 0);
-          await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos), preview: false });
-          console.log("[modelscript.openModel] Successfully opened document:", docUri.toString());
-        } else {
-          console.warn("[modelscript.openModel] No URI returned for:", className);
-          vscode.window.showWarningMessage(`Could not find declaration for '${className}'.`);
-        }
-      } catch (e: any) {
-        console.error(`[openModel] Failed to open '${className}':`, e);
-        vscode.window.showErrorMessage(`Failed to open '${className}': ${e?.message || e}`);
-      }
-    }),
-    commands.registerCommand("modelscript.owl2.refreshClassHierarchy", () => {
-      treeProvider.refresh();
-    }),
-    commands.registerCommand("modelscript.owl2.refreshPropertyHierarchy", () => {
-      treeProvider.refresh();
-    }),
-    commands.registerCommand("modelscript.openCadExample", async () => {
-      // 1. Get the example file path
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
-      if (!folder) {
-        vscode.window.showErrorMessage("Please open a workspace folder first.");
-        return;
-      }
-      // Assuming the user has copied the example or we use memfs
-      // To ensure it exists, we can scaffold it or find it if we saved it in memfs
-      const sysmlUri = vscode.Uri.joinPath(folder, "drone_architecture.sysml");
-      const stepUri = vscode.Uri.joinPath(folder, "drone.step");
-
-      try {
-        const sysmlContent = `package DroneArchitecture {
-  import DroneCAD::*;
-
-  part def DroneAssembly {
-    part chassis : Chassis;
-    part rotor1 : Rotor;
-    part rotor2 : Rotor;
-    part rotor3 : Rotor;
-    part rotor4 : Rotor;
-
-    // Reference CAD geometry directly from the STEP file!
-    ref chassisGeometry = DroneCAD::ChassisShape;
-  }
-
-  part def Chassis {}
-  part def Rotor {}
-}`;
-        await vscode.workspace.fs.writeFile(sysmlUri, new TextEncoder().encode(sysmlContent));
-
-        const stepContent = `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('drone','2023-10-23T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
-ENDSEC;
-DATA;
-#1=APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2001,#2);
-#2=APPLICATION_CONTEXT('core data for automotive mechanical design processes');
-#3=SHAPE_DEFINITION_REPRESENTATION(#4,#10);
-#4=PRODUCT_DEFINITION_SHAPE('','',#5);
-#5=PRODUCT_DEFINITION('design','',#6,#9);
-#6=PRODUCT_DEFINITION_FORMATION('','',#7);
-#7=PRODUCT('DroneCAD','DroneCAD','',(#8));
-#8=PRODUCT_CONTEXT('',#2,'mechanical');
-#9=DESIGN_CONTEXT('',#2,'design');
-#10=SHAPE_REPRESENTATION('',(#11),#15);
-#11=AXIS2_PLACEMENT_3D('',#12,#13,#14);
-#12=CARTESIAN_POINT('',(0.,0.,0.));
-#13=DIRECTION('',(0.,0.,1.));
-#14=DIRECTION('',(1.,0.,0.));
-#15=(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#16))GLOBAL_UNIT_ASSIGNED_CONTEXT((#17,#18,#19))REPRESENTATION_CONTEXT('Context #1','3D Context with PROGRAM and LENGTH unit'));
-#16=UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#17,'distance_accuracy_value','confusion accuracy');
-#17=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));
-#18=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));
-#19=(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT());
-#20=ADVANCED_BREP_SHAPE_REPRESENTATION('',(#11,#21),#15);
-#21=MANIFOLD_SOLID_BREP('ChassisShape',#22);
-#22=CLOSED_SHELL('',(#23));
-#23=ADVANCED_FACE('',(#24),#29,.T.);
-#24=FACE_BOUND('',#25,.T.);
-#25=EDGE_LOOP('',(#26,#27,#28));
-#26=ORIENTED_EDGE('',*,*,#30,.T.);
-#27=ORIENTED_EDGE('',*,*,#31,.T.);
-#28=ORIENTED_EDGE('',*,*,#32,.T.);
-#29=PLANE('',#33);
-#30=EDGE_CURVE('',#34,#35,#36,.T.);
-#31=EDGE_CURVE('',#35,#37,#38,.T.);
-#32=EDGE_CURVE('',#37,#34,#39,.T.);
-#33=AXIS2_PLACEMENT_3D('',#40,#41,#42);
-#34=VERTEX_POINT('',#43);
-#35=VERTEX_POINT('',#44);
-#36=LINE('',#45,#46);
-#37=VERTEX_POINT('',#47);
-#38=LINE('',#48,#49);
-#39=LINE('',#50,#51);
-#40=CARTESIAN_POINT('',(0.,0.,0.));
-#41=DIRECTION('',(0.,0.,1.));
-#42=DIRECTION('',(1.,0.,0.));
-#43=CARTESIAN_POINT('',(0.,0.,0.));
-#44=CARTESIAN_POINT('',(10.,0.,0.));
-#45=CARTESIAN_POINT('',(0.,0.,0.));
-#46=VECTOR('',#52,1.);
-#47=CARTESIAN_POINT('',(0.,10.,0.));
-#48=CARTESIAN_POINT('',(10.,0.,0.));
-#49=VECTOR('',#53,1.);
-#50=CARTESIAN_POINT('',(0.,10.,0.));
-#51=VECTOR('',#54,1.);
-#52=DIRECTION('',(1.,0.,0.));
-#53=DIRECTION('',(-0.707106781186547,0.707106781186547,0.));
-#54=DIRECTION('',(0.,-1.,0.));
-ENDSEC;
-END-ISO-10303-21;`;
-        await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(stepContent));
-
-        // Open the SysML file in the left pane
-        const doc = await vscode.workspace.openTextDocument(sysmlUri);
-        await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
-
-        // Wait a short bit to allow the LSP to index the step file when it's created
-        setTimeout(() => {
-          // Open the Step viewer in the right pane natively using the custom editor
-          vscode.commands.executeCommand("vscode.open", stepUri, {
-            viewColumn: vscode.ViewColumn.Two,
-            preserveFocus: true,
-          });
-        }, 1000);
-      } catch (e) {
-        vscode.window.showErrorMessage(`Failed to open CAD example: ${e}`);
-      }
-    }),
-    commands.registerCommand("modelscript.runSimulation", async () => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      if (editor?.document.fileName.endsWith(".mos")) {
-        outputChannel.clear();
-        outputChannel.show(true);
-        try {
-          const result = await client.sendRequest<{ output: string }>("modelscript/runScript", {
-            uri: editor.document.uri.toString(),
-          });
-          outputChannel.appendLine(result.output || "(no output)");
-        } catch (e) {
-          outputChannel.appendLine(`Error: ${e}`);
-        }
-      } else if (editor?.document.uri.scheme === "fmu-view") {
-        outputChannel.clear();
-        outputChannel.show(true);
-        try {
-          const name = editor.document.uri.path.replace(/^\//, "");
-          const fmuBytes = fmuContentProvider?.getFmuBytes(name);
-          if (!fmuBytes) {
-            vscode.window.showErrorMessage("FMU data not found in cache.");
-            return;
-          }
-          const jsBytes = extractFromZip(fmuBytes, "resources/model.js");
-          if (!jsBytes) {
-            vscode.window.showErrorMessage("No resources/model.js found in FMU. Please re-export the FMU.");
-            return;
-          }
-
-          const jsCode = new TextDecoder().decode(jsBytes);
-
-          // Evaluate the JS inside a safe function
-          const FmuModelConstructor = new Function(
-            jsCode + "\\nreturn typeof FmuModel !== 'undefined' ? FmuModel : FmuModel;",
-          )();
-          const inst = new FmuModelConstructor();
-
-          let t = 0.0;
-          const dt = 0.01;
-          const tStop = 10.0;
-
-          // Collect series data
-          const result: { time: number[]; series: Record<string, number[]> } = { time: [], series: {} };
-          for (let i = 0; i < inst.vars.length; i++) {
-            result.series[`var_${i}`] = [];
-          }
-
-          inst.doStep(0, 0); // initial eval
-          while (t <= tStop) {
-            result.time.push(t);
-            for (let i = 0; i < inst.vars.length; i++) {
-              result.series[`var_${i}`]!.push(inst.vars[i]);
-            }
-            inst.doStep(t, dt);
-            t += dt;
-          }
-
-          // Remap vars names from scalarVariables via modelDescription inside the text
-          // Currently, the model is generated with specific variables, we can just send the raw vars array
-          // or parse the text of the editor which contains the Modelica variables.
-          // For now, let's parse the virtual document text which has the variables!
-          const text = editor.document.getText();
-          const varLines = text.split("\\n").filter((line) => line.includes("/* VR="));
-
-          const states: string[] = [];
-          const y: number[][] = [];
-          for (const line of varLines) {
-            const match = line.match(/Real (.*?); \/\* VR=(\d+) \*\//);
-            if (match) {
-              const name = match[1]!.trim();
-              const vr = parseInt(match[2]!);
-              states.push(name);
-              y.push(result.series[`var_${vr}`] || []);
-            }
-          }
-
-          // Show Plot
-          SimulationPanel.createOrShowWithData(
-            context.extensionUri,
-            {
-              t: result.time,
-              states,
-              y,
-            },
-            editor.document.uri.toString(),
-            client,
-          );
-          outputChannel.appendLine("FMU (JS) Simulation complete.");
-        } catch (e) {
-          vscode.window.showErrorMessage(`FMU JavaScript Evaluation Error: ${e}`);
-          outputChannel.appendLine(`Error executing JS FMU: ${e}`);
-        }
-      } else {
-        SimulationPanel.createOrShow(context.extensionUri, client);
-      }
-    }),
-    safeRegisterCommand("modelscript.action.simulate", async (args?: any) => {
-      return vscode.commands.executeCommand("modelscript.modelica.simulate", args);
-    }),
-    safeRegisterCommand("modelscript.modelica.simulate", async (args?: any) => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      let uri = editor?.document.uri.toString();
-      let inputs: any = {};
-      if (args && typeof args === "object") {
-        if ("scheme" in args && "path" in args) {
-          uri = args.toString();
-        } else if (typeof args.toString === "function" && args.scheme) {
-          uri = args.toString();
-        } else {
-          inputs = args;
-        }
-      }
-      if (!uri && editor?.document) {
-        uri = editor.document.uri.toString();
-      }
-      if (!uri) {
-        const candidate =
-          vscode.window.visibleTextEditors.find(
-            (e) =>
-              e.document.uri.scheme !== "output" &&
-              (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
-          )?.document ??
-          vscode.workspace.textDocuments.find(
-            (d) => d.uri.scheme !== "output" && (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
-          );
-        if (candidate) {
-          uri = candidate.uri.toString();
-          if (!inputs.documentText) inputs.documentText = candidate.getText();
-          if (!inputs.name) {
-            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-            const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-            if (m) {
-              inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-            }
-          } else if (!inputs.name.includes(".")) {
-            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-            if (wm && wm[1]?.trim()) {
-              inputs.name = `${wm[1].trim()}.${inputs.name}`;
-            }
-          }
-        }
-      }
-      if (uri && !inputs.documentText) {
-        const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
-        if (openDoc) {
-          inputs.documentText = openDoc.getText();
-        } else {
-          try {
-            const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
-            inputs.documentText = new TextDecoder("utf-8").decode(bytes);
-          } catch {
-            // ignore
-          }
-        }
-      }
-      if (!inputs.documentText && editor?.document) {
-        inputs.documentText = editor.document.getText();
-      }
-      if (inputs.documentText) {
-        const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-        if (!inputs.name) {
-          const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-          if (m) {
-            inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-          }
-        } else if (!inputs.name.includes(".") && wm && wm[1]?.trim()) {
-          inputs.name = `${wm[1].trim()}.${inputs.name}`;
-        }
-      }
-      try {
-        await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Running simulation...",
-            cancellable: false,
-          },
-          async () => {
-            const res = await client!.sendRequest<any>("modelscript/executeAction", {
-              actionId: "simulate",
-              languageId: editor?.document.languageId ?? "modelica",
-              uri,
-              inputs,
-            });
-            if (res?.t && res?.y) {
-              const tArr = Array.isArray(res.t) ? res.t : Object.values(res.t);
-              const yArr = Array.isArray(res.y) ? res.y : Object.values(res.y);
-              SimulationPanel.createOrShowWithData(
-                context.extensionUri,
-                {
-                  t: tArr,
-                  states: res.states || [],
-                  y: yArr,
-                  parameters: res.parameters,
-                  experiment: res.experiment,
-                },
-                uri || "",
-                client,
-              );
-            } else if (res?.text) {
-              outputChannel.appendLine(res.text);
-              outputChannel.show(true);
-            }
-          },
-        );
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Simulation failed: ${e?.message ?? e}`);
-      }
-    }),
-    safeRegisterCommand("modelscript.action.flatten", async (args?: any) => {
-      return vscode.commands.executeCommand("modelscript.modelica.flatten", args);
-    }),
-    safeRegisterCommand("modelscript.modelica.flatten", async (args?: any) => {
-      if (!client) return;
-      let editor = vscode.window.activeTextEditor;
-      if (editor?.document.uri.scheme === "untitled" || editor?.document.uri.scheme === "output") {
-        const candidateEditor = vscode.window.visibleTextEditors.find(
-          (e) =>
-            e.document.uri.scheme !== "output" &&
-            e.document.uri.scheme !== "untitled" &&
-            (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
-        );
-        if (candidateEditor) {
-          editor = candidateEditor;
-        }
-      }
-      let uri =
-        editor?.document.uri.scheme !== "untitled" && editor?.document.uri.scheme !== "output"
-          ? editor?.document.uri.toString()
-          : undefined;
-      let inputs: any = {};
-      if (args && typeof args === "object") {
-        if ("scheme" in args && "path" in args) {
-          uri = args.toString();
-        } else {
-          inputs = args;
-        }
-      }
-      if (
-        !uri &&
-        editor?.document &&
-        editor.document.uri.scheme !== "untitled" &&
-        editor.document.uri.scheme !== "output"
-      ) {
-        uri = editor.document.uri.toString();
-      }
-      if (!uri) {
-        const candidate =
-          vscode.window.visibleTextEditors.find(
-            (e) =>
-              e.document.uri.scheme !== "output" &&
-              e.document.uri.scheme !== "untitled" &&
-              (e.document.uri.path.endsWith(".mo") || e.document.languageId === "modelica"),
-          )?.document ??
-          vscode.workspace.textDocuments.find(
-            (d) =>
-              d.uri.scheme !== "output" &&
-              d.uri.scheme !== "untitled" &&
-              (d.uri.path.endsWith(".mo") || d.languageId === "modelica"),
-          );
-        if (candidate) {
-          uri = candidate.uri.toString();
-          if (!inputs.documentText) inputs.documentText = candidate.getText();
-          if (!inputs.name) {
-            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-            const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-            if (m) {
-              inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-            }
-          } else if (!inputs.name.includes(".")) {
-            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-            if (wm && wm[1]?.trim()) {
-              inputs.name = `${wm[1].trim()}.${inputs.name}`;
-            }
-          }
-        }
-      }
-      if (uri && !inputs.documentText) {
-        const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
-        if (openDoc) {
-          inputs.documentText = openDoc.getText();
-        } else {
-          try {
-            const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
-            inputs.documentText = new TextDecoder("utf-8").decode(bytes);
-          } catch {
-            // ignore
-          }
-        }
-      }
-      if (!inputs.documentText && editor?.document) {
-        inputs.documentText = editor.document.getText();
-      }
-      if (inputs.documentText) {
-        const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-        if (!inputs.name) {
-          const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-          if (m) {
-            inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-          }
-        } else if (!inputs.name.includes(".") && wm && wm[1]?.trim()) {
-          inputs.name = `${wm[1].trim()}.${inputs.name}`;
-        }
-      }
-      try {
-        const lang = editor?.document.languageId ?? "modelica";
-        const res = await client.sendRequest<any>("modelscript/executeAction", {
-          actionId: "flatten",
-          languageId: lang,
-          uri,
-          inputs,
-        });
-        if (res?.text) {
-          const doc = await vscode.workspace.openTextDocument({
-            content: res.text,
-            language: lang,
-          });
-          await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
-        }
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Flatten failed: ${e?.message ?? e}`);
-      }
-    }),
-    commands.registerCommand("modelscript.openCalibration", (uri?: string) => {
-      if (!client) return;
-      CalibrationPanel.createOrShow(context.extensionUri, client, uri);
-    }),
-    commands.registerCommand("modelscript.openOptimization", (uri?: string) => {
-      if (!client) return;
-      OptimizationPanel.createOrShow(context.extensionUri, client, uri);
-    }),
-    commands.registerCommand("modelscript.openUncertainty", (uri?: string) => {
-      if (!client) return;
-      UncertaintyPanel.createOrShow(context.extensionUri, client, uri);
-    }),
-    commands.registerCommand("modelscript.openSurrogateEditor", (uri?: string) => {
-      if (!client) return;
-      SurrogatePanel.createOrShow(context.extensionUri, client, uri);
-    }),
-    commands.registerCommand("modelscript.openCandidateTradeStudy", (_uri?: string, entityName?: string) => {
-      CandidateTradeStudyPanel.createOrShow(context.extensionUri, client, entityName);
-    }),
-    commands.registerCommand("modelscript.openCloudPanel", (uri?: string) => {
-      CloudJobPanel.createOrShow(context.extensionUri, client, uri);
-    }),
-    commands.registerCommand("modelscript.runOnCloud", (uri?: string) => {
-      CloudJobPanel.createOrShow(context.extensionUri, client, uri);
-    }),
-    commands.registerCommand("modelscript.openCloudMenu", async () => {
-      const items = [
-        { label: "$(rocket) Run Active Model on Cloud...", id: "dispatch" },
-        { label: "$(server-process) View Cloud Compute Profiles", id: "profiles" },
-        { label: "$(credit-card) Check Credit Wallet Balance", id: "balance" },
-        { label: "$(history) View Cloud Jobs", id: "jobs" },
-      ];
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: "Select a ModelScript Cloud action",
-      });
-      if (!selected) return;
-      CloudJobPanel.createOrShow(context.extensionUri, client);
-    }),
-    commands.registerCommand("modelscript.refreshExperiments", () => {
-      experimentsTreeProvider?.refresh();
-    }),
-    commands.registerCommand("modelscript.flatten", async () => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      let uri = editor?.document.uri.toString();
-      let name = "";
-
-      if (!uri) {
-        const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
-        if (
-          tab?.input instanceof vscode.TabInputCustom &&
-          (tab.input.viewType === DiagramEditorProvider.viewType || tab.input.viewType.endsWith(".diagramEditor"))
-        ) {
-          uri = tab.input.uri.toString();
-        }
-      }
-      if (!uri) {
-        vscode.window.showErrorMessage("Open a file to flatten it.");
-        return;
-      }
-
-      // Request classes in the active document to find the target name
-      try {
-        const docClasses = await client.sendRequest<{ classes: { name: string; kind: string; uri: string }[] }>(
-          "modelscript/listClasses",
-        );
-        const match = docClasses.classes.find(
-          (c) => c.uri === uri && (c.kind === "model" || c.kind === "block" || c.kind === "class"),
-        );
-        if (match) {
-          name = match.name;
-        } else {
-          // fallback if listClasses didn't have uri info, just try to get the first one from parse?
-          // Instead, since the user is in the editor, we can just send the URI. Wait, the flatten LSP request needs "name".
-          // We can ask LSP for `listClasses` and filter by URI!
-        }
-      } catch {
-        // ignore
-      }
-
-      // We actually need the name to flatten. Let's send a request to get the name of the active class, or simply try flattening the one returned.
-      // Wait, let's extract the name from the editor's text if needed, or better, we can modify the LSP to accept URI if name is missing?
-      // Actually, modelscript/flatten takes `{ name: string, uri?: string }`.
-      // I'll parse the file name as a fallback.
-      if (!name) {
-        name =
-          uri
-            .split("/")
-            .pop()
-            ?.replace(/\.[^.]+$/, "") ?? "Model";
-      }
-      if (editor?.document && !name.includes(".")) {
-        const text = editor.document.getText();
-        const wm = text.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-        if (wm && wm[1]?.trim()) {
-          name = `${wm[1].trim()}.${name}`;
-        }
-      }
-
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: "Flattening model...", cancellable: false },
-        async () => {
-          try {
-            const res = await client?.sendRequest<{ text: string | null; error?: string | undefined }>(
-              "modelscript/flatten",
-              {
-                name,
-                uri,
-              },
-            );
-            if (!res) return;
-
-            outputChannel.clear();
-            outputChannel.show(true);
-            if (res.error) {
-              outputChannel.appendLine(`Flattening Error: ${res.error}`);
-            } else if (res.text) {
-              outputChannel.appendLine(`--- Flattened Output for ${name} ---`);
-              outputChannel.appendLine(res.text);
-            } else {
-              outputChannel.appendLine("No output generated.");
-            }
-          } catch (e) {
-            outputChannel.clear();
-            outputChannel.show(true);
-            outputChannel.appendLine(`Flattening Error: ${e}`);
-          }
-        },
-      );
-    }),
-    commands.registerCommand("modelscript.exportFmi2", async (args?: any) => {
-      if (!client) return;
-      const targetUri = args?.uri
-        ? typeof args.uri === "string"
-          ? vscode.Uri.parse(args.uri)
-          : args.uri
-        : args instanceof vscode.Uri
-          ? args
-          : undefined;
-      const editor = vscode.window.activeTextEditor;
-      const docUri = targetUri ?? editor?.document?.uri;
-      if (!docUri) {
-        vscode.window.showErrorMessage("Open a model file to export an FMU.");
-        return;
-      }
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 2.0...", cancellable: false },
-        async () => {
-          if (!client) return;
-          try {
-            if (editor?.document && editor.document.isDirty) {
-              await editor.document.save();
-            }
-            const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
-              uri: docUri.toString(),
-              fmiVersion: "2.0",
-            });
-            const folder =
-              vscode.workspace.workspaceFolders?.[0]?.uri ||
-              (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
-            const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
-            await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
-            vscode.window.showInformationMessage(`Exported FMI 2.0 to ${res.fmuName}.fmu`);
-          } catch (e) {
-            vscode.window.showErrorMessage(`FMI 2.0 Export failed: ${e}`);
-          }
-        },
-      );
-    }),
-    commands.registerCommand("modelscript.exportFmi3", async (args?: any) => {
-      if (!client) return;
-      const targetUri = args?.uri
-        ? typeof args.uri === "string"
-          ? vscode.Uri.parse(args.uri)
-          : args.uri
-        : args instanceof vscode.Uri
-          ? args
-          : undefined;
-      const editor = vscode.window.activeTextEditor;
-      const docUri = targetUri ?? editor?.document?.uri;
-      if (!docUri) {
-        vscode.window.showErrorMessage("Open a model file to export an FMU.");
-        return;
-      }
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 3.0...", cancellable: false },
-        async () => {
-          if (!client) return;
-          try {
-            if (editor?.document && editor.document.isDirty) {
-              await editor.document.save();
-            }
-            const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
-              uri: docUri.toString(),
-              fmiVersion: "3.0",
-            });
-            const folder =
-              vscode.workspace.workspaceFolders?.[0]?.uri ||
-              (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
-            const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
-            await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
-            vscode.window.showInformationMessage(`Exported FMI 3.0 to ${res.fmuName}.fmu`);
-          } catch (e) {
-            vscode.window.showErrorMessage(`FMI 3.0 Export failed: ${e}`);
-          }
-        },
-      );
-    }),
-    commands.registerCommand("modelscript.generateMultiBody", async () => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      if (!editor || !editor.document.fileName.match(/\.(step|stp)$/i)) {
-        vscode.window.showErrorMessage("Open a STEP file (.step or .stp) to generate a Multi-Body model.");
-        return;
-      }
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "Extracting constraints and generating Modelica...",
-          cancellable: false,
-        },
-        async () => {
-          if (!client) return;
-          try {
-            const res = await client.sendRequest<{ source: string; name: string }>("modelscript/generateMultiBody", {
-              uri: editor.document.uri.toString(),
-            });
-
-            // Write to a new file next to the step file
-            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
-            const outUri = vscode.Uri.joinPath(folder, `${res.name}.mo`);
-            await vscode.workspace.fs.writeFile(outUri, new TextEncoder().encode(res.source));
-
-            vscode.window.showInformationMessage(`Generated Modelica Multi-Body model: ${res.name}.mo`);
-
-            // Open the generated file
-            const doc = await vscode.workspace.openTextDocument(outUri);
-            await vscode.window.showTextDocument(doc);
-          } catch (e) {
-            vscode.window.showErrorMessage(`Multi-Body generation failed: ${e}`);
-          }
-        },
-      );
-    }),
-    commands.registerCommand("modelscript.compileWasm", async () => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showErrorMessage("Open a model file to compile to WebAssembly.");
-        return;
-      }
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "Compiling to WebAssembly...",
-          cancellable: false,
-        },
-        async () => {
-          if (!client) return;
-          try {
-            const res = await client.sendRequest<{
-              wasmC: string;
-              emccFlags: string[];
-              exportedFunctions: string[];
-              scalarVariables: { name: string; valueReference: number; causality: string }[];
-            }>("modelscript/compileWasm", {
-              uri: editor.document.uri.toString(),
-            });
-
-            // Save the WASM C source to the workspace
-            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
-            const modelName = editor.document.fileName.replace(/.*[/\\]/, "").replace(/\.mo$/, "");
-            const cUri = vscode.Uri.joinPath(folder, `${modelName}_wasm.c`);
-            await vscode.workspace.fs.writeFile(cUri, new TextEncoder().encode(res.wasmC));
-
-            // Save build instructions
-            const buildCmd = `emcc ${modelName}_wasm.c ${res.emccFlags.join(" ")} -o ${modelName}.js`;
-            const buildUri = vscode.Uri.joinPath(folder, `BUILD_WASM.md`);
-            await vscode.workspace.fs.writeFile(
-              buildUri,
-              new TextEncoder().encode(
-                [
-                  `# WebAssembly Build Instructions`,
-                  ``,
-                  `## Prerequisites`,
-                  `- Install [Emscripten](https://emscripten.org/)`,
-                  `- Activate the Emscripten environment: \`source emsdk_env.sh\``,
-                  ``,
-                  `## Build Command`,
-                  `\`\`\`bash`,
-                  buildCmd,
-                  `\`\`\``,
-                  ``,
-                  `## Output`,
-                  `- \`${modelName}.js\` — Emscripten JS glue code`,
-                  `- \`${modelName}.wasm\` — WebAssembly binary`,
-                  ``,
-                  `## Exported Functions`,
-                  ...res.exportedFunctions.map((f) => `- \`${f}\``),
-                  ``,
-                  `## Scalar Variables`,
-                  `| Name | Value Reference | Causality |`,
-                  `|------|----------------|-----------|`,
-                  ...res.scalarVariables.map((sv) => `| ${sv.name} | ${sv.valueReference} | ${sv.causality} |`),
-                ].join("\n"),
-              ),
-            );
-
-            vscode.window.showInformationMessage(
-              `Generated WASM source: ${modelName}_wasm.c — see BUILD_WASM.md for compilation instructions.`,
-            );
-          } catch (e) {
-            vscode.window.showErrorMessage(`WebAssembly compilation failed: ${e}`);
-          }
-        },
-      );
-    }),
-    commands.registerCommand("modelscript.runVerification", async () => {
-      if (!client) return;
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage("Open a file first to run requirements verification.");
-        return;
-      }
-      await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: "Running Requirements Verification..." },
-        async () => {
-          try {
-            if (client && editor) {
-              await client.sendRequest("modelscript/runVerification", { uri: editor.document.uri.toString() });
-              // Refresh markdown preview to update requirement statuses
-              refreshMarkdownData();
-
-              // Forward verification limits to the Simulation Panel for chart overlay
-              try {
-                const reqs: {
-                  peakValue?: number | undefined;
-                  limitValue?: number | undefined;
-                  lhsName?: string | undefined;
-                  status: string;
-                }[] = await client.sendRequest("modelscript/getRequirements", {
-                  uri: editor.document.uri.toString(),
-                });
-                const limits = reqs
-                  .filter((r): r is typeof r & { limitValue: number } => r.limitValue !== undefined)
-                  .map((r) => ({
-                    variable: r.lhsName ?? "value",
-                    value: r.limitValue,
-                    label: `max: ${r.limitValue.toFixed(1)}`,
-                    violated: r.status === "Failed",
-                  }));
-                if (limits.length > 0) {
-                  SimulationPanel.postVerificationLimits(limits);
-                }
-              } catch {
-                // Ignore — limit overlay is best-effort
-              }
-            }
-          } catch (e: unknown) {
-            vscode.window.showErrorMessage(`Verification failed: ${(e as Error).message}`);
-          }
-        },
-      );
-    }),
-    commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown, _secondArg?: string) => {
-      if (!client) return;
-
-      // Support context menu (LibraryTreeItem), palette item, and direct call
       let className: string | undefined;
       if (firstArg && typeof firstArg === "object" && "info" in firstArg) {
-        const item = firstArg as { info: { compositeName: string; classKind: string; iconSvg?: string | undefined } };
+        const item = firstArg as { info: { compositeName: string } };
         className = item.info.compositeName;
       } else if (firstArg && typeof firstArg === "object" && "elementInfo" in firstArg) {
         const item = firstArg as { elementInfo: { type: string; element?: { elementType: string } | undefined } };
@@ -2741,8 +371,7 @@ END-ISO-10303-21;`;
       }
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const response: any = await client.sendRequest("modelscript/diagram.applyEdits", {
+        const response: any = await lspManager.client.sendRequest("modelscript/diagram.applyEdits", {
           uri: docUri,
           seq: 0,
           actions: [{ type: "addComponent", className, x: 0, y: 0 }],
@@ -2768,69 +397,10 @@ END-ISO-10303-21;`;
           }, 600);
         }
       } catch (e) {
-        console.error("[addToDiagram] Error:", e);
         vscode.window.showErrorMessage(`Failed to add component: ${e}`);
       }
     }),
 
-    // ── Co-Simulation commands ──
-    commands.registerCommand("modelscript.cosimConnect", () => {
-      cosimProvider.refresh();
-      mqttTreeProvider?.refresh();
-      vscode.window.showInformationMessage("Refreshing co-simulation connections…");
-    }),
-    commands.registerCommand("modelscript.cosimDisconnect", () => {
-      vscode.window.showInformationMessage("MQTT connection managed via the Co-Simulation panel.");
-    }),
-    commands.registerCommand("modelscript.cosimStartInfra", async () => {
-      const cmd = "docker compose up -d mqtt timescaledb api";
-      try {
-        await vscode.env.clipboard.writeText(cmd);
-        vscode.window.showInformationMessage(`Copied to clipboard: ${cmd}`);
-      } catch {
-        vscode.window.showInformationMessage(`Run in your terminal: ${cmd}`);
-      }
-    }),
-    commands.registerCommand("modelscript.cosimCreateSession", () => {
-      vscode.commands.executeCommand("workbench.view.extension.modelscript-cosim");
-    }),
-    commands.registerCommand("modelscript.cosimPublishModel", () => {
-      vscode.window.showInformationMessage("Use the Co-Simulation panel to publish a model to a session.");
-    }),
-    commands.registerCommand("modelscript.cosimOpenLivePlot", (sessionId?: string, participantId?: string) => {
-      if (cosimProvider.isLocalMode) {
-        SimulationPanel.createOrShowLiveLocal(context.extensionUri, sessionId);
-      } else {
-        SimulationPanel.createOrShowLive(context.extensionUri, sessionId, participantId);
-      }
-    }),
-    commands.registerCommand("modelscript.cosimRefresh", () => {
-      cosimProvider.refresh();
-      mqttTreeProvider?.refresh();
-    }),
-    // ── Analytical commands ──
-    commands.registerCommand("modelscript.showClassHierarchy", () => {
-      if (!client) return;
-      AnalysisPanel.createOrShowHierarchy(context.extensionUri, client);
-    }),
-    commands.registerCommand("modelscript.analyzeBlt", () => {
-      if (!client) return;
-      AnalysisPanel.createOrShowBlt(context.extensionUri, client);
-    }),
-    commands.registerCommand("modelscript.showComponentTree", () => {
-      if (!client) return;
-      AnalysisPanel.createOrShowComponentTree(context.extensionUri, client);
-    }),
-    commands.registerCommand(
-      "modelscript.showDaeVerificationDetails",
-      (_uri: string, className: string, proof: any) => {
-        const msg = proof?.issues?.length
-          ? `DAE Verification Issues for ${className}:\n` + proof.issues.map((i: any) => `• ${i.message}`).join("\n")
-          : `DAE Verification: No singularity found among bounded variables for ${className || "model"}.`;
-        vscode.window.showInformationMessage(msg);
-      },
-    ),
-    // ── MBSE views: Requirements & V&V ──
     commands.registerCommand("modelscript.openRequirements", async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor?.document) {
@@ -2843,379 +413,30 @@ END-ISO-10303-21;`;
         vscode.window.showWarningMessage("Open a model file first.");
       }
     }),
-    commands.registerCommand("modelscript.openVerificationDashboard", () => {
-      if (!client) return;
-      VerificationPanel.createOrShow(context.extensionUri, client);
+
+    commands.registerCommand("modelscript.openVrVisualization", () => {
+      VrVisualizationPanel.createOrShow(context.extensionUri);
     }),
-    commands.registerCommand("modelscript.verifyAll", async (uri?: string) => {
-      if (!client) return;
-      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
-      if (!targetUri) {
-        vscode.window.showWarningMessage("Open a model file first to run formal verification.");
-        return;
-      }
-      VerificationPanel.createOrShow(context.extensionUri, client);
-      try {
-        const report = await client.sendRequest<any>("modelscript/verifyAll", {
-          uri: targetUri,
-          options: { all: true },
-        });
-        if (report?.summary?.overallPassed) {
-          vscode.window.showInformationMessage(
-            `All formal verification stages passed (${report.summary.passedStages}/${report.summary.totalStages})`,
-          );
-        } else {
-          vscode.window.showWarningMessage(
-            `Formal verification detected ${report?.summary?.totalViolations || 0} violation(s).`,
-          );
-        }
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Verification failed: ${e.message}`);
-      }
-    }),
-    commands.registerCommand("modelscript.verifyB2B", async (uri?: string) => {
-      if (!client) return;
-      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
-      if (!targetUri) {
-        vscode.window.showWarningMessage("Open a Modelica model file first to run B2B equivalence verification.");
-        return;
-      }
-      VerificationPanel.createOrShow(context.extensionUri, client);
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "Running ISO 26262 Back-to-Back (MiL vs SiL) Equivalence Verification...",
-          cancellable: false,
-        },
-        async () => {
-          try {
-            const res = await client!.sendRequest<any>("modelscript/verifyB2B", { uri: targetUri, format: "dhf" });
-            if (res.success) {
-              const disc = res.maxDiscrepancy !== undefined ? res.maxDiscrepancy.toExponential(3) : "0.0";
-              const sha = res.sha256CSource ? res.sha256CSource.slice(0, 12) : "unknown";
-              vscode.window.showInformationMessage(
-                `B2B Equivalence PASSED (ISO 26262 ASIL D / TCL1): Max discrepancy ${disc} <= tolerance ${res.tolerance}. C99 SHA: ${sha}...`,
-              );
-            } else {
-              vscode.window.showErrorMessage(
-                `B2B Equivalence FAILED: ${res.error || res.stage?.summary || "Discrepancy exceeds tolerance"}`,
-              );
-            }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`B2B Equivalence failed: ${e.message}`);
-          }
-        },
+
+    commands.registerCommand("modelscript.owl2.goToDeclaration", async (iri: string) => {
+      if (!iri) return;
+      const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+        "vscode.executeWorkspaceSymbolProvider",
+        iri,
       );
-    }),
-    commands.registerCommand("modelscript.verifyDecisionLogic", async (uri?: string) => {
-      if (!client) return;
-      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
-      if (!targetUri) return;
-      VerificationPanel.createOrShow(context.extensionUri, client);
-      await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { decisions: true } });
-    }),
-
-    commands.registerCommand(
-      "modelscript.openDroneReachabilityDemo",
-      async (uriArg?: string, classNameArg?: string) => {
-        const doc = vscode.window.activeTextEditor?.document;
-        const targetUri = typeof uriArg === "string" && uriArg.length > 0 ? uriArg : doc?.uri.toString();
-
-        if (client && targetUri) {
-          try {
-            const reachResult = await SimulationPanel.createOrShowReachability(
-              context.extensionUri,
-              client,
-              targetUri,
-              typeof classNameArg === "string" ? classNameArg : undefined,
-            );
-            if (reachResult && !reachResult.error && reachResult.t && reachResult.t.length > 0) {
-              if (reachResult.summary) {
-                vscode.window.showInformationMessage(`Reachability analysis: ${reachResult.summary}`);
-              }
-              return;
-            }
-          } catch (err) {
-            console.warn(
-              "[ModelScript] LSP reachability request failed, falling back to local solver if applicable:",
-              err,
-            );
-          }
-        }
-
-        // Fallback when no LSP client is connected or for standalone drone reachability demo
-        let m = 1.2;
-        let A = 0.03;
-        let Cd = 0.8;
-        let z_target = 11.0;
-        let kz = 3.1;
-        let kv = 1.35;
-        let w_max = 0.5;
-        let v_limit = 12.0;
-
-        if (doc) {
-          const text = doc.getText();
-          const mMatch = text.match(/\bm\s*=\s*([\d.]+)/);
-          if (mMatch) m = parseFloat(mMatch[1]!);
-          const aMatch = text.match(/\bA\s*=\s*([\d.]+)/);
-          if (aMatch) A = parseFloat(aMatch[1]!);
-          const cdMatch = text.match(/\bCd\s*=\s*([\d.]+)/i);
-          if (cdMatch) Cd = parseFloat(cdMatch[1]!);
-          const zMatch = text.match(/\bz_target\s*=\s*([\d.]+)/);
-          if (zMatch) z_target = parseFloat(zMatch[1]!);
-          const kzMatch = text.match(/\bkz\s*=\s*([\d.]+)/);
-          if (kzMatch) kz = parseFloat(kzMatch[1]!);
-          const kvMatch = text.match(/\bkv\s*=\s*([\d.]+)/);
-          if (kvMatch) kv = parseFloat(kvMatch[1]!);
-          const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
-          if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]!);
-          const wMatch =
-            text.match(/\b(?:w_max)\s*=\s*([\d.]+)/) || text.match(/\binput\s+Real\s+w\s*\([^)]*max\s*=\s*([\d.]+)/);
-          if (wMatch) w_max = parseFloat(wMatch[1]!);
-        }
-
-        const res = simulateDroneReachability({
-          m,
-          A,
-          Cd,
-          rho: 1.225,
-          z_target,
-          kz,
-          kv,
-          w_max,
-          v_limit,
-        });
-
-        if (client) {
-          await SimulationPanel.createOrShow(context.extensionUri, client);
-        }
-
-        const envelopes: FlowpipeEnvelope[] = [
-          {
-            name: "Interval Arithmetic (linearized, non-rigorous)",
-            kind: "interval",
-            color: "#ef4444",
-            fillColor: "rgba(239, 68, 68, 0.12)",
-            borderDash: [5, 4],
-            lo: res.intervalLo,
-            hi: res.intervalHi,
-            peakVal: res.intervalMaxVelocity,
-            breachTime: res.intervalBreachTime,
-            isViolation: res.intervalBreachTime !== undefined,
-          },
-          {
-            name: "Taylor Model (Order 4)",
-            kind: "affine",
-            color: "#8b5cf6",
-            fillColor: "rgba(139, 92, 246, 0.18)",
-            borderDash: [3, 2],
-            lo: res.zonotopeLo.map((lo, i) => res.nominal[i]! - (res.nominal[i]! - lo) * 1.08),
-            hi: res.zonotopeHi.map((hi, i) => res.nominal[i]! + (hi - res.nominal[i]!) * 1.08),
-            peakVal: parseFloat((res.zonotopeMaxVelocity * 1.04).toFixed(2)),
-          },
-          {
-            name: "Zonotope (linearized, non-rigorous)",
-            kind: "zonotope",
-            color: "#22c55e",
-            fillColor: "rgba(34, 197, 94, 0.28)",
-            lo: res.zonotopeLo,
-            hi: res.zonotopeHi,
-            peakVal: res.zonotopeMaxVelocity,
-          },
-        ];
-
-        const statusBadges: { text: string; kind: "pass" | "warn" | "fail" }[] = [
-          {
-            text: res.envelopeWithinLimit
-              ? `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} <= ${v_limit} m/s (not a proof)`
-              : `Zonotope estimate: peak v = ${res.zonotopeMaxVelocity} > ${v_limit} m/s (not a proof)`,
-            kind: "warn",
-          },
-        ];
-        if (res.intervalBreachTime !== undefined) {
-          statusBadges.push({
-            text: `Interval wrapping blow-up crosses limit @ t = ${res.intervalBreachTime}s`,
-            kind: "warn",
-          });
-        }
-
-        SimulationPanel.postReachabilityData({
-          t: res.time,
-          variable: "v",
-          nominalTrajectory: res.nominal,
-          envelopes,
-          requirementLimit: v_limit,
-          requirementLabel: `SysML v2 FlightCeiling: v(t) <= ${v_limit} m/s`,
-          // Webview field drives requirement-line coloring only; this is an estimate, not a certificate.
-          isCertifiedSafe: res.envelopeWithinLimit,
-          statusBadges,
-          yRange: [-6.0, 15.5],
-        });
-
-        vscode.window.showInformationMessage(`Reachability estimate (non-rigorous): ${res.summary}`);
-      },
-    ),
-    commands.registerCommand("modelscript.syncDigitalThreadParams", async () => {
-      try {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) return;
-        const rootUri = workspaceFolders[0]!.uri;
-
-        const inpUri = Uri.joinPath(rootUri, "cae/drone_chassis.inp");
-        const cfgUri = Uri.joinPath(rootUri, "cae/drone_aero.cfg");
-        const moUri = Uri.joinPath(rootUri, "modelica/DroneSimulation.mo");
-        const sysmlUri = Uri.joinPath(rootUri, "sysml/drone_specs.sysml");
-
-        let mass = 1.2;
-        let maxVonMisesPa = 172.4e6;
-        let cd = 0.8;
-        let area = 0.03;
-        let rho = 1.225;
-
-        // 1. Read FEA deck
-        try {
-          const rawInp = await vscode.workspace.fs.readFile(inpUri);
-          const inpText = new TextDecoder().decode(rawInp);
-          const massMatch = inpText.match(/\bmass\s*=\s*([\d.]+)/i);
-          if (massMatch) mass = parseFloat(massMatch[1]!);
-          const misesMatch = inpText.match(/\bmax_von_mises\s*=\s*([\d.]+)/i);
-          if (misesMatch) maxVonMisesPa = parseFloat(misesMatch[1]!) * 1e6;
-        } catch {}
-
-        // 2. Read CFD config
-        try {
-          const rawCfg = await vscode.workspace.fs.readFile(cfgUri);
-          const cfgText = new TextDecoder().decode(rawCfg);
-          const cdMatch = cfgText.match(/\bCd_total\s*=\s*([\d.]+)/i) || cfgText.match(/\bCD\s*=\s*([\d.]+)/i);
-          if (cdMatch) cd = parseFloat(cdMatch[1]!);
-          const areaMatch = cfgText.match(/REF_AREA\s*=\s*([\d.]+)/i);
-          if (areaMatch) area = parseFloat(areaMatch[1]!);
-          const rhoMatch = cfgText.match(/INC_DENSITY_INIT\s*=\s*([\d.]+)/i);
-          if (rhoMatch) rho = parseFloat(rhoMatch[1]!);
-        } catch {}
-
-        // 3. Propagate into Modelica document
-        try {
-          const moDoc = await vscode.workspace.openTextDocument(moUri);
-          const moText = moDoc.getText();
-          const updatedMoText = moText
-            .replace(/\bparameter\s+Real\s+m\s*=\s*[\d.]+/g, `parameter Real m = ${mass}`)
-            .replace(/\bparameter\s+Real\s+A\s*=\s*[\d.]+/g, `parameter Real A = ${area}`)
-            .replace(/\bparameter\s+Real\s+Cd\s*=\s*[\d.]+/g, `parameter Real Cd = ${cd.toFixed(2)}`)
-            .replace(/\bparameter\s+Real\s+rho\s*=\s*[\d.]+/g, `parameter Real rho = ${rho}`);
-
-          if (updatedMoText !== moText) {
-            const edit = new vscode.WorkspaceEdit();
-            edit.replace(moUri, new vscode.Range(moDoc.positionAt(0), moDoc.positionAt(moText.length)), updatedMoText);
-            await vscode.workspace.applyEdit(edit);
-          }
-        } catch {}
-
-        // 4. Propagate into SysML v2 document
-        try {
-          const sysmlDoc = await vscode.workspace.openTextDocument(sysmlUri);
-          const sysmlText = sysmlDoc.getText();
-          const updatedSysml = sysmlText
-            .replace(/\battribute\s+totalMass\s*:\s*Real\s*=\s*[\d.]+/g, `attribute totalMass : Real = ${mass}`)
-            .replace(
-              /\battribute\s+totalFrontalArea\s*:\s*Real\s*=\s*[\d.]+/g,
-              `attribute totalFrontalArea : Real = ${area}`,
-            )
-            .replace(
-              /\battribute\s+aeroDragCoeff\s*:\s*Real\s*=\s*[\d.]+/g,
-              `attribute aeroDragCoeff : Real = ${cd.toFixed(2)}`,
-            );
-
-          if (updatedSysml !== sysmlText) {
-            const edit = new vscode.WorkspaceEdit();
-            edit.replace(
-              sysmlUri,
-              new vscode.Range(sysmlDoc.positionAt(0), sysmlDoc.positionAt(sysmlText.length)),
-              updatedSysml,
-            );
-            await vscode.workspace.applyEdit(edit);
-          }
-        } catch {}
-
-        vscode.window.showInformationMessage(
-          `✔ Digital Thread Synchronized: FEA mass (m = ${mass} kg, σ = ${(maxVonMisesPa / 1e6).toFixed(1)} MPa), CFD drag (Cd = ${cd.toFixed(2)}), and CAD area (A = ${area} m²) aligned with Modelica DAE & SysML v2.`,
-        );
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Digital thread sync error: ${err?.message || err}`);
+      const match = symbols?.find((s) => s.name === iri || s.containerName === iri) ?? symbols?.[0];
+      if (match?.location) {
+        const doc = await vscode.workspace.openTextDocument(match.location.uri);
+        const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+        editor.selection = new vscode.Selection(match.location.range.start, match.location.range.end);
+        editor.revealRange(match.location.range, vscode.TextEditorRevealType.InCenter);
+      } else {
+        vscode.window.showInformationMessage(`Navigating to OWL2 IRI: ${iri}`);
       }
     }),
-    commands.registerCommand("modelscript.runReachabilityFlowpipe", async (uri?: string) => {
-      if (!client) return;
-      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
-      if (!targetUri) return;
-      VerificationPanel.createOrShow(context.extensionUri, client);
-      await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { flowpipes: true } });
-    }),
-    commands.registerCommand("modelscript.generateBoundaryTests", async (uri?: string) => {
-      if (!client) return;
-      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
-      if (!targetUri) return;
-      await client.sendRequest("modelscript/verifyAll", {
-        uri: targetUri,
-        options: { regionDecomposition: true, mcdc: true },
-      });
-    }),
-    commands.registerCommand("modelscript.openThreadExplorer", () => {
-      if (!client) return;
-      ThreadExplorerPanel.createOrShow(context.extensionUri, client);
-    }),
-    registerPolyglotActions(context, client),
-    registerMultiDomainScaffolding(context),
-    commands.registerCommand("modelscript.openTraceReplay", (trace?: any) => {
-      TraceReplayPanel.createOrShow(context.extensionUri, client, trace);
-    }),
-    commands.registerCommand(
-      "modelscript.openContractExplorer",
-      (uriOrContractName?: string, contractName?: string) => {
-        ContractHierarchyPanel.createOrShow(context.extensionUri, client, uriOrContractName, contractName);
-      },
-    ),
-    commands.registerCommand("modelscript.openPacemakerProgrammer", (uri?: string) => {
-      PacemakerProgrammerPanel.createOrShow(context.extensionUri, client, uri);
-    }),
-    commands.registerCommand("modelscript.focusCadPart", async (arg?: any) => {
-      let partName = "";
-      if (typeof arg === "string") {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(arg));
-          partName = parsed.partName || arg;
-        } catch {
-          partName = arg;
-        }
-      } else if (arg && typeof arg === "object") {
-        partName = arg.partName || "";
-      }
 
-      if (!partName) return;
-
-      const { MultiBodyAnimationPanel } = await import("./multibody-animation-panel");
-      if (MultiBodyAnimationPanel.currentPanel) {
-        MultiBodyAnimationPanel.currentPanel.reveal();
-        MultiBodyAnimationPanel.currentPanel.focusPart(partName);
-        return;
-      }
-
-      const { CadViewerPanel } = await import("./cad-viewer-panel");
-      if (CadViewerPanel.currentPanel) {
-        CadViewerPanel.currentPanel.reveal();
-        CadViewerPanel.currentPanel.focusPart(partName);
-        return;
-      }
-
-      if (client && context.extensionUri) {
-        CadViewerPanel.createOrShow(context.extensionUri, client);
-        setTimeout(() => {
-          CadViewerPanel.currentPanel?.focusPart(partName);
-        }, 500);
-      }
-    }),
     commands.registerCommand("modelscript.runMcdcTests", async (uri?: string, actionName?: string) => {
-      if (!client) return;
+      if (!lspManager?.client) return;
       const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
       if (!targetUri) {
         vscode.window.showWarningMessage("Open a SysML v2 file to run MC/DC formal tests.");
@@ -3229,7 +450,7 @@ END-ISO-10303-21;`;
         },
         async () => {
           try {
-            const res = await client!.sendRequest<any>("modelscript/runMcdcTests", {
+            const res = await lspManager!.client.sendRequest<any>("modelscript/runMcdcTests", {
               uri: targetUri,
               actionName,
             });
@@ -3247,8 +468,9 @@ END-ISO-10303-21;`;
         },
       );
     }),
+
     commands.registerCommand("modelscript.decomposeRegions", async (uri?: string, actionName?: string) => {
-      if (!client) return;
+      if (!lspManager?.client) return;
       const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
       if (!targetUri) return;
       vscode.window.withProgress(
@@ -3259,7 +481,7 @@ END-ISO-10303-21;`;
         },
         async () => {
           try {
-            const res = await client!.sendRequest<any>("modelscript/decomposeRegions", {
+            const res = await lspManager!.client.sendRequest<any>("modelscript/decomposeRegions", {
               uri: targetUri,
             });
             if (res?.success) {
@@ -3273,7 +495,7 @@ END-ISO-10303-21;`;
         },
       );
     }),
-    // ── Physics Simulation Commands ──
+
     commands.registerCommand("modelscript.openSimulationView", async (uri?: vscode.Uri, className?: string) => {
       let targetUri = uri;
       if (!targetUri && vscode.window.activeTextEditor) {
@@ -3284,14 +506,15 @@ END-ISO-10303-21;`;
         className = await vscode.window.showInputBox({ prompt: "Enter the Study class name to simulate:" });
         if (!className) return;
       }
-      if (client) {
-        SimulationViewPanel.createOrShow(context, client, className, targetUri.toString());
+      if (lspManager?.client) {
+        SimulationViewPanel.createOrShow(context, lspManager.client, className, targetUri.toString());
       }
     }),
+
     commands.registerCommand(
       "modelscript.runPhysicsSimulation",
       async (args?: { uri: string; className?: string | undefined }) => {
-        if (!client) return;
+        if (!lspManager?.client) return;
         const uri = args?.uri || vscode.window.activeTextEditor?.document.uri.toString();
         if (!uri) return;
         const className = args?.className;
@@ -3304,11 +527,10 @@ END-ISO-10303-21;`;
           },
           async () => {
             try {
-              // Open 3D CAD viewer if not already open
-              const { CadViewerPanel } = await import("./cad-viewer-panel");
-              CadViewerPanel.createOrShow(context.extensionUri, client!);
+              const { CadViewerPanel } = await import("./cad-viewer-panel.js");
+              CadViewerPanel.createOrShow(context.extensionUri, lspManager!.client);
 
-              const result = await client!.sendRequest<any>("modelscript/simulatePhysics", {
+              const result = await lspManager!.client.sendRequest<any>("modelscript/simulatePhysics", {
                 uri,
                 className,
                 physicsType: "FEA",
@@ -3326,784 +548,63 @@ END-ISO-10303-21;`;
         );
       },
     ),
-    commands.registerCommand("modelscript.materializeCalculixDeck", async (uriOrStr?: vscode.Uri | string) => {
-      let targetUri: vscode.Uri | undefined;
-      if (typeof uriOrStr === "string") targetUri = vscode.Uri.parse(uriOrStr);
-      else if (uriOrStr) targetUri = uriOrStr;
-      else if (vscode.window.activeTextEditor) targetUri = vscode.window.activeTextEditor.document.uri;
 
-      if (
-        !targetUri ||
-        (!targetUri.path.endsWith(".inp") && !targetUri.path.endsWith(".bdf") && !targetUri.path.endsWith(".inpt"))
-      ) {
-        vscode.window.showErrorMessage("Please open or select an FEA deck (.inp / .bdf) to materialize.");
-        return;
-      }
-
-      try {
-        const fileBytes = await vscode.workspace.fs.readFile(targetUri);
-        const rawText = new TextDecoder().decode(fileBytes);
-        const materialized = materializeFeaDeck(rawText);
-        const outPath = targetUri.path.endsWith(".inpt")
-          ? targetUri.path.replace(/\.inpt$/, ".inp")
-          : targetUri.path.replace(/(\.[^.]+)$/, ".materialized$1");
-        const outUri = targetUri.with({ path: outPath });
-        await vscode.workspace.fs.writeFile(outUri, new TextEncoder().encode(materialized));
-        vscode.window
-          .showInformationMessage(`Materialized FEA deck to ${outUri.path}`, "Open deck")
-          .then(async (sel) => {
-            if (sel === "Open deck") {
-              const doc = await vscode.workspace.openTextDocument(outUri);
-              await vscode.window.showTextDocument(doc);
-            }
-          });
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to materialize FEA deck: ${err.message || err}`);
-      }
+    commands.registerCommand("modelscript.openChat", () => {
+      vscode.commands.executeCommand("modelscript.chat.focus");
     }),
-    commands.registerCommand("modelscript.materializeSu2Config", async (uriOrStr?: vscode.Uri | string) => {
-      let targetUri: vscode.Uri | undefined;
-      if (typeof uriOrStr === "string") targetUri = vscode.Uri.parse(uriOrStr);
-      else if (uriOrStr) targetUri = uriOrStr;
-      else if (vscode.window.activeTextEditor) targetUri = vscode.window.activeTextEditor.document.uri;
-
-      if (!targetUri || (!targetUri.path.endsWith(".cfg") && !targetUri.path.endsWith(".cfgt"))) {
-        vscode.window.showErrorMessage("Please open or select a CFD config (.cfg) to materialize.");
-        return;
-      }
-
-      try {
-        const fileBytes = await vscode.workspace.fs.readFile(targetUri);
-        const rawText = new TextDecoder().decode(fileBytes);
-        const materialized = materializeCfdConfig(rawText);
-        const outPath = targetUri.path.endsWith(".cfgt")
-          ? targetUri.path.replace(/\.cfgt$/, ".cfg")
-          : targetUri.path.replace(/\.cfg$/, ".materialized.cfg");
-        const outUri = targetUri.with({ path: outPath });
-        await vscode.workspace.fs.writeFile(outUri, new TextEncoder().encode(materialized));
-        vscode.window
-          .showInformationMessage(`Materialized CFD config to ${outUri.path}`, "Open config")
-          .then(async (sel) => {
-            if (sel === "Open config") {
-              const doc = await vscode.workspace.openTextDocument(outUri);
-              await vscode.window.showTextDocument(doc);
-            }
-          });
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to materialize CFD config: ${err.message || err}`);
-      }
-    }),
-    commands.registerCommand("modelscript.createFeaSetup", async (uri?: vscode.Uri) => {
-      let targetUri = uri;
-      if (!targetUri && vscode.window.activeTextEditor) {
-        targetUri = vscode.window.activeTextEditor.document.uri;
-      }
-      if (!targetUri || !targetUri.path.match(/\.(step|stp)$/i)) {
-        vscode.window.showErrorMessage("Please select a STEP file to create an FEA setup.");
-        return;
-      }
-      const studyName =
-        targetUri.path
-          .split("/")
-          .pop()
-          ?.replace(/\.(step|stp)$/i, "") + "_FEA";
-      const setupUri = targetUri.with({ path: targetUri.path + ".fea.mo" });
-      const moContent = `model ${studyName}
-  extends ModelScript.Studies.StaticStructuralFEA(
-    meshResolution = 0.05
   );
-  // Add target component here
-end ${studyName};
-`;
-      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(moContent));
-      vscode.window.showInformationMessage(`Created FEA study: ${setupUri.path}`);
-      const doc = await vscode.workspace.openTextDocument(setupUri);
-      await vscode.window.showTextDocument(doc);
-    }),
-    commands.registerCommand("modelscript.createCfdSetup", async (uri?: vscode.Uri) => {
-      let targetUri = uri;
-      if (!targetUri && vscode.window.activeTextEditor) {
-        targetUri = vscode.window.activeTextEditor.document.uri;
+
+  // 14. Editor Active State and Viewport Tracking
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor?.document && editor.document.uri.scheme !== "output") {
+        treeController.libraryTreeProvider.setDocumentUri(editor.document.uri.toString());
       }
-      if (!targetUri || !targetUri.path.match(/\.(step|stp)$/i)) {
-        vscode.window.showErrorMessage("Please select a STEP file to create a CFD setup.");
-        return;
-      }
-      const studyName =
-        targetUri.path
-          .split("/")
-          .pop()
-          ?.replace(/\.(step|stp)$/i, "") + "_CFD";
-      const setupUri = targetUri.with({ path: targetUri.path + ".cfd.mo" });
-      const moContent = `model ${studyName}
-  extends ModelScript.Studies.SteadyStateCFD(
-    meshResolution = 0.05
-  );
-  // Add target component here
-end ${studyName};
-`;
-      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(moContent));
-      vscode.window.showInformationMessage(`Created CFD study: ${setupUri.path}`);
-      const doc = await vscode.workspace.openTextDocument(setupUri);
-      await vscode.window.showTextDocument(doc);
-    }),
-    commands.registerCommand("modelscript.migrateMsimToStudy", async () => {
-      const uris = await vscode.workspace.findFiles("**/*.msim");
-      if (uris.length === 0) {
-        vscode.window.showInformationMessage("No .msim files found to migrate.");
-        return;
-      }
-
-      let migratedCount = 0;
-      for (const uri of uris) {
-        try {
-          const content = await vscode.workspace.fs.readFile(uri);
-          const json = JSON.parse(new TextDecoder().decode(content));
-
-          const studyName =
-            uri.path
-              .split("/")
-              .pop()
-              ?.replace(".msim", "")
-              .replace(/[^a-zA-Z0-9_]/g, "_") || "MigratedStudy";
-          const workflowClass =
-            json.type === "CFD"
-              ? "ModelScript.Studies.SteadyStateCFD"
-              : json.type === "FEA"
-                ? "ModelScript.Studies.StaticStructuralFEA"
-                : json.type === "MESHING"
-                  ? "ModelScript.Studies.Meshing"
-                  : "ModelScript.Studies.TransientSimulation";
-
-          const targetClass = json.targetClass || "TargetModel";
-          const meshSize = json.mesh?.size || json.mesh?.min || 0.05;
-
-          const moContent = `model ${studyName}
-  extends ${workflowClass}(
-    meshResolution = ${meshSize}
-  );
-  extends ${targetClass};
-end ${studyName};
-`;
-
-          const moUri = uri.with({ path: uri.path.replace(/\.msim$/, ".mo") });
-          await vscode.workspace.fs.writeFile(moUri, new TextEncoder().encode(moContent));
-          await vscode.workspace.fs.delete(uri);
-          migratedCount++;
-        } catch (e) {
-          console.error("Failed to migrate", uri.path, e);
-        }
-      }
-
-      vscode.window.showInformationMessage(
-        `Successfully migrated ${migratedCount} .msim files to native Modelica studies.`,
+      const langId = editor?.document.languageId;
+      vscode.commands.executeCommand("setContext", "modelscript.activeLanguage", langId);
+      vscode.commands.executeCommand(
+        "setContext",
+        "modelscript.sysml2Active",
+        langId === "sysml" || langId === "sysml2",
       );
-    }),
-    commands.registerCommand("modelscript.generateMesh", async () => {
-      vscode.window.showInformationMessage("Mesh generation has been initiated in the background.");
+      vscode.commands.executeCommand("setContext", "modelscript.owl2Active", langId === "owl2");
+      if (langId) {
+        vscode.commands.executeCommand("setContext", `modelscript.${langId}Active`, true);
+      }
     }),
   );
 
-  // Register the custom editor provider for diagrams
-  const diagramViewTypes = [
-    DiagramEditorProvider.viewType,
-    "modelica.diagramEditor",
-    "sysml2.diagramEditor",
-    "sysml.diagramEditor",
-    "step.diagramEditor",
-    "scad.diagramEditor",
-    "owl2.diagramEditor",
-    "csv.diagramEditor",
-    "pscad.diagramEditor",
-    "cfd.diagramEditor",
-    "fea.diagramEditor",
-    "ssp.diagramEditor",
-    "modelscript.diagramEditor",
-  ];
-  for (const vt of diagramViewTypes) {
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(vt, diagramProvider, {
-        webviewOptions: { retainContextWhenHidden: true },
-        supportsMultipleEditorsPerDocument: true,
-      }),
-    );
-  }
+  let visibleRangeTimer: ReturnType<typeof setTimeout> | undefined;
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
+      if (!lspManager?.client) return;
+      clearTimeout(visibleRangeTimer);
+      visibleRangeTimer = setTimeout(() => {
+        const uri = e.textEditor.document.uri.toString();
+        const ranges = e.visibleRanges.map((r) => ({
+          startLine: r.start.line,
+          endLine: r.end.line,
+        }));
+        lspManager?.client?.sendNotification("modelscript/visibleRanges", { uri, ranges });
+      }, 150);
+    }),
+  );
 
-  // Register the requirements editor for SysML documents
-  if (client) {
-    const requirementsProvider = new RequirementsEditorProvider(context.extensionUri, client);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(RequirementsEditorProvider.viewType, requirementsProvider, {
-        supportsMultipleEditorsPerDocument: true,
-        webviewOptions: { retainContextWhenHidden: false },
-      }),
-    );
-
-    const elementTableProvider = new ElementTableProvider(context.extensionUri, client);
-    context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(ElementTableProvider.viewType, elementTableProvider, {
-        supportsMultipleEditorsPerDocument: true,
-        webviewOptions: { retainContextWhenHidden: false },
-      }),
-    );
-  }
-
-  // Pre-open all .mo files in the workspace so the LSP server can track them.
-  // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.
-  initWorkspaceAndTree(treeProvider, treeView, memFs).catch((e) => {
+  // 15. Workspace and File Pre-Discovery
+  initWorkspaceAndTree(treeController.libraryTreeProvider, treeController.libraryTreeView, memFs).catch((e) => {
     console.warn("[workspace-init] Non-fatal initialization error:", e);
   });
 
-  // Register command for parameter writeback (invoked from preview click-to-edit or palette)
-  context.subscriptions.push(
-    vscode.commands.registerCommand("modelscript.writebackParameter", async (targetOrArgs: any, valueArg?: string) => {
-      let target = "";
-      let newValue = "";
-
-      if (Array.isArray(targetOrArgs)) {
-        target = String(targetOrArgs[0] || "");
-        newValue = String(targetOrArgs[1] || "");
-      } else if (typeof targetOrArgs === "object" && targetOrArgs !== null) {
-        target = String(targetOrArgs.target || "");
-        newValue = String(targetOrArgs.newValue ?? "");
-      } else if (typeof targetOrArgs === "string") {
-        target = targetOrArgs;
-        newValue = valueArg !== undefined ? String(valueArg) : "";
-      }
-
-      if (!target) {
-        const input = await vscode.window.showInputBox({
-          prompt: "Enter parameter name to write back (e.g. DronePkg.Battery.mass)",
-        });
-        if (!input) return;
-        target = input;
-      }
-
-      if (!newValue) {
-        const currentVal = markdownVarCache[target] || "";
-        const input = await vscode.window.showInputBox({
-          prompt: `Enter new value for ${target}`,
-          value: currentVal,
-        });
-        if (input === undefined) return;
-        newValue = input;
-      }
-
-      if (!client) return;
-
-      try {
-        const res: any = await client.sendRequest("modelscript/computeWritebackEdit", {
-          target,
-          newValue,
-        });
-
-        if (res?.success && res.workspaceEdit) {
-          const applied = await vscode.workspace.applyEdit(res.workspaceEdit);
-          if (applied) {
-            markdownVarCache[target] = newValue;
-            scheduleMarkdownRefresh();
-            vscode.window.showInformationMessage(`Successfully updated ${target} to ${newValue}`);
-          } else {
-            vscode.window.showWarningMessage(`Could not apply workspace edit for ${target}`);
-          }
-        } else {
-          vscode.window.showErrorMessage(res?.error || `Failed to compute writeback edit for ${target}`);
-        }
-      } catch (e) {
-        vscode.window.showErrorMessage(`Writeback error for ${target}: ${String(e)}`);
-      }
-    }),
-  );
-
-  // Listen for document changes AND opens to re-fetch markdown data (debounced).
-  // Only fires when a markdown preview tab is actually visible, to avoid blocking
-  // the LSP event loop with unnecessary resolveMarkdownVars/resolveMarkdownContent
-  // requests during interactive editing.
-  let markdownRefreshTimer: ReturnType<typeof setTimeout> | undefined;
-  const isMarkdownPreviewOpen = (): boolean => {
-    for (const group of vscode.window.tabGroups.all) {
-      for (const tab of group.tabs) {
-        if (tab.input instanceof vscode.TabInputWebview && tab.label.includes("Preview")) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  const scheduleMarkdownRefresh = () => {
-    if (!isMarkdownPreviewOpen()) return;
-    if (markdownRefreshTimer) clearTimeout(markdownRefreshTimer);
-    markdownRefreshTimer = setTimeout(() => refreshMarkdownData(), 2000);
-  };
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((e) => {
-      const lang = e.document.languageId;
-      if (lang !== "markdown") {
-        scheduleMarkdownRefresh();
-      }
-    }),
-    vscode.workspace.onDidOpenTextDocument((doc) => {
-      const lang = doc.languageId;
-      if (lang !== "markdown") {
-        scheduleMarkdownRefresh();
-      }
-    }),
-  );
-
-  // Return the markdown-it plugin API so VS Code calls it during preview rendering.
-  return { extendMarkdownIt: createMarkdownItPlugin(resolver) };
+  return { extendMarkdownIt: markdownService.getMarkdownItPlugin() };
 }
 
 export async function deactivate(): Promise<void> {
-  if (activeClient !== undefined) {
+  if (lspManager) {
     try {
-      await activeClient.stop();
+      await lspManager.stop();
     } catch {
       // ignore stop errors
     }
-    activeClient = undefined;
+    lspManager = undefined;
   }
-  if (languageWorker !== undefined) {
-    try {
-      languageWorker.terminate();
-    } catch {
-      // ignore worker termination errors
-    }
-    languageWorker = undefined;
-  }
-}
-
-export let languageWorker: Worker | undefined;
-
-async function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOptions: LanguageClientOptions) {
-  let serverMain = Uri.joinPath(context.extensionUri, "server", "dist", "browserServerMain.js");
-
-  // In web environments, the extension host runs on a dynamically generated UUID subdomain
-  // (e.g., http://<uuid>.localhost:3003) for security, while context.extensionUri points to the parent host.
-  // We must rewrite the worker URL to use the same origin to avoid cross-origin importScripts failures.
-  if (typeof self !== "undefined" && self.location && self.location.origin && self.location.origin !== "null") {
-    try {
-      const url = new URL(serverMain.toString(true));
-      if (url.origin !== self.location.origin) {
-        serverMain = Uri.parse(self.location.origin + url.pathname + url.search + url.hash);
-      }
-    } catch {
-      // ignore url parsing failures for custom schemes
-    }
-  }
-
-  const worker = new Worker(serverMain.toString(true)); // No { type: "module" } because VS Code's web worker polyfill uses importScripts
-  languageWorker = worker;
-  return new LanguageClient("modelscript", "ModelScript Language Server", clientOptions, worker);
-}
-
-/**
- * Template scaffolding externalized to ./templates/catalog.ts
- */
-
-/**
- * Initialize the workspace: scan for .mo files or create a blank project,
- * then set up the library tree. Retries if the filesystem provider isn't
- * registered yet (e.g. GitHub FS extension still activating).
- */
-async function initWorkspaceAndTree(
-  treeProvider: LibraryTreeProvider,
-  treeView: vscode.TreeView<vscode.TreeItem> | undefined,
-  memFs?: MemoryFileSystemProvider,
-): Promise<void> {
-  const folders = workspace.workspaceFolders;
-
-  let workspaceUri: vscode.Uri | undefined =
-    folders && folders.length > 0 && folders[0]!.uri.scheme === "memfs" ? folders[0]!.uri : undefined;
-  if (!workspaceUri) {
-    try {
-      const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
-      if (hash.startsWith("memfs")) {
-        const template = hash.split(":")[1] || "empty";
-        workspaceUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template });
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // For memfs workspaces, skip the file scan entirely — VS Code has no search
-  // provider for memfs, so workspace.findFiles() hangs indefinitely.
-  // Go straight to template scaffolding and open all template files directly.
-  if (workspaceUri && workspaceUri.scheme === "memfs") {
-    try {
-      const template = workspaceUri.path.substring(1) || "empty";
-
-      if ((template === "scratch" || template.startsWith("artifact-")) && memFs) {
-        const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
-        let cachedPayload: any = null;
-        try {
-          const raw =
-            typeof sessionStorage !== "undefined" ? sessionStorage.getItem(`modelscript.artifact_${artifactId}`) : null;
-          if (raw) cachedPayload = JSON.parse(raw);
-        } catch {
-          // ignore
-        }
-
-        if (cachedPayload) {
-          mountArtifactToMemFs(memFs, workspaceUri, {
-            artifactId,
-            title: cachedPayload.title,
-            viewType: cachedPayload.viewType,
-            viewConfig: cachedPayload.viewConfig,
-          });
-        } else {
-          try {
-            const resp = await fetch(`/api/v1/social/artifact-views/${artifactId}`);
-            if (resp.ok) {
-              const data = await resp.json();
-              if (data?.artifactView) {
-                const av = data.artifactView;
-                const config = typeof av.view_config === "string" ? JSON.parse(av.view_config) : av.view_config || {};
-                mountArtifactToMemFs(memFs, workspaceUri, {
-                  artifactId: av.id,
-                  title: av.title || av.name,
-                  viewType: av.view_type,
-                  viewConfig: config,
-                });
-              }
-            }
-          } catch (e) {
-            console.warn("[artifact-init] Proactive fetch failed:", e);
-          }
-        }
-      }
-
-      const primaryFile = getTemplatePrimaryFile(template);
-      const fileUri = Uri.joinPath(workspaceUri, primaryFile);
-
-      // Pre-open any other files in this memfs template workspace so LSP server tracks them
-      try {
-        const dirEntries = await workspace.fs.readDirectory(workspaceUri);
-        for (const [name, type] of dirEntries) {
-          if (type === vscode.FileType.File && name !== primaryFile) {
-            try {
-              await workspace.openTextDocument(Uri.joinPath(workspaceUri, name));
-            } catch {
-              // ignore
-            }
-          }
-        }
-      } catch {
-        // ignore
-      }
-
-      try {
-        if (primaryFile.endsWith(".monb")) {
-          await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
-        } else {
-          const doc = await workspace.openTextDocument(fileUri);
-          await vscode.window.showTextDocument(doc);
-          treeProvider.setDocumentUri(fileUri.toString());
-        }
-      } catch (e: unknown) {
-        console.error("[blank-project] Failed to open primary template file:", e);
-      }
-
-      if (template === "mbse-verification") {
-        try {
-          const mdUri = Uri.joinPath(workspaceUri, "VerificationReport.md");
-          await vscode.commands.executeCommand("markdown.showPreviewToSide", mdUri);
-        } catch {
-          // Fallback
-        }
-      } else if (template === "cad") {
-        try {
-          const stepUri = Uri.joinPath(workspaceUri, "drone.step");
-          setTimeout(() => {
-            vscode.commands.executeCommand("vscode.open", stepUri, { viewColumn: 2, preview: false });
-          }, 1000);
-        } catch {
-          // Fallback
-        }
-      }
-    } catch (e: unknown) {
-      console.error("[blank-project] Failed to initialize workspace template:", e);
-    }
-
-    // Auto-expand root items after tree data loads
-    setTimeout(async () => {
-      try {
-        const rootItems = await treeProvider.getChildren();
-        for (const item of rootItems) {
-          await treeView?.reveal(item, { expand: true, select: false, focus: false });
-        }
-      } catch {
-        // ignore — tree may not be ready yet
-      }
-    }, 3000);
-    return;
-  }
-
-  // Always scan for existing .mo/.sysml files so the LSP indexes the workspace
-  const moFiles = await scanWorkspaceFiles();
-  const isMemfs = folders && folders.length > 0 && folders[0]!.uri.scheme === "memfs";
-  if (moFiles.length > 0 && !isMemfs) {
-    // Only set tree focus for non-memfs since memfs templates do their own opening
-    treeProvider.setDocumentUri(moFiles[0]!.toString());
-  }
-
-  // Auto-expand root items after tree data loads
-  setTimeout(async () => {
-    try {
-      const rootItems = await treeProvider.getChildren();
-      for (const item of rootItems) {
-        await treeView?.reveal(item, { expand: true, select: false, focus: false });
-      }
-    } catch {
-      // ignore — tree may not be ready yet
-    }
-  }, 3000);
-}
-
-/**
- * Scan the workspace for all .mo files and open them as text documents.
- * Retries up to 5 times with a 2-second delay if the filesystem provider
- * isn't available yet (e.g. GitHub FS extension still activating).
- */
-async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
-  const folders = workspace.workspaceFolders;
-  if (folders && folders.length > 0 && folders.every((f) => f.uri.scheme === "memfs")) {
-    return [];
-  }
-  const maxRetries = 5;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const moFiles = await workspace.findFiles(
-        "**/*.{mo,mos,sysml,sysml2,step,stp,p21,owl,ttl,ofn,csv,js,ts,msim,pscx,pslx,pswx,psmx}",
-        "**/{node_modules,dist,.git,testsuite,packages/core/testsuite}/**",
-      );
-      console.log(`[workspace-scan] Found ${moFiles.length} files matching ModelScript workspace rules`);
-      for (const uri of moFiles) {
-        try {
-          await workspace.openTextDocument(uri);
-          console.log(`[workspace-scan] Opened ${uri.path.split("/").pop()}`);
-        } catch (e) {
-          console.warn(`[workspace-scan] Failed to open ${uri.path}:`, e);
-        }
-      }
-
-      // Also scan for FMU archive files and register them with the LSP
-      const fmuFiles = await workspace.findFiles("**/*.fmu");
-      for (const uri of fmuFiles) {
-        try {
-          const fmuBytes = await workspace.fs.readFile(uri);
-          const name =
-            uri.path
-              .split("/")
-              .pop()
-              ?.replace(/\.fmu$/, "") ?? "FMU";
-          // Convert to base64
-          const b64 = btoa(Array.from(fmuBytes, (b) => String.fromCharCode(b)).join(""));
-          if (client) {
-            await client.sendRequest("modelscript/registerFmu", { name, data: b64 });
-            console.log(`[workspace-scan] Registered FMU ${name}`);
-          }
-        } catch (e) {
-          console.warn(`[workspace-scan] Failed to register FMU ${uri.path}:`, e);
-        }
-      }
-
-      // Also scan node_modules/ for installed registry packages
-      try {
-        const pkgJsons = await workspace.findFiles("node_modules/**/package.json");
-        const registryPackages = [];
-
-        for (const pkgUri of pkgJsons) {
-          try {
-            const contentBytes = await workspace.fs.readFile(pkgUri);
-            const content = new TextDecoder("utf-8").decode(contentBytes);
-            const pkgData = JSON.parse(content);
-
-            if (pkgData && pkgData.modelscript) {
-              const pkgName = pkgData.name;
-              const pkgVersion = pkgData.version;
-
-              // Read all .mo files in this package directory
-              const pkgDir = Uri.joinPath(pkgUri, "..");
-              const relativePattern = new vscode.RelativePattern(pkgDir, "**/*.mo");
-              const moFiles = await workspace.findFiles(relativePattern);
-
-              const files: Record<string, string> = {};
-              for (const moUri of moFiles) {
-                // Compute relative path
-                const relPath = workspace.asRelativePath(moUri, false);
-                const pkgPrefix = workspace.asRelativePath(pkgDir, false) + "/";
-                const internalPath = relPath.startsWith(pkgPrefix) ? relPath.substring(pkgPrefix.length) : relPath;
-
-                const fileBytes = await workspace.fs.readFile(moUri);
-                files[internalPath] = new TextDecoder("utf-8").decode(fileBytes);
-              }
-
-              if (Object.keys(files).length > 0) {
-                registryPackages.push({
-                  name: pkgName,
-                  version: pkgVersion,
-                  files,
-                  modelscript: pkgData.modelscript,
-                });
-                console.log(
-                  `[workspace-scan] Discovered registry package ${pkgName}@${pkgVersion} (${Object.keys(files).length} files)`,
-                );
-              }
-            }
-          } catch (e) {
-            console.warn(`[workspace-scan] Failed to read ${pkgUri.path}:`, e);
-          }
-        }
-
-        if (registryPackages.length > 0 && client) {
-          await client.sendNotification("modelscript/registryPackages", { packages: registryPackages });
-        }
-      } catch (e) {
-        console.warn(`[workspace-scan] Failed to scan node_modules:`, e);
-      }
-
-      return moFiles;
-    } catch (e) {
-      const msg = String(e);
-      if (msg.includes("ENOPRO") && attempt < maxRetries - 1) {
-        console.log(`[workspace-scan] Filesystem not ready, retrying in 2s (attempt ${attempt + 1}/${maxRetries})...`);
-        await new Promise((r) => setTimeout(r, 2000));
-      } else {
-        console.error("[workspace-scan] Workspace scan failed:", e);
-        return [];
-      }
-    }
-  }
-  return [];
-}
-
-// Handle markdown preview communications
-try {
-  const markdownChannel = new BroadcastChannel("modelscript-markdown");
-  markdownChannel.onmessage = async (e) => {
-    if (!client) return;
-
-    if (e.data.type === "resolve-vars") {
-      const names: string[] = e.data.names;
-      const values: Record<string, string> = {};
-
-      try {
-        const activeEditor = vscode.window.activeTextEditor;
-        const uri = activeEditor ? activeEditor.document.uri.toString() : "modelscript-lib://global";
-        const docText = activeEditor ? activeEditor.document.getText() : "";
-
-        // Fetch requirements once if needed
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let reqs: any[] | null = null;
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          reqs = (await client.sendRequest("modelscript/getRequirements", { uri })) as any[];
-        } catch {
-          reqs = null;
-        }
-
-        // Fetchproperties or evaluate values from document and LSP
-        for (const name of names) {
-          try {
-            const leafName = name.split(".").pop() ?? name;
-            // 1. Check active document for attribute / parameter / variable binding
-            const escapedLeaf = leafName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const bindingMatch = docText.match(
-              new RegExp(
-                `\\b(?:attribute|parameter|constant|Real|Integer|Boolean)?[^;\\n]*?\\b${escapedLeaf}\\b(?:\\s*:\\s*[A-Za-z0-9_.:]+)?\\s*=\\s*([^;\\n]+)`,
-              ),
-            );
-            if (bindingMatch?.[1]) {
-              values[name] = bindingMatch[1].trim();
-              continue;
-            }
-
-            // 2. Check LSP requirements attributes
-            if (reqs && reqs.length > 0) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const req = reqs.find((r: any) => name.includes(r.name) || (r.attributes && leafName in r.attributes));
-              if (req?.attributes?.[leafName] !== undefined) {
-                values[name] = String(req.attributes[leafName]);
-                continue;
-              }
-              if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const vReq = reqs.find((r: any) => name.includes(r.name) || r.name.includes("MaxVoltageReq"));
-                values[name] = vReq?.attributes?.maxLimit ?? "8.0";
-                continue;
-              }
-            } else if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {
-              values[name] = "8.0";
-              continue;
-            }
-
-            values[name] = "[unresolved]";
-          } catch (err: unknown) {
-            console.warn("Failed to resolve markdown var", name, err);
-          }
-        }
-
-        markdownChannel.postMessage({ type: "resolved-vars", values });
-      } catch (err: unknown) {
-        console.error("Error handling resolve-vars:", err);
-      }
-    } else if (e.data.type === "request-diagram") {
-      const target = e.data.target;
-      try {
-        const targetClean = String(target).replace(/[<>&"]/g, "");
-        const activeEditor = vscode.window.activeTextEditor;
-        const docText = activeEditor ? activeEditor.document.getText() : "";
-
-        // Discover connected peer or second component from active document if available
-        let peerLabel = "Interface / Sink";
-        let portLabel = "Connector Port";
-        const connMatch = docText.match(
-          new RegExp(
-            `connect\\s*\\(\\s*${targetClean}(?:\\.([A-Za-z0-9_]+))?\\s*,\\s*([A-Za-z0-9_]+)(?:\\.([A-Za-z0-9_]+))?\\s*\\)`,
-          ),
-        );
-        const sysmlConnMatch = docText.match(
-          new RegExp(
-            `connect\\s+${targetClean}(?:\\.([A-Za-z0-9_]+))?\\s+to\\s+([A-Za-z0-9_]+)(?:\\.([A-Za-z0-9_]+))?`,
-          ),
-        );
-        if (connMatch) {
-          peerLabel = connMatch[2] ?? peerLabel;
-          portLabel = [connMatch[1], connMatch[3]].filter(Boolean).join(" ↔ ") || portLabel;
-        } else if (sysmlConnMatch) {
-          peerLabel = sysmlConnMatch[2] ?? peerLabel;
-          portLabel = [sysmlConnMatch[1], sysmlConnMatch[3]].filter(Boolean).join(" ↔ ") || portLabel;
-        }
-
-        const svg = `<svg viewBox="0 0 400 180" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--vscode-widget-border, #454545); border-radius: 6px; background: var(--vscode-editor-background, #1e1e1e); padding: 8px; font-family: sans-serif;">
-          <defs>
-            <linearGradient id="compGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="var(--vscode-button-background, #007acc)" stop-opacity="0.2"/>
-              <stop offset="100%" stop-color="var(--vscode-button-background, #007acc)" stop-opacity="0.05"/>
-            </linearGradient>
-            <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--vscode-textLink-foreground, #3794ff)"/>
-            </marker>
-          </defs>
-          <rect x="20" y="30" width="140" height="110" rx="6" fill="url(#compGrad)" stroke="var(--vscode-button-background, #007acc)" stroke-width="2"/>
-          <text x="90" y="80" text-anchor="middle" fill="var(--vscode-editor-foreground, #ccc)" font-size="13" font-weight="600">${targetClean}</text>
-          <text x="90" y="105" text-anchor="middle" fill="var(--vscode-descriptionForeground, #888)" font-size="11">Modelica / SysML</text>
-          <circle cx="160" cy="85" r="5" fill="var(--vscode-textLink-foreground, #3794ff)"/>
-          <path d="M 165 85 L 235 85" stroke="var(--vscode-textLink-foreground, #3794ff)" stroke-width="2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
-          <rect x="240" y="30" width="140" height="110" rx="6" fill="url(#compGrad)" stroke="var(--vscode-button-background, #007acc)" stroke-width="2"/>
-          <text x="310" y="80" text-anchor="middle" fill="var(--vscode-editor-foreground, #ccc)" font-size="13" font-weight="600">${peerLabel.replace(/[<>&"]/g, "")}</text>
-          <text x="310" y="105" text-anchor="middle" fill="var(--vscode-descriptionForeground, #888)" font-size="11">${portLabel.replace(/[<>&"]/g, "")}</text>
-          <circle cx="240" cy="85" r="5" fill="var(--vscode-textLink-foreground, #3794ff)"/>
-        </svg>`;
-
-        markdownChannel.postMessage({ type: "resolved-diagram", id: target, svg });
-      } catch (err) {
-        console.error("Error handling request-diagram:", err);
-      }
-    }
-  };
-} catch {
-  console.warn("BroadcastChannel not supported in this environment");
 }

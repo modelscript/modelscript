@@ -15,7 +15,9 @@ import {
   pscadToModelica,
   pscadToSsd,
   readComtrade,
+  readPscadPsout,
   verifyIeee2800Compliance,
+  writePscadPsout,
 } from "@modelscript/pscad";
 import { EmtSolver, type EmtCircuitDefinition } from "@modelscript/simulate";
 
@@ -219,5 +221,31 @@ describe("PSCAD Microgrid & IBR Example Workspace", () => {
     expect(record.config.lineFrequencyHz).toBe(60);
     expect(record.config.analogChannels.length).toBeGreaterThanOrEqual(12);
     expect(record.timeSec.length).toBe(12500);
+  });
+
+  it("Phase 8: PSCAD V5+ .psout binary waveform container reads, writes, and converts", async () => {
+    const cigrePath = path.resolve(__dirname, "../../../languages/pscad/tests/fixtures/Cigre.psout");
+    expect(fs.existsSync(cigrePath)).toBe(true);
+
+    const buf = fs.readFileSync(cigrePath);
+    const doc = await readPscadPsout(new Uint8Array(buf));
+    expect(doc.header.version).toBe(1);
+    expect(doc.header.pageCount).toBe(552);
+    expect(doc.numRuns).toBe(1);
+
+    const run0 = doc.run(0);
+    const traces = Array.from(run0.traces.values());
+    expect(traces.length).toBe(26);
+    expect(traces[0]!.values.length).toBe(2001);
+
+    // Verify writing a simulation result to .psout
+    const simResult = doc.toSimulationResult(0);
+    const written = writePscadPsout(simResult, { projectName: "CigreTest" });
+    expect(written).toBeInstanceOf(Uint8Array);
+    expect(written.length).toBeGreaterThan(1024);
+
+    const readBack = await readPscadPsout(written);
+    expect(readBack.header.version).toBe(1);
+    expect(readBack.run(0).traces.size).toBe(traces.length);
   });
 });

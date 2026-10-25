@@ -29,6 +29,22 @@ scripts/msl/
 QuotedIdentifier_tmp/
 .vscode-test-web/
 
+# Python artifacts & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Test renders, visual diffs & temporary outputs
+**/tests/**/*.png
+**/tests/**/*.svg
+!**/tests/**/fixtures/**
+**/testsuite/**/*.svg
+!**/testsuite/**/fixtures/**
+packages/diagram/tests/*.py
+
 # Binary & compiled artifacts
 *.wasm
 !packages/simulate/src/wasm/sundials.wasm

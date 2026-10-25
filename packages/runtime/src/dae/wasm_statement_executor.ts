@@ -2416,20 +2416,28 @@ export function evaluateArenaFunctionCall(
               const rawDecls = splitTopLevelCommas(voidMatch[1]!);
               const formalToActual = new Map<string, string>();
               for (let pIdx = 0; pIdx < rawDecls.length; pIdx++) {
-                const decl = rawDecls[pIdx]!.trim().replace(/\s*\[[^\][]*\]$/, "");
+                const decl = rawDecls[pIdx]!.trim()
+                  .replace(/\[[^\][]*\]$/, "")
+                  .trimEnd();
                 const idMatch = decl.match(/\b([a-zA-Z_]\w*)$/);
                 if (idMatch && cArgNames[pIdx]) {
                   formalToActual.set(idMatch[1]!, cArgNames[pIdx]!);
                 }
               }
               const body = voidMatch[2]!;
-              const assignRe = /\b([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*=\s*([^;\r\n]+);/g;
-              let m: RegExpExecArray | null;
               let assignedAny = false;
-              while ((m = assignRe.exec(body)) !== null) {
-                const formalArr = m[1]!;
-                const idx = Number(m[2]!);
-                let rhs = m[3]!.trim();
+              const stmts = body.split(";");
+              for (const stmt of stmts) {
+                const trimmedStmt = stmt.trim();
+                if (!trimmedStmt) continue;
+                const eqIdx = trimmedStmt.indexOf("=");
+                if (eqIdx === -1) continue;
+                const lhs = trimmedStmt.slice(0, eqIdx).trim();
+                const lhsMatch = /^([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]$/.exec(lhs);
+                if (!lhsMatch) continue;
+                const formalArr = lhsMatch[1]!;
+                const idx = Number(lhsMatch[2]!);
+                let rhs = trimmedStmt.slice(eqIdx + 1).trim();
                 const actualArrName = formalToActual.get(formalArr) ?? formalArr;
                 const arrVal = env.get(actualArrName);
                 if (!Array.isArray(arrVal)) return null;

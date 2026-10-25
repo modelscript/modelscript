@@ -5,16 +5,14 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
-export class SurrogatePanel {
+export class SurrogatePanel extends BaseWebviewPanel {
   static currentPanel: SurrogatePanel | undefined;
   static readonly viewType = "modelscript.surrogate";
 
-  private readonly panel: vscode.WebviewPanel;
-  private readonly extensionUri: vscode.Uri;
   public sourceUri?: string | undefined;
   private client?: LanguageClient | undefined;
-  private disposables: vscode.Disposable[] = [];
 
   private currentSurrogate?:
     | {
@@ -34,7 +32,7 @@ export class SurrogatePanel {
 
     if (SurrogatePanel.currentPanel) {
       SurrogatePanel.currentPanel.sourceUri = sourceUri;
-      SurrogatePanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      SurrogatePanel.currentPanel._panel.reveal(vscode.ViewColumn.Beside);
       return;
     }
 
@@ -49,23 +47,26 @@ export class SurrogatePanel {
       },
     );
 
-    SurrogatePanel.currentPanel = new SurrogatePanel(panel, extensionUri);
-    SurrogatePanel.currentPanel.client = client;
-    SurrogatePanel.currentPanel.sourceUri = sourceUri;
+    SurrogatePanel.currentPanel = new SurrogatePanel(panel, extensionUri, client, sourceUri);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this.panel = panel;
-    this.extensionUri = extensionUri;
-    this.panel.webview.html = this.getHtmlForWebview();
-    this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
-    this.panel.webview.onDidReceiveMessage(
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient, sourceUri: string) {
+    super(panel, extensionUri);
+    this.client = client;
+    this.sourceUri = sourceUri;
+
+    this._panel.webview.html = this.getHtmlShell({
+      title: "Surrogate Editor",
+      scriptName: "surrogate-webview.js",
+    });
+
+    this._panel.webview.onDidReceiveMessage(
       async (msg) => {
         if (msg.type === "trainSurrogate" && this.client) {
           const uri = this.sourceUri;
           if (!uri) return;
 
-          this.panel.webview.postMessage({
+          this._panel.webview.postMessage({
             type: "surrogateTrainingProgress",
             progress: 10,
             message: "Running Design of Experiments...",
@@ -92,18 +93,18 @@ export class SurrogatePanel {
                 exportedFunctions: result.exportedFunctions,
               };
 
-              this.panel.webview.postMessage({
+              this._panel.webview.postMessage({
                 type: "surrogateTrainingComplete",
                 metrics: result.metrics,
               });
             } else {
-              this.panel.webview.postMessage({
+              this._panel.webview.postMessage({
                 type: "surrogateTrainingError",
                 error: result.error || "Unknown error occurred during training.",
               });
             }
           } catch (e) {
-            this.panel.webview.postMessage({
+            this._panel.webview.postMessage({
               type: "surrogateTrainingError",
               error: e instanceof Error ? e.message : String(e),
             });
@@ -151,57 +152,12 @@ export class SurrogatePanel {
         }
       },
       null,
-      this.disposables,
+      this._disposables,
     );
   }
 
-  private getHtmlForWebview(): string {
-    const webview = this.panel.webview;
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "surrogate-webview.js"));
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;">
-  <title>Surrogate Editor</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      width: 100vw;
-      height: 100vh;
-      background: var(--vscode-editor-background, #1e1e1e);
-      color: var(--vscode-foreground, #ccc);
-      font-family: var(--vscode-font-family, system-ui, sans-serif);
-    }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-
-  private dispose() {
+  public override dispose(): void {
     SurrogatePanel.currentPanel = undefined;
-    this.panel.dispose();
-    while (this.disposables.length) {
-      const d = this.disposables.pop();
-      if (d) d.dispose();
-    }
+    super.dispose();
   }
-}
-
-function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

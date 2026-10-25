@@ -64,6 +64,7 @@ import {
   splitTopLevel,
   splitTopLevelArgs,
   stripArraySubscripts,
+  stripComments,
 } from "../expressions/index.js";
 import { getElementDiagRange } from "../support/range-utils.js";
 import { getFlatteningState, getNamedArrayShape, setNamedArrayShape } from "../support/state.js";
@@ -1235,7 +1236,7 @@ export function validateClassModifiers(
                 .map((s) => s.trim().split(/\s+/)[0])
                 .filter(Boolean);
 
-          const modText = (arg.modText ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+          const modText = stripComments(arg.modText ?? "");
           const rhsMatch = /=\s*([^\n;]+)/.exec(modText);
           const rhsVal = rhsMatch ? rhsMatch[1]!.trim() : (arg.redeclaredTypeSpecifier ?? "");
 

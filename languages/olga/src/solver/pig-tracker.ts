@@ -153,4 +153,19 @@ export class PigTracker {
   public getStates(): ActivePigState[] {
     return Array.from(this.pigStates.values());
   }
+
+  public restoreStates(
+    states: { name: string; position: number; velocity: number; sweptVolume: number; isStuck: boolean }[],
+  ): void {
+    for (const s of states) {
+      const existing = this.pigStates.get(s.name);
+      if (existing) {
+        existing.position = s.position;
+        existing.velocity = s.velocity;
+        existing.sweptLiquidVolume = s.sweptVolume;
+        existing.isStuck = s.isStuck;
+        existing.isLaunched = s.position > 0;
+      }
+    }
+  }
 }

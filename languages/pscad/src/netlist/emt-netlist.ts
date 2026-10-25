@@ -9,12 +9,14 @@
 
 import { registeredPscadSourceTexts } from "../model/workspace-registry.js";
 import { computePortWorldPosition, parsePscx } from "../parser/pscx-parser.js";
+import { compileFortranSegment } from "../script/fortran-codegen.js";
 import type {
   EmtBranch,
   EmtBus,
   EmtControlBlock,
   EmtConverterBridge,
   EmtCurrentSource,
+  EmtCustomFortranBlock,
   EmtFault,
   EmtFmuInstance,
   EmtInductionMachine,
@@ -142,6 +144,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const converterBridges: EmtConverterBridge[] = [];
   const controlBlocks: EmtControlBlock[] = [];
   const currentSources: EmtCurrentSource[] = [];
+  const customFortranBlocks: EmtCustomFortranBlock[] = [];
   const vectorBlocks: EmtControlBlock[] = [];
   let virtualBusCounter = 1;
 
@@ -218,6 +221,35 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           } else if (port.name === "out" || port.name === "dq0") {
             signalOutPortToBlockId.set(port.id, qn);
           }
+        }
+      }
+
+      // Check if definition has custom Fortran script segments (<segment name="Fortran"> or "Dsdyn")
+      const cleanDef = (
+        cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName
+      ).toLowerCase();
+      const defGraphic = project.definitions?.get(cleanDef) ?? project.definitions?.get(cmp.definitionName);
+      const fortranSeg = defGraphic?.scriptSegments?.get("fortran") ?? defGraphic?.scriptSegments?.get("dsdyn");
+      if (fortranSeg?.content) {
+        try {
+          const compiled = compileFortranSegment(fortranSeg.content, cmp.parameters);
+          const qn = qualifyId(localName(cmp));
+          for (const port of cmp.ports) {
+            const isAssigned = compiled.assignedPorts.some((p) => p.toLowerCase() === port.name.toLowerCase());
+            const isReferenced = compiled.referencedPorts.some((p) => p.toLowerCase() === port.name.toLowerCase());
+            if (isAssigned || isReferenced || port.kind === "signal") {
+              signalPortIds.add(port.id);
+            }
+            if (isAssigned) {
+              const outSigId = `${qn}_${port.name}`;
+              signalOutPortToBlockId.set(port.id, outSigId);
+              if (compiled.assignedPorts.length === 1) {
+                signalOutPortToBlockId.set(port.id, qn);
+              }
+            }
+          }
+        } catch {
+          // Handled during component processing
         }
       }
       if (defn.includes("ground") || defn === "gnd" || defn.endsWith(":ground")) {
@@ -458,6 +490,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
 
     // 2. Classify components into sub-module instances, electrical elements, and CSMF control blocks
     for (const cmp of mod.components) {
+      if (cmp.disabled) {
+        continue;
+      }
       const rawDefn = cmp.definitionName;
       const cleanDefn = rawDefn.includes(":") ? rawDefn.split(":").pop()! : rawDefn;
       const defn = rawDefn.toLowerCase();
@@ -530,6 +565,68 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           windingConnection = isD1 && isD2 ? "D-D" : isD1 ? "D-Yg" : isD2 ? "Yg-D" : "Yg-Yg";
         }
 
+        // Saturation & Hysteresis Core Modeling
+        const satRaw = String(p["Saturation"] ?? p["saturation"] ?? p["Sat"] ?? p["sat"] ?? p["Enab"] ?? "0").trim();
+        const isSaturable =
+          satRaw === "1" ||
+          satRaw.toLowerCase() === "true" ||
+          defn.includes("sat") ||
+          p["Hysteresis"] !== undefined ||
+          p["hysteresis"] !== undefined ||
+          p["CoreModel"] !== undefined ||
+          p["core_model"] !== undefined;
+
+        let coreModel: "PIECEWISE_LINEAR" | "JILES_ATHERTON" | undefined = undefined;
+        let lUnsatH: number | undefined = undefined;
+        let lSatH: number | undefined = undefined;
+        let kneeFluxWb: number | undefined = undefined;
+        let remanentFluxWb: number | undefined = undefined;
+        let jaParams: any = undefined;
+
+        if (isSaturable) {
+          const cmRaw = String(
+            p["CoreModel"] ?? p["core_model"] ?? p["Hysteresis"] ?? p["hysteresis"] ?? p["Hys"] ?? "",
+          )
+            .trim()
+            .toLowerCase();
+          coreModel =
+            cmRaw === "ja" || cmRaw.includes("jiles") || cmRaw === "1" || cmRaw === "true"
+              ? "JILES_ATHERTON"
+              : "PIECEWISE_LINEAR";
+
+          const lUnsat = parseFloat(String(p["L_unsat"] ?? p["Lunsat"] ?? p["lUnsatH"] ?? "500.0"));
+          const lSat = parseFloat(String(p["L_sat"] ?? p["Lsat"] ?? p["lSatH"] ?? "10.0"));
+          const knee = parseFloat(String(p["knee_flux"] ?? p["kneeFlux"] ?? p["Vknee"] ?? "800.0"));
+          const rem = parseFloat(String(p["remanence"] ?? p["Remanence"] ?? p["remanentFlux"] ?? p["Br"] ?? "0.0"));
+
+          lUnsatH = isNaN(lUnsat) ? 500.0 : lUnsat;
+          lSatH = isNaN(lSat) ? 10.0 : lSat;
+          kneeFluxWb = isNaN(knee) ? 800.0 : knee;
+          remanentFluxWb = isNaN(rem) ? 0.0 : rem;
+
+          if (coreModel === "JILES_ATHERTON") {
+            const ms = parseFloat(String(p["Ms"] ?? p["ms"] ?? "1.6e6"));
+            const a = parseFloat(String(p["a"] ?? p["A"] ?? "1100.0"));
+            const alpha = parseFloat(String(p["alpha"] ?? p["Alpha"] ?? "1.6e-3"));
+            const k = parseFloat(String(p["k"] ?? p["K"] ?? "400.0"));
+            const c = parseFloat(String(p["c"] ?? p["C"] ?? "0.2"));
+            const area = parseFloat(String(p["coreAreaM2"] ?? p["core_area"] ?? p["Area"] ?? "0.5"));
+            const length = parseFloat(String(p["magneticLengthM"] ?? p["mag_len"] ?? p["Length"] ?? "3.0"));
+            const turns = parseFloat(String(p["primaryTurns"] ?? p["turns"] ?? p["N1"] ?? "500"));
+
+            jaParams = {
+              ms: isNaN(ms) ? 1.6e6 : ms,
+              a: isNaN(a) ? 1100.0 : a,
+              alpha: isNaN(alpha) ? 1.6e-3 : alpha,
+              k: isNaN(k) ? 400.0 : k,
+              c: isNaN(c) ? 0.2 : c,
+              coreAreaM2: isNaN(area) ? 0.5 : area,
+              magneticLengthM: isNaN(length) ? 3.0 : length,
+              primaryTurns: isNaN(turns) ? 500 : Math.round(turns),
+            };
+          }
+        }
+
         const xfmr: EmtTransformer = {
           id: qCmpId,
           fromBus: bus1,
@@ -539,6 +636,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           secondaryKv: isNaN(v2) ? 230.0 : v2,
           leakageReactancePu: isNaN(x) ? 0.08 : x,
           windingConnection,
+          ...(isSaturable ? { saturation: true, coreModel, lUnsatH, lSatH, kneeFluxWb, remanentFluxWb, jaParams } : {}),
         };
         transformers.push(xfmr);
 
@@ -644,25 +742,27 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         lowerClean === "ind_machine" ||
         lowerClean === "induction_machine" ||
         lowerClean === "dfig" ||
+        lowerClean === "wound_rotor" ||
         defn.includes("ind_machine") ||
         defn.includes("induction_machine") ||
-        defn.includes("dfig")
+        defn.includes("dfig") ||
+        defn.includes("wound_rotor")
       ) {
         const p1 = cmp.ports[0]?.id;
         const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Term`);
-        const mva = parseFloat(String(p["MVA"] ?? p["mva"] ?? "10.0"));
-        const kv = parseFloat(String(p["V"] ?? p["v"] ?? p["Vbase"] ?? "13.8"));
+        const mva = parseFloat(String(p["Pbase"] ?? p["MVA"] ?? p["mva"] ?? "10.0"));
+        const kv = parseFloat(String(p["Vbase"] ?? p["V"] ?? p["v"] ?? "13.8"));
         const freq = parseFloat(String(p["freq"] ?? p["f"] ?? project.settings.frequencyHz));
         const typeRaw = String(
           p["machine_type"] ?? p["type"] ?? (defn.includes("dfig") ? "dfig" : "squirrel_cage"),
         ).toLowerCase();
         const machineType: "squirrel_cage" | "dfig" = typeRaw === "dfig" ? "dfig" : "squirrel_cage";
-        const rs = parseFloat(String(p["Rs"] ?? p["rs"] ?? "0.015"));
-        const xs = parseFloat(String(p["Xs"] ?? p["xs"] ?? "0.10"));
-        const xm = parseFloat(String(p["Xm"] ?? p["xm"] ?? "3.50"));
-        const rr = parseFloat(String(p["Rr"] ?? p["rr"] ?? "0.015"));
-        const xr = parseFloat(String(p["Xr"] ?? p["xr"] ?? "0.10"));
-        const h = parseFloat(String(p["H"] ?? p["h"] ?? "1.5"));
+        const rs = parseFloat(String(p["R1"] ?? p["Rs"] ?? p["rs"] ?? "0.015"));
+        const xs = parseFloat(String(p["Xa"] ?? p["Xs"] ?? p["xs"] ?? "0.10"));
+        const xm = parseFloat(String(p["Xmd"] ?? p["Xm"] ?? p["xm"] ?? "3.50"));
+        const rr = parseFloat(String(p["R2"] ?? p["Rr"] ?? p["rr"] ?? "0.015"));
+        const xr = parseFloat(String(p["Xkd1"] ?? p["Xr"] ?? p["xr"] ?? "0.10"));
+        const h = parseFloat(String(p["J"] ?? p["H"] ?? p["h"] ?? "1.5"));
         const d = parseFloat(String(p["D"] ?? p["d"] ?? "0.2"));
         const tm = parseFloat(String(p["Tm"] ?? p["tm"] ?? p["T_load"] ?? (machineType === "dfig" ? "-0.6" : "0.6")));
         const slip0 = parseFloat(
@@ -789,10 +889,56 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           controlMode: modeStr === "grid_forming" ? "grid_forming" : "grid_following",
         };
         fmuInstances.push(fmu);
+      } else if (lowerClean === "src_ccin_1" || defn.includes("src_ccin_1")) {
+        const p1 = cmp.ports[0]?.id;
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
+        const cntrl = parseInt(String(p["Cntrl"] ?? "0"), 10);
+        const vmRaw = parseFloat(String(p["Vm"] ?? "0"));
+        const freq = parseFloat(String(p["f"] ?? p["freq"] ?? "0"));
+        const phaseDeg = parseFloat(String(p["Ph"] ?? p["phase"] ?? "0"));
+        const isDc =
+          freq === 0 ||
+          String(p["Vm"] ?? "")
+            .toLowerCase()
+            .includes("dc");
+        // When Cntrl=1, current is modulated by an external control signal (defaults to 0 if unwired to prevent runaway voltage)
+        const iPeak = cntrl === 1 ? 0.0 : isNaN(vmRaw) ? 0.0 : vmRaw;
+
+        currentSources.push({
+          id: qCmpId,
+          name: qInstName || `CurrentSource_${qCmpId}`,
+          bus: bus1,
+          iPeakA: iPeak * 1000.0,
+          frequencyHz: isDc ? 0 : freq,
+          phaseRad: (phaseDeg * Math.PI) / 180,
+          parallelConductance: 0.1, // 10 ohm parallel conductance to ensure passive stability
+        });
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
-        // master:src_ccin_1 is deliberately NOT lowered. Injecting its Vm (0.251 kA or a placeholder-looking
-        // 132.79 kA) as a 60 Hz current into the DC-named rails it sits on drove node voltages to megavolts, and
-        // Cntrl=1 suggests the magnitude comes from an unwired control signal. `currentSources` stays available.
+      } else if (lowerClean === "battery" || defn.includes("battery")) {
+        const p1 = cmp.ports[0]?.id;
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
+        const enomRaw = parseFloat(String(p["Enom"] ?? p["Vnom"] ?? p["V"] ?? "0.4"));
+        const enomStr = String(p["Enom"] ?? p["Vnom"] ?? "");
+        const enomKv = enomStr.includes("[kV]") || enomRaw < 5.0 ? enomRaw : enomRaw / 1000.0;
+        const qAh = parseFloat(String(p["Qrated"] ?? p["CapAh"] ?? "100.0"));
+        const socInt = parseFloat(String(p["SOCint"] ?? p["SoC0"] ?? "50.0"));
+        const soc = socInt > 1.0 ? socInt / 100.0 : socInt;
+        const rLoss = parseFloat(String(p["loss"] ?? p["R0"] ?? "0.005"));
+        const mva = (enomKv * qAh) / 1000.0;
+
+        sources.push({
+          id: qCmpId,
+          name: qInstName || `Battery_${qCmpId}`,
+          bus: bus1,
+          vPeakKv: isNaN(enomKv) ? 0.4 : enomKv * (0.95 + 0.1 * soc),
+          dc: true,
+          frequencyHz: 0,
+          phaseRad: 0,
+          mvaRating: isNaN(mva) || mva <= 0 ? 1.0 : mva,
+          rSourceOhm: Math.max(0.001, isNaN(rLoss) ? 0.005 : rLoss),
+          rSourceSpecified: true,
+        });
+        buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (defn.includes("source") || defn.includes("gen")) {
         const p1 = cmp.ports[0]?.id;
         const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
@@ -1340,6 +1486,40 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         if (Number(p["Dim"]) === 3 && ["const", "mult", "div", "sum", "gain", "limit"].includes(kind)) {
           vectorBlocks.push({ id: qInstName, kind, inputs: blockInputs, params });
         }
+      } else {
+        // Fallback: Check if definition has custom Fortran script segments (<segment name="Fortran"> or "Dsdyn")
+        const defGraphic = project.definitions?.get(cleanDefn) ?? project.definitions?.get(rawDefn);
+        const fortranSeg = defGraphic?.scriptSegments?.get("fortran") ?? defGraphic?.scriptSegments?.get("dsdyn");
+        if (fortranSeg?.content) {
+          try {
+            const compiled = compileFortranSegment(fortranSeg.content, cmp.parameters);
+            const blockInputs: { portName: string; sourceId?: string | undefined }[] = [];
+            for (const refPort of compiled.referencedPorts) {
+              const pt = cmp.ports.find((p) => p.name.toLowerCase() === refPort.toLowerCase());
+              const srcId = pt ? (signalPortSourceMap.get(pt.id) ?? portToBusMap.get(pt.id)) : undefined;
+              blockInputs.push({ portName: refPort, sourceId: srcId });
+            }
+            const blockOutputs: { portName: string; targetId?: string | undefined }[] = [];
+            for (const asgPort of compiled.assignedPorts) {
+              const targetId = compiled.assignedPorts.length === 1 ? qInstName : `${qInstName}_${asgPort}`;
+              blockOutputs.push({ portName: asgPort, targetId });
+            }
+
+            customFortranBlocks.push({
+              id: qInstName,
+              name: localName(cmp),
+              referencedPorts: compiled.referencedPorts,
+              assignedPorts: compiled.assignedPorts,
+              inputs: blockInputs,
+              outputs: blockOutputs,
+              numRealStates: compiled.numRealStates,
+              numIntStates: compiled.numIntStates,
+              step: compiled.step,
+            });
+          } catch {
+            assumptions.push(`'${qInstName}' (${cleanDefn}): Custom Fortran script could not be lowered.`);
+          }
+        }
       }
     }
   }
@@ -1373,10 +1553,13 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     }
   }
 
+  const saturableTransformers = transformers.filter((x) => x.saturation);
+
   return {
     buses,
     branches,
     transformers,
+    saturableTransformers: saturableTransformers.length > 0 ? saturableTransformers : undefined,
     transmissionLines,
     fmuInstances,
     sources,
@@ -1387,6 +1570,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     inductionMachines: inductionMachines.length > 0 ? inductionMachines : undefined,
     converterBridges: converterBridges.length > 0 ? converterBridges : undefined,
     controlBlocks: controlBlocks.length > 0 ? controlBlocks : undefined,
+    customFortranBlocks: customFortranBlocks.length > 0 ? customFortranBlocks : undefined,
     assumptions: assumptions.length > 0 ? assumptions : undefined,
     nominalFrequencyHz: project.settings.frequencyHz,
   };
@@ -1436,17 +1620,50 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
               : undefined,
     }));
 
-  // 3. Map two-winding transformers, distributed-parameter lines/cables, and FMU interfaces
-  const transformers = netlist.transformers.map((x) => ({
-    id: x.id,
-    primaryBus: x.fromBus,
-    secondaryBus: x.toBus,
-    mvaRating: x.mvaRating,
-    primaryKv: x.primaryKv,
-    secondaryKv: x.secondaryKv,
-    leakageReactancePu: x.leakageReactancePu,
-    windingConnection: x.windingConnection,
-  }));
+  // 3. Map two-winding transformers, saturable transformers, distributed-parameter lines/cables, and FMU interfaces
+  const linearTransformers: {
+    id: string;
+    primaryBus: string;
+    secondaryBus: string;
+    mvaRating: number;
+    primaryKv: number;
+    secondaryKv: number;
+    leakageReactancePu: number;
+    windingConnection: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D";
+  }[] = [];
+
+  const saturableTransformers: any[] = [];
+
+  for (const x of netlist.transformers) {
+    if (x.saturation) {
+      saturableTransformers.push({
+        id: x.id,
+        primaryBus: x.fromBus,
+        secondaryBus: x.toBus,
+        ratedMva: x.mvaRating,
+        primaryKv: x.primaryKv,
+        secondaryKv: x.secondaryKv,
+        leakageReactancePu: x.leakageReactancePu,
+        coreModel: x.coreModel ?? "PIECEWISE_LINEAR",
+        lUnsatH: x.lUnsatH,
+        lSatH: x.lSatH,
+        kneeFluxWb: x.kneeFluxWb,
+        remanentFluxWb: x.remanentFluxWb,
+        jaParams: x.jaParams,
+      });
+    } else {
+      linearTransformers.push({
+        id: x.id,
+        primaryBus: x.fromBus,
+        secondaryBus: x.toBus,
+        mvaRating: x.mvaRating,
+        primaryKv: x.primaryKv,
+        secondaryKv: x.secondaryKv,
+        leakageReactancePu: x.leakageReactancePu,
+        windingConnection: x.windingConnection,
+      });
+    }
+  }
 
   const transmissionLines = netlist.transmissionLines.map((l) => ({
     id: l.id,
@@ -1483,13 +1700,25 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     dc: s.dc,
   }));
 
-  const currentSources = netlist.currentSources?.map((s) => ({
-    id: s.id,
-    bus: s.bus,
-    iPeakA: s.iPeakA,
-    freqHz: s.frequencyHz,
-    phaseRad: s.phaseRad,
-  }));
+  const currentSources = netlist.currentSources?.map((s) => {
+    if (s.parallelConductance && s.parallelConductance > 0) {
+      rlc.push({
+        id: `${s.id}_shunt`,
+        from: s.bus,
+        to: "0",
+        r: 1.0 / s.parallelConductance,
+        l: 0,
+        c: 0,
+      });
+    }
+    return {
+      id: s.id,
+      bus: s.bus,
+      iPeakA: s.iPeakA ?? 0,
+      freqHz: s.frequencyHz ?? 0,
+      phaseRad: s.phaseRad ?? 0,
+    };
+  });
 
   const faults = netlist.faults?.map((f) => ({
     id: f.id,
@@ -1588,11 +1817,25 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     ...(cb.actuator !== undefined ? { actuator: cb.actuator } : {}),
   }));
 
+  // 7. Map custom procedural Fortran blocks
+  const customFortranBlocks = netlist.customFortranBlocks?.map((fb) => ({
+    id: fb.id,
+    name: fb.name,
+    referencedPorts: fb.referencedPorts,
+    assignedPorts: fb.assignedPorts,
+    numRealStates: fb.numRealStates,
+    numIntStates: fb.numIntStates,
+    inputs: fb.inputs,
+    outputs: fb.outputs,
+    step: fb.step,
+  }));
+
   return {
     buses,
     rlc,
     breakers: breakers.length > 0 ? breakers : undefined,
-    transformers: transformers.length > 0 ? transformers : undefined,
+    transformers: linearTransformers.length > 0 ? linearTransformers : undefined,
+    saturableTransformers: saturableTransformers.length > 0 ? saturableTransformers : undefined,
     transmissionLines: transmissionLines.length > 0 ? transmissionLines : undefined,
     fmuInstances: fmuInstances.length > 0 ? fmuInstances : undefined,
     sources: sources.length > 0 ? sources : undefined,
@@ -1603,5 +1846,6 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     inductionMachines: inductionMachines && inductionMachines.length > 0 ? inductionMachines : undefined,
     converterBridges: converterBridges && converterBridges.length > 0 ? converterBridges : undefined,
     csmfBlocks: csmfBlocks && csmfBlocks.length > 0 ? csmfBlocks : undefined,
+    customFortranBlocks: customFortranBlocks && customFortranBlocks.length > 0 ? customFortranBlocks : undefined,
   };
 }

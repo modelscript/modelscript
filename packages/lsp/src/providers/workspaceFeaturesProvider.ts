@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, no-useless-assignment */
+import { getOlgaQuickFixes } from "@modelscript/olga";
 import { getPscadQuickFixes } from "@modelscript/pscad";
 import {
   CodeAction,
@@ -285,6 +286,21 @@ export function registerWorkspaceFeaturesProvider(
           kind: CodeActionKind.QuickFix,
           edit: fix.edit,
         });
+      }
+    }
+
+    if (/\.(opi|olga)$/i.test(params.textDocument.uri)) {
+      const olgaFixes = getOlgaQuickFixes(document.getText(), params.textDocument.uri);
+      for (const fix of olgaFixes) {
+        const action: CodeAction = {
+          title: fix.title,
+          kind: CodeActionKind.QuickFix,
+          edit: fix.edit,
+        };
+        if (fix.isPreferred !== undefined) {
+          action.isPreferred = fix.isPreferred;
+        }
+        actions.push(action);
       }
     }
 

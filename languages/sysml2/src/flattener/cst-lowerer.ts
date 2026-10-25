@@ -1594,7 +1594,8 @@ export class SysML2CstFlattener {
 
     // Fallback port scanning for flattened/recovered CST nodes
     if (portUsages.length === 0) {
-      const portInstRegex = /\b(?:(in|out)\s+)?port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(~?\s*[A-Za-z_][A-Za-z0-9_.]*)/g;
+      const portInstRegex =
+        /\b(?:(in|out)\s+)?port\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:(~\s*)?)([A-Za-z_][A-Za-z0-9_.]*)/g;
       let pm: RegExpExecArray | null;
       while ((pm = portInstRegex.exec(compText)) !== null) {
         const portName = pm[2]!;
@@ -1602,9 +1603,8 @@ export class SysML2CstFlattener {
         localNames.add(portName);
         const portFullName = prefix + portName;
 
-        const rawType = pm[3]!.trim();
-        const isConjugated = rawType.startsWith("~");
-        const cleanType = rawType.replace(/^~\s*/, "");
+        const isConjugated = Boolean(pm[3]);
+        const cleanType = pm[4]!.trim();
 
         const pDef = this.portDefs.get(cleanType) ?? {
           name: cleanType,
@@ -2028,11 +2028,15 @@ export class SysML2CstFlattener {
    */
   private elaborateWhenClauses(compNode: any, prefix: string, localNames: Set<string>): void {
     const compText = this.getCompText(compNode);
-    const whenRegex = /\bwhen\s+(?:\(([^)]+)\)|([^{]+))\s*\{/g;
-    let wm: RegExpExecArray | null;
-    while ((wm = whenRegex.exec(compText)) !== null) {
-      const rawCond = (wm[1] || wm[2])!.trim();
-      const openBrace = compText.indexOf("{", wm.index);
+    let searchIdx = 0;
+    while (searchIdx < compText.length) {
+      const match = /\bwhen\b/.exec(compText.slice(searchIdx));
+      if (!match) break;
+      const whenStart = searchIdx + match.index;
+      const openBrace = compText.indexOf("{", whenStart);
+      if (openBrace === -1) break;
+      const condStr = compText.slice(whenStart + 4, openBrace).trim();
+      const rawCond = condStr.startsWith("(") && condStr.endsWith(")") ? condStr.slice(1, -1).trim() : condStr;
       let depth = 1;
       let i = openBrace + 1;
       while (i < compText.length && depth > 0) {
@@ -2041,6 +2045,7 @@ export class SysML2CstFlattener {
         i++;
       }
       const whenBody = compText.slice(openBrace + 1, i - 1);
+      searchIdx = i;
 
       const prefixedCond = prefixSysmlExpression(rawCond, prefix, localNames);
       const condExprId = lowerSysmlExpr(prefixedCond, this.arena);

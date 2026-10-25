@@ -539,7 +539,10 @@ export const modelicaActionHandlers: Record<
         states,
         parameters: extractArenaParameters(arena),
         variableMetadata,
-        experiment: (arena as any).experiment,
+        experiment: {
+          ...(arena as any).experiment,
+          solver: (arena as any).experiment?.solver ?? simOpts.solver ?? "dopri5",
+        },
       };
     }
 
@@ -550,7 +553,10 @@ export const modelicaActionHandlers: Record<
       states: statesList,
       parameters: extractArenaParameters(arena),
       variableMetadata,
-      experiment: (arena as any).experiment,
+      experiment: {
+        ...(arena as any).experiment,
+        solver: (arena as any).experiment?.solver ?? simOpts.solver ?? "dopri5",
+      },
       text: `Simulation of ${className} completed: ${tArr.length} steps, states: [${statesList.join(", ")}]`,
     };
   },

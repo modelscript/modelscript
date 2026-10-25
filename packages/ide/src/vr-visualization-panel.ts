@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as vscode from "vscode";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
-export class VrVisualizationPanel {
+export class VrVisualizationPanel extends BaseWebviewPanel {
   public static currentPanel: VrVisualizationPanel | undefined;
   public static readonly viewType = "modelscript.vrVisualization";
-
-  private readonly _panel: vscode.WebviewPanel;
-  private readonly _extensionUri: vscode.Uri;
-  private _disposables: vscode.Disposable[] = [];
 
   public static createOrShow(extensionUri: vscode.Uri) {
     const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
@@ -24,6 +21,7 @@ export class VrVisualizationPanel {
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
+        retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
       },
     );
@@ -32,12 +30,14 @@ export class VrVisualizationPanel {
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this._panel = panel;
-    this._extensionUri = extensionUri;
+    super(panel, extensionUri);
 
-    this._update();
-
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._panel.title = "VR Factory Visualization";
+    this._panel.webview.html = this.getHtmlShell({
+      title: "VR Factory Visualization",
+      scriptName: "vr-visualization-webview.js",
+      rootId: "container",
+    });
 
     this._panel.webview.onDidReceiveMessage(
       (message) => {
@@ -52,68 +52,20 @@ export class VrVisualizationPanel {
     );
   }
 
-  public dispose() {
+  public override dispose(): void {
     VrVisualizationPanel.currentPanel = undefined;
-    this._panel.dispose();
-
-    while (this._disposables.length) {
-      const x = this._disposables.pop();
-      if (x) {
-        x.dispose();
-      }
-    }
+    super.dispose();
   }
 
   /**
    * Pushes a new VTK payload (from the orchestrator) to the WebXR view.
    */
   public updateVtkData(participantId: string, time: number, vtkData: Uint8Array) {
-    // Send raw binary to webview
     this._panel.webview.postMessage({
       command: "vtkData",
       participantId,
       time,
-      vtkData: Array.from(vtkData), // converting to array for postMessage serialization
+      vtkData: Array.from(vtkData),
     });
   }
-
-  private _update() {
-    const webview = this._panel.webview;
-    this._panel.title = "VR Factory Visualization";
-    this._panel.webview.html = this._getHtmlForWebview(webview);
-  }
-
-  private _getHtmlForWebview(webview: vscode.Webview) {
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, "dist", "vr-visualization-webview.js"),
-    );
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource} data: blob:; worker-src 'self' blob:;">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>VR Factory Visualization</title>
-        <style>
-          body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-          #container { width: 100%; height: 100%; }
-        </style>
-      </head>
-      <body>
-        <div id="container"></div>
-        <script nonce="${nonce}" src="${scriptUri}"></script>
-      </body>
-      </html>`;
-  }
-}
-
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

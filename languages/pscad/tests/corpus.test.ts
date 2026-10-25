@@ -31,9 +31,9 @@ function findFiles(dir: string): string[] {
 
 /** Minimum acceptable fractions per file name (ratchet: raise as coverage improves). */
 const BASELINES: Record<string, { portCoverage: number; wireAttachment: number; catalogCoverage: number }> = {
-  "DC_EMT_demo.pscx": { portCoverage: 0.75, wireAttachment: 0.84, catalogCoverage: 0.2 },
-  "DC_EMT_compare.pscx": { portCoverage: 0.69, wireAttachment: 0.77, catalogCoverage: 0.2 },
-  "DC_EMT_lib.pslx": { portCoverage: 0.98, wireAttachment: 0.71, catalogCoverage: 0.2 },
+  "DC_EMT_demo.pscx": { portCoverage: 0.75, wireAttachment: 0.88, catalogCoverage: 0.2 },
+  "DC_EMT_compare.pscx": { portCoverage: 0.69, wireAttachment: 0.85, catalogCoverage: 0.2 },
+  "DC_EMT_lib.pslx": { portCoverage: 0.98, wireAttachment: 0.9, catalogCoverage: 0.2 },
 };
 
 const files = findFiles(corpusDir);

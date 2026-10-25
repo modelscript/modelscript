@@ -694,6 +694,7 @@ export default function CadViewer({
   feaPayload = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
+  const [contextLost, setContextLost] = useState<boolean>(false);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>("translate");
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
 
@@ -882,12 +883,56 @@ export default function CadViewer({
         )}
       </div>
 
+      {contextLost && (
+        <div
+          style={{
+            position: "absolute",
+            top: 50,
+            left: 16,
+            right: 16,
+            zIndex: 100,
+            padding: "10px 16px",
+            borderRadius: 6,
+            background: "rgba(220, 38, 38, 0.9)",
+            color: "#ffffff",
+            fontSize: "0.85rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          <span>⚠ WebGL graphics context was suspended by host system. Waiting for GPU recovery…</span>
+        </div>
+      )}
+
       <Canvas
         shadows
         camera={{ position: [3, 2.5, 3], fov: 50 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
         style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
         onError={(e) => setError(String(e))}
+        onCreated={({ gl }) => {
+          const dom = gl.domElement;
+          dom.addEventListener(
+            "webglcontextlost",
+            (e) => {
+              e.preventDefault();
+              console.warn("[CadViewer] WebGL context lost! Waiting for restoration...");
+              setContextLost(true);
+            },
+            false,
+          );
+          dom.addEventListener(
+            "webglcontextrestored",
+            () => {
+              console.info("[CadViewer] WebGL context restored!");
+              setContextLost(false);
+            },
+            false,
+          );
+        }}
       >
         <SceneContents
           components={components}

@@ -103,6 +103,7 @@ import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CadViewerPanel } from "./cad-viewer-panel";
 import { MultiBodyAnimationPanel } from "./multibody-animation-panel";
+import { getNonce } from "./utils/nonce.js";
 
 /**
  * Time-series simulation result payload returned by the language server or client-side solver.
@@ -148,6 +149,8 @@ interface SimulationResult {
   comtrade?: { cfg: string; dat: string } | undefined;
   /** Optional PSCAD output export artifacts (.inf and .out files). */
   pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+  /** Optional PSCAD V5+ binary waveform (.psout) payload (Uint8Array or Base64 string). */
+  pscadPsout?: Uint8Array | string | undefined;
   /** Model or project name for export file naming. */
   projectName?: string | undefined;
 }
@@ -534,6 +537,7 @@ export class SimulationPanel {
                     documentText: docText,
                     durationSec: msg.payload?.stopTime,
                     timeStepSec: msg.payload?.interval,
+                    exportPsout: true,
                   },
                 });
 
@@ -631,6 +635,7 @@ export class SimulationPanel {
                   error: res?.error,
                   comtrade: res?.comtrade ?? simRes?.comtrade,
                   pscadOut: res?.pscadOut ?? simRes?.pscadOut,
+                  pscadPsout: res?.pscadPsout ?? simRes?.pscadPsout,
                   projectName: res?.project ?? "pscad_model",
                 };
               } else {
@@ -1538,13 +1543,13 @@ export class SimulationPanel {
           <div class="settings-row">
             <label for="st-solver">Solver</label>
             <select id="st-solver" class="settings-select">
-              <option value="dommel">Dommel (EMT Companion)</option>
-              <option value="dopri5">DOPRI5 (Adaptive 5(4))</option>
+              <option value="dopri5" selected>DOPRI5 (Adaptive 5(4))</option>
               <option value="cvode">CVODE / BDF (Stiff DAE)</option>
               <option value="rodas4p">RODAS4P (SDIRK Stiff)</option>
               <option value="tsit5">Tsit5 (Fast Non-Stiff)</option>
               <option value="rk4">RK4 (Classic Fixed-Step)</option>
               <option value="euler">Euler (Explicit Real-Time)</option>
+              <option value="dommel">Dommel (EMT Companion)</option>
               <option value="webgpu">WebGPU (Batched)</option>
             </select>
           </div>
@@ -1613,6 +1618,7 @@ export class SimulationPanel {
         <button id="btn-export-csv" title="Download trajectory as CSV">📥 CSV</button>
         <button id="btn-export-comtrade" style="display: none;" title="Download IEEE C37.111 COMTRADE (.cfg + .dat)">⚡ COMTRADE</button>
         <button id="btn-export-out" style="display: none;" title="Download PSCAD (.inf + .out)">📄 OUT</button>
+        <button id="btn-export-psout" style="display: none;" title="Download PSCAD V5 Binary Waveform (.psout)">💾 PSOUT</button>
         <button id="btn-export-png" title="Download chart snapshot as PNG">📷 PNG</button>
         <button id="btn-copy-csv" title="Copy trajectory data to clipboard">📋 Copy</button>
 
@@ -1644,16 +1650,4 @@ export class SimulationPanel {
       if (x) x.dispose();
     }
   }
-}
-
-/**
- * Generates a 32-character alphanumeric nonce for Content-Security-Policy script authorization.
- */
-function getNonce() {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

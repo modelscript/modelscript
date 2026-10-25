@@ -728,6 +728,99 @@ export function registerCodeLensProvider(context: LspContext) {
       return lenses;
     }
 
+    // 7. OLGA files (.opi, .olga)
+    if (/\.(opi|olga)($|\?|#)/i.test(uri)) {
+      const document = context.documents.get(uri);
+      const text = document?.getText();
+      if (text) {
+        const headerRange = Range.create(0, 0, 0, 0);
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "▶ Simulate Multiphase Flow (Drift-Flux DAE)",
+            command: "modelscript.olga.simulate",
+            arguments: [uri],
+          },
+        });
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "📊 Open Flow Assurance Dashboard",
+            command: "modelscript.openOlgaEditor",
+            arguments: [uri],
+          },
+        });
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "🌊 View 3D Seabed Bathymetry & Pipeline Profile",
+            command: "modelscript.olga.viewBathymetry",
+            arguments: [uri],
+          },
+        });
+
+        const lines = text.split(/\r?\n/);
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+          const line = lines[lineIdx]!;
+
+          // Flowpath declaration
+          const fpMatch = /<Flowpath[^>]*\s(?:name|id)\s*=\s*["']([^"']+)["']/i.exec(line);
+          if (fpMatch) {
+            const name = fpMatch[1]!;
+            const col = line.indexOf(name);
+            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
+            lenses.push({
+              range,
+              command: {
+                title: `🌊 Flowpath '${name}' | Verify Multiphase Limits (WAT, Hydrates, Slug Surge)`,
+                command: "modelscript.olga.verifyFlowAssurance",
+                arguments: [uri, name],
+              },
+            });
+          }
+
+          // Valve declaration
+          const valveMatch = /<Valve[^>]*\s(?:name|id)\s*=\s*["']([^"']+)["']/i.exec(line);
+          if (valveMatch) {
+            const name = valveMatch[1]!;
+            const openMatch = /opening\s*=\s*["']([0-9.]+)["']/i.exec(line);
+            const opening = openMatch ? `${(parseFloat(openMatch[1]!) * 100).toFixed(0)}%` : "100%";
+            const col = line.indexOf(name);
+            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
+            lenses.push({
+              range,
+              command: {
+                title: `🎛️ Choke '${name}' (Opening: ${opening}) | What-If Perturbation Sweep`,
+                command: "modelscript.olga.whatIfChoke",
+                arguments: [uri, name],
+              },
+            });
+          }
+
+          // Pipe declaration
+          const pipeMatch = /<Pipe[^>]*\s(?:label|name)\s*=\s*["']([^"']+)["']/i.exec(line);
+          if (pipeMatch) {
+            const name = pipeMatch[1]!;
+            const lenMatch = /length\s*=\s*["']([0-9.]+)["']/i.exec(line);
+            const diamMatch = /diameter\s*=\s*["']([0-9.]+)["']/i.exec(line);
+            const len = lenMatch ? `${lenMatch[1]}m` : "";
+            const diam = diamMatch ? `Ø${diamMatch[1]}m` : "";
+            const col = line.indexOf(name);
+            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
+            lenses.push({
+              range,
+              command: {
+                title: `📏 Pipe '${name}' [${len} ${diam}] | Inspect Pressure & Holdup Profile`,
+                command: "modelscript.olga.inspectPipeProfile",
+                arguments: [uri, name],
+              },
+            });
+          }
+        }
+      }
+      return lenses;
+    }
+
     return lenses;
   });
 }

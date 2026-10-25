@@ -162,11 +162,17 @@ export function parseChecksSegment(checksText: string): PscadCheckRule[] {
     }
 
     // Check for ERROR or WARNING statements
-    const errMatch = /^(ERROR|WARNING)\s+([^:]+?)(?:\s*:\s*(.+))?$/i.exec(line);
-    if (errMatch) {
-      const sev = errMatch[1]!.toUpperCase() === "WARNING" ? ("warning" as const) : ("error" as const);
-      const msg = errMatch[2]!.trim();
-      const condition = errMatch[3] ? errMatch[3].trim() : undefined;
+    const sevMatch = /^(ERROR|WARNING)\s+/i.exec(line);
+    if (sevMatch) {
+      const sev = sevMatch[1]!.toUpperCase() === "WARNING" ? ("warning" as const) : ("error" as const);
+      const rest = line.slice(sevMatch[0].length).trim();
+      const colonIdx = rest.indexOf(":");
+      let msg = rest;
+      let condition: string | undefined;
+      if (colonIdx !== -1) {
+        msg = rest.slice(0, colonIdx).trim();
+        condition = rest.slice(colonIdx + 1).trim() || undefined;
+      }
       const guard = guardStack.length > 0 ? guardStack.join(" && ") : undefined;
 
       rules.push({
@@ -324,36 +330,58 @@ export function parseBranchSegment(
     if (guardStack.some((g) => !g.active)) continue;
 
     // Strip trailing comments (e.g. / or !)
-    line = line.replace(new RegExp("[/!].*$"), "").trim();
+    const slashIdx = line.indexOf("/");
+    const bangIdx = line.indexOf("!");
+    let commentIdx = -1;
+    if (slashIdx !== -1 && bangIdx !== -1) {
+      commentIdx = Math.min(slashIdx, bangIdx);
+    } else if (slashIdx !== -1) {
+      commentIdx = slashIdx;
+    } else if (bangIdx !== -1) {
+      commentIdx = bangIdx;
+    }
+    if (commentIdx !== -1) {
+      line = line.slice(0, commentIdx).trim();
+    } else {
+      line = line.trim();
+    }
     if (!line) continue;
 
     // Syntax 1: Name = $Node1 $Node2 TYPE [params]
     // e.g.: BN = $N1 $N2 AMMETER
     //       NBR = $NT $NF BREAKER 1.0E6
     //       BRbat = $B $A SOURCE 1.0
-    const namedMatch =
-      /^([A-Za-z0-9_]+)\s*=\s*\$([A-Za-z0-9_()]+)\s+\$([A-Za-z0-9_()]+)\s+([A-Za-z0-9_]+)(?:\s+(.*))?$/i.exec(line);
-    if (namedMatch) {
-      const name = namedMatch[1]!;
-      const fromNode = namedMatch[2]!;
-      const toNode = namedMatch[3]!;
-      const typeStr = namedMatch[4]!.toUpperCase();
-      const extra = namedMatch[5] ?? "";
+    const eqIdx = line.indexOf("=");
+    if (eqIdx !== -1) {
+      const name = line.slice(0, eqIdx).trim();
+      const rhs = line.slice(eqIdx + 1).trim();
+      const tokens = rhs.split(/\s+/);
+      if (
+        /^[A-Za-z0-9_]+$/.test(name) &&
+        tokens.length >= 3 &&
+        tokens[0]!.startsWith("$") &&
+        tokens[1]!.startsWith("$")
+      ) {
+        const fromNode = tokens[0]!.slice(1);
+        const toNode = tokens[1]!.slice(1);
+        const typeStr = tokens[2]!.toUpperCase();
+        const extra = tokens.slice(3).join(" ");
 
-      let kind: PscadBranchDescriptor["kind"] = "other";
-      if (typeStr === "AMMETER") kind = "ammeter";
-      else if (typeStr === "BREAKER" || typeStr === "SWITCH") kind = "breaker";
-      else if (typeStr === "SOURCE") kind = "source";
+        let kind: PscadBranchDescriptor["kind"] = "other";
+        if (typeStr === "AMMETER") kind = "ammeter";
+        else if (typeStr === "BREAKER" || typeStr === "SWITCH") kind = "breaker";
+        else if (typeStr === "SOURCE") kind = "source";
 
-      branches.push({
-        name,
-        fromNode,
-        toNode,
-        kind,
-        extra: extra.trim() || undefined,
-        raw: line,
-      });
-      continue;
+        branches.push({
+          name,
+          fromNode,
+          toNode,
+          kind,
+          extra: extra.trim() || undefined,
+          raw: line,
+        });
+        continue;
+      }
     }
 
     // Syntax 2: $Node1 $Node2 R L C

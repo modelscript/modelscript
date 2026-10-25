@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { BaseWebviewPanel } from "./webview/base-panel.js";
 
 interface CalibrationProgress {
   iteration: number;
@@ -13,15 +14,12 @@ interface CalibrationProgress {
   parameters: Record<string, number>;
 }
 
-export class CalibrationPanel {
+export class CalibrationPanel extends BaseWebviewPanel {
   static currentPanel: CalibrationPanel | undefined;
   static readonly viewType = "modelscript.calibration";
 
-  private readonly panel: vscode.WebviewPanel;
-  private readonly extensionUri: vscode.Uri;
   public sourceUri?: string | undefined;
   private client?: LanguageClient | undefined;
-  private disposables: vscode.Disposable[] = [];
 
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
     const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
@@ -32,7 +30,7 @@ export class CalibrationPanel {
 
     if (CalibrationPanel.currentPanel) {
       CalibrationPanel.currentPanel.sourceUri = sourceUri;
-      CalibrationPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      CalibrationPanel.currentPanel._panel.reveal(vscode.ViewColumn.Beside);
       return;
     }
 
@@ -47,29 +45,32 @@ export class CalibrationPanel {
       },
     );
 
-    CalibrationPanel.currentPanel = new CalibrationPanel(panel, extensionUri);
-    CalibrationPanel.currentPanel.client = client;
-    CalibrationPanel.currentPanel.sourceUri = sourceUri;
+    CalibrationPanel.currentPanel = new CalibrationPanel(panel, extensionUri, client, sourceUri);
 
     // Register progress listener and track its disposal
     const progressDisposable = client.onNotification(
       "modelscript/calibrationProgress",
       (params: CalibrationProgress) => {
-        CalibrationPanel.currentPanel?.panel.webview.postMessage({
+        CalibrationPanel.currentPanel?._panel.webview.postMessage({
           type: "calibrationProgress",
           data: params,
         });
       },
     );
-    CalibrationPanel.currentPanel.disposables.push(progressDisposable);
+    CalibrationPanel.currentPanel._disposables.push(progressDisposable);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this.panel = panel;
-    this.extensionUri = extensionUri;
-    this.panel.webview.html = this.getHtmlForWebview();
-    this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
-    this.panel.webview.onDidReceiveMessage(
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient, sourceUri: string) {
+    super(panel, extensionUri);
+    this.client = client;
+    this.sourceUri = sourceUri;
+
+    this._panel.webview.html = this.getHtmlShell({
+      title: "Calibration Dashboard",
+      scriptName: "calibration-webview.js",
+    });
+
+    this._panel.webview.onDidReceiveMessage(
       async (msg) => {
         if (msg.type === "webviewReady") {
           if (this.client && this.sourceUri) {
@@ -79,12 +80,12 @@ export class CalibrationPanel {
               })
               .then((res) => {
                 if (res && res.parameters) {
-                  this.panel.webview.postMessage({
+                  this._panel.webview.postMessage({
                     type: "modelParameters",
                     parameters: res.parameters,
                   });
                 } else {
-                  this.panel.webview.postMessage({
+                  this._panel.webview.postMessage({
                     type: "modelParameters",
                     parameters: [],
                   });
@@ -92,13 +93,13 @@ export class CalibrationPanel {
               })
               .catch((e) => {
                 console.error("Failed to fetch parameters:", e);
-                this.panel.webview.postMessage({
+                this._panel.webview.postMessage({
                   type: "modelParameters",
                   parameters: [],
                 });
               });
           } else {
-            this.panel.webview.postMessage({
+            this._panel.webview.postMessage({
               type: "modelParameters",
               parameters: [],
             });
@@ -120,7 +121,7 @@ export class CalibrationPanel {
             const isDark =
               vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
               vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-            this.panel.webview.postMessage({
+            this._panel.webview.postMessage({
               type: "calibrationResult",
               data: result,
               isDark,
@@ -128,7 +129,7 @@ export class CalibrationPanel {
           } catch (e: unknown) {
             const errMsg = e instanceof Error ? e.message : String(e);
             vscode.window.showErrorMessage(`Calibration failed: ${errMsg}`);
-            this.panel.webview.postMessage({ type: "calibrationError", error: errMsg });
+            this._panel.webview.postMessage({ type: "calibrationError", error: errMsg });
           }
         } else if (msg.type === "saveResultRequest") {
           this.saveResult(msg.payload);
@@ -142,7 +143,7 @@ export class CalibrationPanel {
             try {
               const fileData = await vscode.workspace.fs.readFile(uris[0]);
               const csvData = new TextDecoder().decode(fileData);
-              this.panel.webview.postMessage({
+              this._panel.webview.postMessage({
                 type: "filePicked",
                 path: uris[0].fsPath,
                 csvData,
@@ -154,7 +155,7 @@ export class CalibrationPanel {
         }
       },
       null,
-      this.disposables,
+      this._disposables,
     );
   }
 
@@ -187,53 +188,8 @@ export class CalibrationPanel {
     vscode.window.showInformationMessage(`Saved calibration result as ${derivedName}`);
   }
 
-  private getHtmlForWebview(): string {
-    const webview = this.panel.webview;
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "calibration-webview.js"));
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;">
-  <title>Calibration Dashboard</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      width: 100vw;
-      height: 100vh;
-      background: var(--vscode-editor-background, #1e1e1e);
-      color: var(--vscode-foreground, #ccc);
-      font-family: var(--vscode-font-family, system-ui, sans-serif);
-    }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-  }
-
-  private dispose() {
+  public override dispose(): void {
     CalibrationPanel.currentPanel = undefined;
-    this.panel.dispose();
-    while (this.disposables.length) {
-      const d = this.disposables.pop();
-      if (d) d.dispose();
-    }
+    super.dispose();
   }
-}
-
-function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
 }

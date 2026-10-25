@@ -556,6 +556,15 @@ export function registerSimulationEndpoints(context: LspContext) {
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 1;
         const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
+        const effectiveSolver = (params.solver ?? (exp as any).solver ?? exp.algorithm ?? "dopri5") as any;
+        const effectiveExp = {
+          ...exp,
+          startTime,
+          stopTime,
+          interval: step,
+          tolerance: exp.tolerance ?? 1e-4,
+          solver: effectiveSolver,
+        };
 
         context.connection.console.info(`[simulate] startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
 
@@ -577,7 +586,7 @@ export function registerSimulationEndpoints(context: LspContext) {
               stopTime,
               step,
               numberOfIntervals: params.numberOfIntervals,
-              solver: (params.solver ?? "dopri5") as any,
+              solver: effectiveSolver,
               rtol: params.rtol,
               atol: params.atol,
               steadyStateOnly: params.steadyStateOnly,
@@ -599,7 +608,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             states: baseStates,
             parameters: getArenaParameterInfo(arena),
             variableMetadata: getArenaVariableMetadata(arena, baseStates),
-            experiment: exp,
+            experiment: effectiveExp,
             sweepResults,
             telemetry: { executionTimeMs, stepCount: baseT.length },
           };
@@ -610,7 +619,7 @@ export function registerSimulationEndpoints(context: LspContext) {
           stopTime,
           step,
           numberOfIntervals: params.numberOfIntervals,
-          solver: (params.solver ?? "dopri5") as any,
+          solver: effectiveSolver,
           rtol: params.rtol,
           atol: params.atol,
           steadyStateOnly: params.steadyStateOnly,
@@ -641,7 +650,7 @@ export function registerSimulationEndpoints(context: LspContext) {
             states: result.states,
             parameters: getArenaParameterInfo(arena),
             variableMetadata,
-            experiment: exp,
+            experiment: effectiveExp,
             telemetry: { executionTimeMs, stepCount: tArr.length },
           };
         }
@@ -652,7 +661,7 @@ export function registerSimulationEndpoints(context: LspContext) {
           states: result.states,
           parameters: getArenaParameterInfo(arena),
           variableMetadata,
-          experiment: exp,
+          experiment: effectiveExp,
           telemetry: { executionTimeMs, stepCount: tArr.length },
         };
       } catch (e) {

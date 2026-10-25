@@ -24,6 +24,7 @@ export {
   type FmiTerminalGraphicalRepresentation,
   type FmiTerminalMemberVariable,
 } from "./model-description.js";
+export * from "./olga-fmu-exporter.js";
 export * from "./rom-wasm-codegen.js";
 export * from "./sim-c-codegen.js";
 export * from "./solver-options.js";

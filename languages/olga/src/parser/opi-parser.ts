@@ -13,14 +13,17 @@ import type {
   OlgaController,
   OlgaFlowpath,
   OlgaHeatTransfer,
+  OlgaIpr,
   OlgaModel,
   OlgaNode,
   OlgaNodeKind,
   OlgaPig,
   OlgaPipe,
+  OlgaSandConfig,
   OlgaSource,
   OlgaValve,
   OlgaWallLayer,
+  OlgaWaxConfig,
 } from "../types.js";
 
 function getAttr(el: XmlElement, name: string): string | undefined {
@@ -68,18 +71,22 @@ function parseTemp(val: string | undefined, defaultVal: number): number {
 export function parseOpi(xmlText: string): OlgaModel {
   const doc = parseXml(xmlText);
   const root = doc.root;
-  if (!root || (root.name !== "Model" && root.name !== "OlgaProject" && root.name !== "olgaproject")) {
-    throw new Error(`Expected root tag <Model> or <OlgaProject>, found <${root?.name ?? "null"}>`);
+  const rootLower = root?.name.toLowerCase() ?? "";
+  if (
+    !root ||
+    (rootLower !== "model" && rootLower !== "olgaproject" && rootLower !== "olgacase" && rootLower !== "case")
+  ) {
+    throw new Error(`Expected root tag <Model>, <OlgaProject>, or <OlgaCase>, found <${root?.name ?? "null"}>`);
   }
 
   const title = getAttr(root, "Title") ?? getAttr(root, "Name") ?? "Untitled Olga Case";
   const author = getAttr(root, "Author");
   const tableFile = getAttr(root, "TableFile");
 
-  let startTime = 0;
-  let endTime = 7200;
-  let minDt = 0.001;
-  let maxDt = 1.0;
+  let startTime = parseNum(getAttr(root, "StartTime"), 0);
+  let endTime = parseNum(getAttr(root, "EndTime"), 7200);
+  let minDt = parseNum(getAttr(root, "MinDt"), 0.001);
+  let maxDt = parseNum(getAttr(root, "MaxDt"), 1.0);
 
   const flowpaths: OlgaFlowpath[] = [];
   const nodes: OlgaNode[] = [];
@@ -120,6 +127,9 @@ function parseFlowpathElement(el: XmlElement): OlgaFlowpath {
   const controllers: OlgaController[] = [];
   const pigs: OlgaPig[] = [];
   let heatTransfer: OlgaHeatTransfer | undefined;
+  let waxConfig: OlgaWaxConfig | undefined;
+  let sandConfig: OlgaSandConfig | undefined;
+  let ipr: OlgaIpr | undefined;
 
   for (const child of el.children) {
     const tagName = child.name;
@@ -132,6 +142,8 @@ function parseFlowpathElement(el: XmlElement): OlgaFlowpath {
         elevation: parseNum(getAttr(child, "Elevation"), 0),
         roughness: parseNum(getAttr(child, "Roughness"), 4.5e-5),
         discretization: Math.max(2, Math.floor(parseNum(getAttr(child, "Discretization"), 10))),
+        metallurgy: getAttr(child, "Metallurgy") || undefined,
+        cladding: getAttr(child, "Cladding") || undefined,
       });
     } else if (tagName === "Valve" || tagName === "VALVE") {
       valves.push({
@@ -175,6 +187,36 @@ function parseFlowpathElement(el: XmlElement): OlgaFlowpath {
       });
     } else if (tagName === "HeatTransfer" || tagName === "HEATTRANSFER") {
       heatTransfer = parseHeatTransferElement(child);
+    } else if (tagName === "Wax" || tagName === "WAX") {
+      waxConfig = {
+        cloudPointTemp: parseTemp(getAttr(child, "CloudPointTemp") ?? getAttr(child, "Wat"), 293.15),
+        molecularDiffusionCoeff: parseNum(getAttr(child, "MolecularDiffusionCoeff"), 1.5e-9),
+        waxDensity: parseNum(getAttr(child, "WaxDensity"), 880),
+      };
+    } else if (tagName === "Sand" || tagName === "SAND") {
+      sandConfig = {
+        sandMassRate: parseNum(getAttr(child, "SandMassRate") ?? getAttr(child, "Rate"), 0.1),
+        particleDiameter: parseNum(getAttr(child, "ParticleDiameter") ?? getAttr(child, "Diameter"), 150e-6),
+        sandDensity: parseNum(getAttr(child, "SandDensity"), 2650),
+      };
+    } else if (tagName === "Ipr" || tagName === "IPR" || tagName === "WellboreIpr") {
+      const rawType = (getAttr(child, "Type") || getAttr(child, "ModelType") || "VOGEL").toUpperCase();
+      const iprType = ["LINEAR_PI", "VOGEL", "FETKOVICH"].includes(rawType) ? (rawType as any) : "VOGEL";
+      ipr = {
+        type: iprType,
+        reservoirPressure: parsePressure(getAttr(child, "ReservoirPressure"), 220e5),
+        reservoirTemperature: parseTemp(getAttr(child, "ReservoirTemperature"), 363.15),
+        bubblePointPressure: getAttr(child, "BubblePointPressure")
+          ? parsePressure(getAttr(child, "BubblePointPressure"), 140e5)
+          : undefined,
+        productivityIndex:
+          (getAttr(child, "ProductivityIndex") ?? getAttr(child, "Pi"))
+            ? parseNum(getAttr(child, "ProductivityIndex") ?? getAttr(child, "Pi"), 1.5e-4)
+            : undefined,
+        maxLiquidRate: getAttr(child, "MaxLiquidRate") ? parseNum(getAttr(child, "MaxLiquidRate"), 50) : undefined,
+        gasMassFraction: parseNum(getAttr(child, "GasMassFraction"), 0.2),
+        waterCut: parseNum(getAttr(child, "WaterCut"), 0.05),
+      };
     }
   }
 
@@ -186,6 +228,9 @@ function parseFlowpathElement(el: XmlElement): OlgaFlowpath {
     controllers,
     pigs,
     heatTransfer,
+    waxConfig,
+    sandConfig,
+    ipr,
   };
 }
 
@@ -242,6 +287,14 @@ function parseNodeElement(el: XmlElement): OlgaNode {
     massRate,
     gasMassFraction,
     waterCut,
+    h2sMoleFraction:
+      (getAttr(el, "H2sMoleFraction") ?? getAttr(el, "H2S"))
+        ? parseNum(getAttr(el, "H2sMoleFraction") ?? getAttr(el, "H2S"), 0.0)
+        : undefined,
+    co2MoleFraction:
+      (getAttr(el, "Co2MoleFraction") ?? getAttr(el, "CO2"))
+        ? parseNum(getAttr(el, "Co2MoleFraction") ?? getAttr(el, "CO2"), 0.0)
+        : undefined,
   };
 }
 
