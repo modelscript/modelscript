@@ -1,0 +1,39 @@
+<simpack_model name="DoubleWishbone">
+  <body id="b_chassis" name="VehicleChassis" mass="380.0" ixx="90.0" iyy="140.0" izz="160.0" />
+  <body id="b_lower_arm" name="LowerControlArm" mass="8.5" ixx="0.08" iyy="0.12" izz="0.15" />
+  <body id="b_upper_arm" name="UpperControlArm" mass="5.2" ixx="0.04" iyy="0.06" izz="0.08" />
+  <body id="b_upright" name="SteeringUpright" mass="12.0" ixx="0.15" iyy="0.15" izz="0.09" />
+  <body id="b_hub" name="WheelHubAssembly" mass="35.0" ixx="1.8" iyy="2.8" izz="1.8" />
+
+  <!-- Markers on Chassis -->
+  <marker id="m_chassis_lca" body="b_chassis" x="0.0" y="0.25" z="0.18" />
+  <marker id="m_chassis_uca" body="b_chassis" x="0.0" y="0.32" z="0.48" />
+  <marker id="m_chassis_shock" body="b_chassis" x="0.0" y="0.30" z="0.65" />
+
+  <!-- Markers on Lower Arm -->
+  <marker id="m_lca_pivot" body="b_lower_arm" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_lca_ball" body="b_lower_arm" x="0.0" y="0.38" z="-0.02" />
+  <marker id="m_lca_shock" body="b_lower_arm" x="0.0" y="0.22" z="0.0" />
+
+  <!-- Markers on Upper Arm -->
+  <marker id="m_uca_pivot" body="b_upper_arm" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_uca_ball" body="b_upper_arm" x="0.0" y="0.30" z="-0.02" />
+
+  <!-- Markers on Upright -->
+  <marker id="m_upright_lower" body="b_upright" x="0.0" y="0.0" z="-0.15" />
+  <marker id="m_upright_upper" body="b_upright" x="0.0" y="0.0" z="0.15" />
+  <marker id="m_upright_spindle" body="b_upright" x="0.0" y="0.0" z="0.0" />
+
+  <!-- Markers on Hub -->
+  <marker id="m_hub_center" body="b_hub" x="0.0" y="0.0" z="0.0" />
+
+  <!-- Kinematic Joints -->
+  <joint id="j_lca_chassis" type="revolute" from="m_chassis_lca" to="m_lca_pivot" />
+  <joint id="j_uca_chassis" type="revolute" from="m_chassis_uca" to="m_uca_pivot" />
+  <joint id="j_lca_upright" type="spherical" from="m_lca_ball" to="m_upright_lower" />
+  <joint id="j_uca_upright" type="spherical" from="m_uca_ball" to="m_upright_upper" />
+  <joint id="j_wheel_bearing" type="revolute" from="m_upright_spindle" to="m_hub_center" />
+
+  <!-- Coilover Spring-Damper Strut -->
+  <spring id="s_coilover" from="m_lca_shock" to="m_chassis_shock" kz="55000" cz="3200" />
+</simpack_model>

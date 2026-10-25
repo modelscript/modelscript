@@ -7,6 +7,7 @@ import HomePackages from "./components/HomePackages.vue";
 import HomeQuickStart from "./components/HomeQuickStart.vue";
 import HomeVsCode from "./components/HomeVsCode.vue";
 import MermaidBlock from "./components/MermaidBlock.vue";
+import ModelScriptViewer from "./components/ModelScriptViewer.vue";
 import TurbineHero from "./components/TurbineHero.vue";
 import Layout from "./Layout.vue";
 import "./style.css";
@@ -21,5 +22,6 @@ export default {
     app.component("HomeVsCode", HomeVsCode);
     app.component("HomeDocker", HomeDocker);
     app.component("MermaidBlock", MermaidBlock);
+    app.component("ModelScriptViewer", ModelScriptViewer);
   },
 } satisfies Theme;

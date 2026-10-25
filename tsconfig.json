@@ -23,6 +23,8 @@
       "@modelscript/exchange/*": ["./packages/exchange/src/*"],
       "@modelscript/lsp": ["./packages/lsp/src/index.ts"],
       "@modelscript/lsp/*": ["./packages/lsp/src/*"],
+      "@modelscript/embed": ["./packages/embed/src/index.ts"],
+      "@modelscript/embed/*": ["./packages/embed/src/*"],
       "@modelscript/mcp": ["./packages/mcp/src/index.ts"],
       "@modelscript/mcp/*": ["./packages/mcp/src/*"],
       "@modelscript/ide-client": ["./packages/ide/src/browser-client-main.ts"],

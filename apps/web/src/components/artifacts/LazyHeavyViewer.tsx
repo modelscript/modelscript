@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { globalContextPool } from "@modelscript/embed";
 import { PlayIcon } from "@primer/octicons-react";
 import { useTheme } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
@@ -41,6 +42,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   children,
 }) => {
   const [isActive, setIsActive] = useState(isFullScreen);
+  const [frozenSnapshot, setFrozenSnapshot] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedColorMode } = useTheme();
 
@@ -50,8 +52,45 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     }
   }, [isFullScreen]);
 
-  const currentThumbnailUrl =
+  // Context pooling integration
+  useEffect(() => {
+    if (!isActive || isFullScreen) {
+      globalContextPool.release(`artifact-${artifactId}`);
+      return;
+    }
+
+    const id = `artifact-${artifactId}`;
+    globalContextPool.requestActive({
+      id,
+      onSleep: (snapshot) => {
+        if (!isFullScreen) {
+          if (snapshot) {
+            setFrozenSnapshot(snapshot);
+          }
+          setIsActive(false);
+        }
+      },
+      captureSnapshot: () => {
+        const canvas = containerRef.current?.querySelector("canvas");
+        if (canvas) {
+          try {
+            return canvas.toDataURL("image/webp", 0.85);
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      },
+    });
+
+    return () => {
+      globalContextPool.release(id);
+    };
+  }, [isActive, isFullScreen, artifactId]);
+
+  const defaultThumbnailUrl =
     resolvedColorMode === "dark" ? thumbnailUrlDark || thumbnailUrl : thumbnailUrlLight || thumbnailUrl;
+  const currentThumbnailUrl = frozenSnapshot || defaultThumbnailUrl;
 
   // Handle global mutual exclusion
   useEffect(() => {
@@ -207,18 +246,46 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
           window.dispatchEvent(new CustomEvent("activate-3d-viewer", { detail: artifactId }));
         }}
       >
-        <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          bg="rgba(0,0,0,0.7)"
-          borderRadius="50%"
-          style={{ width: 64, height: 64, transition: "transform 0.2s ease", color: "white" }}
-          onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.1)")}
-          onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-        >
-          <PlayIcon size={32} />
-        </Box>
+        {frozenSnapshot ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 16px",
+              borderRadius: 24,
+              background: "rgba(13, 17, 23, 0.88)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(6, 182, 212, 0.4)",
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4), 0 0 12px rgba(6, 182, 212, 0.25)",
+              color: "#f0f6fc",
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: "var(--font-mono, monospace)",
+              transition: "transform 0.2s ease, border-color 0.2s ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          >
+            <span style={{ fontSize: 16 }}>🧊</span>
+            <span>Click to re-activate 3D</span>
+            <PlayIcon size={14} fill="#06b6d4" />
+          </div>
+        ) : (
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            bg="rgba(0,0,0,0.7)"
+            borderRadius="50%"
+            style={{ width: 64, height: 64, transition: "transform 0.2s ease", color: "white" }}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.1)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          >
+            <PlayIcon size={32} />
+          </Box>
+        )}
       </div>
     </div>
   );

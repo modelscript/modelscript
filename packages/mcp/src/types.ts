@@ -103,4 +103,17 @@ export interface ServerContext {
   checkQuota?: ComputeQuotaChecker | null | undefined;
   /** Optional post-execution compute credit deduction callback. */
   deductCredits?: ComputeCreditDeductor | null | undefined;
+  /** Optional social bridge for reading discussions and posting replies. */
+  socialBridge?:
+    | {
+        getPost: (postId: number) => Promise<any>;
+        getReplies: (postId: number) => Promise<any[]>;
+        createPost: (params: {
+          authorId: number;
+          content: string;
+          replyToId?: number | undefined;
+          artifactViewId?: number | undefined;
+        }) => Promise<{ id: number }>;
+      }
+    | undefined;
 }

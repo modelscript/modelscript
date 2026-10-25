@@ -819,7 +819,13 @@ export default function ComposeBox({
       formData.append("file", file);
 
       const uploadData = await uploadStorageFile(formData);
-      const view_config = JSON.stringify({ url: uploadData.url });
+      const view_config = JSON.stringify({
+        url: uploadData.url,
+        ...(uploadData.svg ? { svg: uploadData.svg } : {}),
+        ...(uploadData.thumbnail_url ? { thumbnailUrl: uploadData.thumbnail_url } : {}),
+        ...(uploadData.view_config_additions || {}),
+        ...(uploadData.metadata || {}),
+      });
 
       const artifactData = await createArtifactView({
         artifact_type: uploadData.view_type,
@@ -2125,7 +2131,7 @@ export default function ComposeBox({
                     type="file"
                     style={{ display: "none" }}
                     ref={fileInputRef}
-                    accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.mo,.tei,.xml"
+                    accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
                     onChange={handleFileUpload}
                     disabled={uploadingFile}
                   />

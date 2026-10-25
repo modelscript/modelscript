@@ -6,6 +6,7 @@
 # Environment variables
 --env CI=true
 --env GITHUB_ACTIONS=true
+--env ACT=true
 
 # Force amd64 architecture
 --container-architecture linux/amd64

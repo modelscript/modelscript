@@ -9,7 +9,7 @@ import semver from "semver";
 
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
-import { requireAuth } from "../middleware/auth-middleware.js";
+import { matchesPackagePattern, requireAuth } from "../middleware/auth-middleware.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { ConflictError, type LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
@@ -63,6 +63,24 @@ export function publishRouter(
       if (!semver.valid(version)) {
         res.status(400).json({
           error: `Invalid semantic version: "${version}"`,
+        });
+        return;
+      }
+
+      // Check token scope & package pattern if using an API token
+      if (req.tokenScopes) {
+        if (
+          !req.tokenScopes.includes("*") &&
+          !req.tokenScopes.includes("admin") &&
+          !req.tokenScopes.includes("packages:publish")
+        ) {
+          res.status(403).json({ error: "Insufficient permissions: token lacks 'packages:publish' scope" });
+          return;
+        }
+      }
+      if (req.tokenPackagePattern && !matchesPackagePattern(name, req.tokenPackagePattern)) {
+        res.status(403).json({
+          error: `Insufficient permissions: token package pattern '${req.tokenPackagePattern}' does not permit publishing '${name}'`,
         });
         return;
       }

@@ -31,10 +31,46 @@ export interface AuthUser {
 declare module "express" {
   interface Request {
     user?: AuthUser | undefined;
+    tokenScopes?: string[] | undefined;
+    tokenPackagePattern?: string | undefined;
+    tokenId?: number | undefined;
   }
 }
 
 export { JWT_SECRET };
+
+export function matchesPackagePattern(packageName: string, pattern?: string | null | undefined): boolean {
+  if (!pattern || pattern === "*") return true;
+  if (pattern.endsWith("*")) {
+    const prefix = pattern.slice(0, -1);
+    return packageName.startsWith(prefix);
+  }
+  return packageName === pattern;
+}
+
+export function requireTokenScope(...allowedScopes: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    // If authenticated via user session / JWT (no tokenScopes restriction) or token has '*' or one of allowedScopes:
+    if (
+      !req.tokenScopes ||
+      req.tokenScopes.includes("*") ||
+      req.tokenScopes.includes("admin") ||
+      allowedScopes.some((s) => req.tokenScopes!.includes(s))
+    ) {
+      next();
+      return;
+    }
+    res.status(403).json({
+      error: `Insufficient permissions: missing required token scope. Required one of: ${allowedScopes.join(", ")}`,
+      requiredScopes: allowedScopes,
+      currentScopes: req.tokenScopes,
+    });
+  };
+}
 
 function extractTokenFromRequest(req: Request): string | undefined {
   const authHeader = req.headers["authorization"];
@@ -63,6 +99,43 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   if (!token) {
     res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  // Check if it's a granular personal access token (PAT)
+  if (token.startsWith("ms_pat_") && sharedAuthDatabase) {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const tokenRecord = sharedAuthDatabase.getApiTokenByHash(tokenHash);
+
+    if (!tokenRecord) {
+      res.status(401).json({ error: "Invalid API token" });
+      return;
+    }
+
+    if (tokenRecord.expires_at) {
+      const expires = new Date(tokenRecord.expires_at).getTime();
+      if (!Number.isNaN(expires) && expires < Date.now()) {
+        res.status(401).json({ error: "API token has expired" });
+        return;
+      }
+    }
+
+    const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
+    if (!user || user.status === "deleted" || user.status === "suspended" || user.status === "frozen") {
+      res.status(401).json({ error: "User account inactive or not found" });
+      return;
+    }
+
+    sharedAuthDatabase.touchApiToken(tokenRecord.id, (req.headers["x-forwarded-for"] as string) || req.ip);
+
+    req.user = {
+      ...user,
+      accountType: user.account_type || "user",
+    };
+    req.tokenScopes = tokenRecord.scopes;
+    req.tokenPackagePattern = tokenRecord.package_pattern;
+    req.tokenId = tokenRecord.id;
+    next();
     return;
   }
 
@@ -156,6 +229,34 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
     next();
     return;
   }
+
+  // Check if it's a granular personal access token (PAT)
+  if (token.startsWith("ms_pat_") && sharedAuthDatabase) {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const tokenRecord = sharedAuthDatabase.getApiTokenByHash(tokenHash);
+    if (tokenRecord) {
+      let expired = false;
+      if (tokenRecord.expires_at) {
+        const expires = new Date(tokenRecord.expires_at).getTime();
+        if (!Number.isNaN(expires) && expires < Date.now()) expired = true;
+      }
+      if (!expired) {
+        const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
+        if (user && user.status !== "suspended" && user.status !== "frozen" && user.status !== "deleted") {
+          req.user = {
+            ...user,
+            accountType: user.account_type || "user",
+          };
+          req.tokenScopes = tokenRecord.scopes;
+          req.tokenPackagePattern = tokenRecord.package_pattern;
+          req.tokenId = tokenRecord.id;
+        }
+      }
+    }
+    next();
+    return;
+  }
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string | undefined };
     if (decoded.scope === "2fa_challenge") {

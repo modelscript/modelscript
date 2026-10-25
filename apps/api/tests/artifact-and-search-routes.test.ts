@@ -9,9 +9,11 @@ import request from "supertest";
 
 process.env["NODE_ENV"] = "test";
 
+import jwt from "jsonwebtoken";
 import { createApp } from "../src/app.js";
 import { getArtifactRegistry } from "../src/artifacts/index.js";
 import { LibraryDatabase } from "../src/database.js";
+import { JWT_SECRET } from "../src/middleware/auth-middleware.js";
 import {
   extractModelicaComponentsFromSource,
   extractModelicaEquations,
@@ -259,4 +261,40 @@ end RCFilter;`;
     assert.ok(res.headers["content-type"].includes("application/n-triples"));
     assert.ok(res.text.includes("urn:modelica:MechanicalComponents:1.0.0:Motor"));
   });
+
+  await t.test(
+    "Storage: POST /api/v1/storage/upload categorizes engineering formats into dedicated view_types",
+    async () => {
+      const token = jwt.sign({ id: user.id, username: user.username, email: user.email }, JWT_SECRET);
+
+      const testCases = [
+        { filename: "microgrid.pscx", expected: "pscad" },
+        { filename: "grid_sim.psout", expected: "psout" },
+        { filename: "powerflow.raw", expected: "psse" },
+        { filename: "pipeline.opi", expected: "olga" },
+        { filename: "control_system.ez5", expected: "easy5" },
+        { filename: "ssme_powerhead.roc", expected: "rocets" },
+        { filename: "gas_network.lps", expected: "lps" },
+        { filename: "semi_submersible.sima", expected: "sima" },
+        { filename: "cylinder_engine.gtm", expected: "gtsuite" },
+        { filename: "bracket_stress.inp", expected: "fea-deck" },
+        { filename: "airfoil_turb.cfg", expected: "cfd-config" },
+        { filename: "drivetrain.ssp", expected: "ssp" },
+        { filename: "chua_circuit.fmu", expected: "fmu" },
+        { filename: "cad_bracket.step", expected: "cad-step" },
+        { filename: "ontology.owl", expected: "owl2" },
+      ];
+
+      for (const { filename, expected } of testCases) {
+        const res = await request(app)
+          .post("/api/v1/storage/upload")
+          .set("Authorization", `Bearer ${token}`)
+          .attach("file", Buffer.from("test-content"), filename);
+
+        assert.strictEqual(res.status, 200, `Upload failed for ${filename}`);
+        assert.strictEqual(res.body.view_type, expected, `Expected view_type ${expected} for ${filename}`);
+        assert.strictEqual(res.body.filename, filename);
+      }
+    },
+  );
 });

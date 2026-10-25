@@ -207,11 +207,22 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
   var hash = location.hash.slice(1);
   if (hash) {
     if (hash.startsWith('memfs')) {
-      var template = hash.split(':')[1] || 'empty';
+      var rawTemplate = hash.split(':')[1] || 'empty';
+      var templateParts = rawTemplate.split('&');
+      var template = templateParts[0];
+      var anchorParam = null;
+      for (var i = 1; i < templateParts.length; i++) {
+        if (templateParts[i].startsWith('anchor=')) {
+          anchorParam = decodeURIComponent(templateParts[i].slice(7));
+          try {
+            sessionStorage.setItem('modelscript.initialAnchor', anchorParam);
+          } catch (e) {}
+        }
+      }
       if (template.startsWith('artifact-')) {
-        document.title = 'Artifact #' + template.slice(9) + ' — ModelScript IDE';
+        document.title = 'Artifact #' + template.slice(9) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
       } else if (template.startsWith('package-')) {
-        document.title = 'Package ' + template.slice(8) + ' — ModelScript IDE';
+        document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
       } else {
         document.title = 'New Project — ModelScript IDE';
       }

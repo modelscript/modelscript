@@ -75,6 +75,15 @@ export function buildDynamicDocumentSelector(
     "fea",
     "inpt",
     "bdf",
+    "calc",
+    "run",
+    "sub",
+    "geom",
+    "trax",
+    "wheel",
+    "spck",
+    "sim",
+    "mbs",
   ];
 
   if (contributedLanguages.length > 0) {

@@ -76,9 +76,11 @@
     "validate": "tsx validation/fmi/scripts/validate.ts"
   },
   "dependencies": {
+    "@modelscript/gensys": "*",
     "@modelscript/lps": "*",
     "@modelscript/olga": "*",
     "@modelscript/runtime": "*",
+    "@modelscript/simpack": "*",
     "@modelscript/simulate": "*",
     "aedes": "^1.0.2",
     "aedes-server-factory": "^0.2.1",

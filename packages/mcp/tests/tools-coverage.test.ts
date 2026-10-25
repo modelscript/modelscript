@@ -225,4 +225,42 @@ describe("MCP Tools Extensive Coverage Suite", () => {
     const suggestRes = await rtmSuggestTool.handler({ requirementName: "High speed motor performance" });
     assert.ok(suggestRes.content[0].text.includes("suggestions"));
   });
+
+  it("social_read_thread and social_post_reply interact with socialBridge", async () => {
+    let createdPostData: any = null;
+    const socialCtx: ServerContext = {
+      current: null,
+      userId: 42,
+      socialBridge: {
+        getPost: async (id) => ({ id, content: "Test discussion prompt", author_id: 1 }),
+        getReplies: async (id) => [{ id: 101, content: "Existing reply", reply_to_id: id }],
+        createPost: async (params) => {
+          createdPostData = params;
+          return { id: 202 };
+        },
+      },
+    };
+    const srv = createModelScriptMcpServer(socialCtx);
+    const srvTools = (srv as any)._registeredTools;
+
+    const readTool = srvTools["social_read_thread"];
+    assert.ok(readTool);
+    const readRes = await readTool.handler({ postId: 12 });
+    assert.ok(!readRes.isError);
+    const readData = JSON.parse(readRes.content[0].text);
+    assert.equal(readData.post.id, 12);
+    assert.equal(readData.replies.length, 1);
+
+    const replyTool = srvTools["social_post_reply"];
+    assert.ok(replyTool);
+    const replyRes = await replyTool.handler({
+      postId: 12,
+      content: "Verified physics analysis",
+    });
+    assert.ok(!replyRes.isError);
+    const replyData = JSON.parse(replyRes.content[0].text);
+    assert.equal(replyData.replyPostId, 202);
+    assert.equal(createdPostData.authorId, 42);
+    assert.equal(createdPostData.content, "Verified physics analysis");
+  });
 });

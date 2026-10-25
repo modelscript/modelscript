@@ -15,10 +15,12 @@ export interface LockfilePackageEntry {
   integrity: string; // sha256:...
   domains?: Record<string, LockfileDomainSummary> | undefined;
   dependencies?: Record<string, string> | undefined;
+  peerDependencies?: Record<string, string> | undefined;
+  isDirect?: boolean | undefined;
 }
 
 export interface ModelScriptLockfile {
-  lockfileVersion: number;
+  lockfileVersion: number; // 1 or 2
   packages: Record<string, LockfilePackageEntry>;
 }
 

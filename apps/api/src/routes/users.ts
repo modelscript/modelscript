@@ -513,7 +513,7 @@ export function usersRouter(
    */
   router.post("/me/bots", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const { username, display_name, bio, avatar_url } = req.body;
+    const { username, display_name, bio, avatar_url, scopes, system_prompt, model, api_key, endpoint_url } = req.body;
 
     if (!username || !display_name) {
       res.status(400).json({ error: "Missing username or display_name" });
@@ -534,9 +534,54 @@ export function usersRouter(
     // Hash the token before storing
     const tokenHash = crypto.createHash("sha256").update(fullToken).digest("hex");
 
-    const bot = database.createBot(userId, username, display_name, bio || "", avatar_url || "", tokenHash);
+    const bot = database.createBot(
+      userId,
+      username,
+      display_name,
+      bio || "",
+      avatar_url || "",
+      tokenHash,
+      scopes || "social:read,social:write",
+      system_prompt || "",
+      model || "gemini-1.5-flash",
+      api_key || "",
+      endpoint_url || "",
+    );
 
     res.json({ success: true, bot, token: fullToken });
+  });
+
+  /**
+   * PATCH /api/v1/users/me/bots/:botId
+   */
+  router.patch("/me/bots/:botId", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const botId = parseInt(req.params["botId"] as string, 10);
+
+    if (isNaN(botId)) {
+      res.status(400).json({ error: "Invalid bot ID" });
+      return;
+    }
+
+    const bot = database.getBotById(botId);
+    if (!bot || bot.owner_id !== userId) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+
+    const { display_name, bio, avatar_url, scopes, system_prompt, model, api_key, endpoint_url } = req.body;
+    database.updateBotSettings(userId, botId, {
+      displayName: display_name,
+      bio,
+      avatarUrl: avatar_url,
+      scopes,
+      systemPrompt: system_prompt,
+      model,
+      apiKey: api_key,
+      endpointUrl: endpoint_url,
+    });
+
+    res.json({ success: true, bot: database.getBotById(botId) });
   });
 
   /**

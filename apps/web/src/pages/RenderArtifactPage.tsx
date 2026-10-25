@@ -8,21 +8,34 @@ import AasPackageViewer from "../components/artifacts/AasPackageViewer";
 import AudioViewer from "../components/artifacts/AudioViewer";
 import CadStepViewer from "../components/artifacts/CadStepViewer";
 import CfdAnimationViewer from "../components/artifacts/CfdAnimationViewer";
+import CfdConfigViewer from "../components/artifacts/CfdConfigViewer";
 import CsvViewer from "../components/artifacts/CsvViewer";
 import DigitalThreadExplorerViewer from "../components/artifacts/DigitalThreadExplorerViewer";
 import DigitalTwinDashboardViewer from "../components/artifacts/DigitalTwinDashboardViewer";
+import Easy5Viewer from "../components/artifacts/Easy5Viewer";
+import FeaDeckViewer from "../components/artifacts/FeaDeckViewer";
 import FmuViewer from "../components/artifacts/FmuViewer";
 import GCodeViewer from "../components/artifacts/GCodeViewer";
+import GtSuiteViewer from "../components/artifacts/GtSuiteViewer";
 import LinkPreviewViewer from "../components/artifacts/LinkPreviewViewer";
 import MermaidViewer from "../components/artifacts/MermaidViewer";
 import ModelicaCodeViewer from "../components/artifacts/ModelicaCodeViewer";
 import ModelicaDiagramViewer from "../components/artifacts/ModelicaDiagramViewer";
+import OlgaFlowViewer from "../components/artifacts/OlgaFlowViewer";
+import Owl2Viewer from "../components/artifacts/Owl2Viewer";
 import PackageViewCard from "../components/artifacts/PackageViewCard";
 import PdfViewer from "../components/artifacts/PdfViewer";
 import PictureViewer from "../components/artifacts/PictureViewer";
+import PipelineLpsViewer from "../components/artifacts/PipelineLpsViewer";
+import PscadViewer from "../components/artifacts/PscadViewer";
+import PsoutViewer from "../components/artifacts/PsoutViewer";
+import PsseSldViewer from "../components/artifacts/PsseSldViewer";
 import RepositoryViewCard from "../components/artifacts/RepositoryViewCard";
+import RocetsViewer from "../components/artifacts/RocetsViewer";
+import SimaViewer from "../components/artifacts/SimaViewer";
 import SimulationPlotViewer from "../components/artifacts/SimulationPlotViewer";
 import SimulationResultViewer from "../components/artifacts/SimulationResultViewer";
+import SspViewer from "../components/artifacts/SspViewer";
 import SysmlViewer from "../components/artifacts/SysmlViewer";
 import TeiViewer from "../components/artifacts/TeiViewer";
 import UsdViewer from "../components/artifacts/UsdViewer";
@@ -172,6 +185,44 @@ export default function RenderArtifactPage() {
       case "digital_twin_dashboard":
       case "digital-twin":
         return <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "pscad":
+      case "pscx":
+      case "pslx":
+        return <PscadViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "psout":
+        return <PsoutViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "psse":
+      case "raw":
+        return <PsseSldViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "olga":
+      case "opi":
+        return <OlgaFlowViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "easy5":
+      case "ez5":
+        return <Easy5Viewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "rocets":
+      case "roc":
+        return <RocetsViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "lps":
+      case "pipelinestudio":
+        return <PipelineLpsViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "sima":
+        return <SimaViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "gtsuite":
+      case "gtm":
+        return <GtSuiteViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "ssp":
+      case "ssd":
+        return <SspViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "fea-deck":
+      case "fea-inp":
+        return <FeaDeckViewer artifactId={artifact?.id} viewConfig={viewConfig} isFullScreen={true} />;
+      case "cfd-config":
+      case "cfd-su2":
+        return <CfdConfigViewer artifactId={artifact?.id} viewConfig={viewConfig} isFullScreen={true} />;
+      case "owl":
+      case "owl2":
+        return <Owl2Viewer viewConfig={viewConfig} isFullScreen={true} />;
       case "package":
       case "library":
         return <PackageViewCard viewConfig={viewConfig} isFullScreen={true} />;

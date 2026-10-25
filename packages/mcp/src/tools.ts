@@ -2,6 +2,7 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { renderOlgaElevationProfileSvg, renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
+import { evaluateEn14363, lintGensysModel, parseGensysDeck, solveFastsim } from "@modelscript/gensys";
 import { RtmIndexEngine, runSelfHealingPipeline } from "@modelscript/lsp";
 import { ArenaQueryFlattener } from "@modelscript/modelica";
 import { Context } from "@modelscript/modelica/context";
@@ -34,6 +35,7 @@ import {
   TableauReasoner,
   UnifiedWorkspace,
 } from "@modelscript/runtime";
+import { analyzeMobility, lintSimpackModel, parseSimDeck, parseSpckXml } from "@modelscript/simpack";
 import {
   ArenaSimulator,
   autotunePid,
@@ -2686,6 +2688,194 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       } catch (err: any) {
         return {
           content: [{ type: "text" as const, text: `OLGA survey ingestion error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── gensys_lint ──────────────────────────────────────────────────────────
+  server.tool(
+    "gensys_lint",
+    "Perform pre-flight semantic and physical validation on GENSYS railway vehicle models (.calc, .run, .sub).",
+    {
+      source: z.string().describe("GENSYS deck text content or file path"),
+    },
+    async ({ source }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
+        const model = parseGensysDeck(content);
+        const diags = lintGensysModel(model);
+        return { content: [{ type: "text" as const, text: JSON.stringify(diags, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `GENSYS lint error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── gensys_verify_en14363 ────────────────────────────────────────────────
+  server.tool(
+    "gensys_verify_en14363",
+    "Verify derailment quotient (Y/Q <= 0.8) and Prud'homme lateral track shifting force limits according to EN 14363 / UIC 518.",
+    {
+      lateralForceY: z.number().describe("Lateral wheel force Y [kN]"),
+      verticalForceQ: z.number().describe("Vertical wheel force Q [kN]"),
+      nominalAxleLoadQ0: z.number().default(160.0).describe("Nominal axle load 2*Q0 in kN"),
+    },
+    async (params) => {
+      const result = evaluateEn14363(params);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // ── gensys_fastsim ───────────────────────────────────────────────────────
+  server.tool(
+    "gensys_fastsim",
+    "Compute tangential longitudinal/lateral creep forces and spin moment using Kalker's FASTSIM algorithm.",
+    {
+      normalForce: z.number().describe("Wheel normal load Q [N]"),
+      longitudinalCreep: z.number().describe("Longitudinal creepage xi_x [-]"),
+      lateralCreep: z.number().describe("Lateral creepage xi_y [-]"),
+      spin: z.number().default(0.0).describe("Spin creepage phi_z [rad/m]"),
+      ellipseSemiMajor: z.number().default(0.006).describe("Contact ellipse semi-major axis a [m]"),
+      ellipseSemiMinor: z.number().default(0.005).describe("Contact ellipse semi-minor axis b [m]"),
+      frictionCoeff: z.number().default(0.35).describe("Friction coefficient mu [-]"),
+    },
+    async (params) => {
+      const result = solveFastsim({
+        normalForce: params.normalForce,
+        longitudinalCreep: params.longitudinalCreep,
+        lateralCreep: params.lateralCreep,
+        spin: params.spin,
+        ellipseSemiMajor: params.ellipseSemiMajor,
+        ellipseSemiMinor: params.ellipseSemiMinor,
+        shearModulus: 8.2e10,
+        poissonRatio: 0.28,
+        frictionCoeff: params.frictionCoeff,
+      });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // ── simpack_lint ─────────────────────────────────────────────────────────
+  server.tool(
+    "simpack_lint",
+    "Perform structural and reference diagnostics on SIMPACK XML (.spck) or classic deck (.sim, .mbs) files.",
+    {
+      source: z.string().describe("SIMPACK XML or ASCII deck content or file path"),
+    },
+    async ({ source }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
+        const isXml = content.trimStart().startsWith("<");
+        const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
+        const diags = lintSimpackModel(model);
+        return { content: [{ type: "text" as const, text: JSON.stringify(diags, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `SIMPACK lint error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── simpack_mobility ─────────────────────────────────────────────────────
+  server.tool(
+    "simpack_mobility",
+    "Calculate system degrees of freedom and overconstrained mechanisms using Grübler-Kutzbach spatial criterion.",
+    {
+      source: z.string().describe("SIMPACK XML or ASCII deck content or file path"),
+    },
+    async ({ source }) => {
+      try {
+        let content = source;
+        if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
+        const isXml = content.trimStart().startsWith("<");
+        const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
+        const mobility = analyzeMobility(model);
+        return { content: [{ type: "text" as const, text: JSON.stringify(mobility, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text" as const, text: `SIMPACK mobility error: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // ── social_read_thread ───────────────────────────────────────────────────
+  server.tool(
+    "social_read_thread",
+    "Read the conversation thread history, parent post, and attachments for a given social post ID.",
+    {
+      postId: z.number().describe("The ID of the target social post to read"),
+    },
+    async ({ postId }) => {
+      if (!ctx.socialBridge) {
+        return {
+          content: [{ type: "text" as const, text: "Social bridge not configured on this MCP server." }],
+          isError: true,
+        };
+      }
+      try {
+        const post = await ctx.socialBridge.getPost(postId);
+        if (!post) {
+          return { content: [{ type: "text" as const, text: `Post with ID ${postId} not found.` }], isError: true };
+        }
+        const replies = await ctx.socialBridge.getReplies(postId);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ post, replies }, null, 2),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to read social thread: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── social_post_reply ────────────────────────────────────────────────────
+  server.tool(
+    "social_post_reply",
+    "Post an engineering response or verification result to a social discussion thread on behalf of an authorized bot account.",
+    {
+      postId: z.number().describe("The target post ID being replied to"),
+      content: z
+        .string()
+        .describe("Markdown content of the reply, including technical explanations and Modelica/code blocks"),
+      artifactViewId: z
+        .number()
+        .optional()
+        .describe("Optional ID of an interactive simulation or diagram artifact view to embed"),
+    },
+    async ({ postId, content, artifactViewId }) => {
+      if (!ctx.socialBridge || !ctx.userId) {
+        return {
+          content: [{ type: "text" as const, text: "Social bridge or authenticated user context not available." }],
+          isError: true,
+        };
+      }
+      try {
+        const result = await ctx.socialBridge.createPost({
+          authorId: ctx.userId,
+          content,
+          replyToId: postId,
+          artifactViewId,
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ success: true, replyPostId: result.id }),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to post social reply: ${err.message}` }],
           isError: true,
         };
       }

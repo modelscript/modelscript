@@ -20,6 +20,8 @@ import {
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
 
+import { MultiBodyAnimationPanel } from "./multibody-animation-panel.js";
+
 /** Currently active in-process DAP debug session instance, if one is running. */
 export let activeDebugSession: ModelScriptDebugSession | undefined;
 /** Callback registered by the LSP client to launch a debugged simulation for a model URI/path. */
@@ -207,6 +209,9 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     if (getLspDebugVariables) {
       try {
         const allVars = await getLspDebugVariables();
+        if (MultiBodyAnimationPanel.currentPanel) {
+          MultiBodyAnimationPanel.currentPanel.syncWithDebugger(allVars);
+        }
         let filtered = allVars;
         if (args.variablesReference === 1) {
           // States & Derivatives
@@ -241,6 +246,16 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 
+  /** Helper to synchronize current simulation step variables to the 3D Multibody Animation Panel if active. */
+  public async syncAnimationViewport(): Promise<void> {
+    if (MultiBodyAnimationPanel.currentPanel && getLspDebugVariables) {
+      try {
+        const vars = await getLspDebugVariables();
+        MultiBodyAnimationPanel.currentPanel.syncWithDebugger(vars);
+      } catch {}
+    }
+  }
+
   /** Resumes simulation execution until the next breakpoint or end of simulation. */
   protected override async continueRequest(response: DebugProtocol.ContinueResponse): Promise<void> {
     if (continueLspDebugSession) {
@@ -255,6 +270,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     if (nextLspDebugSession) {
       await nextLspDebugSession();
     }
+    await this.syncAnimationViewport();
     this.sendResponse(response);
   }
 
@@ -264,6 +280,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     if (nextLspDebugSession) {
       await nextLspDebugSession();
     }
+    await this.syncAnimationViewport();
     this.sendResponse(response);
   }
 

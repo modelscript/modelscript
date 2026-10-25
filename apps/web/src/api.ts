@@ -522,8 +522,30 @@ export const createBot = async (payload: {
   display_name: string;
   bio?: string | undefined;
   avatar_url?: string | undefined;
+  scopes?: string | undefined;
+  system_prompt?: string | undefined;
+  model?: string | undefined;
+  api_key?: string | undefined;
+  endpoint_url?: string | undefined;
 }) => {
   const { data } = await api.post("/users/me/bots", payload);
+  return data;
+};
+
+export const updateBot = async (
+  botId: number,
+  payload: {
+    display_name?: string | undefined;
+    bio?: string | undefined;
+    avatar_url?: string | undefined;
+    scopes?: string | undefined;
+    system_prompt?: string | undefined;
+    model?: string | undefined;
+    api_key?: string | undefined;
+    endpoint_url?: string | undefined;
+  },
+) => {
+  const { data } = await api.patch(`/users/me/bots/${botId}`, payload);
   return data;
 };
 
@@ -2202,6 +2224,46 @@ export const getThreadAuditLogs = async (params?: {
   threadId?: string | undefined;
 }): Promise<{ auditLogs: ThreadAuditLogDto[]; verification: { valid: boolean; totalEntries: number } }> => {
   const { data } = await api.get("/threads/audit-log", { params });
+  return data;
+};
+
+// ── Granular Scoped Personal Access Tokens (PAT) ─────────────────────────
+
+export interface ApiTokenDto {
+  id: number;
+  user_id: number;
+  name: string;
+  token_prefix: string;
+  scopes: string[];
+  package_pattern: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  last_used_ip: string | null;
+  created_at: string;
+}
+
+export interface CreatedApiTokenResponse extends ApiTokenDto {
+  token: string; // The plaintext secret, shown only once
+  message: string;
+}
+
+export const getApiTokens = async (): Promise<ApiTokenDto[]> => {
+  const { data } = await api.get("/auth/tokens");
+  return data.tokens || [];
+};
+
+export const createApiToken = async (payload: {
+  name: string;
+  scopes: string[];
+  packagePattern?: string | undefined;
+  expiresInDays?: number | undefined;
+}): Promise<CreatedApiTokenResponse> => {
+  const { data } = await api.post("/auth/tokens", payload);
+  return data;
+};
+
+export const revokeApiToken = async (tokenId: number): Promise<{ success: boolean }> => {
+  const { data } = await api.delete(`/auth/tokens/${tokenId}`);
   return data;
 };
 

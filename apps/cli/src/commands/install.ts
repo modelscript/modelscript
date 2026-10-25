@@ -5,9 +5,10 @@ import crypto from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
+import { DependencySolver, type PackageVersionProvider } from "../solver/solver.js";
 import { getToken } from "../util/auth.js";
 import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyIntegrity } from "../util/lockfile.js";
-import { parsePackageMo } from "../util/package-mo.js";
+import { parsePackageMo, parsePackageUses } from "../util/package-mo.js";
 
 interface InstallArgs {
   package?: string | undefined;
@@ -15,6 +16,7 @@ interface InstallArgs {
   frozenLockfile?: boolean | undefined;
   frozen?: boolean | undefined;
   ci?: boolean | undefined;
+  dryRun?: boolean | undefined;
 }
 
 function extractDomainSummaryFromZip(zip: AdmZip): Record<string, { files: string[] }> {
@@ -168,6 +170,11 @@ export const Install: CommandModule<{}, InstallArgs> = {
           "Enforce zero-trust installation against msx.lock (fails if lockfile is missing, out of sync, or tampered)",
         type: "boolean",
         default: false,
+      })
+      .option("dry-run", {
+        description: "Simulate transitive dependency resolution without writing packages or lockfile to disk",
+        type: "boolean",
+        default: false,
       }) as any;
   },
   handler: async (args) => {
@@ -259,40 +266,92 @@ export const Install: CommandModule<{}, InstallArgs> = {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    for (const item of packagesToInstall) {
-      console.log(`Resolving ${item.name}${item.version ? `@${item.version}` : ""}...`);
-
-      const packagePath = item.name.startsWith("@")
-        ? item.name.split("/").map(encodeURIComponent).join("/")
-        : encodeURIComponent(item.name);
-
-      let resolvedVersion = item.version;
-      if (!resolvedVersion || resolvedVersion === "latest") {
-        try {
-          const infoRes = await fetch(`${API_URL}/api/v1/libraries/${packagePath}`, { headers });
-          if (!infoRes.ok) {
-            throw new Error(`Package "${item.name}" not found in registry (${infoRes.status})`);
+    // Check for Modelica package.mo annotation(uses(...)) dependencies in workspace
+    const rootUsesPath = path.join(cwd, "package.mo");
+    if (existsSync(rootUsesPath)) {
+      try {
+        const moContent = readFileSync(rootUsesPath, "utf-8");
+        const usesDeps = parsePackageUses(moContent);
+        for (const [depName, depVer] of Object.entries(usesDeps)) {
+          if (!packagesToInstall.some((p) => p.name === depName)) {
+            const normalizedVer = DependencySolver.normalizeModelicaVersion(depVer);
+            packagesToInstall.push({ name: depName, version: normalizedVer });
           }
-          const info = (await infoRes.json()) as any;
-          resolvedVersion =
-            info.latestVersion ||
-            info["dist-tags"]?.latest ||
-            (Array.isArray(info.versions) ? info.versions[0]?.version || info.versions[0] : null);
-          if (!resolvedVersion && typeof info.version === "string") {
-            resolvedVersion = info.version;
-          }
-        } catch (err) {
-          console.error(`Error resolving package: ${err instanceof Error ? err.message : String(err)}`);
-          process.exit(1);
         }
+      } catch {
+        // non-critical
       }
+    }
 
-      if (!resolvedVersion) {
-        console.error(`Error: Could not resolve version for package ${item.name}`);
-        process.exit(1);
+    // Initialize package version provider querying the Registry API
+    const provider: PackageVersionProvider = {
+      async getVersions(pkgName: string): Promise<string[]> {
+        const pPath = pkgName.startsWith("@")
+          ? pkgName.split("/").map(encodeURIComponent).join("/")
+          : encodeURIComponent(pkgName);
+        try {
+          const res = await fetch(`${API_URL}/api/v1/libraries/${pPath}`, { headers });
+          if (!res.ok) return [];
+          const data = (await res.json()) as any;
+          if (Array.isArray(data.versions)) {
+            return data.versions.map((v: any) => (typeof v === "string" ? v : v.version));
+          }
+          if (typeof data.version === "string") return [data.version];
+          return [];
+        } catch {
+          return [];
+        }
+      },
+      async getManifest(pkgName: string, ver: string): Promise<any> {
+        const pPath = pkgName.startsWith("@")
+          ? pkgName.split("/").map(encodeURIComponent).join("/")
+          : encodeURIComponent(pkgName);
+        try {
+          const res = await fetch(`${API_URL}/api/v1/libraries/${pPath}/${encodeURIComponent(ver)}`, { headers });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    const solver = new DependencySolver(provider);
+    const rootRequirements = packagesToInstall.map((p) => ({
+      name: p.name,
+      range: p.version || "*",
+      source: "project",
+    }));
+
+    console.log(`Solving dependency graph for ${rootRequirements.length} root package(s)...`);
+    const solution = await solver.solve(rootRequirements);
+
+    if (!solution.success) {
+      console.error(`\n❌ Dependency resolution failed:\n${solution.error}\n`);
+      process.exit(1);
+    }
+
+    if (args.dryRun) {
+      console.log("\n📦 Dry-run resolution result:");
+      for (const pkg of solution.order) {
+        const info = solution.packages[pkg];
+        const direct = rootRequirements.some((r) => r.name === pkg);
+        console.log(`  ${direct ? "• (direct)" : "↳ (transitive)"} ${pkg}@${info?.version}`);
       }
+      console.log(`\nResolved ${solution.order.length} package(s) in topological order. No files written.\n`);
+      return;
+    }
 
-      console.log(`Downloading ${item.name}@${resolvedVersion}...`);
+    for (const pkgName of solution.order) {
+      const resolvedVersion = solution.packages[pkgName]?.version;
+      if (!resolvedVersion) continue;
+
+      const isDirect = rootRequirements.some((r) => r.name === pkgName);
+      console.log(`Installing ${pkgName}@${resolvedVersion} (${isDirect ? "direct" : "transitive"})...`);
+
+      const packagePath = pkgName.startsWith("@")
+        ? pkgName.split("/").map(encodeURIComponent).join("/")
+        : encodeURIComponent(pkgName);
       const downloadUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/download`;
 
       try {
@@ -316,26 +375,26 @@ export const Install: CommandModule<{}, InstallArgs> = {
 
         // Check lockfile entry if present before extraction
         const currentLock = lockfile || readLockfile(cwd);
-        const lockedPkg = currentLock?.packages[item.name];
+        const lockedPkg = currentLock?.packages[pkgName];
         if (lockedPkg && lockedPkg.integrity) {
           if (!verifyIntegrity(buffer, lockedPkg.integrity)) {
             if (isFrozen) {
               console.error(
-                `Error: Integrity verification failed for ${item.name}@${resolvedVersion}: expected ${lockedPkg.integrity}, got ${actualHash}.`,
+                `Error: Integrity verification failed for ${pkgName}@${resolvedVersion}: expected ${lockedPkg.integrity}, got ${actualHash}.`,
               );
               process.exit(1);
             } else {
               console.warn(
-                `⚠️ Lockfile integrity warning for ${item.name}: expected ${lockedPkg.integrity}, got ${actualHash}`,
+                `⚠️ Lockfile integrity warning for ${pkgName}: expected ${lockedPkg.integrity}, got ${actualHash}`,
               );
             }
           }
         } else if (isFrozen) {
-          console.error(`Error: Package "${item.name}" is not listed in 'msx.lock'.`);
+          console.error(`Error: Package "${pkgName}" is not listed in 'msx.lock'.`);
           process.exit(1);
         }
 
-        const targetDirName = item.name.startsWith("@") ? item.name.replace("/", "__") : item.name;
+        const targetDirName = pkgName.startsWith("@") ? pkgName.replace("/", "__") : pkgName;
         const destDir = path.join(cwd, "libraries", targetDirName);
         mkdirSync(destDir, { recursive: true });
 
@@ -361,34 +420,39 @@ export const Install: CommandModule<{}, InstallArgs> = {
           // Pre-compiled index is optional
         }
 
-        console.log(`✓ Installed ${item.name}@${resolvedVersion} to ${path.relative(cwd, destDir)}`);
+        console.log(`✓ Installed ${pkgName}@${resolvedVersion} to ${path.relative(cwd, destDir)}`);
 
         if (args.save && !isFrozen) {
-          const pkgJsonPath = path.join(cwd, "package.json");
-          if (existsSync(pkgJsonPath)) {
-            try {
-              const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-              pkgJson.dependencies = pkgJson.dependencies || {};
-              pkgJson.dependencies[item.name] = `^${resolvedVersion}`;
-              writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
-              console.log(`✓ Added "${item.name}": "^${resolvedVersion}" to package.json`);
-            } catch {
-              // Ignore failure to update package.json
+          if (isDirect) {
+            const pkgJsonPath = path.join(cwd, "package.json");
+            if (existsSync(pkgJsonPath)) {
+              try {
+                const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+                pkgJson.dependencies = pkgJson.dependencies || {};
+                pkgJson.dependencies[pkgName] = `^${resolvedVersion}`;
+                writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
+                console.log(`✓ Added "${pkgName}": "^${resolvedVersion}" to package.json`);
+              } catch {
+                // Ignore failure to update package.json
+              }
             }
           }
 
-          // Update msx.lock
+          // Update msx.lock with v2 DAG metadata
           const domains = extractDomainSummaryFromZip(zip);
-          updateLockfilePackage(cwd, item.name, {
+          const pkgDeps = solution.packages[pkgName]?.dependencies;
+          updateLockfilePackage(cwd, pkgName, {
             version: resolvedVersion,
             resolved: downloadUrl,
             integrity: actualHash,
             domains,
+            dependencies: pkgDeps,
+            isDirect,
           });
-          console.log(`✓ Updated msx.lock with ${item.name}@${resolvedVersion}`);
+          console.log(`✓ Updated msx.lock with ${pkgName}@${resolvedVersion}`);
         }
       } catch (err) {
-        console.error(`Failed to install ${item.name}: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`Failed to install ${pkgName}: ${err instanceof Error ? err.message : String(err)}`);
         process.exit(1);
       }
     }

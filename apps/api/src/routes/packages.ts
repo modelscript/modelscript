@@ -927,6 +927,60 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   );
 
   /**
+   * GET /api/v1/libraries/:name/:version/symbols.bin
+   * GET /api/v1/libraries/:scope/:name/:version/symbols.bin
+   *
+   * Fast pre-baked binary SymbolIndex endpoint for instant browser rehydration.
+   */
+  router.get(
+    ["/:name/:version/symbols.bin", "/:scope/:name/:version/symbols.bin"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+
+      if (!name || !version || !isValidPackageName(name) || !semver.valid(version)) {
+        res.status(400).json({ error: "Valid package name and semantic version required" });
+        return;
+      }
+
+      // Check if symbols.bin exists in the extracted library dir
+      try {
+        const extractedDir = await storage.extractLibrary(name, version);
+        const symbolsPath = path.join(extractedDir, "symbols.bin");
+        if (fs.existsSync(symbolsPath)) {
+          let buffer = fs.readFileSync(symbolsPath);
+          // Ensure MSYM header is present (4 bytes: 0x4D, 0x53, 0x59, 0x4D)
+          if (
+            buffer.length < 16 ||
+            buffer[0] !== 0x4d ||
+            buffer[1] !== 0x53 ||
+            buffer[2] !== 0x59 ||
+            buffer[3] !== 0x4d
+          ) {
+            // Wrap legacy raw symbol index with standard 16-byte MSYM header
+            const header = Buffer.alloc(16);
+            header.write("MSYM", 0, 4, "ascii");
+            header.writeUInt16BE(1, 4); // schemaVersion: 1 (Big-Endian network order)
+            header.writeUInt16BE(1, 6); // dialect: 1 (Modelica)
+            header.writeUInt32BE(0, 8); // flags
+            header.writeUInt32BE(buffer.length, 12); // payload length
+            buffer = Buffer.concat([header, buffer]);
+          }
+          res.setHeader("Content-Type", "application/octet-stream");
+          res.setHeader("X-ModelScript-Schema-Version", "1");
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          res.send(buffer);
+          return;
+        }
+      } catch {
+        // Fall through to 404
+      }
+
+      res.status(404).json({ error: `Pre-indexed symbols for "${name}@${version}" not found` });
+    },
+  );
+
+  /**
    * GET /api/v1/libraries/:name/:version/manifest
    * GET /api/v1/libraries/:scope/:name/:version/manifest
    * Multi-projection manifest endpoint.

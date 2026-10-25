@@ -84,6 +84,30 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // 1c. Pre-baked binary symbol tables (.sym.bin, symbols.bin) for air-gapped offline rehydration
+  if (
+    url.pathname.endsWith(".sym.bin") ||
+    url.pathname.includes("/symbols.bin") ||
+    url.pathname.startsWith("/api/v1/libraries/")
+  ) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(request).then((cachedResponse) => {
+          const fetchPromise = fetch(request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                cache.put(request, networkResponse.clone());
+              }
+              return networkResponse;
+            })
+            .catch(() => cachedResponse);
+          return cachedResponse || fetchPromise;
+        }),
+      ),
+    );
+    return;
+  }
+
   // 2. Timeline & Artifact Views API (NetworkFirst with Cache Fallback for offline resilience)
   if (url.pathname.startsWith("/api/v1/social/timeline") || url.pathname.startsWith("/api/v1/social/artifact-views/")) {
     event.respondWith(

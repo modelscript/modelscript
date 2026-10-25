@@ -49,6 +49,7 @@ import {
 } from "../api";
 import { useAuth } from "../AuthContext";
 import { parseFederatedHandle } from "../util/federation";
+import { safeJsonParse } from "../util/json";
 import {
   estimateReadingTimeMinutes,
   extractNotebookHeadings,
@@ -1823,6 +1824,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 <ArtifactViewCard
                   artifactId={cell.artifactId}
                   initialArtifactView={initialView}
+                  forkedFromId={
+                    (displayPost as any)?.forked_from_post_id ||
+                    (displayPost as any)?.forked_from_artifact_id ||
+                    safeJsonParse((displayPost as any)?.metadata, {})?.forkedFromArtifactId
+                  }
                   onPinCreated={(pin) => {
                     setPendingPin(pin);
                     setShowReplyModal(true);
@@ -2129,6 +2135,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             <ArtifactViewCard
               artifactId={displayPost.artifact_view_id}
               initialArtifactView={displayPost.artifact_view}
+              forkedFromId={
+                (displayPost as any)?.forked_from_post_id ||
+                (displayPost as any)?.forked_from_artifact_id ||
+                safeJsonParse((displayPost as any)?.metadata, {})?.forkedFromArtifactId
+              }
               onPinCreated={(pin) => {
                 setPendingPin(pin);
                 setShowReplyModal(true);

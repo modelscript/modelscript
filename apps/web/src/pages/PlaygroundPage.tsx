@@ -234,13 +234,16 @@ export const PlaygroundPage: React.FC = () => {
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
+  const [payload, setPayload] = useState<any>(null);
+
   // Initialize from URL hash or query params on load
   useEffect(() => {
     if (location.hash && location.hash.length > 1) {
-      const payload = decompressMorselPayload(location.hash);
-      if (payload && payload.code) {
-        setCurrentCode(payload.code);
-        if (payload.title) setCurrentTitle(payload.title);
+      const p = decompressMorselPayload(location.hash);
+      if (p && p.code) {
+        setPayload(p);
+        setCurrentCode(p.code);
+        if (p.title) setCurrentTitle(p.title);
       }
     } else if (sourceParam) {
       const decodedSource = decodeURIComponent(sourceParam);
@@ -306,20 +309,28 @@ export const PlaygroundPage: React.FC = () => {
   const getShareUrl = () => {
     const hash = compressMorselPayload({
       v: 1,
-      lang: "modelica",
+      lang: payload?.lang || "modelica",
       code: currentCode,
       title: currentTitle,
+      view: payload?.view,
+      anchor: payload?.anchor,
     });
     return `${window.location.origin}/playground#m=${hash}`;
   };
 
-  const getEmbedCode = () => {
+  const getEmbedCode = (format: "iframe" | "custom-tag" = "iframe") => {
     const hash = compressMorselPayload({
       v: 1,
-      lang: "modelica",
+      lang: payload?.lang || "modelica",
       code: currentCode,
       title: currentTitle,
+      view: payload?.view,
+      anchor: payload?.anchor,
     });
+    if (format === "custom-tag") {
+      const anchorAttr = payload?.anchor?.elementId ? ` anchor="${payload.anchor.elementId}"` : "";
+      return `<script type="module" src="${window.location.origin}/static/embed.js"></script>\n<modelscript-viewer dialect="${payload?.lang || "modelica"}" view="${payload?.view || "diagram"}"${anchorAttr}>\n${currentCode}\n</modelscript-viewer>`;
+    }
     return `<iframe src="${window.location.origin}/embed/playground#m=${hash}" width="100%" height="600" frameborder="0" allow="clipboard-write"></iframe>`;
   };
 
@@ -501,6 +512,9 @@ export const PlaygroundPage: React.FC = () => {
           dataUrl={null}
           initialCode={currentCode}
           embed={false}
+          initialDialect={payload?.lang}
+          initialView={payload?.view}
+          initialAnchor={payload?.anchor}
           onCodeChange={(code: string) => {
             setCurrentCode(code);
           }}

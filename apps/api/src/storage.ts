@@ -7,23 +7,70 @@ import path from "node:path";
 
 import semver from "semver";
 
+import type { StorageDriver } from "./storage/driver.js";
+import { FilesystemStorageDriver } from "./storage/filesystem-driver.js";
+import { S3StorageDriver } from "./storage/s3-driver.js";
 import { extractZipToDir, findLibraryRoot } from "./util/zip.js";
+
+export * from "./storage/driver.js";
+export * from "./storage/filesystem-driver.js";
+export * from "./storage/s3-driver.js";
 
 const DEFAULT_DATA_DIR = "data/libraries";
 
 /**
- * Simple filesystem-based storage for uploaded Modelica libraries.
- * Stores zips at `<dataDir>/<name>/<version>.zip`.
+ * Storage manager for ModelScript libraries, supporting pluggable drivers
+ * (Filesystem or S3/MinIO) and local extracted caching.
  */
 export class LibraryStorage {
   readonly #dataDir: string;
+  readonly #driver: StorageDriver;
 
-  constructor(dataDir?: string) {
-    this.#dataDir = path.resolve(dataDir ?? DEFAULT_DATA_DIR);
+  constructor(dataDirOrDriver?: string | StorageDriver) {
+    if (typeof dataDirOrDriver === "object" && dataDirOrDriver !== null && "driverName" in dataDirOrDriver) {
+      this.#driver = dataDirOrDriver;
+      this.#dataDir = path.resolve(DEFAULT_DATA_DIR);
+    } else {
+      this.#dataDir = path.resolve(dataDirOrDriver ?? DEFAULT_DATA_DIR);
+      this.#driver = new FilesystemStorageDriver(this.#dataDir);
+    }
+  }
+
+  /**
+   * Factory method creating a LibraryStorage instance from environment variables.
+   * Supports `STORAGE_BACKEND=s3` with S3 / MinIO / R2 configurations.
+   */
+  static fromEnv(defaultDir?: string): LibraryStorage {
+    const backend = process.env["STORAGE_BACKEND"] || "filesystem";
+    if (backend === "s3") {
+      const bucket = process.env["S3_BUCKET"] || "modelscript-packages";
+      const endpoint = process.env["S3_ENDPOINT"];
+      const region = process.env["S3_REGION"] || "us-east-1";
+      const accessKeyId = process.env["S3_ACCESS_KEY_ID"];
+      const secretAccessKey = process.env["S3_SECRET_ACCESS_KEY"];
+      const forcePathStyle = process.env["S3_FORCE_PATH_STYLE"] === "true";
+      const prefix = process.env["S3_PREFIX"];
+
+      const driver = new S3StorageDriver({
+        bucket,
+        endpoint,
+        region,
+        accessKeyId,
+        secretAccessKey,
+        forcePathStyle,
+        prefix,
+      });
+      return new LibraryStorage(driver);
+    }
+    return new LibraryStorage(defaultDir);
   }
 
   get dataDir(): string {
     return this.#dataDir;
+  }
+
+  get driver(): StorageDriver {
+    return this.#driver;
   }
 
   /**
@@ -107,6 +154,11 @@ export class LibraryStorage {
 
     const hash = crypto.createHash("sha256").update(buffer).digest("hex");
     fs.writeFileSync(path.join(dir, `${this.#safe(version)}.sha256`), hash, "utf-8");
+
+    if (this.#driver.driverName === "s3") {
+      const s3Key = `${this.#safe(name)}/${this.#safe(version)}.zip`;
+      await this.#driver.write(s3Key, buffer, { contentType: "application/zip" });
+    }
 
     return filePath;
   }
@@ -316,6 +368,11 @@ export class LibraryStorage {
       if (this.versions(name).length === 0) {
         fs.rmSync(libraryDir, { recursive: true, force: true });
       }
+    }
+
+    if (this.#driver.driverName === "s3") {
+      const s3Key = `${this.#safe(name)}/${this.#safe(version)}.zip`;
+      this.#driver.delete(s3Key).catch(() => {});
     }
 
     return true;

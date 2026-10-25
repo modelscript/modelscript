@@ -277,6 +277,13 @@ import { cfdLanguage } from "@modelscript/cfd";
 import { Easy5WorkspaceIndex, easy5Language } from "@modelscript/easy5";
 import { feaLanguage } from "@modelscript/fea";
 import { fortranLanguage } from "@modelscript/fortran";
+import {
+  GensysWorkspaceIndex,
+  gensysLanguage,
+  getGensysDocumentSymbols,
+  getGensysHover,
+  validateGensys,
+} from "@modelscript/gensys";
 import { GtSuiteWorkspaceIndex, gtsuiteLanguage } from "@modelscript/gtsuite";
 import { lpsLanguage } from "@modelscript/lps";
 import modelicaLangFallback from "@modelscript/modelica/language";
@@ -287,6 +294,13 @@ import { PsseWorkspaceIndex, psseLanguage } from "@modelscript/psse";
 import { RocetsWorkspaceIndex, rocetsLanguage } from "@modelscript/rocets";
 import scadLangFallback from "@modelscript/scad/language";
 import { SimaWorkspaceIndex, simaLanguage } from "@modelscript/sima";
+import {
+  SimpackWorkspaceIndex,
+  getSimpackDocumentSymbols,
+  getSimpackHover,
+  simpackLanguage,
+  validateSimpack,
+} from "@modelscript/simpack";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { registerActionRouter } from "./handlers/actionRouter.js";
@@ -1082,6 +1096,144 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
               currentDir: model.environment.current.direction,
               currentSpeed: model.environment.current.surfaceSpeed,
             },
+          });
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "gensys",
+      name: "GENSYS",
+      extensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel", ".ins"],
+      languageDef: gensysLanguage,
+      workspaceIndex: new GensysWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getGensysDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getGensysHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateGensys(text);
+        },
+      },
+      actionHandlers: {
+        lint_gensys_deck: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseGensysDeck, lintGensysModel } = await import("@modelscript/gensys");
+          const model = parseGensysDeck(text);
+          return lintGensysModel(model);
+        },
+        export_gensys_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseGensysDeck, gensysToModelica } = await import("@modelscript/gensys");
+          const model = parseGensysDeck(text);
+          return gensysToModelica(model);
+        },
+        evaluate_en14363: async (_ctx: any, params: any) => {
+          const { evaluateEn14363 } = await import("@modelscript/gensys");
+          return evaluateEn14363(params);
+        },
+        export_gensys_fmu: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseGensysDeck } = await import("@modelscript/gensys");
+          const { exportGensysFmu } = await import("@modelscript/exchange");
+          const model = parseGensysDeck(text);
+          return exportGensysFmu(model, params?.options);
+        },
+        simulate_gensys: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseGensysDeck, lowerGensysToDae } = await import("@modelscript/gensys");
+          const { initBltWasm } = await import("@modelscript/runtime");
+          const { simulateArena } = await import("@modelscript/simulate");
+          await initBltWasm();
+          const model = parseGensysDeck(text);
+          const dae = lowerGensysToDae(model);
+          return simulateArena(dae, {
+            startTime: params?.startTime ?? 0,
+            stopTime: params?.stopTime ?? 5.0,
+            step: params?.step ?? 0.005,
+          });
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "simpack",
+      name: "SIMPACK",
+      extensions: [".spck", ".sim", ".mbs"],
+      languageDef: simpackLanguage,
+      workspaceIndex: new SimpackWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getSimpackDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getSimpackHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateSimpack(text);
+        },
+      },
+      actionHandlers: {
+        lint_simpack_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseSpckXml, parseSimDeck, lintSimpackModel } = await import("@modelscript/simpack");
+          const isXml = text.trimStart().startsWith("<");
+          const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
+          return lintSimpackModel(model);
+        },
+        analyze_mobility: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSpckXml, parseSimDeck, analyzeMobility } = await import("@modelscript/simpack");
+          const isXml = text.trimStart().startsWith("<");
+          const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
+          return analyzeMobility(model);
+        },
+        export_simpack_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSpckXml, parseSimDeck, simpackToModelica } = await import("@modelscript/simpack");
+          const isXml = text.trimStart().startsWith("<");
+          const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
+          return simpackToModelica(model);
+        },
+        export_simpack_fmu: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSpckXml, parseSimDeck } = await import("@modelscript/simpack");
+          const { exportSimpackFmu } = await import("@modelscript/exchange");
+          const isXml = text.trimStart().startsWith("<");
+          const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
+          return exportSimpackFmu(model, params?.options);
+        },
+        simulate_simpack: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSpckXml, parseSimDeck, lowerSimpackToDae } = await import("@modelscript/simpack");
+          const { initBltWasm } = await import("@modelscript/runtime");
+          const { simulateArena } = await import("@modelscript/simulate");
+          await initBltWasm();
+          const isXml = text.trimStart().startsWith("<");
+          const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
+          const dae = lowerSimpackToDae(model);
+          return simulateArena(dae, {
+            startTime: params?.startTime ?? 0,
+            stopTime: params?.stopTime ?? 5.0,
+            step: params?.step ?? 0.005,
           });
         },
       },

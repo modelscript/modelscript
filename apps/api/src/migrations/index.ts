@@ -11,6 +11,10 @@ import { migration0008 } from "./0008_auth_totp_and_audit.js";
 import { migration0009 } from "./0009_notifications_metadata.js";
 import { migration0010 } from "./0010_thread_governance.js";
 import { migration0011 } from "./0011_concurrent_engineering.js";
+import { migration0012 } from "./0012_granular_api_tokens.js";
+import { migration0013 } from "./0013_social_llm_bots.js";
+import { migration0014 } from "./0014_bot_byok.js";
+import { migration0015 } from "./0015_repo_bot_reviews.js";
 import type { Migration } from "./types.js";
 
 export * from "./runner.js";
@@ -28,4 +32,8 @@ export const allMigrations: Migration[] = [
   migration0009,
   migration0010,
   migration0011,
+  migration0012,
+  migration0013,
+  migration0014,
+  migration0015,
 ];

@@ -502,11 +502,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         id: `ai-ask-${query}`,
         category: "AI Copilot",
         title: `Ask Copilot: "${query}"`,
-        subtitle: "Query physical models, equation semantics, and solvers",
+        subtitle: "Mention @dynamics_bot to analyze equations and simulation dynamics",
         icon: <ZapIcon size={16} />,
         action: () => {
-          navigate(`/explore?q=${encodeURIComponent(query)}`);
           onClose();
+          if (onOpenCompose) {
+            (onOpenCompose as (initial?: { content?: string | undefined }) => void)({
+              content: `@dynamics_bot ${query}`,
+            });
+          } else {
+            window.dispatchEvent(
+              new CustomEvent("modelscript:open-compose", { detail: { content: `@dynamics_bot ${query}` } }),
+            );
+          }
         },
       },
       {
@@ -519,11 +527,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           onClose();
           if (onOpenCompose) {
             (onOpenCompose as (initial?: { content?: string | undefined }) => void)({
-              content: `/synthesize ${query}`,
+              content: `@dynamics_bot /synthesize ${query}`,
             });
           } else {
             window.dispatchEvent(
-              new CustomEvent("modelscript:open-compose", { detail: { content: `/synthesize ${query}` } }),
+              new CustomEvent("modelscript:open-compose", {
+                detail: { content: `@dynamics_bot /synthesize ${query}` },
+              }),
             );
           }
         },

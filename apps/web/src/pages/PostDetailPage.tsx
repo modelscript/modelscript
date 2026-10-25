@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon, DownloadIcon, SyncIcon, ZapIcon } from "@primer/octicons-react";
+import { ArrowLeftIcon, CpuIcon, DownloadIcon, HubotIcon, SyncIcon, ZapIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -19,7 +19,7 @@ import {
   isNotebookPost,
   parseNotebookFromContent,
 } from "../util/notebook";
-import { usePageTitle } from "../util/title";
+import { useOembedDiscovery, usePageTitle } from "../util/title";
 
 const ReplyInputContainer = styled.div`
   display: flex;
@@ -27,6 +27,153 @@ const ReplyInputContainer = styled.div`
   padding: 4px 16px 12px 16px;
   border-bottom: 1px solid var(--color-border);
 `;
+
+const BotTypingContainer = styled.div`
+  margin: 12px 16px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--color-bg-card, rgba(15, 23, 42, 0.7));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  box-shadow:
+    0 0 20px rgba(139, 92, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  animation: botFadeIn 0.25s ease-out;
+
+  @keyframes botFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .shimmer-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #8b5cf6, #06b6d4, transparent);
+    background-size: 200% 100%;
+    animation: botShimmer 1.8s infinite linear;
+  }
+
+  @keyframes botShimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+`;
+
+const BotHeaderRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+`;
+
+const BotIdentity = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  .bot-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25));
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-accent-purple, #a78bfa);
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
+  }
+
+  .bot-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--color-text-heading);
+  }
+`;
+
+const BotAgentBadge = styled.span`
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--gradient-ai-subtle, rgba(139, 92, 246, 0.15));
+  border: 1px solid var(--color-accent-purple-border, rgba(139, 92, 246, 0.35));
+  color: var(--color-accent-purple, #a78bfa);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+`;
+
+const BotStatusText = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+
+  .status-highlight {
+    color: var(--color-accent-cyan, #38bdf8);
+    font-weight: 500;
+  }
+`;
+
+const BotTypingBubble: React.FC<{
+  botUsername: string;
+  status: "thinking" | "simulating";
+}> = ({ botUsername, status }) => (
+  <BotTypingContainer>
+    <BotHeaderRow>
+      <BotIdentity>
+        <div className="bot-avatar">
+          <HubotIcon size={18} />
+        </div>
+        <span className="bot-name">@{botUsername}</span>
+        <BotAgentBadge>🤖 AI Agent</BotAgentBadge>
+      </BotIdentity>
+      <Spinner size="small" />
+    </BotHeaderRow>
+    <BotStatusText>
+      {status === "simulating" ? (
+        <>
+          <ZapIcon size={14} fill="var(--color-accent-cyan)" />
+          <span>
+            Running <span className="status-highlight">DAE Numerical Solver (CVODE)</span> &amp; synthesizing trajectory
+            plot...
+          </span>
+        </>
+      ) : (
+        <>
+          <CpuIcon size={14} />
+          <span>
+            Analyzing equations and generating <span className="status-highlight">Modelica engineering response</span>
+            ...
+          </span>
+        </>
+      )}
+    </BotStatusText>
+    <div className="shimmer-bar" />
+  </BotTypingContainer>
+);
 
 const SplitContainer = styled.div`
   display: grid;
@@ -445,9 +592,105 @@ const PostDetailPage: React.FC = () => {
         ? `Post by @${post.username}`
         : "Post",
   );
+  useOembedDiscovery(
+    typeof window !== "undefined" ? window.location.href : undefined,
+    notebookData?.title || post?.title || (post?.content ? post.content.slice(0, 60) : undefined),
+  );
   const [parents, setParents] = useState<PostItem[]>([]);
   const [replies, setReplies] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeBotTyping, setActiveBotTyping] = useState<{
+    botId: number;
+    botUsername: string;
+    status: "thinking" | "simulating";
+    postId: number;
+    timestamp: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof WebSocket === "undefined") return;
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const endpoint = `${protocol}//${window.location.host}/api/v1/collab/stream`;
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+    let isDisposed = false;
+
+    function connect() {
+      if (isDisposed) return;
+      try {
+        ws = new WebSocket(endpoint);
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(String(event.data));
+            if (msg.type === "bot_typing") {
+              const currentPostId = post?.id ?? Number(id);
+              const isRelevant = msg.postId === currentPostId || replies.some((r) => r.id === msg.postId);
+
+              if (isRelevant) {
+                if (msg.status === "thinking" || msg.status === "simulating") {
+                  setActiveBotTyping({
+                    botId: msg.botId,
+                    botUsername: msg.botUsername,
+                    status: msg.status,
+                    postId: msg.postId,
+                    timestamp: Date.now(),
+                  });
+                } else if (msg.status === "done") {
+                  setActiveBotTyping(null);
+                  if (id) {
+                    getPostReplies(id)
+                      .then((res) => {
+                        if (res?.posts) setReplies(res.posts);
+                      })
+                      .catch(() => {});
+                  }
+                } else if (msg.status === "failed") {
+                  setActiveBotTyping(null);
+                }
+              }
+            }
+          } catch {
+            // Ignore malformed WS message
+          }
+        };
+
+        ws.onclose = () => {
+          if (!isDisposed) {
+            reconnectTimeout = setTimeout(connect, 3000);
+          }
+        };
+
+        ws.onerror = () => {
+          try {
+            ws?.close();
+          } catch {}
+        };
+      } catch {
+        if (!isDisposed) {
+          reconnectTimeout = setTimeout(connect, 5000);
+        }
+      }
+    }
+
+    connect();
+
+    return () => {
+      isDisposed = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      try {
+        ws?.close();
+      } catch {}
+    };
+  }, [id, post?.id, replies]);
+
+  useEffect(() => {
+    if (!activeBotTyping) return;
+    const timer = setTimeout(() => {
+      setActiveBotTyping(null);
+    }, 45000);
+    return () => clearTimeout(timer);
+  }, [activeBotTyping]);
 
   useEffect(() => {
     if (notebookHeadings.length === 0) return;
@@ -714,7 +957,9 @@ end SnesMoldCavity;
         <ReplyInputContainer>
           <ComposeBox
             replyToPost={post}
-            onPostCreated={(reply) => navigate(`/${reply.author?.username || reply.username}/status/${reply.id}`)}
+            onPostCreated={(reply) => {
+              setReplies((prev) => [...prev, reply]);
+            }}
           />
         </ReplyInputContainer>
       )}
@@ -724,7 +969,12 @@ end SnesMoldCavity;
           {replies.map((reply) => (
             <Post key={reply.id} post={reply} />
           ))}
+          {activeBotTyping && (
+            <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
+          )}
         </Box>
+      ) : activeBotTyping ? (
+        <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
       ) : (
         <Box p={4} textAlign="center">
           <Text color="var(--color-fg-muted)">No replies yet.</Text>

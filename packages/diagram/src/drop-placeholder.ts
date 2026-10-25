@@ -137,6 +137,27 @@ export function ensureDiagramStyles(): void {
       }
     }
 
+    @keyframes diagram-anchor-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7);
+        filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.8));
+      }
+      70% {
+        box-shadow: 0 0 0 16px rgba(6, 182, 212, 0);
+        filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.4));
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(6, 182, 212, 0);
+        filter: drop-shadow(0 0 4px rgba(6, 182, 212, 0.6));
+      }
+    }
+
+    .modelscript-anchor-halo {
+      animation: diagram-anchor-pulse 1.8s ease-out 3;
+      stroke: #06b6d4 !important;
+      stroke-width: 2.5px !important;
+    }
+
     [data-cell-id="__drop_placeholder__"],
     [data-cell-id="__drop_placeholder__"] image,
     [data-cell-id="__drop_placeholder__"] rect,

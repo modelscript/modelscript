@@ -6,6 +6,7 @@ import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
 
 export function reposRouter(database: LibraryDatabase): Router {
   const router = createRouter();
@@ -140,6 +141,70 @@ export function reposRouter(database: LibraryDatabase): Router {
     }
 
     res.json({ success: true, message: "Webhook deleted successfully" });
+  });
+
+  /**
+   * POST /api/v1/repos/:id/reviews
+   * Triggers an automated engineering model review by a bot.
+   */
+  router.post("/:id/reviews", requireAuth, async (req: Request, res: Response) => {
+    const repoId = Number(req.params["id"]);
+    const repo = database.getLinkedRepoById(repoId);
+    if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
+      res.status(404).json({ error: "Repository not found or access denied" });
+      return;
+    }
+
+    const { bot_id, pr_number, commit_sha, title, diff_content, files } = req.body;
+    let botId = Number(bot_id);
+    if (!botId) {
+      // Find user's first bot or default system bot
+      const userBots = database.getUserBots(req.user!.id);
+      if (userBots.length > 0) {
+        botId = userBots[0]!.id;
+      } else {
+        const sysBot = database.getUserByUsername("dynamics_bot");
+        if (sysBot) {
+          botId = sysBot.id;
+        } else {
+          res.status(400).json({ error: "No bot specified and no default bot found" });
+          return;
+        }
+      }
+    }
+
+    try {
+      const reviewer = new RepoBotReviewer(database);
+      const result = await reviewer.review({
+        repoId,
+        botId,
+        prNumber: pr_number ? Number(pr_number) : undefined,
+        commitSha: commit_sha,
+        title,
+        diffContent: diff_content,
+        files,
+      });
+
+      res.status(201).json({ success: true, review: result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to run bot review" });
+    }
+  });
+
+  /**
+   * GET /api/v1/repos/:id/reviews
+   * List bot reviews for a repository.
+   */
+  router.get("/:id/reviews", requireAuth, (req: Request, res: Response) => {
+    const repoId = Number(req.params["id"]);
+    const repo = database.getLinkedRepoById(repoId);
+    if (!repo || (repo.user_id !== req.user!.id && req.user!.account_type !== "admin")) {
+      res.status(404).json({ error: "Repository not found or access denied" });
+      return;
+    }
+
+    const reviews = database.getRepoBotReviews(repoId);
+    res.json({ reviews });
   });
 
   return router;

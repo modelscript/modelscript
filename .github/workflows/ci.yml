@@ -250,6 +250,7 @@ jobs:
         run: npm ci
       - name: Download All CTRF Artifacts
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: ctrf-artifacts
           pattern: ctrf-*
@@ -272,7 +273,7 @@ jobs:
             ctrf-artifacts/test-report-unified.html
           if-no-files-found: ignore
       - name: Publish Test Report & PR Insights
-        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && github.actor != 'nektos/act' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: ctrf-io/github-test-reporter@v1
         with:
           report-path: "ctrf-artifacts/ctrf-consolidated.json"
@@ -398,6 +399,7 @@ jobs:
 
   docker_build:
     needs: [build, test, lint, modelica_testsuite]
+    if: github.actor != 'nektos/act'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

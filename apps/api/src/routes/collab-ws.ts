@@ -392,4 +392,31 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
       });
     }
   });
+
+  activeWss = wss;
+}
+
+let activeWss: WebSocketServer | null = null;
+
+export function broadcastBotTyping(event: {
+  botId: number;
+  botUsername: string;
+  postId: number;
+  status: "thinking" | "simulating" | "done" | "failed";
+}): void {
+  if (!activeWss) return;
+  const message = JSON.stringify({
+    type: "bot_typing",
+    ...event,
+    timestamp: new Date().toISOString(),
+  });
+  for (const client of activeWss.clients) {
+    if (client.readyState === 1) {
+      try {
+        client.send(message);
+      } catch {
+        // Ignore dead socket
+      }
+    }
+  }
 }

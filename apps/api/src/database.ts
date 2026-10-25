@@ -1547,6 +1547,11 @@ export class LibraryDatabase {
     bio: string,
     avatarUrl: string,
     tokenHash: string,
+    scopes: string = "social:read,social:write",
+    systemPrompt: string = "",
+    model: string = "gemini-1.5-flash",
+    apiKey: string = "",
+    endpointUrl: string = "",
   ): { id: number; username: string } {
     const email = `${username}@bots.modelscript.org`; // dummy email for bots
     const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
@@ -1559,7 +1564,7 @@ export class LibraryDatabase {
 
     const result = this.#db
       .prepare(
-        `INSERT INTO users (username, email, display_name, bio, avatar_url, banner_url, account_type, owner_id, bot_token_hash, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, 'bot', ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (username, email, display_name, bio, avatar_url, banner_url, account_type, owner_id, bot_token_hash, bot_scopes, bot_system_prompt, bot_model, bot_api_key, bot_endpoint_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, 'bot', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         username,
@@ -1571,6 +1576,11 @@ export class LibraryDatabase {
         bannerUrl,
         ownerId,
         tokenHash,
+        scopes,
+        systemPrompt,
+        model,
+        apiKey,
+        endpointUrl,
         keys.privateKey,
         keys.publicKey,
         actorUrl,
@@ -1586,13 +1596,102 @@ export class LibraryDatabase {
     display_name: string;
     avatar_url: string;
     bio: string;
+    bot_scopes?: string;
+    bot_system_prompt?: string;
+    bot_model?: string;
+    bot_api_key?: string;
+    bot_endpoint_url?: string;
+    bot_last_used_at?: string;
     created_at: string;
   }> {
     return this.#db
       .prepare(
-        `SELECT id, username, display_name, avatar_url, bio, created_at FROM users WHERE owner_id = ? AND account_type = 'bot' ORDER BY created_at DESC`,
+        `SELECT id, username, display_name, avatar_url, bio, bot_scopes, bot_system_prompt, bot_model, bot_api_key, bot_endpoint_url, bot_last_used_at, created_at FROM users WHERE owner_id = ? AND account_type = 'bot' ORDER BY created_at DESC`,
       )
       .all(ownerId) as any;
+  }
+
+  getBotById(botId: number): {
+    id: number;
+    owner_id: number;
+    username: string;
+    display_name: string;
+    avatar_url: string;
+    bio: string;
+    bot_scopes: string;
+    bot_system_prompt: string;
+    bot_model: string;
+    bot_api_key: string | null;
+    bot_endpoint_url: string | null;
+    bot_last_used_at: string | null;
+  } | null {
+    const row = this.#db
+      .prepare(
+        `SELECT id, owner_id, username, display_name, avatar_url, bio, bot_scopes, bot_system_prompt, bot_model, bot_api_key, bot_endpoint_url, bot_last_used_at FROM users WHERE id = ? AND account_type = 'bot'`,
+      )
+      .get(botId) as any;
+    return row || null;
+  }
+
+  updateBotSettings(
+    ownerId: number,
+    botId: number,
+    updates: {
+      displayName?: string;
+      bio?: string;
+      avatarUrl?: string;
+      scopes?: string;
+      systemPrompt?: string;
+      model?: string;
+      apiKey?: string;
+      endpointUrl?: string;
+    },
+  ): void {
+    const fields: string[] = [];
+    const values: any[] = [];
+    if (updates.displayName !== undefined) {
+      fields.push("display_name = ?");
+      values.push(updates.displayName);
+    }
+    if (updates.bio !== undefined) {
+      fields.push("bio = ?");
+      values.push(updates.bio);
+    }
+    if (updates.avatarUrl !== undefined) {
+      fields.push("avatar_url = ?");
+      values.push(updates.avatarUrl);
+    }
+    if (updates.scopes !== undefined) {
+      fields.push("bot_scopes = ?");
+      values.push(updates.scopes);
+    }
+    if (updates.systemPrompt !== undefined) {
+      fields.push("bot_system_prompt = ?");
+      values.push(updates.systemPrompt);
+    }
+    if (updates.model !== undefined) {
+      fields.push("bot_model = ?");
+      values.push(updates.model);
+    }
+    if (updates.apiKey !== undefined) {
+      fields.push("bot_api_key = ?");
+      values.push(updates.apiKey);
+    }
+    if (updates.endpointUrl !== undefined) {
+      fields.push("bot_endpoint_url = ?");
+      values.push(updates.endpointUrl);
+    }
+    if (fields.length === 0) return;
+    values.push(botId, ownerId);
+    this.#db
+      .prepare(`UPDATE users SET ${fields.join(", ")} WHERE id = ? AND owner_id = ? AND account_type = 'bot'`)
+      .run(...values);
+  }
+
+  touchBotLastUsed(botId: number): void {
+    this.#db
+      .prepare(`UPDATE users SET bot_last_used_at = datetime('now') WHERE id = ? AND account_type = 'bot'`)
+      .run(botId);
   }
 
   deleteBot(ownerId: number, botId: number): void {
@@ -1601,11 +1700,69 @@ export class LibraryDatabase {
 
   getUserByBotTokenHash(
     tokenHash: string,
-  ): { id: number; username: string; email: string; account_type: string } | null {
+  ): {
+    id: number;
+    owner_id: number;
+    username: string;
+    email: string;
+    account_type: string;
+    bot_scopes: string;
+  } | null {
     const row = this.#db
-      .prepare(`SELECT id, username, email, account_type FROM users WHERE bot_token_hash = ? AND account_type = 'bot'`)
+      .prepare(
+        `SELECT id, owner_id, username, email, account_type, bot_scopes FROM users WHERE bot_token_hash = ? AND account_type = 'bot'`,
+      )
       .get(tokenHash) as any;
     return row || null;
+  }
+
+  /* ── Bot Mention Queue Operations ── */
+  enqueueBotMention(botId: number, postId: number, authorId: number): number {
+    const result = this.#db
+      .prepare(`INSERT INTO bot_mention_queue (bot_id, post_id, author_id, status) VALUES (?, ?, ?, 'pending')`)
+      .run(botId, postId, authorId);
+    return result.lastInsertRowid as number;
+  }
+
+  getPendingBotMentions(limit: number = 10): Array<{
+    id: number;
+    bot_id: number;
+    post_id: number;
+    author_id: number;
+    status: string;
+    attempts: number;
+    error: string | null;
+    created_at: string;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT id, bot_id, post_id, author_id, status, attempts, error, created_at FROM bot_mention_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?`,
+      )
+      .all(limit) as any;
+  }
+
+  updateBotMentionStatus(
+    queueId: number,
+    status: "processing" | "completed" | "failed",
+    options?: { error?: string; responsePostId?: number },
+  ): void {
+    if (status === "processing") {
+      this.#db
+        .prepare(
+          `UPDATE bot_mention_queue SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now') WHERE id = ?`,
+        )
+        .run(queueId);
+    } else if (status === "completed") {
+      this.#db
+        .prepare(
+          `UPDATE bot_mention_queue SET status = 'completed', response_post_id = ?, updated_at = datetime('now') WHERE id = ?`,
+        )
+        .run(options?.responsePostId ?? null, queueId);
+    } else if (status === "failed") {
+      this.#db
+        .prepare(`UPDATE bot_mention_queue SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(options?.error ?? "Unknown error", queueId);
+    }
   }
 
   createOAuthUser(
@@ -4168,6 +4325,79 @@ export class LibraryDatabase {
       );
 
     return Number(info.lastInsertRowid);
+  }
+
+  // ==========================================
+  // Repository Bot Reviews
+  // ==========================================
+
+  createRepoBotReview(params: {
+    repoId: number;
+    botId: number;
+    prNumber?: number | undefined;
+    commitSha?: string | undefined;
+    verdict: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+    summary: string;
+    issuesJson?: string | undefined;
+    postId?: number | undefined;
+  }): { id: number } {
+    const result = this.#db
+      .prepare(
+        `INSERT INTO repo_bot_reviews (repo_id, bot_id, pr_number, commit_sha, verdict, summary, issues_json, post_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        params.repoId,
+        params.botId,
+        params.prNumber ?? null,
+        params.commitSha ?? null,
+        params.verdict,
+        params.summary,
+        params.issuesJson ?? null,
+        params.postId ?? null,
+      );
+
+    return { id: Number(result.lastInsertRowid) };
+  }
+
+  getRepoBotReviews(
+    repoId: number,
+    limit: number = 50,
+  ): Array<{
+    id: number;
+    repo_id: number;
+    bot_id: number;
+    bot_username: string;
+    bot_display_name: string;
+    pr_number: number | null;
+    commit_sha: string | null;
+    verdict: string;
+    summary: string;
+    issues_json: string | null;
+    post_id: number | null;
+    created_at: string;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT r.*, u.username as bot_username, u.display_name as bot_display_name
+         FROM repo_bot_reviews r
+         JOIN users u ON r.bot_id = u.id
+         WHERE r.repo_id = ?
+         ORDER BY r.created_at DESC
+         LIMIT ?`,
+      )
+      .all(repoId, limit) as any;
+  }
+
+  getRepoBotReviewById(id: number): any {
+    return this.#db
+      .prepare(
+        `SELECT r.*, u.username as bot_username, u.display_name as bot_display_name
+         FROM repo_bot_reviews r
+         JOIN users u ON r.bot_id = u.id
+         WHERE r.id = ?`,
+      )
+      .get(id);
   }
 
   // ── Global Search ───────────────────────────────────────────────
@@ -7140,9 +7370,113 @@ export class LibraryDatabase {
       .run(resolvedValue, conflictId);
   }
 
+  // ── Granular API Tokens ──────────────────────────────────────────
+
+  createApiToken(params: {
+    userId: number;
+    name: string;
+    tokenPrefix: string;
+    tokenHash: string;
+    scopes: string[];
+    packagePattern?: string | undefined;
+    expiresAt?: string | null | undefined;
+  }): number {
+    const scopesJson = JSON.stringify(params.scopes);
+    const pattern = params.packagePattern || "*";
+    const result = this.#db
+      .prepare(
+        `INSERT INTO api_tokens (user_id, name, token_prefix, token_hash, scopes, package_pattern, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        params.userId,
+        params.name,
+        params.tokenPrefix,
+        params.tokenHash,
+        scopesJson,
+        pattern,
+        params.expiresAt ?? null,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  getApiTokenByHash(tokenHash: string): ApiTokenRecord | null {
+    const row = this.#db
+      .prepare(
+        `SELECT id, user_id, name, token_prefix, token_hash, scopes, package_pattern, expires_at, last_used_at, last_used_ip, created_at
+         FROM api_tokens
+         WHERE token_hash = ?`,
+      )
+      .get(tokenHash) as any;
+    if (!row) return null;
+    let scopes: string[] = [];
+    try {
+      scopes = JSON.parse(row.scopes);
+    } catch {
+      scopes = [];
+    }
+    return {
+      ...row,
+      scopes,
+    };
+  }
+
+  listApiTokens(userId: number): Omit<ApiTokenRecord, "token_hash">[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT id, user_id, name, token_prefix, scopes, package_pattern, expires_at, last_used_at, last_used_ip, created_at
+         FROM api_tokens
+         WHERE user_id = ?
+         ORDER BY created_at DESC`,
+      )
+      .all(userId) as any[];
+
+    return rows.map((r) => {
+      let scopes: string[] = [];
+      try {
+        scopes = JSON.parse(r.scopes);
+      } catch {
+        scopes = [];
+      }
+      return {
+        ...r,
+        scopes,
+      };
+    });
+  }
+
+  deleteApiToken(tokenId: number, userId: number): boolean {
+    const res = this.#db.prepare(`DELETE FROM api_tokens WHERE id = ? AND user_id = ?`).run(tokenId, userId);
+    return res.changes > 0;
+  }
+
+  touchApiToken(tokenId: number, ip?: string): void {
+    try {
+      this.#db
+        .prepare(`UPDATE api_tokens SET last_used_at = datetime('now'), last_used_ip = ? WHERE id = ?`)
+        .run(ip ?? null, tokenId);
+    } catch {
+      // non-critical
+    }
+  }
+
   close(): void {
     this.#db.close();
   }
+}
+
+export interface ApiTokenRecord {
+  id: number;
+  user_id: number;
+  name: string;
+  token_prefix: string;
+  token_hash: string;
+  scopes: string[];
+  package_pattern: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  last_used_ip: string | null;
+  created_at: string;
 }
 
 export interface ThreadConflictRecord {

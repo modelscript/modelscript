@@ -49,14 +49,30 @@ const YoutubeVideoViewer = React.lazy(() => import("./YoutubeVideoViewer"));
 const FmuViewer = React.lazy(() => import("./FmuViewer"));
 const SysmlViewer = React.lazy(() => import("./SysmlViewer"));
 const ZeroCopyWebGPUViewer = React.lazy(() => import("./ZeroCopyWebGPUViewer"));
+const PscadViewer = React.lazy(() => import("./PscadViewer"));
+const PsoutViewer = React.lazy(() => import("./PsoutViewer"));
+const PsseSldViewer = React.lazy(() => import("./PsseSldViewer"));
+const OlgaFlowViewer = React.lazy(() => import("./OlgaFlowViewer"));
+const Easy5Viewer = React.lazy(() => import("./Easy5Viewer"));
+const RocetsViewer = React.lazy(() => import("./RocetsViewer"));
+const PipelineLpsViewer = React.lazy(() => import("./PipelineLpsViewer"));
+const SimaViewer = React.lazy(() => import("./SimaViewer"));
+const GtSuiteViewer = React.lazy(() => import("./GtSuiteViewer"));
+const SspViewer = React.lazy(() => import("./SspViewer"));
+const FeaDeckViewer = React.lazy(() => import("./FeaDeckViewer"));
+const CfdConfigViewer = React.lazy(() => import("./CfdConfigViewer"));
+const Owl2Viewer = React.lazy(() => import("./Owl2Viewer"));
+const GensysViewer = React.lazy(() => import("./GensysViewer"));
+const SimpackViewer = React.lazy(() => import("./SimpackViewer"));
 
 import { cacheArtifact, getCachedArtifact } from "../../util/offline-storage";
-import ArtifactDiffModal from "./ArtifactDiffModal";
+import ArtifactDiffModal, { parseModelicaParameters } from "./ArtifactDiffModal";
 import type { AnySpatialPin } from "./spatial-pin";
 
 interface ArtifactViewCardProps {
   artifactId: number;
   initialArtifactView?: any;
+  forkedFromId?: number | string | undefined;
   onPinCreated?: ((pin: AnySpatialPin) => void) | undefined;
   onThreadNodeSelected?: ((threadId: string | number) => void) | undefined;
 }
@@ -64,6 +80,7 @@ interface ArtifactViewCardProps {
 const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   artifactId,
   initialArtifactView,
+  forkedFromId,
   onPinCreated,
   onThreadNodeSelected,
 }) => {
@@ -139,6 +156,79 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     () => ({ ...safeJsonParse(artifact?.view_config, {}), artifactId }),
     [artifact?.view_config, artifactId],
   );
+
+  const resolvedForkedFromId = useMemo<number | string | null>(() => {
+    if (forkedFromId) return forkedFromId;
+    if (viewConfig.forkedFromArtifactId) return viewConfig.forkedFromArtifactId;
+    if (viewConfig.forked_from_artifact_id) return viewConfig.forked_from_artifact_id;
+    if (viewConfig.upstreamArtifactId) return viewConfig.upstreamArtifactId;
+    const meta = artifact?.metadata ? safeJsonParse(artifact.metadata, artifact.metadata) : {};
+    if (meta?.forkedFromArtifactId) return meta.forkedFromArtifactId;
+    if (meta?.forked_from_artifact_id) return meta.forked_from_artifact_id;
+    if (meta?.forked_from_post_id) return meta.forked_from_post_id;
+    if (artifact?.forked_from_id) return artifact.forked_from_id;
+    if (artifact?.post?.forked_from_post_id) return artifact.post.forked_from_post_id;
+    return null;
+  }, [forkedFromId, viewConfig, artifact]);
+
+  const [paramDeltaCount, setParamDeltaCount] = useState<number | null>(() => {
+    if (typeof viewConfig.modifiedParametersCount === "number") return viewConfig.modifiedParametersCount;
+    if (Array.isArray(viewConfig.parameterDeltas)) return viewConfig.parameterDeltas.length;
+    return null;
+  });
+
+  useEffect(() => {
+    if (typeof viewConfig.modifiedParametersCount === "number") {
+      setParamDeltaCount(viewConfig.modifiedParametersCount);
+    } else if (Array.isArray(viewConfig.parameterDeltas)) {
+      setParamDeltaCount(viewConfig.parameterDeltas.length);
+    }
+  }, [viewConfig.modifiedParametersCount, viewConfig.parameterDeltas]);
+
+  useEffect(() => {
+    if (paramDeltaCount !== null || !resolvedForkedFromId) return;
+    let active = true;
+
+    async function loadDiffCount() {
+      try {
+        let parentArt: any = await getCachedArtifact(resolvedForkedFromId!);
+        if (!parentArt) {
+          const res = await getArtifactView(resolvedForkedFromId!);
+          parentArt = res?.artifactView;
+        }
+        if (!active || !parentArt) return;
+
+        const parentCfg =
+          typeof parentArt.view_config === "string"
+            ? safeJsonParse(parentArt.view_config, {})
+            : parentArt.view_config || {};
+        const parentCode = parentCfg.code || "";
+        const currentCode = viewConfig.code || "";
+
+        if (parentCode && currentCode) {
+          const parentParams = parseModelicaParameters(parentCode);
+          const currentParams = parseModelicaParameters(currentCode);
+          const allKeys = new Set([...Object.keys(parentParams), ...Object.keys(currentParams)]);
+          let diffCount = 0;
+          for (const k of allKeys) {
+            if (parentParams[k] !== currentParams[k]) {
+              diffCount++;
+            }
+          }
+          if (active) {
+            setParamDeltaCount(diffCount);
+          }
+        }
+      } catch {
+        // Silently ignore if upstream artifact cannot be loaded
+      }
+    }
+
+    loadDiffCount();
+    return () => {
+      active = false;
+    };
+  }, [paramDeltaCount, resolvedForkedFromId, viewConfig.code]);
 
   if (loading) {
     return (
@@ -345,6 +435,54 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       case "digital_twin_dashboard":
       case "digital-twin":
         return <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "pscad":
+      case "pscx":
+      case "pslx":
+        return <PscadViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "psout":
+        return <PsoutViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "psse":
+      case "raw":
+        return <PsseSldViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "olga":
+      case "opi":
+        return <OlgaFlowViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "easy5":
+      case "ez5":
+        return <Easy5Viewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "rocets":
+      case "roc":
+        return <RocetsViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "lps":
+      case "pipelinestudio":
+        return <PipelineLpsViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "sima":
+        return <SimaViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "gtsuite":
+      case "gtm":
+        return <GtSuiteViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "ssp":
+      case "ssd":
+        return <SspViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "fea-deck":
+      case "fea-inp":
+        return <FeaDeckViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "cfd-config":
+      case "cfd-su2":
+        return <CfdConfigViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "gensys":
+      case "calc":
+      case "run":
+      case "sub":
+        return <GensysViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "simpack":
+      case "spck":
+      case "sim":
+      case "mbs":
+        return <SimpackViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "owl":
+      case "owl2":
+        return <Owl2Viewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "package":
       case "library":
         return <PackageViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
@@ -419,11 +557,34 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
               )
                 return "cad";
               if (v === "gcode" || v === "cam-result" || v === "cam") return "gcode";
-              if (v === "fmu" || v === "fmi" || v === "fmu-package" || v === "fmu-simulator") return "fmu";
+              if (
+                v === "fmu" ||
+                v === "fmi" ||
+                v === "fmu-package" ||
+                v === "fmu-simulator" ||
+                v === "ssp" ||
+                v === "ssd"
+              )
+                return "fmu";
               if (v === "sysml" || v === "sysml2" || v === "sysml-architecture-viewer" || v === "kerml") return "sysml";
               if (v === "dataset" || v === "dataset-table" || v === "csv" || v === "tsv" || v === "json-table")
                 return "dataset";
-              if (v === "simulation-plot" || v === "vega" || v === "vega-plot") return "plot";
+              if (v === "simulation-plot" || v === "vega" || v === "vega-plot" || v === "psout") return "plot";
+              if (
+                v === "pscad" ||
+                v === "pscx" ||
+                v === "pslx" ||
+                v === "psse" ||
+                v === "raw" ||
+                v === "easy5" ||
+                v === "rocets" ||
+                v === "lps" ||
+                v === "sima" ||
+                v === "gtsuite"
+              )
+                return "plot";
+              if (v === "fea-deck" || v === "fea-inp") return "fea";
+              if (v === "cfd-config" || v === "cfd-su2") return "cfd";
               if (v === "pdf" || v === "tei-document") return "pdf";
               return "generic";
             };
@@ -520,7 +681,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
                   {viewConfig.provenance?.profile || viewConfig.profile || "HPC Standard"}
                 </span>
               )}
-              {viewConfig.forkedFromArtifactId && (
+              {resolvedForkedFromId && (
                 <>
                   <span
                     style={{
@@ -533,14 +694,30 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
                       fontWeight: 600,
                       fontFamily: "var(--font-mono, monospace)",
                       cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
                     }}
-                    title={`Forked from Artifact #${viewConfig.forkedFromArtifactId}`}
+                    title={`Forked from Artifact #${resolvedForkedFromId}${paramDeltaCount !== null ? ` (${paramDeltaCount} parameter${paramDeltaCount === 1 ? "" : "s"} changed)` : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/feed?artifact=${viewConfig.forkedFromArtifactId}`);
+                      navigate(`/feed?artifact=${resolvedForkedFromId}`);
                     }}
                   >
-                    ⚡ Fork of #{viewConfig.forkedFromArtifactId}
+                    ⚡ Fork of #{resolvedForkedFromId}
+                    {paramDeltaCount !== null && paramDeltaCount > 0 ? (
+                      <span
+                        style={{
+                          background: "rgba(245, 158, 11, 0.25)",
+                          padding: "1px 5px",
+                          borderRadius: "4px",
+                          fontSize: "9px",
+                          marginLeft: "2px",
+                        }}
+                      >
+                        {paramDeltaCount} param{paramDeltaCount === 1 ? "" : "s"} changed
+                      </span>
+                    ) : null}
                   </span>
                   <button
                     type="button"
@@ -1143,12 +1320,12 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
           )}
         </Box>
       </Box>
-      {isDiffOpen && (
+      {isDiffOpen && resolvedForkedFromId && (
         <ArtifactDiffModal
           isOpen={isDiffOpen}
           onClose={() => setIsDiffOpen(false)}
           currentArtifact={artifact}
-          forkedFromArtifactId={viewConfig.forkedFromArtifactId}
+          forkedFromArtifactId={resolvedForkedFromId}
         />
       )}
     </Box>

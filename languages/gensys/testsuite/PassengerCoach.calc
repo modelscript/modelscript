@@ -1,0 +1,8 @@
+# GENSYS Sample Vehicle Deck: Passenger Coach
+body carbody  32000.0  25000.0  180000.0  190000.0  0.0  0.0  1.8
+body bogie1   2500.0   1200.0   1800.0    2200.0    8.5  0.0  0.5
+body bogie2   2500.0   1200.0   1800.0    2200.0   -8.5  0.0  0.5
+
+# Secondary Air Suspension (kx, ky, kz, cx, cy, cz)
+spring sec_front carbody bogie1  180000  180000  420000  25000  25000  38000
+spring sec_rear  carbody bogie2  180000  180000  420000  25000  25000  38000

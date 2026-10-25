@@ -62,8 +62,10 @@ export default function OpenFileDropzone({
     onDrop,
     accept: {
       "text/x-modelica": [".mo"],
-      "text/plain": [".mo", ".txt"],
+      "text/plain": [".mo", ".txt", ".sysml", ".step", ".scad", ".key", ".genkey", ".csv", ".pscx"],
       "application/zip": [".ssp", ".fmu"],
+      "application/step": [".step", ".stp"],
+      "application/xml": [".pscx", ".pslx"],
     },
     maxFiles: 1,
   });

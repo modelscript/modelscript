@@ -5,10 +5,18 @@ import parseDataUrl from "parse-data-url";
 
 export interface CompressedMorselPayload {
   v: number;
-  lang?: "modelica" | "sysml2" | "owl2" | "step" | undefined;
+  lang?: "modelica" | "sysml2" | "owl2" | "step" | "scad" | "pscad" | "olga" | "csv" | undefined;
   code: string;
   title?: string | undefined;
-  view?: "split-columns" | "split-rows" | "code-only" | "diagram-only" | undefined;
+  view?: "split-columns" | "split-rows" | "code-only" | "diagram-only" | "cad-only" | "plot-only" | undefined;
+  anchor?:
+    | {
+        elementId: string;
+        kind?: "component" | "connection" | "line" | "cad-node" | undefined;
+        line?: number | undefined;
+        column?: number | undefined;
+      }
+    | undefined;
   params?: Record<string, number> | undefined;
   sim?:
     | {
@@ -17,6 +25,14 @@ export interface CompressedMorselPayload {
         tolerance?: number | undefined;
       }
     | undefined;
+  camera?:
+    | {
+        position?: [number, number, number] | undefined;
+        target?: [number, number, number] | undefined;
+      }
+    | undefined;
+  isMultiFile?: boolean | undefined;
+  artifactId?: string | number | undefined;
 }
 
 /**

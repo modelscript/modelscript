@@ -65,6 +65,18 @@ if [ "$HAS_EVENT_FILE" = false ]; then
   ACT_DEFAULT_OPTS+=("-e" "$EVENT_FILE")
 fi
 
+# 4. Default to .github/workflows/ci.yml if no workflow file is explicitly specified
+HAS_WORKFLOW=false
+for arg in "${ARGS[@]}"; do
+  if [[ "$arg" == "-W" ]] || [[ "$arg" == *"--workflows"* ]]; then
+    HAS_WORKFLOW=true
+    break
+  fi
+done
+if [ "$HAS_WORKFLOW" = false ]; then
+  ACT_DEFAULT_OPTS+=("-W" "${REPO_ROOT}/.github/workflows/ci.yml")
+fi
+
 FINAL_ARGS=("${ACT_DEFAULT_OPTS[@]}" "${ARGS[@]}")
 
 # Execute via available runner

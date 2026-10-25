@@ -138,11 +138,11 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
   bot_accounts: {
     key: "bot_accounts",
     name: "Autonomous Bot Accounts",
-    description: "Automated headless bot tokens (ms_bot_*) and programmatic publishing.",
-    defaultValue: false,
+    description: "Automated headless bot tokens (ms_bot_*), scoped permissions, and LLM-powered social agents.",
+    defaultValue: true,
     category: "developer",
-    maturity: "alpha",
-    allowedRoles: ["admin"],
+    maturity: "beta",
+    allowedRoles: ["admin", "beta_tester", "user"],
   },
   sparql_rdf_endpoints: {
     key: "sparql_rdf_endpoints",

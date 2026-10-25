@@ -32,6 +32,7 @@ import { instancesRouter } from "./routes/instances.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
 import { npmRegistryRouter } from "./routes/npm-registry.js";
+import { oembedRouter } from "./routes/oembed.js";
 import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
@@ -392,6 +393,17 @@ graph TD
     runLogPurgeWorker();
     const logPurgeInterval = setInterval(runLogPurgeWorker, 24 * 60 * 60 * 1000);
     app.locals["logPurgeInterval"] = logPurgeInterval;
+
+    // Automated Social Bot Mention Worker (Polls pending @bot mentions and synthesizes LLM responses)
+    import("./services/bot-mention-worker.js")
+      .then(({ BotMentionWorker }) => {
+        const botWorker = new BotMentionWorker(database);
+        botWorker.start(2000);
+        app.locals["botMentionWorker"] = botWorker;
+      })
+      .catch((err) => {
+        console.error("Failed to start BotMentionWorker:", err);
+      });
   }
 
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
@@ -548,6 +560,9 @@ graph TD
 
   // Artifact viewer routes (query artifact metadata, viewer configs)
   app.use("/api/v1", artifactViewerRouter(database));
+
+  // Universal oEmbed provider route (/api/v1/oembed)
+  app.use("/api/v1", oembedRouter(database));
 
   // Digital Thread Hypergraph Explorer routes
   app.use(

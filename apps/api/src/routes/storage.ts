@@ -5,6 +5,7 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
 
 const uploadDir = path.join(process.cwd(), "data", "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -35,7 +36,7 @@ export function storageRouter(): Router {
   /**
    * POST /api/v1/storage/upload
    */
-  router.post("/upload", requireAuth, upload.single("file"), (req: Request, res: Response) => {
+  router.post("/upload", requireAuth, upload.single("file"), async (req: Request, res: Response) => {
     if (!req.file) {
       res.status(400).json({ error: "No file uploaded" });
       return;
@@ -45,24 +46,47 @@ export function storageRouter(): Router {
     const fileUrl = `/api/v1/storage/uploads/${req.file.filename}`;
     const mimeType = req.file.mimetype;
 
-    // Basic heuristic to determine the artifact view type
+    const lowerFilename = req.file.filename.toLowerCase();
+    const originalExt = path.extname(req.file.originalname).toLowerCase();
+    const checkExt = (exts: string[]) => exts.some((e) => lowerFilename.endsWith(e) || originalExt === e);
     let viewType = "other";
+
     if (mimeType.startsWith("image/")) viewType = "picture";
     else if (mimeType.startsWith("video/")) viewType = "video";
     else if (mimeType.startsWith("audio/")) viewType = "audio";
     else if (mimeType === "application/pdf") viewType = "pdf";
-    else if (req.file.filename.toLowerCase().endsWith(".step") || req.file.filename.toLowerCase().endsWith(".stp"))
-      viewType = "cad-step";
-    else if (
-      req.file.filename.toLowerCase().endsWith(".usdz") ||
-      req.file.filename.toLowerCase().endsWith(".usd") ||
-      req.file.filename.toLowerCase().endsWith(".usda") ||
-      req.file.filename.toLowerCase().endsWith(".gltf") ||
-      req.file.filename.toLowerCase().endsWith(".glb")
-    )
-      viewType = "3d-model";
-    else if (req.file.filename.toLowerCase().endsWith(".csv")) viewType = "simulation-plot";
-    else if (req.file.filename.toLowerCase().endsWith(".mo")) viewType = "modelica-code";
+    else if (checkExt([".step", ".stp", ".p21"])) viewType = "cad-step";
+    else if (checkExt([".usdz", ".usd", ".usda", ".gltf", ".glb"])) viewType = "3d-model";
+    else if (checkExt([".csv", ".tsv"])) viewType = "simulation-plot";
+    else if (checkExt([".mo", ".mos", ".msim"])) viewType = "modelica-code";
+    else if (checkExt([".sysml", ".sysml2", ".kerml"])) viewType = "sysml";
+    else if (checkExt([".pscx", ".pslx", ".pswx", ".psmx"])) viewType = "pscad";
+    else if (checkExt([".psout"])) viewType = "psout";
+    else if (checkExt([".raw", ".con", ".inl", ".seq"])) viewType = "psse";
+    else if (checkExt([".opi", ".key", ".genkey", ".tpl", ".ppl", ".olga"])) viewType = "olga";
+    else if (checkExt([".ez5", ".ezm", ".ezd", ".eas"])) viewType = "easy5";
+    else if (checkExt([".roc", ".deck"])) viewType = "rocets";
+    else if (checkExt([".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"])) viewType = "lps";
+    else if (checkExt([".sima", ".sys", ".hyd"])) viewType = "sima";
+    else if (checkExt([".gtm", ".gtd", ".gtx", ".gt"])) viewType = "gtsuite";
+    else if (checkExt([".inp", ".inpt", ".bdf"])) viewType = "fea-deck";
+    else if (checkExt([".cfg", ".cfgt", ".su2"])) viewType = "cfd-config";
+    else if (checkExt([".fmu"])) viewType = "fmu";
+    else if (checkExt([".ssp", ".ssd"])) viewType = "ssp";
+    else if (checkExt([".gcode", ".nc"])) viewType = "gcode";
+    else if (checkExt([".owl", ".owl2", ".ofn", ".ttl"])) viewType = "owl2";
+
+    let preprocessed: {
+      svg?: string;
+      thumbnailUrl?: string;
+      metadata?: Record<string, unknown>;
+      viewConfigAdditions?: Record<string, unknown>;
+    } = {};
+    try {
+      preprocessed = await pregenerateServerSvgThumbnail(req.file.path, viewType, req.file.originalname, uploadDir);
+    } catch (err) {
+      console.warn("[Storage] Server SVG thumbnail pre-generation skipped:", err);
+    }
 
     res.json({
       url: fileUrl,
@@ -70,6 +94,10 @@ export function storageRouter(): Router {
       filename: req.file.originalname,
       size: req.file.size,
       mimetype: mimeType,
+      thumbnail_url: preprocessed.thumbnailUrl || null,
+      svg: preprocessed.svg || null,
+      metadata: preprocessed.metadata || null,
+      view_config_additions: preprocessed.viewConfigAdditions || null,
     });
   });
 

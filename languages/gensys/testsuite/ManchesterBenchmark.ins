@@ -1,0 +1,31 @@
+# Manchester Benchmark for Railway Vehicle Dynamics (Iwnicki et al.)
+# Nominal Passenger Coach running at V = 40 m/s (144 km/h) on curved track
+
+# 1. Carbody (32 t tare mass)
+body carbody 32000.0 25000.0 180000.0 190000.0 0.0 0.0 1.80
+
+# 2. Bogie Frames (3.2 t each)
+body bogie_front 3200.0 1200.0 1800.0 2200.0 7.5 0.0 0.65
+body bogie_rear  3200.0 1200.0 1800.0 2200.0 -7.5 0.0 0.65
+
+# 3. Wheelsets (1.8 t each, rolling radius r = 0.46 m)
+wheelset ws1 1800.0 800.0 120.0 800.0 1.435 0.46 0.15 S1002
+wheelset ws2 1800.0 800.0 120.0 800.0 1.435 0.46 0.15 S1002
+wheelset ws3 1800.0 800.0 120.0 800.0 1.435 0.46 0.15 S1002
+wheelset ws4 1800.0 800.0 120.0 800.0 1.435 0.46 0.15 S1002
+
+# 4. Secondary Suspensions (Carbody <-> Bogie frames)
+spring sec_front carbody bogie_front 180000 180000 420000 15000 30000 35000
+spring sec_rear  carbody bogie_rear  180000 180000 420000 15000 30000 35000
+
+# 5. Primary Suspensions (Bogie frames <-> Wheelsets)
+spring prim_ws1 bogie_front ground 800000 800000 1200000 30000 30000 45000
+spring prim_ws2 bogie_front ground 800000 800000 1200000 30000 30000 45000
+spring prim_ws3 bogie_rear  ground 800000 800000 1200000 30000 30000 45000
+spring prim_ws4 bogie_rear  ground 800000 800000 1200000 30000 30000 45000
+
+# 6. Simulation Operating Conditions
+speed 40.0
+tstart 0.0
+tstop 5.0
+dt 0.001

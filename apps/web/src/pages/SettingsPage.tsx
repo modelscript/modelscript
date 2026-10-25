@@ -34,12 +34,14 @@ import styled from "styled-components";
 import {
   addPublicKey,
   changeAccountCredentials,
+  createApiToken,
   createBot,
   DEFAULT_NOTIFICATION_PREFERENCES,
   deleteAccount,
   deleteBot,
   downloadUserDataArchiveJob,
   exportUserDataArchive,
+  getApiTokens,
   getBots,
   getConnectedAccounts,
   getNotificationSettings,
@@ -49,12 +51,14 @@ import {
   getUserTopics,
   requestUserDataArchiveJob,
   revokeAllSessions,
+  revokeApiToken,
   revokePublicKey,
   topUpCredits,
   unlinkConnectedAccount,
   updateAccount,
   updateNotificationSettings,
   updateUserTopic,
+  type ApiTokenDto,
   type ArchiveJobInfo,
   type ConnectedAccount,
   type NotificationPreferences,
@@ -437,7 +441,8 @@ type TabType =
   | "dataArchive"
   | "deleteAccount"
   | "notificationFilters"
-  | "modelingPreferences";
+  | "modelingPreferences"
+  | "tokens";
 
 const SettingsPage: React.FC = () => {
   const toast = useToast();
@@ -508,7 +513,28 @@ const SettingsPage: React.FC = () => {
   const [botDisplayName, setBotDisplayName] = useState("");
   const [botBio, setBotBio] = useState("");
   const [botAvatarUrl, setBotAvatarUrl] = useState("");
+  const [botSystemPrompt, setBotSystemPrompt] = useState("");
+  const [botModel, setBotModel] = useState("gemini-1.5-flash");
+  const [botApiKey, setBotApiKey] = useState("");
+  const [botEndpointUrl, setBotEndpointUrl] = useState("");
+  const [botScopes, setBotScopes] = useState<string[]>([
+    "social:read",
+    "social:write",
+    "social:simulate",
+    "modelica:validate",
+  ]);
   const [newBotToken, setNewBotToken] = useState<string | null>(null);
+
+  // Personal Access Tokens (PAT)
+  const [apiTokens, setApiTokens] = useState<ApiTokenDto[]>([]);
+  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+  const [tokenName, setTokenName] = useState("");
+  const [tokenScopes, setTokenScopes] = useState<string[]>(["packages:publish"]);
+  const [tokenPackagePattern, setTokenPackagePattern] = useState("*");
+  const [tokenExpiresInDays, setTokenExpiresInDays] = useState<number>(90);
+  const [createdTokenSecret, setCreatedTokenSecret] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [isCreatingToken, setIsCreatingToken] = useState(false);
 
   // Form states
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -594,6 +620,13 @@ const SettingsPage: React.FC = () => {
       getBots()
         .then((data) => setBots(data))
         .catch(() => {});
+    }
+    if (activeTab === "tokens") {
+      setIsLoadingTokens(true);
+      getApiTokens()
+        .then((data) => setApiTokens(data))
+        .catch(() => {})
+        .finally(() => setIsLoadingTokens(false));
     }
     if (activeTab === "billing") {
       getUserBillingSummary()
@@ -919,6 +952,13 @@ const SettingsPage: React.FC = () => {
                   },
                 ]
               : []),
+            {
+              id: "tokens",
+              label: "Personal Access Tokens",
+              tab: "tokens" as TabType,
+              keywords: "api tokens pat keys access personal scopes cicd registry publish",
+              isActive: activeTab === "tokens",
+            },
             {
               id: "privacy",
               label: "Privacy & Data Protection",
@@ -3212,12 +3252,42 @@ const SettingsPage: React.FC = () => {
                             bg="var(--color-canvas-subtle)"
                             style={{ backgroundImage: safeCssImageUrl(bot.avatar_url), backgroundSize: "cover" }}
                           />
-                          <Box display="flex" flexDirection="column">
-                            <Text fontWeight="bold">
-                              {bot.display_name} <HubotIcon size={14} color="var(--color-fg-muted)" />
-                            </Text>
+                          <Box display="flex" flexDirection="column" gap={1}>
+                            <Box display="flex" alignItems="center" gap={2}>
+                              <Text fontWeight="bold">{bot.display_name}</Text>
+                              <HubotIcon size={14} color="var(--color-fg-muted)" />
+                              <span
+                                style={{
+                                  fontSize: "10.5px",
+                                  padding: "1px 6px",
+                                  borderRadius: "4px",
+                                  background: "rgba(139, 92, 246, 0.15)",
+                                  color: "var(--color-accent-purple, #a78bfa)",
+                                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                                  fontFamily: "var(--font-mono)",
+                                }}
+                              >
+                                {bot.bot_model || "gemini-1.5-flash"}
+                              </span>
+                              {bot.bot_api_key && (
+                                <span
+                                  style={{
+                                    fontSize: "10.5px",
+                                    padding: "1px 6px",
+                                    borderRadius: "4px",
+                                    background: "rgba(56, 189, 248, 0.15)",
+                                    color: "var(--color-accent-cyan, #38bdf8)",
+                                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                                    fontFamily: "var(--font-mono)",
+                                  }}
+                                >
+                                  🔑 BYOK
+                                </span>
+                              )}
+                            </Box>
                             <Text color="var(--color-fg-muted)" fontSize="13px">
                               @{bot.username}
+                              {bot.bot_last_used_at ? ` · active ${bot.bot_last_used_at}` : " · standby"}
                             </Text>
                           </Box>
                         </Box>
@@ -3289,6 +3359,11 @@ const SettingsPage: React.FC = () => {
                         display_name: botDisplayName,
                         bio: botBio,
                         avatar_url: botAvatarUrl,
+                        scopes: botScopes.join(","),
+                        system_prompt: botSystemPrompt,
+                        model: botModel,
+                        api_key: botApiKey || undefined,
+                        endpoint_url: botEndpointUrl || undefined,
                       });
                       setBots([res.bot, ...bots]);
                       setNewBotToken(res.token);
@@ -3296,6 +3371,9 @@ const SettingsPage: React.FC = () => {
                       setBotDisplayName("");
                       setBotBio("");
                       setBotAvatarUrl("");
+                      setBotSystemPrompt("");
+                      setBotApiKey("");
+                      setBotEndpointUrl("");
                     } catch (err: any) {
                       setError(err.response?.data?.error || "Failed to create bot");
                     }
@@ -3303,7 +3381,7 @@ const SettingsPage: React.FC = () => {
                 >
                   <FormLabel>Bot Handle (Username)</FormLabel>
                   <FormInput
-                    placeholder="e.g. weather_bot"
+                    placeholder="e.g. dynamics_bot"
                     value={botUsername}
                     onChange={(e) => setBotUsername(e.target.value)}
                     required
@@ -3313,7 +3391,7 @@ const SettingsPage: React.FC = () => {
 
                   <FormLabel>Display Name</FormLabel>
                   <FormInput
-                    placeholder="e.g. Daily Weather Tracker"
+                    placeholder="e.g. Dynamics &amp; Simulation Bot"
                     value={botDisplayName}
                     onChange={(e) => setBotDisplayName(e.target.value)}
                     required
@@ -3334,8 +3412,420 @@ const SettingsPage: React.FC = () => {
                     type="url"
                   />
 
-                  <Box mt={3} display="flex" justifyContent="flex-end">
-                    <SaveButton type="submit">Create Bot</SaveButton>
+                  <FormLabel>Inference Model</FormLabel>
+                  <select
+                    value={botModel}
+                    onChange={(e) => setBotModel(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      background: "var(--color-canvas-default, #0d1117)",
+                      border: "1px solid var(--color-border-default)",
+                      borderRadius: "6px",
+                      color: "var(--color-fg-default)",
+                      marginBottom: "16px",
+                      fontFamily: "var(--font-sans)",
+                    }}
+                  >
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast &amp; Multimodal)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Engineering Reasoning)</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini (OpenAI Fast)</option>
+                    <option value="gpt-4o">GPT-4o (OpenAI Flagship)</option>
+                    <option value="deepseek-r1">DeepSeek R1 (Math &amp; Code Specialist)</option>
+                    <option value="qwen-2.5-coder">Qwen 2.5 Coder (Engineering Code)</option>
+                  </select>
+
+                  <FormLabel>System Prompt / Engineering Persona (Optional)</FormLabel>
+                  <FormInput
+                    placeholder="e.g. You are DynamicsBot, specializing in pendulum and vibration ODE systems."
+                    value={botSystemPrompt}
+                    onChange={(e) => setBotSystemPrompt(e.target.value)}
+                  />
+
+                  <FormLabel>Bring-Your-Own-Key (BYOK) API Key (Optional)</FormLabel>
+                  <FormInput
+                    type="password"
+                    placeholder="sk-... or AIzaSy... (leave blank to use instance default)"
+                    value={botApiKey}
+                    onChange={(e) => setBotApiKey(e.target.value)}
+                    autoComplete="off"
+                  />
+
+                  <FormLabel>Custom Endpoint Base URL (Optional)</FormLabel>
+                  <FormInput
+                    placeholder="e.g. https://api.openai.com/v1 or http://localhost:11434/v1 for Ollama"
+                    value={botEndpointUrl}
+                    onChange={(e) => setBotEndpointUrl(e.target.value)}
+                  />
+
+                  <FormLabel>Bot Capabilities &amp; Scopes</FormLabel>
+                  <Box display="flex" flexDirection="column" gap={2} mb={3}>
+                    {[
+                      { id: "social:read", label: "social:read — Read public threads and mentions" },
+                      { id: "social:write", label: "social:write — Post responses to social mentions" },
+                      { id: "social:simulate", label: "social:simulate — Synthesize timeseries trajectory plots" },
+                      { id: "modelica:validate", label: "modelica:validate — Compile and validate Modelica models" },
+                    ].map((s) => (
+                      <label
+                        key={s.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={botScopes.includes(s.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setBotScopes([...botScopes, s.id]);
+                            } else {
+                              setBotScopes(botScopes.filter((x) => x !== s.id));
+                            }
+                          }}
+                        />
+                        <span>{s.label}</span>
+                      </label>
+                    ))}
+                  </Box>
+
+                  <Box mt={3} mb={3}>
+                    <PrimaryButton type="submit">Create Autonomous Bot</PrimaryButton>
+                  </Box>
+                </form>
+              </Box>
+            </Box>
+          </>
+        )}
+
+        {activeTab === "tokens" && (
+          <>
+            <Header>
+              <CircleIconButton onClick={() => handleTabChange("account")} style={{ marginRight: "8px" }}>
+                <ArrowLeftIcon size={20} />
+              </CircleIconButton>
+              Personal Access Tokens (PAT)
+            </Header>
+            <Box px={4} pb={4} style={{ overflowY: "auto" }}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
+                Personal access tokens function like API keys. You can use them to authenticate against the ModelScript
+                Registry, CI/CD automated runners, and the <code>msx</code> CLI.
+              </DetailSubtitle>
+
+              {/* Newly Created Secret Banner */}
+              {createdTokenSecret && (
+                <Box
+                  mb={4}
+                  p={4}
+                  bg="var(--color-success-subtle)"
+                  border="1px solid var(--color-success-fg)"
+                  borderRadius="10px"
+                  color="var(--color-success-fg)"
+                >
+                  <Box display="flex" alignItems="center" gap={2} mb={2}>
+                    <CheckCircleIcon size={20} />
+                    <Text fontWeight="bold" fontSize="16px">
+                      New Token Generated Successfully
+                    </Text>
+                  </Box>
+                  <Text fontSize="14px" display="block" mb={2}>
+                    Make sure to copy your personal access token now. You will not be able to see it again!
+                  </Text>
+                  <Box
+                    p={3}
+                    bg="var(--color-canvas-default)"
+                    border="1px solid var(--color-border-default)"
+                    borderRadius="6px"
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    gap={2}
+                  >
+                    <code
+                      style={{
+                        fontSize: "14px",
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--color-text-primary)",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {createdTokenSecret}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(createdTokenSecret);
+                        toast.success("Token copied to clipboard!");
+                      }}
+                      style={{
+                        background: "var(--color-accent-emphasis)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "6px 12px",
+                        cursor: "pointer",
+                        fontWeight: "600",
+                        fontSize: "13px",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Active Tokens List */}
+              <Box mb={4}>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                  <DetailTitle style={{ fontWeight: "bold", fontSize: "16px" }}>
+                    Active Tokens ({apiTokens.length})
+                  </DetailTitle>
+                </Box>
+
+                {isLoadingTokens ? (
+                  <Text color="var(--color-fg-muted)">Loading your tokens...</Text>
+                ) : apiTokens.length === 0 ? (
+                  <Box p={4} textAlign="center" border="1px dashed var(--color-border-default)" borderRadius="8px">
+                    <Text color="var(--color-fg-muted)">No active personal access tokens found.</Text>
+                  </Box>
+                ) : (
+                  <Box display="flex" flexDirection="column" gap={2}>
+                    {apiTokens.map((tok) => (
+                      <Box
+                        key={tok.id}
+                        p={3}
+                        border="1px solid var(--color-border-default)"
+                        borderRadius="8px"
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        bg="var(--color-canvas-subtle)"
+                      >
+                        <Box display="flex" flexDirection="column" gap={1}>
+                          <Box display="flex" alignItems="center" gap={2}>
+                            <KeyIcon size={16} fill="var(--color-accent-purple)" />
+                            <Text fontWeight="bold" fontSize="15px">
+                              {tok.name}
+                            </Text>
+                            <span
+                              style={{
+                                fontSize: "12px",
+                                fontFamily: "var(--font-mono)",
+                                color: "var(--color-fg-muted)",
+                              }}
+                            >
+                              {tok.token_prefix}...
+                            </span>
+                          </Box>
+                          <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+                            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                              Scopes: {Array.isArray(tok.scopes) ? tok.scopes.join(", ") : tok.scopes}
+                            </span>
+                            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                              Pattern: <code>{tok.package_pattern}</code>
+                            </span>
+                            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                              Expires: {tok.expires_at ? new Date(tok.expires_at).toLocaleDateString() : "Never"}
+                            </span>
+                          </Box>
+                        </Box>
+
+                        <CircleIconButton
+                          title="Revoke Token"
+                          onClick={async () => {
+                            if (
+                              confirm(
+                                `Are you sure you want to revoke '${tok.name}'? Any CI/CD pipeline using this token will stop working immediately.`,
+                              )
+                            ) {
+                              try {
+                                await revokeApiToken(tok.id);
+                                setApiTokens(apiTokens.filter((t) => t.id !== tok.id));
+                                toast.success("Token revoked successfully.");
+                              } catch (err: any) {
+                                toast.error(err.response?.data?.error || "Failed to revoke token.");
+                              }
+                            }
+                          }}
+                        >
+                          <TrashIcon size={16} color="var(--color-danger-fg)" />
+                        </CircleIconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
+              {/* Generate New Token Form */}
+              <Box mt={4} borderTop="1px solid var(--color-border-default)" pt={4}>
+                <DetailTitle style={{ fontWeight: "bold", fontSize: "16px", display: "block", marginBottom: "16px" }}>
+                  Generate New Token
+                </DetailTitle>
+
+                {tokenError && (
+                  <Box
+                    mb={3}
+                    p={3}
+                    bg="var(--color-danger-subtle)"
+                    color="var(--color-danger-fg)"
+                    borderRadius="6px"
+                    display="flex"
+                    alignItems="center"
+                    gap={2}
+                  >
+                    <AlertIcon size={16} />
+                    <Text fontSize="14px">{tokenError}</Text>
+                  </Box>
+                )}
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setTokenError(null);
+                    setCreatedTokenSecret(null);
+                    setIsCreatingToken(true);
+                    try {
+                      const res = await createApiToken({
+                        name: tokenName.trim(),
+                        scopes: tokenScopes,
+                        packagePattern: tokenPackagePattern.trim() || "*",
+                        expiresInDays: tokenExpiresInDays > 0 ? tokenExpiresInDays : undefined,
+                      });
+                      setCreatedTokenSecret(res.token);
+                      setApiTokens([res, ...apiTokens]);
+                      setTokenName("");
+                      toast.success("Token generated successfully!");
+                    } catch (err: any) {
+                      setTokenError(err.response?.data?.error || "Failed to generate token.");
+                    } finally {
+                      setIsCreatingToken(false);
+                    }
+                  }}
+                >
+                  <Box mb={3}>
+                    <FormLabel>Token Name / Description</FormLabel>
+                    <FormInput
+                      placeholder="e.g. GitHub Actions CI (Publish Release)"
+                      value={tokenName}
+                      onChange={(e) => setTokenName(e.target.value)}
+                      required
+                    />
+                  </Box>
+
+                  <Box mb={3}>
+                    <FormLabel>Package Pattern Restriction (Namespace or Wildcard)</FormLabel>
+                    <FormInput
+                      placeholder="e.g. @myorg/* or Modelica* or *"
+                      value={tokenPackagePattern}
+                      onChange={(e) => setTokenPackagePattern(e.target.value)}
+                      required
+                    />
+                    <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                      Limits the packages this token can publish or access (use <code>*</code> for all).
+                    </DetailSubtitle>
+                  </Box>
+
+                  <Box mb={3}>
+                    <FormLabel>Expiration</FormLabel>
+                    <select
+                      value={tokenExpiresInDays}
+                      onChange={(e) => setTokenExpiresInDays(Number(e.target.value))}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--color-border-default)",
+                        background: "var(--color-canvas-default)",
+                        color: "var(--color-text-primary)",
+                        fontSize: "14px",
+                        width: "100%",
+                        maxWidth: "240px",
+                      }}
+                    >
+                      <option value={30}>30 days</option>
+                      <option value={60}>60 days</option>
+                      <option value={90}>90 days</option>
+                      <option value={180}>180 days</option>
+                      <option value={365}>1 year</option>
+                      <option value={0}>No expiration</option>
+                    </select>
+                  </Box>
+
+                  <Box mb={4}>
+                    <FormLabel style={{ marginBottom: "8px", display: "block" }}>Select Scopes</FormLabel>
+                    <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(240px, 1fr))" gap={2}>
+                      {[
+                        {
+                          scope: "packages:publish",
+                          label: "packages:publish",
+                          desc: "Upload and publish new package versions",
+                        },
+                        {
+                          scope: "packages:read",
+                          label: "packages:read",
+                          desc: "Download private packages and packuments",
+                        },
+                        {
+                          scope: "packages:yank",
+                          label: "packages:yank",
+                          desc: "Yank or deprecate published releases",
+                        },
+                        {
+                          scope: "packages:manage",
+                          label: "packages:manage",
+                          desc: "Manage collaborators and access policies",
+                        },
+                      ].map((s) => {
+                        const checked = tokenScopes.includes(s.scope);
+                        return (
+                          <Box
+                            key={s.scope}
+                            p={2}
+                            border="1px solid var(--color-border-subtle)"
+                            borderRadius="6px"
+                            display="flex"
+                            alignItems="flex-start"
+                            gap={2}
+                            style={{
+                              background: checked ? "var(--color-accent-subtle, rgba(139,92,246,0.05))" : "transparent",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setTokenScopes([...tokenScopes, s.scope]);
+                                } else {
+                                  setTokenScopes(tokenScopes.filter((sc) => sc !== s.scope));
+                                }
+                              }}
+                              style={{ marginTop: "3px", cursor: "pointer" }}
+                            />
+                            <Box>
+                              <Text fontWeight="600" fontSize="13px" display="block">
+                                {s.label}
+                              </Text>
+                              <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>{s.desc}</span>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+
+                  <Box display="flex" justifyContent="flex-end">
+                    <SaveButton
+                      type="submit"
+                      disabled={isCreatingToken || !tokenName.trim() || tokenScopes.length === 0}
+                    >
+                      {isCreatingToken ? "Generating..." : "Generate Token"}
+                    </SaveButton>
                   </Box>
                 </form>
               </Box>

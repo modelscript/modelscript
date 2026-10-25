@@ -76,6 +76,8 @@ interface CadViewerProps {
   availableVariables?: string[] | undefined;
   /** Callback when user saves new bindings from the picker */
   onSaveBindings?: ((componentName: string, bindings: DynamicBindingConfig[]) => void) | undefined;
+  /** Disambiguate mobile touch: single finger passes page scroll, two fingers dolly/pan */
+  touchScrollPassThrough?: boolean | undefined;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -167,15 +169,15 @@ function CadModel({
     return line;
   }, []);
 
-  // Outline effect on selection
+  // Outline / halo effect on selection or anchor
   useEffect(() => {
     if (!groupRef.current) return;
     groupRef.current.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
         const mat = child.material as THREE.MeshStandardMaterial;
         if (selected) {
-          mat.emissive = new THREE.Color("#1976d2");
-          mat.emissiveIntensity = 0.25;
+          mat.emissive = new THREE.Color("#06b6d4");
+          mat.emissiveIntensity = 0.45;
         } else {
           mat.emissive = new THREE.Color("#000000");
           mat.emissiveIntensity = 0;
@@ -322,6 +324,7 @@ function SceneContents({
   dark,
   animationController,
   vtkBuffer,
+  touchScrollPassThrough,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -330,8 +333,50 @@ function SceneContents({
   dark?: boolean | undefined;
   animationController?: AnimationController | null | undefined;
   vtkBuffer?: Uint8Array | null | undefined;
+  touchScrollPassThrough?: boolean | undefined;
 }) {
-  const { gl } = useThree();
+  const { gl, camera, scene } = useThree();
+  const controlsRef = useRef<any>(null);
+
+  // WebGL context loss interception and resource cleanup on unmount
+  useEffect(() => {
+    const dom = gl.domElement;
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      console.warn("[CadViewer] WebGL context loss intercepted; preventing browser crash.");
+    };
+    dom.addEventListener("webglcontextlost", handleContextLost, false);
+
+    return () => {
+      dom.removeEventListener("webglcontextlost", handleContextLost);
+      scene.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh;
+          mesh.geometry?.dispose();
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((m) => m.dispose());
+          } else {
+            mesh.material?.dispose();
+          }
+        }
+      });
+      gl.dispose();
+      gl.forceContextLoss();
+    };
+  }, [gl, scene]);
+
+  // Smoothly orbit and focus camera on target component anchor
+  useEffect(() => {
+    if (!selectedName || !controlsRef.current) return;
+    const targetComp = components.find((c) => c.name === selectedName);
+    if (!targetComp?.cad?.position) return;
+    const [tx, ty, tz] = targetComp.cad.position;
+    const targetVec = new THREE.Vector3(tx, ty, tz);
+    if (controlsRef.current.target) {
+      controlsRef.current.target.lerp(targetVec, 0.8);
+      controlsRef.current.update();
+    }
+  }, [selectedName, components]);
 
   // Drive the animation clock from the render loop
   useFrame((_, delta) => {
@@ -401,7 +446,13 @@ function SceneContents({
       {vtkBuffer && <VtkRenderer vtkBuffer={vtkBuffer} opacity={0.8} />}
 
       {/* Controls */}
-      <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+      <OrbitControls
+        ref={controlsRef}
+        makeDefault
+        enableDamping
+        dampingFactor={0.1}
+        touches={touchScrollPassThrough ? { ONE: undefined as any, TWO: THREE.TOUCH.DOLLY_PAN } : undefined}
+      />
 
       {/* Gizmo */}
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
@@ -454,6 +505,7 @@ export default function CadViewer({
   vtkBuffer = null,
   availableVariables = [],
   onSaveBindings,
+  touchScrollPassThrough = false,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
@@ -590,6 +642,7 @@ export default function CadViewer({
           dark={dark}
           animationController={animationController}
           vtkBuffer={vtkBuffer}
+          touchScrollPassThrough={touchScrollPassThrough}
         />
       </Canvas>
 

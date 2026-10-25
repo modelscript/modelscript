@@ -428,6 +428,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "token <action>",
+      "Manage granular personal access tokens (create, list, revoke)",
+      () => import("./commands/token.js"),
+      "Token",
+    ),
+  )
+  .command(
+    lazy(
       "install [package]",
       "Install a package from the ModelScript Registry into the local workspace",
       () => import("./commands/install.js"),
@@ -512,6 +520,22 @@ await yargs(rawArgs)
       "Inspect, lint, balance, simulate, and project NASA ROCETS liquid propulsion models (.roc, .deck)",
       () => import("./commands/rocets.js"),
       "RocetsCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "gensys <action> [files..]",
+      "Inspect, lint, and verify GENSYS railway vehicle models (.calc, .run, .sub)",
+      () => import("./commands/gensys.js"),
+      "GensysCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "simpack <action> [files..]",
+      "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
+      () => import("./commands/simpack.js"),
+      "SimpackCommand",
     ),
   )
   .command(

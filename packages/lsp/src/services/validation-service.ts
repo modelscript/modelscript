@@ -726,6 +726,20 @@ export class ValidationService {
       return;
     }
 
+    // Handle SIMPACK multibody files (.spck, .sim, .mbs)
+    const isSimpack = textDocument.languageId === "simpack" || /\.(spck|sim|mbs)($|\?|#)/i.test(uri);
+    if (isSimpack) {
+      await this.validateSimpackDocument(textDocument, plugin);
+      return;
+    }
+
+    // Handle GENSYS railway vehicle decks (.calc, .run, .sub, .geom, .trax, .wheel)
+    const isGensys = textDocument.languageId === "gensys" || /\.(calc|run|sub|geom|trax|wheel)($|\?|#)/i.test(uri);
+    if (isGensys) {
+      await this.validateGensysDocument(textDocument, plugin);
+      return;
+    }
+
     // 2. Uniform Parsing Pipeline
     const langId = plugin?.id ?? (textDocument.languageId || "modelica");
     const parser = plugin?.parser ?? this.parserService.getParser(langId);
@@ -2035,6 +2049,78 @@ export class ValidationService {
 
     this.lastSemanticDiagnostics.set(textDocument.uri, csvDiagnostics);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: csvDiagnostics });
+    this.sendProjectTreeChanged();
+  }
+
+  /**
+   * Validates a SIMPACK multibody model (`.spck`, `.sim`, `.mbs`) and publishes diagnostics.
+   */
+  private async validateSimpackDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const simpackDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[simpack] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { validateSimpack } = await import("@modelscript/simpack");
+      const diags = validateSimpack(text);
+
+      for (const d of diags) {
+        simpackDiagnostics.push({
+          severity: d.severity === 1 ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+          range: d.range,
+          code: d.code,
+          message: d.message,
+          source: "simpack",
+        });
+      }
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text } },
+        classCache: new Map(),
+      });
+    } catch (err: any) {
+      this.connection.console.error(`[simpack] Error validating SIMPACK document ${textDocument.uri}: ${err.message}`);
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, simpackDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: simpackDiagnostics });
+    this.sendProjectTreeChanged();
+  }
+
+  /**
+   * Validates a GENSYS railway vehicle deck (`.calc`, `.ins`, `.run`, `.sub`, `.geom`, `.trax`, `.wheel`) and publishes diagnostics.
+   */
+  private async validateGensysDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const gensysDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[gensys] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { validateGensys } = await import("@modelscript/gensys");
+      const diags = validateGensys(text);
+
+      for (const d of diags) {
+        gensysDiagnostics.push({
+          severity: d.severity === 1 ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+          range: d.range,
+          code: d.code,
+          message: d.message,
+          source: "gensys",
+        });
+      }
+
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text } },
+        classCache: new Map(),
+      });
+    } catch (err: any) {
+      this.connection.console.error(`[gensys] Error validating GENSYS document ${textDocument.uri}: ${err.message}`);
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, gensysDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: gensysDiagnostics });
     this.sendProjectTreeChanged();
   }
 

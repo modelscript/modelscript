@@ -29,3 +29,32 @@ export function parsePackageMo(content: string): {
 
   return { name, description, version };
 }
+
+/**
+ * Parses Modelica `annotation(uses(PkgA(version="1.0.0"), PkgB(version="2.0.0")))` dependencies.
+ */
+export function parsePackageUses(content: string): Record<string, string> {
+  const deps: Record<string, string> = {};
+  const usesIdx = content.search(/\buses\s*\(/i);
+  if (usesIdx === -1) return deps;
+
+  const startIdx = content.indexOf("(", usesIdx) + 1;
+  let depth = 1;
+  let endIdx = startIdx;
+
+  while (endIdx < content.length && depth > 0) {
+    if (content[endIdx] === "(") depth++;
+    else if (content[endIdx] === ")") depth--;
+    endIdx++;
+  }
+
+  const inner = content.slice(startIdx, endIdx - 1);
+  const regex = /([a-zA-Z0-9_]+)\s*\(\s*version\s*=\s*"([^"]+)"\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(inner)) !== null) {
+    if (m[1] && m[2]) {
+      deps[m[1]] = m[2];
+    }
+  }
+  return deps;
+}

@@ -88,6 +88,8 @@ ModelScript is a polyglot compiler supporting multiple engineering domains with 
 - `languages/scad/`: OpenSCAD language support and CSG evaluator
 - `languages/ssp/`: System Structure and Parameterization definitions
 - `languages/pscad/`: PSCAD power systems (`.pscx`, `.pslx`), EMT solver, IEEE 2800 verification, and COMTRADE support
+- `languages/gensys/`: GENSYS railway vehicle dynamics, track geometry/irregularities, FASTSIM contact, and EN 14363 acceptance
+- `languages/simpack/`: SIMPACK multibody dynamics (`.spck`, `.sim`), spatial kinematics, mobility analysis, and DAE lowering
 - `languages/modelscript/`: Native ModelScript (`.msx`) language syntax and compiler
 
 ### SymbolIndex Data Model

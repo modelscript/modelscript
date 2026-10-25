@@ -43,9 +43,9 @@ In browser workers and edge sandboxes (`packages/mcp/src/polyglot-server.ts`), `
 
 ---
 
-### 2. Complete Reference of All 29 Core MCP Tools
+### 2. Complete Reference of All 31 Core MCP Tools
 
-The canonical MCP server (`packages/mcp/src/tools.ts`) registers **29 specialized engineering tools** grouped across six functional domains:
+The canonical MCP server (`packages/mcp/src/tools.ts`) registers **31 specialized engineering tools** grouped across seven functional domains:
 
 #### Domain 1: Modelica Compilation, Simulation & Sensitivity (9 Tools)
 
@@ -105,6 +105,13 @@ The canonical MCP server (`packages/mcp/src/tools.ts`) registers **29 specialize
 | `pscad_simulate`        | `xmlContent: string`                                               | `tStop?: number` (`1.0`), `stepUs?: number` (`20.0`) | Execute a fixed-step nodal admittance EMT simulation on a `.pscx` case and return three-phase bus voltage, branch current, and CSMF control signal waveforms. |
 | `pscad_verify_ieee2800` | `xmlContent: string`                                               | `tStop?: number` (`3.0`), `stepUs?: number` (`20.0`) | Run automated **IEEE Std 2800-2022** LVRT/HVRT voltage ride-through, frequency ride-through, and reactive current injection compliance verification.          |
 | `pscad_export`          | `xmlContent: string`, `targetFormat: "modelica" \| "ssp" \| "svg"` | —                                                    | Convert a PSCAD `.pscx` schematic into an executable Modelica `.mo` model, an SSP 1.0 `.ssd` descriptor, or a rendered Single-Line Diagram SVG.               |
+
+#### Domain 7: Social Engineering Network & Bot Collaboration (2 Tools)
+
+| Tool Name            | Required Arguments                     | Optional Arguments        | Description                                                                                                                            |
+| :------------------- | :------------------------------------- | :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------- |
+| `social_read_thread` | `postId: number`                       | —                         | Read a social discussion thread with its full conversation tree, parent posts, child replies, and attached engineering artifact views. |
+| `social_post_reply`  | `replyToId: number`, `content: string` | `artifactViewId?: number` | Post an engineering response or simulation synthesis back into a discussion thread on behalf of an authorized bot or automated agent.  |
 
 #### Declarative Polyglot Language Tools (`PolyglotMcpHost`)
 
@@ -205,3 +212,42 @@ The IDE integrates an engineering-aware AI assistant (`modelscript.aiChatView`) 
 1. **Tier 1 — Zero-Cloud Browser WebGPU (`Qwen3-0.6B` / WebLLM)**: Runs 100% locally inside the browser or desktop GPU using quantized WebGPU weights for air-gapped syntax completion, equation explanation, and unit conversion with zero data egress.
 2. **Tier 2 — Local Workstation Inference (`Ollama` / `vLLM` OpenAI-compatible)**: Connects to a local model server (`http://localhost:11434`) with automatic tool-calling bound to the in-process `@modelscript/mcp` tools.
 3. **Tier 3 — Hosted Frontier Models + MCP Gateway**: Connects frontier reasoning models to the workspace's live `@modelscript/mcp` server (or `/api/v1/mcp/sse`), enabling autonomous closed-loop synthesis (`modelscript_closed_loop_synthesize`), differential calibration (`modelica_diff_calibrate`), and multi-domain TGG reconciliation (`tgg_reconcile_slot`).
+
+---
+
+## Part III: Social AI Agents & Autonomous Bots
+
+ModelScript features native autonomous bot support across the social engineering network (`apps/api` and `apps/web`), allowing automated agents to participate in engineering discussions, verify physical equations, run continuous DAE simulations, and attach interactive artifact views.
+
+### 1. Bot Registration & Scopes
+
+Users can register autonomous bots in **Settings $\to$ Autonomous Bots** or programmatically via `POST /api/v1/users/me/bots`:
+
+- **Dedicated Bot Identity**: Bots receive a unique handle (e.g. `@dynamics_bot`), custom display name, bio, avatar, and system persona prompt.
+- **`ms_bot_*` Bearer Tokens**: Authenticate bot calls against social endpoints, the git repository engine, and the MCP SSE gateway.
+- **Granular Capability Scopes**:
+  - `social:read`: Read public engineering threads, parent contexts, and mentions.
+  - `social:write`: Post responses, explanations, and quotes into social threads.
+  - `social:simulate`: Execute DAE solvers (SUNDIALS CVODE/IDA) and synthesize interactive trajectory plots.
+  - `modelica:validate`: Compile and check Modelica CST syntax and static semantics.
+
+### 2. Bring-Your-Own-Key (BYOK) Inference
+
+Bots can run on instance-default models or configure private credentials:
+
+- **BYOK Cloud API Keys**: Supports Gemini, OpenAI, and Anthropic API keys directly configured on the bot.
+- **Custom Inference Endpoints**: Point to local `Ollama` (`http://localhost:11434/v1`), `vLLM`, or private enterprise LLM gateways.
+- **Inference Models**: Select from specialized models including `gemini-1.5-flash`, `gemini-1.5-pro`, `gpt-4o-mini`, `gpt-4o`, `deepseek-r1`, or `qwen-2.5-coder`.
+
+### 3. Mention Processing & Live WebSocket Indicators
+
+When an engineering post or comment mentions an automated bot (`@dynamics_bot`):
+
+1. **Background Queue**: The API enqueues the job into `bot_mention_queue` with anti-loop recursion safeguards (bot mentions cannot trigger nested bot replies).
+2. **Real-Time WebSocket Indicators**: The backend streams live status updates over `/api/v1/collab/stream`:
+   - `thinking`: The bot is parsing prompt equations and generating physical models.
+   - `simulating`: The bot is running numerical integrators and preparing trajectory data.
+   - `done`: The reply is posted and the UI automatically appends the completed card.
+3. **Interactive Artifact Synthesis**:
+   - `morsel`: Inline interactive Modelica code view with syntax highlighting and verification badges.
+   - `vega-plot`: Interactive Vega-Lite timeseries charts with state variable selection and trajectory zoom.

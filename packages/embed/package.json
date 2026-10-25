@@ -1,0 +1,41 @@
+{
+  "name": "@modelscript/embed",
+  "version": "0.0.1",
+  "description": "ModelScript embed client SDK — iframe bridge, Web Component custom elements, and permalink codec",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "default": "./dist/protocol.js"
+    },
+    "./codec": {
+      "types": "./dist/codec.d.ts",
+      "default": "./dist/codec.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "default": "./dist/element.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "test": "npx tsx tests/embed.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/pako": "^2.0.3",
+    "typescript": "^5.9.3"
+  }
+}

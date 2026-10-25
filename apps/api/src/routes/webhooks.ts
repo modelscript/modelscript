@@ -5,6 +5,7 @@ import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
 import type { LibraryStorage } from "../storage.js";
 
 function verifyGitHubSignature(secret: string, signature: string | undefined, payload: string): boolean {
@@ -173,6 +174,34 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
       responseStatus: 202,
     });
 
+    // 6. Check if pull request / merge request and trigger automated bot review
+    let reviewTriggered = false;
+    if (eventType === "pull_request" || eventType === "Merge Request Hook" || eventType === "merge_request") {
+      const prNumber = req.body?.pull_request?.number || req.body?.object_attributes?.iid;
+      const title = req.body?.pull_request?.title || req.body?.object_attributes?.title;
+      const diffContent = req.body?.pull_request?.body || req.body?.object_attributes?.description || "";
+      const commitSha = req.body?.pull_request?.head?.sha || req.body?.object_attributes?.last_commit?.id;
+
+      // Find bot to perform review
+      const sysBot = database.getUserByUsername("dynamics_bot");
+      if (sysBot && authenticatedWebhook.repo_id) {
+        reviewTriggered = true;
+        const reviewer = new RepoBotReviewer(database);
+        void reviewer
+          .review({
+            repoId: authenticatedWebhook.repo_id,
+            botId: sysBot.id,
+            prNumber,
+            commitSha,
+            title,
+            diffContent,
+          })
+          .catch((err) => {
+            console.error(`[Webhook] Bot review failed for repo ${authenticatedWebhook.repo_id}:`, err);
+          });
+      }
+    }
+
     res.status(202).json({
       success: true,
       deliveryId,
@@ -183,6 +212,7 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
       version: extractedVersion,
       matched: versionMatched,
       autoPublish: Boolean(authenticatedWebhook.auto_publish && versionMatched),
+      reviewTriggered,
     });
   });
 

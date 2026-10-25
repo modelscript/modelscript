@@ -381,6 +381,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     const mentionedUser = database.getUserByUsername(username);
                     if (mentionedUser) {
                       database.createNotification(mentionedUser.id, authorId, "mention", id);
+                      // If the mentioned account is an automated bot, enqueue for background LLM processing
+                      if (mentionedUser.account_type === "bot") {
+                        database.enqueueBotMention(mentionedUser.id, id, authorId);
+                      }
                     }
                   }
                 }
@@ -695,10 +699,73 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   });
 
   /**
+   * GET /api/v1/social/posts/:id/card
+   *
+   * Renders dynamic OpenGraph and Twitter Card preview HTML with oEmbed discovery links.
+   */
+  router.get("/posts/:id/card", optionalAuth, (req: Request, res: Response): void => {
+    const postId = Number(req.params["id"]);
+    const post = database.getPost(postId);
+    if (!post) {
+      res.status(404).send("Post not found");
+      return;
+    }
+
+    const host = `${req.protocol}://${req.get("host") || "modelscript.org"}`;
+    const postUrl = `${host}/p/${postId}`;
+    const oembedUrl = `${host}/api/v1/oembed?url=${encodeURIComponent(postUrl)}&format=json`;
+    const title = post.title || post.content?.slice(0, 60) || "ModelScript Engineering Simulation";
+    const description = post.content?.slice(0, 200) || "Interactive physical modeling and simulation in ModelScript";
+    const author = post.display_name || post.username || "ModelScript Engineer";
+    const thumb = post.thumbnail_url || `${host}/api/v1/artifacts/default-thumb.webp`;
+
+    const escapeHtml = (str: string) =>
+      str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(description)}">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:image" content="${escapeHtml(thumb)}">
+  <meta property="og:url" content="${escapeHtml(postUrl)}">
+  <meta property="og:site_name" content="ModelScript">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(description)}">
+  <meta name="twitter:image" content="${escapeHtml(thumb)}">
+  <meta name="twitter:creator" content="@${escapeHtml(author)}">
+  <link rel="alternate" type="application/json+oembed" href="${escapeHtml(oembedUrl)}" title="${escapeHtml(title)}">
+</head>
+<body style="font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; padding: 2rem;">
+  <h1>${escapeHtml(title)}</h1>
+  <p>${escapeHtml(description)}</p>
+  <a href="${escapeHtml(postUrl)}" style="color: #58a6ff;">View interactive model on ModelScript</a>
+</body>
+</html>`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(html);
+  });
+
+  /**
    * GET /api/v1/social/posts/:id
    */
-  router.get("/posts/:id", optionalAuth, (req: Request, res: Response) => {
+  router.get("/posts/:id", optionalAuth, (req: Request, res: Response): void => {
     const postId = Number(req.params["id"]);
+    const userAgent = req.headers["user-agent"] || "";
+    const isBot = /bot|spider|crawl|facebookexternalhit|whatsapp|slackbot|discordbot|twitterbot/i.test(userAgent);
+
+    if (isBot || req.query["format"] === "html") {
+      res.redirect(302, `/api/v1/social/posts/${postId}/card`);
+      return;
+    }
+
     const currentUserId = req.user?.id;
     try {
       const post = database.getPost(postId, currentUserId);

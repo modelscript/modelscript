@@ -19,6 +19,7 @@ function getDatabase(): LibraryDatabase {
 
 interface ThumbnailTask {
   artifactId: number;
+  anchor?: string | undefined;
   resolve: (val: string | null) => void;
 }
 
@@ -32,7 +33,7 @@ async function processQueue(): Promise<void> {
   while (queue.length > 0) {
     const task = queue.shift()!;
     try {
-      const res = await doGenerateThumbnail(task.artifactId);
+      const res = await doGenerateThumbnail(task.artifactId, task.anchor);
       task.resolve(res);
     } catch (err) {
       console.error(`[Thumbnail Worker] Unhandled error processing artifact ${task.artifactId}:`, err);
@@ -43,17 +44,17 @@ async function processQueue(): Promise<void> {
   isProcessingQueue = false;
 }
 
-export function generateThumbnail(artifactId: number): Promise<string | null> {
+export function generateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
   if (process.env["NODE_ENV"] === "test") {
     return Promise.resolve(null);
   }
   return new Promise((resolve) => {
-    queue.push({ artifactId, resolve });
+    queue.push({ artifactId, anchor, resolve });
     processQueue().catch(console.error);
   });
 }
 
-async function doGenerateThumbnail(artifactId: number): Promise<string | null> {
+async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
   try {
     console.log(`[Thumbnail Worker] Launching headless browser for artifact ${artifactId}`);
     const browser = await puppeteer.launch({
@@ -75,7 +76,8 @@ async function doGenerateThumbnail(artifactId: number): Promise<string | null> {
     await page.setViewport({ width: 800, height: 600, deviceScaleFactor: 2 });
 
     const webPort = process.env["WEB_PORT"] || 3001;
-    const url = `http://localhost:${webPort}/render-artifact/${artifactId}?thumbnail=true`;
+    const anchorQuery = anchor ? `&anchor=${encodeURIComponent(anchor)}` : "";
+    const url = `http://localhost:${webPort}/render-artifact/${artifactId}?thumbnail=true${anchorQuery}`;
 
     const captureTheme = async (theme: "light" | "dark") => {
       await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);

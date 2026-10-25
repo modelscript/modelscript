@@ -1,0 +1,9 @@
+<simpack_model name="QuarterCar">
+  <body id="b_chassis" name="Chassis" mass="350.0" ixx="80.0" iyy="120.0" izz="150.0" />
+  <body id="b_wheel" name="WheelHub" mass="45.0" ixx="2.5" iyy="4.0" izz="2.5" />
+  <marker id="m_ground" body="$inertial" x="0" y="0" z="0" />
+  <marker id="m_chassis_mount" body="b_chassis" x="0" y="0" z="-0.2" />
+  <marker id="m_wheel_mount" body="b_wheel" x="0" y="0" z="0.3" />
+  <spring id="s_susp" from="m_wheel_mount" to="m_chassis_mount" kz="40000" cz="2500" />
+  <spring id="s_tire" from="m_ground" to="m_wheel_mount" kz="220000" cz="300" />
+</simpack_model>

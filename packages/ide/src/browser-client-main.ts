@@ -552,6 +552,22 @@ export async function activate(context: vscode.ExtensionContext) {
     commands.registerCommand("modelscript.openChat", () => {
       vscode.commands.executeCommand("modelscript.chat.focus");
     }),
+
+    commands.registerCommand("modelscript.openMultibodyAnimation", async (args?: { uri?: string | undefined }) => {
+      if (!lspManager?.client) return;
+      const uri = args?.uri || vscode.window.activeTextEditor?.document.uri.toString();
+      if (!uri) return;
+
+      const docText = vscode.window.activeTextEditor?.document.getText();
+      const { MultiBodyAnimationPanel } = await import("./multibody-animation-panel.js");
+      MultiBodyAnimationPanel.createOrShow(
+        context.extensionUri,
+        lspManager.client,
+        { t: [0], y: [[0]], states: ["time"] },
+        uri,
+        docText,
+      );
+    }),
   );
 
   // 14. Editor Active State and Viewport Tracking

@@ -80,6 +80,25 @@ export function mcpRouter(database: LibraryDatabase): Router {
           database.deductUserCredits(userId, costCredits, null, `Hosted MCP: ${toolName}`, details);
         }
       },
+      socialBridge: {
+        getPost: async (postId: number) => {
+          return database.getPost(postId, userId);
+        },
+        getReplies: async (postId: number) => {
+          return database.getReplies(postId, userId);
+        },
+        createPost: async (params) => {
+          const user = database.getUserById(params.authorId);
+          if (user?.account_type === "bot") {
+            const bot = database.getBotById(params.authorId);
+            const scopes = (bot?.bot_scopes || "").split(",").map((s) => s.trim());
+            if (!scopes.includes("social:write")) {
+              throw new Error("Bot lacks social:write scope");
+            }
+          }
+          return database.createPost(params.authorId, params.content, params.artifactViewId, params.replyToId);
+        },
+      },
     };
 
     const transport = new SSEServerTransport("/api/v1/mcp/messages", res);

@@ -4,6 +4,7 @@
 import bcrypt from "bcryptjs";
 import express, { Router as createRouter, type Request, type Response, type Router } from "express";
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 
 import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, requireAuth } from "../middleware/auth-middleware.js";
@@ -1535,6 +1536,136 @@ export function authRouter(database: LibraryDatabase): Router {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to unlink account" });
+    }
+  });
+
+  /**
+   * GET /api/v1/auth/tokens
+   * List user's active API personal access tokens
+   */
+  router.get("/tokens", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const tokens = database.listApiTokens(req.user!.id);
+      res.json({ tokens });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to list API tokens" });
+    }
+  });
+
+  /**
+   * POST /api/v1/auth/tokens
+   * Generate a new personal access token (PAT)
+   */
+  router.post("/tokens", requireAuth, (req: Request, res: Response): void => {
+    const { name, scopes, packagePattern, expiresInDays } = req.body || {};
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      res.status(400).json({ error: "Token name is required" });
+      return;
+    }
+
+    if (!Array.isArray(scopes) || scopes.length === 0) {
+      res.status(400).json({ error: "At least one scope is required in the 'scopes' array" });
+      return;
+    }
+
+    const validScopes = new Set([
+      "*",
+      "admin",
+      "packages:read",
+      "packages:publish",
+      "packages:yank",
+      "packages:manage",
+    ]);
+    for (const scope of scopes) {
+      if (typeof scope !== "string" || !validScopes.has(scope)) {
+        res
+          .status(400)
+          .json({ error: `Invalid scope: '${scope}'. Valid scopes: ${Array.from(validScopes).join(", ")}` });
+        return;
+      }
+    }
+
+    let expiresAt: string | null = null;
+    if (typeof expiresInDays === "number" && expiresInDays > 0) {
+      const expiry = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      expiresAt = expiry.toISOString();
+    } else if (typeof req.body?.expiresAt === "string") {
+      expiresAt = new Date(req.body.expiresAt).toISOString();
+    }
+
+    try {
+      const secretBytes = crypto.randomBytes(32).toString("hex");
+      const plaintextToken = `ms_pat_${secretBytes}`;
+      const tokenPrefix = plaintextToken.slice(0, 14); // e.g. "ms_pat_7e9a2f1"
+      const tokenHash = crypto.createHash("sha256").update(plaintextToken).digest("hex");
+
+      const tokenId = database.createApiToken({
+        userId: req.user!.id,
+        name: name.trim(),
+        tokenPrefix,
+        tokenHash,
+        scopes,
+        packagePattern: typeof packagePattern === "string" ? packagePattern.trim() : "*",
+        expiresAt,
+      });
+
+      database.logAudit({
+        actorId: req.user!.id,
+        action: "auth_token_created",
+        resourceType: "api_token",
+        resourceId: String(tokenId),
+        ipAddress: getClientIp(req),
+        details: { name: name.trim(), scopes, packagePattern, expiresAt },
+      });
+
+      res.status(201).json({
+        token: plaintextToken,
+        id: tokenId,
+        name: name.trim(),
+        prefix: tokenPrefix,
+        scopes,
+        packagePattern: packagePattern || "*",
+        expiresAt,
+        message: "Save this token now; you will not be able to see it again.",
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to create API token" });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/auth/tokens/:id
+   * Revoke an API token
+   */
+  router.delete("/tokens/:id", requireAuth, (req: Request, res: Response): void => {
+    const rawId = req.params["id"];
+    const idStr = Array.isArray(rawId) ? rawId[0] : rawId;
+    const tokenId = parseInt(idStr || "", 10);
+    if (Number.isNaN(tokenId)) {
+      res.status(400).json({ error: "Invalid token ID" });
+      return;
+    }
+
+    try {
+      const deleted = database.deleteApiToken(tokenId, req.user!.id);
+      if (!deleted) {
+        res.status(404).json({ error: "API token not found or already revoked" });
+        return;
+      }
+
+      database.logAudit({
+        actorId: req.user!.id,
+        action: "auth_token_revoked",
+        resourceType: "api_token",
+        resourceId: String(tokenId),
+        ipAddress: getClientIp(req),
+        details: { tokenId },
+      });
+
+      res.json({ success: true, message: "Token revoked successfully" });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to revoke API token" });
     }
   });
 

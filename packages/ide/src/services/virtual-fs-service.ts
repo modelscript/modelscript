@@ -376,8 +376,28 @@ export async function initWorkspaceAndTree(
           await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
         } else {
           const doc = await workspace.openTextDocument(fileUri);
-          await vscode.window.showTextDocument(doc);
+          const editor = await vscode.window.showTextDocument(doc);
           treeProvider.setDocumentUri(fileUri.toString());
+
+          // Deep-link anchor auto-reveal from embed launch
+          try {
+            const initialAnchor =
+              typeof sessionStorage !== "undefined" ? sessionStorage.getItem("modelscript.initialAnchor") : null;
+            if (initialAnchor && editor) {
+              sessionStorage.removeItem("modelscript.initialAnchor");
+              const text = doc.getText();
+              const regex = new RegExp(`\\b${initialAnchor}\\b`);
+              const match = regex.exec(text);
+              if (match) {
+                const pos = doc.positionAt(match.index);
+                const range = new vscode.Range(pos, pos.translate(0, initialAnchor.length));
+                editor.selection = new vscode.Selection(pos, pos.translate(0, initialAnchor.length));
+                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+              }
+            }
+          } catch {
+            // ignore if sessionStorage is unavailable in extension host
+          }
         }
       } catch (e: unknown) {
         console.error("[blank-project] Failed to open primary template file:", e);

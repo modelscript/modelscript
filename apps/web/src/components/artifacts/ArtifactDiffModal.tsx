@@ -83,7 +83,7 @@ interface ParameterDelta {
   status: "modified" | "added" | "removed";
 }
 
-function parseModelicaParameters(code: string): Record<string, string> {
+export function parseModelicaParameters(code: string): Record<string, string> {
   const result: Record<string, string> = {};
   if (!code) return result;
   const regex = /parameter\s+(?:Real|Integer|Boolean|String)\s+([a-zA-Z0-9_]+)\s*=\s*([^;]+);/g;

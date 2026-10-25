@@ -78,6 +78,7 @@ import { type CadComponent } from "./cad-viewer";
 import { AnimationController } from "./cad-viewer/animation-controller";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
 import { CosimPanel, type HistorianSession } from "./CosimPanel";
+import ParameterSliderRibbon, { extractParametersFromCode } from "./ParameterSliderRibbon";
 import { type SweepState } from "./SimulationParameters";
 import { getMorselMqttClient } from "./util/mqtt-client";
 const CodeEditor = React.lazy(() => import("./Code"));
@@ -108,6 +109,10 @@ export interface MorselEditorProps {
   dataUrl?: DataUrl | null | undefined;
   initialCode?: string | undefined;
   embed?: boolean | undefined;
+  initialDialect?: string | undefined;
+  initialView?: "split-columns" | "split-rows" | "code-only" | "diagram-only" | "cad-only" | "plot-only" | undefined;
+  initialAnchor?: { elementId: string; kind?: string; line?: number; column?: number } | undefined;
+  showParameterRibbon?: boolean | undefined;
   onCodeChange?: ((code: string) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
 }
@@ -147,11 +152,25 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [props.initialCode, editor]);
 
-  const [view, setView] = useState<View>(View.SPLIT_COLUMNS);
-  const [showResultsView, setShowResultsView] = useState(false);
-  const [showCadView, setShowCadView] = useState(false);
+  const initialIsCad =
+    props.initialView === "cad-only" || props.initialDialect === "step" || props.initialDialect === "scad";
+  const initialIsPlot = props.initialView === "plot-only";
+  const initialViewMode =
+    props.initialView === "code-only"
+      ? View.CODE
+      : props.initialView === "diagram-only" || initialIsCad || initialIsPlot
+        ? View.DIAGRAM
+        : props.initialView === "split-rows"
+          ? View.SPLIT_ROWS
+          : View.SPLIT_COLUMNS;
+
+  const [view, setView] = useState<View>(initialViewMode);
+  const [showResultsView, setShowResultsView] = useState(initialIsPlot);
+  const [showCadView, setShowCadView] = useState(initialIsCad);
   type MobileTab = "code" | "params" | "results" | "diagram" | "cad";
-  const [mobileTab, setMobileTab] = useState<MobileTab>("code");
+  const [mobileTab, setMobileTab] = useState<MobileTab>(
+    initialIsCad ? "cad" : initialIsPlot ? "results" : initialViewMode === View.CODE ? "code" : "diagram",
+  );
   const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
   const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
   const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
@@ -163,8 +182,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>({});
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
-  const [pendingSelection, setPendingSelection] = useState<string | null>(null);
-  const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<string | null>(props.initialAnchor?.elementId ?? null);
+  const [selectedComponent, setSelectedComponent] = useState<string | null>(props.initialAnchor?.elementId ?? null);
   const [selectedComponentProperties, setSelectedComponentProperties] = useState<any | null>(null);
   const [isPropertiesLoading, setIsPropertiesLoading] = useState(false);
   const [diagramData, setDiagramData] = useState<any>(null);
@@ -210,6 +229,27 @@ export default function MorselEditor(props: MorselEditorProps) {
     },
     [diagramData, selectedTreeClassName],
   );
+
+  const ribbonParams = useMemo(() => {
+    if (simulationParameters.length > 0) return simulationParameters;
+    return extractParametersFromCode(content);
+  }, [simulationParameters, content]);
+
+  const handleRibbonParamChange = useCallback((name: string, value: number) => {
+    setParameterOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(name, value);
+      return next;
+    });
+  }, []);
+
+  const handleRibbonParamReset = useCallback((name: string) => {
+    setParameterOverrides((prev) => {
+      const next = new Map(prev);
+      next.delete(name);
+      return next;
+    });
+  }, []);
 
   const [cadComponents, setCadComponents] = useState<CadComponent[]>([]);
   const animationControllerRef = useRef<AnimationController | null>(null);
@@ -2739,6 +2779,18 @@ end Manufacturing;`,
               🔗
             </button>
           </div>
+        )}
+
+        {(props.embed || props.showParameterRibbon) && ribbonParams.length > 0 && (
+          <ParameterSliderRibbon
+            parameters={ribbonParams}
+            overrides={parameterOverrides}
+            onChange={handleRibbonParamChange}
+            onReset={handleRibbonParamReset}
+            onSimulate={handleSimulate}
+            isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+            dark={colorMode === "dark"}
+          />
         )}
       </div>
     </>

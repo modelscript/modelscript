@@ -78,14 +78,70 @@ export class HostBridgeService implements vscode.Disposable {
       }
     }
 
+    const ext = title.slice(title.lastIndexOf(".")).toLowerCase();
+    let dialect = "modelica";
+    let viewType = "modelica-code";
+    let langTag = "modelica";
+
+    if (ext === ".sysml" || ext === ".sysml2") {
+      dialect = "sysml2";
+      viewType = "sysml";
+      langTag = "sysml";
+    } else if (ext === ".pscx" || ext === ".pslx") {
+      dialect = "pscad";
+      viewType = "pscad";
+      langTag = "xml";
+    } else if (ext === ".raw") {
+      dialect = "psse";
+      viewType = "psse";
+      langTag = "text";
+    } else if (ext === ".opi" || ext === ".key") {
+      dialect = "olga";
+      viewType = "olga";
+      langTag = "text";
+    } else if (ext === ".ez5" || ext === ".ezm") {
+      dialect = "easy5";
+      viewType = "easy5";
+      langTag = "text";
+    } else if (ext === ".roc" || ext === ".deck") {
+      dialect = "rocets";
+      viewType = "rocets";
+      langTag = "text";
+    } else if (ext === ".sima" || ext === ".sys") {
+      dialect = "sima";
+      viewType = "sima";
+      langTag = "text";
+    } else if (ext === ".gtm" || ext === ".gtd") {
+      dialect = "gtsuite";
+      viewType = "gtsuite";
+      langTag = "text";
+    } else if (ext === ".lps" || ext === ".tgx") {
+      dialect = "lps";
+      viewType = "lps";
+      langTag = "text";
+    } else if (ext === ".inp" || ext === ".inpt") {
+      dialect = "fea";
+      viewType = "fea-deck";
+      langTag = "text";
+    } else if (ext === ".cfg" || ext === ".cfgt") {
+      dialect = "cfd";
+      viewType = "cfd-config";
+      langTag = "text";
+    } else if (ext === ".owl" || ext === ".ttl" || ext === ".ofn") {
+      dialect = "owl2";
+      viewType = "owl2";
+      langTag = "text";
+    }
+
     const payload = {
       title: `Shared model: ${title}`,
-      content: `Sharing model \`${title}\` from ModelScript IDE workbench:\n\n\`\`\`modelica\n${snippet}\n\`\`\``,
+      content: `Sharing model \`${title}\` from ModelScript IDE workbench:\n\n\`\`\`${langTag}\n${snippet}\n\`\`\``,
       codeSnippet: snippet,
+      viewType,
       morselPayload: {
         title: title.replace(/\.[^/.]+$/, ""),
         code: snippet,
-        dialect: title.endsWith(".sysml") ? "sysml2" : title.endsWith(".owl") ? "owl2" : "modelica",
+        dialect,
       },
     };
 
