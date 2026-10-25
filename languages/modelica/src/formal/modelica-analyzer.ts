@@ -79,7 +79,7 @@ export class ModelicaAlgorithmAnalyzer {
       }
     }
 
-    // 2. Gather literal constants & array dimensions as widening thresholds
+    // 2. Gather literal constants, array dimensions, and dynamic CFG bounds as widening thresholds
     const thresholdsSet = new Set<number>([-1, 0, 1, 10, 100, 1000]);
     for (const v of variables) {
       if (v.arrayDimension) {
@@ -91,7 +91,7 @@ export class ModelicaAlgorithmAnalyzer {
         thresholdsSet.add(v.initialBound[1]);
       }
     }
-    const thresholds = Array.from(thresholdsSet).sort((a, b) => a - b);
+    const thresholds = FixpointSolver.extractDynamicThresholds(cfg, Array.from(thresholdsSet));
 
     // 3. Build initial abstract state
     let state = ReducedProductState.top(Math.max(32, variables.length * 2));

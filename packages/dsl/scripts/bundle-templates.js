@@ -249,3 +249,18 @@ for (const targetDir of [path.resolve(__dirname, "../build/src-gen"), path.resol
   writeFileIfChanged(path.resolve(targetDir, "runtime-templates.ts"), tsOut);
   console.log(`Bundled templates into ${targetDir}`);
 }
+
+const srcXmlDir = path.resolve(__dirname, "../src/xml");
+const distXmlDir = path.resolve(__dirname, "../dist/xml");
+if (fs.existsSync(srcXmlDir)) {
+  const distSrcGenDir = path.join(distXmlDir, "src-gen");
+  fs.mkdirSync(distSrcGenDir, { recursive: true });
+  for (const rel of ["src-gen/bindings.js", "src-gen/bindings.d.ts", "parser.wasm"]) {
+    const srcFile = path.join(srcXmlDir, rel);
+    const distFile = path.join(distXmlDir, rel);
+    if (fs.existsSync(srcFile)) {
+      fs.copyFileSync(srcFile, distFile);
+    }
+  }
+  console.log(`Copied XML assets into ${distXmlDir}`);
+}

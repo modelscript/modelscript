@@ -4,6 +4,7 @@ import { cfdLanguage } from "@modelscript/cfd";
 import csvLangFallback from "@modelscript/csv/language";
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { feaLanguage } from "@modelscript/fea";
+import { fortranLanguage } from "@modelscript/fortran";
 import {
   ArenaQueryFlattener,
   deriveSimplification,
@@ -593,6 +594,28 @@ export function startNodeServer(input?: any, output?: any) {
     connection.console.info("[NodeServer] Registered OLGA language plugin");
   } catch (err: any) {
     connection.console.warn(`[NodeServer] Could not register OLGA plugin: ${err.message}`);
+  }
+
+  // Register Fortran Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "fortran",
+      name: "Fortran",
+      extensions: [".f", ".for", ".f90", ".f95", ".f03", ".f08"],
+      languageDef: fortranLanguage,
+      actionHandlers: {
+        lint_fortran_file: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintFortran } = await import("@modelscript/fortran");
+          return lintFortran(text);
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered Fortran language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register Fortran plugin: ${err.message}`);
   }
 
   /**

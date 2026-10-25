@@ -47,6 +47,7 @@
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
     "@modelscript/fea": "*",
+    "@modelscript/fortran": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/modelscript": "*",

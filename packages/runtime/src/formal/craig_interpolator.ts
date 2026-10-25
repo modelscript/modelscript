@@ -49,6 +49,7 @@
  *   - Automatic simplification and variable normalization for downstream inductive verification passes.
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import { type ExprNode, type NonlinearConstraint } from "./hc4_contractor.js";
 import { toPrimedVar, toUnprimedVar, type InductiveSpec } from "./inductive_prover.js";
 
@@ -320,6 +321,84 @@ export class CraigInterpolator {
     const numRows = n + 1;
     const numCols = m + numRows;
 
+    // Fast path: Accelerated WebAssembly Simplex Engine
+    const wasm: any = getDefaultWasmExports();
+    if (
+      wasm &&
+      typeof wasm.simplex_create === "function" &&
+      typeof wasm.simplex_initFarkas === "function" &&
+      typeof wasm.simplex_solveTwoPhaseFarkas === "function" &&
+      typeof wasm.simplex_getOptimalValue === "function" &&
+      typeof wasm.simplex_getMultipliers === "function" &&
+      typeof wasm.__new === "function"
+    ) {
+      const sPtr = wasm.simplex_create(numRows + 2, numCols + 2);
+      if (sPtr !== 0) {
+        try {
+          wasm.simplex_initFarkas(sPtr, m, n);
+          for (let j = 0; j < n; j++) {
+            const v = allVars[j]!;
+            for (let i = 0; i < m; i++) {
+              const coeff = allConstraints[i]!.coeffs.get(v) ?? 0;
+              if (coeff !== 0) {
+                wasm.simplex_setEntry(sPtr, j, i, coeff);
+              }
+            }
+          }
+
+          const mem = wasm.memory as WebAssembly.Memory;
+          const dPtr = wasm.__new(m * 8, 0);
+          if (dPtr !== 0) {
+            const dView = new Float64Array(mem.buffer, dPtr, m);
+            for (let i = 0; i < m; i++) dView[i] = d[i]!;
+
+            const solveRes = wasm.simplex_solveTwoPhaseFarkas(sPtr, m, n, dPtr);
+            if (solveRes === 2 /* SIMPLEX_RESULT_INFEASIBLE */) {
+              return {
+                status: "CONSISTENT",
+                sharedVars,
+                summary: "Consistent: no Farkas dual multipliers satisfy variable balance.",
+              };
+            } else if (solveRes === 1 /* SIMPLEX_RESULT_OPTIMAL */) {
+              const actualZ = wasm.simplex_getOptimalValue(sPtr);
+              const multPtr = wasm.__new(m * 8, 0);
+              const lambda = new Array<number>(m).fill(0);
+              if (multPtr !== 0) {
+                wasm.simplex_getMultipliers(sPtr, multPtr, m);
+                const multView = new Float64Array(mem.buffer, multPtr, m);
+                for (let i = 0; i < m; i++) lambda[i] = multView[i]!;
+              }
+
+              const lambdaA = lambda.slice(0, mA);
+              const lambdaB = lambda.slice(mA);
+
+              if (actualZ >= -1e-6) {
+                return {
+                  status: "CONSISTENT",
+                  sharedVars,
+                  farkasMultipliers: { lambdaA, lambdaB },
+                  summary: `Consistent: optimal dual Farkas value Z* = ${actualZ.toFixed(6)} >= 0.`,
+                };
+              }
+
+              return CraigInterpolator.extractHyperplaneFromMultipliers(
+                lambdaA,
+                constraintsA,
+                sharedVars,
+                lambdaB,
+                actualZ,
+              );
+            }
+          }
+        } finally {
+          if (typeof wasm.simplex_destroy === "function") {
+            wasm.simplex_destroy(sPtr);
+          }
+        }
+      }
+    }
+
+    // Pure-TypeScript Simplex Fallback
     const T: number[][] = Array.from({ length: numRows + 1 }, () => new Array<number>(numCols + 1).fill(0));
     const basic = new Array<number>(numRows);
 
@@ -475,6 +554,17 @@ export class CraigInterpolator {
       };
     }
 
+    return CraigInterpolator.extractHyperplaneFromMultipliers(lambdaA, constraintsA, sharedVars, lambdaB, actualZ);
+  }
+
+  private static extractHyperplaneFromMultipliers(
+    lambdaA: number[],
+    constraintsA: LinearConstraint[],
+    sharedVars: string[],
+    lambdaB: number[],
+    actualZ: number,
+  ): CraigInterpolantResult {
+    const mA = constraintsA.length;
     // Inconsistent! Extract Craig interpolant:
     // w = sum_{i=0}^{mA-1} lambdaA[i] * C_A[i]
     // a_eff = sum_{i=0}^{mA-1} lambdaA[i] * rhs_A[i]

@@ -280,51 +280,20 @@ export class ContractHierarchyPanel extends BaseWebviewPanel {
       }
     }
 
-    this._currentHierarchy = this._getSampleHierarchy();
+    this._currentHierarchy = null;
     this._panel.webview.postMessage({
       type: "loadHierarchy",
-      hierarchy: this._currentHierarchy,
-      isSampleData: true,
+      hierarchy: null,
+      isSampleData: false,
     });
   }
 
-  private _getSampleHierarchy(): any {
-    return {
-      system: {
-        name: "PowertrainSystemContract",
-        assumptions: ["voltage >= 350.0 && voltage <= 420.0", "temp <= 65.0"],
-        guarantees: ["torque >= 250.0", "speed <= 160.0"],
-      },
-      components: [
-        {
-          name: "BatterySubsystemContract",
-          assumptions: ["temp <= 65.0"],
-          guarantees: ["voltage >= 350.0 && voltage <= 420.0", "current <= 200.0"],
-        },
-        {
-          name: "InverterMotorContract",
-          assumptions: ["voltage >= 350.0", "current <= 200.0"],
-          guarantees: ["torque >= 250.0", "speed <= 160.0"],
-        },
-      ],
-      isCompatible: true,
-      isRefined: true,
-      compatibilityViolations: [],
-      refinementViolations: [],
-      traces: [
-        { step: 1, actor: "Battery", event: "powerOn", targetActor: "Inverter", message: "voltageReady (380V)" },
-        { step: 2, actor: "Inverter", event: "syncBus", targetActor: "Motor", message: "enableDrive" },
-        { step: 3, actor: "Motor", event: "produceTorque", targetActor: "Chassis", message: "torqueApplied (260Nm)" },
-        { step: 4, actor: "Chassis", event: "accelerate", targetActor: "Sensor", message: "speedUpdate (85km/h)" },
-        { step: 5, actor: "Sensor", event: "telemetryReport", targetActor: "Controller", message: "allNominal" },
-      ],
-      summary: "System composition mathematically certified. All subcontracts refine system-level guarantees.",
-    };
-  }
-
   private _generateNuXmv(): string {
-    const h = this._currentHierarchy ?? this._getSampleHierarchy();
-    const sys = h.system ?? { name: "SystemContract", assumptions: [], guarantees: [] };
+    const h = this._currentHierarchy;
+    if (!h || !h.system) {
+      return "-- No formal contracts available for nuXmv SMV export.\n";
+    }
+    const sys = h.system;
     const comps: ContractNode[] = Array.isArray(h.components) ? h.components : [];
     const allClauses: string[] = [
       ...(sys.assumptions ?? []),

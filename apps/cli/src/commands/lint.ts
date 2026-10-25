@@ -24,7 +24,7 @@ interface LintArgs {
   path: string;
   /** Additional file or directory paths to load into the workspace. */
   paths: string[] | undefined;
-  /** Optional language ID filter (`"modelica"`, `"sysml2"`, `"owl2"`, `"scad"`, `"ssp"`, `"cfd"`, `"fea"`, `"pscad"`). */
+  /** Optional language ID filter (`"modelica"`, `"sysml2"`, `"owl2"`, `"scad"`, `"ssp"`, `"cfd"`, `"fea"`, `"pscad"`, `"fortran"`). */
   language?: string | undefined;
   /** Diagnostic output format (`"terminal"` or `"json"`). */
   format?: "terminal" | "json" | undefined;
@@ -479,7 +479,7 @@ export const Lint: CommandModule<any, LintArgs> = {
       })
       .option("language", {
         alias: "l",
-        description: "Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad)",
+        description: "Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran)",
         type: "string",
       })
       .option("format", {
@@ -888,6 +888,25 @@ export const Lint: CommandModule<any, LintArgs> = {
               resourceId: filePath,
               startOffset,
               endOffset,
+            });
+          }
+          continue;
+        }
+
+        if (langId === "fortran") {
+          const { lintFortran } = await import("@modelscript/fortran");
+          const fortranDiags = lintFortran(item.text);
+          for (const fd of fortranDiags) {
+            diagnostics.push({
+              severity: fd.severity,
+              lintName: (fd.id ?? String(fd.code)).toLowerCase(),
+              code: fd.id ?? String(fd.code),
+              domain: "fortran",
+              message: fd.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset: fd.startOffset ?? 0,
+              endOffset: fd.endOffset ?? 0,
             });
           }
           continue;

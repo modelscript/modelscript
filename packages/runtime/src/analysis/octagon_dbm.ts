@@ -352,3 +352,143 @@ export class OctagonDBM {
     return res;
   }
 }
+
+export const OCTAGON_INF_F64 = 1e30;
+
+/**
+ * Double-Precision Difference Bound Matrix (DBM) representing ±x_i ± x_j ≤ c
+ * in a (2N × 2N) matrix over Float64 numbers.
+ * Supports exact continuous interval bounding without integer rounding truncation.
+ */
+export class OctagonDBMF64 {
+  public readonly dim: number;
+  private matrix: Float64Array;
+  private wasmPtr = 0;
+  private wasmByteCap = 0;
+  private wasmInstance: Record<string, any> | null = null;
+
+  constructor(public readonly numVars: number) {
+    this.dim = numVars * 2;
+    this.matrix = new Float64Array(this.dim * this.dim);
+    this.reset();
+  }
+
+  reset(): void {
+    const dim = this.dim;
+    for (let i = 0; i < dim; i++) {
+      for (let j = 0; j < dim; j++) {
+        this.matrix[i * dim + j] = i === j ? 0.0 : OCTAGON_INF_F64;
+      }
+    }
+  }
+
+  setBound(i: number, j: number, bound: number): void {
+    const dim = this.dim;
+    if (i >= dim || j >= dim) return;
+    const current = this.matrix[i * dim + j]!;
+    if (bound < current) {
+      this.matrix[i * dim + j] = bound;
+    }
+  }
+
+  getBound(i: number, j: number): number {
+    const dim = this.dim;
+    if (i >= dim || j >= dim) return OCTAGON_INF_F64;
+    return this.matrix[i * dim + j]!;
+  }
+
+  close(): void {
+    const dim = this.dim;
+    const matrix = this.matrix;
+
+    for (let k = 0; k < dim; k++) {
+      const kRow = k * dim;
+      for (let i = 0; i < dim; i++) {
+        const iRow = i * dim;
+        const ik = matrix[iRow + k]!;
+        if (ik >= OCTAGON_INF_F64) continue;
+
+        for (let j = 0; j < dim; j++) {
+          const kj = matrix[kRow + j]!;
+          if (kj < OCTAGON_INF_F64) {
+            const newBound = Math.max(-OCTAGON_INF_F64, ik + kj);
+            if (newBound < matrix[iRow + j]!) {
+              matrix[iRow + j] = newBound;
+            }
+          }
+        }
+      }
+    }
+
+    // Strong closure
+    for (let i = 0; i < dim; i++) {
+      const iRow = i * dim;
+      const ui = matrix[iRow + (i ^ 1)]!;
+      if (ui >= OCTAGON_INF_F64) continue;
+
+      for (let j = 0; j < dim; j++) {
+        const uj = matrix[(j ^ 1) * dim + j]!;
+        if (uj < OCTAGON_INF_F64) {
+          const strongBound = Math.max(-OCTAGON_INF_F64, (ui + uj) * 0.5);
+          if (strongBound < matrix[iRow + j]!) {
+            matrix[iRow + j] = strongBound;
+          }
+        }
+      }
+    }
+  }
+
+  closeWithWasm(wasmExports: Record<string, any>): void {
+    if (typeof wasmExports["octagon_close_f64"] === "function" && typeof wasmExports["__new"] === "function") {
+      const dim = this.dim;
+      const bytes = dim * dim * 8;
+      if (this.wasmInstance !== wasmExports || this.wasmByteCap < bytes || this.wasmPtr === 0) {
+        this.wasmPtr = wasmExports["__new"](bytes, 0);
+        this.wasmByteCap = bytes;
+        this.wasmInstance = wasmExports;
+      }
+      const mem = wasmExports["memory"] as WebAssembly.Memory;
+      const view = new Float64Array(mem.buffer, this.wasmPtr, dim * dim);
+      view.set(this.matrix);
+      wasmExports["octagon_close_f64"](this.wasmPtr, dim);
+      const outView = new Float64Array(mem.buffer, this.wasmPtr, dim * dim);
+      this.matrix.set(outView);
+      return;
+    }
+    this.close();
+  }
+
+  assumeDiff(var1: number, var2: number, maxDiff: number): void {
+    const p1 = var1 * 2;
+    const p2 = var2 * 2;
+    this.setBound(p1, p2, maxDiff);
+    this.setBound(p2 + 1, p1 + 1, maxDiff);
+    this.close();
+  }
+
+  assumeInterval(varIdx: number, lower: number, upper: number): void {
+    const p = varIdx * 2;
+    if (upper < OCTAGON_INF_F64 / 2) {
+      this.setBound(p, p + 1, upper * 2);
+    }
+    if (lower > -OCTAGON_INF_F64 / 2) {
+      this.setBound(p + 1, p, -lower * 2);
+    }
+    this.close();
+  }
+
+  getInterval(varIdx: number): [number, number] {
+    const p = varIdx * 2;
+    const upper = this.getBound(p, p + 1) / 2;
+    const lower = -this.getBound(p + 1, p) / 2;
+    return [lower, upper];
+  }
+
+  hasNegativeCycle(): boolean {
+    const dim = this.dim;
+    for (let i = 0; i < dim; i++) {
+      if (this.matrix[i * dim + i]! < -1e-12) return true;
+    }
+    return false;
+  }
+}

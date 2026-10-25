@@ -537,11 +537,27 @@ export function registerMiscEndpoints(context: LspContext) {
           if (typeof m === "number") vals.push(m);
         }
         if (vals.length >= 2) {
-          consensusVal = (Math.min(...vals) + Math.max(...vals)) / 2;
+          vals.sort((a, b) => a - b);
+          const mid = Math.floor(vals.length / 2);
+          consensusVal = vals.length % 2 !== 0 ? vals[mid]! : (vals[mid - 1]! + vals[mid]!) / 2;
         } else if (vals.length === 1) {
           consensusVal = vals[0];
         } else {
-          consensusVal = 1.0;
+          // Preserve existing property on any domain node associated with this slot
+          let existingVal: number | undefined;
+          for (let dom = 0; dom < 16; dom++) {
+            const nodeId = sharedHypergraph.getDomainNode(slot, dom);
+            if (nodeId && nodeId > 0) {
+              const domName = (DOMAIN_INDEX_TO_NAME as any)[dom] ?? "unknown";
+              const meta = sharedMetadataMap.get(`${domName}:${nodeId}`);
+              const p = meta?.properties?.["mass"] ?? meta?.properties?.["voltage"] ?? meta?.properties?.["value"];
+              if (typeof p === "number") {
+                existingVal = p;
+                break;
+              }
+            }
+          }
+          consensusVal = existingVal ?? 0.0;
         }
       }
 

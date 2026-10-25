@@ -150,6 +150,33 @@ export class CaeContractOracle implements TheoryOracle {
           },
         };
       }
+
+      // Check cross-theory external bounds from cooperating oracles (Nelson-Oppen consistency)
+      const contractVar = `${id}.${spec.metricName}`;
+      const physicalVar = spec.partName ? `${spec.partName}.${spec.metricName}` : spec.metricName;
+      const extBound =
+        this.externalBounds.get(contractVar) ??
+        this.externalBounds.get(physicalVar) ??
+        this.externalBounds.get(spec.metricName);
+
+      if (extBound) {
+        const [lo, hi] = extBound;
+        if (spec.actualValue < lo - 1e-6 || spec.actualValue > hi + 1e-6) {
+          const culprits = [id];
+          if (spec.partName) culprits.push(spec.partName);
+          return {
+            isSat: false,
+            conflict: {
+              literals: Array.from(this.assertedLiterals.values()).filter((l) =>
+                l.args.some((a) => a?.contractId === id),
+              ),
+              explanation: `CAE Contract Cross-Theory Bound Violation: Contract '${id}' on '${spec.metricName}' has actual simulated value ${spec.actualValue}, violating external cooperating theory bounds [${lo}, ${hi}].`,
+              culpritEntities: culprits,
+              theoryName: this.name,
+            },
+          };
+        }
+      }
     }
 
     return { isSat: true };
@@ -158,14 +185,30 @@ export class CaeContractOracle implements TheoryOracle {
   public propagateEqualities(): SharedEquality[] {
     const equalities: SharedEquality[] = [];
     for (const [id, spec] of this.contracts.entries()) {
+      const contractVar = `${id}.${spec.metricName}`;
+      const physicalVar = spec.partName ? `${spec.partName}.${spec.metricName}` : spec.metricName;
+
+      // 1. Relational equality between contract endpoint and physical property
       equalities.push({
-        varA: `${id}.${spec.metricName}`,
-        varB: `${id}.${spec.metricName}`,
-        domain: "interval",
+        varA: contractVar,
+        varB: physicalVar,
+        domain: "real",
         bounds: [spec.actualValue, spec.actualValue],
-        explanation: `Simulated CAE output ${spec.metricName} = ${spec.actualValue} for contract '${id}'`,
+        explanation: `Simulated CAE output ${spec.metricName} = ${spec.actualValue} for contract '${id}' on '${physicalVar}'`,
         sourceOracle: this.name,
       });
+
+      // 2. Canonical interval bound on physical entity property if distinct
+      if (physicalVar !== contractVar) {
+        equalities.push({
+          varA: physicalVar,
+          varB: physicalVar,
+          domain: "interval",
+          bounds: [spec.actualValue, spec.actualValue],
+          explanation: `Simulated CAE bound on '${physicalVar}' = [${spec.actualValue}, ${spec.actualValue}]`,
+          sourceOracle: this.name,
+        });
+      }
     }
     return equalities;
   }
@@ -173,6 +216,9 @@ export class CaeContractOracle implements TheoryOracle {
   public onSharedEquality(eq: SharedEquality): void {
     if (eq.bounds) {
       this.externalBounds.set(eq.varA, [...eq.bounds]);
+      if (eq.varB && eq.varB !== eq.varA) {
+        this.externalBounds.set(eq.varB, [...eq.bounds]);
+      }
     }
   }
 

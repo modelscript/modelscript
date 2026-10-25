@@ -158,6 +158,12 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
     extensions: [".opi", ".olga"],
     isBuiltIn: true,
   },
+  {
+    id: "fortran",
+    name: "Fortran",
+    extensions: [".f", ".for", ".f90", ".f95", ".f03", ".f08"],
+    isBuiltIn: true,
+  },
 ];
 
 /**

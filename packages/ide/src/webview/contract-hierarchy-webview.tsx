@@ -188,6 +188,26 @@ export function ContractHierarchyApp() {
             Contract Tree (Assume/Guarantee)
           </h3>
 
+          {!data?.system && (!data?.components || data.components.length === 0) && (
+            <div
+              style={{
+                padding: "24px 16px",
+                textAlign: "center",
+                color: "var(--vscode-descriptionForeground, #888)",
+                fontSize: "0.85rem",
+                lineHeight: 1.6,
+                background: "rgba(255, 255, 255, 0.02)",
+                borderRadius: "6px",
+                border: "1px dashed var(--vscode-panel-border, #3c3c3c)",
+              }}
+            >
+              No formal contracts detected in current file.
+              <br />
+              Define assume/guarantee contracts using <code>contract def</code> or requirement connections to inspect
+              composition refinement.
+            </div>
+          )}
+
           {data?.system && (
             <div
               style={{

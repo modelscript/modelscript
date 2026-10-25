@@ -552,3 +552,185 @@ export function dae_checkVarBounds(
   }
   return mask;
 }
+
+/**
+ * Backward interval contractor directly over DAEBuilder linear memory expressions.
+ * Contracts variable bounds towards hull consistency (HC4-Revise).
+ * Returns true if consistent, false if contradictory (empty interval).
+ */
+export function dae_contractExprInterval(
+  dae: DaeBuilder,
+  exprId: u32,
+  targetLo: f64,
+  targetHi: f64,
+  varBoundsLoPtr: usize,
+  varBoundsHiPtr: usize,
+): bool {
+  if (targetLo > targetHi) return false;
+  if (exprId >= dae.exprCount) return true;
+
+  let e = ExprAccessor.at(dae.getExprData(), exprId);
+  let kind = e.kind;
+
+  if (kind == ExprKind.Name) {
+    let resolved = dae.resolveExprVarId(e.data1u);
+    if (resolved < 0) return true;
+    let varId = resolved as u32;
+    if (varId >= dae.varCount) return true;
+    let varLo = changetype<UnmanagedFloat64Array>(varBoundsLoPtr);
+    let varHi = changetype<UnmanagedFloat64Array>(varBoundsHiPtr);
+
+    let curLo = varLo[varId];
+    let curHi = varHi[varId];
+    let newLo = Math.max(curLo, targetLo);
+    let newHi = Math.min(curHi, targetHi);
+    if (newLo > newHi) return false;
+    varLo[varId] = newLo;
+    varHi[varId] = newHi;
+    return true;
+  }
+
+  if (kind == ExprKind.RealLiteral) {
+    let val = e.realValue;
+    return val >= targetLo && val <= targetHi;
+  }
+
+  if (kind == ExprKind.IntLiteral || kind == ExprKind.BoolLiteral || kind == ExprKind.EnumLiteral) {
+    let val = e.intValue as f64;
+    return val >= targetLo && val <= targetHi;
+  }
+
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+    if (e.unaryOp == UnaryOp.Negate || kind == ExprKind.Negate) {
+      return dae_contractExprInterval(dae, e.left, -targetHi, -targetLo, varBoundsLoPtr, varBoundsHiPtr);
+    }
+    return true;
+  }
+
+  if (kind == ExprKind.Binary) {
+    let left = e.left;
+    let right = e.right;
+    let op = e.binOp;
+
+    let mark = markScratchInterval();
+    let lRes = getScratchInterval();
+    let rRes = getScratchInterval();
+
+    evalExprInterval(left, dae, varBoundsLoPtr, varBoundsHiPtr, lRes);
+    evalExprInterval(right, dae, varBoundsLoPtr, varBoundsHiPtr, rRes);
+
+    if (op == BinOp.Add || op == BinOp.ElemAdd) {
+      // z = left + right => left = z - right, right = z - left
+      let newLeftLo = targetLo - rRes.hi;
+      let newLeftHi = targetHi - rRes.lo;
+      let newRightLo = targetLo - lRes.hi;
+      let newRightHi = targetHi - lRes.lo;
+      resetScratchInterval(mark);
+
+      if (!dae_contractExprInterval(dae, left, newLeftLo, newLeftHi, varBoundsLoPtr, varBoundsHiPtr)) return false;
+      return dae_contractExprInterval(dae, right, newRightLo, newRightHi, varBoundsLoPtr, varBoundsHiPtr);
+    }
+
+    if (op == BinOp.Sub || op == BinOp.ElemSub) {
+      // z = left - right => left = z + right, right = left - z
+      let newLeftLo = targetLo + rRes.lo;
+      let newLeftHi = targetHi + rRes.hi;
+      let newRightLo = lRes.lo - targetHi;
+      let newRightHi = lRes.hi - targetLo;
+      resetScratchInterval(mark);
+
+      if (!dae_contractExprInterval(dae, left, newLeftLo, newLeftHi, varBoundsLoPtr, varBoundsHiPtr)) return false;
+      return dae_contractExprInterval(dae, right, newRightLo, newRightHi, varBoundsLoPtr, varBoundsHiPtr);
+    }
+
+    if (op == BinOp.Mul || op == BinOp.ElemMul) {
+      if ((rRes.lo == 0.0 && rRes.hi == 0.0) || (lRes.lo == 0.0 && lRes.hi == 0.0)) {
+        if (targetLo > 0.0 || targetHi < 0.0) {
+          resetScratchInterval(mark);
+          return false;
+        }
+      }
+      if (rRes.lo > 0.0 || rRes.hi < 0.0) {
+        let p1 = targetLo / rRes.lo;
+        let p2 = targetLo / rRes.hi;
+        let p3 = targetHi / rRes.lo;
+        let p4 = targetHi / rRes.hi;
+        let nLo = Math.min(Math.min(p1, p2), Math.min(p3, p4));
+        let nHi = Math.max(Math.max(p1, p2), Math.max(p3, p4));
+        if (!dae_contractExprInterval(dae, left, nLo, nHi, varBoundsLoPtr, varBoundsHiPtr)) {
+          resetScratchInterval(mark);
+          return false;
+        }
+      }
+      if (lRes.lo > 0.0 || lRes.hi < 0.0) {
+        let p1 = targetLo / lRes.lo;
+        let p2 = targetLo / lRes.hi;
+        let p3 = targetHi / lRes.lo;
+        let p4 = targetHi / lRes.hi;
+        let nLo = Math.min(Math.min(p1, p2), Math.min(p3, p4));
+        let nHi = Math.max(Math.max(p1, p2), Math.max(p3, p4));
+        if (!dae_contractExprInterval(dae, right, nLo, nHi, varBoundsLoPtr, varBoundsHiPtr)) {
+          resetScratchInterval(mark);
+          return false;
+        }
+      }
+      resetScratchInterval(mark);
+      return true;
+    }
+
+    if (op == BinOp.Div || op == BinOp.ElemDiv) {
+      if (rRes.lo == 0.0 && rRes.hi == 0.0) {
+        resetScratchInterval(mark);
+        return false;
+      }
+      if (rRes.lo > 0.0 || rRes.hi < 0.0) {
+        let p1 = targetLo * rRes.lo;
+        let p2 = targetLo * rRes.hi;
+        let p3 = targetHi * rRes.lo;
+        let p4 = targetHi * rRes.hi;
+        let nLo = Math.min(Math.min(p1, p2), Math.min(p3, p4));
+        let nHi = Math.max(Math.max(p1, p2), Math.max(p3, p4));
+        if (!dae_contractExprInterval(dae, left, nLo, nHi, varBoundsLoPtr, varBoundsHiPtr)) {
+          resetScratchInterval(mark);
+          return false;
+        }
+      }
+      if (targetLo > 0.0 || targetHi < 0.0) {
+        let p1 = lRes.lo / targetLo;
+        let p2 = lRes.lo / targetHi;
+        let p3 = lRes.hi / targetLo;
+        let p4 = lRes.hi / targetHi;
+        let nLo = Math.min(Math.min(p1, p2), Math.min(p3, p4));
+        let nHi = Math.max(Math.max(p1, p2), Math.max(p3, p4));
+        if (!dae_contractExprInterval(dae, right, nLo, nHi, varBoundsLoPtr, varBoundsHiPtr)) {
+          resetScratchInterval(mark);
+          return false;
+        }
+      }
+      resetScratchInterval(mark);
+      return true;
+    }
+
+    resetScratchInterval(mark);
+    return true;
+  }
+
+  return true;
+}
+
+/**
+ * Top-level C-ABI export for HC4-Revise backward interval contraction.
+ */
+export function dae_hc4_revise(
+  daePtr: u32,
+  exprId: u32,
+  targetLo: f64,
+  targetHi: f64,
+  varBoundsLoPtr: usize,
+  varBoundsHiPtr: usize,
+): bool {
+  if (daePtr == 0) return false;
+  let dae = changetype<DaeBuilder>(daePtr);
+  return dae_contractExprInterval(dae, exprId, targetLo, targetHi, varBoundsLoPtr, varBoundsHiPtr);
+}
+

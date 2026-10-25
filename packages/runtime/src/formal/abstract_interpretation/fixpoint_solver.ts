@@ -64,14 +64,66 @@ export type EdgeTransferFunction = (edge: CFGEdge, outState: ReducedProductState
  */
 export class FixpointSolver {
   private domain = new ReducedProductDomain();
+  private thresholds: number[];
+
+  /**
+   * Statically extracts dynamic widening thresholds from literal constants occurring
+   * in CFG instructions (operands, assignments, arithmetic) and edge guard condition expressions.
+   * Also adds boundary-adjacent values (c - 1, c + 1) for strict/non-strict inequality precision.
+   */
+  public static extractDynamicThresholds(
+    cfg: GenericCFG,
+    baseThresholds: number[] = [-1, 0, 1, 10, 100, 1000],
+  ): number[] {
+    const set = new Set<number>(baseThresholds);
+
+    const addVal = (num: number) => {
+      if (Number.isFinite(num)) {
+        set.add(num);
+        set.add(num - 1);
+        set.add(num + 1);
+      }
+    };
+
+    for (const block of cfg.blocks.values()) {
+      for (const inst of block.instructions) {
+        if (inst.operands) {
+          for (const op of inst.operands) {
+            if (typeof op === "number") {
+              addVal(op);
+            } else if (typeof op === "string") {
+              const matches = op.match(/-?\b\d+(?:\.\d+)?\b/g);
+              if (matches) {
+                for (const m of matches) addVal(parseFloat(m));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (const edge of cfg.edges) {
+      if (edge.conditionExpr) {
+        const str = String(edge.conditionExpr);
+        const matches = str.match(/-?\b\d+(?:\.\d+)?\b/g);
+        if (matches) {
+          for (const m of matches) addVal(parseFloat(m));
+        }
+      }
+    }
+
+    return Array.from(set).sort((a, b) => a - b);
+  }
 
   constructor(
     private cfg: GenericCFG,
     private transferFn: InstructionTransferFunction,
-    private thresholds: number[] = [-1, 0, 1, 10, 100, 1000],
+    thresholds: number[] = [-1, 0, 1, 10, 100, 1000],
     _maxWideningSteps: number = 20,
     private edgeTransferFn?: EdgeTransferFunction,
-  ) {}
+  ) {
+    this.thresholds = FixpointSolver.extractDynamicThresholds(cfg, thresholds);
+  }
 
   solve(initialState?: ReducedProductState): VerificationSummary {
     const rpo = this.cfg.computeRPO();
@@ -91,11 +143,18 @@ export class FixpointSolver {
       blockVisitCounts.set(bId, 0);
     }
 
-    // Worklist prioritized by RPO index using an O(1) bitset/bucket queue
-    const M = rpo.length;
-    const rpoOrder = new Map<number, number>();
-    rpo.forEach((id, idx) => rpoOrder.set(id, idx));
+    // Fast O(1) block index table to eliminate Map overhead in hot loops
+    let maxBlockId = 0;
+    for (const bId of this.cfg.blocks.keys()) {
+      if (bId > maxBlockId) maxBlockId = bId;
+    }
+    const rpoOrder = new Int32Array(maxBlockId + 1);
+    rpoOrder.fill(-1);
+    rpo.forEach((id, idx) => {
+      if (id <= maxBlockId) rpoOrder[id] = idx;
+    });
 
+    const M = rpo.length;
     const inWorklist = new Uint8Array(M);
     inWorklist.fill(1);
     let worklistCount = M;
@@ -128,17 +187,33 @@ export class FixpointSolver {
       let currentIn = inStates.get(bId)!;
       if (bId !== this.cfg.entryBlockId) {
         let joinedPreds = this.domain.bottom();
-        for (const pId of block.predecessors) {
+        const preds = block.predecessors;
+        if (preds.length === 1) {
+          // Fast-path: single predecessor avoids redundant join allocations and reduction
+          const pId = preds[0]!;
           let pOut = outStates.get(pId);
           if (pOut && !this.domain.isBottom(pOut)) {
             if (this.edgeTransferFn) {
               const edge = this.cfg.getEdge(pId, bId);
-              if (edge) {
-                pOut = this.edgeTransferFn(edge, pOut);
-              }
+              if (edge) pOut = this.edgeTransferFn(edge, pOut);
             }
             if (!this.domain.isBottom(pOut)) {
-              joinedPreds = this.domain.join(joinedPreds, pOut);
+              joinedPreds = pOut;
+            }
+          }
+        } else {
+          for (const pId of preds) {
+            let pOut = outStates.get(pId);
+            if (pOut && !this.domain.isBottom(pOut)) {
+              if (this.edgeTransferFn) {
+                const edge = this.cfg.getEdge(pId, bId);
+                if (edge) {
+                  pOut = this.edgeTransferFn(edge, pOut);
+                }
+              }
+              if (!this.domain.isBottom(pOut)) {
+                joinedPreds = this.domain.join(joinedPreds, pOut);
+              }
             }
           }
         }
@@ -166,8 +241,8 @@ export class FixpointSolver {
       if (!this.domain.equals(prevOut, currentOut)) {
         outStates.set(bId, currentOut);
         for (const sId of block.successors) {
-          const sIdx = rpoOrder.get(sId);
-          if (sIdx !== undefined && inWorklist[sIdx] === 0) {
+          const sIdx = sId <= maxBlockId ? rpoOrder[sId]! : -1;
+          if (sIdx >= 0 && inWorklist[sIdx] === 0) {
             inWorklist[sIdx] = 1;
             worklistCount++;
             if (sIdx < minRpoIdx) {
@@ -186,17 +261,32 @@ export class FixpointSolver {
         if (!block) continue;
 
         let joinedPreds = this.domain.bottom();
-        for (const pId of block.predecessors) {
+        const preds = block.predecessors;
+        if (preds.length === 1) {
+          const pId = preds[0]!;
           let pOut = outStates.get(pId);
           if (pOut && !this.domain.isBottom(pOut)) {
             if (this.edgeTransferFn) {
               const edge = this.cfg.getEdge(pId, bId);
-              if (edge) {
-                pOut = this.edgeTransferFn(edge, pOut);
-              }
+              if (edge) pOut = this.edgeTransferFn(edge, pOut);
             }
             if (!this.domain.isBottom(pOut)) {
-              joinedPreds = this.domain.join(joinedPreds, pOut);
+              joinedPreds = pOut;
+            }
+          }
+        } else {
+          for (const pId of preds) {
+            let pOut = outStates.get(pId);
+            if (pOut && !this.domain.isBottom(pOut)) {
+              if (this.edgeTransferFn) {
+                const edge = this.cfg.getEdge(pId, bId);
+                if (edge) {
+                  pOut = this.edgeTransferFn(edge, pOut);
+                }
+              }
+              if (!this.domain.isBottom(pOut)) {
+                joinedPreds = this.domain.join(joinedPreds, pOut);
+              }
             }
           }
         }

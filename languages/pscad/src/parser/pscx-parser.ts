@@ -528,7 +528,7 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
             const pVal = attr(c, "value") ?? c.text.trim();
             if (pName && pVal !== undefined) {
               params[pName] = parseParamValue(pVal);
-              const nameOffsetInParam = pNameAttr ? pNameAttr.start : c.start;
+              const nameOffsetInParam = pNameAttr ? (pNameAttr.valueStart ?? pNameAttr.start) : c.start;
               paramLocations[pName] = offsetToLineCol(lineStarts, nameOffsetInParam);
             }
           } else if (cTag === "port") {
@@ -616,7 +616,11 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
         const busIdAttr = attrObj(el, "id");
         const busName = busNameAttr?.value || `Bus_${autoIdCounter++}`;
         const busId = busIdAttr?.value || busName;
-        const busLocOffset = busNameAttr ? busNameAttr.start : busIdAttr ? busIdAttr.start : el.start;
+        const busLocOffset = busNameAttr
+          ? (busNameAttr.valueStart ?? busNameAttr.start)
+          : busIdAttr
+            ? (busIdAttr.valueStart ?? busIdAttr.start)
+            : el.start;
         const loc = offsetToLineCol(lineStarts, busLocOffset);
         const posX = parseFloat(attr(el, "x") || "0");
         const posY = parseFloat(attr(el, "y") || "0");

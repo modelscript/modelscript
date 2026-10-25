@@ -349,6 +349,13 @@ export class CdclSatSolver {
   private maxVarId = 0;
   private isRootUnsat = false;
 
+  // Persistent WebAssembly solver instance and buffer caching
+  private wasmSatPtr = 0;
+  private wasmSatMaxVars = 0;
+  private wasmPushedClauses = 0;
+  private wasmBufferPtr = 0;
+  private wasmBufferCap = 0;
+
   private inHeap(v: VarId): boolean {
     return (this.heapPos.get(v) ?? -1) !== -1;
   }
@@ -774,47 +781,70 @@ export class CdclSatSolver {
       typeof wasm.sat_create === "function" &&
       typeof wasm.sat_addClause === "function" &&
       typeof wasm.sat_solve === "function" &&
+      typeof wasm.sat_getValue === "function" &&
+      typeof wasm.sat_getUnsatCore === "function" &&
       typeof wasm.__new === "function" &&
       this.maxVarId > 0
     ) {
-      const satPtr: number = wasm.sat_create(this.maxVarId);
-      if (satPtr !== 0) {
-        let maxClauseLen = Math.max(assumptions.length, 4);
-        for (const cl of this.clauses) {
-          if (cl.length > maxClauseLen) maxClauseLen = cl.length;
+      if (this.wasmSatPtr === 0 || this.maxVarId > this.wasmSatMaxVars) {
+        if (this.wasmSatPtr !== 0 && typeof wasm.sat_destroy === "function") {
+          wasm.sat_destroy(this.wasmSatPtr);
         }
-        const litsPtr = wasm.__new(maxClauseLen * 4, 0);
+        this.wasmSatMaxVars = Math.max(this.maxVarId, 256);
+        this.wasmSatPtr = wasm.sat_create(this.wasmSatMaxVars);
+        this.wasmPushedClauses = 0;
+      }
+
+      if (this.wasmSatPtr !== 0) {
+        let maxClauseLen = Math.max(assumptions.length, 16);
+        for (let i = this.wasmPushedClauses; i < this.clauses.length; i++) {
+          if (this.clauses[i]!.length > maxClauseLen) maxClauseLen = this.clauses[i]!.length;
+        }
+
+        const requiredBytes = maxClauseLen * 4;
+        if (this.wasmBufferCap < requiredBytes || this.wasmBufferPtr === 0) {
+          this.wasmBufferPtr = wasm.__new(requiredBytes * 2, 0);
+          this.wasmBufferCap = requiredBytes * 2;
+        }
+
         let rootOk = true;
-        for (const cl of this.clauses) {
-          const view = new Int32Array(wasm.memory.buffer, litsPtr, cl.length);
-          for (let i = 0; i < cl.length; i++) view[i] = cl[i]!;
-          if (!wasm.sat_addClause(satPtr, litsPtr, cl.length)) {
+        for (let i = this.wasmPushedClauses; i < this.clauses.length; i++) {
+          const cl = this.clauses[i]!;
+          const view = new Int32Array(wasm.memory.buffer, this.wasmBufferPtr, cl.length);
+          for (let k = 0; k < cl.length; k++) view[k] = cl[k]!;
+          if (!wasm.sat_addClause(this.wasmSatPtr, this.wasmBufferPtr, cl.length)) {
             rootOk = false;
             break;
           }
         }
+        this.wasmPushedClauses = this.clauses.length;
+
         if (!rootOk) {
-          if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
           return { status: "UNSAT", unsatCore: assumptions.length > 0 ? [...assumptions] : undefined };
         }
-        const aView = new Int32Array(wasm.memory.buffer, litsPtr, assumptions.length);
+
+        const aView = new Int32Array(wasm.memory.buffer, this.wasmBufferPtr, assumptions.length);
         for (let i = 0; i < assumptions.length; i++) aView[i] = assumptions[i]!;
-        const statusCode: number = wasm.sat_solve(satPtr, litsPtr, assumptions.length);
+        const statusCode: number = wasm.sat_solve(this.wasmSatPtr, this.wasmBufferPtr, assumptions.length);
+
         if (statusCode === 1) {
           const model = new Map<VarId, boolean>();
           for (let v = 1; v <= this.maxVarId; v++) {
-            const val: number = wasm.sat_getValue(satPtr, v);
+            const val: number = wasm.sat_getValue(this.wasmSatPtr, v);
             const isTrue = val >= 0;
             model.set(v, isTrue);
             this.assignments.set(v, isTrue ? 1 : -1);
           }
-          if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
           return { status: "SAT", model };
-        } else if (statusCode === 2 && assumptions.length === 0) {
-          if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
-          return { status: "UNSAT" };
+        } else if (statusCode === 2) {
+          let unsatCore: LitId[] | undefined;
+          if (assumptions.length > 0) {
+            const coreLen: number = wasm.sat_getUnsatCore(this.wasmSatPtr, this.wasmBufferPtr);
+            const coreView = new Int32Array(wasm.memory.buffer, this.wasmBufferPtr, coreLen);
+            unsatCore = Array.from(coreView);
+          }
+          return { status: "UNSAT", unsatCore };
         }
-        if (typeof wasm.sat_destroy === "function") wasm.sat_destroy(satPtr);
       }
     }
 
@@ -898,5 +928,40 @@ export class CdclSatSolver {
         this.enqueue(nextLit, -1);
       }
     }
+  }
+
+  /**
+   * Resets the solver state and releases any persistent WebAssembly solver handles.
+   */
+  public reset(): void {
+    if (this.wasmSatPtr !== 0) {
+      const wasm: any = getDefaultWasmExports();
+      if (wasm && typeof wasm.sat_destroy === "function") {
+        wasm.sat_destroy(this.wasmSatPtr);
+      }
+      this.wasmSatPtr = 0;
+    }
+    this.clauses = [];
+    this.watchers.clear();
+    this.assignments.clear();
+    this.decisionLevel.clear();
+    this.reasonClause.clear();
+    this.trail = [];
+    this.trailLim = [];
+    this.activity.clear();
+    this.heap = [];
+    this.heapPos.clear();
+    this.savedPhase.clear();
+    this.currentLevel = 0;
+    this.maxVarId = 0;
+    this.isRootUnsat = false;
+    this.wasmPushedClauses = 0;
+  }
+
+  /**
+   * Explicitly frees the WebAssembly solver instance from memory.
+   */
+  public destroy(): void {
+    this.reset();
   }
 }

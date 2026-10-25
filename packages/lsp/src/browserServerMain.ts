@@ -275,6 +275,7 @@ workspaceManager.unifiedWorkspace.registerWorkspace("step", stepWsIndex, { prior
 
 import { cfdLanguage } from "@modelscript/cfd";
 import { feaLanguage } from "@modelscript/fea";
+import { fortranLanguage } from "@modelscript/fortran";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { olgaLanguage } from "@modelscript/olga";
@@ -791,6 +792,22 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
             schematicSvg: renderOlgaSchematicSvg(model),
             elevationProfileSvg: renderOlgaElevationProfileSvg(model, trajectory),
           };
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
+      id: "fortran",
+      name: "Fortran",
+      extensions: [".f", ".for", ".f90", ".f95", ".f03", ".f08"],
+      languageDef: fortranLanguage,
+      actionHandlers: {
+        lint_fortran_file: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintFortran } = await import("@modelscript/fortran");
+          return lintFortran(text);
         },
       },
       disposables: [],

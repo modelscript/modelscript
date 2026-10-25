@@ -10,7 +10,8 @@
     "diagram": "msx pscad diagram Microgrid_IBR.pscx --out=Microgrid_IBR.svg",
     "export:modelica": "msx pscad export-modelica Microgrid_IBR.pscx --out=Microgrid_IBR.mo",
     "export:ssp": "msx pscad export-ssp Microgrid_IBR.pscx --out=SystemStructure.ssd",
-    "lint": "msx pscad lint Microgrid_IBR.pscx",
+    "lint": "eslint . --no-warn-ignored",
+    "lint:pscad": "msx pscad lint Microgrid_IBR.pscx",
     "pipeline": "tsx run_simulation.ts && tsx verify_grid_code.ts",
     "sim": "msx pscad sim Microgrid_IBR.pscx",
     "verify": "msx pscad verify-ieee2800 Microgrid_IBR.pscx"

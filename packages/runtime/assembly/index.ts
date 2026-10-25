@@ -37,6 +37,8 @@ export * from "../src/wasm/formal/stl_monitor";
 export * from "../src/wasm/formal/octagon";
 export * from "../src/wasm/dae/interval_eval";
 export * from "../src/wasm/formal/sat";
+export * from "../src/wasm/formal/simplex";
+export * from "../src/wasm/formal/sturm";
 export * from "../src/wasm/formal/zonotope";
 export * from "../src/wasm/solvers/wasm_emt";
 export {

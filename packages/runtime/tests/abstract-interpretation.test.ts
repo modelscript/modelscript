@@ -260,4 +260,35 @@ describe("Phase 1: Abstract Interpretation Generic Engine (@modelscript/runtime)
     assert.strictEqual(summary.potentialBugCount, 0);
     assert.ok(summary.provenSafeCount >= 1);
   });
+
+  it("should dynamically extract thresholds from CFG instructions and edge guards", () => {
+    const cfg = new GenericCFG();
+    const b0 = cfg.createBlock("b0");
+    const b1 = cfg.createBlock("b1");
+
+    b0.addInstruction(cfg.createInstruction("ASSIGN_CONST", "x", [42]));
+    b0.addInstruction(cfg.createInstruction("ADD_CONST", "y", ["y", 17.5]));
+
+    cfg.addEdge(b0.id, b1.id, CFGEdgeKind.TrueBranch, "count < 250");
+
+    const dynamicThresholds = FixpointSolver.extractDynamicThresholds(cfg);
+
+    // Should include base defaults
+    assert.ok(dynamicThresholds.includes(0));
+    assert.ok(dynamicThresholds.includes(100));
+
+    // Should include instruction operands 42 and boundary neighbors 41, 43
+    assert.ok(dynamicThresholds.includes(42));
+    assert.ok(dynamicThresholds.includes(41));
+    assert.ok(dynamicThresholds.includes(43));
+
+    // Should include 17.5 and 16.5, 18.5
+    assert.ok(dynamicThresholds.includes(17.5));
+    assert.ok(dynamicThresholds.includes(16.5));
+
+    // Should include edge condition constant 250 and 249, 251
+    assert.ok(dynamicThresholds.includes(250));
+    assert.ok(dynamicThresholds.includes(249));
+    assert.ok(dynamicThresholds.includes(251));
+  });
 });

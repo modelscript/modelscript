@@ -58,7 +58,19 @@ describe("Unified Polyglot CLI Linter (`msx lint`)", () => {
   it("registers all polyglot extensions in LanguageResolver", async () => {
     const { builtIn } = listAllLanguages();
     const ids = builtIn.map((b) => b.id);
-    for (const expectedId of ["modelica", "sysml2", "owl2", "scad", "step", "csv", "ssp", "cfd", "fea", "pscad"]) {
+    for (const expectedId of [
+      "modelica",
+      "sysml2",
+      "owl2",
+      "scad",
+      "step",
+      "csv",
+      "ssp",
+      "cfd",
+      "fea",
+      "pscad",
+      "fortran",
+    ]) {
       assert.ok(ids.includes(expectedId), `Expected built-in language '${expectedId}'`);
     }
 
@@ -79,6 +91,9 @@ describe("Unified Polyglot CLI Linter (`msx lint`)", () => {
 
     const pscx = await LanguageResolver.resolve("grid.pscx");
     assert.strictEqual(pscx.manifest.id, "pscad");
+
+    const f90 = await LanguageResolver.resolve("calc.f90");
+    assert.strictEqual(f90.manifest.id, "fortran");
   });
 
   it("lints Modelica (.mo) files with Salsa semantic checks and CST lints", async () => {
@@ -241,6 +256,22 @@ END-ISO-10303-21;`,
     assert.ok(
       stepDiags.some((d) => d.code === "STEP-001"),
       `Expected STEP-001 undefined reference #999, got ${JSON.stringify(stepDiags)}`,
+    );
+
+    const f90File = path.join(scratchDir, "bad_script.f90");
+    fs.writeFileSync(
+      f90File,
+      `SUBROUTINE bad()
+  IMPLICIT NONE
+  Y = 20.0
+END SUBROUTINE
+`,
+      "utf-8",
+    );
+    const { diags: f90Diags } = await runLintJson({ path: f90File });
+    assert.ok(
+      f90Diags.some((d) => d.code === "M4070"),
+      `Expected M4070 undeclared variable diagnostic in Fortran, got ${JSON.stringify(f90Diags)}`,
     );
 
     // Filter directory linting by --language

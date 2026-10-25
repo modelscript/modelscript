@@ -178,7 +178,7 @@
     "dist/**"
   ],
   "scripts": {
-    "build": "npm run build:templates && tsc && npm run build:browser",
+    "build": "npm run build:templates && tsc && node scripts/copy-assets.js && npm run build:browser",
     "build:browser": "node scripts/build-browser.js",
     "build:templates": "node scripts/bundle-templates.js",
     "check:as": "node scripts/check-as.js",

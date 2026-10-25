@@ -386,6 +386,8 @@ When generating git commit messages (including via the "generate git commit" but
 8. **Use scope when relevant** — `type(scope): description`, e.g. `fix(core): ...`, `feat(cli): ...`.
 9. **Comma-separated list for multiple changes in description** — group related changes.
 10. **Be terse but descriptive** — describe _what_ changed, not _why_.
+11. **Header length MUST NOT exceed 85 characters** — commitlint strictly rejects headers > 100 characters (`header-max-length`). Keep the header phrase concise (60–85 chars). Move extended descriptions into bullet points in the commit body separated by an empty line.
+12. **Pre-validate with commitlint** — always verify drafted commit messages using `echo "<message>" | npx commitlint` to prevent hook rejection.
 
 **Examples:**
 

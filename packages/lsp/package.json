@@ -112,6 +112,7 @@
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
     "@modelscript/fea": "*",
+    "@modelscript/fortran": "*",
     "@modelscript/modelica": "*",
     "@modelscript/modelscript": "*",
     "@modelscript/olga": "*",

@@ -125,6 +125,40 @@ describe("CaeContractOracle: Closed-Loop Digital Thread Formal Requirement Check
     const equalities = oracle.propagateEqualities();
     assert.ok(equalities.length >= 1);
     assert.equal(equalities[0]?.varA, "THRUST-REQ.netThrust");
+    assert.equal(equalities[0]?.varB, "netThrust");
     assert.deepEqual(equalities[0]?.bounds, [1540.0, 1540.0]);
+  });
+
+  it("detects cross-theory bound conflicts propagated from Nelson-Oppen coordinating oracles", () => {
+    const oracle = new CaeContractOracle();
+
+    oracle.assertContract({
+      contractId: "DISP-REQ-01",
+      metricName: "tipDeflection",
+      actualValue: 4.8,
+      threshold: 5.0,
+      operator: "<=",
+      partName: "BoomArm",
+    });
+
+    // Simulated value 4.8 satisfies contract threshold <= 5.0
+    assert.equal(oracle.checkSat().isSat, true);
+
+    // Another oracle (e.g. geometric tolerance or clearance oracle) contracts tipDeflection to [0, 4.0]
+    oracle.onSharedEquality({
+      varA: "BoomArm.tipDeflection",
+      varB: "BoomArm.tipDeflection",
+      domain: "interval",
+      bounds: [0.0, 4.0],
+      sourceOracle: "ToleranceStackOracle",
+    });
+
+    // Now checkSat detects that simulated 4.8 violates external bound [0, 4.0]
+    const res = oracle.checkSat();
+    assert.equal(res.isSat, false);
+    assert.ok(res.conflict);
+    assert.match(res.conflict.explanation, /Cross-Theory Bound Violation/);
+    assert.ok(res.conflict.culpritEntities.includes("DISP-REQ-01"));
+    assert.ok(res.conflict.culpritEntities.includes("BoomArm"));
   });
 });

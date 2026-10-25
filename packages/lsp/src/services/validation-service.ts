@@ -437,6 +437,12 @@ export class ValidationService {
   }
 
   /**
+   * Mutex lock serializing WASM parser linear memory access and immediate
+   * syntax/lint extraction across concurrent document validations.
+   */
+  private wasmParserMutex: Promise<void> = Promise.resolve();
+
+  /**
    * Collect syntax errors and lint diagnostics from the WASM parser.
    *
    * IMPORTANT: This is called synchronously right after parsing, while the WASM
@@ -684,6 +690,13 @@ export class ValidationService {
       return;
     }
 
+    // Handle Fortran files (.f, .for, .f90, .f95, .f03, .f08)
+    const isFortran = textDocument.languageId === "fortran" || /\.(f|for|f90|f95|f03|f08)($|\?|#)/i.test(uri);
+    if (isFortran) {
+      await this.validateFortranDocument(textDocument, plugin);
+      return;
+    }
+
     // Handle SSP SystemStructureDescription & ParameterSet files (.ssd, .ssp, .ssv)
     const isSsp =
       textDocument.languageId === "ssp" || textDocument.languageId === "ssv" || /\.(ssd|ssp|ssv)($|\?|#)/i.test(uri);
@@ -722,6 +735,16 @@ export class ValidationService {
     const oldCached = this.documentManager.documentTrees.get(uri);
     let tree: any;
     let editRanges: Array<{ startOffset: number; endOffset: number }> | undefined;
+    let syntaxDiags: Diagnostic[] = [];
+    let wasmLintDiags: any[] = [];
+
+    // Acquire linear memory parser lock to ensure WASM text buffer isolation
+    let releaseLock: () => void = () => {};
+    const currentLock = this.wasmParserMutex;
+    this.wasmParserMutex = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    await currentLock;
 
     try {
       if (oldCached && oldCached.text !== text) {
@@ -802,7 +825,13 @@ export class ValidationService {
     }
 
     // 3. Collect syntax + lint diagnostics immediately (while WASM state is valid)
-    const { syntaxDiags, wasmLintDiags } = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
+    try {
+      const res = this.collectSyntaxErrors(tree.rootNode, textDocument, plugin);
+      syntaxDiags = res.syntaxDiags;
+      wasmLintDiags = res.wasmLintDiags;
+    } finally {
+      releaseLock();
+    }
     const cachedSemantic = this.lastSemanticDiagnostics.get(uri) || [];
     const initialDiags = [...syntaxDiags, ...cachedSemantic];
     if (initialDiags.length > 1000) initialDiags.length = 1000;
@@ -1706,6 +1735,66 @@ export class ValidationService {
   }
 
   /**
+   * Parses and lints a Fortran document (`.f`, `.for`, `.f90`, `.f95`, `.f03`, `.f08`).
+   */
+  private async validateFortranDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const fortranDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[fortran] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { lintFortran, parseFortranScript } = await import("@modelscript/fortran");
+      const lints = lintFortran(text);
+
+      for (const lint of lints) {
+        const line = Math.max(0, (lint.line ?? 1) - 1);
+        const col = Math.max(0, (lint.column ?? 1) - 1);
+        const endLine = Math.max(line, (lint.endLine ?? lint.line ?? 1) - 1);
+        const endCol =
+          endLine === line
+            ? Math.max(col + 1, (lint.endColumn ?? (lint.column ?? 1) + 10) - 1)
+            : Math.max(0, (lint.endColumn ?? 1) - 1);
+        fortranDiagnostics.push({
+          severity:
+            lint.severity === "warning"
+              ? DiagnosticSeverity.Warning
+              : lint.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Error,
+          range: {
+            start: { line, character: col },
+            end: { line: endLine, character: endCol },
+          },
+          code: lint.id ?? lint.code,
+          message: `[${lint.id ?? lint.code}] ${lint.message}`,
+          source: "fortran",
+        });
+      }
+
+      const stmts = parseFortranScript(text);
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data: stmts } } as any,
+        classCache: new Map(),
+      });
+    } catch (err: any) {
+      this.connection.console.error(`[fortran] Error validating Fortran document ${textDocument.uri}: ${err.message}`);
+      fortranDiagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 1 },
+        },
+        message: `Fortran Parse Error: ${err.message}`,
+        source: "fortran",
+      });
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, fortranDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: fortranDiagnostics });
+  }
+
+  /**
    * Validates an SSP (`SystemStructure.ssd`) or SSV (`ParameterSet.ssv`) XML document.
    */
   private async validateSspDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
@@ -2224,8 +2313,10 @@ export class ValidationService {
     for (const [, def] of definitions.entries()) {
       const schema = STEP_SCHEMA[def.type];
       if (schema) {
-        let i = def.endOffset;
-        while (i < text.length && /\s/.test(text[i]!)) i++;
+        const typeMatchIndex = def.text.indexOf(def.type);
+        const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
+        let i = typeStartOffset + def.type.length;
+        while (i < def.endOffset && /\s/.test(text[i]!)) i++;
         if (text[i] === "(") {
           const argsStart = i;
           let depth = 0;
@@ -2615,10 +2706,63 @@ export class ValidationService {
       const proofMap = new Map<string, any>();
       this.modelicaProofResultsByUri.set(effectiveUri, proofMap);
 
-      // Match class / function / block / model definitions with algorithms
+      // Prefer direct CST node traversal over regex matching when CST is available
+      const cached = this.documentManager.documentTrees.get(effectiveUri);
+      if (cached?.tree?.rootNode && findCstNodesByType) {
+        const classNodes = findCstNodesByType(cached.tree.rootNode, "class_definition");
+        for (const classNode of classNodes) {
+          const idNodes = findCstNodesByType(classNode, "identifier");
+          const name = idNodes[0]?.text?.trim() || "";
+          const algSections = findCstNodesByType(classNode, "algorithm_section");
+          if (algSections.length === 0) continue;
+
+          const algOffset = algSections[0].startIndex ?? 0;
+          const variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
+          const statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
+          if (statements.length === 0) continue;
+
+          const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, {
+            functionName: name,
+          });
+
+          proofMap.set(name, result);
+
+          for (const bug of result.definiteBugs) {
+            const bugStart = (bug as any).startOffset ?? bug.startOffset ?? algOffset;
+            const bugEnd = (bug as any).endOffset ?? bug.endOffset ?? bugStart + 10;
+            const startPos = textDocument.positionAt(bugStart);
+            const endPos = textDocument.positionAt(bugEnd);
+
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              range: { start: startPos, end: endPos },
+              message: `[Formal Proof Defect] ${bug.description}`,
+              source: "modelscript-prover",
+              code: bug.category,
+            });
+          }
+
+          for (const warn of result.potentialBugs) {
+            const warnStart = (warn as any).startOffset ?? warn.startOffset ?? algOffset;
+            const warnEnd = (warn as any).endOffset ?? warn.endOffset ?? warnStart + 10;
+            const startPos = textDocument.positionAt(warnStart);
+            const endPos = textDocument.positionAt(warnEnd);
+
+            diagnostics.push({
+              severity: DiagnosticSeverity.Warning,
+              range: { start: startPos, end: endPos },
+              message: `[Formal Proof Unproven] ${warn.description}. Consider adding an invariant assertion.`,
+              source: "modelscript-prover",
+              code: warn.category,
+            });
+          }
+        }
+        return;
+      }
+
+      // Fallback: match class / function / block / model definitions with algorithms via text regex
       const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
       let match: RegExpExecArray | null;
-      const cached = this.documentManager.documentTrees.get(effectiveUri);
       while ((match = funcRegex.exec(text)) !== null) {
         const kind = match[1]!;
         void kind;
@@ -2631,23 +2775,8 @@ export class ValidationService {
         const algText = algMatch[0];
         const algOffset = match.index + match[0].indexOf(algText);
 
-        // Extract declared variables: prefer CST extraction when classNode is available
         let variables: any[] = [];
         let statements: any[] = [];
-        if (cached?.tree?.rootNode && findCstNodesByType) {
-          const classNodes = findCstNodesByType(cached.tree.rootNode, "class_definition");
-          const classNode = classNodes.find((cn: any) => {
-            const idNode = findCstNodesByType(cn, "identifier")[0];
-            return idNode?.text?.trim() === name;
-          });
-          if (classNode) {
-            variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
-            const algSections = findCstNodesByType(classNode, "algorithm_section");
-            if (algSections.length > 0) {
-              statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
-            }
-          }
-        }
 
         // Fallback: extract declared variables via regex if CST extraction returned nothing
         if (variables.length === 0) {
@@ -3414,10 +3543,19 @@ export class ValidationService {
         if (typeof flattenFn !== "function") return { ok: false, error: "Flattener not available" };
         const arena = flattenFn(targetModel, context);
 
+        const exp = (arena as any)?.experiment ?? {};
+        const startTime = exp.startTime ?? 0;
+        const stopTime = exp.stopTime ?? 10;
+        const numIntervals = exp.numberOfIntervals;
+        const step = exp.interval ?? (numIntervals && numIntervals > 0 ? (stopTime - startTime) / numIntervals : 0.1);
+
         const arenaSimResult = simulateArena(arena, {
-          startTime: 0,
-          stopTime: 10,
-          step: 0.1,
+          startTime,
+          stopTime,
+          step,
+          atol: exp.tolerance,
+          rtol: exp.tolerance,
+          solver: exp.algorithm as any,
         });
 
         if (signal.aborted) return { ok: false };

@@ -240,4 +240,22 @@ END-ISO-10303-21;
     assert.strictEqual(paramDiag.range.start.line, 8);
     assert.strictEqual(sliceRange(doc, paramDiag.range), "R");
   });
+
+  it("Fortran (.f90): validates undeclared variables and reports diagnostic ranges", async () => {
+    const { service, diagnosticsByUri } = createTestValidationService();
+    const fortranSource = `SUBROUTINE compute()
+  IMPLICIT NONE
+  X = 10.0
+END SUBROUTINE
+`;
+    const uri = "file:///test/compute.f90";
+    const doc = TextDocument.create(uri, "fortran", 1, fortranSource);
+    await service.validateTextDocument(doc);
+
+    const diags = diagnosticsByUri.get(uri) ?? [];
+    const undeclaredDiag = diags.find((d) => d.code === "M4070");
+    assert.ok(undeclaredDiag, "Expected M4070 undeclared variable diagnostic");
+    assert.strictEqual(undeclaredDiag.range.start.line, 2);
+    assert.strictEqual(undeclaredDiag.source, "fortran");
+  });
 });

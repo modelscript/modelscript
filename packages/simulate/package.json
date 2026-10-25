@@ -62,7 +62,7 @@
     "dist/**"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-wasm.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --timeout=180000",

@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@modelscript/dsl": "*",
+    "@modelscript/fortran": "*",
     "@modelscript/runtime": "*"
   }
 }
