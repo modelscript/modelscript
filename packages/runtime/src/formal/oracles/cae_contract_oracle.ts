@@ -100,6 +100,117 @@ export class CaeContractOracle implements TheoryOracle {
     });
   }
 
+  /**
+   * Asserts an FEA structural stress / yield contract (von Mises stress <= yield strength or limit).
+   */
+  public assertFeaStressContract(spec: {
+    partName?: string | undefined;
+    contractId?: string | undefined;
+    maxVonMisesStressPa: number;
+    yieldStrengthPa: number;
+    maxDisplacementM?: number | undefined;
+    maxAllowableDisplacementM?: number | undefined;
+    sysmlRequirementId?: string | undefined;
+  }): void {
+    const part = spec.partName || "part";
+    const cid = spec.contractId || `FEA_${part}_Stress`;
+    this.assertContract({
+      contractId: cid,
+      metricName: "von_mises_stress",
+      actualValue: spec.maxVonMisesStressPa,
+      threshold: spec.yieldStrengthPa,
+      operator: "<=",
+      unit: "Pa",
+      partName: part,
+      sysmlRequirementId: spec.sysmlRequirementId,
+    });
+
+    if (spec.maxDisplacementM !== undefined && spec.maxAllowableDisplacementM !== undefined) {
+      this.assertContract({
+        contractId: `${cid}_Displacement`,
+        metricName: "max_displacement",
+        actualValue: spec.maxDisplacementM,
+        threshold: spec.maxAllowableDisplacementM,
+        operator: "<=",
+        unit: "m",
+        partName: part,
+        sysmlRequirementId: spec.sysmlRequirementId,
+      });
+    }
+  }
+
+  /**
+   * Asserts a CFD aerodynamic contract (drag coefficient <= target, L/D >= min, etc.).
+   */
+  public assertCfdAerodynamicContract(spec: {
+    partName?: string | undefined;
+    contractId?: string | undefined;
+    dragCoeff?: number | undefined;
+    maxDragCoeff?: number | undefined;
+    liftDragRatio?: number | undefined;
+    minLiftDragRatio?: number | undefined;
+    pressureDropPa?: number | undefined;
+    maxPressureDropPa?: number | undefined;
+    machNumber?: number | undefined;
+    maxMachNumber?: number | undefined;
+    sysmlRequirementId?: string | undefined;
+  }): void {
+    const part = spec.partName || "aerodynamic_body";
+    const baseId = spec.contractId || `CFD_${part}`;
+
+    if (spec.dragCoeff !== undefined && spec.maxDragCoeff !== undefined) {
+      this.assertContract({
+        contractId: `${baseId}_Cd`,
+        metricName: "drag_coeff",
+        actualValue: spec.dragCoeff,
+        threshold: spec.maxDragCoeff,
+        operator: "<=",
+        unit: "",
+        partName: part,
+        sysmlRequirementId: spec.sysmlRequirementId,
+      });
+    }
+
+    if (spec.liftDragRatio !== undefined && spec.minLiftDragRatio !== undefined) {
+      this.assertContract({
+        contractId: `${baseId}_LiftDrag`,
+        metricName: "lift_drag_ratio",
+        actualValue: spec.liftDragRatio,
+        threshold: spec.minLiftDragRatio,
+        operator: ">=",
+        unit: "",
+        partName: part,
+        sysmlRequirementId: spec.sysmlRequirementId,
+      });
+    }
+
+    if (spec.pressureDropPa !== undefined && spec.maxPressureDropPa !== undefined) {
+      this.assertContract({
+        contractId: `${baseId}_DeltaP`,
+        metricName: "pressure_drop",
+        actualValue: spec.pressureDropPa,
+        threshold: spec.maxPressureDropPa,
+        operator: "<=",
+        unit: "Pa",
+        partName: part,
+        sysmlRequirementId: spec.sysmlRequirementId,
+      });
+    }
+
+    if (spec.machNumber !== undefined && spec.maxMachNumber !== undefined) {
+      this.assertContract({
+        contractId: `${baseId}_Mach`,
+        metricName: "mach_number",
+        actualValue: spec.machNumber,
+        threshold: spec.maxMachNumber,
+        operator: "<=",
+        unit: "",
+        partName: part,
+        sysmlRequirementId: spec.sysmlRequirementId,
+      });
+    }
+  }
+
   // --- TheoryOracle implementation ---
 
   public assertLiteral(lit: TheoryLiteral): boolean {
@@ -206,6 +317,32 @@ export class CaeContractOracle implements TheoryOracle {
           domain: "interval",
           bounds: [spec.actualValue, spec.actualValue],
           explanation: `Simulated CAE bound on '${physicalVar}' = [${spec.actualValue}, ${spec.actualValue}]`,
+          sourceOracle: this.name,
+        });
+      }
+
+      // 3. Domain-prefixed metric aliases for multi-domain requirements
+      if (spec.metricName === "von_mises_stress" || spec.metricName === "max_displacement") {
+        equalities.push({
+          varA: `fea.${spec.metricName}`,
+          varB: physicalVar,
+          domain: "real",
+          bounds: [spec.actualValue, spec.actualValue],
+          explanation: `FEA global ${spec.metricName} is ${spec.actualValue}`,
+          sourceOracle: this.name,
+        });
+      } else if (
+        spec.metricName === "drag_coeff" ||
+        spec.metricName === "lift_drag_ratio" ||
+        spec.metricName === "pressure_drop" ||
+        spec.metricName === "mach_number"
+      ) {
+        equalities.push({
+          varA: `cfd.${spec.metricName}`,
+          varB: physicalVar,
+          domain: "real",
+          bounds: [spec.actualValue, spec.actualValue],
+          explanation: `CFD global ${spec.metricName} is ${spec.actualValue}`,
           sourceOracle: this.name,
         });
       }

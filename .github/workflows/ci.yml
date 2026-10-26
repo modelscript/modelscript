@@ -17,7 +17,7 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +35,7 @@ jobs:
           key: ${{ runner.os }}-nx-lint-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-nx-lint-
+            ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
@@ -311,7 +312,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:

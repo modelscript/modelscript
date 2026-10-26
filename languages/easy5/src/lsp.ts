@@ -6,6 +6,7 @@ import { computeBodePlot, linearizeEasy5 } from "./linear/index.js";
 import { lintEasy5 } from "./lints/index.js";
 import { parseEasy5 } from "./parser/easy5-parser.js";
 import { easy5ToModelica, easy5ToSsp } from "./projections/index.js";
+import { synchronizeModelicaToEasy5 } from "./tgg/index.js";
 import type { Easy5Model } from "./types.js";
 
 export interface LspPosition {
@@ -246,6 +247,12 @@ export async function executeEasy5Action(action: string, args: Record<string, un
     case "bode": {
       const lin = linearizeEasy5(model);
       return computeBodePlot(lin);
+    }
+
+    case "sync_from_modelica": {
+      const modelicaText = typeof args["modelicaText"] === "string" ? args["modelicaText"] : "";
+      const options = args["options"] as any;
+      return synchronizeModelicaToEasy5(content, modelicaText, options);
     }
 
     default:

@@ -82,10 +82,14 @@ export function storageRouter(): Router {
       metadata?: Record<string, unknown>;
       viewConfigAdditions?: Record<string, unknown>;
     } = {};
-    try {
-      preprocessed = await pregenerateServerSvgThumbnail(req.file.path, viewType, req.file.originalname, uploadDir);
-    } catch (err) {
-      console.warn("[Storage] Server SVG thumbnail pre-generation skipped:", err);
+    const safeFilename = path.basename(req.file.path);
+    const safeFilePath = path.resolve(uploadDir, safeFilename);
+    if (safeFilePath.startsWith(uploadDir + path.sep)) {
+      try {
+        preprocessed = await pregenerateServerSvgThumbnail(safeFilePath, viewType, req.file.originalname, uploadDir);
+      } catch (err) {
+        console.warn("[Storage] Server SVG thumbnail pre-generation skipped:", err);
+      }
     }
 
     res.json({

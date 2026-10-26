@@ -247,7 +247,7 @@ export class InpDialect implements FeaDialect {
       } else if (currentSection === "PLASTIC" && activeMaterial) {
         if (tokens.length >= 1 && activeMaterial.yieldStrength === undefined) {
           const ys = parseFloat(tokens[0]!);
-          if (!isNaN(ys) && ys > 0) {
+          if (!isNaN(ys)) {
             activeMaterial.yieldStrength = ys;
           }
         }

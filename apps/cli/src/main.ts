@@ -610,6 +610,22 @@ await yargs(rawArgs)
       "GtSuiteCommand",
     ),
   )
+  .command(
+    lazy(
+      "cfd <action> [files..]",
+      "Inspect, lint, solve, and project CFD aerodynamic models (.cfg, .foam, .su2)",
+      () => import("./commands/cfd.js"),
+      "CfdCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "fea <action> [files..]",
+      "Inspect, lint, solve, and project FEA structural models (.inp, .bdf, .dat)",
+      () => import("./commands/fea.js"),
+      "FeaCommand",
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

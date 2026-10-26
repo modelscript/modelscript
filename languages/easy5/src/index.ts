@@ -37,6 +37,7 @@ export { parseEasy5 } from "./parser/easy5-parser.js";
 export { parseEasy5Table } from "./parser/table-parser.js";
 export { easy5ToModelica, easy5ToSsp } from "./projections/index.js";
 export { compileUserComponentStep, lowerUserComponentToDae, validateUserFortranCode } from "./script/user-code.js";
+export * from "./tgg/index.js";
 export type {
   BodeChannelData,
   BodePlotData,

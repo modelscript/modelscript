@@ -314,7 +314,9 @@ export function renderPsseSvg(c: PsseCaseLike): string {
   let maxX = -Infinity;
   let maxY = -Infinity;
 
+  const cellMap = new Map<string, PsseDiagramCell>();
   for (const cell of diag.cells) {
+    cellMap.set(cell.id, cell);
     if (cell.x !== undefined && cell.y !== undefined) {
       if (cell.x < minX) minX = cell.x;
       if (cell.y < minY) minY = cell.y;
@@ -339,13 +341,85 @@ export function renderPsseSvg(c: PsseCaseLike): string {
   const vbH = Math.round(maxY - minY + 2 * pad);
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="100%" height="100%" style="background:#0b0f19;">\n`;
+  svg += `  <defs>\n`;
+  svg += `    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">\n`;
+  svg += `      <feGaussianBlur stdDeviation="3" result="blur" />\n`;
+  svg += `      <feComposite in="SourceGraphic" in2="blur" operator="over" />\n`;
+  svg += `    </filter>\n`;
+  svg += `  </defs>\n`;
   svg += `  <style>\n`;
-  svg += `    .bus-text { font-family: Inter, system-ui, sans-serif; fill: #f8fafc; font-size: 10px; font-weight: 500; }\n`;
-  svg += `    .gen-text { font-family: Inter, system-ui, sans-serif; fill: #22c55e; font-size: 9px; font-weight: bold; }\n`;
-  svg += `    .load-text { font-family: Inter, system-ui, sans-serif; fill: #f59e0b; font-size: 9px; }\n`;
+  svg += `    .bus-text { font-family: Inter, system-ui, sans-serif; fill: #f8fafc; font-size: 10px; font-weight: 500; pointer-events: none; }\n`;
+  svg += `    .gen-text { font-family: Inter, system-ui, sans-serif; fill: #22c55e; font-size: 9px; font-weight: bold; pointer-events: none; }\n`;
+  svg += `    .load-text { font-family: Inter, system-ui, sans-serif; fill: #f59e0b; font-size: 9px; pointer-events: none; }\n`;
+  svg += `    .edge-text { font-family: Inter, system-ui, sans-serif; fill: #94a3b8; font-size: 9px; pointer-events: none; }\n`;
+  svg += `    .sld-edge { transition: all 0.2s ease; cursor: pointer; }\n`;
+  svg += `    .sld-edge:hover line { stroke-width: 4.5px !important; filter: drop-shadow(0 0 6px rgba(255,255,255,0.8)); }\n`;
+  svg += `    .sld-edge.selected line { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 8px #facc15); }\n`;
+  svg += `    .sld-node { transition: all 0.2s ease; cursor: pointer; }\n`;
+  svg += `    .sld-node:hover rect { stroke-width: 3.5px !important; filter: drop-shadow(0 0 8px #38bdf8); }\n`;
+  svg += `    .sld-node:hover circle { stroke-width: 3px !important; filter: drop-shadow(0 0 8px #22c55e); }\n`;
+  svg += `    .sld-node.selected rect { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 10px #facc15); }\n`;
+  svg += `    .sld-node.selected circle { stroke: #facc15 !important; stroke-width: 3.5px !important; filter: drop-shadow(0 0 10px #facc15); }\n`;
   svg += `  </style>\n`;
 
-  // Draw node boxes & shapes
+  // Helper to get center of a cell
+  function getCellCenter(id: string): { x: number; y: number } | null {
+    const cell = cellMap.get(id);
+    if (!cell || cell.x === undefined || cell.y === undefined) return null;
+    return {
+      x: cell.x + (cell.width ?? 80) / 2,
+      y: cell.y + (cell.height ?? 20) / 2,
+    };
+  }
+
+  // 1. Draw Edges / Lines layer (behind nodes)
+  svg += `  <g id="sld-edges-layer">\n`;
+  for (const cell of diag.cells) {
+    if (cell.shape === "edge" && cell.source && cell.target) {
+      const srcId = typeof cell.source === "object" && "cell" in cell.source ? cell.source.cell : null;
+      const tgtId = typeof cell.target === "object" && "cell" in cell.target ? cell.target.cell : null;
+      if (!srcId || !tgtId) continue;
+
+      const p1 = getCellCenter(srcId);
+      const p2 = getCellCenter(tgtId);
+      if (!p1 || !p2) continue;
+
+      const stroke = (cell.attrs?.["line"] as any)?.stroke ?? "#38bdf8";
+      const strokeWidth = (cell.attrs?.["line"] as any)?.strokeWidth ?? 2;
+      const strokeDash = (cell.attrs?.["line"] as any)?.strokeDasharray
+        ? `stroke-dasharray="${(cell.attrs?.["line"] as any).strokeDasharray}"`
+        : "";
+
+      if (cell.id.startsWith("wire_")) {
+        svg += `    <line id="${cell.id}" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.6" />\n`;
+      } else if (cell.id.startsWith("xfmr_")) {
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        svg += `    <g id="${cell.id}" class="sld-edge xfmr-line">\n`;
+        svg += `      <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
+        svg += `      <circle cx="${midX - 6}" cy="${midY}" r="7" fill="none" stroke="${stroke}" stroke-width="1.5" />\n`;
+        svg += `      <circle cx="${midX + 6}" cy="${midY}" r="7" fill="none" stroke="${stroke}" stroke-width="1.5" />\n`;
+        if (cell.label) {
+          svg += `      <text x="${midX}" y="${midY - 10}" text-anchor="middle" class="edge-text">${cell.label}</text>\n`;
+        }
+        svg += `    </g>\n`;
+      } else {
+        // Transmission branch line
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        svg += `    <g id="${cell.id}" class="sld-edge branch-line">\n`;
+        svg += `      <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" />\n`;
+        if (cell.label) {
+          svg += `      <text x="${midX}" y="${midY - 6}" text-anchor="middle" class="edge-text">${cell.label}</text>\n`;
+        }
+        svg += `    </g>\n`;
+      }
+    }
+  }
+  svg += `  </g>\n`;
+
+  // 2. Draw Nodes layer (on top of edges)
+  svg += `  <g id="sld-nodes-layer">\n`;
   for (const cell of diag.cells) {
     if (cell.x !== undefined && cell.y !== undefined) {
       const w = cell.width ?? 80;
@@ -355,22 +429,48 @@ export function renderPsseSvg(c: PsseCaseLike): string {
         const cx = cell.x + w / 2;
         const cy = cell.y + h / 2;
         const r = w / 2;
-        svg += `  <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0f172a" stroke="#22c55e" stroke-width="2" />\n`;
-        svg += `  <text x="${cx}" y="${cy + 3}" text-anchor="middle" class="gen-text">~</text>\n`;
+        svg += `    <g id="${cell.id}" class="sld-node gen-node">\n`;
+        svg += `      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0f172a" stroke="#22c55e" stroke-width="2" />\n`;
+        svg += `      <text x="${cx}" y="${cy + 3}" text-anchor="middle" class="gen-text">~</text>\n`;
+        if (cell.label) {
+          const lines = cell.label.split("\n");
+          if (lines[1]) {
+            svg += `      <text x="${cx}" y="${cy + r + 11}" text-anchor="middle" class="gen-text">${lines[1]}</text>\n`;
+          }
+        }
+        svg += `    </g>\n`;
+      } else if (cell.id.startsWith("load_")) {
+        const stroke = (cell.attrs?.["body"] as any)?.stroke ?? "#f59e0b";
+        svg += `    <g id="${cell.id}" class="sld-node load-node">\n`;
+        svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="3" fill="#0f172a" stroke="${stroke}" stroke-width="1.5" />\n`;
+        if (cell.label) {
+          const lines = cell.label.split("\n");
+          let lineY = cell.y + 11;
+          for (const l of lines) {
+            svg += `      <text x="${cell.x + w / 2}" y="${lineY}" text-anchor="middle" class="load-text">${l}</text>\n`;
+            lineY += 10;
+          }
+        }
+        svg += `    </g>\n`;
       } else {
+        // Bus node
         const stroke = (cell.attrs?.["body"] as any)?.stroke ?? "#38bdf8";
-        svg += `  <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="${stroke}" stroke-width="2.5" />\n`;
+        const busNum = (cell.data as any)?.busNumber ?? cell.id.replace("bus_", "");
+        svg += `    <g id="${cell.id}" class="sld-node bus-node" data-bus="${busNum}">\n`;
+        svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="${stroke}" stroke-width="2.5" />\n`;
         if (cell.label) {
           const lines = cell.label.split("\n");
           let lineY = cell.y + 12;
           for (const l of lines) {
-            svg += `  <text x="${cell.x + w / 2}" y="${lineY}" text-anchor="middle" class="bus-text">${l}</text>\n`;
+            svg += `      <text x="${cell.x + w / 2}" y="${lineY}" text-anchor="middle" class="bus-text">${l}</text>\n`;
             lineY += 12;
           }
         }
+        svg += `    </g>\n`;
       }
     }
   }
+  svg += `  </g>\n`;
 
   svg += `</svg>\n`;
   return svg;

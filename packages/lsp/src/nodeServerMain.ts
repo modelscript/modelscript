@@ -14,7 +14,7 @@ import {
   getAutosarHover,
   validateAutosar,
 } from "@modelscript/autosar";
-import { cfdLanguage } from "@modelscript/cfd";
+import { cfdLanguage, CfdWorkspaceIndex, getCfdDocumentSymbols, getCfdHover, validateCfd } from "@modelscript/cfd";
 import csvLangFallback from "@modelscript/csv/language";
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import {
@@ -24,7 +24,7 @@ import {
   getEasy5Hover,
   validateEasy5,
 } from "@modelscript/easy5";
-import { feaLanguage } from "@modelscript/fea";
+import { feaLanguage, FeaWorkspaceIndex, getFeaDocumentSymbols, getFeaHover, validateFea } from "@modelscript/fea";
 import { fortranLanguage } from "@modelscript/fortran";
 import {
   gensysLanguage,
@@ -420,6 +420,14 @@ export function startNodeServer(input?: any, output?: any) {
   workspaceManager.unifiedWorkspace.registerWorkspace("gtsuite", workspaceManager.getWorkspaceIndex("gtsuite"), {
     priority: 2,
   });
+  workspaceManager.setWorkspaceIndex("cfd", new CfdWorkspaceIndex());
+  workspaceManager.unifiedWorkspace.registerWorkspace("cfd", workspaceManager.getWorkspaceIndex("cfd"), {
+    priority: 2,
+  });
+  workspaceManager.setWorkspaceIndex("fea", new FeaWorkspaceIndex());
+  workspaceManager.unifiedWorkspace.registerWorkspace("fea", workspaceManager.getWorkspaceIndex("fea"), {
+    priority: 2,
+  });
 
   // Initialize built-in WASM parsers
   const require = createRequire(import.meta.url);
@@ -536,15 +544,115 @@ export function startNodeServer(input?: any, output?: any) {
     globalLanguageRegistry.register({
       id: "cfd",
       name: "CFD",
-      extensions: [".cfd", ".cfg", ".cfgt", ".su2"],
+      extensions: [".cfd", ".cfg", ".cfgt", ".su2", ".foam"],
       languageDef: cfdLanguage,
+      workspaceIndex: new CfdWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getCfdDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getCfdHover(text, { line, character });
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateCfd(text);
+        },
+      },
+      actionHandlers: {
+        lint_cfd_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseCfdConfig, lintCfdModel } = await import("@modelscript/cfd");
+          const model = parseCfdConfig(text);
+          return lintCfdModel(model);
+        },
+        export_cfd_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseCfdConfig, cfdToDae } = await import("@modelscript/cfd");
+          const model = parseCfdConfig(text);
+          const dae = cfdToDae(model);
+          return {
+            variables: dae.varCount,
+            equations: dae.eqCount,
+          };
+        },
+        export_cfd_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseCfdConfig, cfdToModelica } = await import("@modelscript/cfd");
+          const model = parseCfdConfig(text);
+          return cfdToModelica(model);
+        },
+        solve_cfd: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { executeCfdAction } = await import("@modelscript/cfd");
+          return executeCfdAction("solve", { content: text });
+        },
+      },
       disposables: [],
     });
     globalLanguageRegistry.register({
       id: "fea",
       name: "FEA",
-      extensions: [".fea", ".inp", ".inpt", ".bdf"],
+      extensions: [".fea", ".inp", ".inpt", ".bdf", ".dat"],
       languageDef: feaLanguage,
+      workspaceIndex: new FeaWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getFeaDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getFeaHover(text, { line, character });
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateFea(text);
+        },
+      },
+      actionHandlers: {
+        lint_fea_model: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseFeaDeck, lintFeaModel } = await import("@modelscript/fea");
+          const model = parseFeaDeck(text);
+          return lintFeaModel(model);
+        },
+        export_fea_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseFeaDeck, feaToDae } = await import("@modelscript/fea");
+          const model = parseFeaDeck(text);
+          const dae = feaToDae(model);
+          return {
+            variables: dae.varCount,
+            equations: dae.eqCount,
+          };
+        },
+        export_fea_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseFeaDeck, feaToModelica } = await import("@modelscript/fea");
+          const model = parseFeaDeck(text);
+          return feaToModelica(model);
+        },
+        solve_fea: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { executeFeaAction } = await import("@modelscript/fea");
+          return executeFeaAction("solve", { content: text });
+        },
+      },
       disposables: [],
     });
   } catch (err: any) {

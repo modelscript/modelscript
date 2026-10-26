@@ -115,4 +115,28 @@ test("MATLAB Simulink CLI Commands (msx simulink inspect, lint, to-modelica, to-
       console.log = origLog;
     }
   });
+
+  await t.test("msx simulink sync", async () => {
+    const modifiedMo = `model cli_cruise_control
+  Modelica.Blocks.Sources.Step TargetSpeed;
+  Modelica.Blocks.Continuous.Integrator SpeedIntegrator(y_start=15.0);
+  Modelica.Blocks.Interfaces.RealOutput SpeedOut;
+equation
+  connect(TargetSpeed.y, SpeedIntegrator.u);
+  connect(SpeedIntegrator.y, SpeedOut.inPort);
+end cli_cruise_control;`;
+    const syncMo = path.join(tmpDir, "cruise_mod.mo");
+    fs.writeFileSync(syncMo, modifiedMo, "utf-8");
+
+    const outMdl = path.join(tmpDir, "cruise_synced.mdl");
+    await (SimulinkCommand.handler as any)({
+      action: "sync",
+      files: [mdlFile],
+      "from-modelica": syncMo,
+      out: outMdl,
+    });
+    assert.ok(fs.existsSync(outMdl));
+    const content = fs.readFileSync(outMdl, "utf-8");
+    assert.ok(content.includes("InitialCondition 15"));
+  });
 });

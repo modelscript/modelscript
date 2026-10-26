@@ -10,6 +10,8 @@ export interface PreprocessResult {
   viewConfigAdditions?: Record<string, unknown>;
 }
 
+const DEFAULT_UPLOAD_DIR = path.resolve(process.cwd(), "data", "uploads");
+
 /**
  * Server-Side SVG Pre-generation and Metadata Extraction Service (Phase 1.2).
  * Parses uploaded engineering files and produces instant vector SVG diagrams,
@@ -24,11 +26,14 @@ export async function pregenerateServerSvgThumbnail(
 ): Promise<PreprocessResult> {
   const result: PreprocessResult = {};
 
-  const resolvedDir = uploadDir ? path.resolve(uploadDir) : path.dirname(path.resolve(filePath));
+  const resolvedDir = uploadDir ? path.resolve(uploadDir) : DEFAULT_UPLOAD_DIR;
   const safeFilename = path.basename(filePath);
+  if (!safeFilename || safeFilename === "." || safeFilename === "..") {
+    return result;
+  }
   const safeFilePath = path.resolve(resolvedDir, safeFilename);
 
-  if (!safeFilePath.startsWith(resolvedDir + path.sep) && safeFilePath !== resolvedDir) {
+  if (!safeFilePath.startsWith(resolvedDir + path.sep)) {
     return result;
   }
 

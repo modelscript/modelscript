@@ -101,4 +101,29 @@ test("EASY5 CLI Commands (msx easy5 inspect, lint, to-dae, to-modelica)", async 
     const content = fs.readFileSync(outMo, "utf-8");
     assert.ok(content.includes("model PitchControl"));
   });
+
+  await t.test("msx easy5 sync", async () => {
+    const modifiedMo = `model PitchControl
+  Modelica.Blocks.Math.Add SJ01;
+  Modelica.Blocks.Math.Gain GA01(k=7.5);
+  Modelica.Blocks.Continuous.Integrator IN01(k=10.0, y_start=2.0);
+equation
+  connect(SJ01.y, GA01.u);
+  connect(GA01.y, IN01.u);
+end PitchControl;`;
+    const syncMo = path.join(tmpDir, "pitch_mod.mo");
+    fs.writeFileSync(syncMo, modifiedMo, "utf-8");
+
+    const outEz5 = path.join(tmpDir, "pitch_synced.ez5");
+    await (Easy5Command.handler as any)({
+      action: "sync",
+      files: [ez5File],
+      "from-modelica": syncMo,
+      out: outEz5,
+    });
+    assert.ok(fs.existsSync(outEz5));
+    const content = fs.readFileSync(outEz5, "utf-8");
+    assert.ok(content.includes("K=7.5"));
+    assert.ok(content.includes("GAIN=10"));
+  });
 });

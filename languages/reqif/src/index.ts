@@ -7,4 +7,5 @@ export * from "./parser/reqif-parser.js";
 export * from "./projections/index.js";
 export * from "./types.js";
 export * from "./verification/entailment.js";
+export * from "./verification/multi-domain.js";
 export * from "./workspace-index.js";

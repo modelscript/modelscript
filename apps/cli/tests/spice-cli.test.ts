@@ -121,6 +121,31 @@ test("SPICE CLI Commands (msx spice simulate, lint, to-modelica, to-ecad)", asyn
       const ecadData = JSON.parse(fs.readFileSync(ecadOut, "utf-8"));
       assert.ok(Array.isArray(ecadData.components));
       assert.ok(ecadData.components.length >= 2);
+
+      // 6. Synchronize from modified Modelica
+      const syncCmd = capturedCommands.find((c) => c.command.startsWith("sync"));
+      assert.ok(syncCmd, "Must find sync command");
+
+      const modifiedMo = `model RcFilter
+  Modelica.Electrical.Analog.Basic.Resistor R1(R=4700);
+  Modelica.Electrical.Analog.Basic.Capacitor C1(C=2.2e-6);
+  Modelica.Electrical.Analog.Sources.ConstantVoltage V1(V=12.0);
+end RcFilter;`;
+      const moFile = path.join(tmpDir, "RcFilter_mod.mo");
+      fs.writeFileSync(moFile, modifiedMo, "utf-8");
+
+      const syncedCir = path.join(tmpDir, "filter_synced.cir");
+      await syncCmd.handler({
+        file: validFile,
+        fromModelica: moFile,
+        out: syncedCir,
+      });
+
+      assert.ok(fs.existsSync(syncedCir), "Should write filter_synced.cir");
+      const syncedContent = fs.readFileSync(syncedCir, "utf-8");
+      assert.ok(syncedContent.includes("4700"), "Must update R1 to 4700");
+      assert.ok(syncedContent.includes("12"), "Must update V1 to 12");
+      assert.ok(syncedContent.includes(".TRAN 10u 5m"), "Must preserve directives");
     } finally {
       console.log = origLog;
       fs.rmSync(tmpDir, { recursive: true, force: true });

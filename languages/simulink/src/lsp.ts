@@ -8,6 +8,7 @@ import { lowerSimulinkToDae } from "./dae/index.js";
 import { lintSimulinkModel } from "./lints/index.js";
 import { parseSimulink } from "./parser/index.js";
 import { simulinkToModelica } from "./projections/index.js";
+import { synchronizeModelicaToSimulink } from "./tgg/index.js";
 import type { SimulinkBlock, SimulinkSystem } from "./types.js";
 
 export interface LspPosition {
@@ -251,6 +252,12 @@ export async function executeSimulinkAction(action: string, args: Record<string,
         varCount: dae.varCount,
         eqCount: dae.eqCount,
       };
+    }
+    case "sync_from_modelica": {
+      const modelicaText = args["modelicaText"] as string;
+      if (!modelicaText) throw new Error("Missing 'modelicaText' in sync_from_modelica action");
+      const options = args["options"] as any;
+      return synchronizeModelicaToSimulink(content, modelicaText, options);
     }
     default:
       throw new Error(`Unsupported Simulink action: '${action}'`);

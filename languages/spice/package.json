@@ -44,6 +44,10 @@
     "./lsp": {
       "types": "./dist/src/lsp.d.ts",
       "default": "./dist/src/lsp.js"
+    },
+    "./tgg": {
+      "types": "./dist/src/tgg/index.d.ts",
+      "default": "./dist/src/tgg/index.js"
     }
   },
   "files": [

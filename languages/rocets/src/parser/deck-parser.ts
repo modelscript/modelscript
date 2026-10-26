@@ -83,7 +83,7 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
 
     // Handle COMPONENTS / MODULES section
     if (currentSection === "COMPONENTS" || currentSection === "MODULES" || currentSection === "") {
-      const cmpMatch = /^([A-Za-z0-9_]{2,12})\s+(?:TYPE\s*=\s*|MODULE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(.*))?$/i.exec(
+      const cmpMatch = /^([A-Za-z0-9_]{2,12})\s+(?:TYPE\s*=\s*|MODULE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(\S.*))?$/i.exec(
         trimmed,
       );
       if (
@@ -204,7 +204,7 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
       trimmed.includes("=>")
     ) {
       const connMatch =
-        /^([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?:\s*(?:->|=>)\s*|\s+TO\s+)([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?:\s+(.*))?$/i.exec(
+        /^([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?:\s*(?:->|=>)\s*|\s+TO\s+)([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?:\s+(\S.*))?$/i.exec(
           trimmed,
         );
       if (connMatch) {

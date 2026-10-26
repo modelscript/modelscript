@@ -122,4 +122,64 @@ test("CLI: ReqIF Requirements Management (msx reqif lint / verify / to-sysml / t
   assert.ok(fs.existsSync(moOut));
   const moContent = fs.readFileSync(moOut, "utf-8");
   assert.ok(moContent.includes("model") || moContent.includes("block"));
+
+  // 5. msx reqif verify MultiDomain.reqif --deck=decks.json (Nelson-Oppen Multi-Domain Verification)
+  const MULTI_REQIF = `<?xml version="1.0" encoding="UTF-8"?>
+<REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">
+  <THE-HEADER>
+    <REQ-IF-HEADER IDENTIFIER="H-MULTI"><TITLE>Offshore Energy System</TITLE></REQ-IF-HEADER>
+  </THE-HEADER>
+  <CORE-CONTENT>
+    <REQ-IF-CONTENT>
+      <SPEC-OBJECTS>
+        <SPEC-OBJECT IDENTIFIER="REQ-V" LONG-NAME="Grid Voltage">
+          <VALUES><ATTRIBUTE-VALUE-STRING><THE-VALUE>Grid voltage must be &gt;= 0.95 p.u.</THE-VALUE></ATTRIBUTE-VALUE-STRING></VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="REQ-SF" LONG-NAME="Mooring Safety Factor">
+          <VALUES><ATTRIBUTE-VALUE-STRING><THE-VALUE>Mooring safety_factor must be &gt;= 1.67</THE-VALUE></ATTRIBUTE-VALUE-STRING></VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="REQ-STRESS" LONG-NAME="Tower Stress">
+          <VALUES><ATTRIBUTE-VALUE-STRING><THE-VALUE>Tower von_mises_stress must be &lt;= 250 MPa</THE-VALUE></ATTRIBUTE-VALUE-STRING></VALUES>
+        </SPEC-OBJECT>
+      </SPEC-OBJECTS>
+      <SPECIFICATIONS>
+        <SPECIFICATION IDENTIFIER="S-1">
+          <CHILDREN>
+            <SPEC-HIERARCHY IDENTIFIER="SH-1"><OBJECT><SPEC-OBJECT-REF>REQ-V</SPEC-OBJECT-REF></OBJECT></SPEC-HIERARCHY>
+            <SPEC-HIERARCHY IDENTIFIER="SH-2"><OBJECT><SPEC-OBJECT-REF>REQ-SF</SPEC-OBJECT-REF></OBJECT></SPEC-HIERARCHY>
+            <SPEC-HIERARCHY IDENTIFIER="SH-3"><OBJECT><SPEC-OBJECT-REF>REQ-STRESS</SPEC-OBJECT-REF></OBJECT></SPEC-HIERARCHY>
+          </CHILDREN>
+        </SPECIFICATION>
+      </SPECIFICATIONS>
+    </REQ-IF-CONTENT>
+  </CORE-CONTENT>
+</REQ-IF>`;
+  const multiReqifFile = path.join(scratchDir, "MultiDomain.reqif");
+  fs.writeFileSync(multiReqifFile, MULTI_REQIF, "utf-8");
+
+  const compliantDeck = {
+    powerGrid: {
+      busOverrides: [{ busId: 1, actualVm: 1.02, minVm: 0.95, maxVm: 1.05 }],
+    },
+    marineMooring: {
+      lineOverrides: [{ lineId: "L1", mbl: 12e6, tensionIntact: 5e6, consequenceClass: 2 }],
+    },
+    fea: {
+      parts: [{ partName: "Tower", maxVonMisesStressPa: 180e6, yieldStrengthPa: 250e6 }],
+    },
+  };
+  const deckFile = path.join(scratchDir, "decks.json");
+  fs.writeFileSync(deckFile, JSON.stringify(compliantDeck), "utf-8");
+
+  // Intercept logs to verify multi-domain output
+  const logs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: any[]) => logs.push(args.join(" "));
+  try {
+    await verifyCmd.handler({ file: multiReqifFile, deck: [deckFile] });
+    assert.ok(logs.some((l) => l.includes("Nelson-Oppen Multi-Domain Verification Report")));
+    assert.ok(logs.some((l) => l.includes("CERTIFIED_SAFE")));
+  } finally {
+    console.log = origLog;
+  }
 });

@@ -346,6 +346,74 @@ const SpiceToEcadCommand: CommandModule<{}, SpiceToEcadArgs> = {
   },
 };
 
+interface SpiceSyncArgs {
+  file: string;
+  fromModelica: string;
+  strategy?: "target-wins" | "source-wins" | "physics-simplex";
+  out?: string | undefined;
+}
+
+const SpiceSyncCommand: CommandModule<{}, SpiceSyncArgs> = {
+  command: "sync <file>",
+  describe: "Synchronize tuned parameters and topology from Modelica 3.x back into SPICE netlist",
+  builder: (yargs) =>
+    yargs
+      .positional("file", {
+        demandOption: true,
+        description: "Path to SPICE netlist (.cir, .sp, .net, .lib)",
+        type: "string",
+      })
+      .option("from-modelica", {
+        demandOption: true,
+        description: "Path to Modelica model file to synchronize from",
+        type: "string",
+      })
+      .option("strategy", {
+        description: "Conflict reconciliation strategy",
+        choices: ["target-wins", "source-wins", "physics-simplex"],
+        default: "target-wins",
+        type: "string",
+      })
+      .option("out", {
+        alias: "o",
+        description: "Output file path (default: in-place)",
+        type: "string",
+      }) as any,
+  handler: async (args) => {
+    const { synchronizeModelicaToSpice } = await import("@modelscript/spice");
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+    const moPath = path.resolve(process.cwd(), args.fromModelica);
+    if (!fs.existsSync(moPath)) {
+      console.error(`Error: Modelica file not found: ${args.fromModelica}`);
+      process.exit(1);
+    }
+    const content = fs.readFileSync(filePath, "utf-8");
+    const moContent = fs.readFileSync(moPath, "utf-8");
+    const strategy = args.strategy ?? "target-wins";
+    const result = synchronizeModelicaToSpice(content, moContent, { strategy: strategy as any });
+
+    console.log(
+      `[SPICE Sync] Reconciled ${result.changes.length} change(s) from '${args.fromModelica}' into '${args.file}':`,
+    );
+    for (const c of result.changes) {
+      const prop = c.property ? `.${c.property}` : "";
+      console.log(`  - [${c.target}] ${c.elementId}${prop}: ${c.sourceOldVal ?? ""} -> ${c.reconciledVal}`);
+    }
+
+    if (args.out) {
+      fs.writeFileSync(path.resolve(process.cwd(), args.out), result.updatedText, "utf-8");
+      console.log(`Saved synchronized netlist to ${args.out}`);
+    } else {
+      fs.writeFileSync(filePath, result.updatedText, "utf-8");
+      console.log(`Updated in-place: ${args.file}`);
+    }
+  },
+};
+
 export const Spice: CommandModule = {
   command: "spice <action>",
   describe: "SPICE netlist (.cir, .sp, .net) analog & mixed-signal simulation and translation",
@@ -355,7 +423,8 @@ export const Spice: CommandModule = {
       .command(SpiceLintCommand)
       .command(SpiceToModelicaCommand)
       .command(SpiceToEcadCommand)
-      .demandCommand(1, "Please specify an action (simulate, lint, to-modelica, or to-ecad)") as any;
+      .command(SpiceSyncCommand)
+      .demandCommand(1, "Please specify an action (simulate, lint, to-modelica, to-ecad, or sync)") as any;
   },
   handler: () => {},
 };

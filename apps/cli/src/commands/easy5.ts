@@ -22,6 +22,7 @@ import {
   lintEasy5,
   parseEasy5,
   renderEasy5SchematicSvg,
+  synchronizeModelicaToEasy5,
 } from "@modelscript/easy5";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,13 +37,34 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
         description:
           "Action to perform (lint, summary, inspect, linearize, bode, to-modelica, to-ssp, to-dae, diagram)",
         type: "string",
-        choices: ["lint", "summary", "inspect", "linearize", "bode", "to-modelica", "to-ssp", "to-dae", "diagram"],
+        choices: [
+          "lint",
+          "summary",
+          "inspect",
+          "linearize",
+          "bode",
+          "to-modelica",
+          "to-ssp",
+          "to-dae",
+          "diagram",
+          "sync",
+        ],
         demandOption: true,
       })
       .positional("files", {
         description: "EASY5 model file(s) to process",
         type: "string",
         array: true,
+      })
+      .option("from-modelica", {
+        description: "Path to modified Modelica file for bidirectional synchronization",
+        type: "string",
+      })
+      .option("strategy", {
+        description: "Conflict reconciliation strategy",
+        type: "string",
+        choices: ["target-wins", "source-wins", "physics-simplex"],
+        default: "target-wins",
       })
       .option("out", {
         alias: "o",
@@ -273,6 +295,43 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
             process.stdout.write(`✔ Exported schematic SVG to ${outPath}\n`);
           } else {
             process.stdout.write(svg + "\n");
+          }
+          break;
+        }
+
+        case "sync": {
+          const fromMo = argv["from-modelica"] as string | undefined;
+          if (!fromMo) {
+            process.stderr.write("Error: --from-modelica=<file.mo> is required for sync action.\n");
+            process.exitCode = 1;
+            break;
+          }
+          const moPath = path.resolve(fromMo);
+          if (!fs.existsSync(moPath)) {
+            process.stderr.write(`Error: Modelica file not found: ${fromMo}\n`);
+            process.exitCode = 1;
+            break;
+          }
+          const moText = fs.readFileSync(moPath, "utf-8");
+          const strategy = (argv["strategy"] as any) ?? "target-wins";
+          const result = synchronizeModelicaToEasy5(text, moText, { strategy });
+
+          process.stdout.write(
+            `[easy5] Reconciled ${result.changes.length} change(s) from '${fromMo}' into '${filePath}':\n`,
+          );
+          for (const c of result.changes) {
+            const prop = c.property ? `.${c.property}` : "";
+            process.stdout.write(
+              `  - [${c.target}] ${c.elementId}${prop}: ${c.sourceOldVal ?? ""} -> ${c.reconciledVal}\n`,
+            );
+          }
+
+          if (outPath) {
+            fs.writeFileSync(path.resolve(outPath), result.updatedText, "utf-8");
+            process.stdout.write(`✔ Saved synchronized model to ${outPath}\n`);
+          } else {
+            fs.writeFileSync(resolved, result.updatedText, "utf-8");
+            process.stdout.write(`✔ Updated in-place: ${filePath}\n`);
           }
           break;
         }

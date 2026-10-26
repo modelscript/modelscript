@@ -9,6 +9,8 @@
 
 import { lintSpiceCircuit } from "./lints/rules.js";
 import { parseSpice } from "./parser/spice-parser.js";
+import { spiceToModelica } from "./projections/modelica.js";
+import { synchronizeModelicaToSpice } from "./tgg/index.js";
 import type { SpiceCircuit } from "./types.js";
 
 export interface LspPosition {
@@ -279,4 +281,26 @@ export function getSpiceHover(content: string, line: number, _character: number)
   }
 
   return null;
+}
+
+/**
+ * Executes domain actions on a SPICE netlist.
+ */
+export async function executeSpiceAction(action: string, args: Record<string, unknown>): Promise<any> {
+  const content = typeof args["content"] === "string" ? args["content"] : "";
+  const circuit = parseSpice(content);
+
+  switch (action) {
+    case "lint":
+      return lintSpiceCircuit(circuit);
+    case "to_modelica":
+      return { modelica: spiceToModelica(circuit) };
+    case "sync_from_modelica": {
+      const modelicaText = typeof args["modelicaText"] === "string" ? args["modelicaText"] : "";
+      const options = args["options"] as any;
+      return synchronizeModelicaToSpice(content, modelicaText, options);
+    }
+    default:
+      throw new Error(`Unknown SPICE action: ${action}`);
+  }
 }

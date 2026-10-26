@@ -166,5 +166,6 @@ export * from "./formal/dae/dae_flowpipe_bridge.js";
 export * from "./formal/dae/dae_interval_evaluator.js";
 export * from "./formal/dae/hybrid_mode_verifier.js";
 export * from "./formal/dae/taylor_domain.js";
+export * from "./formal/multidomain_coordinator.js";
 export * from "./formal/oracles/index.js";
 export * from "./formal/theory_coordinator.js";

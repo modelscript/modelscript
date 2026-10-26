@@ -85,7 +85,7 @@ export function parseEasy5(sourceText: string): Easy5Model {
       // Component definition line, e.g.:
       // LA01 TYPE=GP/LA TITLE="Lead Lag" X=100 Y=200
       // or COMPONENT LA01 GP/LA
-      const cmpMatch = /^([A-Za-z0-9_]{2,8})\s+(?:TYPE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(.*))?$/i.exec(trimmed);
+      const cmpMatch = /^([A-Za-z0-9_]{2,8})\s+(?:TYPE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(\S.*))?$/i.exec(trimmed);
       if (cmpMatch && !trimmed.startsWith("XP:") && !trimmed.startsWith("S0:") && !trimmed.startsWith("PORTS:")) {
         const id = cmpMatch[1]!.toUpperCase();
         const type = cmpMatch[2]!;

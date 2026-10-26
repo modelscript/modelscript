@@ -158,6 +158,19 @@ export const spiceLanguage = language({
         return spiceToNetlistGraph(circuit);
       },
     },
+    {
+      id: "sync_spice_from_modelica",
+      title: "Synchronize Netlist from Modelica 3.x",
+      description: "Reconciles tuned component values from Modelica back into SPICE netlist.",
+      category: "transform",
+      execute: async (context: any) => {
+        const { synchronizeModelicaToSpice } = await import("./tgg/spice-sync.js");
+        const originalText = context.documentText || "";
+        const modifiedModelica = context.modelicaText || "";
+        const options = context.options || {};
+        return synchronizeModelicaToSpice(originalText, modifiedModelica, options);
+      },
+    },
   ],
 
   polyglot: {
@@ -227,6 +240,54 @@ export const spiceLanguage = language({
           tggDefaultVal(v("isAbstract"), false),
           tggComplement(["components", "subcircuits", "models", "directives"]),
         ],
+      }),
+
+      // SPICE Voltage Source <-> Modelica Constant Voltage
+      tggRule({
+        name: "SpiceVoltageSourceToModelicaConstantVoltage",
+        sourceLang: "spice",
+        targetLang: "modelica",
+        source: ($, v) => $.Component({ name: v("name"), kind: "V", value: v("vVal") }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("name"),
+            typeSpecifier: "Modelica.Electrical.Analog.Sources.ConstantVoltage",
+            modification: v("vVal"),
+          }),
+        where: (v) => [
+          tggEq(v("name"), v("name")),
+          tggEq(v("vVal"), v("vVal")),
+          tggComplement(["nodes", "sourceSpec"]),
+        ],
+      }),
+
+      // SPICE Current Source <-> Modelica Constant Current
+      tggRule({
+        name: "SpiceCurrentSourceToModelicaConstantCurrent",
+        sourceLang: "spice",
+        targetLang: "modelica",
+        source: ($, v) => $.Component({ name: v("name"), kind: "I", value: v("iVal") }),
+        target: ($, v) =>
+          $.ComponentClause({
+            name: v("name"),
+            typeSpecifier: "Modelica.Electrical.Analog.Sources.ConstantCurrent",
+            modification: v("iVal"),
+          }),
+        where: (v) => [
+          tggEq(v("name"), v("name")),
+          tggEq(v("iVal"), v("iVal")),
+          tggComplement(["nodes", "sourceSpec"]),
+        ],
+      }),
+
+      // SPICE Component <-> SysML v2 Part Definition
+      tggRule({
+        name: "SpiceComponentToSysmlPart",
+        sourceLang: "spice",
+        targetLang: "sysml2",
+        source: ($, v) => $.Component({ name: v("name"), kind: v("kind") }),
+        target: ($, v) => $.PartDefinition({ name: v("name"), declaredType: v("kind") }),
+        where: (v) => [tggEq(v("name"), v("name")), tggDefaultVal(v("isAbstract"), false)],
       }),
     ],
   },

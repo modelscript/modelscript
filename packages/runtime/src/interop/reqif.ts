@@ -118,7 +118,7 @@ export class ReqIfParser {
           let prev = "";
           while (stripped !== prev) {
             prev = stripped;
-            stripped = stripped.replace(/<[^>]+>/g, "");
+            stripped = stripped.replace(/<[^<>]+>/g, "");
           }
           rawStr = stripped.trim();
         } else if (enumRefMatch) {

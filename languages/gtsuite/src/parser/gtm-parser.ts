@@ -54,13 +54,24 @@ function parseXmlGtm(xmlText: string, defaultName: string): GtModel {
   const connections: GtConnection[] = [];
   const maps: Record<string, GtTableMap> = {};
 
-  // Extract <Component ...> blocks
-  const compRegex = /<Component\s+([^\s<>][^<>]*?)(?:\/>|>([\s\S]*?)<\/Component>)/gi;
-  let compMatch: RegExpExecArray | null;
+  // Extract <Component ...> blocks without ReDoS vulnerability
+  const compTagRegex = /<Component\b([^>]*?)(\/?>)/gi;
+  let tagMatch: RegExpExecArray | null;
 
-  while ((compMatch = compRegex.exec(xmlText)) !== null) {
-    const attrsStr = compMatch[1] ?? "";
-    const bodyStr = compMatch[2] ?? "";
+  while ((tagMatch = compTagRegex.exec(xmlText)) !== null) {
+    const attrsStr = tagMatch[1] ?? "";
+    const isSelfClosing = tagMatch[2] === "/>";
+    let bodyStr = "";
+
+    if (!isSelfClosing) {
+      const startBody = compTagRegex.lastIndex;
+      const nextOpen = xmlText.slice(startBody).search(/<Component\b/i);
+      const closeMatch = xmlText.slice(startBody).match(/<\/Component>/i);
+      if (closeMatch && (nextOpen === -1 || closeMatch.index! < nextOpen)) {
+        bodyStr = xmlText.slice(startBody, startBody + closeMatch.index!);
+        compTagRegex.lastIndex = startBody + closeMatch.index! + closeMatch[0].length;
+      }
+    }
     const id = extractAttr(attrsStr, "id") ?? `comp_${components.length + 1}`;
     const kind = (extractAttr(attrsStr, "kind") ?? extractAttr(attrsStr, "type") ?? "pipe").toLowerCase();
 

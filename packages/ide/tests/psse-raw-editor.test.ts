@@ -69,6 +69,9 @@ describe("PSS/E RAW Visual Custom Editor Provider", () => {
     assert.ok(mockWebview.html.includes("📋 Grid Tables"));
     assert.ok(mockWebview.html.includes("diag-banner"));
     assert.ok(mockWebview.html.includes("kpi-row"));
+    assert.ok(mockWebview.html.includes("substation-inspector"));
+    assert.ok(mockWebview.html.includes("sld-search"));
+    assert.ok(mockWebview.html.includes("legend-chip"));
 
     // Verify posted data message
     const updateMsg = postedMessages.find((m) => m.type === "update");
@@ -78,6 +81,9 @@ describe("PSS/E RAW Visual Custom Editor Provider", () => {
     assert.equal(updateMsg.generators.length, 1);
     assert.equal(updateMsg.branches.length, 1);
     assert.ok(updateMsg.svg.includes("<svg"));
+    assert.ok(updateMsg.svg.includes("sld-edges-layer"));
+    assert.ok(updateMsg.svg.includes("sld-nodes-layer"));
+    assert.ok(updateMsg.svg.includes("branch-line"));
     assert.ok(updateMsg.metrics.totalGenMw > 200);
   });
 });

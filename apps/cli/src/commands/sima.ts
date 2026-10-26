@@ -187,7 +187,7 @@ export const SimaCommand: CommandModule<Record<string, unknown>, Record<string, 
           if (out) {
             const outPath = path.resolve(process.cwd(), out);
             fs.writeFileSync(outPath, code, "utf-8");
-            console.log(`✔ Modelica projection written to: ${outPath}`);
+            console.log(`Wrote Modelica model to ${out}`);
           } else {
             console.log(code);
           }

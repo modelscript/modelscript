@@ -64,6 +64,13 @@ describe("SIMA / SIMO Visual Marine & Station-Keeping Custom Editor Provider", (
     assert.ok(mockWebview.html.includes("SIMA Offshore Custom Editor"));
     assert.ok(mockWebview.html.includes("2D Catenary Sag Profile Preview"));
     assert.ok(mockWebview.html.includes("Overhead Polar Mooring Spread"));
+    assert.ok(mockWebview.html.includes("tab-3d"));
+    assert.ok(mockWebview.html.includes("sima-3d-canvas"));
+    assert.ok(mockWebview.html.includes("hudTelemetry"));
+    assert.ok(mockWebview.html.includes("sliderHs"));
+    assert.ok(mockWebview.html.includes("sliderTp"));
+    assert.ok(mockWebview.html.includes("hudEta"));
+    assert.ok(mockWebview.html.includes("hudStation"));
     assert.ok(mockWebview.html.includes("DNV-OS-E301"));
 
     assert.equal(postedMessages.length, 1);

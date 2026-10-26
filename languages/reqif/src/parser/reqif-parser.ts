@@ -109,7 +109,7 @@ function createSpan(startOffset: number, endOffset: number, lineStarts: number[]
  */
 export function extractFormalContract(text: string): ReqIfContract | undefined {
   if (!text) return undefined;
-  const normalized = text.replace(/<[^>]+>/g, " ").trim();
+  const normalized = text.replace(/<[^<>]+>/g, " ").trim();
   const pattern =
     /([a-zA-Z_][a-zA-Z0-9_.\s]*?)\s*(<=|<|>=|>|==|!=)\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Z%][a-zA-Z0-9_/%^]*)?/i;
   const match = pattern.exec(normalized);
